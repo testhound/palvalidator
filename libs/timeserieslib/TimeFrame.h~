@@ -1,0 +1,17 @@
+#ifndef __TIME_FRAME_UTILITY_H
+#define __TIME_FRAME_UTILITY_H 1
+
+#include <exception>
+#include <string>
+
+namespace mkc_timeseries
+{
+  class TimeFrame
+  {
+  public:
+    enum Duration {DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY} ;
+  };
+
+}
+
+#endif

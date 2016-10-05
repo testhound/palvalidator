@@ -1,0 +1,16 @@
+int * 
+strategy_PatternPro::getPositionSeries()
+{
+	return m_pos_arr.data();
+}
+
+double * 
+strategy_PatternPro::getDailyReturnsSeries()
+{
+	return m_daily_returns.data();
+}
+
+size_t strategy_PatternPro::getNumTradingOpportunities() const
+{
+	return m_daily_returns.size();
+}

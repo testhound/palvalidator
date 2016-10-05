@@ -1,0 +1,23 @@
+	if (instrument.position = long) then
+		if (longEntryFound = 1) and (PyramidPositions = true) and (instrument.currentPositionUnits = 1) and 
+		(shortEntryFound = 0) then
+			broker.EnterLongOnOpen (longStop)
+		endif
+	endif
+	
+	if (instrument.position = short) then
+		if (shortEntryFound = 1) and (PyramidPositions = true) and (instrument.currentPositionUnits = 1) and 
+		(longEntryFound = 0) then
+			broker.EnterShortOnOpen (longStop)
+		endif
+	endif
+	
+	if (instrument.position = flat) then
+		if (longEntryFound = 1) and (shortEntryFound = 0) then
+			broker.EnterLongOnOpen (longStop)
+		endif
+		
+		if (longEntryFound = 0) and (shortEntryFound = 1) then
+			broker.EnterShortOnOpen (shortStop)
+		endif
+	endif

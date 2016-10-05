@@ -1,0 +1,190 @@
+
+verbatim{
+#include <string>
+#include <cstdlib>
+#include <map>
+#include <list>
+#include "stdio.h"
+#include "PalAst.h"
+#include "useract.h"
+}
+
+context_class ParseEnv : public UserActions
+{
+
+};
+
+impl_verbatim {
+
+
+AstFactory astFactory;
+std::list<PALPatternPtr> mListOfPricePatterns;
+
+
+}
+
+
+terminals {
+  include("lexer.tok")
+
+  token(int) TOK_INT_NUM;
+  token(char *) TOK_IDENTIFIER;
+  token(char *) TOK_FLOAT_NUM;
+}
+
+
+
+nonterm(PriceActionLabSystem *) program { 
+   -> patterns  
+   { 
+     // printf ("Found program\n"); 
+     return new PriceActionLabSystem (mListOfPricePatterns, 
+     	    			      std::shared_ptr<PatternTieBreaker> (new SmallestVolatilityTieBreaker)); 
+   }
+}
+
+nonterm patterns { 
+   -> p:pattern
+      { 
+         //printf ("Founds patterns\n");
+         mListOfPricePatterns.push_back (std::shared_ptr<PriceActionLabPattern> (p));
+      }
+   -> patterns p:pattern
+      {
+         //printf ("Founds recursive xpatterns\n");
+         mListOfPricePatterns.push_back (std::shared_ptr<PriceActionLabPattern> (p));
+      }
+}
+
+nonterm(PriceActionLabPattern *) pattern { 
+   -> d:patterndescr TOK_IF c:conds TOK_THEN e:entrystmt TOK_WITH p:profitstmt TOK_AND s:stopstmt
+      { 
+      	//printf ("Found pattern\n"); 
+	return new PriceActionLabPattern (d, c, e, p, s); 
+      }
+}
+
+nonterm(PatternDescription *) patterndescr { 
+   -> TOK_LBRACE f:filedesc i:indexdesc d:indexdatedesc l:pldesc s:psdesc n:tradesdesc c:cldesc TOK_RBRACE
+      { 
+      	//printf ("Found pattern description\n"); 
+	return new PatternDescription (f, i, d, l, s, n, c); 
+      }
+}
+
+nonterm(char *) filedesc { 
+   -> TOK_FILE TOK_COLON s:TOK_IDENTIFIER  { return s; }
+}
+
+nonterm(int) indexdesc { 
+   -> TOK_INDEX TOK_COLON n:integernumber { return n; }
+}
+
+nonterm(int) indexdatedesc { 
+   -> TOK_INDEX TOK_DATE TOK_COLON n:integernumber { return n; }
+}
+
+nonterm(decimal2 *) pldesc { 
+   -> TOK_PL TOK_COLON n:number TOK_PERCENT  
+     { //printf ("Found nonterminal PL: %f\n", n->getAsDouble ()); 
+       return n; 
+     }
+   -> TOK_PL TOK_COLON n:integernumber TOK_PERCENT
+     { return astFactory.getDecimalNumber (n); }
+}
+
+nonterm(decimal2 *) psdesc { 
+   -> TOK_PS TOK_COLON n:number TOK_PERCENT  
+     { //printf ("Found nonterminal PS: %f\n", n->getAsDouble ()); 
+       return n; 
+     }
+   -> TOK_PS TOK_COLON n:integernumber TOK_PERCENT
+     { return astFactory.getDecimalNumber (n); }
+}
+
+nonterm(int) tradesdesc { 
+   -> TOK_TRADES TOK_COLON n:integernumber  { return n; }
+}
+
+nonterm(int) cldesc { 
+   -> TOK_CL TOK_COLON n:integernumber  { return n; }
+   -> TOK_CL TOK_COLON TOK_MINUS { return 1; }
+}
+
+nonterm(PatternExpression *) conds  { 
+   -> comp : ohlc_comparison                
+      { //printf ("Found comparison\n"); 
+        return comp; 
+      }
+   -> lhs:conds TOK_AND rhs:ohlc_comparison 
+      { //printf ("Found recursive comparison\n"); 
+       return new AndExpr (lhs, rhs); 
+      }
+}
+
+nonterm(PatternExpression *) ohlc_comparison { 
+   -> lhs:ohlcref TOK_GREATER_THAN rhs:ohlcref 
+      { // //printf ("Found greater than ohlc comparison \n"); 
+        return new GreaterThanExpr (lhs, rhs); 
+      } 
+}
+
+nonterm(PriceBarReference *) ohlcref  { 
+   -> TOK_OPEN TOK_OF n:integernumber TOK_BARS TOK_AGO 
+      { //printf("Found ohlc ref for open\n"); 
+      return astFactory.getPriceOpen (n); }
+   -> TOK_HIGH TOK_OF n:integernumber TOK_BARS TOK_AGO 
+      { //printf("Found ohlc ref for high\n"); 
+      return astFactory.getPriceHigh (n); }
+   -> TOK_LOW TOK_OF n:integernumber TOK_BARS TOK_AGO 
+      { //printf("Found ohlc ref for low\n"); 
+       return astFactory.getPriceLow (n); }
+   -> TOK_CLOSE TOK_OF n:integernumber TOK_BARS TOK_AGO 
+       { //printf("Found ohlc ref for close\n"); 
+       	 return astFactory.getPriceClose (n); 
+       }
+}
+
+nonterm(MarketEntryExpression *) entrystmt {
+   -> TOK_BUY TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN  
+      { // //printf ("Found long market entry on open\n"); 
+      	return astFactory.getLongMarketEntryOnOpen(); }
+   -> TOK_SELL TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN  
+      { // //printf ("Found short market entry on open\n"); 
+      	return astFactory.getShortMarketEntryOnOpen(); }
+}
+
+nonterm(ProfitTargetInPercentExpression *) profitstmt  { 
+   -> TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS x:number TOK_PERCENT 
+      { //printf ("Found long side profit target\n"); 
+       return new LongSideProfitTargetInPercent (x); } 
+   -> TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS x:number TOK_PERCENT
+      { //printf ("Found short side profit target"); 
+        return new ShortSideProfitTargetInPercent (x); }
+}
+
+
+nonterm(StopLossInPercentExpression *) stopstmt {
+   -> TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS x:number TOK_PERCENT
+      { //printf("Found short stop loss statement\n"); 
+       return new ShortSideStopLossInPercent (x); 
+      }
+   -> TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS x:number TOK_PERCENT
+      { //printf("Found long stop loss statement\n"); 
+      	return new LongSideStopLossInPercent (x); 
+      }
+}
+
+nonterm(int)  integernumber { 
+   -> num:TOK_INT_NUM  
+      { //printf ("Found integer number\n"); 
+      	return num; 
+      }
+}
+ 
+nonterm(decimal2 *) number   {
+   -> num:TOK_FLOAT_NUM  
+      { //printf ("Found float number\n"); 
+      	return astFactory.getDecimalNumber (num); 
+      }
+}

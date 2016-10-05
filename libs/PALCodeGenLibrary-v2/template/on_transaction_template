@@ -1,0 +1,45 @@
+{
+	if(_t.fills(m_entry_order))
+	{
+		m_trade_entry_on_current_bar = true;
+		double stopPrice, targetPrice;
+
+		//set stop loss order
+		if(_t.order_action() == order::buy)
+		{
+			assert(c.position() == 1);
+			stopPrice = _t.price() * mProtectiveStopMultiplier;
+			targetPrice = _t.price() * mProfitTargetMultiplier;
+			m_exit_stop_order = c.sell_stop(1, stopPrice).tag("stop");
+			m_exit_limit_order = c.sell_limit(1, targetPrice).tag("target");
+			m_exit_stop_order.oco(m_exit_limit_order);
+		}
+		else
+		{
+			assert(c.position() == -1);
+			stopPrice = _t.price() * mProtectiveStopMultiplier;
+			targetPrice = _t.price() * mProfitTargetMultiplier;
+			m_exit_stop_order = c.buy_stop(1, stopPrice).tag("stop");
+			m_exit_limit_order = c.buy_limit(1, targetPrice).tag("target");
+			m_exit_stop_order.oco(m_exit_limit_order);
+		}
+	}
+
+	if(_t.fills(m_exit_stop_order) || _t.fills(m_exit_limit_order))
+	{
+		m_exit_price = _t.price();
+		if(_t.order_action() == order::buy)
+		{
+			m_short_exit_on_current_bar = true;
+		}
+		else { 
+			m_long_exit_on_current_bar = true; 
+		}
+
+		//order should have cancelled the other
+		//Neither should be active now
+		assert(!m_exit_stop_order.is_active());
+		assert(!m_exit_limit_order.is_active());
+	}
+
+}

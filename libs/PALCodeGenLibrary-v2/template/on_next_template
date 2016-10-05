@@ -1,0 +1,82 @@
+{
+	c.open.verify_size (15);
+	c.high.verify_size (15);
+	c.low.verify_size (15);
+	c.close.verify_size (15);
+
+	if(count() < 10) //avoid lookback exceptions
+		return;
+
+	if(c.position())
+	{
+		assert(c.position_size() <= 1);
+		//if we have a position, we make sure both 
+		//exit orders are active
+		assert(m_exit_stop_order.is_active());
+		assert(m_exit_limit_order.is_active());
+	}
+
+	int entry_signal = 0;
+	if(c.is_flat())	//no point in comparing patterns when there is an existing position.
+	{
+		//look for pattern and generate entry signal
+		entry_signal = signal_when_pattern_matches(c.open, c.high, c.low, c.close);
+
+		if(entry_signal == 1)
+		{
+			m_entry_order = c.buy(1).tag("long-entry");
+		}
+
+		if(entry_signal == -1)
+		{
+			m_entry_order = c.sell(1).tag("short-entry");
+		}
+	}
+
+	//===========
+	// Analysis
+	//===========
+
+	int    cur_pos = (int)c.position();
+	int    adj_pos = cur_pos;
+	double bar_start = c.close[1];
+	double bar_end = c.close[0];
+
+	if(m_long_exit_on_current_bar){
+		adj_pos = 1;//we were long
+		bar_end = m_exit_price;
+	}
+	if(m_short_exit_on_current_bar){
+		adj_pos = -1;//we were short
+		bar_end = m_exit_price;
+	}
+	if(m_trade_entry_on_current_bar){
+		bar_start = c.open[0];
+	}
+
+	//update position arrary
+	m_pos_arr.push_back(adj_pos);
+
+	//calculate returns
+	double price_chg = bar_end - bar_start;
+	double pct_chg = price_chg / bar_start;
+
+	double daily_return;
+	if(adj_pos == 1){
+		daily_return = pct_chg;
+	}
+	else if(adj_pos == ( -1 ))
+	{
+		daily_return = pct_chg;
+	}else{
+		assert(adj_pos == 0);
+		daily_return = pct_chg;
+	}
+
+	//update daily returns array
+	m_daily_returns.push_back(daily_return);
+
+	m_short_exit_on_current_bar = false;
+	m_long_exit_on_current_bar = false;
+	m_trade_entry_on_current_bar = false;
+}

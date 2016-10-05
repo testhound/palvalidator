@@ -1,0 +1,119 @@
+#+STARTUP: nofold
+#+STARTUP: hidestars
+#+OPTIONS: html-postamble:nil
+#+TITLE: Threading in timeserieslib
+
+
+* Setup
+- one build option needs cmake installed
+- an extra dependency boost-thread was added
+* Build
+*** Makefile build
+
+Makefile build needs =decimal.h= copied over to =PALCodeGenLibrary-v2= directory.
+Then a couple of directories need to be present in =/usr/local/include= : 
+  - =/usr/local/include/priceactionlab=
+  - =/usr/local/include/backtester=
+Then build can proceed with make install in  priceactionlab directory and backtester directory. Then make in main directory.
+
+*** CMake build
+
+CMake build is an out-of-source build. Build outputs do not need to be installed. It also needs the bison and flex outputs to exist already in the sourcetree.
+
+=mkdir build && cd build=
+
+=cmake -DCMAKE_BUILD_TYPE=(Release|Debug) </path/to/source/tree>=
+
+=make [VERBOSE=1]=, verbose is optional
+
+both libraries and the binary should be built by this procedure
+
+Existence of system-wide lib libbacktest and libpriceaction2 and their associate headers might shadow the ones obtained through the current build.
+
+* Implementation notes
+
+*** Multithreaded runner
+
+=runner= is a separate class that starts a threadpool in the constructor, and exposes a =post()= method for enqueueing work for the thread pool. 
+
+Destructor is concerned with stopping the running threads and joining them to the main thread.
+
+A typical running usage is:
+#+NAME: example
+#+BEGIN_SRC C++ 
+runner Runner;
+std::future<void> errors=Runner.post(callable_object,arguments);
+try{
+    errors.get();
+}
+catch (std::exception const& e){
+    std::cout<<e.what();
+}
+#+END_SRC
+where the =errors= movable-only object plays two roles:
+   - contains the exception that might have been thrown during computation
+   - waits until computation ends and reports the result (void in this case)
+
+=std::size_t getNCpus()= utility function returns =hardware_concurrency= but can be overridden by environment variable =ncpu=.
+The function is used to initialize the nthreads default argument of the =runner= constructor.
+
+*** Singleton runner
+
+Reuse of the thread pool is addressed with a singleton implemented as a single function call: =getRunner()=
+
+#+NAME: example
+#+BEGIN_SRC C++ 
+runner & Runner = getRunner();
+std::future<void> errors=Runner.post(callable_object,arguments);
+try{
+    errors.get();
+}
+catch (std::exception const& e){
+    std::cout<<e.what();
+}
+#+END_SRC
+
+The lifespan of the =runner= instance obtained this way is from the first call to =getRunner()= to the end of the program.
+
+This became the way the thread pool is currently used within the library.
+
+*** Use of runner
+***** Current usage
+
+The singleton-returned reference to the thread pool by =getRunner()= is used (as [[*Singleton runner][Singleton runner]])  in
+  - =PALMonteCarloValidation.h= in =PALMonteCarloValidation::runPermutationTests()= to process patterns in parallel (using a reference to the runner instead of an instance of the object)
+  - =MonteCarloPermutationTest.h= in =MonteCarloPayoffRatio::runPermutationTest()= to delegate running each permutation instance to the thread pool
+***** Obsolete usage
+
+=runner= was used inside inside =PALMonteCarloValidation::runPermutationTests= according to the usage outlined in [[*Multithreaded runner][Multithreaded runner]]. The instance of the thread pool is used for long strategies and reused for short strategies.
+
+=runner= was also used inside =PALMCPTValidation::runPermutationTests= since it refers to another simulation method, accesible from command line.
+
+*** Other changes
+***** Part 1: parallelizing =PALMonteCarloValidation::runPermutationTests()=
+- =OHLCTimeSeries::syncronizeMapAndArray= is used if-not-synchronized on many iterator-returning methods and it also alters the underlying data. 
+
+    Therefore, an initial call to =syncronizeMapAndArray()= was placed at the top of =runPermutationTests= since all backtests share the same data which is never modified after that first call.
+
+    =syncronizeMapAndArray= method needed to become public for that.
+
+- =pValue= return from =runPermutationTest= was made local to each permutation test.
+
+- Mutexes were added to synchronize access to the results container. scope-locked when needed.
+
+- Original methods source code was commented out, allowing easy check of changes.
+***** Part 2: parallelizing =MonteCarloPayoffRatio::runPermutationTest()=
+- a mutex was inserted MonteCarloPayoffRatio to protect =mWinnersStats= and =mLosersStats= and is locked during counting statistics stage of permutation test run.
+- =TradingOrder.h in =class TradingOrder=: member =TradingOrder::mOrderIDCount= became =std::atomic<uint32_t>=, otherwise there would be a race condition on incrementing order ids, therefore not yielding unique ids for orders.
+- =PALMonteCarloValidation.h= some prints were aggregated in a stringstream before output, otherwise partial prints from multiple threads would interlace yielding a confusing message.
+- =MonteCarloPayoffRatio::createSyntheticPortfolio= now has a call to =syncronizeMapAndArray= embedded.
+- =TradingPosition.h= changed =TradingPosition<Prec>::mPositionIDCount{0}= to =std::atomic<uint32_t>= to prevent race condition on =PositionID= increment when creating new position.
+* Usage of the software
+
+Overriding the number of thread from the environment makes possible runs like this: =ncpu=0 ./PalValidator BP_R0_5_Simpler_Config.txt 300 2=
+
+  - =ncpu=0= means starting just 1 thread in the pool, testing the sequential run
+  - =ncpu=1= will increment by 1, starting 2 threads (due to the hardware reporting wrong sometimes)
+  - =ncpu>2= will start the number of threads requested -modulo- 255. This limit prevents starting too many threads due to user input.
+
+These conventions are embedded in the runner constructor.

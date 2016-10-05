@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2016-09-19 Lu 12:19 -->
+<meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta  name="viewport" content="width=device-width, initial-scale=1" />
+<title>Threading in timeserieslib</title>
+<meta  name="generator" content="Org-mode" />
+<meta  name="author" content="Razvan Coca" />
+<style type="text/css">
+ <!--/*--><![CDATA[/*><!--*/
+  .title  { text-align: center;
+             margin-bottom: .2em; }
+  .subtitle { text-align: center;
+              font-size: medium;
+              font-weight: bold;
+              margin-top:0; }
+  .todo   { font-family: monospace; color: red; }
+  .done   { font-family: monospace; color: green; }
+  .priority { font-family: monospace; color: orange; }
+  .tag    { background-color: #eee; font-family: monospace;
+            padding: 2px; font-size: 80%; font-weight: normal; }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .org-right  { margin-left: auto; margin-right: 0px;  text-align: right; }
+  .org-left   { margin-left: 0px;  margin-right: auto; text-align: left; }
+  .org-center { margin-left: auto; margin-right: auto; text-align: center; }
+  .underline { text-decoration: underline; }
+  #postamble p, #preamble p { font-size: 90%; margin: .2em; }
+  p.verse { margin-left: 3%; }
+  pre {
+    border: 1px solid #ccc;
+    box-shadow: 3px 3px 3px #eee;
+    padding: 8pt;
+    font-family: monospace;
+    overflow: auto;
+    margin: 1.2em;
+  }
+  pre.src {
+    position: relative;
+    overflow: visible;
+    padding-top: 1.2em;
+  }
+  pre.src:before {
+    display: none;
+    position: absolute;
+    background-color: white;
+    top: -10px;
+    right: 10px;
+    padding: 3px;
+    border: 1px solid black;
+  }
+  pre.src:hover:before { display: inline;}
+  pre.src-sh:before    { content: 'sh'; }
+  pre.src-bash:before  { content: 'sh'; }
+  pre.src-emacs-lisp:before { content: 'Emacs Lisp'; }
+  pre.src-R:before     { content: 'R'; }
+  pre.src-perl:before  { content: 'Perl'; }
+  pre.src-java:before  { content: 'Java'; }
+  pre.src-sql:before   { content: 'SQL'; }
+
+  table { border-collapse:collapse; }
+  caption.t-above { caption-side: top; }
+  caption.t-bottom { caption-side: bottom; }
+  td, th { vertical-align:top;  }
+  th.org-right  { text-align: center;  }
+  th.org-left   { text-align: center;   }
+  th.org-center { text-align: center; }
+  td.org-right  { text-align: right;  }
+  td.org-left   { text-align: left;   }
+  td.org-center { text-align: center; }
+  dt { font-weight: bold; }
+  .footpara { display: inline; }
+  .footdef  { margin-bottom: 1em; }
+  .figure { padding: 1em; }
+  .figure p { text-align: center; }
+  .inlinetask {
+    padding: 10px;
+    border: 2px solid gray;
+    margin: 10px;
+    background: #ffffcc;
+  }
+  #org-div-home-and-up
+   { text-align: right; font-size: 70%; white-space: nowrap; }
+  textarea { overflow-x: auto; }
+  .linenr { font-size: smaller }
+  .code-highlighted { background-color: #ffff00; }
+  .org-info-js_info-navigation { border-style: none; }
+  #org-info-js_console-label
+    { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .org-info-js_search-highlight
+    { background-color: #ffff00; color: #000000; font-weight: bold; }
+  /*]]>*/-->
+</style>
+<script type="text/javascript">
+/*
+@licstart  The following is the entire license notice for the
+JavaScript code in this tag.
+
+Copyright (C) 2012-2013 Free Software Foundation, Inc.
+
+The JavaScript code in this tag is free software: you can
+redistribute it and/or modify it under the terms of the GNU
+General Public License (GNU GPL) as published by the Free Software
+Foundation, either version 3 of the License, or (at your option)
+any later version.  The code is distributed WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU GPL for more details.
+
+As additional permission under GNU GPL version 3 section 7, you
+may distribute non-source (e.g., minimized or compacted) forms of
+that code without the copy of the GNU GPL normally required by
+section 4, provided you include this license notice and a URL
+through which recipients can access the Corresponding Source.
+
+
+@licend  The above is the entire license notice
+for the JavaScript code in this tag.
+*/
+<!--/*--><![CDATA[/*><!--*/
+ function CodeHighlightOn(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(null != target) {
+     elem.cacheClassElem = elem.className;
+     elem.cacheClassTarget = target.className;
+     target.className = "code-highlighted";
+     elem.className   = "code-highlighted";
+   }
+ }
+ function CodeHighlightOff(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(elem.cacheClassElem)
+     elem.className = elem.cacheClassElem;
+   if(elem.cacheClassTarget)
+     target.className = elem.cacheClassTarget;
+ }
+/*]]>*///-->
+</script>
+</head>
+<body>
+<div id="content">
+<h1 class="title">Threading in timeserieslib</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#orgheadline1">1. Setup</a></li>
+<li><a href="#orgheadline4">2. Build</a>
+<ul>
+<li><a href="#orgheadline2">2.1. Makefile build</a></li>
+<li><a href="#orgheadline3">2.2. CMake build</a></li>
+</ul>
+</li>
+<li><a href="#orgheadline13">3. Implementation notes</a>
+<ul>
+<li><a href="#orgheadline5">3.1. Multithreaded runner</a></li>
+<li><a href="#orgheadline6">3.2. Singleton runner</a></li>
+<li><a href="#orgheadline9">3.3. Use of runner</a>
+<ul>
+<li><a href="#orgheadline7">3.3.1. Current usage</a></li>
+<li><a href="#orgheadline8">3.3.2. Obsolete usage</a></li>
+</ul>
+</li>
+<li><a href="#orgheadline12">3.4. Other changes</a>
+<ul>
+<li><a href="#orgheadline10">3.4.1. Part 1: parallelizing <code>PALMonteCarloValidation::runPermutationTests()</code></a></li>
+<li><a href="#orgheadline11">3.4.2. Part 2: parallelizing <code>MonteCarloPayoffRatio::runPermutationTest()</code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#orgheadline14">4. Usage of the software</a></li>
+</ul>
+</div>
+</div>
+
+
+<div id="outline-container-orgheadline1" class="outline-2">
+<h2 id="orgheadline1"><span class="section-number-2">1</span> Setup</h2>
+<div class="outline-text-2" id="text-1">
+<ul class="org-ul">
+<li>one build option needs cmake installed</li>
+<li>an extra dependency boost-thread was added</li>
+</ul>
+</div>
+</div>
+<div id="outline-container-orgheadline4" class="outline-2">
+<h2 id="orgheadline4"><span class="section-number-2">2</span> Build</h2>
+<div class="outline-text-2" id="text-2">
+</div><div id="outline-container-orgheadline2" class="outline-3">
+<h3 id="orgheadline2"><span class="section-number-3">2.1</span> Makefile build</h3>
+<div class="outline-text-3" id="text-2-1">
+<p>
+Makefile build needs <code>decimal.h</code> copied over to <code>PALCodeGenLibrary-v2</code> directory.
+Then a couple of directories need to be present in <code>/usr/local/include</code> : 
+</p>
+<ul class="org-ul">
+<li><code>/usr/local/include/priceactionlab</code></li>
+<li><code>/usr/local/include/backtester</code></li>
+</ul>
+<p>
+Then build can proceed with make install in  priceactionlab directory and backtester directory. Then make in main directory.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgheadline3" class="outline-3">
+<h3 id="orgheadline3"><span class="section-number-3">2.2</span> CMake build</h3>
+<div class="outline-text-3" id="text-2-2">
+<p>
+CMake build is an out-of-source build. Build outputs do not need to be installed. It also needs the bison and flex outputs to exist already in the sourcetree.
+</p>
+
+<p>
+<code>mkdir build &amp;&amp; cd build</code>
+</p>
+
+<p>
+<code>cmake -DCMAKE_BUILD_TYPE=(Release|Debug) &lt;/path/to/source/tree&gt;</code>
+</p>
+
+<p>
+<code>make [VERBOSE=1]</code>, verbose is optional
+</p>
+
+<p>
+both libraries and the binary should be built by this procedure
+</p>
+
+<p>
+Existence of system-wide lib libbacktest and libpriceaction2 and their associate headers might shadow the ones obtained through the current build.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgheadline13" class="outline-2">
+<h2 id="orgheadline13"><span class="section-number-2">3</span> Implementation notes</h2>
+<div class="outline-text-2" id="text-3">
+</div><div id="outline-container-orgheadline5" class="outline-3">
+<h3 id="orgheadline5"><span class="section-number-3">3.1</span> Multithreaded runner</h3>
+<div class="outline-text-3" id="text-3-1">
+<p>
+<code>runner</code> is a separate class that starts a threadpool in the constructor, and exposes a <code>post()</code> method for enqueueing work for the thread pool. 
+</p>
+
+<p>
+Destructor is concerned with stopping the running threads and joining them to the main thread.
+</p>
+
+<p>
+A typical running usage is:
+</p>
+<div class="org-src-container">
+
+<pre class="src src-C++" id="orgsrcblock1"><span style="color: #87cefa;">runner</span> <span style="color: #eedd82;">Runner</span>;
+<span style="color: #7fffd4;">std</span>::<span style="color: #87cefa;">future</span>&lt;<span style="color: #87cefa;">void</span>&gt; <span style="color: #eedd82;">errors</span>=Runner.post(callable_object,arguments);
+<span style="color: #4682b4;">try</span>{
+    errors.get();
+}
+<span style="color: #4682b4;">catch</span> (<span style="color: #7fffd4;">std</span>::<span style="color: #87cefa;">exception</span> <span style="color: #4682b4;">const</span>&amp; <span style="color: #eedd82;">e</span>){
+    <span style="color: #7fffd4;">std</span>::cout&lt;&lt;e.what();
+}
+</pre>
+</div>
+<p>
+where the <code>errors</code> movable-only object plays two roles:
+</p>
+<ul class="org-ul">
+<li>contains the exception that might have been thrown during computation</li>
+<li>waits until computation ends and reports the result (void in this case)</li>
+</ul>
+
+<p>
+<code>std::size_t getNCpus()</code> utility function returns <code>hardware_concurrency</code> but can be overridden by environment variable <code>ncpu</code>.
+The function is used to initialize the nthreads default argument of the <code>runner</code> constructor.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgheadline6" class="outline-3">
+<h3 id="orgheadline6"><span class="section-number-3">3.2</span> Singleton runner</h3>
+<div class="outline-text-3" id="text-3-2">
+<p>
+Reuse of the thread pool is addressed with a singleton implemented as a single function call: <code>getRunner()</code>
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-C++" id="orgsrcblock2"><span style="color: #87cefa;">runner</span> &amp; <span style="color: #eedd82;">Runner</span> = getRunner();
+<span style="color: #7fffd4;">std</span>::<span style="color: #87cefa;">future</span>&lt;<span style="color: #87cefa;">void</span>&gt; <span style="color: #eedd82;">errors</span>=Runner.post(callable_object,arguments);
+<span style="color: #4682b4;">try</span>{
+    errors.get();
+}
+<span style="color: #4682b4;">catch</span> (<span style="color: #7fffd4;">std</span>::<span style="color: #87cefa;">exception</span> <span style="color: #4682b4;">const</span>&amp; <span style="color: #eedd82;">e</span>){
+    <span style="color: #7fffd4;">std</span>::cout&lt;&lt;e.what();
+}
+</pre>
+</div>
+
+<p>
+The lifespan of the <code>runner</code> instance obtained this way is from the first call to <code>getRunner()</code> to the end of the program.
+</p>
+
+<p>
+This became the way the thread pool is currently used within the library.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgheadline9" class="outline-3">
+<h3 id="orgheadline9"><span class="section-number-3">3.3</span> Use of runner</h3>
+<div class="outline-text-3" id="text-3-3">
+</div><div id="outline-container-orgheadline7" class="outline-4">
+<h4 id="orgheadline7"><span class="section-number-4">3.3.1</span> Current usage</h4>
+<div class="outline-text-4" id="text-3-3-1">
+<p>
+The singleton-returned reference to the thread pool by <code>getRunner()</code> is used (as <a href="#orgheadline6">Singleton runner</a>)  in
+</p>
+<ul class="org-ul">
+<li><code>PALMonteCarloValidation.h</code> in <code>PALMonteCarloValidation::runPermutationTests()</code> to process patterns in parallel (using a reference to the runner instead of an instance of the object)</li>
+<li><code>MonteCarloPermutationTest.h</code> in <code>MonteCarloPayoffRatio::runPermutationTest()</code> to delegate running each permutation instance to the thread pool</li>
+</ul>
+</div>
+</div>
+<div id="outline-container-orgheadline8" class="outline-4">
+<h4 id="orgheadline8"><span class="section-number-4">3.3.2</span> Obsolete usage</h4>
+<div class="outline-text-4" id="text-3-3-2">
+<p>
+<code>runner</code> was used inside inside <code>PALMonteCarloValidation::runPermutationTests</code> according to the usage outlined in <a href="#orgheadline5">Multithreaded runner</a>. The instance of the thread pool is used for long strategies and reused for short strategies.
+</p>
+
+<p>
+<code>runner</code> was also used inside <code>PALMCPTValidation::runPermutationTests</code> since it refers to another simulation method, accesible from command line.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgheadline12" class="outline-3">
+<h3 id="orgheadline12"><span class="section-number-3">3.4</span> Other changes</h3>
+<div class="outline-text-3" id="text-3-4">
+</div><div id="outline-container-orgheadline10" class="outline-4">
+<h4 id="orgheadline10"><span class="section-number-4">3.4.1</span> Part 1: parallelizing <code>PALMonteCarloValidation::runPermutationTests()</code></h4>
+<div class="outline-text-4" id="text-3-4-1">
+<ul class="org-ul">
+<li><p>
+<code>OHLCTimeSeries::syncronizeMapAndArray</code> is used if-not-synchronized on many iterator-returning methods and it also alters the underlying data. 
+</p>
+
+<p>
+Therefore, an initial call to <code>syncronizeMapAndArray()</code> was placed at the top of <code>runPermutationTests</code> since all backtests share the same data which is never modified after that first call.
+</p>
+
+<p>
+<code>syncronizeMapAndArray</code> method needed to become public for that.
+</p></li>
+
+<li><code>pValue</code> return from <code>runPermutationTest</code> was made local to each permutation test.</li>
+
+<li>Mutexes were added to synchronize access to the results container. scope-locked when needed.</li>
+
+<li>Original methods source code was commented out, allowing easy check of changes.</li>
+</ul>
+</div>
+</div>
+<div id="outline-container-orgheadline11" class="outline-4">
+<h4 id="orgheadline11"><span class="section-number-4">3.4.2</span> Part 2: parallelizing <code>MonteCarloPayoffRatio::runPermutationTest()</code></h4>
+<div class="outline-text-4" id="text-3-4-2">
+<ul class="org-ul">
+<li>a mutex was inserted MonteCarloPayoffRatio to protect <code>mWinnersStats</code> and <code>mLosersStats</code> and is locked during counting statistics stage of permutation test run.</li>
+<li><code>TradingOrder.h in =class TradingOrder</code>: member <code>TradingOrder::mOrderIDCount</code> became <code>std::atomic&lt;uint32_t&gt;</code>, otherwise there would be a race condition on incrementing order ids, therefore not yielding unique ids for orders.</li>
+<li><code>PALMonteCarloValidation.h</code> some prints were aggregated in a stringstream before output, otherwise partial prints from multiple threads would interlace yielding a confusing message.</li>
+<li><code>MonteCarloPayoffRatio::createSyntheticPortfolio</code> now has a call to <code>syncronizeMapAndArray</code> embedded.</li>
+<li><code>TradingPosition.h</code> changed <code>TradingPosition&lt;Prec&gt;::mPositionIDCount{0}</code> to <code>std::atomic&lt;uint32_t&gt;</code> to prevent race condition on <code>PositionID</code> increment when creating new position.</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div id="outline-container-orgheadline14" class="outline-2">
+<h2 id="orgheadline14"><span class="section-number-2">4</span> Usage of the software</h2>
+<div class="outline-text-2" id="text-4">
+<p>
+Overriding the number of thread from the environment makes possible runs like this: <code>ncpu=0 ./PalValidator BP_R0_5_Simpler_Config.txt 300 2</code>
+</p>
+
+<ul class="org-ul">
+<li><code>ncpu=0</code> means starting just 1 thread in the pool, testing the sequential run</li>
+<li><code>ncpu=1</code> will increment by 1, starting 2 threads (due to the hardware reporting wrong sometimes)</li>
+<li><code>ncpu&gt;2</code> will start the number of threads requested -modulo- 255. This limit prevents starting too many threads due to user input.</li>
+</ul>
+
+<p>
+These conventions are embedded in the runner constructor.
+</p>
+</div>
+</div>
+</div>
+</body>
+</html>
