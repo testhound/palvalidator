@@ -10,6 +10,7 @@
 #include <exception>
 #include <memory>
 #include <map>
+#include <boost/thread/mutex.hpp>
 #include "decimal.h"
 #include "DecimalConstants.h"
 
@@ -25,7 +26,10 @@ namespace mkc_timeseries
   public:
     static const PercentNumber<Prec> createPercentNumber (const dec::decimal<Prec>& number)
     {
+      boost::mutex::scoped_lock Lock(mNumberCacheMutex);
+
       typename map<decimal<Prec>, shared_ptr<PercentNumber>>::iterator it = mNumberCache.find (number);
+
       if (it != mNumberCache.end())
 	return *(it->second);
       else
@@ -70,6 +74,7 @@ namespace mkc_timeseries
     {}
 
   private:
+    static boost::mutex  mNumberCacheMutex;
     static std::map<dec::decimal<Prec>, std::shared_ptr<PercentNumber>> mNumberCache;
 
     dec::decimal<Prec> mPercentNumber;
@@ -99,6 +104,9 @@ namespace mkc_timeseries
   template <int Prec>
   bool operator!=(const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs)
   { return !(lhs == rhs); }
+
+  template <int Prec>
+  boost::mutex PercentNumber<Prec>::mNumberCacheMutex;
 
   template <int Prec>
   std::map<dec::decimal<Prec>, std::shared_ptr<PercentNumber<Prec>>> PercentNumber<Prec>::mNumberCache;
