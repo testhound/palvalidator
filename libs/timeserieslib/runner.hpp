@@ -1,7 +1,8 @@
 #ifndef RUNNER_HPP
 #define RUNNER_HPP
 
-#include <future>
+#include <thread>
+#include <boost/thread/future.hpp>
 #include <boost/asio.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -35,11 +36,11 @@ struct runner
 
     // method to submit job to thread pool. reports back exceptions through a future
     template<typename F,typename ...Args>
-        std::future<void> post(F f, Args&&...xargs)
+        boost::unique_future<void> post(F f, Args&&...xargs)
         {
               using R = void;
-              auto promise = std::make_shared<std::promise<R>>();
-              std::future<R> res = promise->get_future();
+              auto promise = std::make_shared<boost::promise<R>>();
+              auto res = promise->get_future();
               ios.post([ promise=std::move(promise)
                        , task=boost::bind<R>(std::move(f), std::forward<Args>(xargs)...)](){
                     try

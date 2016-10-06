@@ -441,7 +441,7 @@ using boost::accumulators::accumulator_set;
       shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
 
       runner& Runner=getRunner();
-      std::vector<std::future<void>> errorsVector;
+      std::vector<boost::unique_future<void>> errorsVector;
 
       uint32_t i;
       for (i = 0; i < mNumPermutations; i++)
