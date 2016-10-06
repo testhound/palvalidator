@@ -10,6 +10,7 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <boost/thread/mutex.hpp>
 #include "TimeSeriesEntry.h"
 #include "DateRange.h"
 
@@ -46,6 +47,8 @@ namespace mkc_timeseries
   public:
     static std::shared_ptr<TimeSeriesOffset> createOffset (unsigned long offset)
     {
+      boost::mutex::scoped_lock lock(mOffsetCacheMutex);
+
       CacheIterator pos = mOffsetCache.find (offset);
       if (pos != mOffsetCache.end())
 	return pos->second;
@@ -59,6 +62,7 @@ namespace mkc_timeseries
 
   private:
     unsigned long mOffset;
+    static boost::mutex  mOffsetCacheMutex;
     static std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> mOffsetCache; 
   };
 
@@ -87,6 +91,8 @@ namespace mkc_timeseries
 
     static std::shared_ptr<ArrayTimeSeriesIndex> getInstance (unsigned long arrayIndex)
     {
+      boost::mutex::scoped_lock(mIndexCacheMutex);
+
       CacheIterator pos = mIndexCache.find (arrayIndex);
       if (pos != mIndexCache.end())
 	return pos->second;
@@ -122,6 +128,7 @@ namespace mkc_timeseries
 
   private:
     unsigned long mArrayIndex;
+    static boost::mutex mIndexCacheMutex;
     static std::map<unsigned long, std::shared_ptr<ArrayTimeSeriesIndex>> mIndexCache; 
   };
 

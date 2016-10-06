@@ -7,6 +7,8 @@
 
 namespace mkc_timeseries
 {
+  boost::mutex TimeSeriesOffset::mOffsetCacheMutex;
+  boost::mutex ArrayTimeSeriesIndex::mIndexCacheMutex;
   std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> TimeSeriesOffset::mOffsetCache;
   std::map<unsigned long, std::shared_ptr<ArrayTimeSeriesIndex>> ArrayTimeSeriesIndex::mIndexCache; 
 
