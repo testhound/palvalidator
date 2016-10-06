@@ -166,7 +166,7 @@ namespace mkc_timeseries
       PriceActionLabSystem *patternsToTest = mMonteCarloConfiguration->getPricePatterns();
 
       PriceActionLabSystem::ConstSortedPatternIterator longPatternsIterator =
-    patternsToTest->patternLongsBegin();
+        patternsToTest->patternLongsBegin();
 
       DateRange oosDates = mMonteCarloConfiguration->getOosDateRange();
 
@@ -177,7 +177,6 @@ namespace mkc_timeseries
 
       std::shared_ptr<PriceActionLabPattern> patternToTest;
       std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
-      std::shared_ptr<BackTester<Prec>> theBackTester;
 
       std::string longStrategyNameBase("PAL Long Strategy ");
 
@@ -189,47 +188,51 @@ namespace mkc_timeseries
       std::vector<std::future<void>> resultsOrErrorsVector;
 
       for (; longPatternsIterator != patternsToTest->patternLongsEnd(); longPatternsIterator++)
-    {
+      {
 
-      patternToTest = longPatternsIterator->second;
-      strategyName = longStrategyNameBase + std::to_string(strategyNumber);
-      longStrategy = std::make_shared<PalLongStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+        patternToTest = longPatternsIterator->second;
+        strategyName = longStrategyNameBase + std::to_string(strategyNumber);
+        longStrategy = std::make_shared<PalLongStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
 
-      theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                       oosDates.getFirstDate(),
-                       oosDates.getLastDate());
+        auto theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+                                oosDates.getFirstDate(),
+                                oosDates.getLastDate());
 
-      theBackTester->addStrategy(longStrategy);
-      //start paralel part
-      resultsOrErrorsVector.emplace_back(Runner.post([strategyNumber,theBackTester,this,longStrategy]() -> void {
-          dec::decimal<Prec> pValue;
-          std::stringstream s;
-          s << "Running MCPT for strategy " << strategyNumber <<' '<< std::endl;
-          std::cout<<s.str();
-          // Run Monte Carlo Permutation Tests using the provided backtester
-          McptType mcpt(theBackTester, mNumPermutations);
-          pValue = mcpt.runPermutationTest();
+        theBackTester->addStrategy(longStrategy);
+        //start paralel part
+        resultsOrErrorsVector.emplace_back(Runner.post([ this
+                                                       , strategyNumber
+                                                       , theBackTester = std::move(theBackTester)
+                                                       , longStrategy]() -> void {
+            dec::decimal<Prec> pValue;
+            std::stringstream s;
+            s << "Running MCPT for strategy " << strategyNumber <<' '<< std::endl;
+            std::cout<<s.str();
+            // Run Monte Carlo Permutation Tests using the provided backtester
+            McptType mcpt(theBackTester, mNumPermutations);
+            pValue = mcpt.runPermutationTest();
 
-          if (pValue < DecimalConstants<Prec>::SignificantPValue)
-            {
-              boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
-              mSurvivingStrategies.push_back (longStrategy);
-              std::cout <<"Strategy: "<<strategyNumber<< " Long Pattern found with p-Value < " << pValue << std::endl;
-            }
-      }));
-      strategyNumber++;
+            if (pValue < DecimalConstants<Prec>::SignificantPValue)
+              {
+                boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
+                mSurvivingStrategies.push_back (longStrategy);
+                std::cout <<"Strategy: "<<strategyNumber<< " Long Pattern found with p-Value < " << pValue << std::endl;
+              }
+        }));
+        strategyNumber++;
 
-    }
-    for(std::size_t i=0;i<resultsOrErrorsVector.size();++i)
-    {
-        try{
-            resultsOrErrorsVector[i].get();
-        }
-        catch(std::exception const& e)
-        {
-            std::cerr<<"Strategy: "<<i<<" error: "<<e.what()<<std::endl;
-        }
-    }
+      }
+      for(std::size_t i=0;i<resultsOrErrorsVector.size();++i)
+      {
+          try{
+              resultsOrErrorsVector[i].wait();
+              resultsOrErrorsVector[i].get();
+          }
+          catch(std::exception const& e)
+          {
+              std::cerr<<"Strategy: "<<i<<" error: "<<e.what()<<std::endl;
+          }
+      }
     //end parallel part
       std::cout << std::endl << "MCPT Processing short patterns" << std::endl << std::endl;
 
@@ -240,38 +243,38 @@ namespace mkc_timeseries
       resultsOrErrorsVector.clear();
 
       for (; shortPatternsIterator != patternsToTest->patternShortsEnd(); shortPatternsIterator++)
-    {
-      patternToTest = shortPatternsIterator->second;
-      strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
-      shortStrategy = std::make_shared<PalShortStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+      {
+        patternToTest = shortPatternsIterator->second;
+        strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
+        shortStrategy = std::make_shared<PalShortStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
 
-      theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                       oosDates.getFirstDate(),
-                       oosDates.getLastDate());
-      theBackTester->addStrategy(shortStrategy);
+        auto theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+                               oosDates.getFirstDate(),
+                               oosDates.getLastDate());
+        theBackTester->addStrategy(shortStrategy);
 
-      //sends code to the runner
-      resultsOrErrorsVector.emplace_back(Runner.post([strategyNumber,theBackTester,this,shortStrategy](){
-          dec::decimal<Prec> pValue;
-          std::stringstream s;
-          s<<"Running MCPT for strategy " << strategyNumber << std::endl;
-          std::cout<<s.str();
-          //std::cout << "Running MCPT for strategy " << strategyNumber <<' '<< std::endl;
-          McptType mcpt(theBackTester, mNumPermutations);
+        //sends code to the runner
+        resultsOrErrorsVector.emplace_back(Runner.post([strategyNumber,theBackTester,this,shortStrategy](){
+            dec::decimal<Prec> pValue;
+            std::stringstream s;
+            s<<"Running MCPT for strategy " << strategyNumber << std::endl;
+            std::cout<<s.str();
+            //std::cout << "Running MCPT for strategy " << strategyNumber <<' '<< std::endl;
+            McptType mcpt(theBackTester, mNumPermutations);
 
-          pValue = mcpt.runPermutationTest();
+            pValue = mcpt.runPermutationTest();
 
-          if (pValue < DecimalConstants<Prec>::SignificantPValue)
-            {
-              boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
-              mSurvivingStrategies.push_back (shortStrategy);
-              std::cout <<"Strategy: "<<strategyNumber<< " Short Pattern found with p-Value < " << pValue << std::endl;
-            }
-      }));
+            if (pValue < DecimalConstants<Prec>::SignificantPValue)
+              {
+                boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
+                mSurvivingStrategies.push_back (shortStrategy);
+                std::cout <<"Strategy: "<<strategyNumber<< " Short Pattern found with p-Value < " << pValue << std::endl;
+              }
+        }));
 
-      strategyNumber++;
+        strategyNumber++;
 
-    }
+      }
       //collects exceptions from the runner and waits for the computation end to be signalled
       for(std::size_t i=0;i<resultsOrErrorsVector.size();++i)
       {

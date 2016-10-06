@@ -44,7 +44,7 @@ using boost::accumulators::accumulator_set;
     ~MonteCarloPermutationException()
       {}
   };
-  
+
   template <int Prec> class MonteCarloPermutationTest
   {
   public:
@@ -119,7 +119,7 @@ using boost::accumulators::accumulator_set;
       if (mBackTester->getNumStrategies() != 1)
 	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: Only one strategy can be associated with backtester for MCPT");
 
-      
+
     }
 
     ~MonteCarloPermuteMarketChanges()
@@ -168,12 +168,12 @@ using boost::accumulators::accumulator_set;
 	      clonedBackTester->backtest();
 
 	      stratTrades = this->getNumClosedTrades (clonedBackTester);
-	      
+
 	    }
 
 	  dec::decimal<Prec> cumulativeReturn(BackTestResultPolicy<Prec>::getPermutationTestStatistic(clonedBackTester));
 	  //std::cout << "Test stat. for strategy " << (i + 1) << " equals: " << cumulativeReturn << ", num trades = " << stratTrades << std::endl;
-	  
+
 	  if (cumulativeReturn >= mBaseLineCumulativeReturn)
 	    count++;
 	}
@@ -316,7 +316,7 @@ using boost::accumulators::accumulator_set;
 	      trial_return = 0.0;
 	      for (i = 0; i < numTradingOpportunities; i++) // Compute return for this randomly shuffled system
 		trial_return += decimal_cast<Prec> (workSeries[i]) * rawReturnsVector[i];
-		
+
 	      if (trial_return >= cand_return) // If this random system beat candidate
 		++count; // Count it
 	    }
@@ -373,8 +373,6 @@ using boost::accumulators::accumulator_set;
 
       if (mBackTester->getNumStrategies() != 1)
 	throw MonteCarloPermutationException("MonteCarloPayoffRatio: Only one strategy can be associated with backtester for MCPT");
-
-      
     }
 
     ~MonteCarloPayoffRatio()
@@ -447,32 +445,29 @@ using boost::accumulators::accumulator_set;
 
       uint32_t i;
       for (i = 0; i < mNumPermutations; i++)
-    {
+      {
           errorsVector.emplace_back(Runner.post([this,aStrategy,theSecurity](){
-
             std::shared_ptr<BacktesterStrategy<Prec>> clonedStrategy =
-            aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
+                  aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
 
-          std::shared_ptr<BackTester<Prec>> clonedBackTester = mBackTester->clone();
-          clonedBackTester->addStrategy(clonedStrategy);
+            std::shared_ptr<BackTester<Prec>> clonedBackTester = mBackTester->clone();
+            clonedBackTester->addStrategy(clonedStrategy);
 
-          clonedBackTester->backtest();
+            clonedBackTester->backtest();
 
-          ClosedPositionHistory<Prec> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
+            ClosedPositionHistory<Prec> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
 
-          typename ClosedPositionHistory<Prec>::ConstTradeReturnIterator winnersIterator =
-            history.beginWinnersReturns();
-          typename ClosedPositionHistory<Prec>::ConstTradeReturnIterator losersIterator =
-            history.beginLosersReturns();
+            auto winnersIterator = history.beginWinnersReturns();
+            auto losersIterator = history.beginLosersReturns();
 
-          boost::mutex::scoped_lock Lock(accumMutex);
-          for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
+            boost::mutex::scoped_lock Lock(accumMutex);
+            for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
             {
               //std::cout << "Winners trade return " << *winnersIterator << std::endl;
               mWinnersStats (*winnersIterator);
             }
 
-          for (; losersIterator != history.endLosersReturns(); losersIterator++)
+            for (; losersIterator != history.endLosersReturns(); losersIterator++)
             {
               mLosersStats (*losersIterator);
               //std::cout << "Losers trade return " << *losersIterator << std::endl;
