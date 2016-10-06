@@ -35,23 +35,25 @@ struct runner
 
     // method to submit job to thread pool. reports back exceptions through a future
     template<typename F,typename ...Args>
-        std::future<void>  post(F f,Args&&...xargs)
+        std::future<void> post(F f, Args&&...xargs)
         {
               using R = void;
               auto promise = std::make_shared<std::promise<R>>();
               std::future<R> res = promise->get_future();
-              ios.post([&res,promise=std::move(promise),task=boost::bind<R>(f,xargs...)](){
+              ios.post([ promise=std::move(promise)
+                       , task=boost::bind<R>(std::move(f), std::forward<Args>(xargs)...)](){
+                    try
+                    {
+                        task();
+                    }
+                    catch(std::exception const&e)
+                    {
+                        promise->set_exception(std::current_exception());
+                        return;
+                    }
+                    promise->set_value();
+                });
 
-            try
-            {
-                task();
-                promise->set_value();
-            }
-            catch(std::exception const&e)
-            {
-                promise->set_exception(std::current_exception());
-            }
-            });
             return std::move(res);
         }
 
