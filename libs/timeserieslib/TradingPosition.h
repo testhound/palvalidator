@@ -45,8 +45,8 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   template <int Prec> class OpenPositionBar
   {
   public:
-    explicit OpenPositionBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entry)
-      : mEntry (entry)
+    explicit OpenPositionBar (OHLCTimeSeriesEntry<Prec> entry)
+      : mEntry(entry)
     {}
 
     OpenPositionBar(const OpenPositionBar<Prec>& rhs) 
@@ -68,42 +68,42 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 
     const boost::gregorian::date& getDate() const
     {
-      return mEntry->getDateValue();
+      return mEntry.getDateValue();
     }
 
     const decimal<Prec>& getOpenValue() const
     {
-      return mEntry->getOpenValue();
+      return mEntry.getOpenValue();
     }
 
     const decimal<Prec>& getHighValue() const
     {
-      return mEntry->getHighValue();
+      return mEntry.getHighValue();
     }
 
     const decimal<Prec>& getLowValue() const
     {
-      return mEntry->getLowValue();
+      return mEntry.getLowValue();
 
     }
 
     const decimal<Prec>& getCloseValue() const
     {
-      return mEntry->getCloseValue();
+      return mEntry.getCloseValue();
     }
 
     const volume_t getVolume() const
     {
-      return mEntry->getVolume();
+      return mEntry.getVolume();
     }
 
-    const std::shared_ptr<OHLCTimeSeriesEntry<Prec>>& getTimeSeriesEntry() const
+    const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry() const
     {
       return mEntry;
     }
 
   private:
-    std::shared_ptr<OHLCTimeSeriesEntry<Prec>> mEntry;
+    OHLCTimeSeriesEntry<Prec> mEntry;
   };
 
   template <int Prec>
@@ -124,10 +124,10 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   template <int Prec> class OpenPositionHistory
   {
   public:
-    typedef typename std::map<TimeSeriesDate, std::shared_ptr<OpenPositionBar<Prec>>>::iterator PositionBarIterator;
-    typedef typename std::map<TimeSeriesDate, std::shared_ptr<OpenPositionBar<Prec>>>::const_iterator ConstPositionBarIterator;
+    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Prec>>::iterator PositionBarIterator;
+    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Prec>>::const_iterator ConstPositionBarIterator;
 
-    explicit OpenPositionHistory(std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar) :
+    explicit OpenPositionHistory(OHLCTimeSeriesEntry<Prec> entryBar) :
       mPositionBarHistory()
     {
       addFirstBar(entryBar);
@@ -150,9 +150,9 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     ~OpenPositionHistory()
     {}
 
-    void addBar(std::shared_ptr<OpenPositionBar<Prec>> entry)
+    void addBar(const OpenPositionBar<Prec>& entry)
     {
-      boost::gregorian::date d = entry->getDate();
+      boost::gregorian::date d = entry.getDate();
       PositionBarIterator pos = mPositionBarHistory.find (d);
 
       if (pos ==  mPositionBarHistory.end())
@@ -217,20 +217,20 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 	{
 	  OpenPositionHistory::ConstPositionBarIterator it = endPositionBarHistory();
 	  it--;
-	  return it->second->getCloseValue();
+	  return it->second.getCloseValue();
 	}
       else
 	throw std::domain_error(std::string("OpenPositionHistory:getLastClose: no bars in position "));
     }
 
   private:
-    void addFirstBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entry)
+    void addFirstBar(const OHLCTimeSeriesEntry<Prec> entry)
     {
-      addBar (std::make_shared<OpenPositionBar<Prec>> (entry));
+      addBar(OpenPositionBar<Prec>(entry));
     }
 
   private:
-    std::map<TimeSeriesDate, std::shared_ptr<OpenPositionBar<Prec>>> mPositionBarHistory;
+    std::map<TimeSeriesDate, OpenPositionBar<Prec>> mPositionBarHistory;
   };
 
   template <int Prec> class TradingPositionState
@@ -258,7 +258,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     virtual const dec::decimal<Prec>& getEntryPrice() const = 0;
     virtual const dec::decimal<Prec>& getExitPrice() const = 0;
     virtual const boost::gregorian::date& getExitDate() const = 0;
-    virtual void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar) = 0;
+    virtual void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar) = 0;
     virtual const TradingVolume& getTradingUnits() const = 0;
     virtual unsigned int getNumBarsInPosition() const = 0;
     virtual unsigned int getNumBarsSinceEntry() const = 0;
@@ -286,11 +286,11 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     typedef typename OpenPositionHistory<Prec>::ConstPositionBarIterator ConstPositionBarIterator;
 
     OpenPosition (const dec::decimal<Prec>& entryPrice, 
-		  std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar,
+		  OHLCTimeSeriesEntry<Prec> entryBar,
 		  const TradingVolume& unitsInPosition) 
       : TradingPositionState<Prec>(),
       mEntryPrice(entryPrice),
-      mEntryDate (entryBar->getDateValue()),
+      mEntryDate (entryBar.getDateValue()),
       mUnitsInPosition(unitsInPosition),
       mPositionBarHistory (entryBar),
       mBarsInPosition(1),
@@ -340,9 +340,9 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return false;
     }
 
-    virtual void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    virtual void addBar(const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
-      addBar (std::make_shared<OpenPositionBar<Prec>>(entryBar));
+      addBar(OpenPositionBar<Prec>(entryBar));
     }
 
     const dec::decimal<Prec>& getEntryPrice() const
@@ -406,9 +406,9 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     }
 
   private:
-    void addBar(std::shared_ptr<OpenPositionBar<Prec>> positionBar)
+    void addBar(const OpenPositionBar<Prec>& positionBar)
     {
-      mPositionBarHistory.addBar (positionBar);
+      mPositionBarHistory.addBar(positionBar);
       mBarsInPosition++;
       mNumBarsSinceEntry++;
     }
@@ -427,7 +427,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   {
   public:
     OpenLongPosition (const dec::decimal<Prec>& entryPrice, 
-		      std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar,
+		      OHLCTimeSeriesEntry<Prec> entryBar,
 		      const TradingVolume& unitsInPosition)
       : OpenPosition<Prec>(entryPrice, entryBar, unitsInPosition)
     {}
@@ -446,7 +446,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return *this;
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
       OpenPosition<Prec>::addBar(entryBar);
     }
@@ -489,7 +489,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   {
   public:
     OpenShortPosition (const dec::decimal<Prec>& entryPrice, 
-		       std::shared_ptr<OHLCTimeSeriesEntry<Prec>>& entryBar,
+		       OHLCTimeSeriesEntry<Prec>& entryBar,
 		       const TradingVolume& unitsInPosition)
       : OpenPosition<Prec>(entryPrice, entryBar, unitsInPosition)
     {}
@@ -508,7 +508,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return *this;
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar(const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
       OpenPosition<Prec>::addBar(entryBar);
     }
@@ -636,7 +636,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mOpenPosition->getLastClose();
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
       throw TradingPositionException ("Cannot add bar to a closed position");
     }
@@ -887,9 +887,9 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mPositionState->getExitDate();
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
-      mPositionState->addBar (entryBar);
+      mPositionState->addBar(entryBar);
     }
 
     const TradingVolume& getTradingUnits() const
@@ -1038,7 +1038,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   public:
     explicit TradingPositionLong (const std::string& tradingSymbol,
 				  const dec::decimal<Prec>& entryPrice, 
-				  std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar,
+				  OHLCTimeSeriesEntry<Prec> entryBar,
 				  const TradingVolume& unitsInPosition)
       : TradingPosition<Prec>(tradingSymbol,std::make_shared<OpenLongPosition<Prec>>(entryPrice, entryBar, unitsInPosition))
     {}
@@ -1102,7 +1102,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   public:
     explicit TradingPositionShort (const std::string& tradingSymbol,
 				  const dec::decimal<Prec>& entryPrice, 
-				  std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar,
+				  OHLCTimeSeriesEntry<Prec> entryBar,
 				  const TradingVolume& unitsInPosition)
       : TradingPosition<Prec>(tradingSymbol, std::make_shared<OpenShortPosition<Prec>>(entryPrice, entryBar, unitsInPosition))
     {}

@@ -26,7 +26,7 @@ namespace mkc_timeseries
   template <int Prec> class ProcessOrderVisitor : public TradingOrderVisitor<Prec>
   {
   public:
-    ProcessOrderVisitor(std::shared_ptr<OHLCTimeSeriesEntry<Prec>> tradingBar)
+    ProcessOrderVisitor(OHLCTimeSeriesEntry<Prec> tradingBar)
       : mTradingBar (tradingBar)
     {}
 
@@ -52,7 +52,7 @@ namespace mkc_timeseries
       ValidateOrder (order);
       // Market orders are unconditional
 
-      order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
     void visit (MarketOnOpenSellOrder<Prec> *order)
@@ -60,7 +60,7 @@ namespace mkc_timeseries
       ValidateOrder (order);
       // Market orders are unconditional
 
-      order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
     void visit (MarketOnOpenCoverOrder<Prec> *order)
@@ -68,7 +68,7 @@ namespace mkc_timeseries
       ValidateOrder (order);
       // Market orders are unconditional
 
-      order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
     void visit (MarketOnOpenShortOrder<Prec> *order)
@@ -76,19 +76,19 @@ namespace mkc_timeseries
       ValidateOrder (order);
 
       // Market orders are unconditional
-      order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
     void visit (SellAtLimitOrder<Prec> *order)
     {
       ValidateOrder (order);
-      if (mTradingBar->getHighValue() > order->getLimitPrice())
+      if (mTradingBar.getHighValue() > order->getLimitPrice())
 	{
 	  // If we gapped up we assume we get the open price
-	  if (mTradingBar->getOpenValue() > order->getLimitPrice())
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+	  if (mTradingBar.getOpenValue() > order->getLimitPrice())
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
 	  else
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), order->getLimitPrice());
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getLimitPrice());
 	}
     }
 
@@ -100,42 +100,42 @@ namespace mkc_timeseries
 	  //std::cout << "^^^^^^^ visit (CoverAtLimitOrder) - LowValue = " << mTradingBar->getLowValue() << " limit exit price = " << order->getLimitPrice() << std::endl << std::endl;
 	}
 
-      if (mTradingBar->getLowValue() < order->getLimitPrice())	{
+      if (mTradingBar.getLowValue() < order->getLimitPrice())	{
 	  // If we gapped down we assume we get the open price
-	  if (mTradingBar->getOpenValue() < order->getLimitPrice())
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+	  if (mTradingBar.getOpenValue() < order->getLimitPrice())
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
 	  else
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), order->getLimitPrice());
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getLimitPrice());
 	}
     }
 
     void visit (CoverAtStopOrder<Prec> *order)
     {
       ValidateOrder (order);
-      if (mTradingBar->getHighValue() > order->getStopPrice())
+      if (mTradingBar.getHighValue() > order->getStopPrice())
 	{
 	  // If we gapped up we assume we get the open price
-	  if (mTradingBar->getOpenValue() > order->getStopPrice())
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+	  if (mTradingBar.getOpenValue() > order->getStopPrice())
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
 	  else
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), order->getStopPrice());
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getStopPrice());
 	}
     }
 
     void visit (SellAtStopOrder<Prec> *order)
     {
       ValidateOrder (order);
-      if (mTradingBar->getLowValue() < order->getStopPrice())
+      if (mTradingBar.getLowValue() < order->getStopPrice())
 	{
 	  // If we gapped down we assume we get the open price
-	  if (mTradingBar->getOpenValue() < order->getStopPrice())
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), mTradingBar->getOpenValue());
+	  if (mTradingBar.getOpenValue() < order->getStopPrice())
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
 	  else
-	    order->MarkOrderExecuted (mTradingBar->getDateValue(), order->getStopPrice());
+	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getStopPrice());
 	}
     }
 
-    void updateTradingBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> tradingBar)
+    void updateTradingBar (OHLCTimeSeriesEntry<Prec> tradingBar)
     {
       mTradingBar = tradingBar;
     }
@@ -143,8 +143,8 @@ namespace mkc_timeseries
   private:
     void ValidateOrder (TradingOrder<Prec>* order)
     {
-      if (mTradingBar->getDateValue() <= order->getOrderDate())
-	throw TradingOrderException ("Bar date " +to_simple_string (mTradingBar->getDateValue()) +" must be greater than order date " +to_simple_string (order->getOrderDate()));
+      if (mTradingBar.getDateValue() <= order->getOrderDate())
+	throw TradingOrderException ("Bar date " +to_simple_string (mTradingBar.getDateValue()) +" must be greater than order date " +to_simple_string (order->getOrderDate()));
 
       if (!order->isOrderPending())
 	{
@@ -158,7 +158,7 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<OHLCTimeSeriesEntry<Prec>> mTradingBar;
+    OHLCTimeSeriesEntry<Prec> mTradingBar;
   };
 
  

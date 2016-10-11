@@ -114,7 +114,7 @@ namespace mkc_timeseries
     // addBar is used to add a bar to a open position
 
     void addBar (const std::string& tradingSymbol,
-		 std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+		 const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
       getInstrumentPositionPtr (tradingSymbol)->addBar (entryBar);
     }
@@ -127,7 +127,6 @@ namespace mkc_timeseries
       typename Portfolio<Prec>::ConstPortfolioIterator securityIterator;
       std::shared_ptr<Security<Prec>> aSecurity;
       typename Security<Prec>::ConstRandomAccessIterator timeSeriesEntryIterator;
-      std::shared_ptr<OHLCTimeSeriesEntry<Prec>> timeSeriesBar;
 
       for (; posIt != endInstrumentPositions(); posIt++)
 	{
@@ -145,8 +144,7 @@ namespace mkc_timeseries
 		  timeSeriesEntryIterator = aSecurity->findTimeSeriesEntry (openPositionDate);
 		  if (timeSeriesEntryIterator != aSecurity->getRandomAccessIteratorEnd())
 		    {
-		      timeSeriesBar =  *timeSeriesEntryIterator;
-		      addBar (position->getInstrumentSymbol(), timeSeriesBar);
+		      addBar (position->getInstrumentSymbol(), *timeSeriesEntryIterator);
 		    }
 		}
 	    }

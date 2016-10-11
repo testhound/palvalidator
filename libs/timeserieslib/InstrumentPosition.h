@@ -43,7 +43,7 @@ namespace mkc_timeseries
     virtual uint32_t getNumPositionUnits() const = 0;
 
     virtual ConstInstrumentPositionIterator getInstrumentPosition (uint32_t unitNumber) const = 0;
-    virtual void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar) = 0;
+    virtual void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar) = 0;
     virtual void addPosition(InstrumentPosition<Prec>* iPosition,
 			     std::shared_ptr<TradingPosition<Prec>> position) = 0;
     virtual ConstInstrumentPositionIterator beginInstrumentPosition() const = 0;
@@ -106,7 +106,7 @@ namespace mkc_timeseries
       return true;
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: addBar - no positions available in flat state");
     }
@@ -216,7 +216,7 @@ namespace mkc_timeseries
       mTradingPositionUnits.push_back (position);
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
       ConstInstrumentPositionIterator it = this->beginInstrumentPosition();
 
@@ -225,7 +225,7 @@ namespace mkc_timeseries
 	  // Only add a date that is after the entry date. We
 	  // already added the first bar when we created the position
 
-	  if (entryBar->getDateValue() > (*it)->getEntryDate())
+	  if (entryBar.getDateValue() > (*it)->getEntryDate())
 	    (*it)->addBar(entryBar);
 	}
     }
@@ -483,9 +483,9 @@ namespace mkc_timeseries
       (*pos)->setRMultipleStop (riskStop);
     }
 
-    void addBar (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
     {
-      mInstrumentPositionState->addBar (entryBar);
+      mInstrumentPositionState->addBar(entryBar);
     }
 
     void addPosition(std::shared_ptr<TradingPosition<Prec>> position)

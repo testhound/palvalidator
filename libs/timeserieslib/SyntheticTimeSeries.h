@@ -128,7 +128,7 @@ namespace mkc_timeseries
 					       syntheticClose,
 					       0,
 					       mSyntheticTimeSeries->getTimeFrame());
-	      mSyntheticTimeSeries->addEntry (entry);
+	      mSyntheticTimeSeries->addEntry(std::move(entry));
 	    }
 	  catch (const TimeSeriesEntryException& e)
 	    {

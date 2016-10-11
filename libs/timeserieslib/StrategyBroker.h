@@ -479,7 +479,7 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<OHLCTimeSeriesEntry<Prec>> getEntryBar (const std::string& tradingSymbol,
+    OHLCTimeSeriesEntry<Prec> getEntryBar (const std::string& tradingSymbol,
 							const boost::gregorian::date& d)
     {
       typename Portfolio<Prec>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);

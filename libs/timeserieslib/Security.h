@@ -96,11 +96,6 @@ namespace mkc_timeseries
 	  return *(*it);
 	}
 
-      Security::ConstRandomAccessIterator getRandomAccessIteratorBegin() const
-	{
-	  return  mSecurityTimeSeries->beginRandomAccess();
-	}
-
       Security::ConstRandomAccessIterator getRandomAccessIteratorEnd() const
 	{
 	  return  mSecurityTimeSeries->endRandomAccess();

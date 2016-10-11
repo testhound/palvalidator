@@ -56,14 +56,9 @@ namespace mkc_timeseries
       return mTimeSeries->getTimeFrame();
     }
 
-    void addEntry (const std::shared_ptr<OHLCTimeSeriesEntry<Prec>>& entry)
+    void addEntry (OHLCTimeSeriesEntry<Prec>&& entry)
     {
-      mTimeSeries->addEntry (entry);
-    }
-
-    void addEntry (const OHLCTimeSeriesEntry<Prec>& entry)
-    {
-      mTimeSeries->addEntry (entry);
+      mTimeSeries->addEntry(std::move(entry));
     }
 
     const std::shared_ptr<OHLCTimeSeries<Prec>>& getTimeSeries() const
