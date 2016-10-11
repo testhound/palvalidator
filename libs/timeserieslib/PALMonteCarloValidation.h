@@ -204,13 +204,31 @@ namespace mkc_timeseries
                                                        , strategyNumber
                                                        , theBackTester = std::move(theBackTester)
                                                        , longStrategy]() -> void {
+            using namespace std::chrono;
+            using clock = steady_clock;
+            auto start = clock::now();
+
             dec::decimal<Prec> pValue;
-            std::stringstream s;
-            s << "Running MCPT for strategy " << strategyNumber <<' '<< std::endl;
-            std::cout<<s.str();
+
+            {
+                  std::stringstream s;
+                  s << "Running MCPT for strategy " << strategyNumber <<' '<< std::endl;
+                  std::cout<<s.str();
+            }
+
             // Run Monte Carlo Permutation Tests using the provided backtester
             McptType mcpt(theBackTester, mNumPermutations);
+
             pValue = mcpt.runPermutationTest();
+
+            auto end = clock::now();
+            auto duration_ms = duration_cast<milliseconds>(end - start).count();
+
+            {
+                  std::stringstream s;
+                  s << "Strategy " << strategyNumber << " took " << duration_ms << " ms to run" << std::endl;
+                  std::cout<<s.str();
+            }
 
             if (pValue < DecimalConstants<Prec>::SignificantPValue)
               {
