@@ -88,29 +88,13 @@ namespace mkc_timeseries
     typedef std::map<unsigned long, std::shared_ptr<ArrayTimeSeriesIndex>>::iterator CacheIterator;
 
   public:
-
-    static std::shared_ptr<ArrayTimeSeriesIndex> getInstance (unsigned long arrayIndex)
-    {
-      boost::mutex::scoped_lock(mIndexCacheMutex);
-
-      CacheIterator pos = mIndexCache.find (arrayIndex);
-      if (pos != mIndexCache.end())
-	return pos->second;
-      else
-	{
-	  std::shared_ptr<ArrayTimeSeriesIndex> p (new ArrayTimeSeriesIndex (arrayIndex));
-	  //auto p = std::make_shared<ArrayTimeSeriesIndex> (arrayIndex);
-	  mIndexCache.insert(std::make_pair(arrayIndex, p));
-	  return p;
-	}
-    }
-
-    std::shared_ptr<ArrayTimeSeriesIndex> fromOffset (const std::shared_ptr<TimeSeriesOffset>& offset)
+    const ArrayTimeSeriesIndex& fromOffset (const std::shared_ptr<TimeSeriesOffset>& offset)
     {
       if (mArrayIndex >= offset->asIntegral())
 	{
 	  unsigned long newIndex = mArrayIndex - offset->asIntegral();
-	  return getInstance (newIndex);
+	  //return getInstance (newIndex);
+	  return ArrayTimeSeriesIndex(newIndex);
 	}
       else
 	throw std::out_of_range("ArrayTimeSeriesIndex: offset cannot be larger than array index");
@@ -121,15 +105,11 @@ namespace mkc_timeseries
       return mArrayIndex;
     }
 
-  private:
     ArrayTimeSeriesIndex (unsigned long arrayIndex) : mArrayIndex(arrayIndex)
     {}
 
-
   private:
     unsigned long mArrayIndex;
-    static boost::mutex mIndexCacheMutex;
-    static std::map<unsigned long, std::shared_ptr<ArrayTimeSeriesIndex>> mIndexCache; 
   };
 
 
@@ -160,7 +140,7 @@ namespace mkc_timeseries
     typedef typename std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::iterator TimeSeriesIterator;
     typedef typename std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::const_iterator ConstTimeSeriesIterator;
     typedef typename std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::const_reverse_iterator ConstReverseTimeSeriesIterator;
-    typedef std::map<boost::gregorian::date, std::shared_ptr<ArrayTimeSeriesIndex>>::iterator MappingIterator;
+    typedef std::map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::iterator RandomAccessIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::const_iterator ConstRandomAccessIterator;
     
@@ -462,7 +442,7 @@ namespace mkc_timeseries
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
 	{
-	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex::getInstance(index)));
+	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
 	  mSequentialTimeSeries.push_back (pos->second);
 	  index++;
 					
@@ -482,7 +462,7 @@ namespace mkc_timeseries
 
   private:
     std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>> mSortedTimeSeries;
-    mutable std::map<boost::gregorian::date, std::shared_ptr<ArrayTimeSeriesIndex>> mDateToSequentialIndex;
+    mutable std::map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
     mutable std::vector<std::shared_ptr<NumericTimeSeriesEntry<Prec>>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     mutable bool mMapAndArrayInSync;
@@ -498,7 +478,7 @@ template <int Prec> class OHLCTimeSeries
   public:
     typedef typename std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::iterator TimeSeriesIterator;
     typedef typename std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::const_iterator ConstTimeSeriesIterator;
-    typedef std::map<boost::gregorian::date, std::shared_ptr<ArrayTimeSeriesIndex>>::iterator MappingIterator;
+    typedef std::map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::iterator RandomAccessIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::const_iterator ConstRandomAccessIterator;
 
@@ -690,8 +670,8 @@ template <int Prec> class OHLCTimeSeries
       OHLCTimeSeries::MappingIterator pos = getTimeSeriesIndex (d);
       if (pos != mDateToSequentialIndex.end())
 	{
-	  std::shared_ptr<ArrayTimeSeriesIndex> index = pos->second;
-	  return (beginRandomAccess() + index->asIntegral());
+	  const ArrayTimeSeriesIndex& index = pos->second;
+	  return (beginRandomAccess() + index.asIntegral());
 	}
       else
 	return endRandomAccess();
@@ -860,7 +840,7 @@ template <int Prec> class OHLCTimeSeries
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
 	{
-	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex::getInstance(index)));
+	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
 	  mSequentialTimeSeries.push_back(pos->second);
 	  index++;
 					
@@ -881,7 +861,7 @@ template <int Prec> class OHLCTimeSeries
 
     private:
     std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>> mSortedTimeSeries;
-    std::map<boost::gregorian::date, std::shared_ptr<ArrayTimeSeriesIndex>> mDateToSequentialIndex;
+    std::map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
     std::vector<OHLCTimeSeriesEntry<Prec>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     bool mMapAndArrayInSync;
