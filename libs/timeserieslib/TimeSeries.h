@@ -610,9 +610,9 @@ template <int Prec> class OHLCTimeSeries
     void addEntry (std::shared_ptr<OHLCTimeSeriesEntry<Prec>> entry)
     {
       if (entry->getTimeFrame() != getTimeFrame())
-	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(*entry->getDate()) + std::string(" time frames do not match")));
+	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry->getDateValue()) + std::string(" time frames do not match")));
 
-      boost::gregorian::date d = *(entry->getDate());
+      boost::gregorian::date d = entry->getDateValue();
       TimeSeriesIterator pos = mSortedTimeSeries.find (d);
 
       if (pos == mSortedTimeSeries.end())
@@ -770,153 +770,81 @@ template <int Prec> class OHLCTimeSeries
 	throw TimeSeriesException(std::string("OHLCTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
     }
 
-    const std::shared_ptr<OHLCTimeSeriesEntry<Prec>>& getTimeSeriesEntry (const RandomAccessIterator& it, 
+    const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry (const RandomAccessIterator& it, 
 								     unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
       OHLCTimeSeries::RandomAccessIterator new_it = it - offset;
-      return *new_it;
+      return **new_it;
     }
 
-    const std::shared_ptr<OHLCTimeSeriesEntry<Prec>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
+    const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
 								      unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
       OHLCTimeSeries::ConstRandomAccessIterator new_it = it - offset;
-      return *new_it;
-    }
-
-    const std::shared_ptr<boost::gregorian::date>&
-    getDate (const RandomAccessIterator& it, unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getDate());
+      return **new_it;
     }
 
     const boost::gregorian::date&
     getDateValue (const RandomAccessIterator& it, unsigned long offset)
     {
-      return (*getDate(it, offset));
-    }
-
-    const std::shared_ptr<boost::gregorian::date>&
-    getDate (const ConstRandomAccessIterator& it, unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getDate());
+      return getTimeSeriesEntry (it, offset)->getDateValue();
     }
 
     const boost::gregorian::date&
     getDateValue (const ConstRandomAccessIterator& it, unsigned long offset)
     {
-      return (*getDate(it, offset));
+      return getTimeSeriesEntry (it, offset).getDateValue();
     }
 
-    const std::shared_ptr<decimal<Prec>>& getOpen (const RandomAccessIterator& it, 
-						   unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getOpen());
-    }
-
-   const decimal<Prec>& getOpenValue (const RandomAccessIterator& it, 
+    const decimal<Prec>& getOpenValue (const RandomAccessIterator& it, 
 				      unsigned long offset)
     {
-      return (*getOpen(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getOpen (const ConstRandomAccessIterator& it, 
-						   unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getOpen());
+      return getTimeSeriesEntry (it, offset)->getOpenValue();
     }
 
     const decimal<Prec>& getOpenValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getOpen(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getHigh (const RandomAccessIterator& it, 
-						   unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getHigh());
+      return getTimeSeriesEntry (it, offset).getOpenValue();
     }
 
     const decimal<Prec>& getHighValue (const RandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getHigh(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getHigh (const ConstRandomAccessIterator& it, 
-						   unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getHigh());
+      return (getTimeSeriesEntry (it, offset)->getHighValue());
     }
 
     const decimal<Prec>& getHighValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getHigh(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getLow (const RandomAccessIterator& it, 
-						  unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getLow());
+      return getTimeSeriesEntry (it, offset).getHighValue();
     }
 
     const decimal<Prec>& getLowValue (const RandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getLow(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getLow (const ConstRandomAccessIterator& it, 
-						  unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getLow());
+      return getTimeSeriesEntry (it, offset).getLowValue();
     }
 
     const decimal<Prec>& getLowValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getLow(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getClose (const RandomAccessIterator& it, 
-						  unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getClose());
+      return (getTimeSeriesEntry (it, offset).getLowValue());
     }
 
     const decimal<Prec>& getCloseValue (const RandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getClose(it, offset));
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getClose (const ConstRandomAccessIterator& it, 
-						  unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getClose());
+      return getTimeSeriesEntry (it, offset)->getCloseValue();
     }
 
     const decimal<Prec>& getCloseValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
-      return (*getClose(it, offset));
+      return getTimeSeriesEntry (it, offset).getCloseValue();
     }
-    /*
-    const std::shared_ptr<decimal<Prec>>& getOpen (const boost::gregorian::date& entryDate, 
-						   unsigned long offset) const
-    {
-
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getHigh (const boost::gregorian::date& entryDate, unsigned long offset) const
-    {
-
-    }
-    */
 
     bool isSynchronized()
     {

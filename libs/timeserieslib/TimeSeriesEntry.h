@@ -116,76 +116,60 @@ namespace mkc_timeseries
   template <int Prec> class OHLCTimeSeriesEntry
   {
   public:
-    OHLCTimeSeriesEntry (const std::shared_ptr<boost::gregorian::date> entryDate,
-		     const std::shared_ptr<decimal<Prec>>& open,
-		     const std::shared_ptr<decimal<Prec>>& high,
-		     const std::shared_ptr<decimal<Prec>>& low,
-		     const std::shared_ptr<decimal<Prec>>& close,
-		     volume_t volume,
-		     TimeFrame::Duration timeFrame) :
-      mDate(entryDate),
-      mOpen(open),
-      mHigh(high),
-      mLow(low),
-      mClose(close),
-      mVolume(volume),
-      mTimeFrame(timeFrame)
-    {
-      if (*high < *open)
-	throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (*mDate) +std::string ("high of ") +dec::toString (*high) +std::string(" is less that open of ") +dec::toString (*open));
-
-      if (*high < *low)
-	throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (*mDate) +std::string ("high of ") +dec::toString (*high) +std::string(" is less that low of ") +dec::toString (*low));
-
-      if (*high < *close)
-	throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (*mDate) +std::string ("high of ") +dec::toString (*high) +std::string(" is less that close of ") +dec::toString (*close));
-
-      if (*low > *open)
-	throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (*mDate) +std::string ("low of ") +dec::toString (*low) +std::string (" is greater than open of ") +dec::toString (*open));
-      
-      if (*low > *close)
-	throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (*mDate) +std::string ("low of ") +dec::toString (*low) +std::string (" is greater than close of ") +dec::toString (*close));
-
-      if(timeFrame == TimeFrame::WEEKLY)
-	{
-	  // For weekly time frame we want to normalize all dates
-	  // to be the beginning of the week (Sunday)
-
-	  if (is_first_of_week (*mDate) == false)
-	    mDate = std::make_shared<boost::gregorian::date> (first_of_week (*mDate));
-	}
-      else if (timeFrame == TimeFrame::MONTHLY)
-	{
-	  // For monthly time frame we want to normalize all dates
-	  // to be the beginning of the month
-	  if (is_first_of_month (*mDate) == false)
-	    {
-	      mDate = std::make_shared<boost::gregorian::date> (first_of_month (*mDate));
-	    }
-	}
-    }
-
       OHLCTimeSeriesEntry (const boost::gregorian::date& entryDate,
 		       const decimal<Prec>& open,
 		       const decimal<Prec>& high,
 		       const decimal<Prec>& low,
 		       const decimal<Prec>& close,
 		       volume_t volume,
-		       TimeFrame::Duration timeFrame) 
-	: OHLCTimeSeriesEntry (std::make_shared<boost::gregorian::date> (entryDate),
-			   std::make_shared<decimal<Prec>> (open),
-			   std::make_shared<decimal<Prec>> (high),
-			   std::make_shared<decimal<Prec>> (low),
-			   std::make_shared<decimal<Prec>> (close),
-			   volume,
-			   timeFrame)
-	{}
+		       TimeFrame::Duration timeFrame)
+        : mDate(entryDate),
+          mOpen(decimal<Prec>(open)),
+          mHigh(decimal<Prec>(high)),
+          mLow(decimal<Prec>(low)),
+          mClose(close),
+          mVolume(volume),
+          mTimeFrame(timeFrame)
+      {
+        if (high < open)
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +dec::toString (high) +std::string(" is less that open of ") +dec::toString (open));
+
+        if (high < low)
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +dec::toString (high) +std::string(" is less that low of ") +dec::toString (low));
+
+        if (high < close)
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +dec::toString (high) +std::string(" is less that close of ") +dec::toString (close));
+
+        if (low > open)
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("low of ") +dec::toString (low) +std::string (" is greater than open of ") +dec::toString (open));
+
+        if (low > close)
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("low of ") +dec::toString (low) +std::string (" is greater than close of ") +dec::toString (close));
+
+        if(timeFrame == TimeFrame::WEEKLY)
+        {
+          // For weekly time frame we want to normalize all dates
+          // to be the beginning of the week (Sunday)
+
+          if (is_first_of_week (mDate) == false)
+            mDate = first_of_week (mDate);
+        }
+        else if (timeFrame == TimeFrame::MONTHLY)
+        {
+          // For monthly time frame we want to normalize all dates
+          // to be the beginning of the month
+          if (is_first_of_month (mDate) == false)
+            {
+              mDate = first_of_month (mDate);
+            }
+        }
+      }
 
 
     ~OHLCTimeSeriesEntry()
       {}
 
-    OHLCTimeSeriesEntry (const OHLCTimeSeriesEntry<Prec>& rhs) 
+    OHLCTimeSeriesEntry (const OHLCTimeSeriesEntry<Prec>& rhs)
       : mDate (rhs.mDate),
 	mOpen (rhs.mOpen),
 	mHigh (rhs.mHigh),
@@ -195,7 +179,7 @@ namespace mkc_timeseries
 	mTimeFrame(rhs.mTimeFrame)
     {}
 
-    OHLCTimeSeriesEntry<Prec>& 
+    OHLCTimeSeriesEntry<Prec>&
     operator=(const OHLCTimeSeriesEntry<Prec> &rhs)
     {
       if (this == &rhs)
@@ -216,54 +200,29 @@ namespace mkc_timeseries
       return mTimeFrame;
     }
 
-    const std::shared_ptr<boost::gregorian::date>& getDate() const
+    const boost::gregorian::date& getDateValue() const
     {
       return mDate;
     }
 
-    const boost::gregorian::date& getDateValue() const
-    {
-      return *getDate();
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getOpen() const
+    const decimal<Prec>& getOpenValue() const
     {
       return mOpen;
     }
 
-    const decimal<Prec>& getOpenValue() const
-    {
-      return *getOpen();
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getHigh() const
+    const decimal<Prec>& getHighValue() const
     {
       return mHigh;
     }
 
-    const decimal<Prec>& getHighValue() const
-    {
-      return *getHigh();
-    }
-
-    const std::shared_ptr<decimal<Prec>>& getLow() const
+    const decimal<Prec>& getLowValue() const
     {
       return mLow;
     }
 
-    const decimal<Prec>& getLowValue() const
-    {
-      return *getLow();
-
-    }
-    const std::shared_ptr<decimal<Prec>>& getClose() const
-    {
-      return mClose;
-    }
-
     const decimal<Prec>& getCloseValue() const
     {
-      return *getClose();
+      return mClose;
     }
 
     const volume_t getVolume() const
@@ -272,11 +231,11 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<boost::gregorian::date> mDate;
-    std::shared_ptr<decimal<Prec>> mOpen;
-    std::shared_ptr<decimal<Prec>> mHigh;
-    std::shared_ptr<decimal<Prec>> mLow;
-    std::shared_ptr<decimal<Prec>> mClose;
+    boost::gregorian::date mDate;
+    decimal<Prec> mOpen;
+    decimal<Prec> mHigh;
+    decimal<Prec> mLow;
+    decimal<Prec> mClose;
     volume_t mVolume;
     TimeFrame::Duration mTimeFrame;
   };
