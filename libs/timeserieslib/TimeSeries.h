@@ -496,8 +496,8 @@ namespace mkc_timeseries
 template <int Prec> class OHLCTimeSeries
   {
   public:
-    typedef typename std::map<boost::gregorian::date, std::shared_ptr<OHLCTimeSeriesEntry<Prec>>>::iterator TimeSeriesIterator;
-    typedef typename std::map<boost::gregorian::date, std::shared_ptr<OHLCTimeSeriesEntry<Prec>>>::const_iterator ConstTimeSeriesIterator;
+    typedef typename std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::iterator TimeSeriesIterator;
+    typedef typename std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::const_iterator ConstTimeSeriesIterator;
     typedef std::map<boost::gregorian::date, std::shared_ptr<ArrayTimeSeriesIndex>>::iterator MappingIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::iterator RandomAccessIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::const_iterator ConstRandomAccessIterator;
@@ -607,14 +607,12 @@ template <int Prec> class OHLCTimeSeries
       return *this;
     }
 
-    void addEntry (OHLCTimeSeriesEntry<Prec>&& entry_)
+    void addEntry (OHLCTimeSeriesEntry<Prec>&& entry)
     {
-      auto entry = std::make_shared<std::decay_t<decltype(entry_)>>(std::move(entry_));
+      if (entry.getTimeFrame() != getTimeFrame())
+	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry.getDateValue()) + std::string(" time frames do not match")));
 
-      if (entry->getTimeFrame() != getTimeFrame())
-	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry->getDateValue()) + std::string(" time frames do not match")));
-
-      boost::gregorian::date d = entry->getDateValue();
+      boost::gregorian::date d = entry.getDateValue();
       TimeSeriesIterator pos = mSortedTimeSeries.find (d);
 
       if (pos == mSortedTimeSeries.end())
@@ -863,7 +861,7 @@ template <int Prec> class OHLCTimeSeries
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
 	{
 	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex::getInstance(index)));
-	  mSequentialTimeSeries.push_back (*pos->second);
+	  mSequentialTimeSeries.push_back(pos->second);
 	  index++;
 					
 	}
@@ -882,7 +880,7 @@ template <int Prec> class OHLCTimeSeries
     }
 
     private:
-    std::map<boost::gregorian::date, std::shared_ptr<OHLCTimeSeriesEntry<Prec>>> mSortedTimeSeries;
+    std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>> mSortedTimeSeries;
     std::map<boost::gregorian::date, std::shared_ptr<ArrayTimeSeriesIndex>> mDateToSequentialIndex;
     std::vector<OHLCTimeSeriesEntry<Prec>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;

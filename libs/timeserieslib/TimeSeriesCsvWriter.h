@@ -57,17 +57,16 @@ namespace mkc_timeseries
       typename OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = 
 	mTimeSeries.beginSortedAccess();
       boost::gregorian::date timeSeriesDate;
-      std::shared_ptr<OHLCTimeSeriesEntry<Prec>> timeSeriesEntry;
 
       for (; it != mTimeSeries.endSortedAccess(); it++)
 	{
 	  timeSeriesDate = it->first;
-	  timeSeriesEntry = it->second;
+	  const auto& timeSeriesEntry = it->second;
 
 	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate) << "," << 
-	    timeSeriesEntry->getOpenValue() << "," <<
-	    timeSeriesEntry->getHighValue() << "," << timeSeriesEntry->getLowValue() << "," <<
-	    timeSeriesEntry->getCloseValue() << std::endl;
+	    timeSeriesEntry.getOpenValue() << "," <<
+	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
+	    timeSeriesEntry.getCloseValue() << std::endl;
 	}
     }
 
