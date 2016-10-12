@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <map>
+#include <boost/container/flat_map.hpp>
 #include <vector>
 #include <boost/thread/mutex.hpp>
 #include "TimeSeriesEntry.h"
@@ -476,9 +477,9 @@ namespace mkc_timeseries
 template <int Prec> class OHLCTimeSeries
   {
   public:
-    typedef typename std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::iterator TimeSeriesIterator;
-    typedef typename std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::const_iterator ConstTimeSeriesIterator;
-    typedef std::map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
+    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::iterator TimeSeriesIterator;
+    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::const_iterator ConstTimeSeriesIterator;
+    typedef boost::container::flat_map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::iterator RandomAccessIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::const_iterator ConstRandomAccessIterator;
 
@@ -860,8 +861,8 @@ template <int Prec> class OHLCTimeSeries
     }
 
     private:
-    std::map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>> mSortedTimeSeries;
-    std::map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
+    boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>> mSortedTimeSeries;
+    boost::container::flat_map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
     std::vector<OHLCTimeSeriesEntry<Prec>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     bool mMapAndArrayInSync;
