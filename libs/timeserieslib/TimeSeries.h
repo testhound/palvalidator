@@ -88,7 +88,7 @@ namespace mkc_timeseries
     typedef std::map<unsigned long, std::shared_ptr<ArrayTimeSeriesIndex>>::iterator CacheIterator;
 
   public:
-    const ArrayTimeSeriesIndex& fromOffset (const std::shared_ptr<TimeSeriesOffset>& offset)
+    ArrayTimeSeriesIndex fromOffset (const std::shared_ptr<TimeSeriesOffset>& offset)
     {
       if (mArrayIndex >= offset->asIntegral())
 	{
