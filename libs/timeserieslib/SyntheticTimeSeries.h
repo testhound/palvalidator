@@ -168,7 +168,7 @@ namespace mkc_timeseries
 
     void dumpSyntheticSeries ()
     {
-      PalTimeSeriesCsvWriter<Prec> dumpFile("SyntheticSeriesDump.csv", *mSyntheticTimeSeries);
+      PalTimeSeriesCsvWriter<Decimal> dumpFile("SyntheticSeriesDump.csv", *mSyntheticTimeSeries);
       dumpFile.writeFile();
 
     }

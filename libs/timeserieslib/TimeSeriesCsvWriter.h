@@ -21,11 +21,9 @@ namespace mkc_timeseries
   // Write a OHLCTimeSeries out in a format that
   // can be read by PriceActionLab
 
-  template <int Prec>
+  template <class Decimal>
   class PalTimeSeriesCsvWriter
   {
-    using Decimal = decimal<Prec>;
-
   public:
     PalTimeSeriesCsvWriter (const std::string& fileName, 
 			    const OHLCTimeSeries<Decimal>& series)
