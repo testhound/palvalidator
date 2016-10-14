@@ -135,15 +135,17 @@ namespace mkc_timeseries
   //  class NumericTimeSeries
   //
 
-  template <int Prec> class NumericTimeSeries
+  template <class Decimal> class NumericTimeSeries
   {
+    using Map = std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>;
+
   public:
-    typedef typename std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::iterator TimeSeriesIterator;
-    typedef typename std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::const_iterator ConstTimeSeriesIterator;
-    typedef typename std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::const_reverse_iterator ConstReverseTimeSeriesIterator;
+    typedef typename Map::iterator TimeSeriesIterator;
+    typedef typename Map::const_iterator ConstTimeSeriesIterator;
+    typedef typename Map::const_reverse_iterator ConstReverseTimeSeriesIterator;
     typedef std::map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
-    typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::iterator RandomAccessIterator;
-    typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Prec>>>::const_iterator ConstRandomAccessIterator;
+    typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::iterator RandomAccessIterator;
+    typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::const_iterator ConstRandomAccessIterator;
     
     NumericTimeSeries (TimeFrame::Duration timeFrame) :
       mSortedTimeSeries(),
@@ -163,7 +165,7 @@ namespace mkc_timeseries
       mSequentialTimeSeries.reserve(numElements);
     }
 
-    NumericTimeSeries (const NumericTimeSeries<Prec>& rhs) 
+    NumericTimeSeries (const NumericTimeSeries<Decimal>& rhs) 
       :  mSortedTimeSeries(rhs.mSortedTimeSeries),
 	 mDateToSequentialIndex(rhs.mDateToSequentialIndex),
 	 mSequentialTimeSeries(rhs.mSequentialTimeSeries),
@@ -171,8 +173,8 @@ namespace mkc_timeseries
 	 mMapAndArrayInSync (rhs.mMapAndArrayInSync)
     {}
 
-    NumericTimeSeries<Prec>& 
-    operator=(const NumericTimeSeries<Prec> &rhs)
+    NumericTimeSeries<Decimal>& 
+    operator=(const NumericTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -185,7 +187,7 @@ namespace mkc_timeseries
       return *this;
     }
 
-    void addEntry (std::shared_ptr<NumericTimeSeriesEntry<Prec>> entry)
+    void addEntry (std::shared_ptr<NumericTimeSeriesEntry<Decimal>> entry)
     {
       if (entry->getTimeFrame() != getTimeFrame())
 	throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry->getDate()) + std::string(" time frames do not match")));
@@ -203,9 +205,9 @@ namespace mkc_timeseries
 	throw std::domain_error(std::string("NumericTimeSeries:" +boost::gregorian::to_simple_string(d) + std::string(" date already exists")));
     }
 
-    void addEntry (const NumericTimeSeriesEntry<Prec>& entry)
+    void addEntry (const NumericTimeSeriesEntry<Decimal>& entry)
     {
-      addEntry (std::make_shared<NumericTimeSeriesEntry<Prec>> (entry));
+      addEntry (std::make_shared<NumericTimeSeriesEntry<Decimal>> (entry));
     }
 
     NumericTimeSeries::TimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate)
@@ -218,12 +220,12 @@ namespace mkc_timeseries
       return mSortedTimeSeries.find(timeSeriesDate);
     }
 
-    std::vector<decimal<Prec>> getTimeSeriesAsVector() const
+    std::vector<Decimal> getTimeSeriesAsVector() const
     {
-      std::vector<decimal<Prec>> series;
+      std::vector<Decimal> series;
       series.reserve (getNumEntries());
 
-      NumericTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
+      NumericTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
@@ -371,7 +373,7 @@ namespace mkc_timeseries
 	throw TimeSeriesException(std::string("NumericTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
     }
 
-    const std::shared_ptr<NumericTimeSeriesEntry<Prec>>& getTimeSeriesEntry (const RandomAccessIterator& it, 
+    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const RandomAccessIterator& it, 
 									     unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
@@ -379,7 +381,7 @@ namespace mkc_timeseries
       return *new_it;
     }
 
-    const std::shared_ptr<NumericTimeSeriesEntry<Prec>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
+    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
 								      unsigned long offset) const
     {
       ValidateVectorOffset(it, offset);
@@ -411,13 +413,13 @@ namespace mkc_timeseries
       return (*getDate(it, offset));
     }
 
-   const decimal<Prec>& getValue (const RandomAccessIterator& it, 
+   const Decimal& getValue (const RandomAccessIterator& it, 
 				  unsigned long offset)
     {
       return (getTimeSeriesEntry (it, offset)->getValue());
     }
 
-   const decimal<Prec>& getValue (const ConstRandomAccessIterator& it, 
+   const Decimal& getValue (const ConstRandomAccessIterator& it, 
 				  unsigned long offset) const
     {
       return (getTimeSeriesEntry (it, offset)->getValue());
@@ -439,7 +441,7 @@ namespace mkc_timeseries
 	  mDateToSequentialIndex.clear();
 	}
       
-      NumericTimeSeries<Prec>::ConstTimeSeriesIterator pos;
+      NumericTimeSeries<Decimal>::ConstTimeSeriesIterator pos;
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
 	{
@@ -462,9 +464,9 @@ namespace mkc_timeseries
     }
 
   private:
-    std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Prec>>> mSortedTimeSeries;
+    Map mSortedTimeSeries;
     mutable std::map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
-    mutable std::vector<std::shared_ptr<NumericTimeSeriesEntry<Prec>>> mSequentialTimeSeries;
+    mutable std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     mutable bool mMapAndArrayInSync;
   };
@@ -485,14 +487,14 @@ template <int Prec> class OHLCTimeSeries
     typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::iterator RandomAccessIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstRandomAccessIterator;
 
-    NumericTimeSeries<Prec> OpenTimeSeries() const
+    NumericTimeSeries<Decimal> OpenTimeSeries() const
     {
-      NumericTimeSeries<Prec> openSeries(getTimeFrame(), getNumEntries());
+      NumericTimeSeries<Decimal> openSeries(getTimeFrame(), getNumEntries());
       OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
-	  openSeries.addEntry (NumericTimeSeriesEntry<Prec> (it->first, 
+	  openSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
 							      it->second->getOpenValue(), 
 							      it->second->getTimeFrame()));
 	}
@@ -500,14 +502,14 @@ template <int Prec> class OHLCTimeSeries
       return openSeries;
     }
 
-    NumericTimeSeries<Prec> HighTimeSeries() const
+    NumericTimeSeries<Decimal> HighTimeSeries() const
     {
-      NumericTimeSeries<Prec> highSeries(getTimeFrame(), getNumEntries());
+      NumericTimeSeries<Decimal> highSeries(getTimeFrame(), getNumEntries());
       OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
-	  highSeries.addEntry (NumericTimeSeriesEntry<Prec> (it->first, 
+	  highSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
 							      it->second->getHighValue(), 
 							      it->second->getTimeFrame()));
 	}
@@ -515,14 +517,14 @@ template <int Prec> class OHLCTimeSeries
       return highSeries;
     }
 
-    NumericTimeSeries<Prec> LowTimeSeries() const
+    NumericTimeSeries<Decimal> LowTimeSeries() const
     {
-      NumericTimeSeries<Prec> lowSeries(getTimeFrame(), getNumEntries());
+      NumericTimeSeries<Decimal> lowSeries(getTimeFrame(), getNumEntries());
       OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
-	  lowSeries.addEntry (NumericTimeSeriesEntry<Prec> (it->first, 
+	  lowSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
 							      it->second->getLowValue(), 
 							      it->second->getTimeFrame()));
 	}
@@ -530,14 +532,14 @@ template <int Prec> class OHLCTimeSeries
       return lowSeries;
     }
 
-    NumericTimeSeries<Prec> CloseTimeSeries() const
+    NumericTimeSeries<Decimal> CloseTimeSeries() const
     {
-      NumericTimeSeries<Prec> closeSeries(getTimeFrame(), getNumEntries());
+      NumericTimeSeries<Decimal> closeSeries(getTimeFrame(), getNumEntries());
       OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
-	  closeSeries.addEntry (NumericTimeSeriesEntry<Prec> (it->first, 
+	  closeSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
 							      it->second->getCloseValue(), 
 							      it->second->getTimeFrame()));
 	}
@@ -776,49 +778,49 @@ template <int Prec> class OHLCTimeSeries
       return getTimeSeriesEntry (it, offset).getDateValue();
     }
 
-    const decimal<Prec>& getOpenValue (const RandomAccessIterator& it, 
+    const Decimal& getOpenValue (const RandomAccessIterator& it, 
 				      unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset)->getOpenValue();
     }
 
-    const decimal<Prec>& getOpenValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getOpenValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getOpenValue();
     }
 
-    const decimal<Prec>& getHighValue (const RandomAccessIterator& it, 
+    const Decimal& getHighValue (const RandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getHighValue();
     }
 
-    const decimal<Prec>& getHighValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getHighValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getHighValue();
     }
 
-    const decimal<Prec>& getLowValue (const RandomAccessIterator& it, 
+    const Decimal& getLowValue (const RandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getLowValue();
     }
 
-    const decimal<Prec>& getLowValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getLowValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return (getTimeSeriesEntry (it, offset).getLowValue());
     }
 
-    const decimal<Prec>& getCloseValue (const RandomAccessIterator& it, 
+    const Decimal& getCloseValue (const RandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset)->getCloseValue();
     }
 
-    const decimal<Prec>& getCloseValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getCloseValue (const ConstRandomAccessIterator& it, 
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getCloseValue();

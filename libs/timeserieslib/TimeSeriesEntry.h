@@ -41,11 +41,11 @@ namespace mkc_timeseries
   // class NumericTimeSeriesEntry
   //
 
-  template <int Prec> class NumericTimeSeriesEntry
+  template <class Decimal> class NumericTimeSeriesEntry
   {
   public:
     NumericTimeSeriesEntry (const boost::gregorian::date& entryDate,
-			    const decimal<Prec>& value,
+			    const Decimal& value,
 			    TimeFrame::Duration timeFrame) :
       mDate(entryDate),
       mEntryValue(value),
@@ -55,14 +55,14 @@ namespace mkc_timeseries
     ~NumericTimeSeriesEntry()
     {}
 
-    NumericTimeSeriesEntry (const NumericTimeSeriesEntry<Prec>& rhs) 
+    NumericTimeSeriesEntry (const NumericTimeSeriesEntry<Decimal>& rhs) 
       : mDate (rhs.mDate),
 	mEntryValue (rhs.mEntryValue),
 	mTimeFrame(rhs.mTimeFrame)
     {}
 
-    NumericTimeSeriesEntry<Prec>& 
-    operator=(const NumericTimeSeriesEntry<Prec> &rhs)
+    NumericTimeSeriesEntry<Decimal>& 
+    operator=(const NumericTimeSeriesEntry<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -78,7 +78,7 @@ namespace mkc_timeseries
       return mDate;
     }
 
-    const decimal<Prec>& getValue() const
+    const Decimal& getValue() const
     {
       return mEntryValue;
     }
@@ -90,21 +90,21 @@ namespace mkc_timeseries
 
   private:
     boost::gregorian::date mDate;
-    decimal<Prec> mEntryValue;
+    Decimal mEntryValue;
     TimeFrame::Duration mTimeFrame;
   };
 
 
-  template <int Prec>
-  bool operator==(const NumericTimeSeriesEntry<Prec>& lhs, const NumericTimeSeriesEntry<Prec>& rhs)
+  template <class Decimal>
+  bool operator==(const NumericTimeSeriesEntry<Decimal>& lhs, const NumericTimeSeriesEntry<Decimal>& rhs)
   {
     return ((lhs.getDate() == rhs.getDate()) &&
 	    (lhs.getValue() == rhs.getValue()) &&
 	    (lhs.getTimeFrame() == rhs.getTimeFrame()));
   }
 
-  template <int Prec>
-  bool operator!=(const NumericTimeSeriesEntry<Prec>& lhs, const NumericTimeSeriesEntry<Prec>& rhs)
+  template <class Decimal>
+  bool operator!=(const NumericTimeSeriesEntry<Decimal>& lhs, const NumericTimeSeriesEntry<Decimal>& rhs)
   { 
     return !(lhs == rhs); 
   }
