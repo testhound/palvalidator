@@ -476,12 +476,14 @@ namespace mkc_timeseries
    
 template <int Prec> class OHLCTimeSeries
   {
+    using Decimal = decimal<Prec>;
+
   public:
-    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::iterator TimeSeriesIterator;
-    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>>::const_iterator ConstTimeSeriesIterator;
+    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>>::iterator TimeSeriesIterator;
+    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstTimeSeriesIterator;
     typedef boost::container::flat_map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
-    typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::iterator RandomAccessIterator;
-    typedef typename std::vector<OHLCTimeSeriesEntry<Prec>>::const_iterator ConstRandomAccessIterator;
+    typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::iterator RandomAccessIterator;
+    typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstRandomAccessIterator;
 
     NumericTimeSeries<Prec> OpenTimeSeries() const
     {
@@ -588,7 +590,7 @@ template <int Prec> class OHLCTimeSeries
       return *this;
     }
 
-    void addEntry (OHLCTimeSeriesEntry<Prec>&& entry)
+    void addEntry (OHLCTimeSeriesEntry<Decimal>&& entry)
     {
       if (entry.getTimeFrame() != getTimeFrame())
 	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry.getDateValue()) + std::string(" time frames do not match")));
@@ -746,7 +748,7 @@ template <int Prec> class OHLCTimeSeries
 	throw TimeSeriesException(std::string("OHLCTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
     }
 
-    const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry (const RandomAccessIterator& it, 
+    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const RandomAccessIterator& it, 
 								     unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
@@ -754,7 +756,7 @@ template <int Prec> class OHLCTimeSeries
       return **new_it;
     }
 
-    const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
+    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
 								      unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
@@ -861,9 +863,9 @@ template <int Prec> class OHLCTimeSeries
     }
 
     private:
-    boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Prec>> mSortedTimeSeries;
+    boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>> mSortedTimeSeries;
     boost::container::flat_map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
-    std::vector<OHLCTimeSeriesEntry<Prec>> mSequentialTimeSeries;
+    std::vector<OHLCTimeSeriesEntry<Decimal>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     bool mMapAndArrayInSync;
     TradingVolume::VolumeUnit mUnitsOfVolume;

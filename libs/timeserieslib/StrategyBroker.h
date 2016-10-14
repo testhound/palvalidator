@@ -37,6 +37,8 @@ namespace mkc_timeseries
     public TradingOrderObserver<Prec>, 
     public TradingPositionObserver<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     typedef typename TradingOrderManager<Prec>::PendingOrderIterator PendingOrderIterator;
     typedef typename StrategyTransactionManager<Prec>::SortedStrategyTransactionIterator 
@@ -479,7 +481,7 @@ namespace mkc_timeseries
     }
 
   private:
-    OHLCTimeSeriesEntry<Prec> getEntryBar (const std::string& tradingSymbol,
+    OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
 							const boost::gregorian::date& d)
     {
       typename Portfolio<Prec>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);

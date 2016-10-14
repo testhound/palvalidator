@@ -18,6 +18,8 @@ namespace mkc_timeseries
   template <int Prec>
   class TimeSeriesCsvReader
   {
+    using Decimal = decimal<Prec>;
+
   public:
     TimeSeriesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			 TradingVolume::VolumeUnit unitsOfVolume) 
@@ -56,7 +58,7 @@ namespace mkc_timeseries
       return mTimeSeries->getTimeFrame();
     }
 
-    void addEntry (OHLCTimeSeriesEntry<Prec>&& entry)
+    void addEntry (OHLCTimeSeriesEntry<Decimal>&& entry)
     {
       mTimeSeries->addEntry(std::move(entry));
     }
@@ -118,6 +120,8 @@ namespace mkc_timeseries
   template <int Prec>
   class PALFormatCsvReader : public TimeSeriesCsvReader<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     PALFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			TradingVolume::VolumeUnit unitsOfVolume) :
@@ -162,7 +166,7 @@ namespace mkc_timeseries
 	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 
-	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Prec> (entryDate, openPrice, 
+	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 								      highPrice, lowPrice, 
 								      closePrice, 0, TimeSeriesCsvReader<Prec>::getTimeFrame()));
 	}
@@ -182,6 +186,8 @@ namespace mkc_timeseries
   template <int Prec>
   class CSIExtendedFuturesCsvReader : public TimeSeriesCsvReader<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     CSIExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			TradingVolume::VolumeUnit unitsOfVolume) :
@@ -231,7 +237,7 @@ namespace mkc_timeseries
 	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = std::stol (volString);
-	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Prec> (entryDate, openPrice, 
+	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									  highPrice, lowPrice, 
 									  closePrice, volume, 
 									  TimeSeriesCsvReader<Prec>::getTimeFrame()));
@@ -254,6 +260,8 @@ namespace mkc_timeseries
   template <int Prec>
   class CSIErrorCheckingExtendedFuturesCsvReader : public TimeSeriesCsvReader<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     CSIErrorCheckingExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			TradingVolume::VolumeUnit unitsOfVolume) :
@@ -309,7 +317,7 @@ namespace mkc_timeseries
 								   highPrice, lowPrice, 
 								   closePrice);
 	  if (errorResult == false)
-	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Prec> (entryDate, openPrice, 
+	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, volume, 
 									    TimeSeriesCsvReader<Prec>::getTimeFrame()));
@@ -327,6 +335,8 @@ namespace mkc_timeseries
   template <int Prec>
   class TradeStationFormatCsvReader : public TimeSeriesCsvReader<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     TradeStationFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 				 TradingVolume::VolumeUnit unitsOfVolume) :
@@ -383,7 +393,7 @@ namespace mkc_timeseries
 	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
-	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Prec> (entryDate, openPrice, 
+	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 								      highPrice, lowPrice, 
 								      closePrice, 
 								      0, 
@@ -401,6 +411,8 @@ namespace mkc_timeseries
   template <int Prec>
   class TradeStationErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     TradeStationErrorCheckingFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 					      TradingVolume::VolumeUnit unitsOfVolume) :
@@ -464,7 +476,7 @@ namespace mkc_timeseries
 								   closePrice);
 
 	  if (errorResult == false)
-	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Prec> (entryDate, openPrice, 
+	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, 
 									    0, 
@@ -485,6 +497,8 @@ namespace mkc_timeseries
   template <int Prec>
   class PinnacleErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     PinnacleErrorCheckingFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 					      TradingVolume::VolumeUnit unitsOfVolume) :
@@ -547,7 +561,7 @@ namespace mkc_timeseries
 								   closePrice);
 
 	  if (errorResult == false)
-	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Prec> (entryDate, openPrice, 
+	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, 
 									    0, 

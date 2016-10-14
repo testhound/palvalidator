@@ -19,6 +19,8 @@ namespace mkc_timeseries
 {
   template <int Prec> class InstrumentPositionManager
   {
+    using Decimal = decimal<Prec>;
+
   public:
     typedef typename std::map<std::string, std::shared_ptr<InstrumentPosition<Prec>>>::const_iterator ConstInstrumentPositionIterator;
 
@@ -114,7 +116,7 @@ namespace mkc_timeseries
     // addBar is used to add a bar to a open position
 
     void addBar (const std::string& tradingSymbol,
-		 const OHLCTimeSeriesEntry<Prec>& entryBar)
+		 const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       getInstrumentPositionPtr (tradingSymbol)->addBar (entryBar);
     }

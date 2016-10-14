@@ -22,6 +22,8 @@ namespace mkc_timeseries
   template <int Prec>
   class SyntheticTimeSeries
   {
+    using Decimal = decimal<Prec>;
+
   public:
     explicit SyntheticTimeSeries(const OHLCTimeSeries<Prec>& aTimeSeries) 
       : mTimeSeries(aTimeSeries),
@@ -108,9 +110,10 @@ namespace mkc_timeseries
 
       // Shuffle is done. Integrate to recreate the market
 
-      decimal<Prec> xPrice = mFirstOpen;
-      decimal<Prec> syntheticOpen;
-      decimal<Prec> syntheticClose;
+      Decimal xPrice = mFirstOpen;
+      Decimal syntheticOpen;
+      Decimal syntheticClose;
+
       for (unsigned long i = 0; i < mNumElements; i++)
 	{
 	  xPrice *= mRelativeOpen.getElement(i);
@@ -121,7 +124,7 @@ namespace mkc_timeseries
 
 	  try
 	    {
-	      OHLCTimeSeriesEntry<Prec> entry (mDateSeries.getDate(i), 
+	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i), 
 					       syntheticOpen, 
 					       syntheticOpen * mRelativeHigh.getElement(i),
 					       syntheticOpen * mRelativeLow.getElement(i),

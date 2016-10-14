@@ -18,6 +18,8 @@ namespace mkc_timeseries
 
   template <int Prec> class InstrumentPositionState
   {
+    using Decimal = decimal<Prec>;
+
   public:
     typedef typename std::vector<std::shared_ptr<TradingPosition<Prec>>>::const_iterator ConstInstrumentPositionIterator;
 
@@ -43,7 +45,7 @@ namespace mkc_timeseries
     virtual uint32_t getNumPositionUnits() const = 0;
 
     virtual ConstInstrumentPositionIterator getInstrumentPosition (uint32_t unitNumber) const = 0;
-    virtual void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar) = 0;
+    virtual void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar) = 0;
     virtual void addPosition(InstrumentPosition<Prec>* iPosition,
 			     std::shared_ptr<TradingPosition<Prec>> position) = 0;
     virtual ConstInstrumentPositionIterator beginInstrumentPosition() const = 0;
@@ -61,6 +63,8 @@ namespace mkc_timeseries
 
   template <int Prec> class FlatInstrumentPositionState : public InstrumentPositionState<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     typedef typename InstrumentPositionState<Prec>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
   public:
@@ -106,7 +110,7 @@ namespace mkc_timeseries
       return true;
     }
 
-    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: addBar - no positions available in flat state");
     }
@@ -164,6 +168,8 @@ namespace mkc_timeseries
 
   template <int Prec> class InMarketPositionState : public InstrumentPositionState<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     typedef typename InstrumentPositionState<Prec>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
   protected:
@@ -216,7 +222,7 @@ namespace mkc_timeseries
       mTradingPositionUnits.push_back (position);
     }
 
-    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       ConstInstrumentPositionIterator it = this->beginInstrumentPosition();
 
@@ -401,6 +407,8 @@ namespace mkc_timeseries
 
   template <int Prec> class InstrumentPosition
   {
+    using Decimal = decimal<Prec>;
+
   public:
     typedef typename InstrumentPositionState<Prec>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
 
@@ -483,7 +491,7 @@ namespace mkc_timeseries
       (*pos)->setRMultipleStop (riskStop);
     }
 
-    void addBar (const OHLCTimeSeriesEntry<Prec>& entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       mInstrumentPositionState->addBar(entryBar);
     }

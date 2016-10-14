@@ -113,20 +113,20 @@ namespace mkc_timeseries
   // class OHLCTimeSeriesEntry
   //
 
-  template <int Prec> class OHLCTimeSeriesEntry
+  template <class Decimal> class OHLCTimeSeriesEntry
   {
   public:
       OHLCTimeSeriesEntry (const boost::gregorian::date& entryDate,
-		       const decimal<Prec>& open,
-		       const decimal<Prec>& high,
-		       const decimal<Prec>& low,
-		       const decimal<Prec>& close,
+		       const Decimal& open,
+		       const Decimal& high,
+		       const Decimal& low,
+		       const Decimal& close,
 		       volume_t volume,
 		       TimeFrame::Duration timeFrame)
         : mDate(entryDate),
-          mOpen(decimal<Prec>(open)),
-          mHigh(decimal<Prec>(high)),
-          mLow(decimal<Prec>(low)),
+          mOpen(Decimal(open)),
+          mHigh(Decimal(high)),
+          mLow(Decimal(low)),
           mClose(close),
           mVolume(volume),
           mTimeFrame(timeFrame)
@@ -169,7 +169,7 @@ namespace mkc_timeseries
     ~OHLCTimeSeriesEntry()
       {}
 
-    OHLCTimeSeriesEntry (const OHLCTimeSeriesEntry<Prec>& rhs)
+    OHLCTimeSeriesEntry (const OHLCTimeSeriesEntry<Decimal>& rhs)
       : mDate (rhs.mDate),
 	mOpen (rhs.mOpen),
 	mHigh (rhs.mHigh),
@@ -179,8 +179,8 @@ namespace mkc_timeseries
 	mTimeFrame(rhs.mTimeFrame)
     {}
 
-    OHLCTimeSeriesEntry<Prec>&
-    operator=(const OHLCTimeSeriesEntry<Prec> &rhs)
+    OHLCTimeSeriesEntry<Decimal>&
+    operator=(const OHLCTimeSeriesEntry<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -205,22 +205,22 @@ namespace mkc_timeseries
       return mDate;
     }
 
-    const decimal<Prec>& getOpenValue() const
+    const Decimal& getOpenValue() const
     {
       return mOpen;
     }
 
-    const decimal<Prec>& getHighValue() const
+    const Decimal& getHighValue() const
     {
       return mHigh;
     }
 
-    const decimal<Prec>& getLowValue() const
+    const Decimal& getLowValue() const
     {
       return mLow;
     }
 
-    const decimal<Prec>& getCloseValue() const
+    const Decimal& getCloseValue() const
     {
       return mClose;
     }
@@ -232,16 +232,16 @@ namespace mkc_timeseries
 
   private:
     boost::gregorian::date mDate;
-    decimal<Prec> mOpen;
-    decimal<Prec> mHigh;
-    decimal<Prec> mLow;
-    decimal<Prec> mClose;
+    Decimal mOpen;
+    Decimal mHigh;
+    Decimal mLow;
+    Decimal mClose;
     volume_t mVolume;
     TimeFrame::Duration mTimeFrame;
   };
 
-  template <int Prec>
-  bool operator==(const OHLCTimeSeriesEntry<Prec>& lhs, const OHLCTimeSeriesEntry<Prec>& rhs)
+  template <class Decimal>
+  bool operator==(const OHLCTimeSeriesEntry<Decimal>& lhs, const OHLCTimeSeriesEntry<Decimal>& rhs)
   {
     return ((lhs.getDateValue() == rhs.getDateValue()) && 
 	    (lhs.getOpenValue() == rhs.getOpenValue()) &&
@@ -252,8 +252,8 @@ namespace mkc_timeseries
 	    (lhs.getVolume() == rhs.getVolume()));
   }
 
-  template <int Prec>
-  bool operator!=(const OHLCTimeSeriesEntry<Prec>& lhs, const OHLCTimeSeriesEntry<Prec>& rhs)
+  template <class Decimal>
+  bool operator!=(const OHLCTimeSeriesEntry<Decimal>& lhs, const OHLCTimeSeriesEntry<Decimal>& rhs)
   { 
     return !(lhs == rhs); 
   }

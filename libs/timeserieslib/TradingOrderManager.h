@@ -25,8 +25,10 @@ namespace mkc_timeseries
 {
   template <int Prec> class ProcessOrderVisitor : public TradingOrderVisitor<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
-    ProcessOrderVisitor(OHLCTimeSeriesEntry<Prec> tradingBar)
+    ProcessOrderVisitor(OHLCTimeSeriesEntry<Decimal> tradingBar)
       : mTradingBar (tradingBar)
     {}
 
@@ -135,7 +137,7 @@ namespace mkc_timeseries
 	}
     }
 
-    void updateTradingBar (OHLCTimeSeriesEntry<Prec> tradingBar)
+    void updateTradingBar (OHLCTimeSeriesEntry<Decimal> tradingBar)
     {
       mTradingBar = tradingBar;
     }
@@ -158,7 +160,7 @@ namespace mkc_timeseries
     }
 
   private:
-    OHLCTimeSeriesEntry<Prec> mTradingBar;
+    OHLCTimeSeriesEntry<Decimal> mTradingBar;
   };
 
  

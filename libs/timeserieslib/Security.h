@@ -32,6 +32,8 @@ namespace mkc_timeseries
   template <int Prec>
   class Security
     {
+      using Decimal = decimal<Prec>;
+
     public:
       typedef typename OHLCTimeSeries<Prec>::ConstRandomAccessIterator ConstRandomAccessIterator;
 
@@ -90,7 +92,7 @@ namespace mkc_timeseries
 	    throw SecurityException ("No time series entry for date: " +boost::gregorian::to_simple_string (d));
 	}
 
-      const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry (const boost::gregorian::date& d) const
+      const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const boost::gregorian::date& d) const
 	{
 	  Security::ConstRandomAccessIterator it = this->getRandomAccessIterator (d);
 	  return *(*it);
@@ -101,7 +103,7 @@ namespace mkc_timeseries
 	  return  mSecurityTimeSeries->endRandomAccess();
 	}
 
-      const OHLCTimeSeriesEntry<Prec>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
+      const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
 						       unsigned long offset) const
       {
 	return *mSecurityTimeSeries->getTimeSeriesEntry(it, offset); 
