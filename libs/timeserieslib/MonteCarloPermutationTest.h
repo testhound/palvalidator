@@ -18,6 +18,7 @@
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/median.hpp>
 #include <boost/accumulators/statistics/count.hpp>
+#include "bdldfp_decimal.h"
 
 #include "runner.hpp"
 
@@ -99,6 +100,8 @@ using boost::accumulators::accumulator_set;
 	    template <int Prec2> class BackTestResultPolicy = CumulativeReturnPolicy> class MonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Prec> 
 
   {
+    using Decimal = decimal<Prec>;
+
   public:
     MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Prec>> backtester,
 				    uint32_t numPermutations)
@@ -196,7 +199,7 @@ using boost::accumulators::accumulator_set;
     shared_ptr<Security<Prec>> createSyntheticSecurity(shared_ptr<Security<Prec>> aSecurity)
     {
       auto aTimeSeries = aSecurity->getTimeSeries();
-      SyntheticTimeSeries<Prec> aTimeSeries2(*aTimeSeries);
+      SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries);
       aTimeSeries2.createSyntheticSeries();
 
       return aSecurity->clone (aTimeSeries2.getSyntheticTimeSeries());
@@ -220,6 +223,8 @@ using boost::accumulators::accumulator_set;
   template <int Prec> class OriginalMCPT : 
     public MonteCarloPermutationTest<Prec> 
   {
+    using Decimal = decimal<Prec>;
+
   public:
     OriginalMCPT (std::shared_ptr<BackTester<Prec>> backtester,
 		  uint32_t numPermutations)
@@ -356,6 +361,8 @@ using boost::accumulators::accumulator_set;
   template <int Prec> class MonteCarloPayoffRatio : 
     public MonteCarloPermutationTest<Prec> 
   {
+    using Decimal = decimal<Prec>;
+
   public:
     MonteCarloPayoffRatio (std::shared_ptr<BackTester<Prec>> backtester,
 			   uint32_t numPermutations)
@@ -511,7 +518,7 @@ using boost::accumulators::accumulator_set;
     shared_ptr<Security<Prec>> createSyntheticSecurity(shared_ptr<Security<Prec>> aSecurity)
     {
       auto aTimeSeries = aSecurity->getTimeSeries();
-      SyntheticTimeSeries<Prec> aTimeSeries2(*aTimeSeries);
+      SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries);
       aTimeSeries2.createSyntheticSeries();
       aTimeSeries2.getSyntheticTimeSeries()->syncronizeMapAndArray();
 

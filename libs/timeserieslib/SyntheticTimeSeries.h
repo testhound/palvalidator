@@ -19,10 +19,11 @@
 namespace mkc_timeseries
 {
 
-  template <int Prec>
+  template <class Decimal>
   class SyntheticTimeSeries
   {
-    using Decimal = decimal<Prec>;
+    //using Decimal = decimal<Prec>;
+    //using Decimal = BloombergLP::bdldfp::Decimal64;
 
   public:
     explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries) 
@@ -83,8 +84,8 @@ namespace mkc_timeseries
 	mSyntheticTimeSeries (rhs.mSyntheticTimeSeries)
       {}
 
-    SyntheticTimeSeries<Prec>& 
-    operator=(const SyntheticTimeSeries<Prec> &rhs)
+    SyntheticTimeSeries<Decimal>& 
+    operator=(const SyntheticTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -241,6 +242,6 @@ namespace mkc_timeseries
   typedef VectorDecimal<2> TimeSeriesPrec2;
   typedef VectorDecimal<5> TimeSeriesPrec5;
 
-  typedef SyntheticTimeSeries<2> SyntheticTimeSeriesPrec2;
+  //typedef SyntheticTimeSeries<2> SyntheticTimeSeriesPrec2;
 }
 #endif

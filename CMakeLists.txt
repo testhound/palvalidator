@@ -13,7 +13,22 @@ endif()
 
 find_package( Threads )
 find_package(Boost REQUIRED COMPONENTS filesystem date_time chrono  system program_options regex thread)
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/ ${CMAKE_SOURCE_DIR}/libs/timeserieslib)
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/
+  ${CMAKE_SOURCE_DIR}/libs/timeserieslib
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bdl/bdldfp
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bdl/bdlscm
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bsls
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bslscm
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bslmf
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bslstl
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bslalg
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bslma
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/groups/bsl/bsl+bslhdrs
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/thirdparty
+  ${CMAKE_SOURCE_DIR}/../bloomberg/bde/thirdparty/inteldfp/LIBRARY/src
+  )
+
 add_subdirectory(libs/PALCodeGenLibrary-v2/)
 add_subdirectory(libs/timeserieslib)
 
@@ -25,7 +40,11 @@ target_link_libraries(${BIN_NAME}
     backtest
     priceaction2
     ${Boost_LIBRARIES}
-    ${CMAKE_THREAD_LIBS_INIT})
+    ${CMAKE_THREAD_LIBS_INIT}
+    /home/peter/project/bloomberg/bde/build/groups/bsl/bsls/libbsls.a
+    /home/peter/project/bloomberg/bde/build/groups/bdl/bdlscm/libbdlscm.a
+    /home/peter/project/bloomberg/bde/build/groups/bsl/bslscm/libbslscm.a
+    )
 
 #add_executable(tryRandGen try_randgen.cpp)
 #SET_TARGET_PROPERTIES(tryRandGen PROPERTIES LINKER_LANGUAGE CXX)
