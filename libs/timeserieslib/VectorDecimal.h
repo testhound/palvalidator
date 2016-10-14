@@ -68,6 +68,10 @@ namespace mkc_timeseries
 	return mTimeSeries.at(index);
       }
 
+      void swap(size_t i, size_t j) {
+        std::swap(mTimeSeries[i], mTimeSeries[j]);
+      }
+
     private:
       vector<decimal<Prec>> mTimeSeries;
     };

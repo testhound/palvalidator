@@ -193,7 +193,6 @@ namespace mkc_timeseries
     {
       unsigned long i = mNumElements;
       unsigned long j;
-      decimal<Prec> temp;
 
       while (i > 1)
 	{
@@ -203,9 +202,7 @@ namespace mkc_timeseries
 	    j = i - 1;
 	  i = i - 1;
 	
-	  temp = mRelativeOpen.getElement(i);
-	  mRelativeOpen.setElementAtIndex(mRelativeOpen.getElement(j), i); 
-	  mRelativeOpen.setElementAtIndex(temp, j); 
+	  mRelativeOpen.swap(i,j);
 	}
     }
 
@@ -213,7 +210,6 @@ namespace mkc_timeseries
     {
       int i = mNumElements;
       int j;
-      decimal<Prec> temp;
 
       while (i > 1)
 	{
@@ -223,17 +219,9 @@ namespace mkc_timeseries
 	    j = i - 1;
 	  i = i - 1;
 
-	  temp = mRelativeHigh.getElement(i);
-	  mRelativeHigh.setElementAtIndex(mRelativeHigh.getElement(j), i); 
-	  mRelativeHigh.setElementAtIndex(temp, j);
-
-	  temp = mRelativeLow.getElement(i);
-	  mRelativeLow.setElementAtIndex( mRelativeLow.getElement(j), i); 
-	  mRelativeLow.setElementAtIndex(temp, j);
-
-	  temp = mRelativeClose.getElement(i);
-	  mRelativeClose.setElementAtIndex(mRelativeClose.getElement(j), i); 
-	  mRelativeClose.setElementAtIndex(temp, j);
+        mRelativeHigh.swap(i, j);
+        mRelativeLow.swap(i, j);
+        mRelativeClose.swap(i, j);
 	}
     }
 
