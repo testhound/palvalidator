@@ -20,20 +20,20 @@ namespace mkc_timeseries
   using dec::decimal;
   using boost::gregorian::date;
 
-  template <int Prec> class BacktesterStrategy
+  template <class Decimal> class BacktesterStrategy
     {
     public:
-      typedef typename Portfolio<Prec>::ConstPortfolioIterator PortfolioIterator;
+      typedef typename Portfolio<Decimal>::ConstPortfolioIterator PortfolioIterator;
 
-      BacktesterStrategy(const BacktesterStrategy<Prec>& rhs)
+      BacktesterStrategy(const BacktesterStrategy<Decimal>& rhs)
 	: mStrategyName(rhs.mStrategyName),
 	  mBroker(rhs.mBroker),
 	  mPortfolio(rhs.mPortfolio),
 	  mSecuritiesProperties(rhs.mSecuritiesProperties)
       {}
 
-      const BacktesterStrategy<Prec>&
-      operator=(const BacktesterStrategy<Prec>& rhs)
+      const BacktesterStrategy<Decimal>&
+      operator=(const BacktesterStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
 	  return *this;
@@ -54,25 +54,25 @@ namespace mkc_timeseries
       virtual ~BacktesterStrategy()
       {}
 
-      virtual void eventExitOrders (std::shared_ptr<Security<Prec>> aSecurity,
-				    const InstrumentPosition<Prec>& instrPos,
+      virtual void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+				    const InstrumentPosition<Decimal>& instrPos,
 				    const date& processingDate) = 0;
 
-      virtual void eventEntryOrders (std::shared_ptr<Security<Prec>> aSecurity,
-				     const InstrumentPosition<Prec>& instrPos,
+      virtual void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+				     const InstrumentPosition<Decimal>& instrPos,
 				     const date& processingDate) = 0;
 
-      virtual const TradingVolume& getSizeForOrder(const Security<Prec>& aSecurity) const = 0;
+      virtual const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const = 0;
 
-      virtual std::shared_ptr<BacktesterStrategy<Prec>> 
-      clone (std::shared_ptr<Portfolio<Prec>> portfolio) const = 0;
+      virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
+      clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const = 0;
 
-      virtual std::shared_ptr<BacktesterStrategy<Prec>> 
+      virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
       cloneForBackTesting () const = 0;
 
       virtual std::vector<int> getPositionDirectionVector() const = 0;
 
-      virtual std::vector<decimal<Prec>> getPositionReturnsVector() const = 0;
+      virtual std::vector<Decimal> getPositionReturnsVector() const = 0;
 
       virtual unsigned long numTradingOpportunities() const = 0;
 
@@ -124,15 +124,15 @@ namespace mkc_timeseries
 
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& limitPrice)
+				 const Decimal& limitPrice)
       {
 	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, limitPrice);
       }
 
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& limitBasePrice,
-				 const PercentNumber<Prec>& percentNum)
+				 const Decimal& limitBasePrice,
+				 const PercentNumber<Decimal>& percentNum)
       {
 	//std::cout << "BacktesterStrategy::ExitLongAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
 	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, 
@@ -141,15 +141,15 @@ namespace mkc_timeseries
 
       void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				  const date& orderDate,
-				  const decimal<Prec>& limitPrice)
+				  const Decimal& limitPrice)
       {
 	mBroker.ExitShortAllUnitsAtLimit (tradingSymbol, orderDate, limitPrice);
       }
 
       void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& limitBasePrice,
-				 const PercentNumber<Prec>& percentNum)
+				 const Decimal& limitBasePrice,
+				 const PercentNumber<Decimal>& percentNum)
       {
 	mBroker.ExitShortAllUnitsAtLimit (tradingSymbol, orderDate, 
 					 limitBasePrice, percentNum);
@@ -157,15 +157,15 @@ namespace mkc_timeseries
 
       void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
-				const decimal<Prec>& stopPrice)
+				const Decimal& stopPrice)
       {
 	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDate, stopPrice);
       }
 
       void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
-				const decimal<Prec>& stopBasePrice,
-				const PercentNumber<Prec>& percentNum)
+				const Decimal& stopBasePrice,
+				const PercentNumber<Decimal>& percentNum)
       {
 	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDate, 
 					 stopBasePrice, percentNum);
@@ -173,15 +173,15 @@ namespace mkc_timeseries
 
       void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& stopPrice)
+				 const Decimal& stopPrice)
       {
 	mBroker.ExitShortAllUnitsAtStop (tradingSymbol, orderDate, stopPrice);
       }
 
       void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& stopBasePrice,
-				 const PercentNumber<Prec>& percentNum)
+				 const Decimal& stopBasePrice,
+				 const PercentNumber<Decimal>& percentNum)
       {
 	mBroker.ExitShortAllUnitsAtStop (tradingSymbol, orderDate, 
 					 stopBasePrice, percentNum);
@@ -203,20 +203,20 @@ namespace mkc_timeseries
       }
 
       void setRMultipleStop (const std::string& tradingSymbol, 
-			     const dec::decimal<Prec>& riskStop)
+			     const Decimal& riskStop)
       {
 	this->setRMultipleStop (tradingSymbol, riskStop, 1);
 
       }
       void setRMultipleStop (const std::string& tradingSymbol, 
-			     const dec::decimal<Prec>& riskStop, 
+			     const Decimal& riskStop, 
 			     uint32_t unitNumber)
       {
-	InstrumentPosition<Prec> instrPos = getInstrumentPosition(tradingSymbol);
+	InstrumentPosition<Decimal> instrPos = getInstrumentPosition(tradingSymbol);
 	instrPos.setRMultipleStop (riskStop, unitNumber);
       }
 
-      const InstrumentPosition<Prec>& 
+      const InstrumentPosition<Decimal>& 
       getInstrumentPosition(const std::string& tradingSymbol) const
       {
 	return mBroker.getInstrumentPosition(tradingSymbol);
@@ -224,34 +224,34 @@ namespace mkc_timeseries
       
       // Checks to see if a security has trading data for a particular day.
 
-      bool doesSecurityHaveTradingData (const Security<Prec>& aSecurity,
+      bool doesSecurityHaveTradingData (const Security<Decimal>& aSecurity,
 					const date& processingDate)
       {
-	typename Security<Prec>::ConstRandomAccessIterator it = 
+	typename Security<Decimal>::ConstRandomAccessIterator it = 
 	  aSecurity.findTimeSeriesEntry (processingDate);
 
 	return (it != aSecurity.getRandomAccessIteratorEnd());
       }
 
-      const StrategyBroker<Prec>& getStrategyBroker() const
+      const StrategyBroker<Decimal>& getStrategyBroker() const
       {
 	return mBroker;
       }
 
-      std::shared_ptr<Portfolio<Prec>> getPortfolio() const
+      std::shared_ptr<Portfolio<Decimal>> getPortfolio() const
       {
 	return mPortfolio;
       }
 
     protected:
       BacktesterStrategy (const std::string& strategyName,
-			  std::shared_ptr<Portfolio<Prec>> portfolio) 
+			  std::shared_ptr<Portfolio<Decimal>> portfolio) 
 	: mStrategyName(strategyName),
 	  mBroker (portfolio),
 	  mPortfolio (portfolio),
 	  mSecuritiesProperties()
 	{
-	  typename Portfolio<Prec>::ConstPortfolioIterator it =
+	  typename Portfolio<Decimal>::ConstPortfolioIterator it =
 	    mPortfolio->beginPortfolio();
 
 	  for (; it != mPortfolio->endPortfolio(); it++)
@@ -262,8 +262,8 @@ namespace mkc_timeseries
 
     private:
       std::string mStrategyName;
-      StrategyBroker<Prec> mBroker;
-      std::shared_ptr<Portfolio<Prec>> mPortfolio;
+      StrategyBroker<Decimal> mBroker;
+      std::shared_ptr<Portfolio<Decimal>> mPortfolio;
       SecurityBacktestPropertiesManager mSecuritiesProperties;
     };
 

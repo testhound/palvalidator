@@ -15,11 +15,9 @@ namespace mkc_timeseries
 {
   using namespace dec;
 
-  template <int Prec>
+  template <class Decimal>
   class TimeSeriesCsvReader
   {
-    using Decimal = decimal<Prec>;
-
   public:
     TimeSeriesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			 TradingVolume::VolumeUnit unitsOfVolume) 
@@ -72,8 +70,8 @@ namespace mkc_timeseries
 
   protected:
     bool checkForErrors (boost::gregorian::date entryDate,
-			 const decimal<Prec>& openPrice, const decimal<Prec>& highPrice, 
-			 const decimal<Prec>& lowPrice, const decimal<Prec>& closePrice)
+			 const Decimal& openPrice, const Decimal& highPrice, 
+			 const Decimal& lowPrice, const Decimal& closePrice)
     {
       bool errorFound = false;
 
@@ -117,20 +115,18 @@ namespace mkc_timeseries
 
   // Reader for Price Action Lab CSV Formatted Files
 
-  template <int Prec>
-  class PALFormatCsvReader : public TimeSeriesCsvReader<Prec>
+  template <class Decimal>
+  class PALFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     PALFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Prec> (fileName, timeFrame, unitsOfVolume),
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
       mCsvFile (fileName.c_str())
     {}
 
      PALFormatCsvReader(const PALFormatCsvReader& rhs)
-       : TimeSeriesCsvReader<Prec>(rhs),
+       : TimeSeriesCsvReader<Decimal>(rhs),
 	mCsvFile(rhs.mCsvFile)
     {}
 
@@ -140,7 +136,7 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      TimeSeriesCsvReader<Prec>::operator=(rhs);
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
 
       return *this;
@@ -156,19 +152,19 @@ namespace mkc_timeseries
       std::string dateStamp;
       std::string openString, highString, lowString, closeString;
 
-      decimal<Prec> openPrice, highPrice, lowPrice, closePrice;
+      Decimal openPrice, highPrice, lowPrice, closePrice;
       boost::gregorian::date entryDate;
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString))
 	{
-	  openPrice = fromString<decimal<Prec>>(openString.c_str());
-	  highPrice = fromString<decimal<Prec>>(highString.c_str());
-	  lowPrice = fromString<decimal<Prec>>(lowString.c_str());
-	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
+	  openPrice = fromString<Decimal>(openString.c_str());
+	  highPrice = fromString<Decimal>(highString.c_str());
+	  lowPrice = fromString<Decimal>(lowString.c_str());
+	  closePrice = fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 
-	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 								      highPrice, lowPrice, 
-								      closePrice, 0, TimeSeriesCsvReader<Prec>::getTimeFrame()));
+								      closePrice, 0, TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
   private:
@@ -183,20 +179,18 @@ namespace mkc_timeseries
   // Date, Open, High, Low, Close, Volume, Open Interest, Rollover date, Unadjusted Close
   //
 
-  template <int Prec>
-  class CSIExtendedFuturesCsvReader : public TimeSeriesCsvReader<Prec>
+  template <class Decimal>
+  class CSIExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     CSIExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Prec> (fileName, timeFrame, unitsOfVolume),
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
       mCsvFile (fileName.c_str())
     {}
 
      CSIExtendedFuturesCsvReader(const CSIExtendedFuturesCsvReader& rhs)
-       : TimeSeriesCsvReader<Prec>(rhs),
+       : TimeSeriesCsvReader<Decimal>(rhs),
 	mCsvFile(rhs.mCsvFile)
     {}
 
@@ -206,7 +200,7 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      TimeSeriesCsvReader<Prec>::operator=(rhs);
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
 
       return *this;
@@ -223,7 +217,7 @@ namespace mkc_timeseries
       std::string openString, highString, lowString, closeString, volString, OIString;
       std::string rollDateString, unadjustedCloseString;
 
-      decimal<Prec> openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
+      Decimal openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
       volume_t volume;
 
 
@@ -231,16 +225,16 @@ namespace mkc_timeseries
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
 			       volString, OIString, rollDateString, unadjustedCloseString))
 	{
-	  openPrice = fromString<decimal<Prec>>(openString.c_str());
-	  highPrice = fromString<decimal<Prec>>(highString.c_str());
-	  lowPrice = fromString<decimal<Prec>>(lowString.c_str());
-	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
+	  openPrice = fromString<Decimal>(openString.c_str());
+	  highPrice = fromString<Decimal>(highString.c_str());
+	  lowPrice = fromString<Decimal>(lowString.c_str());
+	  closePrice = fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = std::stol (volString);
-	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									  highPrice, lowPrice, 
 									  closePrice, volume, 
-									  TimeSeriesCsvReader<Prec>::getTimeFrame()));
+									  TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
   private:
@@ -257,20 +251,18 @@ namespace mkc_timeseries
   // Date, Open, High, Low, Close, Volume, Open Interest, Rollover date, Unadjusted Close
   //
 
-  template <int Prec>
-  class CSIErrorCheckingExtendedFuturesCsvReader : public TimeSeriesCsvReader<Prec>
+  template <class Decimal>
+  class CSIErrorCheckingExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     CSIErrorCheckingExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Prec> (fileName, timeFrame, unitsOfVolume),
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
       mCsvFile (fileName.c_str())
     {}
 
      CSIErrorCheckingExtendedFuturesCsvReader(const CSIErrorCheckingExtendedFuturesCsvReader& rhs)
-       : TimeSeriesCsvReader<Prec>(rhs),
+       : TimeSeriesCsvReader<Decimal>(rhs),
 	mCsvFile(rhs.mCsvFile)
     {}
 
@@ -280,7 +272,7 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      TimeSeriesCsvReader<Prec>::operator=(rhs);
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
 
       return *this;
@@ -297,7 +289,7 @@ namespace mkc_timeseries
       std::string openString, highString, lowString, closeString, volString, OIString;
       std::string rollDateString, unadjustedCloseString;
 
-      decimal<Prec> openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
+      Decimal openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
       volume_t volume, openInterest;
 
       bool errorResult = false;
@@ -306,21 +298,21 @@ namespace mkc_timeseries
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
 			       volString, OIString, rollDateString, unadjustedCloseString))
 	{
-	  openPrice = fromString<decimal<Prec>>(openString.c_str());
-	  highPrice = fromString<decimal<Prec>>(highString.c_str());
-	  lowPrice = fromString<decimal<Prec>>(lowString.c_str());
-	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
+	  openPrice = fromString<Decimal>(openString.c_str());
+	  highPrice = fromString<Decimal>(highString.c_str());
+	  lowPrice = fromString<Decimal>(lowString.c_str());
+	  closePrice = fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = std::stol (volString);
 
-	  errorResult = TimeSeriesCsvReader<Prec>::checkForErrors (entryDate, openPrice, 
+	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
 								   highPrice, lowPrice, 
 								   closePrice);
 	  if (errorResult == false)
-	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, volume, 
-									    TimeSeriesCsvReader<Prec>::getTimeFrame()));
+									    TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
   private:
@@ -332,21 +324,19 @@ namespace mkc_timeseries
   //
 
 
-  template <int Prec>
-  class TradeStationFormatCsvReader : public TimeSeriesCsvReader<Prec>
+  template <class Decimal>
+  class TradeStationFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     TradeStationFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 				 TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Prec> (fileName, timeFrame, unitsOfVolume),
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}
 
      TradeStationFormatCsvReader(const TradeStationFormatCsvReader& rhs)
-       : TimeSeriesCsvReader<Prec>(rhs),
+       : TimeSeriesCsvReader<Decimal>(rhs),
 	 mCsvFile(rhs.mCsvFile),
 	 mDateParser(rhs.mDateParser)
     {}
@@ -357,7 +347,7 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      TimeSeriesCsvReader<Prec>::operator=(rhs);
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
       mDateParser = rhs.mDateParser;
       return *this;
@@ -375,8 +365,8 @@ namespace mkc_timeseries
       std::string openString, highString, lowString, closeString;
       std::string volumeString, openInterestString;
       
-      decimal<Prec> openPrice, highPrice, lowPrice, closePrice;
-      decimal<Prec> volume, openInterest;
+      Decimal openPrice, highPrice, lowPrice, closePrice;
+      Decimal volume, openInterest;
       boost::gregorian::date entryDate;
 
       std::string dateFormat("%m/%d/%YYYY");
@@ -387,17 +377,17 @@ namespace mkc_timeseries
 			       lowString, closeString,
 			       volumeString, openInterestString))
 	{
-	  openPrice = fromString<decimal<Prec>>(openString.c_str());
-	  highPrice = fromString<decimal<Prec>>(highString.c_str());
-	  lowPrice = fromString<decimal<Prec>>(lowString.c_str());
-	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
+	  openPrice = fromString<Decimal>(openString.c_str());
+	  highPrice = fromString<Decimal>(highString.c_str());
+	  lowPrice = fromString<Decimal>(lowString.c_str());
+	  closePrice = fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
-	  TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 								      highPrice, lowPrice, 
 								      closePrice, 
 								      0, 
-								      TimeSeriesCsvReader<Prec>::getTimeFrame()));
+								      TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
 
@@ -408,21 +398,19 @@ namespace mkc_timeseries
 
   ///////
 
-  template <int Prec>
-  class TradeStationErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Prec>
+  template <class Decimal>
+  class TradeStationErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     TradeStationErrorCheckingFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 					      TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Prec> (fileName, timeFrame, unitsOfVolume),
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}
 
      TradeStationErrorCheckingFormatCsvReader(const TradeStationErrorCheckingFormatCsvReader& rhs)
-       : TimeSeriesCsvReader<Prec>(rhs),
+       : TimeSeriesCsvReader<Decimal>(rhs),
 	 mCsvFile(rhs.mCsvFile),
 	 mDateParser(rhs.mDateParser)
     {}
@@ -433,7 +421,7 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      TimeSeriesCsvReader<Prec>::operator=(rhs);
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
       mDateParser = rhs.mDateParser;
       return *this;
@@ -451,8 +439,8 @@ namespace mkc_timeseries
       std::string openString, highString, lowString, closeString;
       std::string volumeString, openInterestString;
       
-      decimal<Prec> openPrice, highPrice, lowPrice, closePrice;
-      decimal<Prec> volume, openInterest;
+      Decimal openPrice, highPrice, lowPrice, closePrice;
+      Decimal volume, openInterest;
       boost::gregorian::date entryDate;
 
       std::string dateFormat("%m/%d/%YYYY");
@@ -465,22 +453,22 @@ namespace mkc_timeseries
 			       lowString, closeString,
 			       volumeString, openInterestString))
 	{
-	  openPrice = fromString<decimal<Prec>>(openString.c_str());
-	  highPrice = fromString<decimal<Prec>>(highString.c_str());
-	  lowPrice = fromString<decimal<Prec>>(lowString.c_str());
-	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
+	  openPrice = fromString<Decimal>(openString.c_str());
+	  highPrice = fromString<Decimal>(highString.c_str());
+	  lowPrice = fromString<Decimal>(lowString.c_str());
+	  closePrice = fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
-	  errorResult = TimeSeriesCsvReader<Prec>::checkForErrors (entryDate, openPrice, 
+	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
 								   highPrice, lowPrice, 
 								   closePrice);
 
 	  if (errorResult == false)
-	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, 
 									    0, 
-									    TimeSeriesCsvReader<Prec>::getTimeFrame()));
+									    TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
 
@@ -494,21 +482,19 @@ namespace mkc_timeseries
 
 ///////
 
-  template <int Prec>
-  class PinnacleErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Prec>
+  template <class Decimal>
+  class PinnacleErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     PinnacleErrorCheckingFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 					      TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Prec> (fileName, timeFrame, unitsOfVolume),
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}
 
      PinnacleErrorCheckingFormatCsvReader(const PinnacleErrorCheckingFormatCsvReader& rhs)
-       : TimeSeriesCsvReader<Prec>(rhs),
+       : TimeSeriesCsvReader<Decimal>(rhs),
 	 mCsvFile(rhs.mCsvFile),
 	 mDateParser(rhs.mDateParser)
     {}
@@ -519,7 +505,7 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      TimeSeriesCsvReader<Prec>::operator=(rhs);
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
       mDateParser = rhs.mDateParser;
       return *this;
@@ -536,8 +522,8 @@ namespace mkc_timeseries
       std::string openString, highString, lowString, closeString;
       std::string volumeString, openInterestString;
       
-      decimal<Prec> openPrice, highPrice, lowPrice, closePrice;
-      decimal<Prec> volume, openInterest;
+      Decimal openPrice, highPrice, lowPrice, closePrice;
+      Decimal volume, openInterest;
       boost::gregorian::date entryDate;
 
       std::string dateFormat("%m/%d/%YYYY");
@@ -550,22 +536,22 @@ namespace mkc_timeseries
 			       lowString, closeString,
 			       volumeString, openInterestString))
 	{
-	  openPrice = fromString<decimal<Prec>>(openString.c_str());
-	  highPrice = fromString<decimal<Prec>>(highString.c_str());
-	  lowPrice = fromString<decimal<Prec>>(lowString.c_str());
-	  closePrice = fromString<decimal<Prec>>(closeString.c_str());
+	  openPrice = fromString<Decimal>(openString.c_str());
+	  highPrice = fromString<Decimal>(highString.c_str());
+	  lowPrice = fromString<Decimal>(lowString.c_str());
+	  closePrice = fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
-	  errorResult = TimeSeriesCsvReader<Prec>::checkForErrors (entryDate, openPrice, 
+	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
 								   highPrice, lowPrice, 
 								   closePrice);
 
 	  if (errorResult == false)
-	    TimeSeriesCsvReader<Prec>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, 
 									    0, 
-									    TimeSeriesCsvReader<Prec>::getTimeFrame()));
+									    TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
 

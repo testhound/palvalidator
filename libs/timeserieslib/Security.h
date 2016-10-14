@@ -29,16 +29,14 @@ namespace mkc_timeseries
 
   };
 
-  template <int Prec>
+  template <class Decimal>
   class Security
     {
-      using Decimal = decimal<Prec>;
-
     public:
       typedef typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator ConstRandomAccessIterator;
 
       Security (const string& securitySymbol, const string& securityName,
-		const decimal<Prec>& bigPointValue, const decimal<Prec>& securityTick,
+		const Decimal& bigPointValue, const Decimal& securityTick,
 		std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) :
 	mSecuritySymbol(securitySymbol),
 	mSecurityName(securityName),
@@ -48,7 +46,7 @@ namespace mkc_timeseries
 	mFirstDate(securityTimeSeries->getFirstDate())
       {}
       
-      Security (const Security<Prec> &rhs)
+      Security (const Security<Decimal> &rhs)
 	: mSecuritySymbol(rhs.mSecuritySymbol),
 	  mSecurityName(rhs.mSecurityName),
 	  mBigPointValue(rhs.mBigPointValue),
@@ -57,8 +55,8 @@ namespace mkc_timeseries
 	  mFirstDate(rhs.mFirstDate)
       {}
 
-      Security<Prec>& 
-      operator=(const Security<Prec> &rhs)
+      Security<Decimal>& 
+      operator=(const Security<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
@@ -115,26 +113,26 @@ namespace mkc_timeseries
 	return mSecurityTimeSeries->getDateValue(it, offset); 
       }
 
-     const decimal<Prec>& getOpenValue (const ConstRandomAccessIterator& it, 
+     const Decimal& getOpenValue (const ConstRandomAccessIterator& it, 
 					unsigned long offset) const
       {
 	return mSecurityTimeSeries->getOpenValue(it, offset); 
       }
 
 
-      const decimal<Prec>& getHighValue (const ConstRandomAccessIterator& it, 
+      const Decimal& getHighValue (const ConstRandomAccessIterator& it, 
 					 unsigned long offset) const
       {
 	return mSecurityTimeSeries->getHighValue(it, offset); 
       }
 
-      const decimal<Prec>& getLowValue (const ConstRandomAccessIterator& it, 
+      const Decimal& getLowValue (const ConstRandomAccessIterator& it, 
 					unsigned long offset) const
       {
 	return mSecurityTimeSeries->getLowValue(it, offset); 
       }
 
-      const decimal<Prec>& getCloseValue (const ConstRandomAccessIterator& it, 
+      const Decimal& getCloseValue (const ConstRandomAccessIterator& it, 
 					  unsigned long offset) const
       {
 	return mSecurityTimeSeries->getCloseValue(it, offset); 
@@ -150,12 +148,12 @@ namespace mkc_timeseries
 	return mSecuritySymbol;
       }
 
-      const decimal<Prec>& getBigPointValue() const
+      const Decimal& getBigPointValue() const
       {
 	return mBigPointValue;
       }
 
-      const decimal<Prec>& getTick() const
+      const Decimal& getTick() const
       {
 	return mTick;
       }
@@ -175,52 +173,50 @@ namespace mkc_timeseries
 	return mSecurityTimeSeries;
       }
 
-      virtual std::shared_ptr<Security<Prec>> 
+      virtual std::shared_ptr<Security<Decimal>> 
       clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const = 0;
 
     private:
       std::string mSecuritySymbol;
       std::string mSecurityName;
-      decimal<Prec> mBigPointValue;
-      decimal<Prec> mTick;
+      Decimal mBigPointValue;
+      Decimal mTick;
       std::shared_ptr<OHLCTimeSeries<Decimal>> mSecurityTimeSeries;
       boost::gregorian::date mFirstDate;
   };
 
-  template <int Prec>
-  class EquitySecurity : public Security<Prec>
+  template <class Decimal>
+  class EquitySecurity : public Security<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     EquitySecurity (const string& securitySymbol, const string& securityName,
 		    std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) 
-      : Security<Prec> (securitySymbol, securityName, DecimalConstants<Prec>::DecimalOne,
-			DecimalConstants<Prec>::EquityTick, securityTimeSeries)
+      : Security<Decimal> (securitySymbol, securityName, DecimalConstants<Decimal>::DecimalOne,
+			DecimalConstants<Decimal>::EquityTick, securityTimeSeries)
     {
     }
 
-    std::shared_ptr<Security<Prec>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
+    std::shared_ptr<Security<Decimal>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
     {
-      return std::make_shared<EquitySecurity<Prec>>(this->getSymbol(),
+      return std::make_shared<EquitySecurity<Decimal>>(this->getSymbol(),
 						    this->getName(),
 						    securityTimeSeries);
     }
 
-    EquitySecurity (const EquitySecurity<Prec> &rhs)
-      : Security<Prec>(rhs)
+    EquitySecurity (const EquitySecurity<Decimal> &rhs)
+      : Security<Decimal>(rhs)
     {}
 
     ~EquitySecurity()
     {}
 
-    EquitySecurity<Prec>& 
-    operator=(const EquitySecurity<Prec> &rhs)
+    EquitySecurity<Decimal>& 
+    operator=(const EquitySecurity<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      Security<Prec>::operator=(rhs);
+      Security<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -236,42 +232,40 @@ namespace mkc_timeseries
   };
 
 
-  template <int Prec>
-  class FuturesSecurity : public Security<Prec>
+  template <class Decimal>
+  class FuturesSecurity : public Security<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     FuturesSecurity (const string& securitySymbol, const string& securityName,
-		     const decimal<Prec>& bigPointValue, const decimal<Prec>& securityTick,
+		     const Decimal& bigPointValue, const Decimal& securityTick,
 		     std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries)
-      : Security<Prec> (securitySymbol, securityName, bigPointValue, securityTick,
+      : Security<Decimal> (securitySymbol, securityName, bigPointValue, securityTick,
 		  securityTimeSeries)
     {}
 
-    std::shared_ptr<Security<Prec>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
+    std::shared_ptr<Security<Decimal>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
     {
-      return std::make_shared<FuturesSecurity<Prec>>(this->getSymbol(),
+      return std::make_shared<FuturesSecurity<Decimal>>(this->getSymbol(),
 						     this->getName(),
 						     this->getBigPointValue(),
 						     this->getTick(),
 						     securityTimeSeries);
     }
 
-    FuturesSecurity (const FuturesSecurity<Prec> &rhs)
-      : Security<Prec>(rhs)
+    FuturesSecurity (const FuturesSecurity<Decimal> &rhs)
+      : Security<Decimal>(rhs)
     {}
 
     ~FuturesSecurity()
     {}
 
-    FuturesSecurity<Prec>& 
-    operator=(const FuturesSecurity<Prec> &rhs)
+    FuturesSecurity<Decimal>& 
+    operator=(const FuturesSecurity<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      Security<Prec>::operator=(rhs);
+      Security<Decimal>::operator=(rhs);
       return *this;
     }
 

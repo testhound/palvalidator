@@ -23,10 +23,8 @@ using std::shared_ptr;
 
 namespace mkc_timeseries
 {
-  template <int Prec> class ProcessOrderVisitor : public TradingOrderVisitor<Prec>
+  template <class Decimal> class ProcessOrderVisitor : public TradingOrderVisitor<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     ProcessOrderVisitor(OHLCTimeSeriesEntry<Decimal> tradingBar)
       : mTradingBar (tradingBar)
@@ -35,12 +33,12 @@ namespace mkc_timeseries
     ~ProcessOrderVisitor()
     {}
 
-    ProcessOrderVisitor (const ProcessOrderVisitor<Prec>& rhs)
+    ProcessOrderVisitor (const ProcessOrderVisitor<Decimal>& rhs)
       : mTradingBar(rhs.mTradingBar)
     {}
 
-    ProcessOrderVisitor<Prec>& 
-    operator=(const ProcessOrderVisitor<Prec> &rhs)
+    ProcessOrderVisitor<Decimal>& 
+    operator=(const ProcessOrderVisitor<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -49,7 +47,7 @@ namespace mkc_timeseries
       return *this;
     }
 
-    void visit (MarketOnOpenLongOrder<Prec> *order)
+    void visit (MarketOnOpenLongOrder<Decimal> *order)
     {
       ValidateOrder (order);
       // Market orders are unconditional
@@ -57,7 +55,7 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
-    void visit (MarketOnOpenSellOrder<Prec> *order)
+    void visit (MarketOnOpenSellOrder<Decimal> *order)
     {
       ValidateOrder (order);
       // Market orders are unconditional
@@ -65,7 +63,7 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
-    void visit (MarketOnOpenCoverOrder<Prec> *order)
+    void visit (MarketOnOpenCoverOrder<Decimal> *order)
     {
       ValidateOrder (order);
       // Market orders are unconditional
@@ -73,7 +71,7 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
-    void visit (MarketOnOpenShortOrder<Prec> *order)
+    void visit (MarketOnOpenShortOrder<Decimal> *order)
     {
       ValidateOrder (order);
 
@@ -81,7 +79,7 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
-    void visit (SellAtLimitOrder<Prec> *order)
+    void visit (SellAtLimitOrder<Decimal> *order)
     {
       ValidateOrder (order);
       if (mTradingBar.getHighValue() > order->getLimitPrice())
@@ -94,7 +92,7 @@ namespace mkc_timeseries
 	}
     }
 
-    void visit (CoverAtLimitOrder<Prec> *order)
+    void visit (CoverAtLimitOrder<Decimal> *order)
     {
       ValidateOrder (order);
       if (order->getOrderDate() == boost::gregorian::date(1987, May, 22))
@@ -111,7 +109,7 @@ namespace mkc_timeseries
 	}
     }
 
-    void visit (CoverAtStopOrder<Prec> *order)
+    void visit (CoverAtStopOrder<Decimal> *order)
     {
       ValidateOrder (order);
       if (mTradingBar.getHighValue() > order->getStopPrice())
@@ -124,7 +122,7 @@ namespace mkc_timeseries
 	}
     }
 
-    void visit (SellAtStopOrder<Prec> *order)
+    void visit (SellAtStopOrder<Decimal> *order)
     {
       ValidateOrder (order);
       if (mTradingBar.getLowValue() < order->getStopPrice())
@@ -143,7 +141,7 @@ namespace mkc_timeseries
     }
 
   private:
-    void ValidateOrder (TradingOrder<Prec>* order)
+    void ValidateOrder (TradingOrder<Decimal>* order)
     {
       if (mTradingBar.getDateValue() <= order->getOrderDate())
 	throw TradingOrderException ("Bar date " +to_simple_string (mTradingBar.getDateValue()) +" must be greater than order date " +to_simple_string (order->getOrderDate()));
@@ -164,26 +162,26 @@ namespace mkc_timeseries
   };
 
  
- template <int Prec> class TradingOrderManager
+ template <class Decimal> class TradingOrderManager
   {
   public:
-    typedef typename vector<shared_ptr<MarketOnOpenSellOrder<Prec>>>::const_iterator MarketSellOrderIterator;
-    typedef typename vector<shared_ptr<MarketOnOpenCoverOrder<Prec>>>::const_iterator MarketCoverOrderIterator;
-    typedef typename vector<shared_ptr<MarketOnOpenLongOrder<Prec>>>::const_iterator MarketLongOrderIterator;
-    typedef typename vector<shared_ptr<MarketOnOpenShortOrder<Prec>>>::const_iterator MarketShortOrderIterator;
+    typedef typename vector<shared_ptr<MarketOnOpenSellOrder<Decimal>>>::const_iterator MarketSellOrderIterator;
+    typedef typename vector<shared_ptr<MarketOnOpenCoverOrder<Decimal>>>::const_iterator MarketCoverOrderIterator;
+    typedef typename vector<shared_ptr<MarketOnOpenLongOrder<Decimal>>>::const_iterator MarketLongOrderIterator;
+    typedef typename vector<shared_ptr<MarketOnOpenShortOrder<Decimal>>>::const_iterator MarketShortOrderIterator;
 
-    typedef typename vector<shared_ptr<SellAtLimitOrder<Prec>>>::const_iterator LimitSellOrderIterator;
-    typedef typename vector<shared_ptr<CoverAtLimitOrder<Prec>>>::const_iterator LimitCoverOrderIterator;
+    typedef typename vector<shared_ptr<SellAtLimitOrder<Decimal>>>::const_iterator LimitSellOrderIterator;
+    typedef typename vector<shared_ptr<CoverAtLimitOrder<Decimal>>>::const_iterator LimitCoverOrderIterator;
 
-    typedef typename vector<shared_ptr<SellAtStopOrder<Prec>>>::const_iterator StopSellOrderIterator;
-    typedef typename vector<shared_ptr<CoverAtStopOrder<Prec>>>::const_iterator StopCoverOrderIterator;
+    typedef typename vector<shared_ptr<SellAtStopOrder<Decimal>>>::const_iterator StopSellOrderIterator;
+    typedef typename vector<shared_ptr<CoverAtStopOrder<Decimal>>>::const_iterator StopCoverOrderIterator;
 
    
-     typedef typename std::list<std::reference_wrapper<TradingOrderObserver<Prec>>>::const_iterator ConstObserverIterator;
-    typedef typename  std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Prec>>>::const_iterator PendingOrderIterator;
+     typedef typename std::list<std::reference_wrapper<TradingOrderObserver<Decimal>>>::const_iterator ConstObserverIterator;
+    typedef typename  std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Decimal>>>::const_iterator PendingOrderIterator;
 
   public:
-    explicit TradingOrderManager(std::shared_ptr<Portfolio<Prec>> portfolio)
+    explicit TradingOrderManager(std::shared_ptr<Portfolio<Decimal>> portfolio)
       : mPortfolio(portfolio),
 	mMarketSellOrders(),
 	mMarketCoverOrders(),
@@ -198,7 +196,7 @@ namespace mkc_timeseries
 	mPendingOrdersUpToDate(false)
       {}
 
-    TradingOrderManager (const TradingOrderManager<Prec>& rhs)
+    TradingOrderManager (const TradingOrderManager<Decimal>& rhs)
       :  mPortfolio(rhs.mPortfolio),
 	 mMarketSellOrders(rhs.mMarketSellOrders),
 	 mMarketCoverOrders(rhs.mMarketCoverOrders),
@@ -216,8 +214,8 @@ namespace mkc_timeseries
     ~TradingOrderManager()
       {}
 
-    TradingOrderManager<Prec>& 
-    operator=(const TradingOrderManager<Prec> &rhs)
+    TradingOrderManager<Decimal>& 
+    operator=(const TradingOrderManager<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -239,7 +237,7 @@ namespace mkc_timeseries
     }
 
     // Pending order with no position
-    void addTradingOrder (std::shared_ptr<MarketOnOpenCoverOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<MarketOnOpenCoverOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
@@ -247,49 +245,49 @@ namespace mkc_timeseries
     }
 
     // Pending order with no position
-    void addTradingOrder (std::shared_ptr<MarketOnOpenSellOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<MarketOnOpenSellOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
       mMarketSellOrders.push_back (order);
     }
 
-    void addTradingOrder (std::shared_ptr<MarketOnOpenLongOrder<Prec>>& order)
+    void addTradingOrder (std::shared_ptr<MarketOnOpenLongOrder<Decimal>>& order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
       mMarketLongOrders.push_back (order);
     }
 
-    void addTradingOrder (std::shared_ptr<MarketOnOpenShortOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<MarketOnOpenShortOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
       mMarketShortOrders.push_back (order);
     }
 
-    void addTradingOrder (std::shared_ptr<SellAtLimitOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<SellAtLimitOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
       mLimitSellOrders.push_back (order);
     }
 
-    void addTradingOrder (std::shared_ptr<CoverAtLimitOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<CoverAtLimitOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
       mLimitCoverOrders.push_back (order);
     }
 
-    void addTradingOrder (std::shared_ptr<SellAtStopOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<SellAtStopOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
       mStopSellOrders.push_back (order);
     }
 
-    void addTradingOrder (std::shared_ptr<CoverAtStopOrder<Prec>> order)
+    void addTradingOrder (std::shared_ptr<CoverAtStopOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
       mPendingOrdersUpToDate = false;
@@ -421,13 +419,13 @@ namespace mkc_timeseries
       return mStopSellOrders.size() + mStopCoverOrders.size();
     }
 
-    void addObserver (std::reference_wrapper<TradingOrderObserver<Prec>> observer)
+    void addObserver (std::reference_wrapper<TradingOrderObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
 
     void processPendingOrders (const boost::gregorian::date& processingDate,
-			       const InstrumentPositionManager<Prec>& positions)
+			       const InstrumentPositionManager<Decimal>& positions)
     {
       ProcessPendingMarketExitOrders(processingDate, positions);
       ProcessPendingMarketEntryOrders(processingDate, positions);
@@ -446,15 +444,15 @@ namespace mkc_timeseries
     template <typename T>
     void ProcessingPendingOrders(const boost::gregorian::date& processingDate, 
 				 std::vector<std::shared_ptr<T>>& vectorContainer,
-				 const InstrumentPositionManager<Prec>& positions)
+				 const InstrumentPositionManager<Decimal>& positions)
     {
       typedef typename std::shared_ptr<T> OrderPtr;
 
       typename std::vector<std::shared_ptr<T>>::const_iterator it = vectorContainer.begin();
       OrderPtr order;
-      typename Portfolio<Prec>::ConstPortfolioIterator symbolIt;
-      std::shared_ptr<Security<Prec>> aSecurity;
-      typename Security<Prec>::ConstRandomAccessIterator timeSeriesEntryIt;
+      typename Portfolio<Decimal>::ConstPortfolioIterator symbolIt;
+      std::shared_ptr<Security<Decimal>> aSecurity;
+      typename Security<Decimal>::ConstRandomAccessIterator timeSeriesEntryIt;
 
       for (; it != vectorContainer.end();)
 	{
@@ -483,7 +481,7 @@ namespace mkc_timeseries
 			}
 		      else
 			{
-			  ProcessOrderVisitor<Prec> orderProcessor (*timeSeriesEntryIt);
+			  ProcessOrderVisitor<Decimal> orderProcessor (*timeSeriesEntryIt);
 			  orderProcessor.visit (order.get());
 
 			  if (order->isOrderExecuted())
@@ -514,38 +512,38 @@ namespace mkc_timeseries
     }
 
     void ProcessPendingMarketExitOrders(const boost::gregorian::date& processingDate,
-					const InstrumentPositionManager<Prec>& positions)
+					const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<MarketOnOpenSellOrder<Prec>> (processingDate, mMarketSellOrders, 
+      this->ProcessingPendingOrders<MarketOnOpenSellOrder<Decimal>> (processingDate, mMarketSellOrders, 
 								  positions);
-      this->ProcessingPendingOrders<MarketOnOpenCoverOrder<Prec>> (processingDate, mMarketCoverOrders, 
+      this->ProcessingPendingOrders<MarketOnOpenCoverOrder<Decimal>> (processingDate, mMarketCoverOrders, 
 								   positions);
     }
 
     void ProcessPendingMarketEntryOrders(const boost::gregorian::date& processingDate,
-					 const InstrumentPositionManager<Prec>& positions)
+					 const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<MarketOnOpenLongOrder<Prec>> (processingDate, mMarketLongOrders,
+      this->ProcessingPendingOrders<MarketOnOpenLongOrder<Decimal>> (processingDate, mMarketLongOrders,
 								  positions);
-      this->ProcessingPendingOrders<MarketOnOpenShortOrder<Prec>> (processingDate, mMarketShortOrders,
+      this->ProcessingPendingOrders<MarketOnOpenShortOrder<Decimal>> (processingDate, mMarketShortOrders,
 								   positions);
     }
 
     void ProcessPendingStopExitOrders(const boost::gregorian::date& processingDate,
-				      const InstrumentPositionManager<Prec>& positions)
+				      const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<SellAtStopOrder<Prec>> (processingDate, mStopSellOrders,
+      this->ProcessingPendingOrders<SellAtStopOrder<Decimal>> (processingDate, mStopSellOrders,
 							    positions);
-      this->ProcessingPendingOrders<CoverAtStopOrder<Prec>> (processingDate, mStopCoverOrders,
+      this->ProcessingPendingOrders<CoverAtStopOrder<Decimal>> (processingDate, mStopCoverOrders,
 							     positions);
     }
 
     void ProcessPendingLimitExitOrders(const boost::gregorian::date& processingDate,
-				       const InstrumentPositionManager<Prec>& positions)
+				       const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<SellAtLimitOrder<Prec>> (processingDate, mLimitSellOrders,
+      this->ProcessingPendingOrders<SellAtLimitOrder<Decimal>> (processingDate, mLimitSellOrders,
 							     positions);
-      this->ProcessingPendingOrders<CoverAtLimitOrder<Prec>> (processingDate, mLimitCoverOrders,
+      this->ProcessingPendingOrders<CoverAtLimitOrder<Decimal>> (processingDate, mLimitCoverOrders,
 							      positions);
     }
 
@@ -565,7 +563,7 @@ namespace mkc_timeseries
 	(*it).get().OrderCanceled (order.get());
     }
 
-    void ValidateNewOrder (const std::shared_ptr<TradingOrder<Prec>>& order) const
+    void ValidateNewOrder (const std::shared_ptr<TradingOrder<Decimal>>& order) const
     {
       if (order->isOrderExecuted())
 	throw TradingOrderManagerException ("Attempt to add executed trading order");
@@ -625,26 +623,26 @@ namespace mkc_timeseries
       mPendingOrdersUpToDate = true;
     }
 
-    void addOrderToPending(std::shared_ptr<TradingOrder<Prec>> aOrder) const
+    void addOrderToPending(std::shared_ptr<TradingOrder<Decimal>> aOrder) const
     {
       mPendingOrders.insert (std::make_pair (aOrder->getOrderDate(), aOrder));
     }
 
   private:
-    std::shared_ptr<Portfolio<Prec>> mPortfolio;
-    std::vector<std::shared_ptr<MarketOnOpenSellOrder<Prec>>> mMarketSellOrders;
-    std::vector<std::shared_ptr<MarketOnOpenCoverOrder<Prec>>> mMarketCoverOrders;
-    std::vector<std::shared_ptr<MarketOnOpenLongOrder<Prec>>> mMarketLongOrders;
-    std::vector<std::shared_ptr<MarketOnOpenShortOrder<Prec>>> mMarketShortOrders;
-    std::vector<std::shared_ptr<SellAtLimitOrder<Prec>>> mLimitSellOrders;
-    std::vector<std::shared_ptr<CoverAtLimitOrder<Prec>>> mLimitCoverOrders;
-    std::vector<std::shared_ptr<SellAtStopOrder<Prec>>> mStopSellOrders;
-    std::vector<std::shared_ptr<CoverAtStopOrder<Prec>>> mStopCoverOrders;
-    std::list<std::reference_wrapper<TradingOrderObserver<Prec>>> mObservers;
+    std::shared_ptr<Portfolio<Decimal>> mPortfolio;
+    std::vector<std::shared_ptr<MarketOnOpenSellOrder<Decimal>>> mMarketSellOrders;
+    std::vector<std::shared_ptr<MarketOnOpenCoverOrder<Decimal>>> mMarketCoverOrders;
+    std::vector<std::shared_ptr<MarketOnOpenLongOrder<Decimal>>> mMarketLongOrders;
+    std::vector<std::shared_ptr<MarketOnOpenShortOrder<Decimal>>> mMarketShortOrders;
+    std::vector<std::shared_ptr<SellAtLimitOrder<Decimal>>> mLimitSellOrders;
+    std::vector<std::shared_ptr<CoverAtLimitOrder<Decimal>>> mLimitCoverOrders;
+    std::vector<std::shared_ptr<SellAtStopOrder<Decimal>>> mStopSellOrders;
+    std::vector<std::shared_ptr<CoverAtStopOrder<Decimal>>> mStopCoverOrders;
+    std::list<std::reference_wrapper<TradingOrderObserver<Decimal>>> mObservers;
 
     // A temporary map to iterate over pending order if a client asks for them
     // The map is cleared before iterating and populate from the above vectors
-    mutable std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Prec>>> mPendingOrders;
+    mutable std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Decimal>>> mPendingOrders;
     mutable bool mPendingOrdersUpToDate;
  };
 }

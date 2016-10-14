@@ -20,16 +20,16 @@ using std::string;
 namespace mkc_timeseries
 {
 
-  template <int Prec>
+  template <class Decimal>
   class LeverageAttributes
   {
   public:
-    LeverageAttributes (const decimal<Prec>& leverage)
+    LeverageAttributes (const Decimal& leverage)
       : mLeverage (leverage),
-	mInverseLeverage (leverage <  DecimalConstants<Prec>::DecimalZero)
+	mInverseLeverage (leverage <  DecimalConstants<Decimal>::DecimalZero)
     {}
 
-    const decimal<Prec>& getLeverage() const
+    const Decimal& getLeverage() const
     {
       return mLeverage;
     }
@@ -40,26 +40,26 @@ namespace mkc_timeseries
     }
 
   private:
-    decimal<Prec> mLeverage;
+    Decimal mLeverage;
     bool mInverseLeverage;
   };
 
-  template <int Prec>
-  inline bool operator==(const LeverageAttributes<Prec>& lhs, const LeverageAttributes<Prec>& rhs)
+  template <class Decimal>
+  inline bool operator==(const LeverageAttributes<Decimal>& lhs, const LeverageAttributes<Decimal>& rhs)
   {
     return lhs.getLeverage() == rhs.getLeverage();
   }
 
-  template <int Prec>
-  inline bool operator!=(const LeverageAttributes<Prec>& lhs, const LeverageAttributes<Prec>& rhs){ return !(lhs == rhs); }
+  template <class Decimal>
+  inline bool operator!=(const LeverageAttributes<Decimal>& lhs, const LeverageAttributes<Decimal>& rhs){ return !(lhs == rhs); }
 
-  template <int Prec>
+  template <class Decimal>
   class FundAttributes
   {
   public:
     FundAttributes (const boost::gregorian::date& inceptionDate, 
-		    const decimal<Prec>& expenseRatio,
-		    const LeverageAttributes<Prec> leverageAttributes)
+		    const Decimal& expenseRatio,
+		    const LeverageAttributes<Decimal> leverageAttributes)
       : mInceptionDate (inceptionDate),
 	mExpenseRatio(expenseRatio),
 	mLeverageAttributes(leverageAttributes)
@@ -73,12 +73,12 @@ namespace mkc_timeseries
       return mInceptionDate;
     }
 
-    const decimal<Prec>& getExpenseRatio() const
+    const Decimal& getExpenseRatio() const
     {
       return mExpenseRatio;
     }
 
-    const decimal<Prec>& getLeverage() const
+    const Decimal& getLeverage() const
     {
       return mLeverageAttributes.getLeverage();
     }
@@ -90,31 +90,31 @@ namespace mkc_timeseries
 
   private:
     boost::gregorian::date mInceptionDate;
-    decimal<Prec> mExpenseRatio;
-    LeverageAttributes<Prec> mLeverageAttributes;
+    Decimal mExpenseRatio;
+    LeverageAttributes<Decimal> mLeverageAttributes;
   };
 
-  template <int Prec>
+  template <class Decimal>
   class SecurityAttributes
   {
   public:
     SecurityAttributes (const string& securitySymbol, const string& securityName,
-			const decimal<Prec>& bigPointValue, const decimal<Prec>& securityTick)
+			const Decimal& bigPointValue, const Decimal& securityTick)
       :mSecuritySymbol(securitySymbol),
        mSecurityName(securityName),
        mBigPointValue(bigPointValue),
        mTick(securityTick)
     {}
 
-    SecurityAttributes (const SecurityAttributes<Prec> &rhs)
+    SecurityAttributes (const SecurityAttributes<Decimal> &rhs)
       : mSecuritySymbol(rhs.mSecuritySymbol),
 	mSecurityName(rhs.mSecurityName),
 	mBigPointValue(rhs.mBigPointValue),
 	mTick(rhs.mTick)
     {}
 
-    SecurityAttributes<Prec>& 
-    operator=(const SecurityAttributes<Prec> &rhs)
+    SecurityAttributes<Decimal>& 
+    operator=(const SecurityAttributes<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -139,12 +139,12 @@ namespace mkc_timeseries
       return mSecuritySymbol;
     }
 
-    const decimal<Prec>& getBigPointValue() const
+    const Decimal& getBigPointValue() const
     {
       return mBigPointValue;
     }
 
-    const decimal<Prec>& getTick() const
+    const Decimal& getTick() const
     {
       return mTick;
     }
@@ -158,34 +158,34 @@ namespace mkc_timeseries
   private:
     std::string mSecuritySymbol;
     std::string mSecurityName;
-    decimal<Prec> mBigPointValue;
-    decimal<Prec> mTick;
+    Decimal mBigPointValue;
+    Decimal mTick;
   };
 
-  template <int Prec>
-  class EquitySecurityAttributes : public SecurityAttributes<Prec>
+  template <class Decimal>
+  class EquitySecurityAttributes : public SecurityAttributes<Decimal>
   {
   public:
     EquitySecurityAttributes (const string& securitySymbol, const string& securityName) 
-      : SecurityAttributes<Prec> (securitySymbol, securityName, DecimalConstants<Prec>::DecimalOne,
-				  DecimalConstants<Prec>::EquityTick)
+      : SecurityAttributes<Decimal> (securitySymbol, securityName, DecimalConstants<Decimal>::DecimalOne,
+				  DecimalConstants<Decimal>::EquityTick)
     {
     }
 
-    EquitySecurityAttributes (const EquitySecurityAttributes<Prec> &rhs)
-      : SecurityAttributes<Prec>(rhs)
+    EquitySecurityAttributes (const EquitySecurityAttributes<Decimal> &rhs)
+      : SecurityAttributes<Decimal>(rhs)
     {}
 
     virtual ~EquitySecurityAttributes()
     {}
 
-    EquitySecurityAttributes<Prec>& 
-    operator=(const EquitySecurityAttributes<Prec> &rhs)
+    EquitySecurityAttributes<Decimal>& 
+    operator=(const EquitySecurityAttributes<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      SecurityAttributes<Prec>::operator=(rhs);
+      SecurityAttributes<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -205,32 +205,32 @@ namespace mkc_timeseries
     }
   };
 
-  template <int Prec>
-  class FundSecurityAttributes : public EquitySecurityAttributes<Prec>
+  template <class Decimal>
+  class FundSecurityAttributes : public EquitySecurityAttributes<Decimal>
   {
   public:
     FundSecurityAttributes (const string& securitySymbol, 
 			    const string& securityName,
-			    const FundAttributes<Prec>& attributes)
-      : EquitySecurityAttributes<Prec> (securitySymbol, securityName),
+			    const FundAttributes<Decimal>& attributes)
+      : EquitySecurityAttributes<Decimal> (securitySymbol, securityName),
 	mAttributes(attributes)
       {}
 
-    FundSecurityAttributes (const FundSecurityAttributes<Prec> &rhs)
-      : EquitySecurityAttributes<Prec>(rhs),
+    FundSecurityAttributes (const FundSecurityAttributes<Decimal> &rhs)
+      : EquitySecurityAttributes<Decimal>(rhs),
 	mAttributes(rhs.mAttributes)
     {}
 
     virtual ~FundSecurityAttributes()
     {}
 
-    FundSecurityAttributes<Prec>& 
-    operator=(const FundSecurityAttributes<Prec> &rhs)
+    FundSecurityAttributes<Decimal>& 
+    operator=(const FundSecurityAttributes<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      EquitySecurityAttributes<Prec>::operator=(rhs);
+      EquitySecurityAttributes<Decimal>::operator=(rhs);
       mAttributes = rhs.mAttributes;
       return *this;
     }
@@ -250,12 +250,12 @@ namespace mkc_timeseries
       return mAttributes.getInceptionDate();
     }
 
-    const decimal<Prec>& getExpenseRatio() const
+    const Decimal& getExpenseRatio() const
     {
       return mAttributes.getExpenseRatio();
     }
 
-    const decimal<Prec>& getLeverage() const
+    const Decimal& getLeverage() const
     {
       return mAttributes.getLeverage();
     }
@@ -269,33 +269,33 @@ namespace mkc_timeseries
     virtual bool isMutualFund() const = 0;
 
   private:
-    FundAttributes<Prec> mAttributes;
+    FundAttributes<Decimal> mAttributes;
   };
 
-  template <int Prec>
-  class ETFSecurityAttributes : public FundSecurityAttributes<Prec>
+  template <class Decimal>
+  class ETFSecurityAttributes : public FundSecurityAttributes<Decimal>
   {
   public:
     ETFSecurityAttributes (const string& securitySymbol, 
 			    const string& securityName,
-			   const FundAttributes<Prec>& attributes)
-      : FundSecurityAttributes<Prec> (securitySymbol, securityName, attributes)
+			   const FundAttributes<Decimal>& attributes)
+      : FundSecurityAttributes<Decimal> (securitySymbol, securityName, attributes)
     {}
 
-    ETFSecurityAttributes (const ETFSecurityAttributes<Prec> &rhs)
-      : FundSecurityAttributes<Prec>(rhs)
+    ETFSecurityAttributes (const ETFSecurityAttributes<Decimal> &rhs)
+      : FundSecurityAttributes<Decimal>(rhs)
     {}
 
     ~ETFSecurityAttributes()
     {}
 
-    ETFSecurityAttributes<Prec>& 
-    operator=(const ETFSecurityAttributes<Prec> &rhs)
+    ETFSecurityAttributes<Decimal>& 
+    operator=(const ETFSecurityAttributes<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      FundSecurityAttributes<Prec>::operator=(rhs);
+      FundSecurityAttributes<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -310,29 +310,29 @@ namespace mkc_timeseries
     }
   };
 
-  template <int Prec>
-  class CommonStockSecurityAttributes : public EquitySecurityAttributes<Prec>
+  template <class Decimal>
+  class CommonStockSecurityAttributes : public EquitySecurityAttributes<Decimal>
   {
   public:
     CommonStockSecurityAttributes (const string& securitySymbol, 
 				   const string& securityName)
-      : EquitySecurityAttributes<Prec> (securitySymbol, securityName)
+      : EquitySecurityAttributes<Decimal> (securitySymbol, securityName)
       {}
 
     ~CommonStockSecurityAttributes()
     {}
 
-    CommonStockSecurityAttributes (const CommonStockSecurityAttributes<Prec> &rhs)
-      : EquitySecurityAttributes<Prec>(rhs)
+    CommonStockSecurityAttributes (const CommonStockSecurityAttributes<Decimal> &rhs)
+      : EquitySecurityAttributes<Decimal>(rhs)
     {}
 
-    CommonStockSecurityAttributes<Prec>& 
-    operator=(const CommonStockSecurityAttributes<Prec> &rhs)
+    CommonStockSecurityAttributes<Decimal>& 
+    operator=(const CommonStockSecurityAttributes<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      EquitySecurityAttributes<Prec>::operator=(rhs);
+      EquitySecurityAttributes<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -347,29 +347,29 @@ namespace mkc_timeseries
     }
   };
 
-  template <int Prec>
-  class FuturesSecurityAttributes : public SecurityAttributes<Prec>
+  template <class Decimal>
+  class FuturesSecurityAttributes : public SecurityAttributes<Decimal>
   {
   public:
     FuturesSecurityAttributes (const string& securitySymbol, const string& securityName,
-			       const decimal<Prec>& bigPointValue, const decimal<Prec>& securityTick)
-      : SecurityAttributes<Prec> (securitySymbol, securityName, bigPointValue, securityTick)
+			       const Decimal& bigPointValue, const Decimal& securityTick)
+      : SecurityAttributes<Decimal> (securitySymbol, securityName, bigPointValue, securityTick)
     {}
 
-    FuturesSecurityAttributes (const FuturesSecurityAttributes<Prec> &rhs)
-      : SecurityAttributes<Prec>(rhs)
+    FuturesSecurityAttributes (const FuturesSecurityAttributes<Decimal> &rhs)
+      : SecurityAttributes<Decimal>(rhs)
     {}
 
     ~FuturesSecurityAttributes()
     {}
 
-    FuturesSecurityAttributes<Prec>& 
-    operator=(const FuturesSecurityAttributes<Prec> &rhs)
+    FuturesSecurityAttributes<Decimal>& 
+    operator=(const FuturesSecurityAttributes<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      SecurityAttributes<Prec>::operator=(rhs);
+      SecurityAttributes<Decimal>::operator=(rhs);
       return *this;
     }
 

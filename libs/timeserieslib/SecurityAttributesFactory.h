@@ -33,11 +33,11 @@ namespace mkc_timeseries
     
   };
 
-  template <int Prec>
+  template <class Decimal>
   class SecurityAttributesFactory
   {
   public:
-    typedef typename std::map<std::string, std::shared_ptr<SecurityAttributes<Prec>>>::const_iterator SecurityAttributesIterator;
+    typedef typename std::map<std::string, std::shared_ptr<SecurityAttributes<Decimal>>>::const_iterator SecurityAttributesIterator;
 
   public:
     SecurityAttributesFactory ()
@@ -110,25 +110,25 @@ namespace mkc_timeseries
       addLeveragedETF (std::string("SSO"), 
 		       std::string("ProShares Ultra S&P 500"), 
 		       createDecimal("0.89"),
-		       DecimalConstants<Prec>::DecimalTwo,
+		       DecimalConstants<Decimal>::DecimalTwo,
 		       boost::gregorian::from_undelimited_string("20060619"));
 
       addLeveragedETF (std::string("SDS"), 
 		       std::string("ProShares UltraShort S&P 500"), 
 		       createDecimal("0.91"),
-		       DecimalConstants<Prec>::DecimalMinusTwo,
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
 		       boost::gregorian::from_undelimited_string("20060711"));
 
       addLeveragedETF (std::string("QLD"), 
 		       std::string("ProShares UltraPro QQQ"), 
 		       createDecimal("0.95"),
-		       DecimalConstants<Prec>::DecimalTwo,
+		       DecimalConstants<Decimal>::DecimalTwo,
 		       boost::gregorian::from_undelimited_string("20060619"));
 
       addLeveragedETF (std::string("QID"), 
 		       std::string("ProShares UltraShort QQQ"), 
 		       createDecimal("0.95"),
-		       DecimalConstants<Prec>::DecimalMinusTwo,
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
 		       boost::gregorian::from_undelimited_string("20060711"));
 
       addUnLeveragedETF (std::string("GDX"), 
@@ -152,7 +152,7 @@ namespace mkc_timeseries
       std::string miniDowFuturesSymbol("@YM");
 
       auto miniNasdaq100Attributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(miniNasdaq100FuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(miniNasdaq100FuturesSymbol, 
 						     "Emini Nasdaq 100 Futures",
 						     createDecimal("20.0"),
 						     createDecimal("0.25"));
@@ -160,7 +160,7 @@ namespace mkc_timeseries
 						miniNasdaq100Attributes));
 
       auto miniSP500Attributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(miniSP500FuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(miniSP500FuturesSymbol, 
 						     "Emini S&P 500 Futures",
 						     createDecimal("50.0"),
 						     createDecimal("0.25"));
@@ -168,7 +168,7 @@ namespace mkc_timeseries
 						miniSP500Attributes));
 
       auto miniRussell2000Attributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(miniRussell2000FuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(miniRussell2000FuturesSymbol, 
 						     "Russell 2000 Futures",
 						     createDecimal("100.0"),
 						     createDecimal("0.10"));
@@ -176,7 +176,7 @@ namespace mkc_timeseries
 						miniRussell2000Attributes));
 
       auto miniDowAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(miniDowFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(miniDowFuturesSymbol, 
 							  "Mini Dow Futures",
 							  createDecimal("5.0"),
 							  createDecimal("1.0"));
@@ -190,7 +190,7 @@ namespace mkc_timeseries
       std::string milkFuturesSymbol("@DA");
 
       auto cottonAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(cottonFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(cottonFuturesSymbol, 
 							  "Cotton Futures",
 							  createDecimal("500.0"),
 							  createDecimal("0.01"));
@@ -199,7 +199,7 @@ namespace mkc_timeseries
 						cottonAttributes));
 
       auto milkAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(milkFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(milkFuturesSymbol, 
 							  "Milk Futures",
 							  createDecimal("2000.0"),
 							  createDecimal("0.01"));
@@ -215,19 +215,19 @@ namespace mkc_timeseries
       std::string fiveYearFuturesSymbol("@FV");
 
       auto fiveYearAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(fiveYearFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(fiveYearFuturesSymbol, 
 						     "5-Year Note Futures",
 						     createDecimal("1000.0"),
 						     createDecimal("0.0078125"));
 
       auto tenYearAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(tenYearFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(tenYearFuturesSymbol, 
 						     "10-Year Note Futures",
 						     createDecimal("1000.0"),
 						     createDecimal("0.015625"));
 
       auto thirtyYearAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(thirtyYearFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(thirtyYearFuturesSymbol, 
 							  "30-Year Note Futures",
 							  createDecimal("1000.0"),
 							  createDecimal("0.03125"));
@@ -261,7 +261,7 @@ namespace mkc_timeseries
       std::string cornFuturesSymbol("@C");
 
       auto cornAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(cornFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(cornFuturesSymbol, 
 						     "Corn Futures",
 						     createDecimal("50.0"),
 						     createDecimal("0.25"));
@@ -274,7 +274,7 @@ namespace mkc_timeseries
       std::string goldFuturesSymbol("@GC");
 
       auto goldAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(goldFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(goldFuturesSymbol, 
 						     "Gold Futures",
 						     createDecimal("100.0"),
 						     createDecimal("0.10"));
@@ -287,7 +287,7 @@ namespace mkc_timeseries
       std::string crudeOilFuturesSymbol("@CL");
 
       auto crudeOilAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(crudeOilFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(crudeOilFuturesSymbol, 
 							  "Crude Oil Futures",
 							  createDecimal("1000.0"),
 							  createDecimal("0.01"));
@@ -296,32 +296,32 @@ namespace mkc_timeseries
     }
 
  private:
-    dec::decimal<Prec> createDecimal(const std::string& valueString)
+    Decimal createDecimal(const std::string& valueString)
     {
-      return dec::fromString<dec::decimal<Prec>>(valueString);
+      return dec::fromString<Decimal>(valueString);
     }
 
     void addFuturesAttributes(const std::string& symbol, 
 			      const std::string& futuresName,
-			      const decimal<Prec>& bigPointValue,
-			      const decimal<Prec>& tickValue)
+			      const Decimal& bigPointValue,
+			      const Decimal& tickValue)
     {
       auto attributes = 
-	std::make_shared<FuturesSecurityAttributes<Prec>>(symbol, futuresName,
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(symbol, futuresName,
 							  bigPointValue, tickValue);
       mSecurityAttributes.insert(std::make_pair(symbol,
 						attributes));
     }
 
     void addUnLeveragedETF (const std::string& symbol, const std::string& etfName, 
-			    const decimal<Prec>& expenseRatio, 
+			    const Decimal& expenseRatio, 
 			    const boost::gregorian::date& inceptionDate)
     {
-      LeverageAttributes<Prec> noLeverage(DecimalConstants<Prec>::DecimalZero);
+      LeverageAttributes<Decimal> noLeverage(DecimalConstants<Decimal>::DecimalZero);
 
-      FundAttributes<Prec> etfAttributes(inceptionDate, expenseRatio, noLeverage);
+      FundAttributes<Decimal> etfAttributes(inceptionDate, expenseRatio, noLeverage);
       auto attributes = 
-	std::make_shared<ETFSecurityAttributes<Prec>>(symbol, 
+	std::make_shared<ETFSecurityAttributes<Decimal>>(symbol, 
 						      etfName,
 						      etfAttributes);
 
@@ -330,15 +330,15 @@ namespace mkc_timeseries
     }
 
     void addLeveragedETF (const std::string& symbol, const std::string& etfName, 
-			  const decimal<Prec>& expenseRatio,
-			  const decimal<Prec>& leverage,
+			  const Decimal& expenseRatio,
+			  const Decimal& leverage,
 			  const boost::gregorian::date& inceptionDate)
     {
-      LeverageAttributes<Prec> leverageForFund(leverage);
+      LeverageAttributes<Decimal> leverageForFund(leverage);
 
-      FundAttributes<Prec> etfAttributes(inceptionDate, expenseRatio, leverageForFund);
+      FundAttributes<Decimal> etfAttributes(inceptionDate, expenseRatio, leverageForFund);
       auto attributes = 
-	std::make_shared<ETFSecurityAttributes<Prec>>(symbol, 
+	std::make_shared<ETFSecurityAttributes<Decimal>>(symbol, 
 						      etfName,
 						      etfAttributes);
 
@@ -349,21 +349,21 @@ namespace mkc_timeseries
     void addCommonStock (const std::string& symbol, const std::string& stockName)
     {
       auto attributes = 
-	std::make_shared<CommonStockSecurityAttributes<Prec>>(symbol, stockName);
+	std::make_shared<CommonStockSecurityAttributes<Decimal>>(symbol, stockName);
 
       mSecurityAttributes.insert(std::make_pair(symbol, attributes));
     }
 
   private:
-    std::map<std::string, std::shared_ptr<SecurityAttributes<Prec>>> mSecurityAttributes;
+    std::map<std::string, std::shared_ptr<SecurityAttributes<Decimal>>> mSecurityAttributes;
 
   };
 
-  template <int Prec>
-  std::shared_ptr<SecurityAttributes<Prec>> getSecurityAttributes (const std::string &symbol)
+  template <class Decimal>
+  std::shared_ptr<SecurityAttributes<Decimal>> getSecurityAttributes (const std::string &symbol)
   {
-    SecurityAttributesFactory<Prec> factory;
-    typename SecurityAttributesFactory<Prec>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
+    SecurityAttributesFactory<Decimal> factory;
+    typename SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
 
     if (it != factory.endSecurityAttributes())
       return it->second;

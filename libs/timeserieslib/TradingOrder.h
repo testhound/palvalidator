@@ -22,24 +22,24 @@ using namespace boost::gregorian;
 
 namespace mkc_timeseries
 {
-  template <int Prec> class TradingOrderVisitor;
+  template <class Decimal> class TradingOrderVisitor;
 
-  template <int Prec> class TradingOrderState;
-  template <int Prec> class MarketOnOpenLongOrder;
-  template <int Prec> class MarketOnOpenShortOrder;
-  template <int Prec> class MarketOnOpenSellOrder;
-  template <int Prec> class MarketOnOpenCoverOrder;
-  template <int Prec> class ExecutedOrderState;
-  template <int Prec> class CanceledOrderState;
-  template <int Prec> class PendingOrderState;
-  template <int Prec> class SellAtLimitOrder;
-  template <int Prec> class CoverAtLimitOrder;
-  template <int Prec> class CoverAtStopOrder;
-  template <int Prec> class SellAtStopOrder;
-  template <int Prec> class TradingOrderObserver;
-  template <int Prec> class TradingOrder;
+  template <class Decimal> class TradingOrderState;
+  template <class Decimal> class MarketOnOpenLongOrder;
+  template <class Decimal> class MarketOnOpenShortOrder;
+  template <class Decimal> class MarketOnOpenSellOrder;
+  template <class Decimal> class MarketOnOpenCoverOrder;
+  template <class Decimal> class ExecutedOrderState;
+  template <class Decimal> class CanceledOrderState;
+  template <class Decimal> class PendingOrderState;
+  template <class Decimal> class SellAtLimitOrder;
+  template <class Decimal> class CoverAtLimitOrder;
+  template <class Decimal> class CoverAtStopOrder;
+  template <class Decimal> class SellAtStopOrder;
+  template <class Decimal> class TradingOrderObserver;
+  template <class Decimal> class TradingOrder;
   
-  template <int Prec>
+  template <class Decimal>
   class TradingOrderVisitor
   {
   public:
@@ -49,19 +49,19 @@ namespace mkc_timeseries
     virtual ~TradingOrderVisitor()
     {}
 
-    virtual void visit (MarketOnOpenLongOrder<Prec> *order) = 0;
-    virtual void visit (MarketOnOpenShortOrder<Prec> *order) = 0;
+    virtual void visit (MarketOnOpenLongOrder<Decimal> *order) = 0;
+    virtual void visit (MarketOnOpenShortOrder<Decimal> *order) = 0;
 
-    virtual void visit (MarketOnOpenSellOrder<Prec> *order) = 0;
-    virtual void visit (MarketOnOpenCoverOrder<Prec> *order) = 0;
+    virtual void visit (MarketOnOpenSellOrder<Decimal> *order) = 0;
+    virtual void visit (MarketOnOpenCoverOrder<Decimal> *order) = 0;
 
-    virtual void visit (SellAtLimitOrder<Prec> *order) = 0;
-    virtual void visit (CoverAtLimitOrder<Prec> *order) = 0;
-    virtual void visit (CoverAtStopOrder<Prec> *order) = 0;
-    virtual void visit (SellAtStopOrder<Prec> *order) = 0;
+    virtual void visit (SellAtLimitOrder<Decimal> *order) = 0;
+    virtual void visit (CoverAtLimitOrder<Decimal> *order) = 0;
+    virtual void visit (CoverAtStopOrder<Decimal> *order) = 0;
+    virtual void visit (SellAtStopOrder<Decimal> *order) = 0;
   };
 
-  template <int Prec>
+  template <class Decimal>
   class TradingOrderObserver
   {
   public:
@@ -71,30 +71,30 @@ namespace mkc_timeseries
     virtual ~TradingOrderObserver()
     {}
 
-    virtual void OrderExecuted (MarketOnOpenLongOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (MarketOnOpenShortOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (MarketOnOpenSellOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (MarketOnOpenCoverOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (SellAtLimitOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (CoverAtLimitOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (CoverAtStopOrder<Prec> *order) = 0;
-    virtual void OrderExecuted (SellAtStopOrder<Prec> *order) = 0;
+    virtual void OrderExecuted (MarketOnOpenLongOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (MarketOnOpenShortOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (MarketOnOpenSellOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (SellAtLimitOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (CoverAtLimitOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (CoverAtStopOrder<Decimal> *order) = 0;
+    virtual void OrderExecuted (SellAtStopOrder<Decimal> *order) = 0;
 
-    virtual void OrderCanceled (MarketOnOpenLongOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (MarketOnOpenShortOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (MarketOnOpenSellOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (MarketOnOpenCoverOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (SellAtLimitOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (CoverAtLimitOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (CoverAtStopOrder<Prec> *order) = 0;
-    virtual void OrderCanceled (SellAtStopOrder<Prec> *order) = 0;
+    virtual void OrderCanceled (MarketOnOpenLongOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (MarketOnOpenShortOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (MarketOnOpenSellOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (MarketOnOpenCoverOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (SellAtLimitOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (CoverAtLimitOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (CoverAtStopOrder<Decimal> *order) = 0;
+    virtual void OrderCanceled (SellAtStopOrder<Decimal> *order) = 0;
   };
  
 
-  template <int Prec> class TradingOrder
+  template <class Decimal> class TradingOrder
   {
   public:
-    typedef typename std::list<std::shared_ptr<TradingOrderObserver<Prec>>>::const_iterator ConstObserverIterator;
+    typedef typename std::list<std::shared_ptr<TradingOrderObserver<Decimal>>>::const_iterator ConstObserverIterator;
 
   public:
     TradingOrder(const std::string& tradingSymbol, 
@@ -104,7 +104,7 @@ namespace mkc_timeseries
     virtual ~TradingOrder()
     {}
 
-    TradingOrder (const TradingOrder<Prec>& rhs)
+    TradingOrder (const TradingOrder<Decimal>& rhs)
       : mTradingSymbol(rhs.mTradingSymbol),
 	mUnitsInOrder(rhs.mUnitsInOrder),
 	mOrderDate (rhs.mOrderDate),
@@ -113,8 +113,8 @@ namespace mkc_timeseries
 	mObservers(rhs.mObservers)
     {}
 
-    TradingOrder<Prec>& 
-    operator=(const TradingOrder<Prec> &rhs)
+    TradingOrder<Decimal>& 
+    operator=(const TradingOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -164,14 +164,14 @@ namespace mkc_timeseries
     bool isOrderExecuted() const;
     bool isOrderCanceled() const;
     void MarkOrderExecuted(const TimeSeriesDate& fillDate, 
-			   const decimal<Prec>& fillPrice);
+			   const Decimal& fillPrice);
     void MarkOrderCanceled();
     
-    const decimal<Prec>& getFillPrice() const;
+    const Decimal& getFillPrice() const;
     const TimeSeriesDate& getFillDate() const;
-    virtual void accept (TradingOrderVisitor<Prec> &visitor) = 0;
+    virtual void accept (TradingOrderVisitor<Decimal> &visitor) = 0;
 
-    void addObserver (std::shared_ptr<TradingOrderObserver<Prec>> observer)
+    void addObserver (std::shared_ptr<TradingOrderObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
@@ -190,52 +190,52 @@ namespace mkc_timeseries
     virtual void notifyOrderExecuted() = 0;
     virtual void notifyOrderCanceled() = 0;
     virtual void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-					const decimal<Prec>& fillPrice) const = 0;
+					const Decimal& fillPrice) const = 0;
 
   private:
-    void ChangeState (std::shared_ptr<TradingOrderState<Prec>> newState)
+    void ChangeState (std::shared_ptr<TradingOrderState<Decimal>> newState)
     {
       mOrderState = newState;
     }
 
-    friend class TradingOrderState<Prec>;
-    friend class PendingOrderState<Prec>;
+    friend class TradingOrderState<Decimal>;
+    friend class PendingOrderState<Decimal>;
 
   private:
     std::string mTradingSymbol;
     TradingVolume mUnitsInOrder;
     TimeSeriesDate mOrderDate;
-    std::shared_ptr<TradingOrderState<Prec>> mOrderState;
+    std::shared_ptr<TradingOrderState<Decimal>> mOrderState;
     uint32_t mOrderID;
     static std::atomic<uint32_t> mOrderIDCount;
-    std::list<std::shared_ptr<TradingOrderObserver<Prec>>> mObservers;
+    std::list<std::shared_ptr<TradingOrderObserver<Decimal>>> mObservers;
   };
 
-  template <int Prec> std::atomic<uint32_t> TradingOrder<Prec>::mOrderIDCount{0};
+  template <class Decimal> std::atomic<uint32_t> TradingOrder<Decimal>::mOrderIDCount{0};
 
-  template <int Prec> class MarketOrder : public TradingOrder<Prec>
+  template <class Decimal> class MarketOrder : public TradingOrder<Decimal>
     {
     public:
       MarketOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : TradingOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
     {}
 
       virtual ~MarketOrder()
       {}
 
-      MarketOrder (const MarketOrder<Prec>& rhs)
-      : TradingOrder<Prec> (rhs)
+      MarketOrder (const MarketOrder<Decimal>& rhs)
+      : TradingOrder<Decimal> (rhs)
       {}
 
-      MarketOrder<Prec>& 
-      operator=(const MarketOrder<Prec> &rhs)
+      MarketOrder<Decimal>& 
+      operator=(const MarketOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	TradingOrder<Prec>::operator=(rhs);
+	TradingOrder<Decimal>::operator=(rhs);
 	return *this;
       }
 
@@ -261,35 +261,35 @@ namespace mkc_timeseries
       }
       
       void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				  const decimal<Prec>& fillPrice) const
+				  const Decimal& fillPrice) const
       {}
   };
 
   /////////////////////////
 
-  template <int Prec> class MarketEntryOrder : public MarketOrder<Prec>
+  template <class Decimal> class MarketEntryOrder : public MarketOrder<Decimal>
   {
   public:
       MarketEntryOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : MarketOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
       {}
 
       virtual ~MarketEntryOrder()
       {}
 
-      MarketEntryOrder (const MarketEntryOrder<Prec>& rhs)
-      : MarketOrder<Prec> (rhs)
+      MarketEntryOrder (const MarketEntryOrder<Decimal>& rhs)
+      : MarketOrder<Decimal> (rhs)
       {}
 
-      MarketEntryOrder<Prec>& 
-      operator=(const MarketEntryOrder<Prec> &rhs)
+      MarketEntryOrder<Decimal>& 
+      operator=(const MarketEntryOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	MarketOrder<Prec>::operator=(rhs);
+	MarketOrder<Decimal>::operator=(rhs);
 	return *this;
       }
 
@@ -304,27 +304,27 @@ namespace mkc_timeseries
       }
   };
 
-  template <int Prec> class MarketOnOpenLongOrder : public MarketEntryOrder<Prec>
+  template <class Decimal> class MarketOnOpenLongOrder : public MarketEntryOrder<Decimal>
   {
   public:
 
     MarketOnOpenLongOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : MarketEntryOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
     {}
 
-    MarketOnOpenLongOrder (const MarketOnOpenLongOrder<Prec>& rhs)
-      : MarketEntryOrder<Prec> (rhs)
+    MarketOnOpenLongOrder (const MarketOnOpenLongOrder<Decimal>& rhs)
+      : MarketEntryOrder<Decimal> (rhs)
     {}
 
-    MarketOnOpenLongOrder<Prec>& 
-    operator=(const MarketOnOpenLongOrder<Prec> &rhs)
+    MarketOnOpenLongOrder<Decimal>& 
+    operator=(const MarketOnOpenLongOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      MarketEntryOrder<Prec>::operator=(rhs);
+      MarketEntryOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -341,14 +341,14 @@ namespace mkc_timeseries
       return false;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -356,33 +356,33 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
     }
   };
 
-  template <int Prec> class MarketOnOpenShortOrder : public MarketEntryOrder<Prec>
+  template <class Decimal> class MarketOnOpenShortOrder : public MarketEntryOrder<Decimal>
   {
   public:
     MarketOnOpenShortOrder(const std::string& tradingSymbol,
 			   const TradingVolume& unitsInOrder,
 			   const TimeSeriesDate& orderDate)
-      : MarketEntryOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
     {}
 
-    MarketOnOpenShortOrder (const MarketOnOpenShortOrder<Prec>& rhs)
-      : MarketEntryOrder<Prec> (rhs)
+    MarketOnOpenShortOrder (const MarketOnOpenShortOrder<Decimal>& rhs)
+      : MarketEntryOrder<Decimal> (rhs)
     {}
 
-    MarketOnOpenShortOrder<Prec>& 
-    operator=(const MarketOnOpenShortOrder<Prec> &rhs)
+    MarketOnOpenShortOrder<Decimal>& 
+    operator=(const MarketOnOpenShortOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      MarketEntryOrder<Prec>::operator=(rhs);
+      MarketEntryOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -399,14 +399,14 @@ namespace mkc_timeseries
       return true;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -414,7 +414,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -424,29 +424,29 @@ namespace mkc_timeseries
 
   // Market on Open exit Orders
 
-  template <int Prec> class MarketExitOrder : public MarketOrder<Prec>
+  template <class Decimal> class MarketExitOrder : public MarketOrder<Decimal>
   {
   public:
       MarketExitOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : MarketOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
       {}
 
       virtual ~MarketExitOrder()
       {}
 
-      MarketExitOrder (const MarketExitOrder<Prec>& rhs)
-      : MarketOrder<Prec> (rhs)
+      MarketExitOrder (const MarketExitOrder<Decimal>& rhs)
+      : MarketOrder<Decimal> (rhs)
       {}
 
-      MarketExitOrder<Prec>& 
-      operator=(const MarketExitOrder<Prec> &rhs)
+      MarketExitOrder<Decimal>& 
+      operator=(const MarketExitOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	MarketOrder<Prec>::operator=(rhs);
+	MarketOrder<Decimal>::operator=(rhs);
 	return *this;
       }
 
@@ -467,27 +467,27 @@ namespace mkc_timeseries
   // Closes a long position
   //
 
-  template <int Prec> class MarketOnOpenSellOrder : public MarketExitOrder<Prec>
+  template <class Decimal> class MarketOnOpenSellOrder : public MarketExitOrder<Decimal>
   {
   public:
 
     MarketOnOpenSellOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : MarketExitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : MarketExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
     {}
 
-    MarketOnOpenSellOrder (const MarketOnOpenSellOrder<Prec>& rhs)
-      : MarketExitOrder<Prec> (rhs)
+    MarketOnOpenSellOrder (const MarketOnOpenSellOrder<Decimal>& rhs)
+      : MarketExitOrder<Decimal> (rhs)
     {}
 
-    MarketOnOpenSellOrder<Prec>& 
-    operator=(const MarketOnOpenSellOrder<Prec> &rhs)
+    MarketOnOpenSellOrder<Decimal>& 
+    operator=(const MarketOnOpenSellOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      MarketExitOrder<Prec>::operator=(rhs);
+      MarketExitOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -504,14 +504,14 @@ namespace mkc_timeseries
       return false;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -519,7 +519,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -533,27 +533,27 @@ namespace mkc_timeseries
   // Closes a long position
   //
 
-  template <int Prec> class MarketOnOpenCoverOrder : public MarketExitOrder<Prec>
+  template <class Decimal> class MarketOnOpenCoverOrder : public MarketExitOrder<Decimal>
   {
   public:
 
     MarketOnOpenCoverOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : MarketExitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate)
+      : MarketExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
     {}
 
-    MarketOnOpenCoverOrder (const MarketOnOpenCoverOrder<Prec>& rhs)
-      : MarketExitOrder<Prec> (rhs)
+    MarketOnOpenCoverOrder (const MarketOnOpenCoverOrder<Decimal>& rhs)
+      : MarketExitOrder<Decimal> (rhs)
     {}
 
-    MarketOnOpenCoverOrder<Prec>& 
-    operator=(const MarketOnOpenCoverOrder<Prec> &rhs)
+    MarketOnOpenCoverOrder<Decimal>& 
+    operator=(const MarketOnOpenCoverOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      MarketExitOrder<Prec>::operator=(rhs);
+      MarketExitOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -570,14 +570,14 @@ namespace mkc_timeseries
       return true;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -585,7 +585,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -593,37 +593,37 @@ namespace mkc_timeseries
   };
 
   // Limit Orders
-  template <int Prec> class LimitOrder : public TradingOrder<Prec>
+  template <class Decimal> class LimitOrder : public TradingOrder<Decimal>
     {
     public:
       LimitOrder(const std::string& tradingSymbol, 
 		 const TradingVolume& unitsInOrder,
 		 const TimeSeriesDate& orderDate,
-		 const dec::decimal<Prec>& limitPrice)
-	: TradingOrder<Prec> (tradingSymbol, unitsInOrder, orderDate),
+		 const Decimal& limitPrice)
+	: TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate),
 	  mLimitPrice(limitPrice)
       {}
 
       virtual ~LimitOrder()
       {}
 
-      LimitOrder (const LimitOrder<Prec>& rhs)
-	: TradingOrder<Prec> (rhs),
+      LimitOrder (const LimitOrder<Decimal>& rhs)
+	: TradingOrder<Decimal> (rhs),
 	  mLimitPrice(rhs.mLimitPrice)
       {}
 
-      LimitOrder<Prec>& 
-      operator=(const LimitOrder<Prec> &rhs)
+      LimitOrder<Decimal>& 
+      operator=(const LimitOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	TradingOrder<Prec>::operator=(rhs);
+	TradingOrder<Decimal>::operator=(rhs);
 	mLimitPrice = rhs.mLimitPrice;
 	return *this;
       }
 
-      const dec::decimal<Prec>& getLimitPrice() const
+      const Decimal& getLimitPrice() const
       {
 	return mLimitPrice;
       }
@@ -644,37 +644,37 @@ namespace mkc_timeseries
       }
 
     private:
-      dec::decimal<Prec> mLimitPrice;
+      Decimal mLimitPrice;
   };
 
   //
   // class LimitExitOrder
   //
 
-  template <int Prec> class LimitExitOrder : public LimitOrder<Prec>
+  template <class Decimal> class LimitExitOrder : public LimitOrder<Decimal>
     {
     public:
       LimitExitOrder(const std::string& tradingSymbol, 
 		 const TradingVolume& unitsInOrder,
 		 const TimeSeriesDate& orderDate,
-		 const dec::decimal<Prec>& limitPrice)
-	: LimitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
+		 const Decimal& limitPrice)
+	: LimitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
       {}
 
       virtual ~LimitExitOrder()
       {}
 
-      LimitExitOrder (const LimitExitOrder<Prec>& rhs)
-	: LimitOrder<Prec> (rhs)
+      LimitExitOrder (const LimitExitOrder<Decimal>& rhs)
+	: LimitOrder<Decimal> (rhs)
       {}
 
-      LimitExitOrder<Prec>& 
-      operator=(const LimitExitOrder<Prec> &rhs)
+      LimitExitOrder<Decimal>& 
+      operator=(const LimitExitOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	LimitOrder<Prec>::operator=(rhs);
+	LimitOrder<Decimal>::operator=(rhs);
 	return *this;
       }
 
@@ -701,40 +701,40 @@ namespace mkc_timeseries
   // Used to close a long position
   //
 
-  template <int Prec> class SellAtLimitOrder : public LimitExitOrder<Prec>
+  template <class Decimal> class SellAtLimitOrder : public LimitExitOrder<Decimal>
   {
   public:
     SellAtLimitOrder(const std::string& tradingSymbol, 
 		     const TradingVolume& unitsInOrder,
 		     const TimeSeriesDate& orderDate,
-		     const dec::decimal<Prec>& limitPrice)
-      : LimitExitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
+		     const Decimal& limitPrice)
+      : LimitExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
     {}
 
     ~SellAtLimitOrder()
     {}
 
-    SellAtLimitOrder (const SellAtLimitOrder<Prec>& rhs)
-      : LimitExitOrder<Prec> (rhs)
+    SellAtLimitOrder (const SellAtLimitOrder<Decimal>& rhs)
+      : LimitExitOrder<Decimal> (rhs)
     {}
 
-    SellAtLimitOrder<Prec>& 
-    operator=(const SellAtLimitOrder<Prec> &rhs)
+    SellAtLimitOrder<Decimal>& 
+    operator=(const SellAtLimitOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 	
-      LimitExitOrder<Prec>::operator=(rhs);
+      LimitExitOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const decimal<Prec>& fillPrice) const
+				const Decimal& fillPrice) const
     {
       if (fillPrice < this->getLimitPrice())
 	throw TradingOrderNotExecutedException ("SellAtLimitOrder: fill price cannot be less than limit price");
@@ -753,7 +753,7 @@ namespace mkc_timeseries
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -761,7 +761,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -775,41 +775,41 @@ namespace mkc_timeseries
   // Used to close a short position
   //
 
-  template <int Prec> class CoverAtLimitOrder : public LimitExitOrder<Prec>
+  template <class Decimal> class CoverAtLimitOrder : public LimitExitOrder<Decimal>
   {
   public:
     CoverAtLimitOrder(const std::string& tradingSymbol, 
 		      const TradingVolume& unitsInOrder,
 		      const TimeSeriesDate& orderDate,
-		      const dec::decimal<Prec>& limitPrice)
-      : LimitExitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
+		      const Decimal& limitPrice)
+      : LimitExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
     {}
 
     ~CoverAtLimitOrder()
     {}
 
-    CoverAtLimitOrder (const CoverAtLimitOrder<Prec>& rhs)
-      : LimitExitOrder<Prec> (rhs)
+    CoverAtLimitOrder (const CoverAtLimitOrder<Decimal>& rhs)
+      : LimitExitOrder<Decimal> (rhs)
     {}
 
-    CoverAtLimitOrder<Prec>& 
-    operator=(const CoverAtLimitOrder<Prec> &rhs)
+    CoverAtLimitOrder<Decimal>& 
+    operator=(const CoverAtLimitOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 	
-      LimitExitOrder<Prec>::operator=(rhs);
+      LimitExitOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
     void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const decimal<Prec>& fillPrice) const
+				const Decimal& fillPrice) const
     {
       if (fillPrice > this->getLimitPrice())
 	throw TradingOrderNotExecutedException ("CoverAtLimitOrder: fill price cannot be greater than limit price");
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
@@ -828,7 +828,7 @@ namespace mkc_timeseries
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -836,7 +836,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -847,37 +847,37 @@ namespace mkc_timeseries
   //  Classes for stop orders
   ///////////////////////////////////////////////
 
-  template <int Prec> class StopOrder : public TradingOrder<Prec>
+  template <class Decimal> class StopOrder : public TradingOrder<Decimal>
     {
     public:
       StopOrder(const std::string& tradingSymbol, 
 		const TradingVolume& unitsInOrder,
 		const TimeSeriesDate& orderDate,
-		const dec::decimal<Prec>& stopPrice)
-	: TradingOrder<Prec> (tradingSymbol, unitsInOrder, orderDate),
+		const Decimal& stopPrice)
+	: TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate),
 	  mStopPrice(stopPrice)
       {}
 
       virtual ~StopOrder()
       {}
 
-      StopOrder (const StopOrder<Prec>& rhs)
-	: TradingOrder<Prec> (rhs),
+      StopOrder (const StopOrder<Decimal>& rhs)
+	: TradingOrder<Decimal> (rhs),
 	  mStopPrice(rhs.mStopPrice)
       {}
 
-      StopOrder<Prec>& 
-      operator=(const StopOrder<Prec> &rhs)
+      StopOrder<Decimal>& 
+      operator=(const StopOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	TradingOrder<Prec>::operator=(rhs);
+	TradingOrder<Decimal>::operator=(rhs);
 	mStopPrice = rhs.mStopPrice;
 	return *this;
       }
 
-      const dec::decimal<Prec>& getStopPrice() const
+      const Decimal& getStopPrice() const
       {
 	return mStopPrice;
       }
@@ -899,37 +899,37 @@ namespace mkc_timeseries
 
 
     private:
-      dec::decimal<Prec> mStopPrice;
+      Decimal mStopPrice;
   };
 
   //
   // class StopExitOrder
   //
 
-  template <int Prec> class StopExitOrder : public StopOrder<Prec>
+  template <class Decimal> class StopExitOrder : public StopOrder<Decimal>
     {
     public:
       StopExitOrder(const std::string& tradingSymbol, 
 		 const TradingVolume& unitsInOrder,
 		 const TimeSeriesDate& orderDate,
-		 const dec::decimal<Prec>& stopPrice)
-	: StopOrder<Prec> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
+		 const Decimal& stopPrice)
+	: StopOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
       {}
 
       virtual ~StopExitOrder()
       {}
 
-      StopExitOrder (const StopExitOrder<Prec>& rhs)
-	: StopOrder<Prec> (rhs)
+      StopExitOrder (const StopExitOrder<Decimal>& rhs)
+	: StopOrder<Decimal> (rhs)
       {}
 
-      StopExitOrder<Prec>& 
-      operator=(const StopExitOrder<Prec> &rhs)
+      StopExitOrder<Decimal>& 
+      operator=(const StopExitOrder<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
 	
-	StopOrder<Prec>::operator=(rhs);
+	StopOrder<Decimal>::operator=(rhs);
 	return *this;
       }
 
@@ -955,40 +955,40 @@ namespace mkc_timeseries
   // Used to close a long position
   //
 
-  template <int Prec> class SellAtStopOrder : public StopExitOrder<Prec>
+  template <class Decimal> class SellAtStopOrder : public StopExitOrder<Decimal>
   {
   public:
     SellAtStopOrder(const std::string& tradingSymbol, 
 		     const TradingVolume& unitsInOrder,
 		     const TimeSeriesDate& orderDate,
-		     const dec::decimal<Prec>& stopPrice)
-      : StopExitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
+		     const Decimal& stopPrice)
+      : StopExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
     {}
 
     ~SellAtStopOrder()
     {}
 
-    SellAtStopOrder (const SellAtStopOrder<Prec>& rhs)
-      : StopExitOrder<Prec> (rhs)
+    SellAtStopOrder (const SellAtStopOrder<Decimal>& rhs)
+      : StopExitOrder<Decimal> (rhs)
     {}
 
-    SellAtStopOrder<Prec>& 
-    operator=(const SellAtStopOrder<Prec> &rhs)
+    SellAtStopOrder<Decimal>& 
+    operator=(const SellAtStopOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 	
-      StopExitOrder<Prec>::operator=(rhs);
+      StopExitOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const decimal<Prec>& fillPrice) const
+				const Decimal& fillPrice) const
     {
       if (fillPrice > this->getStopPrice())
 	throw TradingOrderNotExecutedException ("SellAtStopOrder: fill price cannot be greater than stop price");
@@ -1007,7 +1007,7 @@ namespace mkc_timeseries
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -1015,7 +1015,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -1028,40 +1028,40 @@ namespace mkc_timeseries
   // Used to close a short position
   //
 
-  template <int Prec> class CoverAtStopOrder : public StopExitOrder<Prec>
+  template <class Decimal> class CoverAtStopOrder : public StopExitOrder<Decimal>
   {
   public:
     CoverAtStopOrder(const std::string& tradingSymbol, 
 		     const TradingVolume& unitsInOrder,
 		     const TimeSeriesDate& orderDate,
-		     const dec::decimal<Prec>& stopPrice)
-      : StopExitOrder<Prec> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
+		     const Decimal& stopPrice)
+      : StopExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
     {}
 
     ~CoverAtStopOrder()
     {}
 
-    CoverAtStopOrder (const CoverAtStopOrder<Prec>& rhs)
-      : StopExitOrder<Prec> (rhs)
+    CoverAtStopOrder (const CoverAtStopOrder<Decimal>& rhs)
+      : StopExitOrder<Decimal> (rhs)
     {}
 
-    CoverAtStopOrder<Prec>& 
-    operator=(const CoverAtStopOrder<Prec> &rhs)
+    CoverAtStopOrder<Decimal>& 
+    operator=(const CoverAtStopOrder<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 	
-      StopExitOrder<Prec>::operator=(rhs);
+      StopExitOrder<Decimal>::operator=(rhs);
       return *this;
     }
 
-    void accept (TradingOrderVisitor<Prec> &v)
+    void accept (TradingOrderVisitor<Decimal> &v)
     {
       v.visit(this);
     }
 
     void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const decimal<Prec>& fillPrice) const
+				const Decimal& fillPrice) const
     {
       if (fillPrice < this->getStopPrice())
 	throw TradingOrderNotExecutedException ("CoverAtStopOrder: fill price cannot be less than stop price");
@@ -1081,7 +1081,7 @@ namespace mkc_timeseries
 
     void notifyOrderExecuted()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderExecuted (this);
@@ -1089,7 +1089,7 @@ namespace mkc_timeseries
 
     void notifyOrderCanceled()
     {
-      typename TradingOrder<Prec>::ConstObserverIterator it = this->beginObserverList();
+      typename TradingOrder<Decimal>::ConstObserverIterator it = this->beginObserverList();
 
       for (; it != this->endObserverList(); it++)
 	(*it)->OrderCanceled (this);
@@ -1101,7 +1101,7 @@ namespace mkc_timeseries
   //////////////////////////////////////////////////
 
 
-  template <int Prec> class TradingOrderState
+  template <class Decimal> class TradingOrderState
   {
   public:
     TradingOrderState()
@@ -1113,19 +1113,19 @@ namespace mkc_timeseries
     virtual bool isOrderPending() const = 0;
     virtual bool isOrderExecuted() const = 0;
     virtual bool isOrderCanceled() const = 0;
-    virtual void MarkOrderExecuted(TradingOrder<Prec>* order,
+    virtual void MarkOrderExecuted(TradingOrder<Decimal>* order,
 				   const TimeSeriesDate& fillDate, 
-				   const decimal<Prec>& fillPrice) = 0;
-    virtual void MarkOrderCanceled(TradingOrder<Prec>* order) = 0;
-    virtual const decimal<Prec>& getFillPrice() const = 0;
+				   const Decimal& fillPrice) = 0;
+    virtual void MarkOrderCanceled(TradingOrder<Decimal>* order) = 0;
+    virtual const Decimal& getFillPrice() const = 0;
     virtual const TimeSeriesDate& getFillDate() const = 0;
   };
 
-  template <int Prec> class PendingOrderState : public TradingOrderState<Prec>
+  template <class Decimal> class PendingOrderState : public TradingOrderState<Decimal>
   {
   public:
     PendingOrderState()
-      : TradingOrderState<Prec>()
+      : TradingOrderState<Decimal>()
       {}
 
     ~PendingOrderState()
@@ -1146,7 +1146,7 @@ namespace mkc_timeseries
       return false;
     }
 
-    const decimal<Prec>& getFillPrice() const
+    const Decimal& getFillPrice() const
     {
       throw TradingOrderNotExecutedException("No fill price in pending state");
     }
@@ -1156,25 +1156,25 @@ namespace mkc_timeseries
       throw TradingOrderNotExecutedException("No fill date in pending state");
     }
 
-    void MarkOrderExecuted(TradingOrder<Prec>* order,
+    void MarkOrderExecuted(TradingOrder<Decimal>* order,
 			   const TimeSeriesDate& fillDate, 
-			   const decimal<Prec>& fillPrice)
+			   const Decimal& fillPrice)
     {
-      order->ChangeState (std::make_shared<ExecutedOrderState<Prec>>(fillDate, fillPrice));
+      order->ChangeState (std::make_shared<ExecutedOrderState<Decimal>>(fillDate, fillPrice));
     }
 
-    void MarkOrderCanceled(TradingOrder<Prec>* order)
+    void MarkOrderCanceled(TradingOrder<Decimal>* order)
     {
-      order->ChangeState (std::make_shared<CanceledOrderState<Prec>>());
+      order->ChangeState (std::make_shared<CanceledOrderState<Decimal>>());
     }
   };
 
-  template <int Prec> class ExecutedOrderState : public TradingOrderState<Prec>
+  template <class Decimal> class ExecutedOrderState : public TradingOrderState<Decimal>
   {
   public:
     ExecutedOrderState(const TimeSeriesDate& fillDate, 
-			    const decimal<Prec>& fillPrice)
-      : TradingOrderState<Prec>(),
+			    const Decimal& fillPrice)
+      : TradingOrderState<Decimal>(),
 	mEntryDate(fillDate),
 	mEntryPrice(fillPrice)
       {}
@@ -1197,7 +1197,7 @@ namespace mkc_timeseries
       return false;
     }
 
-    const decimal<Prec>& getFillPrice() const
+    const Decimal& getFillPrice() const
     {
       return mEntryPrice;
     }
@@ -1207,29 +1207,29 @@ namespace mkc_timeseries
       return mEntryDate;
     }
 
-    void MarkOrderExecuted(TradingOrder<Prec>* order,
+    void MarkOrderExecuted(TradingOrder<Decimal>* order,
 			   const TimeSeriesDate& fillDate, 
-			   const decimal<Prec>& fillPrice)
+			   const Decimal& fillPrice)
     {
       throw TradingOrderExecutedException("Trading order has already been executed");
     }
 
-    void MarkOrderCanceled(TradingOrder<Prec>* order)
+    void MarkOrderCanceled(TradingOrder<Decimal>* order)
     {
       throw TradingOrderExecutedException("Cannot cancel a executed order");
     }
 
   private:
     TimeSeriesDate mEntryDate;
-    decimal<Prec> mEntryPrice;
+    Decimal mEntryPrice;
   };
 
 
-  template <int Prec> class CanceledOrderState : public TradingOrderState<Prec>
+  template <class Decimal> class CanceledOrderState : public TradingOrderState<Decimal>
   {
   public:
     CanceledOrderState()
-      : TradingOrderState<Prec>()
+      : TradingOrderState<Decimal>()
       {}
 
     ~CanceledOrderState()
@@ -1250,7 +1250,7 @@ namespace mkc_timeseries
       return true;
     }
 
-    const decimal<Prec>& getFillPrice() const
+    const Decimal& getFillPrice() const
     {
       throw TradingOrderNotExecutedException("No fill price in canceled state");
     }
@@ -1260,55 +1260,55 @@ namespace mkc_timeseries
       throw TradingOrderNotExecutedException("No fill date in canceled state");
     }
 
-    void MarkOrderExecuted(TradingOrder<Prec>* order,
+    void MarkOrderExecuted(TradingOrder<Decimal>* order,
 			   const TimeSeriesDate& fillDate, 
-			   const decimal<Prec>& fillPrice)
+			   const Decimal& fillPrice)
     {
       throw TradingOrderNotExecutedException("Cannot execute a cancelled order");
     }
 
-    void MarkOrderCanceled(TradingOrder<Prec>* order)
+    void MarkOrderCanceled(TradingOrder<Decimal>* order)
     {
       throw TradingOrderExecutedException("Cannot cancel a already canceled order");
     }
   };
 
-  template <int Prec>
-  inline TradingOrder<Prec>::TradingOrder(const std::string& tradingSymbol, 
+  template <class Decimal>
+  inline TradingOrder<Decimal>::TradingOrder(const std::string& tradingSymbol, 
 					  const TradingVolume& unitsInOrder,
 					  const TimeSeriesDate& orderDate)
     : mTradingSymbol(tradingSymbol),
       mUnitsInOrder(unitsInOrder),
       mOrderDate (orderDate),
-      mOrderState(new PendingOrderState<Prec>()),
-      mOrderID(++TradingOrder<Prec>::mOrderIDCount),
+      mOrderState(new PendingOrderState<Decimal>()),
+      mOrderID(++TradingOrder<Decimal>::mOrderIDCount),
       mObservers()
     {
       if (mUnitsInOrder.getTradingVolume() == 0)
 	throw TradingOrderException ("TradingOrder constructor - order cannot have zero units for: " +tradingSymbol +" with order date: " +boost::gregorian::to_simple_string (orderDate));
     }
 
-  template <int Prec>
-  inline bool TradingOrder<Prec>::isOrderPending() const
+  template <class Decimal>
+  inline bool TradingOrder<Decimal>::isOrderPending() const
   {
     return mOrderState->isOrderPending();
   }
   
-  template <int Prec>  
-  inline bool TradingOrder<Prec>::isOrderExecuted() const
+  template <class Decimal>  
+  inline bool TradingOrder<Decimal>::isOrderExecuted() const
   {
     return mOrderState->isOrderExecuted();
   }
 
-  template <int Prec>
-  inline bool TradingOrder<Prec>::isOrderCanceled() const
+  template <class Decimal>
+  inline bool TradingOrder<Decimal>::isOrderCanceled() const
   {
     return mOrderState->isOrderCanceled();
   }
 
-  template <int Prec>
-  inline void TradingOrder<Prec>::MarkOrderExecuted(const TimeSeriesDate& fillDate, 
-						    const decimal<Prec>& fillPrice)
+  template <class Decimal>
+  inline void TradingOrder<Decimal>::MarkOrderExecuted(const TimeSeriesDate& fillDate, 
+						    const Decimal& fillPrice)
   {
     ValidateOrderExecution (fillDate, fillPrice);
 
@@ -1321,21 +1321,21 @@ namespace mkc_timeseries
       throw TradingOrderNotExecutedException ("Order fill date cannot occur before order date");
   }
 
-  template <int Prec>
-  inline void TradingOrder<Prec>::MarkOrderCanceled()
+  template <class Decimal>
+  inline void TradingOrder<Decimal>::MarkOrderCanceled()
   {
      mOrderState->MarkOrderCanceled (this);
      this->notifyOrderCanceled();
   }
 
-  template <int Prec>
-  inline const decimal<Prec>& TradingOrder<Prec>::getFillPrice() const
+  template <class Decimal>
+  inline const Decimal& TradingOrder<Decimal>::getFillPrice() const
   {
     return mOrderState->getFillPrice();
   }
 
-  template <int Prec>
-  inline const TimeSeriesDate& TradingOrder<Prec>::getFillDate() const
+  template <class Decimal>
+  inline const TimeSeriesDate& TradingOrder<Decimal>::getFillDate() const
   {
     return  mOrderState->getFillDate();
   }

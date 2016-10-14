@@ -12,21 +12,21 @@
 
 namespace mkc_timeseries
 {
-  template <int Prec> class LogRobustnessTest
+  template <class Decimal> class LogRobustnessTest
   {
   public:
-    static void logRobustnessTestResults(const RobustnessCalculator<Prec> robustnessResults,
+    static void logRobustnessTestResults(const RobustnessCalculator<Decimal> robustnessResults,
 					 std::ofstream& outputFileStream)
     {
-      typename RobustnessCalculator<Prec>::RobustnessTestResultIterator it = 
+      typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator it = 
 	robustnessResults.beginRobustnessTestResults();
 
       for (; it != robustnessResults. endRobustnessTestResults(); it++)
 	LogRobustnessTest::logRobustnessTestResult (it->first, it->second, outputFileStream);
     }
 
-    static void logRobustnessTestResult(const ProfitTargetStopPair<Prec>& key,
-					std::shared_ptr<RobustnessTestResult<Prec>> testResult,
+    static void logRobustnessTestResult(const ProfitTargetStopPair<Decimal>& key,
+					std::shared_ptr<RobustnessTestResult<Decimal>> testResult,
 					std::ofstream& outputFileStream)
     {
       outputFileStream << key.getProfitTarget() << "," << key.getProtectiveStop();

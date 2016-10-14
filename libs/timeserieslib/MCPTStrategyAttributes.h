@@ -36,11 +36,11 @@ namespace mkc_timeseries
     
   };
 
-  template <int Prec> class MCPTStrategyAttributes
+  template <class Decimal> class MCPTStrategyAttributes
   {
   public:
     typedef std::map<date, int>::const_iterator PositionDirectionIterator;
-    typedef typename std::map<date, decimal<Prec>>::const_iterator PositionReturnsIterator;
+    typedef typename std::map<date, Decimal>::const_iterator PositionReturnsIterator;
 
   public:
     MCPTStrategyAttributes()
@@ -51,13 +51,13 @@ namespace mkc_timeseries
     ~MCPTStrategyAttributes()
     {}
 
-    MCPTStrategyAttributes(const MCPTStrategyAttributes<Prec>& rhs)
+    MCPTStrategyAttributes(const MCPTStrategyAttributes<Decimal>& rhs)
       : mPositionDirection(rhs.mPositionDirection),
 	mBarReturns(rhs.mBarReturns)
       {}
 
-      const MCPTStrategyAttributes<Prec>&
-      operator=(const MCPTStrategyAttributes<Prec>& rhs)
+      const MCPTStrategyAttributes<Decimal>&
+      operator=(const MCPTStrategyAttributes<Decimal>& rhs)
       {
 	if (this == &rhs)
 	  return *this;
@@ -68,32 +68,32 @@ namespace mkc_timeseries
 	return *this;
       }
 
-    void addLongPositionBar(std::shared_ptr<Security<Prec>> aSecurity,
+    void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
     {
       addPositionDirection (1, processingDate);
-      decimal<Prec> percentReturn = getCloseToCloseReturn (aSecurity,
+      Decimal percentReturn = getCloseToCloseReturn (aSecurity,
 							   processingDate);
       addPositionReturn (percentReturn, processingDate);
     }
 
-    void addShortPositionBar(std::shared_ptr<Security<Prec>> aSecurity,
+    void addShortPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
     {
       addPositionDirection (-1, processingDate);
-      decimal<Prec> percentReturnTemp = getCloseToCloseReturn (aSecurity,
+      Decimal percentReturnTemp = getCloseToCloseReturn (aSecurity,
 							   processingDate);
-      decimal<Prec> percentReturn = getCloseToCloseReturn (aSecurity,
+      Decimal percentReturn = getCloseToCloseReturn (aSecurity,
 							   processingDate);
 
       addPositionReturn (percentReturn, processingDate);
     }
 
-    void addFlatPositionBar(std::shared_ptr<Security<Prec>> aSecurity,
+    void addFlatPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
     {
       addPositionDirection (0, processingDate);
-      decimal<Prec> percentReturn = getCloseToCloseReturn (aSecurity,
+      Decimal percentReturn = getCloseToCloseReturn (aSecurity,
 							   processingDate);
       addPositionReturn (percentReturn, processingDate);
     }
@@ -132,9 +132,9 @@ namespace mkc_timeseries
       return posDirectionVector;
     }
 
-    std::vector<decimal<Prec>> getPositionReturns() const
+    std::vector<Decimal> getPositionReturns() const
     {
-      std::vector<decimal<Prec>> posReturnsVector;
+      std::vector<Decimal> posReturnsVector;
       posReturnsVector.reserve (mBarReturns.size());
 
       std::transform(mBarReturns.begin(), 
@@ -153,7 +153,7 @@ namespace mkc_timeseries
     }
 
   private:
-    void addPositionReturn (const decimal<Prec>& positionReturn, 
+    void addPositionReturn (const Decimal& positionReturn, 
 			    const date& processingDate)
     {
       PositionReturnsIterator it = mBarReturns.find(processingDate);
@@ -176,21 +176,21 @@ namespace mkc_timeseries
 	throw MCPTStrategyAttributesException(std::string("MCPTStrategyAttributes:addPositionDirection" +boost::gregorian::to_simple_string(processingDate) + std::string(" date already exists")));
     }
 
-    decimal<Prec> getCloseToCloseReturn(std::shared_ptr<Security<Prec>> aSecurity,
+    Decimal getCloseToCloseReturn(std::shared_ptr<Security<Decimal>> aSecurity,
 					const date& processingDate) const
     {
-      typename Security<Prec>::ConstRandomAccessIterator it = 
+      typename Security<Decimal>::ConstRandomAccessIterator it = 
 	aSecurity->getRandomAccessIterator (processingDate);
 
-      decimal<Prec> todaysClose = aSecurity->getCloseValue (it, 0);
-      decimal<Prec> previousClose = aSecurity->getCloseValue (it, 1);
+      Decimal todaysClose = aSecurity->getCloseValue (it, 0);
+      Decimal previousClose = aSecurity->getCloseValue (it, 1);
 	
       return calculatePercentReturn (previousClose, todaysClose);
     }
 
   private:
     std::map<date, int> mPositionDirection; // 0 = flat, 1 = long, -1 = short
-    std::map<date, decimal<Prec>> mBarReturns;
+    std::map<date, Decimal> mBarReturns;
   };
 }
 #endif

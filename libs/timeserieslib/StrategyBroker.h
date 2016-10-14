@@ -33,22 +33,20 @@ namespace mkc_timeseries
       {}
   };
 
-  template <int Prec> class StrategyBroker : 
-    public TradingOrderObserver<Prec>, 
-    public TradingPositionObserver<Prec>
+  template <class Decimal> class StrategyBroker : 
+    public TradingOrderObserver<Decimal>, 
+    public TradingPositionObserver<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename TradingOrderManager<Prec>::PendingOrderIterator PendingOrderIterator;
-    typedef typename StrategyTransactionManager<Prec>::SortedStrategyTransactionIterator 
+    typedef typename TradingOrderManager<Decimal>::PendingOrderIterator PendingOrderIterator;
+    typedef typename StrategyTransactionManager<Decimal>::SortedStrategyTransactionIterator 
       StrategyTransactionIterator;
-    typedef typename ClosedPositionHistory<Prec>::ConstPositionIterator ClosedPositionIterator;
+    typedef typename ClosedPositionHistory<Decimal>::ConstPositionIterator ClosedPositionIterator;
 
   public:
-    StrategyBroker (std::shared_ptr<Portfolio<Prec>> portfolio)
-      : TradingOrderObserver<Prec>(),
-	TradingPositionObserver<Prec>(),
+    StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio)
+      : TradingOrderObserver<Decimal>(),
+	TradingPositionObserver<Decimal>(),
 	mOrderManager(portfolio),
 	mInstrumentPositionManager(),
 	mStrategyTrades(),
@@ -56,7 +54,7 @@ namespace mkc_timeseries
 	mPortfolio(portfolio)
     {
       mOrderManager.addObserver (*this);
-      typename Portfolio<Prec>::ConstPortfolioIterator symbolIterator = mPortfolio->beginPortfolio();
+      typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->beginPortfolio();
 
       for (; symbolIterator != mPortfolio->endPortfolio(); symbolIterator++)
 	  mInstrumentPositionManager.addInstrument(symbolIterator->second->getSymbol());
@@ -65,9 +63,9 @@ namespace mkc_timeseries
     ~StrategyBroker()
     {}
 
-    StrategyBroker(const StrategyBroker<Prec> &rhs)
-      : TradingOrderObserver<Prec>(rhs),
-	TradingPositionObserver<Prec>(rhs),
+    StrategyBroker(const StrategyBroker<Decimal> &rhs)
+      : TradingOrderObserver<Decimal>(rhs),
+	TradingPositionObserver<Decimal>(rhs),
 	mOrderManager(rhs.mOrderManager),
 	mInstrumentPositionManager(rhs.mInstrumentPositionManager),
 	mStrategyTrades(rhs.mStrategyTrades),
@@ -75,14 +73,14 @@ namespace mkc_timeseries
 	mPortfolio(rhs.mPortfolio)
     {}
 
-    StrategyBroker<Prec>& 
-    operator=(const StrategyBroker<Prec> &rhs)
+    StrategyBroker<Decimal>& 
+    operator=(const StrategyBroker<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      TradingOrderObserver<Prec>::operator=(rhs);
-      TradingPositionObserver<Prec>::operator=(rhs);
+      TradingOrderObserver<Decimal>::operator=(rhs);
+      TradingPositionObserver<Decimal>::operator=(rhs);
 
       mOrderManager = rhs.mOrderManager;
       mInstrumentPositionManager = rhs.mInstrumentPositionManager;
@@ -103,7 +101,7 @@ namespace mkc_timeseries
       return mStrategyTrades.endSortedStrategyTransaction();
     }
 
-    const ClosedPositionHistory<Prec>&
+    const ClosedPositionHistory<Decimal>&
     getClosedPositionHistory() const
     {
       return mClosedTradeHistory;
@@ -153,7 +151,7 @@ namespace mkc_timeseries
 			 const date& orderDate,
 			 const TradingVolume& unitsInOrder)
     {
-      auto order = std::make_shared<MarketOnOpenLongOrder<Prec>>(tradingSymbol,
+      auto order = std::make_shared<MarketOnOpenLongOrder<Decimal>>(tradingSymbol,
 								  unitsInOrder,
 								  orderDate);
       
@@ -164,7 +162,7 @@ namespace mkc_timeseries
 			  const date& orderDate,
 			  const TradingVolume& unitsInOrder )
     {
-      auto order = std::make_shared<MarketOnOpenShortOrder<Prec>>(tradingSymbol,
+      auto order = std::make_shared<MarketOnOpenShortOrder<Decimal>>(tradingSymbol,
 								  unitsInOrder,
 								  orderDate);
       
@@ -177,7 +175,7 @@ namespace mkc_timeseries
     {
      if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
 	{
-	  auto order = std::make_shared<MarketOnOpenSellOrder<Prec>>(tradingSymbol,
+	  auto order = std::make_shared<MarketOnOpenSellOrder<Decimal>>(tradingSymbol,
 								     unitsInOrder,
 								     orderDate);
 
@@ -208,7 +206,7 @@ namespace mkc_timeseries
     {
       if (mInstrumentPositionManager.isShortPosition (tradingSymbol))
 	{
-	  auto order = std::make_shared<MarketOnOpenCoverOrder<Prec>>(tradingSymbol,
+	  auto order = std::make_shared<MarketOnOpenCoverOrder<Decimal>>(tradingSymbol,
 								       mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
 								      orderDate);
 
@@ -224,13 +222,13 @@ namespace mkc_timeseries
 
     void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& limitPrice)
+				 const Decimal& limitPrice)
     {
       //std::cout << "Entering long profit target at: " << limitPrice << " on date: " << orderDate << std::endl;
 
       if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
 	{
-	  auto order = std::make_shared<SellAtLimitOrder<Prec>>(tradingSymbol,
+	  auto order = std::make_shared<SellAtLimitOrder<Decimal>>(tradingSymbol,
 								mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
 								orderDate,
 								limitPrice);
@@ -245,22 +243,22 @@ namespace mkc_timeseries
 
     void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& limitBasePrice,
-				 const PercentNumber<Prec>& percentNum)
+				 const Decimal& limitBasePrice,
+				 const PercentNumber<Decimal>& percentNum)
     {
       //std::cout << "StrategyBroker::ExitLongAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
-      LongProfitTarget<Prec> profitTarget(limitBasePrice, percentNum);
+      LongProfitTarget<Decimal> profitTarget(limitBasePrice, percentNum);
       
       this->ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, profitTarget.getProfitTarget());
     }
 
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				  const date& orderDate,
-				  const decimal<Prec>& limitPrice)
+				  const Decimal& limitPrice)
     {
       if (mInstrumentPositionManager.isShortPosition (tradingSymbol))
 	{
-	  auto order = std::make_shared<CoverAtLimitOrder<Prec>>(tradingSymbol,
+	  auto order = std::make_shared<CoverAtLimitOrder<Decimal>>(tradingSymbol,
 								 mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
 								 orderDate,
 								 limitPrice);
@@ -275,13 +273,13 @@ namespace mkc_timeseries
 
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& limitBasePrice,
-				 const PercentNumber<Prec>& percentNum)
+				 const Decimal& limitBasePrice,
+				 const PercentNumber<Decimal>& percentNum)
     {
       //std::cout << "StrategyBroker::ExitShortAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
-      ShortProfitTarget<Prec> percentTarget(limitBasePrice, percentNum);
+      ShortProfitTarget<Decimal> percentTarget(limitBasePrice, percentNum);
 
-      decimal<Prec> profitTarget(percentTarget.getProfitTarget());
+      Decimal profitTarget(percentTarget.getProfitTarget());
       //std::cout << "StrategyBroker::ExitShortAllUnitsAtLimit - short profit target = " << profitTarget << " on date: " << orderDate << std::endl << std::endl;
 
       
@@ -291,11 +289,11 @@ namespace mkc_timeseries
     
     void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
-				const decimal<Prec>& stopPrice)
+				const Decimal& stopPrice)
     {
       if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
 	{
-	  auto order = std::make_shared<SellAtStopOrder<Prec>>(tradingSymbol,
+	  auto order = std::make_shared<SellAtStopOrder<Decimal>>(tradingSymbol,
 							       mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
 							       orderDate,
 							       stopPrice);
@@ -310,11 +308,11 @@ namespace mkc_timeseries
 
     void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
-				const decimal<Prec>& stopBasePrice,
-				const PercentNumber<Prec>& percentNum)
+				const Decimal& stopBasePrice,
+				const PercentNumber<Decimal>& percentNum)
     {
-      LongStopLoss<Prec> percentStop(stopBasePrice, percentNum);
-      decimal<Prec> stopLoss(percentStop.getStopLoss());
+      LongStopLoss<Decimal> percentStop(stopBasePrice, percentNum);
+      Decimal stopLoss(percentStop.getStopLoss());
 
       //std::cout << "Entering long stop loss at: " << stopLoss << " on date: " << orderDate << std::endl;
       this->ExitLongAllUnitsAtStop(tradingSymbol, orderDate, stopLoss);
@@ -322,11 +320,11 @@ namespace mkc_timeseries
 
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& stopPrice)
+				 const Decimal& stopPrice)
     {
       if (mInstrumentPositionManager.isShortPosition (tradingSymbol))
 	{
-	  auto order = std::make_shared<CoverAtStopOrder<Prec>>(tradingSymbol,
+	  auto order = std::make_shared<CoverAtStopOrder<Decimal>>(tradingSymbol,
 							       	mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
 							       orderDate,
 							       stopPrice);
@@ -341,11 +339,11 @@ namespace mkc_timeseries
 
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
-				 const decimal<Prec>& stopBasePrice,
-				 const PercentNumber<Prec>& percentNum)
+				 const Decimal& stopBasePrice,
+				 const PercentNumber<Decimal>& percentNum)
     {
-      ShortStopLoss<Prec> aPercentStop(stopBasePrice, percentNum);
-      decimal<Prec> stopLoss(aPercentStop.getStopLoss());
+      ShortStopLoss<Decimal> aPercentStop(stopBasePrice, percentNum);
+      Decimal stopLoss(aPercentStop.getStopLoss());
       this->ExitShortAllUnitsAtStop(tradingSymbol,orderDate,stopLoss);
     }
 
@@ -369,107 +367,107 @@ namespace mkc_timeseries
 					  mInstrumentPositionManager);
     }
 
-    void OrderExecuted (MarketOnOpenLongOrder<Prec> *order)
+    void OrderExecuted (MarketOnOpenLongOrder<Decimal> *order)
     {
       auto position = createLongTradingPosition (order);
-      auto pOrder = std::make_shared<MarketOnOpenLongOrder<Prec>>(*order);
+      auto pOrder = std::make_shared<MarketOnOpenLongOrder<Decimal>>(*order);
 
       mInstrumentPositionManager.addPosition (position);
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
     }
 
     
-    void OrderExecuted (MarketOnOpenShortOrder<Prec> *order)
+    void OrderExecuted (MarketOnOpenShortOrder<Decimal> *order)
     {
       auto position = createShortTradingPosition (order);
-      auto pOrder = std::make_shared<MarketOnOpenShortOrder<Prec>>(*order);
+      auto pOrder = std::make_shared<MarketOnOpenShortOrder<Decimal>>(*order);
 
       mInstrumentPositionManager.addPosition (position);
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
     }
 
-    void OrderExecuted (MarketOnOpenSellOrder<Prec> *order)
+    void OrderExecuted (MarketOnOpenSellOrder<Decimal> *order)
     {
-      ExitOrderExecutedCommon<MarketOnOpenSellOrder<Prec>>(order);
+      ExitOrderExecutedCommon<MarketOnOpenSellOrder<Decimal>>(order);
     }
 
-    void OrderExecuted (MarketOnOpenCoverOrder<Prec> *order)
+    void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order)
     {
-      ExitOrderExecutedCommon<MarketOnOpenCoverOrder<Prec>>(order);
+      ExitOrderExecutedCommon<MarketOnOpenCoverOrder<Decimal>>(order);
     }
 
-    void OrderExecuted (SellAtLimitOrder<Prec> *order)
+    void OrderExecuted (SellAtLimitOrder<Decimal> *order)
     {
-      ExitOrderExecutedCommon<SellAtLimitOrder<Prec>>(order);
+      ExitOrderExecutedCommon<SellAtLimitOrder<Decimal>>(order);
     }
 
-    void OrderExecuted (CoverAtLimitOrder<Prec> *order)
+    void OrderExecuted (CoverAtLimitOrder<Decimal> *order)
     {
       //std::cout << "Short profit target of " << order->getFillPrice() << " reached on " << order->getFillDate() << std::endl;
 
-      ExitOrderExecutedCommon<CoverAtLimitOrder<Prec>>(order);
+      ExitOrderExecutedCommon<CoverAtLimitOrder<Decimal>>(order);
     }
 
-    void OrderExecuted (CoverAtStopOrder<Prec> *order)
+    void OrderExecuted (CoverAtStopOrder<Decimal> *order)
     {
-      ExitOrderExecutedCommon<CoverAtStopOrder<Prec>>(order);
+      ExitOrderExecutedCommon<CoverAtStopOrder<Decimal>>(order);
     }
 
-    void OrderExecuted (SellAtStopOrder<Prec> *order)
+    void OrderExecuted (SellAtStopOrder<Decimal> *order)
     {
-      ExitOrderExecutedCommon<SellAtStopOrder<Prec>>(order);
+      ExitOrderExecutedCommon<SellAtStopOrder<Decimal>>(order);
     }
 
-    void OrderCanceled (MarketOnOpenLongOrder<Prec> *order)
-    {
-
-    }
-
-    void OrderCanceled (MarketOnOpenShortOrder<Prec> *order)
+    void OrderCanceled (MarketOnOpenLongOrder<Decimal> *order)
     {
 
     }
 
-    void OrderCanceled (MarketOnOpenSellOrder<Prec> *order)
+    void OrderCanceled (MarketOnOpenShortOrder<Decimal> *order)
     {
 
     }
 
-    void OrderCanceled (MarketOnOpenCoverOrder<Prec> *order)
+    void OrderCanceled (MarketOnOpenSellOrder<Decimal> *order)
     {
 
     }
 
-    void OrderCanceled (SellAtLimitOrder<Prec> *order)
+    void OrderCanceled (MarketOnOpenCoverOrder<Decimal> *order)
     {
 
     }
 
-    void OrderCanceled (CoverAtLimitOrder<Prec> *order)
+    void OrderCanceled (SellAtLimitOrder<Decimal> *order)
     {
 
     }
 
-    void OrderCanceled (CoverAtStopOrder<Prec> *order)
+    void OrderCanceled (CoverAtLimitOrder<Decimal> *order)
     {
 
     }
 
-    void OrderCanceled (SellAtStopOrder<Prec> *order)
+    void OrderCanceled (CoverAtStopOrder<Decimal> *order)
     {
 
     }
 
-    const InstrumentPosition<Prec>& 
+    void OrderCanceled (SellAtStopOrder<Decimal> *order)
+    {
+
+    }
+
+    const InstrumentPosition<Decimal>& 
     getInstrumentPosition(const std::string& tradingSymbol) const
     {
       return mInstrumentPositionManager.getInstrumentPosition (tradingSymbol);
     }
 
     // Method automatically called when TradingPosition is closed
-    void PositionClosed (TradingPosition<Prec> *aPosition)
+    void PositionClosed (TradingPosition<Decimal> *aPosition)
     {
-      typename StrategyTransactionManager<Prec>::StrategyTransactionIterator it =
+      typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator it =
 	mStrategyTrades.findStrategyTransaction (aPosition->getPositionID());
 
       if (it != mStrategyTrades.endStrategyTransaction())
@@ -484,10 +482,10 @@ namespace mkc_timeseries
     OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
 							const boost::gregorian::date& d)
     {
-      typename Portfolio<Prec>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
+      typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
       if (symbolIterator != mPortfolio->endPortfolio())
 	{
-	  typename Security<Prec>::ConstRandomAccessIterator it = 
+	  typename Security<Decimal>::ConstRandomAccessIterator it = 
 	    symbolIterator->second->getRandomAccessIterator (d);
 
 	  return (*it);
@@ -496,10 +494,10 @@ namespace mkc_timeseries
 	throw StrategyBrokerException ("StrategyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
     }
 
-    std::shared_ptr<TradingPositionLong<Prec>>
-    createLongTradingPosition (TradingOrder<Prec> *order)
+    std::shared_ptr<TradingPositionLong<Decimal>>
+    createLongTradingPosition (TradingOrder<Decimal> *order)
     {
-      auto position = std::make_shared<TradingPositionLong<Prec>> (order->getTradingSymbol(), 
+      auto position = std::make_shared<TradingPositionLong<Decimal>> (order->getTradingSymbol(), 
 								   order->getFillPrice(),
 								   getEntryBar (order->getTradingSymbol(), 
 										order->getFillDate()),
@@ -508,11 +506,11 @@ namespace mkc_timeseries
       return position;
     }
 
-    std::shared_ptr<TradingPositionShort<Prec>>
-    createShortTradingPosition (TradingOrder<Prec> *order)
+    std::shared_ptr<TradingPositionShort<Decimal>>
+    createShortTradingPosition (TradingOrder<Decimal> *order)
     {
       auto position = 
-	std::make_shared<TradingPositionShort<Prec>> (order->getTradingSymbol(), 
+	std::make_shared<TradingPositionShort<Decimal>> (order->getTradingSymbol(), 
 						      order->getFillPrice(),
 						      getEntryBar (order->getTradingSymbol(), 
 								   order->getFillDate()),
@@ -522,23 +520,23 @@ namespace mkc_timeseries
       return position;
     }
 
-    std::shared_ptr <StrategyTransaction<Prec>>
-    createStrategyTransaction (std::shared_ptr<TradingOrder<Prec>> order,
-			       std::shared_ptr<TradingPosition<Prec>> position)
+    std::shared_ptr <StrategyTransaction<Decimal>>
+    createStrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> order,
+			       std::shared_ptr<TradingPosition<Decimal>> position)
     {
-      return std::make_shared<StrategyTransaction<Prec>>(order, position);
+      return std::make_shared<StrategyTransaction<Decimal>>(order, position);
     }
 
     template <typename T>
     void ExitOrderExecutedCommon (T *order)
     {
-      InstrumentPosition<Prec> instrumentPosition =
+      InstrumentPosition<Decimal> instrumentPosition =
 	mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
-      typename InstrumentPosition<Prec>::ConstInstrumentPositionIterator positionIterator = 
+      typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator = 
 	instrumentPosition.beginInstrumentPosition();
-      typename StrategyTransactionManager<Prec>::StrategyTransactionIterator transactionIterator;
-      shared_ptr<StrategyTransaction<Prec>> aTransaction;
-      std::shared_ptr<TradingPosition<Prec>> pos;
+      typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
+      shared_ptr<StrategyTransaction<Decimal>> aTransaction;
+      std::shared_ptr<TradingPosition<Decimal>> pos;
       //std::shared_ptr<T> exitOrder(*order);
       auto exitOrder = std::make_shared<T>(*order);
 
@@ -565,11 +563,11 @@ namespace mkc_timeseries
 
 
   private:
-    TradingOrderManager<Prec> mOrderManager;
-    InstrumentPositionManager<Prec> mInstrumentPositionManager;
-    StrategyTransactionManager<Prec> mStrategyTrades;
-    ClosedPositionHistory<Prec> mClosedTradeHistory;
-    std::shared_ptr<Portfolio<Prec>> mPortfolio;
+    TradingOrderManager<Decimal> mOrderManager;
+    InstrumentPositionManager<Decimal> mInstrumentPositionManager;
+    StrategyTransactionManager<Decimal> mStrategyTrades;
+    ClosedPositionHistory<Decimal> mClosedTradeHistory;
+    std::shared_ptr<Portfolio<Decimal>> mPortfolio;
   };
 
 

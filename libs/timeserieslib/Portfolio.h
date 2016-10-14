@@ -31,11 +31,11 @@ namespace mkc_timeseries
 
   };
 
-  template <int Prec>
+  template <class Decimal>
   class Portfolio
     {
     public:
-      typedef shared_ptr<Security<Prec>> SecurityPtr;
+      typedef shared_ptr<Security<Decimal>> SecurityPtr;
       typedef typename map<string, 
 			   SecurityPtr>::const_iterator ConstPortfolioIterator;
 
@@ -45,7 +45,7 @@ namespace mkc_timeseries
 	  mPortfolioSecurities()
       {}
 
-      Portfolio (const Portfolio<Prec> &rhs)
+      Portfolio (const Portfolio<Decimal> &rhs)
 	: mPortfolioName (rhs.mPortfolioName),
 	  mPortfolioSecurities(rhs.mPortfolioSecurities)
       {}
@@ -53,8 +53,8 @@ namespace mkc_timeseries
       ~Portfolio()
       {}
 
-      Portfolio<Prec>& 
-      operator=(const Portfolio<Prec> &rhs)
+      Portfolio<Decimal>& 
+      operator=(const Portfolio<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
@@ -65,9 +65,9 @@ namespace mkc_timeseries
 	return *this;
       }
 
-      std::shared_ptr<Portfolio<Prec>> clone() const
+      std::shared_ptr<Portfolio<Decimal>> clone() const
       {
-	return std::make_shared<Portfolio<Prec>>(getPortfolioName());
+	return std::make_shared<Portfolio<Decimal>>(getPortfolioName());
       }
 
       const std::string& getPortfolioName() const
@@ -90,7 +90,7 @@ namespace mkc_timeseries
 	return mPortfolioSecurities.end();
       }
 
-      void addSecurity (std::shared_ptr<Security<Prec>> security)
+      void addSecurity (std::shared_ptr<Security<Decimal>> security)
       {
 	ConstPortfolioIterator pos = 
 	  mPortfolioSecurities.find(security->getSymbol()) ;

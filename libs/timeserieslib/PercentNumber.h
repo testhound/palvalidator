@@ -21,14 +21,14 @@ using std::shared_ptr;
 
 namespace mkc_timeseries
 {
-  template <int Prec> class PercentNumber
+  template <class Decimal> class PercentNumber
   {
   public:
-    static const PercentNumber<Prec> createPercentNumber (const dec::decimal<Prec>& number)
+    static const PercentNumber<Decimal> createPercentNumber (const Decimal& number)
     {
       boost::mutex::scoped_lock Lock(mNumberCacheMutex);
 
-      typename map<decimal<Prec>, shared_ptr<PercentNumber>>::iterator it = mNumberCache.find (number);
+      typename map<Decimal, shared_ptr<PercentNumber>>::iterator it = mNumberCache.find (number);
 
       if (it != mNumberCache.end())
 	return *(it->second);
@@ -40,23 +40,23 @@ namespace mkc_timeseries
 	}
     }
 
-    static const PercentNumber<Prec> createPercentNumber (const std::string& numberString)
+    static const PercentNumber<Decimal> createPercentNumber (const std::string& numberString)
     {
-      dec::decimal<Prec> decNum(dec::fromString<dec::decimal<Prec>>(numberString));
-      return PercentNumber<Prec>::createPercentNumber (decNum);
+      Decimal decNum(dec::fromString<Decimal>(numberString));
+      return PercentNumber<Decimal>::createPercentNumber (decNum);
     }
 
-    const dec::decimal<Prec>& getAsPercent() const
+    const Decimal& getAsPercent() const
     {
       return mPercentNumber;
     }
 
-    PercentNumber(const PercentNumber<Prec>& rhs)
+    PercentNumber(const PercentNumber<Decimal>& rhs)
       : mPercentNumber(rhs.mPercentNumber)
     {}
 
     PercentNumber& 
-    operator=(const PercentNumber<Prec> &rhs)
+    operator=(const PercentNumber<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -69,53 +69,53 @@ namespace mkc_timeseries
     {}
 
   private:
-    PercentNumber (const dec::decimal<Prec>& number) 
-      : mPercentNumber (number / DecimalConstants<Prec>::DecimalOneHundred)
+    PercentNumber (const Decimal& number) 
+      : mPercentNumber (number / DecimalConstants<Decimal>::DecimalOneHundred)
     {}
 
   private:
     static boost::mutex  mNumberCacheMutex;
-    static std::map<dec::decimal<Prec>, std::shared_ptr<PercentNumber>> mNumberCache;
+    static std::map<Decimal, std::shared_ptr<PercentNumber>> mNumberCache;
 
-    dec::decimal<Prec> mPercentNumber;
+    Decimal mPercentNumber;
   };
 
-  template <int Prec>
-  bool operator< (const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs)
+  template <class Decimal>
+  bool operator< (const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs)
   {
     return lhs.getAsPercent() < rhs.getAsPercent();
    }
 
-  template <int Prec>
-  bool operator> (const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs){ return rhs < lhs; }
+  template <class Decimal>
+  bool operator> (const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs){ return rhs < lhs; }
 
-  template <int Prec>
-  bool operator<=(const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs){ return !(lhs > rhs); }
+  template <class Decimal>
+  bool operator<=(const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs){ return !(lhs > rhs); }
   
-  template <int Prec>
-  bool operator>=(const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs){ return !(lhs < rhs); }
+  template <class Decimal>
+  bool operator>=(const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs){ return !(lhs < rhs); }
 
-  template <int Prec>
-  bool operator==(const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs)
+  template <class Decimal>
+  bool operator==(const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs)
   {
     return (lhs.getAsPercent() == rhs.getAsPercent());
   }
 
-  template <int Prec>
-  bool operator!=(const PercentNumber<Prec>& lhs, const PercentNumber<Prec>& rhs)
+  template <class Decimal>
+  bool operator!=(const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs)
   { return !(lhs == rhs); }
 
-  template <int Prec>
-  boost::mutex PercentNumber<Prec>::mNumberCacheMutex;
+  template <class Decimal>
+  boost::mutex PercentNumber<Decimal>::mNumberCacheMutex;
 
-  template <int Prec>
-  std::map<dec::decimal<Prec>, std::shared_ptr<PercentNumber<Prec>>> PercentNumber<Prec>::mNumberCache;
+  template <class Decimal>
+  std::map<Decimal, std::shared_ptr<PercentNumber<Decimal>>> PercentNumber<Decimal>::mNumberCache;
 
-  template <int Prec>
-  inline PercentNumber<Prec>
+  template <class Decimal>
+  inline PercentNumber<Decimal>
   createAPercentNumber (const std::string& numStr)
   {
-    return PercentNumber<Prec>::createPercentNumber (createADecimal<Prec>(numStr));
+    return PercentNumber<Decimal>::createPercentNumber (createADecimal<Decimal>(numStr));
   }
 }
 

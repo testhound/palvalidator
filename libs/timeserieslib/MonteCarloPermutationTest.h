@@ -46,7 +46,7 @@ using boost::accumulators::accumulator_set;
       {}
   };
 
-  template <int Prec> class MonteCarloPermutationTest
+  template <class Decimal> class MonteCarloPermutationTest
   {
   public:
     MonteCarloPermutationTest()
@@ -55,23 +55,23 @@ using boost::accumulators::accumulator_set;
     virtual ~MonteCarloPermutationTest()
     {}
 
-    virtual dec::decimal<Prec> runPermutationTest() = 0;
+    virtual Decimal runPermutationTest() = 0;
 
   protected:
     uint32_t
-    getNumClosedTrades(std::shared_ptr<BackTester<Prec>> aBackTester)
+    getNumClosedTrades(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
-      std::shared_ptr<BacktesterStrategy<Prec>> backTesterStrategy = 
+      std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
 	(*(aBackTester->beginStrategies()));
 
       return backTesterStrategy->getStrategyBroker().getClosedTrades();
     }
 
-    dec::decimal<Prec> getCumulativeReturn(std::shared_ptr<BackTester<Prec>> aBackTester)
+    Decimal getCumulativeReturn(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
       if (aBackTester->getNumStrategies() == 1)
 	{
-	  std::shared_ptr<BacktesterStrategy<Prec>> backTesterStrategy = 
+	  std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
 	    (*(aBackTester->beginStrategies()));
 
 	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
@@ -80,7 +80,7 @@ using boost::accumulators::accumulator_set;
 	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges::getCumulativeReturn - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
 
-    void validateStrategy( std::shared_ptr<BacktesterStrategy<Prec>> aStrategy) const
+    void validateStrategy( std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy) const
     {
       if (aStrategy->getNumSecurities() == 0)
 	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: no securities in portfolio to test");
@@ -96,19 +96,17 @@ using boost::accumulators::accumulator_set;
   //
   // This class implements the MCPT by creating synthetic time series and permutting them
   //
-  template <int Prec,
-	    template <int Prec2> class BackTestResultPolicy = CumulativeReturnPolicy> class MonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Prec> 
+  template <class Decimal,
+	    template <class Decimal2> class BackTestResultPolicy = CumulativeReturnPolicy> class MonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Decimal> 
 
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Prec>> backtester,
+    MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Decimal>> backtester,
 				    uint32_t numPermutations)
-      : MonteCarloPermutationTest<Prec>(),
+      : MonteCarloPermutationTest<Decimal>(),
 	mBackTester (backtester),
 	mNumPermutations(numPermutations),
-	mBaseLineCumulativeReturn(DecimalConstants<Prec>::DecimalZero)
+	mBaseLineCumulativeReturn(DecimalConstants<Decimal>::DecimalZero)
     {
       if (numPermutations == 0)
 	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
@@ -130,16 +128,14 @@ using boost::accumulators::accumulator_set;
 
 
     // Runs the monte carlo permutation test and return the P-Value
-    dec::decimal<Prec> runPermutationTest()
+    Decimal runPermutationTest()
     {
-      using Decimal = decimal<Prec>;
-
-      std::shared_ptr<BacktesterStrategy<Prec>> aStrategy = 
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy = 
 	(*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
-      shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
+      shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
       std::shared_ptr<OHLCTimeSeries<Decimal>> theTimeSeries = theSecurity->getTimeSeries();
 
       mBackTester->backtest();
@@ -150,10 +146,10 @@ using boost::accumulators::accumulator_set;
 	{
 	  //std::cout << " runPermutationTest: number of trades = " << 
 	  //getNumClosedTrades (mBackTester) << std::endl;
-	  return DecimalConstants<Prec>::DecimalOneHundred;
+	  return DecimalConstants<Decimal>::DecimalOneHundred;
 	}
 
-      mBaseLineCumulativeReturn = BackTestResultPolicy<Prec>::getPermutationTestStatistic(mBackTester);
+      mBaseLineCumulativeReturn = BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
       //std::cout << "Baaeline test stat. for original  strategy equals: " <<  mBaseLineCumulativeReturn << std::endl;
 
       uint32_t count = 0;
@@ -162,8 +158,8 @@ using boost::accumulators::accumulator_set;
 	{
 	  uint32_t stratTrades = 0;
 
-	  std::shared_ptr<BacktesterStrategy<Prec>> clonedStrategy;
-	  std::shared_ptr<BackTester<Prec>> clonedBackTester;
+	  std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy;
+	  std::shared_ptr<BackTester<Decimal>> clonedBackTester;
 	  while (stratTrades < 2)
 	    {
 	      clonedStrategy = aStrategy->clone (createSyntheticPortfolio (theSecurity,
@@ -177,7 +173,7 @@ using boost::accumulators::accumulator_set;
 
 	    }
 
-	  Decimal cumulativeReturn(BackTestResultPolicy<Prec>::getPermutationTestStatistic(clonedBackTester));
+	  Decimal cumulativeReturn(BackTestResultPolicy<Decimal>::getPermutationTestStatistic(clonedBackTester));
 	  //std::cout << "Test stat. for strategy " << (i + 1) << " equals: " << cumulativeReturn << ", num trades = " << stratTrades << std::endl;
 
 	  if (cumulativeReturn >= mBaseLineCumulativeReturn)
@@ -188,15 +184,15 @@ using boost::accumulators::accumulator_set;
     }
 
   private:
-    std::shared_ptr<Portfolio<Prec>> createSyntheticPortfolio (std::shared_ptr<Security<Prec>> realSecurity,
-							       std::shared_ptr<Portfolio<Prec>> realPortfolio)
+    std::shared_ptr<Portfolio<Decimal>> createSyntheticPortfolio (std::shared_ptr<Security<Decimal>> realSecurity,
+							       std::shared_ptr<Portfolio<Decimal>> realPortfolio)
     {
-      std::shared_ptr<Portfolio<Prec>> syntheticPortfolio = realPortfolio->clone();
+      std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio = realPortfolio->clone();
       syntheticPortfolio->addSecurity (createSyntheticSecurity (realSecurity));
       return syntheticPortfolio;
     }
 
-    shared_ptr<Security<Prec>> createSyntheticSecurity(shared_ptr<Security<Prec>> aSecurity)
+    shared_ptr<Security<Decimal>> createSyntheticSecurity(shared_ptr<Security<Decimal>> aSecurity)
     {
       auto aTimeSeries = aSecurity->getTimeSeries();
       SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries);
@@ -208,9 +204,9 @@ using boost::accumulators::accumulator_set;
    
 
   private:
-    std::shared_ptr<BackTester<Prec>> mBackTester;
+    std::shared_ptr<BackTester<Decimal>> mBackTester;
     uint32_t mNumPermutations;
-    dec::decimal<Prec> mBaseLineCumulativeReturn;
+    Decimal mBaseLineCumulativeReturn;
   };
 
 
@@ -220,18 +216,16 @@ using boost::accumulators::accumulator_set;
   // This class implements the MCPT from the paper Monte-Carlo Evaluation of Trading Systems
   //
 
-  template <int Prec> class OriginalMCPT : 
-    public MonteCarloPermutationTest<Prec> 
+  template <class Decimal> class OriginalMCPT : 
+    public MonteCarloPermutationTest<Decimal> 
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    OriginalMCPT (std::shared_ptr<BackTester<Prec>> backtester,
+    OriginalMCPT (std::shared_ptr<BackTester<Decimal>> backtester,
 		  uint32_t numPermutations)
-      : MonteCarloPermutationTest<Prec>(),
+      : MonteCarloPermutationTest<Decimal>(),
 	mBackTester (backtester),
 	mNumPermutations(numPermutations),
-	mBaseLineCumulativeReturn(DecimalConstants<Prec>::DecimalZero)
+	mBaseLineCumulativeReturn(DecimalConstants<Decimal>::DecimalZero)
     {
       if (numPermutations == 0)
 	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
@@ -250,15 +244,15 @@ using boost::accumulators::accumulator_set;
     {}
 
     // Runs the monte carlo permutation test and return the P-Value
-    dec::decimal<Prec> runPermutationTest()
+    Decimal runPermutationTest()
     {
-      std::shared_ptr<BacktesterStrategy<Prec>> aStrategy = 
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy = 
 	(*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
-      shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
-      std::shared_ptr<OHLCTimeSeries<decimal<Prec>>> theTimeSeries = theSecurity->getTimeSeries();
+      shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
+      std::shared_ptr<OHLCTimeSeries<Decimal>> theTimeSeries = theSecurity->getTimeSeries();
 
       mBackTester->backtest();
 
@@ -268,7 +262,7 @@ using boost::accumulators::accumulator_set;
 	{
 	  //std::cout << " runPermutationTest: number of trades = " << 
 	  //getNumClosedTrades (mBackTester) << std::endl;
-	  return DecimalConstants<Prec>::DecimalOneHundred;
+	  return DecimalConstants<Decimal>::DecimalOneHundred;
 	}
 
       mBaseLineCumulativeReturn = this->getCumulativeReturn (mBackTester);
@@ -278,13 +272,13 @@ using boost::accumulators::accumulator_set;
 				  mNumPermutations);
     }
 
-    decimal<Prec> permuteAndGetPValue(int numTradingOpportunities, 
-				      decimal<Prec> *rawReturnsVector, 
+    Decimal permuteAndGetPValue(int numTradingOpportunities, 
+				      Decimal *rawReturnsVector, 
 				      int *positionVector,
 				      int nreps)
     {
       int i, irep, k1, k2, count, temp;
-      decimal<Prec> cand_return, trial_return;
+      Decimal cand_return, trial_return;
 
       int *workSeries(new int[numTradingOpportunities]);
 
@@ -297,10 +291,10 @@ using boost::accumulators::accumulator_set;
 	    If requested, do the same for the nonparametric version
 	  */
 
-	  cand_return = DecimalConstants<Prec>::DecimalZero;
+	  cand_return = DecimalConstants<Decimal>::DecimalZero;
 
 	  for (i = 0; i < numTradingOpportunities; i++)
-	    cand_return += decimal_cast<Prec> (positionVector[i]) * rawReturnsVector[i];
+	    cand_return += decimal_cast<Decimal::decimal_points> (positionVector[i]) * rawReturnsVector[i];
 
 	  RandomMersenne randNumGen;
 
@@ -323,14 +317,14 @@ using boost::accumulators::accumulator_set;
 
 	      trial_return = 0.0;
 	      for (i = 0; i < numTradingOpportunities; i++) // Compute return for this randomly shuffled system
-		trial_return += decimal_cast<Prec> (workSeries[i]) * rawReturnsVector[i];
+		trial_return += decimal_cast<Decimal::decimal_points> (workSeries[i]) * rawReturnsVector[i];
 
 	      if (trial_return >= cand_return) // If this random system beat candidate
 		++count; // Count it
 	    }
 
 	  delete[] workSeries;
-	  return decimal<Prec> ((count + 1.0) / (mNumPermutations + 1.0));
+	  return Decimal ((count + 1.0) / (mNumPermutations + 1.0));
 	}
       catch (...)
 	{
@@ -341,9 +335,9 @@ using boost::accumulators::accumulator_set;
       }
 
   private:
-    std::shared_ptr<BackTester<Prec>> mBackTester;
+    std::shared_ptr<BackTester<Decimal>> mBackTester;
     uint32_t mNumPermutations;
-    dec::decimal<Prec> mBaseLineCumulativeReturn;
+    Decimal mBaseLineCumulativeReturn;
   };
 
 
@@ -358,15 +352,13 @@ using boost::accumulators::accumulator_set;
   // does this a large number of times to converge on the payoff ratio
   //
 
-  template <int Prec> class MonteCarloPayoffRatio : 
-    public MonteCarloPermutationTest<Prec> 
+  template <class Decimal> class MonteCarloPayoffRatio : 
+    public MonteCarloPermutationTest<Decimal> 
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    MonteCarloPayoffRatio (std::shared_ptr<BackTester<Prec>> backtester,
+    MonteCarloPayoffRatio (std::shared_ptr<BackTester<Decimal>> backtester,
 			   uint32_t numPermutations)
-      : MonteCarloPermutationTest<Prec>(),
+      : MonteCarloPermutationTest<Decimal>(),
 	mBackTester (backtester),
 	mNumPermutations(numPermutations),
 	mWinnersStats(),
@@ -390,27 +382,27 @@ using boost::accumulators::accumulator_set;
 
     // Runs the monte carlo permutation test and return the simulated payoff ratio
 /* //original code, safe to delete after parallelization
-    dec::decimal<Prec> runPermutationTest()
+    Decimal runPermutationTest()
     {
-      std::shared_ptr<BacktesterStrategy<Prec>> aStrategy = 
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy = 
 	(*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
-      shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
+      shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
 
       uint32_t i;
       for (i = 0; i < mNumPermutations; i++)
 	{
-	  std::shared_ptr<BacktesterStrategy<Prec>> clonedStrategy = 
+	  std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy = 
 	    aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
 
-	  std::shared_ptr<BackTester<Prec>> clonedBackTester = mBackTester->clone();
+	  std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBackTester->clone();
 	  clonedBackTester->addStrategy(clonedStrategy);
 	  clonedBackTester->backtest();
 
-	  ClosedPositionHistory<Prec> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
-	  typename ClosedPositionHistory<Prec>::ConstTradeReturnIterator winnersIterator = 
+	  ClosedPositionHistory<Decimal> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
+	  typename ClosedPositionHistory<Decimal>::ConstTradeReturnIterator winnersIterator = 
 	    history.beginWinnersReturns();
 
 	  for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
@@ -419,7 +411,7 @@ using boost::accumulators::accumulator_set;
 	      mWinnersStats (*winnersIterator);
 	    }
 
-	  typename ClosedPositionHistory<Prec>::ConstTradeReturnIterator losersIterator = 
+	  typename ClosedPositionHistory<Decimal>::ConstTradeReturnIterator losersIterator = 
 	    history.beginLosersReturns();
 
 	  for (; losersIterator != history.endLosersReturns(); losersIterator++)
@@ -432,23 +424,23 @@ using boost::accumulators::accumulator_set;
 
       if ((count (mWinnersStats) > 0) && (count (mLosersStats) > 0))
 	{
-	  return decimal<Prec> (median (mWinnersStats) / median (mLosersStats));
+	  return Decimal (median (mWinnersStats) / median (mLosersStats));
 	}
       else
 	{
-	  return DecimalConstants<Prec>::DecimalZero;
+	  return DecimalConstants<Decimal>::DecimalZero;
 	}
     }
 */
 
-    dec::decimal<Prec> runPermutationTest()
+    Decimal runPermutationTest()
     {
-      std::shared_ptr<BacktesterStrategy<Prec>> aStrategy =
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
     (*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
-      shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
+      shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
 
       runner& Runner=getRunner();
       std::vector<boost::unique_future<void>> errorsVector;
@@ -457,15 +449,15 @@ using boost::accumulators::accumulator_set;
       for (i = 0; i < mNumPermutations; i++)
       {
           errorsVector.emplace_back(Runner.post([this,aStrategy,theSecurity](){
-            std::shared_ptr<BacktesterStrategy<Prec>> clonedStrategy =
+            std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy =
                   aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
 
-            std::shared_ptr<BackTester<Prec>> clonedBackTester = mBackTester->clone();
+            std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBackTester->clone();
             clonedBackTester->addStrategy(clonedStrategy);
 
             clonedBackTester->backtest();
 
-            ClosedPositionHistory<Prec> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
+            ClosedPositionHistory<Decimal> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
 
             auto winnersIterator = history.beginWinnersReturns();
             auto losersIterator = history.beginLosersReturns();
@@ -498,24 +490,24 @@ using boost::accumulators::accumulator_set;
     }
       if ((count (mWinnersStats) > 0) && (count (mLosersStats) > 0))
     {
-      return decimal<Prec> (median (mWinnersStats) / median (mLosersStats));
+      return Decimal (median (mWinnersStats) / median (mLosersStats));
     }
       else
     {
-      return DecimalConstants<Prec>::DecimalZero;
+      return DecimalConstants<Decimal>::DecimalZero;
     }
     }
 
   private:
-    std::shared_ptr<Portfolio<Prec>> createSyntheticPortfolio (std::shared_ptr<Security<Prec>> realSecurity,
-							       std::shared_ptr<Portfolio<Prec>> realPortfolio)
+    std::shared_ptr<Portfolio<Decimal>> createSyntheticPortfolio (std::shared_ptr<Security<Decimal>> realSecurity,
+							       std::shared_ptr<Portfolio<Decimal>> realPortfolio)
     {
-      std::shared_ptr<Portfolio<Prec>> syntheticPortfolio = realPortfolio->clone();
+      std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio = realPortfolio->clone();
       syntheticPortfolio->addSecurity (createSyntheticSecurity (realSecurity));
       return syntheticPortfolio;
     }
 
-    shared_ptr<Security<Prec>> createSyntheticSecurity(shared_ptr<Security<Prec>> aSecurity)
+    shared_ptr<Security<Decimal>> createSyntheticSecurity(shared_ptr<Security<Decimal>> aSecurity)
     {
       auto aTimeSeries = aSecurity->getTimeSeries();
       SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries);
@@ -528,7 +520,7 @@ using boost::accumulators::accumulator_set;
    
 
   private:
-    std::shared_ptr<BackTester<Prec>> mBackTester;
+    std::shared_ptr<BackTester<Decimal>> mBackTester;
     uint32_t mNumPermutations;
     boost::mutex                                          accumMutex;
     accumulator_set<double, stats<median_tag, count_tag>> mWinnersStats;

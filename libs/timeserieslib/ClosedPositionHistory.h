@@ -42,21 +42,21 @@ namespace mkc_timeseries
     
   };
 
- template <int Prec> class ClosedPositionHistory
+ template <class Decimal> class ClosedPositionHistory
   {
   public:
-    typedef typename std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Prec>>>::iterator PositionIterator;
-    typedef typename std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Prec>>>::const_iterator ConstPositionIterator;
+    typedef typename std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>>::iterator PositionIterator;
+    typedef typename std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>>::const_iterator ConstPositionIterator;
     typedef std::vector<unsigned int>::const_iterator ConstBarsInPositionIterator;
     typedef std::vector<double>::const_iterator ConstTradeReturnIterator;
 
     ClosedPositionHistory()
       : mPositions(),
-	mSumWinners(DecimalConstants<Prec>::DecimalZero),
-	mSumLosers(DecimalConstants<Prec>::DecimalZero),
+	mSumWinners(DecimalConstants<Decimal>::DecimalZero),
+	mSumLosers(DecimalConstants<Decimal>::DecimalZero),
 	mNumWinners(0),
 	mNumLosers(0),
-	mRMultipleSum(DecimalConstants<Prec>::DecimalZero),
+	mRMultipleSum(DecimalConstants<Decimal>::DecimalZero),
 	mWinnersStats(),
 	mLosersStats(),
 	mWinnersVect(),
@@ -64,7 +64,7 @@ namespace mkc_timeseries
 	mBarsPerPosition()
     {}
 
-    ClosedPositionHistory(const ClosedPositionHistory<Prec>& rhs) 
+    ClosedPositionHistory(const ClosedPositionHistory<Decimal>& rhs) 
       : mPositions(rhs.mPositions),
 	mSumWinners(rhs.mSumWinners),
 	mSumLosers(rhs.mSumLosers),
@@ -78,8 +78,8 @@ namespace mkc_timeseries
 	mBarsPerPosition(rhs.mBarsPerPosition)
     {}
 
-    ClosedPositionHistory<Prec>& 
-    operator=(const ClosedPositionHistory<Prec> &rhs)
+    ClosedPositionHistory<Decimal>& 
+    operator=(const ClosedPositionHistory<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -101,7 +101,7 @@ namespace mkc_timeseries
     ~ClosedPositionHistory()
     {}
 
-    void addClosedPosition(std::shared_ptr<TradingPosition<Prec>> position)
+    void addClosedPosition(std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isPositionOpen())
 	throw ClosedPositionHistoryException ("ClosedPositionHistory:addClosedPosition - cannot add open position");
@@ -115,7 +115,7 @@ namespace mkc_timeseries
 
       mPositions.insert(std::make_pair(d, position));
 
-      decimal<Prec> percReturn (position->getPercentReturn());
+      Decimal percReturn (position->getPercentReturn());
       
       if (position->isWinningPosition())
 	{
@@ -135,24 +135,24 @@ namespace mkc_timeseries
 	throw std::logic_error(std::string("ClosedPositionHistory:addClosedPosition - position not winner or lsoer"));
     }
 
-    void addClosedPosition (const TradingPositionLong<Prec>& position)
+    void addClosedPosition (const TradingPositionLong<Decimal>& position)
     {
-      addClosedPosition (std::make_shared<TradingPositionLong<Prec>>(position));
+      addClosedPosition (std::make_shared<TradingPositionLong<Decimal>>(position));
     }
 
-    void addClosedPosition (const TradingPositionShort<Prec>& position)
+    void addClosedPosition (const TradingPositionShort<Decimal>& position)
     {
-      addClosedPosition (std::make_shared<TradingPositionShort<Prec>>(position));
+      addClosedPosition (std::make_shared<TradingPositionShort<Decimal>>(position));
     }
 
-    const dec::decimal<Prec> getRMultipleExpectancy() const
+    const Decimal getRMultipleExpectancy() const
     {
       uint32_t numPos = getNumPositions();
 
-      if ((numPos > 0) && (mRMultipleSum > DecimalConstants<Prec>::DecimalZero))
-	return mRMultipleSum / dec::decimal<Prec>(numPos);
+      if ((numPos > 0) && (mRMultipleSum > DecimalConstants<Decimal>::DecimalZero))
+	return mRMultipleSum / Decimal(numPos);
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
     uint32_t getNumPositions() const
@@ -175,15 +175,15 @@ namespace mkc_timeseries
       return mNumLosers;
     }
 
-    decimal<Prec> getAverageWinningTrade() const
+    Decimal getAverageWinningTrade() const
     {
       if (mNumWinners >= 1)
-	return (decimal_cast<Prec> (mSumWinners) /decimal_cast<Prec>(mNumWinners));
+	return (decimal_cast<Decimal::decimal_points> (mSumWinners) /decimal_cast<Decimal::decimal_points>(mNumWinners));
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getGeometricMean(std::vector<double> const&data) const
+    Decimal getGeometricMean(std::vector<double> const&data) const
     {
       const double too_large = 1.e64;
       const double too_small = 1.e-64;
@@ -196,81 +196,81 @@ namespace mkc_timeseries
 	  product = 1;      
 	}
       }
-      return (decimal<Prec> (std::exp((sum_log + std::log(product))/data.size())));
+      return (Decimal (std::exp((sum_log + std::log(product))/data.size())));
     }
 
-    decimal<Prec> getGeometricWinningTrade() const
+    Decimal getGeometricWinningTrade() const
     {
       if (mNumWinners >= 1)
-	return (decimal<Prec> (getGeometricMean (mWinnersVect)));
+	return (Decimal (getGeometricMean (mWinnersVect)));
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getMedianWinningTrade() const
+    Decimal getMedianWinningTrade() const
     {
       if (mNumWinners >= 1)
-	return (decimal<Prec>(median (mWinnersStats)));
+	return (Decimal(median (mWinnersStats)));
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getAverageLosingTrade() const
+    Decimal getAverageLosingTrade() const
     {
       if (mNumLosers >= 1)
-	return (decimal_cast<Prec> (mSumLosers) /decimal_cast<Prec>(mNumLosers));
+	return (decimal_cast<Decimal::decimal_points> (mSumLosers) /decimal_cast<Decimal::decimal_points>(mNumLosers));
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getGeometricLosingTrade() const
+    Decimal getGeometricLosingTrade() const
     {
       if (mNumLosers >= 1)
-	return (decimal<Prec> (getGeometricMean (mLosersVect)));
+	return (Decimal (getGeometricMean (mLosersVect)));
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getMedianLosingTrade() const
+    Decimal getMedianLosingTrade() const
     {
       if (mNumLosers >= 1)
-	return (decimal<Prec>(median (mLosersStats)));
+	return (Decimal(median (mLosersStats)));
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getPercentWinners() const
+    Decimal getPercentWinners() const
     {
       if (getNumPositions() > 0)
-	return ((decimal_cast<Prec> (mNumWinners) / decimal_cast<Prec>(getNumPositions())) * 
-		DecimalConstants<Prec>::DecimalOneHundred);
+	return ((decimal_cast<Decimal::decimal_points> (mNumWinners) / decimal_cast<Decimal::decimal_points>(getNumPositions())) * 
+		DecimalConstants<Decimal>::DecimalOneHundred);
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getPercentLosers() const
+    Decimal getPercentLosers() const
     {
       if (getNumPositions() > 0)
-	return ((decimal_cast<Prec> (mNumLosers) / decimal_cast<Prec>(getNumPositions())) * 
-		DecimalConstants<Prec>::DecimalOneHundred);
+	return ((decimal_cast<Decimal::decimal_points> (mNumLosers) / decimal_cast<Decimal::decimal_points>(getNumPositions())) * 
+		DecimalConstants<Decimal>::DecimalOneHundred);
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getPayoffRatio() const
+    Decimal getPayoffRatio() const
     {
       if (getNumPositions() > 0)
 	{
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
 	    {
-	      dec::decimal<Prec> avgLoser = getAverageLosingTrade().abs();
-	      if (avgLoser != DecimalConstants<Prec>::DecimalZero)
+	      Decimal avgLoser = getAverageLosingTrade().abs();
+	      if (avgLoser != DecimalConstants<Decimal>::DecimalZero)
 		return (getAverageWinningTrade() / avgLoser);
 	      else
 		return (getAverageWinningTrade());
 	    }
 	  else if (mNumWinners == 0)
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	  else if (mNumLosers == 0)
 	    return (getAverageWinningTrade());
 	  else
@@ -278,19 +278,19 @@ namespace mkc_timeseries
 	  
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getGeometricPayoffRatio() const
+    Decimal getGeometricPayoffRatio() const
     {
       if (getNumPositions() > 0)
 	{
-	  if (getGeometricLosingTrade() == DecimalConstants<Prec>::DecimalZero)
+	  if (getGeometricLosingTrade() == DecimalConstants<Decimal>::DecimalZero)
 	    return getPayoffRatio();
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
 	    return (getGeometricWinningTrade() / getGeometricLosingTrade());
 	  else if (mNumWinners == 0)
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	  else if (mNumLosers == 0)
 	    return (getGeometricWinningTrade());
 	  else
@@ -298,19 +298,19 @@ namespace mkc_timeseries
 	  
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getMedianPayoffRatio() const
+    Decimal getMedianPayoffRatio() const
     {
       if (getNumPositions() > 0)
 	{
-	  if (getMedianLosingTrade() == DecimalConstants<Prec>::DecimalZero)
+	  if (getMedianLosingTrade() == DecimalConstants<Decimal>::DecimalZero)
 	    return getPayoffRatio();
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
 	    return (getMedianWinningTrade() / getMedianLosingTrade().abs());
 	  else if (mNumWinners == 0)
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	  else if (mNumLosers == 0)
 	    return (getMedianWinningTrade());
 	  else
@@ -318,115 +318,115 @@ namespace mkc_timeseries
 	  
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getPessimisticReturnRatio() const
+    Decimal getPessimisticReturnRatio() const
       {
 	if (getNumPositions() > 0)
 	  {
 	    if ((mNumWinners == 0) || (mNumWinners == 1))
-	      return (DecimalConstants<Prec>::DecimalZero);
+	      return (DecimalConstants<Decimal>::DecimalZero);
 
-	    dec::decimal<Prec> numTrades(getNumPositions());
-	    dec::decimal<Prec> numerator = (((dec::decimal<Prec>(mNumWinners) -
-					      DecimalSqrtConstants<Prec>::getSqrt (mNumWinners))/numTrades)
+	    Decimal numTrades(getNumPositions());
+	    Decimal numerator = (((Decimal(mNumWinners) -
+					      DecimalSqrtConstants<Decimal>::getSqrt (mNumWinners))/numTrades)
 					    * getMedianWinningTrade());
 
 	    if (mNumLosers == 0)
 	      return numerator;
 
-	    dec::decimal<Prec> denominator = (((dec::decimal<Prec>(mNumLosers) +
-					      DecimalSqrtConstants<Prec>::getSqrt (mNumLosers))/numTrades)
+	    Decimal denominator = (((Decimal(mNumLosers) +
+					      DecimalSqrtConstants<Decimal>::getSqrt (mNumLosers))/numTrades)
 					      * getMedianLosingTrade().abs());
 
-	    if (denominator == DecimalConstants<Prec>::DecimalZero)
+	    if (denominator == DecimalConstants<Decimal>::DecimalZero)
 	      return numerator;
 	    else
 	      return numerator / denominator;
 	  }
 	else
-	  return (DecimalConstants<Prec>::DecimalZero);
+	  return (DecimalConstants<Decimal>::DecimalZero);
       }
 
-    decimal<Prec> getProfitFactor() const
+    Decimal getProfitFactor() const
     {
       if (getNumPositions() > 0)
 	{
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
 	    return (mSumWinners / mSumLosers.abs());
 	  else if (mNumWinners == 0)
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	  else if (mNumLosers == 0)
-	    return (DecimalConstants<Prec>::DecimalOneHundred);
+	    return (DecimalConstants<Decimal>::DecimalOneHundred);
 	  else
 	    throw std::logic_error(std::string("ClosedPositionHistory:getProfitFactor - getNumPositions > 0 error"));
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getPALProfitability() const
+    Decimal getPALProfitability() const
     {
       if (getNumPositions() > 0)
 	{
-	  decimal<Prec> pf(getProfitFactor());
-	  decimal<Prec> payoffRatio(getPayoffRatio());
+	  Decimal pf(getProfitFactor());
+	  Decimal payoffRatio(getPayoffRatio());
 
-	  decimal<Prec> denominator (pf + payoffRatio);
-	  if (denominator > DecimalConstants<Prec>::DecimalZero)
-	    return ((pf/denominator) * DecimalConstants<Prec>::DecimalOneHundred);
+	  Decimal denominator (pf + payoffRatio);
+	  if (denominator > DecimalConstants<Decimal>::DecimalZero)
+	    return ((pf/denominator) * DecimalConstants<Decimal>::DecimalOneHundred);
 	  else
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getMedianPALProfitability() const
+    Decimal getMedianPALProfitability() const
     {
       if (getNumPositions() > 0)
 	{
-	  decimal<Prec> pf(getProfitFactor());
-	  decimal<Prec> payoffRatio(getMedianPayoffRatio());
+	  Decimal pf(getProfitFactor());
+	  Decimal payoffRatio(getMedianPayoffRatio());
 
-	  decimal<Prec> denominator (pf + payoffRatio);
-	  if (denominator > DecimalConstants<Prec>::DecimalZero)
+	  Decimal denominator (pf + payoffRatio);
+	  if (denominator > DecimalConstants<Decimal>::DecimalZero)
 	    {
-	      decimal<Prec> ratio(pf/denominator);
-	      return (ratio * DecimalConstants<Prec>::DecimalOneHundred);
+	      Decimal ratio(pf/denominator);
+	      return (ratio * DecimalConstants<Decimal>::DecimalOneHundred);
 	    }
 	  else
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    decimal<Prec> getGeometricPALProfitability() const
+    Decimal getGeometricPALProfitability() const
     {
       if (getNumPositions() > 0)
 	{
-	  decimal<Prec> pf(getProfitFactor());
-	  decimal<Prec> payoffRatio(getGeometricPayoffRatio());
+	  Decimal pf(getProfitFactor());
+	  Decimal payoffRatio(getGeometricPayoffRatio());
 
-	  decimal<Prec> denominator (pf + payoffRatio);
-	  if (denominator > DecimalConstants<Prec>::DecimalZero)
+	  Decimal denominator (pf + payoffRatio);
+	  if (denominator > DecimalConstants<Decimal>::DecimalZero)
 	    {
-	      decimal<Prec> ratio(pf/denominator);
-	      return (ratio * DecimalConstants<Prec>::DecimalOneHundred);
+	      Decimal ratio(pf/denominator);
+	      return (ratio * DecimalConstants<Decimal>::DecimalOneHundred);
 	    }
 	  else
-	    return (DecimalConstants<Prec>::DecimalZero);
+	    return (DecimalConstants<Decimal>::DecimalZero);
 	}
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
 
 
-    dec::decimal<Prec> getCumulativeReturn() const
+    Decimal getCumulativeReturn() const
     {
-      dec::decimal<Prec> cumReturn(0);
+      Decimal cumReturn(0);
 
       ClosedPositionHistory::ConstPositionIterator it = beginTradingPositions();
       if (it != endTradingPositions())
@@ -439,7 +439,7 @@ namespace mkc_timeseries
 	      cumReturn = cumReturn *  it->second->getTradeReturnMultiplier();
 	    }
 	  
-	  cumReturn = cumReturn - DecimalConstants<Prec>::DecimalOne;
+	  cumReturn = cumReturn - DecimalConstants<Decimal>::DecimalOne;
 	}
 
       return cumReturn;
@@ -486,12 +486,12 @@ namespace mkc_timeseries
     }
 
   private:
-    std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Prec>>> mPositions;
-    decimal<Prec> mSumWinners;
-    decimal<Prec> mSumLosers;
+    std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>> mPositions;
+    Decimal mSumWinners;
+    Decimal mSumLosers;
     unsigned int mNumWinners;
     unsigned int mNumLosers;
-    decimal<Prec> mRMultipleSum;
+    Decimal mRMultipleSum;
     accumulator_set<double, stats<median_tag>> mWinnersStats;
     accumulator_set<double, stats<median_tag>> mLosersStats;
     std::vector<double> mWinnersVect;
@@ -502,18 +502,18 @@ namespace mkc_timeseries
   };
 
  /*
- template <int Prec> class PositionManager
+ template <class Decimal> class PositionManager
   {
     bool isInstrumentLong (const std::string& symbol);
     bool isInstrumentShort (const std::string& symbol);
     bool isInstrumentFlat (const std::string& symbol);
 
   private:
-    typedef std::shared_ptr<TradingPosition<Prec> TradingPositionPtr;
+    typedef std::shared_ptr<TradingPosition<Decimal> TradingPositionPtr;
     
-    std::map<uint32_t, std::shared_ptr<TradingPosition<Prec>> orderIDToPositionMap;
-    std::multimap<uint32_t, std::shared_ptr<TradingOrder<Prec>> PositionIDToOrderMap;
-    std::map<uint32_t, std::shared_ptr<TradingOrder<Prec>> PositionIDToPositionMap;
+    std::map<uint32_t, std::shared_ptr<TradingPosition<Decimal>> orderIDToPositionMap;
+    std::multimap<uint32_t, std::shared_ptr<TradingOrder<Decimal>> PositionIDToOrderMap;
+    std::map<uint32_t, std::shared_ptr<TradingOrder<Decimal>> PositionIDToPositionMap;
     std::map<std::string, std::vector<TradingPositionPtr>> SymbolToOpenPositionMap;
   };
  */

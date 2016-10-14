@@ -14,14 +14,12 @@
 
 namespace mkc_timeseries
 {
-  template <int Prec> class InstrumentPosition;
+  template <class Decimal> class InstrumentPosition;
 
-  template <int Prec> class InstrumentPositionState
+  template <class Decimal> class InstrumentPositionState
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename std::vector<std::shared_ptr<TradingPosition<Prec>>>::const_iterator ConstInstrumentPositionIterator;
+    typedef typename std::vector<std::shared_ptr<TradingPosition<Decimal>>>::const_iterator ConstInstrumentPositionIterator;
 
   public:
     InstrumentPositionState()
@@ -30,11 +28,11 @@ namespace mkc_timeseries
     virtual ~InstrumentPositionState()
     {}
 
-    InstrumentPositionState (const InstrumentPositionState<Prec>& rhs)
+    InstrumentPositionState (const InstrumentPositionState<Decimal>& rhs)
     {}
 
-    InstrumentPositionState<Prec>& 
-    operator=(const InstrumentPositionState<Prec> &rhs)
+    InstrumentPositionState<Decimal>& 
+    operator=(const InstrumentPositionState<Decimal> &rhs)
     {
       return *this;
     }
@@ -46,46 +44,44 @@ namespace mkc_timeseries
 
     virtual ConstInstrumentPositionIterator getInstrumentPosition (uint32_t unitNumber) const = 0;
     virtual void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar) = 0;
-    virtual void addPosition(InstrumentPosition<Prec>* iPosition,
-			     std::shared_ptr<TradingPosition<Prec>> position) = 0;
+    virtual void addPosition(InstrumentPosition<Decimal>* iPosition,
+			     std::shared_ptr<TradingPosition<Decimal>> position) = 0;
     virtual ConstInstrumentPositionIterator beginInstrumentPosition() const = 0;
     virtual ConstInstrumentPositionIterator endInstrumentPosition() const = 0;
-    virtual void closeUnitPosition(InstrumentPosition<Prec>* iPosition,
+    virtual void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
 				   const boost::gregorian::date exitDate,
-				   const dec::decimal<Prec>& exitPrice,
+				   const Decimal& exitPrice,
 				   uint32_t unitNumber) = 0;
-    virtual void closeAllPositions(InstrumentPosition<Prec>* iPosition,
+    virtual void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
 				   const boost::gregorian::date exitDate,
-				   const dec::decimal<Prec>& exitPrice) = 0;
+				   const Decimal& exitPrice) = 0;
  
   
   };
 
-  template <int Prec> class FlatInstrumentPositionState : public InstrumentPositionState<Prec>
+  template <class Decimal> class FlatInstrumentPositionState : public InstrumentPositionState<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename InstrumentPositionState<Prec>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
+    typedef typename InstrumentPositionState<Decimal>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
   public:
-    FlatInstrumentPositionState (const FlatInstrumentPositionState<Prec>& rhs)
-      : InstrumentPositionState<Prec>(rhs)
+    FlatInstrumentPositionState (const FlatInstrumentPositionState<Decimal>& rhs)
+      : InstrumentPositionState<Decimal>(rhs)
     {}
 
-    FlatInstrumentPositionState<Prec>& 
-    operator=(const FlatInstrumentPositionState<Prec> &rhs) 
+    FlatInstrumentPositionState<Decimal>& 
+    operator=(const FlatInstrumentPositionState<Decimal> &rhs) 
     {
        if (this == &rhs)
 	return *this;
 
-      InstrumentPositionState<Prec>::operator=(rhs);
+      InstrumentPositionState<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~FlatInstrumentPositionState()
     {}
 
-    static std::shared_ptr<FlatInstrumentPositionState<Prec>> getInstance()
+    static std::shared_ptr<FlatInstrumentPositionState<Decimal>> getInstance()
     {
       return mInstance;
     }
@@ -121,8 +117,8 @@ namespace mkc_timeseries
       throw InstrumentPositionException("FlatInstrumentPositionState: getInstrumentPosition - no positions avaialble in flat state");
     }
 
-    void addPosition(InstrumentPosition<Prec>* iPosition,
-		     std::shared_ptr<TradingPosition<Prec>> position);
+    void addPosition(InstrumentPosition<Decimal>* iPosition,
+		     std::shared_ptr<TradingPosition<Decimal>> position);
 
     
 
@@ -136,66 +132,64 @@ namespace mkc_timeseries
       throw InstrumentPositionException("FlatInstrumentPositionState: endInstrumentPosition - no positions avaialble in flat state");
     }
 
-    void closeUnitPosition(InstrumentPosition<Prec>* iPosition,
+    void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
 			   const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice,
+			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeUnitPosition - no positions avaialble in flat state");
     }
 
-    void closeAllPositions(InstrumentPosition<Prec>* iPosition,
+    void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
 			   const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice)
+			   const Decimal& exitPrice)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeAllPositions - no positions avaialble in flat state");
     }
 
   private:
     FlatInstrumentPositionState()
-      : InstrumentPositionState<Prec>()
+      : InstrumentPositionState<Decimal>()
     {}
 
   private:
-    static std::shared_ptr<FlatInstrumentPositionState<Prec>> mInstance;
+    static std::shared_ptr<FlatInstrumentPositionState<Decimal>> mInstance;
   };
 
-  template <int Prec> std::shared_ptr<FlatInstrumentPositionState<Prec>> FlatInstrumentPositionState<Prec>::mInstance(new FlatInstrumentPositionState<Prec>());
+  template <class Decimal> std::shared_ptr<FlatInstrumentPositionState<Decimal>> FlatInstrumentPositionState<Decimal>::mInstance(new FlatInstrumentPositionState<Decimal>());
 
   //
   // class InMarketPositionState
   //
 
-  template <int Prec> class InMarketPositionState : public InstrumentPositionState<Prec>
+  template <class Decimal> class InMarketPositionState : public InstrumentPositionState<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename InstrumentPositionState<Prec>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
+    typedef typename InstrumentPositionState<Decimal>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
   protected:
-    InMarketPositionState(std::shared_ptr<TradingPosition<Prec>> position)
-      : InstrumentPositionState<Prec>(),
+    InMarketPositionState(std::shared_ptr<TradingPosition<Decimal>> position)
+      : InstrumentPositionState<Decimal>(),
 	mTradingPositionUnits()
     {
       this->addPositionCommon(position);
     }
 
   public:
-    InMarketPositionState (const InMarketPositionState<Prec>& rhs)
-      : InstrumentPositionState<Prec>(rhs),
+    InMarketPositionState (const InMarketPositionState<Decimal>& rhs)
+      : InstrumentPositionState<Decimal>(rhs),
 	mTradingPositionUnits(rhs.mTradingPositionUnits)
     {}
 
     virtual ~InMarketPositionState()
     {}
 
-    InMarketPositionState<Prec>& 
-    operator=(const InMarketPositionState<Prec> &rhs) 
+    InMarketPositionState<Decimal>& 
+    operator=(const InMarketPositionState<Decimal> &rhs) 
     {
       if (this == &rhs)
 	return *this;
       
-      InstrumentPositionState<Prec>::operator=(rhs);
+      InstrumentPositionState<Decimal>::operator=(rhs);
       mTradingPositionUnits = rhs.mTradingPositionUnits;
     }
 
@@ -214,7 +208,7 @@ namespace mkc_timeseries
       //return mTradingPositionUnits.at (unitNumber - 1);
     }
 
-    void addPositionCommon(std::shared_ptr<TradingPosition<Prec>> position)
+    void addPositionCommon(std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isPositionClosed())
 	throw InstrumentPositionException ("InstrumentPosition: cannot add a closed position");
@@ -246,9 +240,9 @@ namespace mkc_timeseries
       return  mTradingPositionUnits.end();
     }
 
-    void closeUnitPosition(InstrumentPosition<Prec>* iPosition,
+    void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
 			   const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice,
+			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
     {
       ConstInstrumentPositionIterator it = getInstrumentPosition (unitNumber);
@@ -264,13 +258,13 @@ namespace mkc_timeseries
 	throw InstrumentPositionException ("InMarketPositionState: closeUnitPosition - unit already closed");
 
       if (getNumPositionUnits() == 0)
-	iPosition->ChangeState (FlatInstrumentPositionState<Prec>::getInstance());
+	iPosition->ChangeState (FlatInstrumentPositionState<Decimal>::getInstance());
  
     }
 
-    void closeAllPositions(InstrumentPosition<Prec>* iPosition,
+    void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
 			   const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice)
+			   const Decimal& exitPrice)
     {
       ConstInstrumentPositionIterator it = beginInstrumentPosition();
       for (; it != this->endInstrumentPosition(); it++)
@@ -280,7 +274,7 @@ namespace mkc_timeseries
 	}
 
       mTradingPositionUnits.clear();
-      iPosition->ChangeState (FlatInstrumentPositionState<Prec>::getInstance());
+      iPosition->ChangeState (FlatInstrumentPositionState<Decimal>::getInstance());
     }
 
   private:
@@ -294,39 +288,39 @@ namespace mkc_timeseries
     }
 
   private:
-    std::vector<std::shared_ptr<TradingPosition<Prec>>> mTradingPositionUnits;
+    std::vector<std::shared_ptr<TradingPosition<Decimal>>> mTradingPositionUnits;
   };
 
   //
   // class LongInstrumentPositionState
   //
 
-  template <int Prec> class LongInstrumentPositionState : public InMarketPositionState<Prec>
+  template <class Decimal> class LongInstrumentPositionState : public InMarketPositionState<Decimal>
   {
   public:
-    LongInstrumentPositionState(std::shared_ptr<TradingPosition<Prec>> position)
-      : InMarketPositionState<Prec>(position)
+    LongInstrumentPositionState(std::shared_ptr<TradingPosition<Decimal>> position)
+      : InMarketPositionState<Decimal>(position)
     {}
 
-    LongInstrumentPositionState (const LongInstrumentPositionState<Prec>& rhs)
-      : InMarketPositionState<Prec>(rhs)
+    LongInstrumentPositionState (const LongInstrumentPositionState<Decimal>& rhs)
+      : InMarketPositionState<Decimal>(rhs)
     {}
 
     ~ LongInstrumentPositionState()
     {}
 
-    LongInstrumentPositionState<Prec>& 
-    operator=(const LongInstrumentPositionState<Prec> &rhs) 
+    LongInstrumentPositionState<Decimal>& 
+    operator=(const LongInstrumentPositionState<Decimal> &rhs) 
     {
       if (this == &rhs)
 	return *this;
       
-      InMarketPositionState<Prec>::operator=(rhs);
+      InMarketPositionState<Decimal>::operator=(rhs);
       return *this;
     }
 
-    void addPosition(InstrumentPosition<Prec>* iPosition,
-		     std::shared_ptr<TradingPosition<Prec>> position)
+    void addPosition(InstrumentPosition<Decimal>* iPosition,
+		     std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isLongPosition())
 	this->addPositionCommon(position);
@@ -350,29 +344,29 @@ namespace mkc_timeseries
     }
   };
 
-  template <int Prec> class ShortInstrumentPositionState : public InMarketPositionState<Prec>
+  template <class Decimal> class ShortInstrumentPositionState : public InMarketPositionState<Decimal>
   {
   public:
-    ShortInstrumentPositionState(std::shared_ptr<TradingPosition<Prec>> position)
-      : InMarketPositionState<Prec>(position)
+    ShortInstrumentPositionState(std::shared_ptr<TradingPosition<Decimal>> position)
+      : InMarketPositionState<Decimal>(position)
     {}
 
-    ShortInstrumentPositionState (const ShortInstrumentPositionState<Prec>& rhs)
-      : InMarketPositionState<Prec>(rhs)
+    ShortInstrumentPositionState (const ShortInstrumentPositionState<Decimal>& rhs)
+      : InMarketPositionState<Decimal>(rhs)
     {}
 
-    ShortInstrumentPositionState<Prec>& 
-    operator=(const ShortInstrumentPositionState<Prec> &rhs) 
+    ShortInstrumentPositionState<Decimal>& 
+    operator=(const ShortInstrumentPositionState<Decimal> &rhs) 
     {
       if (this == &rhs)
 	return *this;
       
-      InMarketPositionState<Prec>::operator=(rhs);
+      InMarketPositionState<Decimal>::operator=(rhs);
       return *this;
     }
 
-    void addPosition(InstrumentPosition<Prec>* iPosition,
-		     std::shared_ptr<TradingPosition<Prec>> position)
+    void addPosition(InstrumentPosition<Decimal>* iPosition,
+		     std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isShortPosition())
 	this->addPositionCommon(position);
@@ -405,26 +399,24 @@ namespace mkc_timeseries
   // a time or closing all units at the same
   // time.
 
-  template <int Prec> class InstrumentPosition
+  template <class Decimal> class InstrumentPosition
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename InstrumentPositionState<Prec>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
+    typedef typename InstrumentPositionState<Decimal>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
 
   public:
     InstrumentPosition (const std::string& instrumentSymbol)
       : mInstrumentSymbol(instrumentSymbol),
-	mInstrumentPositionState(FlatInstrumentPositionState<Prec>::getInstance())
+	mInstrumentPositionState(FlatInstrumentPositionState<Decimal>::getInstance())
     {}
 
-    InstrumentPosition (const InstrumentPosition<Prec>& rhs)
+    InstrumentPosition (const InstrumentPosition<Decimal>& rhs)
       : mInstrumentSymbol(rhs.mInstrumentSymbol),
 	mInstrumentPositionState(rhs.mInstrumentPositionState)
     {}
 
-    InstrumentPosition<Prec>& 
-    operator=(const InstrumentPosition<Prec> &rhs)
+    InstrumentPosition<Decimal>& 
+    operator=(const InstrumentPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -469,23 +461,23 @@ namespace mkc_timeseries
       return mInstrumentPositionState->getInstrumentPosition(unitNumber);
     }
 
-    const dec::decimal<Prec>& getFillPrice() const
+    const Decimal& getFillPrice() const
     {
       return getFillPrice(1);
     }
 
-    const dec::decimal<Prec>& getFillPrice(uint32_t unitNumber) const
+    const Decimal& getFillPrice(uint32_t unitNumber) const
     {
       ConstInstrumentPositionIterator pos = getInstrumentPosition(unitNumber);
       return (*pos)->getEntryPrice();
     }
 
-    void setRMultipleStop (const dec::decimal<Prec>& riskStop) const
+    void setRMultipleStop (const Decimal& riskStop) const
     {
       this->setRMultipleStop (riskStop, 1);
     }
 
-    void setRMultipleStop (const dec::decimal<Prec>& riskStop, uint32_t unitNumber) const
+    void setRMultipleStop (const Decimal& riskStop, uint32_t unitNumber) const
     {
       ConstInstrumentPositionIterator pos = getInstrumentPosition(unitNumber);
       (*pos)->setRMultipleStop (riskStop);
@@ -496,7 +488,7 @@ namespace mkc_timeseries
       mInstrumentPositionState->addBar(entryBar);
     }
 
-    void addPosition(std::shared_ptr<TradingPosition<Prec>> position)
+    void addPosition(std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isPositionClosed())
 	throw InstrumentPositionException ("InstrumentPosition: cannot add a closed position");
@@ -542,44 +534,44 @@ namespace mkc_timeseries
     }
 
     void closeUnitPosition(const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice,
+			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
     {
       mInstrumentPositionState->closeUnitPosition(this, exitDate, exitPrice, unitNumber);
     }
 
     void closeAllPositions(const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice)
+			   const Decimal& exitPrice)
     {
       mInstrumentPositionState->closeAllPositions(this, exitDate, exitPrice);
     }
 
   private:
-    void ChangeState (std::shared_ptr<InstrumentPositionState<Prec>> newState)
+    void ChangeState (std::shared_ptr<InstrumentPositionState<Decimal>> newState)
     {
       mInstrumentPositionState = newState;
     }
 
-    friend class FlatInstrumentPositionState<Prec>;
-    friend class LongInstrumentPositionState<Prec>;
-    friend class ShortInstrumentPositionState<Prec>;
-    friend class InMarketPositionState<Prec>;
+    friend class FlatInstrumentPositionState<Decimal>;
+    friend class LongInstrumentPositionState<Decimal>;
+    friend class ShortInstrumentPositionState<Decimal>;
+    friend class InMarketPositionState<Decimal>;
 
   private:
     std::string mInstrumentSymbol;
-    std::shared_ptr<InstrumentPositionState<Prec>> mInstrumentPositionState;
+    std::shared_ptr<InstrumentPositionState<Decimal>> mInstrumentPositionState;
   };
 
-  template <int Prec>
-  inline void FlatInstrumentPositionState<Prec>::addPosition(InstrumentPosition<Prec>* iPosition,
-							     std::shared_ptr<TradingPosition<Prec>> position)
+  template <class Decimal>
+  inline void FlatInstrumentPositionState<Decimal>::addPosition(InstrumentPosition<Decimal>* iPosition,
+							     std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isLongPosition())
-	iPosition->ChangeState (std::make_shared<LongInstrumentPositionState<Prec>>(position));
+	iPosition->ChangeState (std::make_shared<LongInstrumentPositionState<Decimal>>(position));
       else if (position->isShortPosition())
-	iPosition->ChangeState (std::make_shared<ShortInstrumentPositionState<Prec>>(position));
+	iPosition->ChangeState (std::make_shared<ShortInstrumentPositionState<Decimal>>(position));
       else
-	throw InstrumentPositionException ("FlatInstrumentPositionState<Prec>::addPosition: position is neither long or short");
+	throw InstrumentPositionException ("FlatInstrumentPositionState<Decimal>::addPosition: position is neither long or short");
       
     }
 }

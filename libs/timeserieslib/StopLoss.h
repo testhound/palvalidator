@@ -16,14 +16,14 @@ using dec::decimal;
 
 namespace mkc_timeseries
 {
-  template <int Prec> class StopLoss
+  template <class Decimal> class StopLoss
   {
   public:
-    explicit StopLoss(const decimal<Prec>& stopLoss)
+    explicit StopLoss(const Decimal& stopLoss)
       : mStopLoss (stopLoss) 
     {}
 
-    StopLoss(const StopLoss<Prec>& rhs)
+    StopLoss(const StopLoss<Decimal>& rhs)
       : mStopLoss (rhs.mStopLoss) 
     {}
 
@@ -40,7 +40,7 @@ namespace mkc_timeseries
     virtual ~StopLoss()
     {}
 
-    virtual const dec::decimal<Prec>& getStopLoss() const = 0;
+    virtual const Decimal& getStopLoss() const = 0;
 
     virtual bool isNullStopLoss() const = 0;
     virtual bool isLongStopLoss() const = 0;
@@ -48,34 +48,34 @@ namespace mkc_timeseries
 
   protected:
    StopLoss()
-      : mStopLoss(DecimalConstants<Prec>::DecimalZero)
+      : mStopLoss(DecimalConstants<Decimal>::DecimalZero)
     {}
 
   private:
-    dec::decimal<Prec> mStopLoss;
+    Decimal mStopLoss;
   };
 
-  template <int Prec>
-  const dec::decimal<Prec>& StopLoss<Prec>::getStopLoss() const
+  template <class Decimal>
+  const Decimal& StopLoss<Decimal>::getStopLoss() const
     {
       return mStopLoss;
     }
 
-  template <int Prec> 
-  class LongStopLoss  : public StopLoss<Prec>
+  template <class Decimal> 
+  class LongStopLoss  : public StopLoss<Decimal>
   {
   public:
-    explicit LongStopLoss(const decimal<Prec>& stopLoss)
-      : StopLoss<Prec> (stopLoss) 
+    explicit LongStopLoss(const Decimal& stopLoss)
+      : StopLoss<Decimal> (stopLoss) 
     {}
 
-    LongStopLoss(const decimal<Prec>& basePrice,
-		     const PercentNumber<Prec>& percentNum)
-      : StopLoss<Prec> (createStopFromPercent (basePrice, percentNum))
+    LongStopLoss(const Decimal& basePrice,
+		     const PercentNumber<Decimal>& percentNum)
+      : StopLoss<Decimal> (createStopFromPercent (basePrice, percentNum))
       {}
 
-    LongStopLoss(const LongStopLoss<Prec>& rhs)
-      : StopLoss<Prec> (rhs) 
+    LongStopLoss(const LongStopLoss<Decimal>& rhs)
+      : StopLoss<Decimal> (rhs) 
     {}
 
     LongStopLoss& 
@@ -84,16 +84,16 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      StopLoss<Prec>::operator=(rhs);
+      StopLoss<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~LongStopLoss()
     {}
 
-    const dec::decimal<Prec>& getStopLoss() const
+    const Decimal& getStopLoss() const
     {
-      return StopLoss<Prec>::getStopLoss();
+      return StopLoss<Decimal>::getStopLoss();
     }
 
     bool isNullStopLoss() const
@@ -112,30 +112,30 @@ namespace mkc_timeseries
     }
 
   private:
-    static decimal<Prec> createStopFromPercent (const decimal<Prec>& basePrice,
-					   const PercentNumber<Prec>& percentNum)
+    static Decimal createStopFromPercent (const Decimal& basePrice,
+					   const PercentNumber<Decimal>& percentNum)
     {
-      decimal<Prec> offset = basePrice * percentNum.getAsPercent();
-      decimal<Prec> stopLoss = basePrice - offset;
+      Decimal offset = basePrice * percentNum.getAsPercent();
+      Decimal stopLoss = basePrice - offset;
       return stopLoss;
     }
   };
 
-  template <int Prec> 
-  class ShortStopLoss  : public StopLoss<Prec>
+  template <class Decimal> 
+  class ShortStopLoss  : public StopLoss<Decimal>
   {
   public:
-    explicit ShortStopLoss(const decimal<Prec>& stopLoss)
-      : StopLoss<Prec> (stopLoss) 
+    explicit ShortStopLoss(const Decimal& stopLoss)
+      : StopLoss<Decimal> (stopLoss) 
     {}
 
-    ShortStopLoss (const decimal<Prec>& basePrice,
-		       const PercentNumber<Prec>& percentNum)
-      : StopLoss<Prec> (createStopFromPercent (basePrice, percentNum))
+    ShortStopLoss (const Decimal& basePrice,
+		       const PercentNumber<Decimal>& percentNum)
+      : StopLoss<Decimal> (createStopFromPercent (basePrice, percentNum))
       {}
 
-    ShortStopLoss(const ShortStopLoss<Prec>& rhs)
-      : StopLoss<Prec> (rhs) 
+    ShortStopLoss(const ShortStopLoss<Decimal>& rhs)
+      : StopLoss<Decimal> (rhs) 
     {}
 
     ShortStopLoss& 
@@ -144,16 +144,16 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      StopLoss<Prec>::operator=(rhs);
+      StopLoss<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~ShortStopLoss()
     {}
 
-    const dec::decimal<Prec>& getStopLoss() const
+    const Decimal& getStopLoss() const
     {
-      return StopLoss<Prec>::getStopLoss();
+      return StopLoss<Decimal>::getStopLoss();
     }
 
     bool isNullStopLoss() const
@@ -172,25 +172,25 @@ namespace mkc_timeseries
     }
 
   private:
-    static decimal<Prec> createStopFromPercent (const decimal<Prec>& basePrice,
-					 const PercentNumber<Prec>& percentNum)
+    static Decimal createStopFromPercent (const Decimal& basePrice,
+					 const PercentNumber<Decimal>& percentNum)
     {
-      decimal<Prec> offset = basePrice * percentNum.getAsPercent();
-      decimal<Prec> stopLoss = basePrice + offset;
+      Decimal offset = basePrice * percentNum.getAsPercent();
+      Decimal stopLoss = basePrice + offset;
       return stopLoss;
     }
   };
 
-  template <int Prec> 
-  class NullStopLoss  : public StopLoss<Prec>
+  template <class Decimal> 
+  class NullStopLoss  : public StopLoss<Decimal>
   {
   public:
     NullStopLoss()
-      : StopLoss<Prec> () 
+      : StopLoss<Decimal> () 
     {}
 
-    NullStopLoss(const NullStopLoss<Prec>& rhs)
-      : StopLoss<Prec> (rhs) 
+    NullStopLoss(const NullStopLoss<Decimal>& rhs)
+      : StopLoss<Decimal> (rhs) 
     {}
 
     NullStopLoss& 
@@ -199,14 +199,14 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      StopLoss<Prec>::operator=(rhs);
+      StopLoss<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~NullStopLoss()
     {}
 
-    const dec::decimal<Prec>& getStopLoss() const
+    const Decimal& getStopLoss() const
     {
       throw std::domain_error(std::string("NullStopLoss::getStopLoss has no meaning"));
     }

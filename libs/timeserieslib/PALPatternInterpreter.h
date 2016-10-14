@@ -23,7 +23,7 @@ namespace mkc_timeseries
       {}
   };
 
-  template <int Prec> class PALPatternInterpreter
+  template <class Decimal> class PALPatternInterpreter
   {
   public:
 // For any date there is a single Security::ConstRandomAccessIterator
@@ -31,16 +31,16 @@ namespace mkc_timeseries
     // the iterator. This should save alot of lookup time
 
     static bool evaluateExpression (PatternExpression *expression, 
-				    std::shared_ptr<Security<Prec>> security,
-				    typename Security<Prec>::ConstRandomAccessIterator iteratorForDate)
+				    std::shared_ptr<Security<Decimal>> security,
+				    typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
       if (AndExpr *pAnd = dynamic_cast<AndExpr*>(expression))
 	{
-	  bool lhsCond = PALPatternInterpreter<Prec>::evaluateExpression (pAnd->getLHS(),
+	  bool lhsCond = PALPatternInterpreter<Decimal>::evaluateExpression (pAnd->getLHS(),
 									  security,
 									  iteratorForDate);
 	  if (lhsCond == true)
-	    return PALPatternInterpreter<Prec>::evaluateExpression (pAnd->getRHS(),
+	    return PALPatternInterpreter<Decimal>::evaluateExpression (pAnd->getRHS(),
 								    security,
 								    iteratorForDate);
 	  else
@@ -48,10 +48,10 @@ namespace mkc_timeseries
 	}
       else if (GreaterThanExpr *pGreaterThan = dynamic_cast<GreaterThanExpr*>(expression))
 	{
-	  decimal<Prec> lhs = PALPatternInterpreter<Prec>::evaluatePriceBar(pGreaterThan->getLHS(), 
+	  Decimal lhs = PALPatternInterpreter<Decimal>::evaluatePriceBar(pGreaterThan->getLHS(), 
 									    security, 
 									    iteratorForDate);
-	  decimal<Prec> rhs = PALPatternInterpreter<Prec>::evaluatePriceBar(pGreaterThan->getRHS(), 
+	  Decimal rhs = PALPatternInterpreter<Decimal>::evaluatePriceBar(pGreaterThan->getRHS(), 
 									    security, 
 									    iteratorForDate);
 	  return (lhs > rhs);
@@ -61,62 +61,62 @@ namespace mkc_timeseries
     }
 
   private:
-    static const decimal<Prec>& getPriceBarHigh (PriceBarHigh *barReference, 
-						 std::shared_ptr<Security<Prec>> security,
-						 typename Security<Prec>::ConstRandomAccessIterator iteratorForDate)
+    static const Decimal& getPriceBarHigh (PriceBarHigh *barReference, 
+						 std::shared_ptr<Security<Decimal>> security,
+						 typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
-      decimal<Prec> aHigh = security->getHighValue(iteratorForDate, barReference->getBarOffset());
+      Decimal aHigh = security->getHighValue(iteratorForDate, barReference->getBarOffset());
       //std::cout << "High[" << std::to_string (barReference->getBarOffset()) << "] = " << aHigh << std::endl;
       return security->getHighValue(iteratorForDate, barReference->getBarOffset());
     }
 
-    static const decimal<Prec>& getPriceBarLow (PriceBarLow *barReference, 
-						std::shared_ptr<Security<Prec>> security,
-						typename Security<Prec>::ConstRandomAccessIterator iteratorForDate)
+    static const Decimal& getPriceBarLow (PriceBarLow *barReference, 
+						std::shared_ptr<Security<Decimal>> security,
+						typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
-      decimal<Prec> aLow = security->getLowValue(iteratorForDate, barReference->getBarOffset());
+      Decimal aLow = security->getLowValue(iteratorForDate, barReference->getBarOffset());
       //std::cout << "Low[" << std::to_string (barReference->getBarOffset()) << "] = " << aLow << std::endl;
 
       return security->getLowValue(iteratorForDate, barReference->getBarOffset());
     }
 
-    static const decimal<Prec>& getPriceBarClose (PriceBarClose *barReference, 
-						std::shared_ptr<Security<Prec>> security,
-						typename Security<Prec>::ConstRandomAccessIterator iteratorForDate)
+    static const Decimal& getPriceBarClose (PriceBarClose *barReference, 
+						std::shared_ptr<Security<Decimal>> security,
+						typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
-      decimal<Prec> aClose = security->getCloseValue(iteratorForDate, barReference->getBarOffset());
+      Decimal aClose = security->getCloseValue(iteratorForDate, barReference->getBarOffset());
       //std::cout << "Close[" << std::to_string (barReference->getBarOffset()) << "] = " << aClose << std::endl;
       return security->getCloseValue(iteratorForDate, barReference->getBarOffset());
     }
 
-    static const decimal<Prec>& getPriceBarOpen (PriceBarOpen *barReference, 
-						std::shared_ptr<Security<Prec>> security,
-						typename Security<Prec>::ConstRandomAccessIterator iteratorForDate)
+    static const Decimal& getPriceBarOpen (PriceBarOpen *barReference, 
+						std::shared_ptr<Security<Decimal>> security,
+						typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
-      decimal<Prec> aOpen = security->getOpenValue(iteratorForDate, barReference->getBarOffset());
+      Decimal aOpen = security->getOpenValue(iteratorForDate, barReference->getBarOffset());
       //std::cout << "Open[" << std::to_string (barReference->getBarOffset()) << "] = " << aOpen << std::endl;
       return security->getOpenValue(iteratorForDate, barReference->getBarOffset());
     }
 
-    static const decimal<Prec>& evaluatePriceBar (PriceBarReference *barReference, 
-						  std::shared_ptr<Security<Prec>> security,
-						  typename Security<Prec>::ConstRandomAccessIterator iteratorForDate)
+    static const Decimal& evaluatePriceBar (PriceBarReference *barReference, 
+						  std::shared_ptr<Security<Decimal>> security,
+						  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
       if (PriceBarHigh *pHigh = dynamic_cast<PriceBarHigh*>(barReference))
 	{
-	  return PALPatternInterpreter<Prec>::getPriceBarHigh (pHigh, security, iteratorForDate);
+	  return PALPatternInterpreter<Decimal>::getPriceBarHigh (pHigh, security, iteratorForDate);
 	}
       else if (PriceBarLow *pLow = dynamic_cast<PriceBarLow*>(barReference))
 	{
-	  return PALPatternInterpreter<Prec>::getPriceBarLow (pLow, security, iteratorForDate);
+	  return PALPatternInterpreter<Decimal>::getPriceBarLow (pLow, security, iteratorForDate);
 	}
       else if (PriceBarClose *pClose = dynamic_cast<PriceBarClose*>(barReference))
 	{
-	  return PALPatternInterpreter<Prec>::getPriceBarClose (pClose, security, iteratorForDate);
+	  return PALPatternInterpreter<Decimal>::getPriceBarClose (pClose, security, iteratorForDate);
 	}
       else if (PriceBarOpen *pOpen = dynamic_cast<PriceBarOpen*>(barReference))
 	{
-	  return PALPatternInterpreter<Prec>::getPriceBarOpen (pOpen, security, iteratorForDate);
+	  return PALPatternInterpreter<Decimal>::getPriceBarOpen (pOpen, security, iteratorForDate);
 	}
       else
 	throw PalPatternInterpreterException ("PALPatternInterpreter::evaluatePriceBar - unknown PriceBarReference derived class"); 

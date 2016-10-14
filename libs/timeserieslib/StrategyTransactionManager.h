@@ -21,7 +21,7 @@ namespace mkc_timeseries
   //
   // class StrategyTransactionManagerException
   //
-  template <int Prec> class StrategyTransactionManager;
+  template <class Decimal> class StrategyTransactionManager;
 
   class StrategyTransactionManagerException : public std::runtime_error
   {
@@ -39,17 +39,17 @@ namespace mkc_timeseries
   // class StrategyTransactionManager
   //
 
-  template <int Prec> class StrategyTransactionManager : public StrategyTransactionObserver<Prec>
+  template <class Decimal> class StrategyTransactionManager : public StrategyTransactionObserver<Decimal>
   {
   public:
-    typedef typename std::map<uint32_t, shared_ptr<StrategyTransaction<Prec>>>::const_iterator 
+    typedef typename std::map<uint32_t, shared_ptr<StrategyTransaction<Decimal>>>::const_iterator 
       StrategyTransactionIterator;
-    typedef typename multimap<date, shared_ptr<StrategyTransaction<Prec>>>::const_iterator 
+    typedef typename multimap<date, shared_ptr<StrategyTransaction<Decimal>>>::const_iterator 
       SortedStrategyTransactionIterator;
 
   public:
     StrategyTransactionManager()
-      : StrategyTransactionObserver<Prec>(),
+      : StrategyTransactionObserver<Decimal>(),
 	mTotalTransactions(0),
 	mCompletedTransactions(0),
 	mOpenTransactions(0),
@@ -57,8 +57,8 @@ namespace mkc_timeseries
 	mSortedTransactions()
     {}
 
-    StrategyTransactionManager (const StrategyTransactionManager<Prec>& rhs)
-      : StrategyTransactionObserver<Prec>(rhs),
+    StrategyTransactionManager (const StrategyTransactionManager<Decimal>& rhs)
+      : StrategyTransactionObserver<Decimal>(rhs),
 	mTotalTransactions(rhs.mTotalTransactions),
 	mCompletedTransactions(rhs.mCompletedTransactions),
 	mOpenTransactions(rhs.mOpenTransactions),
@@ -69,13 +69,13 @@ namespace mkc_timeseries
     ~StrategyTransactionManager()
     {}
 
-    StrategyTransactionManager<Prec>& 
-    operator=(const StrategyTransactionManager<Prec> &rhs)
+    StrategyTransactionManager<Decimal>& 
+    operator=(const StrategyTransactionManager<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      StrategyTransactionObserver<Prec>::operator=(rhs);
+      StrategyTransactionObserver<Decimal>::operator=(rhs);
       mTotalTransactions = rhs.mTotalTransactions;
       mCompletedTransactions = rhs.mCompletedTransactions;
       mOpenTransactions = rhs.mOpenTransactions;
@@ -84,7 +84,7 @@ namespace mkc_timeseries
       return *this;
     }
 
-    void TransactionComplete (StrategyTransaction<Prec> *transaction)
+    void TransactionComplete (StrategyTransaction<Decimal> *transaction)
     {
       mCompletedTransactions++;
 
@@ -92,7 +92,7 @@ namespace mkc_timeseries
 	mOpenTransactions--;
     }
 
-    void addStrategyTransaction (shared_ptr<StrategyTransaction<Prec>> transaction)
+    void addStrategyTransaction (shared_ptr<StrategyTransaction<Decimal>> transaction)
     {
       StrategyTransactionIterator it = 
 	mTransactionByPositionId.find(transaction->getTradingPosition()->getPositionID());
@@ -166,11 +166,11 @@ namespace mkc_timeseries
     uint32_t mCompletedTransactions;
     uint32_t mOpenTransactions;
 
-    std::map<uint32_t, shared_ptr<StrategyTransaction<Prec>>> mTransactionByPositionId;
+    std::map<uint32_t, shared_ptr<StrategyTransaction<Decimal>>> mTransactionByPositionId;
  
     // Sorted transactions; sorted by position entry date. Need multimap, because we can have multiple
     // positions entered on the same date
-    std::multimap< boost::gregorian::date, shared_ptr<StrategyTransaction<Prec>>> mSortedTransactions;
+    std::multimap< boost::gregorian::date, shared_ptr<StrategyTransaction<Decimal>>> mSortedTransactions;
   };
 }
 #endif

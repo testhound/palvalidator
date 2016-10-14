@@ -13,29 +13,31 @@
 using namespace mkc_timeseries;
 using std::shared_ptr;
 
-template <int Prec, typename McptType>
-static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Prec,McptType>& monteCarloValidation,
+using Decimal7 = dec::decimal<7>;
+
+template <class Decimal, typename McptType>
+static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Decimal,McptType>& monteCarloValidation,
 					 const std::string& securitySymbol);
 
 static std::string createSurvivingPatternsFileName (const std::string& securitySymbol);
 static std::string createSurvivingPatternsAndRobustFileName (const std::string& securitySymbol);
 static std::string createRejectedPatternsAndRobustFileName (const std::string& securitySymbol);
 static std::string createMCPTSurvivingPatternsFileName (const std::string& securitySymbol);
-static void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<7>> configuration,
+static void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<Decimal7>> configuration,
 					 int numPermutations);
-static void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<7>> configuration,
+static void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<Decimal7>> configuration,
 					 int numPermutations);
-template <int Prec, typename McptType>
-static shared_ptr<PalRobustnessTester<Prec>> 
-runRobustnessTests (const PALMonteCarloValidation<Prec, McptType>& monteCarloValidation,
-		    shared_ptr<McptConfiguration<Prec>> aConfiguration);
+template <class Decimal, typename McptType>
+static shared_ptr<PalRobustnessTester<Decimal>> 
+runRobustnessTests (const PALMonteCarloValidation<Decimal, McptType>& monteCarloValidation,
+		    shared_ptr<McptConfiguration<Decimal>> aConfiguration);
 
-static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<7>> aRobustnessTester,
+static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<Decimal7>> aRobustnessTester,
 				   const std::string& securitySymbol);
 
-static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<7>> aRobustnessTester,
+static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<Decimal7>> aRobustnessTester,
 				    const std::string& securitySymbol);
-static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<7>> aRobustnessTester,
+static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<Decimal7>> aRobustnessTester,
 				    const std::string& securitySymbol);
 
 void usage()
@@ -56,7 +58,7 @@ int main(int argc, char **argv)
       printf ("Number of permutation = %d\n", numPermutations);
 
       McptConfigurationFileReader reader(configurationFileName);
-      std::shared_ptr<McptConfiguration<7>> configuration = reader.readConfigurationFile();
+      std::shared_ptr<McptConfiguration<Decimal7>> configuration = reader.readConfigurationFile();
 
       if (typeOfPermutationTest == 1)
 	validateUsingVersionOneMCPT (configuration, numPermutations);
@@ -78,24 +80,24 @@ int main(int argc, char **argv)
 }
 
 static
-void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<7>> configuration,
+void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<Decimal7>> configuration,
 				  int numPermutations)
 {
-  PALMonteCarloValidation<7, OriginalMCPT<7>> validation(configuration, numPermutations);
+  PALMonteCarloValidation<Decimal7, OriginalMCPT<Decimal7>> validation(configuration, numPermutations);
   printf ("Starting Monte Carlo Validation tests (Version: One)\n\n");
 
   validation.runPermutationTests();
 
   printf ("Exporting surviving MCPT strategies\n");
 
-  exportSurvivingMCPTPatterns<7,OriginalMCPT<7>>  (validation, configuration->getSecurity()->getSymbol());
+  exportSurvivingMCPTPatterns<Decimal7,OriginalMCPT<Decimal7>>  (validation, configuration->getSecurity()->getSymbol());
 
   // Run robustness tests on the patterns that survived Monte Carlo Permutation Testing
   printf ("Running robustness tests for %lu patterns\n\n", 
 	  validation.getNumSurvivingStrategies());
 
-  std::shared_ptr<PalRobustnessTester<7>> robust = 
-	runRobustnessTests<7, OriginalMCPT<7>> (validation, configuration);
+  std::shared_ptr<PalRobustnessTester<Decimal7>> robust = 
+	runRobustnessTests<Decimal7, OriginalMCPT<Decimal7>> (validation, configuration);
 
       // Now export the pattern in PAL format
 
@@ -110,25 +112,25 @@ void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<7>> configur
 }
 
 static
-void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<7>> configuration,
+void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<Decimal7>> configuration,
 				  int numPermutations)
 {
-  PALMonteCarloValidation<7,
-			  MonteCarloPermuteMarketChanges<7, PessimisticReturnRatioPolicy>> validation(configuration, numPermutations);
+  PALMonteCarloValidation<Decimal7,
+			  MonteCarloPermuteMarketChanges<Decimal7, PessimisticReturnRatioPolicy>> validation(configuration, numPermutations);
   printf ("Starting Monte Carlo Validation tests (Version: Two)\n\n");
 
   validation.runPermutationTests();
 
   printf ("Exporting surviving MCPT strategies\n");
 
-  exportSurvivingMCPTPatterns<7,MonteCarloPermuteMarketChanges<7, PessimisticReturnRatioPolicy>>  (validation, configuration->getSecurity()->getSymbol());
+  exportSurvivingMCPTPatterns<Decimal7,MonteCarloPermuteMarketChanges<Decimal7, PessimisticReturnRatioPolicy>>  (validation, configuration->getSecurity()->getSymbol());
 
   // Run robustness tests on the patterns that survived Monte Carlo Permutation Testing
   printf ("Running robustness tests for %lu patterns\n\n", 
 	  validation.getNumSurvivingStrategies());
 
-  std::shared_ptr<PalRobustnessTester<7>> robust = 
-    runRobustnessTests<7, MonteCarloPermuteMarketChanges<7, PessimisticReturnRatioPolicy>> (validation, configuration);
+  std::shared_ptr<PalRobustnessTester<Decimal7>> robust = 
+    runRobustnessTests<Decimal7, MonteCarloPermuteMarketChanges<Decimal7, PessimisticReturnRatioPolicy>> (validation, configuration);
 
   // Now export the pattern in PAL format
 
@@ -142,22 +144,22 @@ void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<7>> configur
   exportRejectedPatternsAndRobustness (robust, configuration->getSecurity()->getSymbol());
 }
 
-template <int Prec, typename McptType>
-static shared_ptr<PalRobustnessTester<Prec>> 
-runRobustnessTests (const PALMonteCarloValidation<Prec, McptType>& monteCarloValidation,
-		    shared_ptr<McptConfiguration<Prec>> aConfiguration)
+template <class Decimal, typename McptType>
+static shared_ptr<PalRobustnessTester<Decimal>> 
+runRobustnessTests (const PALMonteCarloValidation<Decimal, McptType>& monteCarloValidation,
+		    shared_ptr<McptConfiguration<Decimal>> aConfiguration)
 {
-  typename PALMonteCarloValidation<Prec, McptType>::SurvivingStrategiesIterator it = 
+  typename PALMonteCarloValidation<Decimal, McptType>::SurvivingStrategiesIterator it = 
     monteCarloValidation.beginSurvivingStrategies();
 
   // We were robustness testing on OOS by mistake
 
   // auto robustnessTester = 
-  //  std::make_shared<StatisticallySignificantRobustnessTester<7>>(aConfiguration->getBackTester());
+  //  std::make_shared<StatisticallySignificantRobustnessTester<Decimal7>>(aConfiguration->getBackTester());
 
   // Conduct robustness testing on insample data
   auto robustnessTester = 
-    std::make_shared<StatisticallySignificantRobustnessTester<7>>(aConfiguration->getInSampleBackTester());
+    std::make_shared<StatisticallySignificantRobustnessTester<Decimal7>>(aConfiguration->getInSampleBackTester());
 
   for (; it != monteCarloValidation.endSurvivingStrategies(); it++)
     {
@@ -169,11 +171,11 @@ runRobustnessTests (const PALMonteCarloValidation<Prec, McptType>& monteCarloVal
   return robustnessTester;
 }
 
-template <int Prec, typename McptType>
-static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Prec,McptType>& monteCarloValidation,
+template <class Decimal, typename McptType>
+static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Decimal,McptType>& monteCarloValidation,
 					 const std::string& securitySymbol)
 {
-  typename PALMonteCarloValidation<Prec,McptType>::SurvivingStrategiesIterator it = 
+  typename PALMonteCarloValidation<Decimal,McptType>::SurvivingStrategiesIterator it = 
     monteCarloValidation.beginSurvivingStrategies();
 
   std::ofstream mcptPatternsFile(createMCPTSurvivingPatternsFileName(securitySymbol));
@@ -184,16 +186,16 @@ static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Prec,Mcpt
     }
 }
 
-static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<7>> aRobustnessTester,
+static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<Decimal7>> aRobustnessTester,
 				    const std::string& securitySymbol)
 {
-  shared_ptr<RobustnessCalculator<7>> robustnessResults;
-  shared_ptr<PalStrategy<7>> aStrategy;
+  shared_ptr<RobustnessCalculator<Decimal7>> robustnessResults;
+  shared_ptr<PalStrategy<Decimal7>> aStrategy;
 
-  PalRobustnessTester<7>::SurvivingStrategiesIterator surviveIt = 
+  PalRobustnessTester<Decimal7>::SurvivingStrategiesIterator surviveIt = 
     aRobustnessTester->beginSurvivingStrategies();
 
-  PalRobustnessTester<7>::RobustnessResultsIterator robustResultIt;
+  PalRobustnessTester<Decimal7>::RobustnessResultsIterator robustResultIt;
 
   std::ofstream survivingPatternsFile(createSurvivingPatternsFileName(securitySymbol));
 
@@ -206,16 +208,16 @@ static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<7>> aRobustne
     }
 }
 
-static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<7>> aRobustnessTester,
+static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<Decimal7>> aRobustnessTester,
 				    const std::string& securitySymbol)
 {
-  shared_ptr<RobustnessCalculator<7>> robustnessResults;
-  shared_ptr<PalStrategy<7>> aStrategy;
+  shared_ptr<RobustnessCalculator<Decimal7>> robustnessResults;
+  shared_ptr<PalStrategy<Decimal7>> aStrategy;
 
-  PalRobustnessTester<7>::SurvivingStrategiesIterator surviveIt = 
+  PalRobustnessTester<Decimal7>::SurvivingStrategiesIterator surviveIt = 
     aRobustnessTester->beginSurvivingStrategies();
 
-  PalRobustnessTester<7>::RobustnessResultsIterator robustResultIt;
+  PalRobustnessTester<Decimal7>::RobustnessResultsIterator robustResultIt;
 
   std::ofstream survivingPatternsFile(createSurvivingPatternsAndRobustFileName(securitySymbol));
 
@@ -230,23 +232,23 @@ static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<
 	  aRobustnessTester->endSurvivingRobustnessResults())
 	{
 	  robustnessResults = robustResultIt->second;
-	  LogRobustnessTest<7>::logRobustnessTestResults (*robustnessResults, 
+	  LogRobustnessTest<Decimal7>::logRobustnessTestResults (*robustnessResults, 
 							  survivingPatternsFile);
 	  survivingPatternsFile << std::endl << std::endl;
 	}
     }
 }
 
-static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<7>> aRobustnessTester,
+static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<Decimal7>> aRobustnessTester,
 						const std::string& securitySymbol)
 {
-  shared_ptr<RobustnessCalculator<7>> robustnessResults;
-  shared_ptr<PalStrategy<7>> aStrategy;
+  shared_ptr<RobustnessCalculator<Decimal7>> robustnessResults;
+  shared_ptr<PalStrategy<Decimal7>> aStrategy;
 
-  PalRobustnessTester<7>::RejectedStrategiesIterator rejIt = 
+  PalRobustnessTester<Decimal7>::RejectedStrategiesIterator rejIt = 
     aRobustnessTester->beginRejectedStrategies();
 
-  PalRobustnessTester<7>::RobustnessResultsIterator robustResultIt;
+  PalRobustnessTester<Decimal7>::RobustnessResultsIterator robustResultIt;
 
   std::ofstream rejectedPatternsFile(createRejectedPatternsAndRobustFileName(securitySymbol));
 
@@ -261,7 +263,7 @@ static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<7
 	  aRobustnessTester->endFailedRobustnessResults())
 	{
 	  robustnessResults = robustResultIt->second;
-	  LogRobustnessTest<7>::logRobustnessTestResults (*robustnessResults, 
+	  LogRobustnessTest<Decimal7>::logRobustnessTestResults (*robustnessResults, 
 							  rejectedPatternsFile);
 	  rejectedPatternsFile << std::endl << std::endl;
 	}

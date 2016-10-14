@@ -33,10 +33,10 @@ namespace mkc_timeseries
     
   };
 
-  template <int Prec> class BackTester
+  template <class Decimal> class BackTester
   {
   public:
-    typedef typename std::list<std::shared_ptr<BacktesterStrategy<Prec>>>::const_iterator StrategyIterator;
+    typedef typename std::list<std::shared_ptr<BacktesterStrategy<Decimal>>>::const_iterator StrategyIterator;
 
     explicit BackTester()
       : mStrategyList()
@@ -46,12 +46,12 @@ namespace mkc_timeseries
     virtual ~BackTester()
     {}
 
-    BackTester(const BackTester<Prec> &rhs)
+    BackTester(const BackTester<Decimal> &rhs)
       : mStrategyList(rhs.mStrategyList)
     {}
 
-    BackTester<Prec>& 
-    operator=(const BackTester<Prec> &rhs)
+    BackTester<Decimal>& 
+    operator=(const BackTester<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -60,9 +60,9 @@ namespace mkc_timeseries
       return *this;
     }
 
-    virtual std::shared_ptr<BackTester<Prec>> clone() const = 0;
+    virtual std::shared_ptr<BackTester<Decimal>> clone() const = 0;
 
-    void addStrategy (std::shared_ptr<BacktesterStrategy<Prec>> aStrategy)
+    void addStrategy (std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy)
     {
       mStrategyList.push_back(aStrategy);
     }
@@ -77,7 +77,7 @@ namespace mkc_timeseries
       return mStrategyList.end();
     }
 
-    const ClosedPositionHistory<Prec>&
+    const ClosedPositionHistory<Decimal>&
     getClosedPositionHistory() const
     {
       if (beginStrategies() == endStrategies())
@@ -96,7 +96,7 @@ namespace mkc_timeseries
     virtual void backtest() = 0;
 
   private:
-    std::list<std::shared_ptr<BacktesterStrategy<Prec>>> mStrategyList;
+    std::list<std::shared_ptr<BacktesterStrategy<Decimal>>> mStrategyList;
   };
 
 
@@ -104,12 +104,12 @@ namespace mkc_timeseries
   // class DailyBackTester
   //
 
-  template <int Prec> class DailyBackTester : public BackTester<Prec>
+  template <class Decimal> class DailyBackTester : public BackTester<Decimal>
   {
   public:
     explicit DailyBackTester(boost::gregorian::date startDate, 
 			     boost::gregorian::date endDate)
-      : BackTester<Prec>(),
+      : BackTester<Decimal>(),
 	mStartDate (startDate),
 	mEndDate (endDate)
     {
@@ -123,19 +123,19 @@ namespace mkc_timeseries
     ~DailyBackTester()
     {}
 
-    DailyBackTester(const DailyBackTester<Prec> &rhs)
-      :  BackTester<Prec>(rhs),
+    DailyBackTester(const DailyBackTester<Decimal> &rhs)
+      :  BackTester<Decimal>(rhs),
 	 mStartDate(rhs.mStartDate),
 	 mEndDate (rhs.mEndDate)
     {}
 
-    DailyBackTester<Prec>& 
-    operator=(const DailyBackTester<Prec> &rhs)
+    DailyBackTester<Decimal>& 
+    operator=(const DailyBackTester<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      BackTester<Prec>::operator=(rhs);
+      BackTester<Decimal>::operator=(rhs);
 
       mStartDate = rhs.mStartDate;
       mEndDate = rhs.mEndDate;
@@ -143,9 +143,9 @@ namespace mkc_timeseries
       return *this;
     }
 
-    std::shared_ptr<BackTester<Prec>> clone() const
+    std::shared_ptr<BackTester<Decimal>> clone() const
     {
-      return std::make_shared<DailyBackTester<Prec>>(getStartDate(),
+      return std::make_shared<DailyBackTester<Decimal>>(getStartDate(),
 						     getEndDate());
     }
 
@@ -161,8 +161,8 @@ namespace mkc_timeseries
 
     void backtest()
     {
-      typename BackTester<Prec>::StrategyIterator itStrategy;
-      typename BacktesterStrategy<Prec>::PortfolioIterator iteratorPortfolio;
+      typename BackTester<Decimal>::StrategyIterator itStrategy;
+      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
       
       if (this->getNumStrategies() == 0)
 	throw BackTesterException("No strategies have been added to backtest");
@@ -197,8 +197,8 @@ namespace mkc_timeseries
     }
 
   private:
-    void processStrategyBar (std::shared_ptr<Security<Prec>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Prec>> aStrategy,
+    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
+			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
 			     const date& processingDate)
     {
       if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
@@ -226,12 +226,12 @@ namespace mkc_timeseries
   // class MonthlyBackTester
   //
 
-  template <int Prec> class MonthlyBackTester : public BackTester<Prec>
+  template <class Decimal> class MonthlyBackTester : public BackTester<Decimal>
   {
   public:
     explicit MonthlyBackTester(boost::gregorian::date startDate, 
 			     boost::gregorian::date endDate)
-      : BackTester<Prec>(),
+      : BackTester<Decimal>(),
       mStartDate (first_of_month (startDate)),
       mEndDate (first_of_month (endDate))
     {}
@@ -239,19 +239,19 @@ namespace mkc_timeseries
     ~MonthlyBackTester()
     {}
 
-    MonthlyBackTester(const MonthlyBackTester<Prec> &rhs)
-      :  BackTester<Prec>(rhs),
+    MonthlyBackTester(const MonthlyBackTester<Decimal> &rhs)
+      :  BackTester<Decimal>(rhs),
 	 mStartDate(rhs.mStartDate),
 	 mEndDate (rhs.mEndDate)
     {}
 
-    MonthlyBackTester<Prec>& 
-    operator=(const MonthlyBackTester<Prec> &rhs)
+    MonthlyBackTester<Decimal>& 
+    operator=(const MonthlyBackTester<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      BackTester<Prec>::operator=(rhs);
+      BackTester<Decimal>::operator=(rhs);
 
       mStartDate = rhs.mStartDate;
       mEndDate = rhs.mEndDate;
@@ -259,9 +259,9 @@ namespace mkc_timeseries
       return *this;
     }
 
-    std::shared_ptr<BackTester<Prec>> clone() const
+    std::shared_ptr<BackTester<Decimal>> clone() const
     {
-      return std::make_shared<MonthlyBackTester<Prec>>(getStartDate(),
+      return std::make_shared<MonthlyBackTester<Decimal>>(getStartDate(),
 						     getEndDate());
     }
 
@@ -277,8 +277,8 @@ namespace mkc_timeseries
 
     void backtest()
     {
-      typename BackTester<Prec>::StrategyIterator itStrategy;
-      typename BacktesterStrategy<Prec>::PortfolioIterator iteratorPortfolio;
+      typename BackTester<Decimal>::StrategyIterator itStrategy;
+      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
       
       if (this->getNumStrategies() == 0)
 	throw BackTesterException("No strategies have been added to backtest");
@@ -313,8 +313,8 @@ namespace mkc_timeseries
     }
 
   private:
-    void processStrategyBar (std::shared_ptr<Security<Prec>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Prec>> aStrategy,
+    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
+			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
 			     const date& processingDate)
     {
       if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
@@ -344,12 +344,12 @@ namespace mkc_timeseries
   // class WeeklyBackTester
   //
 
-  template <int Prec> class WeeklyBackTester : public BackTester<Prec>
+  template <class Decimal> class WeeklyBackTester : public BackTester<Decimal>
   {
   public:
     explicit WeeklyBackTester(boost::gregorian::date startDate, 
 			     boost::gregorian::date endDate)
-      : BackTester<Prec>(),
+      : BackTester<Decimal>(),
       mStartDate (first_of_week (startDate)),
       mEndDate (first_of_week (endDate))
     {}
@@ -357,19 +357,19 @@ namespace mkc_timeseries
     ~WeeklyBackTester()
     {}
 
-    WeeklyBackTester(const WeeklyBackTester<Prec> &rhs)
-      :  BackTester<Prec>(rhs),
+    WeeklyBackTester(const WeeklyBackTester<Decimal> &rhs)
+      :  BackTester<Decimal>(rhs),
 	 mStartDate(rhs.mStartDate),
 	 mEndDate (rhs.mEndDate)
     {}
 
-    WeeklyBackTester<Prec>& 
-    operator=(const WeeklyBackTester<Prec> &rhs)
+    WeeklyBackTester<Decimal>& 
+    operator=(const WeeklyBackTester<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      BackTester<Prec>::operator=(rhs);
+      BackTester<Decimal>::operator=(rhs);
 
       mStartDate = rhs.mStartDate;
       mEndDate = rhs.mEndDate;
@@ -377,9 +377,9 @@ namespace mkc_timeseries
       return *this;
     }
 
-    std::shared_ptr<BackTester<Prec>> clone() const
+    std::shared_ptr<BackTester<Decimal>> clone() const
     {
-      return std::make_shared<WeeklyBackTester<Prec>>(getStartDate(),
+      return std::make_shared<WeeklyBackTester<Decimal>>(getStartDate(),
 						     getEndDate());
     }
 
@@ -395,8 +395,8 @@ namespace mkc_timeseries
 
     void backtest()
     {
-      typename BackTester<Prec>::StrategyIterator itStrategy;
-      typename BacktesterStrategy<Prec>::PortfolioIterator iteratorPortfolio;
+      typename BackTester<Decimal>::StrategyIterator itStrategy;
+      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
       
       if (this->getNumStrategies() == 0)
 	throw BackTesterException("No strategies have been added to backtest");
@@ -431,8 +431,8 @@ namespace mkc_timeseries
     }
 
   private:
-    void processStrategyBar (std::shared_ptr<Security<Prec>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Prec>> aStrategy,
+    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
+			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
 			     const date& processingDate)
     {
       if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))

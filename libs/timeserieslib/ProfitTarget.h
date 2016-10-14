@@ -16,14 +16,14 @@ using dec::decimal;
 
 namespace mkc_timeseries
 {
-  template <int Prec> class ProfitTarget
+  template <class Decimal> class ProfitTarget
   {
   public:
-    explicit ProfitTarget(const decimal<Prec>& target)
+    explicit ProfitTarget(const Decimal& target)
       : mProfitTarget (target) 
     {}
 
-    ProfitTarget(const ProfitTarget<Prec>& rhs)
+    ProfitTarget(const ProfitTarget<Decimal>& rhs)
       : mProfitTarget (rhs.mProfitTarget) 
     {}
 
@@ -40,7 +40,7 @@ namespace mkc_timeseries
     virtual ~ProfitTarget()
     {}
 
-    virtual const dec::decimal<Prec>& getProfitTarget() = 0;
+    virtual const Decimal& getProfitTarget() = 0;
 
     virtual bool isNullProfitTarget() = 0;
     virtual bool isLongProfitTarget() = 0;
@@ -48,34 +48,34 @@ namespace mkc_timeseries
 
   protected:
    ProfitTarget()
-      : mProfitTarget(DecimalConstants<Prec>::DecimalZero)
+      : mProfitTarget(DecimalConstants<Decimal>::DecimalZero)
     {}
 
   private:
-    dec::decimal<Prec> mProfitTarget;
+    Decimal mProfitTarget;
   };
 
-  template <int Prec>
-  const dec::decimal<Prec>& ProfitTarget<Prec>::getProfitTarget()
+  template <class Decimal>
+  const Decimal& ProfitTarget<Decimal>::getProfitTarget()
     {
       return mProfitTarget;
     }
 
-  template <int Prec> 
-  class LongProfitTarget  : public ProfitTarget<Prec>
+  template <class Decimal> 
+  class LongProfitTarget  : public ProfitTarget<Decimal>
   {
   public:
-    explicit LongProfitTarget(const decimal<Prec>& target)
-      : ProfitTarget<Prec> (target) 
+    explicit LongProfitTarget(const Decimal& target)
+      : ProfitTarget<Decimal> (target) 
     {}
 
-    LongProfitTarget(const decimal<Prec>& basePrice,
-		     const PercentNumber<Prec>& percentNum)
-      : ProfitTarget<Prec> (createTargetFromPercent (basePrice, percentNum))
+    LongProfitTarget(const Decimal& basePrice,
+		     const PercentNumber<Decimal>& percentNum)
+      : ProfitTarget<Decimal> (createTargetFromPercent (basePrice, percentNum))
       {}
 
-    LongProfitTarget(const LongProfitTarget<Prec>& rhs)
-      : ProfitTarget<Prec> (rhs) 
+    LongProfitTarget(const LongProfitTarget<Decimal>& rhs)
+      : ProfitTarget<Decimal> (rhs) 
     {}
 
     LongProfitTarget& 
@@ -84,16 +84,16 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      ProfitTarget<Prec>::operator=(rhs);
+      ProfitTarget<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~LongProfitTarget()
     {}
 
-    const dec::decimal<Prec>& getProfitTarget()
+    const Decimal& getProfitTarget()
     {
-      return ProfitTarget<Prec>::getProfitTarget();
+      return ProfitTarget<Decimal>::getProfitTarget();
     }
 
     bool isNullProfitTarget()
@@ -112,30 +112,30 @@ namespace mkc_timeseries
     }
 
   private:
-    static decimal<Prec> createTargetFromPercent (const decimal<Prec>& basePrice,
-					   const PercentNumber<Prec>& percentNum)
+    static Decimal createTargetFromPercent (const Decimal& basePrice,
+					   const PercentNumber<Decimal>& percentNum)
     {
-      decimal<Prec> offset = basePrice * percentNum.getAsPercent();
-      decimal<Prec> target = basePrice + offset;
+      Decimal offset = basePrice * percentNum.getAsPercent();
+      Decimal target = basePrice + offset;
       return target;
     }
   };
 
-  template <int Prec> 
-  class ShortProfitTarget  : public ProfitTarget<Prec>
+  template <class Decimal> 
+  class ShortProfitTarget  : public ProfitTarget<Decimal>
   {
   public:
-    explicit ShortProfitTarget(const decimal<Prec>& target)
-      : ProfitTarget<Prec> (target) 
+    explicit ShortProfitTarget(const Decimal& target)
+      : ProfitTarget<Decimal> (target) 
     {}
 
-    ShortProfitTarget (const decimal<Prec>& basePrice,
-		       const PercentNumber<Prec>& percentNum)
-      : ProfitTarget<Prec> (createTargetFromPercent (basePrice, percentNum))
+    ShortProfitTarget (const Decimal& basePrice,
+		       const PercentNumber<Decimal>& percentNum)
+      : ProfitTarget<Decimal> (createTargetFromPercent (basePrice, percentNum))
       {}
 
-    ShortProfitTarget(const ShortProfitTarget<Prec>& rhs)
-      : ProfitTarget<Prec> (rhs) 
+    ShortProfitTarget(const ShortProfitTarget<Decimal>& rhs)
+      : ProfitTarget<Decimal> (rhs) 
     {}
 
     ShortProfitTarget& 
@@ -144,16 +144,16 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      ProfitTarget<Prec>::operator=(rhs);
+      ProfitTarget<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~ShortProfitTarget()
     {}
 
-    const dec::decimal<Prec>& getProfitTarget()
+    const Decimal& getProfitTarget()
     {
-      return ProfitTarget<Prec>::getProfitTarget();
+      return ProfitTarget<Decimal>::getProfitTarget();
     }
 
     bool isNullProfitTarget()
@@ -172,25 +172,25 @@ namespace mkc_timeseries
     }
 
   private:
-    static decimal<Prec> createTargetFromPercent (const decimal<Prec>& basePrice,
-					    const PercentNumber<Prec>& percentNum)
+    static Decimal createTargetFromPercent (const Decimal& basePrice,
+					    const PercentNumber<Decimal>& percentNum)
     {
-      decimal<Prec> offset = basePrice * percentNum.getAsPercent();
-      decimal<Prec> target = basePrice - offset;
+      Decimal offset = basePrice * percentNum.getAsPercent();
+      Decimal target = basePrice - offset;
       return target;
     }
   };
 
-  template <int Prec> 
-  class NullProfitTarget  : public ProfitTarget<Prec>
+  template <class Decimal> 
+  class NullProfitTarget  : public ProfitTarget<Decimal>
   {
   public:
     NullProfitTarget()
-      : ProfitTarget<Prec> () 
+      : ProfitTarget<Decimal> () 
     {}
 
-    NullProfitTarget(const NullProfitTarget<Prec>& rhs)
-      : ProfitTarget<Prec> (rhs) 
+    NullProfitTarget(const NullProfitTarget<Decimal>& rhs)
+      : ProfitTarget<Decimal> (rhs) 
     {}
 
     NullProfitTarget& 
@@ -199,14 +199,14 @@ namespace mkc_timeseries
       if (this == &rhs)
 	return *this;
 
-      ProfitTarget<Prec>::operator=(rhs);
+      ProfitTarget<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~NullProfitTarget()
     {}
 
-    const dec::decimal<Prec>& getProfitTarget()
+    const Decimal& getProfitTarget()
     {
       throw std::domain_error(std::string("NullProfitTarget::getProfiTarget has no meaning"));
     }

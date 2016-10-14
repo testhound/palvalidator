@@ -27,28 +27,28 @@ namespace mkc_timeseries
   // class PatternRobustnessCriteria
   //
 
-  template <int Prec> class PatternRobustnessCriteria
+  template <class Decimal> class PatternRobustnessCriteria
     {
     public:
-      PatternRobustnessCriteria (const decimal<Prec>& minRobustnessIndex,
-				 const decimal<Prec>& desiredProfitFactor,
-				 const PercentNumber<Prec>& tolerance,
-				 const decimal<Prec>& profitabilitySafetyFactor)
+      PatternRobustnessCriteria (const Decimal& minRobustnessIndex,
+				 const Decimal& desiredProfitFactor,
+				 const PercentNumber<Decimal>& tolerance,
+				 const Decimal& profitabilitySafetyFactor)
 	: mMinRobustnessIndex (minRobustnessIndex),
 	  mDesiredProfitFactor(desiredProfitFactor),
 	  mRobustnessTolerance(tolerance),
 	  mProfitabilitySafetyFactor(profitabilitySafetyFactor)
 	{}
 
-      PatternRobustnessCriteria (const PatternRobustnessCriteria<Prec>& rhs)
+      PatternRobustnessCriteria (const PatternRobustnessCriteria<Decimal>& rhs)
 	: mMinRobustnessIndex (rhs.mMinRobustnessIndex),
 	  mDesiredProfitFactor(rhs.mDesiredProfitFactor),
 	  mRobustnessTolerance(rhs.mRobustnessTolerance),
 	  mProfitabilitySafetyFactor(rhs.mProfitabilitySafetyFactor)
       {}
 
-      PatternRobustnessCriteria<Prec>& 
-      operator=(const PatternRobustnessCriteria<Prec> &rhs)
+      PatternRobustnessCriteria<Decimal>& 
+      operator=(const PatternRobustnessCriteria<Decimal> &rhs)
       {
 	if (this == &rhs)
 	  return *this;
@@ -64,17 +64,17 @@ namespace mkc_timeseries
       ~PatternRobustnessCriteria()
       {}
 
-      const decimal<Prec>& getMinimumRobustnessIndex() const
+      const Decimal& getMinimumRobustnessIndex() const
       {
 	return mMinRobustnessIndex;
       }
 
-      const decimal<Prec>& getDesiredProfitFactor() const
+      const Decimal& getDesiredProfitFactor() const
       {
 	return mDesiredProfitFactor;
       }
 
-      const PercentNumber<Prec>& getRobustnessTolerance() const
+      const PercentNumber<Decimal>& getRobustnessTolerance() const
       {
 	return mRobustnessTolerance;
       }
@@ -82,117 +82,117 @@ namespace mkc_timeseries
       // Return the tolerance in percent for the number of iterations away we
       // are for from the original robustness target
 
-      const PercentNumber<Prec> getToleranceForIterations (unsigned long numIterations) const
+      const PercentNumber<Decimal> getToleranceForIterations (unsigned long numIterations) const
       {
-	static PercentNumber<Prec> sqrtConstants[] =
+	static PercentNumber<Decimal> sqrtConstants[] =
 	  {
 	    // Note entry 0 was manually modified because we would like a 1%
 	    // tolerance on the reference value
 	    
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.000000")),
 	    // Note entries 1 to 3 were manually modified because we don't want
 	    // tolerances less than 2% for these entries
 
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.236068")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.449490")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.645751")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.828427")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.162278")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.316625")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.464102")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.605551")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.741657")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.872983")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.123106")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.242641")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.358899")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.472136")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.582576")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.690416")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.795832")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.898979")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.099020")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.196152")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.291503")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.385165")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.477226")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.567764")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.656854")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.744563")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.830952")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.916080")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.082763")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.164414")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.244998")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.324555")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.403124")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.480741")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.557439")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.633250")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.708204")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.782330")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.855655")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("6.928203")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.071068")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.141428")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.211103")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.280110")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.348469")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.416198")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.483315")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.549834")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.615773")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.681146")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.745967")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.810250")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.874008")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("7.937254")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.062258")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.124038")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.185353")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.246211")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.306624")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.366600")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.426150")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.485281")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.544004")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.602325")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.660254")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.717798")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.774964")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.831761")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.888194")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("8.944272")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.055385")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.110434")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.165151")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.219544")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.273618")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.327379")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.380832")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.433981")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.486833")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.539392")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.591663")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.643651")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.695360")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.746794")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.797959")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.848858")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.899495")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("9.949874")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("10.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.236068")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.449490")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.645751")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.828427")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.162278")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.316625")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.464102")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.605551")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.741657")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.872983")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.123106")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.242641")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.358899")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.472136")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.582576")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.690416")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.795832")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.898979")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.099020")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.196152")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.291503")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.385165")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.477226")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.567764")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.656854")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.744563")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.830952")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.916080")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.082763")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.164414")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.244998")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.324555")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.403124")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.480741")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.557439")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.633250")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.708204")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.782330")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.855655")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("6.928203")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.071068")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.141428")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.211103")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.280110")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.348469")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.416198")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.483315")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.549834")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.615773")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.681146")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.745967")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.810250")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.874008")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("7.937254")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.062258")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.124038")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.185353")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.246211")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.306624")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.366600")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.426150")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.485281")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.544004")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.602325")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.660254")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.717798")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.774964")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.831761")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.888194")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("8.944272")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.055385")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.110434")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.165151")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.219544")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.273618")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.327379")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.380832")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.433981")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.486833")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.539392")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.591663")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.643651")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.695360")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.746794")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.797959")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.848858")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.899495")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("9.949874")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("10.000000")),
 	  };
 
 	if ((numIterations >=0) && (numIterations <= 100))
@@ -202,111 +202,111 @@ namespace mkc_timeseries
 	return sqrtConstants[100];
       }
       
-      const PercentNumber<Prec> getToleranceForNumTrades (unsigned long numTrades) const
+      const PercentNumber<Decimal> getToleranceForNumTrades (unsigned long numTrades) const
       {
-	static PercentNumber<Prec> halfSqrtConstants[] =
+	static PercentNumber<Decimal> halfSqrtConstants[] =
 	  {	
-	    PercentNumber<Prec>::createPercentNumber (std::string("0.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("0.500000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("0.707107")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("0.866025")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.118034")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.224745")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.322876")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.414214")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.500000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.581139")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.658312")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.732051")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.802776")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.870829")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("1.936492")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.061553")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.121320")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.179449")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.236068")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.291288")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.345208")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.397916")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.449490")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.500000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.549510")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.598076")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.645751")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.692582")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.738613")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.783882")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.828427")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.872281")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.915476")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("2.958040")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.041381")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.082207")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.122499")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.162278")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.201562")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.240370")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.278719")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.316625")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.354102")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.391165")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.427827")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.464102")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.500000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.535534")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.570714")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.605551")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.640055")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.674235")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.708099")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.741657")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.774917")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.807887")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.840573")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.872983")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.905125")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.937004")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("3.968627")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.000000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.031129")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.062019")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.092676")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.123106")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.153312")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.183300")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.213075")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.242641")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.272002")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.301163")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.330127")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.358899")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.387482")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.415880")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.444097")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.472136")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.500000")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.527693")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.555217")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.582576")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.609772")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.636809")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.663690")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.690416")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.716991")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.743416")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.769696")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.795832")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.821825")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.847680")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.873397")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.898979")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.924429")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.949747")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("4.974937")),
-	    PercentNumber<Prec>::createPercentNumber (std::string("5.000000"))
+	    PercentNumber<Decimal>::createPercentNumber (std::string("0.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("0.500000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("0.707107")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("0.866025")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.118034")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.224745")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.322876")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.414214")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.500000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.581139")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.658312")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.732051")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.802776")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.870829")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.936492")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.061553")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.121320")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.179449")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.236068")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.291288")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.345208")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.397916")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.449490")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.500000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.549510")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.598076")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.645751")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.692582")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.738613")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.783882")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.828427")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.872281")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.915476")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.958040")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.041381")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.082207")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.122499")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.162278")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.201562")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.240370")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.278719")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.316625")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.354102")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.391165")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.427827")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.464102")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.500000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.535534")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.570714")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.605551")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.640055")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.674235")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.708099")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.741657")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.774917")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.807887")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.840573")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.872983")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.905125")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.937004")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.968627")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.000000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.031129")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.062019")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.092676")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.123106")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.153312")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.183300")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.213075")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.242641")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.272002")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.301163")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.330127")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.358899")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.387482")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.415880")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.444097")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.472136")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.500000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.527693")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.555217")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.582576")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.609772")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.636809")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.663690")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.690416")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.716991")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.743416")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.769696")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.795832")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.821825")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.847680")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.873397")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.898979")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.924429")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.949747")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.974937")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("5.000000"))
 	  };
 
 	if ((numTrades >=0) && (numTrades <= 100))
@@ -327,16 +327,16 @@ namespace mkc_timeseries
       //
       // Profitability = ProfitFactory / (ProfitFactor + SafetyFactor * PayoffRatio)
 
-      const decimal<Prec>& getProfitabilitySafetyFactor() const
+      const Decimal& getProfitabilitySafetyFactor() const
       {
 	return mProfitabilitySafetyFactor;
       }
 
     private:
-      decimal<Prec> mMinRobustnessIndex;
-      decimal<Prec> mDesiredProfitFactor;
-      PercentNumber<Prec> mRobustnessTolerance;
-      decimal<Prec> mProfitabilitySafetyFactor;
+      Decimal mMinRobustnessIndex;
+      Decimal mDesiredProfitFactor;
+      PercentNumber<Decimal> mRobustnessTolerance;
+      Decimal mProfitabilitySafetyFactor;
     };
 
   //
@@ -505,22 +505,22 @@ namespace mkc_timeseries
     }
   };
 
-  template <int Prec> class ProfitTargetStopPair
+  template <class Decimal> class ProfitTargetStopPair
   {
   public:
-    ProfitTargetStopPair (const decimal<Prec>& profitTarget,
-			  const decimal<Prec>& stop)
+    ProfitTargetStopPair (const Decimal& profitTarget,
+			  const Decimal& stop)
       :  mProfitTarget(profitTarget),
 	 mStop(stop)
     {}
 
-    ProfitTargetStopPair(const ProfitTargetStopPair<Prec>& rhs)
+    ProfitTargetStopPair(const ProfitTargetStopPair<Decimal>& rhs)
       : mProfitTarget(rhs.mProfitTarget),
 	mStop(rhs.mStop)
     {}
 
-    ProfitTargetStopPair<Prec>& 
-    operator=(const ProfitTargetStopPair<Prec> &rhs)
+    ProfitTargetStopPair<Decimal>& 
+    operator=(const ProfitTargetStopPair<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -534,46 +534,46 @@ namespace mkc_timeseries
     ~ProfitTargetStopPair()
     {}
 
-    const decimal<Prec>& getProfitTarget() const
+    const Decimal& getProfitTarget() const
     {
       return mProfitTarget;
     }
 
-    const decimal<Prec>& getProtectiveStop() const
+    const Decimal& getProtectiveStop() const
     {
       return mStop;
     }
     
   private:
-    decimal<Prec> mProfitTarget;
-    decimal<Prec> mStop;
+    Decimal mProfitTarget;
+    Decimal mStop;
   };
 
-  template <int Prec> class RobustnessTestResult
+  template <class Decimal> class RobustnessTestResult
   {
   public:
-    RobustnessTestResult (const decimal<Prec>& winRate,
-			  const decimal<Prec>& profitFactor,
+    RobustnessTestResult (const Decimal& winRate,
+			  const Decimal& profitFactor,
 			  unsigned long numTrades,
-			  const decimal<Prec>& payOffRatio,
-			  const decimal<Prec>& medianPayOffRatio,
-			  const decimal<Prec>& expectation)
+			  const Decimal& payOffRatio,
+			  const Decimal& medianPayOffRatio,
+			  const Decimal& expectation)
       : mWinRate(winRate),
 	mProfitFactor(profitFactor),
 	mNumTrades(numTrades),
 	mPayOffRatio(payOffRatio),
 	mMedianPayOffRatio(medianPayOffRatio),
 	mExpectation(expectation),
-	mMonteCarloPayoffRatio(DecimalConstants<Prec>::DecimalZero)
+	mMonteCarloPayoffRatio(DecimalConstants<Decimal>::DecimalZero)
     {}
 
-    RobustnessTestResult (const decimal<Prec>& winRate,
-			  const decimal<Prec>& profitFactor,
+    RobustnessTestResult (const Decimal& winRate,
+			  const Decimal& profitFactor,
 			  unsigned long numTrades,
-			  const decimal<Prec>& payOffRatio,
-			  const decimal<Prec>& medianPayOffRatio,
-			  const decimal<Prec>& expectation,
-			  const decimal<Prec>& monteCarloPayoff)
+			  const Decimal& payOffRatio,
+			  const Decimal& medianPayOffRatio,
+			  const Decimal& expectation,
+			  const Decimal& monteCarloPayoff)
       : mWinRate(winRate),
 	mProfitFactor(profitFactor),
 	mNumTrades(numTrades),
@@ -583,7 +583,7 @@ namespace mkc_timeseries
 	mMonteCarloPayoffRatio(monteCarloPayoff)
     {}
 
-     RobustnessTestResult(const  RobustnessTestResult<Prec>& rhs)
+     RobustnessTestResult(const  RobustnessTestResult<Decimal>& rhs)
        : mWinRate(rhs.mWinRate),
 	 mProfitFactor(rhs.mProfitFactor),
 	 mNumTrades(rhs.mNumTrades),
@@ -596,8 +596,8 @@ namespace mkc_timeseries
     ~RobustnessTestResult()
     {}
 
-    RobustnessTestResult<Prec>& 
-    operator=(const RobustnessTestResult<Prec> &rhs)
+    RobustnessTestResult<Decimal>& 
+    operator=(const RobustnessTestResult<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -612,23 +612,23 @@ namespace mkc_timeseries
       return *this;
     }
 
-    const decimal<Prec>& getPALProfitability() const
+    const Decimal& getPALProfitability() const
     {
       return mWinRate;
     }
 
-    const decimal<Prec> getMonteCarloProfitability() const
+    const Decimal getMonteCarloProfitability() const
     {
-      decimal<Prec> pf(getProfitFactor());
-      decimal <Prec> denominator(pf + getMonteCarloPayOffRatio());
+      Decimal pf(getProfitFactor());
+      Decimal denominator(pf + getMonteCarloPayOffRatio());
 
-      if (denominator > DecimalConstants<Prec>::DecimalZero)
-	return ((pf/denominator) * DecimalConstants<Prec>::DecimalOneHundred);
+      if (denominator > DecimalConstants<Decimal>::DecimalZero)
+	return ((pf/denominator) * DecimalConstants<Decimal>::DecimalOneHundred);
       else
-	return (DecimalConstants<Prec>::DecimalZero);
+	return (DecimalConstants<Decimal>::DecimalZero);
     }
     
-    const decimal<Prec>& getProfitFactor() const
+    const Decimal& getProfitFactor() const
     {
       return mProfitFactor;
     }
@@ -638,44 +638,44 @@ namespace mkc_timeseries
       return mNumTrades;
     }
 
-    const decimal<Prec>& getPayOffRatio() const
+    const Decimal& getPayOffRatio() const
     {
       return mPayOffRatio;
     }
 
-    const decimal<Prec>& getMedianPayOffRatio() const
+    const Decimal& getMedianPayOffRatio() const
     {
       return mMedianPayOffRatio;
     }
 
-    const decimal<Prec>& getMonteCarloPayOffRatio() const
+    const Decimal& getMonteCarloPayOffRatio() const
     {
       return mMonteCarloPayoffRatio;;
     }
 
-    const decimal<Prec>& getRMultipleExpectancy() const
+    const Decimal& getRMultipleExpectancy() const
     {
       return mExpectation;
     }
 
   private:
-    decimal<Prec> mWinRate;
-    decimal<Prec> mProfitFactor;
+    Decimal mWinRate;
+    Decimal mProfitFactor;
     unsigned long mNumTrades;
-    decimal<Prec> mPayOffRatio;
-    decimal<Prec> mMedianPayOffRatio;
-    decimal<Prec> mExpectation;
-    decimal<Prec> mMonteCarloPayoffRatio;
+    Decimal mPayOffRatio;
+    Decimal mMedianPayOffRatio;
+    Decimal mExpectation;
+    Decimal mMonteCarloPayoffRatio;
   };
 
   //
   // class ProfitStopComparator
   //
 
-  template <int Prec> struct ProfitTargetStopComparator
+  template <class Decimal> struct ProfitTargetStopComparator
   {
-    bool operator() (const ProfitTargetStopPair<Prec>& lhs,
-		     const ProfitTargetStopPair<Prec>& rhs) const
+    bool operator() (const ProfitTargetStopPair<Decimal>& lhs,
+		     const ProfitTargetStopPair<Decimal>& rhs) const
     {
       return (lhs.getProtectiveStop() < rhs.getProtectiveStop());
     }
@@ -700,17 +700,17 @@ namespace mkc_timeseries
   // Purpose: to determine whether a PriceActionLab pattern is robust or not
   //
 
-  template <int Prec> class RobustnessCalculator
+  template <class Decimal> class RobustnessCalculator
   {
   public:
-    typedef typename std::map<ProfitTargetStopPair<Prec>, 
-			      std::shared_ptr<RobustnessTestResult<Prec>>,
-			      ProfitTargetStopComparator<Prec>>::const_iterator RobustnessTestResultIterator;
+    typedef typename std::map<ProfitTargetStopPair<Decimal>, 
+			      std::shared_ptr<RobustnessTestResult<Decimal>>,
+			      ProfitTargetStopComparator<Decimal>>::const_iterator RobustnessTestResultIterator;
 
   public:
     RobustnessCalculator(shared_ptr<PriceActionLabPattern> thePattern,
 			 shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
-			 const PatternRobustnessCriteria<Prec>& robustnessCriteria,
+			 const PatternRobustnessCriteria<Decimal>& robustnessCriteria,
 			 bool debug = false)
       : mPatternToTest (thePattern),
 	mPermutationAttributes (permutationAttributes),
@@ -718,13 +718,13 @@ namespace mkc_timeseries
 	mNumberProfitableResults(0),
 	mDebug(debug),
 	mRobustnessResults(),
-	mRequiredProfitability(RobustnessCalculator<Prec>::requiredPALProfitability(robustnessCriteria.getDesiredProfitFactor(),
+	mRequiredProfitability(RobustnessCalculator<Decimal>::requiredPALProfitability(robustnessCriteria.getDesiredProfitFactor(),
 										    thePattern->getPayoffRatio(),
 										    robustnessCriteria.getProfitabilitySafetyFactor())),
 	mNumberPALProfitableResults(0)
       {}
 
-    RobustnessCalculator(const RobustnessCalculator<Prec>& rhs)
+    RobustnessCalculator(const RobustnessCalculator<Decimal>& rhs)
       : mPatternToTest (rhs.mPatternToTest),
 	mPermutationAttributes (rhs.mPermutationAttributes),
 	mRobustnessCriteria(rhs.mRobustnessCriteria),
@@ -738,8 +738,8 @@ namespace mkc_timeseries
     ~RobustnessCalculator()
       {}
 
-    RobustnessCalculator<Prec>& 
-    operator=(const RobustnessCalculator<Prec> &rhs)
+    RobustnessCalculator<Decimal>& 
+    operator=(const RobustnessCalculator<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -756,18 +756,18 @@ namespace mkc_timeseries
       return *this;
     }
 
-    void addTestResult (std::shared_ptr<RobustnessTestResult<Prec>> testResult,
+    void addTestResult (std::shared_ptr<RobustnessTestResult<Decimal>> testResult,
 			std::shared_ptr<PriceActionLabPattern> pattern)
     {
-      ProfitTargetStopPair<Prec> pairKey (pattern->getProfitTargetAsDecimal(),
+      ProfitTargetStopPair<Decimal> pairKey (pattern->getProfitTargetAsDecimal(),
 					  pattern->getStopLossAsDecimal());
       
-      if (testResult->getProfitFactor() > DecimalConstants<Prec>::DecimalOne)
-	mNumberProfitableResults = mNumberProfitableResults + DecimalConstants<Prec>::DecimalOne;
+      if (testResult->getProfitFactor() > DecimalConstants<Decimal>::DecimalOne)
+	mNumberProfitableResults = mNumberProfitableResults + DecimalConstants<Decimal>::DecimalOne;
 
       if (equalWithTolerance (mRequiredProfitability, testResult->getMonteCarloProfitability(),
 			       mRobustnessCriteria.getRobustnessTolerance()))
-	mNumberPALProfitableResults = mNumberPALProfitableResults + DecimalConstants<Prec>::DecimalOne;
+	mNumberPALProfitableResults = mNumberPALProfitableResults + DecimalConstants<Decimal>::DecimalOne;
 
       if (mRobustnessResults.find (pairKey) == endRobustnessTestResults())
 	mRobustnessResults.insert (std::make_pair (pairKey, testResult));
@@ -775,36 +775,36 @@ namespace mkc_timeseries
 	throw RobustnessCalculatorException ("RobustnessCalculator::addTestResult - stop already exists");
     }
 
-    RobustnessCalculator<Prec>::RobustnessTestResultIterator beginRobustnessTestResults() const
+    RobustnessCalculator<Decimal>::RobustnessTestResultIterator beginRobustnessTestResults() const
     {
       return  mRobustnessResults.begin();
     }
 
-    RobustnessCalculator<Prec>::RobustnessTestResultIterator endRobustnessTestResults() const
+    RobustnessCalculator<Decimal>::RobustnessTestResultIterator endRobustnessTestResults() const
     {
       return  mRobustnessResults.end();
     }
 
-    decimal<Prec> getRobustnessIndex() const
+    Decimal getRobustnessIndex() const
     {
       unsigned long numEntries = getNumEntries();
-      decimal<Prec> numEntriesDecimal = decimal_cast<Prec>((unsigned int) numEntries);
+      Decimal numEntriesDecimal = decimal_cast<Decimal::decimal_points>((unsigned int) numEntries);
 
       if (numEntries > 0)
-	return (mNumberProfitableResults / numEntriesDecimal) * DecimalConstants<Prec>::DecimalOneHundred;
+	return (mNumberProfitableResults / numEntriesDecimal) * DecimalConstants<Decimal>::DecimalOneHundred;
       else
-	return DecimalConstants<Prec>::DecimalZero;
+	return DecimalConstants<Decimal>::DecimalZero;
     }
 
-    decimal<Prec> getProfitabilityIndex() const
+    Decimal getProfitabilityIndex() const
     {
       unsigned long numEntries = getNumEntries();
-      decimal<Prec> numEntriesDecimal = decimal_cast<Prec>((unsigned int) numEntries);
+      Decimal numEntriesDecimal = decimal_cast<Decimal::decimal_points>((unsigned int) numEntries);
 
       if (numEntries > 0)
-	return (mNumberPALProfitableResults / numEntriesDecimal) * DecimalConstants<Prec>::DecimalOneHundred;
+	return (mNumberPALProfitableResults / numEntriesDecimal) * DecimalConstants<Decimal>::DecimalOneHundred;
       else
-	return DecimalConstants<Prec>::DecimalZero;
+	return DecimalConstants<Decimal>::DecimalZero;
     }
 
     bool isRobust() const
@@ -815,15 +815,15 @@ namespace mkc_timeseries
       if (getRobustnessIndex() < mRobustnessCriteria.getMinimumRobustnessIndex())
 	return false;
 
-      if (getProfitabilityIndex() < DecimalConstants<Prec>::TwoThirds)
+      if (getProfitabilityIndex() < DecimalConstants<Decimal>::TwoThirds)
 	return false;
 
       unsigned long numSignificant = getNumNeighboringSignificantResults();
       if (mDebug)
 	std::cout << "!! Num Significant neighboring results = " << numSignificant << std::endl;
 
-      decimal<Prec> originalStop = getOriginalPatternStop();
-      decimal<Prec> originalTarget = getOriginalPatternTarget();
+      Decimal originalStop = getOriginalPatternStop();
+      Decimal originalTarget = getOriginalPatternTarget();
 
       if (mDebug)
 	{
@@ -831,19 +831,19 @@ namespace mkc_timeseries
 	  std::cout << "RobustnessCalculator::isRobust - original pattern target = " << originalTarget << std::endl;
 	}
 
-      ProfitTargetStopPair<Prec> pairKey (originalTarget,
+      ProfitTargetStopPair<Decimal> pairKey (originalTarget,
 					  originalStop);
       /*
-      decimal<Prec> requiredProfitability = 
-	RobustnessCalculator<Prec>::requiredPALProfitability(mRobustnessCriteria.getDesiredProfitFactor(),
+      Decimal requiredProfitability = 
+	RobustnessCalculator<Decimal>::requiredPALProfitability(mRobustnessCriteria.getDesiredProfitFactor(),
 						mPatternToTest->getPayoffRatio(),
 							     mRobustnessCriteria.getProfitabilitySafetyFactor());
       */
 
-      decimal<Prec> requiredProfitability = mRequiredProfitability;
+      Decimal requiredProfitability = mRequiredProfitability;
       if (mDebug)
 	std::cout << "!!@@@ Required profitability = " << requiredProfitability << std::endl;
-      typename RobustnessCalculator<Prec>::RobustnessTestResultIterator refPairIterator =
+      typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator refPairIterator =
 	mRobustnessResults.find(pairKey);
 
       if (refPairIterator == endRobustnessTestResults())
@@ -857,7 +857,7 @@ namespace mkc_timeseries
 
       if (mDebug)
 	std::cout << "!!@@@ Reference pattern is robust " << std::endl;
-      typename RobustnessCalculator<Prec>::RobustnessTestResultIterator it = refPairIterator;
+      typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator it = refPairIterator;
 
       // Start testing one result above reference result
 
@@ -925,9 +925,9 @@ namespace mkc_timeseries
 
     }
 
-    uint32_t getNumRobustnessFailuresAtBeginning(decimal<Prec> theRequiredProfitability) const
+    uint32_t getNumRobustnessFailuresAtBeginning(Decimal theRequiredProfitability) const
     {
-      typename RobustnessCalculator<Prec>::RobustnessTestResultIterator it =
+      typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator it =
 	beginRobustnessTestResults();
       uint32_t entriesToTest = mPermutationAttributes->numEntriesToTestAtBeginning();
       uint32_t numFailedEntries = 0;
@@ -949,9 +949,9 @@ namespace mkc_timeseries
       return numFailedEntries;
     }
 
-    uint32_t getNumRobustnessFailuresAtEnd(decimal<Prec> theRequiredProfitability) const
+    uint32_t getNumRobustnessFailuresAtEnd(Decimal theRequiredProfitability) const
     {
-      typename RobustnessCalculator<Prec>::RobustnessTestResultIterator it =
+      typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator it =
 	endRobustnessTestResults();
       uint32_t entriesToTest = mPermutationAttributes->numEntriesToTestAtEnd();
       uint32_t numFailedEntries = 0;
@@ -979,21 +979,21 @@ namespace mkc_timeseries
       return mRobustnessResults.size();
     }
 
-    static dec::decimal<Prec> requiredPALProfitability(const decimal<Prec>& profitFactor,
-						const decimal<Prec>& payoffRatio,
-						const decimal<Prec>& safetyFactor)
+    static Decimal requiredPALProfitability(const Decimal& profitFactor,
+						const Decimal& payoffRatio,
+						const Decimal& safetyFactor)
     {
-      decimal<Prec> denom = profitFactor + (safetyFactor * payoffRatio);
+      Decimal denom = profitFactor + (safetyFactor * payoffRatio);
 
-      return ((profitFactor / denom) * DecimalConstants<Prec>::DecimalOneHundred);
+      return ((profitFactor / denom) * DecimalConstants<Decimal>::DecimalOneHundred);
     }
 
   private:
     // Note this method is meant to be called on the results that 'neighbor' the original 
     // profit target, stop pair
 
-    bool isPermutationResultRobust (std::shared_ptr<RobustnessTestResult<Prec>> result,
-				    const decimal<Prec>& requiredProfitability,
+    bool isPermutationResultRobust (std::shared_ptr<RobustnessTestResult<Decimal>> result,
+				    const Decimal& requiredProfitability,
 				    unsigned long iterationsAwayFromRef) const
     {
       if (!equalWithTolerance (requiredProfitability, result->getMonteCarloProfitability(),
@@ -1006,8 +1006,8 @@ namespace mkc_timeseries
 
       //getToleranceForNumTrades
 
-      decimal<Prec> resultPayoff (result->getMonteCarloPayOffRatio());
-      if (resultPayoff == DecimalConstants<Prec>::DecimalZero)
+      Decimal resultPayoff (result->getMonteCarloPayOffRatio());
+      if (resultPayoff == DecimalConstants<Decimal>::DecimalZero)
 	resultPayoff = result->getMedianPayOffRatio();
       
       if (!equalWithTolerance (mPatternToTest->getPayoffRatio(), resultPayoff,
@@ -1026,23 +1026,23 @@ namespace mkc_timeseries
       return true;
     }
 
-    const decimal<Prec> getOriginalPatternStop() const
+    const Decimal getOriginalPatternStop() const
     {
       return mPatternToTest->getStopLossAsDecimal();
     }
 
-    const decimal<Prec> getOriginalPatternTarget() const
+    const Decimal getOriginalPatternTarget() const
     {
       return mPatternToTest->getProfitTargetAsDecimal();
     }
 
     unsigned long getNumNeighboringSignificantResults() const
     {
-      decimal<Prec> numPermutations = 
-	decimal_cast<Prec>(mPermutationAttributes->getNumberOfPermutations());
-      decimal<Prec> numSignificant7 = decimal_cast<Prec>(7);
+      Decimal numPermutations = 
+	decimal_cast<Decimal::decimal_points>(mPermutationAttributes->getNumberOfPermutations());
+      Decimal numSignificant7 = decimal_cast<Decimal::decimal_points>(7);
 
-      decimal<Prec> numSignificant (numPermutations * RobustnessCalculator<Prec>::TwentyFivePercent);
+      Decimal numSignificant (numPermutations * RobustnessCalculator<Decimal>::TwentyFivePercent);
       if (mDebug)
 	std::cout << "getNumNeighboringSignificantResults: numPermutations = " << numPermutations << std::endl;
  
@@ -1052,47 +1052,47 @@ namespace mkc_timeseries
       return (unsigned long) numSignificant.getAsInteger();
     }
 
-    bool equalWithTolerance (const decimal<Prec>& referenceValue, 
-			     const decimal<Prec>& comparisonValue,
-			     const PercentNumber<Prec>& tolerance) const
+    bool equalWithTolerance (const Decimal& referenceValue, 
+			     const Decimal& comparisonValue,
+			     const PercentNumber<Decimal>& tolerance) const
     {
-      decimal<Prec> lowerRefValue(referenceValue - (tolerance.getAsPercent() * referenceValue));
+      Decimal lowerRefValue(referenceValue - (tolerance.getAsPercent() * referenceValue));
       return (comparisonValue >= lowerRefValue);
     }
 
   private:
     std::shared_ptr<PriceActionLabPattern> mPatternToTest;
     std::shared_ptr<RobustnessPermutationAttributes> mPermutationAttributes;
-    PatternRobustnessCriteria<Prec> mRobustnessCriteria;
-    decimal<Prec> mNumberProfitableResults;
+    PatternRobustnessCriteria<Decimal> mRobustnessCriteria;
+    Decimal mNumberProfitableResults;
     bool mDebug;
-    std::map<ProfitTargetStopPair<Prec>, 
-	     std::shared_ptr<RobustnessTestResult<Prec>>,
-	     ProfitTargetStopComparator<Prec>> mRobustnessResults;
-    decimal<Prec> mRequiredProfitability;
-    decimal<Prec> mNumberPALProfitableResults;
-    static decimal<Prec> TwentyPercent;
-    static decimal<Prec> TwentyFivePercent;
+    std::map<ProfitTargetStopPair<Decimal>, 
+	     std::shared_ptr<RobustnessTestResult<Decimal>>,
+	     ProfitTargetStopComparator<Decimal>> mRobustnessResults;
+    Decimal mRequiredProfitability;
+    Decimal mNumberPALProfitableResults;
+    static Decimal TwentyPercent;
+    static Decimal TwentyFivePercent;
   };
 
-  template <int Prec> decimal<Prec> 
-  RobustnessCalculator<Prec>::TwentyPercent(DecimalConstants<Prec>::createDecimal("0.20"));
+  template <class Decimal> Decimal 
+  RobustnessCalculator<Decimal>::TwentyPercent(DecimalConstants<Decimal>::createDecimal("0.20"));
 
-  template <int Prec> decimal<Prec> 
-  RobustnessCalculator<Prec>::TwentyFivePercent(DecimalConstants<Prec>::createDecimal("0.25"));
+  template <class Decimal> Decimal 
+  RobustnessCalculator<Decimal>::TwentyFivePercent(DecimalConstants<Decimal>::createDecimal("0.25"));
 
   //
   // class RobustnessTest
   //
   // Performs a robustness test of a PriceActionLab pattern
   //
-  template <int Prec> class RobustnessTest
+  template <class Decimal> class RobustnessTest
   {
   public:
-    RobustnessTest (std::shared_ptr<BackTester<Prec>> backtester,
-		    std::shared_ptr<PalStrategy<Prec>> aPalStrategy,
+    RobustnessTest (std::shared_ptr<BackTester<Decimal>> backtester,
+		    std::shared_ptr<PalStrategy<Decimal>> aPalStrategy,
 		    shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
-		    const PatternRobustnessCriteria<Prec>& robustnessCriteria,
+		    const PatternRobustnessCriteria<Decimal>& robustnessCriteria,
 		    std::shared_ptr<AstFactory> factory)
       : mTheBacktester(backtester),
 	mTheStrategy(aPalStrategy),
@@ -1107,7 +1107,7 @@ namespace mkc_timeseries
     ~RobustnessTest()
     {}
 
-    RobustnessTest (const RobustnessTest<Prec>& rhs)
+    RobustnessTest (const RobustnessTest<Decimal>& rhs)
       : mTheBacktester(rhs.mTheBacktester),
 	mTheStrategy(rhs.mTheStrategy),
 	mPermutationAttributes(rhs.mPermutationAttributes),
@@ -1116,8 +1116,8 @@ namespace mkc_timeseries
 	mRobustnessQuality(rhs.mRobustnessQuality)
     {}
 
-    const RobustnessTest<Prec>&
-    operator=(const RobustnessTest<Prec>& rhs)
+    const RobustnessTest<Decimal>&
+    operator=(const RobustnessTest<Decimal>& rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -1138,17 +1138,17 @@ namespace mkc_timeseries
       // std::cout << "RobustnessTest::runRobustnessTest" << std::endl;
 
       std::shared_ptr<PriceActionLabPattern> originalPattern = mTheStrategy->getPalPattern();
-      dec::decimal<Prec> originalPatternStop (originalPattern->getStopLossAsDecimal());
-      dec::decimal<Prec> permutationIncrement(originalPatternStop / decimal_cast<Prec>((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
-      dec::decimal<Prec> numProfitablePermutations(DecimalConstants<Prec>::DecimalZero);
-      decimal<Prec> requiredPayoffRatio (originalPattern->getPayoffRatio());
-      decimal<Prec> requiredProfitability (RobustnessCalculator<Prec>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
+      Decimal originalPatternStop (originalPattern->getStopLossAsDecimal());
+      Decimal permutationIncrement(originalPatternStop / decimal_cast<Decimal::decimal_points>((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
+      Decimal numProfitablePermutations(DecimalConstants<Decimal>::DecimalZero);
+      Decimal requiredPayoffRatio (originalPattern->getPayoffRatio());
+      Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
       bool originalPatternProfitabilityFailed = false;
 
       //std::cout << "RobustnessTest::runRobustnessTest - finished initializing variables" << std::endl;
       // Test original profit target, stop pair
 
-      std::shared_ptr<BackTester<Prec>> clonedBackTester = mTheBacktester->clone();
+      std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
       clonedBackTester->addStrategy(mTheStrategy);
       clonedBackTester->backtest();
 
@@ -1165,10 +1165,10 @@ namespace mkc_timeseries
 
       //std::cout << "RobustnessTest::runRobustnessTest - finished adding reference (target, stop) pair test result" << std::endl;
 
-      decimal<Prec> lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop, 
+      Decimal lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop, 
 									   permutationIncrement));
-      decimal<Prec> stopToTest(lowestStopToTest);
-      decimal<Prec> profitTargetToTest(stopToTest * requiredPayoffRatio);
+      Decimal stopToTest(lowestStopToTest);
+      Decimal profitTargetToTest(stopToTest * requiredPayoffRatio);
 
       uint32_t i;
       // Test permutation below reference profit target, stop pair
@@ -1202,34 +1202,34 @@ namespace mkc_timeseries
       return (mRobustnessQuality.isRobust ());
     }
 
-    const RobustnessCalculator<Prec>& getRobustnessCalculator() const
+    const RobustnessCalculator<Decimal>& getRobustnessCalculator() const
     {
       return mRobustnessQuality;
     }
 
   private: 
     void backTestNewPermutation (std::shared_ptr<PriceActionLabPattern> aPattern,
-				 const decimal<Prec>& newStopLoss, 
-				 const decimal<Prec>& newProfitTarget)
+				 const Decimal& newStopLoss, 
+				 const Decimal& newProfitTarget)
     {
       decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) toString(newStopLoss).c_str());
       decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)toString(newProfitTarget).c_str());
       
-      std::shared_ptr<BackTester<Prec>> clonedBackTester = mTheBacktester->clone();
+      std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
 	 
 
       ProfitTargetInPercentExpression *profitTarget;
       StopLossInPercentExpression *stopLoss;
       std::shared_ptr<PriceActionLabPattern> clonedPattern;
-      std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
-      std::shared_ptr<PalShortStrategy<Prec>> shortStrategy;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
 
       if (aPattern->isLongPattern())
 	{
 	  profitTarget = mAstFactory->getLongProfitTarget (newProfitTargetPtr);
 	  stopLoss = mAstFactory->getLongStopLoss (newStopLossPtr);
 	  clonedPattern = aPattern->clone (profitTarget, stopLoss);
-	  longStrategy = std::make_shared<PalLongStrategy<Prec>>(mTheStrategy->getStrategyName(),
+	  longStrategy = std::make_shared<PalLongStrategy<Decimal>>(mTheStrategy->getStrategyName(),
 								 clonedPattern,
 								 mTheStrategy->getPortfolio());
 	  clonedBackTester->addStrategy(longStrategy);
@@ -1240,7 +1240,7 @@ namespace mkc_timeseries
 	  profitTarget = mAstFactory->getShortProfitTarget (newProfitTargetPtr);
 	  stopLoss = mAstFactory->getShortStopLoss (newStopLossPtr);
 	  clonedPattern = aPattern->clone (profitTarget, stopLoss);
-	  shortStrategy = std::make_shared<PalShortStrategy<Prec>>(mTheStrategy->getStrategyName(),
+	  shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(mTheStrategy->getStrategyName(),
 								   clonedPattern,
 								   mTheStrategy->getPortfolio());
 	  clonedBackTester->addStrategy(shortStrategy);
@@ -1253,23 +1253,23 @@ namespace mkc_timeseries
       
     }
 
-    decimal<Prec> calculateLowestStopPermutationValue (const decimal<Prec>& originalStop,
-						       const decimal<Prec>& permutationIncrement) const
+    Decimal calculateLowestStopPermutationValue (const Decimal& originalStop,
+						       const Decimal& permutationIncrement) const
     {
       return (originalStop - 
-	      (permutationIncrement *  decimal<Prec> (mPermutationAttributes->getNumPermutationsBelowRef())));
+	      (permutationIncrement *  Decimal (mPermutationAttributes->getNumPermutationsBelowRef())));
     }
 
-    std::shared_ptr<RobustnessTestResult<Prec>> 
-    createRobustnessTestResult(std::shared_ptr<BackTester<Prec>> backtester)
+    std::shared_ptr<RobustnessTestResult<Decimal>> 
+    createRobustnessTestResult(std::shared_ptr<BackTester<Decimal>> backtester)
     {
-      //      ClosedPositionHistory<Prec> closedPositions = 
+      //      ClosedPositionHistory<Decimal> closedPositions = 
       //getClosedPositionHistory (backtester);
 
-      ClosedPositionHistory<Prec> closedPositions = backtester->getClosedPositionHistory();
+      ClosedPositionHistory<Decimal> closedPositions = backtester->getClosedPositionHistory();
 
       return 
-	make_shared<RobustnessTestResult<Prec>> (closedPositions.getMedianPALProfitability(),
+	make_shared<RobustnessTestResult<Decimal>> (closedPositions.getMedianPALProfitability(),
 						 closedPositions.getProfitFactor(),
 						 closedPositions.getNumPositions(),
 						 closedPositions.getPayoffRatio(),
@@ -1277,19 +1277,19 @@ namespace mkc_timeseries
 						 closedPositions.getRMultipleExpectancy());
     }
 
-    void addTestResult (std::shared_ptr<RobustnessTestResult<Prec>> testResult,
+    void addTestResult (std::shared_ptr<RobustnessTestResult<Decimal>> testResult,
 			std::shared_ptr<PriceActionLabPattern> pattern)
     {
       mRobustnessQuality.addTestResult (testResult, pattern);
     }
 
   private:
-    std::shared_ptr<BackTester<Prec>> mTheBacktester;
-    std::shared_ptr<PalStrategy<Prec>> mTheStrategy;
+    std::shared_ptr<BackTester<Decimal>> mTheBacktester;
+    std::shared_ptr<PalStrategy<Decimal>> mTheStrategy;
     shared_ptr<RobustnessPermutationAttributes> mPermutationAttributes;
-    PatternRobustnessCriteria<Prec> mRobustnessCriteria;
+    PatternRobustnessCriteria<Decimal> mRobustnessCriteria;
     std::shared_ptr<AstFactory> mAstFactory;
-    RobustnessCalculator<Prec> mRobustnessQuality;
+    RobustnessCalculator<Decimal> mRobustnessQuality;
   };
 
 
@@ -1300,13 +1300,13 @@ namespace mkc_timeseries
   //
   // Performs a robustness test of a PriceActionLab pattern
   //
-  template <int Prec> class RobustnessTestMonteCarlo
+  template <class Decimal> class RobustnessTestMonteCarlo
   {
   public:
-    RobustnessTestMonteCarlo (std::shared_ptr<BackTester<Prec>> backtester,
-			      std::shared_ptr<PalStrategy<Prec>> aPalStrategy,
+    RobustnessTestMonteCarlo (std::shared_ptr<BackTester<Decimal>> backtester,
+			      std::shared_ptr<PalStrategy<Decimal>> aPalStrategy,
 			      shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
-			      const PatternRobustnessCriteria<Prec>& robustnessCriteria,
+			      const PatternRobustnessCriteria<Decimal>& robustnessCriteria,
 			      std::shared_ptr<AstFactory> factory)
       : mTheBacktester(backtester),
 	mTheStrategy(aPalStrategy),
@@ -1321,7 +1321,7 @@ namespace mkc_timeseries
     ~RobustnessTestMonteCarlo()
     {}
 
-    RobustnessTestMonteCarlo (const RobustnessTestMonteCarlo<Prec>& rhs)
+    RobustnessTestMonteCarlo (const RobustnessTestMonteCarlo<Decimal>& rhs)
       : mTheBacktester(rhs.mTheBacktester),
 	mTheStrategy(rhs.mTheStrategy),
 	mPermutationAttributes(rhs.mPermutationAttributes),
@@ -1330,8 +1330,8 @@ namespace mkc_timeseries
 	mRobustnessQuality(rhs.mRobustnessQuality)
     {}
 
-    const RobustnessTestMonteCarlo<Prec>&
-    operator=(const RobustnessTestMonteCarlo<Prec>& rhs)
+    const RobustnessTestMonteCarlo<Decimal>&
+    operator=(const RobustnessTestMonteCarlo<Decimal>& rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -1350,21 +1350,21 @@ namespace mkc_timeseries
     bool runRobustnessTest()
     {
       std::shared_ptr<PriceActionLabPattern> originalPattern = mTheStrategy->getPalPattern();
-      dec::decimal<Prec> originalPatternStop (originalPattern->getStopLossAsDecimal());
-      dec::decimal<Prec> permutationIncrement(originalPatternStop / decimal_cast<Prec>((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
-      dec::decimal<Prec> numProfitablePermutations(DecimalConstants<Prec>::DecimalZero);
-      decimal<Prec> requiredPayoffRatio (originalPattern->getPayoffRatio());
-      decimal<Prec> requiredProfitability (RobustnessCalculator<Prec>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
-      std::shared_ptr<BackTester<Prec>> clonedBackTester = mTheBacktester->clone();
+      Decimal originalPatternStop (originalPattern->getStopLossAsDecimal());
+      Decimal permutationIncrement(originalPatternStop / decimal_cast<Decimal::decimal_points>((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
+      Decimal numProfitablePermutations(DecimalConstants<Decimal>::DecimalZero);
+      Decimal requiredPayoffRatio (originalPattern->getPayoffRatio());
+      Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
+      std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
       clonedBackTester->addStrategy(mTheStrategy);
       clonedBackTester->backtest();
 
       addTestResult (clonedBackTester, originalPattern);
 
-      decimal<Prec> lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop, 
+      Decimal lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop, 
 									   permutationIncrement));
-      decimal<Prec> stopToTest(lowestStopToTest);
-      decimal<Prec> profitTargetToTest(stopToTest * requiredPayoffRatio);
+      Decimal stopToTest(lowestStopToTest);
+      Decimal profitTargetToTest(stopToTest * requiredPayoffRatio);
 
       uint32_t i;
       // Test permutation below reference profit target, stop pair
@@ -1395,34 +1395,34 @@ namespace mkc_timeseries
       return (mRobustnessQuality.isRobust ());
     }
 
-    const RobustnessCalculator<Prec>& getRobustnessCalculator() const
+    const RobustnessCalculator<Decimal>& getRobustnessCalculator() const
     {
       return mRobustnessQuality;
     }
 
   private: 
     void backTestNewPermutation (std::shared_ptr<PriceActionLabPattern> aPattern,
-				 const decimal<Prec>& newStopLoss, 
-				 const decimal<Prec>& newProfitTarget)
+				 const Decimal& newStopLoss, 
+				 const Decimal& newProfitTarget)
     {
       decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) toString(newStopLoss).c_str());
       decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)toString(newProfitTarget).c_str());
       
-      std::shared_ptr<BackTester<Prec>> clonedBackTester = mTheBacktester->clone();
+      std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
 	 
 
       ProfitTargetInPercentExpression *profitTarget;
       StopLossInPercentExpression *stopLoss;
       std::shared_ptr<PriceActionLabPattern> clonedPattern;
-      std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
-      std::shared_ptr<PalShortStrategy<Prec>> shortStrategy;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
 
       if (aPattern->isLongPattern())
 	{
 	  profitTarget = mAstFactory->getLongProfitTarget (newProfitTargetPtr);
 	  stopLoss = mAstFactory->getLongStopLoss (newStopLossPtr);
 	  clonedPattern = aPattern->clone (profitTarget, stopLoss);
-	  longStrategy = std::make_shared<PalLongStrategy<Prec>>(mTheStrategy->getStrategyName(),
+	  longStrategy = std::make_shared<PalLongStrategy<Decimal>>(mTheStrategy->getStrategyName(),
 								 clonedPattern,
 								 mTheStrategy->getPortfolio());
 	  clonedBackTester->addStrategy(longStrategy);
@@ -1433,7 +1433,7 @@ namespace mkc_timeseries
 	  profitTarget = mAstFactory->getShortProfitTarget (newProfitTargetPtr);
 	  stopLoss = mAstFactory->getShortStopLoss (newStopLossPtr);
 	  clonedPattern = aPattern->clone (profitTarget, stopLoss);
-	  shortStrategy = std::make_shared<PalShortStrategy<Prec>>(mTheStrategy->getStrategyName(),
+	  shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(mTheStrategy->getStrategyName(),
 								   clonedPattern,
 								   mTheStrategy->getPortfolio());
 	  clonedBackTester->addStrategy(shortStrategy);
@@ -1443,34 +1443,34 @@ namespace mkc_timeseries
       addTestResult (clonedBackTester, clonedPattern);
     }
 
-    decimal<Prec> calculateLowestStopPermutationValue (const decimal<Prec>& originalStop,
-						       const decimal<Prec>& permutationIncrement) const
+    Decimal calculateLowestStopPermutationValue (const Decimal& originalStop,
+						       const Decimal& permutationIncrement) const
     {
       return (originalStop - 
-	      (permutationIncrement *  decimal<Prec> (mPermutationAttributes->getNumPermutationsBelowRef())));
+	      (permutationIncrement *  Decimal (mPermutationAttributes->getNumPermutationsBelowRef())));
     }
 
-    void addTestResult (std::shared_ptr<BackTester<Prec>> backtester,
+    void addTestResult (std::shared_ptr<BackTester<Decimal>> backtester,
 			std::shared_ptr<PriceActionLabPattern> pattern)
     {
-      ClosedPositionHistory<Prec> closedPositions = backtester->getClosedPositionHistory();
+      ClosedPositionHistory<Decimal> closedPositions = backtester->getClosedPositionHistory();
 
-      decimal<Prec> profitability = closedPositions.getMedianPALProfitability();
-      decimal<Prec> profitFactor = closedPositions.getProfitFactor();
+      Decimal profitability = closedPositions.getMedianPALProfitability();
+      Decimal profitFactor = closedPositions.getProfitFactor();
       unsigned long numTrades = closedPositions.getNumPositions();
-      decimal<Prec> payoffratio = closedPositions.getPayoffRatio();
-      decimal<Prec> medianPayoff = closedPositions.getMedianPayoffRatio();
-      decimal<Prec> expectancy = closedPositions.getRMultipleExpectancy();
+      Decimal payoffratio = closedPositions.getPayoffRatio();
+      Decimal medianPayoff = closedPositions.getMedianPayoffRatio();
+      Decimal expectancy = closedPositions.getRMultipleExpectancy();
 
       // Use Monte Carlo to (hopefully) get a better estimate of the payoff ratio
       //std::cout << "Running MonteCarloPayoffRatio for profit target " <<
       //pattern->getProfitTargetAsDecimal() << ", Stop = " << pattern->getStopLossAsDecimal() << std::endl << std::endl;
       
-      MonteCarloPayoffRatio<Prec> monteCarloPayoffCalculator (backtester, 200);
-      decimal<Prec> monteCarloPayoff(monteCarloPayoffCalculator.runPermutationTest());
+      MonteCarloPayoffRatio<Decimal> monteCarloPayoffCalculator (backtester, 200);
+      Decimal monteCarloPayoff(monteCarloPayoffCalculator.runPermutationTest());
 
-      std::shared_ptr<RobustnessTestResult<Prec>> testResult =  
-	make_shared<RobustnessTestResult<Prec>> (profitability,
+      std::shared_ptr<RobustnessTestResult<Decimal>> testResult =  
+	make_shared<RobustnessTestResult<Decimal>> (profitability,
 						 profitFactor,
 						 numTrades,
 						 payoffratio,
@@ -1482,12 +1482,12 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<BackTester<Prec>> mTheBacktester;
-    std::shared_ptr<PalStrategy<Prec>> mTheStrategy;
+    std::shared_ptr<BackTester<Decimal>> mTheBacktester;
+    std::shared_ptr<PalStrategy<Decimal>> mTheStrategy;
     shared_ptr<RobustnessPermutationAttributes> mPermutationAttributes;
-    PatternRobustnessCriteria<Prec> mRobustnessCriteria;
+    PatternRobustnessCriteria<Decimal> mRobustnessCriteria;
     std::shared_ptr<AstFactory> mAstFactory;
-    RobustnessCalculator<Prec> mRobustnessQuality;
+    RobustnessCalculator<Decimal> mRobustnessQuality;
   };
 }
 

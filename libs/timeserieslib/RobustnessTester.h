@@ -47,17 +47,17 @@ namespace mkc_timeseries
   //
   // Performs a robustness test of a group PriceActionLab patterns
   //
-  template <int Prec> class PalRobustnessTester
+  template <class Decimal> class PalRobustnessTester
   {
   public:
-    typedef typename std::list<shared_ptr<PalStrategy<Prec>>>::const_iterator SurvivingStrategiesIterator;
-    typedef typename std::list<shared_ptr<PalStrategy<Prec>>>::const_iterator RejectedStrategiesIterator;
-    typedef typename unordered_map<HashKey, shared_ptr<RobustnessCalculator<Prec>>>::const_iterator RobustnessResultsIterator;
+    typedef typename std::list<shared_ptr<PalStrategy<Decimal>>>::const_iterator SurvivingStrategiesIterator;
+    typedef typename std::list<shared_ptr<PalStrategy<Decimal>>>::const_iterator RejectedStrategiesIterator;
+    typedef typename unordered_map<HashKey, shared_ptr<RobustnessCalculator<Decimal>>>::const_iterator RobustnessResultsIterator;
 
   public:
-    PalRobustnessTester(shared_ptr<BackTester<Prec>> aBackTester,
+    PalRobustnessTester(shared_ptr<BackTester<Decimal>> aBackTester,
 			shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
-			const PatternRobustnessCriteria<Prec>& robustnessCriteria)
+			const PatternRobustnessCriteria<Decimal>& robustnessCriteria)
       : mBacktesterPrototype (aBackTester),
 	mPermutationAttributes(permutationAttributes),
 	mRobustnessCriteria(robustnessCriteria),
@@ -105,11 +105,11 @@ namespace mkc_timeseries
     //original code, for reference
     void runRobustnessTests()
     {
-      typedef typename std::list<shared_ptr<PalStrategy<Prec>>>::const_iterator CandiateStrategiesIterator;
+      typedef typename std::list<shared_ptr<PalStrategy<Decimal>>>::const_iterator CandiateStrategiesIterator;
 
       CandiateStrategiesIterator it = mStrategiesToBeTested.begin();
-      shared_ptr<PalStrategy<Prec>> aStrategy;
-      shared_ptr<RobustnessCalculator<Prec>> aRobustnessResult;
+      shared_ptr<PalStrategy<Decimal>> aStrategy;
+      shared_ptr<RobustnessCalculator<Decimal>> aRobustnessResult;
       unsigned long long aHashKey;
       bool isRobust = false;
 
@@ -119,14 +119,14 @@ namespace mkc_timeseries
       for (; it != mStrategiesToBeTested.end(); it++)
 	{
 	  aStrategy = (*it);
-	  RobustnessTestMonteCarlo<Prec> aTest(mBacktesterPrototype, aStrategy, 
+	  RobustnessTestMonteCarlo<Decimal> aTest(mBacktesterPrototype, aStrategy, 
 				     mPermutationAttributes, mRobustnessCriteria,
 				     mAstFactory);
 
 	  isRobust = aTest.runRobustnessTest();
 	  aHashKey = aStrategy->getPalPattern()->hashCode();
 	  aRobustnessResult = 
-	    make_shared<RobustnessCalculator<Prec>> (aTest.getRobustnessCalculator());
+	    make_shared<RobustnessCalculator<Decimal>> (aTest.getRobustnessCalculator());
 
 	  std::cout << "Run robustness test on ";
 	  if (aStrategy->getPalPattern()->isLongPattern())
@@ -154,7 +154,7 @@ namespace mkc_timeseries
 
 
     void insertSurvivingRobustResult(unsigned long long aHashKey,
-			    shared_ptr<RobustnessCalculator<Prec>> aRobustnessResult)
+			    shared_ptr<RobustnessCalculator<Decimal>> aRobustnessResult)
     {
       if  (findSurvivingRobustnessResults(aHashKey) == endSurvivingRobustnessResults())
 	mPassedRobustnessResults.insert(make_pair(aHashKey, aRobustnessResult));
@@ -163,7 +163,7 @@ namespace mkc_timeseries
     }
 
     void insertFailedRobustResult(unsigned long long aHashKey,
-			    shared_ptr<RobustnessCalculator<Prec>> aRobustnessResult)
+			    shared_ptr<RobustnessCalculator<Decimal>> aRobustnessResult)
     {
       if  (findFailedRobustnessResults(aHashKey) == endFailedRobustnessResults())
 	mFailedRobustnessResults.insert(make_pair(aHashKey, aRobustnessResult));
@@ -171,10 +171,10 @@ namespace mkc_timeseries
 	throw RobustnessTesterException("insertFailedRobustResult: duplicate strategies with same hashkey found");
     }
 
-    void addStrategy(shared_ptr<PalStrategy<Prec>> aStrategy)
+    void addStrategy(shared_ptr<PalStrategy<Decimal>> aStrategy)
     {
-      shared_ptr<PalStrategy<Prec>> clonedStrategy = 
-	std::dynamic_pointer_cast<PalStrategy<Prec>> (aStrategy->cloneForBackTesting());
+      shared_ptr<PalStrategy<Decimal>> clonedStrategy = 
+	std::dynamic_pointer_cast<PalStrategy<Decimal>> (aStrategy->cloneForBackTesting());
 
       mStrategiesToBeTested.push_back(clonedStrategy);
     }
@@ -214,7 +214,7 @@ namespace mkc_timeseries
       return mRejectedStrategies.end();
     }
 
-    RobustnessResultsIterator findFailedRobustnessResults(shared_ptr<PalStrategy<Prec>> aStrategy) const
+    RobustnessResultsIterator findFailedRobustnessResults(shared_ptr<PalStrategy<Decimal>> aStrategy) const
     {
       return mFailedRobustnessResults.find (aStrategy->getPalPattern()->hashCode());
     }
@@ -224,7 +224,7 @@ namespace mkc_timeseries
       return mFailedRobustnessResults.find (aHashCode);
     }
 
-    RobustnessResultsIterator findSurvivingRobustnessResults(shared_ptr<PalStrategy<Prec>> aStrategy) const
+    RobustnessResultsIterator findSurvivingRobustnessResults(shared_ptr<PalStrategy<Decimal>> aStrategy) const
     {
       return mPassedRobustnessResults.find (aStrategy->getPalPattern()->hashCode());
     }
@@ -246,39 +246,39 @@ RobustnessResultsIterator findSurvivingRobustnessResults(unsigned long long aHas
 
   private:
 
-    shared_ptr<BackTester<Prec>> mBacktesterPrototype;
+    shared_ptr<BackTester<Decimal>> mBacktesterPrototype;
     shared_ptr<RobustnessPermutationAttributes> mPermutationAttributes;
-    PatternRobustnessCriteria<Prec> mRobustnessCriteria;
+    PatternRobustnessCriteria<Decimal> mRobustnessCriteria;
     shared_ptr<AstFactory> mAstFactory;
-    std::list<std::shared_ptr<PalStrategy<Prec>>> mStrategiesToBeTested;
-    std::list<std::shared_ptr<PalStrategy<Prec>>> mSurvivingStrategies;
-    std::list<std::shared_ptr<PalStrategy<Prec>>> mRejectedStrategies;
+    std::list<std::shared_ptr<PalStrategy<Decimal>>> mStrategiesToBeTested;
+    std::list<std::shared_ptr<PalStrategy<Decimal>>> mSurvivingStrategies;
+    std::list<std::shared_ptr<PalStrategy<Decimal>>> mRejectedStrategies;
     unordered_map<unsigned long long, 
-		  std::shared_ptr<RobustnessCalculator<Prec>>> mFailedRobustnessResults;
+		  std::shared_ptr<RobustnessCalculator<Decimal>>> mFailedRobustnessResults;
     unordered_map<unsigned long long, 
-		  std::shared_ptr<RobustnessCalculator<Prec>>> mPassedRobustnessResults;
+		  std::shared_ptr<RobustnessCalculator<Decimal>>> mPassedRobustnessResults;
   };
 
 
 
-  template <int Prec>
-    inline PalRobustnessTester<Prec>::~PalRobustnessTester()
+  template <class Decimal>
+    inline PalRobustnessTester<Decimal>::~PalRobustnessTester()
     {}
 
-  template <int Prec> class PalStandardRobustnessTester : public PalRobustnessTester<Prec>
+  template <class Decimal> class PalStandardRobustnessTester : public PalRobustnessTester<Decimal>
     {
     public:
-    PalStandardRobustnessTester(shared_ptr<BackTester<Prec>> aBackTester)
-      : PalRobustnessTester<Prec>(aBackTester,
+    PalStandardRobustnessTester(shared_ptr<BackTester<Decimal>> aBackTester)
+      : PalRobustnessTester<Decimal>(aBackTester,
 				  make_shared<PALRobustnessPermutationAttributes>(),
-				  PatternRobustnessCriteria<Prec> (createADecimal<Prec>("70.0"), 
-								   createADecimal<Prec>("2.0"), 
-								   createAPercentNumber<Prec>("2.0"),
-								   createADecimal<Prec>("0.9")))
+				  PatternRobustnessCriteria<Decimal> (createADecimal<Decimal>("70.0"), 
+								   createADecimal<Decimal>("2.0"), 
+								   createAPercentNumber<Decimal>("2.0"),
+								   createADecimal<Decimal>("0.9")))
 	{}
 
       PalStandardRobustnessTester (const PalStandardRobustnessTester& rhs)
-	: PalRobustnessTester<Prec>(rhs)
+	: PalRobustnessTester<Decimal>(rhs)
       {}
 
       PalStandardRobustnessTester&
@@ -287,7 +287,7 @@ RobustnessResultsIterator findSurvivingRobustnessResults(unsigned long long aHas
 	if (this == &rhs)
 	  return *this;
 
-	PalRobustnessTester<Prec>::operator=(rhs);
+	PalRobustnessTester<Decimal>::operator=(rhs);
 
 	return *this;
       }
@@ -296,20 +296,20 @@ RobustnessResultsIterator findSurvivingRobustnessResults(unsigned long long aHas
       {}
     };
 
-  template <int Prec> class StatisticallySignificantRobustnessTester : public PalRobustnessTester<Prec>
+  template <class Decimal> class StatisticallySignificantRobustnessTester : public PalRobustnessTester<Decimal>
     {
     public:
-    StatisticallySignificantRobustnessTester(shared_ptr<BackTester<Prec>> aBackTester)
-      : PalRobustnessTester<Prec>(aBackTester,
+    StatisticallySignificantRobustnessTester(shared_ptr<BackTester<Decimal>> aBackTester)
+      : PalRobustnessTester<Decimal>(aBackTester,
 				  make_shared<StatSignificantAttributes>(),
-				  PatternRobustnessCriteria<Prec> (createADecimal<Prec>("70.0"), 
-								   createADecimal<Prec>("2.0"), 
-								   createAPercentNumber<Prec>("2.0"),
-								   createADecimal<Prec>("0.9")))
+				  PatternRobustnessCriteria<Decimal> (createADecimal<Decimal>("70.0"), 
+								   createADecimal<Decimal>("2.0"), 
+								   createAPercentNumber<Decimal>("2.0"),
+								   createADecimal<Decimal>("0.9")))
 	{}
 
       StatisticallySignificantRobustnessTester (const StatisticallySignificantRobustnessTester& rhs)
-	: PalRobustnessTester<Prec>(rhs)
+	: PalRobustnessTester<Decimal>(rhs)
       {}
 
       StatisticallySignificantRobustnessTester&
@@ -318,7 +318,7 @@ RobustnessResultsIterator findSurvivingRobustnessResults(unsigned long long aHas
 	if (this == &rhs)
 	  return *this;
 
-	PalRobustnessTester<Prec>::operator=(rhs);
+	PalRobustnessTester<Decimal>::operator=(rhs);
 
 	return *this;
       }

@@ -29,13 +29,13 @@ namespace mkc_timeseries
       {}
   };
 
-  template <int Prec>
+  template <class Decimal>
   class McptConfiguration
   {
   public:
-    McptConfiguration (std::shared_ptr<BackTester<Prec>> aBacktester,
-		       std::shared_ptr<BackTester<Prec>> aInSampleBacktester,
-		       std::shared_ptr<mkc_timeseries::Security<Prec>> aSecurity, 
+    McptConfiguration (std::shared_ptr<BackTester<Decimal>> aBacktester,
+		       std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
+		       std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity, 
 		       PriceActionLabSystem* patterns,
 		       const DateRange& insampleDateRange, 
 		       const DateRange& oosDateRange)
@@ -56,8 +56,8 @@ namespace mkc_timeseries
 	mOosDateRange(rhs.mOosDateRange)
     {}
 
-    McptConfiguration<Prec>& 
-    operator=(const McptConfiguration<Prec> &rhs)
+    McptConfiguration<Decimal>& 
+    operator=(const McptConfiguration<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -75,17 +75,17 @@ namespace mkc_timeseries
     ~McptConfiguration()
     {}
 
-    std::shared_ptr<BackTester<Prec>> getBackTester() const
+    std::shared_ptr<BackTester<Decimal>> getBackTester() const
     {
       return mBacktester;
     }
 
-    std::shared_ptr<BackTester<Prec>> getInSampleBackTester() const
+    std::shared_ptr<BackTester<Decimal>> getInSampleBackTester() const
     {
       return mInSampleBacktester;
     }
 
-    std::shared_ptr<Security<Prec>> getSecurity() const
+    std::shared_ptr<Security<Decimal>> getSecurity() const
     {
       return mSecurity;
     }
@@ -106,9 +106,9 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<BackTester<Prec>> mBacktester;
-    std::shared_ptr<BackTester<Prec>> mInSampleBacktester;
-    std::shared_ptr<Security<Prec>> mSecurity;
+    std::shared_ptr<BackTester<Decimal>> mBacktester;
+    std::shared_ptr<BackTester<Decimal>> mInSampleBacktester;
+    std::shared_ptr<Security<Decimal>> mSecurity;
     PriceActionLabSystem *mPricePatterns;
     DateRange mInsampleDateRange;
     DateRange mOosDateRange;
@@ -121,7 +121,7 @@ namespace mkc_timeseries
     ~McptConfigurationFileReader()
       {}
 
-    std::shared_ptr<McptConfiguration<7>> readConfigurationFile();
+    std::shared_ptr<McptConfiguration<decimal<7>>> readConfigurationFile();
 
   private:
     std::string mConfigurationFileName;

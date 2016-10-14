@@ -39,13 +39,13 @@ namespace mkc_timeseries
       {}
   };
 
-  template <int Prec, typename McptType> class PALMonteCarloValidation
+  template <class Decimal, typename McptType> class PALMonteCarloValidation
   {
   public:
-    typedef typename list<shared_ptr<PalStrategy<Prec>>>::const_iterator SurvivingStrategiesIterator;
+    typedef typename list<shared_ptr<PalStrategy<Decimal>>>::const_iterator SurvivingStrategiesIterator;
 
   public:
-    PALMonteCarloValidation(std::shared_ptr<McptConfiguration<Prec>> configuration,
+    PALMonteCarloValidation(std::shared_ptr<McptConfiguration<Decimal>> configuration,
 			    unsigned long numPermutations)
       : mMonteCarloConfiguration(configuration),
 	mNumPermutations(numPermutations),
@@ -73,7 +73,7 @@ namespace mkc_timeseries
 /*  //original code: here for reference
     void runPermutationTests()
     {
-      std::shared_ptr<Security<Prec>> securityToTest = mMonteCarloConfiguration->getSecurity();
+      std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
 
       // This line gets the patterns that have been read from the IR file
       PriceActionLabSystem *patternsToTest = mMonteCarloConfiguration->getPricePatterns();
@@ -85,24 +85,24 @@ namespace mkc_timeseries
 
       std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
 
-      auto aPortfolio = std::make_shared<Portfolio<Prec>>(portfolioName);
+      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
       aPortfolio->addSecurity(securityToTest);
 
       std::shared_ptr<PriceActionLabPattern> patternToTest;
-      std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
-      std::shared_ptr<BackTester<Prec>> theBackTester;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
+      std::shared_ptr<BackTester<Decimal>> theBackTester;
 
       std::string longStrategyNameBase("PAL Long Strategy ");
 
       std::string strategyName;
       unsigned long strategyNumber = 1;
-      dec::decimal<Prec> pValue;
+      Decimal pValue;
 
       for (; longPatternsIterator != patternsToTest->patternLongsEnd(); longPatternsIterator++)
 	{
 	  patternToTest = longPatternsIterator->second;
 	  strategyName = longStrategyNameBase + std::to_string(strategyNumber);
-	  longStrategy = std::make_shared<PalLongStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+	  longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 	  
 	  theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
 				       oosDates.getFirstDate(),
@@ -115,7 +115,7 @@ namespace mkc_timeseries
 	  McptType mcpt(theBackTester, mNumPermutations);
 	  pValue = mcpt.runPermutationTest();
 
-	  if (pValue < DecimalConstants<Prec>::SignificantPValue)
+	  if (pValue < DecimalConstants<Decimal>::SignificantPValue)
 	    {
 	      mSurvivingStrategies.push_back (longStrategy);
 	      std::cout << "Long Pattern found with p-Value < " << pValue << std::endl;
@@ -127,7 +127,7 @@ namespace mkc_timeseries
 
       std::cout << std::endl << "MCPT Processing short patterns" << std::endl << std::endl;
       
-      std::shared_ptr<PalShortStrategy<Prec>> shortStrategy;
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
       std::string shortStrategyNameBase("PAL Short Strategy ");
       PriceActionLabSystem::ConstSortedPatternIterator shortPatternsIterator = 
 	patternsToTest->patternShortsBegin();
@@ -136,7 +136,7 @@ namespace mkc_timeseries
 	{
 	  patternToTest = shortPatternsIterator->second;
 	  strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
-	  shortStrategy = std::make_shared<PalShortStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+	  shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 	  
 	  theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
 				       oosDates.getFirstDate(),
@@ -148,7 +148,7 @@ namespace mkc_timeseries
 
 	  pValue = mcpt.runPermutationTest();
 
-	  if (pValue < DecimalConstants<Prec>::SignificantPValue)
+	  if (pValue < DecimalConstants<Decimal>::SignificantPValue)
 	    {
 	      mSurvivingStrategies.push_back (shortStrategy);
 	      std::cout << "Short Pattern found with p-Value < " << pValue << std::endl;
@@ -160,7 +160,7 @@ namespace mkc_timeseries
 */
     void runPermutationTests()
     {
-      std::shared_ptr<Security<Prec>> securityToTest = mMonteCarloConfiguration->getSecurity();
+      std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
       securityToTest->getTimeSeries()->syncronizeMapAndArray();
       // This line gets the patterns that have been read from the IR file
       PriceActionLabSystem *patternsToTest = mMonteCarloConfiguration->getPricePatterns();
@@ -172,11 +172,11 @@ namespace mkc_timeseries
 
       std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
 
-      auto aPortfolio = std::make_shared<Portfolio<Prec>>(portfolioName);
+      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
       aPortfolio->addSecurity(securityToTest);
 
       std::shared_ptr<PriceActionLabPattern> patternToTest;
-      std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
 
       std::string longStrategyNameBase("PAL Long Strategy ");
 
@@ -192,7 +192,7 @@ namespace mkc_timeseries
 
         patternToTest = longPatternsIterator->second;
         strategyName = longStrategyNameBase + std::to_string(strategyNumber);
-        longStrategy = std::make_shared<PalLongStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+        longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
         auto theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
                                 oosDates.getFirstDate(),
@@ -208,7 +208,7 @@ namespace mkc_timeseries
             using clock = steady_clock;
             auto start = clock::now();
 
-            dec::decimal<Prec> pValue;
+            Decimal pValue;
 
             {
                   std::stringstream s;
@@ -230,7 +230,7 @@ namespace mkc_timeseries
                   std::cout<<s.str();
             }
 
-            if (pValue < DecimalConstants<Prec>::SignificantPValue)
+            if (pValue < DecimalConstants<Decimal>::SignificantPValue)
               {
                 boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
                 mSurvivingStrategies.push_back (longStrategy);
@@ -254,7 +254,7 @@ namespace mkc_timeseries
     //end parallel part
       std::cout << std::endl << "MCPT Processing short patterns" << std::endl << std::endl;
 
-      std::shared_ptr<PalShortStrategy<Prec>> shortStrategy;
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
       std::string shortStrategyNameBase("PAL Short Strategy ");
       PriceActionLabSystem::ConstSortedPatternIterator shortPatternsIterator =
     patternsToTest->patternShortsBegin();
@@ -264,7 +264,7 @@ namespace mkc_timeseries
       {
         patternToTest = shortPatternsIterator->second;
         strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
-        shortStrategy = std::make_shared<PalShortStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+        shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
         auto theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
                                oosDates.getFirstDate(),
@@ -273,7 +273,7 @@ namespace mkc_timeseries
 
         //sends code to the runner
         resultsOrErrorsVector.emplace_back(Runner.post([strategyNumber,theBackTester,this,shortStrategy](){
-            dec::decimal<Prec> pValue;
+            Decimal pValue;
             std::stringstream s;
             s<<"Running MCPT for strategy " << strategyNumber << std::endl;
             std::cout<<s.str();
@@ -282,7 +282,7 @@ namespace mkc_timeseries
 
             pValue = mcpt.runPermutationTest();
 
-            if (pValue < DecimalConstants<Prec>::SignificantPValue)
+            if (pValue < DecimalConstants<Decimal>::SignificantPValue)
               {
                 boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
                 mSurvivingStrategies.push_back (shortStrategy);
@@ -307,25 +307,25 @@ namespace mkc_timeseries
 
     }
   private:
-    std::shared_ptr<BackTester<Prec>> getBackTester(TimeFrame::Duration theTimeFrame,
+    std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
 						    boost::gregorian::date startDate, 
 						    boost::gregorian::date endDate) const
     {
       if (theTimeFrame == TimeFrame::DAILY)
-	return std::make_shared<DailyBackTester<Prec>>(startDate, endDate);
+	return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
       else if (theTimeFrame == TimeFrame::WEEKLY)
-	return std::make_shared<WeeklyBackTester<Prec>>(startDate, endDate);
+	return std::make_shared<WeeklyBackTester<Decimal>>(startDate, endDate);
       else if (theTimeFrame == TimeFrame::MONTHLY)
-	return std::make_shared<MonthlyBackTester<Prec>>(startDate, endDate);
+	return std::make_shared<MonthlyBackTester<Decimal>>(startDate, endDate);
       else
 	throw PALMonteCarloValidationException("PALMonteCarloValidation::getBackTester - Only daily and monthly time frame supported at present.");
     }
 
   private:
-    std::shared_ptr<McptConfiguration<Prec>> mMonteCarloConfiguration;
+    std::shared_ptr<McptConfiguration<Decimal>> mMonteCarloConfiguration;
     unsigned long mNumPermutations;
     boost::mutex  survivingStrategiesMutex;
-    std::list<std::shared_ptr<PalStrategy<Prec>>> mSurvivingStrategies;
+    std::list<std::shared_ptr<PalStrategy<Decimal>>> mSurvivingStrategies;
   };
 
   /////////////////////////
@@ -335,13 +335,13 @@ namespace mkc_timeseries
   // that shuffles the position vectors instead of using synthetic data
   //
 
-  template <int Prec> class PALMCPTValidation
+  template <class Decimal> class PALMCPTValidation
   {
   public:
-    typedef typename list<shared_ptr<PalStrategy<Prec>>>::const_iterator SurvivingStrategiesIterator;
+    typedef typename list<shared_ptr<PalStrategy<Decimal>>>::const_iterator SurvivingStrategiesIterator;
 
   public:
-    PALMCPTValidation(std::shared_ptr<McptConfiguration<Prec>> configuration,
+    PALMCPTValidation(std::shared_ptr<McptConfiguration<Decimal>> configuration,
 			    unsigned long numPermutations)
       : mMonteCarloConfiguration(configuration),
 	mNumPermutations(numPermutations),
@@ -369,7 +369,7 @@ namespace mkc_timeseries
   /*  // original code: here for reference. safe to delete
      void runPermutationTests()
     {
-      std::shared_ptr<Security<Prec>> securityToTest = mMonteCarloConfiguration->getSecurity();
+      std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
 
       // This line gets the patterns that have been read from the IR file
       PriceActionLabSystem *patternsToTest = mMonteCarloConfiguration->getPricePatterns();
@@ -381,25 +381,25 @@ namespace mkc_timeseries
 
       std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
 
-      auto aPortfolio = std::make_shared<Portfolio<Prec>>(portfolioName);
+      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
       aPortfolio->addSecurity(securityToTest);
 
       std::shared_ptr<PriceActionLabPattern> patternToTest;
-      std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
-      std::shared_ptr<BackTester<Prec>> theBackTester;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
+      std::shared_ptr<BackTester<Decimal>> theBackTester;
 
       std::string longStrategyNameBase("PAL Long Strategy ");
 
       std::string strategyName;
       unsigned long strategyNumber = 1;
-      dec::decimal<Prec> pValue;
+      Decimal pValue;
 
 
       for (; longPatternsIterator != patternsToTest->patternLongsEnd(); longPatternsIterator++)
 	{
 	  patternToTest = longPatternsIterator->second;
 	  strategyName = longStrategyNameBase + std::to_string(strategyNumber);
-	  longStrategy = std::make_shared<PalLongStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+	  longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
 	  theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
 				       oosDates.getFirstDate(),
@@ -408,10 +408,10 @@ namespace mkc_timeseries
 	  theBackTester->addStrategy(longStrategy);
 
 	  // Run Monte Carlo Permutation Tests using the provided backtester
-	  OriginalMCPT<Prec> mcpt(theBackTester, mNumPermutations);
+	  OriginalMCPT<Decimal> mcpt(theBackTester, mNumPermutations);
 	  pValue = mcpt.runPermutationTest();
 
-	  if (pValue < DecimalConstants<Prec>::SignificantPValue)
+	  if (pValue < DecimalConstants<Decimal>::SignificantPValue)
 	    {
 	      mSurvivingStrategies.push_back (longStrategy);
 	      std::cout << "Long Pattern found with p-Value < " << pValue << std::endl;
@@ -423,7 +423,7 @@ namespace mkc_timeseries
 
       std::cout << std::endl << "MCPT Processing short patterns" << std::endl << std::endl;
       
-      std::shared_ptr<PalShortStrategy<Prec>> shortStrategy;
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
       std::string shortStrategyNameBase("PAL Short Strategy ");
       PriceActionLabSystem::ConstSortedPatternIterator shortPatternsIterator = 
 	patternsToTest->patternShortsBegin();
@@ -432,16 +432,16 @@ namespace mkc_timeseries
 	{
 	  patternToTest = shortPatternsIterator->second;
 	  strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
-	  shortStrategy = std::make_shared<PalShortStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+	  shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
 	  theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
 				       oosDates.getFirstDate(),
 				       oosDates.getLastDate());
 	  theBackTester->addStrategy(shortStrategy);
-	  OriginalMCPT<Prec> mcpt(theBackTester, mNumPermutations);
+	  OriginalMCPT<Decimal> mcpt(theBackTester, mNumPermutations);
 	  pValue = mcpt.runPermutationTest();
 
-	  if (pValue < DecimalConstants<Prec>::SignificantPValue)
+	  if (pValue < DecimalConstants<Decimal>::SignificantPValue)
 	    {
 	      mSurvivingStrategies.push_back (shortStrategy);
 	      std::cout << "Short Pattern found with p-Value < " << pValue << std::endl;
@@ -453,7 +453,7 @@ namespace mkc_timeseries
 */
     void runPermutationTests()
     {
-      std::shared_ptr<Security<Prec>> securityToTest = mMonteCarloConfiguration->getSecurity();
+      std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
 
       // This line gets the patterns that have been read from the IR file
       PriceActionLabSystem *patternsToTest = mMonteCarloConfiguration->getPricePatterns();
@@ -465,12 +465,12 @@ namespace mkc_timeseries
 
       std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
 
-      auto aPortfolio = std::make_shared<Portfolio<Prec>>(portfolioName);
+      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
       aPortfolio->addSecurity(securityToTest);
 
       std::shared_ptr<PriceActionLabPattern> patternToTest;
-      std::shared_ptr<PalLongStrategy<Prec>> longStrategy;
-      std::shared_ptr<BackTester<Prec>> theBackTester;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
+      std::shared_ptr<BackTester<Decimal>> theBackTester;
 
       std::string longStrategyNameBase("PAL Long Strategy ");
 
@@ -484,7 +484,7 @@ namespace mkc_timeseries
     {
       patternToTest = longPatternsIterator->second;
       strategyName = longStrategyNameBase + std::to_string(strategyNumber);
-      longStrategy = std::make_shared<PalLongStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+      longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
       theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
                        oosDates.getFirstDate(),
@@ -493,12 +493,12 @@ namespace mkc_timeseries
       theBackTester->addStrategy(longStrategy);
       //sends code to be computed to the runner
       resultsOrErrorsVector.emplace_back(Runner.post([this,theBackTester,longStrategy,strategyNumber](){
-          dec::decimal<Prec> pValue;
+          Decimal pValue;
           // Run Monte Carlo Permutation Tests using the provided backtester
-          OriginalMCPT<Prec> mcpt(theBackTester, mNumPermutations);
+          OriginalMCPT<Decimal> mcpt(theBackTester, mNumPermutations);
           pValue = mcpt.runPermutationTest();
 
-          if (pValue < DecimalConstants<Prec>::SignificantPValue)
+          if (pValue < DecimalConstants<Decimal>::SignificantPValue)
             {
               boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
               mSurvivingStrategies.push_back (longStrategy);
@@ -525,7 +525,7 @@ namespace mkc_timeseries
 
       std::cout << std::endl << "MCPT Processing short patterns" << std::endl << std::endl;
 
-      std::shared_ptr<PalShortStrategy<Prec>> shortStrategy;
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
       std::string shortStrategyNameBase("PAL Short Strategy ");
       PriceActionLabSystem::ConstSortedPatternIterator shortPatternsIterator =
     patternsToTest->patternShortsBegin();
@@ -534,7 +534,7 @@ namespace mkc_timeseries
     {
       patternToTest = shortPatternsIterator->second;
       strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
-      shortStrategy = std::make_shared<PalShortStrategy<Prec>>(strategyName, patternToTest, aPortfolio);
+      shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
       theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
                        oosDates.getFirstDate(),
@@ -543,11 +543,11 @@ namespace mkc_timeseries
 
       //sends the code to the runner
       resultsOrErrorsVector.emplace_back(Runner.post([this,theBackTester,shortStrategy,strategyNumber](){
-          dec::decimal<Prec> pValue;
-          OriginalMCPT<Prec> mcpt(theBackTester, mNumPermutations);
+          Decimal pValue;
+          OriginalMCPT<Decimal> mcpt(theBackTester, mNumPermutations);
           pValue = mcpt.runPermutationTest();
 
-          if (pValue < DecimalConstants<Prec>::SignificantPValue)
+          if (pValue < DecimalConstants<Decimal>::SignificantPValue)
             {
               boost::mutex::scoped_lock Lock(survivingStrategiesMutex);
               mSurvivingStrategies.push_back (shortStrategy);
@@ -572,21 +572,21 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<BackTester<Prec>> getBackTester(TimeFrame::Duration theTimeFrame,
+    std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
 						    boost::gregorian::date startDate, 
 						    boost::gregorian::date endDate) const
     {
       if (theTimeFrame == TimeFrame::DAILY)
-	return std::make_shared<DailyBackTester<Prec>>(startDate, endDate);
+	return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
       else
 	throw PALMonteCarloValidationException("PALMCPTValidation::getBackTester - Only daily time frame supported at presetn.");
     }
 
   private:
-    std::shared_ptr<McptConfiguration<Prec>> mMonteCarloConfiguration;
+    std::shared_ptr<McptConfiguration<Decimal>> mMonteCarloConfiguration;
     unsigned long mNumPermutations;
     boost::mutex  survivingStrategiesMutex;
-    std::list<std::shared_ptr<PalStrategy<Prec>>> mSurvivingStrategies;
+    std::list<std::shared_ptr<PalStrategy<Decimal>>> mSurvivingStrategies;
   };
 }
 

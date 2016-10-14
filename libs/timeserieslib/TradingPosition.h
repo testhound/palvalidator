@@ -26,37 +26,35 @@ using namespace boost::gregorian;
 
 namespace mkc_timeseries
 {
-  template <int Prec> class TradingPosition;
+  template <class Decimal> class TradingPosition;
 
-  template <int Prec>
-  decimal<Prec> calculateTradeReturn (const decimal<Prec>& referencePrice, 
-					  const decimal<Prec>& secondPrice)
+  template <class Decimal>
+  Decimal calculateTradeReturn (const Decimal& referencePrice, 
+					  const Decimal& secondPrice)
     {
       return ((secondPrice - referencePrice) / referencePrice);
     }
 
-  template <int Prec>
-    decimal<Prec> calculatePercentReturn (const decimal<Prec>& referencePrice, 
-					  const decimal<Prec>& secondPrice)
+  template <class Decimal>
+    Decimal calculatePercentReturn (const Decimal& referencePrice, 
+					  const Decimal& secondPrice)
     {
-return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstants<Prec>::DecimalOneHundred);
+return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalConstants<Decimal>::DecimalOneHundred);
     }
 
-  template <int Prec> class OpenPositionBar
+  template <class Decimal> class OpenPositionBar
   {
-    using Decimal = decimal<Prec>;
-
   public:
     explicit OpenPositionBar (OHLCTimeSeriesEntry<Decimal> entry)
       : mEntry(entry)
     {}
 
-    OpenPositionBar(const OpenPositionBar<Prec>& rhs) 
+    OpenPositionBar(const OpenPositionBar<Decimal>& rhs) 
       : mEntry(rhs.mEntry)
     {}
 
-    OpenPositionBar<Prec>& 
-    operator=(const OpenPositionBar<Prec> &rhs)
+    OpenPositionBar<Decimal>& 
+    operator=(const OpenPositionBar<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -73,23 +71,23 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mEntry.getDateValue();
     }
 
-    const decimal<Prec>& getOpenValue() const
+    const Decimal& getOpenValue() const
     {
       return mEntry.getOpenValue();
     }
 
-    const decimal<Prec>& getHighValue() const
+    const Decimal& getHighValue() const
     {
       return mEntry.getHighValue();
     }
 
-    const decimal<Prec>& getLowValue() const
+    const Decimal& getLowValue() const
     {
       return mEntry.getLowValue();
 
     }
 
-    const decimal<Prec>& getCloseValue() const
+    const Decimal& getCloseValue() const
     {
       return mEntry.getCloseValue();
     }
@@ -108,14 +106,14 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     OHLCTimeSeriesEntry<Decimal> mEntry;
   };
 
-  template <int Prec>
-  bool operator==(const OpenPositionBar<Prec>& lhs, const OpenPositionBar<Prec>& rhs)
+  template <class Decimal>
+  bool operator==(const OpenPositionBar<Decimal>& lhs, const OpenPositionBar<Decimal>& rhs)
   {
     return (*lhs.getTimeSeriesEntry() == *rhs.getTimeSeriesEntry());
   }
 
-  template <int Prec>
-  bool operator!=(const OpenPositionBar<Prec>& lhs, const OpenPositionBar<Prec>& rhs)
+  template <class Decimal>
+  bool operator!=(const OpenPositionBar<Decimal>& lhs, const OpenPositionBar<Decimal>& rhs)
   { 
     return !(lhs == rhs); 
   }
@@ -123,13 +121,11 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 
 
   // class OpenPositionHistory
-  template <int Prec> class OpenPositionHistory
+  template <class Decimal> class OpenPositionHistory
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Prec>>::iterator PositionBarIterator;
-    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Prec>>::const_iterator ConstPositionBarIterator;
+    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Decimal>>::iterator PositionBarIterator;
+    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Decimal>>::const_iterator ConstPositionBarIterator;
 
     explicit OpenPositionHistory(OHLCTimeSeriesEntry<Decimal> entryBar) :
       mPositionBarHistory()
@@ -137,12 +133,12 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       addFirstBar(entryBar);
     }
 
-    OpenPositionHistory(const OpenPositionHistory<Prec>& rhs) 
+    OpenPositionHistory(const OpenPositionHistory<Decimal>& rhs) 
       : mPositionBarHistory(rhs.mPositionBarHistory)
     {}
 
-    OpenPositionHistory<Prec>& 
-    operator=(const OpenPositionHistory<Prec> &rhs)
+    OpenPositionHistory<Decimal>& 
+    operator=(const OpenPositionHistory<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -154,7 +150,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     ~OpenPositionHistory()
     {}
 
-    void addBar(const OpenPositionBar<Prec>& entry)
+    void addBar(const OpenPositionBar<Decimal>& entry)
     {
       boost::gregorian::date d = entry.getDate();
       PositionBarIterator pos = mPositionBarHistory.find (d);
@@ -215,7 +211,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 	throw std::domain_error(std::string("OpenPositionHistory:getPositionLastDate: no bars in position "));
     }
 
-    const dec::decimal<Prec>& getLastClose() const
+    const Decimal& getLastClose() const
     {
       if (numBarsInPosition() > 0)
 	{
@@ -230,20 +226,18 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
   private:
     void addFirstBar(const OHLCTimeSeriesEntry<Decimal> entry)
     {
-      addBar(OpenPositionBar<Prec>(entry));
+      addBar(OpenPositionBar<Decimal>(entry));
     }
 
   private:
-    std::map<TimeSeriesDate, OpenPositionBar<Prec>> mPositionBarHistory;
+    std::map<TimeSeriesDate, OpenPositionBar<Decimal>> mPositionBarHistory;
   };
 
-  template <int Prec> class TradingPositionState
+  template <class Decimal> class TradingPositionState
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename OpenPositionHistory<Prec>::PositionBarIterator PositionBarIterator;
-    typedef typename OpenPositionHistory<Prec>::ConstPositionBarIterator ConstPositionBarIterator;
+    typedef typename OpenPositionHistory<Decimal>::PositionBarIterator PositionBarIterator;
+    typedef typename OpenPositionHistory<Decimal>::ConstPositionBarIterator ConstPositionBarIterator;
 
     TradingPositionState()
     {}
@@ -251,52 +245,50 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     virtual ~TradingPositionState()
     {}
 
-    TradingPositionState(const TradingPositionState<Prec>& rhs)
+    TradingPositionState(const TradingPositionState<Decimal>& rhs)
     {}
 
-    TradingPositionState<Prec>& 
-    operator=(const TradingPositionState<Prec> &rhs)
+    TradingPositionState<Decimal>& 
+    operator=(const TradingPositionState<Decimal> &rhs)
     {}
 
     virtual bool isPositionOpen() const = 0;
     virtual bool isPositionClosed() const = 0;
     virtual const TimeSeriesDate& getEntryDate() const = 0;
-    virtual const dec::decimal<Prec>& getEntryPrice() const = 0;
-    virtual const dec::decimal<Prec>& getExitPrice() const = 0;
+    virtual const Decimal& getEntryPrice() const = 0;
+    virtual const Decimal& getExitPrice() const = 0;
     virtual const boost::gregorian::date& getExitDate() const = 0;
     virtual void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar) = 0;
     virtual const TradingVolume& getTradingUnits() const = 0;
     virtual unsigned int getNumBarsInPosition() const = 0;
     virtual unsigned int getNumBarsSinceEntry() const = 0;
-    virtual const dec::decimal<Prec>& getLastClose() const = 0;
-    virtual dec::decimal<Prec> getPercentReturn() const = 0;
-    virtual dec::decimal<Prec> getTradeReturn() const = 0;
-    virtual dec::decimal<Prec> getTradeReturnMultiplier() const = 0;
+    virtual const Decimal& getLastClose() const = 0;
+    virtual Decimal getPercentReturn() const = 0;
+    virtual Decimal getTradeReturn() const = 0;
+    virtual Decimal getTradeReturnMultiplier() const = 0;
     virtual bool isWinningPosition() const = 0;
     virtual bool isLosingPosition() const = 0;
     // NOTE: To implement these in the ClosePositonState pass the open position to closed
     // position at creation time
     virtual TradingPositionState::ConstPositionBarIterator beginPositionBarHistory() const = 0;
     virtual TradingPositionState::ConstPositionBarIterator endPositionBarHistory() const = 0;
-    virtual void ClosePosition (TradingPosition<Prec>* position,
-				std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    virtual void ClosePosition (TradingPosition<Decimal>* position,
+				std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 				const boost::gregorian::date exitDate,
-				const dec::decimal<Prec>& exitPrice) = 0;
+				const Decimal& exitPrice) = 0;
   };
   
-  template <int Prec>
-  class OpenPosition : public TradingPositionState<Prec>
+  template <class Decimal>
+  class OpenPosition : public TradingPositionState<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename OpenPositionHistory<Prec>::PositionBarIterator PositionBarIterator;
-    typedef typename OpenPositionHistory<Prec>::ConstPositionBarIterator ConstPositionBarIterator;
+    typedef typename OpenPositionHistory<Decimal>::PositionBarIterator PositionBarIterator;
+    typedef typename OpenPositionHistory<Decimal>::ConstPositionBarIterator ConstPositionBarIterator;
 
-    OpenPosition (const dec::decimal<Prec>& entryPrice, 
+    OpenPosition (const Decimal& entryPrice, 
 		  OHLCTimeSeriesEntry<Decimal> entryBar,
 		  const TradingVolume& unitsInPosition) 
-      : TradingPositionState<Prec>(),
+      : TradingPositionState<Decimal>(),
       mEntryPrice(entryPrice),
       mEntryDate (entryBar.getDateValue()),
       mUnitsInPosition(unitsInPosition),
@@ -304,12 +296,12 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       mBarsInPosition(1),
       mNumBarsSinceEntry(0)	
     {
-      if (entryPrice <= DecimalConstants<Prec>::DecimalZero)
+      if (entryPrice <= DecimalConstants<Decimal>::DecimalZero)
 	throw TradingPositionException (std::string("OpenPosition constructor: entry price < 0"));
     }
 
-    OpenPosition(const OpenPosition<Prec>& rhs) 
-      : TradingPositionState<Prec>(rhs),
+    OpenPosition(const OpenPosition<Decimal>& rhs) 
+      : TradingPositionState<Decimal>(rhs),
       mEntryPrice(rhs.mEntryPrice),
       mEntryDate (rhs.mEntryDate),
       mUnitsInPosition(rhs.mUnitsInPosition),
@@ -318,13 +310,13 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       mNumBarsSinceEntry(rhs.mNumBarsSinceEntry)
     {}
 
-    OpenPosition<Prec>& 
-    operator=(const OpenPosition<Prec> &rhs)
+    OpenPosition<Decimal>& 
+    operator=(const OpenPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      TradingPositionState<Prec>::operator=(rhs);
+      TradingPositionState<Decimal>::operator=(rhs);
 
       mEntryPrice = rhs.mEntryPrice;
       mEntryDate  = rhs.mEntryDate;
@@ -350,10 +342,10 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 
     virtual void addBar(const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
-      addBar(OpenPositionBar<Prec>(entryBar));
+      addBar(OpenPositionBar<Decimal>(entryBar));
     }
 
-    const dec::decimal<Prec>& getEntryPrice() const
+    const Decimal& getEntryPrice() const
     {
       return mEntryPrice;
     }
@@ -363,7 +355,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mEntryDate;
     }
 
-    const dec::decimal<Prec>& getExitPrice() const
+    const Decimal& getExitPrice() const
     {
       throw TradingPositionException ("No exit price for open position");
     }
@@ -388,7 +380,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mNumBarsSinceEntry;
     }
 
-    const dec::decimal<Prec>& getLastClose() const
+    const Decimal& getLastClose() const
     {
       return mPositionBarHistory.getLastClose();
     }
@@ -414,7 +406,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     }
 
   private:
-    void addBar(const OpenPositionBar<Prec>& positionBar)
+    void addBar(const OpenPositionBar<Decimal>& positionBar)
     {
       mPositionBarHistory.addBar(positionBar);
       mBarsInPosition++;
@@ -422,65 +414,63 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     }
 
   private:
-    dec::decimal<Prec> mEntryPrice;
+    Decimal mEntryPrice;
     TimeSeriesDate mEntryDate;
     TradingVolume mUnitsInPosition;
-    OpenPositionHistory<Prec> mPositionBarHistory;
+    OpenPositionHistory<Decimal> mPositionBarHistory;
     unsigned int mBarsInPosition;
     unsigned int mNumBarsSinceEntry;
   };
 
-  template <int Prec>
-  class OpenLongPosition : public OpenPosition<Prec>
+  template <class Decimal>
+  class OpenLongPosition : public OpenPosition<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    OpenLongPosition (const dec::decimal<Prec>& entryPrice, 
+    OpenLongPosition (const Decimal& entryPrice, 
 		      OHLCTimeSeriesEntry<Decimal> entryBar,
 		      const TradingVolume& unitsInPosition)
-      : OpenPosition<Prec>(entryPrice, entryBar, unitsInPosition)
+      : OpenPosition<Decimal>(entryPrice, entryBar, unitsInPosition)
     {}
 
-    OpenLongPosition(const OpenLongPosition<Prec>& rhs) 
-      : OpenPosition<Prec>(rhs)
+    OpenLongPosition(const OpenLongPosition<Decimal>& rhs) 
+      : OpenPosition<Decimal>(rhs)
     {}
 
-    OpenLongPosition<Prec>& 
-    operator=(const OpenLongPosition<Prec> &rhs)
+    OpenLongPosition<Decimal>& 
+    operator=(const OpenLongPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      OpenPosition<Prec>::operator=(rhs);
+      OpenPosition<Decimal>::operator=(rhs);
       return *this;
     }
 
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
-      OpenPosition<Prec>::addBar(entryBar);
+      OpenPosition<Decimal>::addBar(entryBar);
     }
 
-    dec::decimal<Prec> getPercentReturn() const
+    Decimal getPercentReturn() const
     {
-      return (calculatePercentReturn (OpenPosition<Prec>::getEntryPrice(), 
-				      OpenPosition<Prec>::getLastClose()));
+      return (calculatePercentReturn (OpenPosition<Decimal>::getEntryPrice(), 
+				      OpenPosition<Decimal>::getLastClose()));
     }
 
-    dec::decimal<Prec> getTradeReturn() const
+    Decimal getTradeReturn() const
     {
-      return (calculateTradeReturn (OpenPosition<Prec>::getEntryPrice(), 
-				      OpenPosition<Prec>::getLastClose()));
+      return (calculateTradeReturn (OpenPosition<Decimal>::getEntryPrice(), 
+				      OpenPosition<Decimal>::getLastClose()));
     }
 
-    dec::decimal<Prec> getTradeReturnMultiplier() const
+    Decimal getTradeReturnMultiplier() const
     {
-      return (DecimalConstants<Prec>::DecimalOne + getTradeReturn());
+      return (DecimalConstants<Decimal>::DecimalOne + getTradeReturn());
     }
 
     bool isWinningPosition() const
     {
-      return (getTradeReturn() > DecimalConstants<Prec>::DecimalZero);
+      return (getTradeReturn() > DecimalConstants<Decimal>::DecimalZero);
     }
 
     bool isLosingPosition() const
@@ -488,64 +478,62 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return !isWinningPosition();
     }
 
-    void ClosePosition (TradingPosition<Prec>* position,
-			std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice);
+			const Decimal& exitPrice);
   };
 
-  template <int Prec>
-  class OpenShortPosition : public OpenPosition<Prec>
+  template <class Decimal>
+  class OpenShortPosition : public OpenPosition<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    OpenShortPosition (const dec::decimal<Prec>& entryPrice, 
+    OpenShortPosition (const Decimal& entryPrice, 
 		       OHLCTimeSeriesEntry<Decimal>& entryBar,
 		       const TradingVolume& unitsInPosition)
-      : OpenPosition<Prec>(entryPrice, entryBar, unitsInPosition)
+      : OpenPosition<Decimal>(entryPrice, entryBar, unitsInPosition)
     {}
 
-    OpenShortPosition(const OpenShortPosition<Prec>& rhs) 
-      : OpenPosition<Prec>(rhs)
+    OpenShortPosition(const OpenShortPosition<Decimal>& rhs) 
+      : OpenPosition<Decimal>(rhs)
     {}
 
-    OpenShortPosition<Prec>& 
-    operator=(const OpenShortPosition<Prec> &rhs)
+    OpenShortPosition<Decimal>& 
+    operator=(const OpenShortPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      OpenPosition<Prec>::operator=(rhs);
+      OpenPosition<Decimal>::operator=(rhs);
       return *this;
     }
 
     void addBar(const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
-      OpenPosition<Prec>::addBar(entryBar);
+      OpenPosition<Decimal>::addBar(entryBar);
     }
 
-    dec::decimal<Prec> getTradeReturn() const
+    Decimal getTradeReturn() const
     {
-      return -(calculateTradeReturn (OpenPosition<Prec>::getEntryPrice(), 
-				      OpenPosition<Prec>::getLastClose()));
+      return -(calculateTradeReturn (OpenPosition<Decimal>::getEntryPrice(), 
+				      OpenPosition<Decimal>::getLastClose()));
     }
 
-    dec::decimal<Prec> getPercentReturn() const
+    Decimal getPercentReturn() const
     {
-      return -(calculatePercentReturn (OpenPosition<Prec>::getEntryPrice(), 
-				       OpenPosition<Prec>::getLastClose()));
+      return -(calculatePercentReturn (OpenPosition<Decimal>::getEntryPrice(), 
+				       OpenPosition<Decimal>::getLastClose()));
 
     }
 
-    dec::decimal<Prec> getTradeReturnMultiplier() const
+    Decimal getTradeReturnMultiplier() const
     {
-      return (DecimalConstants<Prec>::DecimalOne + getTradeReturn());
+      return (DecimalConstants<Decimal>::DecimalOne + getTradeReturn());
     }
 
     bool isWinningPosition() const
     {
-      return (getTradeReturn() > DecimalConstants<Prec>::DecimalZero);
+      return (getTradeReturn() > DecimalConstants<Decimal>::DecimalZero);
     }
 
     bool isLosingPosition() const
@@ -553,22 +541,20 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return !isWinningPosition();
     }
 
-    void ClosePosition (TradingPosition<Prec>* position,
-			std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice);
+			const Decimal& exitPrice);
   };
 
 
-  template <int Prec> class ClosedPosition : public TradingPositionState<Prec>
+  template <class Decimal> class ClosedPosition : public TradingPositionState<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    ClosedPosition (std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    ClosedPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 		    const boost::gregorian::date exitDate,
-		    const dec::decimal<Prec>& exitPrice) 
-      : TradingPositionState<Prec>(),
+		    const Decimal& exitPrice) 
+      : TradingPositionState<Decimal>(),
 	mOpenPosition (openPosition),
 	mExitDate(exitDate),
 	mExitPrice(exitPrice)
@@ -577,20 +563,20 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 	throw std::domain_error (std::string("ClosedPosition: exit Date" +to_simple_string (exitDate) +" cannot occur before entry date " +to_simple_string (openPosition->getEntryDate())));
     }
 
-    ClosedPosition(const ClosedPosition<Prec>& rhs) 
-      : TradingPositionState<Prec>(rhs),
+    ClosedPosition(const ClosedPosition<Decimal>& rhs) 
+      : TradingPositionState<Decimal>(rhs),
 	mOpenPosition (rhs.mOpenPosition),
 	mExitDate(rhs.mExitDate),
 	mExitPrice(rhs.mExitPrice)
     {}
 
-    ClosedPosition<Prec>& 
-    operator=(const ClosedPosition<Prec> &rhs)
+    ClosedPosition<Decimal>& 
+    operator=(const ClosedPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      TradingPositionState<Prec>::operator=(rhs);
+      TradingPositionState<Decimal>::operator=(rhs);
       mOpenPosition = rhs.mOpenPosition;
       mExitDate = rhs.mExitDate;
       mExitPrice = rhs.mExitPrice;
@@ -615,7 +601,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mOpenPosition->getEntryDate();
     }
 
-    const dec::decimal<Prec>& getEntryPrice() const
+    const Decimal& getEntryPrice() const
     {
       return mOpenPosition->getEntryPrice();
     }
@@ -625,7 +611,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mExitDate;
     }
 
-    const dec::decimal<Prec>& getExitPrice() const
+    const Decimal& getExitPrice() const
     {
       return mExitPrice;
     }
@@ -645,7 +631,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mOpenPosition->getNumBarsSinceEntry();
     }
 
-    const dec::decimal<Prec>& getLastClose() const
+    const Decimal& getLastClose() const
     {
       return mOpenPosition->getLastClose();
     }
@@ -655,25 +641,25 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       throw TradingPositionException ("Cannot add bar to a closed position");
     }
 
-    typename TradingPositionState<Prec>::ConstPositionBarIterator beginPositionBarHistory() const
+    typename TradingPositionState<Decimal>::ConstPositionBarIterator beginPositionBarHistory() const
     {
       return mOpenPosition->beginPositionBarHistory();
     }
 
-    typename TradingPositionState<Prec>::ConstPositionBarIterator endPositionBarHistory() const
+    typename TradingPositionState<Decimal>::ConstPositionBarIterator endPositionBarHistory() const
     {
       return mOpenPosition->endPositionBarHistory();
     }
 
   private:
-    std::shared_ptr<TradingPositionState<Prec>> mOpenPosition;
+    std::shared_ptr<TradingPositionState<Decimal>> mOpenPosition;
     boost::gregorian::date mExitDate;
-    dec::decimal<Prec> mExitPrice;
+    Decimal mExitPrice;
   };
 
 
-  template <int Prec>
-  bool operator==(const ClosedPosition<Prec>& lhs, const ClosedPosition<Prec>& rhs)
+  template <class Decimal>
+  bool operator==(const ClosedPosition<Decimal>& lhs, const ClosedPosition<Decimal>& rhs)
   {
     return (lhs.getEntryDate() == rhs.getEntryDate() &&
 	    lhs.getEntryPrice() == rhs.getEntryPrice() &&
@@ -684,54 +670,54 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 	    lhs.isShortPosition() == rhs.isShortPosition());
   }
 
-  template <int Prec>
-  bool operator!=(const ClosedPosition<Prec>& lhs, const ClosedPosition<Prec>& rhs)
+  template <class Decimal>
+  bool operator!=(const ClosedPosition<Decimal>& lhs, const ClosedPosition<Decimal>& rhs)
   { 
     return !(lhs == rhs); 
   }
 
-  template <int Prec>
-  class ClosedLongPosition : public ClosedPosition<Prec>
+  template <class Decimal>
+  class ClosedLongPosition : public ClosedPosition<Decimal>
   {
   public:
-    ClosedLongPosition (std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    ClosedLongPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice)
-      : ClosedPosition<Prec>(openPosition, exitDate, exitPrice)
+			const Decimal& exitPrice)
+      : ClosedPosition<Decimal>(openPosition, exitDate, exitPrice)
     {}
 
-    ClosedLongPosition(const ClosedLongPosition<Prec>& rhs) 
-      : ClosedPosition<Prec>(rhs)
+    ClosedLongPosition(const ClosedLongPosition<Decimal>& rhs) 
+      : ClosedPosition<Decimal>(rhs)
     {}
 
-    ClosedLongPosition<Prec>& 
-    operator=(const ClosedLongPosition<Prec> &rhs)
+    ClosedLongPosition<Decimal>& 
+    operator=(const ClosedLongPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      ClosedPosition<Prec>::operator=(rhs);
+      ClosedPosition<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~ClosedLongPosition()
     {}
 
-     dec::decimal<Prec> getPercentReturn() const
+     Decimal getPercentReturn() const
     {
-      return (calculatePercentReturn (ClosedPosition<Prec>::getEntryPrice(), 
-				      ClosedPosition<Prec>::getExitPrice()));
+      return (calculatePercentReturn (ClosedPosition<Decimal>::getEntryPrice(), 
+				      ClosedPosition<Decimal>::getExitPrice()));
     }
 
-    dec::decimal<Prec> getTradeReturn() const
+    Decimal getTradeReturn() const
     {
-      return (calculateTradeReturn (ClosedPosition<Prec>::getEntryPrice(), 
-				    ClosedPosition<Prec>::getExitPrice()));
+      return (calculateTradeReturn (ClosedPosition<Decimal>::getEntryPrice(), 
+				    ClosedPosition<Decimal>::getExitPrice()));
     }
 
     bool isWinningPosition() const
     {
-      return (getTradeReturn() > DecimalConstants<Prec>::DecimalZero);
+      return (getTradeReturn() > DecimalConstants<Decimal>::DecimalZero);
     }
 
     bool isLosingPosition() const
@@ -739,65 +725,65 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return !isWinningPosition();
     }
 
-    dec::decimal<Prec> getTradeReturnMultiplier() const
+    Decimal getTradeReturnMultiplier() const
     {
-      return (DecimalConstants<Prec>::DecimalOne + ClosedLongPosition<Prec>::getTradeReturn());
+      return (DecimalConstants<Decimal>::DecimalOne + ClosedLongPosition<Decimal>::getTradeReturn());
     }
 
-    void ClosePosition (TradingPosition<Prec>* position,
-			std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice);
+			const Decimal& exitPrice);
   };
 
 
-  template <int Prec>
-  class ClosedShortPosition : public ClosedPosition<Prec>
+  template <class Decimal>
+  class ClosedShortPosition : public ClosedPosition<Decimal>
   {
   public:
-    ClosedShortPosition (std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    ClosedShortPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice)
-      : ClosedPosition<Prec>(openPosition, exitDate, exitPrice)
+			const Decimal& exitPrice)
+      : ClosedPosition<Decimal>(openPosition, exitDate, exitPrice)
     {}
 
-    ClosedShortPosition(const ClosedShortPosition<Prec>& rhs) 
-      : ClosedPosition<Prec>(rhs)
+    ClosedShortPosition(const ClosedShortPosition<Decimal>& rhs) 
+      : ClosedPosition<Decimal>(rhs)
     {}
 
-    ClosedShortPosition<Prec>& 
-    operator=(const ClosedShortPosition<Prec> &rhs)
+    ClosedShortPosition<Decimal>& 
+    operator=(const ClosedShortPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      ClosedPosition<Prec>::operator=(rhs);
+      ClosedPosition<Decimal>::operator=(rhs);
       return *this;
     }
 
     ~ClosedShortPosition()
     {}
 
-    dec::decimal<Prec> getTradeReturn() const
+    Decimal getTradeReturn() const
     {
-      return -(calculateTradeReturn (ClosedPosition<Prec>::getEntryPrice(), 
-				     (ClosedPosition<Prec>::getExitPrice())));
+      return -(calculateTradeReturn (ClosedPosition<Decimal>::getEntryPrice(), 
+				     (ClosedPosition<Decimal>::getExitPrice())));
     }
 
-    dec::decimal<Prec> getPercentReturn() const
+    Decimal getPercentReturn() const
     {
-      return -(calculatePercentReturn (ClosedPosition<Prec>::getEntryPrice(), 
-				       ClosedPosition<Prec>::getExitPrice()));
+      return -(calculatePercentReturn (ClosedPosition<Decimal>::getEntryPrice(), 
+				       ClosedPosition<Decimal>::getExitPrice()));
     }
 
-    dec::decimal<Prec> getTradeReturnMultiplier() const
+    Decimal getTradeReturnMultiplier() const
     {
-      return (DecimalConstants<Prec>::DecimalOne + ClosedShortPosition<Prec>::getTradeReturn());
+      return (DecimalConstants<Decimal>::DecimalOne + ClosedShortPosition<Decimal>::getTradeReturn());
     }
 
     bool isWinningPosition() const
     {
-      return (getTradeReturn() > DecimalConstants<Prec>::DecimalZero);
+      return (getTradeReturn() > DecimalConstants<Decimal>::DecimalZero);
     }
 
     bool isLosingPosition() const
@@ -805,13 +791,13 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return !isWinningPosition();
     }
 
-    void ClosePosition (TradingPosition<Prec>* position,
-			std::shared_ptr<TradingPositionState<Prec>> openPosition,
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice);
+			const Decimal& exitPrice);
   };
 
-  template <int Prec>
+  template <class Decimal>
   class TradingPositionObserver
     {
     public:
@@ -821,17 +807,15 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       virtual ~TradingPositionObserver()
       {}
 
-      virtual void PositionClosed (TradingPosition<Prec> *aPosition) = 0;
+      virtual void PositionClosed (TradingPosition<Decimal> *aPosition) = 0;
   };
 
-  template <int Prec> class TradingPosition
+  template <class Decimal> class TradingPosition
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename OpenPosition<Prec>::ConstPositionBarIterator ConstPositionBarIterator;
+    typedef typename OpenPosition<Decimal>::ConstPositionBarIterator ConstPositionBarIterator;
 
-    TradingPosition (const TradingPosition<Prec>& rhs)
+    TradingPosition (const TradingPosition<Decimal>& rhs)
       : mTradingSymbol(rhs.mTradingSymbol),
       mPositionState(rhs.mPositionState),
       mPositionID(rhs.mPositionID),
@@ -840,8 +824,8 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       mRMultipleStopSet(rhs.mRMultipleStopSet)
     {}
 
-    TradingPosition<Prec>& 
-    operator=(const TradingPosition<Prec> &rhs)
+    TradingPosition<Decimal>& 
+    operator=(const TradingPosition<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -871,7 +855,7 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
 
     virtual bool isLongPosition() const = 0;
     virtual bool isShortPosition() const = 0;
-    virtual dec::decimal<Prec> getRMultiple() = 0;
+    virtual Decimal getRMultiple() = 0;
 
     bool isPositionOpen() const
     {
@@ -888,12 +872,12 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mPositionState->getEntryDate();
     }
 
-    const dec::decimal<Prec>& getEntryPrice() const
+    const Decimal& getEntryPrice() const
     {
       return mPositionState->getEntryPrice();
     }
 
-    const dec::decimal<Prec>& getExitPrice() const
+    const Decimal& getExitPrice() const
     {
       return mPositionState->getExitPrice();
     }
@@ -923,22 +907,22 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mPositionState->getNumBarsSinceEntry();
     }
 
-    const dec::decimal<Prec>& getLastClose() const
+    const Decimal& getLastClose() const
     {
       return mPositionState->getLastClose();
     }
 
-    dec::decimal<Prec> getPercentReturn() const
+    Decimal getPercentReturn() const
     {
       return mPositionState->getPercentReturn();
     }
 
-    dec::decimal<Prec> getTradeReturn() const
+    Decimal getTradeReturn() const
     {
       return mPositionState->getTradeReturn();
     }
 
-    dec::decimal<Prec> getTradeReturnMultiplier() const
+    Decimal getTradeReturnMultiplier() const
     {
       return mPositionState->getTradeReturnMultiplier();
     }
@@ -966,20 +950,20 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     }
 
     void ClosePosition (const boost::gregorian::date exitDate,
-			const dec::decimal<Prec>& exitPrice)
+			const Decimal& exitPrice)
     {
       mPositionState->ClosePosition (this, mPositionState, exitDate, exitPrice);
       NotifyPositionClosed (this);
     }
 
-    void addObserver (std::reference_wrapper<TradingPositionObserver<Prec>> observer)
+    void addObserver (std::reference_wrapper<TradingPositionObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
 
-    void setRMultipleStop(const dec::decimal<Prec>& rMultipleStop)
+    void setRMultipleStop(const Decimal& rMultipleStop)
     {
-      if (rMultipleStop <= DecimalConstants<Prec>::DecimalZero)
+      if (rMultipleStop <= DecimalConstants<Decimal>::DecimalZero)
 	throw TradingPositionException (std::string("TradingPosition:setRMultipleStop =< 0"));
 
       mRMultipleStop = rMultipleStop;
@@ -991,27 +975,27 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mRMultipleStopSet;
     }
 
-    dec::decimal<Prec> getRMultipleStop() const
+    Decimal getRMultipleStop() const
     {
       return mRMultipleStop;
     }
 
   protected:
     TradingPosition(const std::string& tradingSymbol,
-		    std::shared_ptr<TradingPositionState<Prec>> positionState)
+		    std::shared_ptr<TradingPositionState<Decimal>> positionState)
       : mTradingSymbol (tradingSymbol),
 	mPositionState (positionState),
 	mPositionID(++mPositionIDCount),
 	mObservers(),
-	mRMultipleStop(DecimalConstants<Prec>::DecimalZero),
+	mRMultipleStop(DecimalConstants<Decimal>::DecimalZero),
 	mRMultipleStopSet(false)
     {}
 
     
   private:
-    typedef typename std::list<std::reference_wrapper<TradingPositionObserver<Prec>>>::const_iterator ConstObserverIterator;
+    typedef typename std::list<std::reference_wrapper<TradingPositionObserver<Decimal>>>::const_iterator ConstObserverIterator;
 
-    void ChangeState (std::shared_ptr<TradingPositionState<Prec>> newState)
+    void ChangeState (std::shared_ptr<TradingPositionState<Decimal>> newState)
     {
       mPositionState = newState;
     }
@@ -1026,52 +1010,50 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return mObservers.end();
     }
 
-    void NotifyPositionClosed (TradingPosition<Prec> *aPosition)
+    void NotifyPositionClosed (TradingPosition<Decimal> *aPosition)
     {
       ConstObserverIterator it = beginObserverList();
       for (; it != endObserverList(); it++)
 	(*it).get().PositionClosed (aPosition);
     }
 
-    friend class OpenLongPosition<Prec>;
-    friend class OpenShortPosition<Prec>;
+    friend class OpenLongPosition<Decimal>;
+    friend class OpenShortPosition<Decimal>;
 
   private:
     std::string mTradingSymbol;
-    std::shared_ptr<TradingPositionState<Prec>> mPositionState;
+    std::shared_ptr<TradingPositionState<Decimal>> mPositionState;
     uint32_t mPositionID;
     static std::atomic<uint32_t> mPositionIDCount;
-    std::list<std::reference_wrapper<TradingPositionObserver<Prec>>> mObservers;
-    dec::decimal<Prec> mRMultipleStop;
+    std::list<std::reference_wrapper<TradingPositionObserver<Decimal>>> mObservers;
+    Decimal mRMultipleStop;
     bool mRMultipleStopSet;
   };
 
-  template <int Prec> std::atomic<uint32_t>  TradingPosition<Prec>::mPositionIDCount{0};
+  template <class Decimal> std::atomic<uint32_t>  TradingPosition<Decimal>::mPositionIDCount{0};
 
-  template <int Prec> 
-  class TradingPositionLong : public TradingPosition<Prec>
+  template <class Decimal> 
+  class TradingPositionLong : public TradingPosition<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     explicit TradingPositionLong (const std::string& tradingSymbol,
-				  const dec::decimal<Prec>& entryPrice, 
+				  const Decimal& entryPrice, 
 				  OHLCTimeSeriesEntry<Decimal> entryBar,
 				  const TradingVolume& unitsInPosition)
-      : TradingPosition<Prec>(tradingSymbol,std::make_shared<OpenLongPosition<Prec>>(entryPrice, entryBar, unitsInPosition))
+      : TradingPosition<Decimal>(tradingSymbol,std::make_shared<OpenLongPosition<Decimal>>(entryPrice, entryBar, unitsInPosition))
     {}
 
-    TradingPositionLong (const TradingPositionLong<Prec>& rhs)
-      : TradingPosition<Prec>(rhs)
+    TradingPositionLong (const TradingPositionLong<Decimal>& rhs)
+      : TradingPosition<Decimal>(rhs)
     {}
 
-    TradingPositionLong<Prec>& 
-    operator=(const TradingPositionLong<Prec> &rhs)
+    TradingPositionLong<Decimal>& 
+    operator=(const TradingPositionLong<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      TradingPosition<Prec>::operator=(rhs);
+      TradingPosition<Decimal>::operator=(rhs);
 
       return *this;
     }
@@ -1089,16 +1071,16 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return false;
     }
     
-    dec::decimal<Prec> getRMultiple()
+    Decimal getRMultiple()
     {
       if (this->isPositionOpen())
 	throw TradingPositionException("TradingPositionLong::getRMultiple - r multiple not available for open position");
       
-      if (this->getRMultipleStop() <= DecimalConstants<Prec>::DecimalZero)
+      if (this->getRMultipleStop() <= DecimalConstants<Decimal>::DecimalZero)
  	throw TradingPositionException("TradingPositionLong::getRMultiple - r multiple not available because R multiple stop not set");
 
-      dec::decimal<Prec> exit = this->getExitPrice();
-      dec::decimal<Prec> entry = this->getEntryPrice();
+      Decimal exit = this->getExitPrice();
+      Decimal entry = this->getEntryPrice();
 
       if (this->isWinningPosition())
 	{
@@ -1114,30 +1096,28 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     }
   };
 
-  template <int Prec> 
-  class TradingPositionShort : public TradingPosition<Prec>
+  template <class Decimal> 
+  class TradingPositionShort : public TradingPosition<Decimal>
   {
-    using Decimal = decimal<Prec>;
-
   public:
     explicit TradingPositionShort (const std::string& tradingSymbol,
-				  const dec::decimal<Prec>& entryPrice, 
+				  const Decimal& entryPrice, 
 				  OHLCTimeSeriesEntry<Decimal> entryBar,
 				  const TradingVolume& unitsInPosition)
-      : TradingPosition<Prec>(tradingSymbol, std::make_shared<OpenShortPosition<Prec>>(entryPrice, entryBar, unitsInPosition))
+      : TradingPosition<Decimal>(tradingSymbol, std::make_shared<OpenShortPosition<Decimal>>(entryPrice, entryBar, unitsInPosition))
     {}
 
-    TradingPositionShort (const TradingPositionShort<Prec>& rhs)
-      : TradingPosition<Prec>(rhs)
+    TradingPositionShort (const TradingPositionShort<Decimal>& rhs)
+      : TradingPosition<Decimal>(rhs)
     {}
 
-    TradingPositionShort<Prec>& 
-    operator=(const TradingPositionShort<Prec> &rhs)
+    TradingPositionShort<Decimal>& 
+    operator=(const TradingPositionShort<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      TradingPosition<Prec>::operator=(rhs);
+      TradingPosition<Decimal>::operator=(rhs);
 
       return *this;
     }
@@ -1155,16 +1135,16 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
       return true;
     }
 
-    dec::decimal<Prec> getRMultiple()
+    Decimal getRMultiple()
     {
       if (this->isPositionOpen())
 	throw TradingPositionException("TradingPositionShort::getRMultiple - r multiple not available for open position");
 
-      if (this->getRMultipleStop() <= DecimalConstants<Prec>::DecimalZero)      
+      if (this->getRMultipleStop() <= DecimalConstants<Decimal>::DecimalZero)      
 	throw TradingPositionException("TradingPositionShort::getRMultiple - r multiple not available because R multiple stop not set");
 
-      dec::decimal<Prec> exit = this->getExitPrice();
-      dec::decimal<Prec> entry = this->getEntryPrice();
+      Decimal exit = this->getExitPrice();
+      Decimal entry = this->getEntryPrice();
 
       if (this->isWinningPosition())
 	{
@@ -1175,38 +1155,38 @@ return (calculateTradeReturn<Prec>(referencePrice, secondPrice) * DecimalConstan
     }
   };
 
-  template <int Prec>
-  inline void OpenLongPosition<Prec>::ClosePosition (TradingPosition<Prec>* position,
-						     std::shared_ptr<TradingPositionState<Prec>> openPosition,
+  template <class Decimal>
+  inline void OpenLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						     std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 						     const boost::gregorian::date exitDate,
-						     const dec::decimal<Prec>& exitPrice)
+						     const Decimal& exitPrice)
     {
-      position->ChangeState (std::make_shared<ClosedLongPosition<Prec>>(openPosition, exitDate, exitPrice));
+      position->ChangeState (std::make_shared<ClosedLongPosition<Decimal>>(openPosition, exitDate, exitPrice));
     }
 
-  template <int Prec>
-  inline void OpenShortPosition<Prec>::ClosePosition (TradingPosition<Prec>* position,
-						     std::shared_ptr<TradingPositionState<Prec>> openPosition,
+  template <class Decimal>
+  inline void OpenShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						     std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 						     const boost::gregorian::date exitDate,
-						     const dec::decimal<Prec>& exitPrice)
+						     const Decimal& exitPrice)
     {
-      position->ChangeState (std::make_shared<ClosedShortPosition<Prec>>(openPosition, exitDate, exitPrice));
+      position->ChangeState (std::make_shared<ClosedShortPosition<Decimal>>(openPosition, exitDate, exitPrice));
     }
 
-  template <int Prec>
-  inline void ClosedLongPosition<Prec>::ClosePosition (TradingPosition<Prec>* position,
-						       std::shared_ptr<TradingPositionState<Prec>> openPosition,
+  template <class Decimal>
+  inline void ClosedLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						       std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 						       const boost::gregorian::date exitDate,
-						       const dec::decimal<Prec>& exitPrice)
+						       const Decimal& exitPrice)
     {
       throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
     }
 
-  template <int Prec>
-  inline void ClosedShortPosition<Prec>::ClosePosition (TradingPosition<Prec>* position,
-						       std::shared_ptr<TradingPositionState<Prec>> openPosition,
+  template <class Decimal>
+  inline void ClosedShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						       std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 						       const boost::gregorian::date exitDate,
-						       const dec::decimal<Prec>& exitPrice)
+						       const Decimal& exitPrice)
     {
       throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
     }

@@ -19,28 +19,30 @@ using namespace boost::filesystem;
 //extern PriceActionLabSystem* parsePALCode();
 //extern FILE *yyin;
 
+using Decimal7 = dec::decimal<7>;
+
 namespace mkc_timeseries
 {
-  static std::shared_ptr<TimeSeriesCsvReader<7>> 
+  static std::shared_ptr<TimeSeriesCsvReader<Decimal7>> 
   getHistoricDataFileReader(const std::string& historicDataFilePath,
 			    const std::string& dataFileFormatStr, 
 			    TimeFrame::Duration timeFrame,
 			    TradingVolume::VolumeUnit unitsOfVolume);
 
-  static std::shared_ptr<SecurityAttributes<7>> createSecurityAttributes (const std::string &tickerSymbol);
-  static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<7>> attributesOfSecurity);
-  static std::shared_ptr<mkc_timeseries::Security<7>> 
-  createSecurity (std::shared_ptr<SecurityAttributes<7>> attributes,
-		  std::shared_ptr<TimeSeriesCsvReader<7>> aReader);
+  static std::shared_ptr<SecurityAttributes<Decimal7>> createSecurityAttributes (const std::string &tickerSymbol);
+  static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<Decimal7>> attributesOfSecurity);
+  static std::shared_ptr<mkc_timeseries::Security<Decimal7>> 
+  createSecurity (std::shared_ptr<SecurityAttributes<Decimal7>> attributes,
+		  std::shared_ptr<TimeSeriesCsvReader<Decimal7>> aReader);
 
-  static std::shared_ptr<BackTester<7>> getBackTester(TimeFrame::Duration theTimeFrame,
+  static std::shared_ptr<BackTester<Decimal7>> getBackTester(TimeFrame::Duration theTimeFrame,
 							 const DateRange& backtestingDates);
 
   McptConfigurationFileReader::McptConfigurationFileReader (const std::string& configurationFileName) 
     : mConfigurationFileName(configurationFileName)
   {}
 
-  std::shared_ptr<McptConfiguration<7>> McptConfigurationFileReader::readConfigurationFile()
+  std::shared_ptr<McptConfiguration<Decimal7>> McptConfigurationFileReader::readConfigurationFile()
   {
     io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
 
@@ -80,10 +82,10 @@ namespace mkc_timeseries
     if (!exists (historicDataFilePath))
       throw McptConfigurationFileReaderException("Historic data file path " +historicDataFilePath.string() +" does not exist");
 
-    std::shared_ptr<SecurityAttributes<7>> attributes = createSecurityAttributes (tickerSymbol);
+    std::shared_ptr<SecurityAttributes<Decimal7>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
-    std::shared_ptr<TimeSeriesCsvReader<7>> reader = getHistoricDataFileReader(historicDataFilePathStr,
+    std::shared_ptr<TimeSeriesCsvReader<Decimal7>> reader = getHistoricDataFileReader(historicDataFilePathStr,
 									       historicDataFormatStr, 
 									       backTestingTimeFrame,
 									       getVolumeUnit(attributes));
@@ -121,43 +123,43 @@ namespace mkc_timeseries
 
     //fclose (yyin);
 
-    return std::make_shared<McptConfiguration<7>>(getBackTester(backTestingTimeFrame, ooSampleDates),
+    return std::make_shared<McptConfiguration<Decimal7>>(getBackTester(backTestingTimeFrame, ooSampleDates),
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),
 						  system, inSampleDates, ooSampleDates);
   }
 
-  static std::shared_ptr<BackTester<7>> getBackTester(TimeFrame::Duration theTimeFrame,
+  static std::shared_ptr<BackTester<Decimal7>> getBackTester(TimeFrame::Duration theTimeFrame,
 							 const DateRange& backtestingDates)
   {
     if (theTimeFrame == TimeFrame::DAILY)
-      return std::make_shared<DailyBackTester<7>>(backtestingDates.getFirstDate(), 
+      return std::make_shared<DailyBackTester<Decimal7>>(backtestingDates.getFirstDate(), 
 						  backtestingDates.getLastDate());
     else if (theTimeFrame == TimeFrame::WEEKLY)
-      return std::make_shared<WeeklyBackTester<7>>(backtestingDates.getFirstDate(), 
+      return std::make_shared<WeeklyBackTester<Decimal7>>(backtestingDates.getFirstDate(), 
 						   backtestingDates.getLastDate());
     else if (theTimeFrame == TimeFrame::MONTHLY)
-      return std::make_shared<MonthlyBackTester<7>>(backtestingDates.getFirstDate(), 
+      return std::make_shared<MonthlyBackTester<Decimal7>>(backtestingDates.getFirstDate(), 
 						    backtestingDates.getLastDate());
     else
       throw McptConfigurationFileReaderException("getBacktester - cannot create backtester for time frame other than daily or monthly");
   }
 
-  static std::shared_ptr<mkc_timeseries::Security<7>> 
-  createSecurity (std::shared_ptr<SecurityAttributes<7>> attributes,
-		  std::shared_ptr<TimeSeriesCsvReader<7>> aReader)
+  static std::shared_ptr<mkc_timeseries::Security<Decimal7>> 
+  createSecurity (std::shared_ptr<SecurityAttributes<Decimal7>> attributes,
+		  std::shared_ptr<TimeSeriesCsvReader<Decimal7>> aReader)
   {
     if (attributes->isEquitySecurity())
       {
 	if (attributes->isFund())
 	  {
-	    return std::make_shared<EquitySecurity<7>>(attributes->getSymbol(), 
+	    return std::make_shared<EquitySecurity<Decimal7>>(attributes->getSymbol(), 
 						       attributes->getName(),
 						       aReader->getTimeSeries());
 	  }
 	else if (attributes->isCommonStock())
 	  {
-	    return std::make_shared<EquitySecurity<7>>(attributes->getSymbol(), 
+	    return std::make_shared<EquitySecurity<Decimal7>>(attributes->getSymbol(), 
 						       attributes->getName(),
 						       aReader->getTimeSeries());
 	  }
@@ -165,7 +167,7 @@ namespace mkc_timeseries
 	  throw McptConfigurationFileReaderException("Unknown security attribute");
       }
     else
-      return std::make_shared<FuturesSecurity<7>>(attributes->getSymbol(), 
+      return std::make_shared<FuturesSecurity<Decimal7>>(attributes->getSymbol(), 
 						  attributes->getName(),
 						  attributes->getBigPointValue(),
 						  attributes->getTick(),
@@ -174,7 +176,7 @@ namespace mkc_timeseries
   }
 
 		
-  static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<7>> attributesOfSecurity)
+  static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<Decimal7>> attributesOfSecurity)
   {
     if (attributesOfSecurity->isEquitySecurity())
       return TradingVolume::SHARES;
@@ -182,10 +184,10 @@ namespace mkc_timeseries
       return TradingVolume::CONTRACTS;
   }
 
-  static std::shared_ptr<SecurityAttributes<7>> createSecurityAttributes (const std::string &symbol)
+  static std::shared_ptr<SecurityAttributes<Decimal7>> createSecurityAttributes (const std::string &symbol)
   {
-    SecurityAttributesFactory<7> factory;
-    SecurityAttributesFactory<7>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
+    SecurityAttributesFactory<Decimal7> factory;
+    SecurityAttributesFactory<Decimal7>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
 
     if (it != factory.endSecurityAttributes())
       return it->second;
@@ -194,7 +196,7 @@ namespace mkc_timeseries
   }
 
   
-  static std::shared_ptr<TimeSeriesCsvReader<7>> 
+  static std::shared_ptr<TimeSeriesCsvReader<Decimal7>> 
   getHistoricDataFileReader(const std::string& historicDataFilePath,
 			    const std::string& dataFileFormatStr, 
 			    TimeFrame::Duration timeFrame,
@@ -203,9 +205,9 @@ namespace mkc_timeseries
     std::string upperCaseFormatStr = boost::to_upper_copy(dataFileFormatStr);
 
     if (upperCaseFormatStr == std::string("PAL"))
-      return std::make_shared<PALFormatCsvReader<7>>(historicDataFilePath, timeFrame, unitsOfVolume);
+      return std::make_shared<PALFormatCsvReader<Decimal7>>(historicDataFilePath, timeFrame, unitsOfVolume);
     else if (upperCaseFormatStr == std::string("TradeStation"))
-            return std::make_shared<TradeStationFormatCsvReader<7>>(historicDataFilePath, timeFrame, unitsOfVolume);
+            return std::make_shared<TradeStationFormatCsvReader<Decimal7>>(historicDataFilePath, timeFrame, unitsOfVolume);
     else
       throw McptConfigurationFileReaderException("Historic data file format " +dataFileFormatStr +" not recognized");
   }

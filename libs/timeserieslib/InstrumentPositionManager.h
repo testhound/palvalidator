@@ -17,24 +17,22 @@
 
 namespace mkc_timeseries
 {
-  template <int Prec> class InstrumentPositionManager
+  template <class Decimal> class InstrumentPositionManager
   {
-    using Decimal = decimal<Prec>;
-
   public:
-    typedef typename std::map<std::string, std::shared_ptr<InstrumentPosition<Prec>>>::const_iterator ConstInstrumentPositionIterator;
+    typedef typename std::map<std::string, std::shared_ptr<InstrumentPosition<Decimal>>>::const_iterator ConstInstrumentPositionIterator;
 
   public:
     InstrumentPositionManager()
       : mInstrumentPositions()
       {}
 
-    InstrumentPositionManager (const InstrumentPositionManager<Prec>& rhs)
+    InstrumentPositionManager (const InstrumentPositionManager<Decimal>& rhs)
       : mInstrumentPositions(rhs.mInstrumentPositions)
     {}
 
-    InstrumentPositionManager<Prec>& 
-    operator=(const InstrumentPositionManager<Prec> &rhs)
+    InstrumentPositionManager<Decimal>& 
+    operator=(const InstrumentPositionManager<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -52,14 +50,14 @@ namespace mkc_timeseries
       return getInstrumentPosition(tradingSymbol).getVolumeInAllUnits();
     }
 
-    const InstrumentPosition<Prec>&
+    const InstrumentPosition<Decimal>&
     getInstrumentPosition(const std::string& tradingSymbol) const
     {
       auto ptr = getInstrumentPositionPtr (tradingSymbol);
       return *ptr;
     }
 
-    const InstrumentPosition<Prec>&
+    const InstrumentPosition<Decimal>&
     getInstrumentPosition(ConstInstrumentPositionIterator it) const
     {
       return *(it->second);
@@ -101,14 +99,14 @@ namespace mkc_timeseries
       
       if (pos == endInstrumentPositions())
 	{
-	  auto instrPos = std::make_shared<InstrumentPosition<Prec>>(tradingSymbol);
+	  auto instrPos = std::make_shared<InstrumentPosition<Decimal>>(tradingSymbol);
 	  mInstrumentPositions.insert(std::make_pair(tradingSymbol, instrPos));
 	}
       else
 	throw InstrumentPositionManagerException("InstrumentPositionManager::addInstrument - trading symbol already exists");
     }
 
-    void addPosition(std::shared_ptr<TradingPosition<Prec>> position)
+    void addPosition(std::shared_ptr<TradingPosition<Decimal>> position)
     {
       getInstrumentPositionPtr (position->getTradingSymbol())->addPosition(position);
     }
@@ -122,13 +120,13 @@ namespace mkc_timeseries
     }
 
     void addBarForOpenPosition (const boost::gregorian::date openPositionDate,
-				std::shared_ptr<Portfolio<Prec>> portfolioOfSecurities)
+				std::shared_ptr<Portfolio<Decimal>> portfolioOfSecurities)
     {
       ConstInstrumentPositionIterator posIt = beginInstrumentPositions();
-      std::shared_ptr<InstrumentPosition<Prec>> position;
-      typename Portfolio<Prec>::ConstPortfolioIterator securityIterator;
-      std::shared_ptr<Security<Prec>> aSecurity;
-      typename Security<Prec>::ConstRandomAccessIterator timeSeriesEntryIterator;
+      std::shared_ptr<InstrumentPosition<Decimal>> position;
+      typename Portfolio<Decimal>::ConstPortfolioIterator securityIterator;
+      std::shared_ptr<Security<Decimal>> aSecurity;
+      typename Security<Decimal>::ConstRandomAccessIterator timeSeriesEntryIterator;
 
       for (; posIt != endInstrumentPositions(); posIt++)
 	{
@@ -155,32 +153,32 @@ namespace mkc_timeseries
 
     void closeAllPositions(const std::string& tradingSymbol,
 			   const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice)
+			   const Decimal& exitPrice)
     {
       //std::cout << "Closing all positions for symbol "+tradingSymbol +" on date " << exitDate << std::endl;
-      std::shared_ptr<InstrumentPosition<Prec>> pos = findExistingInstrumentPosition (tradingSymbol);
+      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
       pos->closeAllPositions(exitDate, exitPrice);
     }
 
     void closeUnitPosition(const std::string& tradingSymbol,
 			   const boost::gregorian::date exitDate,
-			   const dec::decimal<Prec>& exitPrice,
+			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
     {
-      std::shared_ptr<InstrumentPosition<Prec>> pos = findExistingInstrumentPosition (tradingSymbol);
+      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
       pos->closeUnitPosition(exitDate, exitPrice, unitNumber);
     }
 
     uint32_t getNumPositionUnits(const std::string& symbol) const
     {
-      std::shared_ptr<InstrumentPosition<Prec>> pos = findExistingInstrumentPosition (symbol);
+      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (symbol);
       return pos->getNumPositionUnits ();
     }
 
-    std::shared_ptr<TradingPosition<Prec>>
+    std::shared_ptr<TradingPosition<Decimal>>
     getTradingPosition (const std::string& symbol, uint32_t unitNumber) const
     {
-      std::shared_ptr<InstrumentPosition<Prec>> pos = findExistingInstrumentPosition (symbol);
+      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (symbol);
       
       return *(pos->getInstrumentPosition(unitNumber));
     }
@@ -196,14 +194,14 @@ namespace mkc_timeseries
 	throw InstrumentPositionManagerException("InstrumentPositionManager::addInstrument - trading symbol not found");
     }
 
-    const std::shared_ptr<InstrumentPosition<Prec>>& 
+    const std::shared_ptr<InstrumentPosition<Decimal>>& 
     findExistingInstrumentPosition (const std::string symbol) const
     {
       ConstInstrumentPositionIterator pos = findExistingSymbol (symbol);
       return pos->second;
     }
     
-    const std::shared_ptr<InstrumentPosition<Prec>>&
+    const std::shared_ptr<InstrumentPosition<Decimal>>&
     getInstrumentPositionPtr(const std::string& tradingSymbol) const
     {
       ConstInstrumentPositionIterator pos = findExistingSymbol (tradingSymbol);
@@ -211,7 +209,7 @@ namespace mkc_timeseries
     }
 
   private:
-    std::map<std::string, std::shared_ptr<InstrumentPosition<Prec>>> mInstrumentPositions;
+    std::map<std::string, std::shared_ptr<InstrumentPosition<Decimal>>> mInstrumentPositions;
   };
 }
 

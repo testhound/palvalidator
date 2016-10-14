@@ -24,6 +24,7 @@ runner::runner(std::size_t nthreads):
     //acount for some hardware reporting wrong
     else if(nthreads<2) nthreads=2;
 
+    nthreads=1;
     std::cerr<<"Starting "<<nthreads<<" threads"<<std::endl;
 
     for(std::size_t i=0;i<nthreads;++i)

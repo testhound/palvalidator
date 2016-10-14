@@ -16,14 +16,14 @@ namespace mkc_timeseries
 {
   using dec::decimal;
  
-  template <int Prec> class CumulativeReturnPolicy
+  template <class Decimal> class CumulativeReturnPolicy
     {
     public:
-      static decimal<Prec> getPermutationTestStatistic(std::shared_ptr<BackTester<Prec>> aBackTester)
+      static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
       {
 	if (aBackTester->getNumStrategies() == 1)
 	{
-	std::shared_ptr<BacktesterStrategy<Prec>> backTesterStrategy = 
+	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
 	    (*(aBackTester->beginStrategies()));
 
 	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
@@ -33,14 +33,14 @@ namespace mkc_timeseries
       }
     };
 
-    template <int Prec> class PessimisticReturnRatioPolicy
+    template <class Decimal> class PessimisticReturnRatioPolicy
     {
     public:
-      static decimal<Prec> getPermutationTestStatistic(std::shared_ptr<BackTester<Prec>> aBackTester)
+      static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
       {
 	if (aBackTester->getNumStrategies() == 1)
 	{
-	std::shared_ptr<BacktesterStrategy<Prec>> backTesterStrategy = 
+	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
 	    (*(aBackTester->beginStrategies()));
 
 	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getPessimisticReturnRatio();

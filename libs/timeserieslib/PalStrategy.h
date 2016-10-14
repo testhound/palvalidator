@@ -20,30 +20,30 @@ namespace mkc_timeseries
   using dec::decimal;
   using boost::gregorian::date;
 
-  template <int Prec> class PalStrategy : public BacktesterStrategy<Prec>
+  template <class Decimal> class PalStrategy : public BacktesterStrategy<Decimal>
     {
     public:
     PalStrategy(const std::string& strategyName,
 		std::shared_ptr<PriceActionLabPattern> pattern,
-		std::shared_ptr<Portfolio<Prec>> portfolio)
-      : BacktesterStrategy<Prec>(strategyName, portfolio),
+		std::shared_ptr<Portfolio<Decimal>> portfolio)
+      : BacktesterStrategy<Decimal>(strategyName, portfolio),
 	mPalPattern(pattern),
 	mMCPTAttributes()
 	{}
 
-      PalStrategy(const PalStrategy<Prec>& rhs)
-	: BacktesterStrategy<Prec>(rhs),
+      PalStrategy(const PalStrategy<Decimal>& rhs)
+	: BacktesterStrategy<Decimal>(rhs),
 	  mPalPattern(rhs.mPalPattern),
 	  mMCPTAttributes(rhs.mMCPTAttributes)
       {}
 
-      const PalStrategy<Prec>&
-      operator=(const PalStrategy<Prec>& rhs)
+      const PalStrategy<Decimal>&
+      operator=(const PalStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
 	  return *this;
 
-	BacktesterStrategy<Prec>::operator=(rhs);
+	BacktesterStrategy<Decimal>::operator=(rhs);
 	mPalPattern = rhs.mPalPattern;
 	mMCPTAttributes = rhs.mMCPTAttributes;
 	return *this;
@@ -52,7 +52,7 @@ namespace mkc_timeseries
       virtual ~PalStrategy()
       {}
 
-      const TradingVolume& getSizeForOrder(const Security<Prec>& aSecurity) const
+      const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const
       {
 	if (aSecurity.isEquitySecurity())
 	  return OneShare;
@@ -75,7 +75,7 @@ namespace mkc_timeseries
 	return mMCPTAttributes.getPositionDirection();
       }
 
-      std::vector<decimal<Prec>> getPositionReturnsVector() const
+      std::vector<Decimal> getPositionReturnsVector() const
       {
 	return mMCPTAttributes.getPositionReturns();
       }
@@ -86,19 +86,19 @@ namespace mkc_timeseries
       }
 
     protected:
-      void addLongPositionBar(std::shared_ptr<Security<Prec>> aSecurity,
+      void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
       {
 	mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
       }
 
-      void addShortPositionBar(std::shared_ptr<Security<Prec>> aSecurity,
+      void addShortPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
       {
 	mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
       }
 
-      void addFlatPositionBar(std::shared_ptr<Security<Prec>> aSecurity,
+      void addFlatPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
       {
 	mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
@@ -106,34 +106,34 @@ namespace mkc_timeseries
 
     private:
       std::shared_ptr<PriceActionLabPattern> mPalPattern;
-      MCPTStrategyAttributes<Prec> mMCPTAttributes;
+      MCPTStrategyAttributes<Decimal> mMCPTAttributes;
       static TradingVolume OneShare;
       static TradingVolume OneContract;
     };
 
-template <int Prec> TradingVolume PalStrategy<Prec>::OneShare(1, TradingVolume::SHARES);
-template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolume::CONTRACTS);
+template <class Decimal> TradingVolume PalStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
+template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
 
-  template <int Prec> class PalLongStrategy : public PalStrategy<Prec>
+  template <class Decimal> class PalLongStrategy : public PalStrategy<Decimal>
     {
     public:
     PalLongStrategy(const std::string& strategyName,
 		    std::shared_ptr<PriceActionLabPattern> pattern,
-		    std::shared_ptr<Portfolio<Prec>> portfolio)
-      : PalStrategy<Prec>(strategyName, pattern, portfolio)
+		    std::shared_ptr<Portfolio<Decimal>> portfolio)
+      : PalStrategy<Decimal>(strategyName, pattern, portfolio)
 	{}
 
-      PalLongStrategy(const PalLongStrategy<Prec>& rhs)
-	: PalStrategy<Prec>(rhs)
+      PalLongStrategy(const PalLongStrategy<Decimal>& rhs)
+	: PalStrategy<Decimal>(rhs)
       {}
 
-      const PalLongStrategy<Prec>&
-      operator=(const PalLongStrategy<Prec>& rhs)
+      const PalLongStrategy<Decimal>&
+      operator=(const PalLongStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
 	  return *this;
 
-	PalStrategy<Prec>::operator=(rhs);
+	PalStrategy<Decimal>::operator=(rhs);
 
 	return *this;
       }
@@ -141,52 +141,52 @@ template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolum
       ~PalLongStrategy()
       {}
       
-      std::shared_ptr<BacktesterStrategy<Prec>> 
-      clone (std::shared_ptr<Portfolio<Prec>> portfolio) const
+      std::shared_ptr<BacktesterStrategy<Decimal>> 
+      clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const
       {
-	return std::make_shared<PalLongStrategy<Prec>>(this->getStrategyName(),
+	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
 						       portfolio);
       }
 
-      std::shared_ptr<BacktesterStrategy<Prec>> 
+      std::shared_ptr<BacktesterStrategy<Decimal>> 
       cloneForBackTesting () const
       {
-	return std::make_shared<PalLongStrategy<Prec>>(this->getStrategyName(),
+	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
 						       this->getPortfolio());
       }
 
-      void eventExitOrders (std::shared_ptr<Security<Prec>> aSecurity,
-			    const InstrumentPosition<Prec>& instrPos,
+      void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
 	if (this->isLongPosition (aSecurity->getSymbol()))
 	  {
 	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
-	    decimal<Prec> target = pattern->getProfitTargetAsDecimal();
+	    Decimal target = pattern->getProfitTargetAsDecimal();
 	    //std::cout << "PalLongStrategy::eventExitOrders, getProfitTargetAsDecimal(): " << pattern->getProfitTargetAsDecimal() << std::endl << std::endl;
-	    PercentNumber<Prec> targetAsPercent = PercentNumber<Prec>::createPercentNumber (target);
+	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
 	    //std::cout << "PalLongStrategy::eventExitOrders, createPercentNumber(): " << targetAsPercent.getAsPercent() << std::endl << std::endl;
 
-	    decimal<Prec> stop = pattern->getStopLossAsDecimal();
-	    PercentNumber<Prec> stopAsPercent = PercentNumber<Prec>::createPercentNumber (stop);
+	    Decimal stop = pattern->getStopLossAsDecimal();
+	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
 
-	    decimal<Prec> fillPrice = instrPos.getFillPrice();
+	    Decimal fillPrice = instrPos.getFillPrice();
 
 	    //std::cout << "PalLongStrategy::eventExitOrders, fill Price =  " << fillPrice << std::endl;
 	    this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
 					  fillPrice, targetAsPercent);
 	    this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
-	    instrPos.setRMultipleStop (LongStopLoss<Prec> (fillPrice, stopAsPercent).getStopLoss());
+	    instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 
 	    this->addLongPositionBar (aSecurity, processingDate);
 	  }
       }
 
-      void eventEntryOrders (std::shared_ptr<Security<Prec>> aSecurity,
-			     const InstrumentPosition<Prec>& instrPos,
+      void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
       {
 	if (this->isFlatPosition (aSecurity->getSymbol()))
@@ -195,10 +195,10 @@ template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolum
 		this->getPalPattern()->getMaxBarsBack())
 	      {
 		PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
-		typename Security<Prec>::ConstRandomAccessIterator it = 
+		typename Security<Decimal>::ConstRandomAccessIterator it = 
 		  aSecurity->getRandomAccessIterator (processingDate);
 
-		if (PALPatternInterpreter<Prec>::evaluateExpression (expr, aSecurity, it))
+		if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
 		  {
 		    this->EnterLongOnOpen (aSecurity->getSymbol(), processingDate);
 		    //std::cout << "PalLongStrategy entered LongOnOpen Order on " << processingDate << std::endl;
@@ -211,26 +211,26 @@ template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolum
 
   //
 
-  template <int Prec> class PalShortStrategy : public PalStrategy<Prec>
+  template <class Decimal> class PalShortStrategy : public PalStrategy<Decimal>
     {
     public:
     PalShortStrategy(const std::string& strategyName,
 		     std::shared_ptr<PriceActionLabPattern> pattern,
-		     std::shared_ptr<Portfolio<Prec>> portfolio)
-      : PalStrategy<Prec>(strategyName, pattern, portfolio)
+		     std::shared_ptr<Portfolio<Decimal>> portfolio)
+      : PalStrategy<Decimal>(strategyName, pattern, portfolio)
 	{}
 
-      PalShortStrategy(const PalShortStrategy<Prec>& rhs)
-	: PalStrategy<Prec>(rhs)
+      PalShortStrategy(const PalShortStrategy<Decimal>& rhs)
+	: PalStrategy<Decimal>(rhs)
       {}
 
-      const PalShortStrategy<Prec>&
-      operator=(const PalShortStrategy<Prec>& rhs)
+      const PalShortStrategy<Decimal>&
+      operator=(const PalShortStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
 	  return *this;
 
-	PalStrategy<Prec>::operator=(rhs);
+	PalStrategy<Decimal>::operator=(rhs);
 
 	return *this;
       }
@@ -238,23 +238,23 @@ template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolum
       ~PalShortStrategy()
       {}
 
-      std::shared_ptr<BacktesterStrategy<Prec>> 
-      clone (std::shared_ptr<Portfolio<Prec>> portfolio) const
+      std::shared_ptr<BacktesterStrategy<Decimal>> 
+      clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const
       {
-	return std::make_shared<PalShortStrategy<Prec>>(this->getStrategyName(),
+	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
 						       portfolio);
       }
 
-      std::shared_ptr<BacktesterStrategy<Prec>> 
+      std::shared_ptr<BacktesterStrategy<Decimal>> 
       cloneForBackTesting () const
       {
-	return std::make_shared<PalShortStrategy<Prec>>(this->getStrategyName(),
+	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
 						       this->getPortfolio());
       }
-      void eventExitOrders (std::shared_ptr<Security<Prec>> aSecurity,
-			    const InstrumentPosition<Prec>& instrPos,
+      void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
 	//std::cout << "PalShortStrategy::eventExitOrders - In eventExitOrders" << std::endl;
@@ -262,30 +262,30 @@ template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolum
 	  {
 	    //std::cout << "!!!! PalShortStrategy::eventExitOrders - isShortPosition true" << std::endl << std::endl;
 	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
-	    decimal<Prec> target = pattern->getProfitTargetAsDecimal();
+	    Decimal target = pattern->getProfitTargetAsDecimal();
 
 	    //std::cout << "PalShortStrategy::eventExitOrders, getProfitTargetAsDecimal(): " << pattern->getProfitTargetAsDecimal() << std::endl << std::endl;
-	    PercentNumber<Prec> targetAsPercent = PercentNumber<Prec>::createPercentNumber (target);
+	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
 	    //std::cout << "PalShortStrategy::eventExitOrders, createPercentNumber(): " << targetAsPercent.getAsPercent() << std::endl << std::endl;
 
-	    decimal<Prec> stop = pattern->getStopLossAsDecimal();
+	    Decimal stop = pattern->getStopLossAsDecimal();
 	    //std::cout << "PalShortStrategy::eventExitOrders, getStopLossAsDecimal(): " << pattern->getStopLossAsDecimal() << std::endl << std::endl;
-	    PercentNumber<Prec> stopAsPercent = PercentNumber<Prec>::createPercentNumber (stop);
+	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
 
-	    decimal<Prec> fillPrice = instrPos.getFillPrice();
+	    Decimal fillPrice = instrPos.getFillPrice();
 	    //std::cout << "PalShortStrategy::eventExitOrders, fill Price =  " << fillPrice << std::endl;
 
 	    this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
 					  fillPrice, targetAsPercent);
 	    this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
-	    instrPos.setRMultipleStop (ShortStopLoss<Prec> (fillPrice, stopAsPercent).getStopLoss());
+	    instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 	    this->addShortPositionBar (aSecurity, processingDate);
 	  }
       }
 
-      void eventEntryOrders (std::shared_ptr<Security<Prec>> aSecurity,
-			     const InstrumentPosition<Prec>& instrPos,
+      void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
       {
 	if (this->isFlatPosition (aSecurity->getSymbol()))
@@ -294,10 +294,10 @@ template <int Prec> TradingVolume PalStrategy<Prec>::OneContract(1, TradingVolum
 		this->getPalPattern()->getMaxBarsBack())
 	      {
 		PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
-		typename Security<Prec>::ConstRandomAccessIterator it = 
+		typename Security<Decimal>::ConstRandomAccessIterator it = 
 		  aSecurity->getRandomAccessIterator (processingDate);
 
-		if (PALPatternInterpreter<Prec>::evaluateExpression (expr, aSecurity, it))
+		if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
 		  {
 		    //std::cout << "PalShortStrategy entered ShortOnOpen Order on " << processingDate << std::endl;
 		    this->EnterShortOnOpen (aSecurity->getSymbol(), processingDate);

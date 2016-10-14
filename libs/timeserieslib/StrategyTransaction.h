@@ -33,30 +33,30 @@ namespace mkc_timeseries
     
   };
 
-  template <int Prec> class StrategyTransaction;
-  template <int Prec> class StrategyTransactionState;
-  template <int Prec> class StrategyTransactionStateOpen;
+  template <class Decimal> class StrategyTransaction;
+  template <class Decimal> class StrategyTransactionState;
+  template <class Decimal> class StrategyTransactionStateOpen;
 
-  template <int Prec>
+  template <class Decimal>
   class StrategyTransactionObserver
   {
   public:
     StrategyTransactionObserver()
     {}
 
-    StrategyTransactionObserver (const StrategyTransactionObserver<Prec>& rhs)
+    StrategyTransactionObserver (const StrategyTransactionObserver<Decimal>& rhs)
       {}
 
     virtual ~StrategyTransactionObserver()
     {}
 
-    StrategyTransactionObserver<Prec>& 
-    operator=(const StrategyTransactionObserver<Prec> &rhs)
+    StrategyTransactionObserver<Decimal>& 
+    operator=(const StrategyTransactionObserver<Decimal> &rhs)
     {
       return *this;
     }
 
-    virtual void TransactionComplete (StrategyTransaction<Prec> *transaction) = 0;
+    virtual void TransactionComplete (StrategyTransaction<Decimal> *transaction) = 0;
   };
 
 
@@ -69,21 +69,21 @@ namespace mkc_timeseries
   // 2. A TradingPosition
   // 3. A exit TradingOrder
 
-  template <int Prec> class StrategyTransaction
+  template <class Decimal> class StrategyTransaction
   {
   public:
-    StrategyTransaction (std::shared_ptr<TradingOrder<Prec>> entryOrder,
-			 std::shared_ptr<TradingPosition<Prec>> aPosition);
+    StrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> entryOrder,
+			 std::shared_ptr<TradingPosition<Decimal>> aPosition);
 
-    StrategyTransaction (const StrategyTransaction<Prec>& rhs)
+    StrategyTransaction (const StrategyTransaction<Decimal>& rhs)
       : mEntryOrder(rhs.mEntryOrder),
 	mPosition(rhs.mPosition),
 	mTransactionState(rhs.mTransactionState),
 	mObservers(rhs.mObservers)
     {}
 
-    StrategyTransaction<Prec>& 
-    operator=(const StrategyTransaction<Prec> &rhs)
+    StrategyTransaction<Decimal>& 
+    operator=(const StrategyTransaction<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -98,37 +98,37 @@ namespace mkc_timeseries
     ~StrategyTransaction()
     {}
 
-    std::shared_ptr<TradingOrder<Prec>> getEntryTradingOrder() const
+    std::shared_ptr<TradingOrder<Decimal>> getEntryTradingOrder() const
     {
       return mEntryOrder;
     }
 
-    std::shared_ptr<TradingPosition<Prec>> getTradingPosition() const
+    std::shared_ptr<TradingPosition<Decimal>> getTradingPosition() const
     {
       return mPosition;
     }
 
-    std::shared_ptr<TradingPosition<Prec>>
+    std::shared_ptr<TradingPosition<Decimal>>
     getTradingPositionPtr() const
     {
       return mPosition;
     }
 
-    std::shared_ptr<TradingOrder<Prec>> getExitTradingOrder() const;
+    std::shared_ptr<TradingOrder<Decimal>> getExitTradingOrder() const;
 
     bool isTransactionOpen() const;
 
     bool isTransactionComplete() const;
 
-    void completeTransaction (std::shared_ptr<TradingOrder<Prec>> exitOrder);
+    void completeTransaction (std::shared_ptr<TradingOrder<Decimal>> exitOrder);
 
-    void addObserver (reference_wrapper<StrategyTransactionObserver<Prec>> observer)
+    void addObserver (reference_wrapper<StrategyTransactionObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
 
   private:
-    typedef typename list<reference_wrapper<StrategyTransactionObserver<Prec>>>::const_iterator ConstObserverIterator;
+    typedef typename list<reference_wrapper<StrategyTransactionObserver<Decimal>>>::const_iterator ConstObserverIterator;
 
     ConstObserverIterator beginObserverList() const
     {
@@ -149,36 +149,36 @@ namespace mkc_timeseries
     }
 
   private:
-    void ChangeState (std::shared_ptr<StrategyTransactionState<Prec>> newState)
+    void ChangeState (std::shared_ptr<StrategyTransactionState<Decimal>> newState)
     {
       mTransactionState = newState;
     }
 
-    friend class StrategyTransactionState<Prec>;
-    friend class StrategyTransactionStateOpen<Prec>;
+    friend class StrategyTransactionState<Decimal>;
+    friend class StrategyTransactionStateOpen<Decimal>;
 
   private:
-    std::shared_ptr<TradingOrder<Prec>> mEntryOrder;
-    std::shared_ptr<TradingPosition<Prec>> mPosition;
-    std::shared_ptr<StrategyTransactionState<Prec>> mTransactionState;
-    std::list<std::reference_wrapper<StrategyTransactionObserver<Prec>>> mObservers;
+    std::shared_ptr<TradingOrder<Decimal>> mEntryOrder;
+    std::shared_ptr<TradingPosition<Decimal>> mPosition;
+    std::shared_ptr<StrategyTransactionState<Decimal>> mTransactionState;
+    std::list<std::reference_wrapper<StrategyTransactionObserver<Decimal>>> mObservers;
   };
 
   //
   // class StrategyTransactionState
   //
 
-  template <int Prec> class StrategyTransactionState
+  template <class Decimal> class StrategyTransactionState
   {
   public:
     StrategyTransactionState()
     {}
 
-    StrategyTransactionState (const StrategyTransactionState<Prec>& rhs)
+    StrategyTransactionState (const StrategyTransactionState<Decimal>& rhs)
     {}
 
-    StrategyTransactionState<Prec>& 
-    operator=(const StrategyTransactionState<Prec> &rhs)
+    StrategyTransactionState<Decimal>& 
+    operator=(const StrategyTransactionState<Decimal> &rhs)
     {
       return *this;
     }
@@ -186,11 +186,11 @@ namespace mkc_timeseries
     virtual ~StrategyTransactionState()
     {}
 
-    virtual std::shared_ptr<TradingOrder<Prec>> getExitTradingOrder() const = 0;
+    virtual std::shared_ptr<TradingOrder<Decimal>> getExitTradingOrder() const = 0;
     virtual bool isTransactionOpen() const = 0;
     virtual bool isTransactionComplete() const = 0;
-    virtual void completeTransaction (StrategyTransaction<Prec> *transaction,
-				      std::shared_ptr<TradingOrder<Prec>> exitOrder) = 0;
+    virtual void completeTransaction (StrategyTransaction<Decimal> *transaction,
+				      std::shared_ptr<TradingOrder<Decimal>> exitOrder) = 0;
   };
 
 
@@ -198,26 +198,26 @@ namespace mkc_timeseries
   // class StrategyTransactionStateComplete
   //
 
-  template <int Prec> class StrategyTransactionStateComplete : public StrategyTransactionState<Prec>
+  template <class Decimal> class StrategyTransactionStateComplete : public StrategyTransactionState<Decimal>
   {
   public:
-    StrategyTransactionStateComplete(std::shared_ptr<TradingOrder<Prec>> exitOrder)
-      : StrategyTransactionState<Prec>(),
+    StrategyTransactionStateComplete(std::shared_ptr<TradingOrder<Decimal>> exitOrder)
+      : StrategyTransactionState<Decimal>(),
 	mExitOrder (exitOrder)
     {}
 
-    StrategyTransactionStateComplete (const StrategyTransactionStateComplete<Prec>& rhs)
-      : StrategyTransactionState<Prec> (rhs),
+    StrategyTransactionStateComplete (const StrategyTransactionStateComplete<Decimal>& rhs)
+      : StrategyTransactionState<Decimal> (rhs),
 	mExitOrder(rhs.mExitOrder)
     {}
 
-    StrategyTransactionStateComplete<Prec>& 
-    operator=(const StrategyTransactionStateComplete<Prec> &rhs)
+    StrategyTransactionStateComplete<Decimal>& 
+    operator=(const StrategyTransactionStateComplete<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 	
-      StrategyTransactionState<Prec>::operator=(rhs);
+      StrategyTransactionState<Decimal>::operator=(rhs);
       mExitOrder = rhs.mExitOrder;
       return *this;
     }
@@ -225,7 +225,7 @@ namespace mkc_timeseries
     ~StrategyTransactionStateComplete()
     {}
 
-    std::shared_ptr<TradingOrder<Prec>> getExitTradingOrder() const
+    std::shared_ptr<TradingOrder<Decimal>> getExitTradingOrder() const
     {
       return mExitOrder;
     }
@@ -240,38 +240,38 @@ namespace mkc_timeseries
       return true;
     }
 
-    void completeTransaction (StrategyTransaction<Prec> *transaction,
-			      std::shared_ptr<TradingOrder<Prec>> exitOrder)
+    void completeTransaction (StrategyTransaction<Decimal> *transaction,
+			      std::shared_ptr<TradingOrder<Decimal>> exitOrder)
     {
       throw StrategyTransactionException ("StrategyTransactionStateComplete::completeTransaction - transaction already complete");
     }
 
   private:
-    std::shared_ptr<TradingOrder<Prec>> mExitOrder;
+    std::shared_ptr<TradingOrder<Decimal>> mExitOrder;
   };
 
   //
   // class StrategyTransactionStateOpen
   //
 
-  template <int Prec> class StrategyTransactionStateOpen : public StrategyTransactionState<Prec>
+  template <class Decimal> class StrategyTransactionStateOpen : public StrategyTransactionState<Decimal>
   {
   public:
     StrategyTransactionStateOpen()
-      : StrategyTransactionState<Prec>()
+      : StrategyTransactionState<Decimal>()
     {}
 
-    StrategyTransactionStateOpen (const StrategyTransactionStateOpen<Prec>& rhs)
-      : StrategyTransactionState<Prec> (rhs)
+    StrategyTransactionStateOpen (const StrategyTransactionStateOpen<Decimal>& rhs)
+      : StrategyTransactionState<Decimal> (rhs)
     {}
 
-    StrategyTransactionStateOpen<Prec>& 
-    operator=(const StrategyTransactionStateOpen<Prec> &rhs)
+    StrategyTransactionStateOpen<Decimal>& 
+    operator=(const StrategyTransactionStateOpen<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 	
-      StrategyTransactionState<Prec>::operator=(rhs);
+      StrategyTransactionState<Decimal>::operator=(rhs);
       return *this;
     }
 
@@ -289,27 +289,27 @@ namespace mkc_timeseries
       return false;
     }
 
-    std::shared_ptr<TradingOrder<Prec>> getExitTradingOrder() const
+    std::shared_ptr<TradingOrder<Decimal>> getExitTradingOrder() const
     {
       throw StrategyTransactionException ("StrategyTransactionStateOpen:: No exit order available while position is open");
     }
 
-    void completeTransaction (StrategyTransaction<Prec> *transaction,
-			      std::shared_ptr<TradingOrder<Prec>> exitOrder)
+    void completeTransaction (StrategyTransaction<Decimal> *transaction,
+			      std::shared_ptr<TradingOrder<Decimal>> exitOrder)
     {
-      transaction->ChangeState (std::make_shared<StrategyTransactionStateComplete<Prec>>(exitOrder));
+      transaction->ChangeState (std::make_shared<StrategyTransactionStateComplete<Decimal>>(exitOrder));
     }
 
   };
 
  
 
-  template <int Prec>
-  inline StrategyTransaction<Prec>::StrategyTransaction (std::shared_ptr<TradingOrder<Prec>> entryOrder,
-							 std::shared_ptr<TradingPosition<Prec>> aPosition)
+  template <class Decimal>
+  inline StrategyTransaction<Decimal>::StrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> entryOrder,
+							 std::shared_ptr<TradingPosition<Decimal>> aPosition)
     : mEntryOrder (entryOrder),
       mPosition(aPosition),
-      mTransactionState(new StrategyTransactionStateOpen<Prec>()),
+      mTransactionState(new StrategyTransactionStateOpen<Decimal>()),
       mObservers()
   {
     if (entryOrder->getTradingSymbol() != aPosition->getTradingSymbol())
@@ -326,27 +326,27 @@ namespace mkc_timeseries
       throw StrategyTransactionException ("StrategyTransaction constructor -order and position direction do not agree");
   }
 
-  template <int Prec>
-  bool StrategyTransaction<Prec>::isTransactionOpen() const
+  template <class Decimal>
+  bool StrategyTransaction<Decimal>::isTransactionOpen() const
   {
     return  mTransactionState->isTransactionOpen();
   }
 
-  template <int Prec>
-  bool StrategyTransaction<Prec>::isTransactionComplete() const
+  template <class Decimal>
+  bool StrategyTransaction<Decimal>::isTransactionComplete() const
   {
     return mTransactionState->isTransactionComplete();
   }
   
-  template <int Prec>
-  void StrategyTransaction<Prec>::completeTransaction (std::shared_ptr<TradingOrder<Prec>> exitOrder)
+  template <class Decimal>
+  void StrategyTransaction<Decimal>::completeTransaction (std::shared_ptr<TradingOrder<Decimal>> exitOrder)
   {
     mTransactionState->completeTransaction (this, exitOrder);;
     notifyTransactionComplete();
   }
 
-  template <int Prec>
-  std::shared_ptr<TradingOrder<Prec>> StrategyTransaction<Prec>::getExitTradingOrder() const
+  template <class Decimal>
+  std::shared_ptr<TradingOrder<Decimal>> StrategyTransaction<Decimal>::getExitTradingOrder() const
   {
     return mTransactionState->getExitTradingOrder();
   }
