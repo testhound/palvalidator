@@ -28,28 +28,28 @@ namespace mkc_timeseries
     explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries) 
       : mTimeSeries(aTimeSeries),
 	mDateSeries (aTimeSeries.getNumEntries()),
-	mRelativeOpen (aTimeSeries.getNumEntries()),
-	mRelativeHigh (aTimeSeries.getNumEntries()),
-	mRelativeLow (aTimeSeries.getNumEntries()),
-	mRelativeClose (aTimeSeries.getNumEntries()),
 	mNumElements (aTimeSeries.getNumEntries()),
 	mRandGenerator(),
 	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (aTimeSeries.getTimeFrame(),
 								 aTimeSeries.getVolumeUnits(),
 								 aTimeSeries.getNumEntries()))
     {
+      mRelativeOpen .reserve(aTimeSeries.getNumEntries());
+      mRelativeHigh .reserve(aTimeSeries.getNumEntries());
+      mRelativeLow  .reserve(aTimeSeries.getNumEntries());
+	mRelativeClose.reserve(aTimeSeries.getNumEntries());
     
-      decimal<Prec> valueOfOne (1.0);
-      decimal<Prec> currentOpen(0.0);
+      Decimal valueOfOne (1.0);
+      Decimal currentOpen(0.0);
       
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
 
-      mRelativeOpen.addElement(valueOfOne);
+      mRelativeOpen.push_back(valueOfOne);
       mFirstOpen = mTimeSeries.getOpenValue (it, 0);
 
-      mRelativeHigh.addElement(mTimeSeries.getHighValue (it, 0) / mFirstOpen);
-      mRelativeLow.addElement(mTimeSeries.getLowValue (it, 0) / mFirstOpen);
-      mRelativeClose.addElement(mTimeSeries.getCloseValue (it, 0) /mFirstOpen) ;
+      mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) / mFirstOpen);
+      mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) / mFirstOpen);
+      mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /mFirstOpen) ;
       mDateSeries.addElement (mTimeSeries.getDateValue(it, 0));
 
       it++;
@@ -58,13 +58,13 @@ namespace mkc_timeseries
 	{
 	  currentOpen = mTimeSeries.getOpenValue (it, 0);
 
-	  mRelativeOpen.addElement(currentOpen / 
+	  mRelativeOpen.push_back(currentOpen / 
 				   mTimeSeries.getCloseValue (it, 1));
-	  mRelativeHigh.addElement(mTimeSeries.getHighValue (it, 0) / 
+	  mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) / 
 				   currentOpen) ;
-	  mRelativeLow.addElement(mTimeSeries.getLowValue (it, 0) / 
+	  mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) / 
 				  currentOpen) ;
-	  mRelativeClose.addElement(mTimeSeries.getCloseValue (it, 0) / 
+	  mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) / 
 				    currentOpen) ;
 	  mDateSeries.addElement (mTimeSeries.getDateValue(it,0));
 	}
@@ -116,18 +116,18 @@ namespace mkc_timeseries
 
       for (unsigned long i = 0; i < mNumElements; i++)
 	{
-	  xPrice *= mRelativeOpen.getElement(i);
+	  xPrice *= mRelativeOpen[i];
 	  syntheticOpen = xPrice;
 
-	  xPrice *= mRelativeClose.getElement(i);
+	  xPrice *= mRelativeClose[i];
 	  syntheticClose = xPrice;
 
 	  try
 	    {
 	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i), 
 					       syntheticOpen, 
-					       syntheticOpen * mRelativeHigh.getElement(i),
-					       syntheticOpen * mRelativeLow.getElement(i),
+					       syntheticOpen * mRelativeHigh[i],
+					       syntheticOpen * mRelativeLow[i],
 					       syntheticClose,
 					       0,
 					       mSyntheticTimeSeries->getTimeFrame());
@@ -136,11 +136,11 @@ namespace mkc_timeseries
 	  catch (const TimeSeriesEntryException& e)
 	    {
 	      std::cout << "TimeSeriesEntryException found with relative OHLC = ";
-	      std::cout << mRelativeOpen.getElement(i) << ", " << mRelativeHigh.getElement(i) << ", ";
-	      std::cout << mRelativeLow.getElement(i) << ", " << mRelativeClose.getElement(i) << std::endl;
+	      std::cout << mRelativeOpen[i] << ", " << mRelativeHigh[i] << ", ";
+	      std::cout << mRelativeLow[i] << ", " << mRelativeClose[i] << std::endl;
 	      std::cout << "synthetic OHLC = " << syntheticOpen << ", ";
-	      std::cout << syntheticOpen * mRelativeHigh.getElement(i) << ", ";
-	      std::cout << syntheticOpen * mRelativeLow.getElement(i) << ", ";
+	      std::cout << syntheticOpen * mRelativeHigh[i] << ", ";
+	      std::cout << syntheticOpen * mRelativeLow[i] << ", ";
 	      std::cout << syntheticClose << std::endl;
 
 	      std::cout << "First open = " << mFirstOpen << std::endl;
@@ -160,9 +160,9 @@ namespace mkc_timeseries
 
       for (unsigned int i = 0; i < mNumElements; i++)
 	{
-	  f << mDateSeries.getDate(i) << "," << mRelativeOpen.getElement (i) << "," <<
-	    mRelativeHigh.getElement (i) << "," << mRelativeLow.getElement (i) << "," <<
-	    mRelativeClose.getElement (i) << std::endl;
+	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
+	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
+	    mRelativeClose[i] << std::endl;
 	}
     }
 
@@ -173,7 +173,7 @@ namespace mkc_timeseries
 
     }
 
-    decimal<Prec> getFirstOpen () const
+    Decimal getFirstOpen () const
     {
       return mFirstOpen;
     }
@@ -202,7 +202,7 @@ namespace mkc_timeseries
 	    j = i - 1;
 	  i = i - 1;
 	
-	  mRelativeOpen.swap(i,j);
+        std::swap(mRelativeOpen[i], mRelativeOpen[j]);
 	}
     }
 
@@ -219,20 +219,20 @@ namespace mkc_timeseries
 	    j = i - 1;
 	  i = i - 1;
 
-        mRelativeHigh.swap(i, j);
-        mRelativeLow.swap(i, j);
-        mRelativeClose.swap(i, j);
+        std::swap(mRelativeHigh[i], mRelativeHigh[j]);
+        std::swap(mRelativeLow[i], mRelativeLow[j]);
+        std::swap(mRelativeClose[i], mRelativeClose[j]);
 	}
     }
 
   private:
     OHLCTimeSeries<Decimal> mTimeSeries;
     VectorDate mDateSeries;
-    VectorDecimal<Prec> mRelativeOpen;
-    VectorDecimal<Prec> mRelativeHigh;
-    VectorDecimal<Prec> mRelativeLow;
-    VectorDecimal<Prec> mRelativeClose;
-    decimal<Prec> mFirstOpen;
+    vector<Decimal> mRelativeOpen;
+    vector<Decimal> mRelativeHigh;
+    vector<Decimal> mRelativeLow;
+    vector<Decimal> mRelativeClose;
+    Decimal mFirstOpen;
     unsigned long mNumElements;
     RandomMersenne mRandGenerator;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;
