@@ -82,7 +82,7 @@ void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<7>> configur
 				  int numPermutations)
 {
   PALMonteCarloValidation<7, OriginalMCPT<7>> validation(configuration, numPermutations);
-  printf ("Starting Monte Carlo Validation tests\n\n");
+  printf ("Starting Monte Carlo Validation tests (Version: One)\n\n");
 
   validation.runPermutationTests();
 
@@ -115,7 +115,7 @@ void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<7>> configur
 {
   PALMonteCarloValidation<7,
 			  MonteCarloPermuteMarketChanges<7, PessimisticReturnRatioPolicy>> validation(configuration, numPermutations);
-  printf ("Starting Monte Carlo Validation tests\n\n");
+  printf ("Starting Monte Carlo Validation tests (Version:Two)\n\n");
 
   validation.runPermutationTests();
 
