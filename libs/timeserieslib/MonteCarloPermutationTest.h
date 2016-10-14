@@ -125,16 +125,19 @@ using boost::accumulators::accumulator_set;
     ~MonteCarloPermuteMarketChanges()
     {}
 
+
     // Runs the monte carlo permutation test and return the P-Value
     dec::decimal<Prec> runPermutationTest()
     {
+      using Decimal = decimal<Prec>;
+
       std::shared_ptr<BacktesterStrategy<Prec>> aStrategy = 
 	(*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
       shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
-      std::shared_ptr<OHLCTimeSeries<Prec>> theTimeSeries = theSecurity->getTimeSeries();
+      std::shared_ptr<OHLCTimeSeries<Decimal>> theTimeSeries = theSecurity->getTimeSeries();
 
       mBackTester->backtest();
 
@@ -171,14 +174,14 @@ using boost::accumulators::accumulator_set;
 
 	    }
 
-	  dec::decimal<Prec> cumulativeReturn(BackTestResultPolicy<Prec>::getPermutationTestStatistic(clonedBackTester));
+	  Decimal cumulativeReturn(BackTestResultPolicy<Prec>::getPermutationTestStatistic(clonedBackTester));
 	  //std::cout << "Test stat. for strategy " << (i + 1) << " equals: " << cumulativeReturn << ", num trades = " << stratTrades << std::endl;
 
 	  if (cumulativeReturn >= mBaseLineCumulativeReturn)
 	    count++;
 	}
 
-      return decimal<Prec> ((count + 1.0) / (mNumPermutations + 1.0));
+      return Decimal((count + 1.0) / (mNumPermutations + 1.0));
     }
 
   private:
@@ -250,7 +253,7 @@ using boost::accumulators::accumulator_set;
       this->validateStrategy (aStrategy);
 
       shared_ptr<Security<Prec>> theSecurity = aStrategy->beginPortfolio()->second;
-      std::shared_ptr<OHLCTimeSeries<Prec>> theTimeSeries = theSecurity->getTimeSeries();
+      std::shared_ptr<OHLCTimeSeries<decimal<Prec>>> theTimeSeries = theSecurity->getTimeSeries();
 
       mBackTester->backtest();
 

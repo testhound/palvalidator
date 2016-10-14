@@ -25,7 +25,7 @@ namespace mkc_timeseries
     using Decimal = decimal<Prec>;
 
   public:
-    explicit SyntheticTimeSeries(const OHLCTimeSeries<Prec>& aTimeSeries) 
+    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries) 
       : mTimeSeries(aTimeSeries),
 	mDateSeries (aTimeSeries.getNumEntries()),
 	mRelativeOpen (aTimeSeries.getNumEntries()),
@@ -34,7 +34,7 @@ namespace mkc_timeseries
 	mRelativeClose (aTimeSeries.getNumEntries()),
 	mNumElements (aTimeSeries.getNumEntries()),
 	mRandGenerator(),
-	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Prec>> (aTimeSeries.getTimeFrame(),
+	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (aTimeSeries.getTimeFrame(),
 								 aTimeSeries.getVolumeUnits(),
 								 aTimeSeries.getNumEntries()))
     {
@@ -42,7 +42,7 @@ namespace mkc_timeseries
       decimal<Prec> valueOfOne (1.0);
       decimal<Prec> currentOpen(0.0);
       
-      typename OHLCTimeSeries<Prec>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
 
       mRelativeOpen.addElement(valueOfOne);
       mFirstOpen = mTimeSeries.getOpenValue (it, 0);
@@ -183,7 +183,7 @@ namespace mkc_timeseries
       return mNumElements;
     }
 
-    std::shared_ptr<OHLCTimeSeries<Prec>> getSyntheticTimeSeries() const
+    std::shared_ptr<OHLCTimeSeries<Decimal>> getSyntheticTimeSeries() const
     {
       return mSyntheticTimeSeries;
     }
@@ -226,7 +226,7 @@ namespace mkc_timeseries
     }
 
   private:
-    OHLCTimeSeries<Prec> mTimeSeries;
+    OHLCTimeSeries<Decimal> mTimeSeries;
     VectorDate mDateSeries;
     VectorDecimal<Prec> mRelativeOpen;
     VectorDecimal<Prec> mRelativeHigh;
@@ -235,7 +235,7 @@ namespace mkc_timeseries
     decimal<Prec> mFirstOpen;
     unsigned long mNumElements;
     RandomMersenne mRandGenerator;
-    std::shared_ptr<OHLCTimeSeries<Prec>> mSyntheticTimeSeries;
+    std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;
   };
 
   typedef VectorDecimal<2> TimeSeriesPrec2;

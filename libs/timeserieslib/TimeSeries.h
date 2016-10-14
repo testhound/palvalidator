@@ -476,10 +476,8 @@ namespace mkc_timeseries
 
    */
    
-template <int Prec> class OHLCTimeSeries
+template <class Decimal> class OHLCTimeSeries
   {
-    using Decimal = decimal<Prec>;
-
   public:
     typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>>::iterator TimeSeriesIterator;
     typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstTimeSeriesIterator;
@@ -490,7 +488,7 @@ template <int Prec> class OHLCTimeSeries
     NumericTimeSeries<Decimal> OpenTimeSeries() const
     {
       NumericTimeSeries<Decimal> openSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
+      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
@@ -505,7 +503,7 @@ template <int Prec> class OHLCTimeSeries
     NumericTimeSeries<Decimal> HighTimeSeries() const
     {
       NumericTimeSeries<Decimal> highSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
+      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
@@ -520,7 +518,7 @@ template <int Prec> class OHLCTimeSeries
     NumericTimeSeries<Decimal> LowTimeSeries() const
     {
       NumericTimeSeries<Decimal> lowSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
+      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
@@ -535,7 +533,7 @@ template <int Prec> class OHLCTimeSeries
     NumericTimeSeries<Decimal> CloseTimeSeries() const
     {
       NumericTimeSeries<Decimal> closeSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = beginSortedAccess();
+      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
 
       for (; it != endSortedAccess(); it++)
 	{
@@ -568,7 +566,7 @@ template <int Prec> class OHLCTimeSeries
       mSequentialTimeSeries.reserve(numElements);
     }
 
-    OHLCTimeSeries (const OHLCTimeSeries<Prec>& rhs) 
+    OHLCTimeSeries (const OHLCTimeSeries<Decimal>& rhs) 
       :  mSortedTimeSeries(rhs.mSortedTimeSeries),
 	 mDateToSequentialIndex(rhs.mDateToSequentialIndex),
 	 mSequentialTimeSeries(rhs.mSequentialTimeSeries),
@@ -577,8 +575,8 @@ template <int Prec> class OHLCTimeSeries
 	 mUnitsOfVolume(rhs.mUnitsOfVolume)
     {}
 
-    OHLCTimeSeries<Prec>& 
-    operator=(const OHLCTimeSeries<Prec> &rhs)
+    OHLCTimeSeries<Decimal>& 
+    operator=(const OHLCTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -873,8 +871,8 @@ template <int Prec> class OHLCTimeSeries
     TradingVolume::VolumeUnit mUnitsOfVolume;
   };
 
-  template <int Prec>
-  bool operator==(const OHLCTimeSeries<Prec>& lhs, const OHLCTimeSeries<Prec>& rhs)
+  template <class Decimal>
+  bool operator==(const OHLCTimeSeries<Decimal>& lhs, const OHLCTimeSeries<Decimal>& rhs)
   {
     if (lhs.getNumEntries() != rhs.getNumEntries())
       return false;
@@ -885,8 +883,8 @@ template <int Prec> class OHLCTimeSeries
     if (lhs.getVolumeUnits() != rhs.getVolumeUnits())
       return false;
 
-    typename OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it1 = lhs.beginSortedAccess();
-    typename OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it2 = rhs.beginSortedAccess();
+    typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it1 = lhs.beginSortedAccess();
+    typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it2 = rhs.beginSortedAccess();
 
     for (; it1 != lhs.endSortedAccess() && it2 != rhs.endSortedAccess(); it1++, it2++)
       {
@@ -897,15 +895,15 @@ template <int Prec> class OHLCTimeSeries
     return true;
   }
 
-  template <int Prec>
-  bool operator!=(const OHLCTimeSeries<Prec>& lhs, const OHLCTimeSeries<Prec>& rhs)
+  template <class Decimal>
+  bool operator!=(const OHLCTimeSeries<Decimal>& lhs, const OHLCTimeSeries<Decimal>& rhs)
   { 
     return !(lhs == rhs); 
   }
 
   // Create a new time series containing entries covered by date range
-  template <int Prec>
-  OHLCTimeSeries<Prec> FilterTimeSeries (const OHLCTimeSeries<Prec>& series, const DateRange& dates)
+  template <class Decimal>
+  OHLCTimeSeries<Decimal> FilterTimeSeries (const OHLCTimeSeries<Decimal>& series, const DateRange& dates)
   {
     boost::gregorian::date firstDate (dates.getFirstDate());
     boost::gregorian::date lastDate (dates.getLastDate());
@@ -921,10 +919,10 @@ template <int Prec> class OHLCTimeSeries
     if (lastDate < series.getFirstDate())
       throw TimeSeriesException("FilterTimeSeries: Cannot create new series that starts before reference series");
 	
-    OHLCTimeSeries<Prec> resultSeries (series.getTimeFrame(), series.getVolumeUnits(),
+    OHLCTimeSeries<Decimal> resultSeries (series.getTimeFrame(), series.getVolumeUnits(),
 				       series.getNumEntries());
 
-    typename OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = series.beginSortedAccess();
+    typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = series.beginSortedAccess();
     if (series.getFirstDate() < firstDate)
       {
 	for (; it != series.endSortedAccess(); it++)

@@ -24,7 +24,7 @@ namespace mkc_timeseries
     TimeSeriesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
 			 TradingVolume::VolumeUnit unitsOfVolume) 
       : mFileName (fileName),
-	mTimeSeries(std::make_shared<OHLCTimeSeries<Prec>> (timeFrame,
+	mTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (timeFrame,
 							unitsOfVolume))
     {}
 
@@ -63,7 +63,7 @@ namespace mkc_timeseries
       mTimeSeries->addEntry(std::move(entry));
     }
 
-    const std::shared_ptr<OHLCTimeSeries<Prec>>& getTimeSeries() const
+    const std::shared_ptr<OHLCTimeSeries<Decimal>>& getTimeSeries() const
     {
       return mTimeSeries;
     }
@@ -112,7 +112,7 @@ namespace mkc_timeseries
 
   private:
     std::string mFileName;
-    std::shared_ptr<OHLCTimeSeries<Prec>> mTimeSeries;
+    std::shared_ptr<OHLCTimeSeries<Decimal>> mTimeSeries;
   };
 
   // Reader for Price Action Lab CSV Formatted Files

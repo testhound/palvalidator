@@ -35,11 +35,11 @@ namespace mkc_timeseries
       using Decimal = decimal<Prec>;
 
     public:
-      typedef typename OHLCTimeSeries<Prec>::ConstRandomAccessIterator ConstRandomAccessIterator;
+      typedef typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator ConstRandomAccessIterator;
 
       Security (const string& securitySymbol, const string& securityName,
 		const decimal<Prec>& bigPointValue, const decimal<Prec>& securityTick,
-		std::shared_ptr<OHLCTimeSeries<Prec>> securityTimeSeries) :
+		std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) :
 	mSecuritySymbol(securitySymbol),
 	mSecurityName(securityName),
 	mBigPointValue(bigPointValue),
@@ -170,35 +170,37 @@ namespace mkc_timeseries
 	return mSecurityTimeSeries->getLastDate();
       }
 
-      std::shared_ptr<OHLCTimeSeries<Prec>> getTimeSeries() const
+      std::shared_ptr<OHLCTimeSeries<Decimal>> getTimeSeries() const
       {
 	return mSecurityTimeSeries;
       }
 
       virtual std::shared_ptr<Security<Prec>> 
-      clone(std::shared_ptr<OHLCTimeSeries<Prec>> securityTimeSeries) const = 0;
+      clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const = 0;
 
     private:
       std::string mSecuritySymbol;
       std::string mSecurityName;
       decimal<Prec> mBigPointValue;
       decimal<Prec> mTick;
-      std::shared_ptr<OHLCTimeSeries<Prec>> mSecurityTimeSeries;
+      std::shared_ptr<OHLCTimeSeries<Decimal>> mSecurityTimeSeries;
       boost::gregorian::date mFirstDate;
   };
 
   template <int Prec>
   class EquitySecurity : public Security<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     EquitySecurity (const string& securitySymbol, const string& securityName,
-		    std::shared_ptr<OHLCTimeSeries<Prec>> securityTimeSeries) 
+		    std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) 
       : Security<Prec> (securitySymbol, securityName, DecimalConstants<Prec>::DecimalOne,
 			DecimalConstants<Prec>::EquityTick, securityTimeSeries)
     {
     }
 
-    std::shared_ptr<Security<Prec>> clone(std::shared_ptr<OHLCTimeSeries<Prec>> securityTimeSeries) const
+    std::shared_ptr<Security<Prec>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
     {
       return std::make_shared<EquitySecurity<Prec>>(this->getSymbol(),
 						    this->getName(),
@@ -237,15 +239,17 @@ namespace mkc_timeseries
   template <int Prec>
   class FuturesSecurity : public Security<Prec>
   {
+    using Decimal = decimal<Prec>;
+
   public:
     FuturesSecurity (const string& securitySymbol, const string& securityName,
 		     const decimal<Prec>& bigPointValue, const decimal<Prec>& securityTick,
-		     std::shared_ptr<OHLCTimeSeries<Prec>> securityTimeSeries)
+		     std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries)
       : Security<Prec> (securitySymbol, securityName, bigPointValue, securityTick,
 		  securityTimeSeries)
     {}
 
-    std::shared_ptr<Security<Prec>> clone(std::shared_ptr<OHLCTimeSeries<Prec>> securityTimeSeries) const
+    std::shared_ptr<Security<Prec>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
     {
       return std::make_shared<FuturesSecurity<Prec>>(this->getSymbol(),
 						     this->getName(),

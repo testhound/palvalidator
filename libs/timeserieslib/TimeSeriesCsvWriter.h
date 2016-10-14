@@ -24,9 +24,11 @@ namespace mkc_timeseries
   template <int Prec>
   class PalTimeSeriesCsvWriter
   {
+    using Decimal = decimal<Prec>;
+
   public:
     PalTimeSeriesCsvWriter (const std::string& fileName, 
-			    const OHLCTimeSeries<Prec>& series)
+			    const OHLCTimeSeries<Decimal>& series)
       : mCsvFile (fileName),
 	mTimeSeries (series)
     {
@@ -54,7 +56,7 @@ namespace mkc_timeseries
 
     void writeFile()
     {
-      typename OHLCTimeSeries<Prec>::ConstTimeSeriesIterator it = 
+      typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = 
 	mTimeSeries.beginSortedAccess();
       boost::gregorian::date timeSeriesDate;
 
@@ -72,7 +74,7 @@ namespace mkc_timeseries
 
   private:
     std::ofstream mCsvFile;
-    OHLCTimeSeries<Prec> mTimeSeries;
+    OHLCTimeSeries<Decimal> mTimeSeries;
   };
 }
 
