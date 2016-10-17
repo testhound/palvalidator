@@ -441,7 +441,7 @@ using boost::accumulators::accumulator_set;
 
       shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
 
-      runner& Runner=getRunner();
+      runner& Runner=runner::instance();
       std::vector<boost::unique_future<void>> errorsVector;
 
       uint32_t i;

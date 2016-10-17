@@ -184,7 +184,7 @@ namespace mkc_timeseries
       unsigned long strategyNumber = 1;
 
       //build thread-pool-runner
-      runner& Runner=getRunner();
+      runner& Runner=runner::instance();
       std::vector<boost::unique_future<void>> resultsOrErrorsVector;
 
       for (; longPatternsIterator != patternsToTest->patternLongsEnd(); longPatternsIterator++)
@@ -477,7 +477,7 @@ namespace mkc_timeseries
       std::string strategyName;
       unsigned long strategyNumber = 1;
 
-      runner& Runner=getRunner();
+      runner& Runner=runner::instance();
       std::vector<boost::unique_future<void>> resultsOrErrorsVector;
 
       for (; longPatternsIterator != patternsToTest->patternLongsEnd(); longPatternsIterator++)

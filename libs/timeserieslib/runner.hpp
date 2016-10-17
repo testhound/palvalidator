@@ -23,9 +23,9 @@ std::size_t getNCpus();
 
 struct runner
 {
-    //constructor. nthreads==0 is for sequential run,
-    //nthreads<2 is adjusted to 2, anything else is taken literally
-    runner(std::size_t nthreads=getNCpus());
+    //constructor. if nthreads==0 the number of threads shall be
+    //determined by the system.
+    runner(std::size_t nthreads);
     //non-copyable object
     runner(const runner&) = delete;
     runner& operator=(const runner&) = delete;
@@ -58,6 +58,14 @@ struct runner
             return std::move(res);
         }
 
+    static runner& instance() {
+      assert(instance_ptr());
+      return *instance_ptr();
+    }
+
+private:
+    static runner*& instance_ptr();
+
 private:
     boost::asio::io_service ios;
     std::shared_ptr<boost::asio::io_service::work> work;
@@ -67,9 +75,4 @@ private:
     void run();
 };
 
-//Meyer's singleton for runner
-//returns a reference to the constructed-once thread pool
-//which can be subsequently reused
-//and then cleaned-up at the end of the program
-runner& getRunner();
 #endif // RUNNER_HPP

@@ -15,22 +15,25 @@ std::size_t getNCpus()
     return hwcpus;
 }
 
+runner*& runner::instance_ptr() {
+  static runner* r = nullptr;
+  return r;
+}
+
 runner::runner(std::size_t nthreads):
     work(std::make_shared<boost::asio::io_service::work>(ios))
 {
+    if(nthreads==0)  nthreads=getNCpus();
 
-    //use 0 to test sequential run == 1 thread in the pool
-    if(nthreads==0)  nthreads=1;
-    //acount for some hardware reporting wrong
-    else if(nthreads<2) nthreads=2;
-
-    nthreads=1;
     std::cerr<<"Starting "<<nthreads<<" threads"<<std::endl;
 
     for(std::size_t i=0;i<nthreads;++i)
     {
         pool.add_thread(new boost::thread(boost::bind(&runner::run,this)));
     }
+
+    assert(instance_ptr() == nullptr && "Only one instance may exist");
+    instance_ptr() = this;
 }
 
 runner::~runner()
@@ -59,12 +62,4 @@ void runner::run()
     {
         std::cerr<<"run "<<e.what()<<std::endl;
     }
-}
-
-
-//Meyer's singleton for runner
-runner& getRunner()
-{
-    static runner Runner;
-    return Runner;
 }

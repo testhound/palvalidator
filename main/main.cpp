@@ -49,12 +49,19 @@ void usage()
 int main(int argc, char **argv)
 {
   std::vector<std::string> v(argv, argv + argc);
-  if (argc == 4)
+  if (argc >= 4)
     {
       std::string configurationFileName (v[1]);
       int numPermutations = std::stoi(v[2]);
       int typeOfPermutationTest = std::stoi(v[3]);
 
+      size_t nthreads = 0; 
+
+      if (argc == 5) {
+        nthreads = std::stoi(v[4]);
+      }
+
+      runner runner_instance(nthreads);
 
       printf ("Number of permutation = %d\n", numPermutations);
 
