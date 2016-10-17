@@ -121,15 +121,15 @@ namespace mkc_timeseries
 	{
 	  mNumWinners++;
 	  mSumWinners += position->getPercentReturn();
-	  mWinnersStats (position->getPercentReturn().getAsDouble());
-	  mWinnersVect.push_back(position->getPercentReturn().getAsDouble());
+	  mWinnersStats (num::to_double(position->getPercentReturn()));
+	  mWinnersVect.push_back(num::to_double(position->getPercentReturn()));
 	}
       else if (position->isLosingPosition())
 	{
 	  mNumLosers++;
 	  mSumLosers += position->getPercentReturn();
-	  mLosersStats (percReturn.getAsDouble());
-	  mLosersVect.push_back(percReturn.abs().getAsDouble());
+	  mLosersStats (num::to_double(percReturn));
+	  mLosersVect.push_back(num::to_double(num::abs(percReturn)));
 	}
       else
 	throw std::logic_error(std::string("ClosedPositionHistory:addClosedPosition - position not winner or lsoer"));
@@ -178,7 +178,7 @@ namespace mkc_timeseries
     Decimal getAverageWinningTrade() const
     {
       if (mNumWinners >= 1)
-	return (decimal_cast<Decimal::decimal_points> (mSumWinners) /decimal_cast<Decimal::decimal_points>(mNumWinners));
+	return (Decimal(mSumWinners) /Decimal(mNumWinners));
       else
 	return (DecimalConstants<Decimal>::DecimalZero);
     }
@@ -218,7 +218,7 @@ namespace mkc_timeseries
     Decimal getAverageLosingTrade() const
     {
       if (mNumLosers >= 1)
-	return (decimal_cast<Decimal::decimal_points> (mSumLosers) /decimal_cast<Decimal::decimal_points>(mNumLosers));
+	return (Decimal(mSumLosers) /Decimal(mNumLosers));
       else
 	return (DecimalConstants<Decimal>::DecimalZero);
     }
@@ -242,7 +242,7 @@ namespace mkc_timeseries
     Decimal getPercentWinners() const
     {
       if (getNumPositions() > 0)
-	return ((decimal_cast<Decimal::decimal_points> (mNumWinners) / decimal_cast<Decimal::decimal_points>(getNumPositions())) * 
+	return ((Decimal(mNumWinners) / Decimal(getNumPositions())) * 
 		DecimalConstants<Decimal>::DecimalOneHundred);
       else
 	return (DecimalConstants<Decimal>::DecimalZero);
@@ -251,7 +251,7 @@ namespace mkc_timeseries
     Decimal getPercentLosers() const
     {
       if (getNumPositions() > 0)
-	return ((decimal_cast<Decimal::decimal_points> (mNumLosers) / decimal_cast<Decimal::decimal_points>(getNumPositions())) * 
+	return ((Decimal(mNumLosers) / Decimal(getNumPositions())) * 
 		DecimalConstants<Decimal>::DecimalOneHundred);
       else
 	return (DecimalConstants<Decimal>::DecimalZero);
@@ -263,7 +263,7 @@ namespace mkc_timeseries
 	{
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
 	    {
-	      Decimal avgLoser = getAverageLosingTrade().abs();
+	      Decimal avgLoser = num::abs(getAverageLosingTrade());
 	      if (avgLoser != DecimalConstants<Decimal>::DecimalZero)
 		return (getAverageWinningTrade() / avgLoser);
 	      else
@@ -308,7 +308,7 @@ namespace mkc_timeseries
 	  if (getMedianLosingTrade() == DecimalConstants<Decimal>::DecimalZero)
 	    return getPayoffRatio();
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
-	    return (getMedianWinningTrade() / getMedianLosingTrade().abs());
+	    return (getMedianWinningTrade() / num::abs(getMedianLosingTrade()));
 	  else if (mNumWinners == 0)
 	    return (DecimalConstants<Decimal>::DecimalZero);
 	  else if (mNumLosers == 0)
@@ -338,7 +338,7 @@ namespace mkc_timeseries
 
 	    Decimal denominator = (((Decimal(mNumLosers) +
 					      DecimalSqrtConstants<Decimal>::getSqrt (mNumLosers))/numTrades)
-					      * getMedianLosingTrade().abs());
+					      * num::abs(getMedianLosingTrade()));
 
 	    if (denominator == DecimalConstants<Decimal>::DecimalZero)
 	      return numerator;
@@ -354,7 +354,7 @@ namespace mkc_timeseries
       if (getNumPositions() > 0)
 	{
 	  if ((mNumWinners >= 1) and (mNumLosers >= 1))
-	    return (mSumWinners / mSumLosers.abs());
+	    return (mSumWinners / num::abs(mSumLosers));
 	  else if (mNumWinners == 0)
 	    return (DecimalConstants<Decimal>::DecimalZero);
 	  else if (mNumLosers == 0)

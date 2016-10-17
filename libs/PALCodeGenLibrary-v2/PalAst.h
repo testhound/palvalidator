@@ -8,13 +8,15 @@
 #include <fstream>
 #include <algorithm>
 #include "decimal.h"
+#include "number.h"
 
 using dec::decimal2;
 using dec::decimal4;
 
-typedef dec::decimal<7> decimal7;
+using decimal7 = num::DefaultNumber;
 
 typedef std::shared_ptr<decimal7> DecimalPtr;
+
 using std::shared_ptr;
 
 class PalCodeGenVisitor;

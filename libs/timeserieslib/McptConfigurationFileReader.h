@@ -15,13 +15,14 @@
 #include "DateRange.h"
 #include "BackTester.h"
 #include "PalAst.h"
+#include "number.h"
 
 namespace mkc_timeseries
 {
   class McptConfigurationFileReaderException : public std::runtime_error
   {
   public:
-  McptConfigurationFileReaderException(const std::string msg) 
+  McptConfigurationFileReaderException(const std::string msg)
     : std::runtime_error(msg)
       {}
 
@@ -35,9 +36,9 @@ namespace mkc_timeseries
   public:
     McptConfiguration (std::shared_ptr<BackTester<Decimal>> aBacktester,
 		       std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
-		       std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity, 
+		       std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
 		       PriceActionLabSystem* patterns,
-		       const DateRange& insampleDateRange, 
+		       const DateRange& insampleDateRange,
 		       const DateRange& oosDateRange)
       : mBacktester (aBacktester),
 	mInSampleBacktester (aInSampleBacktester),
@@ -56,7 +57,7 @@ namespace mkc_timeseries
 	mOosDateRange(rhs.mOosDateRange)
     {}
 
-    McptConfiguration<Decimal>& 
+    McptConfiguration<Decimal>&
     operator=(const McptConfiguration<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -116,12 +117,14 @@ namespace mkc_timeseries
 
   class McptConfigurationFileReader
   {
+    using Decimal = num::DefaultNumber;
+
   public:
     McptConfigurationFileReader (const std::string& configurationFileName);
     ~McptConfigurationFileReader()
       {}
 
-    std::shared_ptr<McptConfiguration<decimal<7>>> readConfigurationFile();
+    std::shared_ptr<McptConfiguration<Decimal>> readConfigurationFile();
 
   private:
     std::string mConfigurationFileName;

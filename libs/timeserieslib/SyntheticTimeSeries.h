@@ -26,7 +26,7 @@ namespace mkc_timeseries
     //using Decimal = BloombergLP::bdldfp::Decimal64;
 
   public:
-    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries) 
+    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries)
       : mTimeSeries(aTimeSeries),
 	mDateSeries (aTimeSeries.getNumEntries()),
 	mNumElements (aTimeSeries.getNumEntries()),
@@ -39,10 +39,10 @@ namespace mkc_timeseries
       mRelativeHigh .reserve(aTimeSeries.getNumEntries());
       mRelativeLow  .reserve(aTimeSeries.getNumEntries());
 	mRelativeClose.reserve(aTimeSeries.getNumEntries());
-    
+
       Decimal valueOfOne (1.0);
       Decimal currentOpen(0.0);
-      
+
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
 
       mRelativeOpen.push_back(valueOfOne);
@@ -59,13 +59,13 @@ namespace mkc_timeseries
 	{
 	  currentOpen = mTimeSeries.getOpenValue (it, 0);
 
-	  mRelativeOpen.push_back(currentOpen / 
+	  mRelativeOpen.push_back(currentOpen /
 				   mTimeSeries.getCloseValue (it, 1));
-	  mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) / 
+	  mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) /
 				   currentOpen) ;
-	  mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) / 
+	  mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) /
 				  currentOpen) ;
-	  mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) / 
+	  mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /
 				    currentOpen) ;
 	  mDateSeries.addElement (mTimeSeries.getDateValue(it,0));
 	}
@@ -84,7 +84,7 @@ namespace mkc_timeseries
 	mSyntheticTimeSeries (rhs.mSyntheticTimeSeries)
       {}
 
-    SyntheticTimeSeries<Decimal>& 
+    SyntheticTimeSeries<Decimal>&
     operator=(const SyntheticTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -100,7 +100,7 @@ namespace mkc_timeseries
       mNumElements = rhs.mNumElements;
       mRandGenerator = rhs.mRandGenerator;
       mSyntheticTimeSeries = rhs.mSyntheticTimeSeries;
-      
+
       return *this;
     }
 
@@ -125,8 +125,8 @@ namespace mkc_timeseries
 
 	  try
 	    {
-	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i), 
-					       syntheticOpen, 
+	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i),
+					       syntheticOpen,
 					       syntheticOpen * mRelativeHigh[i],
 					       syntheticOpen * mRelativeLow[i],
 					       syntheticClose,
@@ -202,7 +202,7 @@ namespace mkc_timeseries
 	  if (j >= i)
 	    j = i - 1;
 	  i = i - 1;
-	
+
         std::swap(mRelativeOpen[i], mRelativeOpen[j]);
 	}
     }

@@ -788,7 +788,7 @@ namespace mkc_timeseries
     Decimal getRobustnessIndex() const
     {
       unsigned long numEntries = getNumEntries();
-      Decimal numEntriesDecimal = decimal_cast<Decimal::decimal_points>((unsigned int) numEntries);
+      Decimal numEntriesDecimal = Decimal((unsigned int) numEntries);
 
       if (numEntries > 0)
 	return (mNumberProfitableResults / numEntriesDecimal) * DecimalConstants<Decimal>::DecimalOneHundred;
@@ -799,7 +799,7 @@ namespace mkc_timeseries
     Decimal getProfitabilityIndex() const
     {
       unsigned long numEntries = getNumEntries();
-      Decimal numEntriesDecimal = decimal_cast<Decimal::decimal_points>((unsigned int) numEntries);
+      Decimal numEntriesDecimal = Decimal((unsigned int) numEntries);
 
       if (numEntries > 0)
 	return (mNumberPALProfitableResults / numEntriesDecimal) * DecimalConstants<Decimal>::DecimalOneHundred;
@@ -848,7 +848,7 @@ namespace mkc_timeseries
 
       if (refPairIterator == endRobustnessTestResults())
 	{
-	  throw RobustnessCalculatorException("isRobust: could not find results for reference pattern with stop = " +toString(originalStop));
+	  throw RobustnessCalculatorException("isRobust: could not find results for reference pattern with stop = " +num::toString(originalStop));
 	}
       if (!isPermutationResultRobust (refPairIterator->second,
 				      requiredProfitability,
@@ -1039,8 +1039,8 @@ namespace mkc_timeseries
     unsigned long getNumNeighboringSignificantResults() const
     {
       Decimal numPermutations = 
-	decimal_cast<Decimal::decimal_points>(mPermutationAttributes->getNumberOfPermutations());
-      Decimal numSignificant7 = decimal_cast<Decimal::decimal_points>(7);
+	Decimal(mPermutationAttributes->getNumberOfPermutations());
+      Decimal numSignificant7 = Decimal(7);
 
       Decimal numSignificant (numPermutations * RobustnessCalculator<Decimal>::TwentyFivePercent);
       if (mDebug)
@@ -1049,7 +1049,8 @@ namespace mkc_timeseries
       if (mPermutationAttributes->getNumberOfPermutations() == 30)
 	numSignificant = numSignificant7;
 
-      return (unsigned long) numSignificant.getAsInteger();
+      //return (unsigned long) numSignificant.getAsInteger();
+      return (unsigned long) num::to_double(numSignificant);
     }
 
     bool equalWithTolerance (const Decimal& referenceValue, 
@@ -1212,8 +1213,8 @@ namespace mkc_timeseries
 				 const Decimal& newStopLoss, 
 				 const Decimal& newProfitTarget)
     {
-      decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) toString(newStopLoss).c_str());
-      decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)toString(newProfitTarget).c_str());
+      decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) num::toString(newStopLoss).c_str());
+      decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)num::toString(newProfitTarget).c_str());
       
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
 	 
@@ -1351,7 +1352,7 @@ namespace mkc_timeseries
     {
       std::shared_ptr<PriceActionLabPattern> originalPattern = mTheStrategy->getPalPattern();
       Decimal originalPatternStop (originalPattern->getStopLossAsDecimal());
-      Decimal permutationIncrement(originalPatternStop / decimal_cast<Decimal::decimal_points>((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
+      Decimal permutationIncrement(originalPatternStop / Decimal((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
       Decimal numProfitablePermutations(DecimalConstants<Decimal>::DecimalZero);
       Decimal requiredPayoffRatio (originalPattern->getPayoffRatio());
       Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
@@ -1405,8 +1406,8 @@ namespace mkc_timeseries
 				 const Decimal& newStopLoss, 
 				 const Decimal& newProfitTarget)
     {
-      decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) toString(newStopLoss).c_str());
-      decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)toString(newProfitTarget).c_str());
+      decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) num::toString(newStopLoss).c_str());
+      decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)num::toString(newProfitTarget).c_str());
       
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
 	 

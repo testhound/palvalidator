@@ -15,6 +15,7 @@
 #include "TradingVolume.h"
 #include "TimeFrame.h"
 #include "decimal.h"
+#include "number.h"
 
 namespace mkc_timeseries
 {
@@ -132,19 +133,19 @@ namespace mkc_timeseries
           mTimeFrame(timeFrame)
       {
         if (high < open)
-        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +dec::toString (high) +std::string(" is less that open of ") +dec::toString (open));
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +num::toString (high) +std::string(" is less that open of ") +num::toString (open));
 
         if (high < low)
-        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +dec::toString (high) +std::string(" is less that low of ") +dec::toString (low));
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +num::toString (high) +std::string(" is less that low of ") +num::toString (low));
 
         if (high < close)
-        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +dec::toString (high) +std::string(" is less that close of ") +dec::toString (close));
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("high of ") +num::toString (high) +std::string(" is less that close of ") +num::toString (close));
 
         if (low > open)
-        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("low of ") +dec::toString (low) +std::string (" is greater than open of ") +dec::toString (open));
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("low of ") +num::toString (low) +std::string (" is greater than open of ") +num::toString (open));
 
         if (low > close)
-        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("low of ") +dec::toString (low) +std::string (" is greater than close of ") +dec::toString (close));
+        throw TimeSeriesEntryException(std::string ("TimeSeriesEntryException: on - ") +boost::gregorian::to_simple_string (mDate) +std::string ("low of ") +num::toString (low) +std::string (" is greater than close of ") +num::toString (close));
 
         if(timeFrame == TimeFrame::WEEKLY)
         {

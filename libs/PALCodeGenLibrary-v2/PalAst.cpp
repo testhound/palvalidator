@@ -420,7 +420,7 @@ ProfitTargetInPercentExpression::hashCode()
   if (result == 0)
     {
       unsigned long long strHashVal = 
-	hash_str (toString (*mProfitTarget).c_str());
+	hash_str (num::toString (*mProfitTarget).c_str());
 
       result = 43;
       result = 97 * result + strHashVal;
@@ -534,7 +534,7 @@ StopLossInPercentExpression::hashCode()
   if (result == 0)
     {
       unsigned long long strHashVal = 
-	hash_str (toString (*mStopLoss).c_str());
+	hash_str (num::toString (*mStopLoss).c_str());
 
       result = 47;
       result = 101 * result + strHashVal;
@@ -825,8 +825,8 @@ PatternDescription::hashCode()
       result = 31 * result + hash_str (mFileName.c_str());
       result = 31 * result + mPatternIndex;
       result = 31 * result + mIndexDate;
-      result = 31 * result + hash_str (toString (*mPercentLong).c_str());
-      result = 31 * result + hash_str (toString (*mPercentShort).c_str());
+      result = 31 * result + hash_str (num::toString (*mPercentLong).c_str());
+      result = 31 * result + hash_str (num::toString (*mPercentShort).c_str());
       result = 31 * result + mNumTrades;
       result = 31 * result + mConsecutiveLosses;
       mComputedHash = result;

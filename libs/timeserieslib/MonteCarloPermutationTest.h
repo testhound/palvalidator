@@ -18,7 +18,6 @@
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/median.hpp>
 #include <boost/accumulators/statistics/count.hpp>
-#include "bdldfp_decimal.h"
 
 #include "runner.hpp"
 
@@ -294,7 +293,7 @@ using boost::accumulators::accumulator_set;
 	  cand_return = DecimalConstants<Decimal>::DecimalZero;
 
 	  for (i = 0; i < numTradingOpportunities; i++)
-	    cand_return += decimal_cast<Decimal::decimal_points> (positionVector[i]) * rawReturnsVector[i];
+	    cand_return += Decimal(positionVector[i]) * rawReturnsVector[i];
 
 	  RandomMersenne randNumGen;
 
@@ -315,9 +314,9 @@ using boost::accumulators::accumulator_set;
 		workSeries[k2] = temp;
 	      } // Shuffling is complete when this loop exits
 
-	      trial_return = 0.0;
+	      trial_return = Decimal(0.0);
 	      for (i = 0; i < numTradingOpportunities; i++) // Compute return for this randomly shuffled system
-		trial_return += decimal_cast<Decimal::decimal_points> (workSeries[i]) * rawReturnsVector[i];
+		trial_return += Decimal(workSeries[i]) * rawReturnsVector[i];
 
 	      if (trial_return >= cand_return) // If this random system beat candidate
 		++count; // Count it
