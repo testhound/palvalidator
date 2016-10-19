@@ -5,11 +5,13 @@
 #include "../TimeSeries.h"
 #include "../TimeSeriesIndicators.h"
 
+#include "number.h"
+
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef decimal<7> EquityType;
+typedef num::DefaultNumber EquityType;
 
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+OHLCTimeSeriesEntry<EquityType>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -17,16 +19,16 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<EquityType> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<EquityType> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<EquityType> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<EquityType> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
+    auto date1  = date (from_undelimited_string(dateString));
+    auto open1  = EquityType(fromString<EquityType>(openPrice));
+    auto high1  = EquityType(fromString<EquityType>(highPrice));
+    auto low1   = EquityType(fromString<EquityType>(lowPrice));
+    auto close1 = EquityType(fromString<EquityType>(closePrice));
+    return OHLCTimeSeriesEntry<EquityType>(date1, open1, high1, low1,
 						close1, vol, TimeFrame::DAILY);
   }
 
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+OHLCTimeSeriesEntry<EquityType>
     createWeeklyEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -34,13 +36,12 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<EquityType> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<EquityType> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<EquityType> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<EquityType> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						   close1, vol, TimeFrame::WEEKLY);
+    auto date1  = date (from_undelimited_string(dateString));
+    auto open1  = EquityType(fromString<EquityType>(openPrice));
+    auto high1  = EquityType(fromString<EquityType>(highPrice));
+    auto low1   = EquityType(fromString<EquityType>(lowPrice));
+    auto close1 = EquityType(fromString<EquityType>(closePrice));
+    return OHLCTimeSeriesEntry<EquityType>(date1, open1, high1, low1, close1, vol, TimeFrame::WEEKLY);
   }
 
 
@@ -66,7 +67,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   auto entry6 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
 				   65899900);
-  OHLCTimeSeries<7> spySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+  OHLCTimeSeries<EquityType> spySeries(TimeFrame::DAILY, TradingVolume::SHARES);
   //TimeSeries<2> spySeries();
   spySeries.addEntry (entry4);
   spySeries.addEntry (entry6);
@@ -77,15 +78,15 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
   spySeries.addEntry (entry0);
 
 
-  NumericTimeSeries<7> closeSeries (spySeries.CloseTimeSeries());
-  NumericTimeSeries<7> openSeries (spySeries.OpenTimeSeries());
-  NumericTimeSeries<7> highSeries (spySeries.HighTimeSeries());
-  NumericTimeSeries<7> lowSeries (spySeries.LowTimeSeries());
-  std::vector<decimal<7>> aVector(lowSeries.getTimeSeriesAsVector());
+  NumericTimeSeries<EquityType> closeSeries (spySeries.CloseTimeSeries());
+  NumericTimeSeries<EquityType> openSeries (spySeries.OpenTimeSeries());
+  NumericTimeSeries<EquityType> highSeries (spySeries.HighTimeSeries());
+  NumericTimeSeries<EquityType> lowSeries (spySeries.LowTimeSeries());
+  std::vector<EquityType> aVector(lowSeries.getTimeSeriesAsVector());
 
-  NumericTimeSeries<7> rocIndicatorSeries (RocSeries<7>(closeSeries, 1));
-  
-  decimal<7> medianValue (mkc_timeseries::Median (closeSeries));
+  NumericTimeSeries<EquityType> rocIndicatorSeries (RocSeries<EquityType>(closeSeries, 1));
+
+  EquityType medianValue (mkc_timeseries::Median (closeSeries));
 
   std::vector<unsigned int> aIntVec;
   aIntVec.push_back(2);
@@ -95,16 +96,16 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
   double dev (MedianAbsoluteDeviation<unsigned int> (aIntVec));
   double dev2 (StandardDeviation<unsigned int> (aIntVec));
 
-  RobustQn<7> qn(rocIndicatorSeries);
-  
+  RobustQn<EquityType> qn(rocIndicatorSeries);
+
   REQUIRE (aVector.size() == lowSeries.getNumEntries());
 
-  CSIExtendedFuturesCsvReader<7> dollarIndexCsvFile ("DX20060R.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  CSIExtendedFuturesCsvReader<EquityType> dollarIndexCsvFile ("DX20060R.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
   dollarIndexCsvFile.readFile();
-  
 
-  std::shared_ptr<OHLCTimeSeries<7>> dollarIndexTimeSeries = dollarIndexCsvFile.getTimeSeries();
-  
+
+  std::shared_ptr<OHLCTimeSeries<EquityType>> dollarIndexTimeSeries = dollarIndexCsvFile.getTimeSeries();
+
   SECTION ("Timeseries size test", "[TimeSeries]")
     {
       REQUIRE (spySeries.getNumEntries() == 7);
@@ -116,13 +117,13 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("Timeseries Median Indicator test", "[TimeSeries]")
     {
-      REQUIRE (medianValue == entry3->getCloseValue());
+      REQUIRE (medianValue == entry3.getCloseValue());
     }
 
   SECTION ("Timeseries Robust Qn Indicator test", "[TimeSeries]")
     {
-      decimal<7> result = qn.getRobustQn();
-      REQUIRE (result > DecimalConstants<7>::DecimalZero);
+      EquityType result = qn.getRobustQn();
+      REQUIRE (result > DecimalConstants<EquityType>::DecimalZero);
     }
 
   SECTION ("TimeSeries Date Filtering test", "[TimeSeries]")
@@ -133,24 +134,24 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
       DateRange range(firstDate, lastDate);
 
-      OHLCTimeSeries<7> filteredSeries (FilterTimeSeries<7>(*dollarIndexTimeSeries, range));
+      OHLCTimeSeries<EquityType> filteredSeries (FilterTimeSeries<EquityType>(*dollarIndexTimeSeries, range));
       REQUIRE (filteredSeries.getFirstDate() == firstDate);
       REQUIRE (filteredSeries.getLastDate() == actualLastDate);
-      
+
     }
 
   SECTION ("TimeSeries Divide test", "[TimeSeries]")
     {
-      NumericTimeSeries<7> divideIndicatorSeries (DivideSeries<7> (closeSeries, openSeries));
+      NumericTimeSeries<EquityType> divideIndicatorSeries (DivideSeries<EquityType> (closeSeries, openSeries));
 
-      NumericTimeSeries<7>::ConstTimeSeriesIterator it = divideIndicatorSeries.beginSortedAccess();
-      NumericTimeSeries<7>::ConstTimeSeriesIterator closeSeriesIterator = closeSeries.beginSortedAccess();
-      NumericTimeSeries<7>::ConstTimeSeriesIterator openSeriesIterator = openSeries.beginSortedAccess();
-      dec::decimal<7> temp;
+      NumericTimeSeries<EquityType>::ConstTimeSeriesIterator it = divideIndicatorSeries.beginSortedAccess();
+      NumericTimeSeries<EquityType>::ConstTimeSeriesIterator closeSeriesIterator = closeSeries.beginSortedAccess();
+      NumericTimeSeries<EquityType>::ConstTimeSeriesIterator openSeriesIterator = openSeries.beginSortedAccess();
+      EquityType temp;
 
       std::cout << "SANITY CHECK!" << std::endl << std::endl;
 
-      for (; ((closeSeriesIterator != closeSeries.endSortedAccess()) && 
+      for (; ((closeSeriesIterator != closeSeries.endSortedAccess()) &&
 	      (openSeriesIterator != openSeries.endSortedAccess())); closeSeriesIterator++, openSeriesIterator++, it++)
 	{
 	  std::cout << "On " << boost::gregorian::to_simple_string (it->first);
@@ -165,17 +166,17 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("Timeseries ROC Indicator test", "[TimeSeries]")
     {
-      decimal<7> rocVal, currVal, prevVal, calcVal;
+      EquityType rocVal, currVal, prevVal, calcVal;
 
-      NumericTimeSeries<7>::ConstRandomAccessIterator closeSeriesIt = closeSeries.beginRandomAccess();
+      NumericTimeSeries<EquityType>::ConstRandomAccessIterator closeSeriesIt = closeSeries.beginRandomAccess();
       closeSeriesIt++;
 
-      NumericTimeSeries<7>::ConstTimeSeriesIterator it = rocIndicatorSeries.beginSortedAccess();
+      NumericTimeSeries<EquityType>::ConstTimeSeriesIterator it = rocIndicatorSeries.beginSortedAccess();
       rocVal = it->second->getValue();
 
       currVal = closeSeries.getValue (closeSeriesIt, 0);
       prevVal = closeSeries.getValue (closeSeriesIt, 1);
-      calcVal = ((currVal / prevVal) - DecimalConstants<7>::DecimalOne) * DecimalConstants<7>::DecimalOneHundred;
+      calcVal = ((currVal / prevVal) - DecimalConstants<EquityType>::DecimalOne) * DecimalConstants<EquityType>::DecimalOneHundred;
       REQUIRE (rocVal == calcVal);
 
       closeSeriesIt++;
@@ -185,39 +186,39 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
       currVal = closeSeries.getValue (closeSeriesIt, 0);
       prevVal = closeSeries.getValue (closeSeriesIt, 1);
-      calcVal = ((currVal / prevVal) - DecimalConstants<7>::DecimalOne) * DecimalConstants<7>::DecimalOneHundred;
+      calcVal = ((currVal / prevVal) - DecimalConstants<EquityType>::DecimalOne) * DecimalConstants<EquityType>::DecimalOneHundred;
       REQUIRE (rocVal == calcVal);
 
     }
 
   SECTION ("TimeSeries getTimeSeriesEntry by date", "TimeSeries]")
     {
-      OHLCTimeSeries<7>::TimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      OHLCTimeSeries<EquityType>::TimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it != spySeries.endSortedAccess());
-      REQUIRE (*it->second == *entry4);
+      REQUIRE (it->second == entry4);
 
-      NumericTimeSeries<7>::TimeSeriesIterator it2 = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<EquityType>::TimeSeriesIterator it2 = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it2 != closeSeries.endSortedAccess());
-      REQUIRE (it2->second->getValue() == entry4->getCloseValue());
+      REQUIRE (it2->second->getValue() == entry4.getCloseValue());
 
-      NumericTimeSeries<7>::TimeSeriesIterator it3 = openSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<EquityType>::TimeSeriesIterator it3 = openSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it3 != openSeries.endSortedAccess());
-      REQUIRE (it3->second->getValue() == entry4->getOpenValue());
+      REQUIRE (it3->second->getValue() == entry4.getOpenValue());
 
-      NumericTimeSeries<7>::TimeSeriesIterator it4 = highSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<EquityType>::TimeSeriesIterator it4 = highSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it4 != highSeries.endSortedAccess());
-      REQUIRE (it4->second->getValue() == entry4->getHighValue());
+      REQUIRE (it4->second->getValue() == entry4.getHighValue());
 
-      NumericTimeSeries<7>::TimeSeriesIterator it5 = lowSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<EquityType>::TimeSeriesIterator it5 = lowSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it5 != lowSeries.endSortedAccess());
-      REQUIRE (it5->second->getValue() == entry4->getLowValue());
+      REQUIRE (it5->second->getValue() == entry4.getLowValue());
     }
 
   SECTION ("TimeSeries getTimeSeriesEntry by date const", "TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstTimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2016, Jan, 4));
+      OHLCTimeSeries<EquityType>::ConstTimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2016, Jan, 4));
       REQUIRE  (it != spySeries.endSortedAccess());
-      REQUIRE (*it->second == *entry2);
+      REQUIRE (it->second == entry2);
 
       it = spySeries.getTimeSeriesEntry(date (2016, Jan, 15));
       REQUIRE  (it == spySeries.endSortedAccess());
@@ -225,16 +226,16 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("TimeSeries getRandomAccessIterator by date const", "TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstRandomAccessIterator it= spySeries.getRandomAccessIterator (date (2016, Jan, 4));
+      OHLCTimeSeries<EquityType>::ConstRandomAccessIterator it= spySeries.getRandomAccessIterator (date (2016, Jan, 4));
       REQUIRE  (it != spySeries.endRandomAccess());
-      REQUIRE (*(*it) == *entry2);
+      REQUIRE ((*it) == entry2);
 
       it= spySeries.getRandomAccessIterator (date (2016, Jan, 18));
       REQUIRE  (it == spySeries.endRandomAccess());
 
       it= spySeries.getRandomAccessIterator (date (2016, Jan, 6));
       REQUIRE  (it != spySeries.endRandomAccess());
-      REQUIRE (*(*it) == *entry0);
+      REQUIRE ((*it) == entry0);
     }
 
   SECTION ("Timeseries date test", "[TimeSeries]")
@@ -248,15 +249,15 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("Timeseries time frame test", "[TimeSeries]")
     {
-      REQUIRE (spySeries.getTimeFrame() == TimeFrame::DAILY); 
-      REQUIRE (closeSeries.getTimeFrame() == TimeFrame::DAILY); 
+      REQUIRE (spySeries.getTimeFrame() == TimeFrame::DAILY);
+      REQUIRE (closeSeries.getTimeFrame() == TimeFrame::DAILY);
     }
 
   SECTION ("Timeseries addEntry timeframe exception test", "[TimeSeries]")
     {
       auto entry = createWeeklyEquityEntry ("20160106", "198.34", "200.06", "197.60",
 					    "198.82", 151566880);
-      REQUIRE_THROWS (spySeries.addEntry (entry));
+      REQUIRE_THROWS (spySeries.addEntry (decltype(entry)(entry)));
      }
 
   SECTION ("Timeseries addEntry existing entry exception test", "[TimeSeries]")
@@ -268,195 +269,195 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("Timeseries RandomAccess Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::RandomAccessIterator it = spySeries.beginRandomAccess();
-      REQUIRE (*(*it) == *entry6);
+      OHLCTimeSeries<EquityType>::RandomAccessIterator it = spySeries.beginRandomAccess();
+      REQUIRE ((*it) == entry6);
       it++;
-      REQUIRE (*(*it) == *entry5);
+      REQUIRE ((*it) == entry5);
       it++;
-      REQUIRE (*(*it) == *entry4);
+      REQUIRE ((*it) == entry4);
       it++;
-      REQUIRE (*(*it) == *entry3);
+      REQUIRE ((*it) == entry3);
       it++;
-      REQUIRE (*(*it) == *entry2);
+      REQUIRE ((*it) == entry2);
       it++;
-      REQUIRE (*(*it) == *entry1);
+      REQUIRE ((*it) == entry1);
     }
 
   SECTION ("Timeseries Const RandomAccess Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstRandomAccessIterator it = spySeries.beginRandomAccess();
-      REQUIRE (*(*it) == *entry6);
+      OHLCTimeSeries<EquityType>::ConstRandomAccessIterator it = spySeries.beginRandomAccess();
+      REQUIRE ((*it) == entry6);
       it++;
-      REQUIRE (*(*it) == *entry5);
+      REQUIRE ((*it) == entry5);
       it++;
-      REQUIRE (*(*it) == *entry4);
+      REQUIRE ((*it) == entry4);
       it++;
-      REQUIRE (*(*it) == *entry3);
+      REQUIRE ((*it) == entry3);
       it++;
-      REQUIRE (*(*it) == *entry2);
+      REQUIRE ((*it) == entry2);
       it++;
-      REQUIRE (*(*it) == *entry1);
+      REQUIRE ((*it) == entry1);
     }
 
 
  SECTION ("Timeseries OHLC test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::RandomAccessIterator it = spySeries.beginRandomAccess();
+      OHLCTimeSeries<EquityType>::RandomAccessIterator it = spySeries.beginRandomAccess();
       it++;
       it++;
       it++;
 
-      std::shared_ptr<decimal<7>> openRef2 = spySeries.getOpen (it, 2);
-      REQUIRE (*openRef2 == *entry5->getOpen());
+      EquityType openRef2 = spySeries.getOpenValue (it, 2);
+      REQUIRE (openRef2 == entry5.getOpenValue());
 
-      std::shared_ptr<decimal<7>> highRef3 = spySeries.getHigh (it, 3);
-      REQUIRE (*highRef3 == *entry6->getHigh());
+      EquityType highRef3 = spySeries.getHighValue (it, 3);
+      REQUIRE (highRef3 == entry6.getHighValue());
 
       it++;
 
-      std::shared_ptr<decimal<7>> lowRef1 = spySeries.getLow (it, 1);
-      REQUIRE (*lowRef1 == *entry3->getLow());
+      EquityType lowRef1 = spySeries.getLowValue (it, 1);
+      REQUIRE (lowRef1 == entry3.getLowValue());
 
-      std::shared_ptr<decimal<7>> closeRef0 = spySeries.getClose (it, 0);
-      REQUIRE (*closeRef0 == *entry2->getClose());
+      EquityType closeRef0 = spySeries.getCloseValue (it, 0);
+      REQUIRE (closeRef0 == entry2.getCloseValue());
 
-      std::shared_ptr<decimal<7>> closeRef2 = spySeries.getClose (it, 2);
-      REQUIRE (*closeRef2 == *entry4->getClose());
+      EquityType closeRef2 = spySeries.getCloseValue (it, 2);
+      REQUIRE (closeRef2 == entry4.getCloseValue());
     }
 
  SECTION ("Timeseries Const OHLC test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstRandomAccessIterator it = spySeries.beginRandomAccess();
+      OHLCTimeSeries<EquityType>::ConstRandomAccessIterator it = spySeries.beginRandomAccess();
       it++;
       it++;
       it++;
 
-      std::shared_ptr<decimal<7>> openRef2 = spySeries.getOpen (it, 2);
-      REQUIRE (*openRef2 == *entry5->getOpen());
+      EquityType openRef2 = spySeries.getOpenValue (it, 2);
+      REQUIRE (openRef2 == entry5.getOpenValue());
 
       boost::gregorian::date dateRef2 = spySeries.getDateValue(it, 2);
-      REQUIRE (dateRef2 == entry5->getDateValue());
+      REQUIRE (dateRef2 == entry5.getDateValue());
 
-     std::shared_ptr<decimal<7>> highRef3 = spySeries.getHigh (it, 3);
-      REQUIRE (*highRef3 == *entry6->getHigh());
+      EquityType highRef3 = spySeries.getHighValue (it, 3);
+      REQUIRE (highRef3 == entry6.getHighValue());
 
       it++;
 
-      std::shared_ptr<decimal<7>> lowRef1 = spySeries.getLow (it, 1);
-      REQUIRE (*lowRef1 == *entry3->getLow());
+      EquityType lowRef1 = spySeries.getLowValue (it, 1);
+      REQUIRE (lowRef1 == entry3.getLowValue());
 
-      std::shared_ptr<decimal<7>> closeRef0 = spySeries.getClose (it, 0);
-      REQUIRE (*closeRef0 == *entry2->getClose());
+      EquityType closeRef0 = spySeries.getCloseValue (it, 0);
+      REQUIRE (closeRef0 == entry2.getCloseValue());
 
-      std::shared_ptr<decimal<7>> closeRef2 = spySeries.getClose (it, 2);
-      REQUIRE (*closeRef2 == *entry4->getClose());
+      EquityType closeRef2 = spySeries.getCloseValue (it, 2);
+      REQUIRE (closeRef2 == entry4.getCloseValue());
     }
 
 SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::RandomAccessIterator it = spySeries.beginRandomAccess();
+      OHLCTimeSeries<EquityType>::RandomAccessIterator it = spySeries.beginRandomAccess();
       it++;
       it++;
       it++;
 
-      decimal<7> openRef2 = spySeries.getOpenValue (it, 2);
-      REQUIRE (openRef2 == entry5->getOpenValue());
+      EquityType openRef2 = spySeries.getOpenValue (it, 2);
+      REQUIRE (openRef2 == entry5.getOpenValue());
 
       boost::gregorian::date dateRef2 = spySeries.getDateValue(it, 2);
-      REQUIRE (dateRef2 == entry5->getDateValue());
+      REQUIRE (dateRef2 == entry5.getDateValue());
 
-      decimal<7> highRef3 = spySeries.getHighValue (it, 3);
-      REQUIRE (highRef3 == entry6->getHighValue());
+      EquityType highRef3 = spySeries.getHighValue (it, 3);
+      REQUIRE (highRef3 == entry6.getHighValue());
 
       it++;
 
-      decimal<7> lowRef1 = spySeries.getLowValue (it, 1);
-      REQUIRE (lowRef1 == entry3->getLowValue());
+      EquityType lowRef1 = spySeries.getLowValue (it, 1);
+      REQUIRE (lowRef1 == entry3.getLowValue());
 
-      decimal<7> closeRef0 = spySeries.getCloseValue (it, 0);
-      REQUIRE (closeRef0 == entry2->getCloseValue());
+      EquityType closeRef0 = spySeries.getCloseValue (it, 0);
+      REQUIRE (closeRef0 == entry2.getCloseValue());
 
-      decimal<7> closeRef2 = spySeries.getCloseValue (it, 2);
-      REQUIRE (closeRef2 == entry4->getCloseValue());
+      EquityType closeRef2 = spySeries.getCloseValue (it, 2);
+      REQUIRE (closeRef2 == entry4.getCloseValue());
     }
 
  SECTION ("Timeseries Const Value OHLC test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstRandomAccessIterator it = spySeries.beginRandomAccess();
+      OHLCTimeSeries<EquityType>::ConstRandomAccessIterator it = spySeries.beginRandomAccess();
       it++;
       it++;
       it++;
 
-      decimal<7> openRef2 = spySeries.getOpenValue (it, 2);
-      REQUIRE (openRef2 == entry5->getOpenValue());
+      EquityType openRef2 = spySeries.getOpenValue (it, 2);
+      REQUIRE (openRef2 == entry5.getOpenValue());
 
-      decimal<7> highRef3 = spySeries.getHighValue (it, 3);
-      REQUIRE (highRef3 == entry6->getHighValue());
+      EquityType highRef3 = spySeries.getHighValue (it, 3);
+      REQUIRE (highRef3 == entry6.getHighValue());
 
       it++;
 
-      decimal<7> lowRef1 = spySeries.getLowValue (it, 1);
-      REQUIRE (lowRef1 == entry3->getLowValue());
+      EquityType lowRef1 = spySeries.getLowValue (it, 1);
+      REQUIRE (lowRef1 == entry3.getLowValue());
 
-      decimal<7> closeRef0 = spySeries.getCloseValue (it, 0);
-      REQUIRE (closeRef0 == entry2->getCloseValue());
+      EquityType closeRef0 = spySeries.getCloseValue (it, 0);
+      REQUIRE (closeRef0 == entry2.getCloseValue());
 
-      decimal<7> closeRef2 = spySeries.getCloseValue (it, 2);
-      REQUIRE (closeRef2 == entry4->getCloseValue());
+      EquityType closeRef2 = spySeries.getCloseValue (it, 2);
+      REQUIRE (closeRef2 == entry4.getCloseValue());
     }
 
  SECTION ("Timeseries Const Value OHLC exception tests", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstRandomAccessIterator it = 
+      OHLCTimeSeries<EquityType>::ConstRandomAccessIterator it =
 	spySeries.getRandomAccessIterator (date (2016, Jan, 4));
 
-      decimal<7> closeRef2 = spySeries.getCloseValue (it, 4);
+      EquityType closeRef2 = spySeries.getCloseValue (it, 4);
 
       REQUIRE_THROWS (spySeries.getCloseValue (it, 5));
     }
 
  SECTION ("Timeseries SortedAccess Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::TimeSeriesIterator it = spySeries.beginSortedAccess();
-      REQUIRE (*(it->second) == *entry6);
+      OHLCTimeSeries<EquityType>::TimeSeriesIterator it = spySeries.beginSortedAccess();
+      REQUIRE ((it->second) == entry6);
       it++;
-      REQUIRE (*(it->second) == *entry5);
+      REQUIRE ((it->second) == entry5);
       it++;
-      REQUIRE (*(it->second) == *entry4);
+      REQUIRE ((it->second) == entry4);
       it++;
-      REQUIRE (*(it->second) == *entry3);
+      REQUIRE ((it->second) == entry3);
       it++;
-      REQUIRE (*(it->second) == *entry2);
+      REQUIRE ((it->second) == entry2);
       it++;
-      REQUIRE (*(it->second) == *entry1);
+      REQUIRE ((it->second) == entry1);
     }
 
  SECTION ("Timeseries SortedAccess Const Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<7>::ConstTimeSeriesIterator it = spySeries.beginSortedAccess();
-      REQUIRE (*(it->second) == *entry6);
+      OHLCTimeSeries<EquityType>::ConstTimeSeriesIterator it = spySeries.beginSortedAccess();
+      REQUIRE ((it->second) == entry6);
       it++;
-      REQUIRE (*(it->second) == *entry5);
+      REQUIRE ((it->second) == entry5);
       it++;
-      REQUIRE (*(it->second) == *entry4);
+      REQUIRE ((it->second) == entry4);
       it++;
-      REQUIRE (*(it->second) == *entry3);
+      REQUIRE ((it->second) == entry3);
       it++;
-      REQUIRE (*(it->second) == *entry2);
+      REQUIRE ((it->second) == entry2);
       it++;
-      REQUIRE (*(it->second) == *entry1);
+      REQUIRE ((it->second) == entry1);
     }
 
 
  SECTION("TimeSeries copy construction equality", "[TimeSeries]")
    {
-     OHLCTimeSeries<7> spySeries2(spySeries);
+     OHLCTimeSeries<EquityType> spySeries2(spySeries);
      REQUIRE (spySeries == spySeries2);
    }
 
  SECTION("TimeSeries assignment operator", "[TimeSeries]")
    {
-     OHLCTimeSeries<7> spySeries2(TimeFrame::DAILY, TradingVolume::SHARES);
+     OHLCTimeSeries<EquityType> spySeries2(TimeFrame::DAILY, TradingVolume::SHARES);
 
      spySeries2.addEntry (entry0);
      spySeries2.addEntry (entry1);
@@ -465,7 +466,7 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
      spySeries2.addEntry (entry4);
      spySeries2.addEntry (entry5);
 
-     
+
      REQUIRE (spySeries != spySeries2);
      spySeries = spySeries2;
      REQUIRE (spySeries == spySeries2);
@@ -473,7 +474,7 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
 
 SECTION("TimeSeries inequality", "[TimeSeries]")
    {
-     OHLCTimeSeries<7>  spySeries2(TimeFrame::DAILY, TradingVolume::SHARES);
+     OHLCTimeSeries<EquityType>  spySeries2(TimeFrame::DAILY, TradingVolume::SHARES);
 
      spySeries2.addEntry (entry0);
      spySeries2.addEntry (entry1);

@@ -2,11 +2,12 @@
 
 #include "catch.hpp"
 #include "../MCPTStrategyAttributes.h"
+#include "number.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
+typedef num::DefaultNumber DecimalType;
+typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
 
 DecimalType
 createDecimal(const std::string& valueString)
@@ -15,7 +16,7 @@ createDecimal(const std::string& valueString)
 }
 
 
-std::shared_ptr<EntryType>
+EntryType
     createTimeSeriesEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -23,17 +24,16 @@ std::shared_ptr<EntryType>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+    auto date1 = date (from_undelimited_string(dateString));
+    auto open1 = DecimalType (fromString<DecimalType>(openPrice));
+    auto high1 = DecimalType (fromString<DecimalType>(highPrice));
+    auto low1 = DecimalType (fromString<DecimalType>(lowPrice));
+    auto close1 = DecimalType (fromString<DecimalType>(closePrice));
+    return EntryType(date1, open1, high1, low1, close1, vol, TimeFrame::DAILY);
   }
 
 
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+OHLCTimeSeriesEntry<DecimalType>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -41,12 +41,12 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
+    auto date1 = date (from_undelimited_string(dateString));
+    auto open1 = DecimalType (fromString<DecimalType>(openPrice));
+    auto high1 = DecimalType (fromString<DecimalType>(highPrice));
+    auto low1 = DecimalType (fromString<DecimalType>(lowPrice));
+    auto close1 = DecimalType (fromString<DecimalType>(closePrice));
+    return OHLCTimeSeriesEntry<DecimalType>(date1, open1, high1, low1, 
 						close1, vol, TimeFrame::DAILY);
   }
 
@@ -82,51 +82,51 @@ TEST_CASE ("MCPTStrategyAttributes operations", "[MCPTStrategyAttributes]")
 
   
 
-  auto spySeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::SHARES);
-  spySeries->addEntry(entryLast);
-  spySeries->addEntry(entry8);
-  spySeries->addEntry(entry7);
-  spySeries->addEntry(entry6);
-  spySeries->addEntry(entry5);
-  spySeries->addEntry(entry4);
-  spySeries->addEntry(entry3);
-  spySeries->addEntry(entry2);
-  spySeries->addEntry(entry1);
-  spySeries->addEntry(entry0);
+  auto spySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
+  spySeries->addEntry(decltype(entryLast)(entryLast));
+  spySeries->addEntry(decltype(entry8)(entry8));
+  spySeries->addEntry(decltype(entry7)(entry7));
+  spySeries->addEntry(decltype(entry6)(entry6));
+  spySeries->addEntry(decltype(entry5)(entry5));
+  spySeries->addEntry(decltype(entry4)(entry4));
+  spySeries->addEntry(decltype(entry3)(entry3));
+  spySeries->addEntry(decltype(entry2)(entry2));
+  spySeries->addEntry(decltype(entry1)(entry1));
+  spySeries->addEntry(decltype(entry0)(entry0));
 
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
 
-  auto spy = std::make_shared<EquitySecurity<7>>(equitySymbol, equityName, spySeries);
+  auto spy = std::make_shared<EquitySecurity<DecimalType>>(equitySymbol, equityName, spySeries);
 
   
   
-  MCPTStrategyAttributes<7> attributesLong;
-  MCPTStrategyAttributes<7> attributesShort;
+  MCPTStrategyAttributes<DecimalType> attributesLong;
+  MCPTStrategyAttributes<DecimalType> attributesShort;
   REQUIRE (attributesLong.numTradingOpportunities() == 0);
   REQUIRE (attributesShort.numTradingOpportunities() == 0);
 
-  attributesLong.addFlatPositionBar (spy, entry7->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry6->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry5->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry4->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry3->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry2->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry1->getDateValue());
-  attributesLong.addLongPositionBar (spy, entry0->getDateValue());
-  REQUIRE_THROWS (attributesLong.addLongPositionBar (spy, entry0->getDateValue()));
+  attributesLong.addFlatPositionBar (spy, entry7.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry6.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry5.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry4.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry3.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry2.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry1.getDateValue());
+  attributesLong.addLongPositionBar (spy, entry0.getDateValue());
+  REQUIRE_THROWS (attributesLong.addLongPositionBar (spy, entry0.getDateValue()));
 ;
   REQUIRE (attributesLong.numTradingOpportunities() == 8);
 
-  attributesShort.addFlatPositionBar (spy, entry7->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry6->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry5->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry4->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry3->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry2->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry1->getDateValue());
-  attributesShort.addShortPositionBar (spy, entry0->getDateValue());
-  REQUIRE_THROWS (attributesShort.addShortPositionBar (spy, entry0->getDateValue()));
+  attributesShort.addFlatPositionBar (spy, entry7.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry6.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry5.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry4.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry3.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry2.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry1.getDateValue());
+  attributesShort.addShortPositionBar (spy, entry0.getDateValue());
+  REQUIRE_THROWS (attributesShort.addShortPositionBar (spy, entry0.getDateValue()));
 
   REQUIRE (attributesShort.numTradingOpportunities() == 8);
 
@@ -137,7 +137,7 @@ TEST_CASE ("MCPTStrategyAttributes operations", "[MCPTStrategyAttributes]")
 
   SECTION ("MCPTStrategyAttributes Long PositionDirectionIterator operations");
   {
-     MCPTStrategyAttributes<7>::PositionDirectionIterator it = 
+     MCPTStrategyAttributes<DecimalType>::PositionDirectionIterator it = 
       attributesLong.beginPositionDirection();
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 24));
@@ -162,43 +162,43 @@ TEST_CASE ("MCPTStrategyAttributes operations", "[MCPTStrategyAttributes]")
 
 SECTION ("MCPTStrategyAttributes Long PositionResultsIterator operations");
   {
-     MCPTStrategyAttributes<7>::PositionReturnsIterator it = 
+     MCPTStrategyAttributes<DecimalType>::PositionReturnsIterator it = 
       attributesLong.beginPositionReturns();
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 24));
-    REQUIRE (it->second == calculatePercentReturn (entry8->getCloseValue(),
-						   entry7->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry8.getCloseValue(),
+						   entry7.getCloseValue()));
     //std::cout << "Return 1 " << it->second << std::endl;
     it++;
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 28));
-    REQUIRE (it->second == calculatePercentReturn (entry7->getCloseValue(),
-						   entry6->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry7.getCloseValue(),
+						   entry6.getCloseValue()));
     //std::cout << "Return 2 " << it->second << std::endl;
     it++;
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 29));
-    REQUIRE (it->second == calculatePercentReturn (entry6->getCloseValue(),
-						   entry5->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry6.getCloseValue(),
+						   entry5.getCloseValue()));
     //std::cout << "Return 3 " << it->second << std::endl;
 
     it = attributesLong.endPositionReturns();
     it--;
 
     REQUIRE (it->first == TimeSeriesDate (2016, Jan, 6));
-    REQUIRE (it->second == calculatePercentReturn (entry1->getCloseValue(),
-						   entry0->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry1.getCloseValue(),
+						   entry0.getCloseValue()));
      
     //std::cout << "Return 4 " << it->second << std::endl;
   }
 
   SECTION ("MCPTStrategyAttributes Long Vector position return operations");
   {
-     MCPTStrategyAttributes<7>::PositionReturnsIterator it = 
+     MCPTStrategyAttributes<DecimalType>::PositionReturnsIterator it = 
       attributesLong.beginPositionReturns();
 
-     std::vector<decimal<7>> positionReturnsVector (attributesLong.getPositionReturns());
-     std::vector<decimal<7>>::const_iterator vectorIt = positionReturnsVector.begin();
+     std::vector<DecimalType> positionReturnsVector (attributesLong.getPositionReturns());
+     std::vector<DecimalType>::const_iterator vectorIt = positionReturnsVector.begin();
 
      REQUIRE (it->first == TimeSeriesDate (2015, Dec, 24));
      REQUIRE (it->second == *vectorIt);
@@ -219,7 +219,7 @@ SECTION ("MCPTStrategyAttributes Long PositionResultsIterator operations");
 
   SECTION ("MCPTStrategyAttributes Long PositionDirection vector operations");
   {
-     MCPTStrategyAttributes<7>::PositionDirectionIterator it = 
+     MCPTStrategyAttributes<DecimalType>::PositionDirectionIterator it = 
       attributesLong.beginPositionDirection();
      std::vector<int> positionReturnsVector (attributesLong.getPositionDirection());
      std::vector<int>::const_iterator vectorIt = positionReturnsVector.begin();
@@ -247,7 +247,7 @@ SECTION ("MCPTStrategyAttributes Long PositionResultsIterator operations");
 
  SECTION ("MCPTStrategyAttributes Short PositionDirectionIterator operations");
   {
-     MCPTStrategyAttributes<7>::PositionDirectionIterator it = 
+     MCPTStrategyAttributes<DecimalType>::PositionDirectionIterator it = 
       attributesShort.beginPositionDirection();
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 24));
@@ -271,35 +271,35 @@ SECTION ("MCPTStrategyAttributes Long PositionResultsIterator operations");
 
   SECTION ("MCPTStrategyAttributes Short PositionResultsIterator operations");
   {
-     MCPTStrategyAttributes<7>::PositionReturnsIterator it = 
+     MCPTStrategyAttributes<DecimalType>::PositionReturnsIterator it = 
       attributesShort.beginPositionReturns();
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 24));
 
     // We are flat at this point so don't negate return
-    REQUIRE (it->second == calculatePercentReturn (entry8->getCloseValue(),
-						   entry7->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry8.getCloseValue(),
+						   entry7.getCloseValue()));
     //std::cout << "Short Return 1 " << it->second << std::endl;
     it++;
 
     // We don't negate the returns because during MCPT they are multiplied by -1
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 28));
-    REQUIRE (it->second == calculatePercentReturn (entry7->getCloseValue(),
-						   entry6->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry7.getCloseValue(),
+						   entry6.getCloseValue()));
     //std::cout << "Short Return 2 " << it->second << std::endl;
     it++;
 
     REQUIRE (it->first == TimeSeriesDate (2015, Dec, 29));
-    REQUIRE (it->second == calculatePercentReturn (entry6->getCloseValue(),
-						   entry5->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry6.getCloseValue(),
+						   entry5.getCloseValue()));
     //std::cout << "Short Return 3 " << it->second << std::endl;
 
     it = attributesShort.endPositionReturns();
     it--;
 
     REQUIRE (it->first == TimeSeriesDate (2016, Jan, 6));
-    REQUIRE (it->second == calculatePercentReturn (entry1->getCloseValue(),
-						   entry0->getCloseValue()));
+    REQUIRE (it->second == calculatePercentReturn (entry1.getCloseValue(),
+						   entry0.getCloseValue()));
      
     //std::cout << "Short Return 4 " << it->second << std::endl;
   }

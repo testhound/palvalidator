@@ -6,16 +6,18 @@
 #include "../BoostDateHelper.h"
 #include "../RobustnessTest.h"
 
+#include "number.h"
+
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
+typedef num::DefaultNumber DecimalType;
+typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
 
 
 
 std::string myCornSymbol("C2");
 
-void printPositionHistory(const ClosedPositionHistory<7>& history);
+void printPositionHistory(const ClosedPositionHistory<DecimalType>& history);
 
 DecimalType
 createDecimal(const std::string& valueString)
@@ -23,29 +25,29 @@ createDecimal(const std::string& valueString)
   return fromString<DecimalType>(valueString);
 }
 
-const StrategyBroker<7>& 
-getStrategyBroker(std::shared_ptr<BackTester<7>> backTester)
+const StrategyBroker<DecimalType>&
+getStrategyBroker(std::shared_ptr<BackTester<DecimalType>> backTester)
 {
-  std::shared_ptr<BacktesterStrategy<7>> backTesterStrategy = 
+  std::shared_ptr<BacktesterStrategy<DecimalType>> backTesterStrategy =
     (*(backTester->beginStrategies()));
 
   return backTesterStrategy->getStrategyBroker();
 }
 
-const ClosedPositionHistory<7>& 
-getClosedPositionHistory (std::shared_ptr<BackTester<7>> backtester) 
+const ClosedPositionHistory<DecimalType>&
+getClosedPositionHistory (std::shared_ptr<BackTester<DecimalType>> backtester)
 {
   return getStrategyBroker (backtester).getClosedPositionHistory();
 }
 
-std::shared_ptr<RobustnessTestResult<7>> 
-createRobustnessTestResult(std::shared_ptr<BackTester<7>> backtester)
+std::shared_ptr<RobustnessTestResult<DecimalType>>
+createRobustnessTestResult(std::shared_ptr<BackTester<DecimalType>> backtester)
 {
-  ClosedPositionHistory<7> closedPositions = 
+  ClosedPositionHistory<DecimalType> closedPositions =
     getClosedPositionHistory (backtester);
 
-  return 
-    make_shared<RobustnessTestResult<7>> (closedPositions.getPALProfitability(),
+  return
+    make_shared<RobustnessTestResult<DecimalType>> (closedPositions.getPALProfitability(),
 					  closedPositions.getProfitFactor(),
 					  closedPositions.getNumPositions(),
 					  closedPositions.getPayoffRatio(),
@@ -54,27 +56,27 @@ createRobustnessTestResult(std::shared_ptr<BackTester<7>> backtester)
 }
 
 void
-performOneLongSideTest(RobustnessCalculator<7>& calculator,
-		       std::shared_ptr<BackTester<7>> aBackTester,
-		       std::shared_ptr<PalLongStrategy<7>> aLongStrategy,
-		       std::shared_ptr<AstFactory> aFactory, 
-		       const decimal<7>& aStop,
-		       const decimal<7>& aTarget)
+performOneLongSideTest(RobustnessCalculator<DecimalType>& calculator,
+		       std::shared_ptr<BackTester<DecimalType>> aBackTester,
+		       std::shared_ptr<PalLongStrategy<DecimalType>> aLongStrategy,
+		       std::shared_ptr<AstFactory> aFactory,
+		       const DecimalType& aStop,
+		       const DecimalType& aTarget)
 {
   decimal7 *newStopPtr ;
   decimal7 *newTargetPtr;
-  std::shared_ptr<BackTester<7>> clonedTester;
-  std::shared_ptr<PalLongStrategy<7>> localLongStrategy;
+  std::shared_ptr<BackTester<DecimalType>> clonedTester;
+  std::shared_ptr<PalLongStrategy<DecimalType>> localLongStrategy;
   ProfitTargetInPercentExpression *localProfitTarget;
   StopLossInPercentExpression *localStopLoss;
   std::shared_ptr<PriceActionLabPattern> localClonedPattern;
-  std::shared_ptr<PriceActionLabPattern> aLocalPattern = 
+  std::shared_ptr<PriceActionLabPattern> aLocalPattern =
 	aLongStrategy->getPalPattern();
-  std::shared_ptr<RobustnessTestResult<7>> testResult;
+  std::shared_ptr<RobustnessTestResult<DecimalType>> testResult;
 
-  newStopPtr = 
+  newStopPtr =
     aFactory->getDecimalNumber ((char *) toString(aStop).c_str());
-  newTargetPtr = 
+  newTargetPtr =
     aFactory->getDecimalNumber ((char *) toString(aTarget).c_str());
 
   localProfitTarget = aFactory->getLongProfitTarget (newTargetPtr);
@@ -82,8 +84,8 @@ performOneLongSideTest(RobustnessCalculator<7>& calculator,
 
   localClonedPattern = aLocalPattern->clone (localProfitTarget, localStopLoss);
 
-  localLongStrategy = 
-    make_shared<PalLongStrategy<7>>(aLongStrategy->getStrategyName(),
+  localLongStrategy =
+    make_shared<PalLongStrategy<DecimalType>>(aLongStrategy->getStrategyName(),
 				    localClonedPattern,
 				    aLongStrategy->getPortfolio());
 
@@ -99,27 +101,27 @@ performOneLongSideTest(RobustnessCalculator<7>& calculator,
 }
 
 void
-performOneShortSideTest(RobustnessCalculator<7>& calculator,
-			std::shared_ptr<BackTester<7>> aBackTester,
-			std::shared_ptr<PalShortStrategy<7>> aShortStrategy,
-			std::shared_ptr<AstFactory> aFactory, 
-			const decimal<7>& aStop,
-			const decimal<7>& aTarget)
+performOneShortSideTest(RobustnessCalculator<DecimalType>& calculator,
+			std::shared_ptr<BackTester<DecimalType>> aBackTester,
+			std::shared_ptr<PalShortStrategy<DecimalType>> aShortStrategy,
+			std::shared_ptr<AstFactory> aFactory,
+			const DecimalType& aStop,
+			const DecimalType& aTarget)
 {
   decimal7 *newStopPtr ;
   decimal7 *newTargetPtr;
-  std::shared_ptr<BackTester<7>> clonedTester;
-  std::shared_ptr<PalShortStrategy<7>> localShortStrategy;
+  std::shared_ptr<BackTester<DecimalType>> clonedTester;
+  std::shared_ptr<PalShortStrategy<DecimalType>> localShortStrategy;
   ProfitTargetInPercentExpression *localProfitTarget;
   StopLossInPercentExpression *localStopLoss;
   std::shared_ptr<PriceActionLabPattern> localClonedPattern;
-  std::shared_ptr<PriceActionLabPattern> aLocalPattern = 
+  std::shared_ptr<PriceActionLabPattern> aLocalPattern =
 	aShortStrategy->getPalPattern();
-  std::shared_ptr<RobustnessTestResult<7>> testResult;
+  std::shared_ptr<RobustnessTestResult<DecimalType>> testResult;
 
-  newStopPtr = 
+  newStopPtr =
     aFactory->getDecimalNumber ((char *) toString(aStop).c_str());
-  newTargetPtr = 
+  newTargetPtr =
     aFactory->getDecimalNumber ((char *) toString(aTarget).c_str());
 
   localProfitTarget = aFactory->getLongProfitTarget (newTargetPtr);
@@ -127,8 +129,8 @@ performOneShortSideTest(RobustnessCalculator<7>& calculator,
 
   localClonedPattern = aLocalPattern->clone (localProfitTarget, localStopLoss);
 
-  localShortStrategy = 
-    make_shared<PalShortStrategy<7>>(aShortStrategy->getStrategyName(),
+  localShortStrategy =
+    make_shared<PalShortStrategy<DecimalType>>(aShortStrategy->getStrategyName(),
 				    localClonedPattern,
 				    aShortStrategy->getPortfolio());
 
@@ -143,7 +145,7 @@ performOneShortSideTest(RobustnessCalculator<7>& calculator,
   calculator.addTestResult (testResult, localClonedPattern);
 }
 
-std::shared_ptr<PALRobustnessPermutationAttributes> 
+std::shared_ptr<PALRobustnessPermutationAttributes>
 getPalPermutationAttributes()
 {
   return std::make_shared<PALRobustnessPermutationAttributes>();
@@ -157,34 +159,34 @@ getStatSignificantAttributes()
 }
 
 
-std::shared_ptr<BackTester<7>> 
-getBackTester(boost::gregorian::date startDate, 
-	      boost::gregorian::date endDate) 
+std::shared_ptr<BackTester<DecimalType>>
+getBackTester(boost::gregorian::date startDate,
+	      boost::gregorian::date endDate)
 {
-  return std::make_shared<DailyBackTester<7>>(startDate, endDate);
+  return std::make_shared<DailyBackTester<DecimalType>>(startDate, endDate);
 }
 
-PercentNumber<7>
-createPercentNumber(const decimal<7>& num)
+PercentNumber<DecimalType>
+createPercentNumber(const DecimalType& num)
 {
-  return PercentNumber<7>::createPercentNumber(num);
+  return PercentNumber<DecimalType>::createPercentNumber(num);
 }
 
-PatternRobustnessCriteria<7>
+PatternRobustnessCriteria<DecimalType>
 getPatternRobustness()
 {
-  return PatternRobustnessCriteria<7> (createDecimal("70.0"), 
+  return PatternRobustnessCriteria<DecimalType> (createDecimal("70.0"),
 				       createDecimal("2.0"),
-				       createPercentNumber(createDecimal("2.0")), 
+				       createPercentNumber(createDecimal("2.0")),
 				       createDecimal("0.90"));
 }
 
-PatternRobustnessCriteria<7>
+PatternRobustnessCriteria<DecimalType>
 getPatternRobustness2()
 {
-  return PatternRobustnessCriteria<7> (createDecimal("68.0"), 
+  return PatternRobustnessCriteria<DecimalType> (createDecimal("68.0"),
 				       createDecimal("2.25"),
-				       createPercentNumber(createDecimal("2.0")), 
+				       createPercentNumber(createDecimal("2.0")),
 				       createDecimal("0.80"));
 }
 std::shared_ptr<DecimalType>
@@ -196,7 +198,7 @@ createDecimalPtr(const std::string& valueString)
 DecimalType *
 createRawDecimalPtr(const std::string& valueString)
 {
-  return new dec::decimal<7> (fromString<DecimalType>(valueString));
+  return new DecimalType (fromString<DecimalType>(valueString));
 }
 
 
@@ -207,7 +209,7 @@ date createDate (const std::string& dateString)
 }
 
 PatternDescription *
-createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
+createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
 		   const std::string& percLong, const std::string& percShort,
 		   unsigned int numTrades, unsigned int consecutiveLosses)
 {
@@ -257,7 +259,7 @@ createShortStopLoss(const std::string& targetPct)
 std::shared_ptr<PriceActionLabPattern>
 createShortPattern1()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39, 
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
 					       20111017, std::string("90.00"),
 					       std::string("10.00"), 21, 2);
   // Short pattern
@@ -290,7 +292,7 @@ createShortPattern1()
 std::shared_ptr<PriceActionLabPattern>
 createLongPattern1()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39, 
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
 					       20131217, std::string("90.00"),
 					       std::string("10.00"), 21, 2);
 
@@ -330,12 +332,12 @@ createLongPattern1()
 
   // 2.56 profit target in points = 93.81
   return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
-} 
+}
 
 std::shared_ptr<PriceActionLabPattern>
 createLongPattern2()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106, 
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106,
 					       20110106, std::string("53.33"),
 					       std::string("46.67"), 45, 3);
 
@@ -363,20 +365,20 @@ createLongPattern2()
     MarketEntryExpression *entry = createLongOnOpen();
     ProfitTargetInPercentExpression *target = createLongProfitTarget("5.12");
     StopLossInPercentExpression *stop = createLongStopLoss("2.56");
-  
+
    return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
 }
 
-void printRobustnessTestResult(ProfitTargetStopPair<7> key,
-			       std::shared_ptr<RobustnessTestResult<7>> testResult)
+void printRobustnessTestResult(ProfitTargetStopPair<DecimalType> key,
+			       std::shared_ptr<RobustnessTestResult<DecimalType>> testResult)
 {
   std::cout << key.getProfitTarget() << "," << key.getProtectiveStop() << "," << testResult->getPALProfitability() << "," << testResult->getProfitFactor() << "," << testResult->getNumTrades() << "," << testResult->getPayOffRatio() << std::endl;
 }
 
-void printPositionHistory(const ClosedPositionHistory<7>& history)
+void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
 {
-  ClosedPositionHistory<7>::ConstPositionIterator it = history.beginTradingPositions();
-  std::shared_ptr<TradingPosition<7>> p;
+  ClosedPositionHistory<DecimalType>::ConstPositionIterator it = history.beginTradingPositions();
+  std::shared_ptr<TradingPosition<DecimalType>> p;
   std::string posStateString;
   std::string openStr("Position open");
   std::string closedStr("Position closed");
@@ -405,12 +407,12 @@ void printPositionHistory(const ClosedPositionHistory<7>& history)
 	dirStr = dirStrShort;
 
       std::cout << "Position # " << positionNum << ", " << dirStr << " position state: " << posStateString << std::endl;
-      std::cout << "Position entry date: " << p->getEntryDate() << " entry price: " << 
+      std::cout << "Position entry date: " << p->getEntryDate() << " entry price: " <<
 	p->getEntryPrice() << std::endl;
 
       if (p->isPositionClosed())
 	{
-	  std::cout << "Position exit date: " << p->getExitDate() << " exit price: " << 
+	  std::cout << "Position exit date: " << p->getExitDate() << " exit price: " <<
 	    p->getExitPrice() << std::endl;
 	}
 
@@ -426,59 +428,59 @@ void printPositionHistory(const ClosedPositionHistory<7>& history)
 	}
 
       positionNum++;
-      
+
     }
 }
 
 TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 {
-  PALFormatCsvReader<7> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
   csvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = csvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-  auto corn = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
-						   futuresName, 
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol,
+						   futuresName,
 						   cornBigPointValue,
-						   cornTickValue, 
+						   cornTickValue,
 						   p);
 
   std::string portName("Corn Portfolio");
-  auto aPortfolio = std::make_shared<Portfolio<7>>(portName);
+  auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
 
   aPortfolio->addSecurity (corn);
 
   std::string strategy1Name("PAL Long Strategy 1");
 
- 
-  std::shared_ptr<PalLongStrategy<7>> longStrategy1 = 
-    std::make_shared<PalLongStrategy<7>>(strategy1Name, createLongPattern1(), 
+
+  std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1 =
+    std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(),
 					 aPortfolio);
 
-  std::shared_ptr<PalShortStrategy<7>> shortStrategy1 =
-    std::make_shared<PalShortStrategy<7>>("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
+  std::shared_ptr<PalShortStrategy<DecimalType>> shortStrategy1 =
+    std::make_shared<PalShortStrategy<DecimalType>>("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
 
-  std::shared_ptr<PalLongStrategy<7>> longStrategy2 = 
-    std::make_shared<PalLongStrategy<7>>("PAL Long Strategy 2", createLongPattern2(), 
+  std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy2 =
+    std::make_shared<PalLongStrategy<DecimalType>>("PAL Long Strategy 2", createLongPattern2(),
 					 aPortfolio);
 
   TimeSeriesDate backtestStartDate(TimeSeriesDate (1985, Mar, 19));
   TimeSeriesDate backtestEndDate(TimeSeriesDate (2011, Oct, 27));
 
   auto palPermutationAttributes = getPalPermutationAttributes();
-  auto statPermutationAttributes = getStatSignificantAttributes();   
+  auto statPermutationAttributes = getStatSignificantAttributes();
 
-  PatternRobustnessCriteria<7> standardCriteria(getPatternRobustness());
+  PatternRobustnessCriteria<DecimalType> standardCriteria(getPatternRobustness());
   auto theBacktester = getBackTester(backtestStartDate, backtestEndDate);
 
   //AstFactory factory;
-  
+
   auto factory = std::make_shared<AstFactory>();
 
   SECTION ("PatternRobustness Criteria", "[Pattern Robustness]")
@@ -497,7 +499,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
       REQUIRE (standardCriteria.getToleranceForNumTrades(30) ==
 	       createPercentNumber(createDecimal("2.738613")));
       // Test copy constructor
-      PatternRobustnessCriteria<7> criteria2(standardCriteria);
+      PatternRobustnessCriteria<DecimalType> criteria2(standardCriteria);
       REQUIRE (criteria2.getMinimumRobustnessIndex() ==
 	       createDecimal("70.0"));
       REQUIRE (criteria2.getDesiredProfitFactor() ==
@@ -507,7 +509,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
       REQUIRE (criteria2.getRobustnessTolerance() ==
 	       createPercentNumber(createDecimal("2.0")));
 
-      PatternRobustnessCriteria<7> criteria3(getPatternRobustness2());
+      PatternRobustnessCriteria<DecimalType> criteria3(getPatternRobustness2());
 
       // Test assignment operator
       criteria2 = criteria3;
@@ -543,15 +545,15 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 
   SECTION ("ProfitTargetStopPair", "[ProfitTargetStopPair operations]")
     {
-      ProfitTargetStopPair<7> pair1(createDecimal("2.56"), createDecimal("1.28"));
+      ProfitTargetStopPair<DecimalType> pair1(createDecimal("2.56"), createDecimal("1.28"));
       REQUIRE (pair1.getProfitTarget() == createDecimal("2.56"));
       REQUIRE (pair1.getProtectiveStop() == createDecimal("1.28"));
 
-      ProfitTargetStopPair<7> pair2(createDecimal("1.34"), createDecimal("1.28"));
+      ProfitTargetStopPair<DecimalType> pair2(createDecimal("1.34"), createDecimal("1.28"));
       REQUIRE (pair2.getProfitTarget() == createDecimal("1.34"));
       REQUIRE (pair2.getProtectiveStop() == createDecimal("1.28"));
 
-      ProfitTargetStopPair<7> pair3(pair1);
+      ProfitTargetStopPair<DecimalType> pair3(pair1);
       REQUIRE (pair3.getProfitTarget() == createDecimal("2.56"));
       REQUIRE (pair3.getProtectiveStop() == createDecimal("1.28"));
 
@@ -562,29 +564,29 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 
   SECTION ("ProfitTargetStopComparator", "[ProfitTargetStopComparator operations]")
     {
-      ProfitTargetStopPair<7> pair1(createDecimal("2.56"),
+      ProfitTargetStopPair<DecimalType> pair1(createDecimal("2.56"),
 				    createDecimal("1.28"));
 
-      ProfitTargetStopPair<7> pair2(createDecimal("2.70"),
+      ProfitTargetStopPair<DecimalType> pair2(createDecimal("2.70"),
 				    createDecimal("1.35"));
 
-      ProfitTargetStopPair<7> pair3(createDecimal("2.42"),
+      ProfitTargetStopPair<DecimalType> pair3(createDecimal("2.42"),
 				    createDecimal("1.21"));
 
-      ProfitTargetStopComparator<7> comp1;
+      ProfitTargetStopComparator<DecimalType> comp1;
       REQUIRE (comp1(pair1, pair2));
       REQUIRE_FALSE (comp1(pair1, pair3));
     }
 
   SECTION ("RobustnessTestResult", "[RobustnessTestResult operations]")
     {
-      decimal<7> profitability1(createDecimal("68.00"));
-      decimal<7> profitFactor1(createDecimal("2.30"));
-      decimal<7> payoffRatio1(createDecimal("1.05"));
-      decimal<7> rMultipleExpection1(createDecimal("1.07"));
-      decimal<7> rMultipleExpection2(createDecimal("1.04"));
+      DecimalType profitability1(createDecimal("68.00"));
+      DecimalType profitFactor1(createDecimal("2.30"));
+      DecimalType payoffRatio1(createDecimal("1.05"));
+      DecimalType rMultipleExpection1(createDecimal("1.07"));
+      DecimalType rMultipleExpection2(createDecimal("1.04"));
 
-      RobustnessTestResult<7> result1(profitability1,
+      RobustnessTestResult<DecimalType> result1(profitability1,
 				      profitFactor1,
 				      21,
 				      payoffRatio1,
@@ -597,7 +599,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
       REQUIRE (result1.getPayOffRatio() == payoffRatio1);
       REQUIRE (result1.getRMultipleExpectancy() == rMultipleExpection1);
 
-      RobustnessTestResult<7> result2(result1);
+      RobustnessTestResult<DecimalType> result2(result1);
 
       REQUIRE (result2.getPALProfitability() == profitability1);
       REQUIRE (result2.getProfitFactor() == profitFactor1);
@@ -605,7 +607,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
       REQUIRE (result2.getPayOffRatio() == payoffRatio1);
       REQUIRE (result2.getRMultipleExpectancy() == rMultipleExpection1);
 
-      RobustnessTestResult<7> result3(profitability1,
+      RobustnessTestResult<DecimalType> result3(profitability1,
 				      profitFactor1,
 				      33,
 				      payoffRatio1,
@@ -625,22 +627,22 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
     {
       //std::cout << "In RobustnessCalculator long pattern 1" << std::endl;
 
-      RobustnessCalculator<7> robustCalc (longStrategy1->getPalPattern(), 
+      RobustnessCalculator<DecimalType> robustCalc (longStrategy1->getPalPattern(),
 					  palPermutationAttributes,
 					  standardCriteria);
-      std::shared_ptr<PriceActionLabPattern> pattern = 
+      std::shared_ptr<PriceActionLabPattern> pattern =
 	longStrategy1->getPalPattern();
-      decimal<7> originalStop(pattern->getStopLossAsDecimal());
-      decimal<7> payOffRatio (pattern->getProfitTargetAsDecimal()/
+      DecimalType originalStop(pattern->getStopLossAsDecimal());
+      DecimalType payOffRatio (pattern->getProfitTargetAsDecimal()/
 			      originalStop);
-      decimal<7> divisor(palPermutationAttributes->getPermutationsDivisor());
-      decimal<7> permutationStopInc(originalStop / divisor);
+      DecimalType divisor(palPermutationAttributes->getPermutationsDivisor());
+      DecimalType permutationStopInc(originalStop / divisor);
       uint32_t permsBelowRef(palPermutationAttributes->getNumPermutationsBelowRef());
       uint32_t permsAboveRef(palPermutationAttributes->getNumPermutationsAboveRef());
-      decimal<7> firstStopPermutation(originalStop -
-				      (decimal<7>(permsBelowRef) * permutationStopInc));
-      decimal<7> currentStop (firstStopPermutation);
-      decimal<7> currentTarget (currentStop * payOffRatio);
+      DecimalType firstStopPermutation(originalStop -
+				      (DecimalType(permsBelowRef) * permutationStopInc));
+      DecimalType currentStop (firstStopPermutation);
+      DecimalType currentTarget (currentStop * payOffRatio);
 
       //std::cout << "About to create test results below ref" << std::endl;
 
@@ -672,7 +674,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 	  performOneLongSideTest(robustCalc,
 				 theBacktester,
 				 longStrategy1,
-				 factory, 
+				 factory,
 				 currentStop,
 				 currentTarget);
 
@@ -680,7 +682,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 	  currentTarget = currentStop * payOffRatio;
 	}
 
-      RobustnessCalculator<7>::RobustnessTestResultIterator it = 
+      RobustnessCalculator<DecimalType>::RobustnessTestResultIterator it =
 	robustCalc.beginRobustnessTestResults();
 
       std::cout << "Long pattern 1 Robustness index = " << robustCalc.getRobustnessIndex() << std::endl;
@@ -696,22 +698,22 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
     {
       //std::cout << "In RobustnessCalculator long pattern 2" << std::endl;
 
-      RobustnessCalculator<7> robustCalc (longStrategy2->getPalPattern(), 
+      RobustnessCalculator<DecimalType> robustCalc (longStrategy2->getPalPattern(),
 					  statPermutationAttributes,
 					  standardCriteria);
-      std::shared_ptr<PriceActionLabPattern> pattern = 
+      std::shared_ptr<PriceActionLabPattern> pattern =
 	longStrategy2->getPalPattern();
-      decimal<7> originalStop(pattern->getStopLossAsDecimal());
-      decimal<7> payOffRatio (pattern->getProfitTargetAsDecimal()/
+      DecimalType originalStop(pattern->getStopLossAsDecimal());
+      DecimalType payOffRatio (pattern->getProfitTargetAsDecimal()/
 			      originalStop);
-      decimal<7> divisor(statPermutationAttributes->getPermutationsDivisor());
-      decimal<7> permutationStopInc(originalStop / divisor);
+      DecimalType divisor(statPermutationAttributes->getPermutationsDivisor());
+      DecimalType permutationStopInc(originalStop / divisor);
       uint32_t permsBelowRef(statPermutationAttributes->getNumPermutationsBelowRef());
       uint32_t permsAboveRef(statPermutationAttributes->getNumPermutationsAboveRef());
-      decimal<7> firstStopPermutation(originalStop -
-				      (decimal<7>(permsBelowRef) * permutationStopInc));
-      decimal<7> currentStop (firstStopPermutation);
-      decimal<7> currentTarget (currentStop * payOffRatio);
+      DecimalType firstStopPermutation(originalStop -
+				      (DecimalType(permsBelowRef) * permutationStopInc));
+      DecimalType currentStop (firstStopPermutation);
+      DecimalType currentTarget (currentStop * payOffRatio);
 
       //std::cout << "About to create test results below ref" << std::endl;
 
@@ -743,7 +745,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 	  performOneLongSideTest(robustCalc,
 				 theBacktester,
 				 longStrategy2,
-				 factory, 
+				 factory,
 				 currentStop,
 				 currentTarget);
 
@@ -751,7 +753,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 	  currentTarget = currentStop * payOffRatio;
 	}
 
-      RobustnessCalculator<7>::RobustnessTestResultIterator it = 
+      RobustnessCalculator<DecimalType>::RobustnessTestResultIterator it =
 	robustCalc.beginRobustnessTestResults();
 
       std::cout << "Long pattern 2 Robustness index = " << robustCalc.getRobustnessIndex() << std::endl;
@@ -767,22 +769,22 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
     {
       std::cout << "In RobustnessCalculator short pattern 1" << std::endl;
 
-      RobustnessCalculator<7> robustCalc (shortStrategy1->getPalPattern(), 
+      RobustnessCalculator<DecimalType> robustCalc (shortStrategy1->getPalPattern(),
 					  palPermutationAttributes,
 					  standardCriteria);
-      std::shared_ptr<PriceActionLabPattern> pattern = 
+      std::shared_ptr<PriceActionLabPattern> pattern =
 	shortStrategy1->getPalPattern();
-      decimal<7> originalStop(pattern->getStopLossAsDecimal());
-      decimal<7> payOffRatio (pattern->getProfitTargetAsDecimal()/
+      DecimalType originalStop(pattern->getStopLossAsDecimal());
+      DecimalType payOffRatio (pattern->getProfitTargetAsDecimal()/
 			      originalStop);
-      decimal<7> divisor(palPermutationAttributes->getPermutationsDivisor());
-      decimal<7> permutationStopInc(originalStop / divisor);
+      DecimalType divisor(palPermutationAttributes->getPermutationsDivisor());
+      DecimalType permutationStopInc(originalStop / divisor);
       uint32_t permsBelowRef(palPermutationAttributes->getNumPermutationsBelowRef());
       uint32_t permsAboveRef(palPermutationAttributes->getNumPermutationsAboveRef());
-      decimal<7> firstStopPermutation(originalStop -
-				      (decimal<7>(permsBelowRef) * permutationStopInc));
-      decimal<7> currentStop (firstStopPermutation);
-      decimal<7> currentTarget (currentStop * payOffRatio);
+      DecimalType firstStopPermutation(originalStop -
+				      (DecimalType(permsBelowRef) * permutationStopInc));
+      DecimalType currentStop (firstStopPermutation);
+      DecimalType currentTarget (currentStop * payOffRatio);
 
       //std::cout << "About to create test results below ref" << std::endl;
 
@@ -814,7 +816,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 	  performOneShortSideTest(robustCalc,
 				 theBacktester,
 				 shortStrategy1,
-				 factory, 
+				 factory,
 				 currentStop,
 				 currentTarget);
 
@@ -822,7 +824,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 	  currentTarget = currentStop * payOffRatio;
 	}
 
-      RobustnessCalculator<7>::RobustnessTestResultIterator it = 
+      RobustnessCalculator<DecimalType>::RobustnessTestResultIterator it =
 	robustCalc.beginRobustnessTestResults();
 
       std::cout << "Short Pattern 1 Robustness index = " << robustCalc.getRobustnessIndex() << std::endl;
@@ -842,13 +844,13 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
       //std::cout << "In RobustnessCalculator long pattern 1" << std::endl;
 
 
-      RobustnessTest<7> testRobustness(theBacktester, longStrategy1, 
+      RobustnessTest<DecimalType> testRobustness(theBacktester, longStrategy1,
 				       palPermutationAttributes,
 				       standardCriteria, factory);
 
       testRobustness.runRobustnessTest();
 
-      RobustnessTestMonteCarlo<7> testRobustness2(theBacktester, longStrategy2, 
+      RobustnessTestMonteCarlo<DecimalType> testRobustness2(theBacktester, longStrategy2,
 						 palPermutationAttributes,
 						 standardCriteria, factory);
 

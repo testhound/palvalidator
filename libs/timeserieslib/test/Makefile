@@ -15,96 +15,106 @@ UnitTest: All
 	./StrategyBrokerTest
 	./StrategyTransactionManagerTest
 	./StrategyTransactionTest
-	./TradingOrderManagerTest 
+	./TradingOrderManagerTest
 	./PortfolioTest
 	./SecurityTest
 	./InstrumentPositionManagerTest
-	./InstrumentPositionTest 
+	./InstrumentPositionTest
 	./ProcessStopOrderTest
 	./ProcessLimitOrderTest
 	./BoostDateHelperTest
 	./ProcessMarketOrderTest
 	./StopOrderTest
 	./LimitOrderTest
-	./TradingPositionTest 
-	./MarketOrderTest 
-	./ClosedPositionHistoryTest 
+	./TradingPositionTest
+	./MarketOrderTest
+	./ClosedPositionHistoryTest
 	./OpenPositionTest
 	./OpenPositionHistoryTest
-	./OpenPositionBarTest 
+	./OpenPositionBarTest
 	./StopLossTest
 	./ProfitTargetTest
 	./PercentNumberTest
 	./TimeSeriesCsvReaderTest
 	./TimeSeriesCsvWriterTest
 	./SyntheticTimeSeriesTest
-	./TimeSeriesTest 
+	./TimeSeriesTest
 	./TimeSeriesEntryTest
 
-All: MCPTStrategyAttributesTest LogPalPatternTest RobustnessTesterUnitTest RobustnessTestUnitTest PALMonteCarloValidationTest McptConfigurationFileReaderTest SecurityAttributesFactoryTest SecurityAttributesTest MonteCarloPermutationTest2 BackTesterTest PalStrategyTest SecurityBacktestPropertiesTest PALPatternInterpreterTest StrategyBrokerTest StrategyTransactionManagerTest StrategyTransactionTest TradingOrderManagerTest PortfolioTest SecurityTest InstrumentPositionManagerTest InstrumentPositionTest ProcessStopOrderTest ProcessLimitOrderTest BoostDateHelperTest ProcessMarketOrderTest StopOrderTest LimitOrderTest TradingPositionTest MarketOrderTest ClosedPositionHistoryTest OpenPositionTest OpenPositionHistoryTest OpenPositionBarTest StopLossTest ProfitTargetTest PercentNumberTest TimeSeriesCsvReaderTest TimeSeriesCsvWriterTest SyntheticTimeSeriesTest TimeSeriesTest TimeSeriesEntryTest TradingVolumeTest
+All: LogPalPatternTest MCPTStrategyAttributesTest RobustnessTesterUnitTest RobustnessTestUnitTest TimeSeriesTest
+
+# TODO:
+#All: MCPTStrategyAttributesTest LogPalPatternTest RobustnessTesterUnitTest RobustnessTestUnitTest PALMonteCarloValidationTest McptConfigurationFileReaderTest SecurityAttributesFactoryTest SecurityAttributesTest MonteCarloPermutationTest2 BackTesterTest PalStrategyTest SecurityBacktestPropertiesTest PALPatternInterpreterTest StrategyBrokerTest StrategyTransactionManagerTest StrategyTransactionTest TradingOrderManagerTest PortfolioTest SecurityTest InstrumentPositionManagerTest InstrumentPositionTest ProcessStopOrderTest ProcessLimitOrderTest BoostDateHelperTest ProcessMarketOrderTest StopOrderTest LimitOrderTest TradingPositionTest MarketOrderTest ClosedPositionHistoryTest OpenPositionTest OpenPositionHistoryTest OpenPositionBarTest StopLossTest ProfitTargetTest PercentNumberTest TimeSeriesCsvReaderTest TimeSeriesCsvWriterTest SyntheticTimeSeriesTest TimeSeriesTest TimeSeriesEntryTest TradingVolumeTest
+
+TIMESERIES_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/TimeSeries.cpp.o
+LOG_PAL_PATTERN_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/LogPalPattern.cpp.o
+RUNNER_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/runner.cpp.o
+MCPT_CONF_READER_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/McptConfigurationFileReader.cpp.o
+
+PRICEACTION_LIB_DIR = ../../../build/libs/PALCodeGenLibrary-v2
 
 TradingVolumeTest: TradingVolumeTest.o
-	g++-5 -o TradingVolumeTest ../TimeSeries.o $<
+	g++-5 -o TradingVolumeTest ${TIMESERIES_O} $<
 
 MCPTStrategyAttributesTest: MCPTStrategyAttributesTest.o
-	g++-5 -o MCPTStrategyAttributesTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o MCPTStrategyAttributesTest ${TIMESERIES_O} $< -lboost_date_time -lboost_system
 
 LogPalPatternTest: LogPalPatternTest.o
-	g++-5 -o LogPalPatternTest  $< ../LogPalPattern.o -L/usr/local/lib -lpriceaction2
+	g++-5 -o LogPalPatternTest  $< ${LOG_PAL_PATTERN_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lpriceaction2
 
 RobustnessTesterUnitTest: RobustnessTesterUnitTest.o
-	g++-5 -o RobustnessTesterUnitTest  $< ../TimeSeries.o ../LogPalPattern.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o RobustnessTesterUnitTest  $< ${TIMESERIES_O} ${LOG_PAL_PATTERN_O} ${RUNNER_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lboost_date_time -lpthread  -lboost_thread -lpriceaction2 -lboost_system
 
 RobustnessTestUnitTest: RobustnessTestUnitTest.o
-	g++-5 -o RobustnessTestUnitTest  $< ../TimeSeries.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o RobustnessTestUnitTest  $< ${TIMESERIES_O}  -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
 
-PALMonteCarloValidationTest: PALMonteCarloValidationTest.o ../McptConfigurationFileReader.o
-	g++-5 -o PALMonteCarloValidationTest  -flto $< ../TimeSeries.o ../McptConfigurationFileReader.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lelkhound -lsmbase -lboost_filesystem -lboost_system
+PALMonteCarloValidationTest: PALMonteCarloValidationTest.o ${MCPT_CONF_READER_O}
+	g++-5 -o PALMonteCarloValidationTest  -flto $< ${TIMESERIES_O} -L${PRICEACTION_LIB_DIR} ${MCPT_CONF_READER_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lelkhound -lsmbase -lboost_filesystem -lboost_system
 
-McptConfigurationFileReaderTest: McptConfigurationFileReaderTest.o ../McptConfigurationFileReader.o ../TimeFrameUtility.o
-	g++-5 -o McptConfigurationFileReaderTest  $< ../McptConfigurationFileReader.o ../TimeFrameUtility.o ../TimeSeries.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lelkhound -lsmbase -lboost_filesystem -lboost_system
+McptConfigurationFileReaderTest: McptConfigurationFileReaderTest.o ${MCPT_CONF_READER_O} ../TimeFrameUtility.o
+	g++-5 -o McptConfigurationFileReaderTest  $< ${CMPT_CONF_READER_O} ../TimeFrameUtility.o ${TIMESERIES_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lelkhound -lsmbase -lboost_filesystem -lboost_system
 
 SecurityAttributesFactoryTest: SecurityAttributesFactoryTest.o
 	g++-5 -o SecurityAttributesFactoryTest $< -lboost_date_time
 
 SecurityAttributesTest: SecurityAttributesTest.o
-	g++-5 -o SecurityAttributesTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o SecurityAttributesTest ${TIMESERIES_O} ${MCPT_CONF_READER_O} $< -lboost_date_time
 
 MonteCarloPermutationTest2: MonteCarloPermutationTest2.o
-	g++-5 -o MonteCarloPermutationTest2  $< ../TimeSeries.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o MonteCarloPermutationTest2  $< ${TIMESERIES_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
 
 BackTesterTest: BackTesterTest.o
-	g++-5 -o BackTesterTest  $< ../TimeSeries.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o BackTesterTest  $< ${TIMESERIES_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
 
 PalStrategyTest: PalStrategyTest.o
-	g++-5 -o PalStrategyTest  $< ../TimeSeries.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o PalStrategyTest  $< ${TIMESERIES_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
 
 SecurityBacktestPropertiesTest: SecurityBacktestPropertiesTest.o
-	g++-5 -o SecurityBacktestPropertiesTest ../TimeSeries.o $< -lboost_date_time -lpthread
+	g++-5 -o SecurityBacktestPropertiesTest ${TIMESERIES_O} $< -lboost_date_time -lpthread
 
 PALPatternInterpreterTest: PALPatternInterpreterTest.o
-	g++-5 -o PALPatternInterpreterTest ../TimeSeries.o $< -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o PALPatternInterpreterTest ${TIMESERIES_O} $< -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
 
 StrategyBrokerTest: StrategyBrokerTest.o
-	g++-5 -o StrategyBrokerTest ../TimeSeries.o $< -lboost_date_time -lpthread
+	g++-5 -o StrategyBrokerTest ${TIMESERIES_O} $< -lboost_date_time -lpthread
 
 StrategyTransactionManagerTest: StrategyTransactionManagerTest.o
-	g++-5 -o StrategyTransactionManagerTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o StrategyTransactionManagerTest ${TIMESERIES_O} $< -lboost_date_time
 
 StrategyTransactionTest: StrategyTransactionTest.o
-	g++-5 -o StrategyTransactionTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o StrategyTransactionTest ${TIMESERIES_O} $< -lboost_date_time
 
 TradingOrderManagerTest: TradingOrderManagerTest.o
-	g++-5 -o TradingOrderManagerTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o TradingOrderManagerTest ${TIMESERIES_O} $< -lboost_date_time
 
 PortfolioTest: PortfolioTest.o
-	g++-5 -o PortfolioTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o PortfolioTest ${TIMESERIES_O} $< -lboost_date_time
 
 SecurityTest: SecurityTest.o
-	g++-5 -o SecurityTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o SecurityTest ${TIMESERIES_O} $< -lboost_date_time
 
 InstrumentPositionManagerTest: InstrumentPositionManagerTest.o
-	g++-5 -o InstrumentPositionManagerTest ../TimeSeries.o $< -lboost_date_time
+	g++-5 -o InstrumentPositionManagerTest ${TIMESERIES_O} $< -lboost_date_time
 
 InstrumentPositionTest: InstrumentPositionTest.o
 	g++-5 -o InstrumentPositionTest $< -lboost_date_time
@@ -155,22 +165,22 @@ PercentNumberTest: PercentNumberTest.o
 	g++-5 -o PercentNumberTest $<
 
 TimeSeriesCsvReaderTest: TimeSeriesCsvReaderTest.o
-	g++-5 -o TimeSeriesCsvReaderTest $< ../TimeSeries.o -lboost_date_time -lpthread
+	g++-5 -o TimeSeriesCsvReaderTest $< ${TIMESERIES_O} -lboost_date_time -lpthread
 
 TimeSeriesCsvWriterTest: TimeSeriesCsvWriterTest.o
-	g++-5 -o TimeSeriesCsvWriterTest $< ../TimeSeries.o -lboost_date_time -lpthread
+	g++-5 -o TimeSeriesCsvWriterTest $< ${TIMESERIES_O} -lboost_date_time -lpthread
 
 SyntheticTimeSeriesTest: SyntheticTimeSeriesTest.o
-	g++-5 -o SyntheticTimeSeriesTest $< ../TimeSeries.o -lboost_date_time -lboost_random -lpthread
+	g++-5 -o SyntheticTimeSeriesTest $< ${TIMESERIES_O} -lboost_date_time -lboost_random -lpthread
 
 TimeSeriesTest: TimeSeriesTest.o
-	g++-5 -o TimeSeriesTest $< ../TimeSeries.o -lboost_date_time -lpthread
+	g++-5 -o TimeSeriesTest $< ${TIMESERIES_O} -lboost_date_time -lpthread -lboost_system
 
 TimeSeriesEntryTest: TimeSeriesEntryTest.o
 	g++-5 -o TimeSeriesEntryTest $< -lboost_date_time
 
 TradingVolumeTest.o: ../TradingVolume.h
-MCPTStrategyAttributesTest.o: ../MCPTStrategyAttributes.h 
+MCPTStrategyAttributesTest.o: ../MCPTStrategyAttributes.h
 LogPalPatternTest.o: ../LogPalPattern.h
 RobustnessTesterUnitTest.o: ../RobustnessTester.h ../RobustnessTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
 RobustnessTestUnitTest.o: ../RobustnessTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
@@ -178,7 +188,7 @@ PALMonteCarloValidationTest.o: ../PALMonteCarloValidation.h  ../McptConfiguratio
 McptConfigurationFileReaderTest.o: ../McptConfigurationFileReader.h ../DateRange.h ../BoostDateHelper.h ../Security.h ../TimeSeriesCsvReader.h ../SecurityAttributesFactory.h ../TimeFrameUtility.h
 SecurityAttributesFactoryTest.o: ../SecurityAttributes.h ../SecurityAttributesFactory.h ../decimal.h
 MonteCarloPermutationTest.o: ../MonteCarloPermutationTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
-MonteCarloPermutationTest2.o: ../MonteCarloPermutationTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h 
+MonteCarloPermutationTest2.o: ../MonteCarloPermutationTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
 BackTesterTest.o: ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
 PalStrategyTest.o: ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
 SecurityBacktestPropertiesTest.o: ../SecurityBacktestProperties.h
@@ -218,7 +228,7 @@ TimeSeriesCsvReaderTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSerie
 TimeSeriesCsvWriterTest.o: ../TimeSeriesCsvWriter.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h TimeSeriesCsvWriterTest.cpp
 
 clean:
-	rm *.o 
+	rm *.o
 	rm -f ClosedPositionHistory TimeSeriesTest TimeSeriesEntryTest SyntheticTimeSeriesTest
 	rm -f TimeSeriesCsvReaderTest PercentNumberTest ProfitTargetTest StopLossTest
 	rm -f OpenPositionBarTest OpenPositionHistoryTest OpenPositionTest

@@ -21,7 +21,7 @@ namespace mkc_timeseries
   class TimeSeriesException : public std::runtime_error
   {
   public:
-  TimeSeriesException(const std::string msg) 
+  TimeSeriesException(const std::string msg)
     : std::runtime_error(msg)
       {}
 
@@ -64,7 +64,7 @@ namespace mkc_timeseries
   private:
     unsigned long mOffset;
     static boost::mutex  mOffsetCacheMutex;
-    static std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> mOffsetCache; 
+    static std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> mOffsetCache;
   };
 
   inline bool operator< (const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs)
@@ -146,7 +146,7 @@ namespace mkc_timeseries
     typedef std::map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::iterator RandomAccessIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::const_iterator ConstRandomAccessIterator;
-    
+
     NumericTimeSeries (TimeFrame::Duration timeFrame) :
       mSortedTimeSeries(),
       mDateToSequentialIndex(),
@@ -165,7 +165,7 @@ namespace mkc_timeseries
       mSequentialTimeSeries.reserve(numElements);
     }
 
-    NumericTimeSeries (const NumericTimeSeries<Decimal>& rhs) 
+    NumericTimeSeries (const NumericTimeSeries<Decimal>& rhs)
       :  mSortedTimeSeries(rhs.mSortedTimeSeries),
 	 mDateToSequentialIndex(rhs.mDateToSequentialIndex),
 	 mSequentialTimeSeries(rhs.mSequentialTimeSeries),
@@ -173,7 +173,7 @@ namespace mkc_timeseries
 	 mMapAndArrayInSync (rhs.mMapAndArrayInSync)
     {}
 
-    NumericTimeSeries<Decimal>& 
+    NumericTimeSeries<Decimal>&
     operator=(const NumericTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -266,7 +266,7 @@ namespace mkc_timeseries
     {
       if (isSynchronized() == false)
 	syncronizeMapAndArray();
-	
+
       return mSequentialTimeSeries.begin();
     }
 
@@ -278,7 +278,7 @@ namespace mkc_timeseries
       return mSequentialTimeSeries.end();
     }
 
-    NumericTimeSeries::ConstRandomAccessIterator 
+    NumericTimeSeries::ConstRandomAccessIterator
     getRandomAccessIterator(const boost::gregorian::date& d) const
     {
       if (isSynchronized() == false)
@@ -307,7 +307,7 @@ namespace mkc_timeseries
     NumericTimeSeries::ConstTimeSeriesIterator beginSortedAccess() const
     {
       return mSortedTimeSeries.begin();
-    
+
     }
 
     NumericTimeSeries::ConstReverseTimeSeriesIterator beginReverseSortedAccess() const
@@ -348,7 +348,7 @@ namespace mkc_timeseries
 	throw std::domain_error(std::string("NumericTimeSeries:getLastDate: no entries in time series "));
     }
 
-    void ValidateVectorOffset (const ConstRandomAccessIterator& it, 
+    void ValidateVectorOffset (const ConstRandomAccessIterator& it,
 			       unsigned long offset) const
     {
       ValidateVectorOffset (offset);
@@ -373,7 +373,7 @@ namespace mkc_timeseries
 	throw TimeSeriesException(std::string("NumericTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
     }
 
-    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const RandomAccessIterator& it, 
+    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const RandomAccessIterator& it,
 									     unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
@@ -381,7 +381,7 @@ namespace mkc_timeseries
       return *new_it;
     }
 
-    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
+    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it,
 								      unsigned long offset) const
     {
       ValidateVectorOffset(it, offset);
@@ -413,13 +413,13 @@ namespace mkc_timeseries
       return (*getDate(it, offset));
     }
 
-   const Decimal& getValue (const RandomAccessIterator& it, 
+   const Decimal& getValue (const RandomAccessIterator& it,
 				  unsigned long offset)
     {
       return (getTimeSeriesEntry (it, offset)->getValue());
     }
 
-   const Decimal& getValue (const ConstRandomAccessIterator& it, 
+   const Decimal& getValue (const ConstRandomAccessIterator& it,
 				  unsigned long offset) const
     {
       return (getTimeSeriesEntry (it, offset)->getValue());
@@ -440,7 +440,7 @@ namespace mkc_timeseries
 	  mSequentialTimeSeries.clear();
 	  mDateToSequentialIndex.clear();
 	}
-      
+
       NumericTimeSeries<Decimal>::ConstTimeSeriesIterator pos;
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
@@ -448,7 +448,7 @@ namespace mkc_timeseries
 	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
 	  mSequentialTimeSeries.push_back (pos->second);
 	  index++;
-					
+
 	}
 
       mMapAndArrayInSync = true;
@@ -475,7 +475,7 @@ namespace mkc_timeseries
     class TimeSeries
 
    */
-   
+
 template <class Decimal> class OHLCTimeSeries
   {
   public:
@@ -492,9 +492,9 @@ template <class Decimal> class OHLCTimeSeries
 
       for (; it != endSortedAccess(); it++)
 	{
-	  openSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
-							      it->second->getOpenValue(), 
-							      it->second->getTimeFrame()));
+	  openSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
+							      it->second.getOpenValue(),
+							      it->second.getTimeFrame()));
 	}
 
       return openSeries;
@@ -507,9 +507,9 @@ template <class Decimal> class OHLCTimeSeries
 
       for (; it != endSortedAccess(); it++)
 	{
-	  highSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
-							      it->second->getHighValue(), 
-							      it->second->getTimeFrame()));
+	  highSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
+							      it->second.getHighValue(),
+							      it->second.getTimeFrame()));
 	}
 
       return highSeries;
@@ -522,9 +522,9 @@ template <class Decimal> class OHLCTimeSeries
 
       for (; it != endSortedAccess(); it++)
 	{
-	  lowSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
-							      it->second->getLowValue(), 
-							      it->second->getTimeFrame()));
+	  lowSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
+							      it->second.getLowValue(),
+							      it->second.getTimeFrame()));
 	}
 
       return lowSeries;
@@ -537,9 +537,9 @@ template <class Decimal> class OHLCTimeSeries
 
       for (; it != endSortedAccess(); it++)
 	{
-	  closeSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first, 
-							      it->second->getCloseValue(), 
-							      it->second->getTimeFrame()));
+	  closeSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
+							      it->second.getCloseValue(),
+							      it->second.getTimeFrame()));
 	}
 
       return closeSeries;
@@ -554,7 +554,7 @@ template <class Decimal> class OHLCTimeSeries
       mUnitsOfVolume(unitsOfVolume)
     {}
 
-    OHLCTimeSeries (TimeFrame::Duration timeFrame, TradingVolume::VolumeUnit unitsOfVolume, 
+    OHLCTimeSeries (TimeFrame::Duration timeFrame, TradingVolume::VolumeUnit unitsOfVolume,
 		unsigned long numElements) :
       mSortedTimeSeries(),
       mDateToSequentialIndex(),
@@ -566,7 +566,7 @@ template <class Decimal> class OHLCTimeSeries
       mSequentialTimeSeries.reserve(numElements);
     }
 
-    OHLCTimeSeries (const OHLCTimeSeries<Decimal>& rhs) 
+    OHLCTimeSeries (const OHLCTimeSeries<Decimal>& rhs)
       :  mSortedTimeSeries(rhs.mSortedTimeSeries),
 	 mDateToSequentialIndex(rhs.mDateToSequentialIndex),
 	 mSequentialTimeSeries(rhs.mSequentialTimeSeries),
@@ -575,7 +575,7 @@ template <class Decimal> class OHLCTimeSeries
 	 mUnitsOfVolume(rhs.mUnitsOfVolume)
     {}
 
-    OHLCTimeSeries<Decimal>& 
+    OHLCTimeSeries<Decimal>&
     operator=(const OHLCTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -590,7 +590,7 @@ template <class Decimal> class OHLCTimeSeries
       return *this;
     }
 
-    void addEntry (OHLCTimeSeriesEntry<Decimal>&& entry)
+    void addEntry (OHLCTimeSeriesEntry<Decimal> entry)
     {
       if (entry.getTimeFrame() != getTimeFrame())
 	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry.getDateValue()) + std::string(" time frames do not match")));
@@ -653,7 +653,7 @@ template <class Decimal> class OHLCTimeSeries
     {
       if (isSynchronized() == false)
 	syncronizeMapAndArray();
-	
+
       return mSequentialTimeSeries.begin();
     }
 
@@ -723,7 +723,7 @@ template <class Decimal> class OHLCTimeSeries
 	throw std::domain_error(std::string("OHLCTimeSeries:getLastDate: no entries in time series "));
     }
 
-    void ValidateVectorOffset (const ConstRandomAccessIterator& it, 
+    void ValidateVectorOffset (const ConstRandomAccessIterator& it,
 			       unsigned long offset)
     {
       ValidateVectorOffset (offset);
@@ -748,15 +748,15 @@ template <class Decimal> class OHLCTimeSeries
 	throw TimeSeriesException(std::string("OHLCTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
     }
 
-    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const RandomAccessIterator& it, 
+    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const RandomAccessIterator& it,
 								     unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
       OHLCTimeSeries::RandomAccessIterator new_it = it - offset;
-      return **new_it;
+      return *new_it;
     }
 
-    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
+    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it,
 								      unsigned long offset)
     {
       ValidateVectorOffset(it, offset);
@@ -767,7 +767,7 @@ template <class Decimal> class OHLCTimeSeries
     const boost::gregorian::date&
     getDateValue (const RandomAccessIterator& it, unsigned long offset)
     {
-      return getTimeSeriesEntry (it, offset)->getDateValue();
+      return getTimeSeriesEntry (it, offset).getDateValue();
     }
 
     const boost::gregorian::date&
@@ -776,49 +776,49 @@ template <class Decimal> class OHLCTimeSeries
       return getTimeSeriesEntry (it, offset).getDateValue();
     }
 
-    const Decimal& getOpenValue (const RandomAccessIterator& it, 
+    const Decimal& getOpenValue (const RandomAccessIterator& it,
 				      unsigned long offset)
     {
-      return getTimeSeriesEntry (it, offset)->getOpenValue();
+      return getTimeSeriesEntry (it, offset).getOpenValue();
     }
 
-    const Decimal& getOpenValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getOpenValue (const ConstRandomAccessIterator& it,
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getOpenValue();
     }
 
-    const Decimal& getHighValue (const RandomAccessIterator& it, 
+    const Decimal& getHighValue (const RandomAccessIterator& it,
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getHighValue();
     }
 
-    const Decimal& getHighValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getHighValue (const ConstRandomAccessIterator& it,
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getHighValue();
     }
 
-    const Decimal& getLowValue (const RandomAccessIterator& it, 
+    const Decimal& getLowValue (const RandomAccessIterator& it,
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getLowValue();
     }
 
-    const Decimal& getLowValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getLowValue (const ConstRandomAccessIterator& it,
 				       unsigned long offset)
     {
       return (getTimeSeriesEntry (it, offset).getLowValue());
     }
 
-    const Decimal& getCloseValue (const RandomAccessIterator& it, 
+    const Decimal& getCloseValue (const RandomAccessIterator& it,
 				       unsigned long offset)
     {
-      return getTimeSeriesEntry (it, offset)->getCloseValue();
+      return getTimeSeriesEntry (it, offset).getCloseValue();
     }
 
-    const Decimal& getCloseValue (const ConstRandomAccessIterator& it, 
+    const Decimal& getCloseValue (const ConstRandomAccessIterator& it,
 				       unsigned long offset)
     {
       return getTimeSeriesEntry (it, offset).getCloseValue();
@@ -838,7 +838,7 @@ template <class Decimal> class OHLCTimeSeries
 	  mSequentialTimeSeries.clear();
 	  mDateToSequentialIndex.clear();
 	}
-      
+
       OHLCTimeSeries::TimeSeriesIterator pos;
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
@@ -846,7 +846,7 @@ template <class Decimal> class OHLCTimeSeries
 	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
 	  mSequentialTimeSeries.push_back(pos->second);
 	  index++;
-					
+
 	}
 
       mMapAndArrayInSync = true;
@@ -888,7 +888,7 @@ template <class Decimal> class OHLCTimeSeries
 
     for (; it1 != lhs.endSortedAccess() && it2 != rhs.endSortedAccess(); it1++, it2++)
       {
-	if (*(it1->second) != *(it2->second))
+	if (it1->second != it2->second)
 	  return false;
       }
 
@@ -897,8 +897,8 @@ template <class Decimal> class OHLCTimeSeries
 
   template <class Decimal>
   bool operator!=(const OHLCTimeSeries<Decimal>& lhs, const OHLCTimeSeries<Decimal>& rhs)
-  { 
-    return !(lhs == rhs); 
+  {
+    return !(lhs == rhs);
   }
 
   // Create a new time series containing entries covered by date range
@@ -918,7 +918,7 @@ template <class Decimal> class OHLCTimeSeries
     // Cannot create a new series that starts before the first date of the reference series
     if (lastDate < series.getFirstDate())
       throw TimeSeriesException("FilterTimeSeries: Cannot create new series that starts before reference series");
-	
+
     OHLCTimeSeries<Decimal> resultSeries (series.getTimeFrame(), series.getVolumeUnits(),
 				       series.getNumEntries());
 

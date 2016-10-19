@@ -21,9 +21,9 @@ using namespace boost::accumulators;
 
   // Divides each elementn of series1 by it's corresponding element in series2
 
- template <int Prec>
- NumericTimeSeries<Prec> DivideSeries (const NumericTimeSeries<Prec>& series1, 
-				       const NumericTimeSeries<Prec>& series2)
+ template <class Decimal>
+ NumericTimeSeries<Decimal> DivideSeries (const NumericTimeSeries<Decimal>& series1,
+				       const NumericTimeSeries<Decimal>& series2)
   {
     if (series1.getTimeFrame() != series2.getTimeFrame())
       throw std::domain_error (std::string("DivideSeries:: time frame of two series must be the same"));
@@ -34,22 +34,22 @@ using namespace boost::accumulators;
     unsigned long seriesMin = std::min (series1.getNumEntries(), series2.getNumEntries());
     unsigned long initialEntries = std::max (seriesMin, (unsigned long) 1);
 
-    NumericTimeSeries<Prec> resultSeries(series1.getTimeFrame(), initialEntries);
+    NumericTimeSeries<Decimal> resultSeries(series1.getTimeFrame(), initialEntries);
     TimeFrame::Duration resultTimeFrame = series1.getTimeFrame();
 
-    typename NumericTimeSeries<Prec>::ConstReverseTimeSeriesIterator it1 = series1.beginReverseSortedAccess();
-    typename NumericTimeSeries<Prec>::ConstReverseTimeSeriesIterator it2 = series2.beginReverseSortedAccess();
-    dec::decimal<Prec> temp;
+    typename NumericTimeSeries<Decimal>::ConstReverseTimeSeriesIterator it1 = series1.beginReverseSortedAccess();
+    typename NumericTimeSeries<Decimal>::ConstReverseTimeSeriesIterator it2 = series2.beginReverseSortedAccess();
+    Decimal temp;
 
     for (; ((it1 != series1.endReverseSortedAccess()) && (it2 != series2.endReverseSortedAccess())); it1++, it2++)
       {
 	throw_assert (it1->first == it2->first, "DivideSeries - date1: " +boost::gregorian::to_simple_string (it1->first) +" and date2: " +boost::gregorian::to_simple_string(it2->first) +" are not equal");
-	if (it2->second->getValue() == DecimalConstants<Prec>::DecimalZero)
-	  temp = DecimalConstants<Prec>::DecimalZero;
+	if (it2->second->getValue() == DecimalConstants<Decimal>::DecimalZero)
+	  temp = DecimalConstants<Decimal>::DecimalZero;
 	else
 	  temp = it1->second->getValue() / it2->second->getValue();
 
-	resultSeries.addEntry (NumericTimeSeriesEntry<Prec> (it1->first,
+	resultSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it1->first,
 							     temp,
 							     resultTimeFrame));
       }
@@ -57,21 +57,21 @@ using namespace boost::accumulators;
     return resultSeries;
   }
 
-  template <int Prec>
-  NumericTimeSeries<Prec> RocSeries (const NumericTimeSeries<Prec>& series, uint32_t period)
+  template <class Decimal>
+  NumericTimeSeries<Decimal> RocSeries (const NumericTimeSeries<Decimal>& series, uint32_t period)
   {
     unsigned long initialEntries = std::max (series.getNumEntries() - 1, (unsigned long) 1);
 
-    NumericTimeSeries<Prec> resultSeries(series.getTimeFrame(), initialEntries);
-    typename NumericTimeSeries<Prec>::ConstRandomAccessIterator it = series.beginRandomAccess();
+    NumericTimeSeries<Decimal> resultSeries(series.getTimeFrame(), initialEntries);
+    typename NumericTimeSeries<Decimal>::ConstRandomAccessIterator it = series.beginRandomAccess();
 
     if (series.getNumEntries() < (period + 1))
       return resultSeries;
 
     // Start at second element so we begin the rate of change calculatiom
     it++;
-    decimal<Prec> currentValue, prevValue, rocValue;
-    std::shared_ptr<NumericTimeSeriesEntry<Prec>> p;
+    Decimal currentValue, prevValue, rocValue;
+    std::shared_ptr<NumericTimeSeriesEntry<Decimal>> p;
 
     for (; it != series.endRandomAccess(); it++)
       {
@@ -80,9 +80,9 @@ using namespace boost::accumulators;
 
 	prevValue = series.getValue(it, period);
 
-	rocValue = ((currentValue / prevValue) - DecimalConstants<Prec>::DecimalOne) * 
-	  DecimalConstants<Prec>::DecimalOneHundred;
-	resultSeries.addEntry(NumericTimeSeriesEntry<Prec> (p->getDate(), 
+	rocValue = ((currentValue / prevValue) - DecimalConstants<Decimal>::DecimalOne) *
+	  DecimalConstants<Decimal>::DecimalOneHundred;
+	resultSeries.addEntry(NumericTimeSeriesEntry<Decimal> (p->getDate(),
 							    rocValue,
 							    series.getTimeFrame()));
       }
@@ -92,12 +92,12 @@ using namespace boost::accumulators;
 
   // Calculate median of entire series
 
-  template <int Prec>
-  decimal<Prec> Median(const NumericTimeSeries<Prec>& series)
+  template <class Decimal>
+  Decimal Median(const NumericTimeSeries<Decimal>& series)
   {
-    typedef typename std::vector<decimal<Prec>>::size_type vec_size_type;
+    typedef typename std::vector<Decimal>::size_type vec_size_type;
 
-    std::vector<decimal<Prec>> sortedVector (series.getTimeSeriesAsVector());
+    std::vector<Decimal> sortedVector (series.getTimeSeriesAsVector());
     std::sort (sortedVector.begin(), sortedVector.end());
 
     vec_size_type size = sortedVector.size();
@@ -107,7 +107,7 @@ using namespace boost::accumulators;
     vec_size_type mid = size / 2;
 
     if ((size % 2) == 0)
-      return (sortedVector[mid] + sortedVector[mid - 1])/DecimalConstants<Prec>::DecimalTwo;
+      return (sortedVector[mid] + sortedVector[mid - 1])/DecimalConstants<Decimal>::DecimalTwo;
     else
       return sortedVector[mid];
   }
@@ -135,7 +135,7 @@ using namespace boost::accumulators;
   }
 
   // Calculate standard deviation
-  
+
   template <typename T>
   double StandardDeviation(const std::vector<T>& series)
   {
@@ -162,7 +162,7 @@ using namespace boost::accumulators;
 	double temp;
 
 	std::vector<double> secondMedianVector;
-	  
+
 	for (; it != series.end(); it++)
 	  {
 	    temp = abs ((double) *it - firstMedian);
@@ -226,11 +226,11 @@ using namespace boost::accumulators;
   /* c                    array a of length n */
   /* c */
 
-  template <int Prec>
+  template <class Decimal>
   class RobustQn
   {
   public:
-    RobustQn(const NumericTimeSeries<Prec>& series) :
+    RobustQn(const NumericTimeSeries<Decimal>& series) :
       mNumericSeries (series)
     {}
 
@@ -241,15 +241,15 @@ using namespace boost::accumulators;
     ~RobustQn()
     {}
 
-    decimal<Prec> getRobustQn()
+    Decimal getRobustQn()
     {
-      std::vector<decimal<Prec>> aVector(mNumericSeries.getTimeSeriesAsVector());
+      std::vector<Decimal> aVector(mNumericSeries.getTimeSeriesAsVector());
       long size = (long) aVector.size();
 
       return qn_(aVector.data(), &size);
     }
 
-    decimal<Prec> getRobustQn(std::vector<decimal<Prec>>& inputVec)
+    Decimal getRobustQn(std::vector<Decimal>& inputVec)
     {
       long size = (long) inputVec.size();
 
@@ -257,21 +257,21 @@ using namespace boost::accumulators;
     }
 
   private:
-    decimal<Prec> qn_(decimal<Prec> *x, long int *n)
+    Decimal qn_(Decimal *x, long int *n)
     {
       long int i__1, i__2;
-      decimal<Prec> ret_val;
-      static long int h__, i__, j, k; 
+      Decimal ret_val;
+      static long int h__, i__, j, k;
       long int p[*n], q[*n];
-      decimal<Prec> y[*n];
-      static decimal<Prec> dn;
+      Decimal y[*n];
+      static Decimal dn;
       static long int jj, nl, nr, knew;
       long int left[*n];
-      decimal<Prec> work[*n];
+      Decimal work[*n];
       static long int sump, sumq;
       static long int jhelp;
       static int found;
-      static decimal<Prec> trial;
+      static Decimal trial;
       long int right[*n];
       long int weight[*n];
 
@@ -284,7 +284,7 @@ using namespace boost::accumulators;
       sort_(&x[1], n, y);
       i__1 = *n;
 
-      for (i__ = 1; i__ <= i__1; ++i__) 
+      for (i__ = 1; i__ <= i__1; ++i__)
 	{
 	  left[i__ - 1] = *n - i__ + 2;
 	  right[i__ - 1] = *n;
@@ -297,14 +297,14 @@ using namespace boost::accumulators;
       found = 0;
 
     L200:
-      if (nr - nl > *n && ! found) 
+      if (nr - nl > *n && ! found)
 	{
 	  j = 1;
 	  i__1 = *n;
 
-	  for (i__ = 2; i__ <= i__1; ++i__) 
+	  for (i__ = 2; i__ <= i__1; ++i__)
 	    {
-	      if (left[i__ - 1] <= right[i__ - 1]) 
+	      if (left[i__ - 1] <= right[i__ - 1])
 		{
 		  weight[j - 1] = right[i__ - 1] - left[i__ - 1] + 1;
 		  jhelp = left[i__ - 1] + weight[j - 1] / 2;
@@ -317,10 +317,10 @@ using namespace boost::accumulators;
 	  trial = whimed_(work, weight, &i__1);
 	  j = 0;
 
-	  for (i__ = *n; i__ >= 1; --i__) 
+	  for (i__ = *n; i__ >= 1; --i__)
 	    {
 	    L45:
-	      if (j < *n && y[i__ - 1] - y[*n - j - 1] < trial) 
+	      if (j < *n && y[i__ - 1] - y[*n - j - 1] < trial)
 		{
 		  ++j;
 		  goto L45;
@@ -331,10 +331,10 @@ using namespace boost::accumulators;
 	  j = *n + 1;
 	  i__1 = *n;
 
-	  for (i__ = 1; i__ <= i__1; ++i__) 
+	  for (i__ = 1; i__ <= i__1; ++i__)
 	    {
 	    L55:
-	      if (y[i__ - 1] - y[*n - j + 1] > trial) 
+	      if (y[i__ - 1] - y[*n - j + 1] > trial)
 		{
 		  --j;
 		  goto L55;
@@ -346,35 +346,35 @@ using namespace boost::accumulators;
 	  sumq = 0;
 	  i__1 = *n;
 
-	  for (i__ = 1; i__ <= i__1; ++i__) 
+	  for (i__ = 1; i__ <= i__1; ++i__)
 	    {
 	      sump += p[i__ - 1];
 	      sumq = sumq + q[i__ - 1] - 1;
 	    }
 
-	  if (knew <= sump) 
+	  if (knew <= sump)
 	    {
 	      i__1 = *n;
-	      for (i__ = 1; i__ <= i__1; ++i__) 
+	      for (i__ = 1; i__ <= i__1; ++i__)
 		{
 		  right[i__ - 1] = p[i__ - 1];
 		}
 
 	      nr = sump;
-	    } 
-	  else 
+	    }
+	  else
 	    {
-	      if (knew > sumq) 
+	      if (knew > sumq)
 		{
 		  i__1 = *n;
-		  for (i__ = 1; i__ <= i__1; ++i__) 
+		  for (i__ = 1; i__ <= i__1; ++i__)
 		    {
 		      left[i__ - 1] = q[i__ - 1];
 		    }
 
 		  nl = sumq;
-		} 
-	      else 
+		}
+	      else
 		{
 		  ret_val = trial;
 		  found = 1;
@@ -383,16 +383,16 @@ using namespace boost::accumulators;
 	  goto L200;
 	}
 
-      if (! found) 
+      if (! found)
 	{
 	  j = 1;
 	  i__1 = *n;
-	  for (i__ = 2; i__ <= i__1; ++i__) 
+	  for (i__ = 2; i__ <= i__1; ++i__)
 	    {
-	      if (left[i__ - 1] <= right[i__ - 1]) 
+	      if (left[i__ - 1] <= right[i__ - 1])
 		{
 		  i__2 = right[i__ - 1];
-		  for (jj = left[i__ - 1]; jj <= i__2; ++jj) 
+		  for (jj = left[i__ - 1]; jj <= i__2; ++jj)
 		    {
 		      work[j - 1] = y[i__ - 1] - y[*n - jj];
 		      ++j;
@@ -405,46 +405,46 @@ using namespace boost::accumulators;
 	  ret_val = pull_(work, &i__1, &i__2);
 	}
 
-      if (*n <= 9) 
+      if (*n <= 9)
 	{
 	  if (*n == 2)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.399");
+	    dn = dec::fromString<Decimal>("0.399");
 	  else if (*n == 3)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.994");
+	    dn = dec::fromString<Decimal>("0.994");
 	  else if (*n == 4)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.512");
+	    dn = dec::fromString<Decimal>("0.512");
 	  else if (*n == 5)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.844");
+	    dn = dec::fromString<Decimal>("0.844");
 	  else if (*n == 6)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.611");
+	    dn = dec::fromString<Decimal>("0.611");
 	  else if (*n == 7)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.857");
+	    dn = dec::fromString<Decimal>("0.857");
 	  else if (*n == 8)
-	    dn = dec::fromString<dec::decimal<Prec>>("0.669");
+	    dn = dec::fromString<Decimal>("0.669");
 	  else
-	    dn = dec::fromString<dec::decimal<Prec>>("0.872");
-	} 
-      else 
+	    dn = dec::fromString<Decimal>("0.872");
+	}
+      else
 	{
 	  if (*n % 2 == 1)
-	    dn = decimal_cast<Prec>((int) *n) / (decimal_cast<Prec>((int) *n) + dec::fromString<dec::decimal<Prec>>("1.4"));
+	    dn = Decimal((int) *n) / (Decimal((int) *n) + dec::fromString<Decimal>("1.4"));
 
 	  if (*n % 2 == 0)
-	    dn = decimal_cast<Prec>((int) *n) / (decimal_cast<Prec>((int)*n) + dec::fromString<dec::decimal<Prec>>("3.8"));
+	    dn = Decimal((int) *n) / (Decimal((int)*n) + dec::fromString<Decimal>("3.8"));
 	}
 
-      ret_val = dn * dec::fromString<dec::decimal<Prec>>("2.21914") * ret_val;
+      ret_val = dn * dec::fromString<Decimal>("2.21914") * ret_val;
       return ret_val;
     }
 
-    int sort_(decimal<Prec> *a, long int *n, decimal<Prec> *b)
+    int sort_(Decimal *a, long int *n, Decimal *b)
     {
       long int i__1;
 
       static long int j, jr;
-      static decimal<Prec> xx;
+      static Decimal xx;
       static long int jnc;
-      static decimal<Prec> amm;
+      static Decimal amm;
       static long int jss, jndl, jtwe;
       long int jlv[*n], jrv[*n];
 
@@ -455,7 +455,7 @@ using namespace boost::accumulators;
       --a;
 
       i__1 = *n;
-      for (j = 1; j <= i__1; ++j) 
+      for (j = 1; j <= i__1; ++j)
 	b[j] = a[j];
 
       jss = 1;
@@ -472,20 +472,20 @@ using namespace boost::accumulators;
       xx = b[jtwe];
 
     L30:
-      if (b[jnc] >= xx) 
+      if (b[jnc] >= xx)
 	goto L40;
 
       ++jnc;
       goto L30;
 
     L40:
-      if (xx >= b[j]) 
+      if (xx >= b[j])
 	goto L50;
       --j;
       goto L40;
 
     L50:
-      if (jnc > j) 
+      if (jnc > j)
 	goto L60;
 
       amm = b[jnc];
@@ -495,13 +495,13 @@ using namespace boost::accumulators;
       --j;
 
     L60:
-      if (jnc <= j) 
+      if (jnc <= j)
 	goto L30;
 
-      if (j - jndl < jr - jnc) 
+      if (j - jndl < jr - jnc)
 	goto L80;
 
-      if (jndl >= j) 
+      if (jndl >= j)
 	goto L70;
 
       ++jss;
@@ -533,25 +533,25 @@ using namespace boost::accumulators;
       return 0;
     }
 
-    decimal<Prec> pull_(decimal<Prec> *a, long int *n, long int *k)
+    Decimal pull_(Decimal *a, long int *n, long int *k)
     {
       /* System generated locals */
       long int i__1;
-      decimal<Prec> ret_val;
+      Decimal ret_val;
 
       /* Local variables */
-      decimal<Prec> b[*n];
+      Decimal b[*n];
       static long int j, l;
-      static decimal<Prec> ax;
+      static Decimal ax;
       static long int lr, jnc;
-      static decimal<Prec> buffer;
+      static Decimal buffer;
 
       /* c  Finds the kth order statistic of an array a of length n<=1000 */
       /* Parameter adjustments */
       --a;
 
       i__1 = *n;
-      for (j = 1; j <= i__1; ++j) 
+      for (j = 1; j <= i__1; ++j)
 	{
 	  b[j - 1] = a[j];
 	}
@@ -560,7 +560,7 @@ using namespace boost::accumulators;
       lr = *n;
 
     L20:
-      if (l >= lr) 
+      if (l >= lr)
 	{
 	  goto L90;
 	}
@@ -570,13 +570,13 @@ using namespace boost::accumulators;
       j = lr;
 
     L30:
-      if (jnc > j) 
+      if (jnc > j)
 	{
 	  goto L80;
 	}
 
     L40:
-      if (b[jnc - 1] >= ax) 
+      if (b[jnc - 1] >= ax)
 	{
 	  goto L50;
 	}
@@ -585,7 +585,7 @@ using namespace boost::accumulators;
       goto L40;
 
     L50:
-      if (b[j - 1] <= ax) 
+      if (b[j - 1] <= ax)
 	{
 	  goto L60;
 	}
@@ -593,7 +593,7 @@ using namespace boost::accumulators;
       goto L50;
 
     L60:
-      if (jnc > j) 
+      if (jnc > j)
 	{
 	  goto L70;
 	}
@@ -607,11 +607,11 @@ using namespace boost::accumulators;
       goto L30;
 
     L80:
-      if (j < *k) 
+      if (j < *k)
 	{
 	  l = jnc;
 	}
-      if (*k < jnc) 
+      if (*k < jnc)
 	{
 	  lr = j;
 	}
@@ -640,18 +640,18 @@ using namespace boost::accumulators;
     /* c  The size of acand, iwcand must be at least n. */
     /* c */
 
-    decimal<Prec> whimed_(decimal<Prec> *a, long int *iw, long int *n)
+    Decimal whimed_(Decimal *a, long int *iw, long int *n)
     {
       /* System generated locals */
       long int i__1;
-      decimal<Prec> ret_val;
+      Decimal ret_val;
 
       /* Local variables */
       static long int i__, nn, wmid;
 
-      decimal<Prec> acand[*n];
+      Decimal acand[*n];
       static long int kcand;
-      static decimal<Prec> trial;
+      static Decimal trial;
       static long int wleft, wrest, wright, wtotal;
       long int iwcand[*n];
 
@@ -662,7 +662,7 @@ using namespace boost::accumulators;
       nn = *n;
       wtotal = 0;
       i__1 = nn;
-      for (i__ = 1; i__ <= i__1; ++i__) 
+      for (i__ = 1; i__ <= i__1; ++i__)
 	wtotal += iw[i__];
 
       wrest = 0;
@@ -674,31 +674,31 @@ using namespace boost::accumulators;
       wmid = 0;
       wright = 0;
       i__1 = nn;
-      for (i__ = 1; i__ <= i__1; ++i__) 
+      for (i__ = 1; i__ <= i__1; ++i__)
 	{
-	  if (a[i__] < trial) 
+	  if (a[i__] < trial)
 	    {
 	      wleft += iw[i__];
-	    } 
-	  else 
+	    }
+	  else
 	    {
 	      if (a[i__] > trial) {
 		wright += iw[i__];
-	      } 
-	      else 
+	      }
+	      else
 		{
 		  wmid += iw[i__];
 		}
 	    }
 	}
 
-      if ((wrest << 1) + (wleft << 1) > wtotal) 
+      if ((wrest << 1) + (wleft << 1) > wtotal)
 	{
 	  kcand = 0;
 	  i__1 = nn;
-	  for (i__ = 1; i__ <= i__1; ++i__) 
+	  for (i__ = 1; i__ <= i__1; ++i__)
 	    {
-	      if (a[i__] < trial) 
+	      if (a[i__] < trial)
 		{
 		  ++kcand;
 		  acand[kcand - 1] = a[i__];
@@ -706,21 +706,21 @@ using namespace boost::accumulators;
 		}
 	    }
 	  nn = kcand;
-	} 
-      else 
+	}
+      else
 	{
-	  if ((wrest << 1) + (wleft << 1) + (wmid << 1) > wtotal) 
+	  if ((wrest << 1) + (wleft << 1) + (wmid << 1) > wtotal)
 	    {
 	      ret_val = trial;
 	      return ret_val;
-	    } 
-	  else 
+	    }
+	  else
 	    {
 	      kcand = 0;
 	      i__1 = nn;
-	      for (i__ = 1; i__ <= i__1; ++i__) 
+	      for (i__ = 1; i__ <= i__1; ++i__)
 		{
-		  if (a[i__] > trial) 
+		  if (a[i__] > trial)
 		    {
 		      ++kcand;
 		      acand[kcand - 1] = a[i__];
@@ -735,16 +735,16 @@ using namespace boost::accumulators;
 
       i__1 = nn;
 
-      for (i__ = 1; i__ <= i__1; ++i__) 
+      for (i__ = 1; i__ <= i__1; ++i__)
 	{
 	  a[i__] = acand[i__ - 1];
 	  iw[i__] = iwcand[i__ - 1];
 	}
       goto L100;
-    } 
+    }
 
   private:
-    NumericTimeSeries<Prec> mNumericSeries;
+    NumericTimeSeries<Decimal> mNumericSeries;
   };
 }
 
