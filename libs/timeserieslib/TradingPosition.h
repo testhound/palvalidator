@@ -21,7 +21,6 @@
 #include "DecimalConstants.h"
 #include <atomic>
 
-using dec::decimal;
 using namespace boost::gregorian;
 
 namespace mkc_timeseries

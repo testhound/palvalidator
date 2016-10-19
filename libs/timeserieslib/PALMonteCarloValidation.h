@@ -11,7 +11,7 @@
 #include <list>
 #include <sstream>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 #include "PalStrategy.h"
 #include "BackTester.h"
@@ -23,7 +23,6 @@
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
   using std::list;
   using std::shared_ptr;

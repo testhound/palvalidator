@@ -5,7 +5,7 @@
 #include <list>
 #include <fstream>
 #include <memory>
-#include "decimal.h"
+#include "number.h"
 #include "TSApiDataFile.h"
 #include "TSApiConfiguration.h"
 

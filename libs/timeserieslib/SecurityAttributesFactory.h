@@ -12,7 +12,6 @@
 #include <memory>
 #include "SecurityAttributes.h"
 
-using dec::decimal;
 using std::string;
 
 namespace mkc_timeseries
@@ -298,7 +297,7 @@ namespace mkc_timeseries
  private:
     Decimal createDecimal(const std::string& valueString)
     {
-      return dec::fromString<Decimal>(valueString);
+      return num::fromString<Decimal>(valueString);
     }
 
     void addFuturesAttributes(const std::string& symbol, 

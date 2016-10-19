@@ -8,11 +8,9 @@
 #define __PROFIT_TARGET_H 1
 
 #include <exception>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 #include "PercentNumber.h"
-
-using dec::decimal;
 
 namespace mkc_timeseries
 {

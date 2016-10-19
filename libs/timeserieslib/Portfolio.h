@@ -12,7 +12,6 @@
 #include <map>
 #include "Security.h"
 
-using dec::decimal;
 using std::string;
 using std::map;
 using std::shared_ptr;

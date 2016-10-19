@@ -14,12 +14,10 @@
 #include "BoostDateHelper.h"
 #include "TradingVolume.h"
 #include "TimeFrame.h"
-#include "decimal.h"
 #include "number.h"
 
 namespace mkc_timeseries
 {
-  using namespace dec;
   typedef boost::gregorian::date TimeSeriesDate;
 
   //

@@ -19,7 +19,6 @@
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
 
   class StrategyBrokerException : public std::runtime_error

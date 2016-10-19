@@ -11,10 +11,9 @@
 #include <memory>
 #include <map>
 #include <boost/thread/mutex.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 
-using dec::decimal;
 using std::map;
 using std::shared_ptr;
 
@@ -42,7 +41,7 @@ namespace mkc_timeseries
 
     static const PercentNumber<Decimal> createPercentNumber (const std::string& numberString)
     {
-      Decimal decNum(dec::fromString<Decimal>(numberString));
+      Decimal decNum(num::fromString<Decimal>(numberString));
       return PercentNumber<Decimal>::createPercentNumber (decNum);
     }
 

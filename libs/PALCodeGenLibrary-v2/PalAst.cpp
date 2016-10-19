@@ -3,7 +3,6 @@
 #include <stdio.h>
 
 const int AstFactory::MaxNumBarOffsets;
-using dec::fromString;
 
 unsigned long long hash_str(const char* s);
 
@@ -1275,7 +1274,7 @@ decimal7 * AstFactory::getDecimalNumber (char *numString)
     return (pos->second.get());
   else
     {
-      decimal7 num = fromString<decimal7 >(numString);
+      decimal7 num = num::fromString<decimal7 >(numString);
       DecimalPtr p(new decimal7 (num));
 	
       mDecimalNumMap.insert (std::make_pair(key, p));

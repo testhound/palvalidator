@@ -17,7 +17,6 @@
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
 
   template <class Decimal> class BacktesterStrategy

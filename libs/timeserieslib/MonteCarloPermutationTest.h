@@ -9,7 +9,7 @@
 #include <exception>
 #include <string>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 #include "BackTester.h"
 #include "SyntheticTimeSeries.h"
@@ -23,7 +23,6 @@
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
 
 using boost::accumulators::accumulator_set;

@@ -22,10 +22,17 @@ inline double to_double(DefaultNumber d) {
       return d.getAsDouble();
 }
 
+template<class N>
+inline N fromString(const std::string& s) {
+      return ::dec::fromString<N>(s);
+}
+
 } // num namespace
 
 #else
 
+#include <sstream>
+#include <assert.h>
 #include "bdldfp_decimal.h"
 #include "bdldfp_decimalutil.h"
 #include "bdldfp_decimalconvertutil.h"
@@ -40,6 +47,13 @@ inline std::string toString(DefaultNumber d) {
       return ss.str();
 }
 
+template<class N>
+inline N fromString(const std::string& s) {
+      std::istringstream ss(s);
+      DefaultNumber num;
+      ss >> num;
+      return num;
+}
 
 inline DefaultNumber abs(DefaultNumber d) {
       namespace blm = BloombergLP::bdldfp;

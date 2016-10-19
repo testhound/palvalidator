@@ -8,14 +8,12 @@
 
 #include <exception>
 #include <string>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 #include "BackTester.h"
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
- 
   template <class Decimal> class CumulativeReturnPolicy
     {
     public:

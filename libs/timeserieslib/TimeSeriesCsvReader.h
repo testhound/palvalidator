@@ -13,8 +13,6 @@
 
 namespace mkc_timeseries
 {
-  using namespace dec;
-
   template <class Decimal>
   class TimeSeriesCsvReader
   {
@@ -78,31 +76,31 @@ namespace mkc_timeseries
       if (highPrice < openPrice)
 	{
 	  errorFound = true;
-	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" high of ") +dec::toString (highPrice) +std::string(" is less that open of ") +dec::toString (openPrice) << std::endl;
+	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" high of ") +num::toString (highPrice) +std::string(" is less that open of ") +num::toString (openPrice) << std::endl;
 	}
 
       if (highPrice < lowPrice)
 	{
 	  errorFound = true;
-	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" high of ") +dec::toString (highPrice) +std::string(" is less that low of ") +dec::toString (lowPrice) << std::endl;
+	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" high of ") +num::toString (highPrice) +std::string(" is less that low of ") +num::toString (lowPrice) << std::endl;
 	}
 
       if (highPrice < closePrice)
 	{
 	  errorFound = true;
-	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" high of ") +dec::toString (highPrice) +std::string(" is less that close of ") +dec::toString (closePrice) << std::endl;
+	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" high of ") +num::toString (highPrice) +std::string(" is less that close of ") +num::toString (closePrice) << std::endl;
 	}
 
       if (lowPrice > openPrice)
 	{
 	  errorFound = true;
-	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" low of ") +dec::toString (lowPrice) +std::string (" is greater than open of ") +dec::toString (openPrice) << std::endl;
+	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" low of ") +num::toString (lowPrice) +std::string (" is greater than open of ") +num::toString (openPrice) << std::endl;
 	}
       
       if (lowPrice > closePrice)
 	{
 	  errorFound = true;
-	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" low of ") +dec::toString (lowPrice) +std::string (" is greater than close of ") +dec::toString (closePrice) << std::endl;
+	  std::cout << std::string ("OHLC Error: on - ") +boost::gregorian::to_simple_string (entryDate) +std::string (" low of ") +num::toString (lowPrice) +std::string (" is greater than close of ") +num::toString (closePrice) << std::endl;
 	}
 
       return errorFound;
@@ -156,10 +154,10 @@ namespace mkc_timeseries
       boost::gregorian::date entryDate;
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString))
 	{
-	  openPrice = fromString<Decimal>(openString.c_str());
-	  highPrice = fromString<Decimal>(highString.c_str());
-	  lowPrice = fromString<Decimal>(lowString.c_str());
-	  closePrice = fromString<Decimal>(closeString.c_str());
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice = num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
@@ -225,10 +223,10 @@ namespace mkc_timeseries
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
 			       volString, OIString, rollDateString, unadjustedCloseString))
 	{
-	  openPrice = fromString<Decimal>(openString.c_str());
-	  highPrice = fromString<Decimal>(highString.c_str());
-	  lowPrice = fromString<Decimal>(lowString.c_str());
-	  closePrice = fromString<Decimal>(closeString.c_str());
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice = num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = std::stol (volString);
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
@@ -298,10 +296,10 @@ namespace mkc_timeseries
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
 			       volString, OIString, rollDateString, unadjustedCloseString))
 	{
-	  openPrice = fromString<Decimal>(openString.c_str());
-	  highPrice = fromString<Decimal>(highString.c_str());
-	  lowPrice = fromString<Decimal>(lowString.c_str());
-	  closePrice = fromString<Decimal>(closeString.c_str());
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice = num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = std::stol (volString);
 
@@ -377,10 +375,10 @@ namespace mkc_timeseries
 			       lowString, closeString,
 			       volumeString, openInterestString))
 	{
-	  openPrice = fromString<Decimal>(openString.c_str());
-	  highPrice = fromString<Decimal>(highString.c_str());
-	  lowPrice = fromString<Decimal>(lowString.c_str());
-	  closePrice = fromString<Decimal>(closeString.c_str());
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice =  num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
@@ -453,10 +451,10 @@ namespace mkc_timeseries
 			       lowString, closeString,
 			       volumeString, openInterestString))
 	{
-	  openPrice = fromString<Decimal>(openString.c_str());
-	  highPrice = fromString<Decimal>(highString.c_str());
-	  lowPrice = fromString<Decimal>(lowString.c_str());
-	  closePrice = fromString<Decimal>(closeString.c_str());
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice = num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
 	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
@@ -536,10 +534,10 @@ namespace mkc_timeseries
 			       lowString, closeString,
 			       volumeString, openInterestString))
 	{
-	  openPrice = fromString<Decimal>(openString.c_str());
-	  highPrice = fromString<Decimal>(highString.c_str());
-	  lowPrice = fromString<Decimal>(lowString.c_str());
-	  closePrice = fromString<Decimal>(closeString.c_str());
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice = num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
 	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 

@@ -22,7 +22,7 @@ void printPositionHistory(const ClosedPositionHistory<DecimalType>& history);
 DecimalType
 createDecimal(const std::string& valueString)
 {
-  return fromString<DecimalType>(valueString);
+  return num::fromString<DecimalType>(valueString);
 }
 
 const StrategyBroker<DecimalType>&
@@ -192,13 +192,13 @@ getPatternRobustness2()
 std::shared_ptr<DecimalType>
 createDecimalPtr(const std::string& valueString)
 {
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
+  return std::make_shared<DecimalType> (num::fromString<DecimalType>(valueString));
 }
 
 DecimalType *
 createRawDecimalPtr(const std::string& valueString)
 {
-  return new DecimalType (fromString<DecimalType>(valueString));
+  return new DecimalType (num::fromString<DecimalType>(valueString));
 }
 
 

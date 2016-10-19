@@ -14,14 +14,13 @@
 #include <memory>
 #include <boost/date_time.hpp>
 #include "MapUtilities.h"
-#include "decimal.h"
+#include "number.h"
 #include "Security.h"
 #include "TradingPosition.h"
 #include "ThrowAssert.hpp"
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
 
   class MCPTStrategyAttributesException : public std::runtime_error

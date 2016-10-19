@@ -22,7 +22,7 @@ std::string myCornSymbol("C2");
 DecimalType
 createDecimal(const std::string& valueString)
 {
-  return fromString<DecimalType>(valueString);
+  return num::fromString<DecimalType>(valueString);
 }
 
 
@@ -43,13 +43,13 @@ createPercentNumber(const DecimalType& num)
 std::shared_ptr<DecimalType>
 createDecimalPtr(const std::string& valueString)
 {
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
+  return std::make_shared<DecimalType> (num::fromString<DecimalType>(valueString));
 }
 
 DecimalType *
 createRawDecimalPtr(const std::string& valueString)
 {
-  return new DecimalType (fromString<DecimalType>(valueString));
+  return new DecimalType (num::fromString<DecimalType>(valueString));
 }
 
 

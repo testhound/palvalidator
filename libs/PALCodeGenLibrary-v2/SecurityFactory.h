@@ -2,7 +2,7 @@
 #define __SECURITY_FACTORY_H 1
 
 #include "csv.h"
-#include "decimal.h"
+#include "number.h"
 #include <string>
 #include <map>
 

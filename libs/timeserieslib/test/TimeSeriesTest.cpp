@@ -20,10 +20,10 @@ OHLCTimeSeriesEntry<EquityType>
 		       volume_t vol)
   {
     auto date1  = date (from_undelimited_string(dateString));
-    auto open1  = EquityType(fromString<EquityType>(openPrice));
-    auto high1  = EquityType(fromString<EquityType>(highPrice));
-    auto low1   = EquityType(fromString<EquityType>(lowPrice));
-    auto close1 = EquityType(fromString<EquityType>(closePrice));
+    auto open1  = EquityType(num::fromString<EquityType>(openPrice));
+    auto high1  = EquityType(num::fromString<EquityType>(highPrice));
+    auto low1   = EquityType(num::fromString<EquityType>(lowPrice));
+    auto close1 = EquityType(num::fromString<EquityType>(closePrice));
     return OHLCTimeSeriesEntry<EquityType>(date1, open1, high1, low1,
 						close1, vol, TimeFrame::DAILY);
   }
@@ -37,10 +37,10 @@ OHLCTimeSeriesEntry<EquityType>
 		       volume_t vol)
   {
     auto date1  = date (from_undelimited_string(dateString));
-    auto open1  = EquityType(fromString<EquityType>(openPrice));
-    auto high1  = EquityType(fromString<EquityType>(highPrice));
-    auto low1   = EquityType(fromString<EquityType>(lowPrice));
-    auto close1 = EquityType(fromString<EquityType>(closePrice));
+    auto open1  = EquityType(num::fromString<EquityType>(openPrice));
+    auto high1  = EquityType(num::fromString<EquityType>(highPrice));
+    auto low1   = EquityType(num::fromString<EquityType>(lowPrice));
+    auto close1 = EquityType(num::fromString<EquityType>(closePrice));
     return OHLCTimeSeriesEntry<EquityType>(date1, open1, high1, low1, close1, vol, TimeFrame::WEEKLY);
   }
 

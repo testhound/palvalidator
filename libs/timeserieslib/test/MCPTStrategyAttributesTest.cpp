@@ -12,7 +12,7 @@ typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
 DecimalType
 createDecimal(const std::string& valueString)
 {
-  return fromString<DecimalType>(valueString);
+  return num::fromString<DecimalType>(valueString);
 }
 
 
@@ -25,10 +25,10 @@ EntryType
 		       volume_t vol)
   {
     auto date1 = date (from_undelimited_string(dateString));
-    auto open1 = DecimalType (fromString<DecimalType>(openPrice));
-    auto high1 = DecimalType (fromString<DecimalType>(highPrice));
-    auto low1 = DecimalType (fromString<DecimalType>(lowPrice));
-    auto close1 = DecimalType (fromString<DecimalType>(closePrice));
+    auto open1 = DecimalType (num::fromString<DecimalType>(openPrice));
+    auto high1 = DecimalType (num::fromString<DecimalType>(highPrice));
+    auto low1 = DecimalType (num::fromString<DecimalType>(lowPrice));
+    auto close1 = DecimalType (num::fromString<DecimalType>(closePrice));
     return EntryType(date1, open1, high1, low1, close1, vol, TimeFrame::DAILY);
   }
 
@@ -42,10 +42,10 @@ OHLCTimeSeriesEntry<DecimalType>
 		       volume_t vol)
   {
     auto date1 = date (from_undelimited_string(dateString));
-    auto open1 = DecimalType (fromString<DecimalType>(openPrice));
-    auto high1 = DecimalType (fromString<DecimalType>(highPrice));
-    auto low1 = DecimalType (fromString<DecimalType>(lowPrice));
-    auto close1 = DecimalType (fromString<DecimalType>(closePrice));
+    auto open1 = DecimalType (num::fromString<DecimalType>(openPrice));
+    auto high1 = DecimalType (num::fromString<DecimalType>(highPrice));
+    auto low1 = DecimalType (num::fromString<DecimalType>(lowPrice));
+    auto close1 = DecimalType (num::fromString<DecimalType>(closePrice));
     return OHLCTimeSeriesEntry<DecimalType>(date1, open1, high1, low1, 
 						close1, vol, TimeFrame::DAILY);
   }

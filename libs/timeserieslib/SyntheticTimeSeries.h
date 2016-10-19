@@ -239,8 +239,8 @@ namespace mkc_timeseries
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;
   };
 
-  typedef VectorDecimal<2> TimeSeriesPrec2;
-  typedef VectorDecimal<5> TimeSeriesPrec5;
+  //typedef VectorDecimal<2> TimeSeriesPrec2;
+  //typedef VectorDecimal<5> TimeSeriesPrec5;
 
   //typedef SyntheticTimeSeries<2> SyntheticTimeSeriesPrec2;
 }

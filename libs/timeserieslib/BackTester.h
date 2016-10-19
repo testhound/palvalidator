@@ -11,14 +11,13 @@
 #include <list>
 #include <string>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "BoostDateHelper.h"
 #include "BacktesterStrategy.h"
 
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
 
   class BackTesterException : public std::runtime_error

@@ -26,7 +26,7 @@ namespace mkc_timeseries
       static Decimal TwoThirds;
       static Decimal createDecimal (const std::string& valueString)
       {
-	return dec::fromString<Decimal>(valueString);
+	return num::fromString<Decimal>(valueString);
       }
     };
 

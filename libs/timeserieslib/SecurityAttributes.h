@@ -10,11 +10,10 @@
 #include <string>
 #include <memory>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "TradingVolume.h"
 #include "DecimalConstants.h"
 
-using dec::decimal;
 using std::string;
 
 namespace mkc_timeseries

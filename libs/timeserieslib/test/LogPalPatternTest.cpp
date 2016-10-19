@@ -2,11 +2,11 @@
 
 #include <string>
 #include "catch.hpp"
-#include "../decimal.h"
+#include "../number.h"
 #include "../LogPalPattern.h"
 
 using namespace mkc_timeseries;
-typedef dec::decimal<7> DecimalType;
+typedef num::DefaultNumber DecimalType;
 
 
 DecimalType

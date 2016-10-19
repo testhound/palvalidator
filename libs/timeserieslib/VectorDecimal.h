@@ -10,9 +10,8 @@
 #include <vector>
 #include <string>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 
-using namespace dec;
 using std::vector;
 using std::string;
 
@@ -45,7 +44,7 @@ namespace mkc_timeseries
     vector<boost::gregorian::date> mDateSeries;
   };
 
-  template <int Prec>
+  template <class Decimal>
     class VectorDecimal
     {
     public:
@@ -57,13 +56,13 @@ namespace mkc_timeseries
       ~VectorDecimal() {}
 
       unsigned long getNumElements() const { return mTimeSeries.size(); }
-      void addElement(const decimal<Prec>& value) { mTimeSeries.push_back (value); }
-      void setElementAtIndex (const decimal<Prec>& value, unsigned long index)
+      void addElement(const Decimal& value) { mTimeSeries.push_back (value); }
+      void setElementAtIndex (const Decimal& value, unsigned long index)
       {
 	mTimeSeries.at(index) = value;
       }
   
-      const decimal<Prec>& getElement (unsigned long index) const
+      const Decimal& getElement (unsigned long index) const
       {
 	return mTimeSeries.at(index);
       }
@@ -73,7 +72,7 @@ namespace mkc_timeseries
       }
 
     private:
-      vector<decimal<Prec>> mTimeSeries;
+      vector<Decimal> mTimeSeries;
     };
 }
 #endif

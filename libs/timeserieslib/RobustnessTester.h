@@ -12,7 +12,7 @@
 #include <list>
 #include <unordered_map>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 #include "PalStrategy.h"
 #include "BackTester.h"
@@ -24,7 +24,6 @@
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
   using std::make_shared;
   using std::unordered_map;

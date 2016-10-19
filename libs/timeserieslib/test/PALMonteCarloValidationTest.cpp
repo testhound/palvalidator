@@ -12,7 +12,7 @@ typedef num::DefaultNumber DecimalType;
 DecimalType
 createDecimal(const std::string& valueString)
 {
-  return fromString<DecimalType>(valueString);
+  return num::fromString<DecimalType>(valueString);
 }
 
 date createDate (const std::string& dateString)

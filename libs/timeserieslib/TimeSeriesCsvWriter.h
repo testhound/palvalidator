@@ -13,8 +13,6 @@
 
 namespace mkc_timeseries
 {
-  using namespace dec;
-
   //
   // class PalTimeSeriesCsvWriter
   //

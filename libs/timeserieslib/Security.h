@@ -12,7 +12,6 @@
 #include "TimeSeries.h"
 #include "DecimalConstants.h"
 
-using dec::decimal;
 using std::string;
 
 namespace mkc_timeseries

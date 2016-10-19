@@ -7,11 +7,7 @@
 #include <list>
 #include <fstream>
 #include <algorithm>
-#include "decimal.h"
 #include "number.h"
-
-using dec::decimal2;
-using dec::decimal4;
 
 using decimal7 = num::DefaultNumber;
 

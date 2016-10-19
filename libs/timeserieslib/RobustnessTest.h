@@ -11,7 +11,7 @@
 #include <string>
 #include <map>
 #include <boost/date_time.hpp>
-#include "decimal.h"
+#include "number.h"
 #include "DecimalConstants.h"
 #include "PalStrategy.h"
 #include "BackTester.h"
@@ -20,7 +20,6 @@
 
 namespace mkc_timeseries
 {
-  using dec::decimal;
   using boost::gregorian::date;
   using std::make_shared;
   //
@@ -1140,7 +1139,7 @@ namespace mkc_timeseries
 
       std::shared_ptr<PriceActionLabPattern> originalPattern = mTheStrategy->getPalPattern();
       Decimal originalPatternStop (originalPattern->getStopLossAsDecimal());
-      Decimal permutationIncrement(originalPatternStop / decimal_cast<Decimal::decimal_points>((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
+      Decimal permutationIncrement(originalPatternStop / Decimal((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
       Decimal numProfitablePermutations(DecimalConstants<Decimal>::DecimalZero);
       Decimal requiredPayoffRatio (originalPattern->getPayoffRatio());
       Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
