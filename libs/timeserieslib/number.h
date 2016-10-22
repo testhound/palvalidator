@@ -39,7 +39,9 @@ inline N fromString(const std::string& s) {
 
 namespace num {
 
-using DefaultNumber = BloombergLP::bdldfp::Decimal64;
+namespace dfp = BloombergLP::bdldfp;
+
+using DefaultNumber = dfp::Decimal64;
 
 inline std::string toString(DefaultNumber d) {
       std::stringstream ss;
@@ -47,22 +49,26 @@ inline std::string toString(DefaultNumber d) {
       return ss.str();
 }
 
+namespace detail {
+  template<class> struct parser;
+  template<> struct parser<dfp::Decimal64> {
+    static dfp::Decimal64 parse(const std::string& s) {
+      return dfp::DecimalImpUtil::parse64(s.c_str());
+    }
+  };
+}
+
 template<class N>
 inline N fromString(const std::string& s) {
-      std::istringstream ss(s);
-      DefaultNumber num;
-      ss >> num;
-      return num;
+      return detail::parser<N>::parse(s);
 }
 
 inline DefaultNumber abs(DefaultNumber d) {
-      namespace blm = BloombergLP::bdldfp;
-      return blm::DecimalUtil::fabs(d);
+      return dfp::DecimalUtil::fabs(d);
 }
 
 inline double to_double(DefaultNumber d) {
-      namespace blm = BloombergLP::bdldfp;
-      return blm::DecimalConvertUtil::decimalToDouble(d);
+      return dfp::DecimalConvertUtil::decimalToDouble(d);
 }
 
 } // num namespace
