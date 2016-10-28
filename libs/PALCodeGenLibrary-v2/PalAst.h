@@ -7,6 +7,7 @@
 #include <list>
 #include <fstream>
 #include <algorithm>
+#include <exception>
 #include "number.h"
 
 using decimal7 = num::DefaultNumber;
@@ -22,6 +23,8 @@ class PalFileResults;
 class PriceBarReference
 {
 public:
+  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, INDICATOR1};
+  
   PriceBarReference (unsigned int barOffset);
   virtual ~PriceBarReference();
   PriceBarReference (const PriceBarReference& rhs);
@@ -30,7 +33,8 @@ public:
   unsigned int getBarOffset () const;
   virtual void accept (PalCodeGenVisitor &v) = 0;
   virtual unsigned long long hashCode() = 0;
-
+  virtual PriceBarReference::ReferenceType getReferenceType() = 0;
+  
 private:
   unsigned int mBarOffset;
 };
@@ -44,7 +48,8 @@ public:
   ~PriceBarOpen();
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
-
+  PriceBarReference::ReferenceType getReferenceType();
+    
 private:
   unsigned long mComputedHash;
 };
@@ -58,7 +63,8 @@ public:
   ~PriceBarHigh();
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
-
+  PriceBarReference::ReferenceType getReferenceType();
+  
 private:
     unsigned long long mComputedHash;
 };
@@ -72,7 +78,8 @@ public:
   PriceBarLow& operator=(const PriceBarLow &rhs);
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
-
+  PriceBarReference::ReferenceType getReferenceType();
+  
 private:
   unsigned long long mComputedHash;
 };
@@ -86,7 +93,23 @@ public:
   ~PriceBarClose();
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  
+private:
+  unsigned long long mComputedHash;
+};
 
+class Indicator1 : public PriceBarReference
+{
+public:
+  Indicator1(unsigned int barOffset);
+  Indicator1 (const Indicator1& rhs);
+  Indicator1& operator=(const Indicator1 &rhs);
+  ~Indicator1();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  
 private:
   unsigned long long mComputedHash;
 };
@@ -392,6 +415,8 @@ public:
 
 	  return std::max (lhs, rhs);
 	}
+      else
+	throw std::domain_error ("Unknown derived class of PatternExpression");
     }
 
 };

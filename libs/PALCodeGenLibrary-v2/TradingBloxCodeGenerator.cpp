@@ -124,6 +124,12 @@ TradingBloxCodeGenVisitor::visit (PriceBarClose *bar)
 }
 
 void
+TradingBloxCodeGenVisitor::visit (Indicator1 *bar)
+{
+  mEntryOrdersScriptFile << "indicator1[" << bar->getBarOffset() << "]";
+}
+
+void
 TradingBloxCodeGenVisitor::visit (GreaterThanExpr *expr)
 {
   if (firstSubExpressionVisited == false)

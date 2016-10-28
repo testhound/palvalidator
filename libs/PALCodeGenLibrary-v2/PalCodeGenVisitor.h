@@ -8,6 +8,7 @@ class PriceBarOpen;
 class PriceBarHigh;
 class PriceBarLow;
 class PriceBarClose;
+class Indicator1;
 class GreaterThanExpr;
 class AndExpr;
 class PatternDescription;
@@ -32,6 +33,7 @@ public:
   virtual void visit (PriceBarHigh *) = 0;
   virtual void visit (PriceBarLow *) = 0;
   virtual void visit (PriceBarClose *) = 0;
+  virtual void visit (Indicator1 *) = 0;
   virtual void visit (GreaterThanExpr *) = 0;
   virtual void visit (AndExpr *) = 0;
 
@@ -67,6 +69,7 @@ public:
   void visit (PriceBarHigh *);
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
+  void visit (Indicator1 *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
   void visit (PatternDescription *);
@@ -146,6 +149,7 @@ public:
   void visit (PriceBarHigh *);
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
+  void visit (Indicator1 *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
   void visit (PatternDescription *);
@@ -232,6 +236,7 @@ public:
   void visit (PriceBarHigh *);
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
+  void visit (Indicator1 *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
   void visit (PatternDescription *);
@@ -307,6 +312,7 @@ public:
   void visit (PriceBarHigh *);
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
+  void visit (Indicator1 *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
 

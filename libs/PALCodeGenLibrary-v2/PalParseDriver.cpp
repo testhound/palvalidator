@@ -23,8 +23,6 @@ PalParseDriver::PalParseDriver(const std::string &fileName)
   
 bool PalParseDriver::Parse()
 {
-  bool parseResult;
-  
   std::ifstream in(mFileName.c_str());
   mScanner.switch_streams (&in, NULL);
   int res = mParser.parse();

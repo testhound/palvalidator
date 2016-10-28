@@ -106,6 +106,11 @@ unsigned long long PriceBarOpen::hashCode()
   return result;
 }
 
+PriceBarReference::ReferenceType PriceBarOpen::getReferenceType()
+{
+  return PriceBarReference::OPEN;
+}
+
 ////////////////
 
 PriceBarHigh::PriceBarHigh(unsigned int barOffset) 
@@ -149,6 +154,11 @@ unsigned long long PriceBarHigh::hashCode()
     }
 
   return result;
+}
+
+PriceBarReference::ReferenceType PriceBarHigh::getReferenceType()
+{
+  return PriceBarReference::HIGH;
 }
 
 ////////////////////
@@ -195,6 +205,12 @@ unsigned long long PriceBarLow::hashCode()
 
   return result;
 }
+
+PriceBarReference::ReferenceType PriceBarLow::getReferenceType()
+{
+  return PriceBarReference::LOW;
+}
+
 /////////////////////
 
 
@@ -241,6 +257,65 @@ unsigned long long PriceBarClose::hashCode()
 
   return result;
 }
+
+PriceBarReference::ReferenceType PriceBarClose::getReferenceType()
+{
+  return PriceBarReference::CLOSE;
+}
+
+
+//////////////////////////
+// Indicator1
+
+Indicator1::Indicator1(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+Indicator1::Indicator1 (const Indicator1& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+Indicator1& 
+Indicator1::operator=(const Indicator1 &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+Indicator1::~Indicator1()
+{}
+
+void 
+Indicator1::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long Indicator1::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 37;
+      result = 73 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType Indicator1::getReferenceType()
+{
+  return PriceBarReference::INDICATOR1;
+}
+
 //////////////////////////
 
 PatternExpression::PatternExpression()

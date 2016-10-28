@@ -114,6 +114,13 @@ WealthLabCodeGenVisitor::visit (PriceBarClose *bar)
 }
 
 void
+WealthLabCodeGenVisitor::visit (Indicator1 *bar)
+{
+  mTradingModelFileName << "indicator1(Bar - " << bar->getBarOffset() << ")";
+}
+
+
+void
 WealthLabCodeGenVisitor::visit (GreaterThanExpr *expr)
 {
   if (firstSubExpressionVisited == false)

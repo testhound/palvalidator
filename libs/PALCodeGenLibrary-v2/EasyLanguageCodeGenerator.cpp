@@ -265,6 +265,12 @@ EasyLanguageCodeGenVisitor::visit (PriceBarClose *bar)
 }
 
 void
+EasyLanguageCodeGenVisitor::visit (Indicator1 *bar)
+{
+  mEntryOrdersScriptFile << "indicator1[" << bar->getBarOffset() << "]";
+}
+
+void
 EasyLanguageCodeGenVisitor::visit (GreaterThanExpr *expr)
 {
   if (firstSubExpressionVisited == false)
@@ -439,7 +445,7 @@ std::ofstream *outFile = getOutputFileStream();
 
 void EasyLanguageRADCodeGenVisitor::genCodeForVariablesInEntryScript()
 {
-  std::ofstream *outFile = getOutputFileStream();
+  //  std::ofstream *outFile = getOutputFileStream();
 
 
 

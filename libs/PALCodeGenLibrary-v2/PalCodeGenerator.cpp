@@ -11,8 +11,8 @@ extern bool firstSubExpressionVisited;
 PalCodeGenerator::PalCodeGenerator(PriceActionLabSystem *system,
 				   const std::string& outputFileName)
   : PalCodeGenVisitor(),
-    mTradingSystemPatterns(system),
-    mOutFile(outputFileName)
+    mOutFile(outputFileName),
+    mTradingSystemPatterns(system)
 {}
 
 
@@ -81,6 +81,12 @@ void
 PalCodeGenerator::visit (PriceBarClose *bar)
 {
   mOutFile << "CLOSE OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void
+PalCodeGenerator::visit (Indicator1 *bar)
+{
+  mOutFile << "INDICATOR1 OF " << bar->getBarOffset() << " BARS AGO";
 }
 
 void
