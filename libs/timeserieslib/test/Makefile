@@ -52,6 +52,8 @@ RUNNER_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/runner.cpp.
 MCPT_CONF_READER_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/McptConfigurationFileReader.cpp.o
 
 PRICEACTION_LIB_DIR = ../../../build/libs/PALCodeGenLibrary-v2
+PRICEACTION_INC_DIR = ../../PALCodeGenLibrary-v2
+TIMESERIES_INC_DIR = ../
 
 TradingVolumeTest: TradingVolumeTest.o
 	g++-5 -o TradingVolumeTest ${TIMESERIES_O} $<
@@ -93,7 +95,7 @@ SecurityBacktestPropertiesTest: SecurityBacktestPropertiesTest.o
 	g++-5 -o SecurityBacktestPropertiesTest ${TIMESERIES_O} $< -lboost_date_time -lpthread
 
 PALPatternInterpreterTest: PALPatternInterpreterTest.o
-	g++-5 -o PALPatternInterpreterTest ${TIMESERIES_O} $< -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+	g++-5 -o PALPatternInterpreterTest ${TIMESERIES_O} $< -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
 
 StrategyBrokerTest: StrategyBrokerTest.o
 	g++-5 -o StrategyBrokerTest ${TIMESERIES_O} $< -lboost_date_time -lpthread
@@ -193,8 +195,6 @@ BackTesterTest.o: ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Po
 PalStrategyTest.o: ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
 SecurityBacktestPropertiesTest.o: ../SecurityBacktestProperties.h
 PALPatternInterpreterTest.o: ../PALPatternInterpreter.h ../Security.h ../TimeSeries.h PALPatternInterpreterTest.cpp
-
-	g++-5 -g -c -std=c++14 -I../../PALCodeGenLibrary-v2 -I../../Decimal PALPatternInterpreterTest.cpp
 StrategyBrokerTest.o: ../StrategyBroker.h ../TradingOrder.h ../TradingPosition.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../InstrumentPositionManager.h ../TradingOrderManager.h ../Portfolio.h ../StopLoss.h ../ProfitTarget.h
 StrategyTransactionManagerTest.o: ../TradingOrder.h ../TradingPosition.h ../TimeSeriesEntry.h ../StrategyTransaction.h ../StrategyTransactionManager.h
 StrategyTransactionTest.o: ../TradingOrder.h ../TradingPosition.h ../TimeSeriesEntry.h ../StrategyTransaction.h
@@ -234,7 +234,7 @@ clean:
 	rm -f OpenPositionBarTest OpenPositionHistoryTest OpenPositionTest
 	rm -f ClosedPositionTest rm *~
 
-CCFLAGS := -O2 -c -std=c++14 -I../ -I../../PALCodeGenLibrary-v2
+CCFLAGS := -O2 -c -std=c++14 -I../ -I${PRICEACTION_INC_DIR}
 #CCFLAGS := -g -c -std=c++14 -I../../PALCodeGenLibrary -I../../Decimal
 
 %.o: %.cpp

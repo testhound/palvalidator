@@ -7,24 +7,26 @@
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
+using Num = num::DefaultNumber;
+
+typedef num::DefaultNumber DecimalType;
+typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
 
 std::string myCornSymbol("C2");
 
 std::shared_ptr<DecimalType>
 createDecimalPtr(const std::string& valueString)
 {
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
+  return std::make_shared<DecimalType> (num::fromString<DecimalType>(valueString));
 }
 
 DecimalType
 createDecimal(const std::string& valueString)
 {
-  return fromString<DecimalType>(valueString);
+  return num::fromString<DecimalType>(valueString);
 }
 
-std::shared_ptr<EntryType>
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createTimeSeriesEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -32,31 +34,27 @@ std::shared_ptr<EntryType>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
+    auto date1 = from_undelimited_string(dateString);
+    auto open1 = num::fromString<DecimalType>(openPrice);
+    auto high1 = num::fromString<DecimalType>(highPrice);
+    auto low1 = num::fromString<DecimalType>(lowPrice);
+    auto close1 = num::fromString<DecimalType>(closePrice);
+    return std::make_shared<OHLCTimeSeriesEntry<DecimalType>>(date1, open1, high1, low1, 
 						close1, vol, TimeFrame::DAILY);
   }
 
 
-std::shared_ptr<EntryType>
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createTimeSeriesEntry2 (const TimeSeriesDate& aDate,
-		       const dec::decimal<7>& openPrice,
-		       const dec::decimal<7>& highPrice,
-		       const dec::decimal<7>& lowPrice,
-		       const dec::decimal<7>& closePrice,
+		       const DecimalType& openPrice,
+		       const DecimalType& highPrice,
+		       const DecimalType& lowPrice,
+		       const DecimalType& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (aDate);
-    auto open1 = std::make_shared<DecimalType> (openPrice);
-    auto high1 = std::make_shared<DecimalType> (highPrice);
-    auto low1 = std::make_shared<DecimalType> (lowPrice);
-    auto close1 = std::make_shared<DecimalType> (closePrice);
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+
+    return std::make_shared<OHLCTimeSeriesEntry<DecimalType>>(aDate, openPrice, highPrice, lowPrice, 
+						closePrice, vol, TimeFrame::DAILY);
   }
 
 
@@ -66,22 +64,22 @@ std::shared_ptr<EntryType>
 
 TEST_CASE ("PALPatternInterpreter operations", "[PALPatternInterpreter]")
 {
-  PALFormatCsvReader<7> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
   csvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = csvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-  auto corn = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
-						   futuresName, 
-						   cornBigPointValue,
-						   cornTickValue, 
-						   p);
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
+							     futuresName, 
+							     cornBigPointValue,
+							     cornTickValue, 
+							     p);
 
   auto open5 = new PriceBarOpen(5);
   auto close5 = new PriceBarClose(5);
@@ -141,21 +139,21 @@ TEST_CASE ("PALPatternInterpreter operations", "[PALPatternInterpreter]")
   SECTION ("PALPatternInterpreter testing for all pattern conditions satisfied") 
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Nov, 15));
-    typename Security<7>::ConstRandomAccessIterator it = 
+    typename Security<DecimalType>::ConstRandomAccessIterator it = 
       corn->getRandomAccessIterator (orderDate);
 
     REQUIRE_FALSE (it == corn->getRandomAccessIteratorEnd());
-    REQUIRE ( PALPatternInterpreter<7>::evaluateExpression (and4, corn, it) == true);
+    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (and4, corn, it) == true);
   }
 
 SECTION ("PALPatternInterpreter testing for short pattern condition satisfied") 
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1986, May, 28));
-    typename Security<7>::ConstRandomAccessIterator it = 
+    typename Security<DecimalType>::ConstRandomAccessIterator it = 
       corn->getRandomAccessIterator (orderDate);
 
     REQUIRE_FALSE (it == corn->getRandomAccessIteratorEnd());
-    REQUIRE ( PALPatternInterpreter<7>::evaluateExpression (shortand4, corn, it) == true);
+    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (shortand4, corn, it) == true);
   }
 
   
@@ -164,14 +162,14 @@ SECTION ("PALPatternInterpreter testing for short pattern condition satisfied")
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Mar, 22));
     TimeSeriesDate endDate(TimeSeriesDate (1985, Nov, 14));
 
-    typename Security<7>::ConstRandomAccessIterator it;
+    typename Security<DecimalType>::ConstRandomAccessIterator it;
 
     for (; (orderDate <= endDate); orderDate = boost_next_weekday(orderDate))
       {
 	it = corn->findTimeSeriesEntry (orderDate);
 	if (it != corn->getRandomAccessIteratorEnd())
 	  {
-	    REQUIRE ( PALPatternInterpreter<7>::evaluateExpression (and4, 
+	    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (and4, 
 								    corn, 
 								    it) == false);
 	  }
@@ -185,14 +183,14 @@ SECTION ("PALPatternInterpreter testing for short pattern not matched")
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Mar, 22));
     TimeSeriesDate endDate(TimeSeriesDate (1986, May, 27));
 
-    typename Security<7>::ConstRandomAccessIterator it;
+    typename Security<DecimalType>::ConstRandomAccessIterator it;
 
     for (; (orderDate <= endDate); orderDate = boost_next_weekday(orderDate))
       {
 	it = corn->findTimeSeriesEntry (orderDate);
 	if (it != corn->getRandomAccessIteratorEnd())
 	  {
-	    REQUIRE ( PALPatternInterpreter<7>::evaluateExpression (shortand4, 
+	    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (shortand4, 
 								    corn, 
 								    it) == false);
 	  }
