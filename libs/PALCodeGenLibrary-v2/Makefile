@@ -43,7 +43,8 @@ fresh:
 	rm -f PalParser.hpp PalParser.cpp PalScanner.hpp PalScanner.cpp
 	rm -f *.o libpriceaction2.a
 
-CCFLAGS := -O2 -c -std=c++14 -I/usr/local/include/backtester
+#CCFLAGS := -O2 -c -std=c++14 -I/usr/local/include/backtester
+CCFLAGS := -O2 -c -std=c++14 -I../timeserieslib
 
 
 %.o: %.cpp
