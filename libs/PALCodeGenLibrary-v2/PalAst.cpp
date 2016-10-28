@@ -1213,6 +1213,7 @@ AstFactory::~AstFactory()
       delete mPredefinedPriceHigh[i];
       delete mPredefinedPriceLow[i];
       delete mPredefinedPriceClose[i];
+      delete mPredefinedIndicator1[i];
     }
 
   //printf ("AstFactory destructor complete\n");
@@ -1304,6 +1305,7 @@ void AstFactory::initializePriceBars()
       mPredefinedPriceHigh[i] = new PriceBarHigh (i);
       mPredefinedPriceLow[i] = new PriceBarLow (i);
       mPredefinedPriceClose[i] = new PriceBarClose (i);
+      mPredefinedIndicator1[i] = new Indicator1 (i);
     }
 }
 
@@ -1339,6 +1341,14 @@ PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
     return new PriceBarClose (barOffset);
 }
 
+PriceBarReference* AstFactory::getIndicator1 (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedIndicator1[barOffset];
+  else
+    return new Indicator1 (barOffset);
+}
+  
 decimal7 * AstFactory::getDecimalNumber (char *numString)
 {
   std::string key(numString);

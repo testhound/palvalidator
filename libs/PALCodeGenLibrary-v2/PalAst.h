@@ -602,6 +602,7 @@ public:
   PriceBarReference* getPriceHigh (unsigned int barOffset);
   PriceBarReference* getPriceLow (unsigned int barOffset);
   PriceBarReference* getPriceClose (unsigned int barOffset);
+  PriceBarReference* getIndicator1 (unsigned int barOffset);
   MarketEntryExpression* getLongMarketEntryOnOpen();
   MarketEntryExpression* getShortMarketEntryOnOpen();
   decimal7 *getDecimalNumber (char *numString);
@@ -621,6 +622,7 @@ private:
   PriceBarReference* mPredefinedPriceHigh[MaxNumBarOffsets];
   PriceBarReference* mPredefinedPriceLow[MaxNumBarOffsets];
   PriceBarReference* mPredefinedPriceClose[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedIndicator1[MaxNumBarOffsets];
   MarketEntryExpression* mLongEntryOnOpen;
   MarketEntryExpression* mShortEntryOnOpen;
   std::map<std::string, DecimalPtr> mDecimalNumMap;

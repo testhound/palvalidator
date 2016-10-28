@@ -77,6 +77,7 @@
 %token TOK_HIGH
 %token TOK_LOW
 %token TOK_CLOSE
+%token TOK_INDICATOR1
 %token TOK_OF
 %token TOK_AND
 %token TOK_AGO
@@ -279,6 +280,14 @@ ohlcref : TOK_OPEN TOK_OF integernumber TOK_BARS TOK_AGO
 	  //printf("Found ohlc ref for close\n"); 
        	  $$ = astFactory.getPriceClose ($3); 
         }
+      | TOK_INDICATOR1 TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getIndicator1 ($3); 
+        }
+
+
+	
 ;
 
 entrystmt : TOK_BUY TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN  
