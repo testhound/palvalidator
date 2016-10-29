@@ -17,4 +17,15 @@ libs/timeserieslib/test/RobustnessTesterUnitTest.o
 libs/timeserieslib/test/SurvivorRobustnessOut.txt
 libs/timeserieslib/test/TimeSeriesTest
 libs/timeserieslib/test/TimeSeriesTest.o
+data/@BP_MCPT_SurvivingPatterns.txt
+data/@BP_RejectedPatternsAndRobust.txt
+data/@BP_SurvivingPatterns.txt
+data/@BP_SurvivingPatternsAndRobust.txt
+libs/PALCodeGenLibrary-v2/PalParser.cpp
+libs/PALCodeGenLibrary-v2/PalParser.hpp
+libs/PALCodeGenLibrary-v2/PalScanner.cpp
+libs/PALCodeGenLibrary-v2/PalScanner.hpp
+
+
+
 
