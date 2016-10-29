@@ -823,7 +823,22 @@ template <class Decimal> class OHLCTimeSeries
     {
       return getTimeSeriesEntry (it, offset).getCloseValue();
     }
+    ///
 
+    const Decimal& getIndicator1Value (const RandomAccessIterator& it,
+				       unsigned long offset)
+    {
+      return getTimeSeriesEntry (it, offset).getIndicator1Value();
+    }
+
+    const Decimal& getIndicator1Value (const ConstRandomAccessIterator& it,
+				       unsigned long offset)
+    {
+      return getTimeSeriesEntry (it, offset).getIndicator1Value();
+    }
+
+    ////
+    
     bool isSynchronized()
     {
       return (mMapAndArrayInSync);

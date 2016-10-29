@@ -116,18 +116,18 @@ namespace mkc_timeseries
   {
   public:
       OHLCTimeSeriesEntry (const boost::gregorian::date& entryDate,
-		       const Decimal& open,
-		       const Decimal& high,
-		       const Decimal& low,
-		       const Decimal& close,
-		       volume_t volume,
-		       TimeFrame::Duration timeFrame)
+			   const Decimal& open,
+			   const Decimal& high,
+			   const Decimal& low,
+			   const Decimal& close,
+			   const Decimal& indicator1,
+			   TimeFrame::Duration timeFrame)
         : mDate(entryDate),
           mOpen(Decimal(open)),
           mHigh(Decimal(high)),
           mLow(Decimal(low)),
           mClose(close),
-          mVolume(volume),
+          mIndicator1(indicator1),
           mTimeFrame(timeFrame)
       {
         if (high < open)
@@ -174,7 +174,7 @@ namespace mkc_timeseries
 	mHigh (rhs.mHigh),
 	mLow (rhs.mLow),
 	mClose (rhs.mClose),
-	mVolume (rhs.mVolume),
+	mIndicator1 (rhs.mIndicator1),
 	mTimeFrame(rhs.mTimeFrame)
     {}
 
@@ -189,7 +189,7 @@ namespace mkc_timeseries
       mHigh = rhs.mHigh;
       mLow = rhs.mLow;
       mClose = rhs.mClose;
-      mVolume = rhs.mVolume;
+      mIndicator1 = rhs.mIndicator1;
       mTimeFrame = rhs.mTimeFrame;
       return *this;
     }
@@ -224,9 +224,9 @@ namespace mkc_timeseries
       return mClose;
     }
 
-    const volume_t getVolume() const
+    const Decimal& getIndicator1Value() const
     {
-      return mVolume;
+      return mIndicator1;
     }
 
   private:
@@ -235,7 +235,7 @@ namespace mkc_timeseries
     Decimal mHigh;
     Decimal mLow;
     Decimal mClose;
-    volume_t mVolume;
+    Decimal mIndicator1;
     TimeFrame::Duration mTimeFrame;
   };
 
@@ -248,7 +248,7 @@ namespace mkc_timeseries
 	    (lhs.getLowValue() == rhs.getLowValue()) &&
 	    (lhs.getCloseValue() == rhs.getCloseValue()) &&
 	    (lhs.getTimeFrame() == rhs.getTimeFrame()) &&
-	    (lhs.getVolume() == rhs.getVolume()));
+	    (lhs.getIndicator1() == rhs.getIndicator1()));
   }
 
   template <class Decimal>

@@ -132,11 +132,18 @@ namespace mkc_timeseries
       }
 
       const Decimal& getCloseValue (const ConstRandomAccessIterator& it, 
-					  unsigned long offset) const
+				    unsigned long offset) const
       {
 	return mSecurityTimeSeries->getCloseValue(it, offset); 
       }
 
+      const Decimal& getIndicator1Value (const ConstRandomAccessIterator& it, 
+					 unsigned long offset) const
+      {
+	return mSecurityTimeSeries->getIndicator1Value(it, offset); 
+      }
+
+	    
       const std::string& getName() const
       {
 	return mSecurityName;

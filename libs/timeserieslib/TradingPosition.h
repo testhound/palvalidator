@@ -91,9 +91,9 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
       return mEntry.getCloseValue();
     }
 
-    const volume_t getVolume() const
+    const Decimal& getIndicator1Value() const
     {
-      return mEntry.getVolume();
+      return mEntry.getIndicator1Value();
     }
 
     const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry() const

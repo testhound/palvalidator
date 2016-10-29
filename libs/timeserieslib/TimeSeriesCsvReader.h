@@ -9,6 +9,7 @@
 
 #include "TimeSeries.h"
 #include <boost/date_time.hpp>
+#include "DecimalConstants.h"
 #include "csv.h"
 
 namespace mkc_timeseries
@@ -161,8 +162,10 @@ namespace mkc_timeseries
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
-								      highPrice, lowPrice, 
-								      closePrice, 0, TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+										highPrice, lowPrice, 
+										closePrice,
+										DecimalConstants<Decimal>::DecimalZero,
+										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
   private:
@@ -216,7 +219,7 @@ namespace mkc_timeseries
       std::string rollDateString, unadjustedCloseString;
 
       Decimal openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
-      volume_t volume;
+      Decimal volume;
 
 
       boost::gregorian::date entryDate;
@@ -228,11 +231,11 @@ namespace mkc_timeseries
 	  lowPrice = num::fromString<Decimal>(lowString.c_str());
 	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
-	  volume = std::stol (volString);
+	  volume = num::fromString<Decimal> (volString.c_str());
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
-									  highPrice, lowPrice, 
-									  closePrice, volume, 
-									  TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+										highPrice, lowPrice, 
+										closePrice, volume, 
+										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
   private:
@@ -288,7 +291,7 @@ namespace mkc_timeseries
       std::string rollDateString, unadjustedCloseString;
 
       Decimal openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
-      volume_t volume, openInterest;
+      Decimal volume, openInterest;
 
       bool errorResult = false;
 
@@ -301,16 +304,16 @@ namespace mkc_timeseries
 	  lowPrice = num::fromString<Decimal>(lowString.c_str());
 	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
-	  volume = std::stol (volString);
+	  volume = num::fromString<Decimal>(volString.c_str());
 
 	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
 								   highPrice, lowPrice, 
 								   closePrice);
 	  if (errorResult == false)
 	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
-									    highPrice, lowPrice, 
-									    closePrice, volume, 
-									    TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+										  highPrice, lowPrice, 
+										  closePrice, volume, 
+										  TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
   private:
@@ -379,12 +382,13 @@ namespace mkc_timeseries
 	  highPrice = num::fromString<Decimal>(highString.c_str());
 	  lowPrice =  num::fromString<Decimal>(lowString.c_str());
 	  closePrice = num::fromString<Decimal>(closeString.c_str());
+	  volume = num::fromString<Decimal>(volumeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 								      highPrice, lowPrice, 
 								      closePrice, 
-								      0, 
+								      volume, 
 								      TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
@@ -455,6 +459,7 @@ namespace mkc_timeseries
 	  highPrice = num::fromString<Decimal>(highString.c_str());
 	  lowPrice = num::fromString<Decimal>(lowString.c_str());
 	  closePrice = num::fromString<Decimal>(closeString.c_str());
+	  volume = num::fromString<Decimal>(volumeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
 	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
@@ -465,7 +470,7 @@ namespace mkc_timeseries
 	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, 
-									    0, 
+									    volume, 
 									    TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
@@ -539,7 +544,7 @@ namespace mkc_timeseries
 	  lowPrice = num::fromString<Decimal>(lowString.c_str());
 	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
-
+	  volume = num::fromString<Decimal>(volumeString.c_str());
 	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
 								   highPrice, lowPrice, 
 								   closePrice);
@@ -548,7 +553,7 @@ namespace mkc_timeseries
 	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 									    highPrice, lowPrice, 
 									    closePrice, 
-									    0, 
+									    volume, 
 									    TimeSeriesCsvReader<Decimal>::getTimeFrame()));
 	}
     }
