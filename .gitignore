@@ -2,6 +2,8 @@ Session.vim
 build/
 run.sh
 
+libs/timeserieslib/*.o
+libs/timeserieslib/*.a
 libs/timeserieslib/test/LogPalPatternTest
 libs/timeserieslib/test/LogPalPatternTest.o
 libs/timeserieslib/test/MCPTStrategyAttributesTest
@@ -25,6 +27,8 @@ libs/PALCodeGenLibrary-v2/PalParser.cpp
 libs/PALCodeGenLibrary-v2/PalParser.hpp
 libs/PALCodeGenLibrary-v2/PalScanner.cpp
 libs/PALCodeGenLibrary-v2/PalScanner.hpp
+libs/PALCodeGenLibrary-v2/*.o
+libs/PALCodeGenLibrary-v2/*.a
 
 
 
