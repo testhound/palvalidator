@@ -209,6 +209,9 @@ namespace mkc_timeseries
       return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
     else if (upperCaseFormatStr == std::string("TradeStation"))
             return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
+    else if (upperCaseFormatStr == std::string("TradeStationIndicator1"))
+            return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
+
     else
       throw McptConfigurationFileReaderException("Historic data file format " +dataFileFormatStr +" not recognized");
   }
