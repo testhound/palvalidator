@@ -72,6 +72,62 @@ namespace mkc_timeseries
     std::ofstream mCsvFile;
     OHLCTimeSeries<Decimal> mTimeSeries;
   };
+
+  //
+
+  template <class Decimal>
+  class PalIndicator1CsvWriter
+  {
+  public:
+    PalIndicator1CsvWriter (const std::string& fileName, 
+			    const OHLCTimeSeries<Decimal>& series)
+      : mCsvFile (fileName),
+	mTimeSeries (series)
+    {
+    }
+
+    PalIndicator1CsvWriter (const PalIndicator1CsvWriter& rhs)
+      : mCsvFile (rhs.mCsvFile),
+	mTimeSeries (rhs.mTimeSeries)
+    {}
+
+    PalIndicator1CsvWriter& 
+    operator=(const PalIndicator1CsvWriter &rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      mCsvFile = rhs.mCsvFile;
+      mTimeSeries = rhs.mTimeSeries;
+
+      return *this;
+    }
+
+    ~PalIndicator1CsvWriter()
+    {}
+
+    void writeFile()
+    {
+      typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = 
+	mTimeSeries.beginSortedAccess();
+      boost::gregorian::date timeSeriesDate;
+
+      for (; it != mTimeSeries.endSortedAccess(); it++)
+	{
+	  timeSeriesDate = it->first;
+	  const auto& timeSeriesEntry = it->second;
+
+	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate) << "," << 
+	    timeSeriesEntry.getOpenValue() << "," <<
+	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
+	    timeSeriesEntry.getIndicator1Value() << std::endl;
+	}
+    }
+
+  private:
+    std::ofstream mCsvFile;
+    OHLCTimeSeries<Decimal> mTimeSeries;
+  };
 }
 
 #endif

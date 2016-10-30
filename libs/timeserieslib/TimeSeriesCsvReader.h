@@ -482,7 +482,87 @@ namespace mkc_timeseries
 
 
   ////
+  /// Class to read TradeStation data file with extra custom indicator column
 
+  //
+  // class for reading TradeStation formatted data files
+  //
+
+
+  template <class Decimal>
+  class TradeStationIndicator1CsvReader : public TimeSeriesCsvReader<Decimal>
+  {
+  public:
+    TradeStationIndicator1CsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
+				 TradingVolume::VolumeUnit unitsOfVolume) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+      mCsvFile (fileName.c_str()),
+      mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
+    {}
+
+     TradeStationIndicator1CsvReader(const TradeStationIndicator1CsvReader& rhs)
+       : TimeSeriesCsvReader<Decimal>(rhs),
+	 mCsvFile(rhs.mCsvFile),
+	 mDateParser(rhs.mDateParser)
+    {}
+
+    TradeStationIndicator1CsvReader& 
+    operator=(const TradeStationIndicator1CsvReader &rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
+      mCsvFile = rhs.mCsvFile;
+      mDateParser = rhs.mDateParser;
+      return *this;
+    }
+
+    ~TradeStationIndicator1CsvReader()
+    {}
+
+    void readFile()
+    {
+      mCsvFile.set_header("Date", "Time", "Open", "High", "Low", 
+			   "Close", "Vol", "OI", "Indicator1");
+
+      std::string dateStamp, timeString;
+      std::string openString, highString, lowString, closeString;
+      std::string volumeString, openInterestString, indicator1String;
+      
+      Decimal openPrice, highPrice, lowPrice, closePrice;
+      Decimal indicator1;
+      boost::gregorian::date entryDate;
+
+      std::string dateFormat("%m/%d/%YYYY");
+      boost::date_time::special_values_parser<boost::gregorian::date, char>
+	special_parser;
+
+      while (mCsvFile.read_row(dateStamp, timeString, openString, highString, 
+			       lowString, closeString,
+			       volumeString, openInterestString, indicator1String))
+	{
+	  openPrice = num::fromString<Decimal>(openString.c_str());
+	  highPrice = num::fromString<Decimal>(highString.c_str());
+	  lowPrice =  num::fromString<Decimal>(lowString.c_str());
+	  closePrice = num::fromString<Decimal>(closeString.c_str());
+	  indicator1 = num::fromString<Decimal>(indicator1String.c_str());
+	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
+
+	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+										highPrice, lowPrice, 
+										closePrice, 
+										indicator1, 
+										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	}
+    }
+
+  private:
+    io::CSVReader<9, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
+    boost::date_time::format_date_parser<boost::gregorian::date, char> mDateParser;
+  };
+  
+  ////
 ///////
 
   template <class Decimal>
