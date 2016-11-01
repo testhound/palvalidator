@@ -15,22 +15,32 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     Security.h
 )
 
-find_package(BISON)
-bison_target(PalParser
-             ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/grammar.yy
-             ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/PalParser.cpp)
+find_package(BISON REQUIRED)
+set(BisonOutput ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/PalParser.cpp)
+if(BISON_FOUND)
+    add_custom_command(
+      OUTPUT ${BisonOutput}
+      COMMAND ${BISON_EXECUTABLE}
+              --output=${BisonOutput}
+              ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/grammar.yy
+      COMMENT "Generating PalParser.cpp"
+    )
+endif()
 
-find_package(FLEX)
-flex_target(PalScanner
-            ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/lexer.ll
-            ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/PalScanner.cpp)
-
-add_flex_bison_dependency(PalScanner PalParser)
+find_package(FLEX REQUIRED)
+set(FlexOutput PalScanner.hpp PalScanner.cpp)
+if(FLEX_FOUND)
+    add_custom_command(
+      OUTPUT ${FlexOutput}
+      COMMAND ${FLEX_EXECUTABLE}
+              ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/lexer.ll
+      COMMENT "Generating PalScanner.{cpp,hpp}"
+    )
+endif()
 
 add_library(${LIB_NAME} STATIC
             ${SRC_LIST}
-            ${BISON_PalParser_OUTPUTS}
-            ${FLEX_PalScanner_OUTPUTS})
+            ${BisonOutput}
+            ${FlexOutput})
 
-SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${LIB_NAME} ${CMAKE_THREAD_LIBS_INIT})
