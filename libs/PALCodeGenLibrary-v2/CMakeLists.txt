@@ -15,13 +15,18 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     Security.h
 )
 
+set(BisonOutputDir ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2)
+
 find_package(BISON REQUIRED)
-set(BisonOutput ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/PalParser.cpp)
+set(BisonOutput ${BisonOutputDir}/PalParser.cpp
+                ${BisonOutputDir}/location.hh
+                ${BisonOutputDir}/position.hh
+                ${BisonOutputDir}/stack.hh)
 if(BISON_FOUND)
     add_custom_command(
       OUTPUT ${BisonOutput}
       COMMAND ${BISON_EXECUTABLE}
-              --output=${BisonOutput}
+              --output=${BisonOutputDir}/PalParser.cpp
               ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/grammar.yy
       COMMENT "Generating PalParser.cpp"
     )
