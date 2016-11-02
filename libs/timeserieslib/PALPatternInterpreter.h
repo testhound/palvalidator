@@ -80,8 +80,8 @@ namespace mkc_timeseries
 	case PriceBarReference::CLOSE:
 	  return security->getCloseValue(iteratorForDate, barReference->getBarOffset());
 
-	case PriceBarReference::INDICATOR1:
-	  return security->getIndicator1Value(iteratorForDate, barReference->getBarOffset());
+	case PriceBarReference::VOLUME:
+	  return security->getVolumeValue(iteratorForDate, barReference->getBarOffset());
 
 	default:
 	  throw PalPatternInterpreterException ("PALPatternInterpreter::evaluatePriceBar - unknown PriceBarReference derived class"); 

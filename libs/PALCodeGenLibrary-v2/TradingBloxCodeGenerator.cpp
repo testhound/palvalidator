@@ -124,9 +124,9 @@ TradingBloxCodeGenVisitor::visit (PriceBarClose *bar)
 }
 
 void
-TradingBloxCodeGenVisitor::visit (Indicator1 *bar)
+TradingBloxCodeGenVisitor::visit (VolumeBarReference *bar)
 {
-  mEntryOrdersScriptFile << "indicator1[" << bar->getBarOffset() << "]";
+  mEntryOrdersScriptFile << "instrument.volume[" << bar->getBarOffset() << "]";
 }
 
 void

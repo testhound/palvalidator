@@ -23,7 +23,7 @@ class PalFileResults;
 class PriceBarReference
 {
 public:
-  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, INDICATOR1};
+  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, VOLUME};
   
   PriceBarReference (unsigned int barOffset);
   virtual ~PriceBarReference();
@@ -99,13 +99,13 @@ private:
   unsigned long long mComputedHash;
 };
 
-class Indicator1 : public PriceBarReference
+class VolumeBarReference : public PriceBarReference
 {
 public:
-  Indicator1(unsigned int barOffset);
-  Indicator1 (const Indicator1& rhs);
-  Indicator1& operator=(const Indicator1 &rhs);
-  ~Indicator1();
+  VolumeBarReference(unsigned int barOffset);
+  VolumeBarReference (const VolumeBarReference& rhs);
+  VolumeBarReference& operator=(const VolumeBarReference &rhs);
+  ~VolumeBarReference();
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
   PriceBarReference::ReferenceType getReferenceType();
@@ -602,7 +602,7 @@ public:
   PriceBarReference* getPriceHigh (unsigned int barOffset);
   PriceBarReference* getPriceLow (unsigned int barOffset);
   PriceBarReference* getPriceClose (unsigned int barOffset);
-  PriceBarReference* getIndicator1 (unsigned int barOffset);
+  PriceBarReference* getVolume (unsigned int barOffset);
   MarketEntryExpression* getLongMarketEntryOnOpen();
   MarketEntryExpression* getShortMarketEntryOnOpen();
   decimal7 *getDecimalNumber (char *numString);
@@ -622,7 +622,7 @@ private:
   PriceBarReference* mPredefinedPriceHigh[MaxNumBarOffsets];
   PriceBarReference* mPredefinedPriceLow[MaxNumBarOffsets];
   PriceBarReference* mPredefinedPriceClose[MaxNumBarOffsets];
-  PriceBarReference* mPredefinedIndicator1[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedVolume[MaxNumBarOffsets];
   MarketEntryExpression* mLongEntryOnOpen;
   MarketEntryExpression* mShortEntryOnOpen;
   std::map<std::string, DecimalPtr> mDecimalNumMap;

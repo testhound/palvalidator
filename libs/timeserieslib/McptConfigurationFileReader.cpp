@@ -207,9 +207,9 @@ namespace mkc_timeseries
 
     if (upperCaseFormatStr == std::string("PAL"))
       return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
-    else if (upperCaseFormatStr == std::string("TradeStation"))
+    else if (upperCaseFormatStr == std::string("TRADESTATION"))
             return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
-    else if (upperCaseFormatStr == std::string("TradeStationIndicator1"))
+    else if (upperCaseFormatStr == std::string("TRADESTATIONINDICATOR1"))
             return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
 
     else

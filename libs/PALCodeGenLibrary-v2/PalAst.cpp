@@ -265,20 +265,20 @@ PriceBarReference::ReferenceType PriceBarClose::getReferenceType()
 
 
 //////////////////////////
-// Indicator1
+// Volume
 
-Indicator1::Indicator1(unsigned int barOffset) 
+VolumeBarReference::VolumeBarReference(unsigned int barOffset) 
   : PriceBarReference(barOffset),
     mComputedHash (0)
 {}
 
-Indicator1::Indicator1 (const Indicator1& rhs)
+VolumeBarReference::VolumeBarReference (const VolumeBarReference& rhs)
   : PriceBarReference (rhs),
     mComputedHash (rhs.mComputedHash)
 {}
 
-Indicator1& 
-Indicator1::operator=(const Indicator1 &rhs)
+VolumeBarReference& 
+VolumeBarReference::operator=(const VolumeBarReference &rhs)
 {
   if (this == &rhs)
     return *this;
@@ -288,16 +288,16 @@ Indicator1::operator=(const Indicator1 &rhs)
   return *this;
 }
 
-Indicator1::~Indicator1()
+VolumeBarReference::~VolumeBarReference()
 {}
 
 void 
-Indicator1::accept (PalCodeGenVisitor &v)
+VolumeBarReference::accept (PalCodeGenVisitor &v)
 {
   v.visit(this);
 }
 
-unsigned long long Indicator1::hashCode()
+unsigned long long VolumeBarReference::hashCode()
 {
   unsigned long long result = mComputedHash;
 
@@ -311,9 +311,9 @@ unsigned long long Indicator1::hashCode()
   return result;
 }
 
-PriceBarReference::ReferenceType Indicator1::getReferenceType()
+PriceBarReference::ReferenceType VolumeBarReference::getReferenceType()
 {
-  return PriceBarReference::INDICATOR1;
+  return PriceBarReference::VOLUME;
 }
 
 //////////////////////////
@@ -1213,7 +1213,7 @@ AstFactory::~AstFactory()
       delete mPredefinedPriceHigh[i];
       delete mPredefinedPriceLow[i];
       delete mPredefinedPriceClose[i];
-      delete mPredefinedIndicator1[i];
+      delete mPredefinedVolume[i];
     }
 
   //printf ("AstFactory destructor complete\n");
@@ -1305,7 +1305,7 @@ void AstFactory::initializePriceBars()
       mPredefinedPriceHigh[i] = new PriceBarHigh (i);
       mPredefinedPriceLow[i] = new PriceBarLow (i);
       mPredefinedPriceClose[i] = new PriceBarClose (i);
-      mPredefinedIndicator1[i] = new Indicator1 (i);
+      mPredefinedVolume[i] = new VolumeBarReference (i);
     }
 }
 
@@ -1341,12 +1341,12 @@ PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
     return new PriceBarClose (barOffset);
 }
 
-PriceBarReference* AstFactory::getIndicator1 (unsigned int barOffset)
+PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
 {
   if (barOffset <= AstFactory::MaxNumBarOffsets)
-    return mPredefinedIndicator1[barOffset];
+    return mPredefinedVolume[barOffset];
   else
-    return new Indicator1 (barOffset);
+    return new VolumeBarReference (barOffset);
 }
   
 decimal7 * AstFactory::getDecimalNumber (char *numString)

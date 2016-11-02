@@ -80,8 +80,6 @@ namespace mkc_timeseries
 			    const date& processingDate)
     {
       addPositionDirection (-1, processingDate);
-      Decimal percentReturnTemp = getCloseToCloseReturn (aSecurity,
-							   processingDate);
       Decimal percentReturn = getCloseToCloseReturn (aSecurity,
 							   processingDate);
 

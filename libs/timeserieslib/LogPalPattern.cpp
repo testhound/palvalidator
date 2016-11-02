@@ -55,24 +55,31 @@ namespace mkc_timeseries
   void LogPalPattern::LogPriceBarExpr (PriceBarReference *barReference,
 				       std::ofstream& outputFileStream)
   {
-    if (PriceBarHigh *pHigh = dynamic_cast<PriceBarHigh*>(barReference))
-      {
-	outputFileStream << "HIGH OF " << pHigh->getBarOffset() << " BARS AGO";
-      }
-    else if (PriceBarLow *pLow = dynamic_cast<PriceBarLow*>(barReference))
-      {
-	outputFileStream << "LOW OF " << pLow->getBarOffset() << " BARS AGO";
-      }
-    else if (PriceBarClose *pClose = dynamic_cast<PriceBarClose*>(barReference))
-      {
-	outputFileStream << "CLOSE OF " << pClose->getBarOffset() << " BARS AGO";
-      }
-    else if (PriceBarOpen *pOpen = dynamic_cast<PriceBarOpen*>(barReference))
-      {
-	outputFileStream << "OPEN OF " << pOpen->getBarOffset() << " BARS AGO";
-      }
-    else
-      throw_assert (false, "LogPriceBarExpr: PriceBarRefererence is not OHLC");
+    switch (barReference->getReferenceType())
+	{
+	case PriceBarReference::OPEN:
+	  outputFileStream << "OPEN OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
+	case PriceBarReference::HIGH:
+	  outputFileStream << "HIGH OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+	  
+	case PriceBarReference::LOW:
+	  outputFileStream << "LOW OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
+	case PriceBarReference::CLOSE:
+	  outputFileStream << "CLOSE OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
+	case PriceBarReference::VOLUME:
+	  outputFileStream << "VOLUME OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
+	default:
+	  throw_assert (false, "LogPriceBarExpr: PriceBarRefererence is not OHLC");
+	}
   }
 
   void LogPalPattern::LogMarketExpression (MarketEntryExpression *expression,

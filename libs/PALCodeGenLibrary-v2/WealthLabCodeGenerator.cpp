@@ -114,9 +114,9 @@ WealthLabCodeGenVisitor::visit (PriceBarClose *bar)
 }
 
 void
-WealthLabCodeGenVisitor::visit (Indicator1 *bar)
+WealthLabCodeGenVisitor::visit (VolumeBarReference *bar)
 {
-  mTradingModelFileName << "indicator1(Bar - " << bar->getBarOffset() << ")";
+  mTradingModelFileName << "Volume(Bar - " << bar->getBarOffset() << ")";
 }
 
 

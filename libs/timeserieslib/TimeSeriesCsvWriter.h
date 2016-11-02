@@ -73,26 +73,29 @@ namespace mkc_timeseries
     OHLCTimeSeries<Decimal> mTimeSeries;
   };
 
+
+  //
+  
   //
 
   template <class Decimal>
-  class PalIndicator1CsvWriter
+  class PalVolumeForCloseCsvWriter
   {
   public:
-    PalIndicator1CsvWriter (const std::string& fileName, 
+    PalVolumeForCloseCsvWriter (const std::string& fileName, 
 			    const OHLCTimeSeries<Decimal>& series)
       : mCsvFile (fileName),
 	mTimeSeries (series)
     {
     }
 
-    PalIndicator1CsvWriter (const PalIndicator1CsvWriter& rhs)
+    PalVolumeForCloseCsvWriter (const PalVolumeForCloseCsvWriter& rhs)
       : mCsvFile (rhs.mCsvFile),
 	mTimeSeries (rhs.mTimeSeries)
     {}
 
-    PalIndicator1CsvWriter& 
-    operator=(const PalIndicator1CsvWriter &rhs)
+    PalVolumeForCloseCsvWriter& 
+    operator=(const PalVolumeForCloseCsvWriter &rhs)
     {
       if (this == &rhs)
 	return *this;
@@ -103,7 +106,7 @@ namespace mkc_timeseries
       return *this;
     }
 
-    ~PalIndicator1CsvWriter()
+    ~PalVolumeForCloseCsvWriter()
     {}
 
     void writeFile()
@@ -120,7 +123,7 @@ namespace mkc_timeseries
 	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate) << "," << 
 	    timeSeriesEntry.getOpenValue() << "," <<
 	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
-	    timeSeriesEntry.getIndicator1Value() << std::endl;
+	    timeSeriesEntry.getVolumeValue() << std::endl;
 	}
     }
 

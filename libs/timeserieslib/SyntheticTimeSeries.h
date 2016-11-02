@@ -34,9 +34,9 @@ namespace mkc_timeseries
 	mRelativeHigh(),
 	mRelativeLow(),
 	mRelativeClose(),
-	mRelativeIndicator1(),
+	mRelativeVolume(),
 	mFirstOpen(),
-	mFirsIndicator1(),
+	mFirstVolume(),
 	mNumElements (aTimeSeries.getNumEntries()),
 	mRandGenerator(),
 	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (aTimeSeries.getTimeFrame(),
@@ -47,7 +47,7 @@ namespace mkc_timeseries
       mRelativeHigh.reserve(aTimeSeries.getNumEntries());
       mRelativeLow.reserve(aTimeSeries.getNumEntries());
       mRelativeClose.reserve(aTimeSeries.getNumEntries());
-      mRelativeIndicator1.reserve(aTimeSeries.getNumEntries());
+      mRelativeVolume.reserve(aTimeSeries.getNumEntries());
       
       Decimal valueOfOne (num::fromString<Decimal>("1.0"));
       Decimal currentOpen(num::fromString<Decimal>("0.0"));
@@ -55,10 +55,10 @@ namespace mkc_timeseries
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
 
       mRelativeOpen.push_back(valueOfOne);
-      mRelativeIndicator1.push_back(valueOfOne);
+      mRelativeVolume.push_back(valueOfOne);
       
       mFirstOpen = mTimeSeries.getOpenValue (it, 0);
-      mFirsIndicator1 = mTimeSeries.getIndicator1Value (it, 0);
+      mFirstVolume = mTimeSeries.getVolumeValue (it, 0);
       
       mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) / mFirstOpen);
       mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) / mFirstOpen);
@@ -80,15 +80,17 @@ namespace mkc_timeseries
 	  mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /
 				    currentOpen) ;
 
-	  if ((mTimeSeries.getIndicator1Value (it, 0) > DecimalConstants<Decimal>::DecimalZero) &&
-	      (mTimeSeries.getIndicator1Value (it, 1) > DecimalConstants<Decimal>::DecimalZero))
+	  if ((mTimeSeries.getVolumeValue (it, 0) > DecimalConstants<Decimal>::DecimalZero) &&
+	      (mTimeSeries.getVolumeValue (it, 1) > DecimalConstants<Decimal>::DecimalZero))
 	    {
-	      mRelativeIndicator1.push_back (mTimeSeries.getIndicator1Value (it, 0) /
-					     mTimeSeries.getIndicator1Value (it, 1));
+	      mRelativeVolume.push_back (mTimeSeries.getVolumeValue (it, 0) /
+					     mTimeSeries.getVolumeValue (it, 1));
+	      std::cout << "Relative indicator1 value = " << mTimeSeries.getVolumeValue (it, 0) /
+		mTimeSeries.getVolumeValue (it, 1) << std::endl;
 	    }
 	  else
 	    {
-	      mRelativeIndicator1.push_back (valueOfOne);
+	      mRelativeVolume.push_back (valueOfOne);
 	    }
 	  
 	  mDateSeries.addElement (mTimeSeries.getDateValue(it,0));
@@ -102,9 +104,9 @@ namespace mkc_timeseries
 	mRelativeHigh (rhs.mRelativeHigh),
 	mRelativeLow (rhs.mRelativeLow),
 	mRelativeClose (rhs.mRelativeClose),
-	mRelativeIndicator1 (rhs.mRelativeIndicator1),
+	mRelativeVolume (rhs.mRelativeVolume),
 	mFirstOpen (rhs.mFirstOpen),
-	mFirsIndicator1 (rhs.mFirsIndicator1),
+	mFirstVolume (rhs.mFirstVolume),
 	mNumElements (rhs.mNumElements),
 	mRandGenerator(rhs.mRandGenerator),
 	mSyntheticTimeSeries (rhs.mSyntheticTimeSeries)
@@ -122,9 +124,9 @@ namespace mkc_timeseries
       mRelativeHigh = rhs.mRelativeHigh;
       mRelativeLow = rhs.mRelativeLow;
       mRelativeClose = rhs.mRelativeClose;
-      mRelativeIndicator1 = rhs.mRelativeIndicator1;
+      mRelativeVolume = rhs.mRelativeVolume;
       mFirstOpen = rhs.mFirstOpen;
-      mFirsIndicator1 = rhs.mFirsIndicator1;
+      mFirstVolume = rhs.mFirstVolume;
       mNumElements = rhs.mNumElements;
       mRandGenerator = rhs.mRandGenerator;
       mSyntheticTimeSeries = rhs.mSyntheticTimeSeries;
@@ -140,7 +142,7 @@ namespace mkc_timeseries
       // Shuffle is done. Integrate to recreate the market
 
       Decimal xPrice = mFirstOpen;
-      Decimal xIndicator1 = mFirsIndicator1;
+      Decimal xVolume = mFirstVolume;
       Decimal syntheticOpen;
       Decimal syntheticClose;
 
@@ -152,8 +154,8 @@ namespace mkc_timeseries
 	  xPrice *= mRelativeClose[i];
 	  syntheticClose = xPrice;
 
-	  xIndicator1 *= mRelativeIndicator1[i];
-	  
+	  xVolume *= mRelativeVolume[i];
+
 	  try
 	    {
 	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i),
@@ -161,7 +163,7 @@ namespace mkc_timeseries
 					       syntheticOpen * mRelativeHigh[i],
 					       syntheticOpen * mRelativeLow[i],
 					       syntheticClose,
-					       xIndicator1,
+					       xVolume,
 					       mSyntheticTimeSeries->getTimeFrame());
 	      mSyntheticTimeSeries->addEntry(std::move(entry));
 	    }
@@ -254,7 +256,7 @@ namespace mkc_timeseries
         std::swap(mRelativeHigh[i], mRelativeHigh[j]);
         std::swap(mRelativeLow[i], mRelativeLow[j]);
         std::swap(mRelativeClose[i], mRelativeClose[j]);
-	std::swap(mRelativeIndicator1[i], mRelativeIndicator1[j]);
+	std::swap(mRelativeVolume[i], mRelativeVolume[j]);
 	}
     }
 
@@ -265,9 +267,9 @@ namespace mkc_timeseries
     vector<Decimal> mRelativeHigh;
     vector<Decimal> mRelativeLow;
     vector<Decimal> mRelativeClose;
-    vector<Decimal> mRelativeIndicator1;
+    vector<Decimal> mRelativeVolume;
     Decimal mFirstOpen;
-    Decimal mFirsIndicator1;
+    Decimal mFirstVolume;
     unsigned long mNumElements;
     RandomMersenne mRandGenerator;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;

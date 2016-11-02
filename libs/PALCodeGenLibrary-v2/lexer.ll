@@ -74,7 +74,7 @@
 "LOW"              { return mkc_palast::PalParser::make_TOK_LOW(mkc_palast::location()); }
 "CLOSE"            { return mkc_palast::PalParser::make_TOK_CLOSE(mkc_palast::location()); }
 "OPEN"             { return mkc_palast::PalParser::make_TOK_OPEN(mkc_palast::location()); }
-"INDICATOR1"       { return mkc_palast::PalParser::make_TOK_INDICATOR1(mkc_palast::location()); }
+"VOLUME"       { return mkc_palast::PalParser::make_TOK_VOLUME(mkc_palast::location()); }
 "OF"               { return mkc_palast::PalParser::make_TOK_OF(mkc_palast::location()); }
 "AND"              { return mkc_palast::PalParser::make_TOK_AND(mkc_palast::location()); }
 "AGO"              { return mkc_palast::PalParser::make_TOK_AGO(mkc_palast::location()); }

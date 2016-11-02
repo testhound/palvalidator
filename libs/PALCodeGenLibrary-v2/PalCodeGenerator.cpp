@@ -84,9 +84,9 @@ PalCodeGenerator::visit (PriceBarClose *bar)
 }
 
 void
-PalCodeGenerator::visit (Indicator1 *bar)
+PalCodeGenerator::visit (VolumeBarReference *bar)
 {
-  mOutFile << "INDICATOR1 OF " << bar->getBarOffset() << " BARS AGO";
+  mOutFile << "VOLUME OF " << bar->getBarOffset() << " BARS AGO";
 }
 
 void

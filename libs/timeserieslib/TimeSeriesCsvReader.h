@@ -538,6 +538,8 @@ namespace mkc_timeseries
       boost::date_time::special_values_parser<boost::gregorian::date, char>
 	special_parser;
 
+      std::cout << "TradeStationIndicator1CseReader.readFile" << std::endl << std::endl;
+      
       while (mCsvFile.read_row(dateStamp, timeString, openString, highString, 
 			       lowString, closeString,
 			       volumeString, openInterestString, indicator1String))
@@ -549,6 +551,7 @@ namespace mkc_timeseries
 	  indicator1 = num::fromString<Decimal>(indicator1String.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
 
+	  std::cout << entryDate << ", " << openPrice << ", " << highPrice << ", " << lowPrice << ", " << closePrice << ", " << indicator1 << std::endl;
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
 										highPrice, lowPrice, 
 										closePrice, 

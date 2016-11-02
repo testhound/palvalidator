@@ -120,14 +120,14 @@ namespace mkc_timeseries
 			   const Decimal& high,
 			   const Decimal& low,
 			   const Decimal& close,
-			   const Decimal& indicator1,
+			   const Decimal& volumeForEntry,
 			   TimeFrame::Duration timeFrame)
         : mDate(entryDate),
           mOpen(Decimal(open)),
           mHigh(Decimal(high)),
           mLow(Decimal(low)),
           mClose(close),
-          mIndicator1(indicator1),
+          mVolume(volumeForEntry),
           mTimeFrame(timeFrame)
       {
         if (high < open)
@@ -174,7 +174,7 @@ namespace mkc_timeseries
 	mHigh (rhs.mHigh),
 	mLow (rhs.mLow),
 	mClose (rhs.mClose),
-	mIndicator1 (rhs.mIndicator1),
+	mVolume (rhs.mVolume),
 	mTimeFrame(rhs.mTimeFrame)
     {}
 
@@ -189,7 +189,7 @@ namespace mkc_timeseries
       mHigh = rhs.mHigh;
       mLow = rhs.mLow;
       mClose = rhs.mClose;
-      mIndicator1 = rhs.mIndicator1;
+      mVolume = rhs.mVolume;
       mTimeFrame = rhs.mTimeFrame;
       return *this;
     }
@@ -224,9 +224,9 @@ namespace mkc_timeseries
       return mClose;
     }
 
-    const Decimal& getIndicator1Value() const
+    const Decimal& getVolumeValue() const
     {
-      return mIndicator1;
+      return mVolume;
     }
 
   private:
@@ -235,7 +235,7 @@ namespace mkc_timeseries
     Decimal mHigh;
     Decimal mLow;
     Decimal mClose;
-    Decimal mIndicator1;
+    Decimal mVolume;
     TimeFrame::Duration mTimeFrame;
   };
 
@@ -248,7 +248,7 @@ namespace mkc_timeseries
 	    (lhs.getLowValue() == rhs.getLowValue()) &&
 	    (lhs.getCloseValue() == rhs.getCloseValue()) &&
 	    (lhs.getTimeFrame() == rhs.getTimeFrame()) &&
-	    (lhs.getIndicator1() == rhs.getIndicator1()));
+	    (lhs.getVolumeValue() == rhs.getVolumeValue()));
   }
 
   template <class Decimal>

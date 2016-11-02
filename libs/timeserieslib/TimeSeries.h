@@ -825,16 +825,16 @@ template <class Decimal> class OHLCTimeSeries
     }
     ///
 
-    const Decimal& getIndicator1Value (const RandomAccessIterator& it,
+    const Decimal& getVolumeValue (const RandomAccessIterator& it,
 				       unsigned long offset)
     {
-      return getTimeSeriesEntry (it, offset).getIndicator1Value();
+      return getTimeSeriesEntry (it, offset).getVolumeValue();
     }
 
-    const Decimal& getIndicator1Value (const ConstRandomAccessIterator& it,
+    const Decimal& getVolumeValue (const ConstRandomAccessIterator& it,
 				       unsigned long offset)
     {
-      return getTimeSeriesEntry (it, offset).getIndicator1Value();
+      return getTimeSeriesEntry (it, offset).getVolumeValue();
     }
 
     ////

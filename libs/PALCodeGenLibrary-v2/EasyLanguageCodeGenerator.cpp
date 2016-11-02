@@ -23,16 +23,16 @@ void EasyLanguageCodeGenVisitor::genCodeForCommonVariables()
 {
   std::ofstream *outFile = getOutputFileStream();
 
-  *outFile << "vars: shortStop (0), longStop (0), stopPercent (0), osc(0.0), tradePercentChange(0.0);" << std::endl;
-  *outFile << "vars: longEntryFound (false), shortEntryFound (false), noNextDayOrders(false), StrategyMAE(0.0);" << std::endl;
-  *outFile << "vars: regimeChanged(false), highestPosChange(0.0), lowestNegChange(0.0);" << std::endl;
+  *outFile << "vars: shortStop (0), longStop (0), stopPercent (0), tradePercentChange(0.0);" << std::endl;
+  *outFile << "vars: longEntryFound (false), shortEntryFound (false), noNextDayOrders(false), StrategyMAE(TBD);" << std::endl;
+  *outFile << "vars: oscVChartLow(0.0), oscVChartHigh(0.0);" << std::endl;
+  *outFile << "vars: highestPosChange(0.0), lowestNegChange(0.0);" << std::endl;
   *outFile << "vars: lowVolatility(false), highVolatility(false), vHighVolatility(false), breakEvenStopSet(false);" << std::endl;
-  *outFile << "vars: lowVolBEThreshold(TBD), highVolBEThreshold(TBD), vHighVolBEThreshold(TBD), breakEvenThreshold(0.0), dvbValue(0.0);" << std::endl;
+  *outFile << "vars: breakEvenThreshold(0.0), dvbValue(0.0);" << std::endl;
   *outFile << "vars: rankedVol(0.0), MinHoldPeriod(0.0), MaxHoldPeriod(0.0);" << std::endl;
-  *outFile << "vars: stopStr(\"\"), targetStr(\"\");" << std::endl;
   *outFile << "vars: profitTargetPercent(0.0), TargPrL(0.0), TargPrS(0.0), dailyChange(0.0);" << std::endl;
-  *outFile << "vars: MAE2(TBD), MAE3(TBD);" << std::endl;
-  *outFile << "vars: lowVolatilityEntry(false), highVolatilityEntry(false), vHighVolatilityEntry(false);" << std::endl;
+  *outFile << "vars: stop1Str(\"\"), stop2Str (\"\"), target1Str(\"\"), target2Str(\"\"), target3Str(\"\");" << std::endl;
+  *outFile << "vars: buyStr(\"\"), sellStr(\"\"), stopStr(\"\"), targetStr(\"\");" << std::endl;
 }
 
 void EasyLanguageCodeGenVisitor::genCodeToInitVolatility(bool shortSide)
@@ -118,22 +118,18 @@ void EasyLanguageCodeGenVisitor::genCodeForCommonEntry()
  *outFile << "\t\t\tCommentary(\"Manual long stop = open of next bar - \", stopStr, NewLine);" << std::endl;;
  *outFile << "\t\t\tCommentary(\"Manual long profit target = open of next bar + \", targetStr, NewLine);" << std::endl;
  *outFile << "\t\t\thighestPosChange = 0;"  << std::endl;
-
- genCodeToInitVolatility(false);
+ *outFile << "\t\t\tbreakEvenThreshold = (profitTargetPercent * 100.0) * 0.5;" << std::endl;
 
  *outFile << "\t\t\tbuy next bar at market;"  << std::endl;
  *outFile << "\t\tend;"  << std::endl;
  *outFile << "\t\tif (longEntryFound = false) and (shortEntryFound = true) then" << std::endl;
  *outFile << "\t\tbegin"  << std::endl;
  *outFile << "\t\t\tbreakEvenStopSet = false;"  << std::endl;
- *outFile << "\t\t\tregimeChanged = false;"  << std::endl;
  *outFile << "\t\t\tCommentary(\"Manual short stop = open of next bar + \", stopStr, NewLine);" << std::endl;
  *outFile << "\t\t\tCommentary(\"Manual short profit target = open of next bar - \", targetStr, NewLine);" << std::endl;
 
  *outFile << "\t\t\tlowestNegChange = 0;"  << std::endl;
-
- genCodeToInitVolatility(true);
-
+ *outFile << "\t\t\tbreakEvenThreshold = -((profitTargetPercent * 100.0) * 0.5);" << std::endl;
  *outFile << "\t\t\tsell short next bar at market;"  << std::endl;
  *outFile << "\t\tend;"  << std::endl;
 
@@ -265,9 +261,9 @@ EasyLanguageCodeGenVisitor::visit (PriceBarClose *bar)
 }
 
 void
-EasyLanguageCodeGenVisitor::visit (Indicator1 *bar)
+EasyLanguageCodeGenVisitor::visit (VolumeBarReference *bar)
 {
-  mEntryOrdersScriptFile << "indicator1[" << bar->getBarOffset() << "]";
+  mEntryOrdersScriptFile << "volume[" << bar->getBarOffset() << "]";
 }
 
 void
@@ -508,7 +504,7 @@ void EasyLanguagePointAdjustedCodeGenVisitor::genCodeForVariablesInEntryScript()
   std::ofstream *outFile = getOutputFileStream();
 
   *outFile << "vars: shortStopDistance(0.0), longStopDistance(0.0), UnAdjustedClose(0.0);" << std::endl;
-  *outFile << "vars: profitTargetDistance(0.0), unAdjCloseAtEntry(0.0);" << std::endl;
+  *outFile << "vars: profitTargetDistance(0.0), unAdjCloseAtEntry(0.0);" << std::endl << std::endl;
 }
 
 void 
@@ -579,8 +575,18 @@ void EasyLanguagePointAdjustedCodeGenVisitor::genCodeForEntryExit()
  *outFile << "\t\t\t\tlongStop = EntryPrice - longStopDistance;" << std::endl;
  *outFile << "\t\t\t\tprofitTargetDistance = Round2Fraction (UnAdjustedClose * profitTargetPercent);" << std::endl;
  *outFile << "\t\t\t\tTargPrL = EntryPrice + profitTargetDistance;" << std::endl;
+ *outFile << "\t\t\t\tunAdjCloseAtEntry = UnAdjustedClose;" << std::endl;
+ *outFile << "\t\t\t\tIf Close > open then" << std::endl;
+ *outFile << "\t\t\t\t\thighestPosChange = ((UnAdjustedClose/UnadjustedClose[1]) - 1) * 100.0;" << std::endl;
+
  *outFile << "\t\t\tend;" << std::endl << std::endl;
 
+ *outFile << "\t\t\tIf Barssinceentry > 0 then" << std::endl;
+ *outFile << "\t\t\tBegin" << std::endl;
+ *outFile << "\t\t\t\tValue1 = ((UnAdjustedClose / unAdjCloseAtEntry) - 1) * 100;" << std::endl;
+ *outFile << "\t\t\t\t\thighestPosChange = Maxlist (highestPosChange,value1 );" << std::endl;
+ *outFile << "\t\t\tend;" << std::endl;
+ 
  *outFile << "\t\t\tif noNextDayOrders = False then" << std::endl;
  *outFile << "\t\t\tbegin" << std::endl;
  *outFile << "\t\t\t\tsell next bar at TargPrL limit;" << std::endl;

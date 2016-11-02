@@ -137,10 +137,10 @@ namespace mkc_timeseries
 	return mSecurityTimeSeries->getCloseValue(it, offset); 
       }
 
-      const Decimal& getIndicator1Value (const ConstRandomAccessIterator& it, 
+      const Decimal& getVolumeValue (const ConstRandomAccessIterator& it, 
 					 unsigned long offset) const
       {
-	return mSecurityTimeSeries->getIndicator1Value(it, offset); 
+	return mSecurityTimeSeries->getVolumeValue(it, offset); 
       }
 
 	    
