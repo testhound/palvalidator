@@ -85,8 +85,8 @@ namespace mkc_timeseries
 	    {
 	      mRelativeVolume.push_back (mTimeSeries.getVolumeValue (it, 0) /
 					     mTimeSeries.getVolumeValue (it, 1));
-	      std::cout << "Relative indicator1 value = " << mTimeSeries.getVolumeValue (it, 0) /
-		mTimeSeries.getVolumeValue (it, 1) << std::endl;
+	      //std::cout << "Relative indicator1 value = " << mTimeSeries.getVolumeValue (it, 0) /
+	      //mTimeSeries.getVolumeValue (it, 1) << std::endl;
 	    }
 	  else
 	    {
