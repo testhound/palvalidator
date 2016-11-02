@@ -27,6 +27,9 @@ libs/PALCodeGenLibrary-v2/PalParser.cpp
 libs/PALCodeGenLibrary-v2/PalParser.hpp
 libs/PALCodeGenLibrary-v2/PalScanner.cpp
 libs/PALCodeGenLibrary-v2/PalScanner.hpp
+libs/PALCodeGenLibrary-v2/location.hh
+libs/PALCodeGenLibrary-v2/position.hh
+libs/PALCodeGenLibrary-v2/stack.hh
 libs/PALCodeGenLibrary-v2/*.o
 libs/PALCodeGenLibrary-v2/*.a
 
