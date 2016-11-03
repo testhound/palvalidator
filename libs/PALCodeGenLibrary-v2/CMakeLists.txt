@@ -15,34 +15,44 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     Security.h
 )
 
-set(BisonOutputDir ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2)
-
+################################################################################
+# Bison
+################################################################################
+set(BisonDir ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2)
 find_package(BISON REQUIRED)
-set(BisonOutput ${BisonOutputDir}/PalParser.cpp
-                ${BisonOutputDir}/location.hh
-                ${BisonOutputDir}/position.hh
-                ${BisonOutputDir}/stack.hh)
+set(BisonOutput ${BisonDir}/location.hh
+                ${BisonDir}/position.hh
+                ${BisonDir}/stack.hh
+                ${BisonDir}/PalParser.cpp
+                ${BisonDir}/PalParser.hpp)
+
+set(BisonInput ${BisonDir}/grammar.yy)
+
 if(BISON_FOUND)
     add_custom_command(
       OUTPUT ${BisonOutput}
-      COMMAND ${BISON_EXECUTABLE}
-              --output=${BisonOutputDir}/PalParser.cpp
-              ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/grammar.yy
-      COMMENT "Generating PalParser.cpp"
+      COMMAND ${BISON_EXECUTABLE} --output=${BisonDir}/PalParser.cpp ${BisonInput}
+      DEPENDS ${BisonInput}
+      COMMENT "Generating Bison files"
     )
 endif()
 
+################################################################################
+# Flex
+################################################################################
 find_package(FLEX REQUIRED)
 set(FlexOutput PalScanner.hpp PalScanner.cpp)
+set(FlexInput ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/lexer.ll)
 if(FLEX_FOUND)
     add_custom_command(
       OUTPUT ${FlexOutput}
-      COMMAND ${FLEX_EXECUTABLE}
-              ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/lexer.ll
-      COMMENT "Generating PalScanner.{cpp,hpp}"
+      COMMAND ${FLEX_EXECUTABLE} ${FlexInput}
+      DEPENDS ${FlexInput}
+      COMMENT "Generating Lexer files"
     )
 endif()
 
+################################################################################
 add_library(${LIB_NAME} STATIC
             ${SRC_LIST}
             ${BisonOutput}
