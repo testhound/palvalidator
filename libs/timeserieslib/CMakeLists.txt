@@ -60,4 +60,4 @@ set(SRC_LIST
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(${LIB_NAME} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_NAME} priceaction2 ${CMAKE_THREAD_LIBS_INIT})
