@@ -224,9 +224,9 @@ namespace mkc_timeseries
             auto duration_ms = duration_cast<milliseconds>(end - start).count();
 
             {
-                  std::stringstream s;
-                  s << "Strategy " << strategyNumber << " took " << duration_ms << " ms to run" << std::endl;
-                  std::cout<<s.str();
+	      //std::stringstream s;
+	      //  s << "Strategy " << strategyNumber << " took " << duration_ms << " ms to run" << std::endl;
+	      //  std::cout<<s.str();
             }
 
             if (pValue < DecimalConstants<Decimal>::SignificantPValue)
