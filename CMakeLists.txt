@@ -2,7 +2,7 @@ project(PalValidator)
 cmake_minimum_required(VERSION 2.8)
 set(BIN_NAME ${PROJECT_NAME})
 
-set(USE_BLOOMBERG_DECIMALS false)
+set(USE_BLOOMBERG_DECIMALS true)
 
 if(USE_BLOOMBERG_DECIMALS)
   add_definitions(-DUSE_BLOOMBERG_DECIMALS)
