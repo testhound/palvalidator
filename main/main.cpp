@@ -16,6 +16,8 @@ using std::shared_ptr;
 
 using Num = num::DefaultNumber;
 
+enum MCPTValidationPolicy {CUMULATIVE_RETURN, PESSIMISTIC_RETURN_RATIO};
+
 template <class Decimal, typename McptType>
 static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Decimal,McptType>& monteCarloValidation,
 					 const std::string& securitySymbol);
@@ -26,8 +28,12 @@ static std::string createRejectedPatternsAndRobustFileName (const std::string& s
 static std::string createMCPTSurvivingPatternsFileName (const std::string& securitySymbol);
 static void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<Num>> configuration,
 					 int numPermutations);
-static void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<Num>> configuration,
-					 int numPermutations);
+/* static void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<Num>> configuration,
+   int numPermutations, MCPTValidationPolicy validationPolicy); */
+static void validateUsingVersionTwoMCPTAndCumulativeReturn (std::shared_ptr<McptConfiguration<Num>> configuration,
+							    int numPermutations);
+static void validateUsingVersionTwoMCPTAndPRR (std::shared_ptr<McptConfiguration<Num>> configuration,
+							    int numPermutations);
 template <class Decimal, typename McptType>
 static shared_ptr<PalRobustnessTester<Decimal>>
 runRobustnessTests (const PALMonteCarloValidation<Decimal, McptType>& monteCarloValidation,
@@ -43,8 +49,10 @@ static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<
 
 void usage()
 {
-  printf("Usage: PalValidation <configuration file> [Number of Permutation Tests] [Version # of MCPT]\n");
+  printf("Usage: PalValidation <configuration file> [Number of Permutation Tests] [Version # of MCPT]\n <Test Policy, 1 = Cumulative Return, 2 = PRR>(optional), <Num Threads>(optional)");
 }
+
+
 
 int main(int argc, char **argv)
 {
@@ -56,9 +64,27 @@ int main(int argc, char **argv)
       int typeOfPermutationTest = std::stoi(v[3]);
 
       size_t nthreads = 0; 
+      int intValidationPolicy;
+      MCPTValidationPolicy validationPolicy;
 
-      if (argc == 5) {
-        nthreads = std::stoi(v[4]);
+      if (argc >= 5)
+	{
+	  intValidationPolicy = std::stoi(v[4]);
+	  if (intValidationPolicy == 1)
+	    validationPolicy = CUMULATIVE_RETURN;
+	  else if (intValidationPolicy == 2)
+	    validationPolicy = PESSIMISTIC_RETURN_RATIO;
+	  else
+	    {
+	      usage();
+	      return 1;
+	    }
+	}
+      else
+	validationPolicy = PESSIMISTIC_RETURN_RATIO;
+      
+      if (argc == 6) {
+        nthreads = std::stoi(v[5]);
       }
 
       runner runner_instance(nthreads);
@@ -71,7 +97,17 @@ int main(int argc, char **argv)
       if (typeOfPermutationTest == 1)
 	validateUsingVersionOneMCPT (configuration, numPermutations);
       else if (typeOfPermutationTest == 2)
-	validateUsingVersionTwoMCPT (configuration, numPermutations);
+	{
+	  if (validationPolicy == CUMULATIVE_RETURN)
+	    validateUsingVersionTwoMCPTAndCumulativeReturn (configuration, numPermutations);
+	  else if (validationPolicy == PESSIMISTIC_RETURN_RATIO)
+	    validateUsingVersionTwoMCPTAndPRR (configuration, numPermutations);
+	  else
+	    {
+	      usage();
+	      return 1;
+	    }
+	}
       else
 	{
 	  usage();
@@ -120,12 +156,48 @@ void validateUsingVersionOneMCPT (std::shared_ptr<McptConfiguration<Num>> config
 }
 
 static
-void validateUsingVersionTwoMCPT (std::shared_ptr<McptConfiguration<Num>> configuration,
-				  int numPermutations)
+void validateUsingVersionTwoMCPTAndCumulativeReturn (std::shared_ptr<McptConfiguration<Num>> configuration,
+						     int numPermutations)
 {
   PALMonteCarloValidation<Num,
-			  MonteCarloPermuteMarketChanges<Num, PessimisticReturnRatioPolicy>> validation(configuration, numPermutations);
-  printf ("Starting Monte Carlo Validation tests (Version: Two)\n\n");
+			      MonteCarloPermuteMarketChanges<Num, CumulativeReturnPolicy>> validation(configuration, numPermutations);
+  
+  printf ("Starting Monte Carlo Validation tests (Version: Two, using cumulative return policy)\n\n");
+
+  validation.runPermutationTests();
+
+  printf ("Exporting surviving MCPT strategies\n");
+
+
+  exportSurvivingMCPTPatterns<Num,MonteCarloPermuteMarketChanges<Num, CumulativeReturnPolicy>>  (validation, configuration->getSecurity()->getSymbol());
+
+  // Run robustness tests on the patterns that survived Monte Carlo Permutation Testing
+  printf ("Running robustness tests for %lu patterns\n\n",
+	  validation.getNumSurvivingStrategies());
+
+  std::shared_ptr<PalRobustnessTester<Num>> robust =
+    runRobustnessTests<Num, MonteCarloPermuteMarketChanges<Num, CumulativeReturnPolicy>> (validation, configuration);
+
+  // Now export the pattern in PAL format
+
+  printf ("Exporting %lu surviving strategies\n", robust->getNumSurvivingStrategies());
+
+  exportSurvivingPatterns (robust, configuration->getSecurity()->getSymbol());
+  exportSurvivingPatternsAndRobustness (robust, configuration->getSecurity()->getSymbol());
+
+  printf ("Exporting %lu rejected strategies\n", robust->getNumRejectedStrategies());
+
+  exportRejectedPatternsAndRobustness (robust, configuration->getSecurity()->getSymbol());
+}
+
+static
+void validateUsingVersionTwoMCPTAndPRR (std::shared_ptr<McptConfiguration<Num>> configuration,
+					int numPermutations)
+{
+  PALMonteCarloValidation<Num,
+			    MonteCarloPermuteMarketChanges<Num, PessimisticReturnRatioPolicy>> validation(configuration, numPermutations);
+  
+  printf ("Starting Monte Carlo Validation tests (Version: Two using Pessimistic Return Ratio policy)\n\n");
 
   validation.runPermutationTests();
 
