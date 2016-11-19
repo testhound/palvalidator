@@ -69,7 +69,9 @@ using namespace boost::accumulators;
       return resultSeries;
 
     // Start at second element so we begin the rate of change calculatiom
-    it++;
+    //it++;
+
+    it = it + period;
     Decimal currentValue, prevValue, rocValue;
     std::shared_ptr<NumericTimeSeriesEntry<Decimal>> p;
 
