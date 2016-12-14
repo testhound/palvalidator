@@ -10,6 +10,7 @@
 #include "pcg_random.hpp"
 #include "pcg_extras.hpp"
 #include "randutils.hpp"
+#include <ext/random>
 
 using uint32 = unsigned int;
 
@@ -26,6 +27,8 @@ public:
   }
 
 private:
+  //randutils::random_generator<__gnu_cxx::sfmt19937> mRandGen; // Simd Mersenne Twister
+  //randutils::mt19937_rng mRandGen; // Mersenne Twister RNG
   randutils::random_generator<pcg32> mRandGen; // Try out the new PCG generator
 };
 
