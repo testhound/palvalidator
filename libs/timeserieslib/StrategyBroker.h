@@ -15,6 +15,8 @@
 #include "StrategyTransactionManager.h"
 #include "ProfitTarget.h"
 #include "StopLoss.h"
+#include "SecurityAttributes.h"
+#include "SecurityAttributesFactory.h"
 
 
 namespace mkc_timeseries
@@ -247,8 +249,9 @@ namespace mkc_timeseries
     {
       //std::cout << "StrategyBroker::ExitLongAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
       LongProfitTarget<Decimal> profitTarget(limitBasePrice, percentNum);
-      
-      this->ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, profitTarget.getProfitTarget());
+
+      Decimal orderPrice = num::Round2Tick (profitTarget.getProfitTarget(), this->getTick (tradingSymbol));
+      this->ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, orderPrice);
     }
 
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
@@ -281,8 +284,8 @@ namespace mkc_timeseries
       Decimal profitTarget(percentTarget.getProfitTarget());
       //std::cout << "StrategyBroker::ExitShortAllUnitsAtLimit - short profit target = " << profitTarget << " on date: " << orderDate << std::endl << std::endl;
 
-      
-      this->ExitShortAllUnitsAtLimit (tradingSymbol,orderDate,profitTarget);
+      Decimal orderPrice = num::Round2Tick (profitTarget, this->getTick (tradingSymbol));
+      this->ExitShortAllUnitsAtLimit (tradingSymbol,orderDate,orderPrice);
     }
 
     
@@ -313,8 +316,9 @@ namespace mkc_timeseries
       LongStopLoss<Decimal> percentStop(stopBasePrice, percentNum);
       Decimal stopLoss(percentStop.getStopLoss());
 
+      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol));
       //std::cout << "Entering long stop loss at: " << stopLoss << " on date: " << orderDate << std::endl;
-      this->ExitLongAllUnitsAtStop(tradingSymbol, orderDate, stopLoss);
+      this->ExitLongAllUnitsAtStop(tradingSymbol, orderDate, orderPrice);
     }
 
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
@@ -343,7 +347,9 @@ namespace mkc_timeseries
     {
       ShortStopLoss<Decimal> aPercentStop(stopBasePrice, percentNum);
       Decimal stopLoss(aPercentStop.getStopLoss());
-      this->ExitShortAllUnitsAtStop(tradingSymbol,orderDate,stopLoss);
+
+      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol));
+      this->ExitShortAllUnitsAtStop(tradingSymbol, orderDate, orderPrice);
     }
 
     PendingOrderIterator beginPendingOrders() const
@@ -478,6 +484,18 @@ namespace mkc_timeseries
     }
 
   private:
+    const Decimal getTick(const std::string& symbol) const
+    {
+      SecurityAttributesFactory<Decimal> factory;
+      typename SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
+
+      if (it != factory.endSecurityAttributes())
+	return it->second->getTick();
+      else
+	throw StrategyBrokerException("Strategybroker::getTick - ticker symbol " +symbol +" is unkown");
+
+    }
+    
     OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
 							const boost::gregorian::date& d)
     {
