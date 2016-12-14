@@ -42,7 +42,7 @@ namespace mkc_timeseries
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalMinusOne(DecimalConstants<Decimal>::createDecimal("-1.0"));
   template <class Decimal> Decimal DecimalConstants<Decimal>::EquityTick(0.01);
-  template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.05);
+  template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.045);
 
 
   template <class Decimal>
