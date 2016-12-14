@@ -9,6 +9,8 @@
 
 #include "PalAst.h"
 #include "Security.h"
+#include "DecimalConstants.h"
+#include <algorithm>
 
 namespace mkc_timeseries
 {
@@ -62,7 +64,7 @@ namespace mkc_timeseries
 
   private:
 
-    static const Decimal& evaluatePriceBar (PriceBarReference *barReference, 
+    static const Decimal evaluatePriceBar (PriceBarReference *barReference, 
 						  std::shared_ptr<Security<Decimal>> security,
 						  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
@@ -83,12 +85,148 @@ namespace mkc_timeseries
 	case PriceBarReference::VOLUME:
 	  return security->getVolumeValue(iteratorForDate, barReference->getBarOffset());
 
+	case PriceBarReference::MEANDER:
+	  return PALPatternInterpreter<Decimal>::Meander (security, iteratorForDate, barReference->getBarOffset());
+
+	case PriceBarReference::VCHARTLOW:
+	  return PALPatternInterpreter<Decimal>::ValueChartLow (security, iteratorForDate, barReference->getBarOffset());
+
+	case PriceBarReference::VCHARTHIGH:
+	  return PALPatternInterpreter<Decimal>::ValueChartHigh (security, iteratorForDate, barReference->getBarOffset());
+
 	default:
 	  throw PalPatternInterpreterException ("PALPatternInterpreter::evaluatePriceBar - unknown PriceBarReference derived class"); 
 	}
     }
 
+    static const Decimal Meander(std::shared_ptr<Security<Decimal>> security,
+				  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+				  unsigned long offset)
+    {
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+      int i;
+
+      Decimal sum(0);
+      Decimal prevClose, currentClose, currentOpen, currentHigh, currentLow;
+      Decimal denom(20);
+      
+      for (i = 0; i <= 4; i++)
+	{
+	  prevClose = security->getCloseValue (baseIt, i + 1);
+	  currentOpen = security->getOpenValue (baseIt, i);
+	  currentHigh = security->getHighValue (baseIt, i);
+	  currentClose = security->getCloseValue (baseIt, i);
+	  currentLow = security->getLowValue (baseIt, i);
+
+	  sum = sum + ((currentOpen - prevClose)/prevClose) + ((currentHigh - prevClose)/prevClose) +
+	    ((currentLow - prevClose)/prevClose) + ((currentClose - prevClose)/prevClose);
+	}
+      Decimal avg( sum / denom);
+      return security->getCloseValue (baseIt, 0) * (DecimalConstants<Decimal>::DecimalOne + avg);
+    }
+
+    static const Decimal volatilityUnitConstant()
+    {
+      static Decimal volatilityConstant (num::fromString<Decimal>(std::string("0.20")));
+
+      return volatilityConstant;
+    }
     
+    static const Decimal ValueChartHigh(std::shared_ptr<Security<Decimal>> security,
+					typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+					unsigned long offset)
+    {
+      static Decimal decFive (num::fromString<Decimal>(std::string("5.0")));
+	    
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+      int i;
+      
+      Decimal prevClose, currentHigh, currentLow, priceAvg, priceAvgSum(DecimalConstants<Decimal>::DecimalZero),
+	relativeHigh, averagePrice, currentClose;
+      Decimal trueHigh, trueLow, trueRange, trueRangeSum(DecimalConstants<Decimal>::DecimalZero), avgTrueRange, volatilityUnit;
+      Decimal closeToCloseRange, highLowRange, range;
+      
+      for (i = 0; i <= 4; i++)
+	{
+	  currentClose = security->getCloseValue (baseIt, i);
+	  prevClose = security->getCloseValue (baseIt, i + 1);
+	  closeToCloseRange = num::abs (currentClose - prevClose);
+	  
+	  currentHigh = security->getHighValue (baseIt, i);
+	  currentLow = security->getLowValue (baseIt, i);
+	  highLowRange = currentHigh - currentLow;
+
+	  range = std::max (closeToCloseRange, highLowRange);
+	  
+	  priceAvg = (currentHigh + currentLow)/DecimalConstants<Decimal>::DecimalTwo;
+	  priceAvgSum = priceAvgSum + priceAvg;
+	  
+	  //trueHigh = std::max (currentHigh, prevClose);
+	  //trueLow = std::min (currentLow, prevClose);
+	  //trueRange = trueHigh - trueLow;
+	  trueRange = range;
+	  trueRangeSum = trueRangeSum + trueRange;
+	}
+
+
+      averagePrice = priceAvgSum / decFive;
+      relativeHigh = security->getHighValue (baseIt, 0) - averagePrice;
+      avgTrueRange = trueRangeSum / decFive;
+      volatilityUnit = avgTrueRange * volatilityUnitConstant();
+
+      if (volatilityUnit != DecimalConstants<Decimal>::DecimalZero)
+	{
+	  Decimal retVal = (relativeHigh / volatilityUnit);
+	  //std::cout << "ValueChartHigh = " << retVal << std::endl;
+	  return (retVal);
+	}
+      else
+	{
+	  //std::cout << "ValueChartHigh = 0" << std::endl;
+	  return DecimalConstants<Decimal>::DecimalZero;
+	}
+    }
+
+    static const Decimal ValueChartLow(std::shared_ptr<Security<Decimal>> security,
+					typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+					unsigned long offset)
+    {
+      static Decimal decFive (num::fromString<Decimal>(std::string("5.0")));
+	    
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+      int i;
+      
+      Decimal prevClose, currentHigh, currentLow, priceAvg, priceAvgSum(DecimalConstants<Decimal>::DecimalZero),
+	relativeLow, averagePrice;
+      Decimal trueHigh, trueLow, trueRange, trueRangeSum(DecimalConstants<Decimal>::DecimalZero), avgTrueRange, volatilityUnit;
+
+      for (i = 0; i <= 4; i++)
+	{
+	  prevClose = security->getCloseValue (baseIt, i + 1);
+	  currentHigh = security->getHighValue (baseIt, i);
+	  currentLow = security->getLowValue (baseIt, i);
+
+	  priceAvg = (currentHigh + currentLow)/DecimalConstants<Decimal>::DecimalTwo;
+	  priceAvgSum = priceAvgSum + priceAvg;
+	  
+	  trueHigh = std::max (currentHigh, prevClose);
+	  trueLow = std::min (currentLow, prevClose);
+	  trueRange = trueHigh - trueLow;
+	  trueRangeSum = trueRangeSum + trueRange;
+	}
+
+
+      averagePrice = priceAvgSum / decFive;
+      relativeLow = security->getLowValue (baseIt, 0) - averagePrice;
+      avgTrueRange = trueRangeSum / decFive;
+      volatilityUnit = avgTrueRange * volatilityUnitConstant();
+
+      if (volatilityUnit != DecimalConstants<Decimal>::DecimalZero)
+	return (relativeLow / volatilityUnit);
+      else
+	return DecimalConstants<Decimal>::DecimalZero;
+    }
+
   private:
      PALPatternInterpreter()
       {

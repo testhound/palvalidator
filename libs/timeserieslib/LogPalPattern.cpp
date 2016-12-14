@@ -77,6 +77,10 @@ namespace mkc_timeseries
 	  outputFileStream << "VOLUME OF " << barReference->getBarOffset() << " BARS AGO";
 	  break;
 
+	case PriceBarReference::MEANDER:
+	  outputFileStream << "MEANDER OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+	  
 	default:
 	  throw_assert (false, "LogPriceBarExpr: PriceBarRefererence is not OHLC");
 	}
