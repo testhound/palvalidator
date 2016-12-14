@@ -1,6 +1,8 @@
 #ifndef NUMBER_H
 #define NUMBER_H
 
+#include <iostream>
+
 #ifndef USE_BLOOMBERG_DECIMALS
 
 #include <cmath>
@@ -33,15 +35,21 @@ using DefaultNumber = dec::decimal<7>;
 
   inline DefaultNumber Round2Tick (DefaultNumber price, DefaultNumber tick)
   {
-    double priceAsDouble = to_double (price);
+    return price;
+    
+    /*double priceAsDouble = to_double (price);
     double tickAsDouble = to_double (tick);
 
     double doubleCalc = fmod (priceAsDouble, tickAsDouble);
     DefaultNumber decimalMod(doubleCalc);
     
-    return price - decimalMod + ((decimalMod < tick / fromString<DefaultNumber>(std::string("2.0"))) ? fromString<DefaultNumber>(std::string("0.0")) : tick);
+    return price - decimalMod + ((decimalMod < tick / fromString<DefaultNumber>(std::string("2.0"))) ? fromString<DefaultNumber>(std::string("0.0")) : tick); */
   }
 
+  inline DefaultNumber Round2Tick (DefaultNumber price, DefaultNumber tick, DefaultNumber tickDiv2)
+  {
+    return price;
+  }
 } // num namespace
 
 #else
@@ -90,15 +98,34 @@ namespace num
     return dfp::DecimalConvertUtil::decimalToDouble(d);
   }
 
+  inline DefaultNumber operator%(const DefaultNumber& num, const DefaultNumber& denom)
+  {
+    DefaultNumber x(num / denom);
+    DefaultNumber xInt (dfp::DecimalUtil::trunc (x));
+
+    return num - denom * xInt;
+  }
+  
   inline DefaultNumber Round2Tick (DefaultNumber price, DefaultNumber tick)
   {
-    double priceAsDouble = to_double (price);
-    double tickAsDouble = to_double (tick);
-
-    double doubleCalc = fmod (priceAsDouble, tickAsDouble);
-    DefaultNumber decimalMod(doubleCalc);
+    //return price;
     
-    return price - decimalMod + ((decimalMod < tick / fromString<DefaultNumber>(std::string("2.0"))) ? fromString<DefaultNumber>(std::string("0.0")) : tick);
+    static DefaultNumber decTwo (fromString<DefaultNumber>(std::string("2.0")));
+    static DefaultNumber decZero (fromString<DefaultNumber>(std::string("0.0")));
+    DefaultNumber decimalMod(price % tick);
+
+    return price - decimalMod + ((decimalMod < tick / decTwo) ? decZero : tick);
+  }
+
+  inline DefaultNumber Round2Tick (DefaultNumber price, DefaultNumber tick, DefaultNumber tickDiv2)
+  {
+    //return price;
+    
+    static DefaultNumber decTwo (fromString<DefaultNumber>(std::string("2.0")));
+    static DefaultNumber decZero (fromString<DefaultNumber>(std::string("0.0")));
+    DefaultNumber decimalMod(price % tick);
+
+    return price - decimalMod + ((decimalMod < tickDiv2) ? decZero : tick);
   }
 } // num namespace
 
