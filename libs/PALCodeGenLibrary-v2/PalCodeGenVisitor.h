@@ -9,6 +9,11 @@ class PriceBarHigh;
 class PriceBarLow;
 class PriceBarClose;
 class VolumeBarReference;
+class Roc1BarReference;
+class MeanderBarReference;
+class MeanderBarReference;
+class VChartLowBarReference;
+class VChartHighBarReference;
 class GreaterThanExpr;
 class AndExpr;
 class PatternDescription;
@@ -34,6 +39,10 @@ public:
   virtual void visit (PriceBarLow *) = 0;
   virtual void visit (PriceBarClose *) = 0;
   virtual void visit (VolumeBarReference *) = 0;
+  virtual void visit (Roc1BarReference *) = 0;
+  virtual void visit (MeanderBarReference *) = 0;
+  virtual void visit (VChartLowBarReference *) = 0;
+  virtual void visit (VChartHighBarReference *) = 0;
   virtual void visit (GreaterThanExpr *) = 0;
   virtual void visit (AndExpr *) = 0;
 
@@ -70,6 +79,10 @@ public:
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
   void visit (VolumeBarReference *);
+  void visit (Roc1BarReference *);
+  void visit (MeanderBarReference *);
+  void visit (VChartLowBarReference *);
+  void visit (VChartHighBarReference *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
   void visit (PatternDescription *);
@@ -150,6 +163,10 @@ public:
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
   void visit (VolumeBarReference *);
+  void visit (Roc1BarReference *);
+  void visit (MeanderBarReference *);
+  void visit (VChartLowBarReference *);
+  void visit (VChartHighBarReference *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
   void visit (PatternDescription *);
@@ -237,6 +254,10 @@ public:
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
   void visit (VolumeBarReference *);
+  void visit (Roc1BarReference *);
+  void visit (MeanderBarReference *);
+  void visit (VChartLowBarReference *);
+  void visit (VChartHighBarReference *);
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
   void visit (PatternDescription *);
@@ -313,6 +334,11 @@ public:
   void visit (PriceBarLow *);
   void visit (PriceBarClose *);
   void visit (VolumeBarReference *);
+  void visit (Roc1BarReference *);
+  void visit (MeanderBarReference *);
+  void visit (VChartLowBarReference *);
+  void visit (VChartHighBarReference *);
+
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
 

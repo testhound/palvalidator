@@ -111,6 +111,11 @@ PriceBarReference::ReferenceType PriceBarOpen::getReferenceType()
   return PriceBarReference::OPEN;
 }
 
+int PriceBarOpen::extraBarsNeeded() const
+{
+  return 0;
+}
+
 ////////////////
 
 PriceBarHigh::PriceBarHigh(unsigned int barOffset) 
@@ -161,6 +166,12 @@ PriceBarReference::ReferenceType PriceBarHigh::getReferenceType()
   return PriceBarReference::HIGH;
 }
 
+int PriceBarHigh::extraBarsNeeded() const
+{
+  return 0;
+}
+
+
 ////////////////////
 
 PriceBarLow :: PriceBarLow(unsigned int barOffset) : 
@@ -209,6 +220,11 @@ unsigned long long PriceBarLow::hashCode()
 PriceBarReference::ReferenceType PriceBarLow::getReferenceType()
 {
   return PriceBarReference::LOW;
+}
+
+int PriceBarLow::extraBarsNeeded() const
+{
+  return 0;
 }
 
 /////////////////////
@@ -263,6 +279,10 @@ PriceBarReference::ReferenceType PriceBarClose::getReferenceType()
   return PriceBarReference::CLOSE;
 }
 
+int PriceBarClose::extraBarsNeeded() const
+{
+  return 0;
+}
 
 //////////////////////////
 // Volume
@@ -316,7 +336,247 @@ PriceBarReference::ReferenceType VolumeBarReference::getReferenceType()
   return PriceBarReference::VOLUME;
 }
 
+int VolumeBarReference::extraBarsNeeded() const
+{
+  return 0;
+}
+
+
 //////////////////////////
+////ROC1
+
+
+Roc1BarReference::Roc1BarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+Roc1BarReference::Roc1BarReference (const Roc1BarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+Roc1BarReference& 
+Roc1BarReference::operator=(const Roc1BarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+Roc1BarReference::~Roc1BarReference()
+{}
+
+void 
+Roc1BarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long Roc1BarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 41;
+      result = 79 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType Roc1BarReference::getReferenceType()
+{
+  return PriceBarReference::ROC1;
+}
+
+int Roc1BarReference::extraBarsNeeded() const
+{
+  return 1;
+}
+
+//////////////////////////
+
+//////////////////////////
+//// Meander
+
+
+MeanderBarReference::MeanderBarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+MeanderBarReference::MeanderBarReference (const MeanderBarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+MeanderBarReference& 
+MeanderBarReference::operator=(const MeanderBarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+MeanderBarReference::~MeanderBarReference()
+{}
+
+void 
+MeanderBarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long MeanderBarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 43;
+      result = 83 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType MeanderBarReference::getReferenceType()
+{
+  return PriceBarReference::MEANDER;
+}
+
+int MeanderBarReference::extraBarsNeeded() const
+{
+  return 5;
+}
+
+/////////////////////////
+//// VChartLow
+/////////////////////////
+
+VChartLowBarReference::VChartLowBarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+VChartLowBarReference::VChartLowBarReference (const VChartLowBarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+VChartLowBarReference& 
+VChartLowBarReference::operator=(const VChartLowBarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+VChartLowBarReference::~VChartLowBarReference()
+{}
+
+void 
+VChartLowBarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long VChartLowBarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 47;
+      result = 89 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType VChartLowBarReference::getReferenceType()
+{
+  return PriceBarReference::VCHARTLOW;
+}
+
+int VChartLowBarReference::extraBarsNeeded() const
+{
+  return 6;
+}
+
+/////////////////////////
+
+/////////////////////////
+//// VChartHigh
+/////////////////////////
+
+VChartHighBarReference::VChartHighBarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+VChartHighBarReference::VChartHighBarReference (const VChartHighBarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+VChartHighBarReference& 
+VChartHighBarReference::operator=(const VChartHighBarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+VChartHighBarReference::~VChartHighBarReference()
+{}
+
+void 
+VChartHighBarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long VChartHighBarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 53;
+      result = 97 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType VChartHighBarReference::getReferenceType()
+{
+  return PriceBarReference::VCHARTHIGH;
+}
+
+int VChartHighBarReference::extraBarsNeeded() const
+{
+  return 6;
+}
 
 PatternExpression::PatternExpression()
 {}
@@ -1214,6 +1474,10 @@ AstFactory::~AstFactory()
       delete mPredefinedPriceLow[i];
       delete mPredefinedPriceClose[i];
       delete mPredefinedVolume[i];
+      delete mPredefinedRoc1[i];
+      delete mPredefinedMeander[i];
+      delete mPredefinedVChartLow[i];
+      delete mPredefinedVChartHigh[i];
     }
 
   //printf ("AstFactory destructor complete\n");
@@ -1306,6 +1570,10 @@ void AstFactory::initializePriceBars()
       mPredefinedPriceLow[i] = new PriceBarLow (i);
       mPredefinedPriceClose[i] = new PriceBarClose (i);
       mPredefinedVolume[i] = new VolumeBarReference (i);
+      mPredefinedRoc1[i] = new Roc1BarReference (i);
+      mPredefinedMeander[i] = new MeanderBarReference (i);
+      mPredefinedVChartLow[i] = new VChartLowBarReference (i);
+      mPredefinedVChartHigh[i] = new VChartHighBarReference (i);
     }
 }
 
@@ -1348,7 +1616,39 @@ PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
   else
     return new VolumeBarReference (barOffset);
 }
-  
+
+PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedRoc1[barOffset];
+  else
+    return new Roc1BarReference (barOffset);
+}
+
+PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedMeander[barOffset];
+  else
+    return new MeanderBarReference (barOffset);
+}
+
+PriceBarReference* AstFactory::getVChartLow (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedVChartLow[barOffset];
+  else
+    return new VChartLowBarReference (barOffset);
+}
+
+PriceBarReference* AstFactory::getVChartHigh (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedVChartHigh[barOffset];
+  else
+    return new VChartHighBarReference (barOffset);
+}
+
 decimal7 * AstFactory::getDecimalNumber (char *numString)
 {
   std::string key(numString);

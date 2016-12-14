@@ -23,7 +23,7 @@ class PalFileResults;
 class PriceBarReference
 {
 public:
-  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, VOLUME};
+  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, VOLUME, ROC1, MEANDER, VCHARTLOW, VCHARTHIGH};
   
   PriceBarReference (unsigned int barOffset);
   virtual ~PriceBarReference();
@@ -34,6 +34,7 @@ public:
   virtual void accept (PalCodeGenVisitor &v) = 0;
   virtual unsigned long long hashCode() = 0;
   virtual PriceBarReference::ReferenceType getReferenceType() = 0;
+  virtual int extraBarsNeeded() const = 0;
   
 private:
   unsigned int mBarOffset;
@@ -49,7 +50,8 @@ public:
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
   PriceBarReference::ReferenceType getReferenceType();
-    
+  int extraBarsNeeded() const;
+  
 private:
   unsigned long mComputedHash;
 };
@@ -64,7 +66,8 @@ public:
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
   PriceBarReference::ReferenceType getReferenceType();
-  
+  int extraBarsNeeded() const;
+    
 private:
     unsigned long long mComputedHash;
 };
@@ -79,6 +82,7 @@ public:
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
   PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
   
 private:
   unsigned long long mComputedHash;
@@ -94,6 +98,7 @@ public:
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
   PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
   
 private:
   unsigned long long mComputedHash;
@@ -109,6 +114,71 @@ public:
   void accept (PalCodeGenVisitor &v);
   unsigned long long hashCode();
   PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+    
+private:
+  unsigned long long mComputedHash;
+};
+
+class Roc1BarReference : public PriceBarReference
+{
+public:
+  Roc1BarReference(unsigned int barOffset);
+  Roc1BarReference (const Roc1BarReference& rhs);
+  Roc1BarReference& operator=(const Roc1BarReference &rhs);
+  ~Roc1BarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  
+private:
+  unsigned long long mComputedHash;
+};
+
+class MeanderBarReference : public PriceBarReference
+{
+public:
+  MeanderBarReference(unsigned int barOffset);
+  MeanderBarReference (const MeanderBarReference& rhs);
+  MeanderBarReference& operator=(const MeanderBarReference &rhs);
+  ~MeanderBarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  
+private:
+  unsigned long long mComputedHash;
+};
+
+class VChartHighBarReference : public PriceBarReference
+{
+public:
+  VChartHighBarReference(unsigned int barOffset);
+  VChartHighBarReference (const VChartHighBarReference& rhs);
+  VChartHighBarReference& operator=(const VChartHighBarReference &rhs);
+  ~VChartHighBarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  
+private:
+  unsigned long long mComputedHash;
+};
+
+class VChartLowBarReference : public PriceBarReference
+{
+public:
+  VChartLowBarReference(unsigned int barOffset);
+  VChartLowBarReference (const VChartLowBarReference& rhs);
+  VChartLowBarReference& operator=(const VChartLowBarReference &rhs);
+  ~VChartLowBarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
   
 private:
   unsigned long long mComputedHash;
@@ -410,8 +480,8 @@ public:
 	}
       else if (GreaterThanExpr *pGreaterThan = dynamic_cast<GreaterThanExpr*>(expression))
 	{
-	  unsigned int lhs = pGreaterThan->getLHS()->getBarOffset ();
-	  unsigned int rhs = pGreaterThan->getRHS()->getBarOffset ();
+	  unsigned int lhs = pGreaterThan->getLHS()->getBarOffset () + pGreaterThan->getLHS()->extraBarsNeeded();
+	  unsigned int rhs = pGreaterThan->getRHS()->getBarOffset () + pGreaterThan->getRHS()->extraBarsNeeded();;
 
 	  return std::max (lhs, rhs);
 	}
@@ -603,6 +673,10 @@ public:
   PriceBarReference* getPriceLow (unsigned int barOffset);
   PriceBarReference* getPriceClose (unsigned int barOffset);
   PriceBarReference* getVolume (unsigned int barOffset);
+  PriceBarReference* getRoc1 (unsigned int barOffset);
+  PriceBarReference* getMeander (unsigned int barOffset);
+  PriceBarReference* getVChartLow (unsigned int barOffset);
+  PriceBarReference* getVChartHigh (unsigned int barOffset);
   MarketEntryExpression* getLongMarketEntryOnOpen();
   MarketEntryExpression* getShortMarketEntryOnOpen();
   decimal7 *getDecimalNumber (char *numString);
@@ -623,6 +697,10 @@ private:
   PriceBarReference* mPredefinedPriceLow[MaxNumBarOffsets];
   PriceBarReference* mPredefinedPriceClose[MaxNumBarOffsets];
   PriceBarReference* mPredefinedVolume[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedRoc1[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedMeander[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedVChartLow[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedVChartHigh[MaxNumBarOffsets];
   MarketEntryExpression* mLongEntryOnOpen;
   MarketEntryExpression* mShortEntryOnOpen;
   std::map<std::string, DecimalPtr> mDecimalNumMap;

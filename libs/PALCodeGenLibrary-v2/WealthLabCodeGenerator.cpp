@@ -119,6 +119,30 @@ WealthLabCodeGenVisitor::visit (VolumeBarReference *bar)
   mTradingModelFileName << "Volume(Bar - " << bar->getBarOffset() << ")";
 }
 
+void
+WealthLabCodeGenVisitor::visit (Roc1BarReference *bar)
+{
+  mTradingModelFileName << "RateOfChange(Bar - " << bar->getBarOffset() << ", Close, 1)";
+}
+
+void
+WealthLabCodeGenVisitor::visit (MeanderBarReference *bar)
+{
+  mTradingModelFileName << "meanderVar(Bar - " << bar->getBarOffset() << ", Close, 1)";
+}
+
+void
+WealthLabCodeGenVisitor::visit (VChartLowBarReference *bar)
+{
+  mTradingModelFileName << "vchartLowVar(Bar - " << bar->getBarOffset() << ", Close, 1)";
+}
+
+void
+WealthLabCodeGenVisitor::visit (VChartHighBarReference *bar)
+{
+  mTradingModelFileName << "vchartHighVar(Bar - " << bar->getBarOffset() << ", Close, 1)";
+}
+
 
 void
 WealthLabCodeGenVisitor::visit (GreaterThanExpr *expr)

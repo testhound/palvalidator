@@ -130,6 +130,31 @@ TradingBloxCodeGenVisitor::visit (VolumeBarReference *bar)
 }
 
 void
+TradingBloxCodeGenVisitor::visit (Roc1BarReference *bar)
+{
+  mEntryOrdersScriptFile << "roc1[" << bar->getBarOffset() << "]";
+}
+
+void
+TradingBloxCodeGenVisitor::visit (MeanderBarReference *bar)
+{
+  mEntryOrdersScriptFile << "meanderVar[" << bar->getBarOffset() << "]";
+}
+
+void
+TradingBloxCodeGenVisitor::visit (VChartLowBarReference *bar)
+{
+  mEntryOrdersScriptFile << "vchartLowVar[" << bar->getBarOffset() << "]";
+}
+
+void
+TradingBloxCodeGenVisitor::visit (VChartHighBarReference *bar)
+{
+  mEntryOrdersScriptFile << "vchartHighVar[" << bar->getBarOffset() << "]";
+}
+
+
+void
 TradingBloxCodeGenVisitor::visit (GreaterThanExpr *expr)
 {
   if (firstSubExpressionVisited == false)

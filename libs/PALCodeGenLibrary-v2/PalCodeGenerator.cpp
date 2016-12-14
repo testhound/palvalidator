@@ -90,6 +90,30 @@ PalCodeGenerator::visit (VolumeBarReference *bar)
 }
 
 void
+PalCodeGenerator::visit (Roc1BarReference *bar)
+{
+  mOutFile << "ROC1 OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void
+PalCodeGenerator::visit (MeanderBarReference *bar)
+{
+  mOutFile << "MEANDER OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void
+PalCodeGenerator::visit (VChartLowBarReference *bar)
+{
+  mOutFile << "VCHARTLOW OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void
+PalCodeGenerator::visit (VChartHighBarReference *bar)
+{
+  mOutFile << "VCHARTHIGH OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void
 PalCodeGenerator::visit (GreaterThanExpr *expr)
 {
   expr->getLHS()->accept (*this);

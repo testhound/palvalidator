@@ -78,6 +78,10 @@
 %token TOK_LOW
 %token TOK_CLOSE
 %token TOK_VOLUME
+%token TOK_ROC1
+%token TOK_MEANDER
+%token TOK_VCHARTLOW
+%token TOK_VCHARTHIGH
 %token TOK_OF
 %token TOK_AND
 %token TOK_AGO
@@ -284,6 +288,26 @@ ohlcref : TOK_OPEN TOK_OF integernumber TOK_BARS TOK_AGO
        	{ 
 	  //printf("Found ohlc ref for close\n"); 
        	  $$ = astFactory.getVolume ($3); 
+        }
+      | TOK_ROC1 TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getRoc1 ($3); 
+        }
+      | TOK_MEANDER TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getMeander ($3); 
+        }
+      | TOK_VCHARTLOW TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getVChartLow ($3); 
+        }
+      | TOK_VCHARTHIGH TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getVChartHigh ($3); 
         }
 
 
