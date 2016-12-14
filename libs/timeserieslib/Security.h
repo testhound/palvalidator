@@ -42,7 +42,8 @@ namespace mkc_timeseries
 	mBigPointValue(bigPointValue),
 	mTick(securityTick),
 	mSecurityTimeSeries(securityTimeSeries),
-	mFirstDate(securityTimeSeries->getFirstDate())
+	mFirstDate(securityTimeSeries->getFirstDate()),
+	mTickDiv2(securityTick/DecimalConstants<Decimal>::DecimalTwo)
       {}
       
       Security (const Security<Decimal> &rhs)
@@ -51,7 +52,8 @@ namespace mkc_timeseries
 	  mBigPointValue(rhs.mBigPointValue),
 	  mTick(rhs.mTick),
 	  mSecurityTimeSeries(rhs.mSecurityTimeSeries),
-	  mFirstDate(rhs.mFirstDate)
+	  mFirstDate(rhs.mFirstDate),
+	  mTickDiv2(rhs.mTickDiv2)
       {}
 
       Security<Decimal>& 
@@ -66,6 +68,8 @@ namespace mkc_timeseries
 	mTick = rhs.mTick;
 	mSecurityTimeSeries = rhs.mSecurityTimeSeries;
 	mFirstDate = rhs.mFirstDate;
+	mTickDiv2 = rhs.mTickDiv2;
+	
 	return *this;
       }
 
@@ -164,6 +168,11 @@ namespace mkc_timeseries
 	return mTick;
       }
 
+      const Decimal& getTickDiv2() const
+      {
+	return mTickDiv2;
+      }
+
       const boost::gregorian::date& getFirstDate() const
       {
 	return mFirstDate;
@@ -189,7 +198,8 @@ namespace mkc_timeseries
       Decimal mTick;
       std::shared_ptr<OHLCTimeSeries<Decimal>> mSecurityTimeSeries;
       boost::gregorian::date mFirstDate;
-  };
+      Decimal mTickDiv2;                    // Used to speedup compuation of Round@Tick
+    };
 
   template <class Decimal>
   class EquitySecurity : public Security<Decimal>
