@@ -142,13 +142,13 @@ using boost::accumulators::accumulator_set;
 
       if (this->getNumClosedTrades (mBackTester) < 4)
 	{
-	  //std::cout << " runPermutationTest: number of trades = " << 
-	  //getNumClosedTrades (mBackTester) << std::endl;
+	  std::cout << " runPermutationTest: number of trades = " << 
+	  this->getNumClosedTrades (mBackTester) << std::endl;
 	  return DecimalConstants<Decimal>::DecimalOneHundred;
 	}
 
       mBaseLineCumulativeReturn = BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
-      //std::cout << "Baaeline test stat. for original  strategy equals: " <<  mBaseLineCumulativeReturn << std::endl;
+      //std::cout << "Baseline test stat. for original  strategy equals: " <<  mBaseLineCumulativeReturn << ", baseline # trades:" << this->getNumClosedTrades (mBackTester) <<  std::endl << std::endl;
 
       uint32_t count = 0;
       uint32_t i;
@@ -193,7 +193,7 @@ using boost::accumulators::accumulator_set;
     shared_ptr<Security<Decimal>> createSyntheticSecurity(shared_ptr<Security<Decimal>> aSecurity)
     {
       auto aTimeSeries = aSecurity->getTimeSeries();
-      SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries);
+      SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries, aSecurity->getTick(), aSecurity->getTickDiv2());
       aTimeSeries2.createSyntheticSeries();
 
       return aSecurity->clone (aTimeSeries2.getSyntheticTimeSeries());
@@ -508,7 +508,7 @@ using boost::accumulators::accumulator_set;
     shared_ptr<Security<Decimal>> createSyntheticSecurity(shared_ptr<Security<Decimal>> aSecurity)
     {
       auto aTimeSeries = aSecurity->getTimeSeries();
-      SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries);
+      SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries, aSecurity->getTick(), aSecurity->getTickDiv2());
       aTimeSeries2.createSyntheticSeries();
       aTimeSeries2.getSyntheticTimeSeries()->syncronizeMapAndArray();
 

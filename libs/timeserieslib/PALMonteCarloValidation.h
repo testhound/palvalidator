@@ -204,8 +204,8 @@ namespace mkc_timeseries
                                                        , theBackTester = std::move(theBackTester)
                                                        , longStrategy]() -> void {
             using namespace std::chrono;
-            using clock = steady_clock;
-            auto start = clock::now();
+            //using clock = steady_clock;
+            // auto start = clock::now();
 
             Decimal pValue;
 
@@ -220,8 +220,8 @@ namespace mkc_timeseries
 
             pValue = mcpt.runPermutationTest();
 
-            auto end = clock::now();
-            auto duration_ms = duration_cast<milliseconds>(end - start).count();
+            //auto end = clock::now();
+            //auto duration_ms = duration_cast<milliseconds>(end - start).count();
 
             {
 	      //std::stringstream s;
