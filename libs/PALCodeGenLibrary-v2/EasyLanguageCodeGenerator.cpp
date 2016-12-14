@@ -267,6 +267,30 @@ EasyLanguageCodeGenVisitor::visit (VolumeBarReference *bar)
 }
 
 void
+EasyLanguageCodeGenVisitor::visit (Roc1BarReference *bar)
+{
+  mEntryOrdersScriptFile << "RateOfChange(Close, 1)[" << bar->getBarOffset() << "]";
+}
+
+void
+EasyLanguageCodeGenVisitor::visit (MeanderBarReference *bar)
+{
+  mEntryOrdersScriptFile << "meanderVar[" << bar->getBarOffset() << "]";
+}
+
+void
+EasyLanguageCodeGenVisitor::visit (VChartLowBarReference *bar)
+{
+  mEntryOrdersScriptFile << "vchartLowVar[" << bar->getBarOffset() << "]";
+}
+
+void
+EasyLanguageCodeGenVisitor::visit (VChartHighBarReference *bar)
+{
+  mEntryOrdersScriptFile << "vchartHighVar[" << bar->getBarOffset() << "]";
+}
+
+void
 EasyLanguageCodeGenVisitor::visit (GreaterThanExpr *expr)
 {
   if (firstSubExpressionVisited == false)
