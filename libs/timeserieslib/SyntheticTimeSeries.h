@@ -27,7 +27,9 @@ namespace mkc_timeseries
     //using Decimal = BloombergLP::bdldfp::Decimal64;
 
   public:
-    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries)
+    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries,
+				 const Decimal& minimumTick,
+				 const Decimal& minimumTickDiv2)
       : mTimeSeries(aTimeSeries),
 	mDateSeries (aTimeSeries.getNumEntries()),
 	mRelativeOpen(),
@@ -40,26 +42,33 @@ namespace mkc_timeseries
 	mNumElements (aTimeSeries.getNumEntries()),
 	mRandGenerator(),
 	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (aTimeSeries.getTimeFrame(),
-								 aTimeSeries.getVolumeUnits(),
-								 aTimeSeries.getNumEntries()))
+									aTimeSeries.getVolumeUnits(),
+									aTimeSeries.getNumEntries())),
+      mMinimumTick(minimumTick),
+      mMinimumTickDiv2(minimumTickDiv2)
     {
+      //std::cout << "SyntheticTimeSeries:: minimum tick = " << mMinimumTick << std::endl;
+      
       mRelativeOpen.reserve(aTimeSeries.getNumEntries());
       mRelativeHigh.reserve(aTimeSeries.getNumEntries());
       mRelativeLow.reserve(aTimeSeries.getNumEntries());
       mRelativeClose.reserve(aTimeSeries.getNumEntries());
+#ifdef SYNTHETIC_VOLUME
       mRelativeVolume.reserve(aTimeSeries.getNumEntries());
-      
+#endif
       Decimal valueOfOne (num::fromString<Decimal>("1.0"));
       Decimal currentOpen(num::fromString<Decimal>("0.0"));
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
 
       mRelativeOpen.push_back(valueOfOne);
+#ifdef SYNTHETIC_VOLUME
       mRelativeVolume.push_back(valueOfOne);
-      
+#endif      
       mFirstOpen = mTimeSeries.getOpenValue (it, 0);
+#ifdef SYNTHETIC_VOLUME
       mFirstVolume = mTimeSeries.getVolumeValue (it, 0);
-      
+#endif
       mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) / mFirstOpen);
       mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) / mFirstOpen);
       mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /mFirstOpen) ;
@@ -71,15 +80,17 @@ namespace mkc_timeseries
 	{
 	  currentOpen = mTimeSeries.getOpenValue (it, 0);
 
-	  mRelativeOpen.push_back(currentOpen /
+	   mRelativeOpen.push_back(currentOpen /
 				   mTimeSeries.getCloseValue (it, 1));
 	  mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) /
 				   currentOpen) ;
 	  mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) /
 				  currentOpen) ;
 	  mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /
-				    currentOpen) ;
+	  currentOpen) ;
 
+
+#ifdef SYNTHETIC_VOLUME
 	  if ((mTimeSeries.getVolumeValue (it, 0) > DecimalConstants<Decimal>::DecimalZero) &&
 	      (mTimeSeries.getVolumeValue (it, 1) > DecimalConstants<Decimal>::DecimalZero))
 	    {
@@ -92,6 +103,7 @@ namespace mkc_timeseries
 	    {
 	      mRelativeVolume.push_back (valueOfOne);
 	    }
+#endif
 	  
 	  mDateSeries.addElement (mTimeSeries.getDateValue(it,0));
 	}
@@ -109,8 +121,10 @@ namespace mkc_timeseries
 	mFirstVolume (rhs.mFirstVolume),
 	mNumElements (rhs.mNumElements),
 	mRandGenerator(rhs.mRandGenerator),
-	mSyntheticTimeSeries (rhs.mSyntheticTimeSeries)
-      {}
+	mSyntheticTimeSeries (rhs.mSyntheticTimeSeries),
+	mMinimumTick(rhs.mMinimumTick),
+	mMinimumTickDiv2(rhs.mMinimumTickDiv2)
+    {}
 
     SyntheticTimeSeries<Decimal>&
     operator=(const SyntheticTimeSeries<Decimal> &rhs)
@@ -130,7 +144,9 @@ namespace mkc_timeseries
       mNumElements = rhs.mNumElements;
       mRandGenerator = rhs.mRandGenerator;
       mSyntheticTimeSeries = rhs.mSyntheticTimeSeries;
-
+      mMinimumTick = rhs.mMinimumTick;
+      mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
+      
       return *this;
     }
 
@@ -142,29 +158,52 @@ namespace mkc_timeseries
       // Shuffle is done. Integrate to recreate the market
 
       Decimal xPrice = mFirstOpen;
+
+#ifdef SYNTHETIC_VOLUME
       Decimal xVolume = mFirstVolume;
-      Decimal syntheticOpen;
-      Decimal syntheticClose;
+#endif
+      Decimal syntheticOpen, syntheticHigh;
+      Decimal syntheticClose, syntheticLow;
 
       for (unsigned long i = 0; i < mNumElements; i++)
 	{
 	  xPrice *= mRelativeOpen[i];
+	  xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
 	  syntheticOpen = xPrice;
 
 	  xPrice *= mRelativeClose[i];
+	  xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
 	  syntheticClose = xPrice;
 
+	  syntheticHigh = num::Round2Tick (syntheticOpen * mRelativeHigh[i], getTick(), getTickDiv2());
+	  syntheticLow = num::Round2Tick (syntheticOpen * mRelativeLow[i], getTick(), getTickDiv2());
+#ifdef SYNTHETIC_VOLUME
 	  xVolume *= mRelativeVolume[i];
+#endif
 
+	  if ((syntheticLow > syntheticOpen) && ((syntheticLow - syntheticOpen) <= getTick()))
+	    syntheticLow = syntheticOpen;
+	  else if ((syntheticLow > syntheticClose) && ((syntheticLow - syntheticClose) <= getTick()))
+	    syntheticLow = syntheticClose;
+
+	  if ((syntheticOpen > syntheticHigh) && ((syntheticOpen - syntheticHigh) <= getTick()))
+	    syntheticHigh = syntheticOpen;
+	  else if ((syntheticClose > syntheticHigh) && ((syntheticClose - syntheticHigh) <= getTick()))
+	    syntheticHigh = syntheticClose;
+	  
 	  try
 	    {
 	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i),
-					       syntheticOpen,
-					       syntheticOpen * mRelativeHigh[i],
-					       syntheticOpen * mRelativeLow[i],
-					       syntheticClose,
-					       xVolume,
-					       mSyntheticTimeSeries->getTimeFrame());
+						  syntheticOpen,
+						  syntheticHigh,
+						  syntheticLow,
+						  syntheticClose,
+#ifdef SYNTHETIC_VOLUME
+						  xVolume,
+#else
+						  DecimalConstants<Decimal>::DecimalZero,
+#endif
+						  mSyntheticTimeSeries->getTimeFrame());
 	      mSyntheticTimeSeries->addEntry(std::move(entry));
 	    }
 	  catch (const TimeSeriesEntryException& e)
@@ -173,13 +212,14 @@ namespace mkc_timeseries
 	      std::cout << mRelativeOpen[i] << ", " << mRelativeHigh[i] << ", ";
 	      std::cout << mRelativeLow[i] << ", " << mRelativeClose[i] << std::endl;
 	      std::cout << "synthetic OHLC = " << syntheticOpen << ", ";
-	      std::cout << syntheticOpen * mRelativeHigh[i] << ", ";
-	      std::cout << syntheticOpen * mRelativeLow[i] << ", ";
+	      std::cout <<  num::Round2Tick (syntheticOpen * mRelativeHigh[i], getTick(), getTickDiv2()) << ", ";
+	      std::cout <<  num::Round2Tick (syntheticOpen * mRelativeLow[i], getTick(), getTickDiv2())  << ", ";
 	      std::cout << syntheticClose << std::endl;
 
 	      std::cout << "First open = " << mFirstOpen << std::endl;
 	      std::cout << "Index = " << i << std::endl;
 
+	      std::cout << "Exception = " << e.what() << std::endl;
 	      dumpRelative();
 	      dumpSyntheticSeries ();
 	      throw;
@@ -210,6 +250,16 @@ namespace mkc_timeseries
     Decimal getFirstOpen () const
     {
       return mFirstOpen;
+    }
+
+    const Decimal& getTick() const
+    {
+      return mMinimumTick;
+    }
+
+    const Decimal& getTickDiv2() const
+    {
+      return mMinimumTickDiv2;
     }
 
     unsigned long getNumElements() const
@@ -256,7 +306,9 @@ namespace mkc_timeseries
         std::swap(mRelativeHigh[i], mRelativeHigh[j]);
         std::swap(mRelativeLow[i], mRelativeLow[j]);
         std::swap(mRelativeClose[i], mRelativeClose[j]);
+#ifdef SYNTHETIC_VOLUME       
 	std::swap(mRelativeVolume[i], mRelativeVolume[j]);
+#endif
 	}
     }
 
@@ -273,6 +325,8 @@ namespace mkc_timeseries
     unsigned long mNumElements;
     RandomMersenne mRandGenerator;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;
+    Decimal mMinimumTick;
+    Decimal mMinimumTickDiv2;
   };
 
   //typedef VectorDecimal<2> TimeSeriesPrec2;
