@@ -19,15 +19,20 @@ namespace mkc_timeseries
   {
   public:
     TimeSeriesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-			 TradingVolume::VolumeUnit unitsOfVolume) 
+			 TradingVolume::VolumeUnit unitsOfVolume,
+			 const Decimal& minimumTick) 
       : mFileName (fileName),
 	mTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (timeFrame,
-							unitsOfVolume))
+							       unitsOfVolume)),
+	mMinimumTick(minimumTick),
+	mMinimumTickDiv2(minimumTick / DecimalConstants<Decimal>::DecimalTwo)
     {}
 
     TimeSeriesCsvReader(const TimeSeriesCsvReader& rhs)
       : mFileName(rhs.mFileName),
-	mTimeSeries(rhs.mTimeSeries)
+	mTimeSeries(rhs.mTimeSeries),
+	mMinimumTick(rhs.mMinimumTick),
+	mMinimumTickDiv2(rhs.mMinimumTickDiv2)
     {}
 
     TimeSeriesCsvReader& 
@@ -38,7 +43,9 @@ namespace mkc_timeseries
 
       mFileName = rhs.mFileName;
       mTimeSeries = rhs.mTimeSeries;
-
+      mMinimumTick = rhs.mMinimumTick;
+      mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
+      
       return *this;
     }
 
@@ -55,6 +62,11 @@ namespace mkc_timeseries
       return mTimeSeries->getTimeFrame();
     }
 
+    const Decimal& getTick() const
+    {
+      return mMinimumTick;
+    }
+    
     void addEntry (OHLCTimeSeriesEntry<Decimal>&& entry)
     {
       mTimeSeries->addEntry(std::move(entry));
@@ -68,6 +80,11 @@ namespace mkc_timeseries
     virtual void readFile() = 0;
 
   protected:
+    Decimal DecimalRound (const Decimal& price)
+    {
+      return num::Round2Tick (price, getTick(), mMinimumTickDiv2);
+    }
+    
     bool checkForErrors (boost::gregorian::date entryDate,
 			 const Decimal& openPrice, const Decimal& highPrice, 
 			 const Decimal& lowPrice, const Decimal& closePrice)
@@ -110,6 +127,8 @@ namespace mkc_timeseries
   private:
     std::string mFileName;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mTimeSeries;
+    Decimal mMinimumTick;
+    Decimal mMinimumTickDiv2;
   };
 
   // Reader for Price Action Lab CSV Formatted Files
@@ -119,8 +138,9 @@ namespace mkc_timeseries
   {
   public:
     PALFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-			TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+			TradingVolume::VolumeUnit unitsOfVolume,
+			const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str())
     {}
 
@@ -155,10 +175,10 @@ namespace mkc_timeseries
       boost::gregorian::date entryDate;
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString))
 	{
-	  openPrice = num::fromString<Decimal>(openString.c_str());
-	  highPrice = num::fromString<Decimal>(highString.c_str());
-	  lowPrice = num::fromString<Decimal>(lowString.c_str());
-	  closePrice = num::fromString<Decimal>(closeString.c_str());
+	  openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
+	  highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
+	  lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
+	  closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
@@ -185,8 +205,9 @@ namespace mkc_timeseries
   {
   public:
     CSIExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-			TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+				 TradingVolume::VolumeUnit unitsOfVolume,
+				 const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str())
     {}
 
@@ -256,9 +277,11 @@ namespace mkc_timeseries
   class CSIErrorCheckingExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
   {
   public:
-    CSIErrorCheckingExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-			TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+    CSIErrorCheckingExtendedFuturesCsvReader (const std::string& fileName,
+					      TimeFrame::Duration timeFrame, 
+					      TradingVolume::VolumeUnit unitsOfVolume,
+					      const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str())
     {}
 
@@ -329,9 +352,11 @@ namespace mkc_timeseries
   class TradeStationFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
   public:
-    TradeStationFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-				 TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+    TradeStationFormatCsvReader (const std::string& fileName,
+				 TimeFrame::Duration timeFrame, 
+				 TradingVolume::VolumeUnit unitsOfVolume,
+				 const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}
@@ -404,9 +429,11 @@ namespace mkc_timeseries
   class TradeStationErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
   public:
-    TradeStationErrorCheckingFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-					      TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+    TradeStationErrorCheckingFormatCsvReader (const std::string& fileName,
+					      TimeFrame::Duration timeFrame, 
+					      TradingVolume::VolumeUnit unitsOfVolume,
+					      const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}
@@ -493,9 +520,11 @@ namespace mkc_timeseries
   class TradeStationIndicator1CsvReader : public TimeSeriesCsvReader<Decimal>
   {
   public:
-    TradeStationIndicator1CsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-				 TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+    TradeStationIndicator1CsvReader (const std::string& fileName,
+				     TimeFrame::Duration timeFrame, 
+				     TradingVolume::VolumeUnit unitsOfVolume,
+				     const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}
@@ -523,6 +552,8 @@ namespace mkc_timeseries
 
     void readFile()
     {
+      int lineNum = 1;
+      
       mCsvFile.set_header("Date", "Time", "Open", "High", "Low", 
 			   "Close", "Vol", "OI", "Indicator1");
 
@@ -538,12 +569,14 @@ namespace mkc_timeseries
       boost::date_time::special_values_parser<boost::gregorian::date, char>
 	special_parser;
 
-      std::cout << "TradeStationIndicator1CseReader.readFile" << std::endl << std::endl;
+      std::cout << "TradeStationIndicator1CsvReader.readFile" << std::endl << std::endl;
       
       while (mCsvFile.read_row(dateStamp, timeString, openString, highString, 
 			       lowString, closeString,
 			       volumeString, openInterestString, indicator1String))
 	{
+	  std::cout << "line num = " << lineNum << std::endl;
+	  
 	  openPrice = num::fromString<Decimal>(openString.c_str());
 	  highPrice = num::fromString<Decimal>(highString.c_str());
 	  lowPrice =  num::fromString<Decimal>(lowString.c_str());
@@ -557,6 +590,7 @@ namespace mkc_timeseries
 										closePrice, 
 										indicator1, 
 										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	  lineNum++;
 	}
     }
 
@@ -572,9 +606,11 @@ namespace mkc_timeseries
   class PinnacleErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
   public:
-    PinnacleErrorCheckingFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-					      TradingVolume::VolumeUnit unitsOfVolume) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume),
+    PinnacleErrorCheckingFormatCsvReader (const std::string& fileName,
+					  TimeFrame::Duration timeFrame, 
+					  TradingVolume::VolumeUnit unitsOfVolume,
+					  const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str()),
       mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
     {}

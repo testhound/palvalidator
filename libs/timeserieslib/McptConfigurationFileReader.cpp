@@ -28,7 +28,8 @@ namespace mkc_timeseries
   getHistoricDataFileReader(const std::string& historicDataFilePath,
 			    const std::string& dataFileFormatStr,
 			    TimeFrame::Duration timeFrame,
-			    TradingVolume::VolumeUnit unitsOfVolume);
+			    TradingVolume::VolumeUnit unitsOfVolume,
+			    const Decimal& tickValue);
 
   static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &tickerSymbol);
   static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<Decimal>> attributesOfSecurity);
@@ -87,9 +88,10 @@ namespace mkc_timeseries
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
-									       historicDataFormatStr,
-									       backTestingTimeFrame,
-									       getVolumeUnit(attributes));
+										     historicDataFormatStr,
+										     backTestingTimeFrame,
+										     getVolumeUnit(attributes),
+										     attributes->getTick());
     reader->readFile();
 
     //  insampleDateStart
@@ -201,16 +203,22 @@ namespace mkc_timeseries
   getHistoricDataFileReader(const std::string& historicDataFilePath,
 			    const std::string& dataFileFormatStr,
 			    TimeFrame::Duration timeFrame,
-			    TradingVolume::VolumeUnit unitsOfVolume)
+			    TradingVolume::VolumeUnit unitsOfVolume,
+			    const Decimal& tickValue)
   {
     std::string upperCaseFormatStr = boost::to_upper_copy(dataFileFormatStr);
 
     if (upperCaseFormatStr == std::string("PAL"))
-      return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
+      return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
+							   unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("TRADESTATION"))
-            return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
+            return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
+									  unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("TRADESTATIONINDICATOR1"))
-            return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath, timeFrame, unitsOfVolume);
+            return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath,
+									      timeFrame,
+									      unitsOfVolume,
+									      tickValue);
 
     else
       throw McptConfigurationFileReaderException("Historic data file format " +dataFileFormatStr +" not recognized");
