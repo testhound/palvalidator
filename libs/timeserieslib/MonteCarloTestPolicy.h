@@ -29,7 +29,13 @@ namespace mkc_timeseries
       else
 	throw BackTesterException("CumulativeReturnPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
       }
-    };
+      
+      static unsigned int getMinStrategyTrades()
+      {
+	return 3;
+      }
+
+  };
 
     template <class Decimal> class PessimisticReturnRatioPolicy
     {
@@ -45,6 +51,11 @@ namespace mkc_timeseries
 	}
       else
 	throw BackTesterException("PessimisticReturnRatioPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
+      }
+
+      static unsigned int getMinStrategyTrades()
+      {
+	return 3;
       }
     };
 

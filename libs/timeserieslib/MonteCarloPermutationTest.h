@@ -140,7 +140,7 @@ using boost::accumulators::accumulator_set;
 
       // If we have too few trades don't trust results
 
-      if (this->getNumClosedTrades (mBackTester) < 4)
+      if (this->getNumClosedTrades (mBackTester) < BackTestResultPolicy<Decimal>::getMinStrategyTrades())
 	{
 	  std::cout << " runPermutationTest: number of trades = " << 
 	  this->getNumClosedTrades (mBackTester) << std::endl;
@@ -158,7 +158,7 @@ using boost::accumulators::accumulator_set;
 
 	  std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy;
 	  std::shared_ptr<BackTester<Decimal>> clonedBackTester;
-	  while (stratTrades < 2)
+	  while (stratTrades < BackTestResultPolicy<Decimal>::getMinStrategyTrades())
 	    {
 	      clonedStrategy = aStrategy->clone (createSyntheticPortfolio (theSecurity,
 									   aStrategy->getPortfolio()));
