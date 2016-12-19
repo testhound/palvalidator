@@ -250,7 +250,8 @@ namespace mkc_timeseries
       //std::cout << "StrategyBroker::ExitLongAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
       LongProfitTarget<Decimal> profitTarget(limitBasePrice, percentNum);
 
-      Decimal orderPrice = num::Round2Tick (profitTarget.getProfitTarget(), this->getTick (tradingSymbol));
+      Decimal orderPrice = num::Round2Tick (profitTarget.getProfitTarget(), this->getTick (tradingSymbol),
+					    this->getTickDiv2(tradingSymbol));
       this->ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, orderPrice);
     }
 
@@ -284,7 +285,7 @@ namespace mkc_timeseries
       Decimal profitTarget(percentTarget.getProfitTarget());
       //std::cout << "StrategyBroker::ExitShortAllUnitsAtLimit - short profit target = " << profitTarget << " on date: " << orderDate << std::endl << std::endl;
 
-      Decimal orderPrice = num::Round2Tick (profitTarget, this->getTick (tradingSymbol));
+      Decimal orderPrice = num::Round2Tick (profitTarget, this->getTick (tradingSymbol), this->getTickDiv2(tradingSymbol));
       this->ExitShortAllUnitsAtLimit (tradingSymbol,orderDate,orderPrice);
     }
 
@@ -316,7 +317,7 @@ namespace mkc_timeseries
       LongStopLoss<Decimal> percentStop(stopBasePrice, percentNum);
       Decimal stopLoss(percentStop.getStopLoss());
 
-      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol));
+      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol), this->getTickDiv2(tradingSymbol));
       //std::cout << "Entering long stop loss at: " << stopLoss << " on date: " << orderDate << std::endl;
       this->ExitLongAllUnitsAtStop(tradingSymbol, orderDate, orderPrice);
     }
@@ -348,7 +349,7 @@ namespace mkc_timeseries
       ShortStopLoss<Decimal> aPercentStop(stopBasePrice, percentNum);
       Decimal stopLoss(aPercentStop.getStopLoss());
 
-      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol));
+      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol), this->getTickDiv2(tradingSymbol));
       this->ExitShortAllUnitsAtStop(tradingSymbol, orderDate, orderPrice);
     }
 
@@ -493,6 +494,18 @@ namespace mkc_timeseries
 	return it->second->getTick();
       else
 	throw StrategyBrokerException("Strategybroker::getTick - ticker symbol " +symbol +" is unkown");
+
+    }
+
+    const Decimal getTickDiv2(const std::string& symbol) const
+    {
+      typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (symbol);
+      if (symbolIterator != mPortfolio->endPortfolio())
+	{
+	  return symbolIterator->second->getTickDiv2();
+	}
+      else
+	throw StrategyBrokerException("Strategybroker::getTickDiv2 - ticker symbol " +symbol +" is unkown");
 
     }
     
