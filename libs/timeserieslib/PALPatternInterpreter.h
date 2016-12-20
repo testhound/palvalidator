@@ -33,7 +33,7 @@ namespace mkc_timeseries
     // the iterator. This should save alot of lookup time
 
     static bool evaluateExpression (PatternExpression *expression, 
-				    std::shared_ptr<Security<Decimal>> security,
+				    const std::shared_ptr<Security<Decimal>>& security,
 				    typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
       if (AndExpr *pAnd = dynamic_cast<AndExpr*>(expression))
@@ -65,7 +65,7 @@ namespace mkc_timeseries
   private:
 
     static const Decimal evaluatePriceBar (PriceBarReference *barReference, 
-						  std::shared_ptr<Security<Decimal>> security,
+					   const std::shared_ptr<Security<Decimal>>& security,
 						  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
     {
       switch (barReference->getReferenceType())
@@ -99,7 +99,7 @@ namespace mkc_timeseries
 	}
     }
 
-    static const Decimal Meander(std::shared_ptr<Security<Decimal>> security,
+    static const Decimal Meander(const std::shared_ptr<Security<Decimal>>& security,
 				  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
 				  unsigned long offset)
     {
@@ -132,7 +132,7 @@ namespace mkc_timeseries
       return volatilityConstant;
     }
     
-    static const Decimal ValueChartHigh(std::shared_ptr<Security<Decimal>> security,
+    static const Decimal ValueChartHigh(const std::shared_ptr<Security<Decimal>>& security,
 					typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
 					unsigned long offset)
     {
@@ -187,7 +187,7 @@ namespace mkc_timeseries
 	}
     }
 
-    static const Decimal ValueChartLow(std::shared_ptr<Security<Decimal>> security,
+    static const Decimal ValueChartLow(const std::shared_ptr<Security<Decimal>>& security,
 					typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
 					unsigned long offset)
     {
