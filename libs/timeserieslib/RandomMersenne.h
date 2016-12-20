@@ -20,16 +20,22 @@ public:
   RandomMersenne()
     : mRandGen()
   {}
+
   uint32 DrawNumber(uint32 min, uint32 max)
   {
     return mRandGen.uniform(min, max);
-    //return pcg_extras::bounded_rand (mRandGen.engine(), max);
   }
 
+  uint32 DrawNumber(uint32 max)
+  {
+    return pcg_extras::bounded_rand (mRandGen.engine(), max + 1);
+  }
+
+    
 private:
   //randutils::random_generator<__gnu_cxx::sfmt19937> mRandGen; // Simd Mersenne Twister
   //randutils::mt19937_rng mRandGen; // Mersenne Twister RNG
   randutils::random_generator<pcg32> mRandGen; // Try out the new PCG generator
-};
+  };
 
 #endif
