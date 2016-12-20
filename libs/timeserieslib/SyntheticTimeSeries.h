@@ -280,7 +280,8 @@ namespace mkc_timeseries
 
       while (i > 1)
 	{
-	  j = mRandGenerator.DrawNumber (0, i - 1);
+	  //j = mRandGenerator.DrawNumber (0, i - 1);
+	  j = mRandGenerator.DrawNumber (i - 1);
 	  //	std::cout << "shuffleOverNightChanges: random number: " << j << std::endl;
 	  if (j >= i)
 	    j = i - 1;
@@ -297,7 +298,8 @@ namespace mkc_timeseries
 
       while (i > 1)
 	{
-	  j = mRandGenerator.DrawNumber (0, i - 1);
+	  j = mRandGenerator.DrawNumber (i - 1);
+	  //j = mRandGenerator.DrawNumber (0, i - 1);
 	  // std::cout << "shuffleTradingDayChanges: random number: " << j << std::endl;
 	  if (j >= i)
 	    j = i - 1;
@@ -329,9 +331,5 @@ namespace mkc_timeseries
     Decimal mMinimumTickDiv2;
   };
 
-  //typedef VectorDecimal<2> TimeSeriesPrec2;
-  //typedef VectorDecimal<5> TimeSeriesPrec5;
-
-  //typedef SyntheticTimeSeries<2> SyntheticTimeSeriesPrec2;
 }
 #endif
