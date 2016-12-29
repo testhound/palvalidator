@@ -142,7 +142,7 @@ using boost::accumulators::accumulator_set;
 
       if (this->getNumClosedTrades (mBackTester) < BackTestResultPolicy<Decimal>::getMinStrategyTrades())
 	{
-	  std::cout << " runPermutationTest: number of trades = " << 
+	  //std::cout << " runPermutationTest: number of trades = " << 
 	  this->getNumClosedTrades (mBackTester) << std::endl;
 	  return DecimalConstants<Decimal>::DecimalOneHundred;
 	}
@@ -152,6 +152,9 @@ using boost::accumulators::accumulator_set;
 
       uint32_t count = 0;
       uint32_t i;
+
+      Decimal shortCutThreshold (Decimal (mNumPermutations) * DecimalConstants<Decimal>::SignificantPValue);
+      
       for (i = 0; i < mNumPermutations; i++)
 	{
 	  uint32_t stratTrades = 0;
@@ -174,8 +177,18 @@ using boost::accumulators::accumulator_set;
 	  Decimal cumulativeReturn(BackTestResultPolicy<Decimal>::getPermutationTestStatistic(clonedBackTester));
 	  //std::cout << "Test stat. for strategy " << (i + 1) << " equals: " << cumulativeReturn << ", num trades = " << stratTrades << std::endl;
 
+	  //if (cumulativeReturn >= mBaseLineCumulativeReturn)
+	  //  count++;
+
 	  if (cumulativeReturn >= mBaseLineCumulativeReturn)
-	    count++;
+	    {
+	      count++;
+
+	      // 
+	      if ((Decimal (count) + DecimalConstants<Decimal>::DecimalOne) > shortCutThreshold)
+		return DecimalConstants<Decimal>::SignificantPValue;
+	    }
+
 	}
 
       return Decimal((count + 1.0) / (mNumPermutations + 1.0));
@@ -295,6 +308,7 @@ using boost::accumulators::accumulator_set;
 	    cand_return += Decimal(positionVector[i]) * rawReturnsVector[i];
 
 	  RandomMersenne randNumGen;
+	  //DrawRandomNumber<pcg32> randNumGen;
 
 	  count = 0; // Counts how many at least as good as candidate
 
