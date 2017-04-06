@@ -85,6 +85,9 @@ namespace mkc_timeseries
       addCommonStock (std::string("GOOGL"), std::string("Google"));
       addCommonStock (std::string("FB"), std::string("Facebook"));
       addCommonStock (std::string("NFLX"), std::string("Netflix"));
+      addCommonStock (std::string("XOM"), std::string("Exxon Mobil"));
+      addCommonStock (std::string("MSFT"), std::string("Microsoft"));
+      addCommonStock (std::string("INTC"), std::string("Intel"));
 
     }
 
