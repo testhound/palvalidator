@@ -5,6 +5,7 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     PalCodeGenVisitor.cpp
     PalParseDriver.cpp
     PriceActionLabSystem.cpp
+    QuantConnectCodeGenerator.cpp
     TradingBloxCodeGenerator.cpp
     WealthLabCodeGenerator.cpp
     PalAst.h

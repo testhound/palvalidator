@@ -95,10 +95,6 @@ namespace mkc_timeseries
     void visit (CoverAtLimitOrder<Decimal> *order)
     {
       ValidateOrder (order);
-      if (order->getOrderDate() == boost::gregorian::date(1987, May, 22))
-	{
-	  //std::cout << "^^^^^^^ visit (CoverAtLimitOrder) - LowValue = " << mTradingBar->getLowValue() << " limit exit price = " << order->getLimitPrice() << std::endl << std::endl;
-	}
 
       if (mTradingBar.getLowValue() < order->getLimitPrice())	{
 	  // If we gapped down we assume we get the open price

@@ -23,7 +23,8 @@ class PalFileResults;
 class PriceBarReference
 {
 public:
-  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, VOLUME, ROC1, MEANDER, VCHARTLOW, VCHARTHIGH};
+  enum ReferenceType {OPEN, HIGH, LOW, CLOSE, VOLUME, ROC1, MEANDER, VCHARTLOW, VCHARTHIGH,
+		      IBS1, IBS2, IBS3, MOMERSIONFILTER};
   
   PriceBarReference (unsigned int barOffset);
   virtual ~PriceBarReference();
@@ -136,6 +137,54 @@ private:
   unsigned long long mComputedHash;
 };
 
+class IBS1BarReference : public PriceBarReference
+{
+public:
+  IBS1BarReference(unsigned int barOffset);
+  IBS1BarReference (const IBS1BarReference& rhs);
+  IBS1BarReference& operator=(const IBS1BarReference &rhs);
+  ~IBS1BarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  
+private:
+  unsigned long long mComputedHash;
+};
+
+class IBS2BarReference : public PriceBarReference
+{
+public:
+  IBS2BarReference(unsigned int barOffset);
+  IBS2BarReference (const IBS2BarReference& rhs);
+  IBS2BarReference& operator=(const IBS2BarReference &rhs);
+  ~IBS2BarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  
+private:
+  unsigned long long mComputedHash;
+};
+
+class IBS3BarReference : public PriceBarReference
+{
+public:
+  IBS3BarReference(unsigned int barOffset);
+  IBS3BarReference (const IBS3BarReference& rhs);
+  IBS3BarReference& operator=(const IBS3BarReference &rhs);
+  ~IBS3BarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  
+private:
+  unsigned long long mComputedHash;
+};
+
 class MeanderBarReference : public PriceBarReference
 {
 public:
@@ -183,6 +232,26 @@ public:
 private:
   unsigned long long mComputedHash;
 };
+
+/*
+class MomersionFilterBarReference : public PriceBarReference
+{
+public:
+  MomersionFilterBarReference(unsigned int barOffset, unsigned int period);
+  MomersionFilterBarReference (const MomersionFilterBarReference& rhs);
+  MomersionFilterBarReference& operator=(const MomersionFilterBarReference &rhs);
+  ~MomersionFilterBarReference();
+  void accept (PalCodeGenVisitor &v);
+  unsigned long long hashCode();
+  PriceBarReference::ReferenceType getReferenceType();
+  int extraBarsNeeded() const;
+  unsigned int getMomersionPeriod() const;
+  
+private:
+  unsigned long long mComputedHash;
+  unsigned int mPeriod;
+};
+*/
 
 typedef std::shared_ptr<PriceBarReference> PriceBarPtr;
 
@@ -674,6 +743,9 @@ public:
   PriceBarReference* getPriceClose (unsigned int barOffset);
   PriceBarReference* getVolume (unsigned int barOffset);
   PriceBarReference* getRoc1 (unsigned int barOffset);
+  PriceBarReference* getIBS1 (unsigned int barOffset);
+  PriceBarReference* getIBS2 (unsigned int barOffset);
+  PriceBarReference* getIBS3 (unsigned int barOffset);
   PriceBarReference* getMeander (unsigned int barOffset);
   PriceBarReference* getVChartLow (unsigned int barOffset);
   PriceBarReference* getVChartHigh (unsigned int barOffset);
@@ -698,6 +770,9 @@ private:
   PriceBarReference* mPredefinedPriceClose[MaxNumBarOffsets];
   PriceBarReference* mPredefinedVolume[MaxNumBarOffsets];
   PriceBarReference* mPredefinedRoc1[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedIBS1[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedIBS2[MaxNumBarOffsets];
+  PriceBarReference* mPredefinedIBS3[MaxNumBarOffsets];
   PriceBarReference* mPredefinedMeander[MaxNumBarOffsets];
   PriceBarReference* mPredefinedVChartLow[MaxNumBarOffsets];
   PriceBarReference* mPredefinedVChartHigh[MaxNumBarOffsets];

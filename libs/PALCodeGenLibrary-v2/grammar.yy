@@ -79,6 +79,9 @@
 %token TOK_CLOSE
 %token TOK_VOLUME
 %token TOK_ROC1
+%token TOK_IBS1
+%token TOK_IBS2
+%token TOK_IBS3
 %token TOK_MEANDER
 %token TOK_VCHARTLOW
 %token TOK_VCHARTHIGH
@@ -115,6 +118,9 @@
 %token TOK_PORT_SHORT_FILTER
 %token TOK_VERY_HIGH_VOL
 %token TOK_NORMAL_VOL
+%token TOK_MOMERSION_FILTER
+%token TOK_LEFT_PAREN
+%token TOK_RIGHT_PAREN
 
 %type <PriceActionLabPattern *> pattern;
 %type <PatternDescription *> patterndescr;
@@ -294,6 +300,21 @@ ohlcref : TOK_OPEN TOK_OF integernumber TOK_BARS TOK_AGO
 	  //printf("Found ohlc ref for close\n"); 
        	  $$ = astFactory.getRoc1 ($3); 
         }
+      | TOK_IBS1 TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getIBS1 ($3); 
+        }
+      | TOK_IBS2 TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getIBS2 ($3); 
+        }
+      | TOK_IBS3 TOK_OF integernumber TOK_BARS TOK_AGO 
+       	{ 
+	  //printf("Found ohlc ref for close\n"); 
+       	  $$ = astFactory.getIBS3 ($3); 
+        }
       | TOK_MEANDER TOK_OF integernumber TOK_BARS TOK_AGO 
        	{ 
 	  //printf("Found ohlc ref for close\n"); 
@@ -310,7 +331,10 @@ ohlcref : TOK_OPEN TOK_OF integernumber TOK_BARS TOK_AGO
        	  $$ = astFactory.getVChartHigh ($3); 
         }
 
-
+      //| TOK_MOMERSION_FILTER TOK_LEFT_PAREN integernumber TOK_RIGHT_PAREN
+      //  {
+      //    $$ = astFactory.getMomersionFilter (0, $3);
+      //  }
 	
 ;
 

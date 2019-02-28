@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <fstream>
+#include "StopTargetDetail.h"
 
 class PriceBarOpen;
 class PriceBarHigh;
@@ -25,6 +26,9 @@ class ShortSideProfitTargetInPercent;
 class LongSideStopLossInPercent;
 class ShortSideStopLossInPercent;
 class PriceActionLabSystem;
+class IBS1BarReference;
+class IBS2BarReference;
+class IBS3BarReference;
 
 
 class PalCodeGenVisitor
@@ -40,6 +44,11 @@ public:
   virtual void visit (PriceBarClose *) = 0;
   virtual void visit (VolumeBarReference *) = 0;
   virtual void visit (Roc1BarReference *) = 0;
+
+  virtual void visit (IBS1BarReference *) = 0;
+  virtual void visit (IBS2BarReference *) = 0;
+  virtual void visit (IBS3BarReference *) = 0;
+	
   virtual void visit (MeanderBarReference *) = 0;
   virtual void visit (VChartLowBarReference *) = 0;
   virtual void visit (VChartHighBarReference *) = 0;
@@ -89,7 +98,10 @@ public:
   void visit (PriceActionLabPattern *);
   void visit (LongMarketEntryOnOpen *);
   void visit (ShortMarketEntryOnOpen *);
-
+  void visit (IBS1BarReference *);
+  void visit (IBS2BarReference *);
+  void visit (IBS3BarReference *);
+  
 private:
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
   std::ofstream mEntryOrdersScriptFile;
@@ -173,6 +185,9 @@ public:
   void visit (PriceActionLabPattern *);
   void visit (LongMarketEntryOnOpen *);
   void visit (ShortMarketEntryOnOpen *);
+  void visit (IBS1BarReference *);
+  void visit (IBS2BarReference *);
+  void visit (IBS3BarReference *);
 
 private:
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
@@ -225,8 +240,13 @@ class EasyLanguageCodeGenVisitor : public PalCodeGenVisitor
 {
 public:
   EasyLanguageCodeGenVisitor(PriceActionLabSystem *system, 
-			    const std::string& bloxOutfileFileName);
+			     const std::string& outputFileName,
+			     const StopTargetDetail& dev1Detail,
+			     const StopTargetDetail& dev2Detail);
   virtual ~EasyLanguageCodeGenVisitor();
+  bool isDev1Pattern(PriceActionLabPattern *pattern);
+  bool isDev2Pattern(PriceActionLabPattern *pattern);
+  
   void generateCode();
   void generatedSortedCode();
 
@@ -264,17 +284,25 @@ public:
   void visit (PriceActionLabPattern *);
   void visit (LongMarketEntryOnOpen *);
   void visit (ShortMarketEntryOnOpen *);
+  void visit (IBS1BarReference *);
+  void visit (IBS2BarReference *);
+  void visit (IBS3BarReference *);
 
 private:
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
-  std::ofstream mEntryOrdersScriptFile;
+  std::ofstream mEasyLanguageFileName;
+  StopTargetDetail mDev1Detail;
+  StopTargetDetail mDev2Detail;
+
 };
 
 class EasyLanguageRADCodeGenVisitor : public EasyLanguageCodeGenVisitor
 {
 public:
   EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
-			       const std::string& bloxOutfileFileName);
+				const std::string& outputFileName,
+				const StopTargetDetail& dev1Detail,
+				const StopTargetDetail& dev2Detail);
   ~EasyLanguageRADCodeGenVisitor();
   void visit (LongSideProfitTargetInPercent *);
   void visit (ShortSideProfitTargetInPercent *);
@@ -298,7 +326,10 @@ class EasyLanguagePointAdjustedCodeGenVisitor : public EasyLanguageCodeGenVisito
 {
 public:
   EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
-					 const std::string& bloxOutfileFileName);
+					  const std::string& outputFileName,
+					  const StopTargetDetail& dev1Detail,
+					  const StopTargetDetail& dev2Detail);
+
   ~EasyLanguagePointAdjustedCodeGenVisitor();
   void visit (LongSideProfitTargetInPercent *);
   void visit (ShortSideProfitTargetInPercent *);
@@ -338,6 +369,9 @@ public:
   void visit (MeanderBarReference *);
   void visit (VChartLowBarReference *);
   void visit (VChartHighBarReference *);
+  void visit (IBS1BarReference *);
+  void visit (IBS2BarReference *);
+  void visit (IBS3BarReference *);
 
   void visit (GreaterThanExpr *);
   void visit (AndExpr *);
@@ -360,4 +394,82 @@ private:
   std::ofstream mOutFile;
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
 };
+
+// QuantConnect Code Gen Visitor
+
+class QuantConnectCodeGenVisitor : public PalCodeGenVisitor
+{
+public:
+  QuantConnectCodeGenVisitor(PriceActionLabSystem *system, 
+			     const std::string& oututfileFileName);
+  virtual ~QuantConnectCodeGenVisitor();
+  void generateCode();
+  void generatedSortedCode();
+
+private:
+  void genCodeForCommonVariables();
+  void genCodeForCommonEntry();
+  void genCodeToInitVolatility(bool shortSide);
+  void genCodeForCommonVariableInit();
+
+
+protected:
+  void genCommonCodeForLongExitPrologue();
+  void genCommonCodeForShortExitPrologue();
+
+  std::ofstream * getOutputFileStream();
+  virtual void genCodeForVariablesInEntryScript() = 0;
+  bool isHighRewardToRiskRatioPattern (PriceActionLabPattern *pattern);
+  virtual void genCodeForEntryExit() = 0;
+  virtual void genCodeToInitializeVariables() = 0;
+
+public:
+  void generateEntryOrdersScript();
+  void visit (PriceBarOpen *);
+  void visit (PriceBarHigh *);
+  void visit (PriceBarLow *);
+  void visit (PriceBarClose *);
+  void visit (VolumeBarReference *);
+  void visit (Roc1BarReference *);
+  void visit (MeanderBarReference *);
+  void visit (VChartLowBarReference *);
+  void visit (VChartHighBarReference *);
+  void visit (GreaterThanExpr *);
+  void visit (AndExpr *);
+  void visit (PatternDescription *);
+  void visit (PriceActionLabPattern *);
+  void visit (LongMarketEntryOnOpen *);
+  void visit (ShortMarketEntryOnOpen *);
+  void visit (IBS1BarReference *);
+  void visit (IBS2BarReference *);
+  void visit (IBS3BarReference *);
+
+private:
+  std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
+  std::ofstream mEntryOrdersScriptFile;
+};
+
+class QuantConnectEquityCodeGenVisitor : public QuantConnectCodeGenVisitor
+{
+public:
+  QuantConnectEquityCodeGenVisitor(PriceActionLabSystem *system,
+				   const std::string& oututfileFileName);
+  ~QuantConnectEquityCodeGenVisitor();
+  void visit (LongSideProfitTargetInPercent *);
+  void visit (ShortSideProfitTargetInPercent *);
+  void visit (LongSideStopLossInPercent *);
+  void visit (ShortSideStopLossInPercent *);
+  void generateEntryOrderFilledScript();
+
+private:
+  void generateExitOrdersScript();
+  void genCodeForVariablesInEntryScript();
+  void genCodeForEntryExit();
+  void genCodeToInitializeVariables();
+    
+private:
+  std::ofstream mEntryOrderFilledScriptFile;
+  std::ofstream mExitOrderScriptFile;
+};
+
 #endif

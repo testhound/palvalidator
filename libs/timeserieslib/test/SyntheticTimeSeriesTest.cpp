@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_MAIN
 
 #include "catch.hpp"
+#include "../number.h"
 #include "../TimeSeries.h"
 #include "../SyntheticTimeSeries.h"
 #include "../TimeSeriesCsvReader.h"
@@ -9,9 +10,12 @@
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef decimal<7> EquityType;
 
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+
+using Num = num::DefaultNumber;
+typedef Num EquityType;
+
+OHLCTimeSeriesEntry<Num>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -19,13 +23,14 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<EquityType> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<EquityType> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<EquityType> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<EquityType> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+    auto date1 (from_undelimited_string(dateString));
+    auto open1 (num::fromString<Num>(openPrice));
+    auto high1 (num::fromString<Num>(highPrice));
+    auto low1 (num::fromString<Num>(lowPrice));
+    auto close1 (num::fromString<Num>(closePrice));
+    Num vol1 ((uint) vol);
+    return OHLCTimeSeriesEntry<Num>(date1, open1, high1, low1, 
+				    close1, vol1, TimeFrame::DAILY);
   }
 
 
@@ -53,7 +58,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
   auto entry6 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
 				   65899900);
 
-  OHLCTimeSeries<7> spySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+  OHLCTimeSeries<Num> spySeries(TimeFrame::DAILY, TradingVolume::SHARES);
 
   spySeries.addEntry (entry0);
   spySeries.addEntry (entry1);
@@ -89,20 +94,21 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
   spySeries.addEntry (createEquityEntry ("20151209", "206.19", "208.68", "204.18","205.34",
 					 162401500));
 
-  SyntheticTimeSeries<7> syntheticSpySeries (spySeries);
-  OHLCTimeSeries<7>::TimeSeriesIterator firstElementIterator = spySeries.beginSortedAccess();
-  REQUIRE (syntheticSpySeries.getFirstOpen() == firstElementIterator->second->getOpenValue());
+  SyntheticTimeSeries<Num> syntheticSpySeries (spySeries, DecimalConstants<Num>::EquityTick,
+					       DecimalConstants<Num>::EquityTick / DecimalConstants<Num>::DecimalTwo);
+  OHLCTimeSeries<Num>::TimeSeriesIterator firstElementIterator = spySeries.beginSortedAccess();
+  REQUIRE (syntheticSpySeries.getFirstOpen() == firstElementIterator->second.getOpenValue());
   syntheticSpySeries.createSyntheticSeries();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = syntheticSpySeries.getSyntheticTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<Num>> p = syntheticSpySeries.getSyntheticTimeSeries();
   std::cout << "number of entries in Synthetic time series = " << p->getNumEntries() << std::endl << std:: endl;
 
-  OHLCTimeSeries<7>::TimeSeriesIterator it = p->beginSortedAccess();
+  OHLCTimeSeries<Num>::TimeSeriesIterator it = p->beginSortedAccess();
 
   std::cout << "Printing Synthetic time series"<< std::endl << std:: endl;
   for (; it != p->endSortedAccess(); it++)
     {
-      std::cout << it->first << "," << it->second->getOpenValue() <<"," << it->second->getHighValue() << "," << it->second->getLowValue() << "," << it->second->getCloseValue() << std::endl;
+      std::cout << it->first << "," << it->second.getOpenValue() <<"," << it->second.getHighValue() << "," << it->second.getLowValue() << "," << it->second.getCloseValue() << std::endl;
     }
     std::cout << "Done Printing Synthetic time series"<< std::endl << std:: endl;
 
@@ -130,21 +136,21 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("SyntheticTimeSeries OHLC creation", "[SyntheticTimeSeries]")
     {
-      decimal<7> prevClose (DecimalConstants<7>::createDecimal("80901.5811145"));
-      decimal<7> relativeOpen(DecimalConstants<7>::createDecimal("1.2380000"));
-      decimal<7> relativeHigh(DecimalConstants<7>::createDecimal("1.0290650"));
-      decimal<7> relativeLow(DecimalConstants<7>::createDecimal("0.9843769"));
-      decimal<7> relativeClose(DecimalConstants<7>::createDecimal("1.0249971"));
+      Num prevClose (DecimalConstants<Num>::createDecimal("80901.5811145"));
+      Num relativeOpen(DecimalConstants<Num>::createDecimal("1.2380000"));
+      Num relativeHigh(DecimalConstants<Num>::createDecimal("1.0290650"));
+      Num relativeLow(DecimalConstants<Num>::createDecimal("0.9843769"));
+      Num relativeClose(DecimalConstants<Num>::createDecimal("1.0249971"));
 
-      decimal<7> syntheticOpen(prevClose * relativeOpen);
-      decimal<7> syntheticClose(syntheticOpen * relativeClose);
-      decimal<7> syntheticHigh(syntheticOpen * relativeHigh);
-      decimal<7> syntheticLow(syntheticOpen * relativeLow);
+      Num syntheticOpen(prevClose * relativeOpen);
+      Num syntheticClose(syntheticOpen * relativeClose);
+      Num syntheticHigh(syntheticOpen * relativeHigh);
+      Num syntheticLow(syntheticOpen * relativeLow);
 
-      REQUIRE (syntheticOpen > DecimalConstants<7>::DecimalZero);
-      REQUIRE (syntheticHigh > DecimalConstants<7>::DecimalZero);
-      REQUIRE (syntheticLow > DecimalConstants<7>::DecimalZero);
-      REQUIRE (syntheticClose > DecimalConstants<7>::DecimalZero);
+      REQUIRE (syntheticOpen > DecimalConstants<Num>::DecimalZero);
+      REQUIRE (syntheticHigh > DecimalConstants<Num>::DecimalZero);
+      REQUIRE (syntheticLow > DecimalConstants<Num>::DecimalZero);
+      REQUIRE (syntheticClose > DecimalConstants<Num>::DecimalZero);
 
       std::cout << "Synthetic open = " << syntheticOpen << std::endl;
       std::cout << "Synthetic high = " << syntheticHigh << std::endl;
@@ -155,22 +161,24 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("SyntheticTimeSeries multiple creation", "[SyntheticTimeSeries]")
     {
-      PALFormatCsvReader<7> amznCsvReader ("AMZN.txt", TimeFrame::DAILY, TradingVolume::SHARES);
+      PALFormatCsvReader<Num> amznCsvReader ("AMZN.txt", TimeFrame::DAILY, TradingVolume::SHARES, DecimalConstants<Num>::EquityTick);
       amznCsvReader.readFile();
 
-      std::shared_ptr<OHLCTimeSeries<7>> amznTimeSeries = amznCsvReader.getTimeSeries();
-      OHLCTimeSeries<7>::TimeSeriesIterator firstElementIterator = amznTimeSeries->beginSortedAccess();
-      decimal<7> openingPrice = firstElementIterator->second->getOpenValue();
+      std::shared_ptr<OHLCTimeSeries<Num>> amznTimeSeries = amznCsvReader.getTimeSeries();
+      OHLCTimeSeries<Num>::TimeSeriesIterator firstElementIterator = amznTimeSeries->beginSortedAccess();
+      Num openingPrice = firstElementIterator->second.getOpenValue();
 
-      SyntheticTimeSeries<7> aTimeSeriesToDump(*amznTimeSeries);
+      SyntheticTimeSeries<Num> aTimeSeriesToDump(*amznTimeSeries, DecimalConstants<Num>::EquityTick,
+						 DecimalConstants<Num>::EquityTick / DecimalConstants<Num>::DecimalTwo);
       aTimeSeriesToDump.createSyntheticSeries();
 
-      PalTimeSeriesCsvWriter<7> dumpFile("SyntheticSeriesOut.csv", 
+      PalTimeSeriesCsvWriter<Num> dumpFile("SyntheticSeriesOut.csv", 
 					    *aTimeSeriesToDump.getSyntheticTimeSeries());
       dumpFile.writeFile();
       for (int i = 0; i < 100; i++)
 	{
-	  SyntheticTimeSeries<7> aTimeSeries2(*amznTimeSeries);
+	  SyntheticTimeSeries<Num> aTimeSeries2(*amznTimeSeries, DecimalConstants<Num>::EquityTick,
+					       DecimalConstants<Num>::EquityTick / DecimalConstants<Num>::DecimalTwo);
 	  REQUIRE (aTimeSeries2.getFirstOpen() == openingPrice);
 	  aTimeSeries2.createSyntheticSeries();
 	}

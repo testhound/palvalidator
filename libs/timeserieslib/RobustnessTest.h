@@ -17,11 +17,14 @@
 #include "BackTester.h"
 #include "PalAst.h"
 #include "MonteCarloPermutationTest.h"
+#include "Returns.h"
+#include "SummaryStats.h"
 
 namespace mkc_timeseries
 {
   using boost::gregorian::date;
   using std::make_shared;
+
   //
   // class PatternRobustnessCriteria
   //
@@ -76,6 +79,365 @@ namespace mkc_timeseries
       const PercentNumber<Decimal>& getRobustnessTolerance() const
       {
 	return mRobustnessTolerance;
+      }
+
+      const Decimal getDecimalToleranceForPercentDifference (unsigned long percentDiffAsInteger) const
+      {
+	// Note entries 0 and  was manually modified because we do not want a tolerance
+	// less than 1%
+	    
+
+	static Decimal lnConstants[] =
+	  {
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.00000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.00000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.09861")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.38629")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.60944")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.79176")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.94591")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.07944")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.19722")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.30259")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.3979")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.48491")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.56495")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.63906")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.70805")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.77259")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.83321")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.89037")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.94444")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.99573")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.04452")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.09104")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.13549")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.17805")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.21888")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.2581")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.29584")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.3322")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.3673")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.4012")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.43399")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.46574")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.49651")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.52636")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.55535")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.58352")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.61092")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.63759")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.66356")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.68888")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.71357")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.73767")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.7612")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.78419")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.80666")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.82864")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.85015")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.8712")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.89182")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.91202")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.93183")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.95124")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.97029")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.98898")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.00733")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.02535")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.04305")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.06044")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.07754")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.09434")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.11087")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.12713")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.14313")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.15888")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.17439")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.18965")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.20469")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.21951")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.23411")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.2485")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.26268")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.27667")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.29046")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.30407")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.31749")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.33073")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.34381")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.35671")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.36945")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.38203")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.39445")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.40672")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.41884")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.43082")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.44265")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.45435")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.46591")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.47734")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.48864")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.49981")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.51086")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.52179")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.5326")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.54329")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.55388")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.56435")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.57471")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.58497")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.59512")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.60517"))
+	  };
+
+	if ((percentDiffAsInteger >=0) && (percentDiffAsInteger <= 100))
+	  return lnConstants[percentDiffAsInteger];
+
+	// We don't want tolerance greater than 10%
+	return lnConstants[100];
+
+      }
+
+      const PercentNumber<Decimal> getToleranceForPercentDifference (unsigned long percentDiffAsInteger) const
+      {
+	// Note entries 0 and  was manually modified because we do not want a tolerance
+	// less than 1%
+	    
+
+	static PercentNumber<Decimal> lnConstants[] =
+	  {
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.00000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.00000")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.09861")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.38629")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.60944")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.79176")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("1.94591")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.07944")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.19722")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.30259")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.3979")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.48491")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.56495")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.63906")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.70805")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.77259")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.83321")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.89037")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.94444")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("2.99573")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.04452")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.09104")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.13549")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.17805")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.21888")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.2581")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.29584")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.3322")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.3673")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.4012")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.43399")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.46574")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.49651")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.52636")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.55535")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.58352")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.61092")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.63759")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.66356")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.68888")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.71357")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.73767")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.7612")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.78419")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.80666")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.82864")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.85015")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.8712")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.89182")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.91202")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.93183")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.95124")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.97029")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("3.98898")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.00733")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.02535")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.04305")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.06044")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.07754")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.09434")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.11087")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.12713")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.14313")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.15888")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.17439")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.18965")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.20469")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.21951")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.23411")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.2485")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.26268")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.27667")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.29046")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.30407")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.31749")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.33073")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.34381")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.35671")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.36945")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.38203")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.39445")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.40672")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.41884")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.43082")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.44265")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.45435")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.46591")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.47734")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.48864")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.49981")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.51086")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.52179")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.5326")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.54329")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.55388")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.56435")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.57471")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.58497")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.59512")),
+	    PercentNumber<Decimal>::createPercentNumber (std::string("4.60517"))
+	  };
+
+	if ((percentDiffAsInteger >=0) && (percentDiffAsInteger <= 100))
+	  return lnConstants[percentDiffAsInteger];
+
+	// We don't want tolerance greater than 10%
+	return lnConstants[100];
+
+      }
+
+      // Return the tolerance in percent for the number of iterations away we
+      // are for from the original robustness target
+
+      const Decimal getDecimalToleranceForIterations (unsigned long numIterations) const
+      {
+	static Decimal sqrtConstants[] =
+	  {
+	    // Note entry 0 was manually modified because we would like a 1%
+	    // tolerance on the reference value
+	    
+	    DecimalConstants<Decimal>::createDecimal (std::string("1.000000")),
+	    // Note entries 1 to 3 were manually modified because we don't want
+	    // tolerances less than 2% for these entries
+
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.236068")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.449490")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.645751")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("2.828427")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.162278")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.316625")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.464102")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.605551")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.741657")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("3.872983")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.123106")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.242641")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.358899")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.472136")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.582576")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.690416")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.795832")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("4.898979")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.099020")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.196152")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.291503")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.385165")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.477226")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.567764")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.656854")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.744563")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.830952")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("5.916080")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.082763")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.164414")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.244998")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.324555")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.403124")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.480741")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.557439")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.633250")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.708204")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.782330")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.855655")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("6.928203")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.071068")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.141428")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.211103")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.280110")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.348469")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.416198")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.483315")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.549834")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.615773")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.681146")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.745967")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.810250")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.874008")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("7.937254")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.062258")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.124038")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.185353")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.246211")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.306624")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.366600")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.426150")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.485281")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.544004")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.602325")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.660254")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.717798")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.774964")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.831761")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.888194")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("8.944272")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.000000")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.055385")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.110434")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.165151")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.219544")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.273618")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.327379")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.380832")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.433981")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.486833")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.539392")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.591663")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.643651")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.695360")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.746794")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.797959")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.848858")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.899495")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("9.949874")),
+	    DecimalConstants<Decimal>::createDecimal (std::string("10.000000")),
+	  };
+
+	if ((numIterations >=0) && (numIterations <= 100))
+	  return sqrtConstants[numIterations];
+
+	// We don't want tolerance greater than 10%
+	return sqrtConstants[100];
       }
 
       // Return the tolerance in percent for the number of iterations away we
@@ -720,8 +1082,9 @@ namespace mkc_timeseries
 	mRequiredProfitability(RobustnessCalculator<Decimal>::requiredPALProfitability(robustnessCriteria.getDesiredProfitFactor(),
 										    thePattern->getPayoffRatio(),
 										    robustnessCriteria.getProfitabilitySafetyFactor())),
-	mNumberPALProfitableResults(0)
-      {}
+      mNumberPALProfitableResults(0),
+      mRobustnessStats()
+	{}
 
     RobustnessCalculator(const RobustnessCalculator<Decimal>& rhs)
       : mPatternToTest (rhs.mPatternToTest),
@@ -731,7 +1094,8 @@ namespace mkc_timeseries
 	mDebug(rhs.mDebug),
 	mRobustnessResults(rhs.mRobustnessResults),
 	mRequiredProfitability(rhs.mRequiredProfitability),
-	mNumberPALProfitableResults(rhs.mNumberPALProfitableResults)
+	mNumberPALProfitableResults(rhs.mNumberPALProfitableResults),
+	mRobustnessStats(rhs.mRobustnessStats)
     {}
 
     ~RobustnessCalculator()
@@ -751,7 +1115,7 @@ namespace mkc_timeseries
       mRequiredProfitability = rhs.mRequiredProfitability;
       mDebug = rhs.mDebug;
       mNumberPALProfitableResults = rhs.mNumberPALProfitableResults;
-
+      mRobustnessStats = rhs.mRobustnessStats;
       return *this;
     }
 
@@ -760,7 +1124,8 @@ namespace mkc_timeseries
     {
       ProfitTargetStopPair<Decimal> pairKey (pattern->getProfitTargetAsDecimal(),
 					  pattern->getStopLossAsDecimal());
-      
+
+      mRobustnessStats.addValue (testResult->getProfitFactor());
       if (testResult->getProfitFactor() > DecimalConstants<Decimal>::DecimalOne)
 	mNumberProfitableResults = mNumberProfitableResults + DecimalConstants<Decimal>::DecimalOne;
 
@@ -806,7 +1171,8 @@ namespace mkc_timeseries
 	return DecimalConstants<Decimal>::DecimalZero;
     }
 
-    bool isRobust() const
+    //bool isRobust() const
+    bool isRobust()
     {
       if (getNumEntries() < mPermutationAttributes->getNumberOfPermutations())
 	throw RobustnessCalculatorException ("RobustnessCalculator::isRobust - number of entries does not match number of permutations specified in PermutationAttributes");
@@ -814,8 +1180,25 @@ namespace mkc_timeseries
       if (getRobustnessIndex() < mRobustnessCriteria.getMinimumRobustnessIndex())
 	return false;
 
-      if (getProfitabilityIndex() < DecimalConstants<Decimal>::TwoThirds)
+      Decimal medianProfitFactor (mRobustnessStats.getMedian());
+      if (medianProfitFactor < DecimalConstants<Decimal>::DecimalOnePointFive)
 	return false;
+
+      Decimal robustQn (mRobustnessStats.getRobustQn());
+      if ((medianProfitFactor - robustQn) < DecimalConstants<Decimal>::DecimalOne)
+	return false;
+
+      // If the lower 2 standard deviation of the profit factor is < 1.0 and the smallest profit factor < 1.0
+      // then reject as non-robust
+      
+      if ((medianProfitFactor - (robustQn * DecimalConstants<Decimal>::DecimalTwo)) < DecimalConstants<Decimal>::DecimalOne)
+	{
+	  if (mRobustnessStats.getSmallestValue() < DecimalConstants<Decimal>::DecimalOne)
+	    return false;
+	}
+
+      // if (getProfitabilityIndex() < DecimalConstants<Decimal>::TwoThirds)
+      // return false;
 
       unsigned long numSignificant = getNumNeighboringSignificantResults();
       if (mDebug)
@@ -830,14 +1213,7 @@ namespace mkc_timeseries
 	  std::cout << "RobustnessCalculator::isRobust - original pattern target = " << originalTarget << std::endl;
 	}
 
-      ProfitTargetStopPair<Decimal> pairKey (originalTarget,
-					  originalStop);
-      /*
-      Decimal requiredProfitability = 
-	RobustnessCalculator<Decimal>::requiredPALProfitability(mRobustnessCriteria.getDesiredProfitFactor(),
-						mPatternToTest->getPayoffRatio(),
-							     mRobustnessCriteria.getProfitabilitySafetyFactor());
-      */
+      ProfitTargetStopPair<Decimal> pairKey (originalTarget, originalStop);
 
       Decimal requiredProfitability = mRequiredProfitability;
       if (mDebug)
@@ -871,7 +1247,8 @@ namespace mkc_timeseries
 
 	  if (!isPermutationResultRobust (it->second,
 					  requiredProfitability,
-					  i))
+					  i,
+					  it->first.getProtectiveStop()))
 	    {
 	      if (mDebug)
 		std::cout << "Failed testing above reference value" << std::endl;
@@ -900,7 +1277,8 @@ namespace mkc_timeseries
 	    }
 	  if (!isPermutationResultRobust (it->second,
 					  requiredProfitability,
-					  i))
+					  i,
+					  it->first.getProtectiveStop()))
 	    {
 	      if (mDebug)
 		std::cout << "Failed testing below reference value" << std::endl;
@@ -911,14 +1289,14 @@ namespace mkc_timeseries
 	    }
 	}
 
-      uint32_t numFailuresAtBeginning = getNumRobustnessFailuresAtBeginning (requiredProfitability);
+      /*uint32_t numFailuresAtBeginning = getNumRobustnessFailuresAtBeginning (requiredProfitability);
       uint32_t numFailuresAtEnd = getNumRobustnessFailuresAtEnd (requiredProfitability);
 
       if ((numFailuresAtBeginning == mPermutationAttributes->numEntriesToTestAtBeginning()) &&
 	  (numFailuresAtEnd == mPermutationAttributes->numEntriesToTestAtEnd()))
 	{
 	  return false;
-	}
+	  } */
 
       return true;
 
@@ -988,6 +1366,65 @@ namespace mkc_timeseries
     }
 
   private:
+
+    PercentNumber<Decimal> getToleranceForDistanceAndPercentage (unsigned long iterationsAwayFromRef,
+						   const Decimal& stopLossCandidate) const
+    {
+      Decimal originalStop (getOriginalPatternStop());
+
+      Decimal candidatePercentDistance;
+
+      candidatePercentDistance = num::abs (PercentReturn (originalStop, stopLossCandidate));
+      unsigned long intPercentDistance = (unsigned long) num::to_double(candidatePercentDistance);
+      Decimal toleranceForPercentage (mRobustnessCriteria.getDecimalToleranceForPercentDifference
+					    (intPercentDistance));
+
+      Decimal toleranceForDistance (mRobustnessCriteria.getDecimalToleranceForIterations(iterationsAwayFromRef));
+
+      return PercentNumber<Decimal>::createPercentNumber (toleranceForPercentage * toleranceForDistance);
+
+    }
+    
+    bool isPermutationResultRobust (std::shared_ptr<RobustnessTestResult<Decimal>> result,
+				    const Decimal& requiredProfitability,
+				    unsigned long iterationsAwayFromRef,
+				    const Decimal& stopLossCandidate) const
+    {
+      PercentNumber<Decimal> tolerance (getToleranceForDistanceAndPercentage (iterationsAwayFromRef, stopLossCandidate));
+      //std::cout << "For " << iterationsAwayFromRef << " iterations away from reference, tolerance = " << tolerance.getAsPercent() << std::endl;
+
+      if (!equalWithTolerance (requiredProfitability, result->getMonteCarloProfitability(),
+			       tolerance))
+	{
+	  if (mDebug)
+	    std::cout << "isPermutationResultRobust test failed with test for requiredProfitability " << requiredProfitability << " found profitability of " <<  result->getPALProfitability() << std::endl;
+	  return false;
+	}
+
+      //getToleranceForNumTrades
+
+      Decimal resultPayoff (result->getMonteCarloPayOffRatio());
+      if (resultPayoff == DecimalConstants<Decimal>::DecimalZero)
+	resultPayoff = result->getMedianPayOffRatio();
+      
+      if (!equalWithTolerance (mPatternToTest->getPayoffRatio(), resultPayoff,
+			       mRobustnessCriteria.getToleranceForNumTrades (result->getNumTrades())))
+	{
+	  if (mDebug)
+	    std::cout << "isPermutationResultRobust test failed with test for required payoff ratio " << mPatternToTest->getPayoffRatio() << " found payoff ratio of " <<  result->getMedianPayOffRatio() << std::endl;
+	  return false;
+	}
+
+      if (!equalWithTolerance (mRobustnessCriteria.getDesiredProfitFactor(), 
+			       result->getProfitFactor(),
+			       tolerance))
+	return false;
+
+      return true;
+
+    }
+    
+
     // Note this method is meant to be called on the results that 'neighbor' the original 
     // profit target, stop pair
 
@@ -1037,6 +1474,27 @@ namespace mkc_timeseries
 
     unsigned long getNumNeighboringSignificantResults() const
     {
+      return 6;
+      
+      //Decimal originalPatternStop (mPatternToTest->getStopLossAsDecimal());
+      //Decimal permutationIncrement(originalPatternStop / Decimal((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
+
+      //permutationIncrement = permutationIncrement * mPatternToTest->getPayoffRatio();
+      //std::cout << "getNumNeighboringSignificantResults(): permutation increment = " << permutationIncrement << std::endl;
+      
+      // The rationale for number of signifant stop/target pairs to check is that at most
+      // parameters 20% away from the original are significant. As we get farther away we
+      // should not expect the same level of profitability
+      
+      //Decimal numSignificant (DecimalConstants<Decimal>::TwentyPercent/permutationIncrement);
+
+      //std::cout << "getNumNeighboringSignificantResults(): numSignificant = " << numSignificant << std::endl;
+      //return (unsigned long) num::to_double(numSignificant);
+    }
+    
+    /*
+    unsigned long getNumNeighboringSignificantResults() const
+    {
       Decimal numPermutations = 
 	Decimal(mPermutationAttributes->getNumberOfPermutations());
       Decimal numSignificant7 = Decimal(7);
@@ -1051,7 +1509,8 @@ namespace mkc_timeseries
       //return (unsigned long) numSignificant.getAsInteger();
       return (unsigned long) num::to_double(numSignificant);
     }
-
+    */
+    
     bool equalWithTolerance (const Decimal& referenceValue, 
 			     const Decimal& comparisonValue,
 			     const PercentNumber<Decimal>& tolerance) const
@@ -1073,6 +1532,7 @@ namespace mkc_timeseries
     Decimal mNumberPALProfitableResults;
     static Decimal TwentyPercent;
     static Decimal TwentyFivePercent;
+    SummaryStats<Decimal> mRobustnessStats;
   };
 
   template <class Decimal> Decimal 
@@ -1151,14 +1611,6 @@ namespace mkc_timeseries
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
       clonedBackTester->addStrategy(mTheStrategy);
       clonedBackTester->backtest();
-
-      // The original pattern that we got from PAL should pass the minimum
-      // required profitability
-      //if (clonedBackTester->getClosedPositionHistory().getPALProfitability() < 
-      //	  requiredProfitability)
-      //	{
-      //	  originalPatternProfitabilityFailed = true;
-      //	}
       
       addTestResult (createRobustnessTestResult (clonedBackTester),
 		     originalPattern);

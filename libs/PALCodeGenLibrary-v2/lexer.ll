@@ -31,7 +31,7 @@
 %option c++
 %option yyclass="PalScanner"
 %option outfile="PalScanner.cpp" 
-%option header-file="PalScanner.hpp"
+/* %option header-file="PalScanner.hpp" */
 %option nodefault
 %option noyywrap
 %option prefix="MkcPalAst_"
@@ -52,6 +52,9 @@
 
 "{"                { return mkc_palast::PalParser::make_TOK_LBRACE(mkc_palast::location()); }
 "}"                { return mkc_palast::PalParser::make_TOK_RBRACE(mkc_palast::location()); }
+
+"("                { return mkc_palast::PalParser::make_TOK_LEFT_PAREN(mkc_palast::location()); }
+")"                { return mkc_palast::PalParser::make_TOK_RIGHT_PAREN(mkc_palast::location()); }
 
 "%"                { return mkc_palast::PalParser::make_TOK_PERCENT(mkc_palast::location()); }
 
@@ -76,6 +79,9 @@
 "OPEN"             { return mkc_palast::PalParser::make_TOK_OPEN(mkc_palast::location()); }
 "VOLUME"       	   { return mkc_palast::PalParser::make_TOK_VOLUME(mkc_palast::location()); }
 "ROC1"             { return mkc_palast::PalParser::make_TOK_ROC1(mkc_palast::location()); }
+"IBS1"             { return mkc_palast::PalParser::make_TOK_IBS1(mkc_palast::location()); }
+"IBS2"             { return mkc_palast::PalParser::make_TOK_IBS2(mkc_palast::location()); }
+"IBS3"             { return mkc_palast::PalParser::make_TOK_IBS3(mkc_palast::location()); }
 "MEANDER"          { return mkc_palast::PalParser::make_TOK_MEANDER(mkc_palast::location()); }
 "VCHARTLOW"          { return mkc_palast::PalParser::make_TOK_VCHARTLOW(mkc_palast::location()); }
 "VCHARTHIGH"          { return mkc_palast::PalParser::make_TOK_VCHARTHIGH(mkc_palast::location()); }
@@ -104,6 +110,7 @@
 "VHVOL"            { return mkc_palast::PalParser::make_TOK_VERY_HIGH_VOL(mkc_palast::location()); }
 "PM_FILTER_LONG"   { return mkc_palast::PalParser::make_TOK_PORT_LONG_FILTER(mkc_palast::location()); }
 "PM_FILTER_SHORT"  { return mkc_palast::PalParser::make_TOK_PORT_SHORT_FILTER(mkc_palast::location()); }
+"MOMERSION_FILTER" { return mkc_palast::PalParser::make_TOK_MOMERSION_FILTER(mkc_palast::location()); }
 "Volatility"       { return mkc_palast::PalParser::make_TOK_VOLATILITY(mkc_palast::location()); }
 "Portfolio"        { return mkc_palast::PalParser::make_TOK_PORTFOLIO(mkc_palast::location()); }
 [0-9]+             {

@@ -10,7 +10,7 @@
 namespace mkc_timeseries
 {
   void LogPalPattern::LogPattern (shared_ptr<PriceActionLabPattern> pattern,
-				  std::ofstream& outputFileStream)
+				  std::ostream& outputFileStream)
   {
     LogPalPattern::LogPatternDescription (pattern->getPatternDescription(), outputFileStream);
     outputFileStream << std::endl;
@@ -26,7 +26,7 @@ namespace mkc_timeseries
   }
 
   void LogPalPattern::LogPatternDescription (std::shared_ptr<PatternDescription> desc,
-					     std::ofstream& outputFileStream)
+					     std::ostream& outputFileStream)
   {
     outputFileStream << "{File:" << desc->getFileName() << "  Index: " << desc->getpatternIndex()
 			 << "  Index DATE: " << desc->getIndexDate() << "  PL: " << *(desc->getPercentLong())
@@ -35,7 +35,7 @@ namespace mkc_timeseries
   }
 
   void LogPalPattern::LogExpression (PatternExpression *expression,
-				     std::ofstream& outputFileStream)
+				     std::ostream& outputFileStream)
   {
     if (AndExpr *pAnd = dynamic_cast<AndExpr*>(expression))
 	{
@@ -53,7 +53,7 @@ namespace mkc_timeseries
   }
 
   void LogPalPattern::LogPriceBarExpr (PriceBarReference *barReference,
-				       std::ofstream& outputFileStream)
+				       std::ostream& outputFileStream)
   {
     switch (barReference->getReferenceType())
 	{
@@ -80,14 +80,26 @@ namespace mkc_timeseries
 	case PriceBarReference::MEANDER:
 	  outputFileStream << "MEANDER OF " << barReference->getBarOffset() << " BARS AGO";
 	  break;
-	  
+
+	case PriceBarReference::IBS1:
+	  outputFileStream << "IBS1 OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
+	case PriceBarReference::IBS2:
+	  outputFileStream << "IBS2 OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
+	case PriceBarReference::IBS3:
+	  outputFileStream << "IBS3 OF " << barReference->getBarOffset() << " BARS AGO";
+	  break;
+
 	default:
 	  throw_assert (false, "LogPriceBarExpr: PriceBarRefererence is not OHLC");
 	}
   }
 
   void LogPalPattern::LogMarketExpression (MarketEntryExpression *expression,
-					   std::ofstream& outputFileStream)
+					   std::ostream& outputFileStream)
   {
     if (expression->isLongPattern())
       outputFileStream << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
@@ -96,7 +108,7 @@ namespace mkc_timeseries
   }
 
   void LogPalPattern::LogProfitTarget (ProfitTargetInPercentExpression *expression,
-				       std::ofstream& outputFileStream)
+				       std::ostream& outputFileStream)
   {
     decimal7 *target = expression->getProfitTarget();
 
@@ -107,7 +119,7 @@ namespace mkc_timeseries
   }
 
   void LogPalPattern::LogStopLoss (StopLossInPercentExpression *expression,
-				   std::ofstream& outputFileStream)
+				   std::ostream& outputFileStream)
   {
     decimal7 *stop = expression->getStopLoss();
 
@@ -117,7 +129,7 @@ namespace mkc_timeseries
       outputFileStream << "AND STOP LOSS AT ENTRY PRICE + " << *stop << " %" <<std::endl;
   }
 
-  void LogPalPattern::LogPatternSeparator(std::ofstream& outputFileStream)
+  void LogPalPattern::LogPatternSeparator(std::ostream& outputFileStream)
   {
     outputFileStream << "--------------------";
     outputFileStream << "--------------------";

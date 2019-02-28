@@ -10,9 +10,25 @@
 
 namespace num
 {
-using DefaultNumber = dec::decimal<7>;
+  using DefaultNumber = dec::decimal<7>;
+  using DefaultNumber2 = dec::decimal<7, dec::null_round_policy>;
+  
+  inline DefaultNumber operator%(DefaultNumber x, DefaultNumber y)
+  {
+    //std::cout << "x = " << x << ", y = " << y << std::endl;
+    DefaultNumber temp1(x/y);
+    //std::cout << "temp1 = " << temp1 << std::endl;
+    int temp2 (temp1.truncDecimal());
 
-  inline std::string toString(DefaultNumber d)
+    //std::cout << "temp2 = " << temp2 << std::endl;
+    
+    DefaultNumber truncDivAsDecimal (temp2);
+
+    //std::cout << "truncDivAsDecimal = " << truncDivAsDecimal << std::endl;
+    return x - (truncDivAsDecimal * y);
+  }
+  
+ inline std::string toString(DefaultNumber d)
   {
     return dec::toString(d);
   }
@@ -36,7 +52,12 @@ using DefaultNumber = dec::decimal<7>;
   inline DefaultNumber Round2Tick (DefaultNumber price, DefaultNumber tick)
   {
     return price;
-    
+
+    //static DefaultNumber decZero (fromString<DefaultNumber>(std::string("0.0")));
+    //DefaultNumber decimalMod(price % tick);
+
+    //return price - decimalMod + ((decimalMod < tickDiv2) ? decZero : tick);
+
     /*double priceAsDouble = to_double (price);
     double tickAsDouble = to_double (tick);
 
@@ -48,7 +69,12 @@ using DefaultNumber = dec::decimal<7>;
 
   inline DefaultNumber Round2Tick (DefaultNumber price, DefaultNumber tick, DefaultNumber tickDiv2)
   {
-    return price;
+    static DefaultNumber decZero (fromString<DefaultNumber>(std::string("0.0")));
+    DefaultNumber decimalMod(price % tick);
+
+    return price - decimalMod + ((decimalMod < tickDiv2) ? decZero : tick);
+
+    //return price;
   }
 } // num namespace
 

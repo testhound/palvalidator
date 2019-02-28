@@ -61,7 +61,9 @@ namespace mkc_timeseries
 	mLosersStats(),
 	mWinnersVect(),
 	mLosersVect(),
-	mBarsPerPosition()
+	mBarsPerPosition(),
+	mBarsPerWinningPosition(),
+	mBarsPerLosingPosition()
     {}
 
     ClosedPositionHistory(const ClosedPositionHistory<Decimal>& rhs) 
@@ -75,7 +77,9 @@ namespace mkc_timeseries
 	mLosersStats(rhs.mLosersStats),
 	mWinnersVect(rhs.mWinnersVect),
 	mLosersVect(rhs.mLosersVect),
-	mBarsPerPosition(rhs.mBarsPerPosition)
+	mBarsPerPosition(rhs.mBarsPerPosition),
+	mBarsPerWinningPosition(rhs.mBarsPerWinningPosition),
+	mBarsPerLosingPosition(rhs.mBarsPerLosingPosition)
     {}
 
     ClosedPositionHistory<Decimal>& 
@@ -95,6 +99,9 @@ namespace mkc_timeseries
       mWinnersVect = rhs.mWinnersVect;
       mLosersVect = rhs.mLosersVect;
       mBarsPerPosition = rhs.mBarsPerPosition;
+      mBarsPerWinningPosition = rhs.mBarsPerWinningPosition;
+      mBarsPerLosingPosition = rhs.mBarsPerLosingPosition;
+
       return *this;
     }
 
@@ -123,6 +130,7 @@ namespace mkc_timeseries
 	  mSumWinners += position->getPercentReturn();
 	  mWinnersStats (num::to_double(position->getPercentReturn()));
 	  mWinnersVect.push_back(num::to_double(position->getPercentReturn()));
+	  mBarsPerWinningPosition.push_back (position->getNumBarsInPosition());
 	}
       else if (position->isLosingPosition())
 	{
@@ -130,6 +138,7 @@ namespace mkc_timeseries
 	  mSumLosers += position->getPercentReturn();
 	  mLosersStats (num::to_double(percReturn));
 	  mLosersVect.push_back(num::to_double(num::abs(percReturn)));
+	  mBarsPerLosingPosition.push_back (position->getNumBarsInPosition());
 	}
       else
 	throw std::logic_error(std::string("ClosedPositionHistory:addClosedPosition - position not winner or lsoer"));
@@ -465,6 +474,26 @@ namespace mkc_timeseries
       return mBarsPerPosition.end();
     }
 
+    ClosedPositionHistory::ConstBarsInPositionIterator beginBarsPerWinningPosition() const
+    {
+      return mBarsPerWinningPosition.begin();
+    }
+
+    ClosedPositionHistory::ConstBarsInPositionIterator endBarsPerWinningPosition() const
+    {
+      return mBarsPerWinningPosition.end();
+    }
+    
+    ClosedPositionHistory::ConstBarsInPositionIterator beginBarsPerLosingPosition() const
+    {
+      return mBarsPerLosingPosition.begin();
+    }
+
+    ClosedPositionHistory::ConstBarsInPositionIterator endBarsPerLosingPosition() const
+    {
+      return mBarsPerLosingPosition.end();
+    }
+
     ClosedPositionHistory::ConstTradeReturnIterator beginWinnersReturns() const
     {
       return mWinnersVect.begin();
@@ -499,6 +528,8 @@ namespace mkc_timeseries
 
     // Vector that holds total number of bars for each position
     std::vector<unsigned int> mBarsPerPosition;
+    std::vector<unsigned int> mBarsPerWinningPosition;
+    std::vector<unsigned int> mBarsPerLosingPosition;
   };
 
  /*

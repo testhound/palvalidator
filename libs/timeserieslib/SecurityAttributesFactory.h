@@ -75,6 +75,7 @@ namespace mkc_timeseries
       initializeCurrencyFuturesAttributes();
       initializeMetalsFuturesAttributes();
       initializeEnergyFuturesAttributes();
+      initializeMeatFuturesAttributes();
     }
 
     void initializeCommonStockAttributes()
@@ -88,6 +89,11 @@ namespace mkc_timeseries
       addCommonStock (std::string("XOM"), std::string("Exxon Mobil"));
       addCommonStock (std::string("MSFT"), std::string("Microsoft"));
       addCommonStock (std::string("INTC"), std::string("Intel"));
+      addCommonStock (std::string("AAPL"), std::string("Apple"));
+      addCommonStock (std::string("NVDA"), std::string("Nvidia"));
+      addCommonStock (std::string("BTC"), std::string("Bitcoin"));
+      addCommonStock (std::string("ETH"), std::string("Ehtereum"));
+      addCommonStock (std::string("XRP"), std::string("Ripple"));
 
     }
 
@@ -102,6 +108,31 @@ namespace mkc_timeseries
 			 std::string("PowerShares QQQ ETF"),
 			 createDecimal("0.20"),
 			 boost::gregorian::from_undelimited_string("19990310"));
+
+      addUnLeveragedETF (std::string("DIA"), 
+			 std::string("SPDR Dow Jones Industrial Average ETF"),
+			 createDecimal("0.17"),
+			 boost::gregorian::from_undelimited_string("19980114"));
+
+      addUnLeveragedETF (std::string("IWM"), 
+			 std::string("iShares Russell 2000 ETF"),
+			 createDecimal("0.17"),
+			 boost::gregorian::from_undelimited_string("20000522"));
+
+      addUnLeveragedETF (std::string("GLD"), 
+			 std::string("SPDR Bold Trust"),
+			 createDecimal("0.4"),
+			 boost::gregorian::from_undelimited_string("20041118"));
+
+      addUnLeveragedETF (std::string("USO"), 
+			 std::string("United State Oil Fund"),
+			 createDecimal("0.4"),
+			 boost::gregorian::from_undelimited_string("20060410"));
+
+      addUnLeveragedETF (std::string("FXI"), 
+			 std::string("iShares China Large-Cap ETF"),
+			 createDecimal("0.4"),
+			 boost::gregorian::from_undelimited_string("20041005"));
 
       addUnLeveragedETF (std::string("EWJ"), 
 			 std::string("iShares MSCI Japan ETF"),
@@ -129,6 +160,30 @@ namespace mkc_timeseries
 
       addLeveragedETF (std::string("QID"), 
 		       std::string("ProShares UltraShort QQQ"), 
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20060711"));
+
+      addLeveragedETF (std::string("DDM"), 
+		       std::string("ProShares Ultra Dow30"), 
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalTwo,
+		       boost::gregorian::from_undelimited_string("20060619"));
+
+      addLeveragedETF (std::string("DXD"), 
+		       std::string("ProShares UltraShort Dow30"), 
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20060711"));
+
+      addLeveragedETF (std::string("UWM"), 
+		       std::string("ProShares Ultra Russell2000"), 
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalTwo,
+		       boost::gregorian::from_undelimited_string("20060619"));
+
+      addLeveragedETF (std::string("TWM"), 
+		       std::string("ProShares UltraShort Russell2000"), 
 		       createDecimal("0.95"),
 		       DecimalConstants<Decimal>::DecimalMinusTwo,
 		       boost::gregorian::from_undelimited_string("20060711"));
@@ -190,7 +245,9 @@ namespace mkc_timeseries
     {
       std::string cottonFuturesSymbol("@CT");
       std::string milkFuturesSymbol("@DA");
-
+      std::string coffeeFuturesSymbol("@KC");
+      std::string sugarFuturesSymbol("@SB");
+      
       auto cottonAttributes = 
 	std::make_shared<FuturesSecurityAttributes<Decimal>>(cottonFuturesSymbol, 
 							  "Cotton Futures",
@@ -207,6 +264,25 @@ namespace mkc_timeseries
 							  createDecimal("0.01"));
       mSecurityAttributes.insert(std::make_pair(milkFuturesSymbol, 
 						milkAttributes));
+
+
+      auto coffeeAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(coffeeFuturesSymbol, 
+							  "Coffee Futures",
+							  createDecimal("375.0"),
+							  createDecimal("0.05"));
+      mSecurityAttributes.insert(std::make_pair(coffeeFuturesSymbol, 
+						coffeeAttributes));
+
+
+      auto sugarAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(sugarFuturesSymbol, 
+							     "Sugar Futures",
+							     createDecimal("1120.0"),
+							     createDecimal("0.01"));
+      mSecurityAttributes.insert(std::make_pair(sugarFuturesSymbol, 
+						sugarAttributes));
+
 
     }
 
@@ -248,10 +324,13 @@ namespace mkc_timeseries
     {
 
       addFuturesAttributes (std::string("@DX"), std::string("Dollar Index Futures"),
-			    createDecimal("1000.00"), createDecimal("0.001"));
+			    createDecimal("1000.00"), createDecimal("0.005"));
 
       addFuturesAttributes (std::string("@JY"), std::string("Japanese Yen Futures"),
 			    createDecimal("125000.00"), createDecimal("0.0001"));
+
+      addFuturesAttributes (std::string("@EC"), std::string("Euro FX"),
+			    createDecimal("125000.00"), createDecimal("0.00005"));
 
       addFuturesAttributes (std::string("@BP"), std::string("British Pound Futures"),
 			    createDecimal("125000.00"), createDecimal("0.0001"));
@@ -271,6 +350,20 @@ namespace mkc_timeseries
 						cornAttributes));
     }
 
+    void initializeMeatFuturesAttributes()
+    {
+      std::string feederCattleFuturesSymbol("@FC");
+
+      auto feederCattleAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(feederCattleFuturesSymbol, 
+						     "Feeder Cattle Futures",
+						     createDecimal("500.0"),
+						     createDecimal("0.025"));
+      mSecurityAttributes.insert(std::make_pair(feederCattleFuturesSymbol,
+						feederCattleAttributes));
+    }
+
+	
     void initializeMetalsFuturesAttributes()
     {
       std::string goldFuturesSymbol("@GC");

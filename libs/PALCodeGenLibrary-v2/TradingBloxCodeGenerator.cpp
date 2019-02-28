@@ -136,6 +136,24 @@ TradingBloxCodeGenVisitor::visit (Roc1BarReference *bar)
 }
 
 void
+TradingBloxCodeGenVisitor::visit (IBS1BarReference *bar)
+{
+  mEntryOrdersScriptFile << "IBS1[" << bar->getBarOffset() << "]";
+}
+
+void
+TradingBloxCodeGenVisitor::visit (IBS2BarReference *bar)
+{
+  mEntryOrdersScriptFile << "IBS2[" << bar->getBarOffset() << "]";
+}
+
+void
+TradingBloxCodeGenVisitor::visit (IBS3BarReference *bar)
+{
+  mEntryOrdersScriptFile << "IBS3[" << bar->getBarOffset() << "]";
+}
+
+void
 TradingBloxCodeGenVisitor::visit (MeanderBarReference *bar)
 {
   mEntryOrdersScriptFile << "meanderVar[" << bar->getBarOffset() << "]";

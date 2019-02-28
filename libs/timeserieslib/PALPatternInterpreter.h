@@ -86,13 +86,24 @@ namespace mkc_timeseries
 	  return security->getVolumeValue(iteratorForDate, barReference->getBarOffset());
 
 	case PriceBarReference::MEANDER:
-	  return PALPatternInterpreter<Decimal>::Meander (security, iteratorForDate, barReference->getBarOffset());
+	  // Hack Meander to VWAP to see if it works
+	  //return PALPatternInterpreter<Decimal>::Meander (security, iteratorForDate, barReference->getBarOffset());
+	  return PALPatternInterpreter<Decimal>::Vwap (security, iteratorForDate, barReference->getBarOffset());
 
 	case PriceBarReference::VCHARTLOW:
 	  return PALPatternInterpreter<Decimal>::ValueChartLow (security, iteratorForDate, barReference->getBarOffset());
 
 	case PriceBarReference::VCHARTHIGH:
 	  return PALPatternInterpreter<Decimal>::ValueChartHigh (security, iteratorForDate, barReference->getBarOffset());
+
+	case PriceBarReference::IBS1:
+	  return PALPatternInterpreter<Decimal>::IBS1 (security, iteratorForDate, barReference->getBarOffset());
+
+	case PriceBarReference::IBS2:
+	  return PALPatternInterpreter<Decimal>::IBS2 (security, iteratorForDate, barReference->getBarOffset());
+
+	case PriceBarReference::IBS3:
+	  return PALPatternInterpreter<Decimal>::IBS3 (security, iteratorForDate, barReference->getBarOffset());
 
 	default:
 	  throw PalPatternInterpreterException ("PALPatternInterpreter::evaluatePriceBar - unknown PriceBarReference derived class"); 
@@ -125,6 +136,75 @@ namespace mkc_timeseries
       return security->getCloseValue (baseIt, 0) * (DecimalConstants<Decimal>::DecimalOne + avg);
     }
 
+    static const Decimal IBS1(const std::shared_ptr<Security<Decimal>>& security,
+					typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+					unsigned long offset)
+    {
+      Decimal currentClose, currentOpen, currentHigh, currentLow;
+
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+      
+      currentHigh = security->getHighValue (baseIt, 0);
+      currentLow = security->getLowValue (baseIt, 0);
+      currentOpen = security->getOpenValue (baseIt, 0);
+      currentClose = security->getCloseValue (baseIt, 0);
+
+      Decimal num(currentClose - currentLow);
+      Decimal denom(currentHigh - currentLow);
+
+      if (denom != DecimalConstants<Decimal>::DecimalZero)
+	return (num/denom) * DecimalConstants<Decimal>::DecimalOneHundred;
+      else
+	return DecimalConstants<Decimal>::DecimalZero;
+    }
+
+  static const Decimal IBS2(const std::shared_ptr<Security<Decimal>>& security,
+			    typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+			    unsigned long offset)
+  {
+    typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+    
+    Decimal ibsThisBar(IBS1 (security, baseIt, 0));
+    Decimal ibsPrevBar(IBS1 (security, baseIt, 1));
+
+    return (ibsThisBar + ibsPrevBar)/DecimalConstants<Decimal>::DecimalTwo;
+  }
+
+  static const Decimal IBS3(const std::shared_ptr<Security<Decimal>>& security,
+			    typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+			    unsigned long offset)
+  {
+    typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+    static Decimal decThree (num::fromString<Decimal>(std::string("3.0")));
+    
+    Decimal ibsThisBar(IBS1 (security, baseIt, 0));
+    Decimal ibsBarMinus1(IBS1 (security, baseIt, 1));
+    Decimal ibsBarMinus2(IBS1 (security, baseIt, 2));
+
+    return (ibsThisBar + ibsBarMinus1 + ibsBarMinus2)/decThree;
+  }
+
+  static const Decimal Vwap(const std::shared_ptr<Security<Decimal>>& security,
+				  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate,
+				  unsigned long offset)
+    {
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator baseIt = iteratorForDate - offset;
+      static Decimal decThree (num::fromString<Decimal>(std::string("3.0")));
+
+      Decimal prevClose, currentClose, currentOpen, currentHigh, currentLow;
+      Decimal priceAvg;
+      
+      currentHigh = security->getHighValue (baseIt, 0);
+      currentLow = security->getLowValue (baseIt, 0);
+      priceAvg = (currentHigh + currentLow)/DecimalConstants<Decimal>::DecimalTwo;
+
+      currentOpen = security->getOpenValue (baseIt, 0);
+      currentClose = security->getCloseValue (baseIt, 0);
+      Decimal num (currentOpen + currentClose + priceAvg);
+
+      return (num / decThree);
+    }
+    
     static const Decimal volatilityUnitConstant()
     {
       static Decimal volatilityConstant (num::fromString<Decimal>(std::string("0.20")));

@@ -18,7 +18,7 @@ class RandomMersenne
 {
 public:
   RandomMersenne()
-    : mRandGen()
+  //    : mRandGen()
   {}
 
   uint32 DrawNumber(uint32 min, uint32 max)
@@ -33,9 +33,7 @@ public:
 
     
 private:
-  //randutils::random_generator<__gnu_cxx::sfmt19937> mRandGen; // Simd Mersenne Twister
-  //randutils::mt19937_rng mRandGen; // Mersenne Twister RNG
-  randutils::random_generator<pcg32> mRandGen; // Try out the new PCG generator
+  static thread_local randutils::random_generator<pcg32> mRandGen; // Try out the new PCG generator
   };
 
 #endif

@@ -73,7 +73,8 @@ namespace mkc_timeseries
     DateRange ooSampleDates( oosDateStart, oosDateEnd);
 
     if (oosDateStart <= insampleDateEnd)
-      throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
+      std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
+    //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
 
     boost::filesystem::path irFilePath (palIRFilePathStr);
 
@@ -214,6 +215,12 @@ namespace mkc_timeseries
     else if (upperCaseFormatStr == std::string("TRADESTATION"))
             return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
 									  unitsOfVolume, tickValue);
+    else if (upperCaseFormatStr == std::string("CSIEXTENDED"))
+            return std::make_shared<CSIExtendedFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
+									  unitsOfVolume, tickValue);
+    else if (upperCaseFormatStr == std::string("CSI"))
+            return std::make_shared<CSIFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
+								  unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("TRADESTATIONINDICATOR1"))
             return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath,
 									      timeFrame,

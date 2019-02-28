@@ -126,6 +126,24 @@ WealthLabCodeGenVisitor::visit (Roc1BarReference *bar)
 }
 
 void
+WealthLabCodeGenVisitor::visit (IBS1BarReference *bar)
+{
+  mTradingModelFileName << "IBS1(Bar - " << bar->getBarOffset() << ")";
+}
+
+void
+WealthLabCodeGenVisitor::visit (IBS2BarReference *bar)
+{
+  mTradingModelFileName << "IBS2(Bar - " << bar->getBarOffset() << ")";
+}
+
+void
+WealthLabCodeGenVisitor::visit (IBS3BarReference *bar)
+{
+  mTradingModelFileName << "IBS3(Bar - " << bar->getBarOffset() << ")";
+}
+
+void
 WealthLabCodeGenVisitor::visit (MeanderBarReference *bar)
 {
   mTradingModelFileName << "meanderVar(Bar - " << bar->getBarOffset() << ", Close, 1)";

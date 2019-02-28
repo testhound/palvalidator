@@ -51,6 +51,9 @@ namespace mkc_timeseries
       virtual ~PalStrategy()
       {}
 
+      virtual std::shared_ptr<PalStrategy<Decimal>>
+      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const = 0;
+
       const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const
       {
 	if (aSecurity.isEquitySecurity())
@@ -148,6 +151,14 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 						       portfolio);
       }
 
+      std::shared_ptr<PalStrategy<Decimal>> 
+      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+      {
+	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
+						       this->getPalPattern(),
+						       portfolio);
+      }
+
       std::shared_ptr<BacktesterStrategy<Decimal>> 
       cloneForBackTesting () const
       {
@@ -239,6 +250,14 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 
       std::shared_ptr<BacktesterStrategy<Decimal>> 
       clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+      {
+	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
+						       this->getPalPattern(),
+						       portfolio);
+      }
+
+      std::shared_ptr<PalStrategy<Decimal>> 
+      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const
       {
 	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),

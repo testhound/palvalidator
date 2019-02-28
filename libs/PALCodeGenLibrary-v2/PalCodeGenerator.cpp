@@ -95,6 +95,22 @@ PalCodeGenerator::visit (Roc1BarReference *bar)
   mOutFile << "ROC1 OF " << bar->getBarOffset() << " BARS AGO";
 }
 
+void PalCodeGenerator::visit (IBS1BarReference *bar)
+{
+  mOutFile << "IBS1 OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void PalCodeGenerator::visit (IBS2BarReference *bar)
+{
+  mOutFile << "IBS2 OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+void PalCodeGenerator::visit (IBS3BarReference *bar)
+{
+  mOutFile << "IBS3 OF " << bar->getBarOffset() << " BARS AGO";
+}
+
+
 void
 PalCodeGenerator::visit (MeanderBarReference *bar)
 {

@@ -114,6 +114,26 @@ using namespace boost::accumulators;
       return sortedVector[mid];
   }
 
+  template <class Decimal>
+  Decimal MedianOfVec(const std::vector<Decimal>& series)
+  {
+    typedef typename std::vector<Decimal>::size_type vec_size_type;
+
+    std::vector<Decimal> sortedVector (series);
+    std::sort (sortedVector.begin(), sortedVector.end());
+
+    vec_size_type size = sortedVector.size();
+    if (size == 0)
+      throw std::domain_error ("Cannot take median of empty time series");
+
+    vec_size_type mid = size / 2;
+
+    if ((size % 2) == 0)
+      return ((sortedVector[mid] + sortedVector[mid - 1])/DecimalConstants<Decimal>::DecimalTwo);
+    else
+      return sortedVector[mid];
+  }
+
   // Calculate median of entire series
 
   template <typename T>
@@ -171,7 +191,7 @@ using namespace boost::accumulators;
 	    secondMedianVector.push_back (temp);
 	  }
 
-	return Median (secondMedianVector) * 1.4826;
+	return Median<double> (secondMedianVector) * 1.4826;
       }
     else
       return 0.0;

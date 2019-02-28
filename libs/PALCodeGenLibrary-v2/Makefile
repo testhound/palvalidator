@@ -1,6 +1,6 @@
 RANLIB := ranlib
 CC := g++-5
-object-set := PalCodeGenVisitor.o PalAst.o TradingBloxCodeGenerator.o PalParser.o PalScanner.o PalParseDriver.o PriceActionLabSystem.o WealthLabCodeGenerator.o EasyLanguageCodeGenerator.o PalCodeGenerator.o
+object-set := PalCodeGenVisitor.o PalAst.o TradingBloxCodeGenerator.o PalParser.o PalScanner.o PalParseDriver.o PriceActionLabSystem.o WealthLabCodeGenerator.o EasyLanguageCodeGenerator.o QuantConnectCodeGenerator.o PalCodeGenerator.o
 
 libpriceaction2.a: objects
 	rm -f $@
@@ -17,8 +17,9 @@ install: libpriceaction2.a
 	install -c -m 644 location.hh /usr/local/include/priceactionlab
 	install -c -m 644 position.hh /usr/local/include/priceactionlab
 	install -c -m 644 PalAst.h /usr/local/include/priceactionlab
+	install -c -m 644 StopTargetDetail.h /usr/local/include/priceactionlab
 
-objects: PalCodeGenVisitor.o PalAst.o TradingBloxCodeGenerator.o PalParser.o PalScanner.o PalParseDriver.o PriceActionLabSystem.o WealthLabCodeGenerator.o EasyLanguageCodeGenerator.o PalCodeGenerator.o
+objects: PalCodeGenVisitor.o PalAst.o TradingBloxCodeGenerator.o PalParser.o PalScanner.o PalParseDriver.o PriceActionLabSystem.o WealthLabCodeGenerator.o EasyLanguageCodeGenerator.o QuantConnectCodeGenerator.o PalCodeGenerator.o
 
 PalParsedriver.o: PalParseDriver.cpp PalParseDriver.h scanner.h PalParser.hpp PalAst.h
 PalCodeGenVisitor.o: PalCodeGenVisitor.cpp PalAst.h PalCodeGenVisitor.h
@@ -27,6 +28,8 @@ PalAst.o: PalAst.cpp PalAst.h
 TradingBloxCodeGenerator.o: TradingBloxCodeGenerator.cpp PalAst.h PalCodeGenVisitor.h
 WealthLabCodeGenerator.o: WealthLabCodeGenerator.cpp PalAst.h PalCodeGenVisitor.h
 EasyLanguageCodeGenerator.o: EasyLanguageCodeGenerator.cpp PalAst.h PalCodeGenVisitor.h
+QuantConnectCodeGenerator.o: QuantConnectCodeGenerator.cpp PalAst.h PalCodeGenVisitor.h
+
 PalParser.o: PalParser.cpp PalAst.h scanner.h PalScanner.hpp
 PriceActionLabSystem.o: PriceActionLabSystem.cpp PalAst.h
 PalScanner.o: PalScanner.cpp PalParser.hpp PalAst.h scanner.h

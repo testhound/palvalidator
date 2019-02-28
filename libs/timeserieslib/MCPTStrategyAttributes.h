@@ -38,8 +38,8 @@ namespace mkc_timeseries
   template <class Decimal> class MCPTStrategyAttributes
   {
   public:
-    typedef std::map<date, int>::const_iterator PositionDirectionIterator;
-    typedef typename std::map<date, Decimal>::const_iterator PositionReturnsIterator;
+    typedef std::multimap<date, int>::const_iterator PositionDirectionIterator;
+    typedef typename std::multimap<date, Decimal>::const_iterator PositionReturnsIterator;
 
   public:
     MCPTStrategyAttributes()
@@ -153,24 +153,29 @@ namespace mkc_timeseries
     void addPositionReturn (const Decimal& positionReturn, 
 			    const date& processingDate)
     {
+      mBarReturns.insert(std::make_pair (processingDate, positionReturn));
+
+      /*
       PositionReturnsIterator it = mBarReturns.find(processingDate);
       if (it == mBarReturns.end())
 	{
 	  mBarReturns.insert(std::make_pair (processingDate, positionReturn));
 	}
       else
-	throw MCPTStrategyAttributesException(std::string("MCPTStrategyAttributes:addPositionReturn" +boost::gregorian::to_simple_string(processingDate) + std::string(" date already exists")));
+      throw MCPTStrategyAttributesException(std::string("MCPTStrategyAttributes:addPositionReturn" +boost::gregorian::to_simple_string(processingDate) + std::string(" date already exists"))); */
     }
 
     void addPositionDirection (int direction, const date& processingDate)
     {
-      PositionDirectionIterator it = mPositionDirection.find(processingDate);
+      mPositionDirection.insert(std::make_pair (processingDate, direction));
+      
+      /*PositionDirectionIterator it = mPositionDirection.find(processingDate);
       if (it == mPositionDirection.end())
 	{
 	  mPositionDirection.insert(std::make_pair (processingDate, direction));
 	}
       else
-	throw MCPTStrategyAttributesException(std::string("MCPTStrategyAttributes:addPositionDirection" +boost::gregorian::to_simple_string(processingDate) + std::string(" date already exists")));
+      throw MCPTStrategyAttributesException(std::string("MCPTStrategyAttributes:addPositionDirection" +boost::gregorian::to_simple_string(processingDate) + std::string(" date already exists"))); */
     }
 
     Decimal getCloseToCloseReturn(std::shared_ptr<Security<Decimal>> aSecurity,
@@ -186,8 +191,8 @@ namespace mkc_timeseries
     }
 
   private:
-    std::map<date, int> mPositionDirection; // 0 = flat, 1 = long, -1 = short
-    std::map<date, Decimal> mBarReturns;
+    std::multimap<date, int> mPositionDirection; // 0 = flat, 1 = long, -1 = short
+    std::multimap<date, Decimal> mBarReturns;
   };
 }
 #endif

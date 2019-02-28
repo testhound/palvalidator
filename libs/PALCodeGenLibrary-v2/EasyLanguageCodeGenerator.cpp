@@ -9,10 +9,15 @@ extern bool firstSubExpressionVisited;
 //////////////////////////////////////
 
 EasyLanguageCodeGenVisitor::EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
-						       const std::string& bloxOutFileName)
+						       const std::string& outputFileName,
+						       const StopTargetDetail& dev1Detail,
+						       const StopTargetDetail& dev2Detail)
+
   : PalCodeGenVisitor(),
     mTradingSystemPatterns(system),
-    mEntryOrdersScriptFile(bloxOutFileName)
+    mEasyLanguageFileName(outputFileName),
+    mDev1Detail (dev1Detail),
+    mDev2Detail (dev2Detail)
 {}
 
 
@@ -199,10 +204,10 @@ EasyLanguageCodeGenVisitor::generateCode()
   genCodeForCommonVariableInit();
   genCodeToInitializeVariables();
 
-  mEntryOrdersScriptFile << "\tif MarketPosition = 0 then" << std::endl;
-  mEntryOrdersScriptFile << "\tbegin" << std::endl;
-  mEntryOrdersScriptFile << "\t\tlongEntryFound = false;" << std::endl;
-  mEntryOrdersScriptFile << "\t\tshortEntryFound = false;" << std::endl << std::endl;
+  mEasyLanguageFileName << "\tif MarketPosition = 0 then" << std::endl;
+  mEasyLanguageFileName << "\tbegin" << std::endl;
+  mEasyLanguageFileName << "\t\tlongEntryFound = false;" << std::endl;
+  mEasyLanguageFileName << "\t\tshortEntryFound = false;" << std::endl << std::endl;
 
   unsigned int numLongPatterns = 0;
 
@@ -233,92 +238,107 @@ EasyLanguageCodeGenVisitor::generateCode()
 std::ofstream *
 EasyLanguageCodeGenVisitor::getOutputFileStream()
 {
-  return &mEntryOrdersScriptFile;
+  return &mEasyLanguageFileName;
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (PriceBarOpen *bar)
 {
-  mEntryOrdersScriptFile << "open[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "open[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (PriceBarHigh *bar)
 {
-  mEntryOrdersScriptFile << "high[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "high[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (PriceBarLow *bar)
 {
-  mEntryOrdersScriptFile << "low[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "low[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (PriceBarClose *bar)
 {
-  mEntryOrdersScriptFile << "close[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "close[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (VolumeBarReference *bar)
 {
-  mEntryOrdersScriptFile << "volume[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "volume[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (Roc1BarReference *bar)
 {
-  mEntryOrdersScriptFile << "RateOfChange(Close, 1)[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "RateOfChange(Close, 1)[" << bar->getBarOffset() << "]";
+}
+
+void EasyLanguageCodeGenVisitor::visit (IBS1BarReference *bar)
+{
+  mEasyLanguageFileName << "IBS(1)[" << bar->getBarOffset() << "]";
+}
+
+void EasyLanguageCodeGenVisitor::visit (IBS2BarReference *bar)
+{
+  mEasyLanguageFileName << "IBS(2)[" << bar->getBarOffset() << "]";
+}
+
+void EasyLanguageCodeGenVisitor::visit (IBS3BarReference *bar)
+{
+  mEasyLanguageFileName << "IBS(3)[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (MeanderBarReference *bar)
 {
-  mEntryOrdersScriptFile << "meanderVar[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "meanderVar[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (VChartLowBarReference *bar)
 {
-  mEntryOrdersScriptFile << "vchartLowVar[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "vchartLowVar[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (VChartHighBarReference *bar)
 {
-  mEntryOrdersScriptFile << "vchartHighVar[" << bar->getBarOffset() << "]";
+  mEasyLanguageFileName << "vchartHighVar[" << bar->getBarOffset() << "]";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (GreaterThanExpr *expr)
 {
   if (firstSubExpressionVisited == false)
-    mEntryOrdersScriptFile << "\t\t\t(";
+    mEasyLanguageFileName << "\t\t\t(";
   else
     {
-      mEntryOrdersScriptFile << "(";
+      mEasyLanguageFileName << "(";
       firstSubExpressionVisited = false;
     }
 
   expr->getLHS()->accept (*this);
-  mEntryOrdersScriptFile << " > ";
+  mEasyLanguageFileName << " > ";
   expr->getRHS()->accept (*this);
-  mEntryOrdersScriptFile << ")";
+  mEasyLanguageFileName << ")";
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (AndExpr *expr)
 {
   expr->getLHS()->accept (*this);
-  mEntryOrdersScriptFile << " and " << std::endl;
+  mEasyLanguageFileName << " and " << std::endl;
   expr->getRHS()->accept (*this);
 }
 
 void
 EasyLanguageCodeGenVisitor::visit (PatternDescription *desc)
 {
-  mEntryOrdersScriptFile << "\t\t" << "//FILE:" << desc->getFileName() << "  Index: " << desc->getpatternIndex()
+  mEasyLanguageFileName << "\t\t" << "//FILE:" << desc->getFileName() << "  Index: " << desc->getpatternIndex()
 			 << "  Index DATE: " << desc->getIndexDate() << "  PL: " << *(desc->getPercentLong())
                          << "%  PS: " << *(desc->getPercentShort()) << "%  Trades: " << desc->numTrades()
                          << "  CL: " << desc->numConsecutiveLosses() << " }" << std::endl;
@@ -328,12 +348,12 @@ EasyLanguageCodeGenVisitor::visit (PatternDescription *desc)
 
 void EasyLanguageCodeGenVisitor::visit (LongMarketEntryOnOpen *entryStatement)
 {
-  mEntryOrdersScriptFile << "\t\t\tlongEntryFound = true;" << std::endl;
+  mEasyLanguageFileName << "\t\t\tlongEntryFound = true;" << std::endl;
 }
 
 void EasyLanguageCodeGenVisitor:: visit (ShortMarketEntryOnOpen *entryStatement)
 {
-  mEntryOrdersScriptFile << "\t\t\tshortEntryFound = true;" << std::endl;
+  mEasyLanguageFileName << "\t\t\tshortEntryFound = true;" << std::endl;
 }
 
 bool EasyLanguageCodeGenVisitor::isHighRewardToRiskRatioPattern (PriceActionLabPattern *pattern)
@@ -350,56 +370,87 @@ bool EasyLanguageCodeGenVisitor::isHighRewardToRiskRatioPattern (PriceActionLabP
     return false;
 }
 
+bool EasyLanguageCodeGenVisitor::isDev1Pattern(PriceActionLabPattern *pattern)
+{
+  return ((pattern->getStopLossAsDecimal() == mDev1Detail.getStopLoss()) &&
+	  (pattern->getProfitTargetAsDecimal() == mDev1Detail.getProfitTarget()));
+}
+
+bool EasyLanguageCodeGenVisitor::isDev2Pattern(PriceActionLabPattern *pattern)
+{
+  return ((pattern->getStopLossAsDecimal() == mDev2Detail.getStopLoss()) &&
+	  (pattern->getProfitTargetAsDecimal() == mDev2Detail.getProfitTarget()));
+
+}
+
+
 void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 {
   pattern->getPatternDescription()->accept (*this);
-  mEntryOrdersScriptFile << std::endl;
+  mEasyLanguageFileName << std::endl;
   
   if (pattern->isLongPattern())
     {
-      mEntryOrdersScriptFile << "\t\tif (longEntryFound = false) and ";
+      mEasyLanguageFileName << "\t\tif (longEntryFound = false) and ";
       
 		  
     }
   else
     {
-      mEntryOrdersScriptFile << "\t\tif (shortEntryFound = false) and ";
+      mEasyLanguageFileName << "\t\tif (shortEntryFound = false) and ";
     }
 
+  if (isDev1Pattern (pattern))
+    mEasyLanguageFileName << "(tradeSys1 = true) and ";
+  else if (isDev2Pattern (pattern))
+    mEasyLanguageFileName << "(tradeSys2 = true) and ";
+  
   if (pattern->hasVolatilityAttribute())
     {
       if (pattern->isLowVolatilityPattern())
-	mEntryOrdersScriptFile << "lowVolatility and ";
+	mEasyLanguageFileName << "lowVolatility and ";
       else if (pattern->isHighVolatilityPattern())
-	mEntryOrdersScriptFile << "highVolatility and ";
+	mEasyLanguageFileName << "highVolatility and ";
       else if (pattern->isVeryHighVolatilityPattern())
-	mEntryOrdersScriptFile << "vHighVolatility and ";
+	mEasyLanguageFileName << "vHighVolatility and ";
     }
 
   if (pattern->hasPortfolioAttribute())
     {
       if (pattern->isFilteredLongPattern())
-	mEntryOrdersScriptFile << "tradeLongSide and ";
+	mEasyLanguageFileName << "tradeLongSide and ";
       else if (pattern->isFilteredShortPattern())
-	mEntryOrdersScriptFile << "tradeShortSide and ";
+	mEasyLanguageFileName << "tradeShortSide and ";
     }
 
   if (isHighRewardToRiskRatioPattern (pattern))
     {
-      mEntryOrdersScriptFile << "(TradeHighRewardToRiskPatterns = true) and " << std::endl;
+      mEasyLanguageFileName << "(TradeHighRewardToRiskPatterns = true) and " << std::endl;
       firstSubExpressionVisited = false;
     }
   else
     firstSubExpressionVisited = true;
   
   pattern->getPatternExpression()->accept (*this);
-  mEntryOrdersScriptFile << " Then" << std::endl << std::endl;
-  mEntryOrdersScriptFile << "\t\tbegin" << std::endl;
+  mEasyLanguageFileName << " Then" << std::endl << std::endl;
+  mEasyLanguageFileName << "\t\tbegin" << std::endl;
   pattern->getStopLoss()->accept (*this);
   pattern->getProfitTarget()->accept (*this);
   pattern->getMarketEntry()->accept (*this);
 
-  mEntryOrdersScriptFile << "\t\tend;" << std::endl;
+    if (isDev1Pattern (pattern))
+    {
+      mEasyLanguageFileName << "\t\t\tMinHoldPeriod = MinDev1HoldPeriod;" << std::endl;
+      mEasyLanguageFileName << "\t\t\tMaxHoldPeriod = MaxDev1HoldPeriod;" << std::endl;
+    }
+  else if (isDev2Pattern (pattern))
+    {
+      mEasyLanguageFileName << "\t\t\tMinHoldPeriod = MinDev2HoldPeriod;" << std::endl;
+      mEasyLanguageFileName << "\t\t\tMaxHoldPeriod = MaxDev2HoldPeriod;" << std::endl;
+
+    }
+
+  mEasyLanguageFileName << "\t\tend;" << std::endl;
 }
 
 ////////////////////////////////////////////////////
@@ -407,8 +458,11 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 ////////////////////////////////////////////////////
 
 EasyLanguageRADCodeGenVisitor::EasyLanguageRADCodeGenVisitor (PriceActionLabSystem *system, 
-							      const std::string& outputFileName)
-  : EasyLanguageCodeGenVisitor (system, outputFileName)
+							      const std::string& outputFileName,
+							      const StopTargetDetail& dev1Detail,
+							      const StopTargetDetail& dev2Detail)
+
+  : EasyLanguageCodeGenVisitor (system, outputFileName, dev1Detail, dev2Detail)
 {}
 
 EasyLanguageRADCodeGenVisitor::~EasyLanguageRADCodeGenVisitor()
@@ -515,8 +569,13 @@ EasyLanguageRADCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
 /// class EasyLanguagePointAdjustedCodeGenVisitor
 ////////////////////////////////////////////////////
 
-EasyLanguagePointAdjustedCodeGenVisitor::EasyLanguagePointAdjustedCodeGenVisitor (PriceActionLabSystem *system, const std::string& bloxOutfileFileName)
-  : EasyLanguageCodeGenVisitor (system, bloxOutfileFileName)
+EasyLanguagePointAdjustedCodeGenVisitor
+::EasyLanguagePointAdjustedCodeGenVisitor (PriceActionLabSystem *system,
+					   const std::string& bloxOutfileFileName,
+					   const StopTargetDetail& dev1Detail,
+					   const StopTargetDetail& dev2Detail)
+
+  : EasyLanguageCodeGenVisitor (system, bloxOutfileFileName, dev1Detail, dev2Detail)
 {}
 
 EasyLanguagePointAdjustedCodeGenVisitor::~EasyLanguagePointAdjustedCodeGenVisitor()

@@ -1,1 +1,0 @@
-extern TimeFrame::Duration getTimeFrame(const std::string& timeFrameString)

@@ -82,6 +82,7 @@ namespace mkc_timeseries
   protected:
     Decimal DecimalRound (const Decimal& price)
     {
+      //return price;
       return num::Round2Tick (price, getTick(), mMinimumTickDiv2);
     }
     
@@ -247,10 +248,10 @@ namespace mkc_timeseries
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
 			       volString, OIString, rollDateString, unadjustedCloseString))
 	{
-	  openPrice = num::fromString<Decimal>(openString.c_str());
-	  highPrice = num::fromString<Decimal>(highString.c_str());
-	  lowPrice = num::fromString<Decimal>(lowString.c_str());
-	  closePrice = num::fromString<Decimal>(closeString.c_str());
+	  openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
+	  highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
+	  lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
+	  closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = num::fromString<Decimal> (volString.c_str());
 	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
@@ -322,10 +323,10 @@ namespace mkc_timeseries
       while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
 			       volString, OIString, rollDateString, unadjustedCloseString))
 	{
-	  openPrice = num::fromString<Decimal>(openString.c_str());
-	  highPrice = num::fromString<Decimal>(highString.c_str());
-	  lowPrice = num::fromString<Decimal>(lowString.c_str());
-	  closePrice = num::fromString<Decimal>(closeString.c_str());
+	  openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
+	  highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
+	  lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
+	  closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
 	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
 	  volume = num::fromString<Decimal>(volString.c_str());
 
@@ -341,6 +342,153 @@ namespace mkc_timeseries
     }
   private:
     io::CSVReader<9> mCsvFile;
+  };
+
+  //
+  // class for reading CSI Extended Futures formatted data files
+  //
+  // The file format is:
+  // Date, Open, High, Low, Close, Volume, Open Interest
+  //
+
+  template <class Decimal>
+  class CSIFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
+  {
+  public:
+    CSIFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
+			 TradingVolume::VolumeUnit unitsOfVolume,
+			 const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
+      mCsvFile (fileName.c_str())
+    {}
+
+    CSIFuturesCsvReader(const CSIFuturesCsvReader& rhs)
+      : TimeSeriesCsvReader<Decimal>(rhs),
+      mCsvFile(rhs.mCsvFile)
+    {}
+
+    CSIFuturesCsvReader& 
+    operator=(const CSIFuturesCsvReader &rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
+      mCsvFile = rhs.mCsvFile;
+
+      return *this;
+    }
+
+    ~CSIFuturesCsvReader()
+    {}
+
+    void readFile()
+    {
+      mCsvFile.set_header("Date", "Open", "High", "Low", "Close", "Vol", "OI");
+
+      std::string dateStamp;
+      std::string openString, highString, lowString, closeString, volString, OIString;
+      std::string rollDateString, unadjustedCloseString;
+
+      Decimal openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
+      Decimal volume;
+
+
+      boost::gregorian::date entryDate;
+      while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
+			       volString, OIString))
+	{
+	  openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
+	  highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
+	  lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
+	  closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
+	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
+	  volume = num::fromString<Decimal> (volString.c_str());
+	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+										highPrice, lowPrice, 
+										closePrice, volume, 
+										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	}
+    }
+  private:
+    io::CSVReader<7> mCsvFile;
+  };
+
+  //
+  //
+  // class for reading CSI Futures formatted data files with error checkin
+  //
+  // The file format is:
+  // Date, Open, High, Low, Close, Volume, Open Interest
+  //
+
+  template <class Decimal>
+  class CSIErrorCheckingFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
+  {
+  public:
+    CSIErrorCheckingFuturesCsvReader (const std::string& fileName,
+					      TimeFrame::Duration timeFrame, 
+					      TradingVolume::VolumeUnit unitsOfVolume,
+					      const Decimal& minimumTick) :
+      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
+      mCsvFile (fileName.c_str())
+    {}
+
+     CSIErrorCheckingFuturesCsvReader(const CSIErrorCheckingFuturesCsvReader& rhs)
+       : TimeSeriesCsvReader<Decimal>(rhs),
+	mCsvFile(rhs.mCsvFile)
+    {}
+
+    CSIErrorCheckingFuturesCsvReader& 
+    operator=(const CSIErrorCheckingFuturesCsvReader &rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
+      mCsvFile = rhs.mCsvFile;
+
+      return *this;
+    }
+
+    ~CSIErrorCheckingFuturesCsvReader()
+    {}
+
+    void readFile()
+    {
+      mCsvFile.set_header("Date", "Open", "High", "Low", "Close", "Vol", "OI");
+
+      std::string dateStamp;
+      std::string openString, highString, lowString, closeString, volString, OIString;
+
+      Decimal openPrice, highPrice, lowPrice, closePrice, unadjustedClosePrice;
+      Decimal volume, openInterest;
+
+      bool errorResult = false;
+
+      boost::gregorian::date entryDate;
+      while (mCsvFile.read_row(dateStamp, openString, highString, lowString, closeString, 
+			       volString, OIString))
+	{
+	  openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
+	  highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
+	  lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
+	  closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
+	  entryDate = boost::gregorian::from_undelimited_string(dateStamp);
+	  volume = num::fromString<Decimal>(volString.c_str());
+
+	  errorResult = TimeSeriesCsvReader<Decimal>::checkForErrors (entryDate, openPrice, 
+								   highPrice, lowPrice, 
+								   closePrice);
+	  if (errorResult == false)
+	    TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+										  highPrice, lowPrice, 
+										  closePrice, volume, 
+										  TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	}
+    }
+  private:
+    io::CSVReader<7> mCsvFile;
   };
 
   //

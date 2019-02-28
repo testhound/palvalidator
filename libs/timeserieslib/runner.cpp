@@ -1,5 +1,6 @@
 #include "runner.hpp"
 #include <limits>
+#include <iostream>
 
 std::size_t getNCpus()
 {

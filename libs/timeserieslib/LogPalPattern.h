@@ -6,7 +6,7 @@
 #ifndef __LOG_PAL_PATTERN_H
 #define __LOG_PAL_PATTERN_H 1
 
-#include <fstream>
+#include <ostream>
 #include <memory>
 #include "PalAst.h"
 
@@ -18,24 +18,24 @@ namespace mkc_timeseries
   {
   public:
     static void LogPattern (std::shared_ptr<PriceActionLabPattern> pattern,
-			    std::ofstream& outputFileStream);
+			    std::ostream& outputFileStream);
   private:
     LogPalPattern();
 
   private:
     static void LogPatternDescription (std::shared_ptr<PatternDescription> desc,
-				       std::ofstream& outputFileStream);
+				       std::ostream& outputFileStream);
     static void LogExpression (PatternExpression *expression,
-			       std::ofstream& outputFileStream);
+			       std::ostream& outputFileStream);
     static void LogPriceBarExpr (PriceBarReference *barReference,
-				 std::ofstream& outputFileStream);
+				 std::ostream& outputFileStream);
     static void LogMarketExpression (MarketEntryExpression *expression,
-				     std::ofstream& outputFileStream);
+				     std::ostream& outputFileStream);
     static void LogProfitTarget (ProfitTargetInPercentExpression *expression,
-				 std::ofstream& outputFileStream);
+				 std::ostream& outputFileStream);
     static void LogStopLoss (StopLossInPercentExpression *expression,
-			     std::ofstream& outputFileStream);
-    static void LogPatternSeparator(std::ofstream& outputFileStream);
+			     std::ostream& outputFileStream);
+    static void LogPatternSeparator(std::ostream& outputFileStream);
   };
 
 

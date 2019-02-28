@@ -18,12 +18,17 @@ namespace mkc_timeseries
       static Decimal DecimalZero;
       static Decimal DecimalOneHundred;
       static Decimal DecimalOne;
+      static Decimal DecimalOnePointFive;
       static Decimal DecimalMinusOne;
       static Decimal DecimalTwo;
       static Decimal DecimalMinusTwo;
       static Decimal EquityTick;
       static Decimal SignificantPValue;
+      static Decimal DefaultFDR;               // Default False Discovery Rate
       static Decimal TwoThirds;
+      static Decimal TenPercent;
+      static Decimal TwentyPercent;
+      
       static Decimal createDecimal (const std::string& valueString)
       {
 	return num::fromString<Decimal>(valueString);
@@ -33,6 +38,12 @@ namespace mkc_timeseries
   template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalZero(0.0);
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalOneHundred(DecimalConstants<Decimal>::createDecimal("100.0"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::TenPercent(DecimalConstants<Decimal>::createDecimal("0.10"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::TwentyPercent(DecimalConstants<Decimal>::createDecimal("0.20"));
+
+
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalTwo(DecimalConstants<Decimal>::createDecimal("2.0"));
   template <class Decimal> Decimal 
@@ -41,8 +52,13 @@ namespace mkc_timeseries
   template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalOne(1.0);
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalMinusOne(DecimalConstants<Decimal>::createDecimal("-1.0"));
+  template <class Decimal> Decimal 
+    DecimalConstants<Decimal>::DecimalOnePointFive(DecimalConstants<Decimal>::createDecimal("1.5"));
+
   template <class Decimal> Decimal DecimalConstants<Decimal>::EquityTick(0.01);
-  template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.045);
+  //template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.045);
+  template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.05);
+  template <class Decimal> Decimal DecimalConstants<Decimal>::DefaultFDR(0.25);
 
 
   template <class Decimal>

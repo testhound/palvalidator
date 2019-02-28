@@ -48,7 +48,8 @@ namespace mkc_timeseries
       mMinimumTickDiv2(minimumTickDiv2)
     {
       //std::cout << "SyntheticTimeSeries:: minimum tick = " << mMinimumTick << std::endl;
-      
+      //std::cout << "SyntheticTimeSeries: creating new times series with start date = " << aTimeSeries.getFirstDate() <<
+      //" and last date = " << aTimeSeries.getLastDate() << std::endl << std::endl;
       mRelativeOpen.reserve(aTimeSeries.getNumEntries());
       mRelativeHigh.reserve(aTimeSeries.getNumEntries());
       mRelativeLow.reserve(aTimeSeries.getNumEntries());
@@ -56,8 +57,10 @@ namespace mkc_timeseries
 #ifdef SYNTHETIC_VOLUME
       mRelativeVolume.reserve(aTimeSeries.getNumEntries());
 #endif
-      Decimal valueOfOne (num::fromString<Decimal>("1.0"));
-      Decimal currentOpen(num::fromString<Decimal>("0.0"));
+      Decimal valueOfOne (DecimalConstants<Decimal>::DecimalOne);
+      Decimal currentOpen (DecimalConstants<Decimal>::DecimalZero);
+      //Decimal valueOfOne (num::fromString<Decimal>("1.0"));
+      //Decimal currentOpen(num::fromString<Decimal>("0.0"));
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
 
@@ -168,11 +171,11 @@ namespace mkc_timeseries
       for (unsigned long i = 0; i < mNumElements; i++)
 	{
 	  xPrice *= mRelativeOpen[i];
-	  xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
+	  //xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
 	  syntheticOpen = xPrice;
 
 	  xPrice *= mRelativeClose[i];
-	  xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
+	  //xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
 	  syntheticClose = xPrice;
 
 	  syntheticHigh = num::Round2Tick (syntheticOpen * mRelativeHigh[i], getTick(), getTickDiv2());
@@ -181,6 +184,7 @@ namespace mkc_timeseries
 	  xVolume *= mRelativeVolume[i];
 #endif
 
+#if 0
 	  if ((syntheticLow > syntheticOpen) && ((syntheticLow - syntheticOpen) <= getTick()))
 	    syntheticLow = syntheticOpen;
 	  else if ((syntheticLow > syntheticClose) && ((syntheticLow - syntheticClose) <= getTick()))
@@ -190,14 +194,15 @@ namespace mkc_timeseries
 	    syntheticHigh = syntheticOpen;
 	  else if ((syntheticClose > syntheticHigh) && ((syntheticClose - syntheticHigh) <= getTick()))
 	    syntheticHigh = syntheticClose;
+#endif
 	  
 	  try
 	    {
 	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i),
-						  syntheticOpen,
+						  num::Round2Tick (syntheticOpen, getTick(), getTickDiv2()),
 						  syntheticHigh,
 						  syntheticLow,
-						  syntheticClose,
+						  num::Round2Tick (syntheticClose, getTick(), getTickDiv2()),
 #ifdef SYNTHETIC_VOLUME
 						  xVolume,
 #else
@@ -230,7 +235,46 @@ namespace mkc_timeseries
     void dumpRelative()
     {
       std::ofstream f;
-      f.open("relative.csv");
+      f.open("relative1.csv");
+
+      for (unsigned int i = 0; i < mNumElements; i++)
+	{
+	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
+	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
+	    mRelativeClose[i] << std::endl;
+	}
+    }
+
+    void dumpRelative2()
+    {
+      std::ofstream f;
+      f.open("relative2.csv");
+
+      for (unsigned int i = 0; i < mNumElements; i++)
+	{
+	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
+	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
+	    mRelativeClose[i] << std::endl;
+	}
+    }
+
+    void dumpRelative3()
+    {
+      std::ofstream f;
+      f.open("relative3.csv");
+
+      for (unsigned int i = 0; i < mNumElements; i++)
+	{
+	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
+	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
+	    mRelativeClose[i] << std::endl;
+	}
+    }
+
+    void dumpRelative4()
+    {
+      std::ofstream f;
+      f.open("relative4.csv");
 
       for (unsigned int i = 0; i < mNumElements; i++)
 	{
@@ -281,6 +325,8 @@ namespace mkc_timeseries
       while (i > 1)
 	{
 	  //j = mRandGenerator.DrawNumber (0, i - 1);
+	  // Sample without replacement
+	  
 	  j = mRandGenerator.DrawNumber (i - 1);
 	  //	std::cout << "shuffleOverNightChanges: random number: " << j << std::endl;
 	  if (j >= i)
@@ -298,6 +344,8 @@ namespace mkc_timeseries
 
       while (i > 1)
 	{
+	  // Sample without replacement
+	  
 	  j = mRandGenerator.DrawNumber (i - 1);
 	  //j = mRandGenerator.DrawNumber (0, i - 1);
 	  // std::cout << "shuffleTradingDayChanges: random number: " << j << std::endl;

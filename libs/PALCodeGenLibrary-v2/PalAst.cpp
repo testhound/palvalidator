@@ -578,6 +578,255 @@ int VChartHighBarReference::extraBarsNeeded() const
   return 6;
 }
 
+///
+/// IBS1
+///
+
+IBS1BarReference::IBS1BarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+IBS1BarReference::IBS1BarReference (const IBS1BarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+IBS1BarReference& 
+IBS1BarReference::operator=(const IBS1BarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+IBS1BarReference::~IBS1BarReference()
+{}
+
+void 
+IBS1BarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long IBS1BarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 59;
+      result = 101 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType IBS1BarReference::getReferenceType()
+{
+  return PriceBarReference::IBS1;
+}
+
+int IBS1BarReference::extraBarsNeeded() const
+{
+  return 0;
+}
+
+//
+///
+/// IBS2
+///
+
+IBS2BarReference::IBS2BarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+IBS2BarReference::IBS2BarReference (const IBS2BarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+IBS2BarReference& 
+IBS2BarReference::operator=(const IBS2BarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+IBS2BarReference::~IBS2BarReference()
+{}
+
+void 
+IBS2BarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long IBS2BarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 61;
+      result = 103 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType IBS2BarReference::getReferenceType()
+{
+  return PriceBarReference::IBS2;
+}
+
+int IBS2BarReference::extraBarsNeeded() const
+{
+  return 1;
+}
+
+
+///
+
+//
+///
+/// IBS3
+///
+
+IBS3BarReference::IBS3BarReference(unsigned int barOffset) 
+  : PriceBarReference(barOffset),
+    mComputedHash (0)
+{}
+
+IBS3BarReference::IBS3BarReference (const IBS3BarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash)
+{}
+
+IBS3BarReference& 
+IBS3BarReference::operator=(const IBS3BarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  return *this;
+}
+
+IBS3BarReference::~IBS3BarReference()
+{}
+
+void 
+IBS3BarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long IBS3BarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 67;
+      result = 107 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType IBS3BarReference::getReferenceType()
+{
+  return PriceBarReference::IBS3;
+}
+
+int IBS3BarReference::extraBarsNeeded() const
+{
+  return 2;
+}
+
+////
+//// Momersion
+
+/*
+MomersionFilterBarReference::MomersionFilterBarReference(unsigned int barOffset,
+							 unsigned int period)
+  : PriceBarReference(barOffset),
+    mComputedHash (0),
+    mPeriod (period)
+{}
+
+MomersionFilterBarReference::MomersionFilterBarReference (const MomersionFilterBarReference& rhs)
+  : PriceBarReference (rhs),
+    mComputedHash (rhs.mComputedHash),
+    mPeriod (rhs.mPeriod)
+{}
+
+MomersionFilterBarReference& 
+MomersionFilterBarReference::operator=(const MomersionFilterBarReference &rhs)
+{
+  if (this == &rhs)
+    return *this;
+
+  PriceBarReference::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
+  mPeriod = rhs.mPeriod;
+  return *this;
+}
+
+MomersionFilterBarReference::~MomersionFilterBarReference()
+{}
+
+void 
+MomersionFilterBarReference::accept (PalCodeGenVisitor &v)
+{
+  v.visit(this);
+}
+
+unsigned long long MomersionFilterBarReference::hashCode()
+{
+  unsigned long long result = mComputedHash;
+
+  if (result == 0)
+    {
+      result = 73;
+      result = 113 * result + getBarOffset();
+      mComputedHash = result;
+    }
+
+  return result;
+}
+
+PriceBarReference::ReferenceType MomersionFilterBarReference::getReferenceType()
+{
+  return PriceBarReference::MOMERSIONFILTER;
+}
+
+int MomersionFilterBarReference::extraBarsNeeded() const
+{
+  return mPeriod;
+}
+
+unsigned int MomersionFilterBarReference::getMomersionPeriod() const
+{
+  return mPeriod;
+}
+
+*/
+
+////
 PatternExpression::PatternExpression()
 {}
 
@@ -1478,6 +1727,10 @@ AstFactory::~AstFactory()
       delete mPredefinedMeander[i];
       delete mPredefinedVChartLow[i];
       delete mPredefinedVChartHigh[i];
+      delete mPredefinedIBS1[i];
+      delete mPredefinedIBS2[i];
+      delete mPredefinedIBS3[i];
+
     }
 
   //printf ("AstFactory destructor complete\n");
@@ -1571,6 +1824,11 @@ void AstFactory::initializePriceBars()
       mPredefinedPriceClose[i] = new PriceBarClose (i);
       mPredefinedVolume[i] = new VolumeBarReference (i);
       mPredefinedRoc1[i] = new Roc1BarReference (i);
+
+      mPredefinedIBS1[i] = new IBS1BarReference (i);
+      mPredefinedIBS2[i] = new IBS2BarReference (i);
+      mPredefinedIBS3[i] = new IBS3BarReference (i);
+      
       mPredefinedMeander[i] = new MeanderBarReference (i);
       mPredefinedVChartLow[i] = new VChartLowBarReference (i);
       mPredefinedVChartHigh[i] = new VChartHighBarReference (i);
@@ -1623,6 +1881,30 @@ PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
     return mPredefinedRoc1[barOffset];
   else
     return new Roc1BarReference (barOffset);
+}
+
+PriceBarReference* AstFactory::getIBS1 (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedIBS1[barOffset];
+  else
+    return new IBS1BarReference (barOffset);
+}
+
+PriceBarReference* AstFactory::getIBS2 (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedIBS2[barOffset];
+  else
+    return new IBS2BarReference (barOffset);
+}
+
+PriceBarReference* AstFactory::getIBS3 (unsigned int barOffset)
+{
+  if (barOffset <= AstFactory::MaxNumBarOffsets)
+    return mPredefinedIBS3[barOffset];
+  else
+    return new IBS3BarReference (barOffset);
 }
 
 PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
