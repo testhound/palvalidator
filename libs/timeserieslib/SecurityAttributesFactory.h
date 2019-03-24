@@ -348,6 +348,10 @@ namespace mkc_timeseries
 						     createDecimal("0.25"));
       mSecurityAttributes.insert(std::make_pair(cornFuturesSymbol,
 						cornAttributes));
+
+      addFuturesAttributes (std::string("@S"), std::string("Soybean Futures"),
+			    createDecimal("50.00"), createDecimal("0.25"));
+
     }
 
     void initializeMeatFuturesAttributes()
