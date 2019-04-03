@@ -392,6 +392,10 @@ namespace mkc_timeseries
 							  createDecimal("0.01"));
       mSecurityAttributes.insert(std::make_pair(crudeOilFuturesSymbol,
 						crudeOilAttributes));
+
+      addFuturesAttributes (std::string("@NG"), std::string("Natural Gas Futures"),
+			    createDecimal("10000.00"), createDecimal("0.001"));
+      
     }
 
  private:
