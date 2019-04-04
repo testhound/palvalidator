@@ -10,6 +10,8 @@
 #include <string>
 #include <boost/date_time.hpp>
 #include "number.h"
+#include "PalAst.h"
+#include "PalStrategy.h"
 #include "DecimalConstants.h"
 #include "BackTester.h"
 #include "SyntheticTimeSeries.h"
@@ -26,7 +28,7 @@ namespace mkc_timeseries
 {
   using boost::gregorian::date;
 
-using boost::accumulators::accumulator_set;
+  using boost::accumulators::accumulator_set;
   using boost::accumulators::stats;
   using boost::accumulators::median;
   using boost::accumulators::count;
@@ -34,15 +36,15 @@ using boost::accumulators::accumulator_set;
   typedef boost::accumulators::tag::median median_tag;
   typedef boost::accumulators::tag::count count_tag;
 
- class MonteCarloPermutationException : public std::runtime_error
+  class MonteCarloPermutationException : public std::runtime_error
   {
   public:
-    MonteCarloPermutationException(const std::string msg) 
+    MonteCarloPermutationException(const std::string msg)
       : std::runtime_error(msg)
-      {}
+    {}
 
     ~MonteCarloPermutationException()
-      {}
+    {}
   };
 
   template <class Decimal> class MonteCarloPermutationTest
@@ -60,8 +62,8 @@ using boost::accumulators::accumulator_set;
     uint32_t
     getNumClosedTrades(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
-      std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
-	(*(aBackTester->beginStrategies()));
+      std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
+          (*(aBackTester->beginStrategies()));
 
       return backTesterStrategy->getStrategyBroker().getClosedTrades();
     }
@@ -69,23 +71,23 @@ using boost::accumulators::accumulator_set;
     Decimal getCumulativeReturn(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
       if (aBackTester->getNumStrategies() == 1)
-	{
-	  std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
-	    (*(aBackTester->beginStrategies()));
+        {
+          std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
+              (*(aBackTester->beginStrategies()));
 
-	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
-	}
+          return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
+        }
       else
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges::getCumulativeReturn - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges::getCumulativeReturn - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
 
     void validateStrategy( std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy) const
     {
       if (aStrategy->getNumSecurities() == 0)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: no securities in portfolio to test");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: no securities in portfolio to test");
 
       if (aStrategy->getNumSecurities() != 1)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: MCPT is only designed to test one security at a time");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: MCPT is only designed to test one security at a time");
     }
 
   };
@@ -96,29 +98,29 @@ using boost::accumulators::accumulator_set;
   // This class implements the MCPT by creating synthetic time series and permutting them
   //
   template <class Decimal,
-	    template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
-	    typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>> class MonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Decimal> 
+            template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
+            typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>> class MonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Decimal>
 
   {
   public:
     MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Decimal>> backtester,
-				    uint32_t numPermutations)
+                                    uint32_t numPermutations)
       : MonteCarloPermutationTest<Decimal>(),
-	mBackTester (backtester),
-	mNumPermutations(numPermutations),
-	mBaseLineTestStat(DecimalConstants<Decimal>::DecimalZero)
+        mBackTester (backtester),
+        mNumPermutations(numPermutations),
+        mBaseLineTestStat(DecimalConstants<Decimal>::DecimalZero)
     {
       if (numPermutations == 0)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
 
       if (numPermutations < 10)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations should be >= 100 for solution to converge");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations should be >= 100 for solution to converge");
 
       if (mBackTester->getNumStrategies() == 0)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: No strategy associated with backtester");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: No strategy associated with backtester");
 
       if (mBackTester->getNumStrategies() != 1)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: Only one strategy can be associated with backtester for MCPT");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: Only one strategy can be associated with backtester for MCPT");
     }
 
     ~MonteCarloPermuteMarketChanges()
@@ -127,8 +129,8 @@ using boost::accumulators::accumulator_set;
     // Runs the monte carlo permutation test and return the P-Value
     Decimal runPermutationTest()
     {
-      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy = 
-	(*(mBackTester->beginStrategies()));
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
+          (*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
@@ -142,10 +144,10 @@ using boost::accumulators::accumulator_set;
       // If we have too few trades don't trust results
 
       if (this->getNumClosedTrades (mBackTester) < _BackTestResultPolicy<Decimal>::getMinStrategyTrades())
-	{
-	  //std::cout << " runPermutationTest: number of trades = " << this->getNumClosedTrades (mBackTester) << std::endl;
-	  return DecimalConstants<Decimal>::DecimalOne;
-	}
+        {
+          //std::cout << " runPermutationTest: number of trades = " << this->getNumClosedTrades (mBackTester) << std::endl;
+          return DecimalConstants<Decimal>::DecimalOne;
+        }
 
       mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
       //std::cout << "Baseline test stat. for original  strategy equals: " <<  mBaseLineTestStat << ", baseline # trades:" << this->getNumClosedTrades (mBackTester) <<  std::endl << std::endl;
@@ -161,33 +163,137 @@ using boost::accumulators::accumulator_set;
 
 
   //
+  // class BestOfMonteCarloPermuteMarketChanges
+  //
+  // This class implements MCPT comparing mutiple strategies in a single pool, aka "best of" MCPT
+  //
+  template <class Decimal,
+            template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
+            typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>> class BestOfMonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Decimal>
+  {
+  public:
+    // Strategy results will be held in a container that allows duplicate keys
+    // -- Keyed on baseline! result stat, for iteration legibility and speed (early exit) --
+    typedef std::multimap<Decimal, std::pair<std::shared_ptr<PalStrategy<Decimal>>, uint32_t>> StrategyResultMapType;
+
+    BestOfMonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Decimal>> backtester,
+                                          uint32_t numPermutations, PriceActionLabSystem * patternsToTest, const std::shared_ptr<Portfolio<Decimal>> aPortfolio)
+      : MonteCarloPermutationTest<Decimal>(),
+        mBackTester (backtester),
+        mNumPermutations(numPermutations),
+        mPatternsToTest(patternsToTest),
+        mPortfolio(aPortfolio)
+    {
+      if (numPermutations == 0)
+        throw MonteCarloPermutationException("BestOfMonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
+
+      if (numPermutations < 10)
+        throw MonteCarloPermutationException("BestOfMonteCarloPermuteMarketChanges: num of permuations should be >= 100 for solution to converge");
+
+    }
+
+    ~BestOfMonteCarloPermuteMarketChanges()
+    {}
+
+    // Runs the baseline strategies on the real market and saves the statistic in map
+    Decimal runPermutationTest()
+    {
+      PriceActionLabSystem::ConstSortedPatternIterator longPatternsIterator =
+          mPatternsToTest->patternLongsBegin();
+
+      // Get baseline strategy results
+      std::shared_ptr<PriceActionLabPattern> patternToTest;
+      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
+      std::string longStrategyNameBase("PAL Long Strategy ");
+      std::string strategyName;
+      unsigned long strategyNumber = 1;
+
+      for (; longPatternsIterator != mPatternsToTest->patternLongsEnd(); longPatternsIterator++)
+        {
+          patternToTest = longPatternsIterator->second;
+          strategyName = longStrategyNameBase + std::to_string(strategyNumber);
+          longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, mPortfolio);
+          this->validateStrategy(longStrategy);
+          auto clonedBackTester = mBackTester->clone();
+          clonedBackTester->addStrategy(longStrategy);
+          clonedBackTester->backtest();
+          if (this->getNumClosedTrades (clonedBackTester) >= _BackTestResultPolicy<Decimal>::getMinStrategyTrades())
+            {
+              Decimal baselineStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(clonedBackTester);
+              // Now record the result + times surpassed by permuted results (0 to begin with)
+              mStrategiesBaselineReturns.insert(std::make_pair(baselineStat, std::make_pair(longStrategy, 0)));
+            }
+          strategyNumber++;
+        }
+
+      // The same for shorts
+      PriceActionLabSystem::ConstSortedPatternIterator shortPatternsIterator =
+          mPatternsToTest->patternShortsBegin();
+
+      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
+      std::string shortStrategyNameBase("PAL Short Strategy ");
+      strategyNumber = 1;
+      for (; shortPatternsIterator != mPatternsToTest->patternShortsEnd(); shortPatternsIterator++)
+        {
+          auto patternToTest = shortPatternsIterator->second;
+          std::string strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
+          auto shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, mPortfolio);
+          this->validateStrategy(shortStrategy);
+          auto clonedBackTester = mBackTester->clone();
+          clonedBackTester->addStrategy(shortStrategy);
+          clonedBackTester->backtest();
+
+          if (this->getNumClosedTrades (clonedBackTester) >= _BackTestResultPolicy<Decimal>::getMinStrategyTrades())
+            {
+              Decimal baselineStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(clonedBackTester);
+              mStrategiesBaselineReturns.insert(std::make_pair(baselineStat, std::make_pair(shortStrategy, 0)));
+            }
+          strategyNumber++;
+        }
+      // Run the permutations and update results:
+      return _ComputationPolicy::runPermutationTest (mBackTester, mNumPermutations, mStrategiesBaselineReturns);
+
+    }
+
+    const StrategyResultMapType& getStrategiesResultsMap () const { return mStrategiesBaselineReturns; }
+
+  private:
+    std::shared_ptr<BackTester<Decimal>> mBackTester;
+    uint32_t mNumPermutations;
+    PriceActionLabSystem *mPatternsToTest;
+    std::shared_ptr<Portfolio<Decimal>> mPortfolio;
+    StrategyResultMapType mStrategiesBaselineReturns;
+  };
+
+
+  //
   // class OriginalMonteCarloPermutationTest
   //
   // This class implements the MCPT from the paper Monte-Carlo Evaluation of Trading Systems
   //
 
-  template <class Decimal> class OriginalMCPT : 
-    public MonteCarloPermutationTest<Decimal> 
+  template <class Decimal> class OriginalMCPT :
+      public MonteCarloPermutationTest<Decimal>
   {
   public:
     OriginalMCPT (std::shared_ptr<BackTester<Decimal>> backtester,
-		  uint32_t numPermutations)
+                  uint32_t numPermutations)
       : MonteCarloPermutationTest<Decimal>(),
-	mBackTester (backtester),
-	mNumPermutations(numPermutations),
-	mBaseLineCumulativeReturn(DecimalConstants<Decimal>::DecimalZero)
+        mBackTester (backtester),
+        mNumPermutations(numPermutations),
+        mBaseLineCumulativeReturn(DecimalConstants<Decimal>::DecimalZero)
     {
       if (numPermutations == 0)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
 
       if (numPermutations < 100)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations should be >= 100 for solution to converge");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations should be >= 100 for solution to converge");
 
       if (mBackTester->getNumStrategies() == 0)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: No strategy associated with backtester");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: No strategy associated with backtester");
 
       if (mBackTester->getNumStrategies() != 1)
-	throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: Only one strategy can be associated with backtester for MCPT");
+        throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: Only one strategy can be associated with backtester for MCPT");
     }
 
     ~OriginalMCPT()
@@ -196,8 +302,8 @@ using boost::accumulators::accumulator_set;
     // Runs the monte carlo permutation test and return the P-Value
     Decimal runPermutationTest()
     {
-      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy = 
-	(*(mBackTester->beginStrategies()));
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
+          (*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
@@ -209,23 +315,23 @@ using boost::accumulators::accumulator_set;
       // If we have too few trades don't trust results
 
       if (this->getNumClosedTrades (mBackTester) < 4)
-	{
-	  //std::cout << " runPermutationTest: number of trades = " << 
-	  //getNumClosedTrades (mBackTester) << std::endl;
-	  return DecimalConstants<Decimal>::DecimalOne;
-	}
+        {
+          //std::cout << " runPermutationTest: number of trades = " <<
+          //getNumClosedTrades (mBackTester) << std::endl;
+          return DecimalConstants<Decimal>::DecimalOne;
+        }
 
       mBaseLineCumulativeReturn = this->getCumulativeReturn (mBackTester);
       return permuteAndGetPValue (aStrategy->numTradingOpportunities(),
-				  aStrategy->getPositionReturnsVector().data(),
-				  aStrategy->getPositionDirectionVector().data(),
-				  mNumPermutations);
+                                  aStrategy->getPositionReturnsVector().data(),
+                                  aStrategy->getPositionDirectionVector().data(),
+                                  mNumPermutations);
     }
 
-    Decimal permuteAndGetPValue(int numTradingOpportunities, 
-				      Decimal *rawReturnsVector, 
-				      int *positionVector,
-				      int nreps)
+    Decimal permuteAndGetPValue(int numTradingOpportunities,
+                                Decimal *rawReturnsVector,
+                                int *positionVector,
+                                int nreps)
     {
       int i, irep, k1, k2, count, temp;
       Decimal cand_return, trial_return;
@@ -233,57 +339,57 @@ using boost::accumulators::accumulator_set;
       int *workSeries(new int[numTradingOpportunities]);
 
       try
-	{
-	  memcpy(workSeries, positionVector, numTradingOpportunities * sizeof(int));
+      {
+        memcpy(workSeries, positionVector, numTradingOpportunities * sizeof(int));
 
-	  /*
-	    Compute the return of the candidate model
-	    If requested, do the same for the nonparametric version
-	  */
+        /*
+        Compute the return of the candidate model
+        If requested, do the same for the nonparametric version
+      */
 
-	  cand_return = DecimalConstants<Decimal>::DecimalZero;
+        cand_return = DecimalConstants<Decimal>::DecimalZero;
 
-	  for (i = 0; i < numTradingOpportunities; i++)
-	    cand_return += Decimal(positionVector[i]) * rawReturnsVector[i];
+        for (i = 0; i < numTradingOpportunities; i++)
+          cand_return += Decimal(positionVector[i]) * rawReturnsVector[i];
 
-	  RandomMersenne randNumGen;
-	  //DrawRandomNumber<pcg32> randNumGen;
+        RandomMersenne randNumGen;
+        //DrawRandomNumber<pcg32> randNumGen;
 
-	  count = 0; // Counts how many at least as good as candidate
+        count = 0; // Counts how many at least as good as candidate
 
-	  for (irep = 0; irep < nreps; irep++) 
-	    {
-	      k1 = numTradingOpportunities; // Shuffle the positions, which are in 'work'
+        for (irep = 0; irep < nreps; irep++)
+          {
+            k1 = numTradingOpportunities; // Shuffle the positions, which are in 'work'
 
-	      while (k1 > 1) { // While at least 2 left to shuffle
-		k2 = randNumGen.DrawNumber(0, k1 - 1); // Pick an int from 0 through k1-1
+            while (k1 > 1) { // While at least 2 left to shuffle
+                k2 = randNumGen.DrawNumber(0, k1 - 1); // Pick an int from 0 through k1-1
 
-		if (k2 >= k1) // Should never happen as long as unifrand()<1
-		  k2 = k1 - 1; // But this is cheap insurance against disaster
+                if (k2 >= k1) // Should never happen as long as unifrand()<1
+                  k2 = k1 - 1; // But this is cheap insurance against disaster
 
-		temp = workSeries[--k1]; // Count down k1 and swap k1, k2 entries
-		workSeries[k1] = workSeries[k2];
-		workSeries[k2] = temp;
-	      } // Shuffling is complete when this loop exits
+                temp = workSeries[--k1]; // Count down k1 and swap k1, k2 entries
+                workSeries[k1] = workSeries[k2];
+                workSeries[k2] = temp;
+              } // Shuffling is complete when this loop exits
 
-	      trial_return = Decimal(0.0);
-	      for (i = 0; i < numTradingOpportunities; i++) // Compute return for this randomly shuffled system
-		trial_return += Decimal(workSeries[i]) * rawReturnsVector[i];
+            trial_return = Decimal(0.0);
+            for (i = 0; i < numTradingOpportunities; i++) // Compute return for this randomly shuffled system
+              trial_return += Decimal(workSeries[i]) * rawReturnsVector[i];
 
-	      if (trial_return >= cand_return) // If this random system beat candidate
-		++count; // Count it
-	    }
+            if (trial_return >= cand_return) // If this random system beat candidate
+              ++count; // Count it
+          }
 
-	  delete[] workSeries;
-	  return Decimal ((count + 1.0) / (mNumPermutations + 1.0));
-	}
-      catch (...)
-	{
-	  delete[] workSeries;
-	  throw;   // Rethrow original exception
-	}
-
+        delete[] workSeries;
+        return Decimal ((count + 1.0) / (mNumPermutations + 1.0));
       }
+      catch (...)
+      {
+        delete[] workSeries;
+        throw;   // Rethrow original exception
+      }
+
+    }
 
   private:
     std::shared_ptr<BackTester<Decimal>> mBackTester;
@@ -303,40 +409,40 @@ using boost::accumulators::accumulator_set;
   // does this a large number of times to converge on the payoff ratio
   //
 
-  template <class Decimal> class MonteCarloPayoffRatio : 
-    public MonteCarloPermutationTest<Decimal> 
+  template <class Decimal> class MonteCarloPayoffRatio :
+      public MonteCarloPermutationTest<Decimal>
   {
   public:
     MonteCarloPayoffRatio (std::shared_ptr<BackTester<Decimal>> backtester,
-			   uint32_t numPermutations)
+                           uint32_t numPermutations)
       : MonteCarloPermutationTest<Decimal>(),
-	mBackTester (backtester),
-	mNumPermutations(numPermutations),
-	mWinnersStats(),
-	mLosersStats()
+        mBackTester (backtester),
+        mNumPermutations(numPermutations),
+        mWinnersStats(),
+        mLosersStats()
     {
       if (numPermutations == 0)
-	throw MonteCarloPermutationException("MonteCarloPayoffRatio: num of permuations must be greater than zero");
+        throw MonteCarloPermutationException("MonteCarloPayoffRatio: num of permuations must be greater than zero");
 
       if (numPermutations < 10)
-	throw MonteCarloPermutationException("MonteCarloPayoffRatio: num of permuations should be >= 100 for solution to converge");
+        throw MonteCarloPermutationException("MonteCarloPayoffRatio: num of permuations should be >= 100 for solution to converge");
 
       if (mBackTester->getNumStrategies() == 0)
-	throw MonteCarloPermutationException("MonteCarloPayoffRatio: No strategy associated with backtester");
+        throw MonteCarloPermutationException("MonteCarloPayoffRatio: No strategy associated with backtester");
 
       if (mBackTester->getNumStrategies() != 1)
-	throw MonteCarloPermutationException("MonteCarloPayoffRatio: Only one strategy can be associated with backtester for MCPT");
+        throw MonteCarloPermutationException("MonteCarloPayoffRatio: Only one strategy can be associated with backtester for MCPT");
     }
 
     ~MonteCarloPayoffRatio()
     {}
 
     // Runs the monte carlo permutation test and return the simulated payoff ratio
-/* //original code, safe to delete after parallelization
+    /* //original code, safe to delete after parallelization
     Decimal runPermutationTest()
     {
-      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy = 
-	(*(mBackTester->beginStrategies()));
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
+    (*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
@@ -344,50 +450,50 @@ using boost::accumulators::accumulator_set;
 
       uint32_t i;
       for (i = 0; i < mNumPermutations; i++)
-	{
-	  std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy = 
-	    aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
+    {
+      std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy =
+        aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
 
-	  std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBackTester->clone();
-	  clonedBackTester->addStrategy(clonedStrategy);
-	  clonedBackTester->backtest();
+      std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBackTester->clone();
+      clonedBackTester->addStrategy(clonedStrategy);
+      clonedBackTester->backtest();
 
-	  ClosedPositionHistory<Decimal> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
-	  typename ClosedPositionHistory<Decimal>::ConstTradeReturnIterator winnersIterator = 
-	    history.beginWinnersReturns();
+      ClosedPositionHistory<Decimal> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
+      typename ClosedPositionHistory<Decimal>::ConstTradeReturnIterator winnersIterator =
+        history.beginWinnersReturns();
 
-	  for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
-	    {
-	      //std::cout << "Winners trade return " << *winnersIterator << std::endl;
-	      mWinnersStats (*winnersIterator);
-	    }
+      for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
+        {
+          //std::cout << "Winners trade return " << *winnersIterator << std::endl;
+          mWinnersStats (*winnersIterator);
+        }
 
-	  typename ClosedPositionHistory<Decimal>::ConstTradeReturnIterator losersIterator = 
-	    history.beginLosersReturns();
+      typename ClosedPositionHistory<Decimal>::ConstTradeReturnIterator losersIterator =
+        history.beginLosersReturns();
 
-	  for (; losersIterator != history.endLosersReturns(); losersIterator++)
-	    {
-	      mLosersStats (*losersIterator);
-	      //std::cout << "Losers trade return " << *losersIterator << std::endl;
-	    }
+      for (; losersIterator != history.endLosersReturns(); losersIterator++)
+        {
+          mLosersStats (*losersIterator);
+          //std::cout << "Losers trade return " << *losersIterator << std::endl;
+        }
 
-	}
+    }
 
       if ((count (mWinnersStats) > 0) && (count (mLosersStats) > 0))
-	{
-	  return Decimal (median (mWinnersStats) / median (mLosersStats));
-	}
+    {
+      return Decimal (median (mWinnersStats) / median (mLosersStats));
+    }
       else
-	{
-	  return DecimalConstants<Decimal>::DecimalZero;
-	}
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
     }
 */
 
     Decimal runPermutationTest()
     {
       std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
-    (*(mBackTester->beginStrategies()));
+          (*(mBackTester->beginStrategies()));
 
       this->validateStrategy (aStrategy);
 
@@ -398,60 +504,60 @@ using boost::accumulators::accumulator_set;
 
       uint32_t i;
       for (i = 0; i < mNumPermutations; i++)
-      {
+        {
           errorsVector.emplace_back(Runner.post([this,aStrategy,theSecurity](){
-            std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy =
+              std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy =
                   aStrategy->clone (createSyntheticPortfolio (theSecurity, aStrategy->getPortfolio()));
 
-            std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBackTester->clone();
-            clonedBackTester->addStrategy(clonedStrategy);
+              std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBackTester->clone();
+              clonedBackTester->addStrategy(clonedStrategy);
 
-            clonedBackTester->backtest();
+              clonedBackTester->backtest();
 
-            ClosedPositionHistory<Decimal> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
+              ClosedPositionHistory<Decimal> history = clonedStrategy->getStrategyBroker().getClosedPositionHistory();
 
-            auto winnersIterator = history.beginWinnersReturns();
-            auto losersIterator = history.beginLosersReturns();
+              auto winnersIterator = history.beginWinnersReturns();
+              auto losersIterator = history.beginLosersReturns();
 
-            boost::mutex::scoped_lock Lock(accumMutex);
-            for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
-            {
-              //std::cout << "Winners trade return " << *winnersIterator << std::endl;
-              mWinnersStats (*winnersIterator);
-            }
+              boost::mutex::scoped_lock Lock(accumMutex);
+              for (; winnersIterator != history.endWinnersReturns(); winnersIterator++)
+                {
+                  //std::cout << "Winners trade return " << *winnersIterator << std::endl;
+                  mWinnersStats (*winnersIterator);
+                }
 
-            for (; losersIterator != history.endLosersReturns(); losersIterator++)
-            {
-              mLosersStats (*losersIterator);
-              //std::cout << "Losers trade return " << *losersIterator << std::endl;
-            }
-      }));
+              for (; losersIterator != history.endLosersReturns(); losersIterator++)
+                {
+                  mLosersStats (*losersIterator);
+                  //std::cout << "Losers trade return " << *losersIterator << std::endl;
+                }
+            }));
 
-    }
-    for(std::size_t slot=0;slot<errorsVector.size();++slot)
-    {
-        try
+        }
+      for(std::size_t slot=0;slot<errorsVector.size();++slot)
         {
+          try
+          {
             errorsVector[slot].get();
-        }
-        catch(std::exception const& e)
-        {
+          }
+          catch(std::exception const& e)
+          {
             std::cerr<<"MonteCarloPayoffRatio::runPermutationTest error: "<<e.what()<<std::endl;
+          }
         }
-    }
       if ((count (mWinnersStats) > 0) && (count (mLosersStats) > 0))
-    {
-      return Decimal (median (mWinnersStats) / median (mLosersStats));
-    }
+        {
+          return Decimal (median (mWinnersStats) / median (mLosersStats));
+        }
       else
-    {
-      return DecimalConstants<Decimal>::DecimalZero;
-    }
+        {
+          return DecimalConstants<Decimal>::DecimalZero;
+        }
     }
 
   private:
     std::shared_ptr<Portfolio<Decimal>> createSyntheticPortfolio (std::shared_ptr<Security<Decimal>> realSecurity,
-							       std::shared_ptr<Portfolio<Decimal>> realPortfolio)
+                                                                  std::shared_ptr<Portfolio<Decimal>> realPortfolio)
     {
       std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio = realPortfolio->clone();
       syntheticPortfolio->addSecurity (createSyntheticSecurity (realSecurity));
@@ -468,7 +574,7 @@ using boost::accumulators::accumulator_set;
       return aSecurity->clone (aTimeSeries2.getSyntheticTimeSeries());
     }
 
-   
+
 
   private:
     std::shared_ptr<BackTester<Decimal>> mBackTester;

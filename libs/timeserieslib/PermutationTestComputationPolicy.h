@@ -159,7 +159,7 @@ namespace mkc_timeseries
                       if (syntheticStat > innerBaselineStat)
                         std::get<1>(innerStratConainer) ++;
                       else
-                        break;  //can break out of the loop because of ordering
+                        break;  // Can break out of the loop because of ordering
 
                     }
                 }
