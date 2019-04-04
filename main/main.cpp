@@ -17,17 +17,17 @@ using std::shared_ptr;
 
 using Num = num::DefaultNumber;
 
-enum MCPTValidationComputationPolicy {UNADJUSTED_PVALUE, ADJUSTED_PVALUE, COMPUTATION_NONE};
-enum MCPTTestStatistic {CUMULATIVE_RETURN, PESSIMISTIC_RETURN_RATIO, PAL_PROFITABILITY, STATISTIC_NONE};
+enum MCPTValidationComputationPolicy {UNADJUSTED_PVALUE, ADJUSTED_PVALUE, BESTOF_PVALUE, COMPUTATION_NONE};
+enum MCPTTestStatistic {CUMULATIVE_RETURN, PESSIMISTIC_RETURN_RATIO, PAL_PROFITABILITY, NORMALIZED_RETURN, STATISTIC_NONE};
 
 template <template <typename> class _SurvivingStrategyPolicy, typename McptType>
 static void validateByPermuteMarketChanges (std::shared_ptr<McptConfiguration<Num>> configuration,
-					    int numPermutations);
+                                            int numPermutations);
 
 template <class Decimal, typename McptType, template <typename> class _SurvivingStrategyPolicy>
 static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Decimal,
-					 McptType, _SurvivingStrategyPolicy>& monteCarloValidation,
-					 const std::string& securitySymbol);
+                                         McptType, _SurvivingStrategyPolicy>& monteCarloValidation,
+                                         const std::string& securitySymbol);
 
 static std::string createSurvivingPatternsFileName (const std::string& securitySymbol);
 static std::string createSurvivingPatternsAndRobustFileName (const std::string& securitySymbol);
@@ -36,19 +36,19 @@ static std::string createMCPTSurvivingPatternsFileName (const std::string& secur
 template <class Decimal, typename McptType, template <typename> class _SurvivingStrategyPolicy>
 static shared_ptr<PalRobustnessTester<Decimal>>
 runRobustnessTests (const PALMonteCarloValidation<Decimal,McptType,_SurvivingStrategyPolicy>& monteCarloValidation,
-		    shared_ptr<McptConfiguration<Decimal>> aConfiguration);
+                    shared_ptr<McptConfiguration<Decimal>> aConfiguration);
 
 static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<Num>> aRobustnessTester,
-				   const std::string& securitySymbol);
+                                                const std::string& securitySymbol);
 
 static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<Num>> aRobustnessTester,
-				    const std::string& securitySymbol);
+                                    const std::string& securitySymbol);
 static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<Num>> aRobustnessTester,
-				    const std::string& securitySymbol);
+                                                 const std::string& securitySymbol);
 
 void usage()
 {
-  printf("Usage: PalValidator <configuration file> [Number of Permutation Tests] <P-Value adjustment policy, 1 = None, 2 = adjusted>, <Test Stat, 1 = Cumulative Return, 2 = PRR, 3 = Profitability, <Num Threads>(optional)\n\n");
+  printf("Usage: PalValidator <configuration file> [Number of Permutation Tests] <P-Value adjustment policy, 1 = None, 2 = adjusted, 3 = BestofPValue>, <Test Stat, 1 = Cumulative Return, 2 = PRR, 3 = Profitability, 4 = Normalized Return, <Num Threads>(optional)\n\n");
 }
 
 
@@ -68,37 +68,42 @@ int main(int argc, char **argv)
       int numPermutations = std::stoi(v[2]);
       int typeOfPermutationTest = std::stoi(v[3]);
 
-      size_t nthreads = 0; 
+      size_t nthreads = 0;
       int intTestStatistic = 0;
       MCPTValidationComputationPolicy validationPolicy = COMPUTATION_NONE;
       MCPTTestStatistic testStatistic = STATISTIC_NONE;
 
       if (typeOfPermutationTest == 1)
-	validationPolicy = UNADJUSTED_PVALUE;
+        validationPolicy = UNADJUSTED_PVALUE;
       else if (typeOfPermutationTest == 2)
-	validationPolicy = ADJUSTED_PVALUE;
+        validationPolicy = ADJUSTED_PVALUE;
+      else if (typeOfPermutationTest == 3)
+        validationPolicy = BESTOF_PVALUE;
       else
-	error_with_usage();
-      
-      if (argc >= 5)
-	{
-	  intTestStatistic = std::stoi(v[4]);
-	  if (intTestStatistic == 1)
-	    testStatistic = CUMULATIVE_RETURN;
-	  else if (intTestStatistic == 2)
-	    testStatistic = PESSIMISTIC_RETURN_RATIO;
-	  else if (intTestStatistic == 3)
-	    testStatistic = PAL_PROFITABILITY;
+        {
+          error_with_usage();
+        }
 
-	  else
-	    error_with_usage();
-	}
+      if (argc >= 5)
+        {
+          intTestStatistic = std::stoi(v[4]);
+          if (intTestStatistic == 1)
+            testStatistic = CUMULATIVE_RETURN;
+          else if (intTestStatistic == 2)
+            testStatistic = PESSIMISTIC_RETURN_RATIO;
+          else if (intTestStatistic == 3)
+            testStatistic = PAL_PROFITABILITY;
+          else if (intTestStatistic == 4)
+            testStatistic = NORMALIZED_RETURN;
+          else
+            error_with_usage();
+        }
       else
-	testStatistic = PESSIMISTIC_RETURN_RATIO;
-      
+        testStatistic = PESSIMISTIC_RETURN_RATIO;
+
       if (argc == 6) {
-        nthreads = std::stoi(v[5]);
-      }
+          nthreads = std::stoi(v[5]);
+        }
 
       runner runner_instance(nthreads);
 
@@ -108,73 +113,116 @@ int main(int argc, char **argv)
       std::shared_ptr<McptConfiguration<Num>> configuration = reader.readConfigurationFile();
 
       if (validationPolicy == UNADJUSTED_PVALUE)
-	{
-	  printf ("Validation Policy = unadjusted P-Value\n");
-	  switch (testStatistic)
-	    {
-	    case CUMULATIVE_RETURN:
-	      printf ("Test stat = cumulative return\n");
-	      break;
-	      
-	    case PESSIMISTIC_RETURN_RATIO:
-	      printf ("Test stat = PRR\n");
-	      break;
+        {
+          printf ("Validation Policy = unadjusted P-Value\n");
+          switch (testStatistic)
+            {
+            case CUMULATIVE_RETURN:
+              printf ("Test stat = cumulative return\n");
+              break;
 
-	    case PAL_PROFITABILITY:
-	      printf ("Test stat = PAL Profitability\n");
-	      break;
-	      
-	    case STATISTIC_NONE:
-	      printf ("Test stat = none\n");
-	      break;
+            case PESSIMISTIC_RETURN_RATIO:
+              printf ("Test stat = PRR\n");
+              break;
 
-	    }
-	  
-	  if (testStatistic == CUMULATIVE_RETURN)
-	    validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
-					    MonteCarloPermuteMarketChanges<Num,
-									   CumulativeReturnPolicy,
-									   ShortCutPermuteMarketChangesPolicy<Num,
-													      CumulativeReturnPolicy<Num>>>>
-	      (configuration,
-	       numPermutations);
-	  else if (testStatistic == PESSIMISTIC_RETURN_RATIO)
-	    validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
-					    MonteCarloPermuteMarketChanges<Num,
-									   PessimisticReturnRatioPolicy,
-									   ShortCutPermuteMarketChangesPolicy<Num,
-													      PessimisticReturnRatioPolicy<Num>>>>
-	      (configuration,
-	       numPermutations);
-	  else if (testStatistic == PAL_PROFITABILITY)
-	  	    validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
-					    MonteCarloPermuteMarketChanges<Num,
-									   PalProfitabilityPolicy,
-									   ShortCutPermuteMarketChangesPolicy<Num,
-													      PalProfitabilityPolicy<Num>>>>
-	      (configuration,
-	       numPermutations);
+            case PAL_PROFITABILITY:
+              printf ("Test stat = PAL Profitability\n");
+              break;
 
-	}
+            case NORMALIZED_RETURN:
+              printf ("Test stat = Normalized Return\n");
+              break;
+
+            case STATISTIC_NONE:
+              printf ("Test stat = none\n");
+              break;
+
+            }
+
+          if (testStatistic == CUMULATIVE_RETURN)
+            validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+                MonteCarloPermuteMarketChanges<Num,
+                CumulativeReturnPolicy,
+                ShortCutPermuteMarketChangesPolicy<Num,
+                CumulativeReturnPolicy<Num>>>>
+                (configuration,
+                 numPermutations);
+          else if (testStatistic == PESSIMISTIC_RETURN_RATIO)
+            validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+                MonteCarloPermuteMarketChanges<Num,
+                PessimisticReturnRatioPolicy,
+                ShortCutPermuteMarketChangesPolicy<Num,
+                PessimisticReturnRatioPolicy<Num>>>>
+                (configuration,
+                 numPermutations);
+          else if (testStatistic == PAL_PROFITABILITY)
+            validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+                MonteCarloPermuteMarketChanges<Num,
+                PalProfitabilityPolicy,
+                ShortCutPermuteMarketChangesPolicy<Num,
+                PalProfitabilityPolicy<Num>>>>
+                (configuration,
+                 numPermutations);
+          else if (testStatistic == NORMALIZED_RETURN)
+            validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+                MonteCarloPermuteMarketChanges<Num,
+                NormalizedReturnPolicy,
+                ShortCutPermuteMarketChangesPolicy<Num,
+                NormalizedReturnPolicy<Num>>>>
+                (configuration,
+                 numPermutations);
+
+        }
       else if (validationPolicy == ADJUSTED_PVALUE)
-	{
-	  if (testStatistic == CUMULATIVE_RETURN)
-	    validateByPermuteMarketChanges <AdaptiveBenjaminiHochbergYr2000,
-					    MonteCarloPermuteMarketChanges<Num,
-									   CumulativeReturnPolicy,
-									   DefaultPermuteMarketChangesPolicy<Num,
-													     CumulativeReturnPolicy<Num>>>>
-	      (configuration,
-	       numPermutations);
-	  else if (testStatistic == PESSIMISTIC_RETURN_RATIO)
-	    validateByPermuteMarketChanges <AdaptiveBenjaminiHochbergYr2000,
-					    MonteCarloPermuteMarketChanges<Num,
-									   PessimisticReturnRatioPolicy,
-									   DefaultPermuteMarketChangesPolicy<Num,
-													     PessimisticReturnRatioPolicy<Num>>>>
-	      (configuration, numPermutations);
+        {
+          if (testStatistic == CUMULATIVE_RETURN)
+            validateByPermuteMarketChanges <AdaptiveBenjaminiHochbergYr2000,
+                MonteCarloPermuteMarketChanges<Num,
+                CumulativeReturnPolicy,
+                DefaultPermuteMarketChangesPolicy<Num,
+                CumulativeReturnPolicy<Num>>>>
+                (configuration,
+                 numPermutations);
+          else if (testStatistic == PESSIMISTIC_RETURN_RATIO)
+            validateByPermuteMarketChanges <AdaptiveBenjaminiHochbergYr2000,
+                MonteCarloPermuteMarketChanges<Num,
+                PessimisticReturnRatioPolicy,
+                DefaultPermuteMarketChangesPolicy<Num,
+                PessimisticReturnRatioPolicy<Num>>>>
+                (configuration, numPermutations);
 
-	}
+        }
+      else if (validationPolicy == BESTOF_PVALUE)
+        {
+          if (testStatistic == NORMALIZED_RETURN)
+            {
+              printf("Best of MCPT with Normalized return.\n");
+              validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+                  BestOfMonteCarloPermuteMarketChanges<Num,
+                  NormalizedReturnPolicy,
+                  MultiStrategyPermuteMarketChangesPolicy<Num,
+                  NormalizedReturnPolicy<Num>>>>
+                  (configuration,
+                   numPermutations);
+            }
+          else if (testStatistic == CUMULATIVE_RETURN)
+            {
+              printf("Best of MCPT with Cumulative return.\n");
+              validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+                  BestOfMonteCarloPermuteMarketChanges<Num,
+                  CumulativeReturnPolicy,
+                  MultiStrategyPermuteMarketChangesPolicy<Num,
+                  CumulativeReturnPolicy<Num>>>>
+                  (configuration,
+                   numPermutations);
+            }
+          else
+            {
+              printf("Best of MCPT requires Normalized Return Policy or Cumulative Return Policy.\n");
+              return 1;
+            }
+
+        }
     }
   else
     error_with_usage();
@@ -186,10 +234,12 @@ int main(int argc, char **argv)
 template <template <typename> class _SurvivingStrategyPolicy, typename _McptType>
 static void
 validateByPermuteMarketChanges (std::shared_ptr<McptConfiguration<Num>> configuration,
-				int numPermutations)
+                                int numPermutations)
 {
+  std::cout << "starting validation." << std::endl;
+
   PALMonteCarloValidation<Num,_McptType,_SurvivingStrategyPolicy> validation(configuration, numPermutations);
-  
+
   printf ("Starting Monte Carlo Validation tests (Using Permute Market Changes)\n\n");
 
   validation.runPermutationTests();
@@ -198,12 +248,15 @@ validateByPermuteMarketChanges (std::shared_ptr<McptConfiguration<Num>> configur
 
   exportSurvivingMCPTPatterns<Num, _McptType, _SurvivingStrategyPolicy>  (validation, configuration->getSecurity()->getSymbol());
 
+  //temporarily
+  return;
+
   // Run robustness tests on the patterns that survived Monte Carlo Permutation Testing
   printf ("Running robustness tests for %lu patterns\n\n",
-	  validation.getNumSurvivingStrategies());
+          validation.getNumSurvivingStrategies());
 
   std::shared_ptr<PalRobustnessTester<Num>> robust =
-    runRobustnessTests<Num, _McptType> (validation, configuration);
+      runRobustnessTests<Num, _McptType> (validation, configuration);
 
   // Now export the pattern in PAL format
 
@@ -219,9 +272,9 @@ validateByPermuteMarketChanges (std::shared_ptr<McptConfiguration<Num>> configur
 }
 
 template <class Decimal>
-std::shared_ptr<PalStrategy<Decimal>> 
+std::shared_ptr<PalStrategy<Decimal>>
 createStrategyForRobustnessTest (std::shared_ptr<PalStrategy<Decimal>> aStrategy,
-				 std::shared_ptr<Security<Decimal>> securityForRobustness)
+                                 std::shared_ptr<Security<Decimal>> securityForRobustness)
 {
   // Create new empty portfolio
   auto newPortfolio (aStrategy->getPortfolio()->clone());
@@ -233,18 +286,18 @@ createStrategyForRobustnessTest (std::shared_ptr<PalStrategy<Decimal>> aStrategy
 template <class Decimal, typename McptType, template <typename> class _SurvivingStrategyPolicy>
 static shared_ptr<PalRobustnessTester<Decimal>>
 runRobustnessTests (const PALMonteCarloValidation<Decimal, McptType, _SurvivingStrategyPolicy>& monteCarloValidation,
-		    shared_ptr<McptConfiguration<Decimal>> aConfiguration)
+                    shared_ptr<McptConfiguration<Decimal>> aConfiguration)
 {
   typename PALMonteCarloValidation<Decimal, McptType, _SurvivingStrategyPolicy>::SurvivingStrategiesIterator it =
-    monteCarloValidation.beginSurvivingStrategies();
+      monteCarloValidation.beginSurvivingStrategies();
 
 
   // Conduct robustness testing on insample data
   auto robustnessTester =
-    std::make_shared<StatisticallySignificantRobustnessTester<Num>>(aConfiguration->getInSampleBackTester());
+      std::make_shared<StatisticallySignificantRobustnessTester<Num>>(aConfiguration->getInSampleBackTester());
 
   auto securityUnderTest = aConfiguration->getSecurity();
-  
+
   for (; it != monteCarloValidation.endSurvivingStrategies(); it++)
     {
       robustnessTester->addStrategy(createStrategyForRobustnessTest<Decimal> (*it, securityUnderTest));
@@ -258,11 +311,11 @@ runRobustnessTests (const PALMonteCarloValidation<Decimal, McptType, _SurvivingS
 
 template <class Decimal, typename McptType, template <typename> class _SurvivingStrategyPolicy>
 static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Decimal,
-					 McptType,_SurvivingStrategyPolicy>& monteCarloValidation,
-					 const std::string& securitySymbol)
+                                         McptType,_SurvivingStrategyPolicy>& monteCarloValidation,
+                                         const std::string& securitySymbol)
 {
   typename PALMonteCarloValidation<Decimal,McptType,_SurvivingStrategyPolicy>::SurvivingStrategiesIterator it =
-    monteCarloValidation.beginSurvivingStrategies();
+      monteCarloValidation.beginSurvivingStrategies();
 
   std::ofstream mcptPatternsFile(createMCPTSurvivingPatternsFileName(securitySymbol));
 
@@ -273,13 +326,13 @@ static void exportSurvivingMCPTPatterns (const PALMonteCarloValidation<Decimal,
 }
 
 static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<Num>> aRobustnessTester,
-				    const std::string& securitySymbol)
+                                    const std::string& securitySymbol)
 {
   shared_ptr<RobustnessCalculator<Num>> robustnessResults;
   shared_ptr<PalStrategy<Num>> aStrategy;
 
   PalRobustnessTester<Num>::SurvivingStrategiesIterator surviveIt =
-    aRobustnessTester->beginSurvivingStrategies();
+      aRobustnessTester->beginSurvivingStrategies();
 
   PalRobustnessTester<Num>::RobustnessResultsIterator robustResultIt;
 
@@ -295,13 +348,13 @@ static void exportSurvivingPatterns(shared_ptr<PalRobustnessTester<Num>> aRobust
 }
 
 static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<Num>> aRobustnessTester,
-				    const std::string& securitySymbol)
+                                                 const std::string& securitySymbol)
 {
   shared_ptr<RobustnessCalculator<Num>> robustnessResults;
   shared_ptr<PalStrategy<Num>> aStrategy;
 
   PalRobustnessTester<Num>::SurvivingStrategiesIterator surviveIt =
-    aRobustnessTester->beginSurvivingStrategies();
+      aRobustnessTester->beginSurvivingStrategies();
 
   PalRobustnessTester<Num>::RobustnessResultsIterator robustResultIt;
 
@@ -315,24 +368,24 @@ static void exportSurvivingPatternsAndRobustness(shared_ptr<PalRobustnessTester<
       robustResultIt = aRobustnessTester->findSurvivingRobustnessResults(aStrategy);
 
       if (robustResultIt !=
-	  aRobustnessTester->endSurvivingRobustnessResults())
-	{
-	  robustnessResults = robustResultIt->second;
-	  LogRobustnessTest<Num>::logRobustnessTestResults (*robustnessResults,
-							  survivingPatternsFile);
-	  survivingPatternsFile << std::endl << std::endl;
-	}
+          aRobustnessTester->endSurvivingRobustnessResults())
+        {
+          robustnessResults = robustResultIt->second;
+          LogRobustnessTest<Num>::logRobustnessTestResults (*robustnessResults,
+                                                            survivingPatternsFile);
+          survivingPatternsFile << std::endl << std::endl;
+        }
     }
 }
 
 static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<Num>> aRobustnessTester,
-						const std::string& securitySymbol)
+                                                const std::string& securitySymbol)
 {
   shared_ptr<RobustnessCalculator<Num>> robustnessResults;
   shared_ptr<PalStrategy<Num>> aStrategy;
 
   PalRobustnessTester<Num>::RejectedStrategiesIterator rejIt =
-    aRobustnessTester->beginRejectedStrategies();
+      aRobustnessTester->beginRejectedStrategies();
 
   PalRobustnessTester<Num>::RobustnessResultsIterator robustResultIt;
 
@@ -346,13 +399,13 @@ static void exportRejectedPatternsAndRobustness(shared_ptr<PalRobustnessTester<N
       robustResultIt = aRobustnessTester->findFailedRobustnessResults(aStrategy);
 
       if (robustResultIt !=
-	  aRobustnessTester->endFailedRobustnessResults())
-	{
-	  robustnessResults = robustResultIt->second;
-	  LogRobustnessTest<Num>::logRobustnessTestResults (*robustnessResults,
-							  rejectedPatternsFile);
-	  rejectedPatternsFile << std::endl << std::endl;
-	}
+          aRobustnessTester->endFailedRobustnessResults())
+        {
+          robustnessResults = robustResultIt->second;
+          LogRobustnessTest<Num>::logRobustnessTestResults (*robustnessResults,
+                                                            rejectedPatternsFile);
+          rejectedPatternsFile << std::endl << std::endl;
+        }
     }
 }
 
