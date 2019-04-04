@@ -55,7 +55,7 @@ namespace mkc_timeseries
 
           factor = sqrt(backTesterStrategy->numTradingOpportunities());
 
-          timeInMarket = backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getBarsInMarket();
+          timeInMarket = backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getNumBarsInMarket();
 
           if (timeInMarket == 0)
             throw BackTesterException("NormalizedReturnPolicy::getPermutationTestStatistic - time in market cannot be 0!");
