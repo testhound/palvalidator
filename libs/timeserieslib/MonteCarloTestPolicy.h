@@ -15,74 +15,112 @@
 namespace mkc_timeseries
 {
   template <class Decimal> class CumulativeReturnPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
-    public:
-      static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
-      {
-	if (aBackTester->getNumStrategies() == 1)
-	{
-	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
-	    (*(aBackTester->beginStrategies()));
+      if (aBackTester->getNumStrategies() == 1)
+        {
+          std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
+              (*(aBackTester->beginStrategies()));
 
-	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
-	}
+          return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
+        }
       else
-	throw BackTesterException("CumulativeReturnPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
-      }
-      
-      static unsigned int getMinStrategyTrades()
-      {
-	return 3;
-      }
+        throw BackTesterException("CumulativeReturnPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
+    }
+    static unsigned int getMinStrategyTrades()
+    {
+      return 3;
+    }
+
+  };
+
+
+  template <class Decimal> class NormalizedReturnPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
+    {
+
+      if (aBackTester->getNumStrategies() == 1)
+        {
+          std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
+              (*(aBackTester->beginStrategies()));
+
+          double factor;
+          Decimal cumulativeReturn;
+          uint32_t timeInMarket;
+          Decimal normalizationRatio;
+
+          factor = sqrt(backTesterStrategy->numTradingOpportunities());
+
+          timeInMarket = backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getBarsInMarket();
+
+          if (timeInMarket == 0)
+            throw BackTesterException("NormalizedReturnPolicy::getPermutationTestStatistic - time in market cannot be 0!");
+
+          cumulativeReturn = backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getCumulativeReturn();
+
+          normalizationRatio = Decimal( (factor / sqrt(timeInMarket)) );
+
+          return cumulativeReturn * normalizationRatio;
+        }
+      else
+        throw BackTesterException("NormalizedReturnPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
+    }
+    static unsigned int getMinStrategyTrades()
+    {
+      return 3;
+    }
 
   };
 
   //
-    template <class Decimal> class PalProfitabilityPolicy
+  template <class Decimal> class PalProfitabilityPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
-    public:
-      static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
-      {
-	if (aBackTester->getNumStrategies() == 1)
-	{
-	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
-	    (*(aBackTester->beginStrategies()));
+      if (aBackTester->getNumStrategies() == 1)
+        {
+          std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
+              (*(aBackTester->beginStrategies()));
 
-	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getMedianPALProfitability();
-	}
+          return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getMedianPALProfitability();
+        }
       else
-	throw BackTesterException("PalProfitabilityPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
-      }
-      
-      static unsigned int getMinStrategyTrades()
-      {
-	return 3;
-      }
+        throw BackTesterException("PalProfitabilityPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
+    }
+    static unsigned int getMinStrategyTrades()
+    {
+      return 3;
+    }
 
   };
 
   //
-    template <class Decimal> class PessimisticReturnRatioPolicy
+  template <class Decimal> class PessimisticReturnRatioPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
-    public:
-      static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
-      {
-	if (aBackTester->getNumStrategies() == 1)
-	{
-	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = 
-	    (*(aBackTester->beginStrategies()));
+      if (aBackTester->getNumStrategies() == 1)
+        {
+          std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
+              (*(aBackTester->beginStrategies()));
 
-	  return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getPessimisticReturnRatio();
-	}
+          return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getPessimisticReturnRatio();
+        }
       else
-	throw BackTesterException("PessimisticReturnRatioPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
-      }
+        throw BackTesterException("PessimisticReturnRatioPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
+    }
 
-      static unsigned int getMinStrategyTrades()
-      {
-	return 3;
-      }
-    };
+    static unsigned int getMinStrategyTrades()
+    {
+      return 3;
+    }
+  };
 
 }
 
