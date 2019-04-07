@@ -154,6 +154,26 @@ namespace mkc_timeseries
 			 createDecimal("0.15"),
 			 boost::gregorian::from_undelimited_string("20020722"));
 
+      addUnLeveragedETF (std::string("LQD"),
+			 std::string("iShares US Corporate Bond"),
+			 createDecimal("0.15"),
+			 boost::gregorian::from_undelimited_string("20020722"));
+
+      addUnLeveragedETF (std::string("HYG"),
+			 std::string("iShares US High Yield Bond"),
+			 createDecimal("0.49"),
+			 boost::gregorian::from_undelimited_string("20070404"));
+
+      addUnLeveragedETF (std::string("XLE"),
+			 std::string("iShares Energy Select SPDR ETF"),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLF"),
+			 std::string("iShares Financial Sector ETF"),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
       addLeveragedETF (std::string("SSO"), 
 		       std::string("ProShares Ultra S&P 500"), 
 		       createDecimal("0.89"),
