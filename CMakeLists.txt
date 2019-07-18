@@ -49,18 +49,21 @@ find_package(Boost REQUIRED COMPONENTS filesystem date_time chrono  system progr
 include_directories(${CMAKE_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/
   ${CMAKE_SOURCE_DIR}/libs/timeserieslib
+  ${CMAKE_SOURCE_DIR}/libs/pasearchalgolib
   ${BLOOMBERG_DECIMAL_INCLUDES}
   )
 
 add_subdirectory(libs/PALCodeGenLibrary-v2/)
 add_subdirectory(libs/timeserieslib)
+add_subdirectory(libs/pasearchalgolib)
 
-set(SRC_LIST main/main.cpp)
+set(SRC_LIST main/main2.cpp)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${BIN_NAME}
     priceaction2
     backtest
+    pasearchalgo
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${BLOOMBERG_DECIMAL_LIBRARIES}
