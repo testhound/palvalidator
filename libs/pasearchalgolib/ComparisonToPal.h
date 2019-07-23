@@ -1,7 +1,9 @@
 #ifndef COMPARISONTOPAL_H
 #define COMPARISONTOPAL_H
 
+#include <unordered_set>
 #include "PalAst.h"
+#include "ComparisonsGenerator.h"
 
 //PriceActionLabPattern (PatternDescription* description, PatternExpression* pattern,
 //		       MarketEntryExpression* entry,
@@ -10,29 +12,31 @@
 
 namespace mkc_searchalgo
 {
-  using ComparisonEntryType = std::array<unsigned int, 4>;
-
   ///
   /// A straightforward conversion
   ///
-  template <unsigned Dim> class ComparisonToPal
+  class ComparisonToPal
   {
   public:
-    ComparisonToPal(const unsigned expectedNumberOfPatterns, bool isLongPattern, const unsigned patternIndex, const unsigned long indexDate):
+    ComparisonToPal(const std::unordered_set<ComparisonEntryType>& compareBatch, bool isLongPattern, const unsigned patternIndex, const unsigned long indexDate):
       mComparisonCount(0),
-      mExpectedNumberOfPatterns(expectedNumberOfPatterns),
+      mExpectedNumberOfPatterns(compareBatch.size()),
       mIsLongPattern(isLongPattern),
       mPatternIndex(patternIndex),
       mIndexDate(indexDate)
-    {}
+    {
+      for(const auto& comparison: compareBatch)
+        addComparison(comparison);
+    }
 
-    void addComparison(const std::array<unsigned, Dim> comparison)
+  private:
+    void addComparison(const ComparisonEntryType& comparison)
     {
       std::unique_ptr<PatternExpression> newExpr = std::make_unique<GreaterThanExpr>(priceBarFactory(comparison[0], comparison[1]), priceBarFactory(comparison[2], comparison[3]));
       if (mComparisonCount == 0)
-          mPalPatternExpr = newExpr;
+          mPalPatternExpr = std::move(newExpr);
       else
-          mPalPatternExpr = AndExpr(mPalPatternExpr, newExpr);
+          mPalPatternExpr = std::make_unique<AndExpr>(mPalPatternExpr, newExpr);
 
       mComparisonCount++;
     }
@@ -40,24 +44,24 @@ namespace mkc_searchalgo
     void setProfitTarget(decimal7* profitTarget)
     {
       if (mIsLongPattern)
-          mProfitTarget = LongSideProfitTargetInPercent(profitTarget);
+          mProfitTarget = new LongSideProfitTargetInPercent(profitTarget);
       else
-          mProfitTarget = ShortSideProfitTargetInPercent(profitTarget);
+          mProfitTarget = new ShortSideProfitTargetInPercent(profitTarget);
 
     }
 
     void setStopLoss(decimal7* stopLoss)
     {
       if (mIsLongPattern)
-          mStopLoss = LongSideStopLossInPercent(stopLoss);
+          mStopLoss = new LongSideStopLossInPercent(stopLoss);
       else
-          mProfitTarget = ShortSideStopLossInPercent(stopLoss);
+          mStopLoss = new ShortSideStopLossInPercent(stopLoss);
     }
 
     MarketEntryExpression* getMarketEntry()
     {
       if (mIsLongPattern)
-          return std::make_unique<LongMarketEntryOnOpen>().get();
+        return std::make_unique<LongMarketEntryOnOpen>().get();
       else
         return std::make_unique<ShortMarketEntryOnOpen>().get();
     }
@@ -68,19 +72,17 @@ namespace mkc_searchalgo
         throw;
 
       PatternDescription description("", mPatternIndex, mIndexDate, nullptr, nullptr, 0, 0);
-      std::unique_ptr<PatternDescription> descPtr = std::make_unique<PatternDescription>("", mPatternIndex, mIndexDate, nullptr, nullptr, 0, 0);
+      std::unique_ptr<PatternDescription> descPtr = std::make_unique<PatternDescription>(nullptr, mPatternIndex, mIndexDate, nullptr, nullptr, 0, 0);
 
-      PriceActionLabPattern pattern(descPtr, mPalPatternExpr, mIsLongPattern? LongMarketEntryOnOpen(): ShortMarketEntryOnOpen(), mProfitTarget, mStopLoss);
+      PriceActionLabPattern pattern(descPtr.get(), mPalPatternExpr.get(), getMarketEntry(), mProfitTarget, mStopLoss);
     }
-
-  private:
 
     bool isComplete() const { return (mExpectedNumberOfPatterns == mComparisonCount); }
 
     //** like a factory method
-    std::unique_ptr<PriceBarReference> priceBarFactory(const unsigned int offset, const PriceBarReference::ReferenceType ref)
+    std::unique_ptr<PriceBarReference> priceBarFactory(const unsigned int offset, const unsigned int ref)
     {
-      switch (ref)
+      switch (static_cast<PriceBarReference::ReferenceType>(ref))
         {
         case PriceBarReference::ReferenceType::OPEN:
           return std::make_unique<PriceBarOpen>(offset);
