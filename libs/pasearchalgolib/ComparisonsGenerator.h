@@ -5,8 +5,35 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <unordered_set>
 #include <iostream>
 #include "ComparableBar.h"
+#include <functional>
+
+///
+///Extend the (std) hash functionality to take std::array hashing
+///
+
+template <class T>
+inline void hash_combine(std::size_t& seed, const T& v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+}
+
+template<typename T, std::size_t S>
+struct std::hash< std::array< T, S > >
+{
+  size_t operator() (const std::array< T, S > & arrayKey) const
+    {
+        std::size_t seed = 0;
+        for (int i = 0; i < arrayKey.size(); ++i)
+            hash_combine(seed, arrayKey[i]);
+
+        return seed;
+    }
+};
+
 
 namespace mkc_searchalgo
 {
@@ -21,10 +48,10 @@ namespace mkc_searchalgo
       mMaxLookBack(maxlookback),
       mBarBuffer(maxlookback),  //circular buffer instantiation
       mComparisonsCount(0),
-      mComparisonsBatches{{mDateIndex, std::vector<ComparisonEntryType>()}}
+      mComparisonsBatches{{mDateIndex, {}}}
     {}
 
-    const std::map<unsigned int, std::vector<ComparisonEntryType>>& getComparisons() const { return mComparisonsBatches; }
+    const std::unordered_map<unsigned int, std::unordered_set<ComparisonEntryType>>& getComparisons() const { return mComparisonsBatches; }
 
     const std::set<ComparisonEntryType>& getUniqueComparisons() const { return mUniqueComparisons; }
 
@@ -83,7 +110,7 @@ namespace mkc_searchalgo
     void addComparison(unsigned int fOffset, unsigned int fOhlcId, unsigned int sOffset, unsigned int sOhlcId)
     {
       ComparisonEntryType compEntry = {fOffset, fOhlcId, sOffset, sOhlcId};
-      mComparisonsBatches[mDateIndex].push_back(compEntry);
+      mComparisonsBatches[mDateIndex].insert(compEntry);
       mComparisonsCount++;
       mUniqueComparisons.insert(compEntry);
     }
@@ -104,15 +131,20 @@ namespace mkc_searchalgo
 
     void newComparisonsBatch()
     {
-      std::vector<std::array<unsigned int, 4>> newBatch(mComparisonsBatches[mDateIndex - 1]);   //deep copy vector ctor
+      std::unordered_set<ComparisonEntryType, std::hash<ComparisonEntryType>> newBatch{};
       //increment offsets in old comparisons
-      for (std::vector<ComparisonEntryType>::iterator it = newBatch.begin(); it != newBatch.end(); ++it)
+      for (const auto& entry: mComparisonsBatches[mDateIndex - 1])
         {
-          (*it)[0]++;
-          (*it)[2]++;
-          //erase comparisons outside of lookback window
-          if ( (*it)[0] > mMaxLookBack - 1 || (*it)[2] > mMaxLookBack -1 )
-            newBatch.erase(it--);   //erases element and decrements iterator for correct iteration
+          ComparisonEntryType newEntry = entry;
+          newEntry[0]++;
+          newEntry[2]++;
+
+          //erase/disregard comparisons outside of lookback window
+          if ( (newEntry)[0] <= mMaxLookBack - 1 && (newEntry)[2] <= mMaxLookBack -1 )
+            {
+              newBatch.insert(newEntry);
+              mUniqueComparisons.insert(newEntry);
+            }
         }
       mComparisonsBatches[mDateIndex] = newBatch;
     }
@@ -121,7 +153,7 @@ namespace mkc_searchalgo
     unsigned int mMaxLookBack;
     unsigned int mComparisonsCount;
     boost::circular_buffer<ComparableBar<Decimal, 4>> mBarBuffer;
-    std::map<unsigned int, std::vector<ComparisonEntryType>> mComparisonsBatches;
+    std::unordered_map<unsigned int, std::unordered_set<ComparisonEntryType, std::hash<ComparisonEntryType> >>  mComparisonsBatches;
     std::set<ComparisonEntryType> mUniqueComparisons;
   };
 }
