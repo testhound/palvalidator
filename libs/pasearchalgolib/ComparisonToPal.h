@@ -18,34 +18,44 @@ namespace mkc_searchalgo
 {
 
 
-  //**like a factory method
-  static std::unique_ptr<PriceBarReference> priceBarFactory(const unsigned int offset, const unsigned int ref)
+  class PriceBarFactory {
+  public:
+    PriceBarFactory():
+      mPriceBars(30)  //preallocate for speed
+    {}
+
+  PriceBarReference* getPriceBar(const unsigned int offset, const unsigned int ref)
   {
     switch (static_cast<PriceBarReference::ReferenceType>(ref))
       {
       case PriceBarReference::ReferenceType::OPEN:
-        return std::make_unique<PriceBarOpen>(offset);
+        mPriceBars.push_back(std::make_unique<PriceBarOpen>(offset));
+        break;
       case PriceBarReference::ReferenceType::HIGH:
-        return std::make_unique<PriceBarHigh>(offset);
+        mPriceBars.push_back(std::make_unique<PriceBarHigh>(offset));
+        break;
       case PriceBarReference::ReferenceType::LOW:
-        return std::make_unique<PriceBarLow>(offset);
+        mPriceBars.push_back(std::make_unique<PriceBarLow>(offset));
+        break;
       case PriceBarReference::ReferenceType::CLOSE:
-        return std::make_unique<PriceBarClose>(offset);
+        mPriceBars.push_back(std::make_unique<PriceBarClose>(offset));
+        break;
       }
+      return mPriceBars.back().get();
   }
+    private:
+    std::vector<std::unique_ptr<PriceBarReference>> mPriceBars;
+  };
 
-//  PalLongStrategy(const std::string& strategyName,
-//                  std::shared_ptr<PriceActionLabPattern> pattern,
-//                  std::shared_ptr<Portfolio<Decimal>> portfolio)
 
   ///
   /// A straightforward conversion
   ///
-  template <class Decimal, size_t Dim>
+  template <class Decimal>
   class ComparisonToPal
   {
   public:
-    ComparisonToPal(const std::array<ComparisonEntryType, Dim>& compareBatch,
+    ComparisonToPal(const std::vector<ComparisonEntryType>& compareBatch,
                     bool isLongPattern, const unsigned patternIndex, const unsigned long indexDate,
                     decimal7* const profitTarget, decimal7* const stopLoss, std::shared_ptr<Portfolio<Decimal>>& portfolio):
       mComparisonCount(0),
@@ -54,11 +64,21 @@ namespace mkc_searchalgo
       mPatternDescription(allocatePatternDescription(patternIndex, indexDate)),
       mProfitTarget(allocateProfitTarget(profitTarget)),
       mStopLoss(allocateStopLoss(stopLoss)),
-      mMarketEntry(allocateMarketEntry())
+      mMarketEntry(allocateMarketEntry()),
+      mPalPatternExpressions(15),
+      mPriceBarFactory()
     {
+      std::cout << "got into ctor" << std::endl;
+
       for(const auto& comparison: compareBatch)
         addComparison(comparison);
-      mPalPattern = std::make_shared<PriceActionLabPattern>(allocatePattern());
+
+      std::cout << "added comparisons" << std::endl;
+      std::cout << "Is complete: " << isComplete() << std::endl;
+      if (!isComplete())
+          throw;
+
+      mPalPattern = std::make_shared<PriceActionLabPattern>(mPatternDescription.get(), mPalPatternExpressions.back().get(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
 
       if (isLongPattern)
         {
@@ -73,9 +93,9 @@ namespace mkc_searchalgo
 
     }
 
-    ComparisonToPal(const ComparisonToPal<Decimal, Dim>&) = delete;
+    ComparisonToPal(const ComparisonToPal<Decimal>&) = delete;
 
-    ComparisonToPal<Decimal, Dim>& operator=(const ComparisonToPal<Decimal, Dim>&) = delete;
+    ComparisonToPal<Decimal>& operator=(const ComparisonToPal<Decimal>&) = delete;
 
 
   public:
@@ -88,12 +108,16 @@ namespace mkc_searchalgo
 
     void addComparison(const ComparisonEntryType& comparison)
     {
-      std::unique_ptr<PatternExpression> newExpr = std::make_unique<GreaterThanExpr>(priceBarFactory(comparison[0], comparison[1]), priceBarFactory(comparison[2], comparison[3]));
+      std::cout << "enter comparison" << std::endl;
+      std::unique_ptr<PatternExpression> newExpr = std::make_unique<GreaterThanExpr>(mPriceBarFactory.getPriceBar(comparison[0], comparison[1]), mPriceBarFactory.getPriceBar(comparison[2], comparison[3]));
+      std::cout << "comparison count: " << mComparisonCount << std::endl;
       if (mComparisonCount == 0)
-          mPalPatternExpr = std::move(newExpr);
+          mPalPatternExpressions.push_back(std::move(newExpr));
       else
-          mPalPatternExpr = std::make_unique<AndExpr>(mPalPatternExpr, newExpr);
-
+        {
+          std::unique_ptr<PatternExpression> updatedExpr = std::make_unique<AndExpr>(mPalPatternExpressions.back().get(), newExpr.get());
+          mPalPatternExpressions.push_back(std::move(updatedExpr));
+        }
       mComparisonCount++;
     }
 
@@ -127,15 +151,15 @@ namespace mkc_searchalgo
     }
 
 
-    PriceActionLabPattern* allocatePattern()
-    {
-      if (!isComplete())
-        throw;
+//    PriceActionLabPattern* allocatePattern()
+//    {
+//      if (!isComplete())
+//        throw;
 
-      return new PriceActionLabPattern(mPatternDescription.get(), mPalPatternExpr.get(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
-    }
+//      return new PriceActionLabPattern(mPatternDescription.get(), mPalPatternExpr.get(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
+//    }
 
-    bool isComplete() const { return (mPalPatternExpr && (mExpectedNumberOfPatterns == mComparisonCount) && mProfitTarget && mStopLoss && mMarketEntry && mPatternDescription); }
+    bool isComplete() const { return ((mExpectedNumberOfPatterns == mComparisonCount) && mProfitTarget && mStopLoss && mMarketEntry && mPatternDescription); }
 
 
 
@@ -146,9 +170,10 @@ namespace mkc_searchalgo
     std::unique_ptr<ProfitTargetInPercentExpression> mProfitTarget;
     std::unique_ptr<StopLossInPercentExpression> mStopLoss;
     std::unique_ptr<MarketEntryExpression> mMarketEntry;
-    std::unique_ptr<PatternExpression> mPalPatternExpr;
+    std::vector<std::unique_ptr<PatternExpression>> mPalPatternExpressions;
     std::shared_ptr<PriceActionLabPattern> mPalPattern;
     std::shared_ptr<PalStrategy<Decimal>> mPalStrategy;
+    PriceBarFactory mPriceBarFactory;
 
   };
 }
