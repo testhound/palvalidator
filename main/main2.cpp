@@ -11,11 +11,38 @@
 #include <cstdlib>
 #include "ComparisonsGenerator.h"
 #include "UniqueSinglePAMatrix.h"
+#include "ComparisonsCombiner.h"
 
 using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
 using std::shared_ptr;
 using Decimal = num::DefaultNumber;
+
+static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
+                                                   boost::gregorian::date startDate,
+                                                   boost::gregorian::date endDate)
+{
+  if (theTimeFrame == TimeFrame::DAILY)
+    return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
+  else if (theTimeFrame == TimeFrame::WEEKLY)
+    return std::make_shared<WeeklyBackTester<Decimal>>(startDate, endDate);
+  else if (theTimeFrame == TimeFrame::MONTHLY)
+    return std::make_shared<MonthlyBackTester<Decimal>>(startDate, endDate);
+  else
+    throw PALMonteCarloValidationException("PALMonteCarloValidation::getBackTester - Only daily and monthly time frame supported at present.");
+}
+
+template <class Decimal>
+static std::shared_ptr<BackTester<Decimal>> buildBacktester(std::shared_ptr<McptConfiguration<Decimal>>& configuration)
+{
+  DateRange iisDates = configuration->getInsampleDateRange();
+  std::shared_ptr<BackTester<Decimal>> theBackTester;
+
+  return getBackTester(configuration->getSecurity()->getTimeSeries()->getTimeFrame(),
+                       iisDates.getFirstDate(),
+                       iisDates.getLastDate());
+
+}
 
 int main(int argc, char **argv)
 {
@@ -29,11 +56,20 @@ int main(int argc, char **argv)
         std::cout << configurationFileName << std::endl;
         McptConfigurationFileReader reader(configurationFileName);
         std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+
+        std::shared_ptr<BackTester<Decimal>> backtester = buildBacktester(configuration);
+
+        std::string portfolioName(configuration->getSecurity()->getName() + std::string(" Portfolio"));
+
+        auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
+        aPortfolio->addSecurity(configuration->getSecurity());
+
         std::shared_ptr<OHLCTimeSeries<Decimal>> series = configuration->getSecurity()->getTimeSeries();
 
         typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = series->beginRandomAccess();
 
-        ComparisonsGenerator<Decimal> compareGenerator(15);
+        unsigned depth = 10;
+        ComparisonsGenerator<Decimal> compareGenerator(depth);
 
         for (; it != series->endRandomAccess(); it++)
         {
@@ -48,47 +84,15 @@ int main(int argc, char **argv)
 
             compareGenerator.addNewLastBar(cOpen, cHigh, cLow, cClose);
 
-//            OHLCBar<Decimal, 4> newBar(cOpen, cHigh, cLow, cClose, 0);
-
-//            std::cout << (cOpen > cHigh) << "," <<  (cOpen > cLow) << "," << (cOpen > cHigh) << "," << (cOpen > cClose) <<  std::endl;
-
-//         mRelativeOpen.push_back(currentOpen /
-//                     mTimeSeries.getCloseValue (it, 1));
-//        mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) /
-//                     currentOpen) ;
-//        mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) /
-//                    currentOpen) ;
-//        mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /
-//        currentOpen) ;
-
-//        mDateSeries.addElement (mTimeSeries.getDateValue(it,0));
         }
 
         std::cout << " Full comparisons universe #:" << compareGenerator.getComparisonsCount() << std::endl;
         std::cout << " Unique comparisons #:" << compareGenerator.getUniqueComparisons().size() << std::endl;
-        //for (series->beginRandomAccess()
-        UniqueSinglePAMatrix<Decimal> paVectorMatrix(compareGenerator.getUniqueComparisons(), series->getNumEntries());
-        std::cout << "vectorizing..." << std::endl;
-        paVectorMatrix.vectorizeComparisons(compareGenerator.getComparisons());
-        const std::map<ComparisonEntryType, std::valarray<int>>& matrix = paVectorMatrix.getMatrix();
 
-        std::map<ComparisonEntryType, std::valarray<int>>::const_iterator m_it = matrix.begin();
-        int c = 0;
-        for (; m_it != matrix.end(); ++m_it)
-          {
+        UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix(compareGenerator, series->getNumEntries());
 
-            std::map<ComparisonEntryType, std::valarray<int>>::const_iterator m_it2 = matrix.begin();
-            for (; m_it2 != matrix.end(); ++m_it2)
-              {
-                if (m_it2 == m_it)
-                    continue;
-
-                std::valarray<int> newvec = m_it->second * m_it2->second;
-                std::cout << c << " vec size: " << newvec.sum() << "from vec1: " << m_it->second.sum() << " and vec2: " << m_it2->second.sum() << std::endl;
-                c++;
-              }
-
-          }
+        ComparisonsCombiner<Decimal, BackTester<Decimal>, Portfolio<Decimal>, ComparisonEntryType> compareCombine(paMatrix, 10, depth, backtester, aPortfolio);
+        compareCombine.combine();
 
     }
     else {

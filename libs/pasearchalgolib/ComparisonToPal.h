@@ -21,8 +21,10 @@ namespace mkc_searchalgo
   class PriceBarFactory {
   public:
     PriceBarFactory():
-      mPriceBars(30)  //preallocate for speed
-    {}
+      mPriceBars()
+    {
+      mPriceBars.reserve(15*2);     //preallocate for speed
+    }
 
   PriceBarReference* getPriceBar(const unsigned int offset, const unsigned int ref)
   {
@@ -65,20 +67,24 @@ namespace mkc_searchalgo
       mProfitTarget(allocateProfitTarget(profitTarget)),
       mStopLoss(allocateStopLoss(stopLoss)),
       mMarketEntry(allocateMarketEntry()),
-      mPalPatternExpressions(15),
+      mPalGreaterThanPatternExpressions(),
+      mPalAndPatternExpressions(),
       mPriceBarFactory()
     {
-      std::cout << "got into ctor" << std::endl;
+      mPalGreaterThanPatternExpressions.reserve(15);     //reserve 15
+      mPalAndPatternExpressions.reserve(15);
+
+      //std::cout << "got into ctor" << std::endl;
 
       for(const auto& comparison: compareBatch)
         addComparison(comparison);
 
-      std::cout << "added comparisons" << std::endl;
-      std::cout << "Is complete: " << isComplete() << std::endl;
+      //std::cout << "added comparisons" << std::endl;
+      //std::cout << "Is complete: " << isComplete() << std::endl;
       if (!isComplete())
           throw;
 
-      mPalPattern = std::make_shared<PriceActionLabPattern>(mPatternDescription.get(), mPalPatternExpressions.back().get(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
+      mPalPattern = std::make_shared<PriceActionLabPattern>(mPatternDescription, getPatternExpression(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
 
       if (isLongPattern)
         {
@@ -98,9 +104,25 @@ namespace mkc_searchalgo
     ComparisonToPal<Decimal>& operator=(const ComparisonToPal<Decimal>&) = delete;
 
 
-  public:
+    ~ComparisonToPal()
+    {
+      //the structure of intertwound shared pointers for strategies ...
+    }
+
 
     const std::shared_ptr<PalStrategy<Decimal>>& getPalStrategy() const { return mPalStrategy; }
+
+    PatternExpression* getPatternExpression() const
+    {
+      if (mPalAndPatternExpressions.size() == 0 && mPalGreaterThanPatternExpressions.size() == 1)
+        {
+          return mPalGreaterThanPatternExpressions.back();
+        }
+      else
+        {
+          return mPalAndPatternExpressions.back();
+        }
+    }
 
     //const PriceActionLabPattern* getPattern() const { return mPalPattern.get(); }
 
@@ -108,15 +130,16 @@ namespace mkc_searchalgo
 
     void addComparison(const ComparisonEntryType& comparison)
     {
-      std::cout << "enter comparison" << std::endl;
-      std::unique_ptr<PatternExpression> newExpr = std::make_unique<GreaterThanExpr>(mPriceBarFactory.getPriceBar(comparison[0], comparison[1]), mPriceBarFactory.getPriceBar(comparison[2], comparison[3]));
-      std::cout << "comparison count: " << mComparisonCount << std::endl;
-      if (mComparisonCount == 0)
-          mPalPatternExpressions.push_back(std::move(newExpr));
-      else
+      //std::cout << "enter comparison " << std::endl;
+      GreaterThanExpr* newExprPtr = new GreaterThanExpr(mPriceBarFactory.getPriceBar(comparison[0], comparison[1]), mPriceBarFactory.getPriceBar(comparison[2], comparison[3]));
+      //std::cout << "comparison count: " << mComparisonCount << std::endl;
+      mPalGreaterThanPatternExpressions.push_back(newExprPtr);
+      if (mComparisonCount > 0)
         {
-          std::unique_ptr<PatternExpression> updatedExpr = std::make_unique<AndExpr>(mPalPatternExpressions.back().get(), newExpr.get());
-          mPalPatternExpressions.push_back(std::move(updatedExpr));
+          if (mPalAndPatternExpressions.size() == 0)
+            mPalAndPatternExpressions.push_back(new AndExpr(mPalGreaterThanPatternExpressions.front(), mPalGreaterThanPatternExpressions.back()));
+          else
+            mPalAndPatternExpressions.push_back(new AndExpr(mPalAndPatternExpressions.back(), mPalGreaterThanPatternExpressions.back()));
         }
       mComparisonCount++;
     }
@@ -147,7 +170,7 @@ namespace mkc_searchalgo
 
     PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
     {
-      return new PatternDescription(",", patternIndex, indexDate, nullptr, nullptr, 0, 0);
+      return new PatternDescription("", patternIndex, indexDate, nullptr, nullptr, 0, 0);
     }
 
 
@@ -166,11 +189,12 @@ namespace mkc_searchalgo
     unsigned mComparisonCount;
     unsigned mExpectedNumberOfPatterns;
     bool mIsLongPattern;
-    std::unique_ptr<PatternDescription> mPatternDescription;
+    PatternDescription* mPatternDescription;
     std::unique_ptr<ProfitTargetInPercentExpression> mProfitTarget;
     std::unique_ptr<StopLossInPercentExpression> mStopLoss;
     std::unique_ptr<MarketEntryExpression> mMarketEntry;
-    std::vector<std::unique_ptr<PatternExpression>> mPalPatternExpressions;
+    std::vector<GreaterThanExpr*> mPalGreaterThanPatternExpressions;
+    std::vector<AndExpr*> mPalAndPatternExpressions;
     std::shared_ptr<PriceActionLabPattern> mPalPattern;
     std::shared_ptr<PalStrategy<Decimal>> mPalStrategy;
     PriceBarFactory mPriceBarFactory;
