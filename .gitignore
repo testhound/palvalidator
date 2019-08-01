@@ -1,7 +1,8 @@
 Session.vim
 build/
 run.sh
-
+CMakeLists.txt.user
+libs/build-pasearchalgolib-Desktop-Default/
 libs/timeserieslib/*.o
 libs/timeserieslib/*.a
 libs/timeserieslib/test/LogPalPatternTest

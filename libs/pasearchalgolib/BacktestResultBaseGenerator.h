@@ -7,17 +7,8 @@
 #include <memory>
 #include <stdio.h>
 
-//#include "McptConfigurationFileReader.h"
 #include "PALMonteCarloValidation.h"
-//#include "RobustnessTester.h"
-//#include "LogPalPattern.h"
-//#include "LogRobustnessTest.h"
-//#include "number.h"
-//#include <cstdlib>
-//#include "ComparisonsGenerator.h"
-//#include "UniqueSinglePAMatrix.h"
-#include "ComparisonsCombiner.h"
-//#include <map>
+#include "ComparisonToPalStrategy.h"
 
 using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
@@ -44,10 +35,10 @@ namespace mkc_searchalgo {
   ///
   ///
   ///
-  template <class Decimal> class ShortcutBacktester
+  template <class Decimal> class BacktestResultBaseGenerator
   {
   public:
-    ShortcutBacktester(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<Decimal>& profitTarget, const std::shared_ptr<Decimal>& stopLoss):
+    BacktestResultBaseGenerator(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<Decimal>& profitTarget, const std::shared_ptr<Decimal>& stopLoss):
       mConfiguration(configuration),
       mProfitTarget(profitTarget),
       mStopLoss(stopLoss),
@@ -85,7 +76,7 @@ namespace mkc_searchalgo {
           i++;
           if (i > 1)
             {
-              ComparisonToPal<Decimal> comparison(compareContainer, isLong, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
+              ComparisonToPalStrategy<Decimal> comparison(compareContainer, isLong, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
               auto offset = std::min((series->getNumEntries() - 1), (i + mDayBatches));
               std::cout << "offset: " << offset << ", size: " << series->getNumEntries() << ", i: " << i << std::endl;
               auto interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), it->getDateValue(), (series->beginRandomAccess() + offset)->getDateValue());
@@ -140,12 +131,20 @@ namespace mkc_searchalgo {
 
     }
 
-//    template <class D>
-//    inline friend std::ostream& operator<< (std::ostream& strng, const ComparableBar<D, 4>& obj)
-//    {
-//      return "";
-//    }
+    template<bool isLong> void prepare();
 
+
+    std::valarray<Decimal>& getBacktestResultBase(bool isLong) const
+    {
+      prepare<isLong>();
+      return isLong? mArrLong: mArrShort;
+    }
+
+    std::valarray<unsigned int>& getBacktestNumBarsInPosition(bool isLong) const
+    {
+      prepare<isLong>();
+      return isLong? mNumBarsLong: mNumBarsShort;
+    }
 
   private:
     std::shared_ptr<McptConfiguration<Decimal>> mConfiguration;
@@ -160,6 +159,21 @@ namespace mkc_searchalgo {
     std::valarray<unsigned int> mNumBarsShort;
 
   };
+
+  template<>
+  template<> inline void BacktestResultBaseGenerator<Decimal>::prepare<true>()
+  {
+    if (!mLongSideReady)
+      buildBacktestMatrix(true);
+  }
+
+  template<>
+  template<> inline void BacktestResultBaseGenerator<Decimal>::prepare<false>()
+  {
+    if (!mShortSideReady)
+      buildBacktestMatrix(false);
+  }
+
 
 }
 

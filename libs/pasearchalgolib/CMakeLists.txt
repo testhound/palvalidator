@@ -1,8 +1,13 @@
 set(LIB_NAME pasearchalgo)
 set(SRC_LIST
 ComparableBar.h
+ComparisonToPalStrategy.h
 ComparisonsGenerator.h
 UniqueSinglePAMatrix.h
+ComparisonsCombiner.h
+BacktestResultBaseGenerator.h
+ShortcutSearchAlgoBacktester.h
+OriginalSearchAlgoBacktester.h
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)

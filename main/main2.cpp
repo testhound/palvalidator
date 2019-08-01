@@ -12,25 +12,15 @@
 #include "ComparisonsGenerator.h"
 #include "UniqueSinglePAMatrix.h"
 #include "ComparisonsCombiner.h"
+#include <map>
+#include "BacktestResultBaseGenerator.h"
+#include "OriginalSearchAlgoBacktester.h"
 
 using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
 using std::shared_ptr;
 using Decimal = num::DefaultNumber;
 
-static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-                                                   boost::gregorian::date startDate,
-                                                   boost::gregorian::date endDate)
-{
-  if (theTimeFrame == TimeFrame::DAILY)
-    return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
-  else if (theTimeFrame == TimeFrame::WEEKLY)
-    return std::make_shared<WeeklyBackTester<Decimal>>(startDate, endDate);
-  else if (theTimeFrame == TimeFrame::MONTHLY)
-    return std::make_shared<MonthlyBackTester<Decimal>>(startDate, endDate);
-  else
-    throw PALMonteCarloValidationException("PALMonteCarloValidation::getBackTester - Only daily and monthly time frame supported at present.");
-}
 
 template <class Decimal>
 static std::shared_ptr<BackTester<Decimal>> buildBacktester(std::shared_ptr<McptConfiguration<Decimal>>& configuration)
@@ -56,6 +46,12 @@ int main(int argc, char **argv)
         std::cout << configurationFileName << std::endl;
         McptConfigurationFileReader reader(configurationFileName);
         std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+        std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
+        std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);
+
+        BacktestResultBaseGenerator<Decimal> resultBase(configuration, profitTarget, stopLoss);
+
+        resultBase.buildBacktestMatrix(true);
 
         std::shared_ptr<BackTester<Decimal>> backtester = buildBacktester(configuration);
 
@@ -73,7 +69,6 @@ int main(int argc, char **argv)
 
         for (; it != series->endRandomAccess(); it++)
         {
-
             const Decimal& cOpen = series->getOpenValue (it, 0);
             const Decimal& cHigh = series->getHighValue (it, 0);
             const Decimal& cLow = series->getLowValue (it, 0);
@@ -91,7 +86,8 @@ int main(int argc, char **argv)
 
         UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix(compareGenerator, series->getNumEntries());
 
-        ComparisonsCombiner<Decimal, BackTester<Decimal>, Portfolio<Decimal>, ComparisonEntryType> compareCombine(paMatrix, 10, depth, backtester, aPortfolio);
+        auto origBacktester = std::make_shared<OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, true>>(backtester, aPortfolio, profitTarget, stopLoss);
+        ComparisonsCombiner<Decimal, OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, true>, ComparisonEntryType> compareCombine(paMatrix, 10, depth, origBacktester);
         compareCombine.combine();
 
     }

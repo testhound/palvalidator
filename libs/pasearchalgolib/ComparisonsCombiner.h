@@ -4,24 +4,23 @@
 #include <iostream>
 #include <algorithm>
 #include "UniqueSinglePAMatrix.h"
-#include "ComparisonToPal.h"
+#include "ComparisonToPalStrategy.h"
+#include <chrono>
+
+using namespace std::chrono;
 
 namespace mkc_searchalgo {
 
-  template <class Decimal, typename TBacktester, typename TPortfolio, typename TComparison> class ComparisonsCombiner
+  template <class Decimal, typename TSearchAlgoBacktester, typename TComparison> class ComparisonsCombiner
   {
   public:
     ComparisonsCombiner(const UniqueSinglePAMatrix<Decimal, TComparison>& singlePA,
-                        unsigned minTrades, unsigned maxDepth, std::shared_ptr<TBacktester>& backtester,
-                        std::shared_ptr<TPortfolio>& portfolio):
+                        unsigned minTrades, unsigned maxDepth, shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester):
       mSinglePa(singlePA),
       mMinTrades(minTrades),
       mMaxDepth(maxDepth - 1),
       mRuns(0),
-      mBacktester(backtester),
-      mPortfolio(portfolio),
-      mProfitTarget(std::make_unique<decimal7>(0.5)),
-      mStopLoss(std::make_unique<decimal7>(0.5))
+      mSearchAlgoBacktester(searchAlgoBacktester)
     {
     }
 
@@ -79,20 +78,35 @@ namespace mkc_searchalgo {
 //                          decimal7* const profitTarget, decimal7* const stopLoss, std::shared_ptr<Portfolio<Decimal>>& portfolio):
 
           //std::cout << "backtester built." << std::endl;
-          bool isLong = true;
-          std::cout << compareContainer[0][0] << compareContainer[0][1] << compareContainer[0][2] << compareContainer[0][3] <<  " and " << compareContainer[1][0] << compareContainer[1][1] << compareContainer[1][2] << compareContainer[1][3] << std::endl;
-          ComparisonToPal<Decimal> comp(compareContainer, isLong, mRuns, 0, mProfitTarget.get(), mStopLoss.get(), mPortfolio);
-          //std::cout << "comp built." << std::endl;
-          //std::cout << "building backtester..." << std::endl;
-          auto clonedBackTester = mBacktester->clone();
-          clonedBackTester->addStrategy(comp.getPalStrategy());
+          //bool isLong = true;
+          //std::cout << compareContainer[0][0] << compareContainer[0][1] << compareContainer[0][2] << compareContainer[0][3] <<  " and " << compareContainer[1][0] << compareContainer[1][1] << compareContainer[1][2] << compareContainer[1][3] << std::endl;
+
+          //auto start = high_resolution_clock::now();
+
+          //ComparisonToPal<Decimal> comp(compareContainer, isLong, mRuns, 0, mProfitTarget.get(), mStopLoss.get(), mPortfolio);
+          //auto clonedBackTester = mBacktester->clone();
+          //clonedBackTester->addStrategy(comp.getPalStrategy());
+
+          //auto stop = high_resolution_clock::now();
+          //auto duration = duration_cast<microseconds>(stop - start);
+
+          //std::cout << "building compare/clone and add strategy: " << duration.count() << " microseconds" << std::endl;
+
+          //start = high_resolution_clock::now();
+
           //std::cout << "added backtest strategy." << std::endl;
-          clonedBackTester->backtest();
+          //clonedBackTester->backtest();
+
+          //stop = high_resolution_clock::now();
+          //duration = duration_cast<microseconds>(stop - start);
+          //std::cout << "backtesting: " << duration.count() << " microseconds" << std::endl;
+
           //std::cout << "backtested." << std::endl;
           //std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = (*(clonedBackTester->beginStrategies()));
 
           //std::cout << "Profit factor: " << backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getProfitFactor() << std::endl;
-
+          mSearchAlgoBacktester->backtest(compareContainer);
+          std::cout << "Profit factor: " << mSearchAlgoBacktester->getProfitFactor() << std::endl;
           mRuns++;
           if (mRuns % 1000 == 0)
             std::cout << "number of runs: " << mRuns << std::endl;
@@ -111,10 +125,7 @@ namespace mkc_searchalgo {
     unsigned mMinTrades;
     unsigned mMaxDepth;
     unsigned long mRuns;
-    std::shared_ptr<TBacktester>& mBacktester;
-    std::shared_ptr<TPortfolio>& mPortfolio;
-    std::unique_ptr<decimal7> mProfitTarget;
-    std::unique_ptr<decimal7> mStopLoss;
+    shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
 
   };
 

@@ -1,5 +1,5 @@
-#ifndef COMPARISONTOPAL_H
-#define COMPARISONTOPAL_H
+#ifndef COMPARISONTOPALSTRATEGY_H
+#define COMPARISONTOPALSTRATEGY_H
 
 #include <unordered_set>
 #include "PalAst.h"
@@ -7,16 +7,10 @@
 #include "ComparisonsGenerator.h"
 
 
-//PriceActionLabPattern (PatternDescription* description, PatternExpression* pattern,
-//		       MarketEntryExpression* entry,
-//		       ProfitTargetInPercentExpression* profitTarget,
-//		       StopLossInPercentExpression* stopLoss);
-
 using namespace mkc_timeseries;
 
 namespace mkc_searchalgo
 {
-
 
   class PriceBarFactory {
   public:
@@ -51,15 +45,15 @@ namespace mkc_searchalgo
 
 
   ///
-  /// A straightforward conversion
+  /// A straightforward conversion from comparison to Pal-Expression based Strategy
   ///
   template <class Decimal>
-  class ComparisonToPal
+  class ComparisonToPalStrategy
   {
   public:
-    ComparisonToPal(const std::vector<ComparisonEntryType>& compareBatch,
+    ComparisonToPalStrategy(const std::vector<ComparisonEntryType>& compareBatch,
                     bool isLongPattern, const unsigned patternIndex, const unsigned long indexDate,
-                    decimal7* const profitTarget, decimal7* const stopLoss, std::shared_ptr<Portfolio<Decimal>>& portfolio):
+                    decimal7* const profitTarget, decimal7* const stopLoss, const std::shared_ptr<Portfolio<Decimal>>& portfolio):
       mComparisonCount(0),
       mExpectedNumberOfPatterns(compareBatch.size()),
       mIsLongPattern(isLongPattern),
@@ -74,13 +68,9 @@ namespace mkc_searchalgo
       mPalGreaterThanPatternExpressions.reserve(15);     //reserve 15
       mPalAndPatternExpressions.reserve(15);
 
-      //std::cout << "got into ctor" << std::endl;
-
       for(const auto& comparison: compareBatch)
         addComparison(comparison);
 
-      //std::cout << "added comparisons" << std::endl;
-      //std::cout << "Is complete: " << isComplete() << std::endl;
       if (!isComplete())
           throw;
 
@@ -99,18 +89,20 @@ namespace mkc_searchalgo
 
     }
 
-    ComparisonToPal(const ComparisonToPal<Decimal>&) = delete;
+    ComparisonToPalStrategy(const ComparisonToPalStrategy<Decimal>&) = delete;
 
-    ComparisonToPal<Decimal>& operator=(const ComparisonToPal<Decimal>&) = delete;
+    ComparisonToPalStrategy<Decimal>& operator=(const ComparisonToPalStrategy<Decimal>&) = delete;
 
 
-    ~ComparisonToPal()
+    ~ComparisonToPalStrategy()
     {
       //the structure of intertwound shared pointers for strategies ...
     }
 
-
     const std::shared_ptr<PalStrategy<Decimal>>& getPalStrategy() const { return mPalStrategy; }
+
+
+  private:
 
     PatternExpression* getPatternExpression() const
     {
@@ -124,15 +116,10 @@ namespace mkc_searchalgo
         }
     }
 
-    //const PriceActionLabPattern* getPattern() const { return mPalPattern.get(); }
-
-  private:
-
     void addComparison(const ComparisonEntryType& comparison)
     {
-      //std::cout << "enter comparison " << std::endl;
+
       GreaterThanExpr* newExprPtr = new GreaterThanExpr(mPriceBarFactory.getPriceBar(comparison[0], comparison[1]), mPriceBarFactory.getPriceBar(comparison[2], comparison[3]));
-      //std::cout << "comparison count: " << mComparisonCount << std::endl;
       mPalGreaterThanPatternExpressions.push_back(newExprPtr);
       if (mComparisonCount > 0)
         {
@@ -173,18 +160,7 @@ namespace mkc_searchalgo
       return new PatternDescription("", patternIndex, indexDate, nullptr, nullptr, 0, 0);
     }
 
-
-//    PriceActionLabPattern* allocatePattern()
-//    {
-//      if (!isComplete())
-//        throw;
-
-//      return new PriceActionLabPattern(mPatternDescription.get(), mPalPatternExpr.get(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
-//    }
-
     bool isComplete() const { return ((mExpectedNumberOfPatterns == mComparisonCount) && mProfitTarget && mStopLoss && mMarketEntry && mPatternDescription); }
-
-
 
     unsigned mComparisonCount;
     unsigned mExpectedNumberOfPatterns;
@@ -202,4 +178,4 @@ namespace mkc_searchalgo
   };
 }
 
-#endif // COMPARISONTOPAL_H
+#endif // COMPARISONTOPALSTRATEGY_H

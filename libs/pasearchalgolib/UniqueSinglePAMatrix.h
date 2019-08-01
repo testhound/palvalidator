@@ -46,7 +46,7 @@ namespace mkc_searchalgo {
   ///
   /// Specialization with vectorized representation of comparisons (0 1 sparse vector)
   ///
-template <class Decimal> class UniqueSinglePAMatrix<Decimal, std::valarray<int>>
+template <class Decimal> class UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>
 {
 public:
   UniqueSinglePAMatrix(const ComparisonsGenerator<Decimal>& compareGenerator, unsigned int dateIndexCount):
@@ -54,7 +54,7 @@ public:
   {
     std::set<ComparisonEntryType>::const_iterator it = compareGenerator.getUniqueComparisons().begin();
     //"vector" initialized to zeros
-    std::valarray<int> initVector(0, dateIndexCount);
+    std::valarray<Decimal> initVector(Decimal(0), dateIndexCount);
     unsigned int i = 0;
     for (; it != compareGenerator.getUniqueComparisons().end(); ++ it)
       {
@@ -78,11 +78,11 @@ public:
         for (it = mUniqueMaps.begin(); it != mUniqueMaps.end(); ++it)
           {
             const ComparisonEntryType& compareKey = it->second;
-            std::valarray<int>& vector = mMatrix[it->first];
+            std::valarray<Decimal>& vector = mMatrix[it->first];
             std::unordered_set<ComparisonEntryType>::const_iterator fnd = compareSet.find(compareKey);
             if (fnd != compareSet.end())
               { //found comparison entry for this dateindex
-                vector[i] = 1;  //create "sparse" vector entry
+                vector[i] = Decimal(1);  //create "sparse" vector entry
               }
           }
       }
