@@ -11,6 +11,27 @@ using namespace std::chrono;
 
 namespace mkc_searchalgo {
 
+
+  static bool findInVector(const std::vector<ComparisonEntryType>& vect, const ComparisonEntryType& value)
+  {
+    return (std::end(vect) != std::find(std::begin(vect), std::end(vect), value));
+  }
+
+  ///
+  /// valarray needs specialized handling of equality check (otherwise the operator== returns valarray of booleans)
+  /// so the find algorithm needs to consider that
+  ///
+  template <class Decimal>
+  static bool findInVector(const std::vector<std::valarray<Decimal>>& vect, const std::valarray<Decimal>& value)
+  {
+    for (const auto& el: vect)
+      {
+        if ((el == value).min())
+          return true;
+      }
+    return false;
+  }
+
   template <class Decimal, typename TSearchAlgoBacktester, typename TComparison> class ComparisonsCombiner
   {
   public:
@@ -29,12 +50,14 @@ namespace mkc_searchalgo {
       typename std::unordered_map<unsigned int, TComparison>::const_iterator it = mSinglePa.getMapBegin();
 
       mMaxDepth = 1;
-      for (; it != mSinglePa.getMapEnd(); ++it)
+      //for (; it != mSinglePa.getMapEnd(); ++it)
+      for (int i = 0; i < mSinglePa.getMap().size(); ++i)
         {
           unsigned level = 0;
           std::vector<TComparison> compareContainer;
           compareContainer.reserve(15);             //let's reserve for speed gains
-          compareContainer.push_back(it->second);
+          //compareContainer.push_back(it->second);
+          compareContainer.push_back(mSinglePa.getMappedElement(i));
           //std::cout << "new top level" << std::endl;
           recurse(it, level, compareContainer);
         }
@@ -54,10 +77,14 @@ namespace mkc_searchalgo {
           return;
         }
       typename std::unordered_map<unsigned int, TComparison>::const_iterator it2 = mSinglePa.getMapBegin();
-      for (; it2 != mSinglePa.getMapEnd(); ++it2)
+      //for (; it2 != mSinglePa.getMapEnd(); ++it2)
+      for (int i = 0; i < mSinglePa.getMap().size(); ++i)
         {
+          auto& element = mSinglePa.getMappedElement(i);
+          //auto& element = it2->second;
           //already checked
-          if (std::end(compareContainer) != std::find(std::begin(compareContainer), std::end(compareContainer), it2->second))
+          //if (findInVector(compareContainer, element))
+          if (findInVector(compareContainer, element))
             {
               //std::cout << "already checked: " << it2->first << std::endl;
               continue;
@@ -72,7 +99,7 @@ namespace mkc_searchalgo {
 //              continue;
 //            }
 
-          compareContainer.push_back(it2->second);
+          compareContainer.push_back(element);
 //          ComparisonToPal(const std::vector<ComparisonEntryType>& compareBatch,
 //                          bool isLongPattern, const unsigned patternIndex, const unsigned long indexDate,
 //                          decimal7* const profitTarget, decimal7* const stopLoss, std::shared_ptr<Portfolio<Decimal>>& portfolio):
@@ -106,7 +133,7 @@ namespace mkc_searchalgo {
 
           //std::cout << "Profit factor: " << backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getProfitFactor() << std::endl;
           mSearchAlgoBacktester->backtest(compareContainer);
-          std::cout << "Profit factor: " << mSearchAlgoBacktester->getProfitFactor() << std::endl;
+          std::cout << "Profit factor: " << mSearchAlgoBacktester->getProfitFactor() << ", trade number: " << mSearchAlgoBacktester->getTradeNumber() << std::endl;
           mRuns++;
           if (mRuns % 1000 == 0)
             std::cout << "number of runs: " << mRuns << std::endl;

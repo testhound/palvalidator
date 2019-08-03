@@ -5,7 +5,7 @@
 #include "PalAst.h"
 #include "PalStrategy.h"
 #include "ComparisonsGenerator.h"
-
+#include "PalStrategyAlwaysOn.h"
 
 using namespace mkc_timeseries;
 
@@ -44,19 +44,19 @@ namespace mkc_searchalgo
   };
 
 
+
   ///
   /// A straightforward conversion from comparison to Pal-Expression based Strategy
   ///
-  template <class Decimal>
+  template <class Decimal, typename TPalStrategy, typename TProfitTarget, typename TStopLoss, typename TMarketEntry>
   class ComparisonToPalStrategy
   {
   public:
     ComparisonToPalStrategy(const std::vector<ComparisonEntryType>& compareBatch,
-                    bool isLongPattern, const unsigned patternIndex, const unsigned long indexDate,
-                    decimal7* const profitTarget, decimal7* const stopLoss, const std::shared_ptr<Portfolio<Decimal>>& portfolio):
+                            const unsigned patternIndex, const unsigned long indexDate,
+                            decimal7* const profitTarget, decimal7* const stopLoss, const std::shared_ptr<Portfolio<Decimal>>& portfolio):
       mComparisonCount(0),
       mExpectedNumberOfPatterns(compareBatch.size()),
-      mIsLongPattern(isLongPattern),
       mPatternDescription(allocatePatternDescription(patternIndex, indexDate)),
       mProfitTarget(allocateProfitTarget(profitTarget)),
       mStopLoss(allocateStopLoss(stopLoss)),
@@ -76,22 +76,15 @@ namespace mkc_searchalgo
 
       mPalPattern = std::make_shared<PriceActionLabPattern>(mPatternDescription, getPatternExpression(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
 
-      if (isLongPattern)
-        {
-          std::string strategyName= std::string("PAL Long Strategy ") + std::to_string(patternIndex);
-          mPalStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, mPalPattern, portfolio);
-        }
-      else
-        {
-          std::string strategyName= std::string("PAL Short Strategy ") + std::to_string(patternIndex);
-          mPalStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, mPalPattern, portfolio);
-        }
+
+      std::string strategyName= std::string("PAL Search Algo Based Strategy ") + std::to_string(patternIndex);
+      mPalStrategy = std::make_shared<TPalStrategy>(strategyName, mPalPattern, portfolio);
 
     }
 
-    ComparisonToPalStrategy(const ComparisonToPalStrategy<Decimal>&) = delete;
+    ComparisonToPalStrategy(const ComparisonToPalStrategy<Decimal, TPalStrategy, TProfitTarget, TStopLoss, TMarketEntry>&) = delete;
 
-    ComparisonToPalStrategy<Decimal>& operator=(const ComparisonToPalStrategy<Decimal>&) = delete;
+    ComparisonToPalStrategy<Decimal, TPalStrategy, TProfitTarget, TStopLoss, TMarketEntry>& operator=(const ComparisonToPalStrategy<Decimal, TPalStrategy, TProfitTarget, TStopLoss, TMarketEntry>&) = delete;
 
 
     ~ComparisonToPalStrategy()
@@ -99,7 +92,7 @@ namespace mkc_searchalgo
       //the structure of intertwound shared pointers for strategies ...
     }
 
-    const std::shared_ptr<PalStrategy<Decimal>>& getPalStrategy() const { return mPalStrategy; }
+    const std::shared_ptr<TPalStrategy>& getPalStrategy() const { return mPalStrategy; }
 
 
   private:
@@ -133,26 +126,17 @@ namespace mkc_searchalgo
 
     ProfitTargetInPercentExpression* allocateProfitTarget(decimal7* profitTarget)
     {
-      if (mIsLongPattern)
-          return new LongSideProfitTargetInPercent(profitTarget);
-      else
-          return new ShortSideProfitTargetInPercent(profitTarget);
+      return new TProfitTarget(profitTarget);
     }
 
     StopLossInPercentExpression* allocateStopLoss(decimal7* stopLoss)
     {
-      if (mIsLongPattern)
-          return new LongSideStopLossInPercent(stopLoss);
-      else
-          return new ShortSideStopLossInPercent(stopLoss);
+      return new TStopLoss(stopLoss);
     }
 
     MarketEntryExpression* allocateMarketEntry()
     {
-      if (mIsLongPattern)
-        return new LongMarketEntryOnOpen();
-      else
-        return new ShortMarketEntryOnOpen();
+      return new TMarketEntry();
     }
 
     PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
@@ -164,7 +148,6 @@ namespace mkc_searchalgo
 
     unsigned mComparisonCount;
     unsigned mExpectedNumberOfPatterns;
-    bool mIsLongPattern;
     PatternDescription* mPatternDescription;
     std::unique_ptr<ProfitTargetInPercentExpression> mProfitTarget;
     std::unique_ptr<StopLossInPercentExpression> mStopLoss;
@@ -172,10 +155,27 @@ namespace mkc_searchalgo
     std::vector<GreaterThanExpr*> mPalGreaterThanPatternExpressions;
     std::vector<AndExpr*> mPalAndPatternExpressions;
     std::shared_ptr<PriceActionLabPattern> mPalPattern;
-    std::shared_ptr<PalStrategy<Decimal>> mPalStrategy;
+    std::shared_ptr<TPalStrategy> mPalStrategy;
     PriceBarFactory mPriceBarFactory;
 
   };
+
+  ///
+  /// Use these "typedefs" for correct types
+  ///
+  template <class Decimal>
+  using ComparisonToPalLongStrategy = ComparisonToPalStrategy<Decimal, PalLongStrategy<Decimal>, LongSideProfitTargetInPercent, LongSideStopLossInPercent, LongMarketEntryOnOpen>;
+
+  template <class Decimal>
+  using ComparisonToPalShortStrategy = ComparisonToPalStrategy<Decimal, PalShortStrategy<Decimal>, ShortSideProfitTargetInPercent, ShortSideStopLossInPercent, ShortMarketEntryOnOpen>;
+
+  template <class Decimal>
+  using ComparisonToPalLongStrategyAlwaysOn = ComparisonToPalStrategy<Decimal, PalLongStrategyAlwaysOn<Decimal>, LongSideProfitTargetInPercent, LongSideStopLossInPercent, LongMarketEntryOnOpen>;
+
+  template <class Decimal>
+  using ComparisonToPalShortStrategyAlwaysOn = ComparisonToPalStrategy<Decimal, PalShortStrategyAlwaysOn<Decimal>, ShortSideProfitTargetInPercent, ShortSideStopLossInPercent, ShortMarketEntryOnOpen>;
+
+
 }
 
 #endif // COMPARISONTOPALSTRATEGY_H

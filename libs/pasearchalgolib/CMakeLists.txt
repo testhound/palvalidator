@@ -1,6 +1,7 @@
 set(LIB_NAME pasearchalgo)
 set(SRC_LIST
 ComparableBar.h
+PalStrategyAlwaysOn.h
 ComparisonToPalStrategy.h
 ComparisonsGenerator.h
 UniqueSinglePAMatrix.h

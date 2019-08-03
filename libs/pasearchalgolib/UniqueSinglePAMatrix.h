@@ -3,11 +3,21 @@
 
 #include <iostream>
 #include <valarray>
+#include "DecimalConstants.h"
+
 #include "ComparisonsGenerator.h"
 #include "PalAst.h"
 
+using namespace mkc_timeseries;
+
 namespace mkc_searchalgo {
 
+  template <class Decimal>
+  struct ValarrayEq {
+    constexpr bool operator()(std::valarray<Decimal> lhs, std::valarray<Decimal> rhs) const {
+      return (lhs == rhs).min();
+    }
+  };
 
   template <class Decimal, class TComparison> class UniqueSinglePAMatrix
   {
@@ -32,7 +42,7 @@ namespace mkc_searchalgo {
 
     const typename std::unordered_map<unsigned int, TComparison>::const_iterator getMapEnd() const { return mUniquesMap.end(); }
 
-    const TComparison& getMappedElement(unsigned int id) const { return mUniquesMap[id]; }
+    const TComparison& getMappedElement(unsigned int id) const { return mUniquesMap.at(id); }
 
     ~UniqueSinglePAMatrix()
     {}
@@ -54,7 +64,7 @@ public:
   {
     std::set<ComparisonEntryType>::const_iterator it = compareGenerator.getUniqueComparisons().begin();
     //"vector" initialized to zeros
-    std::valarray<Decimal> initVector(Decimal(0), dateIndexCount);
+    std::valarray<Decimal> initVector(DecimalConstants<Decimal>::DecimalZero, dateIndexCount);
     unsigned int i = 0;
     for (; it != compareGenerator.getUniqueComparisons().end(); ++ it)
       {
@@ -72,6 +82,7 @@ public:
     //iterate over "date indices"
     for (unsigned int i = 0; i < mDateIndexCount; i++)
       {
+        //std::cout << "index date: " << i << std::endl;
         const auto& compareSet = comparisonsBatches.at(i);
         //iterate the 0 matrix
         std::unordered_map<unsigned int, ComparisonEntryType>::const_iterator it;
@@ -82,25 +93,27 @@ public:
             std::unordered_set<ComparisonEntryType>::const_iterator fnd = compareSet.find(compareKey);
             if (fnd != compareSet.end())
               { //found comparison entry for this dateindex
-                vector[i] = Decimal(1);  //create "sparse" vector entry
+                vector[i] = DecimalConstants<Decimal>::DecimalOne;  //create "sparse" vector entry
               }
           }
       }
   }
-  const std::unordered_map<unsigned int, std::valarray<int>>& getMap() const { return mMatrix; }
+  const std::unordered_map<unsigned int, std::valarray<Decimal>>& getMap() const { return mMatrix; }
 
-  const std::unordered_map<unsigned int, std::valarray<int>>::const_iterator getMapBegin() const { return mMatrix.begin(); }
+  const typename std::unordered_map<unsigned int, std::valarray<Decimal>>::const_iterator getMapBegin() const { return mMatrix.begin(); }
 
-  const std::unordered_map<unsigned int, std::valarray<int>>::const_iterator getMapEnd() const { return mMatrix.end(); }
+  const typename std::unordered_map<unsigned int, std::valarray<Decimal>>::const_iterator getMapEnd() const { return mMatrix.end(); }
 
-  const std::valarray<int>& getMappedElement(unsigned int id) const { return mMatrix.at(id); }
+  const std::valarray<Decimal>& getMappedElement(unsigned int id) const { return mMatrix.at(id); }
+
+  const ComparisonEntryType& getUnderlying(unsigned int id) const { return mUniqueMaps.at(id); }
 
   ~UniqueSinglePAMatrix()
   {}
 
 private:
   unsigned int mDateIndexCount;
-  std::unordered_map<unsigned int, std::valarray<int>> mMatrix;
+  std::unordered_map<unsigned int, std::valarray<Decimal>> mMatrix;
   //for this specialized class unique map is helper map and private
   std::unordered_map<unsigned int, ComparisonEntryType> mUniqueMaps;
 

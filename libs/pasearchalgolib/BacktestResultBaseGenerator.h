@@ -35,7 +35,7 @@ namespace mkc_searchalgo {
   ///
   ///
   ///
-  template <class Decimal> class BacktestResultBaseGenerator
+  template <class Decimal, typename TComparisonToPalStrategy> class BacktestResultBaseGenerator
   {
   public:
     BacktestResultBaseGenerator(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<Decimal>& profitTarget, const std::shared_ptr<Decimal>& stopLoss):
@@ -47,6 +47,21 @@ namespace mkc_searchalgo {
       mShortSideReady(false)
     {}
 
+  private:
+    boost::gregorian::date fitBetweenInSampleDates(boost::gregorian::date dateToFit) const
+    {
+      DateRange iisDates = mConfiguration->getInsampleDateRange();
+
+      if (dateToFit < iisDates.getFirstDate())
+        return iisDates.getFirstDate();
+      else if (dateToFit > iisDates.getLastDate())
+        return iisDates.getLastDate();
+      else
+        return dateToFit;
+    }
+
+
+  public:
     void buildBacktestMatrix(bool isLong)
     {
       if ((isLong && mLongSideReady) || (!isLong && mShortSideReady))
@@ -73,13 +88,20 @@ namespace mkc_searchalgo {
 
       for (; it != series->endRandomAccess(); it++)
       {
+          auto orderDate = series->getDateValue(it, 0);
           i++;
-          if (i > 1)
+          if (i > 1)  //TimeSeries exception on first bar
             {
-              ComparisonToPalStrategy<Decimal> comparison(compareContainer, isLong, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
+              TComparisonToPalStrategy comparison(compareContainer, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
               auto offset = std::min((series->getNumEntries() - 1), (i + mDayBatches));
-              std::cout << "offset: " << offset << ", size: " << series->getNumEntries() << ", i: " << i << std::endl;
-              auto interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), it->getDateValue(), (series->beginRandomAccess() + offset)->getDateValue());
+              //std::cout << "offset: " << offset << ", size: " << series->getNumEntries() << ", i: " << i << std::endl;
+              auto startDate = it->getDateValue();
+              auto endDate = (series->beginRandomAccess() + offset)->getDateValue();
+
+              // it falls out of the in sample range
+              if (fitBetweenInSampleDates(startDate) != startDate)
+                break;
+              auto interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
               interimBacktester->addStrategy(comparison.getPalStrategy());
               interimBacktester->backtest();
               std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = (*(interimBacktester->beginStrategies()));
@@ -88,9 +110,10 @@ namespace mkc_searchalgo {
               if (closedPositions.getNumPositions() > 0)
                 {
                   std::pair<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>> firstPos = *(closedPositions.beginTradingPositions());
-                  tradesMap[firstPos.first] = std::make_tuple<Decimal, Decimal, unsigned int>(firstPos.second->getTradeReturn(), firstPos.second->getPercentReturn(), firstPos.second->getNumBarsInPosition());
 
-                  std::cout << "(position for same day) first position on " << firstPos.first << ", Entry Date: " << firstPos.second->getEntryDate() << ": "
+                  tradesMap[orderDate] = std::make_tuple<Decimal, Decimal, unsigned int>(firstPos.second->getTradeReturn(), firstPos.second->getPercentReturn(), firstPos.second->getNumBarsInPosition());
+
+                  std::cout << "(position for same day) first position on " << orderDate << ", Entry Date: " << firstPos.second->getEntryDate() << ": "
                             << firstPos.second->getTradeReturn() << " in percent: " << firstPos.second->getPercentReturn() << ", bars in pos: "
                             << firstPos.second->getNumBarsInPosition() << ", exit date: " << firstPos.second->getExitDate() << std::endl;
                 }
@@ -102,7 +125,7 @@ namespace mkc_searchalgo {
       //then the number of bars that it should occupy
       std::valarray<unsigned int> arrNumBars(static_cast<unsigned int>(0), series->getNumEntries());
 
-      size_t  iCounter = 0;
+      size_t  iCounter = 0; //offseting first bar problem
       for (auto it = series->beginRandomAccess(); it != series->endRandomAccess(); it++)
         {
           typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(series->getDateValue(it, 0));
@@ -131,19 +154,39 @@ namespace mkc_searchalgo {
 
     }
 
-    template<bool isLong> void prepare();
 
-
-    std::valarray<Decimal>& getBacktestResultBase(bool isLong) const
+    const std::valarray<Decimal>& getBacktestResultBase(bool isLong)
     {
-      prepare<isLong>();
-      return isLong? mArrLong: mArrShort;
+      if (isLong)
+        {
+          if (!mLongSideReady)
+            buildBacktestMatrix(isLong);
+          return mArrLong;
+        }
+      else
+        {
+          if (!mShortSideReady)
+            buildBacktestMatrix(isLong);
+          return mArrShort;
+
+        }
     }
 
-    std::valarray<unsigned int>& getBacktestNumBarsInPosition(bool isLong) const
+    const std::valarray<unsigned int>& getBacktestNumBarsInPosition(bool isLong)
     {
-      prepare<isLong>();
-      return isLong? mNumBarsLong: mNumBarsShort;
+      if (isLong)
+        {
+          if (!mLongSideReady)
+            buildBacktestMatrix(isLong);
+          return mNumBarsLong;
+        }
+      else
+        {
+          if (!mShortSideReady)
+            buildBacktestMatrix(isLong);
+          return mNumBarsShort;
+
+        }
     }
 
   private:
@@ -160,19 +203,6 @@ namespace mkc_searchalgo {
 
   };
 
-  template<>
-  template<> inline void BacktestResultBaseGenerator<Decimal>::prepare<true>()
-  {
-    if (!mLongSideReady)
-      buildBacktestMatrix(true);
-  }
-
-  template<>
-  template<> inline void BacktestResultBaseGenerator<Decimal>::prepare<false>()
-  {
-    if (!mShortSideReady)
-      buildBacktestMatrix(false);
-  }
 
 
 }

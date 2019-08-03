@@ -44,7 +44,6 @@ namespace mkc_searchalgo {
       mIsLong(isLong)
     {}
 
-    void backtest2(const std::valarray<Decimal>& occurences);
     void backtest(const std::vector<std::valarray<Decimal>>& compareContainer);
 
     Decimal getProfitFactor() const
@@ -62,6 +61,18 @@ namespace mkc_searchalgo {
         throw std::logic_error(std::string("SearchBacktestPolicy:getProfitFactor - getNumPositions > 0 error"));
     }
 
+    unsigned int getTradeNumber() const { return mNumTrades; }
+
+  private:
+    void reset()
+    {
+      mNumTrades = 0;
+      mNumWinners = 0;
+      mNumLosers = 0;
+      mSumWinners = 0;
+      mSumLosers = 0;
+    }
+
   private:
     const std::valarray<Decimal>& mBacktestResultBase;
     const std::valarray<unsigned int>& mNumBarsInPosition;
@@ -76,10 +87,12 @@ namespace mkc_searchalgo {
 
 
   template <>
-  //void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::valarray<Decimal>& occurences)
   void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::vector<std::valarray<Decimal>>& compareContainer)
   {
+    reset();
+    //identity vector:
     std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.back().size());
+    //combine - multiply all component vectors
     for (auto it = compareContainer.begin(); it != compareContainer.end(); ++it)
       {
         occurrences *= *it;
@@ -87,10 +100,12 @@ namespace mkc_searchalgo {
 
     if (occurrences.size() != mBacktestResultBase.size())
       throw;
-
+    //generate results for all possible entries
     std::valarray<Decimal> allResults = occurrences * mBacktestResultBase;
     int nextSkipStart = -1;
     int nextSkipEnd = -1;
+
+    /// the section that nullifies signals where a previous position would be on
     for (int i = 0; i < allResults.size(); i++)
       {
         //the skip procedure
@@ -120,20 +135,27 @@ namespace mkc_searchalgo {
               }
 
             nextSkipStart = i + 1;
-            nextSkipEnd = i + mNumBarsInPosition[i];
+            nextSkipEnd = i + mNumBarsInPosition[i] - 1;
+            //std::cout << "skip identified: start: " << nextSkipStart << ", end: " << nextSkipEnd << ", bars in position: " << mNumBarsInPosition[i] << std::endl;
           }
       }
   }
 
   template <>
-  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest2(const std::valarray<Decimal>& occurrences)
+  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest(const std::vector<std::valarray<Decimal>>& compareContainer)
   {
+    reset();
+    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.back().size());
+    for (auto it = compareContainer.begin(); it != compareContainer.end(); ++it)
+      {
+        occurrences *= *it;
+      }
+
     if (occurrences.size() != mBacktestResultBase.size())
       throw;
 
     std::valarray<Decimal> allResults = occurrences * mBacktestResultBase;
-    int nextSkipStart = -1;
-    int nextSkipEnd = -1;
+
     for (int i = 0; i < allResults.size(); i++)
       {
         //the signal identification procedure, without skipping
@@ -155,16 +177,6 @@ namespace mkc_searchalgo {
       }
   }
 
-
-
-  template <class Decimal, bool isLong> class OriginalBacktestPolicy
-  {
-    public:
-
-    void backtest(const std::valarray<Decimal>& occurences);
-
-    Decimal getProfitFactor() const;
-  };
 
 }
 
