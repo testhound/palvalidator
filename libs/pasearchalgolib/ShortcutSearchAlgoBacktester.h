@@ -28,12 +28,24 @@ using Decimal = num::DefaultNumber;
 
 namespace mkc_searchalgo {
 
+  class ShortcutBacktestException : public std::logic_error
+  {
+  public:
+    ShortcutBacktestException(const std::string msg)
+      : std::logic_error(msg)
+    {}
+
+    ~ShortcutBacktestException()
+    {}
+
+  };
+
   enum ShortcutBacktestMethod {PlainVanilla, Pyramiding};
 
   ///
-  /// Backteser that uses vector multiplication and non-pyramiding implementation of backtest
+  /// Backteser that uses vector multiplication based implementation
   ///
-  template <class Decimal, ShortcutBacktestMethod> class ShortcutSearchAlgoBacktester
+  template <class Decimal, ShortcutBacktestMethod backtestMethod> class ShortcutSearchAlgoBacktester
   {
   public:
     ShortcutSearchAlgoBacktester(const std::valarray<Decimal>& backtestResults, const std::valarray<unsigned int>& numBarsInPosition, unsigned int minTrades, bool isLong):
@@ -44,7 +56,12 @@ namespace mkc_searchalgo {
       mIsLong(isLong)
     {}
 
-    void backtest(const std::vector<std::valarray<Decimal>>& compareContainer);
+    bool getIsLong() const { return mIsLong; }
+
+    void backtest(const std::vector<std::valarray<Decimal>>& compareContainer)
+    {
+      throw ShortcutBacktestException("Backtesting logic for ShortcutBacktestMethod specified in template has not been implemented yet!");
+    }
 
     Decimal getProfitFactor() const
     {
@@ -94,9 +111,7 @@ namespace mkc_searchalgo {
     std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.back().size());
     //combine - multiply all component vectors
     for (auto it = compareContainer.begin(); it != compareContainer.end(); ++it)
-      {
         occurrences *= *it;
-      }
 
     if (occurrences.size() != mBacktestResultBase.size())
       throw;

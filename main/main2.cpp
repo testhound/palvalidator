@@ -51,9 +51,9 @@ int main(int argc, char **argv)
         std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
         std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);
 
-        BacktestResultBaseGenerator<Decimal, ComparisonToPalLongStrategyAlwaysOn<Decimal>> resultBase(configuration, profitTarget, stopLoss);
+        BacktestResultBaseGenerator<Decimal, true> resultBase(configuration, profitTarget, stopLoss);
 
-        resultBase.buildBacktestMatrix(true);
+        resultBase.buildBacktestMatrix();
 
         std::shared_ptr<BackTester<Decimal>> backtester = buildBacktester(configuration);
 
@@ -85,17 +85,17 @@ int main(int argc, char **argv)
 
         std::cout << " Full comparisons universe #:" << compareGenerator.getComparisonsCount() << std::endl;
         std::cout << " Unique comparisons #:" << compareGenerator.getUniqueComparisons().size() << std::endl;
-
-        using TBacktester = OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, ComparisonToPalLongStrategy<Decimal>>;
+        bool isLong = true;
+        using TBacktester = OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>;
         UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix1(compareGenerator, series->getNumEntries());
-        std::shared_ptr<TBacktester> origBacktester = std::make_shared<OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, ComparisonToPalLongStrategy<Decimal>>>(backtester, aPortfolio, profitTarget, stopLoss);
+        std::shared_ptr<TBacktester> origBacktester = std::make_shared<OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>>(backtester, aPortfolio, profitTarget, stopLoss);
 
         using TBacktester2 = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
         using TComparison = std::valarray<Decimal>;
         UniqueSinglePAMatrix<Decimal, TComparison> paMatrix2(compareGenerator, series->getNumEntries());
-        bool isLong = true;
+
         unsigned int minTrades = 5;
-        std::shared_ptr<TBacktester2> shortcut = std::make_shared<TBacktester2>(resultBase.getBacktestResultBase(isLong), resultBase.getBacktestNumBarsInPosition(isLong), minTrades, isLong);
+        std::shared_ptr<TBacktester2> shortcut = std::make_shared<TBacktester2>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
 
         //a 100 random tests
         for (unsigned int c = 0; c < 100; c++)

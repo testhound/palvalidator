@@ -6,6 +6,7 @@
 #include "PalStrategy.h"
 #include "ComparisonsGenerator.h"
 #include "PalStrategyAlwaysOn.h"
+#include <type_traits>
 
 using namespace mkc_timeseries;
 
@@ -48,10 +49,19 @@ namespace mkc_searchalgo
   ///
   /// A straightforward conversion from comparison to Pal-Expression based Strategy
   ///
-  template <class Decimal, typename TPalStrategy, typename TProfitTarget, typename TStopLoss, typename TMarketEntry>
+  template <class Decimal, bool isLong, bool alwaysOn>
   class ComparisonToPalStrategy
   {
   public:
+    //helpers
+    using LongPalStrategyType = std::conditional_t<alwaysOn, PalLongStrategyAlwaysOn<Decimal>, PalLongStrategy<Decimal>>;
+    using ShortPalStrategyType = std::conditional_t<alwaysOn, PalShortStrategyAlwaysOn<Decimal>, PalShortStrategy<Decimal>>;
+    //sided typedefs
+    using SidedPalStrategyType = std::conditional_t<isLong, LongPalStrategyType, ShortPalStrategyType>;
+    using SidedProfitTargetType = std::conditional_t<isLong, LongSideProfitTargetInPercent, ShortSideProfitTargetInPercent>;
+    using SidedStopLossType = std::conditional_t<isLong, LongSideStopLossInPercent, ShortSideStopLossInPercent>;
+    using SidedMarketEntryType = std::conditional_t<isLong, LongMarketEntryOnOpen, ShortMarketEntryOnOpen>;
+
     ComparisonToPalStrategy(const std::vector<ComparisonEntryType>& compareBatch,
                             const unsigned patternIndex, const unsigned long indexDate,
                             decimal7* const profitTarget, decimal7* const stopLoss, const std::shared_ptr<Portfolio<Decimal>>& portfolio):
@@ -78,13 +88,13 @@ namespace mkc_searchalgo
 
 
       std::string strategyName= std::string("PAL Search Algo Based Strategy ") + std::to_string(patternIndex);
-      mPalStrategy = std::make_shared<TPalStrategy>(strategyName, mPalPattern, portfolio);
+      mPalStrategy = std::make_shared<SidedPalStrategyType>(strategyName, mPalPattern, portfolio);
 
     }
 
-    ComparisonToPalStrategy(const ComparisonToPalStrategy<Decimal, TPalStrategy, TProfitTarget, TStopLoss, TMarketEntry>&) = delete;
+    ComparisonToPalStrategy(const ComparisonToPalStrategy<Decimal, isLong, alwaysOn>&) = delete;
 
-    ComparisonToPalStrategy<Decimal, TPalStrategy, TProfitTarget, TStopLoss, TMarketEntry>& operator=(const ComparisonToPalStrategy<Decimal, TPalStrategy, TProfitTarget, TStopLoss, TMarketEntry>&) = delete;
+    ComparisonToPalStrategy<Decimal, isLong, alwaysOn>& operator=(const ComparisonToPalStrategy<Decimal, isLong, alwaysOn>&) = delete;
 
 
     ~ComparisonToPalStrategy()
@@ -92,7 +102,7 @@ namespace mkc_searchalgo
       //the structure of intertwound shared pointers for strategies ...
     }
 
-    const std::shared_ptr<TPalStrategy>& getPalStrategy() const { return mPalStrategy; }
+    const std::shared_ptr<SidedPalStrategyType>& getPalStrategy() const { return mPalStrategy; }
 
 
   private:
@@ -126,17 +136,17 @@ namespace mkc_searchalgo
 
     ProfitTargetInPercentExpression* allocateProfitTarget(decimal7* profitTarget)
     {
-      return new TProfitTarget(profitTarget);
+      return new SidedProfitTargetType(profitTarget);
     }
 
     StopLossInPercentExpression* allocateStopLoss(decimal7* stopLoss)
     {
-      return new TStopLoss(stopLoss);
+      return new SidedStopLossType(stopLoss);
     }
 
     MarketEntryExpression* allocateMarketEntry()
     {
-      return new TMarketEntry();
+      return new SidedMarketEntryType();
     }
 
     PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
@@ -155,25 +165,23 @@ namespace mkc_searchalgo
     std::vector<GreaterThanExpr*> mPalGreaterThanPatternExpressions;
     std::vector<AndExpr*> mPalAndPatternExpressions;
     std::shared_ptr<PriceActionLabPattern> mPalPattern;
-    std::shared_ptr<TPalStrategy> mPalStrategy;
+    std::shared_ptr<SidedPalStrategyType> mPalStrategy;
     PriceBarFactory mPriceBarFactory;
 
   };
 
-  ///
-  /// Use these "typedefs" for correct types
-  ///
+  //"typedefs" with more explicit verbosity about the type
   template <class Decimal>
-  using ComparisonToPalLongStrategy = ComparisonToPalStrategy<Decimal, PalLongStrategy<Decimal>, LongSideProfitTargetInPercent, LongSideStopLossInPercent, LongMarketEntryOnOpen>;
+  using ComparisonToPalLongStrategyAlwaysOn = ComparisonToPalStrategy<Decimal, true, true>;
 
   template <class Decimal>
-  using ComparisonToPalShortStrategy = ComparisonToPalStrategy<Decimal, PalShortStrategy<Decimal>, ShortSideProfitTargetInPercent, ShortSideStopLossInPercent, ShortMarketEntryOnOpen>;
+  using ComparisonToPalShortStrategyAlwaysOn = ComparisonToPalStrategy<Decimal, false, true>;
 
   template <class Decimal>
-  using ComparisonToPalLongStrategyAlwaysOn = ComparisonToPalStrategy<Decimal, PalLongStrategyAlwaysOn<Decimal>, LongSideProfitTargetInPercent, LongSideStopLossInPercent, LongMarketEntryOnOpen>;
+  using ComparisonToPalLongStrategy = ComparisonToPalStrategy<Decimal, true, false>;
 
   template <class Decimal>
-  using ComparisonToPalShortStrategyAlwaysOn = ComparisonToPalStrategy<Decimal, PalShortStrategyAlwaysOn<Decimal>, ShortSideProfitTargetInPercent, ShortSideStopLossInPercent, ShortMarketEntryOnOpen>;
+  using ComparisonToPalShortStrategy = ComparisonToPalStrategy<Decimal, false, false>;
 
 
 }

@@ -6,9 +6,10 @@
 #include <vector>
 #include <memory>
 #include <stdio.h>
-
+#include <exception>
 #include "PALMonteCarloValidation.h"
 #include "ComparisonToPalStrategy.h"
+#include <type_traits>
 
 using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
@@ -35,16 +36,17 @@ namespace mkc_searchalgo {
   ///
   ///
   ///
-  template <class Decimal, typename TComparisonToPalStrategy> class BacktestResultBaseGenerator
+  template <class Decimal, bool isLong> class BacktestResultBaseGenerator
   {
   public:
+    using SidedComparisonToPalType = std::conditional_t<isLong, ComparisonToPalLongStrategyAlwaysOn<Decimal>, ComparisonToPalShortStrategyAlwaysOn<Decimal>>;
+
     BacktestResultBaseGenerator(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<Decimal>& profitTarget, const std::shared_ptr<Decimal>& stopLoss):
       mConfiguration(configuration),
       mProfitTarget(profitTarget),
       mStopLoss(stopLoss),
       mDayBatches(10),
-      mLongSideReady(false),
-      mShortSideReady(false)
+      mSideReady(false)
     {}
 
   private:
@@ -62,9 +64,9 @@ namespace mkc_searchalgo {
 
 
   public:
-    void buildBacktestMatrix(bool isLong)
+    void buildBacktestMatrix()
     {
-      if ((isLong && mLongSideReady) || (!isLong && mShortSideReady))
+      if (mSideReady)
         return;
 
       std::string portfolioName(mConfiguration->getSecurity()->getName() + std::string(" Portfolio"));
@@ -92,7 +94,7 @@ namespace mkc_searchalgo {
           i++;
           if (i > 1)  //TimeSeries exception on first bar
             {
-              TComparisonToPalStrategy comparison(compareContainer, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
+              SidedComparisonToPalType comparison(compareContainer, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
               auto offset = std::min((series->getNumEntries() - 1), (i + mDayBatches));
               //std::cout << "offset: " << offset << ", size: " << series->getNumEntries() << ", i: " << i << std::endl;
               auto startDate = it->getDateValue();
@@ -139,71 +141,38 @@ namespace mkc_searchalgo {
         }
 
       //store vectors
-      if (isLong)
-        {
-          mArrLong = arr;
-          mNumBarsLong = arrNumBars;
-          mLongSideReady = true;
-        }
-      else
-        {
-          mArrShort = arr;
-          mNumBarsLong = arrNumBars;
-          mShortSideReady = true;
-        }
+      mTradingVector = arr;
+      mNumBarsInPosition = arrNumBars;
+      mSideReady = true;
 
     }
 
 
-    const std::valarray<Decimal>& getBacktestResultBase(bool isLong)
+    const std::valarray<Decimal>& getBacktestResultBase()
     {
-      if (isLong)
-        {
-          if (!mLongSideReady)
-            buildBacktestMatrix(isLong);
-          return mArrLong;
-        }
-      else
-        {
-          if (!mShortSideReady)
-            buildBacktestMatrix(isLong);
-          return mArrShort;
-
-        }
+      if (!mSideReady)
+        buildBacktestMatrix();
+      return mTradingVector;
     }
 
-    const std::valarray<unsigned int>& getBacktestNumBarsInPosition(bool isLong)
+    const std::valarray<unsigned int>& getBacktestNumBarsInPosition()
     {
-      if (isLong)
-        {
-          if (!mLongSideReady)
-            buildBacktestMatrix(isLong);
-          return mNumBarsLong;
-        }
-      else
-        {
-          if (!mShortSideReady)
-            buildBacktestMatrix(isLong);
-          return mNumBarsShort;
-
-        }
+          if (!mSideReady)
+            buildBacktestMatrix();
+          return mNumBarsInPosition;
     }
 
   private:
+
     std::shared_ptr<McptConfiguration<Decimal>> mConfiguration;
     std::shared_ptr<Decimal> mProfitTarget;
     std::shared_ptr<Decimal> mStopLoss;
     unsigned int mDayBatches;
-    bool mLongSideReady;
-    bool mShortSideReady;
-    std::valarray<Decimal> mArrLong;
-    std::valarray<unsigned int> mNumBarsLong;
-    std::valarray<Decimal> mArrShort;
-    std::valarray<unsigned int> mNumBarsShort;
+    bool mSideReady;
+    std::valarray<Decimal> mTradingVector;
+    std::valarray<unsigned int> mNumBarsInPosition;
 
   };
-
-
 
 }
 

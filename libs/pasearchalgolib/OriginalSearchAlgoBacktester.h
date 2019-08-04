@@ -9,6 +9,7 @@
 #include "BackTester.h"
 #include "Portfolio.h"
 
+
 using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
 using std::shared_ptr;
@@ -17,10 +18,12 @@ using Decimal = num::DefaultNumber;
 
 namespace mkc_searchalgo {
 
-  template <class Decimal, typename TComparison, typename TComparisonToPalStrategy>
+  template <class Decimal, typename TComparison, bool isLong>
   class OriginalSearchAlgoBackteser
   {
     public:
+    using SidedComparisonToPalType = std::conditional_t<isLong, ComparisonToPalLongStrategy<Decimal>, ComparisonToPalShortStrategy<Decimal>>;
+
     OriginalSearchAlgoBackteser(std::shared_ptr<BackTester<Decimal>>& backtester,
                                 const std::shared_ptr<Portfolio<Decimal>>& portfolio,
                                 const std::shared_ptr<Decimal>& profitTarget,
@@ -32,9 +35,11 @@ namespace mkc_searchalgo {
       mRuns(0)
     {}
 
+    bool getIsLong() const { return isLong; }
+
     void backtest(const std::vector<TComparison>& compareContainer)
     {
-      TComparisonToPalStrategy comp(compareContainer, mRuns, 0, mProfitTarget.get(), mStopLoss.get(), mPortfolio);
+      SidedComparisonToPalType comp(compareContainer, mRuns, 0, mProfitTarget.get(), mStopLoss.get(), mPortfolio);
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mBacktester->clone();
       clonedBackTester->addStrategy(comp.getPalStrategy());
       clonedBackTester->backtest();
@@ -57,6 +62,13 @@ namespace mkc_searchalgo {
     Decimal mProfitFactor;
     unsigned int mTradeNum;
   };
+
+//useful typedefs:
+  template <class Decimal, class TComparison>
+  using OriginalSearchAlgoBackteserLong = OriginalSearchAlgoBackteser<Decimal, TComparison, true>;
+  template <class Decimal, class TComparison>
+  using OriginalSearchAlgoBackteserShort = OriginalSearchAlgoBackteser<Decimal, TComparison, false>;
+
 }
 
 #endif // ORIGINALSEARCHALGOBACKTESTER_H
