@@ -5,10 +5,13 @@ PalStrategyAlwaysOn.h
 ComparisonToPalStrategy.h
 ComparisonsGenerator.h
 UniqueSinglePAMatrix.h
-ComparisonsCombiner.h
 BacktestResultBaseGenerator.h
 ShortcutSearchAlgoBacktester.h
 OriginalSearchAlgoBacktester.h
+ForwardStepwiseSelector.h
+BacktestProcessor.h
+SteppingPolicy.h
+SurvivalPolicy.h
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)

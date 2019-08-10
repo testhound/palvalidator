@@ -58,7 +58,7 @@ namespace mkc_searchalgo {
 
     bool getIsLong() const { return mIsLong; }
 
-    void backtest(const std::vector<std::valarray<Decimal>>& compareContainer)
+    void backtest(const std::unordered_map<unsigned int, std::valarray<Decimal>>& compareContainer)
     {
       throw ShortcutBacktestException("Backtesting logic for ShortcutBacktestMethod specified in template has not been implemented yet!");
     }
@@ -104,14 +104,14 @@ namespace mkc_searchalgo {
 
 
   template <>
-  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::vector<std::valarray<Decimal>>& compareContainer)
+  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::unordered_map<unsigned int, std::valarray<Decimal>>& compareContainer)
   {
     reset();
     //identity vector:
-    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.back().size());
+    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.begin()->second.size());
     //combine - multiply all component vectors
-    for (auto it = compareContainer.begin(); it != compareContainer.end(); ++it)
-        occurrences *= *it;
+    for (auto& it: compareContainer)
+        occurrences *= it.second;
 
     if (occurrences.size() != mBacktestResultBase.size())
       throw;
@@ -157,14 +157,13 @@ namespace mkc_searchalgo {
   }
 
   template <>
-  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest(const std::vector<std::valarray<Decimal>>& compareContainer)
+  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest(const std::unordered_map<unsigned int, std::valarray<Decimal>>& compareContainer)
   {
     reset();
-    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.back().size());
-    for (auto it = compareContainer.begin(); it != compareContainer.end(); ++it)
-      {
-        occurrences *= *it;
-      }
+    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.begin()->second.size());
+    //combine - multiply all component vectors
+    for (auto& it: compareContainer)
+        occurrences *= it.second;
 
     if (occurrences.size() != mBacktestResultBase.size())
       throw;

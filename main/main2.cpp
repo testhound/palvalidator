@@ -11,11 +11,14 @@
 #include <cstdlib>
 #include "ComparisonsGenerator.h"
 #include "UniqueSinglePAMatrix.h"
-#include "ComparisonsCombiner.h"
 #include <map>
 #include "BacktestResultBaseGenerator.h"
 #include "OriginalSearchAlgoBacktester.h"
 #include "ShortcutSearchAlgoBacktester.h"
+#include "ForwardStepwiseSelector.h"
+#include "SteppingPolicy.h"
+#include "SurvivalPolicy.h"
+
 #include <chrono>
 
 using namespace mkc_timeseries;
@@ -97,38 +100,44 @@ int main(int argc, char **argv)
         unsigned int minTrades = 5;
         std::shared_ptr<TBacktester2> shortcut = std::make_shared<TBacktester2>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
 
+//        ForwardStepwiseSelector(const UniqueSinglePAMatrix<Decimal, TComparison>& singlePA,
+//                            unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound, shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester,
+//                                Decimal survivalCriterion):
+        ForwardStepwiseSelector<Decimal, TBacktester2, TComparison, SeedSteppingPolicy<Decimal, TBacktester2>, SteppingPolicy<Decimal, TBacktester2>, DefaultSurvivalPolicy<Decimal>>
+            forwardStepwise(paMatrix2, minTrades, depth, 1500, shortcut, Decimal(2.0));
+
         //a 100 random tests
-        for (unsigned int c = 0; c < 100; c++)
-          {
-              size_t maxn = paMatrix1.getMap().size();
-              int rand1 = rand()%(maxn-0 + 1) + 0;
-              int rand2 = rand()%(maxn-0 + 1) + 0;
-              auto& el11 = paMatrix1.getMappedElement(rand1);
-              auto& el12 = paMatrix1.getMappedElement(rand2);
-              auto& el21 = paMatrix2.getMappedElement(rand1);
-              auto& el22 = paMatrix2.getMappedElement(rand2);
+//        for (unsigned int c = 0; c < 100; c++)
+//          {
+//              size_t maxn = paMatrix1.getMap().size();
+//              int rand1 = rand()%(maxn-0 + 1) + 0;
+//              int rand2 = rand()%(maxn-0 + 1) + 0;
+//              auto& el11 = paMatrix1.getMappedElement(rand1);
+//              auto& el12 = paMatrix1.getMappedElement(rand2);
+//              auto& el21 = paMatrix2.getMappedElement(rand1);
+//              auto& el22 = paMatrix2.getMappedElement(rand2);
 
-              std::vector<ComparisonEntryType> vect1 = {el11, el12};
-              std::vector<TComparison> vect2 = {el21, el22};
+//              std::vector<ComparisonEntryType> vect1 = {el11, el12};
+//              std::vector<TComparison> vect2 = {el21, el22};
 
-              auto el211 = paMatrix2.getUnderlying(rand1);
-              std::cout << "orig: " << el11[0] << el11[1] << el11[2] << el11[3] << std::endl;
-              std::cout << "shortcut underlying: " << el211[0] << el211[1] << el211[2] << el211[3] << std::endl;
+//              auto el211 = paMatrix2.getUnderlying(rand1);
+//              std::cout << "orig: " << el11[0] << el11[1] << el11[2] << el11[3] << std::endl;
+//              std::cout << "shortcut underlying: " << el211[0] << el211[1] << el211[2] << el211[3] << std::endl;
 
-              auto start = high_resolution_clock::now();
-              origBacktester->backtest(vect1);
-              auto stop = high_resolution_clock::now();
-              auto duration = duration_cast<microseconds>(stop - start);
-              std::cout << "backtest1 took: " << duration.count() << " microseconds" << std::endl;
-              std::cout << "orig tradenum: " << origBacktester->getTradeNumber() << ", profit factor: " << origBacktester->getProfitFactor() << std::endl;
-              start = high_resolution_clock::now();
-              shortcut->backtest(vect2);
-              stop = high_resolution_clock::now();
-              duration = duration_cast<microseconds>(stop - start);
-              std::cout << "backtest2 took: " << duration.count() << " microseconds" << std::endl;
-              std::cout << "shortcut tradenum: " << shortcut->getTradeNumber() << ", profit factor: " << shortcut->getProfitFactor() << std::endl;
+//              auto start = high_resolution_clock::now();
+//              origBacktester->backtest(vect1);
+//              auto stop = high_resolution_clock::now();
+//              auto duration = duration_cast<microseconds>(stop - start);
+//              std::cout << "backtest1 took: " << duration.count() << " microseconds" << std::endl;
+//              std::cout << "orig tradenum: " << origBacktester->getTradeNumber() << ", profit factor: " << origBacktester->getProfitFactor() << std::endl;
+//              start = high_resolution_clock::now();
+//              shortcut->backtest(vect2);
+//              stop = high_resolution_clock::now();
+//              duration = duration_cast<microseconds>(stop - start);
+//              std::cout << "backtest2 took: " << duration.count() << " microseconds" << std::endl;
+//              std::cout << "shortcut tradenum: " << shortcut->getTradeNumber() << ", profit factor: " << shortcut->getProfitFactor() << std::endl;
 
-          }
+//          }
 
 //        UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix(compareGenerator, series->getNumEntries());
 //        using TBacktester = OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, true>;

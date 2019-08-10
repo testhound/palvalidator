@@ -114,7 +114,6 @@ public:
 private:
   unsigned int mDateIndexCount;
   std::unordered_map<unsigned int, std::valarray<Decimal>> mMatrix;
-  //for this specialized class unique map is helper map and private
   std::unordered_map<unsigned int, ComparisonEntryType> mUniqueMaps;
 
 };
