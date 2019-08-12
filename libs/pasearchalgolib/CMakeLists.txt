@@ -12,6 +12,8 @@ ForwardStepwiseSelector.h
 BacktestProcessor.h
 SteppingPolicy.h
 SurvivalPolicy.h
+SearchController.h
+Sorters.h
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)

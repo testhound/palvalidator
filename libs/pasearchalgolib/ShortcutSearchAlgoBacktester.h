@@ -9,19 +9,9 @@
 
 //#include "McptConfigurationFileReader.h"
 #include "PALMonteCarloValidation.h"
-//#include "RobustnessTester.h"
-//#include "LogPalPattern.h"
-//#include "LogRobustnessTest.h"
-//#include "number.h"
-//#include <cstdlib>
-//#include "ComparisonsGenerator.h"
-//#include "UniqueSinglePAMatrix.h"
-#include "ComparisonsCombiner.h"
-//#include <map>
 #include <algorithm>
 
 using namespace mkc_timeseries;
-using namespace mkc_searchalgo;
 using std::shared_ptr;
 using Decimal = num::DefaultNumber;
 
@@ -58,7 +48,7 @@ namespace mkc_searchalgo {
 
     bool getIsLong() const { return mIsLong; }
 
-    void backtest(const std::unordered_map<unsigned int, std::valarray<Decimal>>& compareContainer)
+    void backtest(const std::valarray<Decimal>& compareContainer)
     {
       throw ShortcutBacktestException("Backtesting logic for ShortcutBacktestMethod specified in template has not been implemented yet!");
     }
@@ -104,19 +94,14 @@ namespace mkc_searchalgo {
 
 
   template <>
-  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::unordered_map<unsigned int, std::valarray<Decimal>>& compareContainer)
+  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::valarray<Decimal>& occurences)
   {
     reset();
-    //identity vector:
-    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.begin()->second.size());
-    //combine - multiply all component vectors
-    for (auto& it: compareContainer)
-        occurrences *= it.second;
-
-    if (occurrences.size() != mBacktestResultBase.size())
+  
+    if (occurences.size() != mBacktestResultBase.size())
       throw;
     //generate results for all possible entries
-    std::valarray<Decimal> allResults = occurrences * mBacktestResultBase;
+    std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
     int nextSkipStart = -1;
     int nextSkipEnd = -1;
 
@@ -157,18 +142,14 @@ namespace mkc_searchalgo {
   }
 
   template <>
-  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest(const std::unordered_map<unsigned int, std::valarray<Decimal>>& compareContainer)
+  void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest(const std::valarray<Decimal>& occurences)
   {
     reset();
-    std::valarray<Decimal> occurrences(DecimalConstants<Decimal>::DecimalOne, compareContainer.begin()->second.size());
-    //combine - multiply all component vectors
-    for (auto& it: compareContainer)
-        occurrences *= it.second;
 
-    if (occurrences.size() != mBacktestResultBase.size())
+    if (occurences.size() != mBacktestResultBase.size())
       throw;
 
-    std::valarray<Decimal> allResults = occurrences * mBacktestResultBase;
+    std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
 
     for (int i = 0; i < allResults.size(); i++)
       {

@@ -7,41 +7,28 @@
 //#include "ComparisonToPalStrategy.h"
 #include <chrono>
 #include "BacktestProcessor.h"
+#include "ShortcutSearchAlgoBacktester.h"
+#include "SteppingPolicy.h"
+#include "SurvivalPolicy.h"
 
 namespace mkc_searchalgo {
 
-
-static bool findInVector(const std::vector<ComparisonEntryType>& vect, const ComparisonEntryType& value)
-{
-  return (std::end(vect) != std::find(std::begin(vect), std::end(vect), value));
-}
-
-/// valarray needs specialized handling of equality check (otherwise the operator== returns valarray of booleans)
-template <class Decimal>
-static bool findInVector(const std::vector<std::valarray<Decimal>>& vect, const std::valarray<Decimal>& value)
-{
-  for (const auto& el: vect)
-    {
-      if ((el == value).min())
-        return true;
-    }
-  return false;
-}
-
-
-
-template <class Decimal, typename TSearchAlgoBacktester, typename TComparison,
-          typename TSeedSteppingPolicy, typename TSteppingPolicy, typename TSurvivalPolicy>
-class ForwardStepwiseSelector: private TSeedSteppingPolicy, private TSteppingPolicy, private TSurvivalPolicy
+template <class Decimal,
+          typename TComparison = std::valarray<Decimal>,
+          typename TSearchAlgoBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>,
+          typename TSteppingPolicy = SimpleSteppingPolicy<Decimal, TSearchAlgoBacktester, Sorters::CombinationPfSorter<Decimal>>,
+          typename TSurvivalPolicy = DefaultSurvivalPolicy<Decimal, TSearchAlgoBacktester>
+          >
+class ForwardStepwiseSelector: private TSteppingPolicy, private TSurvivalPolicy
 {
 public:
-  ForwardStepwiseSelector(const UniqueSinglePAMatrix<Decimal, TComparison>& singlePA,
-                      unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound, shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester,
+  ForwardStepwiseSelector(std::shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& backtestProcessor ,
+                          std::shared_ptr<UniqueSinglePAMatrix<Decimal, TComparison>>& singlePA,
+                          unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound,
                           Decimal survivalCriterion):
-    mBacktestProcessor(minTrades, searchAlgoBacktester),
-    TSeedSteppingPolicy(mBacktestProcessor, passingStratNumPerRound),
-    TSteppingPolicy(mBacktestProcessor, passingStratNumPerRound),
-    TSurvivalPolicy(survivalCriterion),
+    mBacktestProcessor(backtestProcessor),
+    TSteppingPolicy(backtestProcessor, passingStratNumPerRound),
+    TSurvivalPolicy(backtestProcessor, survivalCriterion),
     mSinglePa(singlePA),
     mMinTrades(minTrades),
     mMaxDepth(maxDepth - 1),
@@ -53,67 +40,93 @@ public:
 
   void runSteps()
   {
-    step(mMaxDepth);
+    unsigned int stepNo = 0;
+    std::vector<StrategyRepresentationType> ret;
+    while (stepNo < mMaxDepth)
+      {
+        step(stepNo, ret);
+        stepNo++;
+      }
   }
 
 private:
 
-  std::vector<std::vector<TComparison>> step(unsigned int stepNo)
+  //bottom step
+  void step0(std::vector<StrategyRepresentationType>& ret)
   {
-    //typename std::unordered_map<unsigned int, TComparison>::const_iterator it = mSinglePa.getMapBegin();
-    using indexType = typename UniqueSinglePAMatrix<Decimal, TComparison>::size_type;
+      for (unsigned int i = 0; i < mSinglePa->getMapSize(); ++i)
+        {
+          //for (unsigned int c = 0; c < mSinglePa->getMapSize(); ++c)
+          for (unsigned int c = 0; c < 10; ++c)
+            {
+              if (i == c)
+                continue;
+              std::vector<unsigned int> stratVect {i, c};
+              //stratVect.reserve(mMaxDepth);
+              //stratVect = {i, c};
+              mBacktestProcessor->processResult(stratVect);
+            }
+            if (i % 100 == 0)
+              std::cout << "Step 0 comparison, element group: " << i << std::endl;
+        }
+        std::cout << "finished and returning from level 0, processed results: " << mBacktestProcessor->getResults().size() << std::endl;
+        std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
+        ret.insert(ret.end(), newret.begin(), newret.end());
+        TSurvivalPolicy::saveSurvivors();
+        std::cout << "After step 0: Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
+        mBacktestProcessor->clearAll();
+    }
 
-    //bottom step
-    if (stepNo == 0)
-      {
-        std::vector<std::unordered_map<unsigned int, TComparison>> ret0;
-        ret0.resize(mSinglePa.getMap().size() * mSinglePa.getMap().size());
-
-        for (indexType i = 0; i < mSinglePa.getMap().size(); ++i)
+    void step(unsigned int stepNo, std::vector<StrategyRepresentationType>& ret)
+    {
+        if (stepNo == 0)
           {
-            std::unordered_map<unsigned int, TComparison> compareContainer0;
-            compareContainer0[i] = mSinglePa.getMappedElement(i);
-
-            for (indexType i = 0; i < mSinglePa.getMap().size(); ++i)
-              {
-                std::unordered_map<unsigned int, TComparison> compareContainer(compareContainer0);
-
-                if (compareContainer.find(i) != compareContainer.end())
-                  continue;
-                compareContainer[i] = mSinglePa.getMappedElement(i);
-                ret0.push_back(compareContainer);
-                mBacktestProcessor(compareContainer);
-              }
-            std::cout << "finished and returning from level: " << stepNo << std::endl;
-            return TSeedSteppingPolicy::passes();
+            return step0(ret);
           }
-      }
+        else if (stepNo == 1)
+          {
+            mLastBegin = ret.begin();
+          }
 
     //all other steps
-     std::vector<std::vector<TComparison>> ret(step(stepNo - 1));
-
-     for (size_t i = 0; i < ret.size(); ++i)
+     int i = 0;
+     for (auto it = mLastBegin; it != ret.end(); it++)
        {
-         auto & compareContainer = ret[i];
-         auto& element = mSinglePa.getMappedElement(i);
-         if (findInVector(compareContainer, element))
-           continue;
+          i++;
+          StrategyRepresentationType & fetchedCompareContainer = *it;
 
-         compareContainer.push_back(element);
-         mBacktestProcessor(compareContainer);
-         //backtest result storage
+         //for (unsigned int c = 0; c < mSinglePa->getMapSize(); ++c)
+         for (unsigned int c = 0; c < 10; ++c)
+           {
+             if (findInVector(fetchedCompareContainer, c))
+               continue;
+
+             std::vector<unsigned int> stratVect(fetchedCompareContainer);
+             stratVect.push_back(c);
+
+             mBacktestProcessor->processResult(stratVect);
+           }
+           if (i % 100 == 0)
+            std::cout << "Step " << stepNo << " comparison, element group: " << i << std::endl;
        }
-      return TSteppingPolicy::passes();
-
+      std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
+      mLastBegin = std::prev(ret.end()); //save iterator to start from
+      ret.insert(ret.end(), newret.begin(), newret.end());
+      std::cout << "finished and returning from level: " << stepNo << ", processed results: " << mBacktestProcessor->getResults().size() << std::endl;
+      std::cout << "Before step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
+      TSurvivalPolicy::saveSurvivors();
+      std::cout << "After step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
+      mBacktestProcessor->clearAll();
   }
 
 private:
 
-  const UniqueSinglePAMatrix<Decimal, TComparison>& mSinglePa;
+  std::shared_ptr<UniqueSinglePAMatrix<Decimal, TComparison>>& mSinglePa;
   unsigned mMinTrades;
   unsigned mMaxDepth;
   unsigned long mRuns;
-  BacktestProcessor<Decimal, TSearchAlgoBacktester> mBacktestProcessor;
+  std::shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mBacktestProcessor;
+  std::vector<StrategyRepresentationType>::iterator mLastBegin;
   //shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
 
 };

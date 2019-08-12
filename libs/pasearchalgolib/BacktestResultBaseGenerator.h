@@ -33,9 +33,6 @@ namespace mkc_searchalgo {
   }
 
 
-  ///
-  ///
-  ///
   template <class Decimal, bool isLong> class BacktestResultBaseGenerator
   {
   public:
@@ -115,9 +112,9 @@ namespace mkc_searchalgo {
 
                   tradesMap[orderDate] = std::make_tuple<Decimal, Decimal, unsigned int>(firstPos.second->getTradeReturn(), firstPos.second->getPercentReturn(), firstPos.second->getNumBarsInPosition());
 
-                  std::cout << "(position for same day) first position on " << orderDate << ", Entry Date: " << firstPos.second->getEntryDate() << ": "
-                            << firstPos.second->getTradeReturn() << " in percent: " << firstPos.second->getPercentReturn() << ", bars in pos: "
-                            << firstPos.second->getNumBarsInPosition() << ", exit date: " << firstPos.second->getExitDate() << std::endl;
+//                  std::cout << "(position for same day) first position on " << orderDate << ", Entry Date: " << firstPos.second->getEntryDate() << ": "
+//                            << firstPos.second->getTradeReturn() << " in percent: " << firstPos.second->getPercentReturn() << ", bars in pos: "
+//                            << firstPos.second->getNumBarsInPosition() << ", exit date: " << firstPos.second->getExitDate() << std::endl;
                 }
             }
 
@@ -127,7 +124,7 @@ namespace mkc_searchalgo {
       //then the number of bars that it should occupy
       std::valarray<unsigned int> arrNumBars(static_cast<unsigned int>(0), series->getNumEntries());
 
-      size_t  iCounter = 0; //offseting first bar problem
+      size_t  iCounter = 0; //offsetting first bar problem
       for (auto it = series->beginRandomAccess(); it != series->endRandomAccess(); it++)
         {
           typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(series->getDateValue(it, 0));
@@ -144,6 +141,10 @@ namespace mkc_searchalgo {
       mTradingVector = arr;
       mNumBarsInPosition = arrNumBars;
       mSideReady = true;
+      if (isLong)
+        std::cout << "Preprocessing backtest matrix built for side Long." << std::endl;
+      else
+        std::cout << "Preprocessing backtest matrix built for side Short." << std::endl;
 
     }
 

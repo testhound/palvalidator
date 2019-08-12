@@ -19,6 +19,9 @@
 #include "SteppingPolicy.h"
 #include "SurvivalPolicy.h"
 
+#include "SearchController.h"
+
+
 #include <chrono>
 
 using namespace mkc_timeseries;
@@ -51,60 +54,67 @@ int main(int argc, char **argv)
         std::cout << configurationFileName << std::endl;
         McptConfigurationFileReader reader(configurationFileName);
         std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
-        std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
-        std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);
 
-        BacktestResultBaseGenerator<Decimal, true> resultBase(configuration, profitTarget, stopLoss);
+        SearchController<Decimal> controller(configuration, 10);
+        controller.prepare();
+        controller.run<true>();
+        controller.run<false>();
+        return 0;
 
-        resultBase.buildBacktestMatrix();
+//        std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
+//        std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);
 
-        std::shared_ptr<BackTester<Decimal>> backtester = buildBacktester(configuration);
+//        BacktestResultBaseGenerator<Decimal, true> resultBase(configuration, profitTarget, stopLoss);
 
-        std::string portfolioName(configuration->getSecurity()->getName() + std::string(" Portfolio"));
+//        resultBase.buildBacktestMatrix();
 
-        auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
-        aPortfolio->addSecurity(configuration->getSecurity());
+//        std::shared_ptr<BackTester<Decimal>> backtester = buildBacktester(configuration);
 
-        std::shared_ptr<OHLCTimeSeries<Decimal>> series = configuration->getSecurity()->getTimeSeries();
+//        std::string portfolioName(configuration->getSecurity()->getName() + std::string(" Portfolio"));
 
-        typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = series->beginRandomAccess();
+//        auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
+//        aPortfolio->addSecurity(configuration->getSecurity());
 
-        unsigned depth = 10;
-        ComparisonsGenerator<Decimal> compareGenerator(depth);
+//        std::shared_ptr<OHLCTimeSeries<Decimal>> series = configuration->getSecurity()->getTimeSeries();
 
-        for (; it != series->endRandomAccess(); it++)
-        {
-            const Decimal& cOpen = series->getOpenValue (it, 0);
-            const Decimal& cHigh = series->getHighValue (it, 0);
-            const Decimal& cLow = series->getLowValue (it, 0);
-            const Decimal& cClose = series->getCloseValue (it, 0);
+//        typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = series->beginRandomAccess();
 
-            auto dt = series->getDateValue(it, 0);
-            std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
+//        unsigned depth = 10;
+//        ComparisonsGenerator<Decimal> compareGenerator(depth);
 
-            compareGenerator.addNewLastBar(cOpen, cHigh, cLow, cClose);
+//        for (; it != series->endRandomAccess(); it++)
+//        {
+//            const Decimal& cOpen = series->getOpenValue (it, 0);
+//            const Decimal& cHigh = series->getHighValue (it, 0);
+//            const Decimal& cLow = series->getLowValue (it, 0);
+//            const Decimal& cClose = series->getCloseValue (it, 0);
 
-        }
+//            auto dt = series->getDateValue(it, 0);
+//            std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
 
-        std::cout << " Full comparisons universe #:" << compareGenerator.getComparisonsCount() << std::endl;
-        std::cout << " Unique comparisons #:" << compareGenerator.getUniqueComparisons().size() << std::endl;
-        bool isLong = true;
-        using TBacktester = OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>;
-        UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix1(compareGenerator, series->getNumEntries());
-        std::shared_ptr<TBacktester> origBacktester = std::make_shared<OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>>(backtester, aPortfolio, profitTarget, stopLoss);
+//            compareGenerator.addNewLastBar(cOpen, cHigh, cLow, cClose);
 
-        using TBacktester2 = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
-        using TComparison = std::valarray<Decimal>;
-        UniqueSinglePAMatrix<Decimal, TComparison> paMatrix2(compareGenerator, series->getNumEntries());
+//        }
 
-        unsigned int minTrades = 5;
-        std::shared_ptr<TBacktester2> shortcut = std::make_shared<TBacktester2>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
+//        std::cout << " Full comparisons universe #:" << compareGenerator.getComparisonsCount() << std::endl;
+//        std::cout << " Unique comparisons #:" << compareGenerator.getUniqueComparisons().size() << std::endl;
+//        bool isLong = true;
+//        using TBacktester = OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>;
+//        UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix1(compareGenerator, series->getNumEntries());
+//        std::shared_ptr<TBacktester> origBacktester = std::make_shared<OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>>(backtester, aPortfolio, profitTarget, stopLoss);
 
-//        ForwardStepwiseSelector(const UniqueSinglePAMatrix<Decimal, TComparison>& singlePA,
-//                            unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound, shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester,
-//                                Decimal survivalCriterion):
-        ForwardStepwiseSelector<Decimal, TBacktester2, TComparison, SeedSteppingPolicy<Decimal, TBacktester2>, SteppingPolicy<Decimal, TBacktester2>, DefaultSurvivalPolicy<Decimal>>
-            forwardStepwise(paMatrix2, minTrades, depth, 1500, shortcut, Decimal(2.0));
+//        using TBacktester2 = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
+//        using TComparison = std::valarray<Decimal>;
+//        UniqueSinglePAMatrix<Decimal, TComparison> paMatrix2(compareGenerator, series->getNumEntries());
+
+//        unsigned int minTrades = 5;
+//        std::shared_ptr<TBacktester2> shortcut = std::make_shared<TBacktester2>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
+
+////        ForwardStepwiseSelector(const UniqueSinglePAMatrix<Decimal, TComparison>& singlePA,
+////                            unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound, shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester,
+////                                Decimal survivalCriterion):
+//        ForwardStepwiseSelector<Decimal, TComparison, TBacktester2, SeedSteppingPolicy<Decimal, TBacktester2>, SteppingPolicy<Decimal, TBacktester2>, DefaultSurvivalPolicy<Decimal>>
+//            forwardStepwise(paMatrix2, minTrades, depth, 1500, shortcut, Decimal(2.0));
 
         //a 100 random tests
 //        for (unsigned int c = 0; c < 100; c++)

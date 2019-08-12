@@ -59,14 +59,14 @@ namespace mkc_searchalgo {
 template <class Decimal> class UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>
 {
 public:
-  UniqueSinglePAMatrix(const ComparisonsGenerator<Decimal>& compareGenerator, unsigned int dateIndexCount):
+  UniqueSinglePAMatrix(const std::shared_ptr<ComparisonsGenerator<Decimal>>& compareGenerator, unsigned int dateIndexCount):
     mDateIndexCount(dateIndexCount)
   {
-    std::set<ComparisonEntryType>::const_iterator it = compareGenerator.getUniqueComparisons().begin();
+    std::set<ComparisonEntryType>::const_iterator it = compareGenerator->getUniqueComparisons().begin();
     //"vector" initialized to zeros
     std::valarray<Decimal> initVector(DecimalConstants<Decimal>::DecimalZero, dateIndexCount);
     unsigned int i = 0;
-    for (; it != compareGenerator.getUniqueComparisons().end(); ++ it)
+    for (; it != compareGenerator->getUniqueComparisons().end(); ++ it)
       {
         mUniqueMaps[i] = (*it);
         mMatrix[i] = initVector;
@@ -74,7 +74,7 @@ public:
 
       }
     std::cout << "Unique maps size: " << mUniqueMaps.size() << ", underlying mMatrix size: " << mMatrix.size() << std::endl;
-    vectorizeComparisons(compareGenerator.getComparisons());
+    vectorizeComparisons(compareGenerator->getComparisons());
   }
 
   void vectorizeComparisons(const std::unordered_map<unsigned int, std::unordered_set<ComparisonEntryType>>& comparisonsBatches)
@@ -107,6 +107,10 @@ public:
   const std::valarray<Decimal>& getMappedElement(unsigned int id) const { return mMatrix.at(id); }
 
   const ComparisonEntryType& getUnderlying(unsigned int id) const { return mUniqueMaps.at(id); }
+
+  size_t getMapSize() const { return mMatrix.size(); }
+
+  unsigned int getDateCount() const { return mDateIndexCount; }
 
   ~UniqueSinglePAMatrix()
   {}

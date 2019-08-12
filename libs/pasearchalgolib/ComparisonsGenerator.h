@@ -65,11 +65,11 @@ namespace mkc_searchalgo
       shiftBarsUp();
       //add to circular buffer (because we will self-compare, too)
       mBarBuffer.push_back(lastBar);
-      std::cout << "bar buffer now has " << mBarBuffer.size() << " elements " << std::endl;
-      for (int i = 0; i < mBarBuffer.size(); ++i)
-        {
-          std::cout << mBarBuffer[i] << std::endl;
-        }
+//      std::cout << "bar buffer now has " << mBarBuffer.size() << " elements " << std::endl;
+//      for (int i = 0; i < mBarBuffer.size(); ++i)
+//        {
+//          std::cout << mBarBuffer[i] << std::endl;
+//        }
       runCompare();
       mDateIndex++;
       newComparisonsBatch();

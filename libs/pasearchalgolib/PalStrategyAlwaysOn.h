@@ -98,9 +98,9 @@ namespace mkc_searchalgo {
             if (this->getSecurityBarNumber(aSecurity->getSymbol()) >
                 this->getPalPattern()->getMaxBarsBack())
               {
-                PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
-                typename Security<Decimal>::ConstRandomAccessIterator it =
-                  aSecurity->getRandomAccessIterator (processingDate);
+//                PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
+//                typename Security<Decimal>::ConstRandomAccessIterator it =
+//                  aSecurity->getRandomAccessIterator (processingDate);
 
 //The only difference
 		if (true)
@@ -206,9 +206,9 @@ namespace mkc_searchalgo {
             if (this->getSecurityBarNumber(aSecurity->getSymbol()) >
                 this->getPalPattern()->getMaxBarsBack())
               {
-                PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
-                typename Security<Decimal>::ConstRandomAccessIterator it =
-                  aSecurity->getRandomAccessIterator (processingDate);
+//                PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
+//                typename Security<Decimal>::ConstRandomAccessIterator it =
+//                  aSecurity->getRandomAccessIterator (processingDate);
 
 		if (true)
 		  {

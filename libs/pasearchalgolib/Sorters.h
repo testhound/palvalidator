@@ -1,0 +1,101 @@
+#ifndef SORTERS_H
+#define SORTERS_H
+
+#include "UniqueSinglePAMatrix.h"
+
+namespace mkc_searchalgo
+{
+
+  struct Sorters {
+    ///
+    /// Sorts descending on Trade-Weighted Profit Factor (TWPF)
+    /// (so as to keep the more active strategies for subsequent rounds)
+    /// then ascending on unique id (for no collision)
+    ///
+    template <class Decimal>
+    struct TwpfSorter
+    {
+      bool static sort(const std::tuple<Decimal, unsigned int, int> & lhs, const std::tuple<Decimal, unsigned int, int>& rhs)
+      {
+        Decimal pf1 = std::get<0>(lhs);
+        Decimal pf2 = std::get<0>(rhs);
+
+        if (pf1 > DecimalConstants<Decimal>::DecimalOne && pf2 < DecimalConstants<Decimal>::DecimalOne)
+          return true;
+        if (pf1 < DecimalConstants<Decimal>::DecimalOne && pf2 > DecimalConstants<Decimal>::DecimalOne)
+          return false;
+
+        Decimal factor1 = pf1 * Decimal(std::get<1>(lhs));
+        Decimal factor2 = pf2 * Decimal(std::get<1>(rhs));
+        if (factor1 > factor2)
+          return true;
+        if (factor1 < factor2)
+          return false;
+        //when equal
+        return std::get<2>(lhs) < std::get<2>(rhs);
+      }
+    };
+
+    /// Simple Profit factor sorting Desc
+    template <class Decimal>
+    struct PfSorter
+    {
+      bool static sort(const std::tuple<Decimal, unsigned int, int> & lhs, const std::tuple<Decimal, unsigned int, int>& rhs)
+      {
+        Decimal pf1 = std::get<0>(lhs);
+        Decimal pf2 = std::get<0>(rhs);
+        if (pf1 > pf2)
+          return true;
+        if (pf1 < pf2)
+          return false;
+        //when profit factors equal
+        unsigned int trades1 = std::get<1>(lhs);
+        unsigned int trades2 = std::get<1>(rhs);
+        if (trades1 > trades2)
+          return true;
+        if (trades1 < trades2)
+          return false;
+        //when trades also equal use unique id to sort with stability
+        return std::get<2>(lhs) < std::get<2>(rhs);
+      }
+    };
+
+    ///
+    /// Sorting on a combined factor of PF and trades
+    /// with a multiplier to weight PF more proportionally to trades
+    /// this sorter needs arguments
+    ///
+    template <class Decimal>
+    class CombinationPfSorter
+    {
+    public:
+      CombinationPfSorter(Decimal ratio, Decimal multiplier):
+        mMultiplier(ratio * multiplier)
+      {}
+
+      bool operator()(const std::tuple<Decimal, unsigned int, int> & lhs, const std::tuple<Decimal, unsigned int, int>& rhs)
+      {
+        Decimal pf1 = std::get<0>(lhs);
+        Decimal pf2 = std::get<0>(rhs);
+
+        unsigned int trades1 = std::get<1>(lhs);
+        unsigned int trades2 = std::get<1>(rhs);
+
+        Decimal factor1 = pf1 * mMultiplier + Decimal(trades1);
+        Decimal factor2 = pf2 * mMultiplier + Decimal(trades2);
+        if (factor1 > factor2)
+          return true;
+        if (factor1 < factor2)
+          return false;
+        //when factors also equal use unique id to sort with stability
+        return std::get<2>(lhs) < std::get<2>(rhs);
+      }
+    private:
+      Decimal mMultiplier;
+    };
+
+  };
+
+}
+
+#endif // SORTERS_H
