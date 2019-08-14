@@ -39,9 +39,8 @@ namespace mkc_searchalgo
       mSeries = mConfiguration->getSecurity()->getTimeSeries();
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
-      unsigned depth = 10;
 
-      mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(depth);
+      mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(mDepth);
 
       for (; it != mSeries->endRandomAccess(); it++)
       {
@@ -67,19 +66,22 @@ namespace mkc_searchalgo
     template <bool isLong>
     void run()
     {
-      std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
-      std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);
+      std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(2.04);
+      std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(2.04);
       BacktestResultBaseGenerator<Decimal, isLong> resultBase(mConfiguration, profitTarget, stopLoss);
 
       resultBase.buildBacktestMatrix();
 
       using TBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
 
-      unsigned int minTrades = 5;
+      unsigned int minTrades = 20;
+      Decimal sortMultiplier(0.05);
+      unsigned int passingStratNumPerRound = 1500;
+      Decimal profitFactorCriterion(2.0);
       std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
       std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(minTrades, shortcut, mPaMatrix);
       ForwardStepwiseSelector<Decimal>
-          forwardStepwise(backtestProcessor, mPaMatrix, minTrades, mDepth, 1500, Decimal(2.0));
+          forwardStepwise(backtestProcessor, mPaMatrix, minTrades, mDepth, passingStratNumPerRound, profitFactorCriterion, sortMultiplier, ( (*profitTarget)/(*stopLoss) ) );
       forwardStepwise.runSteps();
     }
 

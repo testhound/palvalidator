@@ -68,6 +68,63 @@ namespace mkc_searchalgo {
         throw std::logic_error(std::string("SearchBacktestPolicy:getProfitFactor - getNumPositions > 0 error"));
     }
 
+    Decimal getAverageWinningTrade() const
+    {
+      if (mNumWinners >= 1)
+        return (Decimal(mSumWinners) /Decimal(mNumWinners));
+      else
+        return (DecimalConstants<Decimal>::DecimalZero);
+    }
+
+    Decimal getAverageLosingTrade() const
+    {
+      if (mNumLosers >= 1)
+        return (Decimal(mSumLosers) /Decimal(mNumLosers));
+      else
+        return (DecimalConstants<Decimal>::DecimalZero);
+    }
+
+    Decimal getPayoffRatio() const
+    {
+      if (mNumTrades > 0)
+        {
+          if ((mNumWinners >= 1) and (mNumLosers >= 1))
+            {
+              Decimal avgLoser = num::abs(getAverageLosingTrade());
+              if (avgLoser != DecimalConstants<Decimal>::DecimalZero)
+                return (getAverageWinningTrade() / avgLoser);
+              else
+                return (getAverageWinningTrade());
+            }
+          else if (mNumWinners == 0)
+            return (DecimalConstants<Decimal>::DecimalZero);
+          else if (mNumLosers == 0)
+            return (getAverageWinningTrade());
+          else
+            throw std::logic_error(std::string("ClosedPositionHistory:getPayoffRatio - getNumPositions > 0 error"));
+
+        }
+      else
+        return (DecimalConstants<Decimal>::DecimalZero);
+    }
+
+    Decimal getPALProfitability() const
+    {
+      if (mNumTrades > 0)
+        {
+          Decimal pf(getProfitFactor());
+          Decimal payoffRatio(getPayoffRatio());
+
+          Decimal denominator (pf + payoffRatio);
+          if (denominator > DecimalConstants<Decimal>::DecimalZero)
+            return ((pf/denominator) * DecimalConstants<Decimal>::DecimalOneHundred);
+          else
+            return (DecimalConstants<Decimal>::DecimalZero);
+        }
+      else
+        return (DecimalConstants<Decimal>::DecimalZero);
+    }
+
     unsigned int getTradeNumber() const { return mNumTrades; }
 
   private:

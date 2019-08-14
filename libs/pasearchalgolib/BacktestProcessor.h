@@ -30,16 +30,18 @@ namespace mkc_searchalgo
 
       mSearchAlgoBacktester->backtest(occurences);
       const Decimal& pf = mSearchAlgoBacktester->getProfitFactor();
+      const Decimal& po = mSearchAlgoBacktester->getPayoffRatio();
+      const Decimal& pp = mSearchAlgoBacktester->getPALProfitability();
       unsigned int trades = mSearchAlgoBacktester->getTradeNumber();
       if (trades < mMinTrades)
         return;
-      mResults.emplace_back(pf, trades, mUniqueId);
+      mResults.emplace_back(ResultStat<Decimal>(pf, po, pp), trades, mUniqueId);
       mStratMap[mUniqueId] = compareContainer;
       mUniqueId++;
     }
 
 
-    const std::vector<std::tuple<Decimal, unsigned int, int>>& getResults() const
+    const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& getResults() const
     { return mResults; }
 
 
@@ -72,7 +74,7 @@ namespace mkc_searchalgo
     int mUniqueId;
     unsigned mMinTrades;
     std::shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
-    std::vector<std::tuple<Decimal, unsigned int, int>> mResults;
+    std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;
     std::unordered_map<int, StrategyRepresentationType> mStratMap;
     const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& mUniques;
 

@@ -33,26 +33,33 @@ namespace mkc_searchalgo
   class SimpleSteppingPolicy
   {
   public:
-    SimpleSteppingPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy, size_t passingStratNumPerRound):
+    SimpleSteppingPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
+                         size_t passingStratNumPerRound,
+                         Decimal sortMultiplier):
       mProcessingPolicy(processingPolicy),
-      mPassingStratNumPerRound(passingStratNumPerRound)
+      mPassingStratNumPerRound(passingStratNumPerRound),
+      mSortMultiplier(sortMultiplier)
       {}
 
   private:
-    Decimal getAverageRatio(const std::vector<std::tuple<Decimal, unsigned int, int>>& results)
+    Decimal getAverageRatio(const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& results)
     {
       unsigned int tradeSum{0};
-      Decimal pfSum(0.0);
+      Decimal ppSum(0.0);
       for (const auto& tup: results)
         {
-          tradeSum += std::get<1>(tup);
-          pfSum += std::get<0>(tup);
+          unsigned int trades = std::get<1>(tup);
+          ResultStat<Decimal> stat = std::get<0>(tup);
+          if (stat.ProfitFactor == DecimalConstants<Decimal>::DecimalZero || stat.ProfitFactor == DecimalConstants<Decimal>::DecimalOneHundred)
+            continue;
+          tradeSum += trades;
+          ppSum += stat.PALProfitability;
         }
       Decimal tradeAvg = Decimal(tradeSum) / Decimal(static_cast<unsigned int>(results.size()));
-      Decimal pfAvg = pfSum / Decimal(static_cast<unsigned int>(results.size()));
+      Decimal ppAvg = ppSum / Decimal(static_cast<unsigned int>(results.size()));
       std::cout << "trade avg: " << tradeAvg << std::endl;
-      std::cout << "pf avg: " << pfAvg << std::endl;
-      return (tradeAvg / pfAvg);
+      std::cout << "PAL profitability avg: " << ppAvg << std::endl;
+      return (tradeAvg / ppAvg);
     }
   protected:
     std::vector<StrategyRepresentationType> passes()
@@ -60,7 +67,7 @@ namespace mkc_searchalgo
       std::vector<StrategyRepresentationType> ret;
 
       //fetch results
-      const std::vector<std::tuple<Decimal, unsigned int, int>>&
+      const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>&
           results = mProcessingPolicy->getResults();
       std::unordered_map<int, StrategyRepresentationType>&
           stratMap = mProcessingPolicy->getStrategyMap();
@@ -73,8 +80,7 @@ namespace mkc_searchalgo
       //std::cout << "sorting..." << std::endl;
 
       Decimal avgRatio = getAverageRatio(results);
-      Decimal multiplier = Decimal(3.0);
-      mProcessingPolicy->template sortResults<TSorter>(avgRatio, multiplier);
+      mProcessingPolicy->template sortResults<TSorter>(avgRatio, mSortMultiplier);
 
       size_t n = 0;
       for (const auto& tup: results)
@@ -82,8 +88,10 @@ namespace mkc_searchalgo
           if (ret.size() < to80)
             {
               int ind = std::get<2>(tup);
-              // do not pass "perfect strategies
-              if (std::get<0>(tup) == DecimalConstants<Decimal>::DecimalOneHundred)
+              // do not pass "perfect" or "useless" strategies
+              const ResultStat<Decimal>& stat = std::get<0>(tup);
+
+              if (stat.ProfitFactor == DecimalConstants<Decimal>::DecimalOneHundred || stat.ProfitFactor == DecimalConstants<Decimal>::DecimalZero)
                 continue;
               StrategyRepresentationType & strat = stratMap[ind];
               //check for repeats (only here, as at this stage processing time is less pertinent)
@@ -100,9 +108,11 @@ namespace mkc_searchalgo
               if (n % everyNth == 0)
                 {
                   int ind = std::get<2>(tup);
-                  // do not pass "perfect strategies
-                  if (std::get<0>(tup) == DecimalConstants<Decimal>::DecimalOneHundred)
+                  // do not pass "perfect" or "useless" strategies
+                  const ResultStat<Decimal>& stat = std::get<0>(tup);
+                  if (stat.ProfitFactor == DecimalConstants<Decimal>::DecimalOneHundred || stat.ProfitFactor == DecimalConstants<Decimal>::DecimalZero)
                     continue;
+
                   StrategyRepresentationType & strat = stratMap[ind];
                   //check for repeats (only here, as at this stage processing time is less pertinent)
                   std::sort(strat.begin(), strat.end());
@@ -128,6 +138,7 @@ namespace mkc_searchalgo
   private:
     shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mProcessingPolicy;
     size_t mPassingStratNumPerRound;
+    Decimal mSortMultiplier;
 
   };
 
