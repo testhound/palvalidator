@@ -18,6 +18,7 @@
 #include "ForwardStepwiseSelector.h"
 #include "SteppingPolicy.h"
 #include "SurvivalPolicy.h"
+#include "PalToComparison.h"
 
 #include "SearchController.h"
 
@@ -49,17 +50,42 @@ int main(int argc, char **argv)
 
     if (argc == 2)
     {
-        std::string configurationFileName (v[1]);
+        //std::string configurationFileName1 (v[1]);
+        std::string configurationFileName1 ("%config1.txt");
+        std::string configurationFileName2 ("%config2.txt");
 
-        std::cout << configurationFileName << std::endl;
-        McptConfigurationFileReader reader(configurationFileName);
-        std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+        std::cout << configurationFileName1 << std::endl;
+        McptConfigurationFileReader reader1(configurationFileName1);
+        std::shared_ptr<McptConfiguration<Decimal>> configuration1 = reader1.readConfigurationFile();
 
-        SearchController<Decimal> controller(configuration, 10);
-        controller.prepare();
-        controller.run<true>();
-        controller.run<false>();
+        std::cout << configurationFileName2 << std::endl;
+        McptConfigurationFileReader reader2(configurationFileName2);
+        std::shared_ptr<McptConfiguration<Decimal>> configuration2 = reader2.readConfigurationFile();
+
+        unsigned int matches = 0;
+        for (PriceActionLabSystem::ConstSortedPatternIterator it1  = configuration1->getPricePatterns()->patternLongsBegin(); it1 != configuration1->getPricePatterns()->patternLongsEnd(); it1++)
+          {
+            PatternExpressionPtr pattern1 = (*it1).second->getPatternExpression();
+            PalToComparison comparison1(pattern1.get());
+            for (PriceActionLabSystem::ConstSortedPatternIterator it2  = configuration2->getPricePatterns()->patternLongsBegin(); it2 != configuration2->getPricePatterns()->patternLongsEnd(); it2++)
+              {
+                PatternExpressionPtr pattern2 = (*it2).second->getPatternExpression();
+                PalToComparison comparison2(pattern2.get());
+                if (comparison1 == comparison2)
+                  matches++;
+              }
+          }
+        std::cout << "Found " << matches << " long matches" << std::endl;
+
         return 0;
+//        SearchController<Decimal> controller(configuration, 10);
+//        controller.prepare();
+//        controller.run<true>();
+//        controller.run<false>();
+//        return 0;
+
+
+
 
 //        std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
 //        std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);

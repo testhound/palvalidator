@@ -3,6 +3,7 @@ set(SRC_LIST
 ComparableBar.h
 PalStrategyAlwaysOn.h
 ComparisonToPalStrategy.h
+PalToComparison.h
 ComparisonsGenerator.h
 UniqueSinglePAMatrix.h
 BacktestResultBaseGenerator.h
