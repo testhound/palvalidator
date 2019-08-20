@@ -75,11 +75,18 @@ namespace mkc_searchalgo
       using TBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
 
       unsigned int minTrades = 20;
-      Decimal sortMultiplier(0.05);
-      unsigned int passingStratNumPerRound = 1500;
+      Decimal sortMultiplier(5.0);
+      unsigned int passingStratNumPerRound = 1000;
       Decimal profitFactorCriterion(2.0);
+      unsigned int maxLosers = 4;
+      unsigned int maxInactivity = 500;
+      //1: 4, 500
+      //2: 4, 10000
+      //3: 1, 500
+      //4: 4, 500 (sorter: 5.0)
+
       std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
-      std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(minTrades, shortcut, mPaMatrix);
+      std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(minTrades, maxLosers, maxInactivity, shortcut, mPaMatrix);
       ForwardStepwiseSelector<Decimal>
           forwardStepwise(backtestProcessor, mPaMatrix, minTrades, mDepth, passingStratNumPerRound, profitFactorCriterion, sortMultiplier, ( (*profitTarget)/(*stopLoss) ) );
       forwardStepwise.runSteps();

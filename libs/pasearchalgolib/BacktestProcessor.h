@@ -11,9 +11,11 @@ namespace mkc_searchalgo
   class BacktestProcessor
   {
   public:
-    BacktestProcessor(unsigned minTrades, std::shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester, const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& uniques):
+    BacktestProcessor(unsigned minTrades, unsigned maxLosers, unsigned maxInactivity, std::shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester, const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& uniques):
       mUniqueId(0),
       mMinTrades(minTrades),
+      mMaxLosers(maxLosers),
+      mMaxInactivity(maxInactivity),
       mSearchAlgoBacktester(searchAlgoBacktester),
       mResults(),
       mStratMap(),
@@ -33,7 +35,11 @@ namespace mkc_searchalgo
       const Decimal& po = mSearchAlgoBacktester->getPayoffRatio();
       const Decimal& pp = mSearchAlgoBacktester->getPALProfitability();
       unsigned int trades = mSearchAlgoBacktester->getTradeNumber();
-      if (trades < mMinTrades)
+      unsigned int maxLosers = mSearchAlgoBacktester->getMaxConsecutiveLosers();
+      unsigned int maxInactivity = mSearchAlgoBacktester->getMaxInactivitySpan();
+
+      //pre-filtering, we don't need to keep these results in memory
+      if (trades < mMinTrades || maxLosers > mMaxLosers || maxInactivity > mMaxInactivity)
         return;
       mResults.emplace_back(ResultStat<Decimal>(pf, po, pp), trades, mUniqueId);
       mStratMap[mUniqueId] = compareContainer;
@@ -72,7 +78,9 @@ namespace mkc_searchalgo
   private:
 
     int mUniqueId;
-    unsigned mMinTrades;
+    unsigned int mMinTrades;
+    unsigned int mMaxLosers;
+    unsigned int mMaxInactivity;
     std::shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
     std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;
     std::unordered_map<int, StrategyRepresentationType> mStratMap;

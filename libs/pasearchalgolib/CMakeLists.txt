@@ -9,6 +9,8 @@ UniqueSinglePAMatrix.h
 BacktestResultBaseGenerator.h
 ShortcutSearchAlgoBacktester.h
 OriginalSearchAlgoBacktester.h
+SearchAlgoConfigurationFileReader.h
+SearchAlgoConfigurationFileReader.cpp
 ForwardStepwiseSelector.h
 BacktestProcessor.h
 SteppingPolicy.h

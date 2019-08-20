@@ -125,7 +125,11 @@ namespace mkc_searchalgo {
         return (DecimalConstants<Decimal>::DecimalZero);
     }
 
+    unsigned int getMaxConsecutiveLosers() const { mMaxConsLosers; }
+
     unsigned int getTradeNumber() const { return mNumTrades; }
+
+    unsigned int getMaxInactivitySpan() const { return mMaxInactivitySpan; }
 
   private:
     void reset()
@@ -135,6 +139,8 @@ namespace mkc_searchalgo {
       mNumLosers = 0;
       mSumWinners = 0;
       mSumLosers = 0;
+      mMaxInactivitySpan = 0;
+      mMaxConsLosers = 0;
     }
 
   private:
@@ -146,6 +152,8 @@ namespace mkc_searchalgo {
     Decimal mSumLosers;
     unsigned int mNumWinners;
     unsigned int mNumLosers;
+    unsigned int mMaxConsLosers;
+    unsigned int mMaxInactivitySpan;
     bool mIsLong;
   };
 
@@ -161,6 +169,8 @@ namespace mkc_searchalgo {
     std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
     int nextSkipStart = -1;
     int nextSkipEnd = -1;
+    unsigned int lastTradeBar = 0;
+    unsigned int consLosers = 0;
 
     /// the section that nullifies signals where a previous position would be on
     for (int i = 0; i < allResults.size(); i++)
@@ -180,14 +190,24 @@ namespace mkc_searchalgo {
         if (res != DecimalConstants<Decimal>::DecimalZero)
           {
             mNumTrades++;
+            //inactivity check
+            unsigned int inactivity = (i - lastTradeBar);
+            if (inactivity > mMaxInactivitySpan)
+              mMaxInactivitySpan = inactivity;
+
+            lastTradeBar = i;
             if (res > DecimalConstants<Decimal>::DecimalZero)
               {
                 mNumWinners++;
+                consLosers = 0;
                 mSumWinners += res;
               }
             if (res < DecimalConstants<Decimal>::DecimalZero)
               {
                 mNumLosers++;
+                consLosers++;
+                if (consLosers > mMaxConsLosers)
+                  mMaxConsLosers = consLosers;
                 mSumLosers += res;
               }
 
