@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <exception>
+#include <vector>
 //#include <boost/date_time.hpp>
 //#include "Security.h"
 //#include "DateRange.h"
@@ -36,7 +37,9 @@ namespace mkc_searchalgo
         unsigned int passingStratNumPerRound,
         Decimal profitFactorCriterion,
         unsigned int maxConsecutiveLosers,
-        unsigned int maxInactivitySpan)
+        unsigned int maxInactivitySpan,
+        std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
+        std::vector<time_t> timeFrames)
       :
       mMaxDepth(maxDepth),
       mMinTrades(minTrades),
@@ -44,7 +47,9 @@ namespace mkc_searchalgo
       mPassingStratNumPerRound(passingStratNumPerRound),
       mProfitFactorCriterion(profitFactorCriterion),
       mMaxConsecutiveLosers(maxConsecutiveLosers),
-      mMaxInactivitySpan(maxInactivitySpan)
+      mMaxInactivitySpan(maxInactivitySpan),
+      mTargetStopPairs(targetStopPairs),
+      mTimeFrames(timeFrames)
     {}
 
     SearchAlgoConfiguration (const SearchAlgoConfiguration& rhs)
@@ -54,7 +59,9 @@ namespace mkc_searchalgo
         mPassingStratNumPerRound(rhs.mPassingStratNumPerRound),
         mProfitFactorCriterion(rhs.mProfitFactorCriterion),
         mMaxConsecutiveLosers(rhs.mMaxConsecutiveLosers),
-        mMaxInactivitySpan(rhs.mMaxInactivitySpan)
+        mMaxInactivitySpan(rhs.mMaxInactivitySpan),
+        mTargetStopPairs(rhs.mTargetStopPairs),
+        mTimeFrames(rhs.mTimeFrames)
     {}
 
     SearchAlgoConfiguration<Decimal>&
@@ -69,6 +76,8 @@ namespace mkc_searchalgo
 	mProfitFactorCriterion = rhs.mProfitFactorCriterion;
 	mMaxConsecutiveLosers = rhs.mMaxConsecutiveLosers;
 	mMaxInactivitySpan = rhs.mMaxInactivitySpan;
+	mTargetStopPairs = rhs.mTargetStopPairs;
+	mTimeFrames = rhs.mTimeFrames;
 
       return *this;
     }
@@ -76,6 +85,11 @@ namespace mkc_searchalgo
     ~SearchAlgoConfiguration()
     {}
 
+    inline friend std::ostream& operator<< (std::ostream& strng, const SearchAlgoConfiguration<Decimal>& obj)
+    {
+      return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mSortMultiplier << ", PassingStratNumPerRound: " << obj.mPassingStratNumPerRound
+                   << ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan << ", Targets&Stops#: " << obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size();
+    }
 
     unsigned int getMaxDepth() const { return mMaxDepth; }
 
@@ -91,6 +105,14 @@ namespace mkc_searchalgo
 
     unsigned int getMaxInactivitySpan() const { return mMaxInactivitySpan; }
 
+    typename std::vector<std::pair<Decimal, Decimal>>::const_iterator targetStopPairsBegin() const { return mTargetStopPairs.begin(); }
+
+    typename std::vector<std::pair<Decimal, Decimal>>::const_iterator targetStopPairsEnd() const { return mTargetStopPairs.end(); }
+
+    typename std::vector<time_t>::const_iterator timeFramesBegin() const { return mTimeFrames.begin(); }
+
+    typename std::vector<time_t>::const_iterator timeFramesEnd() const { return mTimeFrames.end(); }
+
   private:
     unsigned int mMaxDepth;
     unsigned int mMinTrades;
@@ -99,6 +121,8 @@ namespace mkc_searchalgo
     Decimal mProfitFactorCriterion;
     unsigned int mMaxConsecutiveLosers;
     unsigned int mMaxInactivitySpan;
+    std::vector<std::pair<Decimal, Decimal>> mTargetStopPairs;
+    std::vector<time_t> mTimeFrames;
   };
 
   class SearchAlgoConfigurationFileReader

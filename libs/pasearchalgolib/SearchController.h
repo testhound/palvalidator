@@ -6,6 +6,7 @@
 #include "UniqueSinglePAMatrix.h"
 #include "ShortcutSearchAlgoBacktester.h"
 #include "ForwardStepwiseSelector.h"
+#include "SearchAlgoConfigurationFileReader.h"
 
 using namespace mkc_timeseries;
 
@@ -27,8 +28,8 @@ namespace mkc_searchalgo
   class SearchController
   {
   public:
-    SearchController(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, unsigned int depth):
-      mDepth(depth),
+    SearchController(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration):
+      mSearchConfiguration(searchConfiguration),
       mConfiguration(configuration)
     {}
     void prepare()
@@ -40,7 +41,7 @@ namespace mkc_searchalgo
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
-      mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(mDepth);
+      mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(mSearchConfiguration->getMaxDepth());
 
       for (; it != mSeries->endRandomAccess(); it++)
       {
@@ -64,36 +65,48 @@ namespace mkc_searchalgo
     }
 
     template <bool isLong>
-    void run()
+    void run(const Decimal& profitTarget, const Decimal& stopLoss)
     {
-      std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(2.04);
-      std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(2.04);
+      //std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(2.04);
+      //std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(2.04);
       BacktestResultBaseGenerator<Decimal, isLong> resultBase(mConfiguration, profitTarget, stopLoss);
 
       resultBase.buildBacktestMatrix();
 
       using TBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
 
-      unsigned int minTrades = 20;
-      Decimal sortMultiplier(5.0);
-      unsigned int passingStratNumPerRound = 1000;
-      Decimal profitFactorCriterion(2.0);
-      unsigned int maxLosers = 4;
-      unsigned int maxInactivity = 500;
+//      unsigned int minTrades = 20;
+//      Decimal sortMultiplier(5.0);
+//      unsigned int passingStratNumPerRound = 1000;
+//      Decimal profitFactorCriterion(2.0);
+//      unsigned int maxLosers = 4;
+//      unsigned int maxInactivity = 500;
       //1: 4, 500
       //2: 4, 10000
       //3: 1, 500
       //4: 4, 500 (sorter: 5.0)
 
-      std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
-      std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(minTrades, maxLosers, maxInactivity, shortcut, mPaMatrix);
+      std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), mSearchConfiguration->getMinTrades(), isLong);
+      std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(
+            mSearchConfiguration->getMinTrades(),
+            mSearchConfiguration->getMaxConsecutiveLosers(),
+            mSearchConfiguration->getMaxInactivitySpan(),
+            shortcut,
+            mPaMatrix);
       ForwardStepwiseSelector<Decimal>
-          forwardStepwise(backtestProcessor, mPaMatrix, minTrades, mDepth, passingStratNumPerRound, profitFactorCriterion, sortMultiplier, ( (*profitTarget)/(*stopLoss) ) );
+          forwardStepwise(backtestProcessor,
+                          mPaMatrix,
+                          mSearchConfiguration->getMinTrades(),
+                          mSearchConfiguration->getMaxDepth(),
+                          mSearchConfiguration->getPassingStratNumPerRound(),
+                          mSearchConfiguration->getProfitFactorCriterion(),
+                          mSearchConfiguration->getSortMultiplier(),
+                          ( (*profitTarget)/(*stopLoss) ) );
       forwardStepwise.runSteps();
     }
 
   private:
-    unsigned int mDepth;
+    std::shared_ptr<SearchAlgoConfiguration<Decimal>> mSearchConfiguration;
     std::shared_ptr<McptConfiguration<Decimal>> mConfiguration;
     std::shared_ptr<ComparisonsGenerator<Decimal>> mComparisonGenerator;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;

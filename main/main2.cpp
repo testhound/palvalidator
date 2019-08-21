@@ -19,7 +19,7 @@
 #include "SteppingPolicy.h"
 #include "SurvivalPolicy.h"
 #include "PalToComparison.h"
-
+#include "SearchAlgoConfigurationFileReader.h"
 #include "SearchController.h"
 
 
@@ -82,17 +82,30 @@ int main(int argc, char **argv)
 
     //return testPatternMatching();
 
-    if (argc == 2)
+    if (argc == 3)
     {
         std::string configurationFileName (v[1]);
         std::cout << configurationFileName << std::endl;
         McptConfigurationFileReader reader(configurationFileName);
         std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
 
-        SearchController<Decimal> controller(configuration, 10);
+        std::string searchConfigFileName(v[2]);
+        std::cout << searchConfigFileName << std::endl;
+        SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
+        std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile();
+
+        std::cout << "Parsed search algo config: " << searchConfigFileName << std::endl;
+        std::cout << (*searchConfig) << std::endl;
+
+        SearchController<Decimal> controller(configuration, searchConfig);
         controller.prepare();
-        controller.run<true>();
-        controller.run<false>();
+
+        for (auto it = searchConfig->targetStopPairsBegin(); it != searchConfig->targetStopPairsEnd(); it++)
+          {
+              //THESE ARE MULTIPLIERS, CANNOT USE THIS WAY YET
+              controller.run<true>(it->first, it->second);
+              controller.run<false>(it->first, it->second);
+          }
         return 0;
 
 
@@ -206,7 +219,7 @@ int main(int argc, char **argv)
 
     }
     else {
-        std::cout << "wrong usage, " << (argc - 1) << " arguments specified, needs to be a single argument.. " << std::endl;
+        std::cout << "wrong usage, " << (argc - 1) << " arguments specified, needs to provide 2 config-file-path arguments." << std::endl;
     }
 
 

@@ -11,6 +11,9 @@
 #include "SecurityAttributesFactory.h"
 #include <cstdio>
 #include "number.h"
+#include "boost/lexical_cast.hpp"
+#include "boost/lexical_cast/bad_lexical_cast.hpp"
+#include "typeinfo"
 
 using namespace boost::filesystem;
 //extern PriceActionLabSystem* parsePALCode();
@@ -23,6 +26,26 @@ using namespace mkc_timeseries;
 namespace mkc_searchalgo
 {
 
+  template <class T>
+  static T tryCast(std::string inputString)
+  {
+    try
+    {
+      return boost::lexical_cast<T>(inputString);
+    }
+    catch (const boost::bad_lexical_cast & e)
+    {
+        std::string exceptionStr(std::string("Exception caught when trying to cast: ") + inputString + std::string(" as ") + typeid(T).name() + std::string("."));
+        std::cout << exceptionStr << "\nException: " << e.what() << "!" << std::endl;
+        throw SearchAlgoConfigurationFileReaderException(exceptionStr);
+    }
+    catch (const std::exception& e)
+    {
+      throw SearchAlgoConfigurationFileReaderException(std::string("Undefined exception encountered in tryCast. Exception details: " + std::string(e.what())));
+    }
+  }
+
+
   SearchAlgoConfigurationFileReader::SearchAlgoConfigurationFileReader (const std::string& configurationFileName)
     : mConfigurationFileName(configurationFileName)
   {}
@@ -31,134 +54,73 @@ namespace mkc_searchalgo
   {
     io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
 
-    csvConfigFile.set_header("Symbol", "IRPath", "DataPath","FileFormat","ISDateStart",
-			     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
+    csvConfigFile.set_header("MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
+                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath");
 
-    std::string tickerSymbol, palIRFilePathStr, historicDataFilePathStr, historicDataFormatStr;
-    std::string inSampleStartDate, inSampleEndDate, oosStartDate, oosEndDate;
-    std::string timeFrameStr;
-
-    boost::gregorian::date insampleDateStart, insampleDateEnd, oosDateStart, oosDateEnd;
-
-    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, historicDataFilePathStr,
-			    historicDataFormatStr, inSampleStartDate, inSampleEndDate,
-			    oosStartDate, oosEndDate, timeFrameStr);
+    std::string maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath;
 
 
-//    insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
-//    insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
+    csvConfigFile.read_row (maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
+                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath);
 
-//    DateRange inSampleDates(insampleDateStart, insampleDateEnd);
 
-//    oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
-//    oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
+    boost::filesystem::path targetsFile (targetsToSearchConfigFilePath);
+    if (!exists (targetsFile))
+      throw SearchAlgoConfigurationFileReaderException("Targets to search config file path: " + targetsFile.string() + " does not exist");
 
-//    DateRange ooSampleDates( oosDateStart, oosDateEnd);
 
-//    if (oosDateStart <= insampleDateEnd)
-//      std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
-//    //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
+    bool reading = true;
+    std::vector<std::pair<Decimal, Decimal>> targetStops;
+    io::CSVReader<2> targetsCsv(targetsToSearchConfigFilePath);
+    targetsCsv.set_header("TargetMultiplier", "StopMultiplier");
 
-//    boost::filesystem::path irFilePath (palIRFilePathStr);
+    while (reading)
+      {
+        std::string target, stop;
+        reading = targetsCsv.read_row(target, stop);
+        if (reading)
+          targetStops.push_back(std::make_pair(Decimal(tryCast<float>(target)), Decimal(tryCast<float>(stop))));
+      }
 
-//    if (!exists (irFilePath))
-//      throw McptConfigurationFileReaderException("PAL IR path " +irFilePath.string() +" does not exist");
+    boost::filesystem::path timeFramesFile (timeFramesToSearchConfigFilePath);
+    if (!exists (timeFramesFile))
+      throw SearchAlgoConfigurationFileReaderException("Timeframe to search config file path: " +  timeFramesFile.string() + " does not exist");
 
-//    boost::filesystem::path historicDataFilePath (historicDataFilePathStr);
-//    if (!exists (historicDataFilePath))
-//      throw McptConfigurationFileReaderException("Historic data file path " +historicDataFilePath.string() +" does not exist");
+    reading = true;
+    std::vector<time_t> timeFrames;
+    io::CSVReader<1> timesCsv(timeFramesToSearchConfigFilePath);
+    timesCsv.set_header("TimeFrame");
 
-//    std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
-//    TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
+    while (reading)
+      {
+        std::string timeFrame;
+        reading = timesCsv.read_row(timeFrame);
+        if (!reading)
+          break;
+        struct std::tm tm;
+        try
+        {
+          strptime(timeFrame.c_str(), "%H:%M", &tm);
+          timeFrames.push_back(std::mktime(&tm));
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << "Time conversion exception." << std::endl;
+            throw SearchAlgoConfigurationFileReaderException("Time conversion exception in file: " + timeFramesFile.string() + ", when converting: " + timeFrame + "\nException details: " + std::string(e.what()));
+        }
+      }
 
-//    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
-//										     historicDataFormatStr,
-//										     backTestingTimeFrame,
-//										     getVolumeUnit(attributes),
-//										     attributes->getTick());
-//    reader->readFile();
 
-//    //  insampleDateStart
-//    boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
-//    if (insampleDateStart < timeSeriesStartDate)
-//      {
-//	boost::gregorian::date_period daysBetween(insampleDateStart, timeSeriesStartDate);
-//	if (daysBetween.length().days() > 10)
-//	  {
-//	    std::string inSampleDateStr(boost::gregorian::to_simple_string (insampleDateStart));
-//	    std::string timeSeriesDateStr(boost::gregorian::to_simple_string (timeSeriesStartDate));
-
-//	    throw McptConfigurationFileReaderException (std::string("Number of days between configuration file IS start date of ") +inSampleDateStr +std::string(" and TimeSeries start date of ") +timeSeriesDateStr +std::string(" is greater than 10 days"));
-//	  }
-//      }
-
-//    // Constructor driver (facade) that will parse the IR and return
-//    // and AST representation
-//    mkc_palast::PalParseDriver driver (irFilePath.string());
-
-//    // Read the IR file
-
-//    driver.Parse();
-
-//    std::cout << "Parsing successfully completed." << std::endl << std::endl;
-//    PriceActionLabSystem* system = driver.getPalStrategies();
-//    std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
-//    std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
-//    std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
-//    //yyin = fopen (irFilePath.string().c_str(), "r");
-//    //PriceActionLabSystem* system = parsePALCode();
-
-//    //fclose (yyin);
-
-//    return std::make_shared<McptConfiguration<Decimal>>(getBackTester(backTestingTimeFrame, ooSampleDates),
-//						  getBackTester(backTestingTimeFrame, inSampleDates),
-//						  createSecurity (attributes, reader),
-//						  system, inSampleDates, ooSampleDates);
-//  }
-
-//  static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-//							 const DateRange& backtestingDates)
-//  {
-//    if (theTimeFrame == TimeFrame::DAILY)
-//      return std::make_shared<DailyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-//						  backtestingDates.getLastDate());
-//    else if (theTimeFrame == TimeFrame::WEEKLY)
-//      return std::make_shared<WeeklyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-//						   backtestingDates.getLastDate());
-//    else if (theTimeFrame == TimeFrame::MONTHLY)
-//      return std::make_shared<MonthlyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-//						    backtestingDates.getLastDate());
-//    else
-//      throw McptConfigurationFileReaderException("getBacktester - cannot create backtester for time frame other than daily or monthly");
-//  }
-
-//  static std::shared_ptr<mkc_timeseries::Security<Decimal>>
-//  createSecurity (std::shared_ptr<SecurityAttributes<Decimal>> attributes,
-//		  std::shared_ptr<TimeSeriesCsvReader<Decimal>> aReader)
-//  {
-//    if (attributes->isEquitySecurity())
-//      {
-//	if (attributes->isFund())
-//	  {
-//	    return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(),
-//						       attributes->getName(),
-//						       aReader->getTimeSeries());
-//	  }
-//	else if (attributes->isCommonStock())
-//	  {
-//	    return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(),
-//						       attributes->getName(),
-//						       aReader->getTimeSeries());
-//	  }
-//	else
-//	  throw McptConfigurationFileReaderException("Unknown security attribute");
-//      }
-//    else
-//      return std::make_shared<FuturesSecurity<Decimal>>(attributes->getSymbol(),
-//						  attributes->getName(),
-//						  attributes->getBigPointValue(),
-//						  attributes->getTick(),
-//						  aReader->getTimeSeries());
+    return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
+                                                              tryCast<unsigned int>(minTrades),
+                                                              Decimal(tryCast<float>(sortMultiplier)),
+                                                              tryCast<unsigned int>(passingStratNumPerRound),
+                                                              Decimal(tryCast<float>(profitFactorCritierion)),
+                                                              tryCast<unsigned int>(maxConsecutiveLosers),
+                                                              tryCast<unsigned int>(maxInactivitySpan),
+                                                              targetStops,
+                                                              timeFrames);
 
   }
 
