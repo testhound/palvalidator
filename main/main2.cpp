@@ -21,7 +21,7 @@
 #include "PalToComparison.h"
 #include "SearchAlgoConfigurationFileReader.h"
 #include "SearchController.h"
-
+#include "StdEstimator.h"
 
 #include <chrono>
 
@@ -82,30 +82,72 @@ int main(int argc, char **argv)
 
     //return testPatternMatching();
 
-    if (argc == 3)
+    if (argc == 3 || argc == 4)
     {
+        int nthreads = 0;
+        if (argc == 4) {
+            nthreads = std::stoi(v[3]);
+          }
+
+        runner runner_instance(nthreads);
         std::string configurationFileName (v[1]);
         std::cout << configurationFileName << std::endl;
         McptConfigurationFileReader reader(configurationFileName);
         std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+
+        StdEstimator<Decimal> estimator(configuration);
+        Decimal targetBase = estimator.estimate();
+        //Decimal testRange(2.04);
 
         std::string searchConfigFileName(v[2]);
         std::cout << searchConfigFileName << std::endl;
         SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
         std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile();
 
-        std::cout << "Parsed search algo config: " << searchConfigFileName << std::endl;
-        std::cout << (*searchConfig) << std::endl;
 
-        SearchController<Decimal> controller(configuration, searchConfig);
-        controller.prepare();
+        //build thread-pool-runner
+        runner& Runner=runner::instance();
+        std::vector<boost::unique_future<void>> resultsOrErrorsVector;
 
         for (auto it = searchConfig->targetStopPairsBegin(); it != searchConfig->targetStopPairsEnd(); it++)
           {
+              std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(it->first * targetBase);
+              std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(it->second * targetBase);
+              std::cout << "Testing Profit target multiplier: " << it->first << " in %: " << (*profitTarget) << ", with Stop loss multiplier: " << it->second << " in %: " << (*stopLoss) << std::endl;
               //THESE ARE MULTIPLIERS, CANNOT USE THIS WAY YET
-              controller.run<true>(it->first, it->second);
-              controller.run<false>(it->first, it->second);
+              resultsOrErrorsVector.emplace_back(Runner.post([configurationFileName,
+                                                             searchConfigFileName,
+                                                             profitTarget,
+                                                             stopLoss
+                                                             ]()-> void {
+                                                                    McptConfigurationFileReader reader(configurationFileName);
+                                                                    std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+
+                                                                    SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
+                                                                    std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile();
+
+                                                                    std::cout << "Parsed search algo config: " << searchConfigFileName << std::endl;
+                                                                    std::cout << (*searchConfig) << std::endl;
+                                                                    SearchController<Decimal> controller(configuration, searchConfig);
+                                                                    controller.prepare();
+                                                                    controller.run<true>(profitTarget, stopLoss);
+                                                                    controller.run<false>(profitTarget, stopLoss);
+                                                             }
+                                                   ));
           }
+
+        for(std::size_t i=0;i<resultsOrErrorsVector.size();++i)
+          {
+            try{
+              resultsOrErrorsVector[i].wait();
+              resultsOrErrorsVector[i].get();
+            }
+            catch(std::exception const& e)
+            {
+              std::cerr<<"Parallel run exception in run id: " << i << " error: "<<e.what()<<std::endl;
+            }
+          }
+
         return 0;
 
 

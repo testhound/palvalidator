@@ -17,6 +17,7 @@ SteppingPolicy.h
 SurvivalPolicy.h
 SearchController.h
 Sorters.h
+StdEstimator.h
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)

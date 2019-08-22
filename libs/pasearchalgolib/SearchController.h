@@ -65,7 +65,7 @@ namespace mkc_searchalgo
     }
 
     template <bool isLong>
-    void run(const Decimal& profitTarget, const Decimal& stopLoss)
+    void run(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss)
     {
       //std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(2.04);
       //std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(2.04);
