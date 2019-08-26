@@ -866,6 +866,12 @@ template <class Decimal> class OHLCTimeSeries
 
       mMapAndArrayInSync = true;
     }
+
+    bool isDateFound(const boost::gregorian::date& date)
+    {
+      return (mSortedTimeSeries.find(date) != mSortedTimeSeries.end());
+    }
+
   private:
 
     OHLCTimeSeries::MappingIterator

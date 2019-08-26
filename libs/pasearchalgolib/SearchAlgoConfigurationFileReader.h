@@ -7,11 +7,13 @@
 #include <exception>
 #include <vector>
 //#include <boost/date_time.hpp>
-//#include "Security.h"
 //#include "DateRange.h"
 //#include "BackTester.h"
 //#include "PalAst.h"
 #include "number.h"
+#include "TimeSeries.h"
+
+using namespace mkc_timeseries;
 
 namespace mkc_searchalgo
 {
@@ -39,7 +41,8 @@ namespace mkc_searchalgo
         unsigned int maxConsecutiveLosers,
         unsigned int maxInactivitySpan,
         std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
-        std::vector<time_t> timeFrames)
+        std::vector<time_t> timeFrames,
+        const std::shared_ptr<OHLCTimeSeries<Decimal>>& series)
       :
       mMaxDepth(maxDepth),
       mMinTrades(minTrades),
@@ -49,7 +52,8 @@ namespace mkc_searchalgo
       mMaxConsecutiveLosers(maxConsecutiveLosers),
       mMaxInactivitySpan(maxInactivitySpan),
       mTargetStopPairs(targetStopPairs),
-      mTimeFrames(timeFrames)
+      mTimeFrames(timeFrames),
+      mSeries(series)
     {}
 
     SearchAlgoConfiguration (const SearchAlgoConfiguration& rhs)
@@ -61,7 +65,8 @@ namespace mkc_searchalgo
         mMaxConsecutiveLosers(rhs.mMaxConsecutiveLosers),
         mMaxInactivitySpan(rhs.mMaxInactivitySpan),
         mTargetStopPairs(rhs.mTargetStopPairs),
-        mTimeFrames(rhs.mTimeFrames)
+        mTimeFrames(rhs.mTimeFrames),
+        mSeries(rhs.mSeries)
     {}
 
     SearchAlgoConfiguration<Decimal>&
@@ -78,6 +83,7 @@ namespace mkc_searchalgo
 	mMaxInactivitySpan = rhs.mMaxInactivitySpan;
 	mTargetStopPairs = rhs.mTargetStopPairs;
 	mTimeFrames = rhs.mTimeFrames;
+	mSeries = rhs.mSeries;
 
       return *this;
     }
@@ -113,6 +119,10 @@ namespace mkc_searchalgo
 
     typename std::vector<time_t>::const_iterator timeFramesEnd() const { return mTimeFrames.end(); }
 
+    size_t getNumTimeFrames() const { return mTimeFrames.size(); }
+
+    const std::shared_ptr<OHLCTimeSeries<Decimal>>& getTimeSeries() const { return mSeries; }
+
   private:
     unsigned int mMaxDepth;
     unsigned int mMinTrades;
@@ -123,6 +133,7 @@ namespace mkc_searchalgo
     unsigned int mMaxInactivitySpan;
     std::vector<std::pair<Decimal, Decimal>> mTargetStopPairs;
     std::vector<time_t> mTimeFrames;
+    std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;
   };
 
   class SearchAlgoConfigurationFileReader
@@ -134,7 +145,8 @@ namespace mkc_searchalgo
     ~SearchAlgoConfigurationFileReader()
       {}
 
-    std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile();
+    template <class SecurityT>
+    std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile(const SecurityT & security, int timeFrameIdToLoad);
 
   private:
     std::string mConfigurationFileName;

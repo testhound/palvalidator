@@ -25,23 +25,25 @@ namespace mkc_searchalgo
 //  }
 
   template <class Decimal>
-  class SearchController
+  class   SearchController
   {
   public:
-    SearchController(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration):
+    SearchController(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<OHLCTimeSeries<Decimal>>& series, const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration):
       mSearchConfiguration(searchConfiguration),
-      mConfiguration(configuration)
+      mConfiguration(configuration),
+      mSeries(series)
     {}
     void prepare()
     {
       std::string portfolioName(mConfiguration->getSecurity()->getName() + std::string(" Portfolio"));
       auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
       aPortfolio->addSecurity(mConfiguration->getSecurity());
-      mSeries = mConfiguration->getSecurity()->getTimeSeries();
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
       mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(mSearchConfiguration->getMaxDepth());
+
+      std::cout << "Preparing controller with timeseries of size: " << mSeries->getNumEntries() << std::endl;
 
       for (; it != mSeries->endRandomAccess(); it++)
       {
@@ -51,7 +53,7 @@ namespace mkc_searchalgo
           const Decimal& cClose = mSeries->getCloseValue (it, 0);
 
           auto dt = mSeries->getDateValue(it, 0);
-          //std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
+          std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
 
           mComparisonGenerator->addNewLastBar(cOpen, cHigh, cLow, cClose);
 
@@ -65,11 +67,11 @@ namespace mkc_searchalgo
     }
 
     template <bool isLong>
-    void run(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss)
+    void run(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss, bool inSampleOnly)
     {
       //std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(2.04);
       //std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(2.04);
-      BacktestResultBaseGenerator<Decimal, isLong> resultBase(mConfiguration, profitTarget, stopLoss);
+      BacktestResultBaseGenerator<Decimal, isLong> resultBase(mConfiguration, mSeries, profitTarget, stopLoss, inSampleOnly);
 
       resultBase.buildBacktestMatrix();
 

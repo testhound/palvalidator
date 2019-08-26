@@ -38,16 +38,22 @@ namespace mkc_searchalgo {
   public:
     using SidedComparisonToPalType = std::conditional_t<isLong, ComparisonToPalLongStrategyAlwaysOn<Decimal>, ComparisonToPalShortStrategyAlwaysOn<Decimal>>;
 
-    BacktestResultBaseGenerator(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<Decimal>& profitTarget, const std::shared_ptr<Decimal>& stopLoss):
+    BacktestResultBaseGenerator(const std::shared_ptr<McptConfiguration<Decimal>>& configuration,
+                                const std::shared_ptr<OHLCTimeSeries<Decimal>>& series,
+                                const std::shared_ptr<Decimal>& profitTarget,
+                                const std::shared_ptr<Decimal>& stopLoss,
+                                bool inSampleOnly):
       mConfiguration(configuration),
       mProfitTarget(profitTarget),
       mStopLoss(stopLoss),
       mDayBatches(10),
-      mSideReady(false)
+      mSideReady(false),
+      mInSampleOnly(inSampleOnly),
+      mSeries(series)
     {}
 
   private:
-    boost::gregorian::date fitBetweenInSampleDates(boost::gregorian::date dateToFit) const
+    boost::gregorian::date fitBetweenInSampleDates(boost::gregorian::date dateToFit)
     {
       DateRange iisDates = mConfiguration->getInsampleDateRange();
 
@@ -59,6 +65,18 @@ namespace mkc_searchalgo {
         return dateToFit;
     }
 
+    boost::gregorian::date fitBetweenIsOosDates(boost::gregorian::date dateToFit)
+    {
+      DateRange iisDates = mConfiguration->getInsampleDateRange();
+      DateRange oosDates = mConfiguration->getOosDateRange();
+
+      if (dateToFit < iisDates.getFirstDate())
+        return iisDates.getFirstDate();
+      else if (dateToFit > oosDates.getLastDate())
+        return oosDates.getLastDate();
+      else
+        return dateToFit;
+    }
 
   public:
     void buildBacktestMatrix()
@@ -72,35 +90,48 @@ namespace mkc_searchalgo {
 
       aPortfolio->addSecurity(mConfiguration->getSecurity());
 
-      ComparisonEntryType alwaysTrue {0, 1, 0, 2};  //aka on current bar: high greater than low = always true (as long as the bars are valid)
+      ComparisonEntryType alwaysTrue {0, 1, 0, 2};  //aka on current bar: high greater than low = always true (as long as the bars are valid) -- no longer used, but still need to init somehow
 
       std::vector<ComparisonEntryType> compareContainer { alwaysTrue };
       //map to hold unique entries (keyed on signal dates)
       std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>> tradesMap;
 
       //get time series, iterate
-      std::shared_ptr<OHLCTimeSeries<Decimal>> series = mConfiguration->getSecurity()->getTimeSeries();
+      //std::shared_ptr<OHLCTimeSeries<Decimal>> series = mConfiguration->getSecurity()->getTimeSeries();
 
-      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = series->beginRandomAccess();
+      std::cout << "Building backtest matrix (long?:" << isLong << ") with series size of: " << mSeries->getNumEntries() << std::endl;
+
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
       unsigned long i = 0;
 
-      for (; it != series->endRandomAccess(); it++)
+      for (; it != mSeries->endRandomAccess(); it++)
       {
-          auto orderDate = series->getDateValue(it, 0);
+          auto orderDate = mSeries->getDateValue(it, 0);
           i++;
           if (i > 1)  //TimeSeries exception on first bar
             {
               SidedComparisonToPalType comparison(compareContainer, 1, i, mProfitTarget.get(), mStopLoss.get(), aPortfolio);
-              auto offset = std::min((series->getNumEntries() - 1), (i + mDayBatches));
+              auto offset = std::min((mSeries->getNumEntries() - 1), (i + mDayBatches));
               //std::cout << "offset: " << offset << ", size: " << series->getNumEntries() << ", i: " << i << std::endl;
               auto startDate = it->getDateValue();
-              auto endDate = (series->beginRandomAccess() + offset)->getDateValue();
+              auto endDate = (mSeries->beginRandomAccess() + offset)->getDateValue();
 
-              // it falls out of the in sample range
-              if (fitBetweenInSampleDates(startDate) != startDate)
-                break;
-              auto interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
+              std::shared_ptr<BackTester<Decimal>> interimBacktester;
+              // it falls out of the in sample/ or in-and-out of sample range
+              if (mInSampleOnly)
+                {
+                  if (fitBetweenInSampleDates(startDate) != startDate)
+                    break;
+                  interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
+                }
+              else
+                {
+                  if (fitBetweenIsOosDates(startDate) != startDate)
+                    break;
+                  interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenIsOosDates(endDate));
+                }
+
               interimBacktester->addStrategy(comparison.getPalStrategy());
               interimBacktester->backtest();
               std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = (*(interimBacktester->beginStrategies()));
@@ -120,14 +151,14 @@ namespace mkc_searchalgo {
 
       }
       //the crux: create (not so sparse) vector of trading result per signal-date.
-      std::valarray<Decimal> arr(Decimal(0.0), series->getNumEntries());    //initialize to all 0-es
+      std::valarray<Decimal> arr(Decimal(0.0), mSeries->getNumEntries());    //initialize to all 0-es
       //then the number of bars that it should occupy
-      std::valarray<unsigned int> arrNumBars(static_cast<unsigned int>(0), series->getNumEntries());
+      std::valarray<unsigned int> arrNumBars(static_cast<unsigned int>(0), mSeries->getNumEntries());
 
       size_t  iCounter = 0; //offsetting first bar problem
-      for (auto it = series->beginRandomAccess(); it != series->endRandomAccess(); it++)
+      for (auto it = mSeries->beginRandomAccess(); it != mSeries->endRandomAccess(); it++)
         {
-          typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(series->getDateValue(it, 0));
+          typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(mSeries->getDateValue(it, 0));
 
           if ( mapIt != tradesMap.end())
             {
@@ -172,6 +203,8 @@ namespace mkc_searchalgo {
     bool mSideReady;
     std::valarray<Decimal> mTradingVector;
     std::valarray<unsigned int> mNumBarsInPosition;
+    bool mInSampleOnly;
+    std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;
 
   };
 
