@@ -10,6 +10,7 @@
 #include "ShortcutSearchAlgoBacktester.h"
 #include "SteppingPolicy.h"
 #include "SurvivalPolicy.h"
+#include "SurvivingStrategiesContainer.h"
 
 namespace mkc_searchalgo {
 
@@ -27,14 +28,16 @@ namespace mkc_searchalgo {
                             unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound,
                             Decimal survivalCriterion,
                             Decimal sortMultiplier,
-                            Decimal targetStopRatio):
+                            Decimal targetStopRatio,
+                            std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
       mBacktestProcessor(backtestProcessor),
       TSteppingPolicy(backtestProcessor, passingStratNumPerRound, sortMultiplier),
       TSurvivalPolicy(backtestProcessor, survivalCriterion, targetStopRatio),
       mSinglePa(singlePA),
       mMinTrades(minTrades),
       mMaxDepth(maxDepth - 1),
-      mRuns(0)
+      mRuns(0),
+      mSurvivingContainer(survivingContainer)
     {
     }
     ~ForwardStepwiseSelector()
@@ -43,7 +46,6 @@ namespace mkc_searchalgo {
     void runSteps()
     {
       step(mMaxDepth);
-      TSurvivalPolicy::getUniqueSurvivors(mSinglePa);
     }
 
   private:
@@ -70,9 +72,12 @@ namespace mkc_searchalgo {
             }
           std::cout << "finished and returning from level 0, processed results: " << mBacktestProcessor->getResults().size() << std::endl;
           std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
-          TSurvivalPolicy::saveSurvivors();
+          TSurvivalPolicy::filterSurvivors();
+          mSurvivingContainer->addSurvivorsPerRound(TSurvivalPolicy::getUniqueSurvivors(mSinglePa));
+
           std::cout << "After step 0: Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
           mBacktestProcessor->clearAll();
+          TSurvivalPolicy::clearRound();
           return newret;
         }
 
@@ -101,9 +106,12 @@ namespace mkc_searchalgo {
       std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
       std::cout << "finished and returning from level: " << stepNo << ", processed results: " << mBacktestProcessor->getResults().size() << std::endl;
       std::cout << "Before step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
-      TSurvivalPolicy::saveSurvivors();
-      std::cout << "After step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
+      TSurvivalPolicy::filterSurvivors();
+      mSurvivingContainer->addSurvivorsPerRound(TSurvivalPolicy::getUniqueSurvivors(mSinglePa));
+
       mBacktestProcessor->clearAll();
+      TSurvivalPolicy::clearRound();
+      std::cout << "After step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << "/" << mSurvivingContainer->getNumSurvivors() << std::endl;
       return newret;
     }
 
@@ -114,6 +122,7 @@ namespace mkc_searchalgo {
     unsigned mMaxDepth;
     unsigned long mRuns;
     std::shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mBacktestProcessor;
+    std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>> mSurvivingContainer;
     //shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
 
   };

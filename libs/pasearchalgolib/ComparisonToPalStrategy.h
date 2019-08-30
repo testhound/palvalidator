@@ -86,7 +86,6 @@ namespace mkc_searchalgo
 
       mPalPattern = std::make_shared<PriceActionLabPattern>(mPatternDescription, getPatternExpression(), mMarketEntry.get(), mProfitTarget.get(), mStopLoss.get());
 
-
       std::string strategyName= std::string("PAL Search Algo Based Strategy ") + std::to_string(patternIndex);
       mPalStrategy = std::make_shared<SidedPalStrategyType>(strategyName, mPalPattern, portfolio);
 
@@ -103,6 +102,8 @@ namespace mkc_searchalgo
     }
 
     const std::shared_ptr<SidedPalStrategyType>& getPalStrategy() const { return mPalStrategy; }
+
+    const std::shared_ptr<PriceActionLabPattern>& getPalPattern() const { return mPalPattern; }
 
 
   private:
@@ -151,7 +152,7 @@ namespace mkc_searchalgo
 
     PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
     {
-      return new PatternDescription("", patternIndex, indexDate, nullptr, nullptr, 0, 0);
+      return new PatternDescription("NonDescr", patternIndex, indexDate, &DecimalConstants<Decimal>::DecimalZero, &DecimalConstants<Decimal>::DecimalZero, 0, 0);
     }
 
     bool isComplete() const { return ((mExpectedNumberOfPatterns == mComparisonCount) && mProfitTarget && mStopLoss && mMarketEntry && mPatternDescription); }

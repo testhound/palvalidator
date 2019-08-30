@@ -17,7 +17,7 @@ namespace mkc_searchalgo
       mProcessingPolicy(processingPolicy)
     {}
 
-    void saveSurvivors()
+    void filterSurvivors()
     {
       //fetch results
       const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>&
@@ -77,7 +77,14 @@ namespace mkc_searchalgo
     }
 
     const std::vector<StrategyRepresentationType>& getSurvivors() const {return mSurvivors;}
+
     size_t getNumSurvivors() const { return mSurvivors.size(); }
+
+    void clearRound()
+    {
+      mSurvivors.clear();
+      mSurvivors.shrink_to_fit();
+    }
 
   private:
     Decimal mSurvivalCriterion;

@@ -104,6 +104,9 @@ int main(int argc, char **argv)
       SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
       std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile(configuration->getSecurity(), 0);
 
+      boost::mutex fileVectorLock;
+      std::vector<std::string> fileNames;
+
       //build thread-pool-runner
       runner& Runner=runner::instance();
       std::vector<boost::unique_future<void>> resultsOrErrorsVector;
@@ -121,9 +124,14 @@ int main(int argc, char **argv)
                                                              profitTarget,
                                                              stopLoss,
                                                              inSampleOnly,
-                                                             seriesId
+                                                             seriesId,
+                                                             &fileVectorLock,
+                                                             &fileNames
                                                              ]()-> void {
                   McptConfigurationFileReader reader(configurationFileName);
+
+                  std::time_t now = std::time(0);
+                  std::cout << "Time since epoch: " << static_cast<long>(now) << std::endl;
                   std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
 
                   SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
@@ -134,7 +142,19 @@ int main(int argc, char **argv)
                   SearchController<Decimal> controller(configuration, searchConfig->getTimeSeries(), searchConfig);
                   controller.prepare();
                   controller.run<true>(profitTarget, stopLoss, inSampleOnly);
+                  {
+                    std::string fileNameLong("PatternsLong_" + std::to_string(static_cast<long>(now)) + "_" + std::to_string(seriesId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
+                    boost::mutex::scoped_lock Lock(fileVectorLock);
+                    fileNames.push_back(fileNameLong);
+                    controller.exportSurvivingLongPatterns(profitTarget, stopLoss, fileNameLong);
+                  }
                   controller.run<false>(profitTarget, stopLoss, inSampleOnly);
+                  {
+                    std::string fileNameShort("PatternsShort_" + std::to_string(static_cast<long>(now)) + "_" + std::to_string(seriesId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
+                    boost::mutex::scoped_lock Lock(fileVectorLock);
+                    fileNames.push_back(fileNameShort);
+                    controller.exportSurvivingShortPatterns(profitTarget, stopLoss, fileNameShort);
+                  }
                 }
               ));
             }
@@ -150,7 +170,10 @@ int main(int argc, char **argv)
             std::cerr<<"Parallel run exception in run id: " << i << " error: "<<e.what()<<std::endl;
           }
         }
-
+      for (auto filename: fileNames)
+        {
+          std::cout << filename << std::endl;
+        }
       return 0;
 
 

@@ -7,6 +7,8 @@
 #include "ShortcutSearchAlgoBacktester.h"
 #include "ForwardStepwiseSelector.h"
 #include "SearchAlgoConfigurationFileReader.h"
+#include "SurvivingStrategiesContainer.h"
+#include "LogPalPattern.h"
 
 using namespace mkc_timeseries;
 
@@ -36,8 +38,8 @@ namespace mkc_searchalgo
     void prepare()
     {
       std::string portfolioName(mConfiguration->getSecurity()->getName() + std::string(" Portfolio"));
-      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
-      aPortfolio->addSecurity(mConfiguration->getSecurity());
+      mPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
+      mPortfolio->addSecurity(mConfiguration->getSecurity());
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
@@ -63,6 +65,8 @@ namespace mkc_searchalgo
       std::cout << " Unique comparisons #: " << mComparisonGenerator->getUniqueComparisons().size() << std::endl;
 
       mPaMatrix = std::make_shared<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>(mComparisonGenerator, mSeries->getNumEntries());
+      mLongSurvivors = std::make_shared<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>(mPaMatrix);
+      mShortSurvivors = std::make_shared<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>(mPaMatrix);;
 
     }
 
@@ -103,16 +107,42 @@ namespace mkc_searchalgo
                           mSearchConfiguration->getPassingStratNumPerRound(),
                           mSearchConfiguration->getProfitFactorCriterion(),
                           mSearchConfiguration->getSortMultiplier(),
-                          ( (*profitTarget)/(*stopLoss) ) );
+                          ( (*profitTarget)/(*stopLoss) ),
+                          (isLong)? mLongSurvivors: mShortSurvivors);
       forwardStepwise.runSteps();
     }
 
+    void exportSurvivingLongPatterns(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss, const std::string& exportFileName)
+    {
+       std::ofstream exportFile(exportFileName);
+       std::vector<std::vector<ComparisonEntryType>> survivingLong = mLongSurvivors->getSurvivorsAsComparisons();
+       for (const std::vector<ComparisonEntryType>& strat: survivingLong)
+         {
+            ComparisonToPalLongStrategy<Decimal> comp(strat, 0, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
+            LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
+         }
+    }
+
+    void exportSurvivingShortPatterns(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss, const std::string& exportFileName)
+    {
+       std::ofstream exportFile(exportFileName);
+       std::vector<std::vector<ComparisonEntryType>> survivingLong = mShortSurvivors->getSurvivorsAsComparisons();
+       for (const std::vector<ComparisonEntryType>& strat: survivingLong)
+         {
+            ComparisonToPalShortStrategy<Decimal> comp(strat, 0, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
+            LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
+         }
+    }
+
   private:
+    std::shared_ptr<Portfolio<Decimal>> mPortfolio;
     std::shared_ptr<SearchAlgoConfiguration<Decimal>> mSearchConfiguration;
     std::shared_ptr<McptConfiguration<Decimal>> mConfiguration;
     std::shared_ptr<ComparisonsGenerator<Decimal>> mComparisonGenerator;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;
     std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>> mPaMatrix;
+    std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>> mLongSurvivors;
+    std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>> mShortSurvivors;
   };
 
 }
