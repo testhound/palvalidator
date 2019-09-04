@@ -71,7 +71,11 @@ namespace mkc_searchalgo
                 sumTrades += occurences.sum() / Decimal(singlePA->getDateCount());
               }
         }
-      Decimal avgTrades = (sumTrades * Decimal(singlePA->getDateCount()))  / Decimal(static_cast<unsigned int>(ret.size()));
+      Decimal avgTrades;
+      if (ret.size() == 0)
+        avgTrades = DecimalConstants<Decimal>::DecimalZero;
+      else
+        avgTrades = (sumTrades * Decimal(singlePA->getDateCount()))  / Decimal(static_cast<unsigned int>(ret.size()));
       std::cout << "Survivors after removing duplicates: " << ret.size() << ", avg trades: " << avgTrades << std::endl;
       return ret;
     }

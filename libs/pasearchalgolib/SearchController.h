@@ -33,7 +33,8 @@ namespace mkc_searchalgo
     SearchController(const std::shared_ptr<McptConfiguration<Decimal>>& configuration, const std::shared_ptr<OHLCTimeSeries<Decimal>>& series, const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration):
       mSearchConfiguration(searchConfiguration),
       mConfiguration(configuration),
-      mSeries(series)
+      mSeries(series),
+      mPatternIndex(0)
     {}
     void prepare()
     {
@@ -114,22 +115,25 @@ namespace mkc_searchalgo
 
     void exportSurvivingLongPatterns(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss, const std::string& exportFileName)
     {
+
+        std::cout << "Exporting long strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> survivingLong = mLongSurvivors->getSurvivorsAsComparisons();
        for (const std::vector<ComparisonEntryType>& strat: survivingLong)
          {
-            ComparisonToPalLongStrategy<Decimal> comp(strat, 0, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
+            ComparisonToPalLongStrategy<Decimal> comp(strat, mPatternIndex++, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
          }
     }
 
     void exportSurvivingShortPatterns(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss, const std::string& exportFileName)
     {
+       std::cout << "Exporting short strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> survivingLong = mShortSurvivors->getSurvivorsAsComparisons();
        for (const std::vector<ComparisonEntryType>& strat: survivingLong)
          {
-            ComparisonToPalShortStrategy<Decimal> comp(strat, 0, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
+            ComparisonToPalShortStrategy<Decimal> comp(strat, mPatternIndex++, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
          }
     }
@@ -143,6 +147,7 @@ namespace mkc_searchalgo
     std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>> mPaMatrix;
     std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>> mLongSurvivors;
     std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>> mShortSurvivors;
+    unsigned int mPatternIndex;
   };
 
 }

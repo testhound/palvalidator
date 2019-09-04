@@ -40,8 +40,29 @@ namespace mkc_searchalgo
       std::sort(mComparisons.begin(), mComparisons.end());
     }
 
-    PalToComparison(const PalToComparison& ) = delete;
+    PalToComparison(const PalToComparison& rhs): mComparisons(rhs.mComparisons)
+    {}
+
     PalToComparison& operator =(const PalToComparison& ) = delete;
+
+    bool operator < (const PalToComparison& rhs) const
+    {
+      if (mComparisons.size() < rhs.mComparisons.size())
+        return true;
+      if (mComparisons.size() > rhs.mComparisons.size())
+        return false;
+      return (this->getIntRepresentation() < rhs.getIntRepresentation());
+    }
+
+    int getIntRepresentation() const
+    {
+      int ret = 0;
+      for (const ComparisonEntryType& comp: mComparisons)
+        {
+            ret += comp[0] * 1000 + comp[1] * 100 + comp[2] * 10 + comp[3];
+        }
+      return ret;
+    }
 
     bool operator == (const PalToComparison& lhs)
     {

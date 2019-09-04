@@ -152,7 +152,7 @@ namespace mkc_searchalgo
 
     PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
     {
-      return new PatternDescription("NonDescr", patternIndex, indexDate, &DecimalConstants<Decimal>::DecimalZero, &DecimalConstants<Decimal>::DecimalZero, 0, 0);
+      return new PatternDescription("NonExistentFile.txt", patternIndex, indexDate, &DecimalConstants<Decimal>::DecimalZero, &DecimalConstants<Decimal>::DecimalZero, 0, 0);
     }
 
     bool isComplete() const { return ((mExpectedNumberOfPatterns == mComparisonCount) && mProfitTarget && mStopLoss && mMarketEntry && mPatternDescription); }
