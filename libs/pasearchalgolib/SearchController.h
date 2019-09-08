@@ -56,7 +56,7 @@ namespace mkc_searchalgo
           const Decimal& cClose = mSeries->getCloseValue (it, 0);
 
           auto dt = mSeries->getDateValue(it, 0);
-          std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
+          //std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
 
           mComparisonGenerator->addNewLastBar(cOpen, cHigh, cLow, cClose);
 

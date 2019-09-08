@@ -115,6 +115,8 @@ namespace mkc_searchalgo
 
     typename std::vector<std::pair<Decimal, Decimal>>::const_iterator targetStopPairsEnd() const { return mTargetStopPairs.end(); }
 
+    const std::vector<std::pair<Decimal, Decimal>>& getTargetStopPair() const { return mTargetStopPairs; }
+
     typename std::vector<time_t>::const_iterator timeFramesBegin() const { return mTimeFrames.begin(); }
 
     typename std::vector<time_t>::const_iterator timeFramesEnd() const { return mTimeFrames.end(); }

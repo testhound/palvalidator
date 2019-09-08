@@ -64,9 +64,9 @@ namespace mkc_searchalgo
       return ret;
     }
 
-    bool operator == (const PalToComparison& lhs)
+    bool operator == (const PalToComparison& rhs)
     {
-      return (mComparisons == lhs.mComparisons);
+      return (mComparisons == rhs.mComparisons);
     }
 
     const std::vector<ComparisonEntryType>& getComparisons() const { return mComparisons; }

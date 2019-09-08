@@ -10,14 +10,15 @@
 #include "PALMonteCarloValidation.h"
 #include "ComparisonToPalStrategy.h"
 #include <type_traits>
+#include <valarray>
 
 using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
 using std::shared_ptr;
-using Decimal = num::DefaultNumber;
 
 namespace mkc_searchalgo {
 
+  template <class Decimal>
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
                                                      boost::gregorian::date startDate,
                                                      boost::gregorian::date endDate)
@@ -123,13 +124,13 @@ namespace mkc_searchalgo {
                 {
                   if (fitBetweenInSampleDates(startDate) != startDate)
                     break;
-                  interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
+                  interimBacktester = getBackTester<Decimal>(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
                 }
               else
                 {
                   if (fitBetweenIsOosDates(startDate) != startDate)
                     break;
-                  interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenIsOosDates(endDate));
+                  interimBacktester = getBackTester<Decimal>(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenIsOosDates(endDate));
                 }
 
               interimBacktester->addStrategy(comparison.getPalStrategy());
