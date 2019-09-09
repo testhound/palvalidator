@@ -130,8 +130,8 @@ namespace mkc_searchalgo
     {
        std::cout << "Exporting short strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
-       std::vector<std::vector<ComparisonEntryType>> survivingLong = mShortSurvivors->getSurvivorsAsComparisons();
-       for (const std::vector<ComparisonEntryType>& strat: survivingLong)
+       std::vector<std::vector<ComparisonEntryType>> survivingShort = mShortSurvivors->getSurvivorsAsComparisons();
+       for (const std::vector<ComparisonEntryType>& strat: survivingShort)
          {
             ComparisonToPalShortStrategy<Decimal> comp(strat, mPatternIndex++, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);

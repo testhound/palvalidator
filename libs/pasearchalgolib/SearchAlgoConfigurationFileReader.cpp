@@ -66,23 +66,32 @@ namespace mkc_searchalgo
   {
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
 
-    io::CSVReader<10> csvConfigFile(mConfigurationFileName.c_str());
+    io::CSVReader<11> csvConfigFile(mConfigurationFileName.c_str());
 
     csvConfigFile.set_header("MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
-                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath");
+                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath");
 
     std::string maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
-    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath;
 
 
     csvConfigFile.read_row (maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
-                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath);
+                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath);
+
+
+    boost::filesystem::path validationFile (validationConfigFilePath);
+    if (!exists (validationFile))
+      throw SearchAlgoConfigurationFileReaderException("Validation config file path: " + validationFile.string() + " does not exist");
+
+    std::string numPermutations, numStratsFull, numStratsBeforeValidation;
+    io::CSVReader<3> validationCsv(validationConfigFilePath);
+    validationCsv.set_header("NumPermutations", "NumStratsFullPeriod", "NumStratsBeforeValidation");
+    validationCsv.read_row(numPermutations, numStratsFull, numStratsBeforeValidation);
 
 
     boost::filesystem::path targetsFile (targetsToSearchConfigFilePath);
     if (!exists (targetsFile))
       throw SearchAlgoConfigurationFileReaderException("Targets to search config file path: " + targetsFile.string() + " does not exist");
-
 
     std::vector<std::pair<Decimal, Decimal>> targetStops;
     io::CSVReader<2> targetsCsv(targetsToSearchConfigFilePath);
@@ -173,7 +182,11 @@ namespace mkc_searchalgo
                                                               tryCast<unsigned int>(maxInactivitySpan),
                                                               targetStops,
                                                               timeFrames,
-                                                              series);
+                                                              series,
+                                                              tryCast<unsigned int>(numPermutations),
+                                                              tryCast<unsigned int>(numStratsFull),
+                                                              tryCast<unsigned int>(numStratsBeforeValidation)
+                                                              );
 
   }
 

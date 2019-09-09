@@ -115,6 +115,11 @@ namespace mkc_searchalgo
         auto targetStop = mSearchConfig->getTargetStopPair()[ind];
         return std::make_pair(targetStop.first * mTargetBase, targetStop.second * mTargetBase);
     }
+    long getNowAsLong() const { return static_cast<long>(mNow); }
+
+    std::shared_ptr<SearchAlgoConfiguration<Decimal>> getSearchConfig() const { return mSearchConfig; }
+
+    std::shared_ptr<McptConfiguration<Decimal>> getConfig() const { return mConfiguration; }
 
   private:
     std::string mConfigurationFileName;

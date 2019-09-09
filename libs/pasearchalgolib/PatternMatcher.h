@@ -5,63 +5,85 @@
 #include "PalToComparison.h"
 #include "FileMatcher.h"
 #include <boost/filesystem.hpp>
+#include "ComparisonToPalStrategy.h"
+#include "LogPalPattern.h"
 
 using namespace mkc_timeseries;
 
 namespace mkc_searchalgo
 {
 
+  static std::unique_ptr<PriceActionLabSystem> getPricePatterns(boost::filesystem::path filePath)
+  {
+    mkc_palast::PalParseDriver driver (filePath.string());
+
+    driver.Parse();
+
+    std::cout << "Parsing successfully completed." << std::endl << std::endl;
+    PriceActionLabSystem* system = driver.getPalStrategies();
+    std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
+    std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
+    std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
+    return std::unique_ptr<PriceActionLabSystem>(system);
+
+  }
+
+  void static populateOccurences(const boost::filesystem::path& fPath,
+                                 std::multiset<PalToComparison>& multiOccur,
+                                 std::set<PalToComparison>& singleOccur,
+                                 bool isLong)
+  {
+    std::cout << "file: " << fPath.string() << std::endl;
+    std::unique_ptr<PriceActionLabSystem> patterns = getPricePatterns(fPath);
+    PriceActionLabSystem::ConstSortedPatternIterator it = (isLong)? patterns->patternLongsBegin(): patterns->patternShortsBegin();
+    PriceActionLabSystem::ConstSortedPatternIterator end = (isLong)? patterns->patternLongsEnd(): patterns->patternShortsEnd();
+    unsigned long numPatterns = patterns->getNumPatterns();
+    std::set<PalToComparison> uniques;
+    for (; it != end; it++)
+      {
+        PatternExpressionPtr pattern = (*it).second->getPatternExpression();
+        PalToComparison comparison(pattern.get());
+        uniques.insert(comparison);
+      }
+    std::cout << "of " << numPatterns << " pal patterns in file, " << uniques.size() << " were found unique." << std::endl;
+    singleOccur.insert(uniques.begin(), uniques.end());
+    multiOccur.insert(uniques.begin(), uniques.end());
+  }
+
+
   class  PatternMatcher
   {
-  private:
-    PatternMatcher();
-
-
-    static std::unique_ptr<PriceActionLabSystem> getPricePatterns(boost::filesystem::path filePath)
+  public:
+    PatternMatcher(const std::string& filePatternExpr, const std::string filePatternExpr2, bool isLong, unsigned int minNumOfStrats):
+      mIsLong(isLong),
+      mMinNumOfStrats(minNumOfStrats),
+      mExportPatternIndex(0)
     {
-      mkc_palast::PalParseDriver driver (filePath.string());
+      std::string side = (isLong)? "Long": "Short";
+      std::string searchPattern = "*" + side + "_" + filePatternExpr + "_*" + filePatternExpr2 + "*";
+      std::cout << "Searching pattern: " << searchPattern << std::endl;
+      std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", searchPattern);
 
-      driver.Parse();
-
-      std::cout << "Parsing successfully completed." << std::endl << std::endl;
-      PriceActionLabSystem* system = driver.getPalStrategies();
-      std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
-      std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
-      std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
-      return std::unique_ptr<PriceActionLabSystem>(system);
-
-    }
-
-
-    void static populateOccurences(const boost::filesystem::path& fPath,
-                                   std::multiset<PalToComparison>& multiOccur,
-                                   std::set<PalToComparison>& singleOccur,
-                                   bool isLong)
-    {
-      std::cout << "file: " << fPath.string() << std::endl;
-      std::unique_ptr<PriceActionLabSystem> patterns = getPricePatterns(fPath);
-      PriceActionLabSystem::ConstSortedPatternIterator it = (isLong)? patterns->patternLongsBegin(): patterns->patternShortsBegin();
-      PriceActionLabSystem::ConstSortedPatternIterator end = (isLong)? patterns->patternLongsEnd(): patterns->patternShortsEnd();
-      unsigned long numPatterns = patterns->getNumPatterns();
-      std::set<PalToComparison> uniques;
-      for (; it != end; it++)
+      for (const boost::filesystem::path& path: filePaths)
         {
-          PatternExpressionPtr pattern = (*it).second->getPatternExpression();
-          PalToComparison comparison(pattern.get());
-          uniques.insert(comparison);
+          populateOccurences(path, mMultiOccur, mSingleOccur, isLong);
         }
-      std::cout << "of " << numPatterns << " pal patterns in file, " << uniques.size() << " were found unique." << std::endl;
-      singleOccur.insert(uniques.begin(), uniques.end());
-      multiOccur.insert(uniques.begin(), uniques.end());
+      std::cout << side << " multiset size: " << mMultiOccur.size() << std::endl;
+      std::cout << side << " single set size: " << mSingleOccur.size() << std::endl;
     }
 
-    void static countOccurences(const std::multiset<PalToComparison>& multiOccur, const std::set<PalToComparison>& singleOccur)
+    void countOccurences()
     {
+        if (!mSelectedComparisons.empty())
+          {
+            std::cout << "Counting occurences was called but the selection has already been made." << std::endl;
+            return;
+          }
         std::map<size_t, std::vector<PalToComparison>> countsMap;
         std::set<PalToComparison>::const_iterator it;
-        for (it = singleOccur.begin(); it != singleOccur.end(); it++)
+        for (it = mSingleOccur.begin(); it != mSingleOccur.end(); it++)
           {
-            size_t cnt = multiOccur.count(*it);
+            size_t cnt = mMultiOccur.count(*it);
             if (countsMap.find(cnt) == countsMap.end())
               {
                 countsMap.insert(std::make_pair(cnt, std::vector<PalToComparison>()));
@@ -74,34 +96,58 @@ namespace mkc_searchalgo
         for (rit = countsMap.rbegin(); rit != countsMap.rend(); rit++)
           {
             i++;
+            if (rit->second.size() > mMinNumOfStrats && mSelectedComparisons.empty())
+              {
+                std::cout << "This group of " << rit->second.size() << " strategies has been selected. " << std::endl;
+                mSelectedComparisons = rit->second;
+              }
             std::cout << "top: " << i << " = " << (rit->first) << " #patterns: " << rit->second.size() << std::endl;
-
           }
-
     }
 
-  public:
-    int static testPatternMatching(const std::string& filePatternExpr, const std::string filePatternExpr2, bool isLong)
+    template <class Decimal>
+    void exportSelectPatterns(Decimal* profitTarget, Decimal* stopLoss, const std::string& exportFileName, std::shared_ptr<Portfolio<Decimal>> portfolio)
     {
-      std::string side = (isLong)? "Long": "Short";
-      std::string searchPattern = "*" + side + "_" + filePatternExpr + "_*" + filePatternExpr2 + "*";
-      std::cout << "Searching pattern: " << searchPattern << std::endl;
-      std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", searchPattern);
-      std::multiset<PalToComparison> multiOccur;
-      std::set<PalToComparison> singleOccur;
-
-      for (const boost::filesystem::path& path: filePaths)
-        {
-          populateOccurences(path, multiOccur, singleOccur, isLong);
-        }
-      std::cout << side << " multiset size: " << multiOccur.size() << std::endl;
-      std::cout << side << " single set size: " << singleOccur.size() << std::endl;
-
-      countOccurences(multiOccur, singleOccur);
-
-      return 0;
+       std::cout << "Exporting select strategies into file: " << exportFileName << std::endl;
+       std::ofstream exportFile(exportFileName);
+       std::vector<std::vector<ComparisonEntryType>> select = getSelectComparisons();
+       for (const std::vector<ComparisonEntryType>& strat: select)
+         {
+           if (mIsLong)
+             {
+              ComparisonToPalLongStrategy<Decimal> comp(strat, mExportPatternIndex++, 0, profitTarget, stopLoss, portfolio);
+              LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
+             }
+           else
+             {
+               ComparisonToPalShortStrategy<Decimal> comp(strat, mExportPatternIndex++, 0, profitTarget, stopLoss, portfolio);
+               LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
+             }
+         }
     }
+
+    std::vector<std::vector<ComparisonEntryType>> getSelectComparisons()
+    {
+      std::vector<std::vector<ComparisonEntryType>> ret;
+      for (const PalToComparison& pComp: mSelectedComparisons)
+        ret.push_back(pComp.getComparisons());
+      return ret;
+    }
+
+    bool getIsLong() const { return mIsLong; }
+
+  private:
+    bool mIsLong;
+    unsigned int mMinNumOfStrats;
+    std::multiset<PalToComparison> mMultiOccur;
+    std::set<PalToComparison> mSingleOccur;
+    std::vector<PalToComparison> mSelectedComparisons;
+    int mExportPatternIndex;
+
+
   };
+
+
 
 }
 

@@ -42,7 +42,8 @@ namespace mkc_searchalgo
         unsigned int maxInactivitySpan,
         std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
         std::vector<time_t> timeFrames,
-        const std::shared_ptr<OHLCTimeSeries<Decimal>>& series)
+        const std::shared_ptr<OHLCTimeSeries<Decimal>>& series,
+        unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation)
       :
       mMaxDepth(maxDepth),
       mMinTrades(minTrades),
@@ -53,7 +54,10 @@ namespace mkc_searchalgo
       mMaxInactivitySpan(maxInactivitySpan),
       mTargetStopPairs(targetStopPairs),
       mTimeFrames(timeFrames),
-      mSeries(series)
+      mSeries(series),
+      mNumPermutations(numPermutations),
+      mMinNumStratsFullPeriod(minNumStratsFullPeriod),
+      mMinNumStratsBeforeValidation(minNumStratsBeforeValidation)
     {}
 
     SearchAlgoConfiguration (const SearchAlgoConfiguration& rhs)
@@ -66,7 +70,10 @@ namespace mkc_searchalgo
         mMaxInactivitySpan(rhs.mMaxInactivitySpan),
         mTargetStopPairs(rhs.mTargetStopPairs),
         mTimeFrames(rhs.mTimeFrames),
-        mSeries(rhs.mSeries)
+        mSeries(rhs.mSeries),
+        mNumPermutations(rhs.mNumPermutations),
+        mMinNumStratsFullPeriod(rhs.mMinNumStratsFullPeriod),
+        mMinNumStratsBeforeValidation(rhs.mMinNumStratsBeforeValidation)
     {}
 
     SearchAlgoConfiguration<Decimal>&
@@ -84,6 +91,9 @@ namespace mkc_searchalgo
 	mTargetStopPairs = rhs.mTargetStopPairs;
 	mTimeFrames = rhs.mTimeFrames;
 	mSeries = rhs.mSeries;
+	mNumPermutations = rhs.mNumPermutations;
+	mMinNumStratsFullPeriod = rhs.mMinNumStratsFullPeriod;
+	mMinNumStratsBeforeValidation = rhs.mMinNumStratsBeforeValidation;
 
       return *this;
     }
@@ -94,7 +104,9 @@ namespace mkc_searchalgo
     inline friend std::ostream& operator<< (std::ostream& strng, const SearchAlgoConfiguration<Decimal>& obj)
     {
       return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mSortMultiplier << ", PassingStratNumPerRound: " << obj.mPassingStratNumPerRound
-                   << ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan << ", Targets&Stops#: " << obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size();
+                   << ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan << ", Targets&Stops#: "
+                   << obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size()
+                   << "\nValidation settings -- # of permutations: " << obj.mNumPermutations << ", Min # of strats full period: " << obj.mMinNumStratsFullPeriod << ", Min # of strats before validation: " << obj.mMinNumStratsBeforeValidation;
     }
 
     unsigned int getMaxDepth() const { return mMaxDepth; }
@@ -123,6 +135,12 @@ namespace mkc_searchalgo
 
     size_t getNumTimeFrames() const { return mTimeFrames.size(); }
 
+    unsigned int getNumPermutations() const { return mNumPermutations; }
+
+    unsigned int getMinNumStratsFullPeriod() const { return mMinNumStratsFullPeriod; }
+
+    unsigned int getMinNumStratsBeforeValidation() const { return mMinNumStratsBeforeValidation; }
+
     const std::shared_ptr<OHLCTimeSeries<Decimal>>& getTimeSeries() const { return mSeries; }
 
   private:
@@ -136,6 +154,9 @@ namespace mkc_searchalgo
     std::vector<std::pair<Decimal, Decimal>> mTargetStopPairs;
     std::vector<time_t> mTimeFrames;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;
+    unsigned int mNumPermutations;
+    unsigned int mMinNumStratsFullPeriod;
+    unsigned int mMinNumStratsBeforeValidation;
   };
 
   class SearchAlgoConfigurationFileReader

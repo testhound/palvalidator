@@ -43,7 +43,13 @@ namespace mkc_searchalgo
     PalToComparison(const PalToComparison& rhs): mComparisons(rhs.mComparisons)
     {}
 
-    PalToComparison& operator =(const PalToComparison& ) = delete;
+    PalToComparison& operator =(const PalToComparison& rhs)
+    {
+      if (this == &rhs)
+        return *this;
+      mComparisons = rhs.mComparisons;
+      return *this;
+    }
 
     bool operator < (const PalToComparison& rhs) const
     {
