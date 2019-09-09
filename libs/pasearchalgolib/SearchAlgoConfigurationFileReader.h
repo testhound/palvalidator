@@ -1,3 +1,8 @@
+// Copyright Tibor Szlavik for use by (C) MKC Associates, LLC
+// All Rights Reserved
+// Unauthorized copying of this file, via any medium is strictly prohibited
+// Proprietary and confidential
+// Written by Tibor Szlavik <seg2019s@gmail.com>, July-August 2019
 
 #ifndef SEARCHALGOCONFIGURATIONFILEREADER_H
 #define SEARCHALGOCONFIGURATIONFILEREADER_H
