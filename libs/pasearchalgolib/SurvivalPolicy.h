@@ -17,10 +17,11 @@ namespace mkc_searchalgo
   {
 
   public:
-    DefaultSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy, Decimal survivalCriterion, Decimal targetStopRatio):
+    DefaultSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy, Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit):
       mSurvivalCriterion(survivalCriterion),
       mTargetStopRatio(targetStopRatio),
-      mProcessingPolicy(processingPolicy)
+      mProcessingPolicy(processingPolicy),
+      mMaxConsecutiveLosersLimit(maxConsecutiveLosersLimit)
     {}
 
     void filterSurvivors()
@@ -34,7 +35,8 @@ namespace mkc_searchalgo
       for (const auto& tup: results)
         {
           const ResultStat<Decimal>& stat = std::get<0>(tup);
-
+          if (stat.MaxLosers > mMaxConsecutiveLosersLimit)
+            continue;
           if (stat.ProfitFactor > mSurvivalCriterion)
             {
               //Profitability requirement
@@ -103,6 +105,7 @@ namespace mkc_searchalgo
     std::vector<StrategyRepresentationType> mSurvivors;
     std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;
     std::vector<std::valarray<Decimal>> mUniqueOccurences;
+    unsigned int mMaxConsecutiveLosersLimit;
 
   };
 

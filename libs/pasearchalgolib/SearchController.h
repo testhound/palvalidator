@@ -91,21 +91,15 @@ namespace mkc_searchalgo
 
       std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), mSearchConfiguration->getMinTrades(), isLong);
       std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(
-            mSearchConfiguration->getMinTrades(),
-            mSearchConfiguration->getMaxConsecutiveLosers(),
-            mSearchConfiguration->getMaxInactivitySpan(),
+            mSearchConfiguration,
             shortcut,
             mPaMatrix);
-      ForwardStepwiseSelector<Decimal>
-          forwardStepwise(backtestProcessor,
-                          mPaMatrix,
-                          mSearchConfiguration->getMinTrades(),
-                          mSearchConfiguration->getMaxDepth(),
-                          mSearchConfiguration->getPassingStratNumPerRound(),
-                          mSearchConfiguration->getProfitFactorCriterion(),
-                          mSearchConfiguration->getSortMultiplier(),
-                          ( (*profitTarget)/(*stopLoss) ),
-                          (isLong)? mLongSurvivors: mShortSurvivors);
+      ForwardStepwiseSelector<Decimal> forwardStepwise(
+            backtestProcessor,
+            mPaMatrix,
+            mSearchConfiguration,
+            ( (*profitTarget)/(*stopLoss) ),
+            (isLong)? mLongSurvivors: mShortSurvivors);
       forwardStepwise.runSteps();
     }
 

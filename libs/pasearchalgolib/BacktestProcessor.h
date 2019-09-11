@@ -8,6 +8,7 @@
 #define BACKTESTPROCESSOR_H
 
 #include "Sorters.h"
+#include "SearchAlgoConfigurationFileReader.h"
 
 namespace mkc_searchalgo
 {
@@ -17,11 +18,10 @@ namespace mkc_searchalgo
   class BacktestProcessor
   {
   public:
-    BacktestProcessor(unsigned minTrades, unsigned maxLosers, unsigned maxInactivity, std::shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester, const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& uniques):
+    BacktestProcessor(const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration, std::shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester, const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& uniques):
       mUniqueId(0),
-      mMinTrades(minTrades),
-      mMaxLosers(maxLosers),
-      mMaxInactivity(maxInactivity),
+      mMinTrades(searchConfiguration->getMinTrades()),
+      mMaxInactivity(searchConfiguration->getMaxInactivitySpan()),
       mSearchAlgoBacktester(searchAlgoBacktester),
       mResults(),
       mStratMap(),
@@ -44,10 +44,10 @@ namespace mkc_searchalgo
       unsigned int maxLosers = mSearchAlgoBacktester->getMaxConsecutiveLosers();
       unsigned int maxInactivity = mSearchAlgoBacktester->getMaxInactivitySpan();
 
-      //pre-filtering, we don't need to keep these results in memory
-      if (trades < mMinTrades || maxLosers > mMaxLosers || maxInactivity > mMaxInactivity)
+      //pre-filtering, we don't need to keep these results in memory (only activity filters)
+      if (trades < mMinTrades || maxInactivity > mMaxInactivity)
         return;
-      mResults.emplace_back(ResultStat<Decimal>(pf, po, pp), trades, mUniqueId);
+      mResults.emplace_back(ResultStat<Decimal>(pf, po, pp, maxLosers), trades, mUniqueId);
       mStratMap[mUniqueId] = compareContainer;
       mUniqueId++;
     }
@@ -85,7 +85,6 @@ namespace mkc_searchalgo
 
     int mUniqueId;
     unsigned int mMinTrades;
-    unsigned int mMaxLosers;
     unsigned int mMaxInactivity;
     std::shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
     std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;

@@ -31,17 +31,15 @@ namespace mkc_searchalgo {
   public:
     ForwardStepwiseSelector(std::shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& backtestProcessor ,
                             std::shared_ptr<UniqueSinglePAMatrix<Decimal, TComparison>>& singlePA,
-                            unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound,
-                            Decimal survivalCriterion,
-                            Decimal sortMultiplier,
+                            const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration,
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
-      TSteppingPolicy(backtestProcessor, passingStratNumPerRound, sortMultiplier),
-      TSurvivalPolicy(backtestProcessor, survivalCriterion, targetStopRatio),
+      TSteppingPolicy(backtestProcessor, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getSortMultiplier()),
+      TSurvivalPolicy(backtestProcessor, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
-      mMinTrades(minTrades),
-      mMaxDepth(maxDepth - 1),
+      mMinTrades(searchConfiguration->getMinTrades()),
+      mMaxDepth(searchConfiguration->getMaxDepth() - 1),
       mRuns(0),
       mSurvivingContainer(survivingContainer)
     {
