@@ -96,6 +96,8 @@ namespace mkc_searchalgo
     {
       mSurvivors.clear();
       mSurvivors.shrink_to_fit();
+      mResults.clear();
+      mResults.shrink_to_fit();
     }
 
   private:
