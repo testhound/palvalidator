@@ -31,7 +31,7 @@ namespace mkc_timeseries
   };
 
   template <class Decimal>
-  class McptConfiguration
+  class   McptConfiguration
   {
   public:
     McptConfiguration (std::shared_ptr<BackTester<Decimal>> aBacktester,

@@ -14,7 +14,7 @@ namespace mkc_searchalgo
 {
   static int wildcmp(const char *wild, const char *string) {
 
-    const char *cp = NULL, *mp = NULL;
+    const char *cp = nullptr, *mp = nullptr;
 
     while ((*string) && (*wild != '*')) {
         if ((*wild != *string) && (*wild != '?')) {

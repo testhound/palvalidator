@@ -13,11 +13,23 @@
 #include "ComparisonsGenerator.h"
 #include "PalStrategyAlwaysOn.h"
 #include <type_traits>
+#include "ComparisonToPalStrategy.h"
 
 using namespace mkc_timeseries;
 
 namespace mkc_searchalgo
 {
+//  class PriceBarConversionException : public std::runtime_error
+//  {
+//  public:
+//    PriceBarConversionException(const std::string msg)
+//      : std::runtime_error(msg)
+//    {}
+
+//    ~PriceBarConversionException()
+//    {}
+
+//  };
 
   static unsigned int getBarReferenceId(PriceBarReference::ReferenceType ref)
   {
@@ -31,8 +43,18 @@ namespace mkc_searchalgo
         return 2;
       case PriceBarReference::ReferenceType::CLOSE:
         return 3;
+      case PriceBarReference::ReferenceType::VOLUME:
+      case PriceBarReference::ReferenceType::ROC1:
+      case PriceBarReference::ReferenceType::MEANDER:
+      case PriceBarReference::ReferenceType::VCHARTLOW:
+      case PriceBarReference::ReferenceType::VCHARTHIGH:
+      case PriceBarReference::ReferenceType::IBS1:
+      case PriceBarReference::ReferenceType::IBS2:
+      case PriceBarReference::ReferenceType::IBS3:
+      case PriceBarReference::ReferenceType::MOMERSIONFILTER:
+        throw PriceBarConversionException("PalToComparison::Unsupported BAR REFERENCE TYPE: " + std::to_string(ref));
       }
-      throw;
+      throw PriceBarConversionException("PalToComparison::No known reference type!");
   }
 
 

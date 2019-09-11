@@ -125,7 +125,7 @@ namespace mkc_searchalgo {
         return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    unsigned int getMaxConsecutiveLosers() const { mMaxConsLosers; }
+    unsigned int getMaxConsecutiveLosers() const { return mMaxConsLosers; }
 
     unsigned int getTradeNumber() const { return mNumTrades; }
 
@@ -162,7 +162,6 @@ namespace mkc_searchalgo {
   void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>::backtest(const std::valarray<Decimal>& occurences)
   {
     reset();
-  
     if (occurences.size() != mBacktestResultBase.size())
       throw;
     //generate results for all possible entries

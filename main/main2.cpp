@@ -1,78 +1,55 @@
-#include <string>
-#include <vector>
-#include <memory>
-#include <stdio.h>
-#include "McptConfigurationFileReader.h"
+
+#include "SearchRun.h"
+#include "PatternMatcher.h"
 #include "PALMonteCarloValidation.h"
-#include "RobustnessTester.h"
-#include "LogPalPattern.h"
-#include "LogRobustnessTest.h"
-#include "number.h"
-#include <cstdlib>
-#include "ComparisonsGenerator.h"
-#include "UniqueSinglePAMatrix.h"
-#include <map>
-#include "BacktestResultBaseGenerator.h"
-#include "OriginalSearchAlgoBacktester.h"
-#include "ShortcutSearchAlgoBacktester.h"
-#include "ForwardStepwiseSelector.h"
-#include "SteppingPolicy.h"
-#include "SurvivalPolicy.h"
-#include "PalToComparison.h"
-#include "SearchAlgoConfigurationFileReader.h"
-#include "SearchController.h"
-#include "StdEstimator.h"
 
-#include <chrono>
-
-using namespace mkc_timeseries;
 using namespace mkc_searchalgo;
-using std::shared_ptr;
-using Decimal = num::DefaultNumber;
+using Num = num::DefaultNumber;
 
-
-template <class Decimal>
-static std::shared_ptr<BackTester<Decimal>> buildBacktester(std::shared_ptr<McptConfiguration<Decimal>>& configuration)
+template <template <typename> class _SurvivingStrategyPolicy, typename _McptType>
+static void
+validateByPermuteMarketChanges (std::shared_ptr<McptConfiguration<Num>> configuration, unsigned int numPermutations, PriceActionLabSystem* pal, const std::string& validationOutputFile)
 {
-  DateRange iisDates = configuration->getInsampleDateRange();
-  std::shared_ptr<BackTester<Decimal>> theBackTester;
+  std::cout << "starting validation." << std::endl;
 
-  return getBackTester(configuration->getSecurity()->getTimeSeries()->getTimeFrame(),
-                       iisDates.getFirstDate(),
-                       iisDates.getLastDate());
+  PALMonteCarloValidation<Num,_McptType,_SurvivingStrategyPolicy> validation(configuration, numPermutations);
 
+  printf ("Starting Monte Carlo Validation tests (Using Permute Market Changes)\n\n");
+
+  validation.runPermutationTests(pal);
+
+  printf ("Exporting surviving MCPT strategies\n");
+
+  typename PALMonteCarloValidation<Num,_McptType,_SurvivingStrategyPolicy>::SurvivingStrategiesIterator it =
+      validation.beginSurvivingStrategies();
+
+  std::ofstream mcptPatternsFile(validationOutputFile);
+
+  for (; it != validation.endSurvivingStrategies(); it++)
+    {
+      LogPalPattern::LogPattern ((*it)->getPalPattern(), mcptPatternsFile);
+    }
 }
 
-int static testPatternMatching()
+static void validate(std::shared_ptr<McptConfiguration<Num>> configuration, unsigned int numPermutations, PriceActionLabSystem* pal, const std::string& validationOutputFile)
 {
-  //test pattern matching
-  std::string configurationFileName1 ("%config1.txt");
-  std::string configurationFileName2 ("%config2.txt");
+  validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
+      BestOfMonteCarloPermuteMarketChanges<Num,
+      NormalizedReturnPolicy,
+      MultiStrategyPermuteMarketChangesPolicy<Num,
+      NormalizedReturnPolicy<Num>>>>
+      (configuration,
+       numPermutations, pal, validationOutputFile);
+}
 
-  std::cout << configurationFileName1 << std::endl;
-  McptConfigurationFileReader reader1(configurationFileName1);
-  std::shared_ptr<McptConfiguration<Decimal>> configuration1 = reader1.readConfigurationFile();
-
-  std::cout << configurationFileName2 << std::endl;
-  McptConfigurationFileReader reader2(configurationFileName2);
-  std::shared_ptr<McptConfiguration<Decimal>> configuration2 = reader2.readConfigurationFile();
-
-  unsigned int matches = 0;
-  for (PriceActionLabSystem::ConstSortedPatternIterator it1  = configuration1->getPricePatterns()->patternLongsBegin(); it1 != configuration1->getPricePatterns()->patternLongsEnd(); it1++)
-    {
-      PatternExpressionPtr pattern1 = (*it1).second->getPatternExpression();
-      PalToComparison comparison1(pattern1.get());
-      for (PriceActionLabSystem::ConstSortedPatternIterator it2  = configuration2->getPricePatterns()->patternLongsBegin(); it2 != configuration2->getPricePatterns()->patternLongsEnd(); it2++)
-        {
-          PatternExpressionPtr pattern2 = (*it2).second->getPatternExpression();
-          PalToComparison comparison2(pattern2.get());
-          if (comparison1 == comparison2)
-            matches++;
-        }
-    }
-  std::cout << "Found " << matches << " long matches" << std::endl;
-
-  return 0;
+static int usage_error(const std::vector<std::string>& args)
+{
+  std::cout << "wrong usage, " << args.size() << " arguments specified: ";
+  for (auto arg: args)
+    std::cout << arg << ".";
+  std::cout << std::endl;
+  std::cout << "Correct usage is:... [configFileName] [searchConfigFileName] [longonly/shortonly/longshort] (optional:[number of parallel threads])" << std::endl;
+  return 2;
 }
 
 int main(int argc, char **argv)
@@ -80,215 +57,99 @@ int main(int argc, char **argv)
   std::cout << "started..." << std::endl;
   std::vector<std::string> v(argv, argv + argc);
 
-  //return testPatternMatching();
-
-  if (argc == 3 || argc == 4)
+  if (argc == 4 || argc == 5)
     {
       int nthreads = 0;
-      if (argc == 4) {
-          nthreads = std::stoi(v[3]);
+      if (argc == 5) {
+          nthreads = std::stoi(v[4]);
         }
+      std::string longorshort = v[3];
+      SideToRun sideToRun;
+      if (longorshort == "longonly")
+        sideToRun = SideToRun::LongOnly;
+      else if (longorshort == "shortonly")
+        sideToRun = SideToRun::ShortOnly;
+      else if (longorshort == "longshort")
+        sideToRun = SideToRun::LongShort;
+      else
+        return usage_error(v);
 
-      runner runner_instance(nthreads);
-      std::string configurationFileName (v[1]);
-      std::cout << configurationFileName << std::endl;
-      McptConfigurationFileReader reader(configurationFileName);
-      std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+      SearchRun search(v[1], v[2]);
 
-      StdEstimator<Decimal> estimator(configuration);
-      Decimal targetBase = estimator.estimate();
-      //Decimal testRange(2.04);
+      std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
 
-      std::string searchConfigFileName(v[2]);
-      std::cout << searchConfigFileName << std::endl;
-      SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
-      std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile(configuration->getSecurity(), 0);
-
-      boost::mutex fileVectorLock;
-      std::vector<std::string> fileNames;
-
-      //build thread-pool-runner
-      runner& Runner=runner::instance();
-      std::vector<boost::unique_future<void>> resultsOrErrorsVector;
-
-      for (int seriesId = 0; seriesId < searchConfig->getNumTimeFrames(); seriesId++)
+      //validation section
+      for (size_t i = 0; i < search.getTargetStopSize(); i++)
         {
-          for (auto it = searchConfig->targetStopPairsBegin(); it != searchConfig->targetStopPairsEnd(); it++)
+          search.run(nthreads, true, sideToRun, i);
+          std::string pat = std::to_string(search.getNowAsLong());
+          //std::string pat = "1567937016";
+          auto tspair = search.getTargetsAtIndex(i);
+          std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.first).getAsDouble());
+          std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
+          std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
+          portfolio->addSecurity(search.getConfig()->getSecurity());
+
+          if (sideToRun != SideToRun::ShortOnly)
             {
-              std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(it->first * targetBase);
-              std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(it->second * targetBase);
-              std::cout << "Testing Profit target multiplier: " << it->first << " in %: " << (*profitTarget) << ", with Stop loss multiplier: " << it->second << " in %: " << (*stopLoss) << std::endl;
-              bool inSampleOnly = true;
-              resultsOrErrorsVector.emplace_back(Runner.post([configurationFileName,
-                                                             searchConfigFileName,
-                                                             profitTarget,
-                                                             stopLoss,
-                                                             inSampleOnly,
-                                                             seriesId,
-                                                             &fileVectorLock,
-                                                             &fileNames
-                                                             ]()-> void {
-                  McptConfigurationFileReader reader(configurationFileName);
+              std::string fileName(symbolStr + "_SelectedISLong.txt");
+              std::string validatedFileName(symbolStr + "_InSampleLongValidated.txt");
+              PatternMatcher matcher(pat, tsStr, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
+              matcher.countOccurences();
+              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+              std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+              validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
 
-                  std::time_t now = std::time(0);
-                  std::cout << "Time since epoch: " << static_cast<long>(now) << std::endl;
-                  std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
-
-                  SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
-                  std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile(configuration->getSecurity(), seriesId);
-
-                  std::cout << "Parsed search algo config: " << searchConfigFileName << std::endl;
-                  std::cout << (*searchConfig) << std::endl;
-                  SearchController<Decimal> controller(configuration, searchConfig->getTimeSeries(), searchConfig);
-                  controller.prepare();
-                  controller.run<true>(profitTarget, stopLoss, inSampleOnly);
-                  {
-                    std::string fileNameLong("PatternsLong_" + std::to_string(static_cast<long>(now)) + "_" + std::to_string(seriesId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
-                    boost::mutex::scoped_lock Lock(fileVectorLock);
-                    fileNames.push_back(fileNameLong);
-                    controller.exportSurvivingLongPatterns(profitTarget, stopLoss, fileNameLong);
-                  }
-                  controller.run<false>(profitTarget, stopLoss, inSampleOnly);
-                  {
-                    std::string fileNameShort("PatternsShort_" + std::to_string(static_cast<long>(now)) + "_" + std::to_string(seriesId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
-                    boost::mutex::scoped_lock Lock(fileVectorLock);
-                    fileNames.push_back(fileNameShort);
-                    controller.exportSurvivingShortPatterns(profitTarget, stopLoss, fileNameShort);
-                  }
-                }
-              ));
             }
+          if (sideToRun != SideToRun::LongOnly)
+            {
+              std::string fileName(symbolStr + "_SelectedISShort.txt");
+              std::string validatedFileName(symbolStr + "_InSampleShortValidated.txt");
+              PatternMatcher matcher(pat, tsStr, false, search.getSearchConfig()->getMinNumStratsBeforeValidation());
+              matcher.countOccurences();
+              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+              std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+              validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
         }
-      for(std::size_t i=0;i<resultsOrErrorsVector.size();++i)
+
+      //only matching section
+      for (size_t i = 0; i < search.getTargetStopSize(); i++)
         {
-          try{
-            resultsOrErrorsVector[i].wait();
-            resultsOrErrorsVector[i].get();
-          }
-          catch(std::exception const& e)
-          {
-            std::cerr<<"Parallel run exception in run id: " << i << " error: "<<e.what()<<std::endl;
-          }
+          search.run(nthreads, false, sideToRun, i);
+          std::string pat = std::to_string(search.getNowAsLong());
+          //std::string pat = "1567937016";
+          auto tspair = search.getTargetsAtIndex(i);
+          std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.first).getAsDouble());
+          std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
+          std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
+          portfolio->addSecurity(search.getConfig()->getSecurity());
+
+          if (sideToRun != SideToRun::ShortOnly)
+            {
+              std::string fileName(symbolStr + "_SelectedOOSLong.txt");
+              PatternMatcher matcher(pat, tsStr, true, search.getSearchConfig()->getMinNumStratsFullPeriod());
+              matcher.countOccurences();
+              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+
+            }
+          if (sideToRun != SideToRun::LongOnly)
+            {
+              std::string fileName(symbolStr + "_SelectedOOSShort.txt");
+              PatternMatcher matcher(pat, tsStr, false, search.getSearchConfig()->getMinNumStratsFullPeriod());
+              matcher.countOccurences();
+              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+            }
+
         }
-      for (auto filename: fileNames)
-        {
-          std::cout << filename << std::endl;
-        }
+
       return 0;
-
-
-
-
-      //        std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(1.0);
-      //        std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(1.0);
-
-      //        BacktestResultBaseGenerator<Decimal, true> resultBase(configuration, profitTarget, stopLoss);
-
-      //        resultBase.buildBacktestMatrix();
-
-      //        std::shared_ptr<BackTester<Decimal>> backtester = buildBacktester(configuration);
-
-      //        std::string portfolioName(configuration->getSecurity()->getName() + std::string(" Portfolio"));
-
-      //        auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
-      //        aPortfolio->addSecurity(configuration->getSecurity());
-
-      //        std::shared_ptr<OHLCTimeSeries<Decimal>> series = configuration->getSecurity()->getTimeSeries();
-
-      //        typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = series->beginRandomAccess();
-
-      //        unsigned depth = 10;
-      //        ComparisonsGenerator<Decimal> compareGenerator(depth);
-
-      //        for (; it != series->endRandomAccess(); it++)
-      //        {
-      //            const Decimal& cOpen = series->getOpenValue (it, 0);
-      //            const Decimal& cHigh = series->getHighValue (it, 0);
-      //            const Decimal& cLow = series->getLowValue (it, 0);
-      //            const Decimal& cClose = series->getCloseValue (it, 0);
-
-      //            auto dt = series->getDateValue(it, 0);
-      //            std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
-
-      //            compareGenerator.addNewLastBar(cOpen, cHigh, cLow, cClose);
-
-      //        }
-
-      //        std::cout << " Full comparisons universe #:" << compareGenerator.getComparisonsCount() << std::endl;
-      //        std::cout << " Unique comparisons #:" << compareGenerator.getUniqueComparisons().size() << std::endl;
-      //        bool isLong = true;
-      //        using TBacktester = OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>;
-      //        UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix1(compareGenerator, series->getNumEntries());
-      //        std::shared_ptr<TBacktester> origBacktester = std::make_shared<OriginalSearchAlgoBackteserLong<Decimal, ComparisonEntryType>>(backtester, aPortfolio, profitTarget, stopLoss);
-
-      //        using TBacktester2 = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
-      //        using TComparison = std::valarray<Decimal>;
-      //        UniqueSinglePAMatrix<Decimal, TComparison> paMatrix2(compareGenerator, series->getNumEntries());
-
-      //        unsigned int minTrades = 5;
-      //        std::shared_ptr<TBacktester2> shortcut = std::make_shared<TBacktester2>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), minTrades, isLong);
-
-      ////        ForwardStepwiseSelector(const UniqueSinglePAMatrix<Decimal, TComparison>& singlePA,
-      ////                            unsigned minTrades, unsigned maxDepth, size_t passingStratNumPerRound, shared_ptr<TSearchAlgoBacktester>& searchAlgoBacktester,
-      ////                                Decimal survivalCriterion):
-      //        ForwardStepwiseSelector<Decimal, TComparison, TBacktester2, SeedSteppingPolicy<Decimal, TBacktester2>, SteppingPolicy<Decimal, TBacktester2>, DefaultSurvivalPolicy<Decimal>>
-      //            forwardStepwise(paMatrix2, minTrades, depth, 1500, shortcut, Decimal(2.0));
-
-      //a 100 random tests
-      //        for (unsigned int c = 0; c < 100; c++)
-      //          {
-      //              size_t maxn = paMatrix1.getMap().size();
-      //              int rand1 = rand()%(maxn-0 + 1) + 0;
-      //              int rand2 = rand()%(maxn-0 + 1) + 0;
-      //              auto& el11 = paMatrix1.getMappedElement(rand1);
-      //              auto& el12 = paMatrix1.getMappedElement(rand2);
-      //              auto& el21 = paMatrix2.getMappedElement(rand1);
-      //              auto& el22 = paMatrix2.getMappedElement(rand2);
-
-      //              std::vector<ComparisonEntryType> vect1 = {el11, el12};
-      //              std::vector<TComparison> vect2 = {el21, el22};
-
-      //              auto el211 = paMatrix2.getUnderlying(rand1);
-      //              std::cout << "orig: " << el11[0] << el11[1] << el11[2] << el11[3] << std::endl;
-      //              std::cout << "shortcut underlying: " << el211[0] << el211[1] << el211[2] << el211[3] << std::endl;
-
-      //              auto start = high_resolution_clock::now();
-      //              origBacktester->backtest(vect1);
-      //              auto stop = high_resolution_clock::now();
-      //              auto duration = duration_cast<microseconds>(stop - start);
-      //              std::cout << "backtest1 took: " << duration.count() << " microseconds" << std::endl;
-      //              std::cout << "orig tradenum: " << origBacktester->getTradeNumber() << ", profit factor: " << origBacktester->getProfitFactor() << std::endl;
-      //              start = high_resolution_clock::now();
-      //              shortcut->backtest(vect2);
-      //              stop = high_resolution_clock::now();
-      //              duration = duration_cast<microseconds>(stop - start);
-      //              std::cout << "backtest2 took: " << duration.count() << " microseconds" << std::endl;
-      //              std::cout << "shortcut tradenum: " << shortcut->getTradeNumber() << ", profit factor: " << shortcut->getProfitFactor() << std::endl;
-
-      //          }
-
-      //        UniqueSinglePAMatrix<Decimal, ComparisonEntryType> paMatrix(compareGenerator, series->getNumEntries());
-      //        using TBacktester = OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, true>;
-      //        std::shared_ptr<TBacktester> origBacktester = std::make_shared<OriginalSearchAlgoBackteser<Decimal, ComparisonEntryType, true>>(backtester, aPortfolio, profitTarget, stopLoss);
-      //        ComparisonsCombiner<Decimal, TBacktester, ComparisonEntryType> compareCombine(paMatrix, 10, depth, origBacktester);
-      //        compareCombine.combine();
-
-      //vectorized version
-
-      //        using TBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>;
-      //        using TComparison = std::valarray<Decimal>;
-      //        UniqueSinglePAMatrix<Decimal, TComparison> paMatrix(compareGenerator, series->getNumEntries());
-      //        //(const std::valarray<Decimal>& backtestResults, const std::valarray<unsigned int>& numBarsInPosition, unsigned int minTrades, bool isLong)
-      //        bool isLong = true;
-      //        unsigned int minTrades = 5;
-      //        std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(isLong), resultBase.getBacktestNumBarsInPosition(isLong), minTrades, isLong);
-      //        ComparisonsCombiner<Decimal, TBacktester, TComparison> compareCombine(paMatrix, 10, depth, shortcut);
-      //        compareCombine.combine();
 
     }
   else {
-      std::cout << "wrong usage, " << (argc - 1) << " arguments specified, needs to provide 2 config-file-path arguments." << std::endl;
+      return usage_error(v);
     }
 
 
 }
+
+

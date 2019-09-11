@@ -20,17 +20,7 @@ using namespace mkc_timeseries;
 
 namespace mkc_searchalgo
 {
-//  template <class Decimal>
-//  static std::shared_ptr<BackTester<Decimal>> buildBacktester(std::shared_ptr<McptConfiguration<Decimal>>& configuration)
-//  {
-//    DateRange iisDates = configuration->getInsampleDateRange();
-//    std::shared_ptr<BackTester<Decimal>> theBackTester;
 
-//    return getBackTester(configuration->getSecurity()->getTimeSeries()->getTimeFrame(),
-//                         iisDates.getFirstDate(),
-//                         iisDates.getLastDate());
-
-//  }
 
   template <class Decimal>
   class   SearchController
@@ -61,7 +51,7 @@ namespace mkc_searchalgo
           const Decimal& cLow = mSeries->getLowValue (it, 0);
           const Decimal& cClose = mSeries->getCloseValue (it, 0);
 
-          auto dt = mSeries->getDateValue(it, 0);
+          //auto dt = mSeries->getDateValue(it, 0);
           //std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
 
           mComparisonGenerator->addNewLastBar(cOpen, cHigh, cLow, cClose);

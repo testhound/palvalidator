@@ -502,7 +502,7 @@ typedef std::shared_ptr<MarketEntryExpression> MarketEntryPtr;
 class PatternDescription
 {
 public:
-  PatternDescription(char *fileName, unsigned int patternIndex, 
+  PatternDescription(const char *fileName, unsigned int patternIndex,
 		     unsigned long indexDate, decimal7* percentLong, decimal7* percentShort,
 		     unsigned int numTrades, unsigned int consecutiveLosses);
   PatternDescription (const PatternDescription& rhs);

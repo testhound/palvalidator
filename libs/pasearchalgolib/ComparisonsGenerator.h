@@ -33,7 +33,7 @@ struct std::hash< std::array< T, S > >
   size_t operator() (const std::array< T, S > & arrayKey) const
     {
         std::size_t seed = 0;
-        for (int i = 0; i < arrayKey.size(); ++i)
+        for (size_t i = 0; i < arrayKey.size(); ++i)
             hash_combine(seed, arrayKey[i]);
 
         return seed;
@@ -52,8 +52,8 @@ namespace mkc_searchalgo
     explicit ComparisonsGenerator(unsigned int maxlookback):
       mDateIndex(0),
       mMaxLookBack(maxlookback),
-      mBarBuffer(maxlookback),  //circular buffer instantiation
       mComparisonsCount(0),
+      mBarBuffer(maxlookback),  //circular buffer instantiation
       mComparisonsBatches{{mDateIndex, {}}}
     {}
 
@@ -93,9 +93,9 @@ namespace mkc_searchalgo
       if (same && !(first == second))
           throw;
 
-      for (int i = 0; i < fOhlcArr.size(); ++i)
+      for (size_t i = 0; i < fOhlcArr.size(); ++i)
         {
-          for (int c = 0; c < fOhlcArr.size(); ++c)
+          for (size_t c = 0; c < fOhlcArr.size(); ++c)
             {
               // self-checking case (high- and low- based comparison, or same-to-same does not make sense)
               if (same && (c == 1 || i == 1 || c == 2 || i == 2 || c == i) )
@@ -131,7 +131,7 @@ namespace mkc_searchalgo
 
     void shiftBarsUp()
     {
-      for (int i = 0; i < mBarBuffer.size(); ++i)
+      for (size_t i = 0; i < mBarBuffer.size(); ++i)
         mBarBuffer[i].incrementOffset();
     }
 

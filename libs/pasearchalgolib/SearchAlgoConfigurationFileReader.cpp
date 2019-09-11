@@ -136,13 +136,13 @@ namespace mkc_searchalgo
     if (!exists (hourlyFile))
       throw SearchAlgoConfigurationFileReaderException("Hourly data file path: " +  hourlyFile.string() + " does not exist");
 
-    if (timeFrameIdToLoad > timeFrames.size() || timeFrameIdToLoad < 0)
+    if (static_cast<size_t>(timeFrameIdToLoad) > timeFrames.size() || timeFrameIdToLoad < 0)
       throw SearchAlgoConfigurationFileReaderException("Invalid timeFrameIdToLoad: " + std::to_string(timeFrameIdToLoad) + " timeframes size: " + std::to_string(timeFrames.size()) + ".");
 
     std::shared_ptr<OHLCTimeSeries<Decimal>> series;
     if (timeFrameIdToLoad > 0)
       {
-        const time_t& timeFilter =  timeFrames.at(timeFrameIdToLoad - 1);
+        const time_t& timeFilter =  timeFrames.at(static_cast<size_t>(timeFrameIdToLoad - 1));
         std::cout << std::asctime(std::localtime(&timeFilter)) << std::endl;
         std::shared_ptr<TradeStationTimeFilteredCsvReader<Decimal>> timeFilteredCsv = std::make_shared<TradeStationTimeFilteredCsvReader<Decimal>>(hourlyDataFilePath, security->getTimeSeries()->getTimeFrame(), getVolumeUnit(security), security->getTick(), timeFilter);
         timeFilteredCsv->readFile();

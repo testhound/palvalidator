@@ -311,6 +311,11 @@ namespace mkc_timeseries
 
     void runPermutationTests()
     {
+      runPermutationTests(this->mMonteCarloConfiguration->getPricePatterns());
+    }
+
+    void runPermutationTests(PriceActionLabSystem* patternsToTest)
+    {
 
       // Create a security with just the OOS time series
       std::shared_ptr<Security<Decimal>> tempSecurity = this->mMonteCarloConfiguration->getSecurity();
@@ -324,7 +329,7 @@ namespace mkc_timeseries
       securityToTest->getTimeSeries()->syncronizeMapAndArray();
 
       // This line gets the patterns that have been read from the IR file
-      PriceActionLabSystem *patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
+//      PriceActionLabSystem *patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
 
       std::cout << "Running Best of permutation test with approximate permutation count of " << (patternsToTest->getNumPatterns() *  this->mNumPermutations)
                 << "\n (" << patternsToTest->getNumPatterns() << " #patterns X " << this->mNumPermutations << " #permutations)" << std::endl;

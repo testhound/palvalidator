@@ -36,9 +36,9 @@ namespace mkc_searchalgo {
                             Decimal sortMultiplier,
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
-      mBacktestProcessor(backtestProcessor),
       TSteppingPolicy(backtestProcessor, passingStratNumPerRound, sortMultiplier),
       TSurvivalPolicy(backtestProcessor, survivalCriterion, targetStopRatio),
+      mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
       mMinTrades(minTrades),
       mMaxDepth(maxDepth - 1),
@@ -123,11 +123,11 @@ namespace mkc_searchalgo {
 
   private:
 
+    std::shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mBacktestProcessor;
     std::shared_ptr<UniqueSinglePAMatrix<Decimal, TComparison>>& mSinglePa;
     unsigned mMinTrades;
     unsigned mMaxDepth;
     unsigned long mRuns;
-    std::shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mBacktestProcessor;
     std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>> mSurvivingContainer;
     //shared_ptr<TSearchAlgoBacktester> mSearchAlgoBacktester;
 

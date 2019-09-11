@@ -18,6 +18,17 @@ using namespace mkc_timeseries;
 
 namespace mkc_searchalgo
 {
+  class PriceBarConversionException : public std::runtime_error
+  {
+  public:
+    PriceBarConversionException(const std::string msg)
+      : std::runtime_error(msg)
+    {}
+
+    ~PriceBarConversionException()
+    {}
+
+  };
 
   class PriceBarFactory {
   public:
@@ -43,6 +54,19 @@ namespace mkc_searchalgo
       case PriceBarReference::ReferenceType::CLOSE:
         mPriceBars.push_back(std::make_unique<PriceBarClose>(offset));
         break;
+      case PriceBarReference::ReferenceType::VOLUME:
+      case PriceBarReference::ReferenceType::ROC1:
+      case PriceBarReference::ReferenceType::MEANDER:
+      case PriceBarReference::ReferenceType::VCHARTLOW:
+      case PriceBarReference::ReferenceType::VCHARTHIGH:
+      case PriceBarReference::ReferenceType::IBS1:
+      case PriceBarReference::ReferenceType::IBS2:
+      case PriceBarReference::ReferenceType::IBS3:
+      case PriceBarReference::ReferenceType::MOMERSIONFILTER:
+        throw PriceBarConversionException("ComparisonToPalStrategy::Unsupported BAR REFERENCE TYPE reference id: " + std::to_string(ref));
+
+
+
       }
       return mPriceBars.back().get();
   }

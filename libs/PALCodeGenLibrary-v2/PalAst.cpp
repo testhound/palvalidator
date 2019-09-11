@@ -1309,7 +1309,7 @@ ShortMarketEntryOnOpen::hashCode()
 /// class PatternDescription
 ////////////////////////////////////////////////////////
 
-PatternDescription::PatternDescription(char *fileName, unsigned int patternIndex, 
+PatternDescription::PatternDescription(const char *fileName, unsigned int patternIndex,
 		     unsigned long indexDate, decimal7* percentLong, decimal7* percentShort,
 		     unsigned int numTrades, unsigned int consecutiveLosses)
   : mFileName (fileName),
