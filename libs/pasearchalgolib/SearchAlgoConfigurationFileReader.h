@@ -11,12 +11,24 @@
 #include <memory>
 #include <exception>
 #include <vector>
-//#include <boost/date_time.hpp>
-//#include "DateRange.h"
-//#include "BackTester.h"
-//#include "PalAst.h"
 #include "number.h"
 #include "TimeSeries.h"
+#include "SecurityAttributes.h"
+#include "SecurityAttributesFactory.h"
+#include "PalParseDriver.h"
+#include "TimeFrameUtility.h"
+#include "TimeSeriesEntry.h"
+#include "TimeSeriesCsvReader.h"
+#include <cstdio>
+#include "number.h"
+#include "boost/lexical_cast.hpp"
+#include "boost/lexical_cast/bad_lexical_cast.hpp"
+#include "typeinfo"
+#include "TimeFilteredCsvReader.h"
+#include "McptConfigurationFileReader.h"
+#include "TimeSeriesCsvWriter.h"
+#include <boost/algorithm/string.hpp>
+#include <boost/filesystem.hpp>
 
 using namespace mkc_timeseries;
 
@@ -173,8 +185,8 @@ namespace mkc_searchalgo
     ~SearchAlgoConfigurationFileReader()
       {}
 
-    template <class SecurityT>
-    std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile(const SecurityT & security, int timeFrameIdToLoad);
+    //template <class SecurityT>
+    std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile(const std::shared_ptr<Security<Decimal>> & security, int timeFrameIdToLoad);
 
   private:
     std::string mConfigurationFileName;

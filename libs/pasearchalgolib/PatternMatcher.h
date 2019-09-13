@@ -60,13 +60,13 @@ namespace mkc_searchalgo
   class  PatternMatcher
   {
   public:
-    PatternMatcher(const std::string& filePatternExpr, const std::string filePatternExpr2, bool isLong, unsigned int minNumOfStrats):
+    PatternMatcher(const std::string& filePatternExpr, const std::string filePatternExpr2, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats):
       mIsLong(isLong),
       mMinNumOfStrats(minNumOfStrats),
       mExportPatternIndex(0)
     {
       std::string side = (isLong)? "Long": "Short";
-      std::string searchPattern = "*" + side + "_" + filePatternExpr + "_*" + filePatternExpr2 + "*";
+      std::string searchPattern = "*" + side + "_" + filePatternExpr + "_*" + filePatternExpr2 + "*" + std::to_string(inSampleOnly) + ".txt";
       std::cout << "Searching pattern: " << searchPattern << std::endl;
       std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", searchPattern);
 

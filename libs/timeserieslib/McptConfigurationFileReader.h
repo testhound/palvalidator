@@ -124,7 +124,7 @@ namespace mkc_timeseries
     ~McptConfigurationFileReader()
       {}
 
-    std::shared_ptr<McptConfiguration<Decimal>> readConfigurationFile();
+    std::shared_ptr<McptConfiguration<Decimal>> readConfigurationFile(bool skipPatterns = false);
 
   private:
     std::string mConfigurationFileName;

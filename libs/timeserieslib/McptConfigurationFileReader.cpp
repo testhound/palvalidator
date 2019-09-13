@@ -44,7 +44,7 @@ namespace mkc_timeseries
     : mConfigurationFileName(configurationFileName)
   {}
 
-  std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile()
+  std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile(bool skipPatterns)
   {
     io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
 
@@ -108,7 +108,9 @@ namespace mkc_timeseries
 	    throw McptConfigurationFileReaderException (std::string("Number of days between configuration file IS start date of ") +inSampleDateStr +std::string(" and TimeSeries start date of ") +timeSeriesDateStr +std::string(" is greater than 10 days"));
 	  }
       }
-
+    PriceActionLabSystem* system;
+    if (!skipPatterns)
+      {
     // Constructor driver (facade) that will parse the IR and return
     // and AST representation
     mkc_palast::PalParseDriver driver (irFilePath.string());
@@ -118,7 +120,7 @@ namespace mkc_timeseries
     driver.Parse();
 
     std::cout << "Parsing successfully completed." << std::endl << std::endl;
-    PriceActionLabSystem* system = driver.getPalStrategies();
+    system = driver.getPalStrategies();
     std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
     std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
     std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
@@ -126,7 +128,12 @@ namespace mkc_timeseries
     //PriceActionLabSystem* system = parsePALCode();
 
     //fclose (yyin);
-
+    }
+    else
+      {
+        std::cout << "McptConfiguration: Skipping PalPattern reading section." << std::endl;
+        system = nullptr;
+      }
     return std::make_shared<McptConfiguration<Decimal>>(getBackTester(backTestingTimeFrame, ooSampleDates),
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),

@@ -60,31 +60,47 @@ namespace mkc_searchalgo
         }
     }
 
-    std::vector<StrategyRepresentationType> getUniqueSurvivors(const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA)
+//    std::vector<StrategyRepresentationType> getUniqueSurvivors(const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA)
+//    {
+//      mUniqueOccurences.reserve(mSurvivors.size());
+//      std::vector<StrategyRepresentationType> ret;
+//      std::cout << "Survivors before removing duplicates: " << mSurvivors.size() << std::endl;
+//      Decimal sumTrades;
+//      for (const StrategyRepresentationType & strat: mSurvivors)
+//        {
+//            std::valarray<Decimal> occurences(DecimalConstants<Decimal>::DecimalOne, singlePA->getDateCount());
+//            //the multiplication
+//            for (unsigned int el: strat)
+//              occurences *= singlePA->getMappedElement(el);
+//            if (!findInVector(mUniqueOccurences, occurences))
+//              {
+//                mUniqueOccurences.push_back(occurences);
+//                ret.push_back(strat);
+//                sumTrades += occurences.sum() / Decimal(singlePA->getDateCount());
+//              }
+//        }
+//      Decimal avgTrades;
+//      if (ret.size() == 0)
+//        avgTrades = DecimalConstants<Decimal>::DecimalZero;
+//      else
+//        avgTrades = (sumTrades * Decimal(singlePA->getDateCount()))  / Decimal(static_cast<unsigned int>(ret.size()));
+//      std::cout << "Survivors after removing duplicates: " << ret.size() << ", avg trades: " << avgTrades << std::endl;
+//      return ret;
+//    }
+
+    std::vector<StrategyRepresentationType> getUniqueSurvivors()
     {
-      mUniqueOccurences.reserve(mSurvivors.size());
       std::vector<StrategyRepresentationType> ret;
       std::cout << "Survivors before removing duplicates: " << mSurvivors.size() << std::endl;
-      Decimal sumTrades;
-      for (const StrategyRepresentationType & strat: mSurvivors)
+      for (StrategyRepresentationType& strat: mSurvivors)
         {
-            std::valarray<Decimal> occurences(DecimalConstants<Decimal>::DecimalOne, singlePA->getDateCount());
-            //the multiplication
-            for (unsigned int el: strat)
-              occurences *= singlePA->getMappedElement(el);
-            if (!findInVector(mUniqueOccurences, occurences))
-              {
-                mUniqueOccurences.push_back(occurences);
+          std::sort(strat.begin(), strat.end());
+
+            if (!findInVector(ret, strat))
                 ret.push_back(strat);
-                sumTrades += occurences.sum() / Decimal(singlePA->getDateCount());
-              }
+
         }
-      Decimal avgTrades;
-      if (ret.size() == 0)
-        avgTrades = DecimalConstants<Decimal>::DecimalZero;
-      else
-        avgTrades = (sumTrades * Decimal(singlePA->getDateCount()))  / Decimal(static_cast<unsigned int>(ret.size()));
-      std::cout << "Survivors after removing duplicates: " << ret.size() << ", avg trades: " << avgTrades << std::endl;
+      std::cout << "Survivors after removing duplicates: " << ret.size() <<  std::endl;
       return ret;
     }
 
@@ -106,7 +122,7 @@ namespace mkc_searchalgo
     shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mProcessingPolicy;
     std::vector<StrategyRepresentationType> mSurvivors;
     std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;
-    std::vector<std::valarray<Decimal>> mUniqueOccurences;
+    //std::vector<std::valarray<Decimal>> mUniqueOccurences;
     unsigned int mMaxConsecutiveLosersLimit;
 
   };

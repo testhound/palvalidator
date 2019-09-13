@@ -30,102 +30,102 @@ namespace mkc_searchalgo
   }
 
 
-  template <class Decimal>
-  class TimeFilteredCsvReader : public TimeSeriesCsvReader<Decimal>
-  {
-  public:
-    TimeFilteredCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame,
-                        TradingVolume::VolumeUnit unitsOfVolume,
-                        const Decimal& minimumTick, const time_t& timeFilter) :
-      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
-      mCsvFile (fileName.c_str()),
-      mTimeFilter(timeFilter),
-      mOpen(DecimalConstants<Decimal>::DecimalZero),
-      mHigh(DecimalConstants<Decimal>::DecimalZero),
-      mLow(DecimalConstants<Decimal>::DecimalZero),
-      mClose(DecimalConstants<Decimal>::DecimalZero)
-    {}
+//  template <class Decimal>
+//  class TimeFilteredCsvReader : public TimeSeriesCsvReader<Decimal>
+//  {
+//  public:
+//    TimeFilteredCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame,
+//                        TradingVolume::VolumeUnit unitsOfVolume,
+//                        const Decimal& minimumTick, const time_t& timeFilter) :
+//      TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
+//      mCsvFile (fileName.c_str()),
+//      mTimeFilter(timeFilter),
+//      mOpen(DecimalConstants<Decimal>::DecimalZero),
+//      mHigh(DecimalConstants<Decimal>::DecimalZero),
+//      mLow(DecimalConstants<Decimal>::DecimalZero),
+//      mClose(DecimalConstants<Decimal>::DecimalZero)
+//    {}
 
-     TimeFilteredCsvReader(const TimeFilteredCsvReader& rhs)
-       : TimeSeriesCsvReader<Decimal>(rhs),
-        mCsvFile(rhs.mCsvFile),
-        mTimeFilter(rhs.mTimeFilter)
-    {}
+//     TimeFilteredCsvReader(const TimeFilteredCsvReader& rhs)
+//       : TimeSeriesCsvReader<Decimal>(rhs),
+//        mCsvFile(rhs.mCsvFile),
+//        mTimeFilter(rhs.mTimeFilter)
+//    {}
 
-    TimeFilteredCsvReader&
-    operator=(const TimeFilteredCsvReader &rhs)
-    {
-      if (this == &rhs)
-        return *this;
+//    TimeFilteredCsvReader&
+//    operator=(const TimeFilteredCsvReader &rhs)
+//    {
+//      if (this == &rhs)
+//        return *this;
 
-      TimeSeriesCsvReader<Decimal>::operator=(rhs);
-      mCsvFile = rhs.mCsvFile;
-      mTimeFilter = rhs.mTimeFilter;
+//      TimeSeriesCsvReader<Decimal>::operator=(rhs);
+//      mCsvFile = rhs.mCsvFile;
+//      mTimeFilter = rhs.mTimeFilter;
 
-      return *this;
-    }
+//      return *this;
+//    }
 
-    ~TimeFilteredCsvReader()
-    {}
+//    ~TimeFilteredCsvReader()
+//    {}
 
-    void readFile()
-    {
-      mCsvFile.set_header("Date", "Time", "Open", "High", "Low", "Close");
+//    void readFile()
+//    {
+//      mCsvFile.set_header("Date", "Time", "Open", "High", "Low", "Close");
 
-      std::string dateStamp, timeStamp;
-      std::string openString, highString, lowString, closeString;
+//      std::string dateStamp, timeStamp;
+//      std::string openString, highString, lowString, closeString;
 
-      Decimal openPrice, highPrice, lowPrice, closePrice;
-      //boost::gregorian::date entryDate;
-      while (mCsvFile.read_row(dateStamp, timeStamp, openString, highString, lowString, closeString))
-        {
-          openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
-          highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
-          lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
-          closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
+//      Decimal openPrice, highPrice, lowPrice, closePrice;
+//      //boost::gregorian::date entryDate;
+//      while (mCsvFile.read_row(dateStamp, timeStamp, openString, highString, lowString, closeString))
+//        {
+//          openPrice = this->DecimalRound (num::fromString<Decimal>(openString.c_str()));
+//          highPrice = this->DecimalRound (num::fromString<Decimal>(highString.c_str()));
+//          lowPrice = this->DecimalRound (num::fromString<Decimal>(lowString.c_str()));
+//          closePrice = this->DecimalRound (num::fromString<Decimal>(closeString.c_str()));
 
 
-          time_t tstamp = getTimeFromString(timeStamp);
-          std::cout << std::asctime(std::localtime(&mTimeFilter)) << std::endl;
-          std::cout << std::asctime(std::localtime(&tstamp)) << std::endl;
-          // create entry
-          if (tstamp == mTimeFilter)
-            {
-              if (mOpen == DecimalConstants<Decimal>::DecimalZero)
-                {
-                  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (mEntryDate, mOpen,
-                                                                                        mHigh, mLow,
-                                                                                        mClose,
-                                                                                        DecimalConstants<Decimal>::DecimalZero,
-                                                                                        TimeSeriesCsvReader<Decimal>::getTimeFrame()));
-                }
-              // to reset
-              mOpen = openPrice;
-              mHigh = DecimalConstants<Decimal>::DecimalZero;
-              mLow = highPrice * DecimalConstants<Decimal>::DecimalOneHundred;
-              mEntryDate = boost::gregorian::from_undelimited_string(dateStamp);
+//          time_t tstamp = getTimeFromString(timeStamp);
+//          std::cout << std::asctime(std::localtime(&mTimeFilter)) << std::endl;
+//          std::cout << std::asctime(std::localtime(&tstamp)) << std::endl;
+//          // create entry
+//          if (tstamp == mTimeFilter)
+//            {
+//              if (mOpen == DecimalConstants<Decimal>::DecimalZero)
+//                {
+//                  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (mEntryDate, mOpen,
+//                                                                                        mHigh, mLow,
+//                                                                                        mClose,
+//                                                                                        DecimalConstants<Decimal>::DecimalZero,
+//                                                                                        TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+//                }
+//              // to reset
+//              mOpen = openPrice;
+//              mHigh = DecimalConstants<Decimal>::DecimalZero;
+//              mLow = highPrice * DecimalConstants<Decimal>::DecimalOneHundred;
+//              mEntryDate = boost::gregorian::from_undelimited_string(dateStamp);
 
-            }
-            if (highPrice > mHigh)
-              mHigh = highPrice;
+//            }
+//            if (highPrice > mHigh)
+//              mHigh = highPrice;
 
-            if (lowPrice < mLow)
-              mLow = lowPrice;
-            mClose = closePrice;
-        }
-    }
+//            if (lowPrice < mLow)
+//              mLow = lowPrice;
+//            mClose = closePrice;
+//        }
+//    }
 
-    const std::tm& getTimeFilter() const { return mTimeFilter; }
+//    const std::tm& getTimeFilter() const { return mTimeFilter; }
 
-  private:
-    io::CSVReader<6> mCsvFile;
-    time_t mTimeFilter;
-    Decimal mOpen;
-    Decimal mHigh;
-    Decimal mLow;
-    Decimal mClose;
-    boost::gregorian::date mEntryDate;
-  };
+//  private:
+//    io::CSVReader<6> mCsvFile;
+//    time_t mTimeFilter;
+//    Decimal mOpen;
+//    Decimal mHigh;
+//    Decimal mLow;
+//    Decimal mClose;
+//    boost::gregorian::date mEntryDate;
+//  };
 
 
   template <class Decimal>

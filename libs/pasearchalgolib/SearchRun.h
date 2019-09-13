@@ -26,7 +26,7 @@ namespace mkc_searchalgo
       //std::string configurationFileName (v[1]);
       std::cout << configurationFileName << std::endl;
       McptConfigurationFileReader reader(configurationFileName);
-      mConfiguration = reader.readConfigurationFile();
+      mConfiguration = reader.readConfigurationFile(true);
 
       StdEstimator<Decimal> estimator(mConfiguration);
       mTargetBase = estimator.estimate();
@@ -43,27 +43,15 @@ namespace mkc_searchalgo
     size_t getTargetStopSize() const { return mSearchConfig->getTargetStopPair().size(); }
 
 
-    void run(int nthreads, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex)
+    void run(runner& Runner, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex)
     {
       //separate out short and long runs
       std::vector<bool> los;
-      if (runSide == SideToRun::LongShort)
-        {
-          los.push_back(true);
+      if (runSide != SideToRun::LongOnly)
           los.push_back(false);
-        }
-      else if (runSide == SideToRun::LongOnly)
-        {
+      if (runSide != SideToRun::ShortOnly)
           los.push_back(true);
-        }
-      else if (runSide == SideToRun::ShortOnly)
-        {
-          los.push_back(false);
-        }
 
-      runner runner_instance(static_cast<size_t>(nthreads));
-      //build thread-pool-runner
-      runner& Runner=runner::instance();
       std::vector<boost::unique_future<void>> resultsOrErrorsVector;
 
       auto targetstop = mSearchConfig->getTargetStopPair()[targetStopIndex];
@@ -74,7 +62,7 @@ namespace mkc_searchalgo
             {
               std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(targetstop.first * mTargetBase);
               std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(targetstop.second * mTargetBase);
-              std::cout << "Testing Profit target multiplier: " << targetstop.first << " in %: " << (*profitTarget) << ", with Stop loss multiplier: " << targetstop.second << " in %: " << (*stopLoss) << std::endl;
+              std::cout << "Testing TimeFrame" << timeFrameId << ", side(isLong?): " << side << ", Profit target multiplier: " << targetstop.first << " in %: " << (*profitTarget) << ", with Stop loss multiplier: " << targetstop.second << " in %: " << (*stopLoss) << std::endl;
               resultsOrErrorsVector.emplace_back(Runner.post([this,
                                                              profitTarget,
                                                              stopLoss,
@@ -84,7 +72,7 @@ namespace mkc_searchalgo
                                                              ]()-> void {
                   McptConfigurationFileReader reader(this->mConfigurationFileName);
 
-                  std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile();
+                  std::shared_ptr<McptConfiguration<Decimal>> configuration = reader.readConfigurationFile(true);
 
                   SearchAlgoConfigurationFileReader searchReader(this->mSearchConfigFileName);
                   std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile(configuration->getSecurity(), static_cast<int>(timeFrameId));
@@ -132,9 +120,9 @@ namespace mkc_searchalgo
     }
     long getNowAsLong() const { return static_cast<long>(mNow); }
 
-    std::shared_ptr<SearchAlgoConfiguration<Decimal>> getSearchConfig() const { return mSearchConfig; }
+    const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& getSearchConfig() const { return mSearchConfig; }
 
-    std::shared_ptr<McptConfiguration<Decimal>> getConfig() const { return mConfiguration; }
+    const std::shared_ptr<McptConfiguration<Decimal>>& getConfig() const { return mConfiguration; }
 
   private:
     std::string mConfigurationFileName;

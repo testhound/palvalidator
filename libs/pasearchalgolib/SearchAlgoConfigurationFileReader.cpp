@@ -4,22 +4,7 @@
 // Proprietary and confidential
 // Written by Tibor Szlavik <seg2019s@gmail.com>, July-August 2019
 
-#include <boost/algorithm/string.hpp>
-#include <boost/filesystem.hpp>
 #include "SearchAlgoConfigurationFileReader.h"
-#include "PalParseDriver.h"
-#include "TimeFrameUtility.h"
-#include "TimeSeriesEntry.h"
-#include "TimeSeriesCsvReader.h"
-#include "SecurityAttributes.h"
-#include "SecurityAttributesFactory.h"
-#include <cstdio>
-#include "number.h"
-#include "boost/lexical_cast.hpp"
-#include "boost/lexical_cast/bad_lexical_cast.hpp"
-#include "typeinfo"
-#include "TimeFilteredCsvReader.h"
-#include "McptConfigurationFileReader.h"
 
 
 using namespace boost::filesystem;
@@ -65,14 +50,16 @@ namespace mkc_searchalgo
     : mConfigurationFileName(configurationFileName)
   {}
 
-  template <>
   std::shared_ptr<SearchAlgoConfiguration<Decimal>> SearchAlgoConfigurationFileReader::readConfigurationFile(const std::shared_ptr<Security<Decimal>>& security, int timeFrameIdToLoad)
   {
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
+    //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
+    io::CSVReader<11, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
 
-    io::CSVReader<11> csvConfigFile(mConfigurationFileName.c_str());
+//    csvConfigFile.set_header("MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
+//                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath");
 
-    csvConfigFile.set_header("MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
+    csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
                              "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath");
 
     std::string maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
@@ -88,8 +75,9 @@ namespace mkc_searchalgo
       throw SearchAlgoConfigurationFileReaderException("Validation config file path: " + validationFile.string() + " does not exist");
 
     std::string numPermutations, numStratsFull, numStratsBeforeValidation;
-    io::CSVReader<3> validationCsv(validationConfigFilePath);
-    validationCsv.set_header("NumPermutations", "NumStratsFullPeriod", "NumStratsBeforeValidation");
+    io::CSVReader<3, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> validationCsv(validationConfigFilePath);
+    //validationCsv.set_header("NumPermutations", "NumStratsFullPeriod", "NumStratsBeforeValidation");
+    validationCsv.read_header(io::ignore_extra_column, "NumPermutations", "NumStratsFullPeriod", "NumStratsBeforeValidation");
     validationCsv.read_row(numPermutations, numStratsFull, numStratsBeforeValidation);
 
 
@@ -98,8 +86,9 @@ namespace mkc_searchalgo
       throw SearchAlgoConfigurationFileReaderException("Targets to search config file path: " + targetsFile.string() + " does not exist");
 
     std::vector<std::pair<Decimal, Decimal>> targetStops;
-    io::CSVReader<2> targetsCsv(targetsToSearchConfigFilePath);
-    targetsCsv.set_header("TargetMultiplier", "StopMultiplier");
+    io::CSVReader<2, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> targetsCsv(targetsToSearchConfigFilePath);
+    //targetsCsv.set_header("TargetMultiplier", "StopMultiplier");
+    targetsCsv.read_header(io::ignore_extra_column, "TargetMultiplier", "StopMultiplier");
 
     std::string target, stop;
     while (targetsCsv.read_row(target, stop))
@@ -113,8 +102,8 @@ namespace mkc_searchalgo
 
 
     std::vector<time_t> timeFrames;
-    io::CSVReader<1> timesCsv(timeFramesToSearchConfigFilePath);
-    timesCsv.set_header("TimeFrame");
+    io::CSVReader<1, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> timesCsv(timeFramesToSearchConfigFilePath);
+    timesCsv.read_header(io::ignore_extra_column, "TimeFrame");
 
     std::string timeFrame;
     while (timesCsv.read_row(timeFrame))
@@ -169,8 +158,12 @@ namespace mkc_searchalgo
           }
         std::cout << "First date random access: " << timeFilteredCsv->getTimeSeries()->getDateValue(timeFilteredCsv->getTimeSeries()->beginRandomAccess(),0) << std::endl;
         std::cout << "First date sorted access: " << timeFilteredCsv->getTimeSeries()->getFirstDate() << std::endl;
-        timeFilteredCsv->getTimeSeries()->syncronizeMapAndArray();
-        series = std::make_shared<OHLCTimeSeries<Decimal>>(*timeFilteredCsv->getTimeSeries());
+        series = timeFilteredCsv->getTimeSeries();
+        series->syncronizeMapAndArray();
+        std::string outFileName(hourlyDataFilePath + std::string("_timeframe_") + std::to_string(timeFrameIdToLoad));
+        PalTimeSeriesCsvWriter<Decimal> tsWriter(outFileName, *series);
+        tsWriter.writeFile();
+
       }
     else
       {
