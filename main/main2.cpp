@@ -109,25 +109,32 @@ int main(int argc, char **argv)
 
           if (sideToRun != SideToRun::ShortOnly)
             {
-              std::string fileName(symbolStr + "_SelectedISLong.txt");
-              std::string validatedFileName(symbolStr + "_InSampleLongValidated.txt");
+              std::string fileName(symbolStr + "_" + tsStr + "_SelectedISLong.txt");
+              std::string validatedFileName(symbolStr + "_" + tsStr + "_InSampleLongValidated.txt");
               PatternMatcher matcher(validateISNowString, tsStr, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
               matcher.countOccurences();
-              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-              std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-              validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
-
+              bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+              if (exportOk)
+                {
+                  std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                  if (sys->getNumPatterns() > 0)
+                    validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+                }
             }
           if (sideToRun != SideToRun::LongOnly)
             {
-              std::string fileName(symbolStr + "_SelectedISShort.txt");
-              std::string validatedFileName(symbolStr + "_InSampleShortValidated.txt");
+              std::string fileName(symbolStr + "_" + tsStr +  "_SelectedISShort.txt");
+              std::string validatedFileName(symbolStr + "_" + tsStr + "_InSampleShortValidated.txt");
               PatternMatcher matcher(validateISNowString, tsStr, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
               matcher.countOccurences();
-              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-              std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-              validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
-        }
+              bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+              if (exportOk)
+                {
+                  std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                  if (sys->getNumPatterns() > 0)
+                    validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
+                }
+            }
 
       //only matching section
       for (size_t i = 0; i < search.getTargetStopSize(); i++)
@@ -145,7 +152,7 @@ int main(int argc, char **argv)
 
           if (sideToRun != SideToRun::ShortOnly)
             {
-              std::string fileName(symbolStr + "_SelectedOOSLong.txt");
+              std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
               PatternMatcher matcher(validateOOSNowString, tsStr, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod());
               matcher.countOccurences();
               matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
@@ -153,7 +160,7 @@ int main(int argc, char **argv)
             }
           if (sideToRun != SideToRun::LongOnly)
             {
-              std::string fileName(symbolStr + "_SelectedOOSShort.txt");
+              std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
               PatternMatcher matcher(validateOOSNowString, tsStr, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod());
               matcher.countOccurences();
               matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);

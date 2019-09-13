@@ -112,8 +112,13 @@ namespace mkc_searchalgo
     }
 
     template <class Decimal>
-    void exportSelectPatterns(Decimal* profitTarget, Decimal* stopLoss, const std::string& exportFileName, std::shared_ptr<Portfolio<Decimal>> portfolio)
+    bool exportSelectPatterns(Decimal* profitTarget, Decimal* stopLoss, const std::string& exportFileName, std::shared_ptr<Portfolio<Decimal>> portfolio)
     {
+      if (mSelectedComparisons.empty())
+        {
+          std::cout << "Nothing to export." << std::endl;
+          return false;
+        }
        std::cout << "Exporting select strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> select = getSelectComparisons();
@@ -130,6 +135,7 @@ namespace mkc_searchalgo
                LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
              }
          }
+       return true;
     }
 
     std::vector<std::vector<ComparisonEntryType>> getSelectComparisons()
