@@ -60,7 +60,7 @@ namespace mkc_searchalgo
         std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
         std::vector<time_t> timeFrames,
         const std::shared_ptr<OHLCTimeSeries<Decimal>>& series,
-        unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation)
+        unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation, Decimal palSafetyFactor)
       :
       mMaxDepth(maxDepth),
       mMinTrades(minTrades),
@@ -74,7 +74,8 @@ namespace mkc_searchalgo
       mSeries(series),
       mNumPermutations(numPermutations),
       mMinNumStratsFullPeriod(minNumStratsFullPeriod),
-      mMinNumStratsBeforeValidation(minNumStratsBeforeValidation)
+      mMinNumStratsBeforeValidation(minNumStratsBeforeValidation),
+      mPalSafetyFactor(palSafetyFactor)
     {}
 
     SearchAlgoConfiguration (const SearchAlgoConfiguration& rhs)
@@ -160,6 +161,8 @@ namespace mkc_searchalgo
 
     const std::shared_ptr<OHLCTimeSeries<Decimal>>& getTimeSeries() const { return mSeries; }
 
+    const Decimal& getPalProfitabilitySafetyFactor() const { return mPalSafetyFactor; }
+
   private:
     unsigned int mMaxDepth;
     unsigned int mMinTrades;
@@ -174,6 +177,7 @@ namespace mkc_searchalgo
     unsigned int mNumPermutations;
     unsigned int mMinNumStratsFullPeriod;
     unsigned int mMinNumStratsBeforeValidation;
+    Decimal mPalSafetyFactor;
   };
 
   class SearchAlgoConfigurationFileReader

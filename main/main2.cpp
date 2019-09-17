@@ -2,6 +2,8 @@
 #include "SearchRun.h"
 #include "PatternMatcher.h"
 #include "PALMonteCarloValidation.h"
+//#include <chrono>
+//#include <ctime>
 
 using namespace mkc_searchalgo;
 using Num = num::DefaultNumber;
@@ -19,7 +21,7 @@ validateByPermuteMarketChanges (const std::shared_ptr<McptConfiguration<Num>>& c
       validation.beginSurvivingStrategies();
   std::ofstream mcptPatternsFile(validationOutputFile);
   for (; it != validation.endSurvivingStrategies(); it++)
-      LogPalPattern::LogPattern ((*it)->getPalPattern(), mcptPatternsFile);
+    LogPalPattern::LogPattern ((*it)->getPalPattern(), mcptPatternsFile);
 
 }
 
@@ -51,27 +53,45 @@ static int usage_error(const std::vector<std::string>& args)
 
 int main(int argc, char **argv)
 {
-  std::cout << "started..." << std::endl;
+  auto startTime = std::chrono::system_clock::now();
+  time_t startT = std::chrono::system_clock::to_time_t(startTime);
+  std::cout << "started at: " << std::ctime(&startT) << std::endl;
+
   std::vector<std::string> v(argv, argv + argc);
 
   if (argc == 4 || argc == 5)
     {
       int nthreads = 0;
 
-      std::string validateISNowString;
-      std::string validateOOSNowString;
+      std::string validateISNowStringInput;
+      std::string validateOOSNowStringInput;
+      bool iisRun = true;
+      bool oosRun = true;
 
       if (argc == 5) {
           std::vector<std::string> spl;
           boost::split(spl, v[4], boost::is_any_of(":"));
           if (spl[0] == "threads")
-            nthreads = std::stoi(spl[1]);
-          else if (spl[0] == "validateIS" || spl[0] == "validateIISOOS")
-            validateISNowString = spl[1];
-          else if (spl[0] == "validateOOS" || spl[0] == "validateIISOOS")
-            validateOOSNowString = spl[1];
+            {
+              nthreads = std::stoi(spl[1]);
+            }
+          else if (spl[0] == "validateIS")
+            {
+              validateISNowStringInput = spl[1];
+              oosRun = false;
+            }
+          else if (spl[0] == "validateOOS")
+            {
+              validateOOSNowStringInput = spl[1];
+              iisRun = false;
+            }
+          else if (spl[0] == "validateISOOS")
+            {
+              validateISNowStringInput = spl[1];
+              validateOOSNowStringInput = spl[1];
+            }
           else
-            usage_error(v);
+            return usage_error(v);
 
         }
       std::string longorshort = v[3];
@@ -94,80 +114,100 @@ int main(int argc, char **argv)
       std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
 
       //validation section
-      for (size_t i = 0; i < search.getTargetStopSize(); i++)
+      if (iisRun)
         {
-          if (validateISNowString.empty())
+          for (size_t i = 0; i < search.getTargetStopSize(); i++)
             {
-              search.run(Runner, true, sideToRun, i);
-              validateISNowString = std::to_string(search.getNowAsLong());
-            }
-          auto tspair = search.getTargetsAtIndex(i);
-          std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.first).getAsDouble());
-          std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
-          std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
-          portfolio->addSecurity(search.getConfig()->getSecurity());
-
-          if (sideToRun != SideToRun::ShortOnly)
-            {
-              std::string fileName(symbolStr + "_" + tsStr + "_SelectedISLong.txt");
-              std::string validatedFileName(symbolStr + "_" + tsStr + "_InSampleLongValidated.txt");
-              PatternMatcher matcher(validateISNowString, tsStr, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
-              matcher.countOccurences();
-              bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-              if (exportOk)
+              std::string validateISNowString(validateISNowStringInput);
+              if (validateISNowStringInput.empty())
                 {
-                  std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-                  if (sys->getNumPatterns() > 0)
-                    validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+                  search.run(Runner, true, sideToRun, i);
+                  validateISNowString = std::to_string(search.getNowAsLong());
+                }
+              auto tspair = search.getTargetsAtIndex(i);
+              std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
+              std::cout << "IIS -- Target index: " << i << ", target string: " << tsStr << std::endl;
+
+              std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
+              std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
+              portfolio->addSecurity(search.getConfig()->getSecurity());
+
+              if (sideToRun != SideToRun::ShortOnly)
+                {
+                  std::string fileName(symbolStr + "_" + tsStr + "_SelectedISLong.txt");
+                  std::string validatedFileName(symbolStr + "_" + tsStr + "_InSampleLongValidated.txt");
+                  PatternMatcher matcher(validateISNowString, tsStr, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
+                  matcher.countOccurences();
+                  bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                  if (exportOk)
+                    {
+                      std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                      if (sys->getNumPatterns() > 0)
+                        validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+                    }
+                }
+              if (sideToRun != SideToRun::LongOnly)
+                {
+                  std::string fileName(symbolStr + "_" + tsStr +  "_SelectedISShort.txt");
+                  std::string validatedFileName(symbolStr + "_" + tsStr + "_InSampleShortValidated.txt");
+                  PatternMatcher matcher(validateISNowString, tsStr, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
+                  matcher.countOccurences();
+                  bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                  if (exportOk)
+                    {
+                      std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                      if (sys->getNumPatterns() > 0)
+                        validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
                 }
             }
-          if (sideToRun != SideToRun::LongOnly)
-            {
-              std::string fileName(symbolStr + "_" + tsStr +  "_SelectedISShort.txt");
-              std::string validatedFileName(symbolStr + "_" + tsStr + "_InSampleShortValidated.txt");
-              PatternMatcher matcher(validateISNowString, tsStr, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
-              matcher.countOccurences();
-              bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-              if (exportOk)
-                {
-                  std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-                  if (sys->getNumPatterns() > 0)
-                    validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
-                }
-            }
-
-      //only matching section
-      for (size_t i = 0; i < search.getTargetStopSize(); i++)
-        {
-          if (validateOOSNowString.empty())
-            {
-              search.run(Runner, false, sideToRun, i);
-              validateOOSNowString = std::to_string(search.getNowAsLong());
-            }
-          auto tspair = search.getTargetsAtIndex(i);
-          std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.first).getAsDouble());
-          std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
-          std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
-          portfolio->addSecurity(search.getConfig()->getSecurity());
-
-          if (sideToRun != SideToRun::ShortOnly)
-            {
-              std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
-              PatternMatcher matcher(validateOOSNowString, tsStr, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod());
-              matcher.countOccurences();
-              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-
-            }
-          if (sideToRun != SideToRun::LongOnly)
-            {
-              std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
-              PatternMatcher matcher(validateOOSNowString, tsStr, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod());
-              matcher.countOccurences();
-              matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-            }
-
         }
 
+
+      //only matching section
+      if (oosRun)
+        {
+          for (size_t i = 0; i < search.getTargetStopSize(); i++)
+            {
+              std::string validateOOSNowString(validateOOSNowStringInput);
+              if (validateOOSNowStringInput.empty())
+                {
+                  search.run(Runner, false, sideToRun, i);
+                  validateOOSNowString = std::to_string(search.getNowAsLong());
+                }
+              else{
+                  validateOOSNowString = std::string();
+                }
+              auto tspair = search.getTargetsAtIndex(i);
+              std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
+              std::cout << "OOS -- Target index: " << i << ", target string: " << tsStr << std::endl;
+
+              std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
+              std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
+              portfolio->addSecurity(search.getConfig()->getSecurity());
+
+              if (sideToRun != SideToRun::ShortOnly)
+                {
+                  std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
+                  PatternMatcher matcher(validateOOSNowString, tsStr, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod());
+                  matcher.countOccurences();
+                  matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+
+                }
+              if (sideToRun != SideToRun::LongOnly)
+                {
+                  std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
+                  PatternMatcher matcher(validateOOSNowString, tsStr, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod());
+                  matcher.countOccurences();
+                  matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                }
+
+            }
+        }
+      auto endTime = std::chrono::system_clock::now();
+      time_t endT = std::chrono::system_clock::to_time_t(endTime);
+      std::chrono::duration<double> elapsed = endTime - startTime;
+      std::cout << "Run finished at: " << std::ctime(&endT) << std::endl;
+      std::cout << "Seconds elapsed since strart: " << elapsed.count() << std::endl;
       return 0;
 
     }

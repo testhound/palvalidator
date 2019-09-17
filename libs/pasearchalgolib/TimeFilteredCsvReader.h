@@ -201,9 +201,9 @@ namespace mkc_searchalgo
             {
               if (mOpen != DecimalConstants<Decimal>::DecimalZero)
                 {
-                    std::cout << "new Entry: " << mEntryDate << ", time: "<< std::asctime(std::localtime(&mTimeFilter)) <<
-                                 "current: " << openPrice << "," << highPrice << "," << lowPrice << "," << closePrice <<
-                                 ", Entry: " << mOpen << "," << mHigh << "," << mLow << "," << closePrice << std::endl;
+//                    std::cout << "new Entry: " << mEntryDate << ", time: "<< std::asctime(std::localtime(&mTimeFilter)) <<
+//                                 "current: " << openPrice << "," << highPrice << "," << lowPrice << "," << closePrice <<
+//                                 ", Entry: " << mOpen << "," << mHigh << "," << mLow << "," << closePrice << std::endl;
                     TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (mEntryDate, mOpen,
                                                                                           mHigh, mLow,
                                                                                           mClose,

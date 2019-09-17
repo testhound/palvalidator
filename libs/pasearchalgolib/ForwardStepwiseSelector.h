@@ -35,7 +35,7 @@ namespace mkc_searchalgo {
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
       TSteppingPolicy(backtestProcessor, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getSortMultiplier()),
-      TSurvivalPolicy(backtestProcessor, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers()),
+      TSurvivalPolicy(backtestProcessor, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(), searchConfiguration->getPalProfitabilitySafetyFactor()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
       mMinTrades(searchConfiguration->getMinTrades()),

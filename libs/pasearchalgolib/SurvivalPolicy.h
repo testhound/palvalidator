@@ -17,11 +17,14 @@ namespace mkc_searchalgo
   {
 
   public:
-    DefaultSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy, Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit):
+    DefaultSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
+                          Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit,
+                          const Decimal& palSafetyFactor):
       mSurvivalCriterion(survivalCriterion),
       mTargetStopRatio(targetStopRatio),
       mProcessingPolicy(processingPolicy),
-      mMaxConsecutiveLosersLimit(maxConsecutiveLosersLimit)
+      mMaxConsecutiveLosersLimit(maxConsecutiveLosersLimit),
+      mPalProfitabilitySafetyFactor(palSafetyFactor)
     {}
 
     void filterSurvivors()
@@ -40,11 +43,11 @@ namespace mkc_searchalgo
           if (stat.ProfitFactor > mSurvivalCriterion)
             {
               //Profitability requirement
-              Decimal profRequirement = (stat.ProfitFactor)/ (stat.ProfitFactor + mTargetStopRatio);
+              Decimal profRequirement = (mSurvivalCriterion)/ (mSurvivalCriterion +  mPalProfitabilitySafetyFactor * mTargetStopRatio);
               //Don't allow strategies with bad payoff ratio either (this means that when wrong, the market moved against them significantly)
-              Decimal payoffRequirement = mTargetStopRatio * Decimal(0.95);
-
-              if (stat.PALProfitability > profRequirement && stat.PayoffRatio > payoffRequirement)
+//              std::cout << "MaxLosers: " << stat.MaxLosers << ", Limit: " <<  mMaxConsecutiveLosersLimit <<  ", PF: " << stat.ProfitFactor << ", Payoff: " << stat.PayoffRatio << ", profRequirement: " << profRequirement <<
+//                        << ", PALProf: " << stat.PALProfitability << ", criterion: " << mSurvivalCriterion << ", Safety: " << mPalProfitabilitySafetyFactor << ", TS ratio: " << mTargetStopRatio << std::endl;
+              if (stat.PALProfitability > profRequirement)
                 {
                   int ind = std::get<2>(tup);
                   StrategyRepresentationType & strat = stratMap[ind];
@@ -124,6 +127,7 @@ namespace mkc_searchalgo
     std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;
     //std::vector<std::valarray<Decimal>> mUniqueOccurences;
     unsigned int mMaxConsecutiveLosersLimit;
+    Decimal mPalProfitabilitySafetyFactor;
 
   };
 

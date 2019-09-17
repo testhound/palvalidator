@@ -115,7 +115,8 @@ namespace mkc_searchalgo
 
     std::pair<Decimal, Decimal> getTargetsAtIndex(size_t ind) const
     {
-      auto targetStop = mSearchConfig->getTargetStopPair()[ind];
+      const auto& targetStopVect = mSearchConfig->getTargetStopPair();
+      const auto& targetStop = targetStopVect.at(ind);
       return std::make_pair(targetStop.first * mTargetBase, targetStop.second * mTargetBase);
     }
     long getNowAsLong() const { return static_cast<long>(mNow); }

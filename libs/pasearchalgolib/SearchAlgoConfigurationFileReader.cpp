@@ -54,21 +54,21 @@ namespace mkc_searchalgo
   {
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
-    io::CSVReader<11, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
-
-//    csvConfigFile.set_header("MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
-//                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath");
+    io::CSVReader<12, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
 
     csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
-                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath");
+                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath", "PALSafetyFactor");
 
     std::string maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
-    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath, palSafetyFactor;
 
 
     csvConfigFile.read_row (maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
-                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath);
+                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath, palSafetyFactor);
 
+    double palSafetyDbl = tryCast<double>(palSafetyFactor);
+    if (palSafetyDbl > 0.9 || palSafetyDbl < 0.7)
+      throw SearchAlgoConfigurationFileReaderException("PALSafetyFactor needs to be in the range of 0.7 and 0.9. Factor provided " + std::to_string(palSafetyDbl));
 
     boost::filesystem::path validationFile (validationConfigFilePath);
     if (!exists (validationFile))
@@ -147,7 +147,7 @@ namespace mkc_searchalgo
             auto dt = security->getTimeSeries()->getDateValue(it, 0);
             if (!timeFilteredCsv->getTimeSeries()->isDateFound(dt))
               {
-                std::cout << "FilteredTime csv: adding dt entry: " << dt << " from the original security timeseries (mixing)." << std::endl;
+                //std::cout << "FilteredTime csv: adding dt entry: " << dt << " from the original security timeseries (mixing)." << std::endl;
                 timeFilteredCsv->addEntry(OHLCTimeSeriesEntry<Decimal>(dt, cOpen, cHigh, cLow, cClose, DecimalConstants<Decimal>::DecimalZero, security->getTimeSeries()->getTimeFrame()));
               }
             else
@@ -172,9 +172,9 @@ namespace mkc_searchalgo
 
     return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
                                                               tryCast<unsigned int>(minTrades),
-                                                              Decimal(tryCast<float>(sortMultiplier)),
+                                                              Decimal(tryCast<double>(sortMultiplier)),
                                                               tryCast<unsigned int>(passingStratNumPerRound),
-                                                              Decimal(tryCast<float>(profitFactorCritierion)),
+                                                              Decimal(tryCast<double>(profitFactorCritierion)),
                                                               tryCast<unsigned int>(maxConsecutiveLosers),
                                                               tryCast<unsigned int>(maxInactivitySpan),
                                                               targetStops,
@@ -182,7 +182,8 @@ namespace mkc_searchalgo
                                                               series,
                                                               tryCast<unsigned int>(numPermutations),
                                                               tryCast<unsigned int>(numStratsFull),
-                                                              tryCast<unsigned int>(numStratsBeforeValidation)
+                                                              tryCast<unsigned int>(numStratsBeforeValidation),
+                                                              Decimal(palSafetyDbl)
                                                               );
 
   }

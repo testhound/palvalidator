@@ -117,7 +117,7 @@ namespace mkc_searchalgo {
 
           Decimal denominator (pf + payoffRatio);
           if (denominator > DecimalConstants<Decimal>::DecimalZero)
-            return ((pf/denominator) * DecimalConstants<Decimal>::DecimalOneHundred);
+            return ((pf/denominator));
           else
             return (DecimalConstants<Decimal>::DecimalZero);
         }
