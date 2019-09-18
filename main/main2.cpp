@@ -174,9 +174,7 @@ int main(int argc, char **argv)
                   search.run(Runner, false, sideToRun, i);
                   validateOOSNowString = std::to_string(search.getNowAsLong());
                 }
-              else{
-                  validateOOSNowString = std::string();
-                }
+
               auto tspair = search.getTargetsAtIndex(i);
               std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
               std::cout << "OOS -- Target index: " << i << ", target string: " << tsStr << std::endl;
