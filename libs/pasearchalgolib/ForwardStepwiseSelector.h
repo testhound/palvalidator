@@ -15,6 +15,7 @@
 #include "BacktestProcessor.h"
 #include "ShortcutSearchAlgoBacktester.h"
 #include "SteppingPolicy.h"
+#include "ValarrayMutualizer.h"
 #include "SurvivalPolicy.h"
 #include "SurvivingStrategiesContainer.h"
 
@@ -23,7 +24,8 @@ namespace mkc_searchalgo {
   template <class Decimal,
             typename TComparison = std::valarray<Decimal>,
             typename TSearchAlgoBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>,
-            typename TSteppingPolicy = SimpleSteppingPolicy<Decimal, TSearchAlgoBacktester, Sorters::CombinationPPSorter<Decimal>>,
+            //typename TSteppingPolicy = SimpleSteppingPolicy<Decimal, TSearchAlgoBacktester, Sorters::CombinationPPSorter<Decimal>>,
+            typename TSteppingPolicy = ValarrayMutualizer<Decimal, TSearchAlgoBacktester>,
             typename TSurvivalPolicy = DefaultSurvivalPolicy<Decimal, TSearchAlgoBacktester>
             >
   class ForwardStepwiseSelector: private TSteppingPolicy, private TSurvivalPolicy
@@ -34,7 +36,7 @@ namespace mkc_searchalgo {
                             const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration,
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
-      TSteppingPolicy(backtestProcessor, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getSortMultiplier()),
+      TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getSortMultiplier()),
       TSurvivalPolicy(backtestProcessor, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(), searchConfiguration->getPalProfitabilitySafetyFactor()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
@@ -62,13 +64,10 @@ namespace mkc_searchalgo {
           for (unsigned int i = 0; i < mSinglePa->getMapSize(); ++i)
             {
               for (unsigned int c = 0; c < mSinglePa->getMapSize(); ++c)
-              //for (unsigned int c = 0; c < 10; ++c)
                 {
                   if (i == c)
                     continue;
                   std::vector<unsigned int> stratVect {i, c};
-                  //stratVect.reserve(mMaxDepth);
-                  //stratVect = {i, c};
                   mBacktestProcessor->processResult(stratVect);
                 }
               if (i % 100 == 0)

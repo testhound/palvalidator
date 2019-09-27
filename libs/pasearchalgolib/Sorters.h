@@ -22,7 +22,8 @@ namespace mkc_searchalgo
   };
 
 
-  struct Sorters {
+  struct Sorters
+  {
     ///
     /// Sorts descending on Trade-Weighted Profit Factor (TWPF)
     /// (so as to keep the more active strategies for subsequent rounds)
@@ -33,8 +34,8 @@ namespace mkc_searchalgo
     {
       bool static sort(const std::tuple<ResultStat<Decimal>, unsigned int, int> & lhs, const std::tuple<Decimal, unsigned int, int>& rhs)
       {
-        Decimal pf1 = std::get<0>(lhs);
-        Decimal pf2 = std::get<0>(rhs);
+        Decimal pf1 = std::get<0>(lhs).ProfitFactor;
+        Decimal pf2 = std::get<0>(rhs).ProfitFactor;
 
         if (pf1 > DecimalConstants<Decimal>::DecimalOne && pf2 < DecimalConstants<Decimal>::DecimalOne)
           return true;
@@ -58,8 +59,8 @@ namespace mkc_searchalgo
     {
       bool static sort(const std::tuple<ResultStat<Decimal>, unsigned int, int> & lhs, const std::tuple<Decimal, unsigned int, int>& rhs)
       {
-        Decimal pf1 = std::get<0>(lhs);
-        Decimal pf2 = std::get<0>(rhs);
+        Decimal pf1 = std::get<0>(lhs).ProfitFactor;
+        Decimal pf2 = std::get<0>(rhs).ProfitFactor;
         if (pf1 > pf2)
           return true;
         if (pf1 < pf2)
@@ -114,6 +115,24 @@ namespace mkc_searchalgo
     private:
       Decimal mMultiplier;
     };
+
+    ///
+    /// Simple sorting based on PALProfitability
+    ///
+    template <class Decimal>
+    struct PALProfitabilitySorter
+    {
+      bool static sort(const std::tuple<ResultStat<Decimal>, unsigned int, int> & lhs, const std::tuple<ResultStat<Decimal>, unsigned int, int>& rhs)
+      {
+        const ResultStat<Decimal>& p1 = std::get<0>(lhs);
+        const ResultStat<Decimal>& p2 = std::get<0>(rhs);
+        return (p1.PALProfitability > p2.PALProfitability);
+
+      }
+    };
+
+
+
 
   };
 

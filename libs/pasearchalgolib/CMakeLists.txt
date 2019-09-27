@@ -23,6 +23,7 @@ SurvivingStrategiesContainer.h
 FileMatcher.h
 SearchRun.h
 PatternMatcher.h
+ValarrayMutualizer.h
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
