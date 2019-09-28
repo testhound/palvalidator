@@ -25,7 +25,7 @@ namespace mkc_searchalgo {
             typename TComparison = std::valarray<Decimal>,
             typename TSearchAlgoBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>,
             //typename TSteppingPolicy = SimpleSteppingPolicy<Decimal, TSearchAlgoBacktester, Sorters::CombinationPPSorter<Decimal>>,
-            typename TSteppingPolicy = ValarrayMutualizer<Decimal, TSearchAlgoBacktester>,
+            typename TSteppingPolicy = MutualInfoSteppingPolicy<Decimal, TSearchAlgoBacktester>,
             typename TSurvivalPolicy = DefaultSurvivalPolicy<Decimal, TSearchAlgoBacktester>
             >
   class ForwardStepwiseSelector: private TSteppingPolicy, private TSurvivalPolicy

@@ -12,6 +12,25 @@
 
 namespace mkc_searchalgo
 {
+
+  template <class T>
+  static bool findInVector(const std::vector<T>& vect, const T& value)
+  {
+    return (std::end(vect) != std::find(std::begin(vect), std::end(vect), value));
+  }
+
+  /// valarray needs specialized handling of equality check (otherwise the operator== returns valarray of booleans)
+  template <class Decimal>
+  static bool findInVector(const std::vector<std::valarray<Decimal>>& vect, const std::valarray<Decimal>& value)
+  {
+    for (const auto& el: vect)
+      {
+        if ((el == value).min())
+          return true;
+      }
+    return false;
+  }
+
   using StrategyRepresentationType = std::vector<unsigned int>;
 
   template <class Decimal, typename TSearchAlgoBacktester>
@@ -92,7 +111,6 @@ namespace mkc_searchalgo
     const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& mUniques;
 
   };
-
 
 }
 

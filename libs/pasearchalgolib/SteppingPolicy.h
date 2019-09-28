@@ -8,27 +8,43 @@
 #define STEPPINGPOLICY_H
 
 #include "BacktestProcessor.h"
+#include "ValarrayMutualizer.h"
 
 namespace mkc_searchalgo
 {
 
-  template <class T>
-  static bool findInVector(const std::vector<T>& vect, const T& value)
+  ///
+  /// The Stepping policy based on Max relevance min redundancy (and activity)
+  ///
+  template <class Decimal, typename TSearchAlgoBacktester>
+  class MutualInfoSteppingPolicy
   {
-    return (std::end(vect) != std::find(std::begin(vect), std::end(vect), value));
-  }
+  public:
+    MutualInfoSteppingPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
+                         const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
+                         size_t passingStratNumPerRound,
+                         Decimal sortMultiplier):
+      mProcessingPolicy(processingPolicy),
+      mPassingStratNumPerRound(passingStratNumPerRound),
+      mSortMultiplier(sortMultiplier),
+      mMutualizer(processingPolicy, singlePA)
+      {}
 
-  /// valarray needs specialized handling of equality check (otherwise the operator== returns valarray of booleans)
-  template <class Decimal>
-  static bool findInVector(const std::vector<std::valarray<Decimal>>& vect, const std::valarray<Decimal>& value)
-  {
-    for (const auto& el: vect)
+    protected:
+      std::vector<StrategyRepresentationType> passes()
       {
-        if ((el == value).min())
-          return true;
+        //sort by PALProfitability before any operation
+        mProcessingPolicy->template sortResults<Sorters::PALProfitabilitySorter<Decimal>>();
+        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), mPassingStratNumPerRound, mSortMultiplier.getAsDouble());
+        return mMutualizer.getSelectedStrategies();
       }
-    return false;
-  }
+
+  private:
+    shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mProcessingPolicy;
+    size_t mPassingStratNumPerRound;
+    Decimal mSortMultiplier;
+    ValarrayMutualizer<Decimal, TSearchAlgoBacktester> mMutualizer;
+  };
 
 
   ///

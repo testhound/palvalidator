@@ -7,90 +7,218 @@
 #ifndef VALARRAYMUTUALIZER_H
 #define VALARRAYMUTUALIZER_H
 
-#include "SteppingPolicy.h"
+#include "BacktestProcessor.h"
+#include <chrono>
 
+using namespace std::chrono;
 namespace mkc_searchalgo
 {
 
+//  // A hash function used to hash a pair of any kind
+//  struct hash_pair {
+//      template <class T1, class T2>
+//      size_t operator()(const pair<T1, T2>& p) const
+//      {
+//          auto hash1 = hash<T1>{}(p.first);
+//          auto hash2 = hash<T2>{}(p.second);
+//          return hash1 ^ hash2;
+//      }
+//  };
 
   template <class Decimal, class TSearchAlgoBacktester>
   class ValarrayMutualizer
   {
   public:
     ValarrayMutualizer(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
-                       const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
-                       size_t passingStratNumPerRound,
-                       Decimal sortMultiplier):
-      mProcessingPolicy(processingPolicy),
-      mSortedResults(processingPolicy->getResults()),
+                       const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA):
       mStratMap(processingPolicy->getStrategyMap()),
-      mSinglePA(singlePA),
-      mSumSelected(DecimalConstants<Decimal>::DecimalZero, singlePA->getDateCount()),
-      mSelectCount(passingStratNumPerRound)
-    {}
-
-  protected:
-    std::vector<StrategyRepresentationType> passes()
+      mSinglePA(singlePA)
     {
-      //sort by PALProfitability before any operation
-      mProcessingPolicy->template sortResults<Sorters::PALProfitabilitySorter<Decimal>>();
-      getMaxRelMinRed();
-      return mSelectedStrategies;
+      std::cout << "Building mutual info matrix." << std::endl;
+      for (size_t i = 0; i < mSinglePA->getMapSize(); i++)
+        {
+          for (size_t c = 0; c < mSinglePA->getMapSize(); c++)
+            {
+              const std::valarray<Decimal>& v1 = mSinglePA->getMappedElement(i);
+              const std::valarray<Decimal>& v2 = mSinglePA->getMappedElement(c);
+              Decimal red = getRedundancy(v1, v2);
+              mIndividuals.insert(std::make_pair((i < c)?(i*10000 + c):(c*10000 + i), red.getAsDouble()));
+            }
+        }
+        std::cout << "Built mutual info matrix of size: " << mIndividuals.size() << std::endl;
     }
 
-  private:
+  public:
 
-    void getMaxRelMinRed()
+    void getMaxRelMinRed2(const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& sortedResults,
+                          unsigned int selectCount, double activityMult)
     {
-      while (mSelectedStrategies.size() < mSelectCount)
+      //clearing
+      mSelectedStrategies.clear();
+      mSelectedStrategies.shrink_to_fit();
+      mIndexedSums.clear();
+      double bestRelevance;
+      double bestRedundancy;
+      double bestActivity;
+      int maxIndexToSearch = sortedResults.size();
+      while (mSelectedStrategies.size() < selectCount)
         {
-          Decimal maxScore = DecimalConstants<Decimal>::DecimalMinusOne;
+          int index = -1;
+          double maxScore = -1.0;
+          bool first = true;
           StrategyRepresentationType bestStrat;
-          std::valarray<Decimal> bestTrading;
-          for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: mSortedResults)
+          for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: sortedResults)
             {
               int ind = std::get<2>(tup);
-              // do not pass "perfect" or "useless" strategies
+              unsigned int trades = std::get<1>(tup);
               const ResultStat<Decimal>& stat = std::get<0>(tup);
+              //increment index immediately
+              index++;
 
               if (stat.ProfitFactor == DecimalConstants<Decimal>::DecimalOneHundred || stat.ProfitFactor == DecimalConstants<Decimal>::DecimalZero)
                 continue;
 
               const StrategyRepresentationType& strat = mStratMap[ind];
-              //already in
+
               if (findInVector(mSelectedStrategies, strat))
                 continue;
 
-              Decimal relevance = stat.PALProfitability;
-              if (maxScore > relevance)       //there is no need to search more, as it is impossible to improve the score
-                break;
+              double relevance = stat.PALProfitability.getAsDouble();
+              double activity = (trades * activityMult) / mSinglePA->getMapSize();
 
-              std::valarray<Decimal> trading = getTrading(strat);
+              if (maxScore > relevance + activityMult*0.5 || index >= maxIndexToSearch)       //there is no need to search more, as it is impossible to improve the score
+                {
+                  if (mSelectedStrategies.size() == 1)
+                    maxIndexToSearch = index;
+                  break;
+                }
+
               //just pick the top strategy as seed
               if (mSelectedStrategies.size() == 0)
                 {
                   bestStrat = strat;
-                  bestTrading = trading;
                   break;
                 }
-              std::valarray<Decimal> avgSelected = mSumSelected / Decimal(static_cast<double>(mSelectedStrategies.size()));
-              Decimal redundancy = getRedundancy(avgSelected, trading);
-              Decimal score = relevance - redundancy;
+              first = false;
+              double redundancy;
+              if (mSelectedStrategies.size() == 1)
+                redundancy = initRedundancy(index, mSelectedStrategies.back(), strat);
+              else
+                redundancy = getRedundancy(index, strat);
+
+              double score = relevance + activity - redundancy;
               if (score > maxScore)
                 {
                   bestStrat = strat;
-                  bestTrading = trading;
                   maxScore = score;
-                  std::cout << "Round : " << mSelectedStrategies.size() << " -- relevance: " << relevance << ", redundancy: " << redundancy << ", new score: " << maxScore << std::endl;
+                  bestActivity = activity;
+                  bestRelevance = relevance;
+                  bestRedundancy = redundancy;
+//                  std::cout << "Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
+//                            << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << std::endl;
                 }
+
             }
-          if (mSelectedStrategies.size() > 0 && maxScore == DecimalConstants<Decimal>::DecimalMinusOne)   //nothing more to search
+          if (mSelectedStrategies.size() > 0 && first)   //nothing more to search
             break;
           //add selected strategy
-          std::cout << "Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore << std::endl;
-          mSumSelected += bestTrading;
+          std::cout << "Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
+                    << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << std::endl;
+          //mSelectedGroup.insert(mSelectedGroup.begin(), bestStrat.begin(), bestStrat.end());
           mSelectedStrategies.push_back(bestStrat);
         }
+    }
+
+//    void getMaxRelMinRed1()
+//    {
+//      while (mSelectedStrategies.size() < mSelectCount)
+//        {
+//          Decimal maxScore = DecimalConstants<Decimal>::DecimalMinusOne;
+//          StrategyRepresentationType bestStrat;
+//          std::valarray<Decimal> bestTrading;
+//          for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: mSortedResults)
+//            {
+//              int ind = std::get<2>(tup);
+//              // do not pass "perfect" or "useless" strategies
+//              const ResultStat<Decimal>& stat = std::get<0>(tup);
+
+//              if (stat.ProfitFactor == DecimalConstants<Decimal>::DecimalOneHundred || stat.ProfitFactor == DecimalConstants<Decimal>::DecimalZero)
+//                continue;
+
+//              const StrategyRepresentationType& strat = mStratMap[ind];
+//              //already in
+//              if (findInVector(mSelectedStrategies, strat))
+//                continue;
+
+//              Decimal relevance = stat.PALProfitability;
+//              if (maxScore > relevance)       //there is no need to search more, as it is impossible to improve the score
+//                break;
+
+//              std::valarray<Decimal> trading = getTrading(strat);
+//              //just pick the top strategy as seed
+//              if (mSelectedStrategies.size() == 0)
+//                {
+//                  bestStrat = strat;
+//                  bestTrading = trading;
+//                  break;
+//                }
+//              std::valarray<Decimal> avgSelected = mSumSelected / Decimal(static_cast<double>(mSelectedStrategies.size()));
+//              Decimal redundancy = getRedundancy(avgSelected, trading);
+//              Decimal score = relevance - redundancy;
+//              if (score > maxScore)
+//                {
+//                  bestStrat = strat;
+//                  bestTrading = trading;
+//                  maxScore = score;
+//                  std::cout << "Round : " << mSelectedStrategies.size() << " -- relevance: " << relevance << ", redundancy: " << redundancy << ", new score: " << maxScore << std::endl;
+//                }
+//            }
+//          if (mSelectedStrategies.size() > 0 && maxScore == DecimalConstants<Decimal>::DecimalMinusOne)   //nothing more to search
+//            break;
+//          //add selected strategy
+//          std::cout << "Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore << std::endl;
+//          mSumSelected += bestTrading;
+//          mSelectedStrategies.push_back(bestStrat);
+//        }
+//    }
+
+  private:
+
+    double initRedundancy(int index, const StrategyRepresentationType& strat1, const StrategyRepresentationType& strat2)
+    {
+      double sumRed = 0.0;
+      int cnt = 0;
+      for (unsigned int i: strat1)
+        {
+          for (unsigned int c: strat2)
+            {
+              double red = mIndividuals[(i < c)?(i*10000 + c):(c*10000 + i)];
+              sumRed += red;
+              cnt++;
+            }
+        }
+        mIndexedSums[index] = sumRed;
+        return (sumRed / cnt);
+    }
+
+    double getRedundancy(int index, const StrategyRepresentationType& strat2)
+    {
+      //the last added strategy is the only one missing from the recorded sum
+      const StrategyRepresentationType& strat1 = mSelectedStrategies.back();
+      double sumRed = 0.0;
+      int cnt = 0;
+      for (unsigned int i: strat1)
+        {
+          for (unsigned int c: strat2)
+            {
+              double red = mIndividuals[(i < c)?(i*10000 + c):(c*10000 + i)];
+              sumRed += red;
+              cnt++;
+            }
+        }
+      double& origsum = mIndexedSums[index];
+      origsum += sumRed;
+      return (origsum / (mSelectedStrategies.size()*strat1.size()*strat1.size() + cnt));
     }
 
     ///
@@ -129,14 +257,15 @@ namespace mkc_searchalgo
       return occurences;
     }
 
+  public:
+    const std::vector<StrategyRepresentationType>& getSelectedStrategies() const { return mSelectedStrategies; }
+
   private:
-    const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& mProcessingPolicy;
-    const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& mSortedResults;
     std::unordered_map<int, StrategyRepresentationType>& mStratMap;
     const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& mSinglePA;
-    std::valarray<Decimal> mSumSelected;
-    size_t mSelectCount;
     std::vector<StrategyRepresentationType> mSelectedStrategies;
+    std::unordered_map<unsigned int, double> mIndividuals;
+    std::unordered_map<int, double> mIndexedSums;
 
   };
 
