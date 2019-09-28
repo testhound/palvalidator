@@ -27,7 +27,7 @@ namespace mkc_searchalgo
       mProcessingPolicy(processingPolicy),
       mPassingStratNumPerRound(passingStratNumPerRound),
       mSortMultiplier(sortMultiplier),
-      mMutualizer(processingPolicy, singlePA)
+      mMutualizer(processingPolicy, singlePA, "Stepping")
       {}
 
     protected:
@@ -35,7 +35,7 @@ namespace mkc_searchalgo
       {
         //sort by PALProfitability before any operation
         mProcessingPolicy->template sortResults<Sorters::PALProfitabilitySorter<Decimal>>();
-        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), mPassingStratNumPerRound, mSortMultiplier.getAsDouble());
+        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), mPassingStratNumPerRound, mSortMultiplier.getAsDouble(), 2.0, 1.0);
         return mMutualizer.getSelectedStrategies();
       }
 

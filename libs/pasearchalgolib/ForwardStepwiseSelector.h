@@ -26,7 +26,7 @@ namespace mkc_searchalgo {
             typename TSearchAlgoBacktester = ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::PlainVanilla>,
             //typename TSteppingPolicy = SimpleSteppingPolicy<Decimal, TSearchAlgoBacktester, Sorters::CombinationPPSorter<Decimal>>,
             typename TSteppingPolicy = MutualInfoSteppingPolicy<Decimal, TSearchAlgoBacktester>,
-            typename TSurvivalPolicy = DefaultSurvivalPolicy<Decimal, TSearchAlgoBacktester>
+            typename TSurvivalPolicy = MutualInfoSurvivalPolicy<Decimal, TSearchAlgoBacktester>
             >
   class ForwardStepwiseSelector: private TSteppingPolicy, private TSurvivalPolicy
   {
@@ -37,7 +37,7 @@ namespace mkc_searchalgo {
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
       TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getSortMultiplier()),
-      TSurvivalPolicy(backtestProcessor, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(), searchConfiguration->getPalProfitabilitySafetyFactor()),
+      TSurvivalPolicy(backtestProcessor, singlePA, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(), searchConfiguration->getPalProfitabilitySafetyFactor()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
       mMinTrades(searchConfiguration->getMinTrades()),

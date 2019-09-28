@@ -12,14 +12,100 @@
 namespace mkc_searchalgo
 {
 
+
+  template <class Decimal, typename TSearchAlgoBacktester>
+  class MutualInfoSurvivalPolicy
+  {
+
+  public:
+    MutualInfoSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
+                            std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
+                          Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit,
+                          const Decimal& palSafetyFactor):
+      mSurvivalCriterion(survivalCriterion),
+      mTargetStopRatio(targetStopRatio),
+      mProcessingPolicy(processingPolicy),
+      mMaxConsecutiveLosersLimit(maxConsecutiveLosersLimit),
+      mPalProfitabilitySafetyFactor(palSafetyFactor),
+      mMutualizer(processingPolicy, singlePA, "Survival")
+    {}
+
+    void filterSurvivors()
+    {
+      //fetch results
+      const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>&
+          results = mProcessingPolicy->getResults();
+      std::unordered_map<int, StrategyRepresentationType>&
+          stratMap = mProcessingPolicy->getStrategyMap();
+
+      for (const auto& tup: results)
+        {
+          const ResultStat<Decimal>& stat = std::get<0>(tup);
+          if (stat.MaxLosers > mMaxConsecutiveLosersLimit)
+            continue;
+          if (stat.ProfitFactor > mSurvivalCriterion)
+            {
+              //Profitability requirement
+              Decimal profRequirement = (mSurvivalCriterion)/ (mSurvivalCriterion +  mPalProfitabilitySafetyFactor * mTargetStopRatio);
+              if (stat.PALProfitability > profRequirement)
+                {
+                  int ind = std::get<2>(tup);
+                  StrategyRepresentationType & strat = stratMap[ind];
+                  //check for repeats (only here, as at this stage processing time is less pertinent)
+                  std::sort(strat.begin(), strat.end());
+                  if (!findInVector(mSurvivors, strat))
+                    {
+                      mResults.push_back(tup);
+                      mSurvivors.push_back(strat);
+                    }
+                }
+            }
+        }
+    }
+
+    std::vector<StrategyRepresentationType> getUniqueSurvivors()
+    {
+      std::cout << "Sorting survivors." << std::endl;
+      std::sort(mResults.begin(), mResults.end(), Sorters::PALProfitabilitySorter<Decimal>::sort);
+      std::cout << "Surival MaxRelMinRed Algorithm..." << std::endl;
+      mMutualizer.getMaxRelMinRed2(mResults, mResults.size(), 0.0, 2.0, 0.5);
+      return mMutualizer.getSelectedStrategies();
+    }
+
+    const std::vector<StrategyRepresentationType>& getSurvivors() const {return mSurvivors;}
+
+    size_t getNumSurvivors() const { return mSurvivors.size(); }
+
+    void clearRound()
+    {
+      mSurvivors.clear();
+      mSurvivors.shrink_to_fit();
+      mResults.clear();
+      mResults.shrink_to_fit();
+    }
+
+  private:
+    Decimal mSurvivalCriterion;
+    Decimal mTargetStopRatio;
+    shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mProcessingPolicy;
+    std::vector<StrategyRepresentationType> mSurvivors;
+    std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mResults;
+    //std::vector<std::valarray<Decimal>> mUniqueOccurences;
+    unsigned int mMaxConsecutiveLosersLimit;
+    Decimal mPalProfitabilitySafetyFactor;
+    ValarrayMutualizer<Decimal, TSearchAlgoBacktester> mMutualizer;
+
+  };
+
   template <class Decimal, typename TSearchAlgoBacktester>
   class DefaultSurvivalPolicy
   {
 
   public:
     DefaultSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
-                          Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit,
-                          const Decimal& palSafetyFactor):
+                          std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
+                        Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit,
+                        const Decimal& palSafetyFactor):
       mSurvivalCriterion(survivalCriterion),
       mTargetStopRatio(targetStopRatio),
       mProcessingPolicy(processingPolicy),

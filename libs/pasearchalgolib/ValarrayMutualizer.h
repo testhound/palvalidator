@@ -30,11 +30,13 @@ namespace mkc_searchalgo
   {
   public:
     ValarrayMutualizer(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
-                       const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA):
+                       const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
+                       const std::string& runType):
       mStratMap(processingPolicy->getStrategyMap()),
-      mSinglePA(singlePA)
+      mSinglePA(singlePA),
+      mRunType(runType)
     {
-      std::cout << "Building mutual info matrix." << std::endl;
+      std::cout << mRunType << " - Building mutual info matrix." << std::endl;
       for (size_t i = 0; i < mSinglePA->getMapSize(); i++)
         {
           for (size_t c = 0; c < mSinglePA->getMapSize(); c++)
@@ -45,13 +47,13 @@ namespace mkc_searchalgo
               mIndividuals.insert(std::make_pair((i < c)?(i*10000 + c):(c*10000 + i), red.getAsDouble()));
             }
         }
-        std::cout << "Built mutual info matrix of size: " << mIndividuals.size() << std::endl;
+        std::cout << mRunType << " - Built mutual info matrix of size: " << mIndividuals.size() << std::endl;
     }
 
   public:
 
     void getMaxRelMinRed2(const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& sortedResults,
-                          unsigned int selectCount, double activityMult)
+                          unsigned int selectCount, double activityMult, double redundancyMult, double redundancyFilter)
     {
       //clearing
       mSelectedStrategies.clear();
@@ -86,7 +88,7 @@ namespace mkc_searchalgo
               double relevance = stat.PALProfitability.getAsDouble();
               double activity = (trades * activityMult) / mSinglePA->getMapSize();
 
-              if (maxScore > relevance + activityMult*0.5 || index >= maxIndexToSearch)       //there is no need to search more, as it is impossible to improve the score
+              if (maxScore > relevance + activityMult*0.5 || index >= maxIndexToSearch)       //there is no need to search more, as it is (almost) impossible to improve the score
                 {
                   if (mSelectedStrategies.size() == 1)
                     maxIndexToSearch = index;
@@ -99,16 +101,20 @@ namespace mkc_searchalgo
                   bestStrat = strat;
                   break;
                 }
-              first = false;
               double redundancy;
               if (mSelectedStrategies.size() == 1)
-                redundancy = initRedundancy(index, mSelectedStrategies.back(), strat);
+                redundancy = initRedundancy(index, mSelectedStrategies.back(), strat) * redundancyMult;
               else
-                redundancy = getRedundancy(index, strat);
+                redundancy = getRedundancy(index, strat) * redundancyMult;
+
+              if (redundancy > redundancyFilter * redundancyMult)
+                  continue;
+
 
               double score = relevance + activity - redundancy;
               if (score > maxScore)
                 {
+                  first = false;
                   bestStrat = strat;
                   maxScore = score;
                   bestActivity = activity;
@@ -119,13 +125,16 @@ namespace mkc_searchalgo
                 }
 
             }
-          if (mSelectedStrategies.size() > 0 && first)   //nothing more to search
-            break;
-          //add selected strategy
-          std::cout << "Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
-                    << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << std::endl;
-          //mSelectedGroup.insert(mSelectedGroup.begin(), bestStrat.begin(), bestStrat.end());
-          mSelectedStrategies.push_back(bestStrat);
+          if (mSelectedStrategies.size() > 0 && first)   //nothing to add
+            { ; }
+          else {
+              //add selected strategy
+              std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
+                        << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << std::endl;
+              //mSelectedGroup.insert(mSelectedGroup.begin(), bestStrat.begin(), bestStrat.end());
+              mSelectedStrategies.push_back(bestStrat);
+              //mSelectedRelActRed.push_back(std::make_tuple(bestRelevance, bestActivity, bestRedundancy));
+            }
         }
     }
 
@@ -259,6 +268,7 @@ namespace mkc_searchalgo
 
   public:
     const std::vector<StrategyRepresentationType>& getSelectedStrategies() const { return mSelectedStrategies; }
+    //const std::vector<std::tuple<double,double,double>>& getRelActRed() const {return mSelectedRelActRed; }
 
   private:
     std::unordered_map<int, StrategyRepresentationType>& mStratMap;
@@ -266,6 +276,8 @@ namespace mkc_searchalgo
     std::vector<StrategyRepresentationType> mSelectedStrategies;
     std::unordered_map<unsigned int, double> mIndividuals;
     std::unordered_map<int, double> mIndexedSums;
+    std::string mRunType;
+    //std::vector<std::tuple<double, double, double>> mSelectedRelActRed;
 
   };
 
