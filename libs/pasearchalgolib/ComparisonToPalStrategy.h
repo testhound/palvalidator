@@ -95,9 +95,15 @@ namespace mkc_searchalgo
     ComparisonToPalStrategy(const std::vector<ComparisonEntryType>& compareBatch,
                             const unsigned patternIndex, const unsigned long indexDate,
                             decimal7* const profitTarget, decimal7* const stopLoss, const std::shared_ptr<Portfolio<Decimal>>& portfolio):
+    ComparisonToPalStrategy(compareBatch, patternIndex, indexDate, &DecimalConstants<Decimal>::DecimalZero, &DecimalConstants<Decimal>::DecimalZero, 0, 0, profitTarget, stopLoss, portfolio)
+    {}
+
+    ComparisonToPalStrategy(const std::vector<ComparisonEntryType>& compareBatch,
+                            const unsigned patternIndex, const unsigned long indexDate, Decimal* PALProf, Decimal* Payoff, unsigned int trades, unsigned int maxLoss,
+                            decimal7* const profitTarget, decimal7* const stopLoss, const std::shared_ptr<Portfolio<Decimal>>& portfolio):
       mComparisonCount(0),
       mExpectedNumberOfPatterns(compareBatch.size()),
-      mPatternDescription(allocatePatternDescription(patternIndex, indexDate)),
+      mPatternDescription(allocatePatternDescription(patternIndex, indexDate, PALProf, Payoff, trades, maxLoss)),
       mProfitTarget(allocateProfitTarget(profitTarget)),
       mStopLoss(allocateStopLoss(stopLoss)),
       mMarketEntry(allocateMarketEntry()),
@@ -118,7 +124,6 @@ namespace mkc_searchalgo
 
       std::string strategyName= std::string("PAL Search Algo Based Strategy ") + std::to_string(patternIndex);
       mPalStrategy = std::make_shared<SidedPalStrategyType>(strategyName, mPalPattern, portfolio);
-
     }
 
     ComparisonToPalStrategy(const ComparisonToPalStrategy<Decimal, isLong, alwaysOn>&) = delete;
@@ -180,9 +185,14 @@ namespace mkc_searchalgo
       return new SidedMarketEntryType();
     }
 
-    PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
+//    PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate)
+//    {
+//      return new PatternDescription("NonExistentFile.txt", patternIndex, indexDate, &DecimalConstants<Decimal>::DecimalZero, &DecimalConstants<Decimal>::DecimalZero, 0, 0);
+//    }
+
+    PatternDescription* allocatePatternDescription(unsigned int patternIndex, unsigned int indexDate, Decimal* PALProf, Decimal* Payoff, unsigned int trades, unsigned int maxLoss)
     {
-      return new PatternDescription("NonExistentFile.txt", patternIndex, indexDate, &DecimalConstants<Decimal>::DecimalZero, &DecimalConstants<Decimal>::DecimalZero, 0, 0);
+      return new PatternDescription("NoFile.txt", patternIndex, indexDate, PALProf, Payoff, trades, maxLoss);
     }
 
     bool isComplete() const { return ((mExpectedNumberOfPatterns == mComparisonCount) && mProfitTarget && mStopLoss && mMarketEntry && mPatternDescription); }

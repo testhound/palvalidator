@@ -8,16 +8,21 @@ namespace mkc_searchalgo
   template <class Decimal>
   struct ResultStat
   {
-    ResultStat(Decimal pf, Decimal po, Decimal pp, unsigned int mxl):
+    ResultStat(){}
+    ResultStat(Decimal pf, Decimal po, Decimal pp, Decimal wp, unsigned int trd, unsigned int mxl):
       ProfitFactor(pf),
       PayoffRatio(po),
       PALProfitability(pp),
+      WinPercent(wp),
+      Trades(trd),
       MaxLosers(mxl)
     {}
 
     Decimal ProfitFactor;
     Decimal PayoffRatio;
     Decimal PALProfitability;
+    Decimal WinPercent;
+    unsigned int Trades;
     unsigned int MaxLosers;
   };
 

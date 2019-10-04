@@ -32,7 +32,7 @@ namespace mkc_searchalgo
       mSeries(series),
       mPatternIndex(0)
     {}
-    void prepare()
+    void prepare(ComparisonType patternSearchType)
     {
       std::string portfolioName(mConfiguration->getSecurity()->getName() + std::string(" Portfolio"));
       mPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
@@ -40,7 +40,7 @@ namespace mkc_searchalgo
 
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
-      mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(mSearchConfiguration->getMaxDepth());
+      mComparisonGenerator = std::make_shared<ComparisonsGenerator<Decimal>>(mSearchConfiguration->getMaxDepth(), patternSearchType);
 
       std::cout << "Preparing controller with timeseries of size: " << mSeries->getNumEntries() << std::endl;
 
@@ -109,9 +109,11 @@ namespace mkc_searchalgo
         std::cout << "Exporting long strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> survivingLong = mLongSurvivors->getSurvivorsAsComparisons();
-       for (const std::vector<ComparisonEntryType>& strat: survivingLong)
+       std::vector<ResultStat<Decimal>> results = mLongSurvivors->getStatistics();
+       for (size_t i = 0; i < survivingLong.size(); ++i)
          {
-            ComparisonToPalLongStrategy<Decimal> comp(strat, mPatternIndex++, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
+            const ResultStat<Decimal>& res = results[i];
+            ComparisonToPalLongStrategy<Decimal> comp(survivingLong[i], mPatternIndex++, 0, const_cast<Decimal*>(&res.PALProfitability), const_cast<Decimal*>(&res.PayoffRatio), res.Trades, res.MaxLosers, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
          }
     }
@@ -121,9 +123,11 @@ namespace mkc_searchalgo
        std::cout << "Exporting short strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> survivingShort = mShortSurvivors->getSurvivorsAsComparisons();
-       for (const std::vector<ComparisonEntryType>& strat: survivingShort)
+       std::vector<ResultStat<Decimal>> results = mShortSurvivors->getStatistics();
+       for (size_t i = 0; i < survivingShort.size(); ++i)
          {
-            ComparisonToPalShortStrategy<Decimal> comp(strat, mPatternIndex++, 0, profitTarget.get(), stopLoss.get(), mPortfolio);
+            const ResultStat<Decimal>& res = results[i];
+            ComparisonToPalShortStrategy<Decimal> comp(survivingShort[i], mPatternIndex++, 0, const_cast<Decimal*>(&res.PALProfitability), const_cast<Decimal*>(&res.PayoffRatio), res.Trades, res.MaxLosers, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
          }
     }

@@ -84,6 +84,14 @@ namespace mkc_searchalgo {
         return (DecimalConstants<Decimal>::DecimalZero);
     }
 
+    Decimal getPercentWinners() const
+    {
+      if (mNumTrades > 0)
+        return (Decimal(mNumWinners) / Decimal(mNumTrades));
+      else
+        return (DecimalConstants<Decimal>::DecimalZero);
+    }
+
     Decimal getPayoffRatio() const
     {
       if (mNumTrades > 0)

@@ -47,7 +47,10 @@ namespace mkc_searchalgo
             {
               //Profitability requirement
               Decimal profRequirement = (mSurvivalCriterion)/ (mSurvivalCriterion +  mPalProfitabilitySafetyFactor * mTargetStopRatio);
-              if (stat.PALProfitability > profRequirement)
+//              if (stat.PALProfitability < stat.WinPercent)
+//                std::cout << "!!!Strategy found with Pal prof: " << stat.PALProfitability << " and win %: " << stat.WinPercent << std::endl;
+
+              if (stat.PALProfitability > profRequirement && stat.WinPercent > profRequirement)
                 {
                   int ind = std::get<2>(tup);
                   StrategyRepresentationType & strat = stratMap[ind];
@@ -70,6 +73,11 @@ namespace mkc_searchalgo
       std::cout << "Surival MaxRelMinRed Algorithm..." << std::endl;
       mMutualizer.getMaxRelMinRed2(mResults, mResults.size(), 0.0, 2.0, 0.5);
       return mMutualizer.getSelectedStrategies();
+    }
+
+    std::vector<ResultStat<Decimal>> getUniqueStatistics()
+    {
+      return mMutualizer.getSelectedStatistics();
     }
 
     const std::vector<StrategyRepresentationType>& getSurvivors() const {return mSurvivors;}

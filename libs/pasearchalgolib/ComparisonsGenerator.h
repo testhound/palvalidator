@@ -43,19 +43,50 @@ struct std::hash< std::array< T, S > >
 
 namespace mkc_searchalgo
 {
+
+  enum ComparisonType: int
+  { CloseOnly, OpenClose, HighLow, Ohlc, Extended };
+
+  inline const char* ToString(ComparisonType v)
+  {
+      switch (v)
+      {
+          case CloseOnly:   return "CloseOnly";
+          case OpenClose:   return "OpenClose";
+          case HighLow:     return "HighLow";
+          case Ohlc:        return "Ohlc";
+          case Extended:    return "Extended";
+      }
+  }
+
   //a simplified type to represent bar to bar comparison
   using ComparisonEntryType = std::array<unsigned int, 4>;
 
   template <class Decimal> class ComparisonsGenerator
   {
   public:
-    explicit ComparisonsGenerator(unsigned int maxlookback):
+    explicit ComparisonsGenerator(unsigned int maxlookback, ComparisonType compType):
       mDateIndex(0),
       mMaxLookBack(maxlookback),
       mComparisonsCount(0),
       mBarBuffer(maxlookback),  //circular buffer instantiation
-      mComparisonsBatches{{mDateIndex, {}}}
-    {}
+      mComparisonsBatches{{mDateIndex, {}}},
+      mComparisonType(compType)
+    {
+      if (mComparisonType == ComparisonType::CloseOnly)
+        mTypesToSearch = {{3}};
+      else if (mComparisonType == ComparisonType::OpenClose)
+          mTypesToSearch = {{0,3}};
+      else if (mComparisonType == ComparisonType::HighLow)
+          mTypesToSearch = {{1,2}};
+      else if (mComparisonType == ComparisonType::Ohlc)
+          mTypesToSearch = {{0,1,2,3}};
+      else
+        throw std::logic_error("Comparison type not supported: " + std::to_string(mComparisonType) + ". Use CloseOnly(0), OpenClose(1), HighLow(2) or Ohlc(3)!");
+
+      std::cout << "Comparison Types to search: " << mComparisonType << std::endl;
+
+    }
 
     const std::unordered_map<unsigned int, std::unordered_set<ComparisonEntryType>>& getComparisons() const { return mComparisonsBatches; }
 
@@ -95,8 +126,12 @@ namespace mkc_searchalgo
 
       for (size_t i = 0; i < fOhlcArr.size(); ++i)
         {
+          if (std::find(mTypesToSearch.begin(), mTypesToSearch.end(), i) == mTypesToSearch.end())
+            continue;
           for (size_t c = 0; c < fOhlcArr.size(); ++c)
             {
+              if (std::find(mTypesToSearch.begin(), mTypesToSearch.end(), c) == mTypesToSearch.end())
+                continue;
               // self-checking case (high- and low- based comparison, or same-to-same does not make sense)
               if (same && (c == 1 || i == 1 || c == 2 || i == 2 || c == i) )
                 continue;
@@ -161,6 +196,8 @@ namespace mkc_searchalgo
     boost::circular_buffer<ComparableBar<Decimal, 4>> mBarBuffer;
     std::unordered_map<unsigned int, std::unordered_set<ComparisonEntryType, std::hash<ComparisonEntryType> >>  mComparisonsBatches;
     std::set<ComparisonEntryType> mUniqueComparisons;
+    ComparisonType mComparisonType;
+    std::vector<size_t> mTypesToSearch;
   };
 }
 

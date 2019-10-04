@@ -43,7 +43,7 @@ namespace mkc_searchalgo
     size_t getTargetStopSize() const { return mSearchConfig->getTargetStopPair().size(); }
 
 
-    void run(runner& Runner, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex)
+    void run(runner& Runner, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex, ComparisonType patternSearchType)
     {
       //separate out short and long runs
       std::vector<bool> los;
@@ -64,6 +64,7 @@ namespace mkc_searchalgo
               std::shared_ptr<Decimal> stopLoss = std::make_shared<Decimal>(targetstop.second * mTargetBase);
               std::cout << "Testing TimeFrame" << timeFrameId << ", side(isLong?): " << side << ", Profit target multiplier: " << targetstop.first << " in %: " << (*profitTarget) << ", with Stop loss multiplier: " << targetstop.second << " in %: " << (*stopLoss) << std::endl;
               resultsOrErrorsVector.emplace_back(Runner.post([this,
+                                                             patternSearchType,
                                                              profitTarget,
                                                              stopLoss,
                                                              inSampleOnly,
@@ -80,17 +81,17 @@ namespace mkc_searchalgo
                   std::cout << "Parsed search algo config: " << this->mSearchConfigFileName << std::endl;
                   std::cout << (*searchConfig) << std::endl;
                   SearchController<Decimal> controller(configuration, searchConfig->getTimeSeries(), searchConfig);
-                  controller.prepare();
+                  controller.prepare(patternSearchType);
                   if (side)
                     {
                       controller.run<true>(profitTarget, stopLoss, inSampleOnly);
-                      std::string fileNameLong("PatternsLong_" + std::to_string(static_cast<long>(this->mNow)) + "_" + std::to_string(timeFrameId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
+                      std::string fileNameLong(std::string(ToString(patternSearchType)) + "_PatternsLong_" + std::to_string(static_cast<long>(this->mNow)) + "_" + std::to_string(timeFrameId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
                       controller.exportSurvivingLongPatterns(profitTarget, stopLoss, fileNameLong);
                     }
                   else if (!side)
                     {
                       controller.run<false>(profitTarget, stopLoss, inSampleOnly);
-                      std::string fileNameShort("PatternsShort_" + std::to_string(static_cast<long>(this->mNow)) + "_" + std::to_string(timeFrameId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
+                      std::string fileNameShort(std::string(ToString(patternSearchType)) + "_PatternsShort_" + std::to_string(static_cast<long>(this->mNow)) + "_" + std::to_string(timeFrameId) + "_" + std::to_string((*profitTarget).getAsDouble()) + "_" + std::to_string((*stopLoss).getAsDouble()) + "_" + std::to_string(inSampleOnly) + ".txt");
                       controller.exportSurvivingShortPatterns(profitTarget, stopLoss, fileNameShort);
                     }
 

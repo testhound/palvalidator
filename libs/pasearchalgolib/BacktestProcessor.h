@@ -59,6 +59,7 @@ namespace mkc_searchalgo
       const Decimal& pf = mSearchAlgoBacktester->getProfitFactor();
       const Decimal& po = mSearchAlgoBacktester->getPayoffRatio();
       const Decimal& pp = mSearchAlgoBacktester->getPALProfitability();
+      const Decimal& wp = mSearchAlgoBacktester->getPercentWinners();
       unsigned int trades = mSearchAlgoBacktester->getTradeNumber();
       unsigned int maxLosers = mSearchAlgoBacktester->getMaxConsecutiveLosers();
       unsigned int maxInactivity = mSearchAlgoBacktester->getMaxInactivitySpan();
@@ -66,7 +67,7 @@ namespace mkc_searchalgo
       //pre-filtering, we don't need to keep these results in memory (only activity filters)
       if (trades < mMinTrades || maxInactivity > mMaxInactivity)
         return;
-      mResults.emplace_back(ResultStat<Decimal>(pf, po, pp, maxLosers), trades, mUniqueId);
+      mResults.emplace_back(ResultStat<Decimal>(pf, po, pp, wp, trades, maxLosers), trades, mUniqueId);
       mStratMap[mUniqueId] = compareContainer;
       mUniqueId++;
     }

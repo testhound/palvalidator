@@ -53,22 +53,33 @@ namespace mkc_searchalgo
   public:
 
     void getMaxRelMinRed2(const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& sortedResults,
-                          unsigned int selectCount, double activityMult, double redundancyMult, double redundancyFilter)
+                          unsigned int selectCount, double activityMult, double redundancySeedMultiplier, double redundancyFilter)
     {
+      //Asserts floating point compatibility at compile time
+      static_assert(std::numeric_limits<float>::is_iec559, "IEEE 754 required");
+      std::cout << "getMaxRelMinRed was called with results#: " << sortedResults.size() << ", selectCount: " << selectCount << ", activityMult: " << activityMult
+                << ", redundancySeedMult: " << redundancySeedMultiplier << ", redundancyFilter: " << redundancyFilter << std::endl;
       //clearing
       mSelectedStrategies.clear();
       mSelectedStrategies.shrink_to_fit();
+      mSelectedStatistics.clear();
+      mSelectedStatistics.shrink_to_fit();
       mIndexedSums.clear();
       double bestRelevance;
       double bestRedundancy;
       double bestActivity;
       int maxIndexToSearch = sortedResults.size();
-      while (mSelectedStrategies.size() < selectCount)
+      double breakOut = false;
+      double redundancyMult = redundancySeedMultiplier;
+      while (mSelectedStrategies.size() < selectCount && !breakOut)
         {
           int index = -1;
-          double maxScore = -1.0;
+          double maxScore = -std::numeric_limits<double>::infinity();
           bool first = true;
+          redundancyMult += 1.0;
+          //std::cout << "New redundancy mult: " << redundancyMult << std::endl;
           StrategyRepresentationType bestStrat;
+          ResultStat<Decimal> selectedStatistics;
           for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: sortedResults)
             {
               int ind = std::get<2>(tup);
@@ -86,7 +97,12 @@ namespace mkc_searchalgo
                 continue;
 
               double relevance = stat.PALProfitability.getAsDouble();
-              double activity = (trades * activityMult) / mSinglePA->getMapSize();
+              double activity = (trades * activityMult) / mSinglePA->getDateCount();
+//              if (activity > 1.0)
+//                {
+//                  std::cout << "Incorrect acvitity (" << activity << ")-- trades: " << trades << ", activytMult: " << activityMult << ", mapsize: " << mSinglePA->getDateCount() << std::endl;
+//                  throw;
+//                }
 
               if (maxScore > relevance + activityMult*0.5 || index >= maxIndexToSearch)       //there is no need to search more, as it is (almost) impossible to improve the score
                 {
@@ -99,6 +115,7 @@ namespace mkc_searchalgo
               if (mSelectedStrategies.size() == 0)
                 {
                   bestStrat = strat;
+                  selectedStatistics = stat;
                   break;
                 }
               double redundancy;
@@ -108,14 +125,17 @@ namespace mkc_searchalgo
                 redundancy = getRedundancy(index, strat) * redundancyMult;
 
               if (redundancy > redundancyFilter * redundancyMult)
+                {
+                  //std::cout << "redundancy: " << redundancy << " exceeds filter: " << (redundancyFilter * redundancyMult)<< ", breaking out. " << std::endl;
                   continue;
-
+                }
 
               double score = relevance + activity - redundancy;
               if (score > maxScore)
                 {
                   first = false;
                   bestStrat = strat;
+                  selectedStatistics = stat;
                   maxScore = score;
                   bestActivity = activity;
                   bestRelevance = relevance;
@@ -126,13 +146,17 @@ namespace mkc_searchalgo
 
             }
           if (mSelectedStrategies.size() > 0 && first)   //nothing to add
-            { ; }
-          else {
+            {
+              breakOut = true;
+            }
+          else
+            {
               //add selected strategy
-              std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
-                        << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << std::endl;
+              std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << (maxScore + redundancyMult)/redundancyMult
+                        << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << (bestRedundancy / redundancyMult) << std::endl;
               //mSelectedGroup.insert(mSelectedGroup.begin(), bestStrat.begin(), bestStrat.end());
               mSelectedStrategies.push_back(bestStrat);
+              mSelectedStatistics.push_back(selectedStatistics);
               //mSelectedRelActRed.push_back(std::make_tuple(bestRelevance, bestActivity, bestRedundancy));
             }
         }
@@ -269,6 +293,7 @@ namespace mkc_searchalgo
   public:
     const std::vector<StrategyRepresentationType>& getSelectedStrategies() const { return mSelectedStrategies; }
     //const std::vector<std::tuple<double,double,double>>& getRelActRed() const {return mSelectedRelActRed; }
+    const std::vector<ResultStat<Decimal>>& getSelectedStatistics() const { return mSelectedStatistics; }
 
   private:
     std::unordered_map<int, StrategyRepresentationType>& mStratMap;
@@ -277,6 +302,7 @@ namespace mkc_searchalgo
     std::unordered_map<unsigned int, double> mIndividuals;
     std::unordered_map<int, double> mIndexedSums;
     std::string mRunType;
+    std::vector<ResultStat<Decimal>> mSelectedStatistics;
     //std::vector<std::tuple<double, double, double>> mSelectedRelActRed;
 
   };

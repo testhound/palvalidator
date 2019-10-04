@@ -77,6 +77,7 @@ namespace mkc_searchalgo {
           std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
           TSurvivalPolicy::filterSurvivors();
           mSurvivingContainer->addSurvivorsPerRound(TSurvivalPolicy::getUniqueSurvivors());
+          mSurvivingContainer->addStatisticsPerRound(TSurvivalPolicy::getUniqueStatistics());
 
           std::cout << "After step 0: Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
           mBacktestProcessor->clearAll();
@@ -111,6 +112,7 @@ namespace mkc_searchalgo {
       std::cout << "Before step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
       TSurvivalPolicy::filterSurvivors();
       mSurvivingContainer->addSurvivorsPerRound(TSurvivalPolicy::getUniqueSurvivors());
+      mSurvivingContainer->addStatisticsPerRound(TSurvivalPolicy::getUniqueStatistics());
 
       mBacktestProcessor->clearAll();
       TSurvivalPolicy::clearRound();

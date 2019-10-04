@@ -30,6 +30,11 @@ namespace mkc_searchalgo
       std::cout << "After adding survivors in new round, items in now: " << mSurvivors.size() << std::endl;
     }
 
+    void addStatisticsPerRound(const std::vector<ResultStat<Decimal>>& roundStatistics)
+    {
+      mStatistics.insert(mStatistics.end(), roundStatistics.begin(), roundStatistics.end());
+    }
+
     std::vector<std::vector<ComparisonEntryType>> getSurvivorsAsComparisons()
     {
       std::vector<std::vector<ComparisonEntryType>> ret;
@@ -46,13 +51,16 @@ namespace mkc_searchalgo
       return ret;
     }
 
-    const std::vector<StrategyRepresentationType>& getSurvivors() const {return mSurvivors;}
+    const std::vector<StrategyRepresentationType>& getSurvivors() const { return mSurvivors; }
+
+    const std::vector<ResultStat<Decimal>>& getStatistics() const { return mStatistics; }
 
     size_t getNumSurvivors() const { return mSurvivors.size(); }
 
   private:
     std::shared_ptr<UniqueSinglePAMatrix<Decimal, TComparison>> mSinglePA;
     std::vector<StrategyRepresentationType> mSurvivors;
+    std::vector<ResultStat<Decimal>> mStatistics;
 
   };
 
