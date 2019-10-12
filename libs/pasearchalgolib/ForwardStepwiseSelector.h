@@ -36,7 +36,7 @@ namespace mkc_searchalgo {
                             const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration,
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
-      TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getSortMultiplier()),
+      TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getProfitFactorCriterion(), searchConfiguration->getSortMultiplier()),
       TSurvivalPolicy(backtestProcessor, singlePA, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(), searchConfiguration->getPalProfitabilitySafetyFactor()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
@@ -56,9 +56,10 @@ namespace mkc_searchalgo {
 
   private:
 
-    //bottom step
+
     std::vector<StrategyRepresentationType> step(unsigned int stepNo)
     {
+      //bottom step
       if (stepNo == 0)
         {
           for (unsigned int i = 0; i < mSinglePa->getMapSize(); ++i)
@@ -74,12 +75,17 @@ namespace mkc_searchalgo {
                 std::cout << "Step 0 comparison, element group: " << i << std::endl;
             }
           std::cout << "finished and returning from level 0, processed results: " << mBacktestProcessor->getResults().size() << std::endl;
-          std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
+          std::vector<StrategyRepresentationType> newret1 = TSteppingPolicy::passes(stepNo, mMaxDepth + 1);
+          std::vector<StrategyRepresentationType> newret;
           TSurvivalPolicy::filterSurvivors();
-          mSurvivingContainer->addSurvivorsPerRound(TSurvivalPolicy::getUniqueSurvivors());
+          const std::vector<StrategyRepresentationType>& survivors = TSurvivalPolicy::getUniqueSurvivors();
+          mSurvivingContainer->addSurvivorsPerRound(survivors);
           mSurvivingContainer->addStatisticsPerRound(TSurvivalPolicy::getUniqueStatistics());
-
-          std::cout << "After step 0: Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
+          std::cout << "Number of passes before: " << newret1.size() << std::endl;
+          std::set_difference(newret1.begin(), newret1.end(), survivors.begin(), survivors.end(),
+                                  std::inserter(newret, newret.begin()));
+          std::cout << "After step 0: Number of survivors: " << TSurvivalPolicy::getNumSurvivors()
+                    << ", number of passes after excluding survivors: " << newret.size() << std::endl;
           mBacktestProcessor->clearAll();
           TSurvivalPolicy::clearRound();
           return newret;
@@ -107,16 +113,19 @@ namespace mkc_searchalgo {
           if (i % 100 == 0)
             std::cout << "Step " << stepNo << " comparison, element group: " << i << std::endl;
         }
-      std::vector<StrategyRepresentationType> newret = TSteppingPolicy::passes();
-      std::cout << "finished and returning from level: " << stepNo << ", processed results: " << mBacktestProcessor->getResults().size() << std::endl;
-      std::cout << "Before step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << std::endl;
+      std::vector<StrategyRepresentationType> newret1 = TSteppingPolicy::passes(stepNo, mMaxDepth + 1);
+      std::vector<StrategyRepresentationType> newret;
       TSurvivalPolicy::filterSurvivors();
-      mSurvivingContainer->addSurvivorsPerRound(TSurvivalPolicy::getUniqueSurvivors());
+      const std::vector<StrategyRepresentationType>& survivors = TSurvivalPolicy::getUniqueSurvivors();
+      mSurvivingContainer->addSurvivorsPerRound(survivors);
       mSurvivingContainer->addStatisticsPerRound(TSurvivalPolicy::getUniqueStatistics());
-
+      std::cout << "Number of passes before: " << newret1.size() << std::endl;
+      std::set_difference(newret1.begin(), newret1.end(), survivors.begin(), survivors.end(),
+                              std::inserter(newret, newret.begin()));
+      std::cout << "After step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors()
+                << ", number of passes after excluding survivors: " << newret.size() << std::endl;
       mBacktestProcessor->clearAll();
       TSurvivalPolicy::clearRound();
-      std::cout << "After step " << stepNo << ": Number of survivors: " << TSurvivalPolicy::getNumSurvivors() << "/" << mSurvivingContainer->getNumSurvivors() << std::endl;
       return newret;
     }
 

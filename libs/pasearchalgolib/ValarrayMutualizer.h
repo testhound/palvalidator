@@ -53,12 +53,12 @@ namespace mkc_searchalgo
   public:
 
     void getMaxRelMinRed2(const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& sortedResults,
-                          unsigned int selectCount, double activityMult, double redundancySeedMultiplier, double redundancyFilter)
+                          unsigned int selectCount, double activityMult, double redundancySeedMultiplier, double redundancyFilter, Decimal inverseSurvivalFilter = DecimalConstants<Decimal>::DecimalZero)
     {
       //Asserts floating point compatibility at compile time
       static_assert(std::numeric_limits<float>::is_iec559, "IEEE 754 required");
       std::cout << "getMaxRelMinRed was called with results#: " << sortedResults.size() << ", selectCount: " << selectCount << ", activityMult: " << activityMult
-                << ", redundancySeedMult: " << redundancySeedMultiplier << ", redundancyFilter: " << redundancyFilter << std::endl;
+                << ", redundancySeedMult: " << redundancySeedMultiplier << ", redundancyFilter: " << redundancyFilter << ", inverseSurvivalFilter: " << inverseSurvivalFilter << std::endl;
       //clearing
       mSelectedStrategies.clear();
       mSelectedStrategies.shrink_to_fit();
@@ -89,6 +89,9 @@ namespace mkc_searchalgo
               index++;
 
               if (stat.ProfitFactor == DecimalConstants<Decimal>::DecimalOneHundred || stat.ProfitFactor == DecimalConstants<Decimal>::DecimalZero)
+                continue;
+
+              if (inverseSurvivalFilter > DecimalConstants<Decimal>::DecimalZero && stat.ProfitFactor > inverseSurvivalFilter)
                 continue;
 
               const StrategyRepresentationType& strat = mStratMap[ind];

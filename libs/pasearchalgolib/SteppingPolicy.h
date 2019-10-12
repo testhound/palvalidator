@@ -23,25 +23,32 @@ namespace mkc_searchalgo
     MutualInfoSteppingPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
                          const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
                          size_t passingStratNumPerRound,
+                         Decimal survivalCriterion,
                          Decimal sortMultiplier):
       mProcessingPolicy(processingPolicy),
       mPassingStratNumPerRound(passingStratNumPerRound),
+      mSurvivalCriterion(survivalCriterion),
       mSortMultiplier(sortMultiplier),
       mMutualizer(processingPolicy, singlePA, "Stepping")
       {}
 
     protected:
-      std::vector<StrategyRepresentationType> passes()
+      std::vector<StrategyRepresentationType> passes(int stepNo, int maxDepth)
       {
         //sort by PALProfitability before any operation
         mProcessingPolicy->template sortResults<Sorters::PALProfitabilitySorter<Decimal>>();
-        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), mPassingStratNumPerRound, mSortMultiplier.getAsDouble(), 2.0, 1.0);
+        double mult = static_cast<double>(1.0 / maxDepth);
+        int roundPasses = mPassingStratNumPerRound - static_cast<int>(mult * stepNo * mPassingStratNumPerRound);
+        roundPasses = (roundPasses >= 0)? roundPasses: 0;
+        std::cout << "Passing " << roundPasses << " strategies from round: " << stepNo << " (multiplier used: " << mult << ")." << std::endl;
+        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), roundPasses, mSortMultiplier.getAsDouble(), 2.0, 1.0, mSurvivalCriterion);
         return mMutualizer.getSelectedStrategies();
       }
 
   private:
     shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mProcessingPolicy;
     size_t mPassingStratNumPerRound;
+    Decimal mSurvivalCriterion;
     Decimal mSortMultiplier;
     ValarrayMutualizer<Decimal, TSearchAlgoBacktester> mMutualizer;
   };
