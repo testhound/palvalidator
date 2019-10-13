@@ -46,10 +46,29 @@ namespace mkc_searchalgo
     return !*wild;
   }
 
-  class FileMatcher {
+  class FileMatcher
+  {
   private:
     FileMatcher();
+
   public:
+
+    static void mergeFiles(std::vector<boost::filesystem::path> files, const std::string& targetFileName)
+    {
+      std::ofstream target(targetFileName, std::ios_base::binary);
+      for (const boost::filesystem::path & f : files)
+        {
+          if (f.string() == targetFileName)
+            {
+              std::string excString = "The (target) file named: " + targetFileName + " already exists. Please delete it before moving forward!";
+              std::cout << excString << std::endl;
+              throw std::runtime_error(excString);
+            }
+          std::ifstream fle(f.string(), std::ios_base::binary);
+          target << fle.rdbuf();
+        }
+    }
+
     static std::vector<boost::filesystem::path> getFiles(const std::string& pathStr, const std::string& matchExpression)
     {
       std::vector<boost::filesystem::path> ret;
@@ -69,8 +88,6 @@ namespace mkc_searchalgo
       return ret;
     }
   };
-
-
 
 }
 

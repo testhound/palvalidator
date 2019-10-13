@@ -60,13 +60,22 @@ namespace mkc_searchalgo
   class  PatternMatcher
   {
   public:
-    PatternMatcher(const std::string& filePatternExpr, const std::string& filePatternExpr2, ComparisonType patternSearchType, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats):
+    PatternMatcher(const std::string& filePatternExpr, const std::string& filePatternExpr2, ComparisonType patternSearchType, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats, size_t numTimeFrames):
       mIsLong(isLong),
       mMinNumOfStrats(minNumOfStrats),
       mExportPatternIndex(0)
     {
       std::string side = (isLong)? "Long": "Short";
-      std::string searchPattern = std::string(ToString(patternSearchType)) + "*" + side + "_" + filePatternExpr + "_*" + filePatternExpr2 + "*" + std::to_string(inSampleOnly) + ".txt";
+      std::string typePattern = (patternSearchType == ComparisonType::Extended)? "*": std::string(ToString(patternSearchType));
+      for (size_t i = 0; i < numTimeFrames + 1; i++)
+        {
+          std::string mergeSearchPattern = "./" + typePattern + "_Patterns" + side + "_" + filePatternExpr + "_" + std::to_string(i) + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
+          std::string targetFile = "./Merged_Patterns" + side + "_" + filePatternExpr + "_" + std::to_string(i) + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
+          std::cout << "Merge pattern: " << i << ":" << mergeSearchPattern << ", targetFile: " << targetFile << std::endl;
+          std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", mergeSearchPattern);
+          FileMatcher::mergeFiles(filePaths, targetFile);
+        }
+      std::string searchPattern = "./Merged_Patterns" + side + "_" + filePatternExpr + "_*_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
       std::cout << "Searching pattern: " << searchPattern << std::endl;
       std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", searchPattern);
 

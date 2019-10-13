@@ -116,15 +116,14 @@ int main(int argc, char **argv)
 
         std::vector<ComparisonType> patternSearchTypes;
 
-        ComparisonType patternSearchType = static_cast<ComparisonType>(std::stoi(v[4]));
-        std::cout << std::to_string(patternSearchType) << std::endl;
-        if (patternSearchType < ComparisonType::CloseOnly || patternSearchType > ComparisonType::Extended)
+        ComparisonType inputPatternSearchType = static_cast<ComparisonType>(std::stoi(v[4]));
+        std::cout << std::to_string(inputPatternSearchType) << std::endl;
+        if (inputPatternSearchType < ComparisonType::CloseOnly || inputPatternSearchType > ComparisonType::Extended)
           throw std::logic_error("PATTERN_SEARCH_TYPE out of bounds");
-        if (patternSearchType == ComparisonType::Extended)
+        if (inputPatternSearchType == ComparisonType::Extended)
           patternSearchTypes = {ComparisonType::CloseOnly, ComparisonType::OpenClose, ComparisonType::HighLow, ComparisonType::Ohlc};
         else
-          patternSearchTypes = {patternSearchType};
-
+          patternSearchTypes = {inputPatternSearchType};
 
         runner runner_instance(static_cast<size_t>(nthreads));
         //build thread-pool-runner
@@ -136,7 +135,13 @@ int main(int argc, char **argv)
 
         for (ComparisonType patternSearchType: patternSearchTypes)
           {
-            std::cout << "Current SEARCHSPACE: " << std::string(ToString(patternSearchType)) << std::endl;
+            bool mergingPhase = false;
+            if (inputPatternSearchType == ComparisonType::Extended && patternSearchType == ComparisonType::Ohlc)
+              mergingPhase = true;
+            if (inputPatternSearchType != ComparisonType::Extended)
+              mergingPhase = true;
+
+            std::cout << "Current SEARCHSPACE: " << std::string(ToString(patternSearchType)) << ", is merging phase: " << mergingPhase << std::endl;
             //validation section
             if (iisRun)
               {
@@ -156,11 +161,11 @@ int main(int argc, char **argv)
                     std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
                     portfolio->addSecurity(search.getConfig()->getSecurity());
 
-                    if (sideToRun != SideToRun::ShortOnly)
+                    if (sideToRun != SideToRun::ShortOnly && mergingPhase)
                       {
-                        std::string fileName(symbolStr + "_" + std::string(ToString(patternSearchType)) + "_" + tsStr + "_SelectedISLong.txt");
-                        std::string validatedFileName(symbolStr + "_" + std::string(ToString(patternSearchType)) + "_" + tsStr + "_InSampleLongValidated.txt");
-                        PatternMatcher matcher(validateISNowString, tsStr, patternSearchType, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
+                        std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_SelectedISLong.txt");
+                        std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleLongValidated.txt");
+                        PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
                         matcher.countOccurences();
                         bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                         if (exportOk)
@@ -170,11 +175,11 @@ int main(int argc, char **argv)
                               validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
                           }
                       }
-                    if (sideToRun != SideToRun::LongOnly)
+                    if (sideToRun != SideToRun::LongOnly && mergingPhase)
                       {
-                        std::string fileName(symbolStr + "_" + std::string(ToString(patternSearchType)) + "_" + tsStr +  "_SelectedISShort.txt");
-                        std::string validatedFileName(symbolStr + "_" + std::string(ToString(patternSearchType)) + "_" + tsStr + "_InSampleShortValidated.txt");
-                        PatternMatcher matcher(validateISNowString, tsStr, patternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation());
+                        std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedISShort.txt");
+                        std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleShortValidated.txt");
+                        PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
                         matcher.countOccurences();
                         bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                         if (exportOk)
@@ -207,18 +212,18 @@ int main(int argc, char **argv)
                     std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
                     portfolio->addSecurity(search.getConfig()->getSecurity());
 
-                    if (sideToRun != SideToRun::ShortOnly)
+                    if (sideToRun != SideToRun::ShortOnly && mergingPhase)
                       {
                         std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
-                        PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod());
+                        PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod(), search.getSearchConfig()->getNumTimeFrames());
                         matcher.countOccurences();
                         matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
 
                       }
-                    if (sideToRun != SideToRun::LongOnly)
+                    if (sideToRun != SideToRun::LongOnly && mergingPhase)
                       {
                         std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
-                        PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod());
+                        PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod(), search.getSearchConfig()->getNumTimeFrames());
                         matcher.countOccurences();
                         matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                       }
