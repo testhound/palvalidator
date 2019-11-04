@@ -243,29 +243,38 @@ public:
 			     const std::string& outputFileName,
 			     const StopTargetDetail& dev1Detail,
 			     const StopTargetDetail& dev2Detail);
+
+  EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
+                             const std::string& templateFileName,
+                             const std::string& outputFileName,
+                             const StopTargetDetail& dev1Detail,
+                             const StopTargetDetail& dev2Detail);
+
   virtual ~EasyLanguageCodeGenVisitor();
   bool isDev1Pattern(PriceActionLabPattern *pattern);
   bool isDev2Pattern(PriceActionLabPattern *pattern);
   
   void generateCode();
-  void generatedSortedCode();
+//  void generatedSortedCode();
 
 private:
-  void genCodeForCommonVariables();
-  void genCodeForCommonEntry();
-  void genCodeToInitVolatility(bool shortSide);
-  void genCodeForCommonVariableInit();
+  void insertLongPatterns();
+  void insertShortPatterns();
+//  void genCodeForCommonVariables();
+//  void genCodeForCommonEntry();
+//  void genCodeToInitVolatility(bool shortSide);
+//  void genCodeForCommonVariableInit();
 
 
 protected:
-  void genCommonCodeForLongExitPrologue();
-  void genCommonCodeForShortExitPrologue();
+//  void genCommonCodeForLongExitPrologue();
+//  void genCommonCodeForShortExitPrologue();
 
   std::ofstream * getOutputFileStream();
-  virtual void genCodeForVariablesInEntryScript() = 0;
+//  virtual void genCodeForVariablesInEntryScript() = 0;
   bool isHighRewardToRiskRatioPattern (PriceActionLabPattern *pattern);
-  virtual void genCodeForEntryExit() = 0;
-  virtual void genCodeToInitializeVariables() = 0;
+//  virtual void genCodeForEntryExit() = 0;
+//  virtual void genCodeToInitializeVariables() = 0;
 
 public:
   void generateEntryOrdersScript();
@@ -289,64 +298,67 @@ public:
   void visit (IBS3BarReference *);
 
 private:
+  static const std::string LONG_PATTERNS_MARKER;
+  static const std::string SHORT_PATTERNS_MARKER;
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
+  std::ifstream mTemplateFile;
   std::ofstream mEasyLanguageFileName;
   StopTargetDetail mDev1Detail;
   StopTargetDetail mDev2Detail;
 
 };
 
-class EasyLanguageRADCodeGenVisitor : public EasyLanguageCodeGenVisitor
-{
-public:
-  EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
-				const std::string& outputFileName,
-				const StopTargetDetail& dev1Detail,
-				const StopTargetDetail& dev2Detail);
-  ~EasyLanguageRADCodeGenVisitor();
-  void visit (LongSideProfitTargetInPercent *);
-  void visit (ShortSideProfitTargetInPercent *);
-  void visit (LongSideStopLossInPercent *);
-  void visit (ShortSideStopLossInPercent *);
-  void generateEntryOrderFilledScript();
+//class EasyLanguageRADCodeGenVisitor : public EasyLanguageCodeGenVisitor
+//{
+//public:
+//  EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
+//				const std::string& outputFileName,
+//				const StopTargetDetail& dev1Detail,
+//				const StopTargetDetail& dev2Detail);
+//  ~EasyLanguageRADCodeGenVisitor();
+//  void visit (LongSideProfitTargetInPercent *);
+//  void visit (ShortSideProfitTargetInPercent *);
+//  void visit (LongSideStopLossInPercent *);
+//  void visit (ShortSideStopLossInPercent *);
+//  void generateEntryOrderFilledScript();
 
-private:
-  void generateExitOrdersScript();
-  void genCodeForVariablesInEntryScript();
-  void genCodeForEntryExit();
-  void genCodeToInitializeVariables();
+//private:
+//  void generateExitOrdersScript();
+//  void genCodeForVariablesInEntryScript();
+//  void genCodeForEntryExit();
+//  void genCodeToInitializeVariables();
     
-private:
-  std::ofstream mEntryOrderFilledScriptFile;
-  std::ofstream mExitOrderScriptFile;
-};
+//private:
+//  std::ofstream mEntryOrderFilledScriptFile;
+//  std::ofstream mExitOrderScriptFile;
+//};
 
 
-class EasyLanguagePointAdjustedCodeGenVisitor : public EasyLanguageCodeGenVisitor
-{
-public:
-  EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
-					  const std::string& outputFileName,
-					  const StopTargetDetail& dev1Detail,
-					  const StopTargetDetail& dev2Detail);
+//class EasyLanguagePointAdjustedCodeGenVisitor : public EasyLanguageCodeGenVisitor
+//{
+//public:
+//  EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
+//					  const std::string& outputFileName,
+//					  const StopTargetDetail& dev1Detail,
+//					  const StopTargetDetail& dev2Detail);
 
-  ~EasyLanguagePointAdjustedCodeGenVisitor();
-  void visit (LongSideProfitTargetInPercent *);
-  void visit (ShortSideProfitTargetInPercent *);
-  void visit (LongSideStopLossInPercent *);
-  void visit (ShortSideStopLossInPercent *);
-  void generateEntryOrderFilledScript();
+//  ~EasyLanguagePointAdjustedCodeGenVisitor();
+//  void visit (LongSideProfitTargetInPercent *);
+//  void visit (ShortSideProfitTargetInPercent *);
+//  void visit (LongSideStopLossInPercent *);
+//  void visit (ShortSideStopLossInPercent *);
+//  void generateEntryOrderFilledScript();
 
-private:
-  void generateExitOrdersScript();
-  void genCodeForVariablesInEntryScript();
-  void genCodeForEntryExit();
-  void genCodeToInitializeVariables();
+//private:
+//  void generateExitOrdersScript();
+//  void genCodeForVariablesInEntryScript();
+//  void genCodeForEntryExit();
+//  void genCodeToInitializeVariables();
 
-private:
-  std::ofstream mEntryOrderFilledScriptFile;
-  std::ofstream mExitOrderScriptFile;
-};
+//private:
+//  std::ofstream mEntryOrderFilledScriptFile;
+//  std::ofstream mExitOrderScriptFile;
+//};
 
 ///////////////////////////////////////////////
 ///

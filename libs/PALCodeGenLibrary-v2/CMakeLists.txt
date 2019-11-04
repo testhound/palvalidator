@@ -14,6 +14,7 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     scanner.h
     SecurityFactory.h
     Security.h
+    EasyLanguageFromTemplateCodeGen.cpp
 )
 
 ################################################################################
