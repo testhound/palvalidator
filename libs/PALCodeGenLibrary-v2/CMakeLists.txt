@@ -15,6 +15,7 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     SecurityFactory.h
     Security.h
     EasyLanguageFromTemplateCodeGen.cpp
+    el_template.txt
 )
 
 ################################################################################

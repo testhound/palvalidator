@@ -10,6 +10,8 @@ extern bool firstSubExpressionVisited;
 
 const std::string EasyLanguageCodeGenVisitor::LONG_PATTERNS_MARKER = "////// LONG ENTRY SETUPS";
 const std::string EasyLanguageCodeGenVisitor::SHORT_PATTERNS_MARKER = "////// SHORT ENTRY SETUPS";
+const std::string EasyLanguageCodeGenVisitor::LONG_TARGET_SETTER_MARKER = "////// SETTING LONG TARGETS";
+const std::string EasyLanguageCodeGenVisitor::SHORT_TARGET_SETTER_MARKER = "////// SETTING SHORT TARGETS";
 
 EasyLanguageCodeGenVisitor::EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
 						       const std::string& templateFileName,
@@ -69,21 +71,36 @@ EasyLanguageCodeGenVisitor::generateCode()
   std::ofstream *outFile = getOutputFileStream();
   //line by line parsing
   std::string line;
+  bool longInserted = false, shortInserted = false, longTargetsSet = false, shortTargetsSet = false;
 
   while (std::getline(mTemplateFile, line))
   {
       if (line.find(LONG_PATTERNS_MARKER) != std::string::npos) {
           insertLongPatterns();
+          longInserted = true;
         }
       else if (line.find(SHORT_PATTERNS_MARKER) != std::string::npos) {
           insertShortPatterns();
+          shortInserted = true;
+        }
+      else if (line.find(LONG_TARGET_SETTER_MARKER) != std::string::npos) {
+          setStopTargetLong();
+          longTargetsSet = true;
+        }
+      else if (line.find(SHORT_TARGET_SETTER_MARKER) != std::string::npos) {
+          setStopTargetShort();
+          shortTargetsSet = true;
         }
       else {
           *outFile << line << std::endl;
         }
+      if ((longInserted + shortInserted + longTargetsSet + shortTargetsSet) != 4)
+        throw std::runtime_error("Invalid EL Template file. All need to be true: longInserted:" + std::to_string(longInserted)
+                                 + ", shortInserted:" + std::to_string(shortInserted)
+                                 + ", longTargetsSet:" + std::to_string(longTargetsSet)
+                                 + ", shortTargetsSet:" + std::to_string(shortTargetsSet));
   }
 }
-
 
 std::ofstream *
 EasyLanguageCodeGenVisitor::getOutputFileStream()
@@ -193,7 +210,6 @@ EasyLanguageCodeGenVisitor::visit (PatternDescription *desc)
                          << "%  PS: " << *(desc->getPercentShort()) << "%  Trades: " << desc->numTrades()
                          << "  CL: " << desc->numConsecutiveLosses() << " }" << std::endl;
 
-
 }
 
 void EasyLanguageCodeGenVisitor::visit (LongMarketEntryOnOpen *entryStatement)
@@ -206,19 +222,19 @@ void EasyLanguageCodeGenVisitor:: visit (ShortMarketEntryOnOpen *entryStatement)
   mEasyLanguageFileName << "\t\t\tshortEntryFound = true;" << std::endl;
 }
 
-bool EasyLanguageCodeGenVisitor::isHighRewardToRiskRatioPattern (PriceActionLabPattern *pattern)
-{
-  decimal7 threshold(1.25);
+//bool EasyLanguageCodeGenVisitor::isHighRewardToRiskRatioPattern (PriceActionLabPattern *pattern)
+//{
+//  decimal7 threshold(1.25);
 
-  decimal7 target2 = *(pattern->getProfitTarget()->getProfitTarget());
-  decimal7 stop2 = *(pattern->getStopLoss()->getStopLoss());
+//  decimal7 target2 = *(pattern->getProfitTarget()->getProfitTarget());
+//  decimal7 stop2 = *(pattern->getStopLoss()->getStopLoss());
 
-  decimal7 ratio = target2 / stop2;
-  if (ratio >= threshold)
-    return true;
-  else
-    return false;
-}
+//  decimal7 ratio = target2 / stop2;
+//  if (ratio >= threshold)
+//    return true;
+//  else
+//    return false;
+//}
 
 bool EasyLanguageCodeGenVisitor::isDev1Pattern(PriceActionLabPattern *pattern)
 {
@@ -273,13 +289,13 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
         mEasyLanguageFileName << "tradeShortSide and ";
     }
 
-  if (isHighRewardToRiskRatioPattern (pattern))
-    {
-      mEasyLanguageFileName << "(TradeHighRewardToRiskPatterns = true) and " << std::endl;
-      firstSubExpressionVisited = false;
-    }
-  else
-    firstSubExpressionVisited = true;
+//  if (isHighRewardToRiskRatioPattern (pattern))
+//    {
+//      mEasyLanguageFileName << "(TradeHighRewardToRiskPatterns = true) and " << std::endl;
+//      firstSubExpressionVisited = false;
+//    }
+//  else
+//    firstSubExpressionVisited = true;
 
   pattern->getPatternExpression()->accept (*this);
   mEasyLanguageFileName << " Then" << std::endl << std::endl;
@@ -305,29 +321,38 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 
 
 
-
-
-
 //////////////////////////////////////////////////////
 ///// class EasyLanguageRADCodeGenVisitor
 //////////////////////////////////////////////////////
 
-//EasyLanguageRADCodeGenVisitor::EasyLanguageRADCodeGenVisitor (PriceActionLabSystem *system,
-//							      const std::string& outputFileName,
-//							      const StopTargetDetail& dev1Detail,
-//							      const StopTargetDetail& dev2Detail)
+EasyLanguageRADCodeGenVisitor::EasyLanguageRADCodeGenVisitor (PriceActionLabSystem *system,
+							      const std::string& templateFileName,
+							      const std::string& outputFileName,
+							      const StopTargetDetail& dev1Detail,
+							      const StopTargetDetail& dev2Detail)
 
-//  : EasyLanguageCodeGenVisitor (system, outputFileName, dev1Detail, dev2Detail)
-//{}
+  : EasyLanguageCodeGenVisitor (system, templateFileName, outputFileName, dev1Detail, dev2Detail)
+{}
 
-//EasyLanguageRADCodeGenVisitor::~EasyLanguageRADCodeGenVisitor()
-//{}
+EasyLanguageRADCodeGenVisitor::~EasyLanguageRADCodeGenVisitor()
+{}
+
+void EasyLanguageRADCodeGenVisitor::setStopTargetLong()
+{
+    std::ofstream *outFile = getOutputFileStream();
+    *outFile << "\t\tlongStop_new = Round2Fraction (myEntryPrice * stopPercent_new);" << std::endl;
+    *outFile << "\t\tTargPrL = Round2Fraction (myEntryPrice * profitTgtPct_new);" << std::endl;
+}
+
+void EasyLanguageRADCodeGenVisitor::setStopTargetShort()
+{
+    std::ofstream *outFile = getOutputFileStream();
+    *outFile << "\t\tshortStop_new = Round2Fraction (myEntryPrice * stopPercent_new);" << std::endl;
+    *outFile << "\t\tTargPrS = Round2Fraction (myEntryPrice * profitTgtPct_new);" << std::endl;
+}
 
 //void EasyLanguageRADCodeGenVisitor::genCodeToInitializeVariables()
 //{
-
-
-
 //}
 
 //void EasyLanguageRADCodeGenVisitor::genCodeForEntryExit()
@@ -380,62 +405,84 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 
 //}
 
-//void
-//EasyLanguageRADCodeGenVisitor::visit (LongSideStopLossInPercent *stopLoss)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *stop = stopLoss->getStopLoss();
+void
+EasyLanguageRADCodeGenVisitor::visit (LongSideStopLossInPercent *stopLoss)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *stop = stopLoss->getStopLoss();
 
-//  *outFile << "\t\t\tstopPercent = (1.0 - (" << *stop << "/100));" << std::endl;
-//  *outFile << "\t\t\tlongStop = (Close * stopPercent);" << std::endl;
-//  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tstopPercent = (1.0 - (" << *stop << "/100));" << std::endl;
+  *outFile << "\t\t\tlongStop = (Close * stopPercent);" << std::endl;
+  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
+}
 
-//void EasyLanguageRADCodeGenVisitor::visit (LongSideProfitTargetInPercent *profitTarget)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *target = profitTarget->getProfitTarget();
+void EasyLanguageRADCodeGenVisitor::visit (LongSideProfitTargetInPercent *profitTarget)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *target = profitTarget->getProfitTarget();
 
-//  *outFile << "\t\t\tprofitTargetPercent = (1.0 + (" << *target << "/100));" << std::endl;
-//  *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tprofitTargetPercent = (1.0 + (" << *target << "/100));" << std::endl;
+  *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
+}
 
-//void EasyLanguageRADCodeGenVisitor::visit (ShortSideProfitTargetInPercent *profitTarget)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *target = profitTarget->getProfitTarget();
+void EasyLanguageRADCodeGenVisitor::visit (ShortSideProfitTargetInPercent *profitTarget)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *target = profitTarget->getProfitTarget();
 
-//  *outFile << "\t\t\tprofitTargetPercent = (1.0 - (" << *target << "/100));" << std::endl;
-//  *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tprofitTargetPercent = (1.0 - (" << *target << "/100));" << std::endl;
+  *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
+}
 
-//void
-//EasyLanguageRADCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *stop = stopLoss->getStopLoss();
+void
+EasyLanguageRADCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *stop = stopLoss->getStopLoss();
 
-//  *outFile << "\t\t\tstopPercent = (1.0 + (" << *stop << "/100));" << std::endl;
-//  *outFile << "\t\t\tshortStop = (Close * stopPercent);" << std::endl;
-//  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tstopPercent = (1.0 + (" << *stop << "/100));" << std::endl;
+  *outFile << "\t\t\tshortStop = (Close * stopPercent);" << std::endl;
+  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
+}
+
 
 //////////////////////////////////////////////////////
 ///// class EasyLanguagePointAdjustedCodeGenVisitor
 //////////////////////////////////////////////////////
 
-//EasyLanguagePointAdjustedCodeGenVisitor
-//::EasyLanguagePointAdjustedCodeGenVisitor (PriceActionLabSystem *system,
-//					   const std::string& bloxOutfileFileName,
-//					   const StopTargetDetail& dev1Detail,
-//					   const StopTargetDetail& dev2Detail)
+EasyLanguagePointAdjustedCodeGenVisitor
+::EasyLanguagePointAdjustedCodeGenVisitor (PriceActionLabSystem *system,
+					   const std::string& templateFileName,
+					   const std::string& bloxOutfileFileName,
+					   const StopTargetDetail& dev1Detail,
+					   const StopTargetDetail& dev2Detail)
 
-//  : EasyLanguageCodeGenVisitor (system, bloxOutfileFileName, dev1Detail, dev2Detail)
-//{}
+  : EasyLanguageCodeGenVisitor (system, templateFileName, bloxOutfileFileName, dev1Detail, dev2Detail)
+{}
 
-//EasyLanguagePointAdjustedCodeGenVisitor::~EasyLanguagePointAdjustedCodeGenVisitor()
-//{}
+EasyLanguagePointAdjustedCodeGenVisitor::~EasyLanguagePointAdjustedCodeGenVisitor()
+{}
 
+void EasyLanguagePointAdjustedCodeGenVisitor::setStopTargetLong()
+{
+    std::ofstream *outFile = getOutputFileStream();
+    *outFile << "\t\tUnAdjustedClose = C of Data2;" << std::endl;
+    *outFile << "\t\tlongStopDistance_new = Round2Fraction (UnAdjustedClose * stopPercent_new);" << std::endl;
+    *outFile << "\t\tlongStop_new = myEntryPrice - longStopDistance_new;" << std::endl;
+    *outFile << "\t\tprofitTargetDistance = Round2Fraction (UnAdjustedClose * profitTgtPct_new);" << std::endl;
+    *outFile << "\t\tTargPrL = myEntryPrice + profitTargetDistance;" << std::endl;
+}
+
+void EasyLanguagePointAdjustedCodeGenVisitor::setStopTargetShort()
+{
+    std::ofstream *outFile = getOutputFileStream();
+    *outFile << "\t\tUnAdjustedClose = C of Data2;" << std::endl;
+    *outFile << "\t\tshortStopDist_new = Round2Fraction (UnAdjustedClose * stopPercent_new);" << std::endl;
+    *outFile << "\t\tshortStop_new = myEntryPrice + shortStopDist_new;" << std::endl;
+    *outFile << "\t\tprofitTargetDistance = Round2Fraction (UnAdjustedClose * profitTgtPct_new);" << std::endl;
+    *outFile << "\t\tTargPrS = myEntryPrice - profitTargetDistance;" << std::endl;
+
+}
 
 //void EasyLanguagePointAdjustedCodeGenVisitor::genCodeForVariablesInEntryScript()
 //{
@@ -445,49 +492,49 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 //  *outFile << "vars: profitTargetDistance(0.0), unAdjCloseAtEntry(0.0);" << std::endl << std::endl;
 //}
 
-//void
-//EasyLanguagePointAdjustedCodeGenVisitor::visit (LongSideStopLossInPercent *stopLoss)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *stop = stopLoss->getStopLoss();
+void
+EasyLanguagePointAdjustedCodeGenVisitor::visit (LongSideStopLossInPercent *stopLoss)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *stop = stopLoss->getStopLoss();
 
-//  *outFile << "\t\t\tstopPercent = (" << *stop << "/100);" << std::endl;
-//  *outFile << "\t\t\tlongStopDistance = Round2Fraction (UnAdjustedClose * stopPercent);"
-//           << std::endl;
-//  *outFile << "\t\t\tlongStop = close - longStopDistance;" << std::endl;
-//  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tstopPercent = (" << *stop << "/100);" << std::endl;
+  *outFile << "\t\t\tlongStopDistance = Round2Fraction (UnAdjustedClose * stopPercent);"
+           << std::endl;
+  *outFile << "\t\t\tlongStop = close - longStopDistance;" << std::endl;
+  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
+}
 
-//void EasyLanguagePointAdjustedCodeGenVisitor::visit (LongSideProfitTargetInPercent *profitTarget)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *target = profitTarget->getProfitTarget();
+void EasyLanguagePointAdjustedCodeGenVisitor::visit (LongSideProfitTargetInPercent *profitTarget)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *target = profitTarget->getProfitTarget();
 
-//  *outFile << "\t\t\tprofitTargetPercent = (" << *target << "/100);" << std::endl;
-//    *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tprofitTargetPercent = (" << *target << "/100);" << std::endl;
+    *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
+}
 
-//void EasyLanguagePointAdjustedCodeGenVisitor::visit (ShortSideProfitTargetInPercent *profitTarget)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *target = profitTarget->getProfitTarget();
+void EasyLanguagePointAdjustedCodeGenVisitor::visit (ShortSideProfitTargetInPercent *profitTarget)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *target = profitTarget->getProfitTarget();
 
-//  *outFile << "\t\t\tprofitTargetPercent = (" << *target << "/100);" << std::endl;
-//  *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tprofitTargetPercent = (" << *target << "/100);" << std::endl;
+  *outFile << "\t\t\ttargetStr = \"" << *target << "%\";" << std::endl;
+}
 
-//void
-//EasyLanguagePointAdjustedCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
-//{
-//  std::ofstream *outFile = getOutputFileStream();
-//  decimal7 *stop = stopLoss->getStopLoss();
+void
+EasyLanguagePointAdjustedCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
+{
+  std::ofstream *outFile = getOutputFileStream();
+  decimal7 *stop = stopLoss->getStopLoss();
 
-//  *outFile << "\t\t\tstopPercent = (" << *stop << "/100);" << std::endl;
-//  *outFile << "\t\t\tshortStopDistance = Round2Fraction (UnAdjustedClose * stopPercent);"
-//           << std::endl;
-//  *outFile << "\t\t\tshortStop = close + shortStopDistance;" << std::endl;
-//  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
-//}
+  *outFile << "\t\t\tstopPercent = (" << *stop << "/100);" << std::endl;
+  *outFile << "\t\t\tshortStopDistance = Round2Fraction (UnAdjustedClose * stopPercent);"
+           << std::endl;
+  *outFile << "\t\t\tshortStop = close + shortStopDistance;" << std::endl;
+  *outFile << "\t\t\tstopStr = \"" << *stop << "%\";" << std::endl;
+}
 
 //void EasyLanguagePointAdjustedCodeGenVisitor::genCodeToInitializeVariables()
 //{
@@ -499,7 +546,7 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 //void EasyLanguagePointAdjustedCodeGenVisitor::genCodeForEntryExit()
 //{
 //  std::ofstream *outFile = getOutputFileStream();
-
+//const std::string& templateFileName,
 // *outFile << "\telse" << std::endl;
 // *outFile << "\tbegin" << std::endl;
 // *outFile << "\t\tif marketposition = 1 then begin" << std::endl;

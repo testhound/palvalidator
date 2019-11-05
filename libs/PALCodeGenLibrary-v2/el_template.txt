@@ -1,0 +1,275 @@
+{
+_MichaelCollison_Diversity DX 2019 V4:  Based on US code
+
+
+Created: 7/28/2019
+
+}
+
+// Copyright (C) MKC Associates, LLC - All Rights Reserved
+// Unauthorized copying of this file, via any medium is strictly prohibited
+// Proprietary and confidential
+// Written by Michael K. Collison <collison956@gmail.com>, July 2016
+//
+
+using elsystem;
+
+Inputs:
+        Int MaxPyramids( 5 ),
+        Int Reverse_Option( 2 {0=ignore, 1=exit, 2=reverse} ),
+        PrintDebug( False ) ;  // Added by D Cohn on 7/19/2019
+
+vars: shortStop (0), longStop (0), stopPercent (0);
+vars: LongEntryFound (false), ShortEntryFound (false), noNextDayOrders(false);
+vars: oscVChartLow(0.0), oscVChartHigh(0.0);
+vars: MinHoldPeriod(4.0), MaxHoldPeriod(10.0);
+vars: profitTargetPercent(0.0), TargPrL(0.0), TargPrS(0.0);
+vars: shortStopDistance(0.0), longStopDistance(0.0), UnAdjustedClose(0.0);
+vars: profitTargetDistance(0.0), unAdjCloseAtEntry(0.0);
+vars: stopStr(""), targetStr("");
+
+Vars:	stopPercent_new(0),
+                profitTgtPct_new(0),
+                MinHoldPeriod_new(0),
+                MaxHoldPeriod_new(0),
+                longStopDistance_new(0),
+                longStop_new(0),
+                shortStopDist_new(0),
+                shortStop_new(0);
+
+Vars:	myBarsSinceEntry(0),
+                myEntryPrice(0),
+                AllowEntry(false);
+
+
+Variables:  // Section of code Added by D Cohn on 7/19/2019
+        Double NumEntries( 0 ),
+        Double MP( 0 ),
+        Double TT( 0 ),
+        Double CS( 0 ),
+        Double AEP( 0 ),
+
+        Bool ExitSet( False ) ;
+
+
+Method void UpdateLongEntryVariables() Begin  // Section of code Added by D Cohn on 7/22/2019
+
+        stopPercent = (2.0424338/100);
+        longStopDistance = Round2Fraction (UnAdjustedClose * stopPercent);
+        longStop = close - longStopDistance;
+        stopStr = "2.0424338%";
+        profitTargetPercent = (2.0424338/100);
+        targetStr = "2.0424338%";
+        longEntryFound = true;
+
+End ;
+
+Method void UpdateShortEntryVariables() Begin  // Section of code Added by D Cohn on 7/22/2019
+
+        stopPercent = (2.0424338/100);
+        shortStopDistance = Round2Fraction (UnAdjustedClose * stopPercent);
+        shortStop = close + shortStopDistance;
+        stopStr = "2.0424338%";
+        profitTargetPercent = (2.0424338/100);
+        targetStr = "2.0424338%";
+        shortEntryFound = true;
+
+End ;
+
+Once ( BarStatus(1) = 2 ) Begin // Modified by D Cohn on 7/22/2019
+
+        If PrintDebug Then   // Added by D Cohn on 7/19/2019
+                ClearPrintLog ;
+
+End ;
+
+
+MP = MarketPosition ;   // Added by D Cohn on 7/19/2019
+TT = TotalTrades ;      // Added by D Cohn on 7/19/2019
+CS = CurrentShares ;    // Added by D Cohn on 7/19/2019
+AEP = AvgEntryPrice ;
+
+oscVChartLow  = _VChartLow( 5, 0.2 ) ;
+oscVChartHigh = _VChartHigh( 5, 0.2 ) ;
+
+UnAdjustedClose = C of Data2 ;
+
+LongEntryFound  = false;
+ShortEntryFound = false;
+
+// This section of code Added by D Cohn on 7/19/2019 to replace Strategy Host to update the EntryPrice on new entries and pyramid entries
+If ( MP[1] <> MP and MP <> 0 ) or ( CS[1] > 0 and CS > CS[1] ) or ( MP = 0 and TT[1] + 1 < TT ) Then Begin
+
+        MyBarsSinceEntry = 0 ;
+
+        If MP[1] <> MP and MP <> 0 Then
+                myEntryPrice = EntryPrice
+        Else If CS > CS[1] Then
+                myEntryPrice = ( ( CS * AEP ) - ( CS[1] * AEP[1] ) ) / ( CS - CS[1] ) ;
+
+End ;
+
+If MP = 0 Then       // Added by D Cohn on 7/28/2019 to reset Exits blocking entries
+        ExitSet = False ;
+
+If PrintDebug Then
+        Print( BarDateTime.ToString(), ":NEW , ", MyBarsSinceEntry:0:0, " , ", MyEntryPrice:0:2, " , ", ExitPrice(1):0:2, " , ", MP:0:0, " , ", NetProfit:0:2 ) ;
+
+
+////////////////////////////////////////////////////////////////////////////////////
+//////
+////// LONG ENTRY SETUPS: CODE Simplified and streamlined By D Cohn on 7/22/2019
+//////
+////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////
+//////
+////// SHORT ENTRY SETUPS: CODE Simplified and streamlined By D Cohn on 7/22/2019
+//////
+////////////////////////////////////////////////////////////////////////////////////
+
+
+
+AllowEntry = MP = 0 or ( MP <> 0 and CurrentEntries <= MaxPyramids and LongEntryFound <> ShortEntryFound ) ;  // Streamlined by D Cohn on 7/22/2019
+
+//  Unnecessary Begin and End statements removed below by D Cohn on 7/22/2019
+If Reverse_Option = 0 and MP = 1 and ShortEntryFound and AllowEntry Then
+        AllowEntry = false;
+
+If Reverse_Option = 0 and MP = -1 and LongEntryFound and AllowEntry Then
+        AllowEntry = false;
+
+If Reverse_Option = 1 and MP = 1 and ShortEntryFound and (AllowEntry or MaxPyramids = 0) Then Begin
+        Sell ("Rev LX") ALL contracts next bar at market;
+        AllowEntry = false;
+End ;
+
+If Reverse_Option = 1 and MP = -1 and LongEntryFound and (AllowEntry or MaxPyramids = 0) Then Begin
+        BuyToCover ("Rev SX") ALL contracts next bar at market;
+        AllowEntry = false;
+End ;
+
+If Reverse_Option = 2 and MP = 1 and ShortEntryFound and (AllowEntry or MaxPyramids = 0) Then
+        AllowEntry = true;
+
+If Reverse_Option = 2 and MP = -1 and LongEntryFound and (AllowEntry or MaxPyramids = 0) Then
+        AllowEntry = true;
+
+
+//If entry allowed update key variables used to determine exits:  Modified by D Cohn on 7/28/2019
+If AllowEntry Then Begin
+
+        stopPercent_new      = stopPercent;
+        profitTgtPct_new     = profitTargetPercent;
+        MinHoldPeriod_new    = MinHoldPeriod;
+        MaxHoldPeriod_new    = MaxHoldPeriod;
+        longStopDistance_new = longStopDistance;
+        longStop_new         = longStop;
+        shortStopDist_new    = shortStopDistance;
+        shortStop_new        = shortStop;
+
+End ;
+
+//  Change exit calculations to happen before entries below so that if an exit occurs entries are blocked: 7/28/2019 by D Cohn
+//Exit long
+If MP = 1 Then Begin
+
+        noNextDayOrders = false;
+
+        If myBarsSinceEntry >= ( MaxHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin  // Code streamlined by D Cohn on 7/22/2019
+                noNextDayOrders = true;
+                ExitSet = True ;
+                Sell ("L Max hold time") at next bar at Market ;
+        End ;
+
+        If myBarsSinceEntry = 0 Then Begin
+////// SETTING LONG TARGETS
+        End ;
+
+        If myBarsSinceEntry >= ( MinHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin  // Code streamlined by D Cohn on 7/22/2019
+
+                If oscVChartHigh >= 10 Then Begin  // Code streamlined by D Cohn on 7/22/2019
+                        noNextDayOrders = true;
+                        ExitSet = True ;
+                        Sell ("OB Exit") at next bar at Market ;
+                End ;
+
+        End ;
+
+        If noNextDayOrders = False Then Begin
+                Sell ("PT LX") at next bar at TargPrL Limit ;
+                Sell ("Stop LX") at next bar at longStop_new Stop ;
+        End ;
+
+End ;
+
+
+//Exit short
+If MP = -1 Then Begin
+
+        noNextDayOrders = false;
+
+        If myBarsSinceEntry >= ( MaxHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin  // Code streamlined by D Cohn on 7/22/2019
+                noNextDayOrders = true;
+                ExitSet = True ;
+                Buy to Cover ("S Max hold time") at next bar at Market ;
+        End ;
+
+        If myBarsSinceEntry >= ( MinHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin		  // Code streamlined by D Cohn on 7/22/2019
+
+                If oscVChartLow <= -10 Then Begin   // Code streamlined by D Cohn on 7/22/2019
+                        noNextDayOrders = true;
+                        ExitSet = True ;
+                        Buy to Cover ("OS Exit") at next bar at Market ;
+                End ;
+
+        End ;
+
+        If myBarsSinceEntry = 0 Then Begin
+////// SETTING SHORT TARGETS
+        End ;
+
+        If noNextDayOrders = False Then Begin
+                Buy to Cover ("PT SX") at next bar at TargPrS Limit ;
+                Buy to Cover ("Stop SX") at next bar at shortStop_new Stop ;
+        End ;
+
+End ;
+
+
+//Code moved to after exit calculations to block Entries after Market exits have been set
+If AllowEntry Then Begin
+
+        // Code below streamlined by D Cohn on 7/22/2019
+        // Code modified by D Cohn on 7/28/2019:  Allow reversal from Long to Short and Short to Long even if ExitSet is true, but do not allow pyramid in same direction if an Exit has been set.
+        If LongEntryFound and ShortEntryFound = False and ( MP < 0 or ( MP >= 0 and ( ExitSet = False ) ) ) Then Begin
+
+                Commentary ("Manual stop = open of next bar - ", stopStr, NewLine);
+                Commentary ("Manual profit target = open of next bar + ", targetStr, NewLine);
+
+                Buy ("LE1") at next bar at Market ;
+
+        End
+        Else If ShortEntryFound and LongEntryFound = False and ( MP > 0 or ( MP <= 0 and ( ExitSet = False ) ) ) Then Begin
+
+                Commentary ("Manual stop = open of next bar + ", stopStr, NewLine);
+                Commentary ("Manual profit target = open of next bar - ", targetStr, NewLine);
+
+                Sell short ("SE1") at next bar at Market ;
+
+        End ;
+
+End ;
+
+//End of code
+If BarStatus(1) = 2 Then
+        myBarsSinceEntry = myBarsSinceEntry + 1;
+
+
+
+
+
+
