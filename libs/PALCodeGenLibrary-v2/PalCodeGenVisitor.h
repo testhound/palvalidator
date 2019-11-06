@@ -239,20 +239,12 @@ private:
 class EasyLanguageCodeGenVisitor : public PalCodeGenVisitor
 {
 public:
-  EasyLanguageCodeGenVisitor(PriceActionLabSystem *system, 
-			     const std::string& outputFileName,
-			     const StopTargetDetail& dev1Detail,
-			     const StopTargetDetail& dev2Detail);
 
   EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
                              const std::string& templateFileName,
-                             const std::string& outputFileName,
-                             const StopTargetDetail& dev1Detail,
-                             const StopTargetDetail& dev2Detail);
+                             const std::string& outputFileName);
 
   virtual ~EasyLanguageCodeGenVisitor();
-  bool isDev1Pattern(PriceActionLabPattern *pattern);
-  bool isDev2Pattern(PriceActionLabPattern *pattern);
   
   void generateCode();
 //  void generatedSortedCode();
@@ -306,8 +298,8 @@ private:
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
   std::ifstream mTemplateFile;
   std::ofstream mEasyLanguageFileName;
-  StopTargetDetail mDev1Detail;
-  StopTargetDetail mDev2Detail;
+//  StopTargetDetail mDev1Detail;
+//  StopTargetDetail mDev2Detail;
 };
 
 
@@ -316,9 +308,7 @@ class EasyLanguageRADCodeGenVisitor : public EasyLanguageCodeGenVisitor
 public:
   EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
                              const std::string& templateFileName,
-                             const std::string& outputFileName,
-                             const StopTargetDetail& dev1Detail,
-                             const StopTargetDetail& dev2Detail);
+                             const std::string& outputFileName);
 
   ~EasyLanguageRADCodeGenVisitor();
   void visit (LongSideProfitTargetInPercent *);
@@ -347,9 +337,7 @@ class EasyLanguagePointAdjustedCodeGenVisitor : public EasyLanguageCodeGenVisito
 public:
   EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
                                           const std::string& templateFileName,
-                                          const std::string& outputFileName,
-                                          const StopTargetDetail& dev1Detail,
-                                          const StopTargetDetail& dev2Detail);
+                                          const std::string& outputFileName);
 
   ~EasyLanguagePointAdjustedCodeGenVisitor();
   void visit (LongSideProfitTargetInPercent *);

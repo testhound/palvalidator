@@ -15,16 +15,12 @@ const std::string EasyLanguageCodeGenVisitor::SHORT_TARGET_SETTER_MARKER = "////
 
 EasyLanguageCodeGenVisitor::EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
 						       const std::string& templateFileName,
-						       const std::string& outputFileName,
-						       const StopTargetDetail& dev1Detail,
-						       const StopTargetDetail& dev2Detail)
+						       const std::string& outputFileName)
 
   : PalCodeGenVisitor(),
     mTradingSystemPatterns(system),
     mTemplateFile(templateFileName),
-    mEasyLanguageFileName(outputFileName),
-    mDev1Detail (dev1Detail),
-    mDev2Detail (dev2Detail)
+    mEasyLanguageFileName(outputFileName)
 {}
 
 
@@ -94,12 +90,12 @@ EasyLanguageCodeGenVisitor::generateCode()
       else {
           *outFile << line << std::endl;
         }
-      if ((longInserted + shortInserted + longTargetsSet + shortTargetsSet) != 4)
-        throw std::runtime_error("Invalid EL Template file. All need to be true: longInserted:" + std::to_string(longInserted)
-                                 + ", shortInserted:" + std::to_string(shortInserted)
-                                 + ", longTargetsSet:" + std::to_string(longTargetsSet)
-                                 + ", shortTargetsSet:" + std::to_string(shortTargetsSet));
   }
+  if ((longInserted + shortInserted + longTargetsSet + shortTargetsSet) != 4)
+    throw std::runtime_error("Invalid EL Template file. All need to be true: longInserted:" + std::to_string(longInserted)
+                             + ", shortInserted:" + std::to_string(shortInserted)
+                             + ", longTargetsSet:" + std::to_string(longTargetsSet)
+                             + ", shortTargetsSet:" + std::to_string(shortTargetsSet));
 }
 
 std::ofstream *
@@ -236,18 +232,6 @@ void EasyLanguageCodeGenVisitor:: visit (ShortMarketEntryOnOpen *entryStatement)
 //    return false;
 //}
 
-bool EasyLanguageCodeGenVisitor::isDev1Pattern(PriceActionLabPattern *pattern)
-{
-  return ((pattern->getStopLossAsDecimal() == mDev1Detail.getStopLoss()) &&
-          (pattern->getProfitTargetAsDecimal() == mDev1Detail.getProfitTarget()));
-}
-
-bool EasyLanguageCodeGenVisitor::isDev2Pattern(PriceActionLabPattern *pattern)
-{
-  return ((pattern->getStopLossAsDecimal() == mDev2Detail.getStopLoss()) &&
-          (pattern->getProfitTargetAsDecimal() == mDev2Detail.getProfitTarget()));
-
-}
 
 
 void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
@@ -257,19 +241,14 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 
   if (pattern->isLongPattern())
     {
-      mEasyLanguageFileName << "\t\tif (longEntryFound = false) and ";
+      mEasyLanguageFileName << "\t\tif (longEntryFound = false) and " << std::endl;
 
 
     }
   else
     {
-      mEasyLanguageFileName << "\t\tif (shortEntryFound = false) and ";
+      mEasyLanguageFileName << "\t\tif (shortEntryFound = false) and " << std::endl;
     }
-
-  if (isDev1Pattern (pattern))
-    mEasyLanguageFileName << "(tradeSys1 = true) and ";
-  else if (isDev2Pattern (pattern))
-    mEasyLanguageFileName << "(tradeSys2 = true) and ";
 
   if (pattern->hasVolatilityAttribute())
     {
@@ -304,18 +283,6 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
   pattern->getProfitTarget()->accept (*this);
   pattern->getMarketEntry()->accept (*this);
 
-    if (isDev1Pattern (pattern))
-    {
-      mEasyLanguageFileName << "\t\t\tMinHoldPeriod = MinDev1HoldPeriod;" << std::endl;
-      mEasyLanguageFileName << "\t\t\tMaxHoldPeriod = MaxDev1HoldPeriod;" << std::endl;
-    }
-  else if (isDev2Pattern (pattern))
-    {
-      mEasyLanguageFileName << "\t\t\tMinHoldPeriod = MinDev2HoldPeriod;" << std::endl;
-      mEasyLanguageFileName << "\t\t\tMaxHoldPeriod = MaxDev2HoldPeriod;" << std::endl;
-
-    }
-
   mEasyLanguageFileName << "\t\tend;" << std::endl;
 }
 
@@ -327,11 +294,9 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
 
 EasyLanguageRADCodeGenVisitor::EasyLanguageRADCodeGenVisitor (PriceActionLabSystem *system,
 							      const std::string& templateFileName,
-							      const std::string& outputFileName,
-							      const StopTargetDetail& dev1Detail,
-							      const StopTargetDetail& dev2Detail)
+							      const std::string& outputFileName)
 
-  : EasyLanguageCodeGenVisitor (system, templateFileName, outputFileName, dev1Detail, dev2Detail)
+  : EasyLanguageCodeGenVisitor (system, templateFileName, outputFileName)
 {}
 
 EasyLanguageRADCodeGenVisitor::~EasyLanguageRADCodeGenVisitor()
@@ -453,11 +418,9 @@ EasyLanguageRADCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
 EasyLanguagePointAdjustedCodeGenVisitor
 ::EasyLanguagePointAdjustedCodeGenVisitor (PriceActionLabSystem *system,
 					   const std::string& templateFileName,
-					   const std::string& bloxOutfileFileName,
-					   const StopTargetDetail& dev1Detail,
-					   const StopTargetDetail& dev2Detail)
+					   const std::string& bloxOutfileFileName)
 
-  : EasyLanguageCodeGenVisitor (system, templateFileName, bloxOutfileFileName, dev1Detail, dev2Detail)
+  : EasyLanguageCodeGenVisitor (system, templateFileName, bloxOutfileFileName)
 {}
 
 EasyLanguagePointAdjustedCodeGenVisitor::~EasyLanguagePointAdjustedCodeGenVisitor()
