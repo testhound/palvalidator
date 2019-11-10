@@ -78,7 +78,7 @@ namespace mkc_searchalgo
           bool first = true;
           //redundancyMult += redundancySeedMultiplier * 0.5;
           redundancyMult = redundancySeedMultiplier;
-          std::cout << "New redundancy mult: " << redundancyMult << std::endl;
+          //std::cout << "New redundancy mult: " << redundancyMult << std::endl;
           StrategyRepresentationType bestStrat;
           ResultStat<Decimal> selectedStatistics;
           for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: sortedResults)
@@ -156,9 +156,12 @@ namespace mkc_searchalgo
           else
             {
               //add selected strategy
-              std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
-                        << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << ", redundancy Mult: "
-                        << redundancyMult << ", adjusted redundancy: " << (bestRedundancy / redundancyMult) << std::endl;
+              if (mSelectedStrategies.size() % 100 == 0)
+                {
+                  std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
+                            << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << ", redundancy Mult: "
+                            << redundancyMult << ", adjusted redundancy: " << (bestRedundancy / redundancyMult) << std::endl;
+                }
               //mSelectedGroup.insert(mSelectedGroup.begin(), bestStrat.begin(), bestStrat.end());
               mSelectedStrategies.push_back(bestStrat);
               mSelectedStatistics.push_back(selectedStatistics);

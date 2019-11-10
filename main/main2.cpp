@@ -97,11 +97,11 @@ int main(int argc, char **argv)
         return usage_error(v);
 
       if (v[4] == "IS")
-          oosRun = false;
+        oosRun = false;
       else if (v[4] == "OOS")
-          iisRun = false;
+        iisRun = false;
       else if (v[4] == "ISOOS")
-          ;
+        ;
       else
         return usage_error(v);
 
@@ -211,14 +211,15 @@ int main(int argc, char **argv)
                       FileMatcher::mergeFiles(std::vector<boost::filesystem::path>{boost::filesystem::path(fileName1), boost::filesystem::path(fileName2)}, fileName);
 
                       std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleValidated.txt");
-                      PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
-                      matcher.countOccurences();
-                      bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-                      if (exportOk)
-                        {
-                          std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-                          if (sys->getNumPatterns() > 0)
-                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
+                      //PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
+                      //matcher.countOccurences();
+                      //bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+
+
+                      std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                      if (sys->getNumPatterns() > 0)
+                        validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+
                     }
 
                 }
