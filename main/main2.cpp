@@ -42,19 +42,27 @@ static int usage_error(const std::vector<std::string>& args)
   for (auto arg: args)
     std::cout << arg << ".";
   std::cout << std::endl;
-  std::cout << "Correct usage is:... [configFileName] [searchConfigFileName] [longonly/shortonly/longshort] [PATTERN_SEARCH_TYPE] (optional MODE:--see below for options--)" << std::endl;
-  std::cout << "PATTERN_SEARCH_TYPE POSSIBLE VALUES: " << std::endl;
+  std::cout << "Correct usage is:... [configFileName] [searchConfigFileName] [longonly/shortonly/longshort] [IS/OOS/ISOOS] [PATTERN_SEARCH_TYPE] [MODE]" << std::endl << std::endl;
+  std::cout << "  Where a typical run could be something like: "<< std::endl;
+  std::cout << "     ./PalValidator %config1.txt %conig2.txt longshortIS 4 threads:8" << std::endl << std::endl;
+
+  std::cout << "  IS - In-Sample only" << std::endl;
+  std::cout << "  OOS - Out of Sample only" << std::endl;
+  std::cout << "  ISOOS - In Sample and Out of Sample in a single run" << std::endl << std::endl;
+
+  std::cout << "PATTERN_SEARCH_TYPE possible values: " << std::endl;
   std::cout << "  0 - CloseOnly" << std::endl;
   std::cout << "  1 - OpenClose" << std::endl;
   std::cout << "  2 - HighLow" << std::endl;
   std::cout << "  3 - OHLC" << std::endl;
   std::cout << "  4 - Extended (all of the above)" << std::endl << std::endl;
 
-  std::cout << "  MODE settings: (leave empty for typical runs)" << std::endl;
-  std::cout << "  *  validateIS/validateOOS/validateISOOS:nowid -- example: [validateIS:1568328448]" << std::endl;
+  std::cout << "  MODE possible values (2 variants):" << std::endl;
+  std::cout << "  *  validate:nowid -- example: [validate:1568328448]" << std::endl;
   std::cout << "      (nowid is a string to identify a run, which is a the part 1568328448 of the following example run-file: PatternsLong_1568328448_7_2.042434_2.042434_1.txt)" << std::endl;
   std::cout << "  *  threads:thread_no -- example: [threads:4]" << std::endl;
-  std::cout << "      (only used for complete runs to override default-maximmum thread_no of your system. The number of parallel threads to run.)" << std::endl;
+  std::cout << "      The number of parallel threads to run." << std::endl;
+  std::cout << "      (use numbers 0 through n. Zero(0) is interpreted as the maximmum thread_no of your system.)" << std::endl;
   return 2;
 }
 
@@ -66,183 +74,202 @@ int main(int argc, char **argv)
 
   std::vector<std::string> v(argv, argv + argc);
 
-  if (argc == 6 || argc == 7)
+  if (argc == 7)
     {
-      try
-      {
-        int nthreads = 0;
 
-        std::string validateISNowStringInput;
-        std::string validateOOSNowStringInput;
-        bool iisRun = true;
-        bool oosRun = true;
+      int nthreads = 0;
 
-        if (argc == 6) {
-            std::vector<std::string> spl;
-            boost::split(spl, v[5], boost::is_any_of(":"));
-            if (spl[0] == "threads")
-              {
-                nthreads = std::stoi(spl[1]);
-              }
-            else if (spl[0] == "validateIS")
-              {
-                validateISNowStringInput = spl[1];
-                oosRun = false;
-              }
-            else if (spl[0] == "validateOOS")
-              {
-                validateOOSNowStringInput = spl[1];
-                iisRun = false;
-              }
-            else if (spl[0] == "validateISOOS")
-              {
-                validateISNowStringInput = spl[1];
-                validateOOSNowStringInput = spl[1];
-              }
-            else
-              return usage_error(v);
-
-          }
-        std::string longorshort = v[3];
-        SideToRun sideToRun;
-        if (longorshort == "longonly")
-          sideToRun = SideToRun::LongOnly;
-        else if (longorshort == "shortonly")
-          sideToRun = SideToRun::ShortOnly;
-        else if (longorshort == "longshort")
-          sideToRun = SideToRun::LongShort;
-        else
-          return usage_error(v);
-
-        std::vector<ComparisonType> patternSearchTypes;
-
-        ComparisonType inputPatternSearchType = static_cast<ComparisonType>(std::stoi(v[4]));
-        std::cout << std::to_string(inputPatternSearchType) << std::endl;
-        if (inputPatternSearchType < ComparisonType::CloseOnly || inputPatternSearchType > ComparisonType::Extended)
-          throw std::logic_error("PATTERN_SEARCH_TYPE out of bounds");
-        if (inputPatternSearchType == ComparisonType::Extended)
-          patternSearchTypes = {ComparisonType::CloseOnly, ComparisonType::OpenClose, ComparisonType::HighLow, ComparisonType::Ohlc};
-        else
-          patternSearchTypes = {inputPatternSearchType};
-
-        runner runner_instance(static_cast<size_t>(nthreads));
-        //build thread-pool-runner
-        runner& Runner=runner::instance();
-
-        SearchRun search(v[1], v[2]);
-
-        std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
-
-        for (ComparisonType patternSearchType: patternSearchTypes)
-          {
-            bool mergingPhase = false;
-            if (inputPatternSearchType == ComparisonType::Extended && patternSearchType == ComparisonType::Ohlc)
-              mergingPhase = true;
-            if (inputPatternSearchType != ComparisonType::Extended)
-              mergingPhase = true;
-
-            std::cout << "Current SEARCHSPACE: " << std::string(ToString(patternSearchType)) << ", is merging phase: " << mergingPhase << std::endl;
-            //validation section
-            if (iisRun)
-              {
-                for (size_t i = 0; i < search.getTargetStopSize(); i++)
-                  {
-                    std::string validateISNowString(validateISNowStringInput);
-                    if (validateISNowStringInput.empty())
-                      {
-                        search.run(Runner, true, sideToRun, i, patternSearchType);
-                        validateISNowString = std::to_string(search.getNowAsLong());
-                      }
-                    auto tspair = search.getTargetsAtIndex(i);
-                    std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
-                    std::cout << "IIS -- Target index: " << i << ", target string: " << tsStr << std::endl;
-
-                    std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
-                    std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
-                    portfolio->addSecurity(search.getConfig()->getSecurity());
-
-                    if (sideToRun != SideToRun::ShortOnly && mergingPhase)
-                      {
-                        std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_SelectedISLong.txt");
-                        std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleLongValidated.txt");
-                        PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
-                        matcher.countOccurences();
-                        bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-                        if (exportOk)
-                          {
-                            std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-                            if (sys->getNumPatterns() > 0)
-                              validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
-                          }
-                      }
-                    if (sideToRun != SideToRun::LongOnly && mergingPhase)
-                      {
-                        std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedISShort.txt");
-                        std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleShortValidated.txt");
-                        PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
-                        matcher.countOccurences();
-                        bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-                        if (exportOk)
-                          {
-                            std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
-                            if (sys->getNumPatterns() > 0)
-                              validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
-                      }
-                  }
-              }
+      std::string validateISNowStringInput;
+      std::string validateOOSNowStringInput;
+      bool iisRun = true;
+      bool oosRun = true;
 
 
-            //only matching section
-            if (oosRun)
-              {
-                for (size_t i = 0; i < search.getTargetStopSize(); i++)
-                  {
-                    std::string validateOOSNowString(validateOOSNowStringInput);
-                    if (validateOOSNowStringInput.empty())
-                      {
-                        search.run(Runner, false, sideToRun, i, patternSearchType);
-                        validateOOSNowString = std::to_string(search.getNowAsLong());
-                      }
-
-                    auto tspair = search.getTargetsAtIndex(i);
-                    std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
-                    std::cout << "OOS -- Target index: " << i << ", target string: " << tsStr << std::endl;
-
-                    std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
-                    std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
-                    portfolio->addSecurity(search.getConfig()->getSecurity());
-
-                    if (sideToRun != SideToRun::ShortOnly && mergingPhase)
-                      {
-                        std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
-                        PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod(), search.getSearchConfig()->getNumTimeFrames());
-                        matcher.countOccurences();
-                        matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-
-                      }
-                    if (sideToRun != SideToRun::LongOnly && mergingPhase)
-                      {
-                        std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
-                        PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod(), search.getSearchConfig()->getNumTimeFrames());
-                        matcher.countOccurences();
-                        matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
-                      }
-
-                  }
-              }
-          }
-        auto endTime = std::chrono::system_clock::now();
-        time_t endT = std::chrono::system_clock::to_time_t(endTime);
-        std::chrono::duration<double> elapsed = endTime - startTime;
-        std::cout << "Run finished at: " << std::ctime(&endT) << std::endl;
-        std::cout << "Seconds elapsed since strart: " << elapsed.count() << std::endl;
-      }
-      catch (...)
-      {
+      std::string longorshort = v[3];
+      SideToRun sideToRun;
+      if (longorshort == "longonly")
+        sideToRun = SideToRun::LongOnly;
+      else if (longorshort == "shortonly")
+        sideToRun = SideToRun::ShortOnly;
+      else if (longorshort == "longshort")
+        sideToRun = SideToRun::LongShort;
+      else
         return usage_error(v);
-      }
-      return 0;
 
+      if (v[4] == "IS")
+          oosRun = false;
+      else if (v[4] == "OOS")
+          iisRun = false;
+      else if (v[4] == "ISOOS")
+          ;
+      else
+        return usage_error(v);
+
+      std::vector<std::string> spl;
+      boost::split(spl, v[6], boost::is_any_of(":"));
+      if (spl[0] == "threads")
+        {
+          nthreads = std::stoi(spl[1]);
+        }
+      else if (spl[0] == "validate" && v[4] == "IS")
+        {
+          validateISNowStringInput = spl[1];
+        }
+      else if (spl[0] == "validate" && v[4] == "OOS")
+        {
+          validateOOSNowStringInput = spl[1];
+          iisRun = false;
+        }
+      else if (spl[0] == "validate" && v[4] == "ISOOS")
+        {
+          validateISNowStringInput = spl[1];
+          validateOOSNowStringInput = spl[1];
+        }
+      else
+        return usage_error(v);
+
+      std::vector<ComparisonType> patternSearchTypes;
+
+      ComparisonType inputPatternSearchType = static_cast<ComparisonType>(std::stoi(v[5]));
+      std::cout << std::to_string(inputPatternSearchType) << std::endl;
+      if (inputPatternSearchType < ComparisonType::CloseOnly || inputPatternSearchType > ComparisonType::Extended)
+        throw std::logic_error("PATTERN_SEARCH_TYPE out of bounds");
+      if (inputPatternSearchType == ComparisonType::Extended)
+        patternSearchTypes = {ComparisonType::CloseOnly, ComparisonType::OpenClose, ComparisonType::HighLow, ComparisonType::Ohlc};
+      else
+        patternSearchTypes = {inputPatternSearchType};
+
+      runner runner_instance(static_cast<size_t>(nthreads));
+      //build thread-pool-runner
+      runner& Runner=runner::instance();
+
+      SearchRun search(v[1], v[2]);
+
+      std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
+
+      for (ComparisonType patternSearchType: patternSearchTypes)
+        {
+          bool mergingPhase = false;
+          if (inputPatternSearchType == ComparisonType::Extended && patternSearchType == ComparisonType::Ohlc)
+            mergingPhase = true;
+          if (inputPatternSearchType != ComparisonType::Extended)
+            mergingPhase = true;
+
+          std::cout << "Current SEARCHSPACE: " << std::string(ToString(patternSearchType)) << ", is merging phase: " << mergingPhase << std::endl;
+          //validation section
+          if (iisRun)
+            {
+              for (size_t i = 0; i < search.getTargetStopSize(); i++)
+                {
+                  std::string validateISNowString(validateISNowStringInput);
+                  if (validateISNowStringInput.empty())
+                    {
+                      search.run(Runner, true, sideToRun, i, patternSearchType);
+                      validateISNowString = std::to_string(search.getNowAsLong());
+                    }
+                  auto tspair = search.getTargetsAtIndex(i);
+                  std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
+                  std::cout << "IIS -- Target index: " << i << ", target string: " << tsStr << std::endl;
+
+                  std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
+                  std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
+                  portfolio->addSecurity(search.getConfig()->getSecurity());
+
+                  if (sideToRun != SideToRun::ShortOnly && mergingPhase)
+                    {
+                      std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_SelectedISLong.txt");
+                      std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleLongValidated.txt");
+                      PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
+                      matcher.countOccurences();
+                      bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                      if (exportOk && sideToRun == SideToRun::LongOnly)
+                        {
+                          std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                          if (sys->getNumPatterns() > 0)
+                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+                        }
+                    }
+                  if (sideToRun != SideToRun::LongOnly && mergingPhase)
+                    {
+                      std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedISShort.txt");
+                      std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleShortValidated.txt");
+                      PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
+                      matcher.countOccurences();
+                      bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                      if (exportOk && sideToRun == SideToRun::ShortOnly)
+                        {
+                          std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                          if (sys->getNumPatterns() > 0)
+                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
+                    }
+                  if (sideToRun == SideToRun::LongShort && mergingPhase)
+                    {
+                      std::string fileName1(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedISLong.txt");
+                      std::string fileName2(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedISShort.txt");
+                      std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedIS.txt");
+
+                      FileMatcher::mergeFiles(std::vector<boost::filesystem::path>{boost::filesystem::path(fileName1), boost::filesystem::path(fileName2)}, fileName);
+
+                      std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleValidated.txt");
+                      PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(), search.getSearchConfig()->getNumTimeFrames());
+                      matcher.countOccurences();
+                      bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                      if (exportOk)
+                        {
+                          std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                          if (sys->getNumPatterns() > 0)
+                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
+                    }
+
+                }
+            }
+
+
+          //only matching section
+          if (oosRun)
+            {
+              for (size_t i = 0; i < search.getTargetStopSize(); i++)
+                {
+                  std::string validateOOSNowString(validateOOSNowStringInput);
+                  if (validateOOSNowStringInput.empty())
+                    {
+                      search.run(Runner, false, sideToRun, i, patternSearchType);
+                      validateOOSNowString = std::to_string(search.getNowAsLong());
+                    }
+
+                  auto tspair = search.getTargetsAtIndex(i);
+                  std::string tsStr = std::to_string((tspair.first).getAsDouble()) + "_" + std::to_string((tspair.second).getAsDouble());
+                  std::cout << "OOS -- Target index: " << i << ", target string: " << tsStr << std::endl;
+
+                  std::string portfolioName(search.getConfig()->getSecurity()->getName() + std::string(" Portfolio"));
+                  std::shared_ptr<Portfolio<Num>> portfolio = std::make_shared<Portfolio<Num>>(portfolioName);
+                  portfolio->addSecurity(search.getConfig()->getSecurity());
+
+                  if (sideToRun != SideToRun::ShortOnly && mergingPhase)
+                    {
+                      std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
+                      PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod(), search.getSearchConfig()->getNumTimeFrames());
+                      matcher.countOccurences();
+                      matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+
+                    }
+                  if (sideToRun != SideToRun::LongOnly && mergingPhase)
+                    {
+                      std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
+                      PatternMatcher matcher(validateOOSNowString, tsStr, patternSearchType, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod(), search.getSearchConfig()->getNumTimeFrames());
+                      matcher.countOccurences();
+                      matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
+                    }
+
+                }
+            }
+        }
+      auto endTime = std::chrono::system_clock::now();
+      time_t endT = std::chrono::system_clock::to_time_t(endTime);
+      std::chrono::duration<double> elapsed = endTime - startTime;
+      std::cout << "Run finished at: " << std::ctime(&endT) << std::endl;
+      std::cout << "Seconds elapsed since strart: " << elapsed.count() << std::endl;
+      return 0;
     }
   else {
       return usage_error(v);

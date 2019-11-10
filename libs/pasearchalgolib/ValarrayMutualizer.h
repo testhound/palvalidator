@@ -76,8 +76,9 @@ namespace mkc_searchalgo
           int index = -1;
           double maxScore = -std::numeric_limits<double>::infinity();
           bool first = true;
-          redundancyMult += 1.0;
-          //std::cout << "New redundancy mult: " << redundancyMult << std::endl;
+          //redundancyMult += redundancySeedMultiplier * 0.5;
+          redundancyMult = redundancySeedMultiplier;
+          std::cout << "New redundancy mult: " << redundancyMult << std::endl;
           StrategyRepresentationType bestStrat;
           ResultStat<Decimal> selectedStatistics;
           for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: sortedResults)
@@ -129,7 +130,7 @@ namespace mkc_searchalgo
 
               if (redundancy > redundancyFilter * redundancyMult)
                 {
-                  //std::cout << "redundancy: " << redundancy << " exceeds filter: " << (redundancyFilter * redundancyMult)<< ", breaking out. " << std::endl;
+                  std::cout << "redundancy: " << redundancy << " exceeds filter: " << (redundancyFilter * redundancyMult)<< ", breaking out. " << std::endl;
                   continue;
                 }
 
@@ -155,8 +156,9 @@ namespace mkc_searchalgo
           else
             {
               //add selected strategy
-              std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << (maxScore + redundancyMult)/redundancyMult
-                        << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << (bestRedundancy / redundancyMult) << std::endl;
+              std::cout << mRunType << " - Round : " << mSelectedStrategies.size() << " adding strategy with score: " << maxScore
+                        << ", relevance: " << bestRelevance << ", activity: :" << bestActivity << ", redundancy: " << bestRedundancy << ", redundancy Mult: "
+                        << redundancyMult << ", adjusted redundancy: " << (bestRedundancy / redundancyMult) << std::endl;
               //mSelectedGroup.insert(mSelectedGroup.begin(), bestStrat.begin(), bestStrat.end());
               mSelectedStrategies.push_back(bestStrat);
               mSelectedStatistics.push_back(selectedStatistics);

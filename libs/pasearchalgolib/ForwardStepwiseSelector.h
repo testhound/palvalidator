@@ -36,8 +36,10 @@ namespace mkc_searchalgo {
                             const std::shared_ptr<SearchAlgoConfiguration<Decimal>>& searchConfiguration,
                             Decimal targetStopRatio,
                             std::shared_ptr<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>& survivingContainer):
-      TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getProfitFactorCriterion(), searchConfiguration->getSortMultiplier()),
-      TSurvivalPolicy(backtestProcessor, singlePA, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(), searchConfiguration->getPalProfitabilitySafetyFactor()),
+      TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getProfitFactorCriterion(),
+                      searchConfiguration->getSortMultiplier(), searchConfiguration->getStepRedundancyMultiplier()),
+      TSurvivalPolicy(backtestProcessor, singlePA, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(),
+                      searchConfiguration->getPalProfitabilitySafetyFactor(), searchConfiguration->getSurvivalFilterMultiplier()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
       mMinTrades(searchConfiguration->getMinTrades()),

@@ -21,13 +21,14 @@ namespace mkc_searchalgo
     MutualInfoSurvivalPolicy(const shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>>& processingPolicy,
                             std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
                           Decimal survivalCriterion, Decimal targetStopRatio, unsigned int maxConsecutiveLosersLimit,
-                          const Decimal& palSafetyFactor):
+                          const Decimal& palSafetyFactor, const Decimal& survivalFilterMultiplier):
       mSurvivalCriterion(survivalCriterion),
       mTargetStopRatio(targetStopRatio),
       mProcessingPolicy(processingPolicy),
       mMaxConsecutiveLosersLimit(maxConsecutiveLosersLimit),
       mPalProfitabilitySafetyFactor(palSafetyFactor),
-      mMutualizer(processingPolicy, singlePA, "Survival")
+      mMutualizer(processingPolicy, singlePA, "Survival"),
+      mSurvivalFilterMultiplier(survivalFilterMultiplier)
     {}
 
     void filterSurvivors()
@@ -71,7 +72,7 @@ namespace mkc_searchalgo
       std::cout << "Sorting survivors." << std::endl;
       std::sort(mResults.begin(), mResults.end(), Sorters::PALProfitabilitySorter<Decimal>::sort);
       std::cout << "Surival MaxRelMinRed Algorithm..." << std::endl;
-      mMutualizer.getMaxRelMinRed2(mResults, mResults.size(), 0.0, 2.0, 0.5);
+      mMutualizer.getMaxRelMinRed2(mResults, mResults.size(), 0.0, 1.0, mSurvivalFilterMultiplier.getAsDouble());
       return mMutualizer.getSelectedStrategies();
     }
 
@@ -102,6 +103,7 @@ namespace mkc_searchalgo
     unsigned int mMaxConsecutiveLosersLimit;
     Decimal mPalProfitabilitySafetyFactor;
     ValarrayMutualizer<Decimal, TSearchAlgoBacktester> mMutualizer;
+    Decimal mSurvivalFilterMultiplier;
 
   };
 

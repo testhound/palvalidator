@@ -60,7 +60,10 @@ namespace mkc_searchalgo
         std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
         std::vector<time_t> timeFrames,
         const std::shared_ptr<OHLCTimeSeries<Decimal>>& series,
-        unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation, Decimal palSafetyFactor)
+        unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation,
+                             Decimal palSafetyFactor,
+                             Decimal stepRedundancyMultiplier,
+                             Decimal survivalFilterMultiplier)
       :
       mMaxDepth(maxDepth),
       mMinTrades(minTrades),
@@ -75,7 +78,9 @@ namespace mkc_searchalgo
       mNumPermutations(numPermutations),
       mMinNumStratsFullPeriod(minNumStratsFullPeriod),
       mMinNumStratsBeforeValidation(minNumStratsBeforeValidation),
-      mPalSafetyFactor(palSafetyFactor)
+      mPalSafetyFactor(palSafetyFactor),
+      mStepRedundancyMultiplier(stepRedundancyMultiplier),
+      mSurvivalFilterMultiplier(survivalFilterMultiplier)
     {}
 
     SearchAlgoConfiguration (const SearchAlgoConfiguration& rhs)
@@ -91,7 +96,10 @@ namespace mkc_searchalgo
         mSeries(rhs.mSeries),
         mNumPermutations(rhs.mNumPermutations),
         mMinNumStratsFullPeriod(rhs.mMinNumStratsFullPeriod),
-        mMinNumStratsBeforeValidation(rhs.mMinNumStratsBeforeValidation)
+        mMinNumStratsBeforeValidation(rhs.mMinNumStratsBeforeValidation),
+        mPalSafetyFactor(rhs.mSafetyFactor),
+        mStepRedundancyMultiplier(rhs.mStepRedundancyMultiplier),
+        mSurvivalFilterMultiplier(rhs.mSurvivalFilterMultiplier)
     {}
 
     SearchAlgoConfiguration<Decimal>&
@@ -112,6 +120,9 @@ namespace mkc_searchalgo
 	mNumPermutations = rhs.mNumPermutations;
 	mMinNumStratsFullPeriod = rhs.mMinNumStratsFullPeriod;
 	mMinNumStratsBeforeValidation = rhs.mMinNumStratsBeforeValidation;
+	mPalSafetyFactor = rhs.mPalSafetyFactor;
+	mStepRedundancyMultiplier = rhs.mStepRedundancyMultiplier;
+	mSurvivalFilterMultiplier = rhs.mSurvivalFilterMultiplier;
 
       return *this;
     }
@@ -121,10 +132,14 @@ namespace mkc_searchalgo
 
     inline friend std::ostream& operator<< (std::ostream& strng, const SearchAlgoConfiguration<Decimal>& obj)
     {
-      return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mSortMultiplier << ", PassingStratNumPerRound: " << obj.mPassingStratNumPerRound
-                   << ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan << ", Targets&Stops#: "
-                   << obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size()
-                   << "\nValidation settings -- # of permutations: " << obj.mNumPermutations << ", Min # of strats full period: " << obj.mMinNumStratsFullPeriod << ", Min # of strats before validation: " << obj.mMinNumStratsBeforeValidation;
+      return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mSortMultiplier
+                   << ", PassingStratNumPerRound: " << obj.mPassingStratNumPerRound<< ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion
+                   << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan
+                   << ", Targets&Stops#: "<< obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size()
+                   << ", SafetyFactor: " << obj.mPalSafetyFactor << ", StepMultiplier: " << obj.mStepRedundancyMultiplier << ", survivalFilt: " << obj.mSurvivalFilterMultiplier
+                   << "\nValidation settings -- # of permutations: " << obj.mNumPermutations
+                   << ", Min # of strats full period: "<< obj.mMinNumStratsFullPeriod
+                   << ", Min # of strats before validation: " << obj.mMinNumStratsBeforeValidation;
     }
 
     unsigned int getMaxDepth() const { return mMaxDepth; }
@@ -163,6 +178,10 @@ namespace mkc_searchalgo
 
     const Decimal& getPalProfitabilitySafetyFactor() const { return mPalSafetyFactor; }
 
+    const Decimal& getStepRedundancyMultiplier() const { return mStepRedundancyMultiplier; }
+
+    const Decimal& getSurvivalFilterMultiplier() const {return mSurvivalFilterMultiplier; }
+
   private:
     unsigned int mMaxDepth;
     unsigned int mMinTrades;
@@ -178,6 +197,8 @@ namespace mkc_searchalgo
     unsigned int mMinNumStratsFullPeriod;
     unsigned int mMinNumStratsBeforeValidation;
     Decimal mPalSafetyFactor;
+    Decimal mStepRedundancyMultiplier;
+    Decimal mSurvivalFilterMultiplier;
   };
 
   class SearchAlgoConfigurationFileReader

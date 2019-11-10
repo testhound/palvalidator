@@ -54,17 +54,20 @@ namespace mkc_searchalgo
   {
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
-    io::CSVReader<12, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
+    io::CSVReader<14, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
 
     csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
-                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath", "PALSafetyFactor");
+                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
+                              "StepRedundancyMultiplier", "SurvivalFilterMultiplier");
 
     std::string maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
-    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath, palSafetyFactor;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath;
+    std::string validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier;
 
 
     csvConfigFile.read_row (maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
-                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath, validationConfigFilePath, palSafetyFactor);
+                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath,
+                            validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier);
 
     double palSafetyDbl = tryCast<double>(palSafetyFactor);
     if (palSafetyDbl > 0.9 || palSafetyDbl < 0.7)
@@ -183,7 +186,9 @@ namespace mkc_searchalgo
                                                               tryCast<unsigned int>(numPermutations),
                                                               tryCast<unsigned int>(numStratsFull),
                                                               tryCast<unsigned int>(numStratsBeforeValidation),
-                                                              Decimal(palSafetyDbl)
+                                                              Decimal(palSafetyDbl),
+                                                              Decimal(tryCast<double>(stepRedundancyMultiplier)),
+                                                              Decimal(tryCast<double>(survivalFilterMultiplier))
                                                               );
 
   }
