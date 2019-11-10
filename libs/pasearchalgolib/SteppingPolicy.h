@@ -24,12 +24,12 @@ namespace mkc_searchalgo
                          const std::shared_ptr<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>& singlePA,
                          size_t passingStratNumPerRound,
                          Decimal survivalCriterion,
-                         const Decimal& sortMultiplier,
+                         const Decimal& activityMultiplier,
                          const Decimal& stepRedundancyMultiplier):
       mProcessingPolicy(processingPolicy),
       mPassingStratNumPerRound(passingStratNumPerRound),
       mSurvivalCriterion(survivalCriterion),
-      mSortMultiplier(sortMultiplier),
+      mActivityMultiplier(activityMultiplier),
       mMutualizer(processingPolicy, singlePA, "Stepping"),
       mStepRedundancyMultiplier(stepRedundancyMultiplier)
       {}
@@ -43,7 +43,7 @@ namespace mkc_searchalgo
         int roundPasses = mPassingStratNumPerRound - static_cast<int>(mult * stepNo * mPassingStratNumPerRound);
         roundPasses = (roundPasses >= 0)? roundPasses: 0;
         std::cout << "Passing " << roundPasses << " strategies from round: " << stepNo << " (multiplier used: " << mult << ")." << std::endl;
-        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), roundPasses, mSortMultiplier.getAsDouble(), mStepRedundancyMultiplier.getAsDouble(), 1.0, mSurvivalCriterion);
+        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), roundPasses, mActivityMultiplier.getAsDouble(), mStepRedundancyMultiplier.getAsDouble(), 1.0, mSurvivalCriterion);
         return mMutualizer.getSelectedStrategies();
       }
 
@@ -51,7 +51,7 @@ namespace mkc_searchalgo
     shared_ptr<BacktestProcessor<Decimal, TSearchAlgoBacktester>> mProcessingPolicy;
     size_t mPassingStratNumPerRound;
     Decimal mSurvivalCriterion;
-    Decimal mSortMultiplier;
+    Decimal mActivityMultiplier;
     ValarrayMutualizer<Decimal, TSearchAlgoBacktester> mMutualizer;
     Decimal mStepRedundancyMultiplier;
   };

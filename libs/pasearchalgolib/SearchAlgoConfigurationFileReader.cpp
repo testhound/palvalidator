@@ -56,16 +56,16 @@ namespace mkc_searchalgo
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
     io::CSVReader<14, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
 
-    csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "SortMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
+    csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "ActivityMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
                              "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
                               "StepRedundancyMultiplier", "SurvivalFilterMultiplier");
 
-    std::string maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
+    std::string maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
     std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath;
     std::string validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier;
 
 
-    csvConfigFile.read_row (maxDepth, minTrades, sortMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
+    csvConfigFile.read_row (maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
                             maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath,
                             validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier);
 
@@ -175,7 +175,7 @@ namespace mkc_searchalgo
 
     return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
                                                               tryCast<unsigned int>(minTrades),
-                                                              Decimal(tryCast<double>(sortMultiplier)),
+                                                              Decimal(tryCast<double>(activityMultiplier)),
                                                               tryCast<unsigned int>(passingStratNumPerRound),
                                                               Decimal(tryCast<double>(profitFactorCritierion)),
                                                               tryCast<unsigned int>(maxConsecutiveLosers),

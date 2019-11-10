@@ -67,7 +67,7 @@ namespace mkc_searchalgo
       :
       mMaxDepth(maxDepth),
       mMinTrades(minTrades),
-      mSortMultiplier(sortMultiplier),
+      mActivityMultiplier(sortMultiplier),
       mPassingStratNumPerRound(passingStratNumPerRound),
       mProfitFactorCriterion(profitFactorCriterion),
       mMaxConsecutiveLosers(maxConsecutiveLosers),
@@ -86,7 +86,7 @@ namespace mkc_searchalgo
     SearchAlgoConfiguration (const SearchAlgoConfiguration& rhs)
       : mMaxDepth(rhs.mMaxDepth),
         mMinTrades(rhs.mMinTrades),
-        mSortMultiplier(rhs.mSortMultiplier),
+        mActivityMultiplier(rhs.mActivityMultiplier),
         mPassingStratNumPerRound(rhs.mPassingStratNumPerRound),
         mProfitFactorCriterion(rhs.mProfitFactorCriterion),
         mMaxConsecutiveLosers(rhs.mMaxConsecutiveLosers),
@@ -109,7 +109,7 @@ namespace mkc_searchalgo
 	return *this;
 	mMaxDepth = rhs.mMaxDepth;
 	mMinTrades = rhs.mMinTrades;
-	mSortMultiplier = rhs.mSortMultiplier;
+	mActivityMultiplier = rhs.mActivityMultiplier;
 	mPassingStratNumPerRound = rhs.mPassingStratNumPerRound;
 	mProfitFactorCriterion = rhs.mProfitFactorCriterion;
 	mMaxConsecutiveLosers = rhs.mMaxConsecutiveLosers;
@@ -132,7 +132,7 @@ namespace mkc_searchalgo
 
     inline friend std::ostream& operator<< (std::ostream& strng, const SearchAlgoConfiguration<Decimal>& obj)
     {
-      return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mSortMultiplier
+      return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mActivityMultiplier
                    << ", PassingStratNumPerRound: " << obj.mPassingStratNumPerRound<< ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion
                    << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan
                    << ", Targets&Stops#: "<< obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size()
@@ -146,7 +146,7 @@ namespace mkc_searchalgo
 
     unsigned int getMinTrades() const { return mMinTrades; }
 
-    const Decimal& getSortMultiplier() const { return mSortMultiplier; }
+    const Decimal& getActivityMultiplier() const { return mActivityMultiplier; }
 
     unsigned int getPassingStratNumPerRound() const { return mPassingStratNumPerRound; }
 
@@ -185,7 +185,7 @@ namespace mkc_searchalgo
   private:
     unsigned int mMaxDepth;
     unsigned int mMinTrades;
-    Decimal mSortMultiplier;
+    Decimal mActivityMultiplier;
     unsigned int mPassingStratNumPerRound;
     Decimal mProfitFactorCriterion;
     unsigned int mMaxConsecutiveLosers;
