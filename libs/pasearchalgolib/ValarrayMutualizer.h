@@ -84,7 +84,7 @@ namespace mkc_searchalgo
           redundancyMult = redundancySeedMultiplier;
           //std::cout << "New redundancy mult: " << redundancyMult << std::endl;
           StrategyRepresentationType bestStrat;
-          ResultStat<Decimal> selectedStatistics;
+          std::tuple<ResultStat<Decimal>, unsigned int, int> selectedStatistics;
           for (const std::tuple<ResultStat<Decimal>, unsigned int, int>& tup: sortedResults)
             {
               int ind = std::get<2>(tup);
@@ -123,7 +123,7 @@ namespace mkc_searchalgo
               if (mSelectedStrategies.size() == 0)
                 {
                   bestStrat = strat;
-                  selectedStatistics = stat;
+                  selectedStatistics = tup;
                   break;
                 }
               double redundancy;
@@ -143,7 +143,7 @@ namespace mkc_searchalgo
                 {
                   first = false;
                   bestStrat = strat;
-                  selectedStatistics = stat;
+                  selectedStatistics = tup;
                   maxScore = score;
                   bestActivity = activity;
                   bestRelevance = relevance;
@@ -289,7 +289,7 @@ namespace mkc_searchalgo
   public:
     const std::vector<StrategyRepresentationType>& getSelectedStrategies() const { return mSelectedStrategies; }
     //const std::vector<std::tuple<double,double,double>>& getRelActRed() const {return mSelectedRelActRed; }
-    const std::vector<ResultStat<Decimal>>& getSelectedStatistics() const { return mSelectedStatistics; }
+    const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& getSelectedStatistics() const { return mSelectedStatistics; }
 
   private:
     std::unordered_map<int, StrategyRepresentationType>& mStratMap;
@@ -298,7 +298,7 @@ namespace mkc_searchalgo
     std::unordered_map<unsigned int, double> mIndividualRedundancyPairValues;
     std::unordered_map<int, double> mIndexedSums;
     std::string mRunType;
-    std::vector<ResultStat<Decimal>> mSelectedStatistics;
+    std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mSelectedStatistics;
     //std::vector<std::tuple<double, double, double>> mSelectedRelActRed;
 
   };

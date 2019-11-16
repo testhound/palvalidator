@@ -98,7 +98,7 @@ namespace mkc_searchalgo
     {
       mResults.clear();
       mResults.shrink_to_fit();
-      mStratMap.clear();
+      //mStratMap.clear();
     }
 
   private:

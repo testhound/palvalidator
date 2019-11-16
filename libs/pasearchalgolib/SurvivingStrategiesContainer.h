@@ -30,9 +30,18 @@ namespace mkc_searchalgo
       std::cout << "After adding survivors in new round, items in now: " << mSurvivors.size() << std::endl;
     }
 
-    void addStatisticsPerRound(const std::vector<ResultStat<Decimal>>& roundStatistics)
+    void addStatisticsPerRound(const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& roundStatistics)
     {
       mStatistics.insert(mStatistics.end(), roundStatistics.begin(), roundStatistics.end());
+    }
+
+    template<class TSearchAlgoBacktester>
+    void removeRedundant(ValarrayMutualizer<Decimal, TSearchAlgoBacktester>& mutualizer)
+    {
+        std::cout << "REMOVING REDUNDANT in compiled survival strategies container." << std::endl;
+        mutualizer.getMaxRelMinRed(mStatistics, mStatistics.size(), 0.0, 1.0, 1.0);
+        mSurvivors = mutualizer.getSelectedStrategies();
+        mStatistics = mutualizer.getSelectedStatistics();
     }
 
     std::vector<std::vector<ComparisonEntryType>> getSurvivorsAsComparisons()
@@ -53,14 +62,14 @@ namespace mkc_searchalgo
 
     const std::vector<StrategyRepresentationType>& getSurvivors() const { return mSurvivors; }
 
-    const std::vector<ResultStat<Decimal>>& getStatistics() const { return mStatistics; }
+    const std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>>& getStatistics() const { return mStatistics; }
 
     size_t getNumSurvivors() const { return mSurvivors.size(); }
 
   private:
     std::shared_ptr<UniqueSinglePAMatrix<Decimal, TComparison>> mSinglePA;
     std::vector<StrategyRepresentationType> mSurvivors;
-    std::vector<ResultStat<Decimal>> mStatistics;
+    std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> mStatistics;
 
   };
 

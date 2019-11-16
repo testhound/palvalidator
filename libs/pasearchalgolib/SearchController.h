@@ -106,13 +106,13 @@ namespace mkc_searchalgo
     void exportSurvivingLongPatterns(const shared_ptr<Decimal>& profitTarget, const shared_ptr<Decimal>& stopLoss, const std::string& exportFileName)
     {
 
-        std::cout << "Exporting long strategies into file: " << exportFileName << std::endl;
+       std::cout << "Exporting long strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> survivingLong = mLongSurvivors->getSurvivorsAsComparisons();
-       std::vector<ResultStat<Decimal>> results = mLongSurvivors->getStatistics();
+       std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> results = mLongSurvivors->getStatistics();
        for (size_t i = 0; i < survivingLong.size(); ++i)
          {
-            const ResultStat<Decimal>& res = results[i];
+            const ResultStat<Decimal>& res = std::get<0>(results[i]);
             ComparisonToPalLongStrategy<Decimal> comp(survivingLong[i], mPatternIndex++, 0, const_cast<Decimal*>(&res.PALProfitability), const_cast<Decimal*>(&res.PayoffRatio), res.Trades, res.MaxLosers, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
          }
@@ -123,10 +123,10 @@ namespace mkc_searchalgo
        std::cout << "Exporting short strategies into file: " << exportFileName << std::endl;
        std::ofstream exportFile(exportFileName);
        std::vector<std::vector<ComparisonEntryType>> survivingShort = mShortSurvivors->getSurvivorsAsComparisons();
-       std::vector<ResultStat<Decimal>> results = mShortSurvivors->getStatistics();
+       std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> results = mShortSurvivors->getStatistics();
        for (size_t i = 0; i < survivingShort.size(); ++i)
          {
-            const ResultStat<Decimal>& res = results[i];
+            const ResultStat<Decimal>& res = std::get<0>(results[i]);
             ComparisonToPalShortStrategy<Decimal> comp(survivingShort[i], mPatternIndex++, 0, const_cast<Decimal*>(&res.PALProfitability), const_cast<Decimal*>(&res.PayoffRatio), res.Trades, res.MaxLosers, profitTarget.get(), stopLoss.get(), mPortfolio);
             LogPalPattern::LogPattern(comp.getPalPattern(), exportFile);
          }

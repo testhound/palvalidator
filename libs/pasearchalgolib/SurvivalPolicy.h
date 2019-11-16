@@ -77,10 +77,12 @@ namespace mkc_searchalgo
       return mMutualizer.getSelectedStrategies();
     }
 
-    std::vector<ResultStat<Decimal>> getUniqueStatistics()
+    std::vector<std::tuple<ResultStat<Decimal>, unsigned int, int>> getUniqueStatistics()
     {
       return mMutualizer.getSelectedStatistics();
     }
+
+    ValarrayMutualizer<Decimal, TSearchAlgoBacktester>& getMutualizer() { return mMutualizer; }
 
     const std::vector<StrategyRepresentationType>& getSurvivors() const {return mSurvivors;}
 

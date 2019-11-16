@@ -54,6 +54,7 @@ namespace mkc_searchalgo {
     void runSteps()
     {
       step(mMaxDepth);
+      mSurvivingContainer->removeRedundant(TSurvivalPolicy::getMutualizer());
     }
 
   private:
