@@ -39,7 +39,7 @@ namespace mkc_searchalgo {
       TSteppingPolicy(backtestProcessor, singlePA, searchConfiguration->getPassingStratNumPerRound(), searchConfiguration->getProfitFactorCriterion(),
                       searchConfiguration->getActivityMultiplier(), searchConfiguration->getStepRedundancyMultiplier()),
       TSurvivalPolicy(backtestProcessor, singlePA, searchConfiguration->getProfitFactorCriterion(), targetStopRatio, searchConfiguration->getMaxConsecutiveLosers(),
-                      searchConfiguration->getPalProfitabilitySafetyFactor(), searchConfiguration->getSurvivalFilterMultiplier()),
+                      searchConfiguration->getPalProfitabilitySafetyFactor(), searchConfiguration->getSurvivalFilterMultiplier(), searchConfiguration->getStepRedundancyMultiplier()),
       mBacktestProcessor(backtestProcessor),
       mSinglePa(singlePA),
       mMinTrades(searchConfiguration->getMinTrades()),

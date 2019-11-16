@@ -43,7 +43,7 @@ namespace mkc_searchalgo
         int roundPasses = mPassingStratNumPerRound - static_cast<int>(mult * stepNo * mPassingStratNumPerRound);
         roundPasses = (roundPasses >= 0)? roundPasses: 0;
         std::cout << "Passing " << roundPasses << " strategies from round: " << stepNo << " (multiplier used: " << mult << ")." << std::endl;
-        mMutualizer.getMaxRelMinRed2(mProcessingPolicy->getResults(), roundPasses, mActivityMultiplier.getAsDouble(), mStepRedundancyMultiplier.getAsDouble(), 1.0, mSurvivalCriterion);
+        mMutualizer.getMaxRelMinRed(mProcessingPolicy->getResults(), roundPasses, mActivityMultiplier.getAsDouble(), mStepRedundancyMultiplier.getAsDouble(), 1.0, mSurvivalCriterion);
         return mMutualizer.getSelectedStrategies();
       }
 
