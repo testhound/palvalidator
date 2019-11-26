@@ -143,7 +143,7 @@ namespace mkc_timeseries
     void runPermutationTests()
     {
       // Create a security with just the OOS time series
-      std::shared_ptr<Security<Decimal>> tempSecurity = this->mMonteCarlloConfiguration->getSecurity();
+      std::shared_ptr<Security<Decimal>> tempSecurity = this->mMonteCarloConfiguration->getSecurity();
       auto oosTimeSeries (FilterTimeSeries<Decimal> (*tempSecurity->getTimeSeries(),
                                                      this->mMonteCarloConfiguration->getOosDateRange()));
 

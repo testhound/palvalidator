@@ -2,6 +2,8 @@
 #include "SearchRun.h"
 #include "PatternMatcher.h"
 #include "PALMonteCarloValidation.h"
+#include "PatternReRunner.h"
+
 //#include <chrono>
 //#include <ctime>
 
@@ -146,6 +148,11 @@ int main(int argc, char **argv)
       SearchRun search(v[1], v[2]);
 
       std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
+      std::string mergedPath = "Merged_1573400279.txt";
+      std::string histPath = "CL_RAD_Hourly.txt_timeframe_1";
+      DateRange backtestingDatesIS(search.getConfig()->getInsampleDateRange().getFirstDate(), search.getConfig()->getInsampleDateRange().getLastDate());
+      PatternReRunner rerunner(mergedPath, histPath, symbolStr, backtestingDatesIS, search.getSearchConfig()->getProfitFactorCriterion());
+      rerunner.backtest();
 
       for (ComparisonType patternSearchType: patternSearchTypes)
         {
