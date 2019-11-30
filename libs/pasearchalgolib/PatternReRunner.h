@@ -102,16 +102,16 @@ class PatternReRunner
 {
 public:
   PatternReRunner(const std::string& irPath, const std::string& historicDataFilePathStr, const std::string& tickerSymbol,
-                  DateRange backtestingDates, Decimal criterion, const std::string& exportFileName):
+                  DateRange backtestingDates, Decimal criterion, const std::string& exportFileName, const std::string& dataFileFormat):
     mPatternsToTest(readFile(irPath)),
-    mSecurity(makeSecurity(historicDataFilePathStr, tickerSymbol)),
+    mSecurity(makeSecurity(historicDataFilePathStr, tickerSymbol, dataFileFormat)),
     mCriterion(criterion),
     mExportFile(exportFileName)
   {
     mBacktester = std::make_shared<DailyBackTester<Decimal>>(backtestingDates.getFirstDate(),
                                                              backtestingDates.getLastDate());
   }
-  std::shared_ptr<mkc_timeseries::Security<Decimal>> makeSecurity(const std::string& historicDataFilePathStr, const std::string& tickerSymbol)
+  std::shared_ptr<mkc_timeseries::Security<Decimal>> makeSecurity(const std::string& historicDataFilePathStr, const std::string& tickerSymbol, const std::string& dataFileFormat)
   {
     std::cout << "Reading timeseries file: " << historicDataFilePathStr << " for symbol: " << tickerSymbol << std::endl;
     boost::filesystem::path historicDataFilePath (historicDataFilePathStr);
@@ -122,7 +122,7 @@ public:
     TimeFrame::Duration backTestingTimeFrame = TimeFrame::Duration::DAILY;
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
-                                                                                     "PAL",
+                                                                                     dataFileFormat,
                                                                                      backTestingTimeFrame,
                                                                                      getVolumeUnit(attributes),
                                                                                      attributes->getTick());

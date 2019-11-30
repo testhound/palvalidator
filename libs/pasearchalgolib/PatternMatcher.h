@@ -87,8 +87,12 @@ namespace mkc_searchalgo
         {
           std::string symbolStr = config->getSecurity()->getSymbol();
           std::string histPathBase = symbolStr + "_RAD_Hourly.txt_timeframe_" + std::to_string(i);
+          std::string dataFileFormat = "PAL";
           if (i == 0)
-            histPathBase = symbolStr + "_RAD_Daily.txt";
+            {
+              histPathBase = symbolStr + "_RAD_Daily.txt";
+              dataFileFormat = config->getDataFileFormat();
+            }
           std::string histPath;
           std::remove_copy(histPathBase.begin(), histPathBase.end(), std::back_inserter(histPath), '@');
 
@@ -101,13 +105,13 @@ namespace mkc_searchalgo
           if (inSampleOnly)
             {
               DateRange backtestingDates(config->getInsampleDateRange().getFirstDate(), config->getInsampleDateRange().getLastDate());
-              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName);
+              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName, dataFileFormat);
               rerunner.backtest(Runner);
             }
           else
             {
               DateRange backtestingDates(config->getInsampleDateRange().getFirstDate(), config->getOosDateRange().getLastDate());
-              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName);
+              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName, dataFileFormat);
               rerunner.backtest(Runner);
             }
         }

@@ -55,7 +55,7 @@ namespace mkc_searchalgo
 
     static void mergeFiles(std::vector<boost::filesystem::path> files, const std::string& targetFileName)
     {
-      std::ofstream target(targetFileName, std::ios_base::binary);
+      std::ofstream target(targetFileName, std::ios::app);
       for (const boost::filesystem::path & f : files)
         {
           if (f.string() == targetFileName)
@@ -64,8 +64,19 @@ namespace mkc_searchalgo
               std::cout << excString << std::endl;
               throw std::runtime_error(excString);
             }
-          std::ifstream fle(f.string(), std::ios_base::binary);
-          target << fle.rdbuf();
+          std::cout << f.string() << std::endl;
+          std::ifstream fle(f.string());
+          if (!fle.is_open())
+            {
+              throw std::runtime_error("Input file" + f.string() + " could not be opened.");
+            }
+          else if (!target.is_open()) {
+              throw std::runtime_error("Target file: " + targetFileName + " could not be opened.");
+            }
+          else
+            {
+              target << fle.rdbuf();
+            }
         }
     }
 

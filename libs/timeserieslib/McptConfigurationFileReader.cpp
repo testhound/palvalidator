@@ -137,7 +137,8 @@ namespace mkc_timeseries
     return std::make_shared<McptConfiguration<Decimal>>(getBackTester(backTestingTimeFrame, ooSampleDates),
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),
-						  system, inSampleDates, ooSampleDates);
+						  system, inSampleDates, ooSampleDates,
+						  historicDataFormatStr);
   }
 
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
