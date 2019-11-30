@@ -13,6 +13,7 @@
 #include <boost/filesystem.hpp>
 #include "ComparisonToPalStrategy.h"
 #include "LogPalPattern.h"
+#include "PatternReRunner.h"
 
 using namespace mkc_timeseries;
 
@@ -60,26 +61,61 @@ namespace mkc_searchalgo
   class  PatternMatcher
   {
   public:
-    PatternMatcher(const std::string& filePatternExpr, const std::string& filePatternExpr2, ComparisonType patternSearchType, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats, size_t numTimeFrames):
+    template <class McptConfig, class SearchConfig>
+    PatternMatcher(const std::string& filePatternExpr, const std::string& filePatternExpr2, ComparisonType patternSearchType, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats, size_t numTimeFrames,
+                   const std::shared_ptr<McptConfig>& config, const std::shared_ptr<SearchConfig>& searchConfig, runner& Runner):
       mIsLong(isLong),
       mMinNumOfStrats(minNumOfStrats),
       mExportPatternIndex(0)
     {
       std::string side = (isLong)? "Long": "Short";
       std::string typePattern = (patternSearchType == ComparisonType::Extended)? "*": std::string(ToString(patternSearchType));
+      //Combining all patterns into a single file
+      std::string mergeSearchPattern = "./" + typePattern + "_Patterns" + side + "_" + filePatternExpr + "_" + "*" + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
+      std::string allPatternsForAllRunsFile = "./CombinedAll_Patterns" + side + "_" + filePatternExpr + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
+      std::ifstream ifile(allPatternsForAllRunsFile.c_str());
+      if (ifile)
+        throw std::runtime_error(allPatternsForAllRunsFile + " already exists, remove it before rerunning!");
+
+      std::cout << "Combining patterns:" << mergeSearchPattern << ", targetFile: " << allPatternsForAllRunsFile << std::endl;
+      std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", mergeSearchPattern);
+      std::cout << "Merging " << filePaths.size() << " patterns into file: " << allPatternsForAllRunsFile << std::endl;
+      FileMatcher::mergeFiles(filePaths, allPatternsForAllRunsFile);
+
+      //rerun per timeframe slice
       for (size_t i = 0; i < numTimeFrames + 1; i++)
         {
-          std::string mergeSearchPattern = "./" + typePattern + "_Patterns" + side + "_" + filePatternExpr + "_" + std::to_string(i) + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
-          std::string targetFile = "./Merged_Patterns" + side + "_" + filePatternExpr + "_" + std::to_string(i) + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
-          std::cout << "Merge pattern: " << i << ":" << mergeSearchPattern << ", targetFile: " << targetFile << std::endl;
-          std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", mergeSearchPattern);
-          FileMatcher::mergeFiles(filePaths, targetFile);
-        }
-      std::string searchPattern = "./Merged_Patterns" + side + "_" + filePatternExpr + "_*_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
-      std::cout << "Searching pattern: " << searchPattern << std::endl;
-      std::vector<boost::filesystem::path> filePaths = FileMatcher::getFiles(".", searchPattern);
+          std::string symbolStr = config->getSecurity()->getSymbol();
+          std::string histPathBase = symbolStr + "_RAD_Hourly.txt_timeframe_" + std::to_string(i);
+          if (i == 0)
+            histPathBase = symbolStr + "_RAD_Daily.txt";
+          std::string histPath;
+          std::remove_copy(histPathBase.begin(), histPathBase.end(), std::back_inserter(histPath), '@');
 
-      for (const boost::filesystem::path& path: filePaths)
+          std::string outputFileName = "./CombinedRerun_Patterns" + side + "_" + filePatternExpr + "_" + std::to_string(i) + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
+          std::ifstream ifile(outputFileName.c_str());
+          if (ifile)
+            throw std::runtime_error(outputFileName + " already exists, remove it before rerunning!");
+
+          std::cout << "Symbol is: " << symbolStr << ", historical data to run on: " << histPath << ", outputFileName: " << outputFileName << std::endl;
+          if (inSampleOnly)
+            {
+              DateRange backtestingDates(config->getInsampleDateRange().getFirstDate(), config->getInsampleDateRange().getLastDate());
+              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName);
+              rerunner.backtest(Runner);
+            }
+          else
+            {
+              DateRange backtestingDates(config->getInsampleDateRange().getFirstDate(), config->getOosDateRange().getLastDate());
+              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName);
+              rerunner.backtest(Runner);
+            }
+        }
+      std::string searchPattern = "./CombinedRerun_Patterns" + side + "_" + filePatternExpr + "_*_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
+      std::cout << "Searching pattern: " << searchPattern << std::endl;
+      std::vector<boost::filesystem::path> rerunFilePaths = FileMatcher::getFiles(".", searchPattern);
+
+      for (const boost::filesystem::path& path: rerunFilePaths)
         {
           populateOccurences(path, mMultiOccur, mSingleOccur, isLong);
         }
