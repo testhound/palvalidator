@@ -55,7 +55,7 @@ namespace mkc_searchalgo
 
     static void mergeFiles(std::vector<boost::filesystem::path> files, const std::string& targetFileName)
     {
-      std::ofstream target(targetFileName, std::ios::app);
+      std::ofstream target(targetFileName);
       for (const boost::filesystem::path & f : files)
         {
           if (f.string() == targetFileName)

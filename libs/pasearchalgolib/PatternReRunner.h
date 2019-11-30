@@ -177,6 +177,7 @@ public:
         resultsOrErrorsVector.emplace_back(Runner.post([ this
                                                        , patternToTest
                                                        , strategyName
+                                                       , strategyNumber
                                                        , longStrategy]() -> void {
 
 
@@ -190,7 +191,8 @@ public:
               {
                 boost::mutex::scoped_lock Lock(mOutFileLock);
                 LogPalPattern::LogPattern(patternToTest, mExportFile);
-                std::cout << "Rerunning, pass: " << strategyName << ": profit factor: " << profitFactor.getAsDouble() << ", trades: " << tradeNum << std::endl;
+                if (strategyNumber % 100 == 0)
+                  std::cout << "Rerunning, pass: " << strategyName << ": profit factor: " << profitFactor.getAsDouble() << ", trades: " << tradeNum << std::endl;
               }
           }));
         strategyNumber++;
@@ -225,6 +227,7 @@ public:
         resultsOrErrorsVector.emplace_back(Runner.post([ this
                                                        , patternToTest
                                                        , strategyName
+                                                       , strategyNumber
                                                        , shortStrategy]() -> void {
 
 
@@ -238,9 +241,9 @@ public:
               {
                 boost::mutex::scoped_lock Lock(mOutFileLock);
                 LogPalPattern::LogPattern(patternToTest, mExportFile);
-                std::cout << "Rerunning, pass: " << strategyName << ": profit factor: " << profitFactor.getAsDouble() << ", trades: " << tradeNum << std::endl;
+                if (strategyNumber % 100 == 0)
+                  std::cout << "Rerunning, pass: " << strategyName << ": profit factor: " << profitFactor.getAsDouble() << ", trades: " << tradeNum << std::endl;
               }
-            std::cout << strategyName << ": profit factor: " << profitFactor.getAsDouble() << ", trades: " << tradeNum << std::endl;
           }));
         strategyNumber++;
       }
