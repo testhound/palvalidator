@@ -138,7 +138,8 @@ namespace mkc_timeseries
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),
 						  system, inSampleDates, ooSampleDates,
-						  historicDataFormatStr);
+						  historicDataFormatStr,
+						  historicDataFilePathStr);
   }
 
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,

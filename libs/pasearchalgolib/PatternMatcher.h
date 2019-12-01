@@ -90,7 +90,7 @@ namespace mkc_searchalgo
           std::string dataFileFormat = "PAL";
           if (i == 0)
             {
-              histPathBase = symbolStr + "_RAD_Daily.txt";
+              histPathBase = config->getDataFilePath();
               dataFileFormat = config->getDataFileFormat();
             }
           std::string histPath;
