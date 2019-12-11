@@ -32,7 +32,7 @@ namespace mkc_searchalgo
       mSeries(series),
       mPatternIndex(0)
     {}
-    void prepare(ComparisonType patternSearchType)
+    void prepare(ComparisonType patternSearchType, bool inSampleOnly)
     {
       std::string portfolioName(mConfiguration->getSecurity()->getName() + std::string(" Portfolio"));
       mPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
@@ -44,8 +44,20 @@ namespace mkc_searchalgo
 
       std::cout << "Preparing controller with timeseries of size: " << mSeries->getNumEntries() << std::endl;
 
+      const DateRange& iisDates = mConfiguration->getInsampleDateRange();
+      const DateRange& oosDates = mConfiguration->getOosDateRange();
+      auto startDate = iisDates.getFirstDate();
+      auto endDate = iisDates.getLastDate();
+      if (!inSampleOnly)
+        endDate = oosDates.getLastDate();
+
       for (; it != mSeries->endRandomAccess(); it++)
-      {
+      {       
+          //Skip if not the sought dates.
+          const auto& seriesDate = mSeries->getDateValue(it, 0);
+          if (seriesDate < startDate || seriesDate > endDate)
+            continue;
+
           const Decimal& cOpen = mSeries->getOpenValue (it, 0);
           const Decimal& cHigh = mSeries->getHighValue (it, 0);
           const Decimal& cLow = mSeries->getLowValue (it, 0);
@@ -60,8 +72,9 @@ namespace mkc_searchalgo
       std::cout << " Comparisons have been generated. " << std::endl;
       std::cout << " Full comparisons universe #: " << mComparisonGenerator->getComparisonsCount() << std::endl;
       std::cout << " Unique comparisons #: " << mComparisonGenerator->getUniqueComparisons().size() << std::endl;
+      std::cout << " Dates used #: " << mComparisonGenerator->getDateIndexCount() << std::endl;
 
-      mPaMatrix = std::make_shared<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>(mComparisonGenerator, mSeries->getNumEntries());
+      mPaMatrix = std::make_shared<UniqueSinglePAMatrix<Decimal, std::valarray<Decimal>>>(mComparisonGenerator, mComparisonGenerator->getDateIndexCount());
       mLongSurvivors = std::make_shared<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>(mPaMatrix);
       mShortSurvivors = std::make_shared<SurvivingStrategiesContainer<Decimal, std::valarray<Decimal>>>(mPaMatrix);;
 

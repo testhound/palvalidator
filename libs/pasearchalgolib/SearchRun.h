@@ -81,7 +81,7 @@ namespace mkc_searchalgo
                   std::cout << "Parsed search algo config: " << this->mSearchConfigFileName << std::endl;
                   std::cout << (*searchConfig) << std::endl;
                   SearchController<Decimal> controller(configuration, searchConfig->getTimeSeries(), searchConfig);
-                  controller.prepare(patternSearchType);
+                  controller.prepare(patternSearchType, inSampleOnly);
                   if (side)
                     {
                       controller.run<true>(profitTarget, stopLoss, inSampleOnly);

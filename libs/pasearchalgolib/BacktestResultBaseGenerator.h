@@ -112,6 +112,7 @@ namespace mkc_searchalgo {
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
       unsigned long i = 0;
+      std::vector<boost::gregorian::date> validDates;
 
       for (; it != mSeries->endRandomAccess(); it++)
       {
@@ -130,13 +131,13 @@ namespace mkc_searchalgo {
               if (mInSampleOnly)
                 {
                   if (fitBetweenInSampleDates(startDate) != startDate)
-                    break;
+                    continue;
                   interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
                 }
               else
                 {
                   if (fitBetweenIsOosDates(startDate) != startDate)
-                    break;
+                    continue;
                   interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenIsOosDates(endDate));
                 }
 
@@ -144,7 +145,7 @@ namespace mkc_searchalgo {
               interimBacktester->backtest();
               std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy = (*(interimBacktester->beginStrategies()));
               ClosedPositionHistory<Decimal> closedPositions = backTesterStrategy->getStrategyBroker().getClosedPositionHistory();
-
+              validDates.push_back(orderDate);
               if (closedPositions.getNumPositions() > 0)
                 {
                   std::pair<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>> firstPos = *(closedPositions.beginTradingPositions());
@@ -159,14 +160,17 @@ namespace mkc_searchalgo {
 
       }
       //the crux: create (not so sparse) vector of trading result per signal-date.
-      std::valarray<Decimal> arr(Decimal(0.0), mSeries->getNumEntries());    //initialize to all 0-es
+      std::valarray<Decimal> arr(Decimal(0.0), validDates.size());    //initialize to all 0-es
       //then the number of bars that it should occupy
-      std::valarray<unsigned int> arrNumBars(static_cast<unsigned int>(0), mSeries->getNumEntries());
+      std::valarray<unsigned int> arrNumBars(static_cast<unsigned int>(0), validDates.size());
 
       size_t  iCounter = 0; //offsetting first bar problem
       for (auto it = mSeries->beginRandomAccess(); it != mSeries->endRandomAccess(); it++)
         {
-          typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(mSeries->getDateValue(it, 0));
+          const auto& seriesDate = mSeries->getDateValue(it, 0);
+          if (std::find(validDates.begin(), validDates.end(), seriesDate) == validDates.end())
+            continue;
+          typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(seriesDate);
 
           if ( mapIt != tradesMap.end())
             {

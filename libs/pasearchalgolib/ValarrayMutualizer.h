@@ -134,7 +134,7 @@ namespace mkc_searchalgo
 
               if (redundancy >= redundancyFilter * redundancyMult)
                 {
-//                  std::cout << "redundancy: " << redundancy << " exceeds filter: " << (redundancyFilter * redundancyMult)<< ", breaking out. " << std::endl;
+                  //std::cout << "redundancy: " << redundancy << " exceeds filter: " << (redundancyFilter * redundancyMult)<< ", breaking out. " << std::endl;
                   continue;
                 }
 

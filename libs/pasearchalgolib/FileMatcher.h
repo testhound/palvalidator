@@ -75,7 +75,10 @@ namespace mkc_searchalgo
             }
           else
             {
-              target << fle.rdbuf();
+              if (fle.rdbuf()->in_avail() > 0)
+                target << fle.rdbuf();
+              else
+                std::cout << "Empty file: " << f.string() << std::endl;
             }
         }
     }

@@ -92,6 +92,8 @@ namespace mkc_searchalgo
 
     const std::set<ComparisonEntryType>& getUniqueComparisons() const { return mUniqueComparisons; }
 
+    unsigned int getDateIndexCount() const { return mDateIndex; }
+
     const unsigned int& getComparisonsCount() const { return mComparisonsCount; }
 
     void addNewLastBar(const Decimal& open, const Decimal& high, const Decimal& low, const Decimal& close)

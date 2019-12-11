@@ -171,7 +171,7 @@ namespace mkc_searchalgo {
   {
     reset();
     if (occurences.size() != mBacktestResultBase.size())
-      throw;
+      throw std::runtime_error("BacktesterBase size is: " + std::to_string(mBacktestResultBase.size()) + " whilst occurrences: " + std::to_string(occurences.size()));
     //generate results for all possible entries
     std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
     int nextSkipStart = -1;
