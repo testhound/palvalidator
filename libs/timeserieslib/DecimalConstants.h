@@ -21,7 +21,9 @@ namespace mkc_timeseries
       static Decimal DecimalOnePointFive;
       static Decimal DecimalMinusOne;
       static Decimal DecimalTwo;
+      static Decimal DecimalThree;
       static Decimal DecimalMinusTwo;
+      static Decimal DecimalMinusThree;
       static Decimal EquityTick;
       static Decimal SignificantPValue;
       static Decimal DefaultFDR;               // Default False Discovery Rate
@@ -48,6 +50,11 @@ namespace mkc_timeseries
     DecimalConstants<Decimal>::DecimalTwo(DecimalConstants<Decimal>::createDecimal("2.0"));
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalMinusTwo(DecimalConstants<Decimal>::createDecimal("-2.0"));
+
+  template <class Decimal> Decimal 
+    DecimalConstants<Decimal>::DecimalThree(DecimalConstants<Decimal>::createDecimal("3.0"));
+  template <class Decimal> Decimal 
+    DecimalConstants<Decimal>::DecimalMinusThree(DecimalConstants<Decimal>::createDecimal("-3.0"));
 
   template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalOne(1.0);
   template <class Decimal> Decimal 

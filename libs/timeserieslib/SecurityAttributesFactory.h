@@ -222,6 +222,114 @@ namespace mkc_timeseries
 		       DecimalConstants<Decimal>::DecimalMinusTwo,
 		       boost::gregorian::from_undelimited_string("20060711"));
 
+      addLeveragedETF (std::string("SCO"), 
+		       std::string("ProShares UltraShort Bloomberg Crude Oil"), 
+		       createDecimal("1.25"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20081124"));
+
+      addLeveragedETF (std::string("UCO"), 
+		       std::string("ProShares Ultra Bloomberg Crude Oil"), 
+		       createDecimal("1.27"),
+		       DecimalConstants<Decimal>::DecimalTwo,
+		       boost::gregorian::from_undelimited_string("20081125"));
+
+      addLeveragedETF (std::string("TNA"), 
+		       std::string("Direxion Daily Small Cap Bull 3x Shares"), 
+		       createDecimal("1.14"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20081105"));
+
+      addLeveragedETF (std::string("TZA"), 
+		       std::string("Direxion Daily Small Cap Bear 3X Shares"), 
+		       createDecimal("1.11"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20081105"));
+
+      addLeveragedETF (std::string("NUGT"), 
+		       std::string("Direxion Daily Gold Miners Index Bull 3X Shares"), 
+		       createDecimal("1.23"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20101208"));
+
+      addLeveragedETF (std::string("DUST"), 
+		       std::string("Direxion Daily Gold Miners Index Bear 3x Shares"), 
+		       createDecimal("1.05"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20101208"));
+
+      addLeveragedETF (std::string("SPXL"), 
+		       std::string("Direxion Daily S&P 500 Bull 3X Shares"), 
+		       createDecimal("1.02"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20081105"));
+
+      addLeveragedETF (std::string("SPXS"), 
+		       std::string("Direxion Daily S&P 500 Bear 3X Shares"), 
+		       createDecimal("1.08"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20081105"));
+
+      addLeveragedETF (std::string("SOXL"), 
+		       std::string("Direxion Daily Semiconductor Bull 3X Shares"), 
+		       createDecimal("0.99"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20100311"));
+
+      addLeveragedETF (std::string("SOXS"), 
+		       std::string("Direxion Daily Semiconductor Bear 3X Shares"), 
+		       createDecimal("1.08"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20100311"));
+
+      addLeveragedETF (std::string("TQQQ"), 
+		       std::string("ProShares UltraPro QQQ"), 
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20100209"));
+
+      addLeveragedETF (std::string("SQQQ"), 
+		       std::string("ProShares UltraPro Short QQQ"), 
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20100209"));
+
+      addLeveragedETF (std::string("LABD"), 
+		       std::string("Direxion Daily S&P Biotech Bear 3X Shares"), 
+		       createDecimal("1.11"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20150528"));
+
+      addLeveragedETF (std::string("LABU"), 
+		       std::string("Direxion Daily S&P Biotech Bull 3X Shares"), 
+		       createDecimal("1.12"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20150528"));
+
+      addLeveragedETF (std::string("FAS"), 
+		       std::string("Direxion Daily Financial Bull 3x Shares"), 
+		       createDecimal("1.00"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20081106"));
+
+      addLeveragedETF (std::string("FAZ"), 
+		       std::string("Direxion Daily Financial Bear 3X Shares"), 
+		       createDecimal("1.07"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20081106"));
+
+      addLeveragedETF (std::string("YINN"), 
+		       std::string("Direxion Daily FTSE China Bull 3X Shares"), 
+		       createDecimal("1.52"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20091203"));
+
+      addLeveragedETF (std::string("YANG"), 
+		       std::string("Direxion Daily FTSE China Bear 3X Shares"), 
+		       createDecimal("1.08"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20091203"));
+
       addUnLeveragedETF (std::string("GDX"), 
 			 std::string("Van Eck Gold Miners ETF"),
 			 createDecimal("0.52"),
