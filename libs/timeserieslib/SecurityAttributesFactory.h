@@ -482,6 +482,7 @@ namespace mkc_timeseries
       std::string milkFuturesSymbol("@DA");
       std::string coffeeFuturesSymbol("@KC");
       std::string sugarFuturesSymbol("@SB");
+      std::string cocoaFuturesSymbol("@CC");
       
       auto cottonAttributes = 
 	std::make_shared<FuturesSecurityAttributes<Decimal>>(cottonFuturesSymbol, 
@@ -518,6 +519,14 @@ namespace mkc_timeseries
       mSecurityAttributes.insert(std::make_pair(sugarFuturesSymbol, 
 						sugarAttributes));
 
+
+      auto cocoaAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(sugarFuturesSymbol, 
+							     "Cocoa Futures",
+							     createDecimal("10.0"),
+							     createDecimal("1.0"));
+      mSecurityAttributes.insert(std::make_pair(cocoaFuturesSymbol, 
+						cocoaAttributes));
 
     }
 
