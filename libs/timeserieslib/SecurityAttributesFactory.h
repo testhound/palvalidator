@@ -521,7 +521,7 @@ namespace mkc_timeseries
 
 
       auto cocoaAttributes = 
-	std::make_shared<FuturesSecurityAttributes<Decimal>>(sugarFuturesSymbol, 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(cocoaFuturesSymbol, 
 							     "Cocoa Futures",
 							     createDecimal("10.0"),
 							     createDecimal("1.0"));
@@ -615,6 +615,8 @@ namespace mkc_timeseries
     void initializeMetalsFuturesAttributes()
     {
       std::string goldFuturesSymbol("@GC");
+      std::string copperFuturesSymbol("@HG");
+      std::string platinumFuturesSymbol("@PL");
 
       auto goldAttributes = 
 	std::make_shared<FuturesSecurityAttributes<Decimal>>(goldFuturesSymbol, 
@@ -623,6 +625,25 @@ namespace mkc_timeseries
 						     createDecimal("0.10"));
       mSecurityAttributes.insert(std::make_pair(goldFuturesSymbol,
 						goldAttributes));
+
+
+      auto copperAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(copperFuturesSymbol, 
+						     "Copper Futures",
+						     createDecimal("25000.0"),
+						     createDecimal("0.0005"));
+      mSecurityAttributes.insert(std::make_pair(copperFuturesSymbol,
+						copperAttributes));
+
+      auto platinumAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(platinumFuturesSymbol, 
+						     "Platinum Futures",
+						     createDecimal("50.0"),
+						     createDecimal("0.10"));
+      mSecurityAttributes.insert(std::make_pair(platinumFuturesSymbol,
+						platinumAttributes));
+
+
     }
 
     void initializeEnergyFuturesAttributes()
