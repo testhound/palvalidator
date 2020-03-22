@@ -584,6 +584,7 @@ namespace mkc_timeseries
     void initializeGrainFuturesAttributes()
     {
       std::string cornFuturesSymbol("@C");
+      std::string soyBeanMealFuturesSymbol("@SM");
 
       auto cornAttributes = 
 	std::make_shared<FuturesSecurityAttributes<Decimal>>(cornFuturesSymbol, 
@@ -596,6 +597,15 @@ namespace mkc_timeseries
       addFuturesAttributes (std::string("@S"), std::string("Soybean Futures"),
 			    createDecimal("50.00"), createDecimal("0.25"));
 
+
+      auto soyBeanMealAttributes = 
+	std::make_shared<FuturesSecurityAttributes<Decimal>>(soyBeanMealFuturesSymbol, 
+						     "SoyBean Meanl Futures",
+						     createDecimal("100.0"),
+						     createDecimal("0.1"));
+
+      mSecurityAttributes.insert(std::make_pair(soyBeanMealFuturesSymbol,
+						soyBeanMealAttributes));
     }
 
     void initializeMeatFuturesAttributes()
