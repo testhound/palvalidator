@@ -577,7 +577,11 @@ namespace mkc_timeseries
 			    createDecimal("125000.00"), createDecimal("0.00005"));
 
       addFuturesAttributes (std::string("@BP"), std::string("British Pound Futures"),
+			    createDecimal("62500.00"), createDecimal("0.0001"));
+
+      addFuturesAttributes (std::string("@SF"), std::string("Swiss Franc"),
 			    createDecimal("125000.00"), createDecimal("0.0001"));
+
     }
 
     
@@ -597,10 +601,12 @@ namespace mkc_timeseries
       addFuturesAttributes (std::string("@S"), std::string("Soybean Futures"),
 			    createDecimal("50.00"), createDecimal("0.25"));
 
+      addFuturesAttributes (std::string("@W"), std::string("Wheat"),
+			    createDecimal("50.00"), createDecimal("0.25"));
 
       auto soyBeanMealAttributes = 
 	std::make_shared<FuturesSecurityAttributes<Decimal>>(soyBeanMealFuturesSymbol, 
-						     "SoyBean Meanl Futures",
+						     "SoyBean Meal Futures",
 						     createDecimal("100.0"),
 						     createDecimal("0.1"));
 
@@ -653,6 +659,8 @@ namespace mkc_timeseries
       mSecurityAttributes.insert(std::make_pair(platinumFuturesSymbol,
 						platinumAttributes));
 
+      addFuturesAttributes (std::string("@SI"), std::string("Silver"),
+			    createDecimal("5000.00"), createDecimal("0.005"));
 
     }
 
@@ -670,6 +678,9 @@ namespace mkc_timeseries
 
       addFuturesAttributes (std::string("@NG"), std::string("Natural Gas Futures"),
 			    createDecimal("10000.00"), createDecimal("0.001"));
+
+      addFuturesAttributes (std::string("@RB"), std::string("RBOB Gasoline"),
+			    createDecimal("42000.00"), createDecimal("0.0001"));
       
     }
 
