@@ -18,7 +18,7 @@ Inputs:
         Int MaxPyramids( 5 ),
         Int Reverse_Option( 2 {0=ignore, 1=exit, 2=reverse} ),
        	Int TurnOnEntryBarStop( 0  { 0:OFF  <>0:ON } ),
-        Double EntryBarStopLevel( 0 { <=0:OFF  >0 to 4: ON } ),
+        Double EntryBarStopLevel( 0 { <= 0:OFF  > 0: ON } ),
         PrintDebug( False ) ;  // Added by D Cohn on 7/19/2019
 
 vars: shortStop (0), longStop (0), stopPercent (0);
@@ -54,9 +54,6 @@ Variables:  // Section of code Added by D Cohn on 7/19/2019
         Bool ExitSet( False ) ;
 
 Once ( BarStatus(1) = 2 ) Begin // Modified by D Cohn on 7/22/2019
-	If TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 4 Then  // Added 4/24/2020 by Emerald Trading
-		RaiseRunTimeError( "Input EntryBarStopLevel cannot be greater than 4.0" ) ;
-
 	SetStopContract ;  // Added 4/24/2020 by Emerald:  Set all built-in TS stops to be on a per contract basis
 
         If PrintDebug Then   // Added by D Cohn on 7/19/2019
