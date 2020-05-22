@@ -76,6 +76,9 @@ namespace mkc_timeseries
       initializeMetalsFuturesAttributes();
       initializeEnergyFuturesAttributes();
       initializeMeatFuturesAttributes();
+      addFuturesAttributes (std::string("@VX"), std::string("VIX Futures"),
+			    createDecimal("1000.00"), createDecimal("0.05"));
+
     }
 
     void initializeCommonStockAttributes()
@@ -581,6 +584,9 @@ namespace mkc_timeseries
 
       addFuturesAttributes (std::string("@SF"), std::string("Swiss Franc"),
 			    createDecimal("125000.00"), createDecimal("0.0001"));
+
+      addFuturesAttributes (std::string("@AD"), std::string("Australian Dollar"),
+			    createDecimal("100000.00"), createDecimal("0.0001"));
 
     }
 
