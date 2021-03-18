@@ -76,11 +76,6 @@ namespace mkc_timeseries
       std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
     //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
 
-    boost::filesystem::path irFilePath (palIRFilePathStr);
-
-    if (!exists (irFilePath))
-      throw McptConfigurationFileReaderException("PAL IR path " +irFilePath.string() +" does not exist");
-
     boost::filesystem::path historicDataFilePath (historicDataFilePathStr);
     if (!exists (historicDataFilePath))
       throw McptConfigurationFileReaderException("Historic data file path " +historicDataFilePath.string() +" does not exist");
@@ -111,29 +106,36 @@ namespace mkc_timeseries
     PriceActionLabSystem* system;
     if (!skipPatterns)
       {
-    // Constructor driver (facade) that will parse the IR and return
-    // and AST representation
-    mkc_palast::PalParseDriver driver (irFilePath.string());
 
-    // Read the IR file
+	boost::filesystem::path irFilePath (palIRFilePathStr);
 
-    driver.Parse();
+	if (!exists (irFilePath))
+	  throw McptConfigurationFileReaderException("PAL IR path " +irFilePath.string() +" does not exist");
 
-    std::cout << "Parsing successfully completed." << std::endl << std::endl;
-    system = driver.getPalStrategies();
-    std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
-    std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
-    std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
-    //yyin = fopen (irFilePath.string().c_str(), "r");
-    //PriceActionLabSystem* system = parsePALCode();
+	// Constructor driver (facade) that will parse the IR and return
+	// and AST representation
+	mkc_palast::PalParseDriver driver (irFilePath.string());
 
-    //fclose (yyin);
-    }
+	// Read the IR file
+
+	driver.Parse();
+
+	std::cout << "Parsing successfully completed." << std::endl << std::endl;
+	system = driver.getPalStrategies();
+	std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
+	std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
+	std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
+	//yyin = fopen (irFilePath.string().c_str(), "r");
+	//PriceActionLabSystem* system = parsePALCode();
+	
+	//fclose (yyin);
+      }
     else
       {
         std::cout << "McptConfiguration: Skipping PalPattern reading section." << std::endl;
         system = nullptr;
       }
+
     return std::make_shared<McptConfiguration<Decimal>>(getBackTester(backTestingTimeFrame, ooSampleDates),
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),

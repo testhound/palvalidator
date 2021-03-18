@@ -1,0 +1,2 @@
+"NumPermutations", "NumStratsFullPeriod", "NumStratsBeforeValidation"
+500,2,50
