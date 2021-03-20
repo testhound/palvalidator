@@ -92,8 +92,34 @@ namespace mkc_timeseries
       addCommonStock (std::string("XOM"), std::string("Exxon Mobil"));
       addCommonStock (std::string("MSFT"), std::string("Microsoft"));
       addCommonStock (std::string("INTC"), std::string("Intel"));
+      addCommonStock (std::string("AMD"), std::string("Advanced Micro Devices"));
+      addCommonStock (std::string("MCHP"), std::string("Microchip"));
       addCommonStock (std::string("AAPL"), std::string("Apple"));
       addCommonStock (std::string("NVDA"), std::string("Nvidia"));
+      addCommonStock (std::string("NOW"), std::string("ServiceNow"));
+      addCommonStock (std::string("SQ"), std::string("Square"));
+      addCommonStock (std::string("ZM"), std::string("Zoom"));
+      addCommonStock (std::string("TSLA"), std::string("Tesla"));
+      addCommonStock (std::string("PINS"), std::string("Pinterest"));
+      addCommonStock (std::string("TEAM"), std::string("Atlassian"));
+      addCommonStock (std::string("ETSY"), std::string("Etsy"));
+      addCommonStock (std::string("OKTA"), std::string("Okta"));
+      addCommonStock (std::string("SHOP"), std::string("Shopify"));
+      addCommonStock (std::string("NIO"), std::string("NIO"));
+      addCommonStock (std::string("SNAP"), std::string("Snapchat"));
+      addCommonStock (std::string("PYPL"), std::string("PayPal"));
+      addCommonStock (std::string("MA"), std::string("Mastercard"));
+      addCommonStock (std::string("ADBE"), std::string("Adobe"));
+      addCommonStock (std::string("CRM"), std::string("Salesforce"));
+      addCommonStock (std::string("INTU"), std::string("Intuit"));
+      addCommonStock (std::string("BABA"), std::string("Alibaba"));
+      addCommonStock (std::string("POOL"), std::string("Pool"));
+      addCommonStock (std::string("DOCU"), std::string("Docusign"));
+      addCommonStock (std::string("ROKU"), std::string("Roku"));
+
+      addCommonStock (std::string("CMG"), std::string("Chipotle"));
+      addCommonStock (std::string("QCOM"), std::string("Qualcomm"));
+
       addCommonStock (std::string("BTC"), std::string("Bitcoin"));
       addCommonStock (std::string("ETH"), std::string("Ehtereum"));
       addCommonStock (std::string("XRP"), std::string("Ripple"));
@@ -104,6 +130,11 @@ namespace mkc_timeseries
     {
       initialize2XLeveragedETFs();
       initialize3XLeveragedETFs();
+      initializeSectorETFs();
+      initializeInternationalETFs();
+      initializeBondETFs();
+      initializeCommodityETFs();
+      initializeIndustryGroupETFs();
 
       addUnLeveragedETF (std::string("SPY"),
 			 std::string("SPDR S&P 500 ETF"),
@@ -124,32 +155,68 @@ namespace mkc_timeseries
 			 std::string("iShares Russell 2000 ETF"),
 			 createDecimal("0.17"),
 			 boost::gregorian::from_undelimited_string("20000522"));
+    }
 
+    void initializeCommodityETFs ()
+    {
       addUnLeveragedETF (std::string("GLD"),
-			 std::string("SPDR Bold Trust"),
+			 std::string("SPDR Gold Trust"),
 			 createDecimal("0.4"),
 			 boost::gregorian::from_undelimited_string("20041118"));
+
+      addUnLeveragedETF (std::string("SLV"),
+			 std::string("iShares Silver Trust"),
+			 createDecimal("0.5"),
+			 boost::gregorian::from_undelimited_string("20060428"));
+
+      addUnLeveragedETF (std::string("PPLT"),
+			 std::string("Aberdeen Standard Platinum Shares ETF "),
+			 createDecimal("0.6"),
+			 boost::gregorian::from_undelimited_string("20100106"));
 
       addUnLeveragedETF (std::string("USO"),
 			 std::string("United State Oil Fund"),
 			 createDecimal("0.4"),
 			 boost::gregorian::from_undelimited_string("20060410"));
 
-      addUnLeveragedETF (std::string("FXI"),
-			 std::string("iShares China Large-Cap ETF"),
-			 createDecimal("0.4"),
-			 boost::gregorian::from_undelimited_string("20041005"));
+      addUnLeveragedETF (std::string("BNO"),
+			 std::string("United States Brent Oil Fund"),
+			 createDecimal("0.90"),
+			 boost::gregorian::from_undelimited_string("20100602"));
 
-      addUnLeveragedETF (std::string("EWJ"),
-			 std::string("iShares MSCI Japan ETF"),
-			 createDecimal("0.48"),
-			 boost::gregorian::from_undelimited_string("19960312"));
+      addUnLeveragedETF (std::string("UNG"),
+			 std::string("United State Natural Gas Fund"),
+			 createDecimal("1.33"),
+			 boost::gregorian::from_undelimited_string("20070418"));
 
-      addUnLeveragedETF (std::string("EEM"),
-			 std::string("iShares MSCI Emerging Markets ETF"),
-			 createDecimal("0.67"),
-			 boost::gregorian::from_undelimited_string("20030407"));
+      addUnLeveragedETF (std::string("DBA"),
+			 std::string("Invesco DB Agriculture Fund"),
+			 createDecimal("0.85"),
+			 boost::gregorian::from_undelimited_string("20070105"));
 
+      addUnLeveragedETF (std::string("WEAT"),
+			 std::string("Teucrium Wheat Fund"),
+			 createDecimal("1.0"),
+			 boost::gregorian::from_undelimited_string("20110919"));
+
+      addUnLeveragedETF (std::string("CORN"),
+			 std::string("Teucrium Corn Fund"),
+			 createDecimal("1.11"),
+			 boost::gregorian::from_undelimited_string("20100609"));
+
+      addUnLeveragedETF (std::string("SOYB"),
+			 std::string("Teucrium Soybeans"),
+			 createDecimal("1.15"),
+			 boost::gregorian::from_undelimited_string("20110919"));
+
+      addUnLeveragedETF (std::string("CPER"),
+			 std::string("United States Copper Index Fund "),
+			 createDecimal("0.76"),
+			 boost::gregorian::from_undelimited_string("20111115"));
+    }
+
+    void initializeBondETFs ()
+    {
       addUnLeveragedETF (std::string("IEF"),
 			 std::string("iShares 7-10 Year Treasury Bond ETF"),
 			 createDecimal("0.15"),
@@ -170,20 +237,73 @@ namespace mkc_timeseries
 			 createDecimal("0.49"),
 			 boost::gregorian::from_undelimited_string("20070404"));
 
-      addUnLeveragedETF (std::string("XLE"),
-			 std::string("iShares Energy Select SPDR ETF"),
-			 createDecimal("0.13"),
-			 boost::gregorian::from_undelimited_string("19981216"));
+      addUnLeveragedETF (std::string("EMB"),
+			 std::string("iShares J.P. Morgan USD Emerging Markets Bond ETF"),
+			 createDecimal("0.39"),
+			 boost::gregorian::from_undelimited_string("20071217"));
 
-      addUnLeveragedETF (std::string("XLF"),
-			 std::string("iShares Financial Sector ETF"),
+      addLeveragedETF (std::string("TBT"),
+		       std::string("ProShares UltraShort 20+ Year Treasury"),
+		       createDecimal("0.89"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20080501"));
+    }
+
+    void initializeInternationalETFs ()
+    {
+      addUnLeveragedETF (std::string("FXI"),
+			 std::string("iShares China Large-Cap ETF"),
+			 createDecimal("0.4"),
+			 boost::gregorian::from_undelimited_string("20041005"));
+
+      addUnLeveragedETF (std::string("EWJ"),
+			 std::string("iShares MSCI Japan ETF"),
+			 createDecimal("0.48"),
+			 boost::gregorian::from_undelimited_string("19960312"));
+
+      addUnLeveragedETF (std::string("EEM"),
+			 std::string("iShares MSCI Emerging Markets ETF"),
+			 createDecimal("0.67"),
+			 boost::gregorian::from_undelimited_string("20030407"));
+
+      addUnLeveragedETF (std::string("RSX"),
+			 std::string("VanEck Vectors Russia ETF"),
+			 createDecimal("0.67"),
+			 boost::gregorian::from_undelimited_string("20070430"));
+
+    }
+
+    void initializeIndustryGroupETFs ()
+    {
+      addUnLeveragedETF (std::string("KRE"),
+			 std::string("S&P Regional Banking ETF"),
 			 createDecimal("0.13"),
-			 boost::gregorian::from_undelimited_string("19981216"));
+			 boost::gregorian::from_undelimited_string("20060619"));
+
+      addUnLeveragedETF (std::string("XHB"),
+			 std::string("SPDR S&P Homebuilders ETF"),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20060206"));
+
+      addUnLeveragedETF (std::string("VNQ"),
+			 std::string("Vanguard Real Estate Index Fund"),
+			 createDecimal("0.12"),
+			 boost::gregorian::from_undelimited_string("20040923"));
+
+      addUnLeveragedETF (std::string("SMH"),
+			 std::string("VanEck Vectors Semiconductor ETF "),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20111220"));
 
       addUnLeveragedETF (std::string("GDX"),
 			 std::string("Van Eck Gold Miners ETF"),
 			 createDecimal("0.52"),
 			 boost::gregorian::from_undelimited_string("20060522"));
+
+      addUnLeveragedETF (std::string("GDXJ"),
+			 std::string("Van Eck Junior Gold Miners ETF"),
+			 createDecimal("0.54"),
+			 boost::gregorian::from_undelimited_string("20091110"));
 
       addUnLeveragedETF (std::string("IBB"),
 			 std::string("iShares Nasdaq Biotechnology ETF"),
@@ -191,6 +311,59 @@ namespace mkc_timeseries
 			 boost::gregorian::from_undelimited_string("20010205"));
     }
 
+    void initializeSectorETFs ()
+    {
+      addUnLeveragedETF (std::string("XLE"),
+			 std::string("Energy Select Sector SPDR Fund"),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLF"),
+			 std::string("Financial Select Sector SPDR Fund "),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLB"),
+			 std::string("Materials Select Sector SPDR ETF "),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLK"),
+			 std::string("Technology Select Sector SPDR Fund "),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLI"),
+			 std::string("Industrial Select Sector SPDR Fund"),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLV"),
+			 std::string("Health Care Select Sector SPDR Fund"),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLU"),
+			 std::string("Utilities Select Sector SPDR Fund "),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLP"),
+			 std::string("Consumer Staples Select Sector SPDR Fund "),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XLY"),
+			 std::string("Consumer Discretionary Select Sector SPDR Fund"),
+			 createDecimal("0.13"),
+			 boost::gregorian::from_undelimited_string("19981216"));
+
+      addUnLeveragedETF (std::string("XRT"),
+			 std::string("SPDR S&P Retail ETF"),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20060619"));
+
+    }
 
     void initialize2XLeveragedETFs()
     {
@@ -254,11 +427,6 @@ namespace mkc_timeseries
 		       DecimalConstants<Decimal>::DecimalTwo,
 		       boost::gregorian::from_undelimited_string("20081125"));
 
-      addLeveragedETF (std::string("TBT"),
-		       std::string("ProShares UltraShort 20+ Year Treasury"),
-		       createDecimal("0.89"),
-		       DecimalConstants<Decimal>::DecimalMinusTwo,
-		       boost::gregorian::from_undelimited_string("20080501"));
     }
     
     void initialize3XLeveragedETFs()
