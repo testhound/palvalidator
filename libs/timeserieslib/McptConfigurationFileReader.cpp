@@ -83,12 +83,16 @@ namespace mkc_timeseries
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
-    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
+    // TODO: add call to web API here.
+    
+
+
+    /*std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
 										     historicDataFormatStr,
 										     backTestingTimeFrame,
 										     getVolumeUnit(attributes),
 										     attributes->getTick());
-    reader->readFile();
+    reader->readFile();*/
 
     //  insampleDateStart
     boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
@@ -219,6 +223,10 @@ namespace mkc_timeseries
 			    const Decimal& tickValue)
   {
     std::string upperCaseFormatStr = boost::to_upper_copy(dataFileFormatStr);
+    
+    std::cout << "do you see me? yes?" << std::endl;
+    std::cout << historicDataFilePath << " " << timeFrame << " " << unitsOfVolume << " " << tickValue << std::endl;
+    std::exit(1);
 
     if (upperCaseFormatStr == std::string("PAL"))
       return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
