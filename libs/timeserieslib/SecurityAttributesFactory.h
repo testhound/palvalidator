@@ -135,6 +135,7 @@ namespace mkc_timeseries
       initializeBondETFs();
       initializeCommodityETFs();
       initializeIndustryGroupETFs();
+      initializeCurrencyETFs();
 
       addUnLeveragedETF (std::string("SPY"),
 			 std::string("SPDR S&P 500 ETF"),
@@ -155,6 +156,25 @@ namespace mkc_timeseries
 			 std::string("iShares Russell 2000 ETF"),
 			 createDecimal("0.17"),
 			 boost::gregorian::from_undelimited_string("20000522"));
+    }
+
+    void initializeCurrencyETFs ()
+    {
+      addUnLeveragedETF (std::string("UUP"),
+			 std::string(" Invesco DB US Dollar Index Bullish Fund"),
+			 createDecimal("0.75"),
+			 boost::gregorian::from_undelimited_string("20070220"));
+
+      addUnLeveragedETF (std::string("UDN"),
+			 std::string("Invesco DB US Dollar Index Bearish Fund "),
+			 createDecimal("0.75"),
+			 boost::gregorian::from_undelimited_string("20070220"));
+
+      addUnLeveragedETF (std::string("FXE"),
+			 std::string("Invesco CurrencyShares® Euro Currency Trust "),
+			 createDecimal("0.40"),
+			 boost::gregorian::from_undelimited_string("20051209"));
+
     }
 
     void initializeCommodityETFs ()
@@ -242,6 +262,11 @@ namespace mkc_timeseries
 			 createDecimal("0.39"),
 			 boost::gregorian::from_undelimited_string("20071217"));
 
+      addUnLeveragedETF (std::string("MBB"),
+			 std::string("iShares MBS Bond ETF "),
+			 createDecimal("0.06"),
+			 boost::gregorian::from_undelimited_string("20070316"));
+
       addLeveragedETF (std::string("TBT"),
 		       std::string("ProShares UltraShort 20+ Year Treasury"),
 		       createDecimal("0.89"),
@@ -259,6 +284,31 @@ namespace mkc_timeseries
       addUnLeveragedETF (std::string("EWJ"),
 			 std::string("iShares MSCI Japan ETF"),
 			 createDecimal("0.48"),
+			 boost::gregorian::from_undelimited_string("19960312"));
+
+      addUnLeveragedETF (std::string("EWZ"),
+			 std::string("iShares MSCI Brazil ETF"),
+			 createDecimal("0.59"),
+			 boost::gregorian::from_undelimited_string("20000710"));
+
+      addUnLeveragedETF (std::string("EWH"),
+			 std::string("iShares MSCI Hong Kong ETF"),
+			 createDecimal("0.51"),
+			 boost::gregorian::from_undelimited_string("19960312"));
+
+      addUnLeveragedETF (std::string("EWA"),
+			 std::string("iShares MSCI Australia ETF"),
+			 createDecimal("0.51"),
+			 boost::gregorian::from_undelimited_string("19960318"));
+
+      addUnLeveragedETF (std::string("EWT"),
+			 std::string("iShares MSCI Taiwan ETF"),
+			 createDecimal("0.59"),
+			 boost::gregorian::from_undelimited_string("20000620"));
+
+      addUnLeveragedETF (std::string("EWS"),
+			 std::string("iShares MSCI Singapore ETF"),
+			 createDecimal("0.51"),
 			 boost::gregorian::from_undelimited_string("19960312"));
 
       addUnLeveragedETF (std::string("EEM"),
