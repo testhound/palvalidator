@@ -15,6 +15,7 @@
 #include "SecurityAttributesFactory.h"
 #include <cstdio>
 #include "number.h"
+#include "DataSourceReader.h"
 
 using namespace boost::filesystem;
 //extern PriceActionLabSystem* parsePALCode();
@@ -83,16 +84,21 @@ namespace mkc_timeseries
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
-    // TODO: add call to web API here.
-    
+    // TODO: add call to web API here.    
+    boost::gregorian::date d = boost::gregorian::day_clock::local_day();
+    boost::gregorian::date endDate = d - boost::gregorian::months(1);
+//    std::cout << d << std::endl << endDate << std::endl;
+    std::shared_ptr<DataSourceReader> dataReader = std::make_shared<FinnhubIOReader>(
+                "testkey" 
+            );
 
 
-    /*std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
+    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
 										     historicDataFormatStr,
 										     backTestingTimeFrame,
 										     getVolumeUnit(attributes),
 										     attributes->getTick());
-    reader->readFile();*/
+    reader->readFile();
 
     //  insampleDateStart
     boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
