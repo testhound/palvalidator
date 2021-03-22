@@ -26,12 +26,13 @@ using Decimal = num::DefaultNumber;
 namespace mkc_timeseries
 {
   static std::shared_ptr<TimeSeriesCsvReader<Decimal>>
-  getHistoricDataFileReader(const std::string& historicDataFilePath,
-			    const std::string& dataFileFormatStr,
+  getHistoricDataFileReader(
+          const std::string& dataFileFormatStr,
 			    TimeFrame::Duration timeFrame,
 			    TradingVolume::VolumeUnit unitsOfVolume,
 			    const Decimal& tickValue);
 
+  static std::shared_ptr<DataSourceReader> getDataSourceReader(std::string dataSourceName, std::string apiKey);
   static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &tickerSymbol);
   static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<Decimal>> attributesOfSecurity);
   static std::shared_ptr<mkc_timeseries::Security<Decimal>>
@@ -83,20 +84,28 @@ namespace mkc_timeseries
 
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
+ 
+    // TODO: replace historicDataFormatStr with datasource format string
+    // TODO: get dates for the data reader from the inSampleStart/EndDate and ooStart/EndDates
+    // TODO: get timeFrame (60 or Daily) from timeFrameStr, pass this string to the DataSourceReader
+    //       and parse it to 60 or D in the Finnhub implementation function - need a new bastract func.
+    // TODO: remove the filename from the config file.
+    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader("FINNHUB", "c1c085v48v6sp0s57580");
+    std::string tempFilename = dataSourceReader->createTemporaryFile(
+      "aapl", "D", "2021-03-15 12:25:11", "2021-03-22 00:00:00");
 
-    // TODO: add call to web API here.    
-    boost::gregorian::date endDate = boost::gregorian::day_clock::local_day();
-    boost::gregorian::date startDate = endDate - boost::gregorian::months(1);
-    std::shared_ptr<DataSourceReader> dataReader = std::make_shared<FinnhubIOReader>("c1c085v48v6sp0s57580");
-    std::string tempFilename = dataReader->createTemporaryFile("aapl", "D", startDate, endDate);
-
-    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
-										     historicDataFormatStr,
-										     backTestingTimeFrame,
-										     getVolumeUnit(attributes),
-										     attributes->getTick());
+    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(
+                tempFilename,
+								backTestingTimeFrame,
+								getVolumeUnit(attributes),
+								attributes->getTick());
     reader->readFile();
-    dataReader.destroyFiles();
+
+    std::cout << tempFilename << " " << backTestingTimeFrame << " " 
+              << getVolumeUnit(attributes) << attributes->getTick() 
+              << std::endl;
+
+    dataSourceReader->destroyFiles(); // delete temp files
 
     //  insampleDateStart
     boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
@@ -219,38 +228,23 @@ namespace mkc_timeseries
   }
 
 
-  static std::shared_ptr<TimeSeriesCsvReader<Decimal>>
-  getHistoricDataFileReader(const std::string& historicDataFilePath,
-			    const std::string& dataFileFormatStr,
-			    TimeFrame::Duration timeFrame,
-			    TradingVolume::VolumeUnit unitsOfVolume,
-			    const Decimal& tickValue)
+  static std::shared_ptr<DataSourceReader> getDataSourceReader(
+          std::string dataSourceName, 
+          std::string apiKey) 
   {
-    std::string upperCaseFormatStr = boost::to_upper_copy(dataFileFormatStr);
-    
-    std::cout << "do you see me? yes?" << std::endl;
-    std::cout << historicDataFilePath << " " << timeFrame << " " << unitsOfVolume << " " << tickValue << std::endl;
-    std::exit(1);
-
-    if (upperCaseFormatStr == std::string("PAL"))
-      return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-							   unitsOfVolume, tickValue);
-    else if (upperCaseFormatStr == std::string("TRADESTATION"))
-            return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-									  unitsOfVolume, tickValue);
-    else if (upperCaseFormatStr == std::string("CSIEXTENDED"))
-            return std::make_shared<CSIExtendedFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-									  unitsOfVolume, tickValue);
-    else if (upperCaseFormatStr == std::string("CSI"))
-            return std::make_shared<CSIFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-								  unitsOfVolume, tickValue);
-    else if (upperCaseFormatStr == std::string("TRADESTATIONINDICATOR1"))
-            return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath,
-									      timeFrame,
-									      unitsOfVolume,
-									      tickValue);
-
+    if(boost::iequals(dataSourceName, "finnhub")) 
+      return std::make_shared<FinnhubIOReader>(apiKey);
     else
-      throw McptConfigurationFileReaderException("Historic data file format " +dataFileFormatStr +" not recognized");
+      throw McptConfigurationFileReaderException("Data source " + dataSourceName + " not recognized");
+  }
+
+  static std::shared_ptr<TimeSeriesCsvReader<Decimal>> getHistoricDataFileReader(
+          const std::string& historicDataFilePath, 
+          TimeFrame::Duration timeFrame, 
+          TradingVolume::VolumeUnit unitsOfVolume, 
+          const Decimal& tickValue) 
+  {
+    return std::make_shared<TradeStationFormatCsvReader<Decimal>>(
+            historicDataFilePath, timeFrame, unitsOfVolume, tickValue);
   }
 }
