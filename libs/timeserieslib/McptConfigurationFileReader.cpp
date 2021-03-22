@@ -85,13 +85,10 @@ namespace mkc_timeseries
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
     // TODO: add call to web API here.    
-    boost::gregorian::date d = boost::gregorian::day_clock::local_day();
-    boost::gregorian::date endDate = d - boost::gregorian::months(1);
-//    std::cout << d << std::endl << endDate << std::endl;
-    std::shared_ptr<DataSourceReader> dataReader = std::make_shared<FinnhubIOReader>(
-                "testkey" 
-            );
-
+    boost::gregorian::date endDate = boost::gregorian::day_clock::local_day();
+    boost::gregorian::date startDate = endDate - boost::gregorian::months(1);
+    std::shared_ptr<DataSourceReader> dataReader = std::make_shared<FinnhubIOReader>("c1c085v48v6sp0s57580");
+    std::string tempFilename = dataReader->createTemporaryFile("aapl", "D", startDate, endDate);
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
 										     historicDataFormatStr,
@@ -99,6 +96,7 @@ namespace mkc_timeseries
 										     getVolumeUnit(attributes),
 										     attributes->getTick());
     reader->readFile();
+    dataReader.destroyFiles();
 
     //  insampleDateStart
     boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
