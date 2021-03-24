@@ -54,20 +54,21 @@ namespace mkc_searchalgo
   {
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
-    io::CSVReader<14, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
+    io::CSVReader<15, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
 
     csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "ActivityMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
-                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath","HourlyDataFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
-                              "StepRedundancyMultiplier", "SurvivalFilterMultiplier");
+                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
+                              "StepRedundancyMultiplier", "SurvivalFilterMultiplier", "DataSourceName", "APIToken");
 
     std::string maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
-    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, apiToken, dataSourceName;
     std::string validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier;
 
 
     csvConfigFile.read_row (maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
-                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, hourlyDataFilePath,
-                            validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier);
+                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath,
+                            validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier, 
+                            dataSourceName, apiToken);
 
     double palSafetyDbl = tryCast<double>(palSafetyFactor);
     if (palSafetyDbl > 0.9 || palSafetyDbl < 0.7)
@@ -124,9 +125,12 @@ namespace mkc_searchalgo
         }
       }
 
-    boost::filesystem::path hourlyFile (hourlyDataFilePath);
-    if (!exists (hourlyFile))
-      throw SearchAlgoConfigurationFileReaderException("Hourly data file path: " +  hourlyFile.string() + " does not exist");
+    /* download previous ten years of hourly data */
+    boost::gregorian::date current_date(boost::gregorian::day_clock::local_day());
+    boost::gregorian::years years(10);
+    DateRange dataReaderDataRange(current_date-years, current_date);
+    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(dataSourceName, apiToken);
+    std::string hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "DAILY", dataReaderDataRange, dataReaderDataRange);
 
     if (static_cast<size_t>(timeFrameIdToLoad) > timeFrames.size() || timeFrameIdToLoad < 0)
       throw SearchAlgoConfigurationFileReaderException("Invalid timeFrameIdToLoad: " + std::to_string(timeFrameIdToLoad) + " timeframes size: " + std::to_string(timeFrames.size()) + ".");
@@ -134,6 +138,7 @@ namespace mkc_searchalgo
     std::shared_ptr<OHLCTimeSeries<Decimal>> series;
     if (timeFrameIdToLoad > 0)
       {
+        std::cout << "here - load timeframe > 0" << std::endl;
         const time_t& timeFilter =  timeFrames.at(static_cast<size_t>(timeFrameIdToLoad - 1));
         std::cout << std::asctime(std::localtime(&timeFilter)) << std::endl;
         std::shared_ptr<TradeStationTimeFilteredCsvReader<Decimal>> timeFilteredCsv = std::make_shared<TradeStationTimeFilteredCsvReader<Decimal>>(hourlyDataFilePath, security->getTimeSeries()->getTimeFrame(), getVolumeUnit(security), security->getTick(), timeFilter);
@@ -170,9 +175,12 @@ namespace mkc_searchalgo
       }
     else
       {
+        std::cout << "here else" << std::endl;
         series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
       }
 
+std::cout << "here before return" << std::endl;
+    dataSourceReader->destroyFiles();
     return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
                                                               tryCast<unsigned int>(minTrades),
                                                               Decimal(tryCast<double>(activityMultiplier)),

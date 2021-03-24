@@ -13,7 +13,6 @@
 
 namespace mkc_timeseries
 {
-
   class DataSourceReader
   {
       /* a super class for the other data sources.
@@ -28,18 +27,21 @@ namespace mkc_timeseries
 
     /*
      * Constructes a URI for the platform, downloads the data to a temporary
-     * CSV file, and returns the filename (for deleting later);
+     * CSV file, and returns the filename
      */
-    std::string createTemporaryFile(std::string ticker, std::string resolution,
-            std::string startDatetime, std::string endDatetime)
+    std::string createTemporaryFile(std::string ticker, std::string configTimeFrame,
+            DateRange isDateRange, DateRange oosDateRange)
     {
-      boost::posix_time::ptime bStartDatetime = boost::posix_time::time_from_string(startDatetime);
-      boost::posix_time::ptime bEndDatetime = boost::posix_time::time_from_string(endDatetime);
+      setApiTimeFrameRepresentation(configTimeFrame);
 
-      std::string uri = buildDataFetchUri(ticker, resolution, bStartDatetime, bEndDatetime);
+      boost::posix_time::time_duration zero(0, 0, 0);
+      boost::posix_time::ptime bStartDatetime(isDateRange.getFirstDate(), zero);
+      boost::posix_time::ptime bEndDatetime(oosDateRange.getLastDate(), zero);
+
+      std::string uri = buildDataFetchUri(ticker, bStartDatetime, bEndDatetime);
       std::string timestamp = boost::lexical_cast<std::string>(
         timestampFromPtime(boost::posix_time::second_clock::local_time()));
-      std::string filename = (boost::format("%1%_%2%_%3%.csv") % timestamp % ticker % resolution).str();
+      std::string filename = (boost::format("%1%_%2%_%3%.csv") % timestamp % ticker % mResolution).str();
       tempFilenames.push_back(filename);
 
       Json::Value json = getJson(uri);
@@ -50,9 +52,9 @@ namespace mkc_timeseries
       // transform JSON into CSV in TradeStation format.
       std::ofstream csvFile;
       csvFile.open("./" + filename);
-      if(boost::iequals(resolution, "D"))
+      if(boost::iequals(mResolution, "D"))
         csvFile << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Vol\",\"OI\"" << std::endl;
-      else if (boost::iequals(resolution, "60")) 
+      else if (boost::iequals(mResolution, "60")) 
         csvFile << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Up\",\"Down\"" << std::endl;
 
       for(Json::Value::ArrayIndex idx = 0; idx != getJsonArraySize(json); idx++) 
@@ -79,21 +81,22 @@ namespace mkc_timeseries
 
   protected:
     const std::string mApiKey;
-    
+    std::string mResolution;
     std::vector<std::string> tempFilenames;
 
-    virtual std::string buildDataFetchUri(std::string ticker, std::string resolution, 
-            boost::posix_time::ptime startDatetime, boost::posix_time::ptime endDatetime) = 0;
+    virtual std::string buildDataFetchUri(std::string ticker, boost::posix_time::ptime startDatetime, 
+                boost::posix_time::ptime endDatetime) = 0;
     virtual bool validApiResponse(Json::Value json) = 0;
     virtual std::string getCsvRow(Json::Value json, Json::Value::ArrayIndex idx) = 0;
     virtual int getJsonArraySize(Json::Value json) = 0;
+    virtual void setApiTimeFrameRepresentation(std::string configTimeFrame) = 0;
 
     time_t timestampFromPtime(boost::posix_time::ptime time) 
     {
       boost::posix_time::ptime epoch(boost::gregorian::date(1970,1,1));
-      boost::posix_time::time_duration::sec_type x = (time - epoch).total_seconds();
+      boost::posix_time::time_duration::sec_type secs = (time - epoch).total_seconds();
 
-      return time_t(x);
+      return time_t(secs);
     }
 
     std::string ptimeToFormat(boost::posix_time::ptime time, std::string format) 
@@ -125,7 +128,6 @@ namespace mkc_timeseries
     Json::Value getJson(std::string uri) 
     {
       CURL *curl;
-      CURLcode res;
       std::string buffer;
 
       curl = curl_easy_init();
@@ -135,7 +137,7 @@ namespace mkc_timeseries
         curl_easy_setopt(curl, CURLOPT_URL, uri.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, jsonWriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
-        res = curl_easy_perform(curl);
+        curl_easy_perform(curl);
 
         curl_easy_cleanup(curl);
       }
@@ -159,10 +161,9 @@ namespace mkc_timeseries
     {}
 
   protected:
-    std::string buildDataFetchUri(std::string ticker, std::string resolution,
-            boost::posix_time::ptime startDatetime, boost::posix_time::ptime endDatetime)
+    std::string buildDataFetchUri(std::string ticker, boost::posix_time::ptime startDatetime, 
+                boost::posix_time::ptime endDatetime)
     {
-      // valid resolutions: 1, 5, 15, 30, 60, D, W, M
       std::string uri = "https://finnhub.io/api/v1/stock/candle?symbol=%1%&resolution=%2%&from=%3%&to=%4%&format=json&token=%5%";
 
       std::string startTimestamp = boost::lexical_cast<std::string>(timestampFromPtime(startDatetime));
@@ -170,11 +171,19 @@ namespace mkc_timeseries
 
       return (boost::format(uri) % 
                 ticker % 
-                resolution % 
+                mResolution % 
                 startTimestamp % 
                 endTimestamp % 
                 mApiKey
       ).str();
+    }
+
+    void setApiTimeFrameRepresentation(std::string configTimeFrame)
+    {
+      if(boost::iequals(configTimeFrame, "Daily")) 
+        mResolution = "D";
+      if(boost::iequals(configTimeFrame, "hourly"))
+        mResolution = "60";
     }
 
     bool validApiResponse(Json::Value json) 
@@ -202,5 +211,15 @@ namespace mkc_timeseries
     }
 
   };
+
+  static std::shared_ptr<DataSourceReader> getDataSourceReader(
+         std::string dataSourceName, 
+         std::string apiKey) 
+  {
+    if(boost::iequals(dataSourceName, "finnhub")) 
+      return std::make_shared<FinnhubIOReader>(apiKey);
+    else
+      throw McptConfigurationFileReaderException("Data source " + dataSourceName + " not recognized");
+  }
 }
 #endif

@@ -32,7 +32,6 @@ namespace mkc_timeseries
 			    TradingVolume::VolumeUnit unitsOfVolume,
 			    const Decimal& tickValue);
 
-  static std::shared_ptr<DataSourceReader> getDataSourceReader(std::string dataSourceName, std::string apiKey);
   static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &tickerSymbol);
   static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<Decimal>> attributesOfSecurity);
   static std::shared_ptr<mkc_timeseries::Security<Decimal>>
@@ -50,19 +49,18 @@ namespace mkc_timeseries
   {
     io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
 
-    csvConfigFile.set_header("Symbol", "IRPath", "DataPath","FileFormat","ISDateStart",
+    csvConfigFile.set_header("Symbol", "IRPath", "APIToken","DataSourceName","ISDateStart",
 			     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
 
-    std::string tickerSymbol, palIRFilePathStr, historicDataFilePathStr, historicDataFormatStr;
+    std::string tickerSymbol, palIRFilePathStr, apiToken, dataSourceName;
     std::string inSampleStartDate, inSampleEndDate, oosStartDate, oosEndDate;
     std::string timeFrameStr;
 
     boost::gregorian::date insampleDateStart, insampleDateEnd, oosDateStart, oosDateEnd;
 
-    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, historicDataFilePathStr,
-			    historicDataFormatStr, inSampleStartDate, inSampleEndDate,
+    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, apiToken,
+			    dataSourceName, inSampleStartDate, inSampleEndDate,
 			    oosStartDate, oosEndDate, timeFrameStr);
-
 
     insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
     insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
@@ -78,21 +76,11 @@ namespace mkc_timeseries
       std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
     //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
 
-    boost::filesystem::path historicDataFilePath (historicDataFilePathStr);
-    if (!exists (historicDataFilePath))
-      throw McptConfigurationFileReaderException("Historic data file path " +historicDataFilePath.string() +" does not exist");
-
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
- 
-    // TODO: replace historicDataFormatStr with datasource format string
-    // TODO: get dates for the data reader from the inSampleStart/EndDate and ooStart/EndDates
-    // TODO: get timeFrame (60 or Daily) from timeFrameStr, pass this string to the DataSourceReader
-    //       and parse it to 60 or D in the Finnhub implementation function - need a new bastract func.
-    // TODO: remove the filename from the config file.
-    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader("FINNHUB", "c1c085v48v6sp0s57580");
-    std::string tempFilename = dataSourceReader->createTemporaryFile(
-      "aapl", "D", "2021-03-15 12:25:11", "2021-03-22 00:00:00");
+
+    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(dataSourceName, apiToken);
+    std::string tempFilename = dataSourceReader->createTemporaryFile(tickerSymbol, timeFrameStr, inSampleDates, ooSampleDates);
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(
                 tempFilename,
@@ -100,10 +88,6 @@ namespace mkc_timeseries
 								getVolumeUnit(attributes),
 								attributes->getTick());
     reader->readFile();
-
-    std::cout << tempFilename << " " << backTestingTimeFrame << " " 
-              << getVolumeUnit(attributes) << attributes->getTick() 
-              << std::endl;
 
     dataSourceReader->destroyFiles(); // delete temp files
 
@@ -157,8 +141,8 @@ namespace mkc_timeseries
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),
 						  system, inSampleDates, ooSampleDates,
-						  historicDataFormatStr,
-						  historicDataFilePathStr);
+						  dataSourceName,
+						  apiToken);
   }
 
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
@@ -225,17 +209,6 @@ namespace mkc_timeseries
       return it->second;
     else
       throw McptConfigurationFileReaderException("createSecurityAttributes - ticker symbol " +symbol +" is unkown");
-  }
-
-
-  static std::shared_ptr<DataSourceReader> getDataSourceReader(
-          std::string dataSourceName, 
-          std::string apiKey) 
-  {
-    if(boost::iequals(dataSourceName, "finnhub")) 
-      return std::make_shared<FinnhubIOReader>(apiKey);
-    else
-      throw McptConfigurationFileReaderException("Data source " + dataSourceName + " not recognized");
   }
 
   static std::shared_ptr<TimeSeriesCsvReader<Decimal>> getHistoricDataFileReader(
