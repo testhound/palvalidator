@@ -212,7 +212,10 @@ namespace mkc_searchalgo
       {}
 
     //template <class SecurityT>
-    std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile(const std::shared_ptr<Security<Decimal>> & security, int timeFrameIdToLoad);
+    std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile(
+                const std::shared_ptr<McptConfiguration<Decimal>>& mcptConfiguration, 
+                int timeFrameIdToLoad, 
+                bool downloadFile);
 
   private:
     std::string mConfigurationFileName;

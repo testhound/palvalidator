@@ -50,8 +50,12 @@ namespace mkc_searchalgo
     : mConfigurationFileName(configurationFileName)
   {}
 
-  std::shared_ptr<SearchAlgoConfiguration<Decimal>> SearchAlgoConfigurationFileReader::readConfigurationFile(const std::shared_ptr<Security<Decimal>>& security, int timeFrameIdToLoad)
+  std::shared_ptr<SearchAlgoConfiguration<Decimal>> SearchAlgoConfigurationFileReader::readConfigurationFile(
+              const std::shared_ptr<McptConfiguration<Decimal>>& mcptConfiguration, 
+              int timeFrameIdToLoad, 
+              bool downloadFile)
   {
+    const std::shared_ptr<Security<Decimal>> security = mcptConfiguration->getSecurity();
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
     io::CSVReader<15, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
@@ -104,7 +108,6 @@ namespace mkc_searchalgo
     if (!exists (timeFramesFile))
       throw SearchAlgoConfigurationFileReaderException("Timeframe to search config file path: " +  timeFramesFile.string() + " does not exist");
 
-
     std::vector<time_t> timeFrames;
     io::CSVReader<1, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> timesCsv(timeFramesToSearchConfigFilePath);
     timesCsv.read_header(io::ignore_extra_column, "TimeFrame");
@@ -125,12 +128,11 @@ namespace mkc_searchalgo
         }
       }
 
-    /* download previous ten years of hourly data */
-    boost::gregorian::date current_date(boost::gregorian::day_clock::local_day());
-    boost::gregorian::years years(10);
-    DateRange dataReaderDataRange(current_date-years, current_date);
+    // read data from API from the start of the IS data to the end of the OOS data
+    DateRange dataReaderDataRange(mcptConfiguration->getInsampleDateRange().getFirstDate(), mcptConfiguration->getOosDateRange().getLastDate());
     std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(dataSourceName, apiToken);
-    std::string hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "DAILY", dataReaderDataRange, dataReaderDataRange);
+    std::string hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDataRange, dataReaderDataRange, downloadFile);
+
 
     if (static_cast<size_t>(timeFrameIdToLoad) > timeFrames.size() || timeFrameIdToLoad < 0)
       throw SearchAlgoConfigurationFileReaderException("Invalid timeFrameIdToLoad: " + std::to_string(timeFrameIdToLoad) + " timeframes size: " + std::to_string(timeFrames.size()) + ".");
@@ -175,12 +177,10 @@ namespace mkc_searchalgo
       }
     else
       {
-        std::cout << "here else" << std::endl;
         series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
       }
 
-std::cout << "here before return" << std::endl;
-    dataSourceReader->destroyFiles();
+    //dataSourceReader->destroyFiles(); // delete temp files from API call
     return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
                                                               tryCast<unsigned int>(minTrades),
                                                               Decimal(tryCast<double>(activityMultiplier)),

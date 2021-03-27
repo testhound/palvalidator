@@ -45,10 +45,9 @@ namespace mkc_timeseries
     : mConfigurationFileName(configurationFileName)
   {}
 
-  std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile(bool skipPatterns)
+  std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile(bool skipPatterns, bool downloadFile)
   {
     io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
-
     csvConfigFile.set_header("Symbol", "IRPath", "APIToken","DataSourceName","ISDateStart",
 			     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
 
@@ -66,12 +65,10 @@ namespace mkc_timeseries
     insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
 
     DateRange inSampleDates(insampleDateStart, insampleDateEnd);
-
     oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
     oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
 
     DateRange ooSampleDates( oosDateStart, oosDateEnd);
-
     if (oosDateStart <= insampleDateEnd)
       std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
     //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
@@ -80,7 +77,7 @@ namespace mkc_timeseries
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
     std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(dataSourceName, apiToken);
-    std::string tempFilename = dataSourceReader->createTemporaryFile(tickerSymbol, timeFrameStr, inSampleDates, ooSampleDates);
+    std::string tempFilename = dataSourceReader->createTemporaryFile(tickerSymbol, timeFrameStr, inSampleDates, ooSampleDates, downloadFile);
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(
                 tempFilename,
@@ -89,7 +86,7 @@ namespace mkc_timeseries
 								attributes->getTick());
     reader->readFile();
 
-    dataSourceReader->destroyFiles(); // delete temp files
+    //dataSourceReader->destroyFiles(); // TODO: delete temp files
 
     //  insampleDateStart
     boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
@@ -142,7 +139,7 @@ namespace mkc_timeseries
 						  createSecurity (attributes, reader),
 						  system, inSampleDates, ooSampleDates,
 						  dataSourceName,
-						  apiToken);
+						  tempFilename);
   }
 
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,

@@ -30,25 +30,27 @@ namespace mkc_timeseries
      * CSV file, and returns the filename
      */
     std::string createTemporaryFile(std::string ticker, std::string configTimeFrame,
-            DateRange isDateRange, DateRange oosDateRange)
+            DateRange isDateRange, DateRange oosDateRange, bool performDownload)
     {
       setApiTimeFrameRepresentation(configTimeFrame);
 
       boost::posix_time::time_duration zero(0, 0, 0);
-      boost::posix_time::ptime bStartDatetime(isDateRange.getFirstDate(), zero);
-      boost::posix_time::ptime bEndDatetime(oosDateRange.getLastDate(), zero);
+      boost::posix_time::ptime bStartDatetime(isDateRange.getFirstDate() - boost::gregorian::days(7), zero);
+      boost::posix_time::ptime bEndDatetime(oosDateRange.getLastDate() + boost::gregorian::days(7), zero);
 
       std::string uri = buildDataFetchUri(ticker, bStartDatetime, bEndDatetime);
-      std::string timestamp = boost::lexical_cast<std::string>(
-        timestampFromPtime(boost::posix_time::second_clock::local_time()));
-      std::string filename = (boost::format("%1%_%2%_%3%.csv") % timestamp % ticker % mResolution).str();
+      std::string filename = getFilename(ticker);
+
+      if (!performDownload) {
+        return filename;
+      }
       tempFilenames.push_back(filename);
 
       Json::Value json = getJson(uri);
 
       if (!validApiResponse(json)) // no data returned - error
         throw McptConfigurationFileReaderException("No data returned from API call.");
-
+        
       // transform JSON into CSV in TradeStation format.
       std::ofstream csvFile;
       csvFile.open("./" + filename);
@@ -125,6 +127,11 @@ namespace mkc_timeseries
       return size*nmemb;
     }
 
+    std::string getFilename(std::string ticker) 
+    {
+      return (boost::format("%1%_RAD_%2%.txt") % ticker % (boost::iequals(mResolution, "60") ? "Hourly" : "Daily")).str();
+    }
+
     Json::Value getJson(std::string uri) 
     {
       CURL *curl;
@@ -137,6 +144,8 @@ namespace mkc_timeseries
         curl_easy_setopt(curl, CURLOPT_URL, uri.c_str());
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, jsonWriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+        curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+
         curl_easy_perform(curl);
 
         curl_easy_cleanup(curl);
