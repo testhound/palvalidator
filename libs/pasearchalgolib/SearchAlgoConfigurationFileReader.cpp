@@ -129,7 +129,7 @@ namespace mkc_searchalgo
       }
 
     
-    std::string hourlyDataFilePath = mRunParameters->getSearchConfigFilePath();
+    std::string hourlyDataFilePath = mRunParameters->getHourlyDataFilePath();
     if(mRunParameters->shouldUseApi()) 
     {
       // read data from API from the start of the IS data to the end of the OOS data
@@ -138,7 +138,6 @@ namespace mkc_searchalgo
       std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(mRunParameters->getApiSource(), token);
       hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDataRange, dataReaderDataRange, downloadFile);
     }
-
 
     if (static_cast<size_t>(timeFrameIdToLoad) > timeFrames.size() || timeFrameIdToLoad < 0)
       throw SearchAlgoConfigurationFileReaderException("Invalid timeFrameIdToLoad: " + std::to_string(timeFrameIdToLoad) + " timeframes size: " + std::to_string(timeFrames.size()) + ".");
