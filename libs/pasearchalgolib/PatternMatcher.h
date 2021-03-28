@@ -83,10 +83,10 @@ namespace mkc_searchalgo
       FileMatcher::mergeFiles(filePaths, allPatternsForAllRunsFile);
 
       //rerun per timeframe slice
-      for (size_t i = 0; i < numTimeFrames; i++)
+      for (size_t i = 0; i < numTimeFrames + 1; i++)
         {
           std::string symbolStr = config->getSecurity()->getSymbol();
-          std::string histPathBase = symbolStr + "_RAD_Hourly.txt_timeframe_" + std::to_string(i+1);
+          std::string histPathBase = symbolStr + "_RAD_Hourly.txt_timeframe_" + std::to_string(i);
           std::string dataFileFormat = "PAL";
           
           std::string histPath;
