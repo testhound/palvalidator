@@ -46,8 +46,9 @@ namespace mkc_searchalgo
   }
 
 
-  SearchAlgoConfigurationFileReader::SearchAlgoConfigurationFileReader (const std::string& configurationFileName)
-    : mConfigurationFileName(configurationFileName)
+  SearchAlgoConfigurationFileReader::SearchAlgoConfigurationFileReader (
+    const std::shared_ptr<RunParameters>& RunParameters)
+    : mRunParameters(RunParameters)
   {}
 
   std::shared_ptr<SearchAlgoConfiguration<Decimal>> SearchAlgoConfigurationFileReader::readConfigurationFile(
@@ -58,21 +59,20 @@ namespace mkc_searchalgo
     const std::shared_ptr<Security<Decimal>> security = mcptConfiguration->getSecurity();
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
-    io::CSVReader<15, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mConfigurationFileName.c_str());
+    io::CSVReader<13, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mRunParameters->getSearchConfigFilePath().c_str());
 
     csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "ActivityMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
                              "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
-                              "StepRedundancyMultiplier", "SurvivalFilterMultiplier", "DataSourceName", "APIToken");
+                              "StepRedundancyMultiplier", "SurvivalFilterMultiplier");
 
     std::string maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
-    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath, apiToken, dataSourceName;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath;
     std::string validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier;
 
 
     csvConfigFile.read_row (maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
                             maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath,
-                            validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier, 
-                            dataSourceName, apiToken);
+                            validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier);
 
     double palSafetyDbl = tryCast<double>(palSafetyFactor);
     if (palSafetyDbl > 0.9 || palSafetyDbl < 0.7)
@@ -128,10 +128,16 @@ namespace mkc_searchalgo
         }
       }
 
-    // read data from API from the start of the IS data to the end of the OOS data
-    DateRange dataReaderDataRange(mcptConfiguration->getInsampleDateRange().getFirstDate(), mcptConfiguration->getOosDateRange().getLastDate());
-    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(dataSourceName, apiToken);
-    std::string hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDataRange, dataReaderDataRange, downloadFile);
+    
+    std::string hourlyDataFilePath = mRunParameters->getSearchConfigFilePath();
+    if(mRunParameters->shouldUseApi()) 
+    {
+      // read data from API from the start of the IS data to the end of the OOS data
+      std::string token = getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
+      DateRange dataReaderDataRange(mcptConfiguration->getInsampleDateRange().getFirstDate(), mcptConfiguration->getOosDateRange().getLastDate());
+      std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(mRunParameters->getApiSource(), token);
+      hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDataRange, dataReaderDataRange, downloadFile);
+    }
 
 
     if (static_cast<size_t>(timeFrameIdToLoad) > timeFrames.size() || timeFrameIdToLoad < 0)

@@ -6,6 +6,7 @@
 #include "StdEstimator.h"
 #include "SearchController.h"
 #include "runner.hpp"
+#include "RunParameters.h"
 
 using namespace mkc_timeseries;
 using Decimal = num::DefaultNumber;
@@ -18,22 +19,21 @@ namespace mkc_searchalgo
   class SearchRun
   {
   public:
-    SearchRun(const std::string& configurationFileName, const std::string& searchConfigFileName):
-      mConfigurationFileName(configurationFileName),
-      mSearchConfigFileName(searchConfigFileName)
-
+    SearchRun(std::shared_ptr<RunParameters> parameters) : mRunParameters(parameters)
     {
-      //std::string configurationFileName (v[1]);
-      std::cout << configurationFileName << std::endl;
-      McptConfigurationFileReader reader(configurationFileName);
+
+    // TODO: add runparameters to config file readers and get data
+    //       from there for each local/api circumstance.
+
+      std::cout << parameters->getConfigFile1Path() << std::endl;
+      McptConfigurationFileReader reader(parameters);
       mConfiguration = reader.readConfigurationFile(true, true);
 
       StdEstimator<Decimal> estimator(mConfiguration);
       mTargetBase = estimator.estimate();
 
-      //std::string searchConfigFileName(v[2]);
-      std::cout << searchConfigFileName << std::endl;
-      SearchAlgoConfigurationFileReader searchReader(searchConfigFileName);
+      std::cout << parameters->getSearchConfigFilePath() << std::endl;
+      SearchAlgoConfigurationFileReader searchReader(parameters);
       mSearchConfig = searchReader.readConfigurationFile(mConfiguration, 0, true);
       mNow = std::time(nullptr);
       std::cout << "Time since epoch: " << static_cast<long>(mNow) << std::endl;
@@ -71,14 +71,14 @@ namespace mkc_searchalgo
                                                              timeFrameId,
                                                              side
                                                              ]()-> void {
-                  McptConfigurationFileReader reader(this->mConfigurationFileName);
+                  McptConfigurationFileReader reader(mRunParameters);
                   std::shared_ptr<McptConfiguration<Decimal>> configuration = nullptr;
                   configuration = reader.readConfigurationFile(true);
 
-                  SearchAlgoConfigurationFileReader searchReader(this->mSearchConfigFileName);
+                  SearchAlgoConfigurationFileReader searchReader(mRunParameters);
                   std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile(configuration, static_cast<int>(timeFrameId), false);
 
-                  std::cout << "Parsed search algo config: " << this->mSearchConfigFileName << std::endl;
+                  std::cout << "Parsed search algo config: " << mRunParameters->getSearchConfigFilePath() << std::endl;
                   std::cout << (*searchConfig) << std::endl;
                   SearchController<Decimal> controller(configuration, searchConfig->getTimeSeries(), searchConfig);
                   controller.prepare(patternSearchType, inSampleOnly);
@@ -129,6 +129,7 @@ namespace mkc_searchalgo
     std::string mSearchConfigFileName;
     std::shared_ptr<McptConfiguration<Decimal>> mConfiguration;
     std::shared_ptr<SearchAlgoConfiguration<Decimal>> mSearchConfig;
+    std::shared_ptr<RunParameters> mRunParameters;
     Decimal mTargetBase;
     std::time_t mNow;
   };

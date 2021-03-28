@@ -30,6 +30,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 #include "DataSourceReader.h"
+#include "RunParameters.h"
 
 using namespace mkc_timeseries;
 
@@ -207,7 +208,7 @@ namespace mkc_searchalgo
     using Decimal = num::DefaultNumber;
 
   public:
-    SearchAlgoConfigurationFileReader (const std::string& configurationFileName);
+    SearchAlgoConfigurationFileReader (const std::shared_ptr<RunParameters>& runParameters);
     ~SearchAlgoConfigurationFileReader()
       {}
 
@@ -218,7 +219,7 @@ namespace mkc_searchalgo
                 bool downloadFile);
 
   private:
-    std::string mConfigurationFileName;
+    std::shared_ptr<RunParameters> mRunParameters;
   };
 }
 

@@ -41,24 +41,22 @@ namespace mkc_timeseries
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
 							 const DateRange& backtestingDates);
 
-  McptConfigurationFileReader::McptConfigurationFileReader (const std::string& configurationFileName)
-    : mConfigurationFileName(configurationFileName)
+  McptConfigurationFileReader::McptConfigurationFileReader (const std::shared_ptr<RunParameters>& runParameters)
+    : mRunParameters(runParameters)
   {}
 
   std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile(bool skipPatterns, bool downloadFile)
   {
-    io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
-    csvConfigFile.set_header("Symbol", "IRPath", "APIToken","DataSourceName","ISDateStart",
-			     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
+    io::CSVReader<7> csvConfigFile(mRunParameters->getConfigFile1Path().c_str());
+    csvConfigFile.set_header("Symbol", "IRPath", "ISDateStart", "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
 
-    std::string tickerSymbol, palIRFilePathStr, apiToken, dataSourceName;
+    std::string tickerSymbol, palIRFilePathStr;
     std::string inSampleStartDate, inSampleEndDate, oosStartDate, oosEndDate;
     std::string timeFrameStr;
 
     boost::gregorian::date insampleDateStart, insampleDateEnd, oosDateStart, oosDateEnd;
 
-    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, apiToken,
-			    dataSourceName, inSampleStartDate, inSampleEndDate,
+    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, inSampleStartDate, inSampleEndDate,
 			    oosStartDate, oosEndDate, timeFrameStr);
 
     insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
@@ -76,11 +74,18 @@ namespace mkc_timeseries
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
-    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(dataSourceName, apiToken);
-    std::string tempFilename = dataSourceReader->createTemporaryFile(tickerSymbol, timeFrameStr, inSampleDates, ooSampleDates, downloadFile);
+    // TODO: use parameters to use API or files.
+
+    std::string dataFilename = mRunParameters->getEodDataFilePath();
+    if(mRunParameters->shouldUseApi()) 
+    {
+      std::string token = getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
+      std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(mRunParameters->getApiSource(), token);
+      dataFilename = dataSourceReader->createTemporaryFile(tickerSymbol, timeFrameStr, inSampleDates, ooSampleDates, downloadFile);
+    }
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(
-                tempFilename,
+                dataFilename,
 								backTestingTimeFrame,
 								getVolumeUnit(attributes),
 								attributes->getTick());
@@ -138,8 +143,7 @@ namespace mkc_timeseries
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),
 						  system, inSampleDates, ooSampleDates,
-						  dataSourceName,
-						  tempFilename);
+              dataFilename);
   }
 
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,

@@ -230,5 +230,22 @@ namespace mkc_timeseries
     else
       throw McptConfigurationFileReaderException("Data source " + dataSourceName + " not recognized");
   }
+
+  static std::string getApiTokenFromFile(std::string apiConfigFilename, std::string dataSourceName) 
+  {
+    std::string source, token = "";
+    io::CSVReader<2> csvApiConfig(apiConfigFilename.c_str());
+    csvApiConfig.set_header("Source", "Token");
+
+    while(csvApiConfig.read_row(source, token))
+      if(boost::iequals(dataSourceName, source)) 
+        break;
+
+    if(token.empty()) 
+      throw McptConfigurationFileReaderException(
+          "Source " + dataSourceName + " does not exist in " + apiConfigFilename);
+
+    return token;
+  }  
 }
 #endif

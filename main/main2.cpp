@@ -2,6 +2,7 @@
 #include "SearchRun.h"
 #include "PatternMatcher.h"
 #include "PALMonteCarloValidation.h"
+#include "RunParameters.h"
 
 //#include <chrono>
 //#include <ctime>
@@ -43,9 +44,9 @@ static int usage_error(const std::vector<std::string>& args)
   for (auto arg: args)
     std::cout << arg << ".";
   std::cout << std::endl;
-  std::cout << "Correct usage is:... [configFileName] [searchConfigFileName] [longonly/shortonly/longshort] [IS/OOS/ISOOS] [PATTERN_SEARCH_TYPE] [MODE]" << std::endl << std::endl;
+  std::cout << "Correct usage is:... [configFileName] [searchConfigFileName] [longonly/shortonly/longshort] [IS/OOS/ISOOS] [PATTERN_SEARCH_TYPE] [MODE] [--LOCAL/API:{SOURCE}] [[API Config file] OR [Daily File] [Hourly File]]" << std::endl << std::endl;
   std::cout << "  Where a typical run could be something like: "<< std::endl;
-  std::cout << "     ./PalValidator %config1.txt %conig2.txt longshortIS 4 threads:8" << std::endl << std::endl;
+  std::cout << "     ./PalValidator %config1.txt %conig2.txt longshortIS 4 threads:8 --api:finnhub api.config" << std::endl << std::endl;
 
   std::cout << "  IS - In-Sample only" << std::endl;
   std::cout << "  OOS - Out of Sample only" << std::endl;
@@ -64,6 +65,16 @@ static int usage_error(const std::vector<std::string>& args)
   std::cout << "  *  threads:thread_no -- example: [threads:4]" << std::endl;
   std::cout << "      The number of parallel threads to run." << std::endl;
   std::cout << "      (use numbers 0 through n. Zero(0) is interpreted as the maximmum thread_no of your system.)" << std::endl;
+
+  std::cout << "  --API:Source : " << std::endl;
+  std::cout << "  *  Instructs the program to get hourly and EOD data from an API " << std::endl;
+  std::cout << "  *  Source must be a valid, implemented data source with a REST API " << std::endl;
+  std::cout << "  *  If API:Source is specified the next parameter will be the api.config file which contains \"source,api token\" pairs" << std::endl;
+  
+  std::cout << "  --LOCAL: " << std::endl;
+  std::cout << "  * Instructs the program to get hourly and EOD data from local files. " << std::endl;
+  std::cout << "  * If --local is specified the next two parameters are the daily file and hourly file. " << std::endl;
+  
   return 2;
 }
 
@@ -75,7 +86,7 @@ int main(int argc, char **argv)
 
   std::vector<std::string> v(argv, argv + argc);
 
-  if (argc == 7)
+  if (argc > 8)
     {
 
       int nthreads = 0;
@@ -84,7 +95,30 @@ int main(int argc, char **argv)
       std::string validateOOSNowStringInput;
       bool iisRun = true;
       bool oosRun = true;
+      
+      std::string apiSource;
+      std::string apiConfigFilePath;
+      std::string hourlyDataFilePath;
+      std::string eodDataFilePath;
 
+      std::shared_ptr<RunParameters> parameters = std::make_shared<RunParameters>();
+      parameters->setUseApi((v[7].find("api") != std::string::npos));
+      parameters->setConfig1FilePath(v[1]);
+      parameters->setSearchConfigFilePath(v[2]);
+
+      if(parameters->shouldUseApi()) 
+      {
+          std::vector<std::string> apiSourceSplit;
+          boost::split(apiSourceSplit, v[7], boost::is_any_of(":"));
+          if(apiSourceSplit.size() != 2) 
+            return usage_error(v);
+          parameters->setApiSource(apiSourceSplit[1]);
+      }
+      else
+      {
+        parameters->setEodDataFilePath(v[8]);
+        parameters->setHourlyDataFilePath(v[9]);
+      }
 
       std::string longorshort = v[3];
       SideToRun sideToRun;
@@ -144,7 +178,7 @@ int main(int argc, char **argv)
       //build thread-pool-runner
       runner& Runner=runner::instance();
 
-      SearchRun search(v[1], v[2]);
+      SearchRun search(parameters);
 
       std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
 //      std::string mergedPath = "Merged_1573400279.txt";
