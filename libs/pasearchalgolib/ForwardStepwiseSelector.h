@@ -72,9 +72,7 @@ namespace mkc_searchalgo {
                   if (i == c)
                     continue;
                   std::vector<unsigned int> stratVect {i, c};
-                  std::cout << "before process result" << std::endl;
                   mBacktestProcessor->processResult(stratVect);
-                  std::cout << "after process result" << std::endl;
                 }
               if (i % 100 == 0)
                 std::cout << "Step 0 comparison, element group: " << i << std::endl;
@@ -96,7 +94,6 @@ namespace mkc_searchalgo {
           return newret;
         }
 
-      std::cout << "Here here!!!!!!!!!!!!!!!!!!!" << std::endl;
       std::vector<StrategyRepresentationType> ret(step(stepNo -1));
       //all other steps
       int i = 0;

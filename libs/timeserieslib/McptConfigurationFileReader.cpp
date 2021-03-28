@@ -74,8 +74,6 @@ namespace mkc_timeseries
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
-    // TODO: use parameters to use API or files.
-
     std::string dataFilename = mRunParameters->getEodDataFilePath();
     if(mRunParameters->shouldUseApi()) 
     {

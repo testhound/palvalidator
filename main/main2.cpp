@@ -113,6 +113,7 @@ int main(int argc, char **argv)
           if(apiSourceSplit.size() != 2) 
             return usage_error(v);
           parameters->setApiSource(apiSourceSplit[1]);
+          parameters->setApiConfigFilePath(v[8]);
       }
       else
       {
