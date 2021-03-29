@@ -1,1 +1,1 @@
-PalValidator %config1.txt %config2.txt longshort IS 4 threads:8
+./PalValidator %config1.txt %config2.txt longshort IS 4 threads:8

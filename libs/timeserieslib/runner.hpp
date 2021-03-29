@@ -9,6 +9,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <iostream>
+
 //extracts the number of cpus as reported by std::hardware_concurrency,
 //eventually overriden by environment variable ncpu
 // run as: ncpu=7 ./PalValidator BP_R0_5_Simpler_Config.txt 300 2
@@ -50,6 +52,8 @@ struct runner
                     catch(std::exception const&e)
                     {
                         promise->set_exception(std::current_exception());
+                        std::cout << "runner exception" << std::endl;
+                        std::cout << e.what() << std::endl;
                         return;
                     }
                     promise->set_value();

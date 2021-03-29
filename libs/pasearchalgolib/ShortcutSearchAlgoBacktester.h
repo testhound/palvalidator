@@ -172,6 +172,7 @@ namespace mkc_searchalgo {
     reset();
     if (occurences.size() != mBacktestResultBase.size())
       throw std::runtime_error("BacktesterBase size is: " + std::to_string(mBacktestResultBase.size()) + " whilst occurrences: " + std::to_string(occurences.size()));
+
     //generate results for all possible entries
     std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
     int nextSkipStart = -1;
@@ -229,9 +230,8 @@ namespace mkc_searchalgo {
   void ShortcutSearchAlgoBacktester<Decimal, ShortcutBacktestMethod::Pyramiding>::backtest(const std::valarray<Decimal>& occurences)
   {
     reset();
-
     if (occurences.size() != mBacktestResultBase.size())
-      throw;
+      throw std::runtime_error("BacktesterBase size is: " + std::to_string(mBacktestResultBase.size()) + " whilst occurrences: " + std::to_string(occurences.size()));
 
     std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
 

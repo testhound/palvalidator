@@ -101,7 +101,6 @@ namespace mkc_searchalgo
       //2: 4, 10000
       //3: 1, 500
       //4: 4, 500 (sorter: 5.0)
-
       std::shared_ptr<TBacktester> shortcut = std::make_shared<TBacktester>(resultBase.getBacktestResultBase(), resultBase.getBacktestNumBarsInPosition(), mSearchConfiguration->getMinTrades(), isLong);
       std::shared_ptr<BacktestProcessor<Decimal, TBacktester>> backtestProcessor = std::make_shared<BacktestProcessor<Decimal, TBacktester>>(
             mSearchConfiguration,

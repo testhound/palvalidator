@@ -16,6 +16,7 @@
 #include "BackTester.h"
 #include "PalAst.h"
 #include "number.h"
+#include "RunParameters.h"
 
 namespace mkc_timeseries
 {
@@ -40,7 +41,6 @@ namespace mkc_timeseries
 		       PriceActionLabSystem* patterns,
 		       const DateRange& insampleDateRange,
 		       const DateRange& oosDateRange,
-		       const std::string dataFileFormatStr,
 		       const std::string dataFilePath)
       : mBacktester (aBacktester),
 	mInSampleBacktester (aInSampleBacktester),
@@ -48,7 +48,6 @@ namespace mkc_timeseries
 	mPricePatterns(patterns),
 	mInsampleDateRange(insampleDateRange),
 	mOosDateRange(oosDateRange),
-	mDataFileFormatStr(dataFileFormatStr),
 	mDataFilePath(dataFilePath)
     {}
 
@@ -75,7 +74,6 @@ namespace mkc_timeseries
       mPricePatterns= rhs.mPricePatterns;
       mInsampleDateRange= rhs.mInsampleDateRange;
       mOosDateRange= rhs.mOosDateRange;
-      mDataFileFormatStr = rhs.mDataFileFormatStr;
       mDataFilePath = rhs.mDataFilePath;
 
       return *this;
@@ -140,14 +138,14 @@ namespace mkc_timeseries
     using Decimal = num::DefaultNumber;
 
   public:
-    McptConfigurationFileReader (const std::string& configurationFileName);
+    McptConfigurationFileReader (const std::shared_ptr<RunParameters>& configurationFileName);
     ~McptConfigurationFileReader()
       {}
 
-    std::shared_ptr<McptConfiguration<Decimal>> readConfigurationFile(bool skipPatterns = false);
+    std::shared_ptr<McptConfiguration<Decimal>> readConfigurationFile(bool skipPatterns = false, bool downloadFile = false);
 
   private:
-    std::string mConfigurationFileName;
+    std::shared_ptr<RunParameters> mRunParameters;
   };
 }
 

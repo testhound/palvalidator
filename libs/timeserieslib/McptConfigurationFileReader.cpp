@@ -15,6 +15,7 @@
 #include "SecurityAttributesFactory.h"
 #include <cstdio>
 #include "number.h"
+#include "DataSourceReader.h"
 
 using namespace boost::filesystem;
 //extern PriceActionLabSystem* parsePALCode();
@@ -25,8 +26,9 @@ using Decimal = num::DefaultNumber;
 namespace mkc_timeseries
 {
   static std::shared_ptr<TimeSeriesCsvReader<Decimal>>
-  getHistoricDataFileReader(const std::string& historicDataFilePath,
-			    const std::string& dataFileFormatStr,
+  getHistoricDataFileReader(
+          const std::string& historicalDataPath,
+          const std::string& dataFileFormat,
 			    TimeFrame::Duration timeFrame,
 			    TradingVolume::VolumeUnit unitsOfVolume,
 			    const Decimal& tickValue);
@@ -40,55 +42,57 @@ namespace mkc_timeseries
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
 							 const DateRange& backtestingDates);
 
-  McptConfigurationFileReader::McptConfigurationFileReader (const std::string& configurationFileName)
-    : mConfigurationFileName(configurationFileName)
+  McptConfigurationFileReader::McptConfigurationFileReader (const std::shared_ptr<RunParameters>& runParameters)
+    : mRunParameters(runParameters)
   {}
 
-  std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile(bool skipPatterns)
+  std::shared_ptr<McptConfiguration<Decimal>> McptConfigurationFileReader::readConfigurationFile(bool skipPatterns, bool downloadFile)
   {
-    io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
+    io::CSVReader<8> csvConfigFile(mRunParameters->getConfigFile1Path().c_str());
+    csvConfigFile.set_header("Symbol", "IRPath", "FileFormat", "ISDateStart", "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
 
-    csvConfigFile.set_header("Symbol", "IRPath", "DataPath","FileFormat","ISDateStart",
-			     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
-
-    std::string tickerSymbol, palIRFilePathStr, historicDataFilePathStr, historicDataFormatStr;
+    std::string tickerSymbol, palIRFilePathStr, fileFormat;
     std::string inSampleStartDate, inSampleEndDate, oosStartDate, oosEndDate;
     std::string timeFrameStr;
 
     boost::gregorian::date insampleDateStart, insampleDateEnd, oosDateStart, oosDateEnd;
 
-    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, historicDataFilePathStr,
-			    historicDataFormatStr, inSampleStartDate, inSampleEndDate,
+    csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, fileFormat, inSampleStartDate, inSampleEndDate,
 			    oosStartDate, oosEndDate, timeFrameStr);
-
 
     insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
     insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
 
     DateRange inSampleDates(insampleDateStart, insampleDateEnd);
-
     oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
     oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
 
     DateRange ooSampleDates( oosDateStart, oosDateEnd);
-
     if (oosDateStart <= insampleDateEnd)
       std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
     //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
 
-    boost::filesystem::path historicDataFilePath (historicDataFilePathStr);
-    if (!exists (historicDataFilePath))
-      throw McptConfigurationFileReaderException("Historic data file path " +historicDataFilePath.string() +" does not exist");
-
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
-    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
-										     historicDataFormatStr,
-										     backTestingTimeFrame,
-										     getVolumeUnit(attributes),
-										     attributes->getTick());
+    std::string dataFilename = mRunParameters->getEodDataFilePath();
+    if(mRunParameters->shouldUseApi()) 
+    {
+      std::string token = getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
+      std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(mRunParameters->getApiSource(), token);
+      dataFilename = dataSourceReader->createTemporaryFile(tickerSymbol, timeFrameStr, inSampleDates, ooSampleDates, downloadFile);
+      fileFormat = "TRADESTATION";
+    }
+
+    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(
+                dataFilename,
+                fileFormat,
+								backTestingTimeFrame,
+								getVolumeUnit(attributes),
+								attributes->getTick());
     reader->readFile();
+
+    //dataSourceReader->destroyFiles(); // TODO: delete temp files
 
     //  insampleDateStart
     boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
@@ -140,8 +144,7 @@ namespace mkc_timeseries
 						  getBackTester(backTestingTimeFrame, inSampleDates),
 						  createSecurity (attributes, reader),
 						  system, inSampleDates, ooSampleDates,
-						  historicDataFormatStr,
-						  historicDataFilePathStr);
+              dataFilename);
   }
 
   static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
@@ -210,35 +213,36 @@ namespace mkc_timeseries
       throw McptConfigurationFileReaderException("createSecurityAttributes - ticker symbol " +symbol +" is unkown");
   }
 
-
-  static std::shared_ptr<TimeSeriesCsvReader<Decimal>>
-  getHistoricDataFileReader(const std::string& historicDataFilePath,
-			    const std::string& dataFileFormatStr,
-			    TimeFrame::Duration timeFrame,
-			    TradingVolume::VolumeUnit unitsOfVolume,
-			    const Decimal& tickValue)
-  {
+  static std::shared_ptr<TimeSeriesCsvReader<Decimal>> getHistoricDataFileReader(
+              const std::string& historicDataFilePath,
+              const std::string& dataFileFormatStr,
+              TimeFrame::Duration timeFrame,
+              TradingVolume::VolumeUnit unitsOfVolume,
+              const Decimal& tickValue)
+   {
     std::string upperCaseFormatStr = boost::to_upper_copy(dataFileFormatStr);
 
     if (upperCaseFormatStr == std::string("PAL"))
       return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-							   unitsOfVolume, tickValue);
+                              unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("TRADESTATION"))
             return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-									  unitsOfVolume, tickValue);
+                                     unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("CSIEXTENDED"))
             return std::make_shared<CSIExtendedFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-									  unitsOfVolume, tickValue);
+                                     unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("CSI"))
             return std::make_shared<CSIFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-								  unitsOfVolume, tickValue);
+                                 unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("TRADESTATIONINDICATOR1"))
             return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath,
-									      timeFrame,
-									      unitsOfVolume,
-									      tickValue);
-
+                                         timeFrame,
+                                         unitsOfVolume,
+                                         tickValue);
     else
       throw McptConfigurationFileReaderException("Historic data file format " +dataFileFormatStr +" not recognized");
-  }
+
+    return std::make_shared<TradeStationFormatCsvReader<Decimal>>(
+            historicDataFilePath, timeFrame, unitsOfVolume, tickValue);
+   }
 }

@@ -88,11 +88,7 @@ namespace mkc_searchalgo
           std::string symbolStr = config->getSecurity()->getSymbol();
           std::string histPathBase = symbolStr + "_RAD_Hourly.txt_timeframe_" + std::to_string(i);
           std::string dataFileFormat = "PAL";
-          if (i == 0)
-            {
-              histPathBase = config->getDataFilePath();
-              dataFileFormat = config->getDataFileFormat();
-            }
+          
           std::string histPath;
           std::remove_copy(histPathBase.begin(), histPathBase.end(), std::back_inserter(histPath), '@');
 

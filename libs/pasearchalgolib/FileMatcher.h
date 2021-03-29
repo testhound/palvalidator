@@ -68,7 +68,7 @@ namespace mkc_searchalgo
           std::ifstream fle(f.string());
           if (!fle.is_open())
             {
-              throw std::runtime_error("Input file" + f.string() + " could not be opened.");
+              throw std::runtime_error("Input file " + f.string() + " could not be opened.");
             }
           else if (!target.is_open()) {
               throw std::runtime_error("Target file: " + targetFileName + " could not be opened.");

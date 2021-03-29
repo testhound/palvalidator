@@ -67,5 +67,7 @@ target_link_libraries(${BIN_NAME}
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${BLOOMBERG_DECIMAL_LIBRARIES}
+    curl
+    jsoncpp
     )
 

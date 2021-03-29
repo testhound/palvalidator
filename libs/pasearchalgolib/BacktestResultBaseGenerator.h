@@ -108,7 +108,6 @@ namespace mkc_searchalgo {
       //std::shared_ptr<OHLCTimeSeries<Decimal>> series = mConfiguration->getSecurity()->getTimeSeries();
 
       std::cout << "Building backtest matrix (long?:" << isLong << ") with series size of: " << mSeries->getNumEntries() << std::endl;
-
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mSeries->beginRandomAccess();
 
       unsigned long i = 0;
@@ -157,7 +156,6 @@ namespace mkc_searchalgo {
 //                            << firstPos.second->getNumBarsInPosition() << ", exit date: " << firstPos.second->getExitDate() << std::endl;
                 }
             }
-
       }
       //the crux: create (not so sparse) vector of trading result per signal-date.
       std::valarray<Decimal> arr(Decimal(0.0), validDates.size());    //initialize to all 0-es
