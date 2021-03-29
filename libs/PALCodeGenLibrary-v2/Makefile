@@ -1,5 +1,5 @@
 RANLIB := ranlib
-CC := g++-5
+CC := g++
 object-set := PalCodeGenVisitor.o PalAst.o TradingBloxCodeGenerator.o PalParser.o PalScanner.o PalParseDriver.o PriceActionLabSystem.o WealthLabCodeGenerator.o EasyLanguageCodeGenerator.o QuantConnectCodeGenerator.o PalCodeGenerator.o
 
 libpriceaction2.a: objects

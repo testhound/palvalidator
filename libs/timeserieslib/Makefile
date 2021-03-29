@@ -1,6 +1,6 @@
-CC := g++-5
+CC := g++
 RANLIB := ranlib
-object-set := LogPalPattern.o TimeSeriesEntry.o TimeSeries.o McptConfigurationFileReader.o TimeFrameUtility.o runner.o
+object-set := LogPalPattern.o TimeSeriesEntry.o TimeSeries.o McptConfigurationFileReader.o TimeFrameUtility.o runner.o BacktesterStrategy.o
 
 libbacktest.a: objects
 	rm -f $@
@@ -12,13 +12,15 @@ install: libbacktest.a *.h
 	install -c -m 644 *.h /usr/local/include/backtester
 	install -c -m 644 *.hpp /usr/local/include/backtester
 
-objects: LogPalPattern.o TimeSeriesEntry.o TimeSeries.o McptConfigurationFileReader.o TimeFrameUtility.o runner.o
+objects: LogPalPattern.o TimeSeriesEntry.o TimeSeries.o McptConfigurationFileReader.o TimeFrameUtility.o runner.o BacktesterStrategy.o
 
 LogPalPattern.o: LogPalPattern.cpp LogPalPattern.h /usr/local/include/priceactionlab/*.h
 TimeSeriesEntry.o: TimeSeriesEntry.cpp TimeSeriesEntry.h decimal.h
 TimeSeries.o: TimeSeries.cpp TimeSeriesEntry.h TimeSeries.h decimal.h
 McptConfigurationFileReader.o: McptConfigurationFileReader.h TimeSeriesEntry.h TimeSeriesCsvReader.h SecurityAttributes.h SecurityAttributesFactory.h /usr/local/include/priceactionlab/*.h
 TimeFrameUtility.o: TimeFrameUtility.h TimeFrame.h
+BacktesterStrategy.o: BacktesterStrategy.cpp BacktesterStrategy.h
+
 CCFLAGS := -O2 -c -std=c++14 -I. -I/usr/local/include/priceactionlab 
 
 

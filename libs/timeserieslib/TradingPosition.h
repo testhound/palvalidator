@@ -267,6 +267,11 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     virtual Decimal getTradeReturnMultiplier() const = 0;
     virtual bool isWinningPosition() const = 0;
     virtual bool isLosingPosition() const = 0;
+    virtual void setProfitTarget(const Decimal& profitTarget) = 0;
+    virtual void setStopLoss(const Decimal& stopLoss) = 0;
+    virtual const Decimal& getProfitTarget() const = 0;
+    virtual const Decimal& getStopLoss() const = 0;
+
     // NOTE: To implement these in the ClosePositonState pass the open position to closed
     // position at creation time
     virtual TradingPositionState::ConstPositionBarIterator beginPositionBarHistory() const = 0;
@@ -293,7 +298,9 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
       mUnitsInPosition(unitsInPosition),
       mPositionBarHistory (entryBar),
       mBarsInPosition(1),
-      mNumBarsSinceEntry(0)	
+      mNumBarsSinceEntry(0),
+      mProfitTarget(DecimalConstants<Decimal>::DecimalZero),
+      mStopLoss(DecimalConstants<Decimal>::DecimalZero)
     {
       if (entryPrice <= DecimalConstants<Decimal>::DecimalZero)
 	throw TradingPositionException (std::string("OpenPosition constructor: entry price < 0"));
@@ -306,7 +313,9 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
       mUnitsInPosition(rhs.mUnitsInPosition),
       mPositionBarHistory (rhs.mPositionBarHistory),
       mBarsInPosition (rhs.mBarsInPosition),
-      mNumBarsSinceEntry(rhs.mNumBarsSinceEntry)
+      mNumBarsSinceEntry(rhs.mNumBarsSinceEntry),
+      mProfitTarget(rhs.mProfitTarget),
+      mStopLoss(rhs.mStopLoss)
     {}
 
     OpenPosition<Decimal>& 
@@ -323,11 +332,29 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
       mPositionBarHistory  = rhs.mPositionBarHistory;
       mBarsInPosition  = rhs.mBarsInPosition;
       mNumBarsSinceEntry = rhs.mNumBarsSinceEntry;
+      mProfitTarget = rhs.mProfitTarget;
+      mStopLoss = rhs.mStopLoss;
       return *this;
     }
 
     virtual ~OpenPosition()
     {}
+
+    void setProfitTarget(const Decimal& profitTarget)
+      {
+	if (profitTarget >= DecimalConstants<Decimal>::DecimalZero)
+	  mProfitTarget = profitTarget;
+	else
+	  throw TradingPositionException (std::string("OpenPosition::setProfitTarget - profit target must be > 0"));
+      }
+
+    void setStopLoss(const Decimal& stopLoss)
+      {
+	if (stopLoss >= DecimalConstants<Decimal>::DecimalZero)
+	  mStopLoss = stopLoss;
+	else
+	  throw TradingPositionException (std::string("OpenPosition::setStopLoss - stopLoss must be > 0"));
+      }
 
     bool isPositionOpen() const
     {
@@ -404,6 +431,16 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
       return mPositionBarHistory.endPositionBarHistory();
     }
 
+    const Decimal& getProfitTarget() const
+      {
+	return mProfitTarget;
+      }
+
+    const Decimal& getStopLoss() const
+      {
+	return mStopLoss;
+      }
+
   private:
     void addBar(const OpenPositionBar<Decimal>& positionBar)
     {
@@ -419,6 +456,8 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     OpenPositionHistory<Decimal> mPositionBarHistory;
     unsigned int mBarsInPosition;
     unsigned int mNumBarsSinceEntry;
+    Decimal mProfitTarget;
+    Decimal mStopLoss;
   };
 
   template <class Decimal>
@@ -634,6 +673,26 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     {
       return mOpenPosition->getLastClose();
     }
+
+    const Decimal& getProfitTarget() const
+      {
+	return mOpenPosition->getProfitTarget();
+      }
+
+    const Decimal& getStopLoss() const
+      {
+	return mOpenPosition->getStopLoss();
+      }
+
+    void setProfitTarget(const Decimal& profitTarget)
+      {
+	throw TradingPositionException (std::string("ClosedPosition::setProfitTarget - Cannot set profit target of closed position"));
+      }
+
+    void setStopLoss(const Decimal& stopLoss)
+      {
+	throw TradingPositionException (std::string("OpenPosition::setStopLoss - Cannot set profit target of closed position"));
+      }
 
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
@@ -935,6 +994,26 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     {
       return mPositionState->isLosingPosition();
     }
+
+    void setProfitTarget(const Decimal& profitTarget)
+      {
+	mPositionState->setProfitTarget(profitTarget);
+      }
+
+    void setStopLoss(const Decimal& stopLoss)
+      {
+	mPositionState->setStopLoss(stopLoss);
+      }
+
+    const Decimal& getProfitTarget() const
+      {
+	return mPositionState->getProfitTarget();
+      }
+
+    const Decimal& getStopLoss() const
+      {
+	return mPositionState->getStopLoss();
+      }
 
     // NOTE: To implement these in the ClosePositonState pass the open position to closed
     // position at creation time

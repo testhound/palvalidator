@@ -150,22 +150,30 @@ namespace mkc_timeseries
 
     void EnterLongOnOpen(const std::string& tradingSymbol, 	
 			 const date& orderDate,
-			 const TradingVolume& unitsInOrder)
+			 const TradingVolume& unitsInOrder,
+			 const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			 const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
       auto order = std::make_shared<MarketOnOpenLongOrder<Decimal>>(tradingSymbol,
-								  unitsInOrder,
-								  orderDate);
+								    unitsInOrder,
+								    orderDate,
+								    stopLoss,
+								    profitTarget);
       
       mOrderManager.addTradingOrder (order);
     }
 
     void EnterShortOnOpen(const std::string& tradingSymbol,	
 			  const date& orderDate,
-			  const TradingVolume& unitsInOrder )
+			  const TradingVolume& unitsInOrder,
+			  const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			  const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
       auto order = std::make_shared<MarketOnOpenShortOrder<Decimal>>(tradingSymbol,
-								  unitsInOrder,
-								  orderDate);
+								     unitsInOrder,
+								     orderDate,
+								     stopLoss,
+								     profitTarget);
       
       mOrderManager.addTradingOrder (order);
     }
@@ -375,7 +383,9 @@ namespace mkc_timeseries
 
     void OrderExecuted (MarketOnOpenLongOrder<Decimal> *order)
     {
-      auto position = createLongTradingPosition (order);
+      auto position = createLongTradingPosition (order,
+						 order->getStopLoss(),
+						 order->getProfitTarget());
       auto pOrder = std::make_shared<MarketOnOpenLongOrder<Decimal>>(*order);
 
       mInstrumentPositionManager.addPosition (position);
@@ -385,7 +395,9 @@ namespace mkc_timeseries
     
     void OrderExecuted (MarketOnOpenShortOrder<Decimal> *order)
     {
-      auto position = createShortTradingPosition (order);
+      auto position = createShortTradingPosition (order,
+						  order->getStopLoss(),
+						  order->getProfitTarget());
       auto pOrder = std::make_shared<MarketOnOpenShortOrder<Decimal>>(*order);
 
       mInstrumentPositionManager.addPosition (position);
@@ -525,19 +537,25 @@ namespace mkc_timeseries
     }
 
     std::shared_ptr<TradingPositionLong<Decimal>>
-    createLongTradingPosition (TradingOrder<Decimal> *order)
+    createLongTradingPosition (TradingOrder<Decimal> *order, 
+			       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			       const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
       auto position = std::make_shared<TradingPositionLong<Decimal>> (order->getTradingSymbol(), 
-								   order->getFillPrice(),
-								   getEntryBar (order->getTradingSymbol(), 
-										order->getFillDate()),
-								   order->getUnitsInOrder());
+								      order->getFillPrice(),
+								      getEntryBar (order->getTradingSymbol(), 
+										   order->getFillDate()),
+								      order->getUnitsInOrder());
+      position->setStopLoss(stopLoss);
+      position->setProfitTarget(profitTarget);
       position->addObserver (*this);
       return position;
     }
 
     std::shared_ptr<TradingPositionShort<Decimal>>
-    createShortTradingPosition (TradingOrder<Decimal> *order)
+    createShortTradingPosition (TradingOrder<Decimal> *order,
+				const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+				const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
       auto position = 
 	std::make_shared<TradingPositionShort<Decimal>> (order->getTradingSymbol(), 
@@ -545,6 +563,9 @@ namespace mkc_timeseries
 						      getEntryBar (order->getTradingSymbol(), 
 								   order->getFillDate()),
 						      order->getUnitsInOrder());
+
+      position->setStopLoss(stopLoss);
+      position->setProfitTarget(profitTarget);
 
       position->addObserver (*this);
       return position;

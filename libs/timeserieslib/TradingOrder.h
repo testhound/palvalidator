@@ -14,7 +14,7 @@
 #include <string>
 #include "TradingOrderException.h"
 #include "TimeSeriesEntry.h"
-
+#include "DecimalConstants.h"
 #include <atomic>
 
 using namespace boost::gregorian;
@@ -270,9 +270,13 @@ namespace mkc_timeseries
   {
   public:
       MarketEntryOrder(const std::string& tradingSymbol, 
-			  const TradingVolume& unitsInOrder,
-			  const TimeSeriesDate& orderDate)
-      : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
+		       const TradingVolume& unitsInOrder,
+		       const TimeSeriesDate& orderDate,
+		       const Decimal& stopLoss,
+		       const Decimal& profitTarget)
+      : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate),
+	mStopLoss (stopLoss),
+	mProfitTarget(profitTarget)
       {}
 
       virtual ~MarketEntryOrder()
@@ -280,7 +284,10 @@ namespace mkc_timeseries
 
       MarketEntryOrder (const MarketEntryOrder<Decimal>& rhs)
       : MarketOrder<Decimal> (rhs)
-      {}
+      {
+	mStopLoss = rhs.mStopLoss;
+	mProfitTarget = rhs.mProfitTarget;
+      }
 
       MarketEntryOrder<Decimal>& 
       operator=(const MarketEntryOrder<Decimal> &rhs)
@@ -289,6 +296,10 @@ namespace mkc_timeseries
 	  return *this;
 	
 	MarketOrder<Decimal>::operator=(rhs);
+
+	mStopLoss = rhs.mStopLoss;
+	mProfitTarget = rhs.mProfitTarget;
+
 	return *this;
       }
 
@@ -301,6 +312,20 @@ namespace mkc_timeseries
       {
 	return false;
       }
+
+    const Decimal& getStopLoss() const
+      {
+	return mStopLoss;
+      }
+
+    const Decimal& getProfitTarget() const
+      {
+	return mProfitTarget;
+      }
+
+  private:
+      Decimal mStopLoss;       // Stop loss in percent from PAL pattern. This is NOT the stop proce
+      Decimal mProfitTarget;   // Profit target in percent from PAL pattern. This is NOT the profit target
   };
 
   template <class Decimal> class MarketOnOpenLongOrder : public MarketEntryOrder<Decimal>
@@ -309,8 +334,10 @@ namespace mkc_timeseries
 
     MarketOnOpenLongOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
-			  const TimeSeriesDate& orderDate)
-      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
+			  const TimeSeriesDate& orderDate,
+			  const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			  const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopLoss, profitTarget)
     {}
 
     MarketOnOpenLongOrder (const MarketOnOpenLongOrder<Decimal>& rhs)
@@ -367,8 +394,10 @@ namespace mkc_timeseries
   public:
     MarketOnOpenShortOrder(const std::string& tradingSymbol,
 			   const TradingVolume& unitsInOrder,
-			   const TimeSeriesDate& orderDate)
-      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
+			   const TimeSeriesDate& orderDate,
+			   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			   const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopLoss, profitTarget)
     {}
 
     MarketOnOpenShortOrder (const MarketOnOpenShortOrder<Decimal>& rhs)

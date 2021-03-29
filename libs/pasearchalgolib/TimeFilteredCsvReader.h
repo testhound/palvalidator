@@ -148,8 +148,13 @@ namespace mkc_searchalgo
 
      TradeStationTimeFilteredCsvReader(const TradeStationTimeFilteredCsvReader& rhs)
        : TimeSeriesCsvReader<Decimal>(rhs),
-         mCsvFile(rhs.mCsvFile),
-         mDateParser(rhs.mDateParser)
+       mCsvFile(rhs.mCsvFile),
+       mDateParser(rhs.mDateParser),
+       mTimeFilter(rhs.mTimeFilter),
+       mOpen(rhs.mOpen),
+       mHigh(rhs.mHigh),
+       mLow(rhs.mLow),
+       mClose(rhs.mLow)
     {}
 
     TradeStationTimeFilteredCsvReader&
@@ -161,6 +166,12 @@ namespace mkc_searchalgo
       TimeSeriesCsvReader<Decimal>::operator=(rhs);
       mCsvFile = rhs.mCsvFile;
       mDateParser = rhs.mDateParser;
+      mTimeFilter = rhs.mTimeFilter;
+      mOpen = rhs.mOpen;
+      mHigh = rhs.mHigh;
+      mLow = rhs.mLow;
+      mClose = rhs.mLow;
+
       return *this;
     }
 

@@ -4,35 +4,17 @@
 #include "../TimeSeriesCsvReader.h"
 #include "../PalStrategy.h"
 #include "../BoostDateHelper.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
 
-std::string myCornSymbol("C2");
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
+std::string myCornSymbol("@C");
 
 DecimalType *
 createRawDecimalPtr(const std::string& valueString)
 {
-  return new dec::decimal<7> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
+  return new DecimalType (dec::fromString<DecimalType>(valueString));
 }
 
 PatternDescription *
@@ -196,11 +178,36 @@ createLongPattern2()
    return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
 }
 
-
-void printPositionHistory(const ClosedPositionHistory<7>& history)
+std::shared_ptr<PriceActionLabPattern>
+createLongPattern3()
 {
-  ClosedPositionHistory<7>::ConstPositionIterator it = history.beginTradingPositions();
-  std::shared_ptr<TradingPosition<7>> p;
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106, 
+					       20110106, std::string("53.33"),
+					       std::string("46.67"), 45, 3);
+
+    auto low0 = new PriceBarLow(0);
+    auto low1 = new PriceBarLow(1);
+    auto close1 = new PriceBarClose(1);
+    auto close0 = new PriceBarClose(0);
+
+    auto gt1 = new GreaterThanExpr (close0, close1);
+    auto gt2 = new GreaterThanExpr (low0, low1);
+
+
+    auto longPattern1 = new AndExpr (gt1, gt2);
+
+    MarketEntryExpression *entry = createLongOnOpen();
+    ProfitTargetInPercentExpression *target = createLongProfitTarget("5.12");
+    StopLossInPercentExpression *stop = createLongStopLoss("2.56");
+  
+   return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
+}
+
+
+void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
+{
+  ClosedPositionHistory<DecimalType>::ConstPositionIterator it = history.beginTradingPositions();
+  std::shared_ptr<TradingPosition<DecimalType>> p;
   std::string posStateString;
   std::string openStr("Position open");
   std::string closedStr("Position closed");
@@ -255,31 +262,32 @@ void printPositionHistory(const ClosedPositionHistory<7>& history)
 
 TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 {
-  PALFormatCsvReader<7> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = csvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
-  std::string futuresSymbol("C2");
+  std::string futuresSymbol("@C");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-  auto corn = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
 						   futuresName, 
 						   cornBigPointValue,
 						   cornTickValue, 
 						   p);
 
   std::string portName("Corn Portfolio");
-  auto aPortfolio = std::make_shared<Portfolio<7>>(portName);
+  auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
 
   aPortfolio->addSecurity (corn);
 
   std::string strategy1Name("PAL Long Strategy 1");
 
-  PalLongStrategy<7> longStrategy1(strategy1Name,
+  PalLongStrategy<DecimalType> longStrategy1(strategy1Name,
 				   createLongPattern1(), 
 				   aPortfolio);
   REQUIRE (longStrategy1.getPatternMaxBarsBack() == 8);
@@ -288,28 +296,53 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   REQUIRE_FALSE (longStrategy1.isLongPosition (futuresSymbol));
   REQUIRE_FALSE (longStrategy1.isShortPosition (futuresSymbol));
   REQUIRE (longStrategy1.getStrategyName() == strategy1Name);
+  REQUIRE_FALSE (longStrategy1.isPyramidingEnabled());
+  REQUIRE (longStrategy1.getMaxPyramidPositions() == 0);
+  REQUIRE_FALSE (longStrategy1.strategyCanPyramid(futuresSymbol));
 
   REQUIRE (longStrategy1.doesSecurityHaveTradingData (*corn, createDate("19850301")));
   REQUIRE (longStrategy1.doesSecurityHaveTradingData (*corn, createDate("20011116")));
   REQUIRE_FALSE (longStrategy1.doesSecurityHaveTradingData (*corn, createDate("19850227")));
 
-  PalShortStrategy<7> shortStrategy1("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
-   REQUIRE (shortStrategy1.getPatternMaxBarsBack() == 5);
+  PalShortStrategy<DecimalType> shortStrategy1("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
+  REQUIRE (shortStrategy1.getPatternMaxBarsBack() == 5);
   REQUIRE (shortStrategy1.getSizeForOrder (*corn) == oneContract);
   REQUIRE (shortStrategy1.isFlatPosition (futuresSymbol));
   REQUIRE_FALSE (shortStrategy1.isLongPosition (futuresSymbol));
   REQUIRE_FALSE (shortStrategy1.isShortPosition (futuresSymbol));
+  REQUIRE_FALSE (shortStrategy1.isPyramidingEnabled());
+  REQUIRE (shortStrategy1.getMaxPyramidPositions() == 0);
+  REQUIRE_FALSE (shortStrategy1.strategyCanPyramid(futuresSymbol));
 
   REQUIRE (shortStrategy1.doesSecurityHaveTradingData (*corn, createDate("19850301")));
   REQUIRE (shortStrategy1.doesSecurityHaveTradingData (*corn, createDate("20011116")));
   REQUIRE_FALSE (shortStrategy1.doesSecurityHaveTradingData (*corn, createDate("19850227")));
 
-  PalLongStrategy<7> longStrategy2("PAL Long Strategy 2", createLongPattern2(), aPortfolio);
+  PalLongStrategy<DecimalType> longStrategy2("PAL Long Strategy 2", createLongPattern2(), aPortfolio);
   REQUIRE (longStrategy2.getPatternMaxBarsBack() == 6);
   REQUIRE (longStrategy2.getSizeForOrder (*corn) == oneContract);
   REQUIRE (longStrategy2.isFlatPosition (futuresSymbol));
   REQUIRE_FALSE (longStrategy2.isLongPosition (futuresSymbol));
   REQUIRE_FALSE (longStrategy2.isShortPosition (futuresSymbol));
+
+  StrategyOptions enablePyramid(true, 2);
+
+  PalLongStrategy<DecimalType> longStrategyPyramid1(strategy1Name,
+						    createLongPattern3(), 
+						    aPortfolio,
+						    enablePyramid);
+  REQUIRE (longStrategyPyramid1.getPatternMaxBarsBack() == 1);
+  REQUIRE (longStrategyPyramid1.getSizeForOrder (*corn) == oneContract);
+  REQUIRE (longStrategyPyramid1.isFlatPosition (futuresSymbol));
+  REQUIRE_FALSE (longStrategyPyramid1.isLongPosition (futuresSymbol));
+  REQUIRE_FALSE (longStrategyPyramid1.isShortPosition (futuresSymbol));
+  REQUIRE (longStrategyPyramid1.getStrategyName() == strategy1Name);
+
+  REQUIRE (longStrategyPyramid1.isPyramidingEnabled() == true);
+  REQUIRE (longStrategyPyramid1.getMaxPyramidPositions() == 2);
+
+
+  REQUIRE (longStrategyPyramid1.strategyCanPyramid(futuresSymbol));
 
   SECTION ("PalStrategy testing for long pattern not matched") 
   {
@@ -341,7 +374,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
     longStrategy1.eventProcessPendingOrders(orderDate);
     REQUIRE ( longStrategy1.isLongPosition (futuresSymbol));
 
-    StrategyBroker<7> aBroker = longStrategy1.getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = longStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 1);
     REQUIRE (aBroker.getClosedTrades() == 0);
@@ -376,7 +409,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
     orderDate = boost_next_weekday(orderDate);
     shortStrategy1.eventProcessPendingOrders(orderDate);
     REQUIRE ( shortStrategy1.isShortPosition (futuresSymbol));
-    StrategyBroker<7> aBroker = shortStrategy1.getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = shortStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 1);
     REQUIRE (aBroker.getClosedTrades() == 0);
@@ -428,12 +461,12 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	  }
       }
 
-    StrategyBroker<7> aBroker = longStrategy1.getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = longStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 1);
 
-    StrategyBroker<7>::StrategyTransactionIterator it = 
+    StrategyBroker<DecimalType>::StrategyTransactionIterator it = 
       aBroker.beginStrategyTransactions();
 
     REQUIRE (it !=aBroker.endStrategyTransactions()); 
@@ -496,12 +529,12 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	  }
       }
 
-    StrategyBroker<7> aBroker = shortStrategy1.getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = shortStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 1);
 
-    StrategyBroker<7>::StrategyTransactionIterator it = 
+    StrategyBroker<DecimalType>::StrategyTransactionIterator it = 
       aBroker.beginStrategyTransactions();
 
     REQUIRE (it !=aBroker.endStrategyTransactions()); 
@@ -542,16 +575,54 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
 	longStrategy1.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<7> aBroker = longStrategy1.getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = longStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 24);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 24); 
 
-    ClosedPositionHistory<7> history = aBroker.getClosedPositionHistory();
-    printPositionHistory (history);
+    ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    //printPositionHistory (history);
 
     REQUIRE (history.getNumWinningPositions() == 13);
     REQUIRE (history.getNumLosingPositions() == 11);
+ 
+  }
+
+
+SECTION ("PalStrategy testing for all long trades with pyramiding - pattern 1") 
+  {
+    TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
+    TimeSeriesDate backtestEndDate(TimeSeriesDate (2008, Dec, 31));
+
+    TimeSeriesDate orderDate;
+    for (; (backTesterDate <= backtestEndDate); backTesterDate = boost_next_weekday(backTesterDate))
+      {
+	orderDate = boost_previous_weekday (backTesterDate);
+	if (longStrategyPyramid1.doesSecurityHaveTradingData (*corn, orderDate))
+	  {
+	    longStrategyPyramid1.eventUpdateSecurityBarNumber(futuresSymbol);
+	    if (longStrategyPyramid1.isLongPosition (futuresSymbol))
+	      longStrategyPyramid1.eventExitOrders (corn, 
+					     longStrategyPyramid1.getInstrumentPosition(futuresSymbol),
+					     orderDate);
+	    longStrategyPyramid1.eventEntryOrders(corn, 
+					   longStrategyPyramid1.getInstrumentPosition(futuresSymbol),
+					   orderDate);
+	    
+	  }
+	longStrategyPyramid1.eventProcessPendingOrders (backTesterDate);
+      }
+
+    StrategyBroker<DecimalType> aBroker = longStrategyPyramid1.getStrategyBroker();
+    REQUIRE (aBroker.getTotalTrades() > 546);
+    REQUIRE (aBroker.getOpenTrades() == 0);
+    REQUIRE (aBroker.getClosedTrades() > 546); 
+
+    ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    printPositionHistory (history);
+
+    //REQUIRE (history.getNumWinningPositions() == 13);
+    //REQUIRE (history.getNumLosingPositions() == 11);
  
   }
 
@@ -581,13 +652,13 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
 	longStrategy2.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<7> aBroker = longStrategy2.getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = longStrategy2.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 45);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 45); 
 
-    ClosedPositionHistory<7> history = aBroker.getClosedPositionHistory();
-    printPositionHistory (history);
+    //ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    //printPositionHistory (history);
 
     //REQUIRE (history.getNumWinningPositions() == 13);
     //REQUIRE (history.getNumLosingPositions() == 11);
@@ -621,9 +692,9 @@ SECTION ("PalStrategy testing for all short trades")
 	shortStrategy1.eventProcessPendingOrders (backTesterDate);
       }
 
-    std::cout << "Backtester end date = " << backTesterDate << std::endl; 
-    StrategyBroker<7> aBroker2 = shortStrategy1.getStrategyBroker();
-    ClosedPositionHistory<7> history2 = aBroker2.getClosedPositionHistory();
+    //std::cout << "Backtester end date = " << backTesterDate << std::endl; 
+    StrategyBroker<DecimalType> aBroker2 = shortStrategy1.getStrategyBroker();
+    ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
     //std::cout << "Calling printPositionHistory for short strategy" << std::endl << std::endl;
     //printPositionHistory (history2);
 

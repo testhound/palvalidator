@@ -24,30 +24,39 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   std::string symbol3("NFLX");
   std::string symbol4("AAPL");
 
-  MarketOnOpenLongOrder<7> longOrder1(symbol1, units, orderDate1);
-  MarketOnOpenLongOrder<7> longOrder2(symbol2, units, orderDate2);
-  MarketOnOpenLongOrder<7> longOrder3(symbol3, units2, orderDate3);
-  MarketOnOpenLongOrder<7> longOrder4(symbol4, units2, orderDate4);
+  DecimalType stopLoss1(dec::fromString<DecimalType>("0.5"));
+  DecimalType profitTarget1(dec::fromString<DecimalType>("1.0"));
 
-  MarketOnOpenSellOrder<7> longOrder1Exit(symbol1, units, exitDate);
-  MarketOnOpenSellOrder<7> longOrder2Exit(symbol2, units, exitDate);
-  MarketOnOpenSellOrder<7> longOrder3Exit(symbol3, units2, exitDate);
-  MarketOnOpenSellOrder<7> longOrder4Exit(symbol4, units2, exitDate);
+  DecimalType stopLoss2(dec::fromString<DecimalType>("1.10"));
+  DecimalType profitTarget2(dec::fromString<DecimalType>("2.20"));
 
-  MarketOnOpenShortOrder<7> shortOrder1(symbol1, units, orderDate1);
-  MarketOnOpenShortOrder<7> shortOrder2(symbol2, units, orderDate2);
-  MarketOnOpenShortOrder<7> shortOrder3(symbol3, units2, orderDate3);
-  MarketOnOpenShortOrder<7> shortOrder4(symbol4, units2, orderDate4);
+  MarketOnOpenLongOrder<DecimalType> longOrder1(symbol1, units, orderDate1);
+  MarketOnOpenLongOrder<DecimalType> longOrder2(symbol2, units, orderDate2, stopLoss1, profitTarget1);
+  MarketOnOpenLongOrder<DecimalType> longOrder3(symbol3, units2, orderDate3);
+  MarketOnOpenLongOrder<DecimalType> longOrder4(symbol4, units2, orderDate4);
 
-  MarketOnOpenCoverOrder<7> shortOrder1Exit(symbol1, units, exitDate);
-  MarketOnOpenCoverOrder<7> shortOrder2Exit(symbol2, units, exitDate);
-  MarketOnOpenCoverOrder<7> shortOrder3Exit(symbol3, units2, exitDate);
-  MarketOnOpenCoverOrder<7> shortOrder4Exit(symbol4, units2, exitDate);
+  MarketOnOpenSellOrder<DecimalType> longOrder1Exit(symbol1, units, exitDate);
+  MarketOnOpenSellOrder<DecimalType> longOrder2Exit(symbol2, units, exitDate);
+  MarketOnOpenSellOrder<DecimalType> longOrder3Exit(symbol3, units2, exitDate);
+  MarketOnOpenSellOrder<DecimalType> longOrder4Exit(symbol4, units2, exitDate);
+
+  MarketOnOpenShortOrder<DecimalType> shortOrder1(symbol1, units, orderDate1);
+  MarketOnOpenShortOrder<DecimalType> shortOrder2(symbol2, units, orderDate2, stopLoss2, profitTarget2);
+  MarketOnOpenShortOrder<DecimalType> shortOrder3(symbol3, units2, orderDate3);
+  MarketOnOpenShortOrder<DecimalType> shortOrder4(symbol4, units2, orderDate4);
+
+  MarketOnOpenCoverOrder<DecimalType> shortOrder1Exit(symbol1, units, exitDate);
+  MarketOnOpenCoverOrder<DecimalType> shortOrder2Exit(symbol2, units, exitDate);
+  MarketOnOpenCoverOrder<DecimalType> shortOrder3Exit(symbol3, units2, exitDate);
+  MarketOnOpenCoverOrder<DecimalType> shortOrder4Exit(symbol4, units2, exitDate);
   
   REQUIRE (longOrder1.getTradingSymbol() == symbol1);
   REQUIRE (longOrder1.getUnitsInOrder() == units);
   REQUIRE (longOrder1.getOrderDate() == orderDate1);
   REQUIRE (longOrder1.getOrderPriority() == 1);
+  REQUIRE (longOrder1.getStopLoss() == DecimalConstants<DecimalType>::DecimalZero);
+  REQUIRE (longOrder1.getProfitTarget() == DecimalConstants<DecimalType>::DecimalZero);
+
   //  REQUIRE (longOrder1.getOrderID() == 1);
 
   REQUIRE (longOrder1Exit.getTradingSymbol() == symbol1);
@@ -58,6 +67,9 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   REQUIRE (longOrder2.getTradingSymbol() == symbol2);
   REQUIRE (longOrder2.getUnitsInOrder() == units);
   REQUIRE (longOrder2.getOrderDate() == orderDate2);
+  REQUIRE (longOrder2.getStopLoss() == stopLoss1);
+  REQUIRE (longOrder2.getProfitTarget() == profitTarget1);
+
   // REQUIRE (longOrder2.getOrderID() == 2);
 
   REQUIRE (longOrder3.getTradingSymbol() == symbol3);
@@ -121,6 +133,8 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   REQUIRE (shortOrder1.getUnitsInOrder() == units);
   REQUIRE (shortOrder1.getOrderDate() == orderDate1);
   REQUIRE (shortOrder1.getOrderPriority() == 1);
+  REQUIRE (shortOrder1.getStopLoss() == DecimalConstants<DecimalType>::DecimalZero);
+  REQUIRE (shortOrder1.getProfitTarget() == DecimalConstants<DecimalType>::DecimalZero);
 
   REQUIRE (shortOrder1Exit.getTradingSymbol() == symbol1);
   REQUIRE (shortOrder1Exit.getUnitsInOrder() == units);
@@ -132,6 +146,9 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   REQUIRE (shortOrder2.getTradingSymbol() == symbol2);
   REQUIRE (shortOrder2.getUnitsInOrder() == units);
   REQUIRE (shortOrder2.getOrderDate() == orderDate2);
+  REQUIRE (shortOrder2.getStopLoss() == stopLoss2);
+  REQUIRE (shortOrder2.getProfitTarget() == profitTarget2);
+
   //REQUIRE (shortOrder2.getOrderID() == 6);
 
   REQUIRE (shortOrder3.getTradingSymbol() == symbol3);
@@ -215,7 +232,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Verify orders are executed")
   {
     date fillDate(from_undelimited_string ("20151221"));
-    DecimalType fillPrice(fromString<DecimalType>("110.87"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("110.87"));
 
     REQUIRE (longOrder1.isOrderPending() == true);
 
@@ -260,7 +277,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Throw exception if attempt to cancel executed order (long side)")
   {
     date fillDate(from_undelimited_string ("20150817"));
-    DecimalType fillPrice(fromString<DecimalType>("115.03"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("115.03"));
 
     REQUIRE (longOrder2.isOrderPending() == true);
     longOrder2.MarkOrderExecuted (fillDate, fillPrice);
@@ -270,7 +287,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Throw exception if attempt to execute canceled order (short side)")
   {
     date fillDate(from_undelimited_string ("20150817"));
-    DecimalType fillPrice(fromString<DecimalType>("115.03"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("115.03"));
 
     REQUIRE (shortOrder2.isOrderPending() == true);
     shortOrder2.MarkOrderExecuted (fillDate, fillPrice);
@@ -280,7 +297,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
  SECTION ("Throw exception if attempt to execute canceled order")
   {
     date fillDate(from_undelimited_string ("20150817"));
-    DecimalType fillPrice(fromString<DecimalType>("115.03"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("115.03"));
 
     longOrder2.MarkOrderCanceled();
     REQUIRE (longOrder2.isOrderCanceled() == true);
@@ -290,7 +307,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
  SECTION ("Throw exception if execution date is before order date")
   {
     date fillDate(from_undelimited_string ("20151210"));
-    DecimalType fillPrice(fromString<DecimalType>("110.87"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("110.87"));
 
     REQUIRE (longOrder1.isOrderPending() == true);
 
