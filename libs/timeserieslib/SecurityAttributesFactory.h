@@ -94,6 +94,7 @@ namespace mkc_timeseries
       addCommonStock (std::string("INTC"), std::string("Intel"));
       addCommonStock (std::string("AMD"), std::string("Advanced Micro Devices"));
       addCommonStock (std::string("MCHP"), std::string("Microchip"));
+      addCommonStock (std::string("MU"), std::string("Micron"));
       addCommonStock (std::string("AAPL"), std::string("Apple"));
       addCommonStock (std::string("NVDA"), std::string("Nvidia"));
       addCommonStock (std::string("NOW"), std::string("ServiceNow"));
@@ -120,6 +121,19 @@ namespace mkc_timeseries
       addCommonStock (std::string("CMG"), std::string("Chipotle"));
       addCommonStock (std::string("QCOM"), std::string("Qualcomm"));
 
+
+      addCommonStock (std::string("FCX"), std::string("Freeport-McMoRan"));
+      addCommonStock (std::string("GS"), std::string("Goldman Sachs"));
+      addCommonStock (std::string("JPM"), std::string("JP Morgan"));
+      addCommonStock (std::string("UPS"), std::string("United Parcel Service"));
+      addCommonStock (std::string("FDX"), std::string("Federall Reserve"));
+      addCommonStock (std::string("DKNG"), std::string("Draft Kings"));
+      addCommonStock (std::string("LEN"), std::string("Lennar"));
+      addCommonStock (std::string("DHI"), std::string("D.R. Horton"));
+      addCommonStock (std::string("ORLY"), std::string("O'Reilly Automotive"));
+      addCommonStock (std::string("F"), std::string("Ford"));
+      addCommonStock (std::string("GM"), std::string("General Motors"));
+      addCommonStock (std::string("TDOC"), std::string("TeleDoc"));
       addCommonStock (std::string("BTC"), std::string("Bitcoin"));
       addCommonStock (std::string("ETH"), std::string("Ehtereum"));
       addCommonStock (std::string("XRP"), std::string("Ripple"));
@@ -359,6 +373,12 @@ namespace mkc_timeseries
 			 std::string("iShares Nasdaq Biotechnology ETF"),
 			 createDecimal("0.48"),
 			 boost::gregorian::from_undelimited_string("20010205"));
+
+      addUnLeveragedETF (std::string("XBI"),
+			 std::string("SPDR S&P Biotech ETF"),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20060206"));
+
     }
 
     void initializeSectorETFs ()
@@ -477,6 +497,30 @@ namespace mkc_timeseries
 		       DecimalConstants<Decimal>::DecimalTwo,
 		       boost::gregorian::from_undelimited_string("20081125"));
 
+      addLeveragedETF (std::string("BOIL"),
+		       std::string("ProShares Ultra Bloomberg Natural Gas"),
+		       createDecimal("1.31"),
+		       DecimalConstants<Decimal>::DecimalTwo,
+		       boost::gregorian::from_undelimited_string("20111004"));
+
+      addLeveragedETF (std::string("KOLD"),
+		       std::string("ProShares UltraShort Bloomberg Natural Gas "),
+		       createDecimal("1.34"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20111004"));
+
+      addLeveragedETF (std::string("ZSL"),
+		       std::string("ProShares UltraShort Silver"),
+		       createDecimal("1.39"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20081201"));
+
+      addLeveragedETF (std::string("AGQ"),
+		       std::string("ProShares Ultra Silver"),
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalTwo,
+		       boost::gregorian::from_undelimited_string("20081201"));
+
     }
     
     void initialize3XLeveragedETFs()
@@ -492,6 +536,19 @@ namespace mkc_timeseries
 		       createDecimal("1.11"),
 		       DecimalConstants<Decimal>::DecimalMinusThree,
 		       boost::gregorian::from_undelimited_string("20081105"));
+
+      addLeveragedETF (std::string("URTY"),
+		       std::string("ProShares UltraPro Russell2000"),
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20100209"));
+
+      addLeveragedETF (std::string("SRTY"),
+		       std::string("ProShares UltraPro Short Russell2000 "),
+		       createDecimal("0.95"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20100209"));
+
 
       addLeveragedETF (std::string("NUGT"),
 		       std::string("Direxion Daily Gold Miners Index Bull 3X Shares"),

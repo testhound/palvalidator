@@ -19,6 +19,31 @@ namespace mkc_timeseries
 {
   using boost::gregorian::date;
 
+  class StrategyOptions
+  {
+  public:
+    StrategyOptions (bool pyramidingEnabled, unsigned int maxPyramidPositions)
+      : mPyramidPositions (pyramidingEnabled),
+	mMaxPyramidPositions(maxPyramidPositions)
+    {}
+
+    bool isPyramidingEnabled() const
+      {
+	return mPyramidPositions;
+      }
+
+    unsigned int getMaxPyramidPositions() const
+      {
+	return mMaxPyramidPositions;
+      }
+
+  private:
+    bool mPyramidPositions;
+    unsigned int mMaxPyramidPositions;
+  };
+
+  extern StrategyOptions defaultStrategyOptions;
+
   template <class Decimal> class BacktesterStrategy
     {
     public:
@@ -28,7 +53,8 @@ namespace mkc_timeseries
 	: mStrategyName(rhs.mStrategyName),
 	  mBroker(rhs.mBroker),
 	  mPortfolio(rhs.mPortfolio),
-	  mSecuritiesProperties(rhs.mSecuritiesProperties)
+	  mSecuritiesProperties(rhs.mSecuritiesProperties),
+	  mStrategyOptions(mStrategyOptions)
       {}
 
       const BacktesterStrategy<Decimal>&
@@ -41,7 +67,8 @@ namespace mkc_timeseries
 	mBroker = rhs.mBroker;
 	mPortfolio = rhs.mPortfolio;
 	mSecuritiesProperties = rhs.mSecuritiesProperties;
-
+	mStrategyOptions = rhs.mStrategyOptions;
+	    
 	return *this;
       }
 
@@ -75,6 +102,30 @@ namespace mkc_timeseries
 
       virtual unsigned long numTradingOpportunities() const = 0;
 
+      bool isPyramidingEnabled() const
+      {
+	  return mStrategyOptions.isPyramidingEnabled();
+      }
+
+      unsigned int getMaxPyramidPositions() const
+      {
+	return mStrategyOptions.getMaxPyramidPositions();
+      }
+
+      bool strategyCanPyramid(const std::string& tradingSymbol) const
+      {
+	if (isPyramidingEnabled())
+	  {
+	    InstrumentPosition<Decimal> instrPos = getInstrumentPosition(tradingSymbol);
+
+	    // We can pyramid if the number of open positions is < 1 (intial position) +
+	    // number of positions we are allowed to pyramid into
+
+	    return instrPos.getNumPositionUnits() < (1 + getMaxPyramidPositions());
+	  }
+	return false;
+      }
+
       bool isLongPosition(const std::string& tradingSymbol) const
       {
 	return mBroker.isLongPosition (tradingSymbol);
@@ -106,19 +157,27 @@ namespace mkc_timeseries
       }
 
       void EnterLongOnOpen(const std::string& tradingSymbol, 	
-			   const date& orderDate)
+			   const date& orderDate,
+			   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			   const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
       {
 	auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
 	mBroker.EnterLongOnOpen (tradingSymbol, orderDate, 
-				 getSizeForOrder(*aSecurity)); 
+				 getSizeForOrder(*aSecurity),
+				 stopLoss,
+				 profitTarget); 
       }
 
       void EnterShortOnOpen(const std::string& tradingSymbol,	
-			    const date& orderDate)
+			    const date& orderDate,
+			    const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+			    const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
       {
 	auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
 	mBroker.EnterShortOnOpen (tradingSymbol, orderDate, 
-				  getSizeForOrder(*aSecurity)); 
+				  getSizeForOrder(*aSecurity),
+				  stopLoss,
+				  profitTarget); 
       }
 
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
@@ -244,11 +303,13 @@ namespace mkc_timeseries
 
     protected:
       BacktesterStrategy (const std::string& strategyName,
-			  std::shared_ptr<Portfolio<Decimal>> portfolio) 
+			  std::shared_ptr<Portfolio<Decimal>> portfolio,
+			  const StrategyOptions& strategyOptions) 
 	: mStrategyName(strategyName),
 	  mBroker (portfolio),
 	  mPortfolio (portfolio),
-	  mSecuritiesProperties()
+	  mSecuritiesProperties(),
+	  mStrategyOptions(strategyOptions)
 	{
 	  typename Portfolio<Decimal>::ConstPortfolioIterator it =
 	    mPortfolio->beginPortfolio();
@@ -264,7 +325,23 @@ namespace mkc_timeseries
       StrategyBroker<Decimal> mBroker;
       std::shared_ptr<Portfolio<Decimal>> mPortfolio;
       SecurityBacktestPropertiesManager mSecuritiesProperties;
+      StrategyOptions mStrategyOptions;
+      static TradingVolume OneShare;
+      static TradingVolume OneContract;
     };
+
+  template <class Decimal>
+  const TradingVolume&
+    BacktesterStrategy<Decimal>::getSizeForOrder(const Security<Decimal>& aSecurity) const
+  {
+    if (aSecurity.isEquitySecurity())
+      return OneShare;
+    else
+      return OneContract;
+  }
+
+  template <class Decimal> TradingVolume BacktesterStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
+  template <class Decimal> TradingVolume BacktesterStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
 
 }
 

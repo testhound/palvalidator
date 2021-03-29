@@ -20,9 +20,10 @@ namespace mkc_searchalgo {
     {
     public:
     PalLongStrategyAlwaysOn(const std::string& strategyName,
-                    std::shared_ptr<PriceActionLabPattern> pattern,
-                    std::shared_ptr<Portfolio<Decimal>> portfolio)
-      : PalStrategy<Decimal>(strategyName, pattern, portfolio)
+			    std::shared_ptr<PriceActionLabPattern> pattern,
+			    std::shared_ptr<Portfolio<Decimal>> portfolio,
+			    const StrategyOptions& strategyOptions = defaultStrategyOptions)
+      : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions)
         {}
 
       PalLongStrategyAlwaysOn(const PalLongStrategyAlwaysOn<Decimal>& rhs)
@@ -126,9 +127,10 @@ namespace mkc_searchalgo {
     {
     public:
     PalShortStrategyAlwaysOn(const std::string& strategyName,
-                     std::shared_ptr<PriceActionLabPattern> pattern,
-                     std::shared_ptr<Portfolio<Decimal>> portfolio)
-      : PalStrategy<Decimal>(strategyName, pattern, portfolio)
+			     std::shared_ptr<PriceActionLabPattern> pattern,
+			     std::shared_ptr<Portfolio<Decimal>> portfolio,
+			     const StrategyOptions& strategyOptions = defaultStrategyOptions)
+      : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions)
         {}
 
       PalShortStrategyAlwaysOn(const PalShortStrategyAlwaysOn<Decimal>& rhs)

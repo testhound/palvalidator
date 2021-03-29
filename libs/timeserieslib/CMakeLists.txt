@@ -6,6 +6,7 @@ set(SRC_LIST
     TimeFrameUtility.cpp
     TimeSeries.cpp
     TimeSeriesEntry.cpp
+    BacktesterStrategy.cpp
     BackTester.h
     BacktesterStrategy.h
     BoostDateHelper.h
