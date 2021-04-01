@@ -2,6 +2,7 @@
 
 #include "catch.hpp"
 #include "../StopLoss.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 
@@ -9,11 +10,11 @@ TEST_CASE ("ProfitTarget operations", "[ProfitTarget]")
 {
   using namespace dec;
 
-  NullStopLoss<7> noStopLoss;
-  decimal<7> stop1(fromString<decimal<7>>("117.4165"));
-  decimal<7> stop2(fromString<decimal<7>>("117.3659"));
-  LongStopLoss<7> longStopLoss1(stop1);
-  ShortStopLoss<7> shortStopLoss1(stop2);
+  NullStopLoss<DecimalType> noStopLoss;
+  DecimalType stop1(fromString<DecimalType>("117.4165"));
+  DecimalType stop2(fromString<DecimalType>("117.3659"));
+  LongStopLoss<DecimalType> longStopLoss1(stop1);
+  ShortStopLoss<DecimalType> shortStopLoss1(stop2);
 
   SECTION ("StopLoss constructor tests 1");
   {
@@ -24,24 +25,24 @@ TEST_CASE ("ProfitTarget operations", "[ProfitTarget]")
 
   SECTION ("StopLoss constructor tests 2");
   {
-    decimal<7> entry1(fromString<decimal<7>>("117.00"));
-    decimal<7> stopReference(fromString<decimal<7>>("116.5203"));
+    DecimalType entry1(fromString<DecimalType>("117.00"));
+    DecimalType stopReference(fromString<DecimalType>("116.5203"));
 
-    PercentNumber<7> percStop1 = PercentNumber<7>::createPercentNumber(fromString<decimal<7>>("0.41"));
+    PercentNumber<DecimalType> percStop1 = PercentNumber<DecimalType>::createPercentNumber(fromString<DecimalType>("0.41"));
 
-    LongStopLoss<7> stopPrice2 (entry1, percStop1);
+    LongStopLoss<DecimalType> stopPrice2 (entry1, percStop1);
 
     REQUIRE (stopPrice2.getStopLoss() == stopReference);
   }
 
   SECTION ("StopLoss constructor tests 3");
   {
-    decimal<7> entry1(fromString<decimal<7>>("117.00"));
-    decimal<7> stopReference(fromString<decimal<7>>("117.4797"));
+    DecimalType entry1(fromString<DecimalType>("117.00"));
+    DecimalType stopReference(fromString<DecimalType>("117.4797"));
 
-    PercentNumber<7> percStop1 = PercentNumber<7>::createPercentNumber(fromString<decimal<7>>("0.41"));
+    PercentNumber<DecimalType> percStop1 = PercentNumber<DecimalType>::createPercentNumber(fromString<DecimalType>("0.41"));
 
-    ShortStopLoss<7> stopPrice2 (entry1, percStop1);
+    ShortStopLoss<DecimalType> stopPrice2 (entry1, percStop1);
     REQUIRE (stopPrice2.getStopLoss() == stopReference);
   }
 

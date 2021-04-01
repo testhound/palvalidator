@@ -28,16 +28,19 @@ createTimeSeriesEntry (const std::string& dateString,
 
 std::shared_ptr<EntryType>
 createTimeSeriesEntry (const mkc_timeseries::TimeSeriesDate& aDate,
-			const dec::decimal<7>& openPrice,
-			const dec::decimal<7>& highPrice,
-			const dec::decimal<7>& lowPrice,
-			const dec::decimal<7>& closePrice,
+			const DecimalType& openPrice,
+			const DecimalType& highPrice,
+			const DecimalType& lowPrice,
+			const DecimalType& closePrice,
 			mkc_timeseries::volume_t vol);
 
 
 
 std::shared_ptr<DecimalType>
 createDecimalPtr(const std::string& valueString);
+
+DecimalType *
+createRawDecimalPtr(const std::string& valueString);
 
 
 DecimalType

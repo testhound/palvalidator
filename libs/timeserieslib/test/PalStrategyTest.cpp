@@ -11,12 +11,6 @@ using namespace boost::gregorian;
 
 std::string myCornSymbol("@C");
 
-DecimalType *
-createRawDecimalPtr(const std::string& valueString)
-{
-  return new DecimalType (dec::fromString<DecimalType>(valueString));
-}
-
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
 		   const std::string& percLong, const std::string& percShort,
@@ -260,6 +254,33 @@ void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
     }
 }
 
+
+void backTestLoop(std::shared_ptr<Security<DecimalType>> security, BacktesterStrategy<DecimalType>& strategy, 
+		  TimeSeriesDate& backTestStartDate, TimeSeriesDate& backTestEndDate)
+{
+  TimeSeriesDate backTesterDate(backTestStartDate);
+
+  TimeSeriesDate orderDate;
+  for (; (backTesterDate <= backTestEndDate); backTesterDate = boost_next_weekday(backTesterDate))
+    {
+      orderDate = boost_previous_weekday (backTesterDate);
+      if (strategy.doesSecurityHaveTradingData (*security, orderDate))
+	{
+	  strategy.eventUpdateSecurityBarNumber(security->getSymbol());
+	  if (strategy.isShortPosition (security->getSymbol()) || strategy.isLongPosition (security->getSymbol()))
+	    strategy.eventExitOrders (security, 
+				      strategy.getInstrumentPosition(security->getSymbol()),
+				      orderDate);
+	  strategy.eventEntryOrders(security, 
+				    strategy.getInstrumentPosition(security->getSymbol()),
+				    orderDate);
+	  
+	}
+      strategy.eventProcessPendingOrders (backTesterDate);
+    }
+}
+
+
 TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 {
   DecimalType cornTickValue(createDecimal("0.25"));
@@ -341,8 +362,30 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   REQUIRE (longStrategyPyramid1.isPyramidingEnabled() == true);
   REQUIRE (longStrategyPyramid1.getMaxPyramidPositions() == 2);
 
+  std::string metaStrategy1Name("PAL Meta Strategy 1");
+  PalMetaStrategy<DecimalType> metaStrategy1(metaStrategy1Name, aPortfolio);
+  metaStrategy1.addPricePattern(createLongPattern1());
 
-  REQUIRE (longStrategyPyramid1.strategyCanPyramid(futuresSymbol));
+  REQUIRE (metaStrategy1.getSizeForOrder (*corn) == oneContract);
+  REQUIRE (metaStrategy1.isFlatPosition (futuresSymbol));
+  REQUIRE_FALSE (metaStrategy1.isLongPosition (futuresSymbol));
+  REQUIRE_FALSE (metaStrategy1.isShortPosition (futuresSymbol));
+  REQUIRE (metaStrategy1.getStrategyName() == metaStrategy1Name);
+
+  std::string metaStrategy2Name("PAL Meta Strategy 2");
+  PalMetaStrategy<DecimalType> metaStrategy2(metaStrategy2Name, aPortfolio);
+  metaStrategy2.addPricePattern(createShortPattern1());
+
+  REQUIRE (metaStrategy2.getSizeForOrder (*corn) == oneContract);
+  REQUIRE (metaStrategy2.isFlatPosition (futuresSymbol));
+  REQUIRE_FALSE (metaStrategy2.isLongPosition (futuresSymbol));
+  REQUIRE_FALSE (metaStrategy2.isShortPosition (futuresSymbol));
+  REQUIRE (metaStrategy2.getStrategyName() == metaStrategy2Name);
+
+  std::string metaStrategy3Name("PAL Meta Strategy 3");
+  PalMetaStrategy<DecimalType> metaStrategy3(metaStrategy3Name, aPortfolio);
+  metaStrategy3.addPricePattern(createLongPattern1());
+  metaStrategy3.addPricePattern(createShortPattern1());
 
   SECTION ("PalStrategy testing for long pattern not matched") 
   {
@@ -588,6 +631,42 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
  
   }
 
+SECTION ("PalStrategy testing for all long trades - MetaStrategy1 1") 
+  {
+    TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
+    TimeSeriesDate backtestEndDate(TimeSeriesDate (2008, Dec, 31));
+
+    TimeSeriesDate orderDate;
+    for (; (backTesterDate <= backtestEndDate); backTesterDate = boost_next_weekday(backTesterDate))
+      {
+	orderDate = boost_previous_weekday (backTesterDate);
+	if (metaStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
+	  {
+	    metaStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
+	    if (metaStrategy1.isLongPosition (futuresSymbol))
+	      metaStrategy1.eventExitOrders (corn, 
+					     metaStrategy1.getInstrumentPosition(futuresSymbol),
+					     orderDate);
+	    metaStrategy1.eventEntryOrders(corn, 
+					   metaStrategy1.getInstrumentPosition(futuresSymbol),
+					   orderDate);
+	    
+	  }
+	metaStrategy1.eventProcessPendingOrders (backTesterDate);
+      }
+
+    StrategyBroker<DecimalType> aBroker = metaStrategy1.getStrategyBroker();
+    REQUIRE (aBroker.getTotalTrades() == 24);
+    REQUIRE (aBroker.getOpenTrades() == 0);
+    REQUIRE (aBroker.getClosedTrades() == 24); 
+
+    ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    //printPositionHistory (history);
+
+    REQUIRE (history.getNumWinningPositions() == 13);
+    REQUIRE (history.getNumLosingPositions() == 11);
+ 
+  }
 
 SECTION ("PalStrategy testing for all long trades with pyramiding - pattern 1") 
   {
@@ -708,6 +787,96 @@ SECTION ("PalStrategy testing for all short trades")
     REQUIRE (history2.getNumLosingPositions() == 6);
  
   }    
+
+SECTION ("PalStrategy testing for all short trades - MetaStrategy2") 
+  {
+    TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
+    TimeSeriesDate backtestEndDate(TimeSeriesDate (2011, Sep, 15));
+
+    TimeSeriesDate orderDate;
+    for (; (backTesterDate <= backtestEndDate); backTesterDate = boost_next_weekday(backTesterDate))
+      {
+	orderDate = boost_previous_weekday (backTesterDate);
+	if (metaStrategy2.doesSecurityHaveTradingData (*corn, orderDate))
+	  {
+	    metaStrategy2.eventUpdateSecurityBarNumber(futuresSymbol);
+	    if (metaStrategy2.isShortPosition (futuresSymbol))
+	      metaStrategy2.eventExitOrders (corn, 
+					     metaStrategy2.getInstrumentPosition(futuresSymbol),
+					     orderDate);
+	    metaStrategy2.eventEntryOrders(corn, 
+					   metaStrategy2.getInstrumentPosition(futuresSymbol),
+					   orderDate);
+	    
+	  }
+	metaStrategy2.eventProcessPendingOrders (backTesterDate);
+      }
+
+    StrategyBroker<DecimalType> aBroker = metaStrategy2.getStrategyBroker();
+    REQUIRE (aBroker.getTotalTrades() == 21);
+    REQUIRE (aBroker.getOpenTrades() == 0);
+    REQUIRE (aBroker.getClosedTrades() == 21); 
+
+    ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    //printPositionHistory (history);
+
+    REQUIRE (history.getNumWinningPositions() == 15);
+    REQUIRE (history.getNumLosingPositions() == 6);
+ 
+  }
+
+SECTION ("PalStrategy testing for all trades - MetaStrategy3") 
+  {
+    TimeSeriesDate backTestStartDate(TimeSeriesDate (1985, Mar, 19));
+    TimeSeriesDate backTestEndDate(TimeSeriesDate (2008, Dec, 31));
+
+    backTestLoop (corn, metaStrategy3, backTestStartDate, backTestEndDate);
+
+    StrategyBroker<DecimalType> aBroker = metaStrategy3.getStrategyBroker();
+    ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    printPositionHistory (history);
+
+    int twoPatternTotalTrades = aBroker.getTotalTrades();
+
+    REQUIRE (aBroker.getTotalTrades() > 24);
+    REQUIRE (aBroker.getOpenTrades() == 0);
+    REQUIRE (aBroker.getClosedTrades() > 24); 
+
+    //ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
+    //printPositionHistory (history);
+
+    //REQUIRE (history.getNumWinningPositions() == 13);
+    //REQUIRE (history.getNumLosingPositions() == 11);
+
+    std::string metaStrategy4Name("PAL Meta Strategy 4");
+    PalMetaStrategy<DecimalType> metaStrategy4(metaStrategy4Name, aPortfolio);
+    metaStrategy4.addPricePattern(createLongPattern1());
+    metaStrategy4.addPricePattern(createLongPattern2());
+    metaStrategy4.addPricePattern(createShortPattern1());
+ 
+    backTestLoop (corn, metaStrategy4, backTestStartDate, backTestEndDate);
+ 
+    StrategyBroker<DecimalType> aBroker2 = metaStrategy4.getStrategyBroker();
+    ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
+    printPositionHistory (history2);
+
+    int threePatternTotalTrades = aBroker2.getTotalTrades();
+    REQUIRE (threePatternTotalTrades > twoPatternTotalTrades);
+
+    StrategyOptions stratOptions(true, 2);  // Enable pyramiding
+    std::string metaStrategy5Name("PAL Meta Strategy 5");
+    PalMetaStrategy<DecimalType> metaStrategy5(metaStrategy5Name, aPortfolio, stratOptions);
+    metaStrategy5.addPricePattern(createLongPattern1());
+    metaStrategy5.addPricePattern(createLongPattern2());
+    metaStrategy5.addPricePattern(createShortPattern1());
+
+    backTestLoop (corn, metaStrategy5, backTestStartDate, backTestEndDate);
+    StrategyBroker<DecimalType> aBroker3 = metaStrategy5.getStrategyBroker();
+    ClosedPositionHistory<DecimalType> history3 = aBroker3.getClosedPositionHistory();
+    printPositionHistory (history3);
+
+    REQUIRE (aBroker3.getTotalTrades() > threePatternTotalTrades);
+  }
 
 }
 

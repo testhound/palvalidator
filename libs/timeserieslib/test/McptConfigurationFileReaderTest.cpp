@@ -2,21 +2,10 @@
 
 #include "catch.hpp"
 #include "../McptConfigurationFileReader.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef decimal<7> DecimalType;
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
 
 
 TEST_CASE ("Security operations", "[Security]")
@@ -26,10 +15,10 @@ TEST_CASE ("Security operations", "[Security]")
   
   std::string symbol("@C");
   std::string SecurityName("Corn Futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
 
-  std::shared_ptr<McptConfiguration<7>> configuration = reader.readConfigurationFile();
+  std::shared_ptr<McptConfiguration<DecimalType>> configuration = reader.readConfigurationFile();
   auto aSecurity = configuration->getSecurity();
   REQUIRE (aSecurity->getSymbol() == symbol);
   REQUIRE (aSecurity->getName() == SecurityName);

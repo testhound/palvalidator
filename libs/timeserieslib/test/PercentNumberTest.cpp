@@ -2,27 +2,28 @@
 
 #include "catch.hpp"
 #include "../PercentNumber.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 
 TEST_CASE ("PercentNumber operations", "[PercentNumber]")
 {
   using namespace dec;
-  typedef decimal<4> PercentType;
+  typedef DecimalType PercentType;
 
-  PercentType profitTarget (fromString<decimal<4>>("0.41"));
-  PercentType profitTargetAsPercent (fromString<decimal<4>>("0.0041"));
-  PercentType stop (fromString<decimal<4>>("0.39"));
-  PercentType stopAsPercent (fromString<decimal<4>>("0.0039"));
+  PercentType profitTarget (fromString<DecimalType>("0.41"));
+  PercentType profitTargetAsPercent (fromString<DecimalType>("0.0041"));
+  PercentType stop (fromString<DecimalType>("0.39"));
+  PercentType stopAsPercent (fromString<DecimalType>("0.0039"));
 
-  PercentNumber<4> profitTargetPercent = PercentNumber<4>::createPercentNumber (profitTarget);
-  PercentNumber<4> aPercentNumber = PercentNumber<4>::createPercentNumber (std::string("0.41"));
+  PercentNumber<DecimalType> profitTargetPercent = PercentNumber<DecimalType>::createPercentNumber (profitTarget);
+  PercentNumber<DecimalType> aPercentNumber = PercentNumber<DecimalType>::createPercentNumber (std::string("0.41"));
 
-  PercentNumber<4> stopPercent = PercentNumber<4>::createPercentNumber(stop);
-  PercentNumber<4> sqrtConstants[] = 
+  PercentNumber<DecimalType> stopPercent = PercentNumber<DecimalType>::createPercentNumber(stop);
+  PercentNumber<DecimalType> sqrtConstants[] = 
     {
-      PercentNumber<4>::createPercentNumber (std::string("0.0")),
-      PercentNumber<4>::createPercentNumber (std::string("0.0"))
+      PercentNumber<DecimalType>::createPercentNumber (std::string("0.0")),
+      PercentNumber<DecimalType>::createPercentNumber (std::string("0.0"))
     };
 
   SECTION ("PercentNumber inequality tests");

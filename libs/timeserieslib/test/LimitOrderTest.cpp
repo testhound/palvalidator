@@ -2,17 +2,10 @@
 
 #include "catch.hpp"
 #include "../TradingOrder.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
 
 TEST_CASE ("Market Order Operations", "[TradingOrder]")
 {
@@ -27,15 +20,15 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   std::string symbol3("NFLX");
   std::string symbol4("AAPL");
 
-  SellAtLimitOrder<7> longOrder1(symbol1, units, orderDate1, createDecimal("111.90"));   // hit on 12/22/2015
-  SellAtLimitOrder<7> longOrder2(symbol2, units, orderDate2, createDecimal("210.00"));   // hot on 8/18/2015
-  SellAtLimitOrder<7> longOrder3(symbol3, units2, orderDate3, createDecimal("126.76"));  // hit on 8/18/2015
-  SellAtLimitOrder<7> longOrder4(symbol4, units2, orderDate4, createDecimal("96.50"));   // hit on 1/29/2016
+  SellAtLimitOrder<DecimalType> longOrder1(symbol1, units, orderDate1, createDecimal("111.90"));   // hit on 12/22/2015
+  SellAtLimitOrder<DecimalType> longOrder2(symbol2, units, orderDate2, createDecimal("210.00"));   // hot on 8/18/2015
+  SellAtLimitOrder<DecimalType> longOrder3(symbol3, units2, orderDate3, createDecimal("126.76"));  // hit on 8/18/2015
+  SellAtLimitOrder<DecimalType> longOrder4(symbol4, units2, orderDate4, createDecimal("96.50"));   // hit on 1/29/2016
 
-  CoverAtLimitOrder<7> shortOrder1(symbol1, units, orderDate1,createDecimal("109.00")); // hit on 1/4/2016
-  CoverAtLimitOrder<7> shortOrder2(symbol2, units, orderDate2,createDecimal("200.00")); // hit on 8/21/2015
-  CoverAtLimitOrder<7> shortOrder3(symbol3, units2, orderDate3,createDecimal("119.90")); // hit on 8/12/2015
-  CoverAtLimitOrder<7> shortOrder4(symbol4, units2, orderDate4, createDecimal("93.00")); // hit on  1/28/2016
+  CoverAtLimitOrder<DecimalType> shortOrder1(symbol1, units, orderDate1,createDecimal("109.00")); // hit on 1/4/2016
+  CoverAtLimitOrder<DecimalType> shortOrder2(symbol2, units, orderDate2,createDecimal("200.00")); // hit on 8/21/2015
+  CoverAtLimitOrder<DecimalType> shortOrder3(symbol3, units2, orderDate3,createDecimal("119.90")); // hit on 8/12/2015
+  CoverAtLimitOrder<DecimalType> shortOrder4(symbol4, units2, orderDate4, createDecimal("93.00")); // hit on  1/28/2016
 
   
   REQUIRE (longOrder1.getTradingSymbol() == symbol1);
@@ -169,7 +162,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Verify orders are executed")
   {
     date fillDate(from_undelimited_string ("20151222"));
-    DecimalType fillPrice(fromString<DecimalType>("111.93"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("111.93"));
 
     REQUIRE (longOrder1.isOrderPending() == true);
 
@@ -184,7 +177,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Throw exception if long fill price is less than limit price")
   {
     date fillDate(from_undelimited_string ("20151222"));
-    DecimalType fillPrice(fromString<DecimalType>("111.89"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("111.89"));
 
     REQUIRE (longOrder1.isOrderPending() == true);
 
@@ -195,7 +188,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Throw exception if short fill price is greater than limit price")
   {
     date fillDate(from_undelimited_string ("20160104"));
-    DecimalType fillPrice(fromString<DecimalType>("109.03"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("109.03"));
 
     REQUIRE (shortOrder1.isOrderPending() == true);
 
@@ -236,7 +229,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Throw exception if attempt to cancel executed order (long side)")
   {
     date fillDate(from_undelimited_string ("20150818"));
-    DecimalType fillPrice(fromString<DecimalType>("210.07"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("210.07"));
 
     REQUIRE (longOrder2.isOrderPending() == true);
     longOrder2.MarkOrderExecuted (fillDate, fillPrice);
@@ -246,7 +239,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
   SECTION ("Throw exception if attempt to execute canceled order (short side)")
   {
     date fillDate(from_undelimited_string ("20150821"));
-    DecimalType fillPrice(fromString<DecimalType>("199.70"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("199.70"));
 
     REQUIRE (shortOrder2.isOrderPending() == true);
     shortOrder2.MarkOrderExecuted (fillDate, fillPrice);
@@ -256,7 +249,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
  SECTION ("Throw exception if attempt to execute canceled order")
   {
     date fillDate(from_undelimited_string ("20150818"));
-    DecimalType fillPrice(fromString<DecimalType>("210.00"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("210.00"));
 
     longOrder2.MarkOrderCanceled();
     REQUIRE (longOrder2.isOrderCanceled() == true);
@@ -266,7 +259,7 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
  SECTION ("Throw exception if execution date is before order date")
   {
     date fillDate(from_undelimited_string ("20151207"));
-    DecimalType fillPrice(fromString<DecimalType>("110.87"));
+    DecimalType fillPrice(dec::fromString<DecimalType>("110.87"));
 
     REQUIRE (longOrder1.isOrderPending() == true);
 

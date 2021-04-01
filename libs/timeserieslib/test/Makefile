@@ -59,8 +59,8 @@ TIMESERIES_INC_DIR = ../
 TradingVolumeTest: TradingVolumeTest.o
 	g++ -o TradingVolumeTest ${TIMESERIES_O} $<
 
-MCPTStrategyAttributesTest: MCPTStrategyAttributesTest.o
-	g++ -o MCPTStrategyAttributesTest ${TIMESERIES_O} $< -lboost_date_time -lboost_system
+MCPTStrategyAttributesTest: MCPTStrategyAttributesTest.o TestUtils.o
+	g++ -o MCPTStrategyAttributesTest ${TIMESERIES_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
 
 LogPalPatternTest: LogPalPatternTest.o
 	g++ -o LogPalPatternTest  $< ${LOG_PAL_PATTERN_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lpriceaction2
@@ -83,8 +83,8 @@ SecurityAttributesFactoryTest: SecurityAttributesFactoryTest.o
 SecurityAttributesTest: SecurityAttributesTest.o
 	g++ -o SecurityAttributesTest ${TIMESERIES_O} ${MCPT_CONF_READER_O} $< -lboost_date_time
 
-MonteCarloPermutationTest2: MonteCarloPermutationTest2.o
-	g++ -o MonteCarloPermutationTest2  $< ${TIMESERIES_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+MonteCarloPermutationTest2: MonteCarloPermutationTest2.o TestUtils.o
+	g++ -o MonteCarloPermutationTest2  $< ${TIMESERIES_O} TestUtils.o ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_thread -lboost_system
 
 BackTesterTest: BackTesterTest.o
 	g++ -o BackTesterTest  $< ${TIMESERIES_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
@@ -116,11 +116,11 @@ PortfolioTest: PortfolioTest.o
 SecurityTest: SecurityTest.o
 	g++ -o SecurityTest ${TIMESERIES_O} $< -lboost_date_time
 
-InstrumentPositionManagerTest: InstrumentPositionManagerTest.o
-	g++ -o InstrumentPositionManagerTest ${TIMESERIES_O} $< -lboost_date_time
+InstrumentPositionManagerTest: InstrumentPositionManagerTest.o TestUtils.o
+	g++ -o InstrumentPositionManagerTest ${TIMESERIES_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
 
-InstrumentPositionTest: InstrumentPositionTest.o
-	g++ -o InstrumentPositionTest $< -lboost_date_time
+InstrumentPositionTest: InstrumentPositionTest.o  TestUtils.o
+	g++ -o InstrumentPositionTest $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
 
 ProcessStopOrderTest: ProcessStopOrderTest.o
 	g++ -o ProcessStopOrderTest $<  -lboost_date_time
@@ -137,35 +137,35 @@ ProcessMarketOrderTest: ProcessMarketOrderTest.o
 StopOrderTest: StopOrderTest.o
 	g++ -o StopOrderTest $<  -lboost_date_time
 
-LimitOrderTest: LimitOrderTest.o
-	g++ -o LimitOrderTest $<  -lboost_date_time
+LimitOrderTest: LimitOrderTest.o TestUtils.o
+	g++ -o LimitOrderTest $<  TestUtils.o -lboost_date_time -lboost_system
 
 TradingPositionTest: TradingPositionTest.o TestUtils.o
 	g++ -o TradingPositionTest $< TestUtils.o -lboost_date_time -lboost_system
 
-MarketOrderTest: MarketOrderTest.o
-	g++ -o MarketOrderTest -std=c++14 $<  -lboost_date_time
+MarketOrderTest: MarketOrderTest.o TestUtils.o
+	g++ -o MarketOrderTest -std=c++14 $<  TestUtils.o -lboost_date_time -lboost_system
 
-ClosedPositionHistoryTest: ClosedPositionHistoryTest.o
-	g++ -o ClosedPositionHistoryTest $< -lboost_date_time -lpthread
+ClosedPositionHistoryTest: ClosedPositionHistoryTest.o TestUtils.o
+	g++ -o ClosedPositionHistoryTest $< TestUtils.o -lboost_date_time -lboost_system -lpthread
 
-OpenPositionTest: OpenPositionTest.o
-	g++ -o OpenPositionTest $< -lboost_date_time
+OpenPositionTest: OpenPositionTest.o TestUtils.o
+	g++ -o OpenPositionTest $< TestUtils.o -lboost_date_time -lboost_system
 
 OpenPositionHistoryTest: OpenPositionHistoryTest.o
 	g++ -o OpenPositionHistoryTest $< -lboost_date_time
 
-OpenPositionBarTest: OpenPositionBarTest.o
-	g++ -o OpenPositionBarTest $< -lboost_date_time
+OpenPositionBarTest: OpenPositionBarTest.o TestUtils.o
+	g++ -o OpenPositionBarTest $< TestUtils.o -lboost_date_time -lboost_system
 
 StopLossTest: StopLossTest.o
-	g++ -o StopLossTest $<
+	g++ -o StopLossTest $<   -lboost_system
 
 ProfitTargetTest: ProfitTargetTest.o
-	g++ -o ProfitTargetTest $<
+	g++ -o ProfitTargetTest $<  -lboost_system
 
 PercentNumberTest: PercentNumberTest.o
-	g++ -o PercentNumberTest $<
+	g++ -o PercentNumberTest $< -lboost_system
 
 TimeSeriesCsvReaderTest: TimeSeriesCsvReaderTest.o
 	g++ -o TimeSeriesCsvReaderTest $< ${TIMESERIES_O} -lboost_date_time -lpthread

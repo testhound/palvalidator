@@ -3,36 +3,11 @@
 #include "catch.hpp"
 #include "../Security.h"
 #include "../SecurityFactory.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef decimal<7> EquityType;
-typedef decimal<7> DecimalType;
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
-
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -40,13 +15,7 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<EquityType> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<EquityType> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<EquityType> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<EquityType> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+    return createTimeSeriesEntry(dateString, openPrice, highPrice, lowPrice, closePrice, vol);
   }
 
 
@@ -73,7 +42,7 @@ TEST_CASE ("Security operations", "[Security]")
 
   auto entry6 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
 				   65899900);
-  auto spySeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::SHARES);
+  auto spySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
 
   spySeries->addEntry (entry4);
   spySeries->addEntry (entry6);
@@ -86,16 +55,16 @@ TEST_CASE ("Security operations", "[Security]")
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
 
-  EquitySecurity<7> spy (equitySymbol, equityName, spySeries);
+  EquitySecurity<DecimalType> spy (equitySymbol, equityName, spySeries);
 
   REQUIRE (spy.getName() == equityName);
   REQUIRE (spy.getSymbol() == equitySymbol);
-  REQUIRE (spy.getBigPointValue() == DecimalConstants<7>::DecimalOne);
-  REQUIRE (spy.getTick() == DecimalConstants<7>::EquityTick);
+  REQUIRE (spy.getBigPointValue() == DecimalConstants<DecimalType>::DecimalOne);
+  REQUIRE (spy.getTick() == DecimalConstants<DecimalType>::EquityTick);
   REQUIRE (spy.isEquitySecurity());
   REQUIRE_FALSE (spy.isFuturesSecurity());
 
-  auto spyFromFactory (SecurityFactory<7>::createSecurity (equitySymbol, spySeries));
+  auto spyFromFactory (SecurityFactory<DecimalType>::createSecurity (equitySymbol, spySeries));
   REQUIRE (*(spy.getTimeSeries()) == *(spyFromFactory->getTimeSeries()));
   REQUIRE (spyFromFactory->getName() == spy.getName());
   REQUIRE (spyFromFactory->getSymbol() == spy.getSymbol());
@@ -113,8 +82,8 @@ TEST_CASE ("Security operations", "[Security]")
   REQUIRE (spy2->isEquitySecurity());
   REQUIRE_FALSE (spy2->isFuturesSecurity());
 
-  Security<7>::ConstRandomAccessIterator itBegin = spy.getRandomAccessIteratorBegin();
-  Security<7>::ConstRandomAccessIterator itEnd = spy.getRandomAccessIteratorEnd();
+  Security<DecimalType>::ConstRandomAccessIterator itBegin = spy.getRandomAccessIteratorBegin();
+  Security<DecimalType>::ConstRandomAccessIterator itEnd = spy.getRandomAccessIteratorEnd();
 
   itEnd--;
 
@@ -131,8 +100,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
 
   auto futuresEntry0 = createTimeSeriesEntry ("19851118", "3664.51025", "3687.58178", "3656.81982","3672.20068",0);
 
@@ -164,7 +133,7 @@ TEST_CASE ("Security operations", "[Security]")
   auto futuresEntry11 = createTimeSeriesEntry ("19851204","3744.33984375","3759.56079101563","3736.7294921875",
 					"3740.53466796875",0);
 
-  auto cornSeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  auto cornSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
   cornSeries->addEntry(futuresEntry0);
   cornSeries->addEntry(futuresEntry1);
   cornSeries->addEntry(futuresEntry2);
@@ -178,7 +147,7 @@ TEST_CASE ("Security operations", "[Security]")
   cornSeries->addEntry(futuresEntry10);
   cornSeries->addEntry(futuresEntry11);
 
-  FuturesSecurity<7> corn (futuresSymbol, futuresName, cornBigPointValue,
+  FuturesSecurity<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
 			   cornTickValue, cornSeries);
 
   REQUIRE (corn.getName() == futuresName);
@@ -196,8 +165,8 @@ TEST_CASE ("Security operations", "[Security]")
   REQUIRE_FALSE (corn2->isEquitySecurity());
   REQUIRE (corn2->isFuturesSecurity());
 
-  Security<7>::ConstRandomAccessIterator itBeginCorn = corn.getRandomAccessIteratorBegin();
-  Security<7>::ConstRandomAccessIterator itEndCorn = corn.getRandomAccessIteratorEnd();
+  Security<DecimalType>::ConstRandomAccessIterator itBeginCorn = corn.getRandomAccessIteratorBegin();
+  Security<DecimalType>::ConstRandomAccessIterator itEndCorn = corn.getRandomAccessIteratorEnd();
 
   itEndCorn--;
 
@@ -213,7 +182,7 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access", "[TimeSeries Access]")
     {
       date randomDate1(2016, 1, 4);
-      Security<7>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
+      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
       REQUIRE (it != spy.getRandomAccessIteratorEnd());
       REQUIRE (*(*it) == *entry2);
 
@@ -223,7 +192,7 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Futures Security Time Series Access", "[TimeSeries Access]")
     {
       date randomDate1(1985, 11, 25);
-      Security<7>::ConstRandomAccessIterator it = corn.getRandomAccessIterator(randomDate1);
+      Security<DecimalType>::ConstRandomAccessIterator it = corn.getRandomAccessIterator(randomDate1);
       REQUIRE (it != corn.getRandomAccessIteratorEnd());
       REQUIRE (*(*it) == *futuresEntry5);
 
@@ -233,7 +202,7 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access pt. 2", "[TimeSeries Access (2)]")
     {
       date randomDate1(2016, 1, 6);
-      Security<7>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
+      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
       REQUIRE (it != spy.getRandomAccessIteratorEnd());
       REQUIRE (spy.getTimeSeriesEntry(it, 0) == *entry0);
       REQUIRE (spy.getTimeSeriesEntry(it, 1) == *entry1);
@@ -247,7 +216,7 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access pt. 3", "[TimeSeries Access (3)]")
     {
       date randomDate1(2016, 1, 5);
-      Security<7>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
+      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
       REQUIRE (it != spy.getRandomAccessIteratorEnd());
       REQUIRE (spy.getTimeSeriesEntry(it, 0) == *entry1);
       REQUIRE (spy.getTimeSeriesEntry(it, 1) == *entry2);
@@ -260,7 +229,7 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access pt. 4", "[TimeSeries Access (4)]")
     {
       date randomDate1(2016, 1, 4);
-      Security<7>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
+      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
 
       date aDate = spy.getDateValue(it, 0);
       REQUIRE (aDate == entry2->getDateValue());
@@ -273,14 +242,14 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access pt. 5", "[TimeSeries Access (5)]")
     {
       date randomDate1(2016, 1, 6);
-      Security<7>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
+      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
 
       REQUIRE_THROWS (spy.getTimeSeriesEntry (it, 7));
     }
 
   SECTION ("Equity Security Time Series Access pt. 6", "[TimeSeries Access (6)]")
     {
-      Security<7>::ConstRandomAccessIterator it = spy.getRandomAccessIteratorEnd();
+      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIteratorEnd();
 
       REQUIRE_THROWS (spy.getTimeSeriesEntry (it, 1));
     }

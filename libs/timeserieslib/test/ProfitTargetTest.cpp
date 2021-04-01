@@ -2,6 +2,7 @@
 
 #include "catch.hpp"
 #include "../ProfitTarget.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 
@@ -9,11 +10,11 @@ TEST_CASE ("ProfitTarget operations", "[ProfitTarget]")
 {
   using namespace dec;
 
-  NullProfitTarget<7> noProfitTarget;
-  decimal<7> target1(fromString<decimal<7>>("117.4165"));
-  decimal<7> target2(fromString<decimal<7>>("117.3659"));
-  LongProfitTarget<7> longProfitTarget1(target1);
-  ShortProfitTarget<7> shortProfitTarget1(target2);
+  NullProfitTarget<DecimalType> noProfitTarget;
+  DecimalType target1(fromString<DecimalType>("117.4165"));
+  DecimalType target2(fromString<DecimalType>("117.3659"));
+  LongProfitTarget<DecimalType> longProfitTarget1(target1);
+  ShortProfitTarget<DecimalType> shortProfitTarget1(target2);
 
   SECTION ("ProfitTarget constructor tests 1");
   {
@@ -24,24 +25,24 @@ TEST_CASE ("ProfitTarget operations", "[ProfitTarget]")
 
   SECTION ("ProfitTarget constructor tests 2");
   {
-    decimal<7> entry1(fromString<decimal<7>>("117.00"));
-    decimal<7> targetReference(fromString<decimal<7>>("117.4797"));
+    DecimalType entry1(fromString<DecimalType>("117.00"));
+    DecimalType targetReference(fromString<DecimalType>("117.4797"));
 
-    PercentNumber<7> percTarget1 = PercentNumber<7>::createPercentNumber(fromString<decimal<7>>("0.41"));
+    PercentNumber<DecimalType> percTarget1 = PercentNumber<DecimalType>::createPercentNumber(fromString<DecimalType>("0.41"));
 
-    LongProfitTarget<7> targetPrice2 (entry1, percTarget1);
+    LongProfitTarget<DecimalType> targetPrice2 (entry1, percTarget1);
 
     REQUIRE (targetPrice2.getProfitTarget() == targetReference);
   }
 
   SECTION ("ProfitTarget constructor tests 3");
   {
-    decimal<7> entry1(fromString<decimal<7>>("117.00"));
-    decimal<7> targetReference(fromString<decimal<7>>("116.5203"));
+    DecimalType entry1(fromString<DecimalType>("117.00"));
+    DecimalType targetReference(fromString<DecimalType>("116.5203"));
 
-    PercentNumber<7> percTarget1 = PercentNumber<7>::createPercentNumber(fromString<decimal<7>>("0.41"));
+    PercentNumber<DecimalType> percTarget1 = PercentNumber<DecimalType>::createPercentNumber(fromString<DecimalType>("0.41"));
 
-    ShortProfitTarget<7> targetPrice2 (entry1, percTarget1);
+    ShortProfitTarget<DecimalType> targetPrice2 (entry1, percTarget1);
     REQUIRE (targetPrice2.getProfitTarget() == targetReference);
   }
 

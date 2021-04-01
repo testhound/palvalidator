@@ -108,7 +108,7 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
   template <class Decimal>
   bool operator==(const OpenPositionBar<Decimal>& lhs, const OpenPositionBar<Decimal>& rhs)
   {
-    return (*lhs.getTimeSeriesEntry() == *rhs.getTimeSeriesEntry());
+    return (lhs.getTimeSeriesEntry() == rhs.getTimeSeriesEntry());
   }
 
   template <class Decimal>
