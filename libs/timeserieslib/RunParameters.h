@@ -2,6 +2,7 @@
 #define RUNPARAMETERS_H
 
 #include <string>
+#include <vector>
 
 namespace mkc_timeseries
 {
@@ -17,6 +18,7 @@ namespace mkc_timeseries
             std::string getEodDataFilePath() { return mEodDataFilePath; }
             std::string getApiSource() { return mApiSource; }
             bool shouldUseApi() { return mUseApi; }
+            std::vector<time_t> getTimeFrames() { return mTimeFrames; }
 
             void setUseApi(bool useApi) { mUseApi = useApi; }
             void setConfig1FilePath(std::string filename) { mConfigFile1Path = filename; }
@@ -25,6 +27,7 @@ namespace mkc_timeseries
             void setHourlyDataFilePath(std::string filename) { mHourlyDataFilePath = filename; }
             void setEodDataFilePath(std::string filename) { mEodDataFilePath = filename; }
             void setApiSource(std::string source) { mApiSource = source; }
+            void setTimeFrames(std::vector<time_t> timeFrames) { mTimeFrames = timeFrames; }
 
         private:
             bool mUseApi;
@@ -36,7 +39,7 @@ namespace mkc_timeseries
             std::string mApiSource;
             std::string mHourlyDataFilePath;
             std::string mEodDataFilePath;
-
+            std::vector<time_t> mTimeFrames;
     };
 }
 

@@ -59,18 +59,18 @@ namespace mkc_searchalgo
     const std::shared_ptr<Security<Decimal>> security = mcptConfiguration->getSecurity();
     std::cout << "Time frame id started: " << timeFrameIdToLoad << std::endl;
     //io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
-    io::CSVReader<13, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mRunParameters->getSearchConfigFilePath().c_str());
+    io::CSVReader<12, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> csvConfigFile(mRunParameters->getSearchConfigFilePath().c_str());
 
     csvConfigFile.read_header(io::ignore_extra_column, "MaxDepth", "MinTrades", "ActivityMultiplier","PassingStratNumPerRound","ProfitFactorCriterion", "MaxConsecutiveLosers",
-                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "TimeFramesToSearchConfigFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
+                             "MaxInactivitySpan", "TargetsToSearchConfigFilePath", "ValidationConfigFilePath", "PALSafetyFactor",
                               "StepRedundancyMultiplier", "SurvivalFilterMultiplier");
 
     std::string maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers;
-    std::string maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath;
+    std::string maxInactivitySpan, targetsToSearchConfigFilePath;
     std::string validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier;
 
     csvConfigFile.read_row (maxDepth, minTrades, activityMultiplier, passingStratNumPerRound, profitFactorCritierion, maxConsecutiveLosers,
-                            maxInactivitySpan, targetsToSearchConfigFilePath, timeFramesToSearchConfigFilePath,
+                            maxInactivitySpan, targetsToSearchConfigFilePath,
                             validationConfigFilePath, palSafetyFactor, stepRedundancyMultiplier, survivalFilterMultiplier);
 
     double palSafetyDbl = tryCast<double>(palSafetyFactor);
@@ -102,31 +102,6 @@ namespace mkc_searchalgo
       {
         targetStops.push_back(std::make_pair(Decimal(tryCast<float>(target)), Decimal(tryCast<float>(stop))));
       }
-
-    boost::filesystem::path timeFramesFile (timeFramesToSearchConfigFilePath);
-    if (!exists (timeFramesFile))
-      throw SearchAlgoConfigurationFileReaderException("Timeframe to search config file path: " +  timeFramesFile.string() + " does not exist");
-
-    std::vector<time_t> timeFrames;
-    io::CSVReader<1, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> timesCsv(timeFramesToSearchConfigFilePath);
-    timesCsv.read_header(io::ignore_extra_column, "TimeFrame");
-
-    std::string timeFrame;
-    while (timesCsv.read_row(timeFrame))
-      {
-        try
-        {
-          struct std::tm tm{0,0,0,0,0,2000,0,0,-1};
-          strptime(timeFrame.c_str(), "%H:%M", &tm);
-          timeFrames.push_back(std::mktime(&tm));
-        }
-        catch (const std::exception& e)
-        {
-          std::cout << "Time conversion exception." << std::endl;
-          throw SearchAlgoConfigurationFileReaderException("Time conversion exception in file: " + timeFramesFile.string() + ", when converting: " + timeFrame + "\nException details: " + std::string(e.what()));
-        }
-      }
-
     
     std::string hourlyDataFilePath = mRunParameters->getHourlyDataFilePath();
     if(mRunParameters->shouldUseApi()) 
@@ -138,52 +113,70 @@ namespace mkc_searchalgo
       hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDataRange, dataReaderDataRange, downloadFile);
     }
 
-    if (static_cast<size_t>(timeFrameIdToLoad) > timeFrames.size() || timeFrameIdToLoad < 0)
-      throw SearchAlgoConfigurationFileReaderException("Invalid timeFrameIdToLoad: " + std::to_string(timeFrameIdToLoad) + " timeframes size: " + std::to_string(timeFrames.size()) + ".");
+    if (static_cast<size_t>(timeFrameIdToLoad) > mRunParameters->getTimeFrames().size() || timeFrameIdToLoad < 0)
+      throw SearchAlgoConfigurationFileReaderException("Invalid timeFrameIdToLoad: " + std::to_string(timeFrameIdToLoad) + " timeframes size: " + std::to_string(mRunParameters->getTimeFrames().size()) + ".");
 
     std::shared_ptr<OHLCTimeSeries<Decimal>> series;
-    if (timeFrameIdToLoad > 0)
+    if (timeFrameIdToLoad == 0)
+    {
+      // read the data file, infer the time frames, and create all of the synthetic files - once; read them in otherwise
+      if(downloadFile) 
       {
-        const time_t& timeFilter =  timeFrames.at(static_cast<size_t>(timeFrameIdToLoad - 1));
-        std::cout << std::asctime(std::localtime(&timeFilter)) << std::endl;
-        std::shared_ptr<TradeStationTimeFilteredCsvReader<Decimal>> timeFilteredCsv = std::make_shared<TradeStationTimeFilteredCsvReader<Decimal>>(hourlyDataFilePath, security->getTimeSeries()->getTimeFrame(), getVolumeUnit(security), security->getTick(), timeFilter);
-        timeFilteredCsv->readFile();
-        typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = security->getTimeSeries()->beginRandomAccess();
+        std::shared_ptr<TimeFrameDiscovery<Decimal>> timeFrameDiscovery = std::make_shared<TradestationHourlyTimeFrameDiscovery<Decimal>>(hourlyDataFilePath);
+        timeFrameDiscovery->inferTimeFrames();
+        mRunParameters->setTimeFrames(timeFrameDiscovery->getTimeFrames());
 
-        for (; it != security->getTimeSeries()->endRandomAccess(); it++)
-          {
-            const Decimal& cOpen = security->getTimeSeries()->getOpenValue (it, 0);
-            const Decimal& cHigh = security->getTimeSeries()->getHighValue (it, 0);
-            const Decimal& cLow = security->getTimeSeries()->getLowValue (it, 0);
-            const Decimal& cClose = security->getTimeSeries()->getCloseValue (it, 0);
-
-            auto dt = security->getTimeSeries()->getDateValue(it, 0);
-            if (!timeFilteredCsv->getTimeSeries()->isDateFound(dt))
-              {
-                //std::cout << "FilteredTime csv: adding dt entry: " << dt << " from the original security timeseries (mixing)." << std::endl;
-                timeFilteredCsv->addEntry(OHLCTimeSeriesEntry<Decimal>(dt, cOpen, cHigh, cLow, cClose, DecimalConstants<Decimal>::DecimalZero, security->getTimeSeries()->getTimeFrame()));
-              }
-            else
-              {
-                std::cout << "First date found in file: " << dt << ", no more mixing." << std::endl;
-                break;
-              }
-          }
-        std::cout << "First date random access: " << timeFilteredCsv->getTimeSeries()->getDateValue(timeFilteredCsv->getTimeSeries()->beginRandomAccess(),0) << std::endl;
-        std::cout << "First date sorted access: " << timeFilteredCsv->getTimeSeries()->getFirstDate() << std::endl;
-        series = timeFilteredCsv->getTimeSeries();
-        series->syncronizeMapAndArray();
-        std::string outFileName(hourlyDataFilePath + std::string("_timeframe_") + std::to_string(timeFrameIdToLoad));
-        PalTimeSeriesCsvWriter<Decimal> tsWriter(outFileName, *series);
-        tsWriter.writeFile();
-
-      }
-    else
-      {
-        series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
+        std::shared_ptr<TradestationHourlySyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
+          std::make_shared<TradestationHourlySyntheticTimeSeriesCreator<Decimal>>(
+              hourlyDataFilePath, 
+              security->getTimeSeries()->getTimeFrame(), 
+              getVolumeUnit(security), 
+              security->getTick()
+        );
+        for(int i = 0; i < timeFrameDiscovery->numTimeFrames(); i++) 
+        {
+          time_t timeStamp = timeFrameDiscovery->getTimeFrameInMinutes(i);
+          syntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, timeStamp);
+        }
       }
 
-    //dataSourceReader->destroyFiles(); // delete temp files from API call
+      series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
+    }
+    else 
+    {
+      std::shared_ptr<TradestationHourlySyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
+        std::make_shared<TradestationHourlySyntheticTimeSeriesCreator<Decimal>>(
+            hourlyDataFilePath, 
+            security->getTimeSeries()->getTimeFrame(), 
+            getVolumeUnit(security), 
+            security->getTick()
+      );
+      series = syntheticTimeSeriesCreator->getSyntheticTimeSeries(timeFrameIdToLoad);
+
+      // re-incorporate mixing
+      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = security->getTimeSeries()->beginRandomAccess();
+      for (; it != security->getTimeSeries()->endRandomAccess(); it++)
+      {
+        const Decimal& cOpen = security->getTimeSeries()->getOpenValue (it, 0);
+        const Decimal& cHigh = security->getTimeSeries()->getHighValue (it, 0);
+        const Decimal& cLow = security->getTimeSeries()->getLowValue (it, 0);
+        const Decimal& cClose = security->getTimeSeries()->getCloseValue (it, 0);
+
+        auto dt = security->getTimeSeries()->getDateValue(it, 0);
+        if (!series->isDateFound(dt))
+          series->addEntry(OHLCTimeSeriesEntry<Decimal>(dt, cOpen, cHigh, cLow, cClose, DecimalConstants<Decimal>::DecimalZero, security->getTimeSeries()->getTimeFrame()));
+        else
+        {
+          std::cout << "First date found in file: " << dt << ", no more mixing." << std::endl;
+          break;
+        }
+      }
+      std::cout << "First date random access: " << series->getDateValue(series->beginRandomAccess(),0) << std::endl;
+      std::cout << "First date sorted access: " << series->getFirstDate() << std::endl;
+      series->syncronizeMapAndArray();
+      syntheticTimeSeriesCreator->rewriteTimeFrameFile(timeFrameIdToLoad, series);
+    }
+
     return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
                                                               tryCast<unsigned int>(minTrades),
                                                               Decimal(tryCast<double>(activityMultiplier)),
@@ -192,7 +185,7 @@ namespace mkc_searchalgo
                                                               tryCast<unsigned int>(maxConsecutiveLosers),
                                                               tryCast<unsigned int>(maxInactivitySpan),
                                                               targetStops,
-                                                              timeFrames,
+                                                              mRunParameters->getTimeFrames(),
                                                               series,
                                                               tryCast<unsigned int>(numPermutations),
                                                               tryCast<unsigned int>(numStratsFull),

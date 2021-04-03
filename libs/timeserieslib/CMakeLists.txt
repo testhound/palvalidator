@@ -57,7 +57,8 @@ set(SRC_LIST
     TradingPosition.h
     TradingVolume.h
     VectorDecimal.h
-
+    TimeFrameDiscovery.h
+    SyntheticTimeSeriesCreator.h
 )
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
