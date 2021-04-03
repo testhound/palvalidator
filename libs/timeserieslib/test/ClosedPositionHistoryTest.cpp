@@ -4,71 +4,24 @@
 #include "../TimeSeriesCsvReader.h"
 #include "../ClosedPositionHistory.h"
 #include "../TimeSeriesIndicators.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
 
 std::string myCornSymbol("C2");
 
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry2 (const TimeSeriesDate& aDate,
-		       const dec::decimal<7>& openPrice,
-		       const dec::decimal<7>& highPrice,
-		       const dec::decimal<7>& lowPrice,
-		       const dec::decimal<7>& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (aDate);
-    auto open1 = std::make_shared<DecimalType> (openPrice);
-    auto high1 = std::make_shared<DecimalType> (highPrice);
-    auto low1 = std::make_shared<DecimalType> (lowPrice);
-    auto close1 = std::make_shared<DecimalType> (closePrice);
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
-
-
-void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<7>> openPosition,
+void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openPosition,
 			    const TimeSeriesDate& entryDate,
 			    const TimeSeriesDate& exitDate,
-			    const std::shared_ptr<OHLCTimeSeries<7>>& aTimeSeries )
+			    const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aTimeSeries )
 {
-  OHLCTimeSeries<7>::TimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
+  OHLCTimeSeries<DecimalType>::TimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
   it++;
 
-  OHLCTimeSeries<7>::TimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
+  OHLCTimeSeries<DecimalType>::TimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
   for (; it != itEnd; it++)
     {
       openPosition->addBar (it->second);
@@ -79,27 +32,27 @@ void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<7>> openPosition,
   openPosition->addBar (it->second);
 }
 
-std::shared_ptr<TradingPositionLong<7>>
-createClosedLongPosition (const std::shared_ptr<OHLCTimeSeries<7>>& aTimeSeries,
+std::shared_ptr<TradingPositionLong<DecimalType>>
+createClosedLongPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aTimeSeries,
 			  const TimeSeriesDate& entryDate,
-			  const dec::decimal<7>& entryPrice,
+			  const DecimalType& entryPrice,
 			  const TimeSeriesDate& exitDate,
-			  const dec::decimal<7>& exitPrice,
+			  const DecimalType& exitPrice,
 			  const TradingVolume& tVolume,
 			  int dummy)
 {
 
-  auto entry = createTimeSeriesEntry2 (entryDate,
+  auto entry = createTimeSeriesEntry (entryDate,
 				      entryPrice,
 				      entryPrice,
 				      entryPrice,
 				      entryPrice,
 				      tVolume.getTradingVolume());
 
-  auto aPos = std::make_shared<TradingPositionLong<7>>(myCornSymbol,
-						       entryPrice,
-						       entry,
-						       tVolume);
+  auto aPos = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol,
+								 entryPrice,
+								 *entry,
+								 tVolume);
 
   addBarHistoryUntilDate (aPos, entryDate, exitDate, aTimeSeries); 
   aPos->ClosePosition (exitDate,
@@ -108,26 +61,26 @@ createClosedLongPosition (const std::shared_ptr<OHLCTimeSeries<7>>& aTimeSeries,
 }
 
 
-std::shared_ptr<TradingPositionShort<7>>
-createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<7>>& aTimeSeries,
+std::shared_ptr<TradingPositionShort<DecimalType>>
+createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aTimeSeries,
 			   const TimeSeriesDate& entryDate,
-			  const dec::decimal<7>& entryPrice,
+			  const DecimalType& entryPrice,
 			  const TimeSeriesDate& exitDate,
-			  const dec::decimal<7>& exitPrice,
+			  const DecimalType& exitPrice,
 			  const TradingVolume& tVolume,
 			  int dummy)
 {
   
-  auto entry = createTimeSeriesEntry2 (entryDate,
+  auto entry = createTimeSeriesEntry (entryDate,
 				      entryPrice,
 				      entryPrice,
 				      entryPrice,
 				      entryPrice,
 				      tVolume.getTradingVolume());
 
-  auto aPos = std::make_shared<TradingPositionShort<7>>(myCornSymbol,
+  auto aPos = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol,
 						       entryPrice,
-						       entry,
+						       *entry,
 						       tVolume);
   addBarHistoryUntilDate (aPos, entryDate, exitDate, aTimeSeries);
 
@@ -136,10 +89,10 @@ createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<7>>& aTimeSeries
   return aPos;
 }
 
-void printPositionHistory(const ClosedPositionHistory<7>& history)
+void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
 {
-  ClosedPositionHistory<7>::ConstPositionIterator it = history.beginTradingPositions();
-  std::shared_ptr<TradingPosition<7>> p;
+  ClosedPositionHistory<DecimalType>::ConstPositionIterator it = history.beginTradingPositions();
+  std::shared_ptr<TradingPosition<DecimalType>> p;
   std::string posStateString;
   std::string openStr("Position open");
   std::string closedStr("Position closed");
@@ -192,10 +145,11 @@ void printPositionHistory(const ClosedPositionHistory<7>& history)
 
 TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 {
-  PALFormatCsvReader<7> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = csvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
   auto entry0 = createTimeSeriesEntry ("20160106", "198.34", "200.06", "197.60","198.82",
 				   142662900);
@@ -350,7 +304,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 
 
 
-  ClosedPositionHistory<7> closedLongPositions;
+  ClosedPositionHistory<DecimalType> closedLongPositions;
   DecimalType longCumReturn(longPosition1->getTradeReturnMultiplier());
 
   closedLongPositions.addClosedPosition(longPosition1);
@@ -422,7 +376,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 
   closedLongPositions.addClosedPosition(longPosition24);
   longCumReturn = longCumReturn * longPosition24->getTradeReturnMultiplier();
-  longCumReturn = longCumReturn - DecimalConstants<7>::DecimalOne;
+  longCumReturn = longCumReturn - DecimalConstants<DecimalType>::DecimalOne;
 
   std::cout << "Cumulative return for longpositions = " << closedLongPositions.getCumulativeReturn() << std::endl;
   std::vector<unsigned int> barsInPositions(closedLongPositions.beginBarsPerPosition(), 
@@ -560,7 +514,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 						   createDecimal("640.75346"),
 						   oneContract, 2);
 
-  ClosedPositionHistory<7> closedShortPositions;
+  ClosedPositionHistory<DecimalType> closedShortPositions;
   closedShortPositions.addClosedPosition(shortPosition1);
   closedShortPositions.addClosedPosition(shortPosition2);
   closedShortPositions.addClosedPosition(shortPosition3);
@@ -603,10 +557,10 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
     {
 
 
-      ClosedPositionHistory<7>::ConstTradeReturnIterator winnersIterator = 
+      ClosedPositionHistory<DecimalType>::ConstTradeReturnIterator winnersIterator = 
 	closedLongPositions.beginWinnersReturns();
 
-      ClosedPositionHistory<7>::ConstTradeReturnIterator losersIterator = 
+      ClosedPositionHistory<DecimalType>::ConstTradeReturnIterator losersIterator = 
 	closedLongPositions.beginLosersReturns();
 
       if (longPosition1->isWinningPosition())
@@ -635,7 +589,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 SECTION ("ClosedPositionHistory Longs ConstIterator tests")
   {
     /*
-    ClosedPositionHistory<7>::ConstPositionIterator  it = closedLongPositions.beginClosedPositions();
+    ClosedPositionHistory<DecimalType>::ConstPositionIterator  it = closedLongPositions.beginClosedPositions();
 
     REQUIRE (it->first == longEntryDate1);
     REQUIRE (*(it->second) == longPosition1);

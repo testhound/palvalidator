@@ -5,36 +5,12 @@
 #include "../PalStrategy.h"
 #include "../BoostDateHelper.h"
 #include "../MonteCarloPermutationTest.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
 
 std::string myCornSymbol("C2");
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType *
-createRawDecimalPtr(const std::string& valueString)
-{
-  return new dec::decimal<7> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
@@ -198,10 +174,10 @@ createLongPattern2()
 }
 
 
-void printPositionHistory(const ClosedPositionHistory<7>& history)
+void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
 {
-  ClosedPositionHistory<7>::ConstPositionIterator it = history.beginTradingPositions();
-  std::shared_ptr<TradingPosition<7>> p;
+  ClosedPositionHistory<DecimalType>::ConstPositionIterator it = history.beginTradingPositions();
+  std::shared_ptr<TradingPosition<DecimalType>> p;
   std::string posStateString;
   std::string openStr("Position open");
   std::string closedStr("Position closed");
@@ -257,40 +233,41 @@ void printPositionHistory(const ClosedPositionHistory<7>& history)
 
 TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 {
-  PALFormatCsvReader<7> csvFile ("C2_122AR_OOS.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR_OOS.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = csvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-  auto corn = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
 						   futuresName, 
 						   cornBigPointValue,
 						   cornTickValue, 
 						   p);
 
   std::string portName("Corn Portfolio");
-  auto aPortfolio = std::make_shared<Portfolio<7>>(portName);
+  auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
 
   aPortfolio->addSecurity (corn);
 
   std::string strategy1Name("PAL Long Strategy 1");
 
  
-  std::shared_ptr<PalLongStrategy<7>> longStrategy1 = 
-    std::make_shared<PalLongStrategy<7>>(strategy1Name, createLongPattern1(), 
+  std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1 = 
+    std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(), 
 					 aPortfolio);
 
-  std::shared_ptr<PalShortStrategy<7>> shortStrategy1 =
-    std::make_shared<PalShortStrategy<7>>("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
+  std::shared_ptr<PalShortStrategy<DecimalType>> shortStrategy1 =
+    std::make_shared<PalShortStrategy<DecimalType>>("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
 
-  std::shared_ptr<PalLongStrategy<7>> longStrategy2 = 
-    std::make_shared<PalLongStrategy<7>>("PAL Long Strategy 2", createLongPattern2(), 
+  std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy2 = 
+    std::make_shared<PalLongStrategy<DecimalType>>("PAL Long Strategy 2", createLongPattern2(), 
 					 aPortfolio);
 
 SECTION ("PalStrategy testing for all long trades - pattern 1") 
@@ -298,11 +275,11 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     TimeSeriesDate backTesterDate(TimeSeriesDate (2011, Oct, 28));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2015, Oct, 26));
 
-    auto palLongBacktester1 = std::make_shared< DailyBackTester<7>>(backTesterDate,
+    auto palLongBacktester1 = std::make_shared< DailyBackTester<DecimalType>>(backTesterDate,
 								    backtestEndDate);
 
     palLongBacktester1->addStrategy(longStrategy1);
-    MonteCarloPermuteMarketChanges<7> mcpt(palLongBacktester1,
+    MonteCarloPermuteMarketChanges<DecimalType> mcpt(palLongBacktester1,
 					    200);
     std::cout << "P-Value for strategy 1 is " << mcpt.runPermutationTest() << std::endl;
   }
@@ -312,11 +289,11 @@ SECTION ("PalStrategy testing long trades using original MCPT - pattern 1")
     TimeSeriesDate backTesterDate(TimeSeriesDate (2011, Oct, 28));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2015, Oct, 26));
 
-    auto palLongBacktester1 = std::make_shared< DailyBackTester<7>>(backTesterDate,
+    auto palLongBacktester1 = std::make_shared< DailyBackTester<DecimalType>>(backTesterDate,
 								    backtestEndDate);
 
     palLongBacktester1->addStrategy(longStrategy1);
-    OriginalMCPT<7> mcpt(palLongBacktester1,
+    OriginalMCPT<DecimalType> mcpt(palLongBacktester1,
 			 5000);
     std::cout << "P-Value for strategy 1 using original MCPT is " << mcpt.runPermutationTest() << std::endl;
   }
@@ -328,10 +305,10 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     TimeSeriesDate backTesterDate(TimeSeriesDate (2011, Oct, 28));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2015, Oct, 26));
 
-    auto palLongBacktester2 = std::make_shared<DailyBackTester<7>>(backTesterDate,
+    auto palLongBacktester2 = std::make_shared<DailyBackTester<DecimalType>>(backTesterDate,
 								    backtestEndDate);
     palLongBacktester2->addStrategy(longStrategy2);
-    MonteCarloPermuteMarketChanges<7> mcpt2(palLongBacktester2,
+    MonteCarloPermuteMarketChanges<DecimalType> mcpt2(palLongBacktester2,
 					    200);
     std::cout << "P-Value for strategy 2 is " << mcpt2.runPermutationTest() << std::endl;
   }
@@ -341,30 +318,30 @@ SECTION ("MonteCarlo simulation of payoff ratio - pattern 1")
     TimeSeriesDate backTesterDate(TimeSeriesDate (2011, Oct, 28));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2015, Oct, 26));
 
-    auto palLongBacktester1 = std::make_shared< DailyBackTester<7>>(backTesterDate,
+    auto palLongBacktester1 = std::make_shared< DailyBackTester<DecimalType>>(backTesterDate,
 								    backtestEndDate);
 
     palLongBacktester1->addStrategy(longStrategy1);
-    MonteCarloPayoffRatio<7> mcpt(palLongBacktester1,
+    MonteCarloPayoffRatio<DecimalType> mcpt(palLongBacktester1,
 				  1000);
     std::cout << "Monte Carlo Payoff Ratio for strategy 1 is " << mcpt.runPermutationTest() << std::endl;
 
-    auto palLongBacktester2 = std::make_shared< DailyBackTester<7>>(backTesterDate,
+    auto palLongBacktester2 = std::make_shared< DailyBackTester<DecimalType>>(backTesterDate,
 								    backtestEndDate);
 
-    std::shared_ptr<PalLongStrategy<7>> longStrategy1Clone = 
-      std::make_shared<PalLongStrategy<7>>(strategy1Name, createLongPattern1(), 
+    std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1Clone = 
+      std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(), 
 					 aPortfolio);
     palLongBacktester2->addStrategy(longStrategy1Clone);
     palLongBacktester2->backtest();
 
-    ClosedPositionHistory<7> hist = longStrategy1Clone->getStrategyBroker().getClosedPositionHistory();
+    ClosedPositionHistory<DecimalType> hist = longStrategy1Clone->getStrategyBroker().getClosedPositionHistory();
 
     std::cout << "*** Number of positions = " << hist.getNumPositions() << std::endl;
     std::cout << "*** Number of winning positions = " << hist.getNumWinningPositions() << std::endl;
     std::cout << "*** Number of losing positions = " << hist.getNumLosingPositions() << std::endl;
 
-    decimal<7> payoff = hist.getMedianPayoffRatio();
+    DecimalType payoff = hist.getMedianPayoffRatio();
     std::cout << "*** Payoff ratio from backtesting = " << payoff << std::endl;
     
   }
@@ -374,10 +351,10 @@ SECTION ("PalStrategy testing for all short trades")
     TimeSeriesDate backTesterDate(TimeSeriesDate (2011, Oct, 28));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2015, Oct, 26));
 
-    auto palShortBacktester1= std::make_shared<DailyBackTester<7>>(backTesterDate,
+    auto palShortBacktester1= std::make_shared<DailyBackTester<DecimalType>>(backTesterDate,
 								    backtestEndDate);
     palShortBacktester1->addStrategy(shortStrategy1);
-    MonteCarloPermuteMarketChanges<7> mcpt3(palShortBacktester1,
+    MonteCarloPermuteMarketChanges<DecimalType> mcpt3(palShortBacktester1,
 					    200);
 
     std::cout << "P-Value for short strategy 1 is " << mcpt3.runPermutationTest() << std::endl;

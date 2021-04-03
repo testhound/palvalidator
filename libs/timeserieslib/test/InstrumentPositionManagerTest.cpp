@@ -3,45 +3,10 @@
 #include "catch.hpp"
 #include "../InstrumentPositionManager.h"
 #include "../DecimalConstants.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 
 TEST_CASE ("TradingPosition operations", "[TradingPosition]")
@@ -79,12 +44,12 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
   std::string tickerSymbol("C2");
-  InstrumentPosition<7> c2InstrumentPositionLong (tickerSymbol);
+  InstrumentPosition<DecimalType> c2InstrumentPositionLong (tickerSymbol);
 
-  auto longPosition1 = std::make_shared<TradingPositionLong<7>>(tickerSymbol, entry0->getOpenValue(),  
-								entry0, oneContract);
-  auto longPosition2 = std::make_shared<TradingPositionLong<7>>(tickerSymbol, entry4->getOpenValue(),  
-								entry4, oneContract);
+  auto longPosition1 = std::make_shared<TradingPositionLong<DecimalType>>(tickerSymbol, entry0->getOpenValue(),  
+								*entry0, oneContract);
+  auto longPosition2 = std::make_shared<TradingPositionLong<DecimalType>>(tickerSymbol, entry4->getOpenValue(),  
+								*entry4, oneContract);
 
   
   // Time Series for short positions
@@ -106,17 +71,17 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
 
   std::string qqqSymbol("QQQ");
   TradingVolume oneShare(1, TradingVolume::SHARES);
-  auto shortPosition1 = std::make_shared<TradingPositionShort<7>>(qqqSymbol, 
+  auto shortPosition1 = std::make_shared<TradingPositionShort<DecimalType>>(qqqSymbol, 
 								 shortEntry6->getOpenValue(),  
-								 shortEntry6, 
+								 *shortEntry6, 
 								 oneShare);
-  auto shortPosition2 = std::make_shared<TradingPositionShort<7>>(qqqSymbol, 
+  auto shortPosition2 = std::make_shared<TradingPositionShort<DecimalType>>(qqqSymbol, 
 								 shortEntry4->getOpenValue(),  
-								 shortEntry4, 
+								 *shortEntry4, 
 								 oneShare);
 
 
-  InstrumentPositionManager<7> posManager;
+  InstrumentPositionManager<DecimalType> posManager;
   REQUIRE (posManager.getNumInstruments() == 0);
   posManager.addInstrument(tickerSymbol);
   REQUIRE (posManager.getNumInstruments() == 1);
@@ -139,14 +104,14 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
   REQUIRE_FALSE (posManager.isFlatPosition(qqqSymbol));
   REQUIRE (posManager.getNumPositionUnits (qqqSymbol) == 1);
 
-  posManager.addBar (qqqSymbol, shortEntry5);
-  posManager.addBar (qqqSymbol, shortEntry4);
+  posManager.addBar (qqqSymbol, *shortEntry5);
+  posManager.addBar (qqqSymbol, *shortEntry4);
   posManager.addPosition (shortPosition2);
   REQUIRE (posManager.getNumPositionUnits (qqqSymbol) == 2);
-  posManager.addBar (qqqSymbol, shortEntry3);
-  posManager.addBar (qqqSymbol, shortEntry2);
-  posManager.addBar (qqqSymbol, shortEntry1);
-  posManager.addBar (qqqSymbol, shortEntry0);
+  posManager.addBar (qqqSymbol, *shortEntry3);
+  posManager.addBar (qqqSymbol, *shortEntry2);
+  posManager.addBar (qqqSymbol, *shortEntry1);
+  posManager.addBar (qqqSymbol, *shortEntry0);
 
   posManager.addPosition (longPosition1);
   REQUIRE (posManager.isLongPosition(tickerSymbol));
@@ -154,23 +119,23 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
   REQUIRE_FALSE (posManager.isFlatPosition(tickerSymbol));
   REQUIRE (posManager.getNumPositionUnits (tickerSymbol) == 1);
 
-  posManager.addBar(tickerSymbol, entry1);
-  posManager.addBar(tickerSymbol, entry2);
-  posManager.addBar(tickerSymbol, entry3);
-  posManager.addBar(tickerSymbol, entry4);
+  posManager.addBar(tickerSymbol, *entry1);
+  posManager.addBar(tickerSymbol, *entry2);
+  posManager.addBar(tickerSymbol, *entry3);
+  posManager.addBar(tickerSymbol, *entry4);
   posManager.addPosition (longPosition2);
   REQUIRE (posManager.getNumPositionUnits (tickerSymbol) == 2);
-  posManager.addBar(tickerSymbol, entry5);
-  posManager.addBar(tickerSymbol, entry6);
-  posManager.addBar(tickerSymbol, entry7);
-  posManager.addBar(tickerSymbol, entry8);
-  posManager.addBar(tickerSymbol, entry9);
-  posManager.addBar(tickerSymbol, entry10);
-  posManager.addBar(tickerSymbol, entry11);
+  posManager.addBar(tickerSymbol, *entry5);
+  posManager.addBar(tickerSymbol, *entry6);
+  posManager.addBar(tickerSymbol, *entry7);
+  posManager.addBar(tickerSymbol, *entry8);
+  posManager.addBar(tickerSymbol, *entry9);
+  posManager.addBar(tickerSymbol, *entry10);
+  posManager.addBar(tickerSymbol, *entry11);
 
   SECTION ("Test InstrumentPosition iterators")
   {
-    InstrumentPositionManager<7>::ConstInstrumentPositionIterator it = 
+    InstrumentPositionManager<DecimalType>::ConstInstrumentPositionIterator it = 
       posManager.beginInstrumentPositions();
 
     REQUIRE (it->second->getInstrumentSymbol() == tickerSymbol);
@@ -183,7 +148,7 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
 
   SECTION ("Test getInstrumentPosition")
     {
-    InstrumentPosition<7> qqqInstrument = posManager.getInstrumentPosition(qqqSymbol);
+    InstrumentPosition<DecimalType> qqqInstrument = posManager.getInstrumentPosition(qqqSymbol);
     REQUIRE (qqqInstrument.getInstrumentSymbol() == qqqSymbol);
     REQUIRE (qqqInstrument.getNumPositionUnits() == 2);
     REQUIRE (qqqInstrument.getFillPrice() == shortEntry6->getOpenValue());
@@ -193,39 +158,39 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
 
   SECTION ("Test addBarForOpenPosition")
     {
-      auto aSeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
-      aSeries->addEntry(entry0);
-      aSeries->addEntry(entry1);
-      aSeries->addEntry(entry2);
-      aSeries->addEntry(entry3);
-      aSeries->addEntry(entry4);
-      aSeries->addEntry(entry5);
-      aSeries->addEntry(entry6);
-      aSeries->addEntry(entry7);
-      aSeries->addEntry(entry8);
-      aSeries->addEntry(entry9);
-      aSeries->addEntry(entry10);
-      aSeries->addEntry(entry11);
+      auto aSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+      aSeries->addEntry(*entry0);
+      aSeries->addEntry(*entry1);
+      aSeries->addEntry(*entry2);
+      aSeries->addEntry(*entry3);
+      aSeries->addEntry(*entry4);
+      aSeries->addEntry(*entry5);
+      aSeries->addEntry(*entry6);
+      aSeries->addEntry(*entry7);
+      aSeries->addEntry(*entry8);
+      aSeries->addEntry(*entry9);
+      aSeries->addEntry(*entry10);
+      aSeries->addEntry(*entry11);
       
       std::string futuresSymbol("C2");
       std::string futuresName("Corn futures");
-      decimal<7> cornBigPointValue(createDecimal("50.0"));
-      decimal<7> cornTickValue(createDecimal("0.25"));
-      auto corn = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
+      DecimalType cornBigPointValue(createDecimal("50.0"));
+      DecimalType cornTickValue(createDecimal("0.25"));
+      auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
 						       futuresName, 
 						       cornBigPointValue,
 						       cornTickValue, 
 						       aSeries);
 
       std::string portName("Test Portfolio");
-      auto aPortfolio = std::make_shared<Portfolio<7>>(portName);
+      auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
 
       aPortfolio->addSecurity (corn);
-      InstrumentPositionManager<7> aPosManager;
+      InstrumentPositionManager<DecimalType> aPosManager;
       aPosManager.addInstrument(futuresSymbol);
 
-      auto longPositionCorn = std::make_shared<TradingPositionLong<7>>(futuresSymbol, entry0->getOpenValue(),  
-								entry0, oneContract);
+      auto longPositionCorn = std::make_shared<TradingPositionLong<DecimalType>>(futuresSymbol, entry0->getOpenValue(),  
+								*entry0, oneContract);
 
       REQUIRE (aPosManager.getNumPositionUnits (futuresSymbol) == 0);
       aPosManager.addPosition (longPositionCorn);
@@ -254,7 +219,7 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
 
   SECTION ("Test closeUnitPosition")
   {
-    InstrumentPosition<7> qqqInstrument = posManager.getInstrumentPosition(qqqSymbol);
+    InstrumentPosition<DecimalType> qqqInstrument = posManager.getInstrumentPosition(qqqSymbol);
     REQUIRE (qqqInstrument.getNumPositionUnits() == 2);
     REQUIRE_FALSE (posManager.isLongPosition(qqqSymbol));
     REQUIRE (posManager.isShortPosition(qqqSymbol));
@@ -273,7 +238,7 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
     REQUIRE (shortPosition2->getExitPrice() == createDecimal("98.02"));
     REQUIRE (shortPosition2->getExitDate() ==  createDate ("20160212"));
 
-    InstrumentPosition<7> qqqInstrument2 = posManager.getInstrumentPosition(qqqSymbol);
+    InstrumentPosition<DecimalType> qqqInstrument2 = posManager.getInstrumentPosition(qqqSymbol);
     REQUIRE (qqqInstrument2.getNumPositionUnits() == 1);
     REQUIRE_FALSE (posManager.isLongPosition(qqqSymbol));
     REQUIRE (posManager.isShortPosition(qqqSymbol));
@@ -304,7 +269,7 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
 
   SECTION ("Test closeAllPositions")
     {
-      InstrumentPosition<7> cornInstrument = posManager.getInstrumentPosition(tickerSymbol);
+      InstrumentPosition<DecimalType> cornInstrument = posManager.getInstrumentPosition(tickerSymbol);
       REQUIRE (cornInstrument.getNumPositionUnits() == 2);
       REQUIRE (posManager.isLongPosition(tickerSymbol));
       REQUIRE_FALSE (posManager.isShortPosition(tickerSymbol));
@@ -314,7 +279,7 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
       posManager.closeAllPositions (tickerSymbol,  createDate("19851205"),
 				    createDecimal("3725.3137207"));
 
-      InstrumentPosition<7> cornInstrument2 = posManager.getInstrumentPosition(tickerSymbol);
+      InstrumentPosition<DecimalType> cornInstrument2 = posManager.getInstrumentPosition(tickerSymbol);
       REQUIRE (cornInstrument.getNumPositionUnits() == 0);
       REQUIRE_FALSE (posManager.isLongPosition(tickerSymbol));
       REQUIRE_FALSE (posManager.isShortPosition(tickerSymbol));

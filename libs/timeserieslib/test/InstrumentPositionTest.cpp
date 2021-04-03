@@ -3,45 +3,10 @@
 #include "catch.hpp"
 #include "../InstrumentPosition.h"
 #include "../DecimalConstants.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 
 TEST_CASE ("TradingPosition operations", "[TradingPosition]")
@@ -79,12 +44,12 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
   TradingVolume twoContracts(2, TradingVolume::CONTRACTS);
   std::string tickerSymbol("C2");
-  InstrumentPosition<7> c2InstrumentPositionLong (tickerSymbol);
+  InstrumentPosition<DecimalType> c2InstrumentPositionLong (tickerSymbol);
 
-  auto longPosition1 = std::make_shared<TradingPositionLong<7>>(tickerSymbol, entry0->getOpenValue(),  
-								entry0, oneContract);
-  auto longPosition2 = std::make_shared<TradingPositionLong<7>>(tickerSymbol, entry4->getOpenValue(),  
-								entry4, oneContract);
+  auto longPosition1 = std::make_shared<TradingPositionLong<DecimalType>>(tickerSymbol, entry0->getOpenValue(),  
+								*entry0, oneContract);
+  auto longPosition2 = std::make_shared<TradingPositionLong<DecimalType>>(tickerSymbol, entry4->getOpenValue(),  
+								*entry4, oneContract);
 
   REQUIRE (c2InstrumentPositionLong.isFlatPosition());
   REQUIRE_FALSE (c2InstrumentPositionLong.isLongPosition());
@@ -101,10 +66,10 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
   REQUIRE (c2InstrumentPositionLong.isLongPosition());
   REQUIRE_FALSE (c2InstrumentPositionLong.isShortPosition());
 
-  c2InstrumentPositionLong.addBar(entry1);
-  c2InstrumentPositionLong.addBar(entry2);
-  c2InstrumentPositionLong.addBar(entry3);
-  c2InstrumentPositionLong.addBar(entry4);
+  c2InstrumentPositionLong.addBar(*entry1);
+  c2InstrumentPositionLong.addBar(*entry2);
+  c2InstrumentPositionLong.addBar(*entry3);
+  c2InstrumentPositionLong.addBar(*entry4);
 
   c2InstrumentPositionLong.addPosition(longPosition2);
   REQUIRE (c2InstrumentPositionLong.getVolumeInAllUnits() == twoContracts);
@@ -112,35 +77,35 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
   REQUIRE (c2InstrumentPositionLong.getFillPrice() == entry0->getOpenValue());
   REQUIRE (c2InstrumentPositionLong.getFillPrice(1) == entry0->getOpenValue());
   REQUIRE (c2InstrumentPositionLong.getFillPrice(2) == entry4->getOpenValue());
-  c2InstrumentPositionLong.addBar(entry5);
-  c2InstrumentPositionLong.addBar(entry6);
-  c2InstrumentPositionLong.addBar(entry7);
-  c2InstrumentPositionLong.addBar(entry8);
-  c2InstrumentPositionLong.addBar(entry9);
-  c2InstrumentPositionLong.addBar(entry10);
-  c2InstrumentPositionLong.addBar(entry11);
+  c2InstrumentPositionLong.addBar(*entry5);
+  c2InstrumentPositionLong.addBar(*entry6);
+  c2InstrumentPositionLong.addBar(*entry7);
+  c2InstrumentPositionLong.addBar(*entry8);
+  c2InstrumentPositionLong.addBar(*entry9);
+  c2InstrumentPositionLong.addBar(*entry10);
+  c2InstrumentPositionLong.addBar(*entry11);
 
   REQUIRE (longPosition1->getNumBarsInPosition() == 12);
   REQUIRE (longPosition1->getLastClose() == entry11->getCloseValue());
   REQUIRE (longPosition2->getNumBarsInPosition() == 8);
   REQUIRE (longPosition2->getLastClose() == entry11->getCloseValue());
-InstrumentPosition<7>::ConstInstrumentPositionIterator it1 = 
+InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it1 = 
     c2InstrumentPositionLong.getInstrumentPosition (1);
   REQUIRE (it1 != c2InstrumentPositionLong.endInstrumentPosition());
 
-  InstrumentPosition<7>::ConstInstrumentPositionIterator it2 = 
+  InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it2 = 
     c2InstrumentPositionLong.getInstrumentPosition (2);
   REQUIRE (it2 != c2InstrumentPositionLong.endInstrumentPosition());
 
-  std::shared_ptr<TradingPosition<7>> longPos1 = *it1;
-  std::shared_ptr<TradingPosition<7>> longPos2 = *it2;
+  std::shared_ptr<TradingPosition<DecimalType>> longPos1 = *it1;
+  std::shared_ptr<TradingPosition<DecimalType>> longPos2 = *it2;
 
   REQUIRE (longPos1->getEntryDate() == longPosition1->getEntryDate());
   REQUIRE (longPos1->getEntryPrice() == longPosition1->getEntryPrice());
   REQUIRE (longPos2->getEntryDate() == longPosition2->getEntryDate());
   REQUIRE (longPos2->getEntryPrice() == longPosition2->getEntryPrice());
 
-  InstrumentPosition<7>::ConstInstrumentPositionIterator it3 = 
+  InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it3 = 
     c2InstrumentPositionLong.beginInstrumentPosition();
   REQUIRE (it3 != c2InstrumentPositionLong.endInstrumentPosition());
   REQUIRE ((*it3)->getEntryDate() == longPosition1->getEntryDate());
@@ -178,14 +143,14 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
 					     "3669.59375","3685.6005859375", 0);
 
 
-  InstrumentPosition<7> c2InstrumentPositionShort (tickerSymbol);
-  auto shortPosition1 = std::make_shared<TradingPositionShort<7>>(tickerSymbol, 
+  InstrumentPosition<DecimalType> c2InstrumentPositionShort (tickerSymbol);
+  auto shortPosition1 = std::make_shared<TradingPositionShort<DecimalType>>(tickerSymbol, 
 								 shortEntry0->getOpenValue(),  
-								 shortEntry0, 
+								 *shortEntry0, 
 								 oneContract);
-  auto shortPosition2 = std::make_shared<TradingPositionShort<7>>(tickerSymbol, 
+  auto shortPosition2 = std::make_shared<TradingPositionShort<DecimalType>>(tickerSymbol, 
 								 shortEntry3->getOpenValue(),  
-								 shortEntry3, 
+								 *shortEntry3, 
 								 oneContract);
 
   REQUIRE (c2InstrumentPositionShort.isFlatPosition());
@@ -199,43 +164,43 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
   REQUIRE_FALSE (c2InstrumentPositionShort.isLongPosition());
   REQUIRE (c2InstrumentPositionShort.isShortPosition());
 
-  c2InstrumentPositionShort.addBar(shortEntry1);
-  c2InstrumentPositionShort.addBar(shortEntry2);
-  c2InstrumentPositionShort.addBar(shortEntry3);
+  c2InstrumentPositionShort.addBar(*shortEntry1);
+  c2InstrumentPositionShort.addBar(*shortEntry2);
+  c2InstrumentPositionShort.addBar(*shortEntry3);
 
   c2InstrumentPositionShort.addPosition(shortPosition2);
   REQUIRE (c2InstrumentPositionShort.getNumPositionUnits() == 2);
 
-  c2InstrumentPositionShort.addBar(shortEntry4);
-  c2InstrumentPositionShort.addBar(shortEntry5);
-  c2InstrumentPositionShort.addBar(shortEntry6);
-  c2InstrumentPositionShort.addBar(shortEntry7);
-  c2InstrumentPositionShort.addBar(shortEntry8);
-  c2InstrumentPositionShort.addBar(shortEntry9);
-  c2InstrumentPositionShort.addBar(shortEntry10);
-  c2InstrumentPositionShort.addBar(shortEntry11);
+  c2InstrumentPositionShort.addBar(*shortEntry4);
+  c2InstrumentPositionShort.addBar(*shortEntry5);
+  c2InstrumentPositionShort.addBar(*shortEntry6);
+  c2InstrumentPositionShort.addBar(*shortEntry7);
+  c2InstrumentPositionShort.addBar(*shortEntry8);
+  c2InstrumentPositionShort.addBar(*shortEntry9);
+  c2InstrumentPositionShort.addBar(*shortEntry10);
+  c2InstrumentPositionShort.addBar(*shortEntry11);
 
   REQUIRE (shortPosition1->getNumBarsInPosition() == 12);
   REQUIRE (shortPosition1->getLastClose() == shortEntry11->getCloseValue());
   REQUIRE (shortPosition2->getNumBarsInPosition() == 9);
   REQUIRE (shortPosition2->getLastClose() == shortEntry11->getCloseValue());
-  InstrumentPosition<7>::ConstInstrumentPositionIterator it1Short = 
+  InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it1Short = 
     c2InstrumentPositionShort.getInstrumentPosition (1);
   REQUIRE (it1Short != c2InstrumentPositionShort.endInstrumentPosition());
 
-  InstrumentPosition<7>::ConstInstrumentPositionIterator it2Short = 
+  InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it2Short = 
     c2InstrumentPositionShort.getInstrumentPosition (2);
   REQUIRE (it2Short != c2InstrumentPositionShort.endInstrumentPosition());  
 
-  std::shared_ptr<TradingPosition<7>> shortPos1 = *it1Short;
-  std::shared_ptr<TradingPosition<7>> shortPos2 = *it2Short;
+  std::shared_ptr<TradingPosition<DecimalType>> shortPos1 = *it1Short;
+  std::shared_ptr<TradingPosition<DecimalType>> shortPos2 = *it2Short;
 
   REQUIRE (shortPos1->getEntryDate() == shortPosition1->getEntryDate());
   REQUIRE (shortPos1->getEntryPrice() == shortPosition1->getEntryPrice());
   REQUIRE (shortPos2->getEntryDate() == shortPosition2->getEntryDate());
   REQUIRE (shortPos2->getEntryPrice() == shortPosition2->getEntryPrice());
 
-  InstrumentPosition<7>::ConstInstrumentPositionIterator it3Short = 
+  InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it3Short = 
     c2InstrumentPositionShort.beginInstrumentPosition();
   REQUIRE (it3Short != c2InstrumentPositionShort.endInstrumentPosition());
   REQUIRE ((*it3Short)->getEntryDate() == shortPosition1->getEntryDate());
@@ -277,7 +242,7 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
     REQUIRE_FALSE (c2InstrumentPositionLong.isShortPosition());
     REQUIRE (c2InstrumentPositionLong.getNumPositionUnits() == 1);
 
-    InstrumentPosition<7>::ConstInstrumentPositionIterator itLocal1 = 
+    InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator itLocal1 = 
       c2InstrumentPositionLong.getInstrumentPosition (1);
     REQUIRE (itLocal1 != c2InstrumentPositionLong.endInstrumentPosition());
     REQUIRE ((*itLocal1)->getEntryDate() == longPosition2->getEntryDate());
@@ -315,7 +280,7 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
     REQUIRE (c2InstrumentPositionShort.isShortPosition());
     REQUIRE (c2InstrumentPositionShort.getNumPositionUnits() == 1);
 
-    InstrumentPosition<7>::ConstInstrumentPositionIterator itLocal2 = 
+    InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator itLocal2 = 
       c2InstrumentPositionShort.getInstrumentPosition (1);
     REQUIRE (itLocal2 != c2InstrumentPositionShort.endInstrumentPosition());
     REQUIRE ((*itLocal2)->getEntryDate() == shortPosition2->getEntryDate());
@@ -324,16 +289,16 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
   SECTION ("Test throwing exception trying to add bar in flat position")
   {
     std::string tickerqqq("QQQ");
-    InstrumentPosition<7> c2qqqPositionLong (tickerqqq);
+    InstrumentPosition<DecimalType> c2qqqPositionLong (tickerqqq);
 
     REQUIRE (c2qqqPositionLong.isFlatPosition());
-    REQUIRE_THROWS (c2qqqPositionLong.addBar (entry0));
+    REQUIRE_THROWS (c2qqqPositionLong.addBar (*entry0));
   }
 
   SECTION ("Test throwing exception trying to getInstrumentPosition in flat state")
   {
     std::string tickerspy("SPY");
-    InstrumentPosition<7> c2spyPositionLong (tickerspy);
+    InstrumentPosition<DecimalType> c2spyPositionLong (tickerspy);
 
     REQUIRE (c2spyPositionLong.isFlatPosition());
     REQUIRE_THROWS (c2spyPositionLong.getInstrumentPosition (1));
@@ -342,7 +307,7 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
   SECTION ("Test throwing exception trying to get begin iterator in flat state")
   {
     std::string tickeruso("USO");
-    InstrumentPosition<7> c2usoPositionLong (tickeruso);
+    InstrumentPosition<DecimalType> c2usoPositionLong (tickeruso);
 
     REQUIRE (c2usoPositionLong.isFlatPosition());
     REQUIRE_THROWS (c2usoPositionLong.beginInstrumentPosition());
@@ -351,7 +316,7 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
   SECTION ("Test throwing exception trying to get end iterator in flat state")
   {
     std::string tickerdia("DIA");
-    InstrumentPosition<7> c2diaPositionLong (tickerdia);
+    InstrumentPosition<DecimalType> c2diaPositionLong (tickerdia);
 
     REQUIRE (c2diaPositionLong.isFlatPosition());
     REQUIRE_THROWS (c2diaPositionLong.endInstrumentPosition());
@@ -360,7 +325,7 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
   SECTION ("Test throwing exception trying to closeAllPositions in flat state")
   {
     std::string tickeriwm("IWM");
-    InstrumentPosition<7> c2iwmPositionLong (tickeriwm);
+    InstrumentPosition<DecimalType> c2iwmPositionLong (tickeriwm);
 
     REQUIRE (c2iwmPositionLong.isFlatPosition());
     REQUIRE_THROWS (c2iwmPositionLong.closeAllPositions(longPosition1->getEntryDate(),
@@ -370,7 +335,7 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
   SECTION ("Test throwing exception trying to closeUnitPosition in flat state")
   {
     std::string tickeribm("IBM");
-    InstrumentPosition<7> c2ibmPositionLong (tickeribm);
+    InstrumentPosition<DecimalType> c2ibmPositionLong (tickeribm);
 
     REQUIRE (c2ibmPositionLong.isFlatPosition());
     REQUIRE_THROWS (c2ibmPositionLong.closeUnitPosition(longPosition1->getEntryDate(),
@@ -398,9 +363,9 @@ InstrumentPosition<7>::ConstInstrumentPositionIterator it1 =
 
     std::string tickermchp("MCHP");
 
-    auto longPosition3 = std::make_shared<TradingPositionLong<7>>(tickermchp, 
+    auto longPosition3 = std::make_shared<TradingPositionLong<DecimalType>>(tickermchp, 
 								  entry4->getOpenValue(),  
-								  entry4, 
+								  *entry4, 
 								  oneContract);
     longPosition3->ClosePosition(entry5->getDateValue(), entry5->getOpenValue());
     REQUIRE_THROWS (c2InstrumentPositionLong.addPosition (longPosition3));

@@ -2,12 +2,10 @@
 
 #include "catch.hpp"
 #include "../TradingOrder.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-
-
 
 TEST_CASE ("Market Order Operations", "[TradingOrder]")
 {
