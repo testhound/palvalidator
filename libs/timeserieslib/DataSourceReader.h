@@ -208,7 +208,7 @@ namespace mkc_timeseries
     std::string getCsvRow(Json::Value json, Json::Value::ArrayIndex idx) 
     {
       std::string csvRow = "%1%,%2%,%3%,%4%,%5%,%6%,0,0";
-      boost::posix_time::ptime time  = boost::posix_time::from_time_t(json["t"][idx].asDouble());
+      boost::posix_time::ptime time  = boost::posix_time::from_time_t(json["t"][idx].asInt());
       return (boost::format(csvRow) % 
                   ptimeToFormat(time, "%m/%d/%Y") %
                   ptimeToFormat(time, "%H:%M") %

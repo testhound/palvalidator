@@ -108,9 +108,9 @@ namespace mkc_searchalgo
     {
       // read data from API from the start of the IS data to the end of the OOS data
       std::string token = getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
-      DateRange dataReaderDataRange(mcptConfiguration->getInsampleDateRange().getFirstDate(), mcptConfiguration->getOosDateRange().getLastDate());
+      DateRange dataReaderDateRange(mcptConfiguration->getInsampleDateRange().getFirstDate(), mcptConfiguration->getOosDateRange().getLastDate());
       std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(mRunParameters->getApiSource(), token);
-      hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDataRange, dataReaderDataRange, downloadFile);
+      hourlyDataFilePath = dataSourceReader->createTemporaryFile(security->getSymbol(), "hourly", dataReaderDateRange, dataReaderDateRange, downloadFile);
     }
 
     if (static_cast<size_t>(timeFrameIdToLoad) > mRunParameters->getTimeFrames().size() || timeFrameIdToLoad < 0)
@@ -126,7 +126,7 @@ namespace mkc_searchalgo
         timeFrameDiscovery->inferTimeFrames();
         mRunParameters->setTimeFrames(timeFrameDiscovery->getTimeFrames());
 
-        std::shared_ptr<TradestationHourlySyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
+        std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
           std::make_shared<TradestationHourlySyntheticTimeSeriesCreator<Decimal>>(
               hourlyDataFilePath, 
               security->getTimeSeries()->getTimeFrame(), 
