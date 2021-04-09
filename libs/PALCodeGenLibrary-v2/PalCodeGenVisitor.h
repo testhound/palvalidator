@@ -380,7 +380,8 @@ class PalCodeGenerator : public PalCodeGenVisitor
 {
 public:
   PalCodeGenerator(PriceActionLabSystem *system,
-		    const std::string& outfileFileName);
+		   const std::string& outfileFileName,
+		   bool reversePattern = false);
   ~PalCodeGenerator();
   void generateCode();
 
@@ -417,6 +418,7 @@ private:
 private:
   std::ofstream mOutFile;
   std::shared_ptr<PriceActionLabSystem> mTradingSystemPatterns;
+  bool mReversePattern;
 };
 
 // QuantConnect Code Gen Visitor

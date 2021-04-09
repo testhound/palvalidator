@@ -9,10 +9,12 @@ extern bool firstSubExpressionVisited;
 //////////////////////////////////////
 
 PalCodeGenerator::PalCodeGenerator(PriceActionLabSystem *system,
-				   const std::string& outputFileName)
+				   const std::string& outputFileName,
+				   bool reversePattern)
   : PalCodeGenVisitor(),
     mOutFile(outputFileName),
-    mTradingSystemPatterns(system)
+    mTradingSystemPatterns(system),
+    mReversePattern(reversePattern)
 {}
 
 
@@ -159,12 +161,18 @@ PalCodeGenerator::visit (PatternDescription *desc)
 
 void PalCodeGenerator::visit (LongMarketEntryOnOpen *entryStatement)
 {
-  mOutFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+  if (!mReversePattern)
+    mOutFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+  else
+    mOutFile << "THEN SELL NEXT BAR ON THE OPEN WITH" << std::endl;
 }
 
 void PalCodeGenerator:: visit (ShortMarketEntryOnOpen *entryStatement)
 {
-  mOutFile << "THEN SELL NEXT BAR ON THE OPEN WITH" << std::endl;
+  if (!mReversePattern)
+    mOutFile << "THEN SELL NEXT BAR ON THE OPEN WITH" << std::endl;
+  else
+    mOutFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
 }
 
 
@@ -200,7 +208,10 @@ PalCodeGenerator::visit (LongSideStopLossInPercent *stopLoss)
   std::ofstream *outFile = getOutputFileStream();
   decimal7 *stop = stopLoss->getStopLoss();
 
-  *outFile << "AND STOP LOSS AT ENTRY PRICE - " << *stop << " %" <<std::endl;
+  if (!mReversePattern)  
+    *outFile << "AND STOP LOSS AT ENTRY PRICE - " << *stop << " %" <<std::endl;
+  else
+    *outFile << "AND STOP LOSS AT ENTRY PRICE + " << *stop << " %" <<std::endl;
 }
 
 void PalCodeGenerator::visit (LongSideProfitTargetInPercent *profitTarget)
@@ -208,7 +219,10 @@ void PalCodeGenerator::visit (LongSideProfitTargetInPercent *profitTarget)
   std::ofstream *outFile = getOutputFileStream();
   decimal7 *target = profitTarget->getProfitTarget();
 
-  *outFile << "PROFIT TARGET AT ENTRY PRICE + " << *target << " %" << std::endl;
+  if (!mReversePattern)
+    *outFile << "PROFIT TARGET AT ENTRY PRICE + " << *target << " %" << std::endl;
+  else
+    *outFile << "PROFIT TARGET AT ENTRY PRICE - " << *target << " %" << std::endl;
 }
 
 void PalCodeGenerator::visit (ShortSideProfitTargetInPercent *profitTarget)
@@ -216,7 +230,10 @@ void PalCodeGenerator::visit (ShortSideProfitTargetInPercent *profitTarget)
   std::ofstream *outFile = getOutputFileStream();
   decimal7 *target = profitTarget->getProfitTarget();
 
-  *outFile << "PROFIT TARGET AT ENTRY PRICE - " << *target << " %" << std::endl;
+  if (!mReversePattern)
+    *outFile << "PROFIT TARGET AT ENTRY PRICE - " << *target << " %" << std::endl;
+  else
+    *outFile << "PROFIT TARGET AT ENTRY PRICE + " << *target << " %" << std::endl;
 }
 
 void 
@@ -225,6 +242,9 @@ PalCodeGenerator::visit (ShortSideStopLossInPercent *stopLoss)
   std::ofstream *outFile = getOutputFileStream();
   decimal7 *stop = stopLoss->getStopLoss();
 
-  *outFile << "AND STOP LOSS AT ENTRY PRICE + " << *stop << " %" <<std::endl;
+  if (!mReversePattern)
+    *outFile << "AND STOP LOSS AT ENTRY PRICE + " << *stop << " %" <<std::endl;
+  else
+    *outFile << "AND STOP LOSS AT ENTRY PRICE - " << *stop << " %" <<std::endl;
 }
 

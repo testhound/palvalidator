@@ -36,6 +36,27 @@ std::shared_ptr<EntryType>
 }
 
 std::shared_ptr<EntryType>
+    createTimeSeriesEntry (const std::string& dateString,
+			   const std::string& openPrice,
+			   const std::string& highPrice,
+			   const std::string& lowPrice,
+			   const std::string& closePrice,
+			   const std::string& vol,
+			   mkc_timeseries::TimeFrame::Duration timeFrame)
+{
+    auto date1 = boost::gregorian::from_undelimited_string(dateString);
+    auto open1 = dec::fromString<DecimalType>(openPrice);
+    auto high1 = dec::fromString<DecimalType>(highPrice);
+    auto low1 = dec::fromString<DecimalType>(lowPrice);
+    auto close1 = dec::fromString<DecimalType>(closePrice);
+    auto vol1 = dec::fromString<DecimalType>(vol);
+    return std::make_shared<EntryType>(date1, open1, high1, low1, 
+						close1, vol1, timeFrame);
+}
+
+
+
+std::shared_ptr<EntryType>
 createTimeSeriesEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -48,10 +69,12 @@ createTimeSeriesEntry (const std::string& dateString,
     auto high1 = dec::fromString<DecimalType>(highPrice);
     auto low1 = dec::fromString<DecimalType>(lowPrice);
     auto close1 = dec::fromString<DecimalType>(closePrice);
-    DecimalType vol1((uint) vol);
+    auto vol1 = DecimalType((uint) vol);
     return std::make_shared<EntryType>(date1, open1, high1, low1, 
 						close1, vol1, mkc_timeseries::TimeFrame::DAILY);
+
 }
+
 
 std::shared_ptr<EntryType>
 createTimeSeriesEntry (const mkc_timeseries::TimeSeriesDate& aDate,
