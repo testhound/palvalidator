@@ -152,8 +152,6 @@ namespace mkc_searchalgo
             security->getTick()
       );
       series = syntheticTimeSeriesCreator->getSyntheticTimeSeries(timeFrameIdToLoad);
-
-      // re-incorporate mixing
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = security->getTimeSeries()->beginRandomAccess();
       for (; it != security->getTimeSeries()->endRandomAccess(); it++)
       {

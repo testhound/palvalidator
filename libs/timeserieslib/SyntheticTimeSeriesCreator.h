@@ -17,10 +17,10 @@ namespace mkc_timeseries
                             TimeFrame::Duration timeFrame,
                             TradingVolume::VolumeUnit unitsOfVolume,
                             const Decimal& minimumTick) : 
+                TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
                 mTimeFrame(timeFrame),
                 mUnitsOfVolume(unitsOfVolume),
                 mMinimumTick(minimumTick),
-                TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
                 mFilename(fileName),
                 mDateParser(std::string("%m/%d/%YYYY"), std::locale("C"))
             {}
