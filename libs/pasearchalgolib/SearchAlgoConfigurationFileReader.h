@@ -24,13 +24,14 @@
 #include "boost/lexical_cast.hpp"
 #include "boost/lexical_cast/bad_lexical_cast.hpp"
 #include "typeinfo"
-#include "TimeFilteredCsvReader.h"
 #include "McptConfigurationFileReader.h"
 #include "TimeSeriesCsvWriter.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
 #include "DataSourceReader.h"
 #include "RunParameters.h"
+#include "TimeFrameDiscovery.h"
+#include "SyntheticTimeSeriesCreator.h"
 
 using namespace mkc_timeseries;
 

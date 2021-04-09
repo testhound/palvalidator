@@ -40,8 +40,9 @@ UnitTest: All
 	./SyntheticTimeSeriesTest
 	./TimeSeriesTest
 	./TimeSeriesEntryTest
+	./SyntheticTimeSeriesCreatorTest
 
-All: LogPalPatternTest MCPTStrategyAttributesTest RobustnessTesterUnitTest RobustnessTestUnitTest TimeSeriesTest
+All: SyntheticTimeSeriesCreatorTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
 
 # TODO:
 #All: MCPTStrategyAttributesTest LogPalPatternTest RobustnessTesterUnitTest RobustnessTestUnitTest PALMonteCarloValidationTest McptConfigurationFileReaderTest SecurityAttributesFactoryTest SecurityAttributesTest MonteCarloPermutationTest2 BackTesterTest PalStrategyTest SecurityBacktestPropertiesTest PALPatternInterpreterTest StrategyBrokerTest StrategyTransactionManagerTest StrategyTransactionTest TradingOrderManagerTest PortfolioTest SecurityTest InstrumentPositionManagerTest InstrumentPositionTest ProcessStopOrderTest ProcessLimitOrderTest BoostDateHelperTest ProcessMarketOrderTest StopOrderTest LimitOrderTest TradingPositionTest MarketOrderTest ClosedPositionHistoryTest OpenPositionTest OpenPositionHistoryTest OpenPositionBarTest StopLossTest ProfitTargetTest PercentNumberTest TimeSeriesCsvReaderTest TimeSeriesCsvWriterTest SyntheticTimeSeriesTest TimeSeriesTest TimeSeriesEntryTest TradingVolumeTest
@@ -185,12 +186,15 @@ TimeSeriesEntryTest: TimeSeriesEntryTest.o TestUtils.o
 DataSourceReaderTest: DataSourceReaderTest.o
 	g++ -o DataSourceReaderTest $< -lcurl -ljsoncpp -lboost_date_time -lboost_system
 
-DataSourceReaderTest.o: ../DataSourceReader.h ../DateRange.h ../BoostDateHelper.h
+SyntheticTimeSeriesCreatorTest: SyntheticTimeSeriesCreatorTest.o TestUtils.o
+	g++ -o SyntheticTimeSeriesCreatorTest $< ${TIMESERIES_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
+
 TestUtils.o: ../PercentNumber.h ../DecimalConstants.h ../TimeFrame.h
+DataSourceReaderTest.o: ../DataSourceReader.h ../DateRange.h ../BoostDateHelper.h
 TradingVolumeTest.o: ../TradingVolume.h
 MCPTStrategyAttributesTest.o: ../MCPTStrategyAttributes.h
 LogPalPatternTest.o: ../LogPalPattern.h
-RobustnessTesterUnitTest.o: ../RobustnessTester.h ../RobustnessTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
+RobustnessTesterUnitTest.o: ../RobustnessTester.h ../RobustnessTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h ../decimal.h
 RobustnessTestUnitTest.o: ../RobustnessTest.h ../BackTester.h ../BacktesterStrategy.h ../PalStrategy.h ../Portfolio.h ../Security.h ../StrategyBroker.h ../TimeSeriesEntry.h ../TimeSeries.h ../InstrumentPosition.h ../TradingOrderManager.h
 PALMonteCarloValidationTest.o: ../PALMonteCarloValidation.h  ../McptConfigurationFileReader.h ../DateRange.h ../Security.h ../TimeSeries.h ../TimeSeriesEntry.h ../BackTester.h ../DecimalConstants.h
 McptConfigurationFileReaderTest.o: ../McptConfigurationFileReader.h ../DateRange.h ../BoostDateHelper.h ../Security.h ../TimeSeriesCsvReader.h ../SecurityAttributesFactory.h ../TimeFrameUtility.h
@@ -232,13 +236,15 @@ TimeSeriesTest.o: ../TimeSeriesEntry.h ../TimeSeries.h ../TimeSeriesIndicators.h
 TimeSeriesEntryTest.o: ../TimeSeriesEntry.h ../decimal.h
 TimeSeriesCsvReaderTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h
 TimeSeriesCsvWriterTest.o: ../TimeSeriesCsvWriter.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h TimeSeriesCsvWriterTest.cpp
+SyntheticTimeSeriesCreatorTest.o: ../TimeSeriesCsvWriter.h ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h
 
 clean:
 	rm *.o
 	rm -f ClosedPositionHistory TimeSeriesTest TimeSeriesEntryTest SyntheticTimeSeriesTest
 	rm -f TimeSeriesCsvReaderTest PercentNumberTest ProfitTargetTest StopLossTest
 	rm -f OpenPositionBarTest OpenPositionHistoryTest OpenPositionTest
-	rm -f ClosedPositionTest rm *~
+	rm -f ClosedPositionTest SyntheticTimeSeriesCreatorTest
+	rm *~
 
 CCFLAGS := -O2 -c -std=c++14 -I../ -I${PRICEACTION_INC_DIR}
 #CCFLAGS := -g -c -std=c++14 -I../../PALCodeGenLibrary -I../../Decimal
