@@ -6,7 +6,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 #include <curl/curl.h>
-#include <jsoncpp/json/json.h>
+#include <rapidjson/document.h>
 #include <ctime>
 #include <stdio.h>
 #include <vector>
@@ -33,35 +33,37 @@ namespace mkc_timeseries
             DateRange isDateRange, DateRange oosDateRange, bool performDownload)
     {
       setApiTimeFrameRepresentation(configTimeFrame);
-
-      boost::posix_time::time_duration zero(0, 0, 0);
-      boost::posix_time::ptime bStartDatetime(isDateRange.getFirstDate() - boost::gregorian::days(7), zero);
-      boost::posix_time::ptime bEndDatetime(oosDateRange.getLastDate() + boost::gregorian::days(7), zero);
-
-      std::string uri = buildDataFetchUri(ticker, bStartDatetime, bEndDatetime);
-      std::string filename = getFilename(ticker);
+      std::string uri = buildDataFetchUri(ticker, isDateRange.getFirstDate() - boost::gregorian::days(2), 
+            oosDateRange.getLastDate() + boost::gregorian::days(2));
+      std::string filename = getFilename(ticker, configTimeFrame);
 
       if (!performDownload) {
         return filename;
       }
       tempFilenames.push_back(filename);
 
-      Json::Value json = getJson(uri);
+      rapidjson::Document jsonDocument = getJson(uri);
 
-      if (!validApiResponse(json)) // no data returned - error
+      if (!validApiResponse(jsonDocument)) // no data returned - error
         throw McptConfigurationFileReaderException("No data returned from API call.");
         
       // transform JSON into CSV in TradeStation format.
       std::ofstream csvFile;
       csvFile.open("./" + filename);
-      if(boost::iequals(mResolution, "D"))
+      if(boost::iequals(configTimeFrame, "daily"))
         csvFile << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Vol\",\"OI\"" << std::endl;
-      else if (boost::iequals(mResolution, "60")) 
+      else if (boost::iequals(configTimeFrame, "hourly")) 
         csvFile << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Up\",\"Down\"" << std::endl;
 
-      for(Json::Value::ArrayIndex idx = 0; idx != getJsonArraySize(json); idx++) 
-        csvFile << getCsvRow(json, idx) << std::endl;
+      int resultSize = getJsonArraySize(jsonDocument);
+      std::string csvString = "";
+      for(rapidjson::SizeType idx = 0; idx != resultSize; idx++) 
+      {
+        csvString += getCsvRow(jsonDocument, idx);
+        csvString += "\n";
+      }
 
+      csvFile << csvString;
       csvFile.close();
 
       return filename;
@@ -86,11 +88,10 @@ namespace mkc_timeseries
     std::string mResolution;
     std::vector<std::string> tempFilenames;
 
-    virtual std::string buildDataFetchUri(std::string ticker, boost::posix_time::ptime startDatetime, 
-                boost::posix_time::ptime endDatetime) = 0;
-    virtual bool validApiResponse(Json::Value json) = 0;
-    virtual std::string getCsvRow(Json::Value json, Json::Value::ArrayIndex idx) = 0;
-    virtual int getJsonArraySize(Json::Value json) = 0;
+    virtual std::string buildDataFetchUri(std::string ticker, boost::gregorian::date startDatetime, boost::gregorian::date endDatetime) = 0;
+    virtual bool validApiResponse(rapidjson::Document& jsonDocument) = 0;
+    virtual std::string getCsvRow(rapidjson::Document& jsonDocument, rapidjson::SizeType idx) = 0;
+    virtual int getJsonArraySize(rapidjson::Document& jsonDocument) = 0;
     virtual void setApiTimeFrameRepresentation(std::string configTimeFrame) = 0;
 
     time_t timestampFromPtime(boost::posix_time::ptime time) 
@@ -127,12 +128,12 @@ namespace mkc_timeseries
       return size*nmemb;
     }
 
-    std::string getFilename(std::string ticker) 
+    std::string getFilename(std::string ticker, std::string configTimeFrame) 
     {
-      return (boost::format("%1%_RAD_%2%.txt") % ticker % (boost::iequals(mResolution, "60") ? "Hourly" : "Daily")).str();
+      return (boost::format("%1%_RAD_%2%.txt") % ticker % (boost::iequals(configTimeFrame, "hourly") ? "Hourly" : "Daily")).str();
     }
 
-    Json::Value getJson(std::string uri) 
+    rapidjson::Document getJson(std::string uri) 
     {
       CURL *curl;
       std::string buffer;
@@ -151,11 +152,10 @@ namespace mkc_timeseries
         curl_easy_cleanup(curl);
       }
 
-      Json::Reader reader;
-      Json::Value data;
-      reader.parse(buffer, data);
+      rapidjson::Document document;
+      document.Parse(buffer.c_str());
       
-      return data;
+      return document;
     }
 
   };
@@ -170,13 +170,16 @@ namespace mkc_timeseries
     {}
 
   protected:
-    std::string buildDataFetchUri(std::string ticker, boost::posix_time::ptime startDatetime, 
-                boost::posix_time::ptime endDatetime)
+    std::string buildDataFetchUri(std::string ticker, boost::gregorian::date startDatetime, boost::gregorian::date endDatetime)
     {
+      boost::posix_time::time_duration zero(0, 0, 0);
+      boost::posix_time::ptime bStartDatetime(startDatetime, zero);
+      boost::posix_time::ptime bEndDatetime(endDatetime, zero);
+
       std::string uri = "https://finnhub.io/api/v1/stock/candle?symbol=%1%&resolution=%2%&from=%3%&to=%4%&format=json&token=%5%";
 
-      std::string startTimestamp = boost::lexical_cast<std::string>(timestampFromPtime(startDatetime));
-      std::string endTimestamp = boost::lexical_cast<std::string>(timestampFromPtime(endDatetime));
+      std::string startTimestamp = boost::lexical_cast<std::string>(timestampFromPtime(bStartDatetime));
+      std::string endTimestamp = boost::lexical_cast<std::string>(timestampFromPtime(bEndDatetime));
 
       return (boost::format(uri) % 
                 ticker % 
@@ -195,30 +198,89 @@ namespace mkc_timeseries
         mResolution = "60";
     }
 
-    bool validApiResponse(Json::Value json) 
+    bool validApiResponse(rapidjson::Document& json) 
     {
-      return boost::iequals(json["s"].asString(), "ok");
+      return boost::iequals(json["s"].GetString(), "ok");
     }
 
-    int getJsonArraySize(Json::Value json) 
+    int getJsonArraySize(rapidjson::Document& json) 
     {
-      return (json["o"]).size();
+      const rapidjson::Value& results = json["c"].GetArray();
+      return results.Size();
     }
 
-    std::string getCsvRow(Json::Value json, Json::Value::ArrayIndex idx) 
+    std::string getCsvRow(rapidjson::Document& json, rapidjson::SizeType idx) 
     {
       std::string csvRow = "%1%,%2%,%3%,%4%,%5%,%6%,0,0";
-      boost::posix_time::ptime time  = boost::posix_time::from_time_t(json["t"][idx].asInt());
+      boost::posix_time::ptime time  = boost::posix_time::from_time_t(json["t"].GetArray()[idx].GetInt());
       return (boost::format(csvRow) % 
                   ptimeToFormat(time, "%m/%d/%Y") %
                   ptimeToFormat(time, "%H:%M") %
-                  priceFormat(json["o"][idx].asFloat()) % 
-                  priceFormat(json["h"][idx].asFloat()) % 
-                  priceFormat(json["l"][idx].asFloat()) % 
-                  priceFormat(json["c"][idx].asFloat())
+                  priceFormat(json["o"].GetArray()[idx].GetFloat()) % 
+                  priceFormat(json["h"].GetArray()[idx].GetFloat()) % 
+                  priceFormat(json["l"].GetArray()[idx].GetFloat()) % 
+                  priceFormat(json["c"].GetArray()[idx].GetFloat())
       ).str();
     }
 
+  };
+
+  /*
+  * Barchart DataSourceReader implementation.
+  */
+  class BarchartReader : public DataSourceReader 
+  {
+    public:
+      BarchartReader(std::string APIToken) : DataSourceReader(APIToken)
+      {}
+    protected:
+      std::string buildDataFetchUri(std::string ticker, boost::gregorian::date startDatetime, boost::gregorian::date endDatetime)
+      {
+        std::string uri = "http://ondemand.websol.barchart.com/getHistory.json?apikey=%1%&symbol=%2%&type=%3%&startDate=%4%&endDate=%5%";
+
+        boost::posix_time::time_duration zero(0, 0, 0);
+        boost::posix_time::ptime bStartDatetime(startDatetime, zero);
+        boost::posix_time::ptime bEndDatetime(endDatetime, zero);
+
+        std::string startDate = ptimeToFormat(bStartDatetime, "%Y%m%d");
+        std::string endDate = ptimeToFormat(bEndDatetime, "%Y%m%d");
+
+        return (boost::format(uri) % mApiKey % ticker % mResolution % startDate % endDate).str();
+      }
+
+      void setApiTimeFrameRepresentation(std::string configTimeFrame)
+      {
+        if(boost::iequals(configTimeFrame, "Daily")) 
+          mResolution = "daily";
+        if(boost::iequals(configTimeFrame, "hourly"))
+          mResolution = "minutes&interval=60";
+      }
+
+      bool validApiResponse(rapidjson::Document& json) 
+      {
+        return json["status"]["code"].GetInt() == 200;
+      }
+
+      int getJsonArraySize(rapidjson::Document& json) 
+      {
+        return (json["results"].GetArray()).Size();
+      }
+
+      std::string getCsvRow(rapidjson::Document& json, rapidjson::SizeType idx) 
+      {
+        const rapidjson::Value& results = json["results"].GetArray()[idx];
+        std::string csvRow = "%1%,%2%,%3%,%4%,%5%,%6%,0,0";
+        boost::posix_time::ptime time = boost::date_time::parse_delimited_time<boost::posix_time::ptime>(results["timestamp"].GetString(), 'T');
+
+        return (boost::format(csvRow) % 
+                    ptimeToFormat(time, "%m/%d/%Y") %
+                    ptimeToFormat(time, "%H:%M") %
+                    priceFormat(results["open"].GetFloat()) % 
+                    priceFormat(results["high"].GetFloat()) % 
+                    priceFormat(results["low"].GetFloat()) % 
+                    priceFormat(results["close"].GetFloat())
+        ).str();
+      }
   };
 
   static std::shared_ptr<DataSourceReader> getDataSourceReader(
@@ -227,6 +289,8 @@ namespace mkc_timeseries
   {
     if(boost::iequals(dataSourceName, "finnhub")) 
       return std::make_shared<FinnhubIOReader>(apiKey);
+    else if(boost::iequals(dataSourceName, "barchart"))
+      return std::make_shared<BarchartReader>(apiKey);
     else
       throw McptConfigurationFileReaderException("Data source " + dataSourceName + " not recognized");
   }

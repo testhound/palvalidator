@@ -172,7 +172,6 @@ namespace mkc_searchalgo
       std::cout << "First date random access: " << series->getDateValue(series->beginRandomAccess(),0) << std::endl;
       std::cout << "First date sorted access: " << series->getFirstDate() << std::endl;
       series->syncronizeMapAndArray();
-      syntheticTimeSeriesCreator->rewriteTimeFrameFile(timeFrameIdToLoad, series);
     }
 
     return std::make_shared<SearchAlgoConfiguration<Decimal>>(tryCast<unsigned int>(maxDepth),
