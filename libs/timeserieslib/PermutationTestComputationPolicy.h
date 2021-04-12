@@ -138,6 +138,9 @@ namespace mkc_timeseries
           // Iterate map, and strategies, and run backtest with given strategy+sytheticPortfolio/timeseries
           for (auto const& [outerBaselineStat, outerStratContainer] : strategyBaselineReturns)
             {
+	      // Avoid unused warning
+	      (void) outerBaselineStat;
+
               auto const& strategy = std::get<0>(outerStratContainer);
               std::stringstream ss;
               ss << "Synthetic " << strategy->getStrategyName() << synthMarketId;

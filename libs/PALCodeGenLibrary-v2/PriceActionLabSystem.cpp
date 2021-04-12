@@ -209,6 +209,7 @@ SmallestVolatilityTieBreaker::getTieBreakerPattern(PALPatternPtr pattern1,
 	return pattern2;
     }
 
+  return pattern1;
 }
 
 

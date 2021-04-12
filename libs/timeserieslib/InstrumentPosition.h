@@ -11,6 +11,7 @@
 #include <cstdint>
 #include "ThrowAssert.hpp"
 #include "TradingPosition.h"
+#include "DecimalConstants.h"
 
 namespace mkc_timeseries
 {
@@ -531,6 +532,8 @@ namespace mkc_timeseries
 	  else
 	    throw InstrumentPositionException ("InstrumentPosition::getVolumeInAllUnits - Cannot get volume when position is flat");
 	}
+
+      throw InstrumentPositionException ("InstrumentPosition::getVolumeInAllUnits - Cannot get volume when position is flat");
     }
 
     void closeUnitPosition(const boost::gregorian::date exitDate,
