@@ -16,7 +16,16 @@ createTimeSeriesEntry (const std::string& dateString,
 		       const std::string& highPrice,
 		       const std::string& lowPrice,
 		       const std::string& closePrice,
-		       const std::string& vol);
+		       const std::string& vol,
+		       mkc_timeseries::TimeFrame::Duration timeFrame);
+
+std::shared_ptr<EntryType>
+createTimeSeriesEntry (const std::string& dateString,
+		       const std::string& openPrice,
+		       const std::string& highPrice,
+		       const std::string& lowPrice,
+		       const std::string& closePrice,
+		       mkc_timeseries::volume_t vol);
 
 std::shared_ptr<EntryType>
 createTimeSeriesEntry (const std::string& dateString,

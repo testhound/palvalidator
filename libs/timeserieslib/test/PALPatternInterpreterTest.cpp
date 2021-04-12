@@ -4,67 +4,18 @@
 #include "../TimeSeriesCsvReader.h"
 #include "../PALPatternInterpreter.h"
 #include "../BoostDateHelper.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-using Num = num::DefaultNumber;
-
-typedef num::DefaultNumber DecimalType;
-typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
+//using Num = num::DefaultNumber;
 
 std::string myCornSymbol("C2");
 
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (num::fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return num::fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = from_undelimited_string(dateString);
-    auto open1 = num::fromString<DecimalType>(openPrice);
-    auto high1 = num::fromString<DecimalType>(highPrice);
-    auto low1 = num::fromString<DecimalType>(lowPrice);
-    auto close1 = num::fromString<DecimalType>(closePrice);
-    return std::make_shared<OHLCTimeSeriesEntry<DecimalType>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
-
-
-std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
-    createTimeSeriesEntry2 (const TimeSeriesDate& aDate,
-		       const DecimalType& openPrice,
-		       const DecimalType& highPrice,
-		       const DecimalType& lowPrice,
-		       const DecimalType& closePrice,
-		       volume_t vol)
-  {
-
-    return std::make_shared<OHLCTimeSeriesEntry<DecimalType>>(aDate, openPrice, highPrice, lowPrice, 
-						closePrice, vol, TimeFrame::DAILY);
-  }
-
-
-
-
-
-
 TEST_CASE ("PALPatternInterpreter operations", "[PALPatternInterpreter]")
 {
-  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
   std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
@@ -72,7 +23,7 @@ TEST_CASE ("PALPatternInterpreter operations", "[PALPatternInterpreter]")
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
-  DecimalType cornTickValue(createDecimal("0.25"));
+
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
   auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 

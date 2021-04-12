@@ -96,8 +96,8 @@ PalStrategyTest: PalStrategyTest.o TestUtils.o
 SecurityBacktestPropertiesTest: SecurityBacktestPropertiesTest.o
 	g++ -o SecurityBacktestPropertiesTest ${TIMESERIES_O} $< -lboost_date_time -lpthread
 
-PALPatternInterpreterTest: PALPatternInterpreterTest.o
-	g++ -o PALPatternInterpreterTest ${TIMESERIES_O} $< -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
+PALPatternInterpreterTest: PALPatternInterpreterTest.o TestUtils.o
+	g++ -o PALPatternInterpreterTest ${TIMESERIES_O} $< TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
 
 StrategyBrokerTest: StrategyBrokerTest.o TestUtils.o
 	g++ -o StrategyBrokerTest ${TIMESERIES_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
@@ -177,16 +177,20 @@ TimeSeriesCsvWriterTest: TimeSeriesCsvWriterTest.o
 SyntheticTimeSeriesTest: SyntheticTimeSeriesTest.o
 	g++ -o SyntheticTimeSeriesTest $< ${TIMESERIES_O} -lboost_date_time -lboost_random -lpthread
 
-TimeSeriesTest: TimeSeriesTest.o
-	g++ -o TimeSeriesTest $< ${TIMESERIES_O} -lboost_date_time -lpthread -lboost_system
+TimeSeriesTest: TimeSeriesTest.o TestUtils.o
+	g++ -o TimeSeriesTest $< ${TIMESERIES_O} TestUtils.o -lboost_date_time -lpthread -lboost_system
 
-TimeSeriesEntryTest: TimeSeriesEntryTest.o
-	g++ -o TimeSeriesEntryTest $< -lboost_date_time
+TimeSeriesEntryTest: TimeSeriesEntryTest.o TestUtils.o
+	g++ -o TimeSeriesEntryTest $< TestUtils.o -lboost_date_time -lboost_system
+
+DataSourceReaderTest: DataSourceReaderTest.o
+	g++ -o DataSourceReaderTest $< -lcurl -ljsoncpp -lboost_date_time -lboost_system
 
 SyntheticTimeSeriesCreatorTest: SyntheticTimeSeriesCreatorTest.o TestUtils.o
 	g++ -o SyntheticTimeSeriesCreatorTest $< ${TIMESERIES_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
 
 TestUtils.o: ../PercentNumber.h ../DecimalConstants.h ../TimeFrame.h
+DataSourceReaderTest.o: ../DataSourceReader.h ../DateRange.h ../BoostDateHelper.h
 TradingVolumeTest.o: ../TradingVolume.h
 MCPTStrategyAttributesTest.o: ../MCPTStrategyAttributes.h
 LogPalPatternTest.o: ../LogPalPattern.h
