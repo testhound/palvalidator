@@ -55,7 +55,7 @@ namespace mkc_timeseries
       else if (boost::iequals(configTimeFrame, "hourly")) 
         csvFile << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Up\",\"Down\"" << std::endl;
 
-      int resultSize = getJsonArraySize(jsonDocument);
+      rapidjson::SizeType resultSize = getJsonArraySize(jsonDocument);
       std::string csvString = "";
       for(rapidjson::SizeType idx = 0; idx != resultSize; idx++) 
       {
@@ -91,7 +91,7 @@ namespace mkc_timeseries
     virtual std::string buildDataFetchUri(std::string ticker, boost::gregorian::date startDatetime, boost::gregorian::date endDatetime) = 0;
     virtual bool validApiResponse(rapidjson::Document& jsonDocument) = 0;
     virtual std::string getCsvRow(rapidjson::Document& jsonDocument, rapidjson::SizeType idx) = 0;
-    virtual int getJsonArraySize(rapidjson::Document& jsonDocument) = 0;
+    virtual rapidjson::SizeType getJsonArraySize(rapidjson::Document& jsonDocument) = 0;
     virtual void setApiTimeFrameRepresentation(std::string configTimeFrame) = 0;
 
     time_t timestampFromPtime(boost::posix_time::ptime time) 
@@ -203,7 +203,7 @@ namespace mkc_timeseries
       return boost::iequals(json["s"].GetString(), "ok");
     }
 
-    int getJsonArraySize(rapidjson::Document& json) 
+    rapidjson::SizeType getJsonArraySize(rapidjson::Document& json)
     {
       const rapidjson::Value& results = json["c"].GetArray();
       return results.Size();
@@ -261,7 +261,7 @@ namespace mkc_timeseries
         return json["status"]["code"].GetInt() == 200;
       }
 
-      int getJsonArraySize(rapidjson::Document& json) 
+      rapidjson::SizeType getJsonArraySize(rapidjson::Document& json)
       {
         return (json["results"].GetArray()).Size();
       }

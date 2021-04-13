@@ -8,8 +8,10 @@ namespace mkc_timeseries
     template <class Decimal>
     class TimeFrameDiscovery
     {
-        public:
-            typedef typename std::vector<time_t>::const_iterator TimeFrameIterator;
+    public:
+      typedef typename std::vector<time_t> TimeFrameCollection;
+
+            typedef typename TimeFrameCollection::const_iterator TimeFrameIterator;
 
             TimeFrameDiscovery(const std::string& fileName) : mCsvFile (fileName.c_str())
             {}
@@ -18,7 +20,7 @@ namespace mkc_timeseries
 
             time_t getTimeFrameInMinutes(int position) 
             { 
-                if(position >= mTimeFrames.size()) 
+                if((TimeFrameCollection::size_type) position >= mTimeFrames.size())
                     throw McptConfigurationFileReaderException("Timeframe does not exists: id=" + std::to_string(position) + " number of time frames=" + std::to_string(mTimeFrames.size()));
                 return mTimeFrames.at(position); 
             };
