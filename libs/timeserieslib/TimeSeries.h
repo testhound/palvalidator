@@ -17,6 +17,8 @@
 
 namespace mkc_timeseries
 {
+  using boost::posix_time::ptime;
+  using boost::posix_time::time_duration;
 
   class TimeSeriesException : public std::runtime_error
   {
@@ -137,13 +139,13 @@ namespace mkc_timeseries
 
   template <class Decimal> class NumericTimeSeries
   {
-    using Map = std::map<boost::gregorian::date, std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>;
+    using Map = std::map<ptime, std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>;
 
   public:
     typedef typename Map::iterator TimeSeriesIterator;
     typedef typename Map::const_iterator ConstTimeSeriesIterator;
     typedef typename Map::const_reverse_iterator ConstReverseTimeSeriesIterator;
-    typedef std::map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
+    typedef std::map<ptime, ArrayTimeSeriesIndex>::iterator MappingIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::iterator RandomAccessIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::const_iterator ConstRandomAccessIterator;
 
@@ -190,19 +192,19 @@ namespace mkc_timeseries
     void addEntry (std::shared_ptr<NumericTimeSeriesEntry<Decimal>> entry)
     {
       if (entry->getTimeFrame() != getTimeFrame())
-	throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry->getDate()) + std::string(" time frames do not match")));
+	throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry->getDateTime()) + std::string(" time frames do not match")));
 
-      boost::gregorian::date d = (entry->getDate());
-      TimeSeriesIterator pos = mSortedTimeSeries.find (d);
+      ptime dayTime = entry->getDateTime();
+      TimeSeriesIterator pos = mSortedTimeSeries.find (dayTime);
 
       if (pos == mSortedTimeSeries.end())
 	{
-	  mSortedTimeSeries.insert(std::make_pair(d, entry));
+	  mSortedTimeSeries.insert(std::make_pair(dayTime, entry));
 	  mMapAndArrayInSync = false;
 	  // std::cout << "mMapAndArrayInSync set to false" << std::endl;
 	}
       else
-	throw std::domain_error(std::string("NumericTimeSeries:" +boost::gregorian::to_simple_string(d) + std::string(" date already exists")));
+	throw std::domain_error(std::string("NumericTimeSeries:" +boost::posix_time::to_simple_string(dayTime) + std::string(" date already exists")));
     }
 
     void addEntry (const NumericTimeSeriesEntry<Decimal>& entry)
@@ -212,12 +214,14 @@ namespace mkc_timeseries
 
     NumericTimeSeries::TimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate)
     {
-      return mSortedTimeSeries.find(timeSeriesDate);
+      ptime dateTime(timeSeriesDate, getDefaultBarTime());
+      return mSortedTimeSeries.find(dateTime);
     }
 
     NumericTimeSeries::ConstTimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate) const
     {
-      return mSortedTimeSeries.find(timeSeriesDate);
+      ptime dateTime(timeSeriesDate, getDefaultBarTime());
+      return mSortedTimeSeries.find(dateTime);
     }
 
     std::vector<Decimal> getTimeSeriesAsVector() const
@@ -284,7 +288,8 @@ namespace mkc_timeseries
       if (isSynchronized() == false)
 	syncronizeMapAndArray();
 
-      NumericTimeSeries::MappingIterator pos = getTimeSeriesIndex (d);
+      ptime dateTime(d, getDefaultBarTime());
+      NumericTimeSeries::MappingIterator pos = getTimeSeriesIndex (dateTime);
       if (pos != mDateToSequentialIndex.end())
 	{
 	  std::shared_ptr<ArrayTimeSeriesIndex> index = pos->second;
@@ -325,24 +330,24 @@ namespace mkc_timeseries
       return mSortedTimeSeries.rend();
     }
 
-    const boost::gregorian::date& getFirstDate() const
+    const boost::gregorian::date getFirstDate() const
     {
       if (getNumEntries() > 0)
 	{
 	  NumericTimeSeries::ConstTimeSeriesIterator it = beginSortedAccess();
-	  return it->first;
+	  return it->first.date();
 	}
       else
 	throw std::domain_error(std::string("NumericTimeSeries:getFirstDate: no entries in time series "));
     }
 
-    const boost::gregorian::date& getLastDate() const
+    const boost::gregorian::date getLastDate() const
     {
       if (getNumEntries() > 0)
 	{
 	  NumericTimeSeries::ConstTimeSeriesIterator it = endSortedAccess();
 	  it--;
-	  return it->first;
+	  return it->first.date();
 	}
       else
 	throw std::domain_error(std::string("NumericTimeSeries:getLastDate: no entries in time series "));
@@ -455,7 +460,7 @@ namespace mkc_timeseries
     }
 
     NumericTimeSeries::MappingIterator
-    getTimeSeriesIndex (const boost::gregorian::date& d) const
+    getTimeSeriesIndex (const ptime& d) const
     {
       if (isSynchronized() == false)
 	syncronizeMapAndArray();
@@ -465,7 +470,7 @@ namespace mkc_timeseries
 
   private:
     Map mSortedTimeSeries;
-    mutable std::map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
+    mutable std::map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
     mutable std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     mutable bool mMapAndArrayInSync;
@@ -479,9 +484,9 @@ namespace mkc_timeseries
 template <class Decimal> class OHLCTimeSeries
   {
   public:
-    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>>::iterator TimeSeriesIterator;
-    typedef typename boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstTimeSeriesIterator;
-    typedef boost::container::flat_map<boost::gregorian::date, ArrayTimeSeriesIndex>::iterator MappingIterator;
+    typedef typename boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>>::iterator TimeSeriesIterator;
+    typedef typename boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstTimeSeriesIterator;
+    typedef boost::container::flat_map<ptime, ArrayTimeSeriesIndex>::iterator MappingIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::iterator RandomAccessIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstRandomAccessIterator;
 
@@ -593,29 +598,31 @@ template <class Decimal> class OHLCTimeSeries
     void addEntry (OHLCTimeSeriesEntry<Decimal> entry)
     {
       if (entry.getTimeFrame() != getTimeFrame())
-	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::gregorian::to_simple_string(entry.getDateValue()) + std::string(" time frames do not match")));
+	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry.getDateTime()) + std::string(" time frames do not match")));
 
-      boost::gregorian::date d = entry.getDateValue();
-      TimeSeriesIterator pos = mSortedTimeSeries.find (d);
+      ptime dayTime = entry.getDateTime();
+      TimeSeriesIterator pos = mSortedTimeSeries.find (dayTime);
 
       if (pos == mSortedTimeSeries.end())
 	{
-	  mSortedTimeSeries.insert(std::make_pair(d, std::move(entry)));
+	  mSortedTimeSeries.insert(std::make_pair(dayTime, std::move(entry)));
 	  mMapAndArrayInSync = false;
 	  // std::cout << "mMapAndArrayInSync set to false" << std::endl;
 	}
       else
-	throw std::domain_error(std::string("OHLCTimeSeries:" +boost::gregorian::to_simple_string(d) + std::string(" date already exists")));
+	throw std::domain_error(std::string("OHLCTimeSeries:" +boost::posix_time::to_simple_string(dayTime) + std::string(" date already exists")));
     }
 
     TimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate)
     {
-      return mSortedTimeSeries.find(timeSeriesDate);
+      ptime dateTime(timeSeriesDate, getDefaultBarTime());
+      return mSortedTimeSeries.find(dateTime);
     }
 
     ConstTimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate) const
     {
-      return mSortedTimeSeries.find(timeSeriesDate);
+      ptime dateTime(timeSeriesDate, getDefaultBarTime());
+      return mSortedTimeSeries.find(dateTime);
     }
 
     TimeFrame::Duration getTimeFrame() const
@@ -670,7 +677,8 @@ template <class Decimal> class OHLCTimeSeries
       if (isSynchronized() == false)
 	syncronizeMapAndArray();
 
-      OHLCTimeSeries::MappingIterator pos = getTimeSeriesIndex (d);
+      ptime dateTime(d, getDefaultBarTime());
+      OHLCTimeSeries::MappingIterator pos = getTimeSeriesIndex (dateTime);
       if (pos != mDateToSequentialIndex.end())
 	{
 	  const ArrayTimeSeriesIndex& index = pos->second;
@@ -700,24 +708,24 @@ template <class Decimal> class OHLCTimeSeries
       return mSortedTimeSeries.end();
     }
 
-    const boost::gregorian::date& getFirstDate() const
+    const boost::gregorian::date getFirstDate() const
     {
       if (getNumEntries() > 0)
 	{
 	  OHLCTimeSeries::ConstTimeSeriesIterator it = beginSortedAccess();
-	  return it->first;
+	  return it->first.date();
 	}
       else
 	throw std::domain_error(std::string("OHLCTimeSeries:getFirstDate: no entries in time series "));
     }
 
-    const boost::gregorian::date& getLastDate() const
+    const boost::gregorian::date getLastDate() const
     {
       if (getNumEntries() > 0)
 	{
 	  OHLCTimeSeries::ConstTimeSeriesIterator it = endSortedAccess();
 	  it--;
-	  return it->first;
+	  return it->first.date();
 	}
       else
 	throw std::domain_error(std::string("OHLCTimeSeries:getLastDate: no entries in time series "));
@@ -869,23 +877,24 @@ template <class Decimal> class OHLCTimeSeries
 
     bool isDateFound(const boost::gregorian::date& date)
     {
-      return (mSortedTimeSeries.find(date) != mSortedTimeSeries.end());
+      ptime dateTime(date, getDefaultBarTime());
+      return (mSortedTimeSeries.find(dateTime) != mSortedTimeSeries.end());
     }
 
   private:
 
     OHLCTimeSeries::MappingIterator
-    getTimeSeriesIndex (const boost::gregorian::date& d)
+    getTimeSeriesIndex (const ptime& dateTime)
     {
       if (isSynchronized() == false)
 	syncronizeMapAndArray();
 
-      return mDateToSequentialIndex.find (d);
+      return mDateToSequentialIndex.find (dateTime);
     }
 
-    private:
-    boost::container::flat_map<boost::gregorian::date, OHLCTimeSeriesEntry<Decimal>> mSortedTimeSeries;
-    boost::container::flat_map<boost::gregorian::date, ArrayTimeSeriesIndex> mDateToSequentialIndex;
+  private:
+    boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>> mSortedTimeSeries;
+    boost::container::flat_map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
     std::vector<OHLCTimeSeriesEntry<Decimal>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     bool mMapAndArrayInSync;
@@ -929,6 +938,9 @@ template <class Decimal> class OHLCTimeSeries
     boost::gregorian::date firstDate (dates.getFirstDate());
     boost::gregorian::date lastDate (dates.getLastDate());
 
+    ptime firstDateAsPtime(firstDate, getDefaultBarTime());
+    ptime lastDateAsPtime (lastDate, getDefaultBarTime());
+
     if ((series.getFirstDate() == firstDate) && (series.getLastDate() == lastDate))
       return series;
 
@@ -948,12 +960,12 @@ template <class Decimal> class OHLCTimeSeries
       {
 	for (; it != series.endSortedAccess(); it++)
 	  {
-	    if (it->first >= firstDate)
+	    if (it->first >= firstDateAsPtime)
 	      break;
 	  }
       }
 
-    for (; ((it != series.endSortedAccess()) && (it->first <= lastDate)) ; it++)
+    for (; ((it != series.endSortedAccess()) && (it->first <= lastDateAsPtime)) ; it++)
       {
 	resultSeries.addEntry (it->second);
       }

@@ -145,7 +145,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
       for (; ((closeSeriesIterator != closeSeries.endSortedAccess()) &&
 	      (openSeriesIterator != openSeries.endSortedAccess())); closeSeriesIterator++, openSeriesIterator++, it++)
 	{
-	  std::cout << "On " << boost::gregorian::to_simple_string (it->first);
+	  std::cout << "On " << boost::posix_time::to_simple_string (it->first);
 	  std::cout << " Dividing " << closeSeriesIterator->second->getValue() << " by " << openSeriesIterator->second->getValue() << std::endl;
 	  temp = closeSeriesIterator->second->getValue() / openSeriesIterator->second->getValue();
 	  std::cout << "Result = " << temp << std::endl;

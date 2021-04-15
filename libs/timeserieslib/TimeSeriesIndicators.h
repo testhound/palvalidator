@@ -43,7 +43,7 @@ using namespace boost::accumulators;
 
     for (; ((it1 != series1.endReverseSortedAccess()) && (it2 != series2.endReverseSortedAccess())); it1++, it2++)
       {
-	throw_assert (it1->first == it2->first, "DivideSeries - date1: " +boost::gregorian::to_simple_string (it1->first) +" and date2: " +boost::gregorian::to_simple_string(it2->first) +" are not equal");
+	throw_assert (it1->first == it2->first, "DivideSeries - date1: " +boost::posix_time::to_simple_string (it1->first) +" and date2: " +boost::posix_time::to_simple_string(it2->first) +" are not equal");
 	if (it2->second->getValue() == DecimalConstants<Decimal>::DecimalZero)
 	  temp = DecimalConstants<Decimal>::DecimalZero;
 	else

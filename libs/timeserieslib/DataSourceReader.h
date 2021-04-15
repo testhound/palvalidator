@@ -10,6 +10,8 @@
 #include <ctime>
 #include <stdio.h>
 #include <vector>
+#include "DateRange.h"
+#include "csv.h"
 
 namespace mkc_timeseries
 {

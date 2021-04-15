@@ -13,6 +13,7 @@
 
 namespace mkc_timeseries
 {
+  using boost::posix_time::ptime;
   //
   // class PalTimeSeriesCsvWriter
   //
@@ -54,14 +55,14 @@ namespace mkc_timeseries
     {
       typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = 
 	mTimeSeries.beginSortedAccess();
-      boost::gregorian::date timeSeriesDate;
+      ptime timeSeriesDate;
 
       for (; it != mTimeSeries.endSortedAccess(); it++)
 	{
 	  timeSeriesDate = it->first;
 	  const auto& timeSeriesEntry = it->second;
 
-	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate) << "," << 
+	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate.date()) << "," << 
 	    timeSeriesEntry.getOpenValue() << "," <<
 	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
 	    timeSeriesEntry.getCloseValue() << std::endl;
@@ -113,14 +114,14 @@ namespace mkc_timeseries
     {
       typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = 
 	mTimeSeries.beginSortedAccess();
-      boost::gregorian::date timeSeriesDate;
+      ptime timeSeriesDate;
 
       for (; it != mTimeSeries.endSortedAccess(); it++)
 	{
 	  timeSeriesDate = it->first;
 	  const auto& timeSeriesEntry = it->second;
 
-	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate) << "," << 
+	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate.date()) << "," << 
 	    timeSeriesEntry.getOpenValue() << "," <<
 	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
 	    timeSeriesEntry.getVolumeValue() << std::endl;
