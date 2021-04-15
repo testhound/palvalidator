@@ -51,11 +51,13 @@ namespace mkc_searchalgo
   {
       switch (v)
       {
-          case CloseOnly:   return "CloseOnly";
-          case OpenClose:   return "OpenClose";
-          case HighLow:     return "HighLow";
-          case Ohlc:        return "Ohlc";
-          case Extended:    return "Extended";
+      case CloseOnly:   return "CloseOnly";
+      case OpenClose:   return "OpenClose";
+      case HighLow:     return "HighLow";
+      case Ohlc:        return "Ohlc";
+      case Extended:    return "Extended";
+      default:
+	throw std::logic_error("Invalid Comparison type");
       }
   }
 

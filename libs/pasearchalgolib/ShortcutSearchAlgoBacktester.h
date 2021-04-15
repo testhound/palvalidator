@@ -181,7 +181,7 @@ namespace mkc_searchalgo {
     unsigned int consLosers = 0;
 
     /// the section that nullifies signals where a previous position would be on
-    for (int i = 0; i < allResults.size(); i++)
+    for (int i = 0; (std::size_t)  i < allResults.size(); i++)
       {
         //the skip procedure
         if (i >= nextSkipStart && i <= nextSkipEnd)
@@ -235,7 +235,7 @@ namespace mkc_searchalgo {
 
     std::valarray<Decimal> allResults = occurences * mBacktestResultBase;
 
-    for (int i = 0; i < allResults.size(); i++)
+    for (std::size_t i = 0;  i < allResults.size(); i++)
       {
         //the signal identification procedure, without skipping
         const Decimal& res = allResults[i];

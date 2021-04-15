@@ -293,12 +293,12 @@ namespace mkc_timeseries
       {
 	if (entryConditions.canEnterMarket(this, aSecurity))
 	  {
-	    typename PalMetaStrategy<Decimal>::ConstStrategiesIterator it = this->beginPricePatterns();
+	    typename PalMetaStrategy<Decimal>::ConstStrategiesIterator itPatterns = this->beginPricePatterns();
 	    bool orderEntered = false;
 
-	    for (; it != this->endPricePatterns(); it++)
+	    for (; itPatterns != this->endPricePatterns(); itPatterns++)
 	      {
-		std::shared_ptr<PriceActionLabPattern> pricePattern = *it;
+		std::shared_ptr<PriceActionLabPattern> pricePattern = *itPatterns;
 		if (entryConditions.canTradePattern (this, pricePattern, aSecurity))
 		  {
 		    PatternExpression *expr = pricePattern->getPatternExpression().get();

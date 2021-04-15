@@ -70,7 +70,7 @@ namespace mkc_searchalgo
       mSelectedStatistics.shrink_to_fit();
       mIndexedSums.clear();
       double bestRelevance;
-      double bestRedundancy;
+      double bestRedundancy = 0.0;
       double bestActivity;
       int maxIndexToSearch = sortedResults.size();
       double breakOut = false;

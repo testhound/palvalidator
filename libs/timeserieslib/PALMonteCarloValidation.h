@@ -356,6 +356,9 @@ namespace mkc_timeseries
       // Iterate results to retrieve #of times beaten, and calculate pValue
       for( auto const& [baselineStat, strategyContainer] : resultsMap )
         {
+	  // Avoid unused warning
+
+	  (void) baselineStat;
           std::shared_ptr<PalStrategy<Decimal>> strategy = std::get<0>(strategyContainer);
           uint32_t timesBeaten;
           timesBeaten = std::get<1>(strategyContainer);
