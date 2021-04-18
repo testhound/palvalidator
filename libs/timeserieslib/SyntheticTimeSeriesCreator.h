@@ -77,9 +77,9 @@ namespace mkc_timeseries
                 std::string dateStamp, timeStamp;
                 std::string openString, highString, lowString, closeString;
                 std::string up, down;
+                std::string dateFormat = "%m/%d/%YYYY";
                 
                 Decimal openPrice, highPrice, lowPrice, closePrice, upVol;
-                boost::gregorian::date entryDate;
                 boost::date_time::special_values_parser<boost::gregorian::date, char> special_parser;
 
                 std::shared_ptr<OHLCTimeSeries<Decimal>> series(std::make_shared<OHLCTimeSeries<Decimal>>(this->mTimeFrame, this->mUnitsOfVolume));
@@ -91,7 +91,6 @@ namespace mkc_timeseries
                     lowPrice =  num::fromString<Decimal>(lowString.c_str());
                     closePrice = num::fromString<Decimal>(closeString.c_str());
                     upVol = num::fromString<Decimal>(up.c_str());
-                    entryDate = this->mDateParser.parse_date(dateStamp, "%m/%d/%YYYY", special_parser);
 
                     struct tm tm = {0, 0, 0, 0, 0, 0, 0, 0, 0};
                     strptime(timeStamp.c_str(), "%H:%M", &tm);
@@ -99,17 +98,35 @@ namespace mkc_timeseries
 
                     if(timeStamp == filterTime) 
                     {
+                        if(mOpen != DecimalConstants<Decimal>::DecimalZero)
                         series->addEntry(OHLCTimeSeriesEntry<Decimal>(
-                                    entryDate, openPrice, highPrice, lowPrice, 
-                                    closePrice, upVol, TimeSeriesCsvReader<Decimal>::getTimeFrame()
+                                    mEntryDate, mOpen, mHigh, mLow, 
+                                    mClose, upVol, TimeSeriesCsvReader<Decimal>::getTimeFrame()
                         ));
+
+                        mOpen = openPrice;
+                        mHigh = DecimalConstants<Decimal>::DecimalZero;
+                        mLow = highPrice * DecimalConstants<Decimal>::DecimalOneHundred;
+                        mEntryDate = this->mDateParser.parse_date(dateStamp, dateFormat, special_parser);
                     }
+                    if (highPrice > mHigh)
+                        mHigh = highPrice;
+
+                    if (lowPrice < mLow)
+                        mLow = lowPrice;
+                    mClose = closePrice;
                 }
 
                 std::string timeFrameFilename = this->getTimeFrameFilename(timeFrameId);
                 PalTimeSeriesCsvWriter<Decimal> csvWriter(timeFrameFilename, *series);
                 csvWriter.writeFile();
             }
+        private:
+            Decimal mOpen = DecimalConstants<Decimal>::DecimalZero;
+            Decimal mHigh = DecimalConstants<Decimal>::DecimalZero;
+            Decimal mLow = DecimalConstants<Decimal>::DecimalZero;
+            Decimal mClose = DecimalConstants<Decimal>::DecimalZero;
+            boost::gregorian::date mEntryDate;
     };
 }
 
