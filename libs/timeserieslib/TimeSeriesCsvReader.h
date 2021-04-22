@@ -14,6 +14,10 @@
 
 namespace mkc_timeseries
 {
+  using boost::posix_time::ptime;
+  using boost::posix_time::time_duration;
+  using boost::posix_time::duration_from_string;
+
   template <class Decimal>
   class TimeSeriesCsvReader
   {
@@ -532,8 +536,13 @@ namespace mkc_timeseries
 
     void readFile()
     {
-      mCsvFile.read_header(io::ignore_extra_column, "Date", "Time", "Open", "High", "Low", 
-			   "Close", "Vol", "OI");
+      if (this->getTimeFrame() != TimeFrame::INTRADAY)
+	mCsvFile.read_header(io::ignore_extra_column, "Date", "Time", "Open", "High", "Low", 
+			     "Close", "Vol", "OI");
+      else
+	mCsvFile.read_header(io::ignore_extra_column, "Date", "Time", "Open", "High", "Low", 
+			     "Close", "Up", "Down");
+ 
 
       std::string dateStamp, timeString;
       std::string openString, highString, lowString, closeString;
@@ -541,6 +550,7 @@ namespace mkc_timeseries
       
       Decimal openPrice, highPrice, lowPrice, closePrice;
       Decimal volume, openInterest;
+      time_duration barTime(0, 0, 0);
       boost::gregorian::date entryDate;
 
       std::string dateFormat("%m/%d/%YYYY");
@@ -557,8 +567,8 @@ namespace mkc_timeseries
 	  closePrice = num::fromString<Decimal>(closeString.c_str());
 	  volume = num::fromString<Decimal>(volumeString.c_str());
 	  entryDate = mDateParser.parse_date (dateStamp, dateFormat, special_parser);
-
-	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (entryDate, openPrice, 
+	  barTime = duration_from_string(timeString);
+	  TimeSeriesCsvReader<Decimal>::addEntry (OHLCTimeSeriesEntry<Decimal> (ptime (entryDate, barTime), openPrice, 
 								      highPrice, lowPrice, 
 								      closePrice, 
 								      volume, 

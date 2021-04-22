@@ -97,6 +97,42 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   std::shared_ptr<OHLCTimeSeries<DecimalType>> dollarIndexTimeSeries = dollarIndexCsvFile.getTimeSeries();
 
+  // Intraday series
+
+  OHLCTimeSeries<DecimalType> ssoSeries(TimeFrame::INTRADAY, TradingVolume::SHARES);
+  auto intraday_entry1 = createTimeSeriesEntry ("20210405", "09:00", "105.99", "106.57", "105.93", "106.54", "0");
+  auto intraday_entry2 = createTimeSeriesEntry ("20210405", "10:00", "106.54", "107.29", "106.38", "107.10", "0");
+  auto intraday_entry3 = createTimeSeriesEntry ("20210405", "11:00", "107.10", "107.54", "107.03", "107.409", "0");
+  auto intraday_entry4 = createTimeSeriesEntry ("20210405", "12:00", "107.42", "107.78", "107.375", "107.47", "0");
+  auto intraday_entry5 = createTimeSeriesEntry ("20210405", "13:00", "107.47", "107.60", "107.34", "107.5712", "0");
+  auto intraday_entry6 = createTimeSeriesEntry ("20210405", "14:00", "107.59", "107.7099", "107.34", "107.345", "0");
+  auto intraday_entry7 = createTimeSeriesEntry ("20210405", "15:00", "107.35", "107.70", "107.16", "107.45", "0");
+
+  auto intraday_entry8 = createTimeSeriesEntry ("20210406", "09:00", "107.14", "107.75", "107.02", "107.68", "0");
+  auto intraday_entry9 = createTimeSeriesEntry ("20210406", "10:00", "107.73", "107.91", "107.58", "107.739", "0");
+  auto intraday_entry10 = createTimeSeriesEntry ("20210406", "11:00", "107.71", "107.9225", "107.55", "107.92", "0");
+  auto intraday_entry11 = createTimeSeriesEntry ("20210406", "12:00", "107.91", "107.91", "107.63", "107.71", "0");
+  auto intraday_entry12 = createTimeSeriesEntry ("20210406", "13:00", "107.70", "107.70", "107.22", "107.60", "0");
+  auto intraday_entry13 = createTimeSeriesEntry ("20210406", "14:00", "107.62", "107.71", "107.44", "107.59", "0");
+  auto intraday_entry14 = createTimeSeriesEntry ("20210406", "15:00", "107.59", "107.64", "106.98", "107.33", "0");
+
+  ssoSeries.addEntry(*intraday_entry9);
+  ssoSeries.addEntry(*intraday_entry5);
+  ssoSeries.addEntry(*intraday_entry12);
+  ssoSeries.addEntry(*intraday_entry3);
+  ssoSeries.addEntry(*intraday_entry13);
+  ssoSeries.addEntry(*intraday_entry6);
+  ssoSeries.addEntry(*intraday_entry1);
+  ssoSeries.addEntry(*intraday_entry10);
+  ssoSeries.addEntry(*intraday_entry2);
+  ssoSeries.addEntry(*intraday_entry7);
+  ssoSeries.addEntry(*intraday_entry11);
+  ssoSeries.addEntry(*intraday_entry8);
+  ssoSeries.addEntry(*intraday_entry4);
+  ssoSeries.addEntry(*intraday_entry14);
+
+
+
   SECTION ("Timeseries size test", "[TimeSeries]")
     {
       REQUIRE (spySeries.getNumEntries() == 7);
@@ -238,10 +274,23 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
       REQUIRE (closeSeries.getLastDate() == date (2016, Jan, 06));
     }
 
+  SECTION ("Timeseries intraday date test", "[TimeSeries]")
+    {
+      date first(2021, Apr, 05);
+      date last(2021, Apr, 06);
+
+      ptime firstDateTime (first, time_duration(9, 0, 0));
+      ptime lastDateTime (last, time_duration(15, 0, 0));
+
+      REQUIRE (ssoSeries.getFirstDateTime() == firstDateTime);
+      REQUIRE (ssoSeries.getLastDateTime() == lastDateTime);
+    }
+
   SECTION ("Timeseries time frame test", "[TimeSeries]")
     {
       REQUIRE (spySeries.getTimeFrame() == TimeFrame::DAILY);
       REQUIRE (closeSeries.getTimeFrame() == TimeFrame::DAILY);
+      REQUIRE (ssoSeries.getTimeFrame() == TimeFrame::INTRADAY);
     }
 
   SECTION ("Timeseries addEntry timeframe exception test", "[TimeSeries]")

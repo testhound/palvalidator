@@ -2,6 +2,8 @@
 
 #include "catch.hpp"
 #include "../TimeSeriesCsvReader.h"
+#include "../DecimalConstants.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
@@ -13,28 +15,38 @@ TEST_CASE ("TimeSeriesCsvReader operations", "[TimeSeriesCsvReader]")
   //  PALFormatCsvReader<6> csvFile ("TY_RAD.csv", TimeFrame::DAILY, TradingVolume::CONTRACTS);
   // csvFile.readFile();
 
-  TradeStationFormatCsvReader<7> gildCsvFile ("GILD.txt", TimeFrame::DAILY, TradingVolume::SHARES);
+  TradeStationFormatCsvReader<DecimalType> gildCsvFile ("GILD.txt", TimeFrame::DAILY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick);
   gildCsvFile.readFile();
 
-  CSIExtendedFuturesCsvReader<7> dollarIndexCsvFile ("DX20060R.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  TradeStationFormatCsvReader<DecimalType> ssoCsvFile ("SSO_RAD_Hourly.txt", TimeFrame::INTRADAY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick);
+ 
+  ssoCsvFile.readFile();
+
+  DecimalType dollarTick (dec::fromString<DecimalType> (std::string ("0.005")));
+  CSIExtendedFuturesCsvReader<DecimalType> dollarIndexCsvFile ("DX20060R.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, dollarTick);
   dollarIndexCsvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> dollarIndexTimeSeries = dollarIndexCsvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> dollarIndexTimeSeries = dollarIndexCsvFile.getTimeSeries();
 
-  CSIErrorCheckingExtendedFuturesCsvReader<7> dollarIndexErrorCheckedCsvFile ("DX20060R.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  CSIErrorCheckingExtendedFuturesCsvReader<DecimalType> dollarIndexErrorCheckedCsvFile ("DX20060R.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS,
+											dollarTick);
 
-  PinnacleErrorCheckingFormatCsvReader<7> britishPoundCsvFile ("BN_RAD.csv", 
-							    TimeFrame::DAILY, 
-							    TradingVolume::CONTRACTS);
+  DecimalType poundTick (dec::fromString<DecimalType> (std::string ("0.0001")));
+  PinnacleErrorCheckingFormatCsvReader<DecimalType> britishPoundCsvFile ("BN_RAD.csv", 
+									 TimeFrame::DAILY, 
+									 TradingVolume::CONTRACTS,
+									 poundTick);
   britishPoundCsvFile.readFile();
   // std::shared_ptr<OHLCTimeSeries<6>> p = csvFile.getTimeSeries();
-  std::shared_ptr<OHLCTimeSeries<7>> gildTimeSeries = gildCsvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> gildTimeSeries = gildCsvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> ssoTimeSeries = ssoCsvFile.getTimeSeries();
 
   SECTION ("Timeseries time frame test", "[TimeSeriesCsvReader]")
     {
       //    REQUIRE (p->getTimeFrame() == TimeFrame::DAILY);
       REQUIRE (gildTimeSeries->getTimeFrame() == TimeFrame::DAILY);
       REQUIRE (dollarIndexTimeSeries->getTimeFrame() == TimeFrame::DAILY);
+      REQUIRE (ssoTimeSeries->getTimeFrame() == TimeFrame::INTRADAY);
     }
 
   SECTION ("Timeseries first date test", "[TimeSeriesCsvReader]")
@@ -45,6 +57,17 @@ TEST_CASE ("TimeSeriesCsvReader operations", "[TimeSeriesCsvReader]")
       //REQUIRE (p->getFirstDate() == refDate1);
       REQUIRE (gildTimeSeries->getFirstDate() == refDate2);
       REQUIRE (dollarIndexTimeSeries->getFirstDate() == refDate1);
+      time_duration barTime(13, 0, 0);
+
+      ptime firstDateTime (refDate2, barTime);
+
+      REQUIRE(gildTimeSeries->getFirstDateTime() == firstDateTime);
+
+      boost::gregorian::date ssoFirstDate (2012, Apr, 02);
+      time_duration ssoFirstTime(9, 0, 0);
+
+      ptime ssoDateTime(ssoFirstDate, ssoFirstTime);
+      REQUIRE(ssoTimeSeries->getFirstDateTime() == ssoDateTime);
     }
 
   SECTION ("Timeseries last date test", "[TimeSeriesCsvReader]")
@@ -55,38 +78,49 @@ TEST_CASE ("TimeSeriesCsvReader operations", "[TimeSeriesCsvReader]")
       //REQUIRE (p->getLastDate() == refDate1);
       REQUIRE (dollarIndexTimeSeries->getLastDate() == refDate1);
       REQUIRE (gildTimeSeries->getLastDate() == refDate2);
+
+      time_duration barTime(13, 0, 0);
+      ptime lastDateTime (refDate2, barTime);
+      REQUIRE(gildTimeSeries->getLastDateTime() == lastDateTime);
+
+      boost::gregorian::date ssoLastDate (2021, Apr, 01);
+      time_duration ssoLastTime(15, 0, 0);
+
+      ptime ssoDateTime(ssoLastDate, ssoLastTime);
+      REQUIRE(ssoTimeSeries->getLastDateTime() == ssoDateTime);
+
     }
 
   SECTION ("Timeseries get OHLC tests", "[TimeSeriesCsvReader]")
     {
-      OHLCTimeSeries<7>::ConstRandomAccessIterator it = dollarIndexTimeSeries->beginRandomAccess();
+      OHLCTimeSeries<DecimalType>::ConstRandomAccessIterator it = dollarIndexTimeSeries->beginRandomAccess();
 
-      decimal<7> refOpen (dec::fromString<decimal<7>> (std::string ("186.14547208")));
-      REQUIRE ((*it)->getOpenValue() == refOpen);
+      DecimalType refOpen (dec::fromString<DecimalType> (std::string ("186.145")));
+      REQUIRE ((*it).getOpenValue() == refOpen);
 
-      decimal<7> refHigh (dec::fromString<decimal<7>> (std::string ("187.89263334")));
-      REQUIRE ((*it)->getHighValue() == refHigh);
+      DecimalType refHigh (dec::fromString<DecimalType> (std::string ("187.895")));
+      REQUIRE ((*it).getHighValue() == refHigh);
 
-      decimal<7> refLow (dec::fromString<decimal<7>> (std::string ("186.07267370")));
-      REQUIRE ((*it)->getLowValue() == refLow);
+      DecimalType refLow (dec::fromString<DecimalType> (std::string ("186.075")));
+      REQUIRE ((*it).getLowValue() == refLow);
 
-      decimal<7> refClose (dec::fromString<decimal<7>> (std::string ("187.6159994")));
-      REQUIRE ((*it)->getCloseValue() == refClose);
+      DecimalType refClose (dec::fromString<DecimalType> (std::string ("187.615")));
+      REQUIRE ((*it).getCloseValue() == refClose);
 
       it = it + 19;
       boost::gregorian::date refDate1 (1985, Dec, 18);
-      REQUIRE ((*it)->getDateValue() == refDate1);
-     decimal<7> refOpen0 (dec::fromString<decimal<7>> (std::string ("184.36919147")));
-      REQUIRE ((*it)->getOpenValue() == refOpen0);
+      REQUIRE ((*it).getDateValue() == refDate1);
+     DecimalType refOpen0 (dec::fromString<DecimalType> (std::string ("184.370")));
+      REQUIRE ((*it).getOpenValue() == refOpen0);
 
-      decimal<7> refHigh0 (dec::fromString<decimal<7>> (std::string ("185.19909307")));
-      REQUIRE ((*it)->getHighValue() == refHigh0);
+      DecimalType refHigh0 (dec::fromString<DecimalType> (std::string ("185.200")));
+      REQUIRE ((*it).getHighValue() == refHigh0);
 
-      decimal<7> refLow0 (dec::fromString<decimal<7>> (std::string ("184.32551244")));
-      REQUIRE ((*it)->getLowValue() == refLow0);
+      DecimalType refLow0 (dec::fromString<DecimalType> (std::string ("184.325")));
+      REQUIRE ((*it).getLowValue() == refLow0);
 
-      decimal<7> refClose0 (dec::fromString<decimal<7>> (std::string ("185.09717533")));
-      REQUIRE ((*it)->getCloseValue() == refClose0);
+      DecimalType refClose0 (dec::fromString<DecimalType> (std::string ("185.095")));
+      REQUIRE ((*it).getCloseValue() == refClose0);
     }
 
   /*

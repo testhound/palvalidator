@@ -5,10 +5,10 @@
 #include "../TradingPosition.h"
 #include "../StrategyTransactionManager.h"
 #include "../InstrumentPosition.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
 
 TradingVolume
 createShareVolume (volume_t vol)
@@ -16,40 +16,12 @@ createShareVolume (volume_t vol)
   return TradingVolume (vol, TradingVolume::SHARES);
 }
 
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
 
 TradingVolume
 createContractVolume (volume_t vol)
 {
   return TradingVolume (vol, TradingVolume::CONTRACTS);
 }
-
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
 {
@@ -101,24 +73,24 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
 
   std::string equitySymbol("SPY");
   TradingVolume oneShare (1, TradingVolume::SHARES);
-  auto longSpyEntryOrder1 = std::make_shared<MarketOnOpenLongOrder<7>>(equitySymbol,
+  auto longSpyEntryOrder1 = std::make_shared<MarketOnOpenLongOrder<DecimalType>>(equitySymbol,
 								       createShareVolume(1),
 								       createDate("20151218"));
   longSpyEntryOrder1->MarkOrderExecuted (entry0->getDateValue(),
 					 entry0->getOpenValue());
-  auto longSpyPosition1 = std::make_shared<TradingPositionLong<7>>(equitySymbol,
+  auto longSpyPosition1 = std::make_shared<TradingPositionLong<DecimalType>>(equitySymbol,
 								   entry0->getOpenValue(),
-								   entry0,
+								   *entry0,
 								   oneShare);
-  InstrumentPosition<7> instrumentPositionSpy (equitySymbol);
+  InstrumentPosition<DecimalType> instrumentPositionSpy (equitySymbol);
   instrumentPositionSpy.addPosition(longSpyPosition1);
-  StrategyTransactionManager<7> transactionManager;
+  StrategyTransactionManager<DecimalType> transactionManager;
 
   REQUIRE (transactionManager.getTotalTrades() == 0);
   REQUIRE (transactionManager.getOpenTrades() == 0);
   REQUIRE (transactionManager.getClosedTrades() == 0);
 
-  auto strategyTrans = std::make_shared<StrategyTransaction<7>>(longSpyEntryOrder1,
+  auto strategyTrans = std::make_shared<StrategyTransaction<DecimalType>>(longSpyEntryOrder1,
 								longSpyPosition1);
   transactionManager.addStrategyTransaction (strategyTrans);
 
@@ -126,10 +98,10 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   REQUIRE (transactionManager.getOpenTrades() == 1);
   REQUIRE (transactionManager.getClosedTrades() == 0);
 
-  instrumentPositionSpy.addBar(entry1);
-  instrumentPositionSpy.addBar(entry2);
-  instrumentPositionSpy.addBar(entry3);
-  instrumentPositionSpy.addBar(entry4);
+  instrumentPositionSpy.addBar(*entry1);
+  instrumentPositionSpy.addBar(*entry2);
+  instrumentPositionSpy.addBar(*entry3);
+  instrumentPositionSpy.addBar(*entry4);
 
   REQUIRE (longSpyPosition1->getNumBarsInPosition() == 5);
   REQUIRE (longSpyEntryOrder1->isOrderExecuted());
@@ -144,7 +116,7 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   REQUIRE (strategyTrans->getTradingPosition()->getEntryPrice() == entry0->getOpenValue());
   REQUIRE (strategyTrans->getTradingPosition()->getNumBarsInPosition() == 5);
 
-  auto longSpyExitOrder1 = std::make_shared<MarketOnOpenSellOrder<7>>(equitySymbol,
+  auto longSpyExitOrder1 = std::make_shared<MarketOnOpenSellOrder<DecimalType>>(equitySymbol,
 								       createShareVolume(1),
 								       entry4->getDateValue());
   longSpyExitOrder1->MarkOrderExecuted (entry5->getDateValue(),
@@ -166,21 +138,21 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   REQUIRE (strategyTrans->getExitTradingOrder()->getFillPrice() == entry5->getOpenValue());
   REQUIRE (strategyTrans->getExitTradingOrder()->getFillDate() == entry5->getDateValue());
 
-  auto longSpyEntryOrder2 = std::make_shared<MarketOnOpenLongOrder<7>>(equitySymbol,
+  auto longSpyEntryOrder2 = std::make_shared<MarketOnOpenLongOrder<DecimalType>>(equitySymbol,
 								       createShareVolume(1),
 								       entry6->getDateValue());
   longSpyEntryOrder2->MarkOrderExecuted (entry7->getDateValue(),
 					 entry7->getOpenValue());
-  auto longSpyPosition2 = std::make_shared<TradingPositionLong<7>>(equitySymbol,
+  auto longSpyPosition2 = std::make_shared<TradingPositionLong<DecimalType>>(equitySymbol,
 								   entry7->getOpenValue(),
-								   entry7,
+								   *entry7,
 								   oneShare);
   
   instrumentPositionSpy.addPosition(longSpyPosition2);
 
   
 
-  auto strategyTrans2 = std::make_shared<StrategyTransaction<7>>(longSpyEntryOrder2,
+  auto strategyTrans2 = std::make_shared<StrategyTransaction<DecimalType>>(longSpyEntryOrder2,
 								longSpyPosition2);
   transactionManager.addStrategyTransaction (strategyTrans2);
 
@@ -188,8 +160,8 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   REQUIRE (transactionManager.getOpenTrades() == 1);
   REQUIRE (transactionManager.getClosedTrades() == 1);
 
-  instrumentPositionSpy.addBar(entry8);
-  instrumentPositionSpy.addBar(entry9);
+  instrumentPositionSpy.addBar(*entry8);
+  instrumentPositionSpy.addBar(*entry9);
 
 
   REQUIRE (longSpyPosition2->getNumBarsInPosition() == 3);
@@ -210,7 +182,7 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   REQUIRE (aStrategyTrans->getTradingPosition()->getEntryPrice() == entry7->getOpenValue());
   REQUIRE (aStrategyTrans->getTradingPosition()->getNumBarsInPosition() == 3);
 
-   auto longSpyExitOrder2 = std::make_shared<MarketOnOpenSellOrder<7>>(equitySymbol,
+   auto longSpyExitOrder2 = std::make_shared<MarketOnOpenSellOrder<DecimalType>>(equitySymbol,
 								       createShareVolume(1),
 								       entry9->getDateValue());
   longSpyExitOrder2->MarkOrderExecuted (entry10->getDateValue(),

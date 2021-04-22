@@ -2,36 +2,13 @@
 
 #include "catch.hpp"
 #include "../Portfolio.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef decimal<7> EquityType;
-typedef decimal<7> DecimalType;
 
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
 
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
-
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -39,13 +16,7 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<EquityType> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<EquityType> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<EquityType> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<EquityType> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+    return createTimeSeriesEntry (dateString, openPrice, highPrice, lowPrice, closePrice, vol);
   }
 
 
@@ -72,20 +43,20 @@ TEST_CASE ("Security operations", "[Security]")
 
   auto entry6 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
 				   65899900);
-  auto spySeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::SHARES);
+  auto spySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
 
-  spySeries->addEntry (entry4);
-  spySeries->addEntry (entry6);
-  spySeries->addEntry (entry2);
-  spySeries->addEntry (entry3);
-  spySeries->addEntry (entry1);
-  spySeries->addEntry (entry5);
-  spySeries->addEntry (entry0);
+  spySeries->addEntry (*entry4);
+  spySeries->addEntry (*entry6);
+  spySeries->addEntry (*entry2);
+  spySeries->addEntry (*entry3);
+  spySeries->addEntry (*entry1);
+  spySeries->addEntry (*entry5);
+  spySeries->addEntry (*entry0);
 
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
 
-  EquitySecurity<7> spy (equitySymbol, equityName, spySeries);
+  EquitySecurity<DecimalType> spy (equitySymbol, equityName, spySeries);
 
 
 
@@ -93,8 +64,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
 
   auto futuresEntry0 = createTimeSeriesEntry ("19851118", "3664.51025", "3687.58178", "3656.81982","3672.20068",0);
 
@@ -126,38 +97,38 @@ TEST_CASE ("Security operations", "[Security]")
   auto futuresEntry11 = createTimeSeriesEntry ("19851204","3744.33984375","3759.56079101563","3736.7294921875",
 					"3740.53466796875",0);
 
-  auto cornSeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
-  cornSeries->addEntry(futuresEntry0);
-  cornSeries->addEntry(futuresEntry1);
-  cornSeries->addEntry(futuresEntry2);
-  cornSeries->addEntry(futuresEntry3);
-  cornSeries->addEntry(futuresEntry4);
-  cornSeries->addEntry(futuresEntry5);
-  cornSeries->addEntry(futuresEntry6);
-  cornSeries->addEntry(futuresEntry7);
-  cornSeries->addEntry(futuresEntry8);
-  cornSeries->addEntry(futuresEntry9);
-  cornSeries->addEntry(futuresEntry10);
-  cornSeries->addEntry(futuresEntry11);
+  auto cornSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  cornSeries->addEntry(*futuresEntry0);
+  cornSeries->addEntry(*futuresEntry1);
+  cornSeries->addEntry(*futuresEntry2);
+  cornSeries->addEntry(*futuresEntry3);
+  cornSeries->addEntry(*futuresEntry4);
+  cornSeries->addEntry(*futuresEntry5);
+  cornSeries->addEntry(*futuresEntry6);
+  cornSeries->addEntry(*futuresEntry7);
+  cornSeries->addEntry(*futuresEntry8);
+  cornSeries->addEntry(*futuresEntry9);
+  cornSeries->addEntry(*futuresEntry10);
+  cornSeries->addEntry(*futuresEntry11);
 
-  FuturesSecurity<7> corn (futuresSymbol, futuresName, cornBigPointValue,
+  FuturesSecurity<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
 			   cornTickValue, cornSeries);
 
   std::string portName("Test Portfolio");
 
-  Portfolio<7> aPortfolio(portName);
-  auto cornPtr = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
+  Portfolio<DecimalType> aPortfolio(portName);
+  auto cornPtr = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
 						     futuresName, 
 						     cornBigPointValue,
 						     cornTickValue, cornSeries);
-  auto spyPtr = std::make_shared<EquitySecurity<7>>(equitySymbol, equityName, spySeries);
+  auto spyPtr = std::make_shared<EquitySecurity<DecimalType>>(equitySymbol, equityName, spySeries);
 
   aPortfolio.addSecurity(cornPtr);
   aPortfolio.addSecurity(spyPtr);
 
   REQUIRE (aPortfolio.getNumSecurities() == 2);
   REQUIRE (aPortfolio.getPortfolioName() == portName);
-  Portfolio<7>::ConstPortfolioIterator it = aPortfolio.beginPortfolio();
+  Portfolio<DecimalType>::ConstPortfolioIterator it = aPortfolio.beginPortfolio();
   REQUIRE (it->second->getSymbol() == futuresSymbol);
   it++;
   REQUIRE (it->second->getSymbol() == equitySymbol);
@@ -165,7 +136,7 @@ TEST_CASE ("Security operations", "[Security]")
   
   SECTION ("Portfolio find test", "[Portfolio find]")
     {
-      Portfolio<7>::ConstPortfolioIterator it = aPortfolio.findSecurity(equitySymbol);
+      Portfolio<DecimalType>::ConstPortfolioIterator it = aPortfolio.findSecurity(equitySymbol);
       REQUIRE (it != aPortfolio.endPortfolio());
       REQUIRE (it->second->getSymbol() == equitySymbol);
 

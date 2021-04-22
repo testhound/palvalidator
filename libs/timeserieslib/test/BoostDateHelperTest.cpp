@@ -4,14 +4,11 @@
 #include <string>
 #include <iostream>
 #include "../BoostDateHelper.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-date createDate (const std::string& dateString)
-{
-  return date(from_undelimited_string(dateString));
-}
 
 TEST_CASE ("BoostDateHelper operations", "[BoostDateHelper]")
 {

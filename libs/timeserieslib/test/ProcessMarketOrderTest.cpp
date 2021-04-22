@@ -4,40 +4,10 @@
 #include "../BoostDateHelper.h"
 #include "../TimeSeriesEntry.h"
 #include "../TradingOrderManager.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 
 TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]")
@@ -105,14 +75,14 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
   std::string tickerSymbol("C2");
 
-  MarketOnOpenLongOrder<7> longOrder1(tickerSymbol, oneContract, 
+  MarketOnOpenLongOrder<DecimalType> longOrder1(tickerSymbol, oneContract, 
 				      boost_previous_weekday (entry0->getDateValue()));
 
-  MarketOnOpenShortOrder<7> shortOrder1(tickerSymbol, oneContract, 
+  MarketOnOpenShortOrder<DecimalType> shortOrder1(tickerSymbol, oneContract, 
 				      boost_previous_weekday (shortEntry0->getDateValue()));
 
-  ProcessOrderVisitor<7> longOrder1Processor (entry0);
-  ProcessOrderVisitor<7> shortOrder1Processor (shortEntry0);
+  ProcessOrderVisitor<DecimalType> longOrder1Processor (*entry0);
+  ProcessOrderVisitor<DecimalType> shortOrder1Processor (*shortEntry0);
   
 
   SECTION ("Verify long orders are executed")
@@ -129,7 +99,7 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
 
   SECTION ("Verify exception thrown on bad processing date")
   {
-    ProcessOrderVisitor<7> longOrderProcessorBad (entry0Prev);
+    ProcessOrderVisitor<DecimalType> longOrderProcessorBad (*entry0Prev);
 
     REQUIRE (longOrder1.isOrderPending() == true);
     REQUIRE_THROWS (longOrder1.accept (longOrderProcessorBad));
@@ -157,7 +127,7 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
 
   SECTION ("Verify short exception thrown on bad processing date")
   {
-    ProcessOrderVisitor<7> shortOrderProcessorBad (shortEntry0Prev);
+    ProcessOrderVisitor<DecimalType> shortOrderProcessorBad (*shortEntry0Prev);
 
     REQUIRE (shortOrder1.isOrderPending() == true);
     REQUIRE_THROWS (shortOrder1.accept (shortOrderProcessorBad));

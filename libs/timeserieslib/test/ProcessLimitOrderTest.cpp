@@ -4,47 +4,17 @@
 #include "../BoostDateHelper.h"
 #include "../TimeSeriesEntry.h"
 #include "../TradingOrderManager.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 
 TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]")
 {
   auto entry0Prev = createTimeSeriesEntry ("19851115","3683.73657226563","3683.73657226563",
 					   "3645.2841796875","3660.6650390625", 0);
-    auto entry0 = createTimeSeriesEntry ("19851118", "3664.51025", "3687.58178", "3656.81982","3672.20068",0);
+  auto entry0 = createTimeSeriesEntry ("19851118", "3664.51025", "3687.58178", "3656.81982","3672.20068",0);
 
   auto entry1 = createTimeSeriesEntry ("19851119", "3710.65307617188","3722.18872070313","3679.89135742188",
 				       "3714.49829101563", 0);
@@ -105,14 +75,14 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
   std::string tickerSymbol("C2");
 
-  SellAtLimitOrder<7> longOrder1(tickerSymbol, oneContract, 
+  SellAtLimitOrder<DecimalType> longOrder1(tickerSymbol, oneContract, 
 				 entry0->getDateValue(), createDecimal ("3758.32172"));
 
-  CoverAtLimitOrder<7> shortOrder1(tickerSymbol, oneContract, 
+  CoverAtLimitOrder<DecimalType> shortOrder1(tickerSymbol, oneContract, 
 				   shortEntry0->getDateValue(), createDecimal ("3738.86450"));
 
-  ProcessOrderVisitor<7> longOrder1Processor (entry1);
-  ProcessOrderVisitor<7> shortOrder1Processor (shortEntry1);  
+  ProcessOrderVisitor<DecimalType> longOrder1Processor (*entry1);
+  ProcessOrderVisitor<DecimalType> shortOrder1Processor (*shortEntry1);  
   
 
   SECTION ("Verify long orders are executed")
@@ -121,43 +91,43 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry2);
+    longOrder1Processor.updateTradingBar (*entry2);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry3);
+    longOrder1Processor.updateTradingBar (*entry3);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry4);
+    longOrder1Processor.updateTradingBar (*entry4);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry5);
+    longOrder1Processor.updateTradingBar (*entry5);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry6);
+    longOrder1Processor.updateTradingBar (*entry6);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry7);
+    longOrder1Processor.updateTradingBar (*entry7);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry8);
+    longOrder1Processor.updateTradingBar (*entry8);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry9);
+    longOrder1Processor.updateTradingBar (*entry9);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry10);
+    longOrder1Processor.updateTradingBar (*entry10);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (entry11);
+    longOrder1Processor.updateTradingBar (*entry11);
     longOrder1.accept (longOrder1Processor);
     REQUIRE_FALSE (longOrder1.isOrderPending());
     REQUIRE (longOrder1.isOrderExecuted());
@@ -168,7 +138,7 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
 
   SECTION ("Verify exception thrown on bad processing date")
   {
-    ProcessOrderVisitor<7> longOrderProcessorBad (entry0Prev);
+    ProcessOrderVisitor<DecimalType> longOrderProcessorBad (*entry0Prev);
 
     REQUIRE (longOrder1.isOrderPending() == true);
     REQUIRE_THROWS (longOrder1.accept (longOrderProcessorBad));
@@ -188,35 +158,35 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry2);
+    shortOrder1Processor.updateTradingBar (*shortEntry2);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry3);
+    shortOrder1Processor.updateTradingBar (*shortEntry3);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry4);
+    shortOrder1Processor.updateTradingBar (*shortEntry4);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry5);
+    shortOrder1Processor.updateTradingBar (*shortEntry5);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry6);
+    shortOrder1Processor.updateTradingBar (*shortEntry6);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry7);
+    shortOrder1Processor.updateTradingBar (*shortEntry7);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry8);
+    shortOrder1Processor.updateTradingBar (*shortEntry8);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE (shortOrder1.isOrderPending());
 
-    shortOrder1Processor.updateTradingBar (shortEntry9);
+    shortOrder1Processor.updateTradingBar (*shortEntry9);
     shortOrder1.accept (shortOrder1Processor);
     REQUIRE_FALSE (shortOrder1.isOrderPending());
     REQUIRE (shortOrder1.isOrderExecuted());
@@ -228,7 +198,7 @@ TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]
 
   SECTION ("Verify short exception thrown on bad processing date")
   {
-    ProcessOrderVisitor<7> shortOrderProcessorBad (shortEntry0Prev);
+    ProcessOrderVisitor<DecimalType> shortOrderProcessorBad (*shortEntry0Prev);
 
     REQUIRE (shortOrder1.isOrderPending() == true);
     REQUIRE_THROWS (shortOrder1.accept (shortOrderProcessorBad));

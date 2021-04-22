@@ -2,34 +2,34 @@
 
 #include "catch.hpp"
 #include "../TradingOrderManager.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
 
-template <int Prec>
-class DummyBroker : public TradingOrderObserver<Prec>
+template <class Decimal>
+class DummyBroker : public TradingOrderObserver<Decimal>
 {
 public:
-  DummyBroker(std::shared_ptr<Portfolio<Prec>> portfolio)
-    : TradingOrderObserver<Prec>(), 
+  DummyBroker(std::shared_ptr<Portfolio<Decimal>> portfolio)
+    : TradingOrderObserver<Decimal>(), 
       mExecutedOrder(),
       mCanceledOrder(),
       mPosManager(),
       mPortfolio(portfolio)
   {}
 
-  const std::shared_ptr<TradingOrder<Prec>>& getLastExecutedOrder() const
+  const std::shared_ptr<TradingOrder<Decimal>>& getLastExecutedOrder() const
   {
     return mExecutedOrder;
   }
 
-  const std::shared_ptr<TradingOrder<Prec>>& getLastCanceledOrder() const
+  const std::shared_ptr<TradingOrder<Decimal>>& getLastCanceledOrder() const
   {
     return mCanceledOrder;
   }
 
-  const InstrumentPositionManager<Prec>& getPositionManager() const
+  const InstrumentPositionManager<Decimal>& getPositionManager() const
   {
     return mPosManager;
   }
@@ -39,92 +39,92 @@ public:
     mPosManager.addInstrument (symbol);
   }
 
-  void OrderExecuted (MarketOnOpenLongOrder<Prec> *order)
+  void OrderExecuted (MarketOnOpenLongOrder<Decimal> *order)
   {
-    mExecutedOrder = std::make_shared<MarketOnOpenLongOrder<Prec>> (*order);
+    mExecutedOrder = std::make_shared<MarketOnOpenLongOrder<Decimal>> (*order);
     mPosManager.addPosition (createLongTradingPosition (order));
   }
 
-  void OrderExecuted (MarketOnOpenShortOrder<Prec> *order)
+  void OrderExecuted (MarketOnOpenShortOrder<Decimal> *order)
   {
-    mExecutedOrder = std::make_shared<MarketOnOpenShortOrder<Prec>> (*order);
+    mExecutedOrder = std::make_shared<MarketOnOpenShortOrder<Decimal>> (*order);
     mPosManager.addPosition (createLongTradingPosition (order));
   }
 
-  void OrderExecuted (MarketOnOpenSellOrder<Prec> *order)
+  void OrderExecuted (MarketOnOpenSellOrder<Decimal> *order)
   {}
 
-  void OrderExecuted (MarketOnOpenCoverOrder<Prec> *order)
+  void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order)
   {}
 
-  void OrderExecuted (SellAtLimitOrder<Prec> *order)
+  void OrderExecuted (SellAtLimitOrder<Decimal> *order)
   {
-    mExecutedOrder = std::make_shared<SellAtLimitOrder<Prec>> (*order);
+    mExecutedOrder = std::make_shared<SellAtLimitOrder<Decimal>> (*order);
     mPosManager.closeAllPositions (order->getTradingSymbol(),
 				  order->getFillDate(),
 				  order->getFillPrice());
 
   }
 
-  void OrderExecuted (CoverAtLimitOrder<Prec> *order)
+  void OrderExecuted (CoverAtLimitOrder<Decimal> *order)
   {
-    mExecutedOrder = std::make_shared<CoverAtLimitOrder<Prec>> (*order);
+    mExecutedOrder = std::make_shared<CoverAtLimitOrder<Decimal>> (*order);
     mPosManager.closeAllPositions (order->getTradingSymbol(),
 				  order->getFillDate(),
 				  order->getFillPrice());
   }
 
-  void OrderExecuted (CoverAtStopOrder<Prec> *order)
+  void OrderExecuted (CoverAtStopOrder<Decimal> *order)
   {
-    mExecutedOrder = std::make_shared<CoverAtStopOrder<Prec>> (*order);
+    mExecutedOrder = std::make_shared<CoverAtStopOrder<Decimal>> (*order);
     mPosManager.closeAllPositions (order->getTradingSymbol(),
 				  order->getFillDate(),
 				  order->getFillPrice());
   }
 
-  void OrderExecuted (SellAtStopOrder<Prec> *order)
+  void OrderExecuted (SellAtStopOrder<Decimal> *order)
   {
-    mExecutedOrder = std::make_shared<SellAtStopOrder<Prec>> (*order);
+    mExecutedOrder = std::make_shared<SellAtStopOrder<Decimal>> (*order);
    mPosManager.closeAllPositions (order->getTradingSymbol(),
 				  order->getFillDate(),
 				  order->getFillPrice());
   }
 
-  void OrderCanceled (MarketOnOpenLongOrder<Prec> *order)
+  void OrderCanceled (MarketOnOpenLongOrder<Decimal> *order)
   {
-    mCanceledOrder = std::make_shared<MarketOnOpenLongOrder<Prec>> (*order);
+    mCanceledOrder = std::make_shared<MarketOnOpenLongOrder<Decimal>> (*order);
   }
 
-  void OrderCanceled (MarketOnOpenShortOrder<Prec> *order)
+  void OrderCanceled (MarketOnOpenShortOrder<Decimal> *order)
   {}
   
-  void OrderCanceled (MarketOnOpenSellOrder<Prec> *order)
+  void OrderCanceled (MarketOnOpenSellOrder<Decimal> *order)
   {}
 
-  void OrderCanceled (MarketOnOpenCoverOrder<Prec> *order)
+  void OrderCanceled (MarketOnOpenCoverOrder<Decimal> *order)
   {}
 
-  void OrderCanceled (SellAtLimitOrder<Prec> *order)
+  void OrderCanceled (SellAtLimitOrder<Decimal> *order)
   {}
 
-  void OrderCanceled (CoverAtLimitOrder<Prec> *order)
+  void OrderCanceled (CoverAtLimitOrder<Decimal> *order)
   {}
   
-  void OrderCanceled (CoverAtStopOrder<Prec> *order)
+  void OrderCanceled (CoverAtStopOrder<Decimal> *order)
   {}
   
-  void OrderCanceled (SellAtStopOrder<Prec> *order)
+  void OrderCanceled (SellAtStopOrder<Decimal> *order)
   {}
   
 private:
 
-  std::shared_ptr<OHLCTimeSeriesEntry<Prec>> getEntryBar (const std::string& tradingSymbol,
+  OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
 							const boost::gregorian::date& d)
     {
-      typename Portfolio<Prec>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
+      typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
       if (symbolIterator != mPortfolio->endPortfolio())
 	{
-	  typename Security<Prec>::ConstRandomAccessIterator it = 
+	  typename Security<Decimal>::ConstRandomAccessIterator it = 
 	    symbolIterator->second->getRandomAccessIterator (d);
 
 	  return (*it);
@@ -133,10 +133,10 @@ private:
 	throw std::runtime_error ("DummyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
     }
 
-  std::shared_ptr<TradingPositionLong<Prec>>
-    createLongTradingPosition (TradingOrder<Prec> *order)
+  std::shared_ptr<TradingPositionLong<Decimal>>
+    createLongTradingPosition (TradingOrder<Decimal> *order)
     {
-      auto position = std::make_shared<TradingPositionLong<Prec>> (order->getTradingSymbol(), 
+      auto position = std::make_shared<TradingPositionLong<Decimal>> (order->getTradingSymbol(), 
 								   order->getFillPrice(),
 								   getEntryBar (order->getTradingSymbol(), 
 										order->getFillDate()),
@@ -144,11 +144,11 @@ private:
       return position;
     }
 
-   std::shared_ptr<TradingPositionShort<Prec>>
-    createShortTradingPosition (TradingOrder<Prec> *order)
+   std::shared_ptr<TradingPositionShort<Decimal>>
+    createShortTradingPosition (TradingOrder<Decimal> *order)
     {
       auto position = 
-	std::make_shared<TradingPositionShort<Prec>> (order->getTradingSymbol(), 
+	std::make_shared<TradingPositionShort<Decimal>> (order->getTradingSymbol(), 
 						      order->getFillPrice(),
 						      getEntryBar (order->getTradingSymbol(), 
 								   order->getFillDate()),
@@ -158,10 +158,10 @@ private:
     }
 
 private:
-  std::shared_ptr<TradingOrder<Prec>> mExecutedOrder;
-  std::shared_ptr<TradingOrder<Prec>> mCanceledOrder;
-  InstrumentPositionManager<7> mPosManager;
-  std::shared_ptr<Portfolio<Prec>> mPortfolio;
+  std::shared_ptr<TradingOrder<Decimal>> mExecutedOrder;
+  std::shared_ptr<TradingOrder<Decimal>> mCanceledOrder;
+  InstrumentPositionManager<Decimal> mPosManager;
+  std::shared_ptr<Portfolio<Decimal>> mPortfolio;
 };
 
 
@@ -179,31 +179,7 @@ createContractVolume (volume_t vol)
   return TradingVolume (vol, TradingVolume::CONTRACTS);
 }
 
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
-
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -211,38 +187,32 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<decimal<7>> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+    return createTimeSeriesEntry (dateString, openPrice, highPrice, lowPrice, closePrice, vol);
   }
 
 
-std::shared_ptr<CoverAtLimitOrder<7>>
+std::shared_ptr<CoverAtLimitOrder<DecimalType>>
   createProfitTargetForShortTrade(const date& orderDate)
   {
-    return std::make_shared<CoverAtLimitOrder<7>>(std::string ("SPY"),
+    return std::make_shared<CoverAtLimitOrder<DecimalType>>(std::string ("SPY"),
 						  createShareVolume (1),
 						  orderDate,
 						  createDecimal("198.00"));
   }
 
-  std::shared_ptr<CoverAtStopOrder<7>>
+  std::shared_ptr<CoverAtStopOrder<DecimalType>>
   createStopLossForShortTrade(const date& orderDate)
   {
-    return std::make_shared<CoverAtStopOrder<7>>(std::string ("SPY"),
+    return std::make_shared<CoverAtStopOrder<DecimalType>>(std::string ("SPY"),
 						 createShareVolume (1),
 						 orderDate,
 						 createDecimal("208.00"));
   }
 
-std::shared_ptr<CoverAtStopOrder<7>>
+std::shared_ptr<CoverAtStopOrder<DecimalType>>
   createStopLossForShortTrade2(const date& orderDate)
   {
-    return std::make_shared<CoverAtStopOrder<7>>(std::string ("SPY"),
+    return std::make_shared<CoverAtStopOrder<DecimalType>>(std::string ("SPY"),
 						 createShareVolume (1),
 						 orderDate,
 						 createDecimal("200.04"));
@@ -295,32 +265,32 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   auto entry0 = createEquityEntry ("20151221", "201.41", "201.88", "200.09", "201.67",
 				   99094300);
  
-  auto spySeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::SHARES);
+  auto spySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
 
-  spySeries->addEntry (entry0);
-  spySeries->addEntry (entry1);
-  spySeries->addEntry (entry2);
-  spySeries->addEntry (entry3);
-  spySeries->addEntry (entry4);
-  spySeries->addEntry (entry5);
-  spySeries->addEntry (entry6);  
-  spySeries->addEntry (entry7);
-  spySeries->addEntry (entry8);
-  spySeries->addEntry (entry9);
-  spySeries->addEntry (entry10);
-  spySeries->addEntry (entry11);
-  spySeries->addEntry (entry12);
-  spySeries->addEntry (entry13);
-  spySeries->addEntry (entry14);
-  spySeries->addEntry (entry15);
-  spySeries->addEntry (entry16);
-  spySeries->addEntry (entry17);
-  spySeries->addEntry (entry18);
+  spySeries->addEntry (*entry0);
+  spySeries->addEntry (*entry1);
+  spySeries->addEntry (*entry2);
+  spySeries->addEntry (*entry3);
+  spySeries->addEntry (*entry4);
+  spySeries->addEntry (*entry5);
+  spySeries->addEntry (*entry6);  
+  spySeries->addEntry (*entry7);
+  spySeries->addEntry (*entry8);
+  spySeries->addEntry (*entry9);
+  spySeries->addEntry (*entry10);
+  spySeries->addEntry (*entry11);
+  spySeries->addEntry (*entry12);
+  spySeries->addEntry (*entry13);
+  spySeries->addEntry (*entry14);
+  spySeries->addEntry (*entry15);
+  spySeries->addEntry (*entry16);
+  spySeries->addEntry (*entry17);
+  spySeries->addEntry (*entry18);
  
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
 
-  EquitySecurity<7> spy (equitySymbol, equityName, spySeries);
+  EquitySecurity<DecimalType> spy (equitySymbol, equityName, spySeries);
 
 
 
@@ -328,8 +298,8 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
 
   auto futuresEntry0 = createTimeSeriesEntry ("19851118", "3664.51025", "3687.58178", "3656.81982","3672.20068",0);
 
@@ -361,48 +331,48 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   auto futuresEntry11 = createTimeSeriesEntry ("19851204","3744.33984375","3759.56079101563","3736.7294921875",
 					"3740.53466796875",0);
 
-  auto cornSeries = std::make_shared<OHLCTimeSeries<7>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
-  cornSeries->addEntry(futuresEntry0);
-  cornSeries->addEntry(futuresEntry1);
-  cornSeries->addEntry(futuresEntry2);
-  cornSeries->addEntry(futuresEntry3);
-  cornSeries->addEntry(futuresEntry4);
-  cornSeries->addEntry(futuresEntry5);
-  cornSeries->addEntry(futuresEntry6);
-  cornSeries->addEntry(futuresEntry7);
-  cornSeries->addEntry(futuresEntry8);
-  cornSeries->addEntry(futuresEntry9);
-  cornSeries->addEntry(futuresEntry10);
-  cornSeries->addEntry(futuresEntry11);
+  auto cornSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  cornSeries->addEntry(*futuresEntry0);
+  cornSeries->addEntry(*futuresEntry1);
+  cornSeries->addEntry(*futuresEntry2);
+  cornSeries->addEntry(*futuresEntry3);
+  cornSeries->addEntry(*futuresEntry4);
+  cornSeries->addEntry(*futuresEntry5);
+  cornSeries->addEntry(*futuresEntry6);
+  cornSeries->addEntry(*futuresEntry7);
+  cornSeries->addEntry(*futuresEntry8);
+  cornSeries->addEntry(*futuresEntry9);
+  cornSeries->addEntry(*futuresEntry10);
+  cornSeries->addEntry(*futuresEntry11);
 
-  FuturesSecurity<7> corn (futuresSymbol, futuresName, cornBigPointValue,
+  FuturesSecurity<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
 			   cornTickValue, cornSeries);
 
   std::string portName("SPY Portfolio");
   std::string portName2("Corn Portfolio");
   
-  Portfolio<7> aPortfolio(portName);
-  Portfolio<7> aPortfolio2(portName2);
+  Portfolio<DecimalType> aPortfolio(portName);
+  Portfolio<DecimalType> aPortfolio2(portName2);
 
-  auto cornPtr = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
+  auto cornPtr = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
 						     futuresName, 
 						     cornBigPointValue,
 						     cornTickValue, cornSeries);
-  auto spyPtr = std::make_shared<EquitySecurity<7>>(equitySymbol, equityName, spySeries);
+  auto spyPtr = std::make_shared<EquitySecurity<DecimalType>>(equitySymbol, equityName, spySeries);
 
   aPortfolio.addSecurity(spyPtr);
   aPortfolio2.addSecurity(cornPtr);
 
-  auto aPortfolioPtr =  std::make_shared<Portfolio<7>> (aPortfolio);
-  auto aPortfolioPtr2 =  std::make_shared<Portfolio<7>> (aPortfolio2);
+  auto aPortfolioPtr =  std::make_shared<Portfolio<DecimalType>> (aPortfolio);
+  auto aPortfolioPtr2 =  std::make_shared<Portfolio<DecimalType>> (aPortfolio2);
 
-  DummyBroker<7> dummyBroker1(aPortfolioPtr);
+  DummyBroker<DecimalType> dummyBroker1(aPortfolioPtr);
   dummyBroker1.addInstrument (equitySymbol);
 
-  TradingOrderManager<7> orderManager(aPortfolioPtr);
+  TradingOrderManager<DecimalType> orderManager(aPortfolioPtr);
   orderManager.addObserver (dummyBroker1);
 
-  //InstrumentPositionManager<7> aPosManager;
+  //InstrumentPositionManager<DecimalType> aPosManager;
   //aPosManager.addInstrument(futuresSymbol);
 
   REQUIRE (orderManager.getNumMarketExitOrders() == 0);
@@ -411,18 +381,18 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
   REQUIRE (orderManager.getNumStopExitOrders() == 0);
 
   
-  auto longSpyEntryOrder1 = std::make_shared<MarketOnOpenLongOrder<7>>(equitySymbol,
+  auto longSpyEntryOrder1 = std::make_shared<MarketOnOpenLongOrder<DecimalType>>(equitySymbol,
 								       createShareVolume (1),
 								       entry1->getDateValue());
 								       
-  TradingOrderManager<7> orderManager2(aPortfolioPtr2);
+  TradingOrderManager<DecimalType> orderManager2(aPortfolioPtr2);
 
   REQUIRE (orderManager2.getNumMarketExitOrders() == 0);
   REQUIRE (orderManager2.getNumMarketEntryOrders() == 0);
   REQUIRE (orderManager2.getNumLimitExitOrders() == 0);
   REQUIRE (orderManager2.getNumStopExitOrders() == 0);
 
-  auto spyEntryOrder = std::make_shared<MarketOnOpenLongOrder<7>>(equitySymbol,
+  auto spyEntryOrder = std::make_shared<MarketOnOpenLongOrder<DecimalType>>(equitySymbol,
 								  createShareVolume (1),
 								  entry17->getDateValue());
 
@@ -495,7 +465,7 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
       REQUIRE (orderManager.getNumLimitExitOrders() == 0);
       REQUIRE (orderManager.getNumStopExitOrders() == 0);
 
-      auto aOrder = std::make_shared<MarketOnOpenShortOrder<7>>(equitySymbol,
+      auto aOrder = std::make_shared<MarketOnOpenShortOrder<DecimalType>>(equitySymbol,
 								createShareVolume (1),
 								entry5->getDateValue());
       REQUIRE (aOrder->isOrderPending());
@@ -526,7 +496,7 @@ TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
       REQUIRE (orderManager.getNumLimitExitOrders() == 1);
       REQUIRE (orderManager.getNumStopExitOrders() == 1);
 
-      TradingOrderManager<7>::PendingOrderIterator pendingIt = orderManager.beginPendingOrders();
+      TradingOrderManager<DecimalType>::PendingOrderIterator pendingIt = orderManager.beginPendingOrders();
       REQUIRE (pendingIt != orderManager.endPendingOrders());
 
       REQUIRE (pendingIt->second->isStopOrder());
@@ -622,7 +592,7 @@ SECTION ("Add and execute short market order, add stop and limit exit orders con
       REQUIRE (orderManager.getNumLimitExitOrders() == 0);
       REQUIRE (orderManager.getNumStopExitOrders() == 0);
 
-      auto aOrder = std::make_shared<MarketOnOpenShortOrder<7>>(equitySymbol,
+      auto aOrder = std::make_shared<MarketOnOpenShortOrder<DecimalType>>(equitySymbol,
 								createShareVolume (1),
 								entry5->getDateValue());
       REQUIRE (aOrder->isOrderPending());
@@ -653,7 +623,7 @@ SECTION ("Add and execute short market order, add stop and limit exit orders con
       REQUIRE (orderManager.getNumLimitExitOrders() == 1);
       REQUIRE (orderManager.getNumStopExitOrders() == 1);
 
-      TradingOrderManager<7>::PendingOrderIterator pendingIt = orderManager.beginPendingOrders();
+      TradingOrderManager<DecimalType>::PendingOrderIterator pendingIt = orderManager.beginPendingOrders();
       REQUIRE (pendingIt != orderManager.endPendingOrders());
 
       REQUIRE (pendingIt->second->isStopOrder());
@@ -753,7 +723,7 @@ SECTION ("Add and execute short market order, add stop and limit exit orders con
       REQUIRE (orderManager.getNumLimitExitOrders() == 0);
       REQUIRE (orderManager.getNumStopExitOrders() == 0);
   
-      auto longSpyExitOrder1 = std::make_shared<SellAtLimitOrder<7>>(equitySymbol,
+      auto longSpyExitOrder1 = std::make_shared<SellAtLimitOrder<DecimalType>>(equitySymbol,
 									  createShareVolume (1),
 									  entry2->getDateValue(),
 									  createDecimal("207.28"));
@@ -773,7 +743,7 @@ SECTION ("Add and execute short market order, add stop and limit exit orders con
       REQUIRE (orderManager.getNumLimitExitOrders() == 0);
       REQUIRE (orderManager.getNumStopExitOrders() == 0);
 
-      longSpyExitOrder1 = std::make_shared<SellAtLimitOrder<7>>(equitySymbol,
+      longSpyExitOrder1 = std::make_shared<SellAtLimitOrder<DecimalType>>(equitySymbol,
 								createShareVolume (1),
 								entry3->getDateValue(),
 								createDecimal("207.28"));
@@ -791,7 +761,7 @@ SECTION ("Add and execute short market order, add stop and limit exit orders con
       REQUIRE (orderManager.getNumLimitExitOrders() == 0);
       REQUIRE (orderManager.getNumStopExitOrders() == 0);
 
-      longSpyExitOrder1 = std::make_shared<SellAtLimitOrder<7>>(equitySymbol,
+      longSpyExitOrder1 = std::make_shared<SellAtLimitOrder<DecimalType>>(equitySymbol,
 								createShareVolume (1),
 								entry4->getDateValue(),
 								createDecimal("207.28"));

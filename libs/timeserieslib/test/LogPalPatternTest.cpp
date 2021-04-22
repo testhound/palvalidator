@@ -4,23 +4,9 @@
 #include "catch.hpp"
 #include "../number.h"
 #include "../LogPalPattern.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
-typedef num::DefaultNumber DecimalType;
-
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return dec::fromString<DecimalType>(valueString);
-}
-
-DecimalType *
-createRawDecimalPtr(const std::string& valueString)
-{
-  return new dec::decimal<7> (dec::fromString<DecimalType>(valueString));
-}
-
 
 
 PatternDescription *

@@ -65,8 +65,8 @@ TradingVolumeTest: TradingVolumeTest.o
 MCPTStrategyAttributesTest: MCPTStrategyAttributesTest.o TestUtils.o
 	g++ -o MCPTStrategyAttributesTest ${TIMESERIES_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
 
-LogPalPatternTest: LogPalPatternTest.o
-	g++ -o LogPalPatternTest  $< ${LOG_PAL_PATTERN_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lpriceaction2
+LogPalPatternTest: LogPalPatternTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o LogPalPatternTest  $< TestUtils.o ${LOG_PAL_PATTERN_O} ${TIMESERIES_ENTRY_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system
 
 RobustnessTesterUnitTest: RobustnessTesterUnitTest.o
 	g++ -o RobustnessTesterUnitTest  $< ${TIMESERIES_O} ${LOG_PAL_PATTERN_O} ${RUNNER_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lboost_date_time -lpthread  -lboost_thread -lpriceaction2 -lboost_system
@@ -80,44 +80,44 @@ PALMonteCarloValidationTest: PALMonteCarloValidationTest.o ${MCPT_CONF_READER_O}
 McptConfigurationFileReaderTest: McptConfigurationFileReaderTest.o ${MCPT_CONF_READER_O} ../TimeFrameUtility.o
 	g++ -o McptConfigurationFileReaderTest  $< ${CMPT_CONF_READER_O} ../TimeFrameUtility.o ${TIMESERIES_O} -L${PRICEACTION_LIB_DIR} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lelkhound -lsmbase -lboost_filesystem -lboost_system
 
-SecurityAttributesFactoryTest: SecurityAttributesFactoryTest.o
-	g++ -o SecurityAttributesFactoryTest $< -lboost_date_time
+SecurityAttributesFactoryTest: SecurityAttributesFactoryTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o SecurityAttributesFactoryTest $< ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system
 
-SecurityAttributesTest: SecurityAttributesTest.o
-	g++ -o SecurityAttributesTest ${TIMESERIES_O} ${MCPT_CONF_READER_O} $< -lboost_date_time
+SecurityAttributesTest: SecurityAttributesTest.o  TestUtils.o ${TIMESERIES_ENTRY_O} ${TIMESERIES_O}
+	g++ -o SecurityAttributesTest  $<  ${TIMESERIES_O} TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
 MonteCarloPermutationTest2: MonteCarloPermutationTest2.o TestUtils.o
 	g++ -o MonteCarloPermutationTest2  $< ${TIMESERIES_O} TestUtils.o ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_thread -lboost_system
 
-BackTesterTest: BackTesterTest.o
-	g++ -o BackTesterTest  $< ${TIMESERIES_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2
+BackTesterTest: BackTesterTest.o TestUtils.o ${TIMESERIES_ENTRY_O} ${BACKTESTERSTRATEGY_O}
+	g++ -o BackTesterTest  $< ${TIMESERIES_O} TestUtils.o ${TIMESERIES_ENTRY_O} ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
 
-PalStrategyTest: PalStrategyTest.o TestUtils.o
-	g++ -o PalStrategyTest  $< TestUtils.o ${TIMESERIES_O} ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
+PalStrategyTest: PalStrategyTest.o TestUtils.o ${TIMESERIES_ENTRY_O} ${BACKTESTERSTRATEGY_O}
+	g++ -o PalStrategyTest  $< TestUtils.o ${TIMESERIES_ENTRY_O} ${TIMESERIES_O} ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
 
 SecurityBacktestPropertiesTest: SecurityBacktestPropertiesTest.o
-	g++ -o SecurityBacktestPropertiesTest ${TIMESERIES_O} $< -lboost_date_time -lpthread
+	g++ -o SecurityBacktestPropertiesTest ${TIMESERIES_O} $< -lboost_date_time -lpthread -lboost_system
 
-PALPatternInterpreterTest: PALPatternInterpreterTest.o TestUtils.o
-	g++ -o PALPatternInterpreterTest ${TIMESERIES_O} $< TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
+PALPatternInterpreterTest: PALPatternInterpreterTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o PALPatternInterpreterTest ${TIMESERIES_O} $< ${TIMESERIES_ENTRY_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
 
 StrategyBrokerTest: StrategyBrokerTest.o TestUtils.o ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O}
 	g++ -o StrategyBrokerTest ${TIMESERIES_O} $<  ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lpthread  -lboost_system
 
-StrategyTransactionManagerTest: StrategyTransactionManagerTest.o
-	g++ -o StrategyTransactionManagerTest ${TIMESERIES_O} $< -lboost_date_time
+StrategyTransactionManagerTest: StrategyTransactionManagerTest.o  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o
+	g++ -o StrategyTransactionManagerTest $<  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system
 
-StrategyTransactionTest: StrategyTransactionTest.o
-	g++ -o StrategyTransactionTest ${TIMESERIES_O} $< -lboost_date_time
+StrategyTransactionTest: StrategyTransactionTest.o TestUtils.o ${TIMESERIES_ENTRY_O} ${TIMESERIES_O}
+	g++ -o StrategyTransactionTest  $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system
 
-TradingOrderManagerTest: TradingOrderManagerTest.o
-	g++ -o TradingOrderManagerTest ${TIMESERIES_O} $< -lboost_date_time
+TradingOrderManagerTest: TradingOrderManagerTest.o TestUtils.o ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O}
+	g++ -o TradingOrderManagerTest  $< ${TIMESERIES_O} TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-PortfolioTest: PortfolioTest.o
-	g++ -o PortfolioTest ${TIMESERIES_O} $< -lboost_date_time
+PortfolioTest: PortfolioTest.o TestUtils.o ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O}
+	g++ -o PortfolioTest $< TestUtils.o ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-SecurityTest: SecurityTest.o
-	g++ -o SecurityTest ${TIMESERIES_O} $< -lboost_date_time
+SecurityTest: SecurityTest.o TestUtils.o ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O}
+	g++ -o SecurityTest $< TestUtils.o ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
 InstrumentPositionManagerTest: InstrumentPositionManagerTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
 	g++ -o InstrumentPositionManagerTest $< ${TIMESERIES_O} TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lpthread  -lboost_system
@@ -125,17 +125,17 @@ InstrumentPositionManagerTest: InstrumentPositionManagerTest.o TestUtils.o ${TIM
 InstrumentPositionTest: InstrumentPositionTest.o  TestUtils.o ${TIMESERIES_ENTRY_O}
 	g++ -o InstrumentPositionTest $< TestUtils.o   ${TIMESERIES_ENTRY_O} -lboost_date_time -lpthread  -lboost_system
 
-ProcessStopOrderTest: ProcessStopOrderTest.o
-	g++ -o ProcessStopOrderTest $<  -lboost_date_time
+ProcessStopOrderTest: ProcessStopOrderTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o ProcessStopOrderTest $< TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-ProcessLimitOrderTest: ProcessLimitOrderTest.o
-	g++ -o ProcessLimitOrderTest $<  -lboost_date_time
+ProcessLimitOrderTest: ProcessLimitOrderTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o ProcessLimitOrderTest $<  TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-BoostDateHelperTest: BoostDateHelperTest.o
-	g++ -o BoostDateHelperTest $<  -lboost_date_time
+BoostDateHelperTest: BoostDateHelperTest.o  TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o BoostDateHelperTest $<   TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-ProcessMarketOrderTest: ProcessMarketOrderTest.o
-	g++ -o ProcessMarketOrderTest $<  -lboost_date_time
+ProcessMarketOrderTest: ProcessMarketOrderTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o ProcessMarketOrderTest $<  TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
 StopOrderTest: StopOrderTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
 	g++ -o StopOrderTest $< TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
@@ -149,29 +149,29 @@ TradingPositionTest: TradingPositionTest.o TestUtils.o ${TIMESERIES_ENTRY_O}
 MarketOrderTest: MarketOrderTest.o TestUtils.o  ${TIMESERIES_ENTRY_O}
 	g++ -o MarketOrderTest -std=c++14 $<   ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system
 
-ClosedPositionHistoryTest: ClosedPositionHistoryTest.o TestUtils.o
-	g++ -o ClosedPositionHistoryTest $< TestUtils.o -lboost_date_time -lboost_system -lpthread
+ClosedPositionHistoryTest: ClosedPositionHistoryTest.o TestUtils.o   ${TIMESERIES_ENTRY_O}
+	g++ -o ClosedPositionHistoryTest $<   ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system -lpthread
 
 OpenPositionTest: OpenPositionTest.o TestUtils.o  ${TIMESERIES_ENTRY_O}
 	g++ -o OpenPositionTest $<  ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system
 
-OpenPositionHistoryTest: OpenPositionHistoryTest.o
-	g++ -o OpenPositionHistoryTest $< -lboost_date_time
+OpenPositionHistoryTest: OpenPositionHistoryTest.o  TestUtils.o ${TIMESERIES_ENTRY_O}
+	g++ -o OpenPositionHistoryTest $<   TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-OpenPositionBarTest: OpenPositionBarTest.o TestUtils.o
-	g++ -o OpenPositionBarTest $< TestUtils.o -lboost_date_time -lboost_system
+OpenPositionBarTest: OpenPositionBarTest.o TestUtils.o  ${TIMESERIES_ENTRY_O}
+	g++ -o OpenPositionBarTest $<  ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_system
 
-StopLossTest: StopLossTest.o
-	g++ -o StopLossTest $<   -lboost_system
+StopLossTest: StopLossTest.o TestUtils.o   ${TIMESERIES_ENTRY_O}
+	g++ -o StopLossTest $<   ${TIMESERIES_ENTRY_O} TestUtils.o  -lboost_date_time -lboost_system
 
-ProfitTargetTest: ProfitTargetTest.o
-	g++ -o ProfitTargetTest $<  -lboost_system
+ProfitTargetTest: ProfitTargetTest.o TestUtils.o   ${TIMESERIES_ENTRY_O}
+	g++ -o ProfitTargetTest $< ${TIMESERIES_ENTRY_O} TestUtils.o  -lboost_date_time -lboost_system
 
-PercentNumberTest: PercentNumberTest.o
-	g++ -o PercentNumberTest $< -lboost_system
+PercentNumberTest: PercentNumberTest.o TestUtils.o   ${TIMESERIES_ENTRY_O}
+	g++ -o PercentNumberTest $< TestUtils.o  ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-TimeSeriesCsvReaderTest: TimeSeriesCsvReaderTest.o
-	g++ -o TimeSeriesCsvReaderTest $< ${TIMESERIES_O} -lboost_date_time -lpthread
+TimeSeriesCsvReaderTest: TimeSeriesCsvReaderTest.o ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o
+	g++ -o TimeSeriesCsvReaderTest $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lpthread -lboost_system
 
 TimeSeriesCsvWriterTest: TimeSeriesCsvWriterTest.o
 	g++ -o TimeSeriesCsvWriterTest $< ${TIMESERIES_O} -lboost_date_time -lpthread

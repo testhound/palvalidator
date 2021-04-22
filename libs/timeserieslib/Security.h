@@ -96,7 +96,12 @@ namespace mkc_timeseries
       const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const boost::gregorian::date& d) const
 	{
 	  Security::ConstRandomAccessIterator it = this->getRandomAccessIterator (d);
-	  return *(*it);
+	  return (*it);
+	}
+
+      Security::ConstRandomAccessIterator getRandomAccessIteratorBegin() const
+	{
+	  return  mSecurityTimeSeries->beginRandomAccess();
 	}
 
       Security::ConstRandomAccessIterator getRandomAccessIteratorEnd() const
@@ -107,7 +112,7 @@ namespace mkc_timeseries
       const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
 						       unsigned long offset) const
       {
-	return *mSecurityTimeSeries->getTimeSeriesEntry(it, offset); 
+	return mSecurityTimeSeries->getTimeSeriesEntry(it, offset); 
       }
 
       const boost::gregorian::date&
@@ -173,12 +178,12 @@ namespace mkc_timeseries
 	return mTickDiv2;
       }
 
-      const boost::gregorian::date& getFirstDate() const
+      const boost::gregorian::date getFirstDate() const
       {
 	return mFirstDate;
       }
 
-      const boost::gregorian::date& getLastDate() const
+      const boost::gregorian::date getLastDate() const
       {
 	return mSecurityTimeSeries->getLastDate();
       }

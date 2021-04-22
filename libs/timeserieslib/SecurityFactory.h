@@ -19,27 +19,27 @@ using std::string;
 
 namespace mkc_timeseries
 {
-  template <int Prec>
+  template <class Decimal>
   class SecurityFactory
     {
     public:
-      static std::shared_ptr<Security<Prec>>
+      static std::shared_ptr<Security<Decimal>>
       createSecurity (const std::string& symbolName, 
-		      std::shared_ptr<OHLCTimeSeries<Prec>> aTimeSeries)
+		      std::shared_ptr<OHLCTimeSeries<Decimal>> aTimeSeries)
       {
-	std::shared_ptr<SecurityAttributes<Prec>> attributes = getSecurityAttributes<Prec> (symbolName);
+	std::shared_ptr<SecurityAttributes<Decimal>> attributes = getSecurityAttributes<Decimal> (symbolName);
 
 	if (attributes->isEquitySecurity())
 	  {
 	    if (attributes->isFund())
 	      {
-		return std::make_shared<EquitySecurity<Prec>>(attributes->getSymbol(), 
+		return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(), 
 							      attributes->getName(),
 							      aTimeSeries);
 	      }
 	    else if (attributes->isCommonStock())
 	      {
-		return std::make_shared<EquitySecurity<Prec>>(attributes->getSymbol(), 
+		return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(), 
 							      attributes->getName(),
 							      aTimeSeries);
 	      }
@@ -47,7 +47,7 @@ namespace mkc_timeseries
 	    throw SecurityException("SecurityFactory::createSecurity - Unknown security attribute");
 	  }
 	else
-	  return std::make_shared<FuturesSecurity<Prec>>(attributes->getSymbol(), 
+	  return std::make_shared<FuturesSecurity<Decimal>>(attributes->getSymbol(), 
 							 attributes->getName(),
 							 attributes->getBigPointValue(),
 							 attributes->getTick(),

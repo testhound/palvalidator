@@ -10,7 +10,7 @@ TEST_CASE ("SecurityBacktestProperties operations", "[SecurityBacktestProperties
 {
   
   SecurityBacktestPropertiesManager properties;
-  std::string myCornSymbol("C2");
+  std::string myCornSymbol("@C");
   std::string tenYearSymbol("@TY");
 
   SecurityBacktestProperties cornProperties(myCornSymbol);

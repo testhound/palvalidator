@@ -44,13 +44,13 @@ TEST_CASE ("Security operations", "[Security]")
 				   65899900);
   auto spySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
 
-  spySeries->addEntry (entry4);
-  spySeries->addEntry (entry6);
-  spySeries->addEntry (entry2);
-  spySeries->addEntry (entry3);
-  spySeries->addEntry (entry1);
-  spySeries->addEntry (entry5);
-  spySeries->addEntry (entry0);
+  spySeries->addEntry (*entry4);
+  spySeries->addEntry (*entry6);
+  spySeries->addEntry (*entry2);
+  spySeries->addEntry (*entry3);
+  spySeries->addEntry (*entry1);
+  spySeries->addEntry (*entry5);
+  spySeries->addEntry (*entry0);
 
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
@@ -87,8 +87,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   itEnd--;
 
-  REQUIRE (*(*itBegin) == *entry6);
-  REQUIRE (*(*itEnd) == *entry0);
+  REQUIRE ((*itBegin) == *entry6);
+  REQUIRE ((*itEnd) == *entry0);
 
   REQUIRE (spy.getFirstDate() == entry6->getDateValue());
   REQUIRE (spy.getLastDate() == entry0->getDateValue());
@@ -134,18 +134,18 @@ TEST_CASE ("Security operations", "[Security]")
 					"3740.53466796875",0);
 
   auto cornSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
-  cornSeries->addEntry(futuresEntry0);
-  cornSeries->addEntry(futuresEntry1);
-  cornSeries->addEntry(futuresEntry2);
-  cornSeries->addEntry(futuresEntry3);
-  cornSeries->addEntry(futuresEntry4);
-  cornSeries->addEntry(futuresEntry5);
-  cornSeries->addEntry(futuresEntry6);
-  cornSeries->addEntry(futuresEntry7);
-  cornSeries->addEntry(futuresEntry8);
-  cornSeries->addEntry(futuresEntry9);
-  cornSeries->addEntry(futuresEntry10);
-  cornSeries->addEntry(futuresEntry11);
+  cornSeries->addEntry(*futuresEntry0);
+  cornSeries->addEntry(*futuresEntry1);
+  cornSeries->addEntry(*futuresEntry2);
+  cornSeries->addEntry(*futuresEntry3);
+  cornSeries->addEntry(*futuresEntry4);
+  cornSeries->addEntry(*futuresEntry5);
+  cornSeries->addEntry(*futuresEntry6);
+  cornSeries->addEntry(*futuresEntry7);
+  cornSeries->addEntry(*futuresEntry8);
+  cornSeries->addEntry(*futuresEntry9);
+  cornSeries->addEntry(*futuresEntry10);
+  cornSeries->addEntry(*futuresEntry11);
 
   FuturesSecurity<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
 			   cornTickValue, cornSeries);
@@ -170,8 +170,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   itEndCorn--;
 
-  REQUIRE (*(*itBeginCorn) == *futuresEntry0);
-  REQUIRE (*(*itEndCorn) == *futuresEntry11);
+  REQUIRE ((*itBeginCorn) == *futuresEntry0);
+  REQUIRE ((*itEndCorn) == *futuresEntry11);
 
   REQUIRE (corn.getFirstDate() == futuresEntry0->getDateValue());
   REQUIRE (corn.getLastDate() == futuresEntry11->getDateValue());
@@ -184,7 +184,7 @@ TEST_CASE ("Security operations", "[Security]")
       date randomDate1(2016, 1, 4);
       Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
       REQUIRE (it != spy.getRandomAccessIteratorEnd());
-      REQUIRE (*(*it) == *entry2);
+      REQUIRE ((*it) == *entry2);
 
       REQUIRE (spy.getTimeSeriesEntry(randomDate1) == *entry2);
     }
@@ -194,7 +194,7 @@ TEST_CASE ("Security operations", "[Security]")
       date randomDate1(1985, 11, 25);
       Security<DecimalType>::ConstRandomAccessIterator it = corn.getRandomAccessIterator(randomDate1);
       REQUIRE (it != corn.getRandomAccessIteratorEnd());
-      REQUIRE (*(*it) == *futuresEntry5);
+      REQUIRE ((*it) == *futuresEntry5);
 
       REQUIRE (corn.getTimeSeriesEntry(randomDate1) == *futuresEntry5);
     }

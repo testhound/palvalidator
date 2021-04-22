@@ -4,40 +4,10 @@
 #include "../BoostDateHelper.h"
 #include "../TimeSeriesEntry.h"
 #include "../TradingOrderManager.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-std::shared_ptr<EntryType>
-    createTimeSeriesEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<DecimalType> (fromString<DecimalType>(openPrice));
-    auto high1 = std::make_shared<DecimalType> (fromString<DecimalType>(highPrice));
-    auto low1 = std::make_shared<DecimalType> (fromString<DecimalType>(lowPrice));
-    auto close1 = std::make_shared<DecimalType> (fromString<DecimalType>(closePrice));
-    return std::make_shared<EntryType>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
-  }
 
 
 TEST_CASE ("ProcessOrderVisitor StopOrder Operations", "[ProcessOrderVisitor]")
@@ -88,14 +58,14 @@ TEST_CASE ("ProcessOrderVisitor StopOrder Operations", "[ProcessOrderVisitor]")
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
   std::string tickerSymbol("C2");
 
-  SellAtStopOrder<7> longOrder1(tickerSymbol, oneContract, 
+  SellAtStopOrder<DecimalType> longOrder1(tickerSymbol, oneContract, 
 				 longDay1->getDateValue(), createDecimal ("2629.03073"));
 
-  CoverAtStopOrder<7> shortOrder1(tickerSymbol, oneContract, 
+  CoverAtStopOrder<DecimalType> shortOrder1(tickerSymbol, oneContract, 
 				  shortDay1->getDateValue(), createDecimal ("3140.69132"));
 
-  ProcessOrderVisitor<7> longOrder1Processor (longDay2);
-  ProcessOrderVisitor<7> shortOrder1Processor (shortDay2);  
+  ProcessOrderVisitor<DecimalType> longOrder1Processor (*longDay2);
+  ProcessOrderVisitor<DecimalType> shortOrder1Processor (*shortDay2);  
   
 
   SECTION ("Verify long orders are executed")
@@ -104,27 +74,27 @@ TEST_CASE ("ProcessOrderVisitor StopOrder Operations", "[ProcessOrderVisitor]")
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (longDay3);
+    longOrder1Processor.updateTradingBar (*longDay3);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (longDay4);
+    longOrder1Processor.updateTradingBar (*longDay4);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (longDay5);
+    longOrder1Processor.updateTradingBar (*longDay5);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (longDay6);
+    longOrder1Processor.updateTradingBar (*longDay6);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (longDay7);
+    longOrder1Processor.updateTradingBar (*longDay7);
     longOrder1.accept (longOrder1Processor);
     REQUIRE (longOrder1.isOrderPending());
 
-    longOrder1Processor.updateTradingBar (longDay8);
+    longOrder1Processor.updateTradingBar (*longDay8);
     longOrder1.accept (longOrder1Processor);
      REQUIRE_FALSE (longOrder1.isOrderPending());
     REQUIRE (longOrder1.isOrderExecuted());
@@ -135,7 +105,7 @@ TEST_CASE ("ProcessOrderVisitor StopOrder Operations", "[ProcessOrderVisitor]")
 
   SECTION ("Verify exception thrown on bad processing date")
   {
-    ProcessOrderVisitor<7> longOrderProcessorBad (badLongOrderDay);
+    ProcessOrderVisitor<DecimalType> longOrderProcessorBad (*badLongOrderDay);
 
     REQUIRE (longOrder1.isOrderPending() == true);
     REQUIRE_THROWS (longOrder1.accept (longOrderProcessorBad));
@@ -164,7 +134,7 @@ TEST_CASE ("ProcessOrderVisitor StopOrder Operations", "[ProcessOrderVisitor]")
 
   SECTION ("Verify short exception thrown on bad processing date")
   {
-    ProcessOrderVisitor<7> shortOrderProcessorBad (shortSignalDate);
+    ProcessOrderVisitor<DecimalType> shortOrderProcessorBad (*shortSignalDate);
 
     REQUIRE (shortOrder1.isOrderPending() == true);
     REQUIRE_THROWS (shortOrder1.accept (shortOrderProcessorBad));

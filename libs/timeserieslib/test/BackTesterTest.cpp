@@ -6,36 +6,13 @@
 #include "../BoostDateHelper.h"
 #include "../BackTester.h"
 #include "../DecimalConstants.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef dec::decimal<7> DecimalType;
-typedef OHLCTimeSeriesEntry<7> EntryType;
 
-std::string myCornSymbol("C2");
+std::string myCornSymbol("@C");
 
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (fromString<DecimalType>(valueString));
-}
-
-DecimalType *
-createRawDecimalPtr(const std::string& valueString)
-{
-  return new dec::decimal<7> (fromString<DecimalType>(valueString));
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return fromString<DecimalType>(valueString);
-}
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
@@ -202,7 +179,7 @@ createLongPattern2()
 }
 
 
-void printPositionHistorySummary(const ClosedPositionHistory<7>& history)
+void printPositionHistorySummary(const ClosedPositionHistory<DecimalType>& history)
 {
   std::cout << "In printPositionHistorySummary" << std::endl;
   std::cout << "Number of positions = " << history.getNumPositions() << std::endl << std::endl;
@@ -211,10 +188,10 @@ void printPositionHistorySummary(const ClosedPositionHistory<7>& history)
   std::cout << "Payoff ratio = " << history.getPayoffRatio() << std::endl;
 }
 
-void printPositionHistory(const ClosedPositionHistory<7>& history)
+void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
 {
-  ClosedPositionHistory<7>::ConstPositionIterator it = history.beginTradingPositions();
-  std::shared_ptr<TradingPosition<7>> p;
+  ClosedPositionHistory<DecimalType>::ConstPositionIterator it = history.beginTradingPositions();
+  std::shared_ptr<TradingPosition<DecimalType>> p;
   std::string posStateString;
   std::string openStr("Position open");
   std::string closedStr("Position closed");
@@ -275,40 +252,41 @@ void printPositionHistory(const ClosedPositionHistory<7>& history)
 
 TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 {
-  PALFormatCsvReader<7> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
-  std::shared_ptr<OHLCTimeSeries<7>> p = csvFile.getTimeSeries();
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
-  std::string futuresSymbol("C2");
+  std::string futuresSymbol("@C");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-  auto corn = std::make_shared<FuturesSecurity<7>>(futuresSymbol, 
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol, 
 						   futuresName, 
 						   cornBigPointValue,
 						   cornTickValue, 
 						   p);
 
   std::string portName("Corn Portfolio");
-  auto aPortfolio = std::make_shared<Portfolio<7>>(portName);
+  auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
 
   aPortfolio->addSecurity (corn);
 
   std::string strategy1Name("PAL Long Strategy 1");
 
  
-  std::shared_ptr<PalLongStrategy<7>> longStrategy1 = 
-    std::make_shared<PalLongStrategy<7>>(strategy1Name, createLongPattern1(), 
+  std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1 = 
+    std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(), 
 					 aPortfolio);
 
-  PalShortStrategy<7> shortStrategy1("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
+  PalShortStrategy<DecimalType> shortStrategy1("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
  
 
-  std::shared_ptr<PalLongStrategy<7>> longStrategy2 = 
-    std::make_shared<PalLongStrategy<7>>("PAL Long Strategy 2", createLongPattern2(), 
+  std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy2 = 
+    std::make_shared<PalLongStrategy<DecimalType>>("PAL Long Strategy 2", createLongPattern2(), 
 					 aPortfolio);
 
 SECTION ("PalStrategy testing for all long trades - pattern 1") 
@@ -316,7 +294,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2011, Oct, 27));
 
-    DailyBackTester<7> palLongBacktester1(backTesterDate,
+    DailyBackTester<DecimalType> palLongBacktester1(backTesterDate,
 				       backtestEndDate);
 
     palLongBacktester1.addStrategy(longStrategy1);
@@ -325,25 +303,25 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
 
     palLongBacktester1.backtest();
 
-    BackTester<7>::StrategyIterator it = palLongBacktester1.beginStrategies();
+    BackTester<DecimalType>::StrategyIterator it = palLongBacktester1.beginStrategies();
 
     REQUIRE (it != palLongBacktester1.endStrategies());
-    std::shared_ptr<BacktesterStrategy<7>> aStrategy1 = (*it);
+    std::shared_ptr<BacktesterStrategy<DecimalType>> aStrategy1 = (*it);
 
-    StrategyBroker<7> aBroker = aStrategy1->getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker = aStrategy1->getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 24);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 24); 
 
-    ClosedPositionHistory<7> history = aBroker.getClosedPositionHistory();
+    ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     printPositionHistorySummary (history);
     printPositionHistory (history);
 
-    REQUIRE (history.getNumWinningPositions() == 13);
-    REQUIRE (history.getNumLosingPositions() == 11);
+    REQUIRE (history.getNumWinningPositions() == 16);
+    REQUIRE (history.getNumLosingPositions() == 8);
 
-    dec::decimal<7> rMultiple = history.getRMultipleExpectancy();
-    REQUIRE (rMultiple > DecimalConstants<7>::DecimalZero);
+    DecimalType rMultiple = history.getRMultipleExpectancy();
+    REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
     std::cout << "RMultiple for longStrategy1 = " << rMultiple << std::endl << std::endl;;
   }
 
@@ -356,7 +334,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2011, Oct, 27));
 
-    DailyBackTester<7> palLongBacktester2(backTesterDate,
+    DailyBackTester<DecimalType> palLongBacktester2(backTesterDate,
 					  backtestEndDate);
 
     palLongBacktester2.addStrategy(longStrategy2);
@@ -365,20 +343,20 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
 
     palLongBacktester2.backtest();
 
-    BackTester<7>::StrategyIterator it = palLongBacktester2.beginStrategies();
+    BackTester<DecimalType>::StrategyIterator it = palLongBacktester2.beginStrategies();
 
     REQUIRE (it != palLongBacktester2.endStrategies());
-    std::shared_ptr<BacktesterStrategy<7>> aStrategy2 = (*it);
+    std::shared_ptr<BacktesterStrategy<DecimalType>> aStrategy2 = (*it);
 
-    StrategyBroker<7> aBroker2 = aStrategy2->getStrategyBroker();
+    StrategyBroker<DecimalType> aBroker2 = aStrategy2->getStrategyBroker();
     REQUIRE (aBroker2.getTotalTrades() == 45);
     REQUIRE (aBroker2.getOpenTrades() == 0);
     REQUIRE (aBroker2.getClosedTrades() == 45); 
 
-    ClosedPositionHistory<7> history = aBroker2.getClosedPositionHistory();
+    ClosedPositionHistory<DecimalType> history = aBroker2.getClosedPositionHistory();
     //    printPositionHistory (history);
-    dec::decimal<7> rMultiple = history.getRMultipleExpectancy();
-    REQUIRE (rMultiple > DecimalConstants<7>::DecimalZero);
+    DecimalType rMultiple = history.getRMultipleExpectancy();
+    REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
     std::cout << "RMultiple for longStrategy1 = " << rMultiple << std::endl << std::endl;;
   }
 
@@ -410,8 +388,8 @@ SECTION ("PalStrategy testing for all short trades")
       }
 
     std::cout << "Backtester end date = " << backTesterDate << std::endl; 
-    StrategyBroker<7> aBroker2 = shortStrategy1.getStrategyBroker();
-    ClosedPositionHistory<7> history2 = aBroker2.getClosedPositionHistory();
+    StrategyBroker<DecimalType> aBroker2 = shortStrategy1.getStrategyBroker();
+    ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
     //std::cout << "Calling printPositionHistory for short strategy" << std::endl << std::endl;
     //printPositionHistory (history2);
 

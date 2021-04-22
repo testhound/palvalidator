@@ -4,6 +4,7 @@
 #include "../TimeFrame.h"
 
 using namespace boost::gregorian;
+using namespace boost::posix_time;
 
 date createDate (const std::string& dateString)
 {
@@ -33,6 +34,28 @@ std::shared_ptr<EntryType>
     auto vol1 = dec::fromString<DecimalType>(vol);
     return std::make_shared<EntryType>(date1, open1, high1, low1, 
 						close1, vol1, mkc_timeseries::TimeFrame::DAILY);
+}
+
+std::shared_ptr<EntryType>
+createTimeSeriesEntry (const std::string& dateString,
+		       const std::string& timeString,
+		       const std::string& openPrice,
+		       const std::string& highPrice,
+		       const std::string& lowPrice,
+		       const std::string& closePrice,
+		       const std::string& vol)
+{
+    auto date1 = boost::gregorian::from_undelimited_string(dateString);
+    auto time1 = duration_from_string(timeString);
+    ptime dateTime(date1, time1);
+    auto open1 = dec::fromString<DecimalType>(openPrice);
+    auto high1 = dec::fromString<DecimalType>(highPrice);
+    auto low1 = dec::fromString<DecimalType>(lowPrice);
+    auto close1 = dec::fromString<DecimalType>(closePrice);
+    auto vol1 = dec::fromString<DecimalType>(vol);
+    return std::make_shared<EntryType>(dateTime, open1, high1, low1, 
+				       close1, vol1, mkc_timeseries::TimeFrame::INTRADAY);
+
 }
 
 std::shared_ptr<EntryType>

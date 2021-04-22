@@ -7,6 +7,7 @@
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using namespace boost::posix_time;
 using namespace dec;
 
 TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
@@ -123,7 +124,49 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
     REQUIRE (*entry == *entry1);
   }
 
-  SECTION ("Monthly Time Frame Tests")
+  SECTION ("Intraday Time Frame Tests")
+    {
+      auto entry1 = createTimeSeriesEntry ("20210405", "09:00", "105.99", "106.57", "105.93", "106.54", "0");
+      auto entry2 = createTimeSeriesEntry ("20210405", "10:00", "106.54", "107.29", "106.38", "107.10", "0");
+      REQUIRE (entry1->getTimeFrame() == TimeFrame::INTRADAY);
+      boost::gregorian::date intradayDate(entry1->getDateValue());
+
+      REQUIRE (intradayDate.year() == 2021);
+      REQUIRE (intradayDate.month().as_number() == 4);
+      REQUIRE (intradayDate.day().as_number() == 5);
+
+      REQUIRE (*entry1 != *entry2);
+      DecimalType open(dec::fromString<DecimalType>("106.54"));
+      DecimalType high(dec::fromString<DecimalType>("107.29"));
+      DecimalType low(dec::fromString<DecimalType>("106.38"));
+      DecimalType close(dec::fromString<DecimalType>("107.10"));
+      DecimalType vol(dec::fromString<DecimalType>("0"));
+      ptime aDate(date(2021, Apr, 05), time_duration(10, 0, 0));
+      EntryType entry3(aDate, open, high, low, close,  vol, TimeFrame::INTRADAY);
+      REQUIRE (*entry2 == entry3);
+
+      time_duration intradayTime(entry1->getBarTime());
+      REQUIRE(intradayTime.hours() == 9);
+      REQUIRE(intradayTime.minutes() == 0);
+      REQUIRE(intradayTime.seconds() == 0);
+
+      DecimalType openPrice (fromString<DecimalType>("105.99"));
+      REQUIRE(entry1->getOpenValue() == openPrice);
+	
+      DecimalType highPrice (fromString<DecimalType>("106.57"));
+      REQUIRE(entry1->getHighValue() == highPrice);
+
+      DecimalType lowPrice (fromString<DecimalType>("105.93"));
+      REQUIRE(entry1->getLowValue() == lowPrice);
+
+      DecimalType closePrice (fromString<DecimalType>("106.54"));
+      REQUIRE(entry1->getCloseValue() == closePrice);
+
+      ptime referenceDateTime(date(2021, 4, 5), time_duration(9, 0, 0));
+      REQUIRE(entry1->getDateTime() == referenceDateTime);
+    }
+
+  SECTION ("Monthlyw Time Frame Tests")
     {
 	auto entry = createTimeSeriesEntry ("19930226", "44.23", "45.13", "42.82", "44.42", "0",
 					TimeFrame::MONTHLY);
@@ -133,7 +176,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 	//REQUIRE (is_first_of_month (monthlyDate));
 	REQUIRE (monthlyDate.year() == 1993);
 	REQUIRE (monthlyDate.month().as_number() == 2);
-	REQUIRE (monthlyDate.day().as_number() ==26);
+	REQUIRE (monthlyDate.day().as_number() == 26);
 	
     }
 

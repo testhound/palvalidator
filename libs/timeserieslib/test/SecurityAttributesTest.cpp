@@ -2,39 +2,25 @@
 
 #include "catch.hpp"
 #include "../SecurityAttributes.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-typedef decimal<7> EquityType;
-typedef decimal<7> DecimalType;
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return dec::fromString<DecimalType>(valueString);
-}
-
-
 TEST_CASE ("Security operations", "[Security]")
 {
-  LeverageAttributes<7> spyLeverage(createDecimal("1.0"));
-  LeverageAttributes<7> shLeverage(createDecimal("-1.0"));
+  LeverageAttributes<DecimalType> spyLeverage(createDecimal("1.0"));
+  LeverageAttributes<DecimalType> shLeverage(createDecimal("-1.0"));
   date spyInception(createDate("19930122"));
   DecimalType spyExpense(createDecimal("0.09"));
   date shInception(createDate("20060619"));
   DecimalType shExpense(createDecimal("0.90"));
 
-  FundAttributes<7> spyAttributes(spyInception,
+  FundAttributes<DecimalType> spyAttributes(spyInception,
 				  spyExpense,
 				  spyLeverage);
 
-  FundAttributes<7> shAttributes(shInception,
+  FundAttributes<DecimalType> shAttributes(shInception,
 				 shExpense,
 				 shLeverage);
 
@@ -74,14 +60,14 @@ TEST_CASE ("Security operations", "[Security]")
   
   std::cout << "Finished testing SH FundAttributes" << std::endl;
 
-  ETFSecurityAttributes<7> spy (equitySymbol, equityName, spyAttributes);
+  ETFSecurityAttributes<DecimalType> spy (equitySymbol, equityName, spyAttributes);
 
   std::cout << "Finished creating ETFSecurityAttributes for SPY" << std::endl;
 
   REQUIRE (spy.getName() == equityName);
   REQUIRE (spy.getSymbol() == equitySymbol);
-  REQUIRE (spy.getBigPointValue() == DecimalConstants<7>::DecimalOne);
-  REQUIRE (spy.getTick() == DecimalConstants<7>::EquityTick);
+  REQUIRE (spy.getBigPointValue() == DecimalConstants<DecimalType>::DecimalOne);
+  REQUIRE (spy.getTick() == DecimalConstants<DecimalType>::EquityTick);
   REQUIRE (spy.isEquitySecurity());
   REQUIRE_FALSE (spy.isFuturesSecurity());
   REQUIRE (spy.getVolumeUnits() == TradingVolume::SHARES);
@@ -94,11 +80,11 @@ TEST_CASE ("Security operations", "[Security]")
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
 
 
-  FuturesSecurityAttributes<7> corn (futuresSymbol, futuresName, cornBigPointValue,
+  FuturesSecurityAttributes<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
 			   cornTickValue);
 
   REQUIRE (corn.getName() == futuresName);

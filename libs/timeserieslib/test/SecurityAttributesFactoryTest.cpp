@@ -2,16 +2,9 @@
 
 #include "catch.hpp"
 #include "../SecurityAttributesFactory.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
-typedef decimal<7> EquityType;
-typedef decimal<7> DecimalType;
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return dec::fromString<DecimalType>(valueString);
-}
 
 
 TEST_CASE ("Security operations", "[Security]")
@@ -19,8 +12,8 @@ TEST_CASE ("Security operations", "[Security]")
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
 
-  SecurityAttributesFactory<7> factory;
-  SecurityAttributesFactory<7>::SecurityAttributesIterator it;
+  SecurityAttributesFactory<DecimalType> factory;
+  SecurityAttributesFactory<DecimalType>::SecurityAttributesIterator it;
 
   it = factory.getSecurityAttributes(equitySymbol);
   REQUIRE_FALSE (it == factory.endSecurityAttributes());
@@ -29,8 +22,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   REQUIRE (spy->getName() == equityName);
   REQUIRE (spy->getSymbol() == equitySymbol);
-  REQUIRE (spy->getBigPointValue() == DecimalConstants<7>::DecimalOne);
-  REQUIRE (spy->getTick() == DecimalConstants<7>::EquityTick);
+  REQUIRE (spy->getBigPointValue() == DecimalConstants<DecimalType>::DecimalOne);
+  REQUIRE (spy->getTick() == DecimalConstants<DecimalType>::EquityTick);
   REQUIRE (spy->isEquitySecurity());
   REQUIRE_FALSE (spy->isFuturesSecurity());
 
@@ -38,8 +31,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   std::string futuresSymbol("@C");
   std::string futuresName("Corn Futures");
-  decimal<7> cornBigPointValue(createDecimal("50.0"));
-  decimal<7> cornTickValue(createDecimal("0.25"));
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+  DecimalType cornTickValue(createDecimal("0.25"));
 
   it = factory.getSecurityAttributes(futuresSymbol);
   REQUIRE_FALSE (it == factory.endSecurityAttributes());

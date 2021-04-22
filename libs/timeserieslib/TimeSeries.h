@@ -341,6 +341,7 @@ namespace mkc_timeseries
 	throw std::domain_error(std::string("NumericTimeSeries:getFirstDate: no entries in time series "));
     }
 
+
     const boost::gregorian::date getLastDate() const
     {
       if (getNumEntries() > 0)
@@ -619,10 +620,20 @@ template <class Decimal> class OHLCTimeSeries
       return mSortedTimeSeries.find(dateTime);
     }
 
+    TimeSeriesIterator getTimeSeriesEntry (const ptime& timeSeriesDate)
+    {
+      return mSortedTimeSeries.find(timeSeriesDate);
+    }
+
     ConstTimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate) const
     {
       ptime dateTime(timeSeriesDate, getDefaultBarTime());
       return mSortedTimeSeries.find(dateTime);
+    }
+
+    ConstTimeSeriesIterator getTimeSeriesEntry (const ptime& timeSeriesDate) const
+    {
+      return mSortedTimeSeries.find(timeSeriesDate);
     }
 
     TimeFrame::Duration getTimeFrame() const
@@ -719,6 +730,17 @@ template <class Decimal> class OHLCTimeSeries
 	throw std::domain_error(std::string("OHLCTimeSeries:getFirstDate: no entries in time series "));
     }
 
+    const ptime getFirstDateTime() const
+    {
+      if (getNumEntries() > 0)
+	{
+	  OHLCTimeSeries::ConstTimeSeriesIterator it = beginSortedAccess();
+	  return it->first;
+	}
+      else
+	throw std::domain_error(std::string("OHLCTimeSeries:getFirstDateTime: no entries in time series "));
+    }
+
     const boost::gregorian::date getLastDate() const
     {
       if (getNumEntries() > 0)
@@ -729,6 +751,18 @@ template <class Decimal> class OHLCTimeSeries
 	}
       else
 	throw std::domain_error(std::string("OHLCTimeSeries:getLastDate: no entries in time series "));
+    }
+
+    const ptime getLastDateTime() const
+    {
+      if (getNumEntries() > 0)
+	{
+	  OHLCTimeSeries::ConstTimeSeriesIterator it = endSortedAccess();
+	  it--;
+	  return it->first;
+	}
+      else
+	throw std::domain_error(std::string("OHLCTimeSeries:getLastDateTime: no entries in time series "));
     }
 
     void ValidateVectorOffset (const ConstRandomAccessIterator& it,
