@@ -60,7 +60,7 @@ PRICEACTION_INC_DIR = ../../PALCodeGenLibrary-v2
 TIMESERIES_INC_DIR = ../
 
 TradingVolumeTest: TradingVolumeTest.o
-	g++ -o TradingVolumeTest ${TIMESERIES_O} $<
+	g++ -o TradingVolumeTest  $< ${TIMESERIES_O} -lboost_system
 
 MCPTStrategyAttributesTest: MCPTStrategyAttributesTest.o TestUtils.o
 	g++ -o MCPTStrategyAttributesTest ${TIMESERIES_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
@@ -176,8 +176,8 @@ TimeSeriesCsvReaderTest: TimeSeriesCsvReaderTest.o ${TIMESERIES_O} ${TIMESERIES_
 TimeSeriesCsvWriterTest: TimeSeriesCsvWriterTest.o
 	g++ -o TimeSeriesCsvWriterTest $< ${TIMESERIES_O} -lboost_date_time -lpthread
 
-SyntheticTimeSeriesTest: SyntheticTimeSeriesTest.o
-	g++ -o SyntheticTimeSeriesTest $< ${TIMESERIES_O} -lboost_date_time -lboost_random -lpthread
+SyntheticTimeSeriesTest: SyntheticTimeSeriesTest.o ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o
+	g++ -o SyntheticTimeSeriesTest $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_random -lpthread -lboost_system
 
 TimeSeriesTest: TimeSeriesTest.o TestUtils.o  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O}
 	g++ -o TimeSeriesTest $< ${TIMESERIES_O}  ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lpthread -lboost_system

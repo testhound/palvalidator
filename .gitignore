@@ -10,8 +10,11 @@ libs/build-pasearchalgolib-Desktop-Default/
 libs/timeserieslib/*.o
 libs/timeserieslib/*.a
 libs/timeserieslib/test/BackTesterTest
+libs/timeserieslib/test/SyntheticTimeSeriesTest
+libs/timeserieslib/test/SecurityBacktestPropertiesTest
 libs/timeserieslib/test/BoostDateHelperTest
-libs/timeserieslib/test/OpoenPositionHistoryTest
+libs/timeserieslib/test/OpenPositionHistoryTest
+libs/timeserieslib/test/TradingVolumeTest
 libs/timeserieslib/test/TradingPositionTest
 libs/timeserieslib/test/TimeSeriesEntryTest
 libs/timeserieslib/test/PALPatternInterpreterTest
@@ -19,6 +22,7 @@ libs/timeserieslib/test/OpenPositionHistoryTest
 libs/timeserieslib/test/ProcessMarketOrderTest
 libs/timeserieslib/test/SecurityAttributesTest
 libs/timeserieslib/test/StrategyTransactionTest
+libs/timeserieslib/test/SecurityAttributesFactoryTest
 libs/timeserieslib/test/StrategyTransactionManagerTest
 libs/timeserieslib/test/MarketOrderTest
 libs/timeserieslib/test/StopOrderTest
