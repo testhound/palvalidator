@@ -4,12 +4,13 @@
 #include "../TimeSeriesCsvWriter.h"
 #include "../TimeSeriesCsvReader.h"
 #include "../TimeSeries.h"
+#include "../DecimalConstants.h"
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef decimal<7> EquityType;
 
-std::shared_ptr<OHLCTimeSeriesEntry<7>>
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
 		       const std::string& highPrice,
@@ -17,13 +18,7 @@ std::shared_ptr<OHLCTimeSeriesEntry<7>>
 		       const std::string& closePrice,
 		       volume_t vol)
   {
-    auto date1 = std::make_shared<date> (from_undelimited_string(dateString));
-    auto open1 = std::make_shared<EquityType> (fromString<decimal<7>>(openPrice));
-    auto high1 = std::make_shared<EquityType> (fromString<decimal<7>>(highPrice));
-    auto low1 = std::make_shared<EquityType> (fromString<decimal<7>>(lowPrice));
-    auto close1 = std::make_shared<EquityType> (fromString<decimal<7>>(closePrice));
-    return std::make_shared<OHLCTimeSeriesEntry<7>>(date1, open1, high1, low1, 
-						close1, vol, TimeFrame::DAILY);
+       return createTimeSeriesEntry(dateString, openPrice, highPrice, lowPrice, closePrice, vol); 
   }
 
 
@@ -55,17 +50,17 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   auto entry0 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
 				   0);
-  OHLCTimeSeries<7> spySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+  OHLCTimeSeries<DecimalType> spySeries(TimeFrame::DAILY, TradingVolume::SHARES);
 
-  spySeries.addEntry (entry8);
-  spySeries.addEntry (entry7);
-  spySeries.addEntry (entry6);
-  spySeries.addEntry (entry5);
-  spySeries.addEntry (entry4);
-  spySeries.addEntry (entry3);
-  spySeries.addEntry (entry2);
-  spySeries.addEntry (entry1);
-  spySeries.addEntry (entry0);
+  spySeries.addEntry (*entry8);
+  spySeries.addEntry (*entry7);
+  spySeries.addEntry (*entry6);
+  spySeries.addEntry (*entry5);
+  spySeries.addEntry (*entry4);
+  spySeries.addEntry (*entry3);
+  spySeries.addEntry (*entry2);
+  spySeries.addEntry (*entry1);
+  spySeries.addEntry (*entry0);
 
   
   
@@ -73,13 +68,13 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
     {
       std::string fileName("spy_pal_format.csv");
 
-      PalTimeSeriesCsvWriter<7> writer (fileName, spySeries);
+      PalTimeSeriesCsvWriter<DecimalType> writer (fileName, spySeries);
       writer.writeFile();
 
-      PALFormatCsvReader<7> csvFile (fileName, TimeFrame::DAILY, TradingVolume::SHARES);
+      PALFormatCsvReader<DecimalType> csvFile (fileName, TimeFrame::DAILY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick);
       csvFile.readFile();
 
-      std::shared_ptr<OHLCTimeSeries<7>> testTimeSeries = csvFile.getTimeSeries();
+      std::shared_ptr<OHLCTimeSeries<DecimalType>> testTimeSeries = csvFile.getTimeSeries();
 
       REQUIRE (*testTimeSeries == spySeries);
     }

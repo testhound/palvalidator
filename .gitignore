@@ -14,6 +14,7 @@ libs/timeserieslib/test/SyntheticTimeSeriesTest
 libs/timeserieslib/test/SecurityBacktestPropertiesTest
 libs/timeserieslib/test/BoostDateHelperTest
 libs/timeserieslib/test/OpenPositionHistoryTest
+libs/timeserieslib/test/TimeSeriesCsvWriterTest
 libs/timeserieslib/test/TradingVolumeTest
 libs/timeserieslib/test/TradingPositionTest
 libs/timeserieslib/test/TimeSeriesEntryTest

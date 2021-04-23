@@ -173,8 +173,8 @@ PercentNumberTest: PercentNumberTest.o TestUtils.o   ${TIMESERIES_ENTRY_O}
 TimeSeriesCsvReaderTest: TimeSeriesCsvReaderTest.o ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o
 	g++ -o TimeSeriesCsvReaderTest $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lpthread -lboost_system
 
-TimeSeriesCsvWriterTest: TimeSeriesCsvWriterTest.o
-	g++ -o TimeSeriesCsvWriterTest $< ${TIMESERIES_O} -lboost_date_time -lpthread
+TimeSeriesCsvWriterTest: TimeSeriesCsvWriterTest.o  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o
+	g++ -o TimeSeriesCsvWriterTest $<  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lpthread -lboost_system
 
 SyntheticTimeSeriesTest: SyntheticTimeSeriesTest.o ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o
 	g++ -o SyntheticTimeSeriesTest $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -lboost_date_time -lboost_random -lpthread -lboost_system
