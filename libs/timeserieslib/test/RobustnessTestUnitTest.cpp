@@ -5,25 +5,16 @@
 #include "../PalStrategy.h"
 #include "../BoostDateHelper.h"
 #include "../RobustnessTest.h"
+#include "TestUtils.h"
 
 #include "number.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef num::DefaultNumber DecimalType;
-typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
 
-
-
-std::string myCornSymbol("C2");
+std::string myCornSymbol("@C");
 
 void printPositionHistory(const ClosedPositionHistory<DecimalType>& history);
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return num::fromString<DecimalType>(valueString);
-}
 
 const StrategyBroker<DecimalType>&
 getStrategyBroker(std::shared_ptr<BackTester<DecimalType>> backTester)
@@ -189,24 +180,7 @@ getPatternRobustness2()
 				       createPercentNumber(createDecimal("2.0")),
 				       createDecimal("0.80"));
 }
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (num::fromString<DecimalType>(valueString));
-}
 
-DecimalType *
-createRawDecimalPtr(const std::string& valueString)
-{
-  return new DecimalType (num::fromString<DecimalType>(valueString));
-}
-
-
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
-}
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
@@ -434,15 +408,16 @@ void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
 
 TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 {
-  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
   std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
-  std::string futuresSymbol("C2");
+  std::string futuresSymbol("@C");
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
-  DecimalType cornTickValue(createDecimal("0.25"));
+
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
   auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol,

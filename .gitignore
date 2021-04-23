@@ -1,5 +1,6 @@
 Session.vim
 build/
+Debug_Build
 run.sh
 *.o
 *.h~
@@ -24,6 +25,7 @@ libs/timeserieslib/test/ProcessMarketOrderTest
 libs/timeserieslib/test/SecurityAttributesTest
 libs/timeserieslib/test/StrategyTransactionTest
 libs/timeserieslib/test/SecurityAttributesFactoryTest
+libs/timeserieslib/test/RobustnessTestUnitTest
 libs/timeserieslib/test/StrategyTransactionManagerTest
 libs/timeserieslib/test/MarketOrderTest
 libs/timeserieslib/test/StopOrderTest

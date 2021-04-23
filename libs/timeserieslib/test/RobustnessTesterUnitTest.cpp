@@ -7,24 +7,16 @@
 #include "../RobustnessTester.h"
 #include "../LogRobustnessTest.h"
 #include "../LogPalPattern.h"
+#include "TestUtils.h"
 
 #include "number.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-typedef num::DefaultNumber DecimalType;
-typedef OHLCTimeSeriesEntry<DecimalType> EntryType;
 
 
-
-std::string myCornSymbol("C2");
-
-DecimalType
-createDecimal(const std::string& valueString)
-{
-  return num::fromString<DecimalType>(valueString);
-}
-
+std::string myCornSymbol("@C");
+runner runner_instance(0);
 
 std::shared_ptr<BackTester<DecimalType>>
 getBackTester(boost::gregorian::date startDate,
@@ -37,26 +29,6 @@ PercentNumber<DecimalType>
 createPercentNumber(const DecimalType& num)
 {
   return PercentNumber<DecimalType>::createPercentNumber(num);
-}
-
-
-std::shared_ptr<DecimalType>
-createDecimalPtr(const std::string& valueString)
-{
-  return std::make_shared<DecimalType> (num::fromString<DecimalType>(valueString));
-}
-
-DecimalType *
-createRawDecimalPtr(const std::string& valueString)
-{
-  return new DecimalType (num::fromString<DecimalType>(valueString));
-}
-
-
-
-date createDate (const std::string& dateString)
-{
-  return from_undelimited_string(dateString);
 }
 
 PatternDescription *
@@ -220,17 +192,18 @@ createLongPattern2()
    return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
 }
 
-TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
+TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
 {
-  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
   std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
-  std::string futuresSymbol("C2");
+  std::string futuresSymbol("@C");
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
-  DecimalType cornTickValue(createDecimal("0.25"));
+
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
   auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol,
@@ -278,6 +251,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 
   SECTION ("RobustnessTester addStrategy test", "[RobustnessTester 1]")
     {
+      std::cout << "Running addStrategy Test [RobustnessTester 1" << std::endl;
       palRobust.addStrategy(longStrategy1);
       REQUIRE (palRobust.getNumSurvivingStrategies() == 0);
       REQUIRE (palRobust.getNumStrategiesToTest() == 1);
@@ -293,6 +267,7 @@ TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")
 
   SECTION ("RobustnessTester addStrategy test", "[RobustnessTester 2]")
     {
+      std::cout << "Running addStrategy Test [RobustnessTester 2" << std::endl;
       statisticallyRobust.addStrategy(longStrategy1);
       REQUIRE (statisticallyRobust.getNumSurvivingStrategies() == 0);
       REQUIRE (statisticallyRobust.getNumStrategiesToTest() == 1);
