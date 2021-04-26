@@ -52,8 +52,8 @@ struct runner
                     catch(std::exception const&e)
                     {
                         promise->set_exception(std::current_exception());
-                        std::cout << "runner exception" << std::endl;
-                        std::cout << e.what() << std::endl;
+                        std::cout << "Runner Exception" << std::endl;
+                        std::cout << "WHAT: " << e.what() << std::endl;
                         return;
                     }
                     promise->set_value();

@@ -61,7 +61,7 @@ namespace mkc_searchalgo
         unsigned int maxConsecutiveLosers,
         unsigned int maxInactivitySpan,
         std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
-        std::vector<time_t> timeFrames,
+        std::vector<boost::posix_time::time_duration> timeFrames,
         const std::shared_ptr<OHLCTimeSeries<Decimal>>& series,
         unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation,
                              Decimal palSafetyFactor,
@@ -165,9 +165,9 @@ namespace mkc_searchalgo
 
     const std::vector<std::pair<Decimal, Decimal>>& getTargetStopPair() const { return mTargetStopPairs; }
 
-    typename std::vector<time_t>::const_iterator timeFramesBegin() const { return mTimeFrames.begin(); }
+    typename std::vector<boost::posix_time::time_duration>::const_iterator timeFramesBegin() const { return mTimeFrames.begin(); }
 
-    typename std::vector<time_t>::const_iterator timeFramesEnd() const { return mTimeFrames.end(); }
+    typename std::vector<boost::posix_time::time_duration>::const_iterator timeFramesEnd() const { return mTimeFrames.end(); }
 
     size_t getNumTimeFrames() const { return mTimeFrames.size(); }
 
@@ -194,7 +194,7 @@ namespace mkc_searchalgo
     unsigned int mMaxConsecutiveLosers;
     unsigned int mMaxInactivitySpan;
     std::vector<std::pair<Decimal, Decimal>> mTargetStopPairs;
-    std::vector<time_t> mTimeFrames;
+    std::vector<boost::posix_time::time_duration> mTimeFrames;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;
     unsigned int mNumPermutations;
     unsigned int mMinNumStratsFullPeriod;
