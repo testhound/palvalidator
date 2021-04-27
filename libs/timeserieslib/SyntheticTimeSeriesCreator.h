@@ -52,9 +52,6 @@ namespace mkc_timeseries
                     mClose = it->getCloseValue();
                 }
 
-                std::string timeFrameFilename = getTimeFrameFilename(timeFrameId);
-                PalTimeSeriesCsvWriter<Decimal> csvWriter(timeFrameFilename, *syntheticTimeSeries);
-                csvWriter.writeFile();
                 mTimeSeriesMap.insert(std::make_pair(timeFrameId, syntheticTimeSeries));
             }
             
@@ -65,8 +62,8 @@ namespace mkc_timeseries
 
             void writeTimeFrameFile(int timeFrameId) 
             {
-                OHLCTimeSeries<Decimal> series = mTimeSeriesMap.at(timeFrameId);
-                std::string timeFrameFilename = this->getTimeFrameFilename(timeFrameId);
+                std::shared_ptr<OHLCTimeSeries<Decimal>> series = mTimeSeriesMap.at(timeFrameId);
+                std::string timeFrameFilename = getTimeFrameFilename(timeFrameId);
                 PalTimeSeriesCsvWriter<Decimal> csvWriter(timeFrameFilename, *series);
                 csvWriter.writeFile();
             }

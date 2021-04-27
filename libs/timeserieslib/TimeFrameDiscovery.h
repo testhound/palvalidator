@@ -23,6 +23,8 @@ namespace mkc_timeseries
                 {
                     if(std::find(mTimeFrames.begin(), mTimeFrames.end(), it->getBarTime()) == mTimeFrames.end())
                         mTimeFrames.push_back(it->getBarTime());
+                    else 
+                        break;
                 }
             }
 

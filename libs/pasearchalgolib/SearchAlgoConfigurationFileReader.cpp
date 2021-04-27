@@ -138,6 +138,7 @@ namespace mkc_searchalgo
         {
           boost::posix_time::time_duration timeStamp = timeFrameDiscovery->getTimeFrame(i);
           syntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, timeStamp);
+          syntheticTimeSeriesCreator->writeTimeFrameFile(i+1);
         }
 
         // TODO: validate the time series that were created 
