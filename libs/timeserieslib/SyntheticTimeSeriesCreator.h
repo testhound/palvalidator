@@ -56,13 +56,11 @@ namespace mkc_timeseries
                 PalTimeSeriesCsvWriter<Decimal> csvWriter(timeFrameFilename, *syntheticTimeSeries);
                 csvWriter.writeFile();
                 mTimeSeriesMap.insert(std::make_pair(timeFrameId, syntheticTimeSeries));
-
-                std::cout << timeFrameId << " " << syntheticTimeSeries->getNumEntries() << std::endl;
             }
             
             std::shared_ptr<OHLCTimeSeries<Decimal>> getSyntheticTimeSeries(int timeFrameId)
             {
-                return nullptr;
+                return mTimeSeriesMap.at(timeFrameId);
             }
 
             void writeTimeFrameFile(int timeFrameId) 
