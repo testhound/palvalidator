@@ -43,7 +43,7 @@ UnitTest: All
 	./SyntheticTimeSeriesCreatorTest
 	./BarchartDataSourceReaderTest
 
-All: BarchartDataSourceReaderTest SyntheticTimeSeriesCreatorTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
+All:  SyntheticTimeSeriesCreatorTest BarchartDataSourceReaderTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
 
 # TODO:
 #All: MCPTStrategyAttributesTest LogPalPatternTest RobustnessTesterUnitTest RobustnessTestUnitTest PALMonteCarloValidationTest McptConfigurationFileReaderTest SecurityAttributesFactoryTest SecurityAttributesTest MonteCarloPermutationTest2 BackTesterTest PalStrategyTest SecurityBacktestPropertiesTest PALPatternInterpreterTest StrategyBrokerTest StrategyTransactionManagerTest StrategyTransactionTest TradingOrderManagerTest PortfolioTest SecurityTest InstrumentPositionManagerTest InstrumentPositionTest ProcessStopOrderTest ProcessLimitOrderTest BoostDateHelperTest ProcessMarketOrderTest StopOrderTest LimitOrderTest TradingPositionTest MarketOrderTest ClosedPositionHistoryTest OpenPositionTest OpenPositionHistoryTest OpenPositionBarTest StopLossTest ProfitTargetTest PercentNumberTest TimeSeriesCsvReaderTest TimeSeriesCsvWriterTest SyntheticTimeSeriesTest TimeSeriesTest TimeSeriesEntryTest TradingVolumeTest
@@ -189,7 +189,7 @@ DataSourceReaderTest: DataSourceReaderTest.o
 	g++ -o DataSourceReaderTest $< -lcurl -ljsoncpp -lboost_date_time -lboost_system
 
 SyntheticTimeSeriesCreatorTest: SyntheticTimeSeriesCreatorTest.o TestUtils.o
-	g++ -o SyntheticTimeSeriesCreatorTest $< ${TIMESERIES_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
+	g++ -o SyntheticTimeSeriesCreatorTest $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
 
 BarchartDataSourceReaderTest: BarchartDataSourceReaderTest.o TestUtils.o 
 	g++ -o BarchartDataSourceReaderTest $< ${TIMESERIES_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lcurl -lpthread -lboost_system
@@ -242,7 +242,7 @@ TimeSeriesTest.o: ../TimeSeriesEntry.h ../TimeSeries.h ../TimeSeriesIndicators.h
 TimeSeriesEntryTest.o: ../TimeSeriesEntry.h ../decimal.h  catch.hpp
 TimeSeriesCsvReaderTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h  catch.hpp
 TimeSeriesCsvWriterTest.o: ../TimeSeriesCsvWriter.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h TimeSeriesCsvWriterTest.cpp  catch.hpp
-SyntheticTimeSeriesCreatorTest.o: ../TimeSeriesCsvWriter.h ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h  catch.hpp
+SyntheticTimeSeriesCreatorTest.o: ../TimeSeriesCsvWriter.h ../TimeSeriesCsvReader.h ../TimeSeries.h ../decimal.h ../csv.h  catch.hpp
 BarchartDataSourceReaderTest.o: ../decimal.h ../DateRange.h  catch.hpp
 
 clean:

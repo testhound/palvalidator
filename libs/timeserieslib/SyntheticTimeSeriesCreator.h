@@ -32,6 +32,10 @@ namespace mkc_timeseries
 
                 for(auto it = mOriginalHourlyTimeSeries->beginRandomAccess(); it != mOriginalHourlyTimeSeries->endRandomAccess(); it++)
                 {
+                    // this 'if' prevents the last bar for the first time value from being added to the time series
+                    // since it won't be added until the next date is found, i.e. if the file ends on 12/29/2020
+                    // the 12/29/2020 9:00 bar will be missing since it won't be added until the values are aggregated
+                    // and the 9:00 timestamp is found again on 12/30/2020.
                     if(filterTime == it->getBarTime()) 
                     {
                         if(mOpen != DecimalConstants<Decimal>::DecimalZero)
@@ -51,6 +55,12 @@ namespace mkc_timeseries
                     
                     mClose = it->getCloseValue();
                 }
+
+                // need to add the missing bar for the first time frame, the aggregated values should be set
+                // correctly for this bar -- tested this on KC and MSFT data to make sure
+                if(timeFrameId == 1)
+                    syntheticTimeSeries->addEntry(OHLCTimeSeriesEntry<Decimal>(
+                        mEntryDate, mOpen, mHigh, mLow, mClose, mOriginalHourlyTimeSeries->getVolumeValue(mOriginalHourlyTimeSeries->beginRandomAccess(), 0), TimeFrame::DAILY));
 
                 mTimeSeriesMap.insert(std::make_pair(timeFrameId, syntheticTimeSeries));
             }
