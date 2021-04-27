@@ -1,7 +1,9 @@
 #ifndef TIMEFRAMEDISCOVERY_H
 #define TIMEFRAMEDISCOVERY_H
 
-#include "TimeSeriesCsvReader.h"
+#include "TimeSeries.h"
+
+using boost::posix_time::time_duration;
 
 namespace mkc_timeseries
 {
@@ -9,16 +11,24 @@ namespace mkc_timeseries
     class TimeFrameDiscovery
     {
     public:
-      typedef typename std::vector<time_t> TimeFrameCollection;
-
+            typedef typename std::vector<time_duration> TimeFrameCollection;
             typedef typename TimeFrameCollection::const_iterator TimeFrameIterator;
 
-            TimeFrameDiscovery(const std::string& fileName) : mCsvFile (fileName.c_str())
+            TimeFrameDiscovery(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries) : mHourlyTimeSeries(timeSeries)
             {}
 
-            virtual void inferTimeFrames() = 0;
+            void inferTimeFrames()
+            {
+                for(auto it = mHourlyTimeSeries->beginRandomAccess(); it != mHourlyTimeSeries->endRandomAccess(); it++)
+                {
+                    if(std::find(mTimeFrames.begin(), mTimeFrames.end(), it->getBarTime()) == mTimeFrames.end())
+                        mTimeFrames.push_back(it->getBarTime());
+                    else 
+                        break;
+                }
+            }
 
-            time_t getTimeFrameInMinutes(int position) 
+            time_duration getTimeFrame(int position) 
             { 
                 if((TimeFrameCollection::size_type) position >= mTimeFrames.size())
                     throw McptConfigurationFileReaderException("Timeframe does not exists: id=" + std::to_string(position) + " number of time frames=" + std::to_string(mTimeFrames.size()));
@@ -28,36 +38,11 @@ namespace mkc_timeseries
             int numTimeFrames() const { return mTimeFrames.size(); };
             TimeFrameIterator getTimeFramesBegin() const { return mTimeFrames.begin(); };
             TimeFrameIterator getTimeFramesEnd() const { return mTimeFrames.end(); };
-            std::vector<time_t> getTimeFrames() const { return mTimeFrames; }
-        protected:
-            std::vector<time_t> mTimeFrames;
-            io::CSVReader<8, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
-    };
+            TimeFrameCollection getTimeFrames() const { return mTimeFrames; }
+        private:
+            std::vector<time_duration> mTimeFrames;
+            std::shared_ptr<OHLCTimeSeries<Decimal>> mHourlyTimeSeries;
 
-    template <class Decimal>
-    class TradestationHourlyTimeFrameDiscovery : public TimeFrameDiscovery<Decimal>
-    {
-        public:
-            TradestationHourlyTimeFrameDiscovery(const std::string& filename) : TimeFrameDiscovery<Decimal>(filename){}
-
-            void inferTimeFrames() 
-            {
-                this->mCsvFile.read_header(io::ignore_extra_column, "Date", "Time", "Open", "High", "Low", "Close", "Up", "Down");
-                std::string dateStamp, timeStamp;
-                std::string openString, highString, lowString, closeString;
-                std::string up, down;
-
-                while (this->mCsvFile.read_row(dateStamp, timeStamp, openString, highString,
-                                        lowString, closeString, up, down))
-                {
-                    struct tm tm = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-                    strptime(timeStamp.c_str(), "%H:%M", &tm);
-                    time_t time = mktime(&tm);
-
-                    if(std::find(this->mTimeFrames.begin(), this->mTimeFrames.end(), time) == this->mTimeFrames.end()) 
-                        this->mTimeFrames.push_back(time);
-                }
-        }
     };
 }
 

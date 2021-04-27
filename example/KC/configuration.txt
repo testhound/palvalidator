@@ -1,0 +1,21 @@
+%config1.txt:
+    - Fields: Symbol, IRPath, FileFormat, ISDateStart, ISDateEnd, OOSDateStart, OOSDateEnd, TimeFrame
+    - The Symbol field will be used as the ticker symbol when fetching data from an API.
+
+%config2.txt:
+    - Fields: MaxDepth, MinTrades, ActivityMultiplier,PassingStratNumPerRound,ProfitFactorCriterion, MaxConsecutiveLosers,
+              MaxInactivitySpan, TargetsToSearchConfigFilePath, ValidationConfigFilePath, PALSafetyFactor,
+              StepRedundancyMultiplier, SurvivalFilterMultiplier
+
+api.config:
+    - Holds API source/key pairs
+    - Format: <Source>,<API Token>
+
+Invocation:
+    - To run palvalidator with local files:
+        -  ./PalValidator %config1.txt %config2.txt longshort IS 4 threads:8 --local <Path to Local Daily Data File> <Path to Local Hourly Data File>
+            - Example: ./PalValidator %config1.txt %config2.txt longshort IS 4 threads:8 --local KC_RAD_Daily.txt KC_RAD_Hourly.txt
+    - To run palvalidator using an API
+        -  ./PalValidator %config1.txt %config2.txt longshort IS 4 threads:8 --api:<API Source> <Path to API Config File>
+            - Example: ./PalValidator %config1.txt %config2.txt longshort IS 4 threads:8 --api:Barchart api.config
+        - When using an API the ticker symbol used is the Symbol field in the config1 configuration file

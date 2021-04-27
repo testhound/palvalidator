@@ -119,39 +119,42 @@ namespace mkc_searchalgo
     std::shared_ptr<OHLCTimeSeries<Decimal>> series;
     if (timeFrameIdToLoad == 0)
     {
-      // read the data file, infer the time frames, and create all of the synthetic files - once; read them in otherwise
+      // read the data file, infer the time frames, and create all of the synthetic files - once
       if(downloadFile) 
       {
-        std::shared_ptr<TimeFrameDiscovery<Decimal>> timeFrameDiscovery = std::make_shared<TradestationHourlyTimeFrameDiscovery<Decimal>>(hourlyDataFilePath);
+        std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = std::make_shared<TradeStationFormatCsvReader<Decimal>>(
+          hourlyDataFilePath, TimeFrame::INTRADAY, getVolumeUnit(security), security->getTick()
+        );
+        reader->readFile();
+
+        std::shared_ptr<TimeFrameDiscovery<Decimal>> timeFrameDiscovery = std::make_shared<TimeFrameDiscovery<Decimal>>(reader->getTimeSeries());
         timeFrameDiscovery->inferTimeFrames();
         mRunParameters->setTimeFrames(timeFrameDiscovery->getTimeFrames());
 
         std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
-          std::make_shared<TradestationHourlySyntheticTimeSeriesCreator<Decimal>>(
-              hourlyDataFilePath, 
-              security->getTimeSeries()->getTimeFrame(), 
-              getVolumeUnit(security), 
-              security->getTick()
-        );
+          std::make_shared<SyntheticTimeSeriesCreator<Decimal>>(reader->getTimeSeries(), hourlyDataFilePath);
+
         for(int i = 0; i < timeFrameDiscovery->numTimeFrames(); i++) 
         {
-          time_t timeStamp = timeFrameDiscovery->getTimeFrameInMinutes(i);
+          boost::posix_time::time_duration timeStamp = timeFrameDiscovery->getTimeFrame(i);
           syntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, timeStamp);
+          syntheticTimeSeriesCreator->writeTimeFrameFile(i+1);
         }
+
+        // TODO: validate the time series that were created 
       }
 
       series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
     }
     else 
     {
-      std::shared_ptr<TradestationHourlySyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
-        std::make_shared<TradestationHourlySyntheticTimeSeriesCreator<Decimal>>(
-            hourlyDataFilePath, 
-            security->getTimeSeries()->getTimeFrame(), 
-            getVolumeUnit(security), 
-            security->getTick()
+      std::string timeFrameFilename = hourlyDataFilePath + "_timeframe_" + std::to_string(timeFrameIdToLoad);
+      std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = std::make_shared<PALFormatCsvReader<Decimal>>(
+          timeFrameFilename, TimeFrame::DAILY, getVolumeUnit(security), security->getTick()
       );
-      series = syntheticTimeSeriesCreator->getSyntheticTimeSeries(timeFrameIdToLoad);
+      reader->readFile();
+      series = reader->getTimeSeries();
+
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = security->getTimeSeries()->beginRandomAccess();
       for (; it != security->getTimeSeries()->endRandomAccess(); it++)
       {
