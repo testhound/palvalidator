@@ -32,6 +32,7 @@
 #include "RunParameters.h"
 #include "TimeFrameDiscovery.h"
 #include "SyntheticTimeSeriesCreator.h"
+#include "TimeSeriesValidator.h"
 
 using namespace mkc_timeseries;
 
