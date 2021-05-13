@@ -891,20 +891,19 @@ template <class Decimal> class OHLCTimeSeries
       //std::cout << "syncronizeMapAndArray called" << std::endl;
 
       if (mSequentialTimeSeries.size() > 0)
-	{
-	  mSequentialTimeSeries.clear();
-	  mDateToSequentialIndex.clear();
-	}
+      {
+        mSequentialTimeSeries.clear();
+        mDateToSequentialIndex.clear();
+      }
 
       OHLCTimeSeries::TimeSeriesIterator pos;
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
-	{
-	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
-	  mSequentialTimeSeries.push_back(pos->second);
-	  index++;
-
-	}
+      {
+        mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
+        mSequentialTimeSeries.push_back(pos->second);
+        index++;
+      }
 
       mMapAndArrayInSync = true;
     }
@@ -913,6 +912,16 @@ template <class Decimal> class OHLCTimeSeries
     {
       ptime dateTime(date, getDefaultBarTime());
       return (mSortedTimeSeries.find(dateTime) != mSortedTimeSeries.end());
+    }
+
+    void deleteEntryByDate(const boost::gregorian::date& date) 
+    {
+      if(isDateFound(date)) 
+      {
+        ptime dateTime(date, getDefaultBarTime());
+        mSortedTimeSeries.erase(dateTime); 
+      }
+      syncronizeMapAndArray();
     }
 
   private:

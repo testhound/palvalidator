@@ -55,32 +55,65 @@ namespace mkc_timeseries
             {
                 boost::gregorian::date startDate = mHourlyTimeSeries->beginRandomAccess()->getDateValue();
                 std::vector<boost::posix_time::time_duration> distinctTimeDurations;
+                int sevenDayCount = 0, holidayCount = 0, numberDays = 0;
+                std::vector<boost::gregorian::date> daysToDelete;
+                bool validateTimeDurations = true;
                 for(auto it = mHourlyTimeSeries->beginRandomAccess(); it != mHourlyTimeSeries->endRandomAccess(); it++)
                 {
                     if(it->getDateValue() != startDate) 
                     {
                         if(!isEarlyCloseDay(startDate))
                         {
-                            if(distinctTimeDurations.size() < 7)    // distinct time frames per day
-                                throw TimeSeriesValidationException("ERROR: Too few time frames on " + boost::gregorian::to_simple_string(startDate) + 
-                                    ". Expected 7 found " + std::to_string(distinctTimeDurations.size()));
+                            if(distinctTimeDurations.size() == 7)    // distinct time frames per day
+                                sevenDayCount++;
+                            
+                            if(distinctTimeDurations.size() < 7)    // remove the entry 
+                            {
+                                std::cout << "WARNING: " << startDate << " contained " << distinctTimeDurations.size() 
+                                          << " bars. Removing the date from the hourly and daily time series." << std::endl;
+                                daysToDelete.push_back(startDate);
+                                validateTimeDurations = false;
+                            }
 
                             // time durations are 1 hour apart for each day
-                            for(std::size_t i = 0; i < distinctTimeDurations.size() - 1; i++)
+                            if(validateTimeDurations)
                             {
-                                boost::posix_time::time_duration start = distinctTimeDurations.at(i);
-                                boost::posix_time::time_duration end = distinctTimeDurations.at(i+1);
-                                if((end-start) != boost::posix_time::hours(1))
-                                    throw TimeSeriesValidationException("ERROR: Time frames are not one hour apart on " + boost::gregorian::to_simple_string(startDate));
+                                for(std::size_t i = 0; i < distinctTimeDurations.size() - 1; i++)
+                                {
+                                    boost::posix_time::time_duration start = distinctTimeDurations.at(i);
+                                    boost::posix_time::time_duration end = distinctTimeDurations.at(i+1);
+                                    if((end-start) != boost::posix_time::hours(1))
+                                        throw TimeSeriesValidationException("ERROR: Time frames are not one hour apart on " + boost::gregorian::to_simple_string(startDate));
+                                }
                             }
+                        } 
+                        else
+                        {
+                            holidayCount++;
                         }
 
+                        numberDays++;
                         startDate = it->getDateValue();
                         distinctTimeDurations.clear();
+                        validateTimeDurations = true;
                     }
 
                     if(std::find(distinctTimeDurations.begin(), distinctTimeDurations.end(), it->getBarTime()) == distinctTimeDurations.end()) 
                         distinctTimeDurations.push_back(it->getBarTime());
+                }
+
+                float sevenDayPercent = ((float)sevenDayCount/((float)(numberDays - holidayCount)));
+                std::cout << sevenDayPercent << " " << sevenDayCount << " " << numberDays << " " << holidayCount << std::endl;
+                if (sevenDayPercent < 0.99) 
+                    throw TimeSeriesValidationException("ERROR: Not enough days in the hourly time series had 7 bars. Expected: at least 99% Found: " + std::to_string(sevenDayPercent));
+                if(sevenDayPercent < 1)
+                    std::cout << "WARNING: only " << sevenDayPercent << " of non-holiday trading days in the hourly time series had 7 hourly bars." << std::endl;
+
+                // remove the dates if we get this far 
+                for(auto it = daysToDelete.begin(); it != daysToDelete.end(); it++)
+                {
+                    mHourlyTimeSeries->deleteEntryByDate((*it));
+                    mDailyTimeSeries->deleteEntryByDate((*it));
                 }
             }
 
