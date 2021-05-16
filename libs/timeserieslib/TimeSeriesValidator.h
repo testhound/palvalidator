@@ -19,6 +19,7 @@ namespace mkc_timeseries
         {}
     }; 
 
+    template <class Decimal>
     class TimeSeriesValidator
     {
         public:
@@ -103,7 +104,6 @@ namespace mkc_timeseries
                 }
 
                 float sevenDayPercent = ((float)sevenDayCount/((float)(numberDays - holidayCount)));
-                std::cout << sevenDayPercent << " " << sevenDayCount << " " << numberDays << " " << holidayCount << std::endl;
                 if (sevenDayPercent < 0.99) 
                     throw TimeSeriesValidationException("ERROR: Not enough days in the hourly time series had 7 bars. Expected: at least 99% Found: " + std::to_string(sevenDayPercent));
                 if(sevenDayPercent < 1)
