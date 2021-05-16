@@ -14,7 +14,9 @@ namespace mkc_timeseries
             typedef typename std::vector<time_duration> TimeFrameCollection;
             typedef typename TimeFrameCollection::const_iterator TimeFrameIterator;
 
-            TimeFrameDiscovery(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries) : mHourlyTimeSeries(timeSeries)
+            TimeFrameDiscovery(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries) :
+	      mTimeFrames(),
+	      mHourlyTimeSeries(timeSeries)
             {}
 
             void inferTimeFrames()

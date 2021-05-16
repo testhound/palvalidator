@@ -20,7 +20,9 @@ namespace mkc_timeseries
 
             SyntheticTimeSeriesCreator(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries, std::string hourlyDataFilename) : 
                 mOriginalHourlyTimeSeries(timeSeries),
-                mFilename(hourlyDataFilename)
+                mFilename(hourlyDataFilename),
+		mTimeSeriesMap(),
+		mEntryDate()	// Constructs date with value not_a_date_time
             {}
 
             void createSyntheticTimeSeries(int timeFrameId, time_duration filterTime) 
