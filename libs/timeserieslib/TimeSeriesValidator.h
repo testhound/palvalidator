@@ -34,7 +34,7 @@ namespace mkc_timeseries
 
             void validate() 
             {
-                mValidateSevenTimePeriods();
+                mValidateNumberTimePeriods();
                 mValidateTimeStamps(); 
                 mValidateAvailableDays();
             }
@@ -55,11 +55,11 @@ namespace mkc_timeseries
                 }
             }
 
-            void mValidateSevenTimePeriods() // error 
+            void mValidateNumberTimePeriods() // error 
             {
                 boost::gregorian::date startDate = mHourlyTimeSeries->beginRandomAccess()->getDateValue();
                 std::vector<boost::posix_time::time_duration> distinctTimeDurations;
-                int sevenDayCount = 0, holidayCount = 0, numberDays = 0;
+                int completeDayCount = 0, holidayCount = 0, numberDays = 0;
                 std::vector<boost::gregorian::date> daysToDelete;
                 bool validateTimeDurations = true;
                 for(auto it = mHourlyTimeSeries->beginRandomAccess(); it != mHourlyTimeSeries->endRandomAccess(); it++)
@@ -68,10 +68,10 @@ namespace mkc_timeseries
                     {
                         if(!isEarlyCloseDay(startDate))
                         {
-                            if(distinctTimeDurations.size() == 7)    // distinct time frames per day
-                                sevenDayCount++;
+                            if(distinctTimeDurations.size() == numberTimeFrames)    // distinct time frames per day
+                                completeDayCount++;
                             
-                            if(distinctTimeDurations.size() < 7)    // remove the entry 
+                            if(distinctTimeDurations.size() < numberTimeFrames)    // remove the entry 
                             {
                                 std::cout << "WARNING: " << startDate << " contained " << distinctTimeDurations.size() 
                                           << " bars. Removing the date from the hourly and daily time series." << std::endl;
@@ -106,11 +106,11 @@ namespace mkc_timeseries
                         distinctTimeDurations.push_back(it->getBarTime());
                 }
 
-                float sevenDayPercent = ((float)sevenDayCount/((float)(numberDays - holidayCount)));
-                if (sevenDayPercent < 0.99) 
-                    throw TimeSeriesValidationException("ERROR: Not enough days in the hourly time series had 7 bars. Expected: at least 99% Found: " + std::to_string(sevenDayPercent));
-                if(sevenDayPercent < 1)
-                    std::cout << "WARNING: only " << sevenDayPercent << " of non-holiday trading days in the hourly time series had 7 hourly bars." << std::endl;
+                float completeDayPercent = ((float)completeDayCount/((float)(numberDays - holidayCount)));
+                if (completeDayPercent < 0.99) 
+                    throw TimeSeriesValidationException("ERROR: Not enough days in the hourly time series had " + std::to_string(numberTimeFrames) + " bars. Expected: at least 99% Found: " + std::to_string(completeDayPercent));
+                if(completeDayPercent < 1)
+                    std::cout << "WARNING: only " << completeDayPercent << " of non-holiday trading days in the hourly time series had " + std::to_string(numberTimeFrames) + "hourly bars." << std::endl;
 
                 // remove the dates if we get this far 
                 for(auto it = daysToDelete.begin(); it != daysToDelete.end(); it++)
