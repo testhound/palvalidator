@@ -11,8 +11,6 @@ using namespace mkc_timeseries;
 
 TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
 {
-  // std::shared_ptr<TimeSeriesValidator<DecimalType>> timeSeriesValidator;
-
   std::string dataDir = "./TimeSeriesValidatorTimeSeriesData/";
   SECTION ("TimeSeriesValidator Holidays", "[TimeSeriesValidator]")
   {
@@ -21,7 +19,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
       DecimalConstants<Decimal>::EquityTick
     );
     reader->readFile();
-    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(), reader->getTimeSeries());
+    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(), reader->getTimeSeries(), 7);
 
     REQUIRE_NOTHROW(validator->validate());
   }
@@ -39,7 +37,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
       DecimalConstants<Decimal>::EquityTick
     );
     dailyReader->readFile();
-    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries());
+    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries(), 7);
 
     REQUIRE_THROWS_AS(validator->validate(), TimeSeriesValidationException);
     REQUIRE_THROWS_WITH(validator->validate(), Catch::Contains("ERROR:") && Catch::Contains("not found in the hourly time series"));
@@ -58,7 +56,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
       DecimalConstants<Decimal>::EquityTick
     );
     dailyReader->readFile();
-    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries());
+    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries(), 7);
 
     REQUIRE_THROWS_AS(validator->validate(), TimeSeriesValidationException);
     REQUIRE_THROWS_WITH(validator->validate(), Catch::Contains("ERROR:") && Catch::Contains("not found in the daily time series"));
@@ -77,7 +75,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
       DecimalConstants<Decimal>::EquityTick
     );
     dailyReader->readFile();
-    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries());
+    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries(), 7);
 
     REQUIRE_NOTHROW(validator->validate());
   }
@@ -89,7 +87,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
       DecimalConstants<Decimal>::EquityTick
     );
     hourlyReader->readFile();
-    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), hourlyReader->getTimeSeries());
+    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), hourlyReader->getTimeSeries(), 7);
 
     REQUIRE_THROWS_AS(validator->validate(), TimeSeriesValidationException);
     REQUIRE_THROWS_WITH(validator->validate(), Catch::Contains("ERROR:") && Catch::Contains("Not enough days in the hourly time series had 7 bars. Expected: at least 99% Found:"));
@@ -112,7 +110,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
     int sizeHourly = hourlyReader->getTimeSeries()->getNumEntries();
     int sizeDaily = dailyReader->getTimeSeries()->getNumEntries();
 
-    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries());
+    std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries(), 7);
     validator->validate();
 
     REQUIRE(dailyReader->getTimeSeries()->getNumEntries() == (sizeDaily - 1));

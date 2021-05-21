@@ -135,7 +135,7 @@ namespace mkc_searchalgo
 
         std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
           std::make_shared<SyntheticTimeSeriesCreator<Decimal>>(reader->getTimeSeries(), hourlyDataFilePath);
-        std::shared_ptr<TimeSeriesValidator<Decimal>> validator = std::make_shared<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(), security->getTimeSeries());
+        std::shared_ptr<TimeSeriesValidator<Decimal>> validator = std::make_shared<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(), security->getTimeSeries(), timeFrameDiscovery->numTimeFrames());
         validator->validate();
 
         for(int i = 0; i < timeFrameDiscovery->numTimeFrames(); i++) 

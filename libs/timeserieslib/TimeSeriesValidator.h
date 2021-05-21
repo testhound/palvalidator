@@ -25,9 +25,11 @@ namespace mkc_timeseries
         public:
             TimeSeriesValidator(
                 std::shared_ptr<OHLCTimeSeries<Decimal>> hourlyTimeSeries, 
-                std::shared_ptr<OHLCTimeSeries<Decimal>> dailyTimeSeries) :
+                std::shared_ptr<OHLCTimeSeries<Decimal>> dailyTimeSeries, 
+                int numberTimeFrames) :
             mHourlyTimeSeries(hourlyTimeSeries), 
-            mDailyTimeSeries(dailyTimeSeries) 
+            mDailyTimeSeries(dailyTimeSeries), 
+            numberTimeFrames(numberTimeFrames)
             {}
 
             void validate() 
@@ -40,6 +42,7 @@ namespace mkc_timeseries
         private:
             std::shared_ptr<OHLCTimeSeries<Decimal>> mHourlyTimeSeries;
             std::shared_ptr<OHLCTimeSeries<Decimal>> mDailyTimeSeries;
+            int numberTimeFrames;
 
             void mValidateTimeStamps() // warning
             {
