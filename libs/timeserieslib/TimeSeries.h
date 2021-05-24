@@ -891,20 +891,19 @@ template <class Decimal> class OHLCTimeSeries
       //std::cout << "syncronizeMapAndArray called" << std::endl;
 
       if (mSequentialTimeSeries.size() > 0)
-	{
-	  mSequentialTimeSeries.clear();
-	  mDateToSequentialIndex.clear();
-	}
+      {
+        mSequentialTimeSeries.clear();
+        mDateToSequentialIndex.clear();
+      }
 
       OHLCTimeSeries::TimeSeriesIterator pos;
       unsigned long index = 0;
       for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
-	{
-	  mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
-	  mSequentialTimeSeries.push_back(pos->second);
-	  index++;
-
-	}
+      {
+        mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
+        mSequentialTimeSeries.push_back(pos->second);
+        index++;
+      }
 
       mMapAndArrayInSync = true;
     }
@@ -913,6 +912,29 @@ template <class Decimal> class OHLCTimeSeries
     {
       ptime dateTime(date, getDefaultBarTime());
       return (mSortedTimeSeries.find(dateTime) != mSortedTimeSeries.end());
+    }
+
+    void deleteEntryByDate(const boost::gregorian::date& date) 
+    {
+      auto getDateEntryFromDate = [=](auto date) {
+        for(auto it = mSortedTimeSeries.begin(); it != mSortedTimeSeries.end(); it++)
+        {
+          boost::gregorian::date mapDate(it->first.date().year(), it->first.date().month(), it->first.date().day());
+          if(mapDate == date)
+            return it;
+        }
+        return mSortedTimeSeries.end();
+      };
+
+      // isDateFound only looks for dates at 15:00, we need to delete all times for hourly
+      // time series and the 0:00 time for daily time series
+      auto mapIterator = getDateEntryFromDate(date);
+      while(mapIterator != mSortedTimeSeries.end()) 
+      {
+        mSortedTimeSeries.erase(mapIterator); 
+        mapIterator = getDateEntryFromDate(date);
+      }
+      syncronizeMapAndArray();
     }
 
   private:

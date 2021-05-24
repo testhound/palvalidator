@@ -42,8 +42,9 @@ UnitTest: All
 	./TimeSeriesEntryTest
 	./SyntheticTimeSeriesCreatorTest
 	./BarchartDataSourceReaderTest
+	./TimeSeriesValidatorTest
 
-All:  SyntheticTimeSeriesCreatorTest BarchartDataSourceReaderTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
+All: TimeSeriesValidatorTest SyntheticTimeSeriesCreatorTest BarchartDataSourceReaderTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
 
 # TODO:
 #All: MCPTStrategyAttributesTest LogPalPatternTest RobustnessTesterUnitTest RobustnessTestUnitTest PALMonteCarloValidationTest McptConfigurationFileReaderTest SecurityAttributesFactoryTest SecurityAttributesTest MonteCarloPermutationTest2 BackTesterTest PalStrategyTest SecurityBacktestPropertiesTest PALPatternInterpreterTest StrategyBrokerTest StrategyTransactionManagerTest StrategyTransactionTest TradingOrderManagerTest PortfolioTest SecurityTest InstrumentPositionManagerTest InstrumentPositionTest ProcessStopOrderTest ProcessLimitOrderTest BoostDateHelperTest ProcessMarketOrderTest StopOrderTest LimitOrderTest TradingPositionTest MarketOrderTest ClosedPositionHistoryTest OpenPositionTest OpenPositionHistoryTest OpenPositionBarTest StopLossTest ProfitTargetTest PercentNumberTest TimeSeriesCsvReaderTest TimeSeriesCsvWriterTest SyntheticTimeSeriesTest TimeSeriesTest TimeSeriesEntryTest TradingVolumeTest
@@ -194,6 +195,9 @@ SyntheticTimeSeriesCreatorTest: SyntheticTimeSeriesCreatorTest.o TestUtils.o
 BarchartDataSourceReaderTest: BarchartDataSourceReaderTest.o TestUtils.o 
 	g++ -o BarchartDataSourceReaderTest $< ${TIMESERIES_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lcurl -lpthread -lboost_system
 
+TimeSeriesValidatorTest: TimeSeriesValidatorTest.o TestUtils.o 
+	g++ -o TimeSeriesValidatorTest $<  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
+
 TestUtils.o: ../PercentNumber.h ../DecimalConstants.h ../TimeFrame.h  ../TimeSeriesEntry.h ../TradingVolume.h
 
 DataSourceReaderTest.o: ../DataSourceReader.h ../DateRange.h ../BoostDateHelper.h
@@ -244,6 +248,7 @@ TimeSeriesCsvReaderTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSerie
 TimeSeriesCsvWriterTest.o: ../TimeSeriesCsvWriter.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h TimeSeriesCsvWriterTest.cpp  catch.hpp
 SyntheticTimeSeriesCreatorTest.o: ../TimeSeriesCsvWriter.h ../TimeSeriesCsvReader.h ../TimeSeries.h ../decimal.h ../csv.h  catch.hpp
 BarchartDataSourceReaderTest.o: ../decimal.h ../DateRange.h  catch.hpp
+TimeSeriesValidatorTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../decimal.h ../csv.h  catch.hpp
 
 clean:
 	rm *.o
@@ -251,6 +256,7 @@ clean:
 	rm -f TimeSeriesCsvReaderTest PercentNumberTest ProfitTargetTest StopLossTest
 	rm -f OpenPositionBarTest OpenPositionHistoryTest OpenPositionTest
 	rm -f ClosedPositionTest SyntheticTimeSeriesCreatorTest BarchartDataSourceReaderTest
+	rm -f TimeSeriesValidatorTest
 	rm *~
 
 CCFLAGS := -O2 -c -std=c++14 -I../ -I${PRICEACTION_INC_DIR}

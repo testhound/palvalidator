@@ -119,6 +119,8 @@ namespace mkc_searchalgo
     std::shared_ptr<OHLCTimeSeries<Decimal>> series;
     if (timeFrameIdToLoad == 0)
     {
+      series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
+
       // read the data file, infer the time frames, and create all of the synthetic files - once
       if(downloadFile) 
       {
@@ -133,6 +135,8 @@ namespace mkc_searchalgo
 
         std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
           std::make_shared<SyntheticTimeSeriesCreator<Decimal>>(reader->getTimeSeries(), hourlyDataFilePath);
+        std::shared_ptr<TimeSeriesValidator<Decimal>> validator = std::make_shared<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(), security->getTimeSeries(), timeFrameDiscovery->numTimeFrames());
+        validator->validate();
 
         for(int i = 0; i < timeFrameDiscovery->numTimeFrames(); i++) 
         {
@@ -140,11 +144,7 @@ namespace mkc_searchalgo
           syntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, timeStamp);
           syntheticTimeSeriesCreator->writeTimeFrameFile(i+1);
         }
-
-        // TODO: validate the time series that were created 
       }
-
-      series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
     }
     else 
     {
