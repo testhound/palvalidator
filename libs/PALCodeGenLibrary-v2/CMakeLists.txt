@@ -12,8 +12,8 @@ set(SRC_LIST EasyLanguageCodeGenerator.cpp
     PalCodeGenVisitor.h
     PalParseDriver.h
     scanner.h
-    SecurityFactory.h
-    Security.h
+#    SecurityFactory.h
+#    Security.h
     EasyLanguageFromTemplateCodeGen.cpp
     el_template.txt
 )

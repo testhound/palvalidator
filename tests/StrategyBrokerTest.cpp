@@ -10,7 +10,7 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-std::string myCornSymbol("@C");
+//std::string myCornSymbol("@C");
 
 template< class T, class U > 
 std::shared_ptr<T> dynamic_pointer_cast( const std::shared_ptr<U>& r ) noexcept

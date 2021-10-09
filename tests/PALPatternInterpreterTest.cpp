@@ -10,7 +10,7 @@ using namespace mkc_timeseries;
 using namespace boost::gregorian;
 //using Num = num::DefaultNumber;
 
-std::string myCornSymbol("C2");
+//std::string myCornSymbol("C2");
 
 TEST_CASE ("PALPatternInterpreter operations", "[PALPatternInterpreter]")
 {

@@ -10,6 +10,8 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
+namespace  {
+
 TradingVolume
 createShareVolume (volume_t vol)
 {
@@ -50,7 +52,9 @@ private:
   int mNumClosedTransactions;
 };
 
-TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
+}
+
+TEST_CASE ("StrategyTransactionTest-TradingOrderManager Operations", "[TradingOrderManager]")
 {
   std::string equitySymbol("SPY");
   TradingVolume oneShare(1, TradingVolume::SHARES);

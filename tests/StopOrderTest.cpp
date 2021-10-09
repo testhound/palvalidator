@@ -9,7 +9,7 @@ using namespace boost::gregorian;
 
 
 
-TEST_CASE ("Market Order Operations", "[TradingOrder]")
+TEST_CASE ("StopOrderTest-Market Order Operations", "[TradingOrder]")
 {
   date orderDate1(from_undelimited_string ("20151218"));
   date orderDate2(from_undelimited_string ("20150817"));

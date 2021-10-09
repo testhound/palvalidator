@@ -8,9 +8,10 @@
 #include "DecimalConstants.h"
 #include "TestUtils.h"
 
-
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+
+namespace { //empty namespace to keep definitions unique
 
 std::string myCornSymbol("@C");
 
@@ -175,7 +176,7 @@ createLongPattern2()
     MarketEntryExpression *entry = createLongOnOpen();
     ProfitTargetInPercentExpression *target = createLongProfitTarget("5.12");
     StopLossInPercentExpression *stop = createLongStopLoss("2.56");
-  
+
    return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
 }
 
@@ -247,12 +248,12 @@ void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
     }
 
       positionNum++;
-      
+
     }
 }
+}
 
-
-TEST_CASE("PalStrategy operations", "[PalStrategy]")
+TEST_CASE ("BackTesterTest-PalStrategy operations", "[PalStrategy]")
 {
   DecimalType cornTickValue(createDecimal("0.25"));
   PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
@@ -279,13 +280,13 @@ TEST_CASE("PalStrategy operations", "[PalStrategy]")
 
   std::string strategy1Name("PAL Long Strategy 1");
 
- 
+
   std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1 =
     std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(),
                      aPortfolio);
 
   PalShortStrategy<DecimalType> shortStrategy1("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
- 
+
 
   std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy2 =
     std::make_shared<PalLongStrategy<DecimalType>>("PAL Long Strategy 2", createLongPattern2(),
@@ -328,7 +329,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
   }
 
 
-  
+
 SECTION ("PalStrategy testing for all long trades - pattern 2")
   {
     std::cout << "In second long pattern backtest" << std::endl;
@@ -382,9 +383,9 @@ SECTION ("PalStrategy testing for all short trades")
         shortStrategy1.eventEntryOrders(corn,
                        shortStrategy1.getInstrumentPosition(futuresSymbol),
                        orderDate);
-	   
 
-	    
+
+
       }
     shortStrategy1.eventProcessPendingOrders (backTesterDate);
       }
@@ -399,11 +400,11 @@ SECTION ("PalStrategy testing for all short trades")
     REQUIRE (aBroker2.getOpenTrades() == 0);
     REQUIRE (aBroker2.getClosedTrades() == 21);
 
-   
+
 
     REQUIRE (history2.getNumWinningPositions() == 15);
     REQUIRE (history2.getNumLosingPositions() == 6);
- 
+
   }
 */
 }

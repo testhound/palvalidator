@@ -10,7 +10,7 @@ using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
 
-TEST_CASE ("ProcessOrderVisitor Market Order Operations", "[ProcessOrderVisitor]")
+TEST_CASE ("ProcessMarketOrderTest Market Order Operations", "[ProcessOrderVisitor]")
 {
   auto entry0Prev = createTimeSeriesEntry ("19851115","3683.73657226563","3683.73657226563",
 					   "3645.2841796875","3660.6650390625", 0);

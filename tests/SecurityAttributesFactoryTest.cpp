@@ -7,7 +7,7 @@
 using namespace mkc_timeseries;
 
 
-TEST_CASE ("Security operations", "[Security]")
+TEST_CASE ("SecurityAttributesFactoryTest-Security operations", "[Security]")
 {
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");

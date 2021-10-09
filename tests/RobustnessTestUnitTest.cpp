@@ -12,6 +12,8 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
+namespace  {
+
 std::string myCornSymbol("@C");
 
 void printPositionHistory(const ClosedPositionHistory<DecimalType>& history);
@@ -184,14 +186,14 @@ getPatternRobustness2()
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
-		   const std::string& percLong, const std::string& percShort,
-		   unsigned int numTrades, unsigned int consecutiveLosses)
+           const std::string& percLong, const std::string& percShort,
+           unsigned int numTrades, unsigned int consecutiveLosses)
 {
   DecimalType *percentLong = createRawDecimalPtr (percLong);
   DecimalType *percentShort = createRawDecimalPtr(percShort);
 
   return new PatternDescription ((char *) fileName.c_str(), index, indexDate, percentLong, percentShort,
-				 numTrades, consecutiveLosses);
+                 numTrades, consecutiveLosses);
 }
 
 LongMarketEntryOnOpen *
@@ -234,8 +236,8 @@ std::shared_ptr<PriceActionLabPattern>
 createShortPattern1()
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
-					       20111017, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+                           20111017, std::string("90.00"),
+                           std::string("10.00"), 21, 2);
   // Short pattern
 
   auto high4 = new PriceBarHigh (4);
@@ -267,8 +269,8 @@ std::shared_ptr<PriceActionLabPattern>
 createLongPattern1()
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
-					       20131217, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+                           20131217, std::string("90.00"),
+                           std::string("10.00"), 21, 2);
 
   auto open5 = new PriceBarOpen(5);
   auto close5 = new PriceBarClose(5);
@@ -312,8 +314,8 @@ std::shared_ptr<PriceActionLabPattern>
 createLongPattern2()
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106,
-					       20110106, std::string("53.33"),
-					       std::string("46.67"), 45, 3);
+                           20110106, std::string("53.33"),
+                           std::string("46.67"), 45, 3);
 
     auto high4 = new PriceBarHigh(4);
     auto high5 = new PriceBarHigh(5);
@@ -404,6 +406,8 @@ void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
       positionNum++;
 
     }
+}
+
 }
 
 TEST_CASE ("RobustnessTestUnitTest operations", "[RobustnessTest]")

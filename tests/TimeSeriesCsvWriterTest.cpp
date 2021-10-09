@@ -23,7 +23,7 @@ std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
 
 
 
-TEST_CASE ("TimeSeries operations", "[TimeSeries]")
+TEST_CASE ("TimeSeriesCsvWriterTest-TimeSeries operations", "[TimeSeries]")
 {
   auto entry8 = createEquityEntry ("20160108", "195.19", "195.85", "191.58","191.92",
 				   0);

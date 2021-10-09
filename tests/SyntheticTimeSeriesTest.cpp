@@ -12,6 +12,8 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
+namespace  {
+
 OHLCTimeSeriesEntry<DecimalType>
     createEquityEntry (const std::string& dateString,
 		       const std::string& openPrice,
@@ -23,9 +25,9 @@ OHLCTimeSeriesEntry<DecimalType>
     return *createTimeSeriesEntry(dateString, openPrice, highPrice, lowPrice, closePrice, vol);
   }
 
+}
 
-
-TEST_CASE ("TimeSeries operations", "[TimeSeries]")
+TEST_CASE ("SyntheticTimeSeriesTest-TimeSeries operations", "[TimeSeries]")
 {
   auto entry0 = createEquityEntry ("20160106", "198.34", "200.06", "197.60","198.82",
 				   142662900);

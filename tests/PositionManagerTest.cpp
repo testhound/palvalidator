@@ -38,7 +38,7 @@
 //  }
 
 
-TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
+TEST_CASE ("PositionManagerTest-ClosedPositionHistory operations", "[ClosedPositionHistory]")
 {
     REQUIRE (std::string("This has to be reimplemented").compare("And it is not") == 0);
 

@@ -1,3 +1,5 @@
+*.autosave
+*.DS_Store
 Session.vim
 build/
 Debug_Build
@@ -6,7 +8,7 @@ run.sh
 *.h~
 *.cpp~
 \#*\#
-CMakeLists.txt.user
+CMakeLists.txt.user*
 libs/build-pasearchalgolib-Desktop-Default/
 libs/timeserieslib/*.o
 libs/timeserieslib/*.a

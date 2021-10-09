@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_MAIN
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include "TimeSeriesCsvReader.h"
 #include "DecimalConstants.h"
 #include "TimeSeriesValidator.h"
@@ -40,7 +41,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
     std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries(), 7);
 
     REQUIRE_THROWS_AS(validator->validate(), TimeSeriesValidationException);
-    REQUIRE_THROWS_WITH(validator->validate(), Catch::Contains("ERROR:") && Catch::Contains("not found in the hourly time series"));
+    REQUIRE_THROWS_WITH(validator->validate(), Catch::Matchers::Contains("ERROR:") && Catch::Matchers::Contains("not found in the hourly time series"));
   }
 
   SECTION ("TimeSeriesValidator MissingDailyDays", "[TimeSeriesValidator]")
@@ -59,7 +60,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
     std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), dailyReader->getTimeSeries(), 7);
 
     REQUIRE_THROWS_AS(validator->validate(), TimeSeriesValidationException);
-    REQUIRE_THROWS_WITH(validator->validate(), Catch::Contains("ERROR:") && Catch::Contains("not found in the daily time series"));
+    REQUIRE_THROWS_WITH(validator->validate(), Catch::Matchers::Contains("ERROR:") && Catch::Matchers::Contains("not found in the daily time series"));
   }
 
   SECTION ("TimeSeriesValidator ValidDailyAndHourlyDays", "[TimeSeriesValidator]")
@@ -90,7 +91,7 @@ TEST_CASE ("TimeSeriesValidator operations", "[TimeSeriesValidator]")
     std::unique_ptr<TimeSeriesValidator<Decimal>> validator = std::make_unique<TimeSeriesValidator<Decimal>>(hourlyReader->getTimeSeries(), hourlyReader->getTimeSeries(), 7);
 
     REQUIRE_THROWS_AS(validator->validate(), TimeSeriesValidationException);
-    REQUIRE_THROWS_WITH(validator->validate(), Catch::Contains("ERROR:") && Catch::Contains("Not enough days in the hourly time series had 7 bars. Expected: at least 99% Found:"));
+    REQUIRE_THROWS_WITH(validator->validate(), Catch::Matchers::Contains("ERROR:") && Catch::Matchers::Contains("Not enough days in the hourly time series had 7 bars. Expected: at least 99% Found:"));
   }
 
   SECTION ("TimeSeriesValidator DeleteFromSeries", "[TimeSeriesValidator]")

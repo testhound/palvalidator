@@ -8,7 +8,7 @@ using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
 
-TEST_CASE ("Security operations", "[Security]")
+TEST_CASE ("McptConfigurationFileReaderTest-Security operations", "[Security]")
 {
   std::shared_ptr<RunParameters> parameters = std::make_shared<RunParameters>();
   McptConfigurationFileReader reader(parameters);

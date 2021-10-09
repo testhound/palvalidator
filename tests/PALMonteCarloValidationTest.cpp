@@ -10,6 +10,9 @@ using namespace mkc_timeseries;
 using namespace boost::gregorian;
 typedef num::DefaultNumber DecimalType;
 
+namespace {
+
+
 DecimalType
 createDecimal(const std::string& valueString)
 {
@@ -21,8 +24,9 @@ date createDate (const std::string& dateString)
   return from_undelimited_string(dateString);
 }
 
+}
 
-TEST_CASE ("Security operations", "[Security]")
+TEST_CASE ("PALMonteCarloValidationTest-Security operations", "[Security]")
 {
   //McptConfigurationFileReader reader("C2Config.txt");
   std::shared_ptr<RunParameters> parameters = std::make_shared<RunParameters>();

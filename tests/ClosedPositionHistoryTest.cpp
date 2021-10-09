@@ -9,8 +9,9 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-std::string myCornSymbol("C2");
+namespace  {
 
+std::string myCornSymbol("C2");
 
 
 void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openPosition,
@@ -103,47 +104,49 @@ void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
   int positionNum = 1;
   int numWinners = 0;
   int numLosers = 0;
-  
+
   for (; it != history.endTradingPositions(); it++)
     {
       p = it->second;
       if (p->isPositionOpen())
-	posStateString = openStr;
+    posStateString = openStr;
       else
-	posStateString = closedStr;
+    posStateString = closedStr;
 
       if (p->isLongPosition())
-	dirStr = dirStrLong;
+    dirStr = dirStrLong;
       else
-	dirStr = dirStrShort;
+    dirStr = dirStrShort;
 
       std::cout << "Position # " << positionNum << ", " << dirStr << " position state: " << posStateString << std::endl;
-      std::cout << "Position entry date: " << p->getEntryDate() << " entry price: " << 
-	p->getEntryPrice() << std::endl;
+      std::cout << "Position entry date: " << p->getEntryDate() << " entry price: " <<
+    p->getEntryPrice() << std::endl;
 
       if (p->isPositionClosed())
-	{
-	  std::cout << "Position exit date: " << p->getExitDate() << " exit price: " << 
-	    p->getExitPrice() << std::endl;
-	}
+    {
+      std::cout << "Position exit date: " << p->getExitDate() << " exit price: " <<
+        p->getExitPrice() << std::endl;
+    }
 
       if (p->isWinningPosition())
-	{
-	  std::cout << "Winning position!" << std::endl;
-	  numWinners++;
-	}
+    {
+      std::cout << "Winning position!" << std::endl;
+      numWinners++;
+    }
       else
-	{
-	  std::cout << "Losing position @#$%" << std::endl;
-	  numLosers++;
-	}
+    {
+      std::cout << "Losing position @#$%" << std::endl;
+      numLosers++;
+    }
 
       positionNum++;
-      
+
     }
 }
 
-TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
+}
+
+TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[ClosedPositionHistory]")
 {
   DecimalType cornTickValue(createDecimal("0.25"));
   PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);

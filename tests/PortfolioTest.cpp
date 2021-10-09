@@ -7,6 +7,7 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
+namespace  {
 
 std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     createEquityEntry (const std::string& dateString,
@@ -19,9 +20,9 @@ std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
     return createTimeSeriesEntry (dateString, openPrice, highPrice, lowPrice, closePrice, vol);
   }
 
+}
 
-
-TEST_CASE ("Security operations", "[Security]")
+TEST_CASE ("PortfolioTest-Security operations", "[Security]")
 {
   auto entry0 = createEquityEntry ("20160106", "198.34", "200.06", "197.60","198.82",
 				   142662900);

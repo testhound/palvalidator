@@ -7,7 +7,7 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-TEST_CASE ("Security operations", "[Security]")
+TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
 {
   LeverageAttributes<DecimalType> spyLeverage(createDecimal("1.0"));
   LeverageAttributes<DecimalType> shLeverage(createDecimal("-1.0"));

@@ -23,7 +23,7 @@ createContractVolume (volume_t vol)
   return TradingVolume (vol, TradingVolume::CONTRACTS);
 }
 
-TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
+TEST_CASE ("StrategyStransactionManagerTest-TradingOrderManager Operations", "[TradingOrderManager]")
 {
   
 

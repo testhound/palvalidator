@@ -8,17 +8,18 @@
 
 using namespace mkc_timeseries;
 
+namespace {
 
 PatternDescription *
-createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
-		   const std::string& percLong, const std::string& percShort,
-		   unsigned int numTrades, unsigned int consecutiveLosses)
+createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
+           const std::string& percLong, const std::string& percShort,
+           unsigned int numTrades, unsigned int consecutiveLosses)
 {
   DecimalType *percentLong = createRawDecimalPtr (percLong);
   DecimalType *percentShort = createRawDecimalPtr(percShort);
 
   return new PatternDescription ((char *) fileName.c_str(), index, indexDate, percentLong, percentShort,
-				 numTrades, consecutiveLosses);
+                 numTrades, consecutiveLosses);
 }
 
 LongMarketEntryOnOpen *
@@ -60,9 +61,9 @@ createShortStopLoss(const std::string& targetPct)
 std::shared_ptr<PriceActionLabPattern>
 createShortPattern1()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39, 
-					       20111017, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
+                           20111017, std::string("90.00"),
+                           std::string("10.00"), 21, 2);
   // Short pattern
 
   auto high4 = new PriceBarHigh (4);
@@ -93,9 +94,9 @@ createShortPattern1()
 std::shared_ptr<PriceActionLabPattern>
 createLongPattern1()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39, 
-					       20131217, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
+                           20131217, std::string("90.00"),
+                           std::string("10.00"), 21, 2);
 
   auto open5 = new PriceBarOpen(5);
   auto close5 = new PriceBarClose(5);
@@ -133,14 +134,14 @@ createLongPattern1()
 
   // 2.56 profit target in points = 93.81
   return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
-} 
+}
 
 std::shared_ptr<PriceActionLabPattern>
 createLongPattern2()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106, 
-					       20110106, std::string("53.33"),
-					       std::string("46.67"), 45, 3);
+  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106,
+                           20110106, std::string("53.33"),
+                           std::string("46.67"), 45, 3);
 
     auto high4 = new PriceBarHigh(4);
     auto high5 = new PriceBarHigh(5);
@@ -166,10 +167,11 @@ createLongPattern2()
     MarketEntryExpression *entry = createLongOnOpen();
     ProfitTargetInPercentExpression *target = createLongProfitTarget("5.12");
     StopLossInPercentExpression *stop = createLongStopLoss("2.56");
-  
+
    return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
 }
 
+}
 
 TEST_CASE ("LogPalPatternTest operations", "[LogPalPattern]")
 {

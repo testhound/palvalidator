@@ -27,6 +27,7 @@ set(TEST_BINARY tests)
 
 #set(TEST_SOURCES
 #    BackTesterTest.cpp
+#    ClosedPositionHistoryTest.cpp
 #    TestUtils.h
 #    TestUtils.cpp
 #    )
@@ -50,6 +51,11 @@ include_directories(${CMAKE_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/
   ${CMAKE_SOURCE_DIR}/libs/timeserieslib
   ${CMAKE_SOURCE_DIR}/libs/pasearchalgolib
+  ${Boost_INCLUDE_DIR}
+  ${BLOOMBERG_DECIMAL_INCLUDES}
+  ${RAPIDJSON_DIR}
+  ${CURL_DIR}
+  ${FLEX_INCLUDE_DIR}
  )
 
 #enable_testing()
@@ -65,6 +71,10 @@ target_link_libraries(
   backtest
   pasearchalgo
   Catch2::Catch2WithMain
+  ${Boost_LIBRARIES}
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${BLOOMBERG_DECIMAL_LIBRARIES}
+  curl
 )
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 

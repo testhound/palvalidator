@@ -20,7 +20,7 @@ runner runner_instance(0);
 
 std::shared_ptr<BackTester<DecimalType>>
 getBackTester(boost::gregorian::date startDate,
-	      boost::gregorian::date endDate)
+          boost::gregorian::date endDate)
 {
   return std::make_shared<DailyBackTester<DecimalType>>(startDate, endDate);
 }
@@ -33,14 +33,14 @@ createPercentNumber(const DecimalType& num)
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
-		   const std::string& percLong, const std::string& percShort,
-		   unsigned int numTrades, unsigned int consecutiveLosses)
+           const std::string& percLong, const std::string& percShort,
+           unsigned int numTrades, unsigned int consecutiveLosses)
 {
   DecimalType *percentLong = createRawDecimalPtr (percLong);
   DecimalType *percentShort = createRawDecimalPtr(percShort);
 
   return new PatternDescription ((char *) fileName.c_str(), index, indexDate, percentLong, percentShort,
-				 numTrades, consecutiveLosses);
+                 numTrades, consecutiveLosses);
 }
 
 LongMarketEntryOnOpen *
@@ -83,8 +83,8 @@ std::shared_ptr<PriceActionLabPattern>
 createShortPattern1()
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
-					       20111017, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+                           20111017, std::string("90.00"),
+                           std::string("10.00"), 21, 2);
   // Short pattern
 
   auto high4 = new PriceBarHigh (4);
@@ -116,8 +116,8 @@ std::shared_ptr<PriceActionLabPattern>
 createLongPattern1()
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
-					       20131217, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+                           20131217, std::string("90.00"),
+                           std::string("10.00"), 21, 2);
 
   auto open5 = new PriceBarOpen(5);
   auto close5 = new PriceBarClose(5);
@@ -161,8 +161,8 @@ std::shared_ptr<PriceActionLabPattern>
 createLongPattern2()
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 106,
-					       20110106, std::string("53.33"),
-					       std::string("46.67"), 45, 3);
+                           20110106, std::string("53.33"),
+                           std::string("46.67"), 45, 3);
 
     auto high4 = new PriceBarHigh(4);
     auto high5 = new PriceBarHigh(5);
@@ -207,10 +207,10 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
   auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol,
-						   futuresName,
-						   cornBigPointValue,
-						   cornTickValue,
-						   p);
+                           futuresName,
+                           cornBigPointValue,
+                           cornTickValue,
+                           p);
 
   std::string portName("Corn Portfolio");
   auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
@@ -222,14 +222,14 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
 
   std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1 =
     std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(),
-					 aPortfolio);
+                     aPortfolio);
 
   std::shared_ptr<PalShortStrategy<DecimalType>> shortStrategy1 =
     std::make_shared<PalShortStrategy<DecimalType>>("PAL Short Strategy 1", createShortPattern1(), aPortfolio);
 
   std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy2 =
     std::make_shared<PalLongStrategy<DecimalType>>("PAL Long Strategy 2", createLongPattern2(),
-					 aPortfolio);
+                     aPortfolio);
 
   TimeSeriesDate backtestStartDate(TimeSeriesDate (1985, Mar, 19));
   TimeSeriesDate backtestEndDate(TimeSeriesDate (2011, Oct, 27));
@@ -241,13 +241,13 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
   REQUIRE (palRobust.getNumSurvivingStrategies() == 0);
   REQUIRE (palRobust.getNumStrategiesToTest() == 0);
   REQUIRE (palRobust.beginSurvivingStrategies() ==
-	   palRobust.endSurvivingStrategies());
+       palRobust.endSurvivingStrategies());
 
   StatisticallySignificantRobustnessTester<DecimalType> statisticallyRobust(theBacktester);
   REQUIRE (statisticallyRobust.getNumSurvivingStrategies() == 0);
   REQUIRE (statisticallyRobust.getNumStrategiesToTest() == 0);
   REQUIRE (statisticallyRobust.beginSurvivingStrategies() ==
-	   statisticallyRobust.endSurvivingStrategies());
+       statisticallyRobust.endSurvivingStrategies());
 
   SECTION ("RobustnessTester addStrategy test", "[RobustnessTester 1]")
     {
@@ -290,8 +290,8 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
       palRobust.runRobustnessTests();
 
       REQUIRE ((palRobust.getNumSurvivingStrategies() +
-		palRobust.getNumRejectedStrategies()) ==
-	       palRobust.getNumStrategiesToTest());
+        palRobust.getNumRejectedStrategies()) ==
+           palRobust.getNumStrategiesToTest());
     }
 
   SECTION ("StatRobustnessTester runRobustnessTests", "[RobustnessTester 4]")
@@ -303,8 +303,8 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
       statisticallyRobust.runRobustnessTests();
 
       REQUIRE ((statisticallyRobust.getNumSurvivingStrategies() +
-		statisticallyRobust.getNumRejectedStrategies()) ==
-	       statisticallyRobust.getNumStrategiesToTest());
+        statisticallyRobust.getNumRejectedStrategies()) ==
+           statisticallyRobust.getNumStrategiesToTest());
     }
 
   SECTION ("StatRobustnessTester Log pattern and robustness", "[RobustnessTester 4]")
@@ -319,7 +319,7 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
       shared_ptr<RobustnessCalculator<DecimalType>> robustnessResults;
 
       PalRobustnessTester<DecimalType>::RejectedStrategiesIterator rejIt =
-	statisticallyRobust.beginRejectedStrategies();
+    statisticallyRobust.beginRejectedStrategies();
 
       PalRobustnessTester<DecimalType>::RobustnessResultsIterator robustResultIt;
 
@@ -327,40 +327,40 @@ TEST_CASE ("RobustnessTesterUnitTest operations", "[RobustnessTest]")
 
 
       for (; rejIt != statisticallyRobust.endRejectedStrategies(); rejIt++)
-	{
-	  aStrategy = *rejIt;
-	  LogPalPattern::LogPattern (aStrategy->getPalPattern(), aRejectedFile);
+    {
+      aStrategy = *rejIt;
+      LogPalPattern::LogPattern (aStrategy->getPalPattern(), aRejectedFile);
 
-	  robustResultIt = statisticallyRobust.findFailedRobustnessResults(aStrategy);
+      robustResultIt = statisticallyRobust.findFailedRobustnessResults(aStrategy);
 
-	  if (robustResultIt !=
-	      statisticallyRobust.endFailedRobustnessResults())
-	    {
-	      robustnessResults = robustResultIt->second;
-	      LogRobustnessTest<DecimalType>::logRobustnessTestResults (*robustnessResults, aRejectedFile);
-	      aRejectedFile << std::endl << std::endl;
-	    }
-	}
+      if (robustResultIt !=
+          statisticallyRobust.endFailedRobustnessResults())
+        {
+          robustnessResults = robustResultIt->second;
+          LogRobustnessTest<DecimalType>::logRobustnessTestResults (*robustnessResults, aRejectedFile);
+          aRejectedFile << std::endl << std::endl;
+        }
+    }
 
       PalRobustnessTester<DecimalType>::SurvivingStrategiesIterator survivingIt =
-	statisticallyRobust.beginSurvivingStrategies();
+    statisticallyRobust.beginSurvivingStrategies();
       std::ofstream aSurvivorFile("SurvivorRobustnessOut.txt");
 
       for (; survivingIt != statisticallyRobust.endSurvivingStrategies(); survivingIt++)
-	{
-	  aStrategy = *survivingIt;
-	  LogPalPattern::LogPattern (aStrategy->getPalPattern(), aSurvivorFile);
+    {
+      aStrategy = *survivingIt;
+      LogPalPattern::LogPattern (aStrategy->getPalPattern(), aSurvivorFile);
 
-	  robustResultIt = statisticallyRobust.findSurvivingRobustnessResults(aStrategy);
+      robustResultIt = statisticallyRobust.findSurvivingRobustnessResults(aStrategy);
 
-	  if (robustResultIt !=
-	      statisticallyRobust.endSurvivingRobustnessResults())
-	    {
-	      robustnessResults = robustResultIt->second;
-	      LogRobustnessTest<DecimalType>::logRobustnessTestResults (*robustnessResults, aSurvivorFile);
-	      aSurvivorFile << std::endl << std::endl;
-	    }
-	}
+      if (robustResultIt !=
+          statisticallyRobust.endSurvivingRobustnessResults())
+        {
+          robustnessResults = robustResultIt->second;
+          LogRobustnessTest<DecimalType>::logRobustnessTestResults (*robustnessResults, aSurvivorFile);
+          aSurvivorFile << std::endl << std::endl;
+        }
+    }
     }
 }
 

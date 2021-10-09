@@ -9,7 +9,7 @@ using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
 
-TEST_CASE ("TradingPosition operations", "[TradingPosition]")
+TEST_CASE ("InstrumentPositionTest-TradingPosition operations", "[TradingPosition]")
 {
   auto entry0 = createTimeSeriesEntry ("19851118", "3664.51025", "3687.58178", "3656.81982","3672.20068",0);
 

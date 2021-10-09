@@ -7,6 +7,8 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
+namespace  {
+
 template <class Decimal>
 class DummyBroker : public TradingOrderObserver<Decimal>
 {
@@ -218,7 +220,10 @@ std::shared_ptr<CoverAtStopOrder<DecimalType>>
 						 createDecimal("200.04"));
   }
 
-TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
+}
+
+
+TEST_CASE ("TradingOrderManagerTest-TradingOrderManager Operations", "[TradingOrderManager]")
 {
   auto entry18 = createEquityEntry ("20160119", "189.96", "190.11","186.20","188.06",
 				    190196000);
