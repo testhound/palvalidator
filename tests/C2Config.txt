@@ -1,0 +1,1 @@
+@C,/home/collison/PriceActionLab/IRFiles/JamesKuah/Futures/Grains/Corn/R1_05/C2_R1_05_Dev1.txt,/home/collison/historic_data/JamesKuah/daily/pal_format/futures/grains/corn/C2_122AR.txt,PAL,19850301,20111027,20111028,20160210,DAILY

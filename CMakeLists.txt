@@ -1,6 +1,10 @@
 project(PalValidator)
+
 cmake_minimum_required(VERSION 2.8)
+
 set(BIN_NAME ${PROJECT_NAME})
+
+set(CMAKE_CXX_STANDARD 17)
 
 set(USE_BLOOMBERG_DECIMALS false)
 
@@ -36,21 +40,28 @@ if(USE_BLOOMBERG_DECIMALS)
     )
 endif()
 
-if(CMAKE_COMPILER_IS_GNUCXX)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-backtrace-limit=0")
-    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall  -pedantic")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -march=native")
-    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
-endif()
+#if(CMAKE_COMPILER_IS_GNUCXX)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-backtrace-limit=0")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall  -pedantic")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -march=native")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
+#endif()
+
+#set(Boost_DEBUG ON)
+#set(Boost_VERBOSE ON)
 
 find_package( Threads )
-find_package(Boost REQUIRED COMPONENTS filesystem date_time chrono  system program_options regex thread)
+find_package(Boost REQUIRED COMPONENTS filesystem date_time chrono system program_options regex thread container)
 include_directories(${CMAKE_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/
   ${CMAKE_SOURCE_DIR}/libs/timeserieslib
   ${CMAKE_SOURCE_DIR}/libs/pasearchalgolib
+  ${Boost_INCLUDE_DIR}
   ${BLOOMBERG_DECIMAL_INCLUDES}
+  ${RAPIDJSON_DIR}
+  ${CURL_DIR}
+  ${FLEX_INCLUDE_DIR}
   )
 
 add_subdirectory(libs/PALCodeGenLibrary-v2/)
@@ -59,6 +70,7 @@ add_subdirectory(libs/pasearchalgolib)
 
 set(SRC_LIST main/main2.cpp)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
+
 set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${BIN_NAME}
     priceaction2
@@ -70,3 +82,4 @@ target_link_libraries(${BIN_NAME}
     curl
     )
 
+add_subdirectory(tests)

@@ -7,6 +7,7 @@
 #ifndef BACKTESTPROCESSOR_H
 #define BACKTESTPROCESSOR_H
 
+#include <unordered_map>
 #include "Sorters.h"
 #include "SearchAlgoConfigurationFileReader.h"
 
