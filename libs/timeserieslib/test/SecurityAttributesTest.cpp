@@ -16,13 +16,11 @@ TEST_CASE ("Security operations", "[Security]")
   date shInception(createDate("20060619"));
   DecimalType shExpense(createDecimal("0.90"));
 
-  FundAttributes<DecimalType> spyAttributes(spyInception,
-				  spyExpense,
-				  spyLeverage);
+  FundAttributes<DecimalType> spyAttributes(spyExpense,
+					    spyLeverage);
 
-  FundAttributes<DecimalType> shAttributes(shInception,
-				 shExpense,
-				 shLeverage);
+  FundAttributes<DecimalType> shAttributes(shExpense,
+					   shLeverage);
 
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
@@ -35,8 +33,8 @@ TEST_CASE ("Security operations", "[Security]")
 
   std::cout << "Finished testing LeverageAttributes" << std::endl;
 
-  std::cout << "Getting InceptionDate" << std::endl;
-  REQUIRE (spyAttributes.getInceptionDate() == spyInception);
+//  std::cout << "Getting InceptionDate" << std::endl;
+//  REQUIRE (spyAttributes.getInceptionDate() == spyInception);
 
   std::cout << "Finished getting InceptionDate" << std::endl;
 
@@ -53,14 +51,15 @@ TEST_CASE ("Security operations", "[Security]")
 
   std::cout << "Finished testing SPY FundAttributes" << std::endl;
 
-  REQUIRE (shAttributes.getInceptionDate() == shInception);
+//  REQUIRE (shAttributes.getInceptionDate() == shInception);
   REQUIRE (shAttributes.getExpenseRatio() == shExpense);
   REQUIRE (shAttributes.getLeverage() == shLeverage.getLeverage());
   REQUIRE (shAttributes.isInverseFund());
   
   std::cout << "Finished testing SH FundAttributes" << std::endl;
 
-  ETFSecurityAttributes<DecimalType> spy (equitySymbol, equityName, spyAttributes);
+  ETFSecurityAttributes<DecimalType> spy (equitySymbol, equityName, spyAttributes,
+					  spyInception(createDate("19930122")););
 
   std::cout << "Finished creating ETFSecurityAttributes for SPY" << std::endl;
 
@@ -82,10 +81,10 @@ TEST_CASE ("Security operations", "[Security]")
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
   DecimalType cornTickValue(createDecimal("0.25"));
-
+  date randomInception(createDate("20060619"));
 
   FuturesSecurityAttributes<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
-			   cornTickValue);
+					       cornTickValue, randomInception);
 
   REQUIRE (corn.getName() == futuresName);
   REQUIRE (corn.getSymbol() == futuresSymbol);

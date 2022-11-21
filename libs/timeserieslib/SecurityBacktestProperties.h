@@ -10,6 +10,7 @@
 #include <string>
 #include <map>
 #include <cstdint>
+#include <memory>
 
 namespace mkc_timeseries
 {

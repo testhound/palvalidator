@@ -16,13 +16,11 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   date shInception(createDate("20060619"));
   DecimalType shExpense(createDecimal("0.90"));
 
-  FundAttributes<DecimalType> spyAttributes(spyInception,
-				  spyExpense,
-				  spyLeverage);
+  FundAttributes<DecimalType> spyAttributes(spyExpense,
+					    spyLeverage);
 
-  FundAttributes<DecimalType> shAttributes(shInception,
-				 shExpense,
-				 shLeverage);
+  FundAttributes<DecimalType> shAttributes(shExpense,
+					   shLeverage);
 
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
@@ -34,11 +32,6 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   REQUIRE (shLeverage.isInverseLeverage());
 
   std::cout << "Finished testing LeverageAttributes" << std::endl;
-
-  std::cout << "Getting InceptionDate" << std::endl;
-  REQUIRE (spyAttributes.getInceptionDate() == spyInception);
-
-  std::cout << "Finished getting InceptionDate" << std::endl;
 
   REQUIRE (spyAttributes.getExpenseRatio() == spyExpense);
 
@@ -53,14 +46,14 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
 
   std::cout << "Finished testing SPY FundAttributes" << std::endl;
 
-  REQUIRE (shAttributes.getInceptionDate() == shInception);
   REQUIRE (shAttributes.getExpenseRatio() == shExpense);
   REQUIRE (shAttributes.getLeverage() == shLeverage.getLeverage());
   REQUIRE (shAttributes.isInverseFund());
   
   std::cout << "Finished testing SH FundAttributes" << std::endl;
 
-  ETFSecurityAttributes<DecimalType> spy (equitySymbol, equityName, spyAttributes);
+  ETFSecurityAttributes<DecimalType> spy (equitySymbol, equityName, spyAttributes,
+					  spyInception);
 
   std::cout << "Finished creating ETFSecurityAttributes for SPY" << std::endl;
 
@@ -70,6 +63,7 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   REQUIRE (spy.getTick() == DecimalConstants<DecimalType>::EquityTick);
   REQUIRE (spy.isEquitySecurity());
   REQUIRE_FALSE (spy.isFuturesSecurity());
+  REQUIRE(spy.getInceptionDate() == spyInception);
   REQUIRE (spy.getVolumeUnits() == TradingVolume::SHARES);
   
   std::cout << "Finished SPY legacy attribute information" << std::endl;
@@ -82,10 +76,13 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
   DecimalType cornTickValue(createDecimal("0.25"));
+  date randomInception(createDate("20060619"));
 
-
-  FuturesSecurityAttributes<DecimalType> corn (futuresSymbol, futuresName, cornBigPointValue,
-			   cornTickValue);
+  FuturesSecurityAttributes<DecimalType> corn (futuresSymbol,
+					       futuresName,
+					       cornBigPointValue,
+					       cornTickValue,
+					       randomInception);
 
   REQUIRE (corn.getName() == futuresName);
   REQUIRE (corn.getSymbol() == futuresSymbol);
@@ -93,5 +90,6 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   REQUIRE (corn.getTick() == cornTickValue);
   REQUIRE_FALSE (corn.isEquitySecurity());
   REQUIRE (corn.isFuturesSecurity());
+  REQUIRE(corn.getInceptionDate() == randomInception);
   REQUIRE (corn.getVolumeUnits() == TradingVolume::CONTRACTS);
 }

@@ -56,21 +56,14 @@ namespace mkc_timeseries
   class FundAttributes
   {
   public:
-    FundAttributes (const boost::gregorian::date& inceptionDate, 
-		    const Decimal& expenseRatio,
+    FundAttributes (const Decimal& expenseRatio,
 		    const LeverageAttributes<Decimal> leverageAttributes)
-      : mInceptionDate (inceptionDate),
-	mExpenseRatio(expenseRatio),
+      : mExpenseRatio(expenseRatio),
 	mLeverageAttributes(leverageAttributes)
     {}
 
     ~FundAttributes()
     {}
-
-    const boost::gregorian::date& getInceptionDate() const
-    {
-      return mInceptionDate;
-    }
 
     const Decimal& getExpenseRatio() const
     {
@@ -88,7 +81,6 @@ namespace mkc_timeseries
     }
 
   private:
-    boost::gregorian::date mInceptionDate;
     Decimal mExpenseRatio;
     LeverageAttributes<Decimal> mLeverageAttributes;
   };
@@ -98,18 +90,21 @@ namespace mkc_timeseries
   {
   public:
     SecurityAttributes (const string& securitySymbol, const string& securityName,
-			const Decimal& bigPointValue, const Decimal& securityTick)
+			const Decimal& bigPointValue, const Decimal& securityTick,
+			const boost::gregorian::date& inceptionDate)
       :mSecuritySymbol(securitySymbol),
        mSecurityName(securityName),
        mBigPointValue(bigPointValue),
-       mTick(securityTick)
+       mTick(securityTick),
+       mInceptionDate (inceptionDate)
     {}
 
     SecurityAttributes (const SecurityAttributes<Decimal> &rhs)
       : mSecuritySymbol(rhs.mSecuritySymbol),
 	mSecurityName(rhs.mSecurityName),
 	mBigPointValue(rhs.mBigPointValue),
-	mTick(rhs.mTick)
+	mTick(rhs.mTick),
+	mInceptionDate(rhs.mInceptionDate)
     {}
 
     SecurityAttributes<Decimal>& 
@@ -122,6 +117,7 @@ namespace mkc_timeseries
       mSecurityName = rhs.mSecurityName;
       mBigPointValue = rhs.mBigPointValue;
       mTick = rhs.mTick;
+      mInceptionDate = rhs.mInceptionDate;
       return *this;
     }
 
@@ -148,6 +144,11 @@ namespace mkc_timeseries
       return mTick;
     }
 
+    const boost::gregorian::date& getInceptionDate() const
+    {
+      return mInceptionDate;
+    }
+
     virtual bool isEquitySecurity() const = 0;
     virtual bool isFuturesSecurity() const = 0;
     virtual bool isCommonStock() const = 0;
@@ -159,15 +160,17 @@ namespace mkc_timeseries
     std::string mSecurityName;
     Decimal mBigPointValue;
     Decimal mTick;
+    boost::gregorian::date mInceptionDate;
   };
 
   template <class Decimal>
   class EquitySecurityAttributes : public SecurityAttributes<Decimal>
   {
   public:
-    EquitySecurityAttributes (const string& securitySymbol, const string& securityName) 
+    EquitySecurityAttributes (const string& securitySymbol, const string& securityName,
+			      const boost::gregorian::date& inceptionDate)
       : SecurityAttributes<Decimal> (securitySymbol, securityName, DecimalConstants<Decimal>::DecimalOne,
-				  DecimalConstants<Decimal>::EquityTick)
+				  DecimalConstants<Decimal>::EquityTick, inceptionDate)
     {
     }
 
@@ -210,8 +213,9 @@ namespace mkc_timeseries
   public:
     FundSecurityAttributes (const string& securitySymbol, 
 			    const string& securityName,
-			    const FundAttributes<Decimal>& attributes)
-      : EquitySecurityAttributes<Decimal> (securitySymbol, securityName),
+			    const FundAttributes<Decimal>& attributes,
+			    const boost::gregorian::date& inceptionDate)
+      : EquitySecurityAttributes<Decimal> (securitySymbol, securityName, inceptionDate),
 	mAttributes(attributes)
       {}
 
@@ -244,11 +248,6 @@ namespace mkc_timeseries
       return true;
     }
 
-   const boost::gregorian::date& getInceptionDate() const
-    {
-      return mAttributes.getInceptionDate();
-    }
-
     const Decimal& getExpenseRatio() const
     {
       return mAttributes.getExpenseRatio();
@@ -276,9 +275,10 @@ namespace mkc_timeseries
   {
   public:
     ETFSecurityAttributes (const string& securitySymbol, 
-			    const string& securityName,
-			   const FundAttributes<Decimal>& attributes)
-      : FundSecurityAttributes<Decimal> (securitySymbol, securityName, attributes)
+			   const string& securityName,
+			   const FundAttributes<Decimal>& attributes,
+			   const boost::gregorian::date& inceptionDate)
+      : FundSecurityAttributes<Decimal> (securitySymbol, securityName, attributes, inceptionDate)
     {}
 
     ETFSecurityAttributes (const ETFSecurityAttributes<Decimal> &rhs)
@@ -314,8 +314,9 @@ namespace mkc_timeseries
   {
   public:
     CommonStockSecurityAttributes (const string& securitySymbol, 
-				   const string& securityName)
-      : EquitySecurityAttributes<Decimal> (securitySymbol, securityName)
+				   const string& securityName,
+				   const boost::gregorian::date& inceptionDate)
+      : EquitySecurityAttributes<Decimal> (securitySymbol, securityName, inceptionDate)
       {}
 
     ~CommonStockSecurityAttributes()
@@ -351,8 +352,10 @@ namespace mkc_timeseries
   {
   public:
     FuturesSecurityAttributes (const string& securitySymbol, const string& securityName,
-			       const Decimal& bigPointValue, const Decimal& securityTick)
-      : SecurityAttributes<Decimal> (securitySymbol, securityName, bigPointValue, securityTick)
+			       const Decimal& bigPointValue, const Decimal& securityTick,
+			       const boost::gregorian::date& inceptionDate)
+      : SecurityAttributes<Decimal> (securitySymbol, securityName, bigPointValue, securityTick,
+				     inceptionDate)
     {}
 
     FuturesSecurityAttributes (const FuturesSecurityAttributes<Decimal> &rhs)
