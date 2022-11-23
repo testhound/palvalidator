@@ -26,10 +26,10 @@ namespace mkc_timeseries
             TimeSeriesValidator(
                 std::shared_ptr<OHLCTimeSeries<Decimal>> hourlyTimeSeries, 
                 std::shared_ptr<OHLCTimeSeries<Decimal>> dailyTimeSeries, 
-                int numberTimeFrames) :
+                unsigned int numberTimeFrames) :
             mHourlyTimeSeries(hourlyTimeSeries), 
             mDailyTimeSeries(dailyTimeSeries), 
-            numberTimeFrames(numberTimeFrames)
+            mNumberTimeFramess(numberTimeFrames)
             {}
 
             void validate() 
@@ -42,7 +42,7 @@ namespace mkc_timeseries
         private:
             std::shared_ptr<OHLCTimeSeries<Decimal>> mHourlyTimeSeries;
             std::shared_ptr<OHLCTimeSeries<Decimal>> mDailyTimeSeries;
-            int numberTimeFrames;
+            unsigned int mNumberTimeFramess;
 
             void mValidateTimeStamps() // warning
             {
@@ -68,10 +68,10 @@ namespace mkc_timeseries
                     {
                         if(!isEarlyCloseDay(startDate))
                         {
-                            if(distinctTimeDurations.size() == numberTimeFrames)    // distinct time frames per day
+                            if(distinctTimeDurations.size() == mNumberTimeFramess)    // distinct time frames per day
                                 completeDayCount++;
                             
-                            if(distinctTimeDurations.size() < numberTimeFrames)    // remove the entry 
+                            if(distinctTimeDurations.size() < mNumberTimeFramess)    // remove the entry 
                             {
                                 std::cout << "WARNING: " << startDate << " contained " << distinctTimeDurations.size() 
                                           << " bars. Removing the date from the hourly and daily time series." << std::endl;
@@ -108,9 +108,9 @@ namespace mkc_timeseries
 
                 float completeDayPercent = ((float)completeDayCount/((float)(numberDays - holidayCount)));
                 if (completeDayPercent < 0.99) 
-                    throw TimeSeriesValidationException("ERROR: Not enough days in the hourly time series had " + std::to_string(numberTimeFrames) + " bars. Expected: at least 99% Found: " + std::to_string(completeDayPercent));
+                    throw TimeSeriesValidationException("ERROR: Not enough days in the hourly time series had " + std::to_string(mNumberTimeFramess) + " bars. Expected: at least 99% Found: " + std::to_string(completeDayPercent));
                 if(completeDayPercent < 1)
-                    std::cout << "WARNING: only " << completeDayPercent << " of non-holiday trading days in the hourly time series had " + std::to_string(numberTimeFrames) + "hourly bars." << std::endl;
+                    std::cout << "WARNING: only " << completeDayPercent << " of non-holiday trading days in the hourly time series had " + std::to_string(mNumberTimeFramess) + "hourly bars." << std::endl;
 
                 // remove the dates if we get this far 
                 for(auto it = daysToDelete.begin(); it != daysToDelete.end(); it++)
