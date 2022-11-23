@@ -113,10 +113,10 @@ namespace mkc_timeseries
 	mEndDate (endDate)
     {
       if (isWeekend (startDate))
-	startDate = boost_next_weekday (startDate);
+	mStartDate = boost_next_weekday (startDate);
 
       if (isWeekend (endDate))
-	endDate = boost_previous_weekday (endDate);
+	mEndDate = boost_previous_weekday (endDate);
     }
 
     ~DailyBackTester()
