@@ -179,6 +179,10 @@ namespace mkc_timeseries
 		      boost::gregorian::from_undelimited_string("20120720"));
       addCommonStock (std::string("DIS"), std::string("Walt Disney"),
 		      boost::gregorian::from_undelimited_string("19900108"));
+      addCommonStock (std::string("SWKS"), std::string("Skyworks"),
+		      boost::gregorian::from_undelimited_string("20030912"));
+      addCommonStock (std::string("DE"), std::string("John Deere"),
+		      boost::gregorian::from_undelimited_string("19780113"));
 
 
       addCommonStock (std::string("FCX"), std::string("Freeport-McMoRan"),
@@ -623,6 +627,12 @@ namespace mkc_timeseries
 		       createDecimal("0.95"),
 		       DecimalConstants<Decimal>::DecimalMinusTwo,
 		       boost::gregorian::from_undelimited_string("20060711"));
+
+      addLeveragedETF (std::string("ERY"),
+		       std::string("Direxion Daily Energy Bear 2X Shares"),
+		       createDecimal("0.99"),
+		       DecimalConstants<Decimal>::DecimalMinusTwo,
+		       boost::gregorian::from_undelimited_string("20081106"));
 
       addLeveragedETF (std::string("DDM"),
 		       std::string("ProShares Ultra Dow30"),
