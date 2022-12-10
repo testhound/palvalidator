@@ -96,7 +96,6 @@ namespace mkc_timeseries
 		      boost::gregorian::from_undelimited_string("19950315"));
       addCommonStock (std::string("RTX"), std::string("Raytheon"),
 		      boost::gregorian::from_undelimited_string("19520915"));
-
       addCommonStock (std::string("BBY"), std::string("Best Buy"),
 		      boost::gregorian::from_undelimited_string("19870720"));
       addCommonStock (std::string("TSCO"), std::string("Tractor Supply"),
@@ -108,7 +107,7 @@ namespace mkc_timeseries
       addCommonStock (std::string("NXPI"), std::string("NXP Semiconductors"),
 		      boost::gregorian::from_undelimited_string("20100806"));
       addCommonStock (std::string("ON"), std::string("On Semiconductor"),
-		      boost::gregorian::from_undelimited_string("2000501"));
+		      boost::gregorian::from_undelimited_string("20000501"));
       addCommonStock (std::string("NEM"), std::string("Nemont Mining"),
 		      boost::gregorian::from_undelimited_string("19830406"));
       addCommonStock (std::string("AMZN"), std::string("Amazon"),
@@ -117,6 +116,7 @@ namespace mkc_timeseries
 		      boost::gregorian::from_undelimited_string("20040814"));
       addCommonStock (std::string("META"), std::string("Meta"),
 		      boost::gregorian::from_undelimited_string("20120518"));
+
       addCommonStock (std::string("NFLX"), std::string("Netflix"),
 		      boost::gregorian::from_undelimited_string("20020523"));
       addCommonStock (std::string("XOM"), std::string("Exxon Mobil"),
@@ -144,6 +144,7 @@ namespace mkc_timeseries
 		      boost::gregorian::from_undelimited_string("20151119"));
       addCommonStock (std::string("ZM"), std::string("Zoom"),
 		      boost::gregorian::from_undelimited_string("20190418"));
+
       addCommonStock (std::string("TSLA"), std::string("Tesla"),
 		      boost::gregorian::from_undelimited_string("20100629"));
       addCommonStock (std::string("PINS"), std::string("Pinterest"),
@@ -559,6 +560,11 @@ namespace mkc_timeseries
 			 createDecimal("0.67"),
 			 boost::gregorian::from_undelimited_string("20070430"));
 
+      addUnLeveragedETF (std::string("INDA"),
+			 std::string("iShares MSCI India ETF"),
+			 createDecimal("0.65"),
+			 boost::gregorian::from_undelimited_string("20120202"));
+
     }
 
     void initializeIndustryGroupETFs ()
@@ -567,6 +573,11 @@ namespace mkc_timeseries
 			 std::string("S&P Regional Banking ETF"),
 			 createDecimal("0.13"),
 			 boost::gregorian::from_undelimited_string("20060619"));
+
+      addUnLeveragedETF (std::string("KBE"),
+			 std::string("SPDR S&P Bank ETF"),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20051108"));
 
       addUnLeveragedETF (std::string("XHB"),
 			 std::string("SPDR S&P Homebuilders ETF"),
@@ -904,6 +915,18 @@ namespace mkc_timeseries
 		       createDecimal("1.08"),
 		       DecimalConstants<Decimal>::DecimalMinusThree,
 		       boost::gregorian::from_undelimited_string("20091203"));
+
+      addLeveragedETF (std::string("EDC"),
+		       std::string("Direxion Daily MSCI Emerging Markets Bull 3x Shares"),
+		       createDecimal("1.28"),
+		       DecimalConstants<Decimal>::DecimalThree,
+		       boost::gregorian::from_undelimited_string("20081217"));
+
+      addLeveragedETF (std::string("EDZ"),
+		       std::string("Direxion Daily MSCI Emerging Markets Bear 3x Shares"),
+		       createDecimal("1.0"),
+		       DecimalConstants<Decimal>::DecimalMinusThree,
+		       boost::gregorian::from_undelimited_string("20081217"));
 
       addLeveragedETF (std::string("GASL"),
 		       std::string("Direxion Daily Natural Gas Related Bull 3X Shares"),
