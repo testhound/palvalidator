@@ -34,11 +34,14 @@ namespace mkc_timeseries
 
   template <class Decimal> class BackTester
   {
+    using Map = map<boost::gregorian::date, DateRange>;
   public:
     typedef typename std::list<std::shared_ptr<BacktesterStrategy<Decimal>>>::const_iterator StrategyIterator;
+    typedef typename DateRangeContainer::DateRangeIterator BacktestDateRangeIterator;
 
     explicit BackTester()
-      : mStrategyList()
+      : mStrategyList(),
+      mBackTestDates()
     {
     }
 
@@ -46,7 +49,8 @@ namespace mkc_timeseries
     {}
 
     BackTester(const BackTester<Decimal> &rhs)
-      : mStrategyList(rhs.mStrategyList)
+      : mStrategyList(rhs.mStrategyList),
+      mBackTestDates(rhs.mBackTestDates)
     {}
 
     BackTester<Decimal>& 
@@ -56,6 +60,7 @@ namespace mkc_timeseries
 	return *this;
 
       mStrategyList = rhs.mStrategyList;
+      mBackTestDates = rhs.mBackTestDates;
       return *this;
     }
 
@@ -66,6 +71,11 @@ namespace mkc_timeseries
       mStrategyList.push_back(aStrategy);
     }
 
+    void addDateRange(const DateRange& range)
+    {
+      mBackTestDates.addDateRange(range);
+    }
+
     StrategyIterator beginStrategies() const
     {
       return mStrategyList.begin();
@@ -74,6 +84,16 @@ namespace mkc_timeseries
     StrategyIterator endStrategies() const
     {
       return mStrategyList.end();
+    }
+
+    BacktestDateRangeIterator beginBacktestDateRange() const
+    {
+      return mBackTestDates.beginDateRange();
+    }
+
+    BacktestDateRangeIterator endBacktestDateRange() const
+    {
+      return mBackTestDates.endDateRange();
     }
 
     const ClosedPositionHistory<Decimal>&
@@ -90,8 +110,16 @@ namespace mkc_timeseries
       return mStrategyList.size();
     }
 
-    virtual const boost::gregorian::date getStartDate() const = 0;
-    virtual const boost::gregorian::date getEndDate() const = 0;
+    const boost::gregorian::date getStartDate() const
+    {
+      return mBackTestDates.getFirstDateRange().getFirstDate();
+    }
+
+    const boost::gregorian::date getEndDate() const
+    {
+      return mBackTestDates.getFirstDateRange().getLastDate();
+    }
+
     virtual void backtest() = 0;
 
   protected:
@@ -100,6 +128,7 @@ namespace mkc_timeseries
 
   private:
     std::list<std::shared_ptr<BacktesterStrategy<Decimal>>> mStrategyList;
+    DateRangeContainer mBackTestDates;
   };
 
 
@@ -112,8 +141,7 @@ namespace mkc_timeseries
   public:
     explicit DailyBackTester(boost::gregorian::date startDate, 
 			     boost::gregorian::date endDate)
-      : BackTester<Decimal>(),
-      mBackTestDates()
+      : BackTester<Decimal>()
     {
       if (isWeekend (startDate))
 	startDate = boost_next_weekday (startDate);
@@ -122,20 +150,18 @@ namespace mkc_timeseries
 	endDate = boost_previous_weekday (endDate);
 
       DateRange r(startDate, endDate);
-      mBackTestDates.addDateRange(r);
+      this->addDateRange(r);
     }
 
     DailyBackTester() :
-      BackTester<Decimal>(),
-      mBackTestDates()
+      BackTester<Decimal>()
     {}
 
     ~DailyBackTester()
     {}
 
     DailyBackTester(const DailyBackTester<Decimal> &rhs)
-      :  BackTester<Decimal>(rhs),
-      mBackTestDates(rhs.mBackTestDates)
+      :  BackTester<Decimal>(rhs)
     {}
 
     DailyBackTester<Decimal>& 
@@ -145,35 +171,17 @@ namespace mkc_timeseries
 	return *this;
 
       BackTester<Decimal>::operator=(rhs);
-
-      mBackTestDates = rhs.mBackTestDates;
-
       return *this;
-    }
-
-    void addDateRange(const DateRange& range)
-    {
-      mBackTestDates.addDateRange(range);
     }
 
     std::shared_ptr<BackTester<Decimal>> clone() const
     {
       auto back = std::make_shared<DailyBackTester<Decimal>>();
-      auto it = mBackTestDates.beginDateRange();
-      for (; it != mBackTestDates.endDateRange(); it++)
+      auto it = this->beginBacktestDateRange();
+      for (; it != this->endBacktestDateRange(); it++)
 	back->addDateRange(it->second);
 
       return back;
-    }
-
-    const boost::gregorian::date getStartDate() const
-    {
-      return mBackTestDates.getFirstDateRange().getFirstDate();
-    }
-
-    const boost::gregorian::date getEndDate() const
-    {
-      return mBackTestDates.getFirstDateRange().getLastDate();
     }
 
     void backtest()
@@ -184,10 +192,10 @@ namespace mkc_timeseries
       if (this->getNumStrategies() == 0)
 	throw BackTesterException("No strategies have been added to backtest");
 
-      boost::gregorian::date backTesterDate(next_period (getStartDate()));
+      boost::gregorian::date backTesterDate(next_period (this->getStartDate()));
       boost::gregorian::date orderDate;
 
-      for (; backTesterDate <= getEndDate(); backTesterDate = next_period(backTesterDate))
+      for (; backTesterDate <= this->getEndDate(); backTesterDate = next_period(backTesterDate))
 	{
 	  orderDate = previous_period (backTesterDate);
 
@@ -244,9 +252,6 @@ namespace mkc_timeseries
 	    
 	  }
     }
-
-  private:
-    DateRangeContainer mBackTestDates;
   };
 
   //
