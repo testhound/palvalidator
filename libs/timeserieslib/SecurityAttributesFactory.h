@@ -1099,9 +1099,15 @@ namespace mkc_timeseries
     void initializeGrainFuturesAttributes()
     {
       std::string cornFuturesSymbol("@C");
+      std::string cornFuturesSymbol2("@C2");
       std::string soyBeanMealFuturesSymbol("@SM");
 
       addFuturesAttributes (cornFuturesSymbol,
+			    "Corn Futures",
+			    createDecimal("50.0"),
+			    createDecimal("0.25"));
+
+      addFuturesAttributes (cornFuturesSymbol2,
 			    "Corn Futures",
 			    createDecimal("50.0"),
 			    createDecimal("0.25"));
