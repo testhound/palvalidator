@@ -96,6 +96,11 @@ namespace mkc_timeseries
       return mBackTestDates.endDateRange();
     }
 
+    unsigned long numBackTestRanges() const
+    {
+	return mBackTestDates.getNumEntries();
+    }
+
     const ClosedPositionHistory<Decimal>&
     getClosedPositionHistory() const
     {
@@ -131,13 +136,18 @@ namespace mkc_timeseries
 
       boost::gregorian::date backTesterDate;
       boost::gregorian::date backTesterEndDate;
+      boost::gregorian::date barBeforeBackTesterEndDate;
       boost::gregorian::date orderDate;
+      bool multipleBacktestDates = this->numBackTestRanges() > 1;
+      unsigned int backtestNumber = 0;
 
       for (itDateRange = this->beginBacktestDateRange(); itDateRange != endBacktestDateRange(); itDateRange++)
 	{
 	  backTesterDate = next_period (itDateRange->second.getFirstDate());
 	  backTesterEndDate = itDateRange->second.getLastDate();
+	  barBeforeBackTesterEndDate = previous_period(backTesterEndDate);
 
+	  backtestNumber++;
 	  for (; backTesterDate <= backTesterEndDate; backTesterDate = next_period(backTesterDate))
 	    {
 	      orderDate = previous_period (backTesterDate);
@@ -156,11 +166,20 @@ namespace mkc_timeseries
 		    {
 		      auto aSecurity = iteratorPortfolio->second;
 		  
-		      processStrategyBar (aSecurity, aStrategy, orderDate);
+		      // If there is more than one date range and this is not the last date range, close
+		      // all positions.
+
+		      if (multipleBacktestDates && (backTesterDate == barBeforeBackTesterEndDate) &&
+			  (backtestNumber < this->numBackTestRanges()))
+			  closeAllPositions(previous_period (backTesterDate));
+		      else
+			processStrategyBar (aSecurity, aStrategy, orderDate);
+
 		      aStrategy->eventProcessPendingOrders (backTesterDate);
 		    }
 		}
 	    }
+
 	}
     }
 
@@ -189,6 +208,30 @@ private:
 	    
 	  }
     }
+
+    void closeAllPositions(const TimeSeriesDate& orderDate)
+      {
+	//std::cout << "BackTester::closeAllPositions: close all positions as of " << orderDate << std::endl;
+	typename BackTester<Decimal>::StrategyIterator itStrategy;
+	typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
+
+	for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
+	     itStrategy++)
+	  {
+	    auto aStrategy = (*itStrategy);
+
+	    for (iteratorPortfolio = aStrategy->beginPortfolio();
+		 iteratorPortfolio != aStrategy->endPortfolio();
+		 iteratorPortfolio++)
+	      {
+		auto aSecurity = iteratorPortfolio->second;
+		std::string theSymbol = aSecurity->getSymbol();
+
+		aStrategy->eventUpdateSecurityBarNumber(theSymbol);
+		aStrategy->ExitAllPositions(theSymbol, orderDate);
+	      }
+	  }
+      }
 
   private:
     std::list<std::shared_ptr<BacktesterStrategy<Decimal>>> mStrategyList;
