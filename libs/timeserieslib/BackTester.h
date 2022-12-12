@@ -120,11 +120,66 @@ namespace mkc_timeseries
       return mBackTestDates.getFirstDateRange().getLastDate();
     }
 
-    virtual void backtest() = 0;
+    void backtest()
+    {
+      typename BackTester<Decimal>::StrategyIterator itStrategy;
+      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
+ 
+      if (this->getNumStrategies() == 0)
+	throw BackTesterException("No strategies have been added to backtest");
+
+      boost::gregorian::date backTesterDate(next_period (this->getStartDate()));
+      boost::gregorian::date orderDate;
+
+      for (; backTesterDate <= this->getEndDate(); backTesterDate = next_period(backTesterDate))
+	{
+	  orderDate = previous_period (backTesterDate);
+
+	  //std::cout << "Iterating over strategies" << std::endl;
+
+	  for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
+		itStrategy++)
+	    {
+	      auto aStrategy = (*itStrategy);
+	      //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
+
+	      for (iteratorPortfolio = aStrategy->beginPortfolio();
+		   iteratorPortfolio != aStrategy->endPortfolio();
+		   iteratorPortfolio++)
+		{
+		  auto aSecurity = iteratorPortfolio->second;
+		  
+		  processStrategyBar (aSecurity, aStrategy, orderDate);
+		  aStrategy->eventProcessPendingOrders (backTesterDate);
+		}
+	    }
+	}
+    }
 
   protected:
     virtual TimeSeriesDate previous_period(const TimeSeriesDate& d) const = 0;
     virtual TimeSeriesDate next_period(const TimeSeriesDate& d) const = 0;
+
+private:
+    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
+			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
+			     const date& processingDate)
+    {
+      if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
+	  {
+	    std::string theSymbol = aSecurity->getSymbol(); 
+	    aStrategy->eventUpdateSecurityBarNumber(theSymbol);
+
+	    if (!aStrategy->isFlatPosition (theSymbol))
+	      aStrategy->eventExitOrders (aSecurity, 
+					  aStrategy->getInstrumentPosition(theSymbol),
+					  processingDate);
+	    aStrategy->eventEntryOrders(aSecurity, 
+					aStrategy->getInstrumentPosition(theSymbol),
+					processingDate);
+	    
+	  }
+    }
 
   private:
     std::list<std::shared_ptr<BacktesterStrategy<Decimal>>> mStrategyList;
@@ -184,43 +239,6 @@ namespace mkc_timeseries
       return back;
     }
 
-    void backtest()
-    {
-      typename BackTester<Decimal>::StrategyIterator itStrategy;
-      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
-      
-      if (this->getNumStrategies() == 0)
-	throw BackTesterException("No strategies have been added to backtest");
-
-      boost::gregorian::date backTesterDate(next_period (this->getStartDate()));
-      boost::gregorian::date orderDate;
-
-      for (; backTesterDate <= this->getEndDate(); backTesterDate = next_period(backTesterDate))
-	{
-	  orderDate = previous_period (backTesterDate);
-
-	  //std::cout << "Iterating over strategies" << std::endl;
-
-	  for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies(); 
-		itStrategy++)
-	    {
-	      auto aStrategy = (*itStrategy);
-	      //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
-
-	      for (iteratorPortfolio = aStrategy->beginPortfolio();
-		   iteratorPortfolio != aStrategy->endPortfolio();
-		   iteratorPortfolio++)
-		{
-		  auto aSecurity = iteratorPortfolio->second;
-		  
-		  
-		  processStrategyBar (aSecurity, aStrategy, orderDate);
-		  aStrategy->eventProcessPendingOrders (backTesterDate);
-		}
-	    }
-	}
-    }
-
   protected:
     TimeSeriesDate previous_period(const TimeSeriesDate& d) const
       {
@@ -231,27 +249,6 @@ namespace mkc_timeseries
       {
 	return boost_next_weekday(d);
       }
-
-  private:
-    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
-			     const date& processingDate)
-    {
-      if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
-	  {
-	    std::string theSymbol = aSecurity->getSymbol(); 
-	    aStrategy->eventUpdateSecurityBarNumber(theSymbol);
-
-	    if (!aStrategy->isFlatPosition (theSymbol))
-	      aStrategy->eventExitOrders (aSecurity, 
-					  aStrategy->getInstrumentPosition(theSymbol),
-					  processingDate);
-	    aStrategy->eventEntryOrders(aSecurity, 
-					aStrategy->getInstrumentPosition(theSymbol),
-					processingDate);
-	    
-	  }
-    }
   };
 
   //
@@ -300,64 +297,6 @@ namespace mkc_timeseries
 	back->addDateRange(it->second);
 
       return back;
-    }
-
-    void backtest()
-    {
-      typename BackTester<Decimal>::StrategyIterator itStrategy;
-      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
-      
-      if (this->getNumStrategies() == 0)
-	throw BackTesterException("No strategies have been added to backtest");
-
-      boost::gregorian::date backTesterDate(next_period (this->getStartDate()));
-      boost::gregorian::date orderDate;
-
-      for (; backTesterDate <= this->getEndDate();  backTesterDate = next_period(backTesterDate))
-	{
-	  orderDate = previous_period (backTesterDate);
-
-	  //std::cout << "Iterating over strategies" << std::endl;
-
-	  for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies(); 
-		itStrategy++)
-	    {
-	      auto aStrategy = (*itStrategy);
-	      //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
-
-	      for (iteratorPortfolio = aStrategy->beginPortfolio();
-		   iteratorPortfolio != aStrategy->endPortfolio();
-		   iteratorPortfolio++)
-		{
-		  auto aSecurity = iteratorPortfolio->second;
-		  
-		  
-		  processStrategyBar (aSecurity, aStrategy, orderDate);
-		  aStrategy->eventProcessPendingOrders (backTesterDate);
-		}
-	    }
-	}
-    }
-
-  private:
-    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
-			     const date& processingDate)
-    {
-      if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
-	  {
-	    std::string theSymbol = aSecurity->getSymbol(); 
-	    aStrategy->eventUpdateSecurityBarNumber(theSymbol);
-
-	    if (!aStrategy->isFlatPosition (theSymbol))
-	      aStrategy->eventExitOrders (aSecurity, 
-					  aStrategy->getInstrumentPosition(theSymbol),
-					  processingDate);
-	    aStrategy->eventEntryOrders(aSecurity, 
-					aStrategy->getInstrumentPosition(theSymbol),
-					processingDate);
-	    
-	  }
     }
 
   protected:
@@ -419,64 +358,6 @@ namespace mkc_timeseries
 	back->addDateRange(it->second);
 
       return back;
-    }
-
-    void backtest()
-    {
-      typename BackTester<Decimal>::StrategyIterator itStrategy;
-      typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
-      
-      if (this->getNumStrategies() == 0)
-	throw BackTesterException("No strategies have been added to backtest");
-
-      boost::gregorian::date backTesterDate(next_period (this->getStartDate()));
-      boost::gregorian::date orderDate;
-
-      for (; backTesterDate <= this->getEndDate();  backTesterDate = next_period(backTesterDate))
-	{
-	  orderDate = previous_period (backTesterDate);
-
-	  //std::cout << "Iterating over strategies" << std::endl;
-
-	  for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies(); 
-		itStrategy++)
-	    {
-	      auto aStrategy = (*itStrategy);
-	      //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
-
-	      for (iteratorPortfolio = aStrategy->beginPortfolio();
-		   iteratorPortfolio != aStrategy->endPortfolio();
-		   iteratorPortfolio++)
-		{
-		  auto aSecurity = iteratorPortfolio->second;
-		  
-		  
-		  processStrategyBar (aSecurity, aStrategy, orderDate);
-		  aStrategy->eventProcessPendingOrders (backTesterDate);
-		}
-	    }
-	}
-    }
-
-  private:
-    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
-			     const date& processingDate)
-    {
-      if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
-	  {
-	    std::string theSymbol = aSecurity->getSymbol(); 
-	    aStrategy->eventUpdateSecurityBarNumber(theSymbol);
-
-	    if (!aStrategy->isFlatPosition (theSymbol))
-	      aStrategy->eventExitOrders (aSecurity, 
-					  aStrategy->getInstrumentPosition(theSymbol),
-					  processingDate);
-	    aStrategy->eventEntryOrders(aSecurity, 
-					aStrategy->getInstrumentPosition(theSymbol),
-					processingDate);
-	    
-	  }
     }
 
   protected:
