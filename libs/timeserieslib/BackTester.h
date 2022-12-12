@@ -123,39 +123,48 @@ namespace mkc_timeseries
     void backtest()
     {
       typename BackTester<Decimal>::StrategyIterator itStrategy;
+      typename BackTester<Decimal>::BacktestDateRangeIterator itDateRange;
       typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
  
       if (this->getNumStrategies() == 0)
 	throw BackTesterException("No strategies have been added to backtest");
 
-      boost::gregorian::date backTesterDate(next_period (this->getStartDate()));
+      boost::gregorian::date backTesterDate;
+      boost::gregorian::date backTesterEndDate;
       boost::gregorian::date orderDate;
 
-      for (; backTesterDate <= this->getEndDate(); backTesterDate = next_period(backTesterDate))
+      for (itDateRange = this->beginBacktestDateRange(); itDateRange != endBacktestDateRange(); itDateRange++)
 	{
-	  orderDate = previous_period (backTesterDate);
+	  backTesterDate = next_period (itDateRange->second.getFirstDate());
+	  backTesterEndDate = itDateRange->second.getLastDate();
 
-	  //std::cout << "Iterating over strategies" << std::endl;
-
-	  for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
-		itStrategy++)
+	  for (; backTesterDate <= backTesterEndDate; backTesterDate = next_period(backTesterDate))
 	    {
-	      auto aStrategy = (*itStrategy);
-	      //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
+	      orderDate = previous_period (backTesterDate);
 
-	      for (iteratorPortfolio = aStrategy->beginPortfolio();
-		   iteratorPortfolio != aStrategy->endPortfolio();
-		   iteratorPortfolio++)
+	      //std::cout << "Iterating over strategies" << std::endl;
+
+	      for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
+		   itStrategy++)
 		{
-		  auto aSecurity = iteratorPortfolio->second;
+		  auto aStrategy = (*itStrategy);
+		  //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
+
+		  for (iteratorPortfolio = aStrategy->beginPortfolio();
+		       iteratorPortfolio != aStrategy->endPortfolio();
+		       iteratorPortfolio++)
+		    {
+		      auto aSecurity = iteratorPortfolio->second;
 		  
-		  processStrategyBar (aSecurity, aStrategy, orderDate);
-		  aStrategy->eventProcessPendingOrders (backTesterDate);
+		      processStrategyBar (aSecurity, aStrategy, orderDate);
+		      aStrategy->eventProcessPendingOrders (backTesterDate);
+		    }
 		}
 	    }
 	}
     }
 
+      
   protected:
     virtual TimeSeriesDate previous_period(const TimeSeriesDate& d) const = 0;
     virtual TimeSeriesDate next_period(const TimeSeriesDate& d) const = 0;
