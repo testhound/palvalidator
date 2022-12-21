@@ -569,15 +569,35 @@ namespace mkc_timeseries
 
     void initializeIndustryGroupETFs ()
     {
+      addUnLeveragedETF (std::string("ITA"),
+			 std::string("iShares U.S. Aerospace & Defense ETF"),
+			 createDecimal("0.39"),
+			 boost::gregorian::from_undelimited_string("20060501"));
+
       addUnLeveragedETF (std::string("KRE"),
 			 std::string("S&P Regional Banking ETF"),
 			 createDecimal("0.13"),
 			 boost::gregorian::from_undelimited_string("20060619"));
 
+      addUnLeveragedETF (std::string("IGV"),
+			 std::string("iShares Expanded Tech-Software Sector ETF"),
+			 createDecimal("0.40"),
+			 boost::gregorian::from_undelimited_string("20010710"));
+
       addUnLeveragedETF (std::string("KBE"),
 			 std::string("SPDR S&P Bank ETF"),
 			 createDecimal("0.35"),
 			 boost::gregorian::from_undelimited_string("20051108"));
+
+      addUnLeveragedETF (std::string("KIE"),
+			 std::string("SPDR S&P Insurance ETF"),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20051108"));
+
+     addUnLeveragedETF (std::string("KBWB"),
+			 std::string("Invesco KBW Bank ETF"),
+			 createDecimal("0.35"),
+			 boost::gregorian::from_undelimited_string("20111101"));
 
       addUnLeveragedETF (std::string("XHB"),
 			 std::string("SPDR S&P Homebuilders ETF"),
@@ -692,6 +712,12 @@ namespace mkc_timeseries
 			 std::string("SPDR S&P Retail ETF"),
 			 createDecimal("0.35"),
 			 boost::gregorian::from_undelimited_string("20060619"));
+
+      addUnLeveragedETF (std::string("IYR"),
+			 std::string("iShares U.S. Real Estate ETF"),
+			 createDecimal("0.39"),
+			 boost::gregorian::from_undelimited_string("20000612"));
+
     }
 
     void initialize1XLeveragedETFs()
