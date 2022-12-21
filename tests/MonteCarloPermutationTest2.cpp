@@ -12,7 +12,7 @@ using namespace boost::gregorian;
 
 namespace {
 
-std::string myCornSymbol("C2");
+std::string myCornSymbol("@C2");
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
@@ -244,7 +244,7 @@ TEST_CASE ("MonteCarloPermutationTest2-PalStrategy operations", "[PalStrategy]")
 
   std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
-  std::string futuresSymbol("C2");
+  std::string futuresSymbol("@C2");
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
 

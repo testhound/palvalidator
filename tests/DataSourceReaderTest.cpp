@@ -12,7 +12,7 @@ using namespace boost::gregorian;
 
 TEST_CASE ("DataSourceReader operations", "[DataSourceReader]")
 {
-  BarchartReader barChartApiReader("9bff8ed715c16109a1ce5c63341bb860");
+//  BarchartReader barChartApiReader("9bff8ed715c16109a1ce5c63341bb860");
 
   boost::gregorian::date insample_firstDate (2012, Apr, 4);
   boost::gregorian::date insample_lastDate (2018, Apr, 4);
@@ -28,7 +28,7 @@ TEST_CASE ("DataSourceReader operations", "[DataSourceReader]")
   std::string dailyTimeFrame("Daily");
   std::string hourlyTimeFrame("hourly");
   //finnHubApiReader.createTemporaryFile(ssoTicker, dailyTimeFrame, insample_dates, oos_dates, true);
-  barChartApiReader.createTemporaryFile(ssoTicker, dailyTimeFrame, insample_dates, oos_dates, true);
-  barChartApiReader.createTemporaryFile(ssoTicker, hourlyTimeFrame, insample_dates, oos_dates, true);
+  //barChartApiReader.createTemporaryFile(ssoTicker, dailyTimeFrame, insample_dates, oos_dates, true);
+  //barChartApiReader.createTemporaryFile(ssoTicker, hourlyTimeFrame, insample_dates, oos_dates, true);
 
 }
