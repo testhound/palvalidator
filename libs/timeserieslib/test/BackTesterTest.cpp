@@ -314,8 +314,8 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (aBroker.getClosedTrades() == 24); 
 
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
-    printPositionHistorySummary (history);
-    printPositionHistory (history);
+    //printPositionHistorySummary (history);
+    //printPositionHistory (history);
 
     REQUIRE (history.getNumWinningPositions() == 16);
     REQUIRE (history.getNumLosingPositions() == 8);
@@ -354,7 +354,58 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     REQUIRE (aBroker2.getClosedTrades() == 45); 
 
     ClosedPositionHistory<DecimalType> history = aBroker2.getClosedPositionHistory();
-    //    printPositionHistory (history);
+    //printPositionHistory (history);
+    DecimalType rMultiple = history.getRMultipleExpectancy();
+    REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
+    //std::cout << "RMultiple for longStrategy1 = " << rMultiple << std::endl << std::endl;;
+  }
+
+SECTION ("PalStrategy testing multiple date ranges - pattern 2") 
+  {
+    std::cout << "In multiple date ranges backtest" << std::endl;
+    boost::gregorian::date range1FirstDate (1985, Mar, 19);
+    boost::gregorian::date range1LastDate (1988, Jan, 10);
+    DateRange range1(range1FirstDate, range1LastDate);
+
+    boost::gregorian::date range2FirstDate (1991, Jan, 01);
+    boost::gregorian::date range2LastDate (1996, Feb, 03);
+    DateRange range2(range2FirstDate, range2LastDate);
+
+    boost::gregorian::date range3FirstDate (2000, Mar, 01);
+    boost::gregorian::date range3LastDate (2010, Sep, 02);
+    DateRange range3(range3FirstDate, range3LastDate);
+
+    DailyBackTester<DecimalType> palLongBacktester3;
+
+    REQUIRE (palLongBacktester3.numBackTestRanges() == 0);
+    REQUIRE (palLongBacktester3.getNumStrategies() == 0);
+
+    palLongBacktester3.addStrategy(longStrategy2);
+    REQUIRE (palLongBacktester3.getNumStrategies() == 1);
+    
+    palLongBacktester3.addDateRange(range1);
+    REQUIRE (palLongBacktester3.numBackTestRanges() == 1);
+
+    palLongBacktester3.addDateRange(range2);
+    REQUIRE (palLongBacktester3.numBackTestRanges() == 2);
+
+    palLongBacktester3.addDateRange(range3);
+    REQUIRE (palLongBacktester3.numBackTestRanges() == 3);
+
+    palLongBacktester3.backtest();
+
+    BackTester<DecimalType>::StrategyIterator it = palLongBacktester3.beginStrategies();
+
+    REQUIRE (it != palLongBacktester3.endStrategies());
+    std::shared_ptr<BacktesterStrategy<DecimalType>> aStrategy2 = (*it);
+
+    StrategyBroker<DecimalType> aBroker2 = aStrategy2->getStrategyBroker();
+    REQUIRE (aBroker2.getTotalTrades() < 45);
+    REQUIRE (aBroker2.getOpenTrades() == 0);
+    REQUIRE (aBroker2.getClosedTrades() < 45); 
+
+    ClosedPositionHistory<DecimalType> history = aBroker2.getClosedPositionHistory();
+    //printPositionHistory (history);
     DecimalType rMultiple = history.getRMultipleExpectancy();
     REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
     std::cout << "RMultiple for longStrategy1 = " << rMultiple << std::endl << std::endl;;

@@ -41,10 +41,10 @@ UnitTest: All
 	./TimeSeriesTest
 	./TimeSeriesEntryTest
 	./SyntheticTimeSeriesCreatorTest
-	./BarchartDataSourceReaderTest
 	./TimeSeriesValidatorTest
+	./DateRangeTest
 
-All: TimeSeriesValidatorTest SyntheticTimeSeriesCreatorTest BarchartDataSourceReaderTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
+All: TimeSeriesValidatorTest SyntheticTimeSeriesCreatorTest LogPalPatternTest MCPTStrategyAttributesTest TimeSeriesTest RobustnessTesterUnitTest RobustnessTestUnitTest 
 
 # TODO:
 #All: MCPTStrategyAttributesTest LogPalPatternTest RobustnessTesterUnitTest RobustnessTestUnitTest PALMonteCarloValidationTest McptConfigurationFileReaderTest SecurityAttributesFactoryTest SecurityAttributesTest MonteCarloPermutationTest2 BackTesterTest PalStrategyTest SecurityBacktestPropertiesTest PALPatternInterpreterTest StrategyBrokerTest StrategyTransactionManagerTest StrategyTransactionTest TradingOrderManagerTest PortfolioTest SecurityTest InstrumentPositionManagerTest InstrumentPositionTest ProcessStopOrderTest ProcessLimitOrderTest BoostDateHelperTest ProcessMarketOrderTest StopOrderTest LimitOrderTest TradingPositionTest MarketOrderTest ClosedPositionHistoryTest OpenPositionTest OpenPositionHistoryTest OpenPositionBarTest StopLossTest ProfitTargetTest PercentNumberTest TimeSeriesCsvReaderTest TimeSeriesCsvWriterTest SyntheticTimeSeriesTest TimeSeriesTest TimeSeriesEntryTest TradingVolumeTest
@@ -59,6 +59,9 @@ MCPT_CONF_READER_O = ../../../build/libs/timeserieslib/CMakeFiles/backtest.dir/M
 PRICEACTION_LIB_DIR = ../../../build/libs/PALCodeGenLibrary-v2
 PRICEACTION_INC_DIR = ../../PALCodeGenLibrary-v2
 TIMESERIES_INC_DIR = ../
+
+DateRangeTest: DateRangeTest.o
+	g++ -o DateRangeTest $< -lboost_date_time -lboost_system
 
 TradingVolumeTest: TradingVolumeTest.o
 	g++ -o TradingVolumeTest  $< ${TIMESERIES_O} -lboost_system
@@ -87,8 +90,8 @@ SecurityAttributesFactoryTest: SecurityAttributesFactoryTest.o TestUtils.o ${TIM
 SecurityAttributesTest: SecurityAttributesTest.o  TestUtils.o ${TIMESERIES_ENTRY_O} ${TIMESERIES_O}
 	g++ -o SecurityAttributesTest  $<  ${TIMESERIES_O} TestUtils.o ${TIMESERIES_ENTRY_O} -lboost_date_time -lboost_system
 
-MonteCarloPermutationTest2: MonteCarloPermutationTest2.o TestUtils.o
-	g++ -o MonteCarloPermutationTest2  $< ${TIMESERIES_O} TestUtils.o ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_thread -lboost_system
+MonteCarloPermutationTest2: MonteCarloPermutationTest2.o TestUtils.o ${TIMESERIES_ENTRY_O} ${RUNNER_O}
+	g++ -o MonteCarloPermutationTest2  $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} ${RUNNER_O} TestUtils.o ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_thread -lboost_system
 
 BackTesterTest: BackTesterTest.o TestUtils.o ${TIMESERIES_ENTRY_O} ${BACKTESTERSTRATEGY_O}
 	g++ -o BackTesterTest  $< ${TIMESERIES_O} TestUtils.o ${TIMESERIES_ENTRY_O} ${BACKTESTERSTRATEGY_O} -L/usr/local/lib -lboost_date_time -lpthread  -lpriceaction2 -lboost_system
@@ -200,6 +203,7 @@ TimeSeriesValidatorTest: TimeSeriesValidatorTest.o TestUtils.o
 
 TestUtils.o: ../PercentNumber.h ../DecimalConstants.h ../TimeFrame.h  ../TimeSeriesEntry.h ../TradingVolume.h
 
+DateRangeTest.o: ../DateRange.h
 DataSourceReaderTest.o: ../DataSourceReader.h ../DateRange.h ../BoostDateHelper.h
 TradingVolumeTest.o: ../TradingVolume.h catch.hpp
 MCPTStrategyAttributesTest.o: ../MCPTStrategyAttributes.h  catch.hpp

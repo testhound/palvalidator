@@ -191,9 +191,6 @@ DataSourceReaderTest: DataSourceReaderTest.o
 SyntheticTimeSeriesCreatorTest: SyntheticTimeSeriesCreatorTest.o TestUtils.o
 	g++ -o SyntheticTimeSeriesCreatorTest $< ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
 
-BarchartDataSourceReaderTest: BarchartDataSourceReaderTest.o TestUtils.o 
-	g++ -o BarchartDataSourceReaderTest $< ${TIMESERIES_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lcurl -lpthread -lboost_system
-
 TimeSeriesValidatorTest: TimeSeriesValidatorTest.o TestUtils.o 
 	g++ -o TimeSeriesValidatorTest $<  ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} TestUtils.o -L/usr/local/lib -lboost_date_time -lpthread -lboost_system
 
@@ -246,7 +243,6 @@ TimeSeriesEntryTest.o: ../TimeSeriesEntry.h ../decimal.h  catch.hpp
 TimeSeriesCsvReaderTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h  catch.hpp
 TimeSeriesCsvWriterTest.o: ../TimeSeriesCsvWriter.h ../TimeSeries.h ../TimeSeriesEntry.h ../decimal.h ../csv.h TimeSeriesCsvWriterTest.cpp  catch.hpp
 SyntheticTimeSeriesCreatorTest.o: ../TimeSeriesCsvWriter.h ../TimeSeriesCsvReader.h ../TimeSeries.h ../decimal.h ../csv.h  catch.hpp
-BarchartDataSourceReaderTest.o: ../decimal.h ../DateRange.h  catch.hpp
 TimeSeriesValidatorTest.o: ../TimeSeriesCsvReader.h ../TimeSeries.h ../decimal.h ../csv.h  catch.hpp
 
 clean:

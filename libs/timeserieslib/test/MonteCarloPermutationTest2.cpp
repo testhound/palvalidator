@@ -10,7 +10,7 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-std::string myCornSymbol("C2");
+std::string myCornSymbol("@C2");
 
 PatternDescription *
 createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
@@ -239,7 +239,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 
   std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
-  std::string futuresSymbol("C2");
+  std::string futuresSymbol("@C2");
   std::string futuresName("Corn futures");
   DecimalType cornBigPointValue(createDecimal("50.0"));
 
@@ -313,38 +313,6 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     std::cout << "P-Value for strategy 2 is " << mcpt2.runPermutationTest() << std::endl;
   }
 
-SECTION ("MonteCarlo simulation of payoff ratio - pattern 1") 
-  {
-    TimeSeriesDate backTesterDate(TimeSeriesDate (2011, Oct, 28));
-    TimeSeriesDate backtestEndDate(TimeSeriesDate (2015, Oct, 26));
-
-    auto palLongBacktester1 = std::make_shared< DailyBackTester<DecimalType>>(backTesterDate,
-								    backtestEndDate);
-
-    palLongBacktester1->addStrategy(longStrategy1);
-    MonteCarloPayoffRatio<DecimalType> mcpt(palLongBacktester1,
-				  1000);
-    std::cout << "Monte Carlo Payoff Ratio for strategy 1 is " << mcpt.runPermutationTest() << std::endl;
-
-    auto palLongBacktester2 = std::make_shared< DailyBackTester<DecimalType>>(backTesterDate,
-								    backtestEndDate);
-
-    std::shared_ptr<PalLongStrategy<DecimalType>> longStrategy1Clone = 
-      std::make_shared<PalLongStrategy<DecimalType>>(strategy1Name, createLongPattern1(), 
-					 aPortfolio);
-    palLongBacktester2->addStrategy(longStrategy1Clone);
-    palLongBacktester2->backtest();
-
-    ClosedPositionHistory<DecimalType> hist = longStrategy1Clone->getStrategyBroker().getClosedPositionHistory();
-
-    std::cout << "*** Number of positions = " << hist.getNumPositions() << std::endl;
-    std::cout << "*** Number of winning positions = " << hist.getNumWinningPositions() << std::endl;
-    std::cout << "*** Number of losing positions = " << hist.getNumLosingPositions() << std::endl;
-
-    DecimalType payoff = hist.getMedianPayoffRatio();
-    std::cout << "*** Payoff ratio from backtesting = " << payoff << std::endl;
-    
-  }
  
 SECTION ("PalStrategy testing for all short trades") 
   {
