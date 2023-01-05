@@ -101,7 +101,10 @@ namespace mkc_timeseries
           syntheticTimeSeriesCreator->createSyntheticTimeSeries(timeFrameId, timeStamp);
 
 	  this->addTimeSeries (syntheticTimeSeriesCreator->getSyntheticTimeSeries(timeFrameId));
-          syntheticTimeSeriesCreator->writeTimeFrameFile(timeFrameId);
+	  //NOTE: It should no longer be necessary to write the files since we have
+	  // the in-memory time series avaialble
+
+          //syntheticTimeSeriesCreator->writeTimeFrameFile(timeFrameId);
         }
       }
 
