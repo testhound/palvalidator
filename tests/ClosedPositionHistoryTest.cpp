@@ -540,7 +540,7 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
   closedShortPositions.addClosedPosition(shortPosition20);
   closedShortPositions.addClosedPosition(shortPosition21);
 
-  printPositionHistory (closedShortPositions);
+  //printPositionHistory (closedShortPositions);
 
    std::cout << "Cumulative return for short positions = " << closedShortPositions.getCumulativeReturn() << std::endl;
   REQUIRE (closedShortPositions.getNumPositions() == 21);
