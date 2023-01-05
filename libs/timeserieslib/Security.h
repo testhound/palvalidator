@@ -10,6 +10,7 @@
 #include <string>
 #include <memory>
 #include "TimeSeries.h"
+#include "TradingVolume.h"
 #include "DecimalConstants.h"
 
 using std::string;
@@ -152,7 +153,8 @@ namespace mkc_timeseries
 	return mSecurityTimeSeries->getVolumeValue(it, offset); 
       }
 
-	    
+      virtual TradingVolume::VolumeUnit getVolumeUnit() const = 0;
+
       const std::string& getName() const
       {
 	return mSecurityName;
@@ -241,6 +243,11 @@ namespace mkc_timeseries
       return *this;
     }
 
+    TradingVolume::VolumeUnit getVolumeUnit() const
+    {
+      return TradingVolume::SHARES;
+    }
+
     bool isEquitySecurity() const
     {
       return true;
@@ -288,6 +295,11 @@ namespace mkc_timeseries
 
       Security<Decimal>::operator=(rhs);
       return *this;
+    }
+
+    TradingVolume::VolumeUnit getVolumeUnit() const
+    {
+      return TradingVolume::CONTRACTS;
     }
 
     bool isEquitySecurity() const
