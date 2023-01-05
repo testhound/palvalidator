@@ -66,6 +66,9 @@ DateRangeTest: DateRangeTest.o
 TradingVolumeTest: TradingVolumeTest.o
 	g++ -o TradingVolumeTest  $< ${TIMESERIES_O} -lboost_system
 
+TimeShiftedMultiTimeSeriesCreatorTest: TimeShiftedMultiTimeSeriesCreatorTest.o
+	g++ -o TimeShiftedMultiTimeSeriesCreatorTest ${TIMESERIES_O} ${TIMESERIES_ENTRY_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
+
 MCPTStrategyAttributesTest: MCPTStrategyAttributesTest.o TestUtils.o
 	g++ -o MCPTStrategyAttributesTest ${TIMESERIES_O} $< TestUtils.o -lboost_date_time -lpthread  -lboost_system
 
@@ -203,6 +206,7 @@ TimeSeriesValidatorTest: TimeSeriesValidatorTest.o TestUtils.o
 
 TestUtils.o: ../PercentNumber.h ../DecimalConstants.h ../TimeFrame.h  ../TimeSeriesEntry.h ../TradingVolume.h
 
+TimeShiftedMultiTimeSeriesCreatorTest.o: ../TimeShiftedMultiTimeSeriesCreator.h ../TimeFrameDiscovery.h ../Security.h ../TimeSeries.h ../TimeSeriesCsvReader.h ../TimeSeriesValidator.h ../SyntheticTimeSeriesCreator.h
 DateRangeTest.o: ../DateRange.h
 DataSourceReaderTest.o: ../DataSourceReader.h ../DateRange.h ../BoostDateHelper.h
 TradingVolumeTest.o: ../TradingVolume.h catch.hpp
