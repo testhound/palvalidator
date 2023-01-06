@@ -14,6 +14,7 @@
 #include "ComparisonToPalStrategy.h"
 #include "LogPalPattern.h"
 #include "PatternReRunner.h"
+#include "TimeShiftedMultiTimeSeriesCreator.h"
 
 using namespace mkc_timeseries;
 
@@ -62,8 +63,8 @@ namespace mkc_searchalgo
   {
   public:
     template <class McptConfig, class SearchConfig>
-    PatternMatcher(const std::string& filePatternExpr, const std::string& filePatternExpr2, ComparisonType patternSearchType, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats, size_t numTimeFrames,
-                   const std::shared_ptr<McptConfig>& config, const std::shared_ptr<SearchConfig>& searchConfig, runner& Runner):
+    PatternMatcher(const std::string& filePatternExpr, const std::string& filePatternExpr2, ComparisonType patternSearchType, bool isLong, bool inSampleOnly, unsigned int minNumOfStrats,
+                   const std::shared_ptr<McptConfig>& config, const std::shared_ptr<SearchConfig>& searchConfig, runner& Runner, const TimeShiftedMultiTimeSeriesCreator<Decimal>& timeShiftedData):
       mIsLong(isLong),
       mMinNumOfStrats(minNumOfStrats),
       mExportPatternIndex(0)
@@ -83,31 +84,30 @@ namespace mkc_searchalgo
       FileMatcher::mergeFiles(filePaths, allPatternsForAllRunsFile);
 
       //rerun per timeframe slice
-      for (size_t i = 0; i < numTimeFrames + 1; i++)
-        {
+      auto timeSeriesIt = timeShiftedData.beginShiftedTimeSeries();
+      std::shared_ptr<OHLCTimeSeries<Decimal>> timeShiftedTimeSeries;
+      for(int i = 0; timeSeriesIt != timeShiftedData.endShiftedTimeSeries(); timeSeriesIt++, i++)
+      { 
+          timeShiftedTimeSeries = *timeSeriesIt;
+
           std::string symbolStr = config->getSecurity()->getSymbol();
-          std::string histPathBase = symbolStr + "_RAD_Hourly.txt_timeframe_" + std::to_string(i);
-          std::string dataFileFormat = "PAL";
-          
-          std::string histPath;
-          std::remove_copy(histPathBase.begin(), histPathBase.end(), std::back_inserter(histPath), '@');
 
           std::string outputFileName = "./CombinedRerun_Patterns" + side + "_" + filePatternExpr + "_" + std::to_string(i) + "_" + filePatternExpr2 + "_" + std::to_string(inSampleOnly) + ".txt";
           std::ifstream ifile(outputFileName.c_str());
           if (ifile)
             throw std::runtime_error(outputFileName + " already exists, remove it before rerunning!");
 
-          std::cout << "Symbol is: " << symbolStr << ", historical data to run on: " << histPath << ", outputFileName: " << outputFileName << std::endl;
+          std::cout << "Symbol is: " << symbolStr  << ", outputFileName: " << outputFileName << std::endl;
           if (inSampleOnly)
             {
               DateRange backtestingDates(config->getInsampleDateRange().getFirstDate(), config->getInsampleDateRange().getLastDate());
-              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName, dataFileFormat);
+              PatternReRunner rerunner(allPatternsForAllRunsFile, timeShiftedTimeSeries, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName);
               rerunner.backtest(Runner);
             }
           else
             {
               DateRange backtestingDates(config->getInsampleDateRange().getFirstDate(), config->getOosDateRange().getLastDate());
-              PatternReRunner rerunner(allPatternsForAllRunsFile, histPath, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName, dataFileFormat);
+              PatternReRunner rerunner(allPatternsForAllRunsFile, timeShiftedTimeSeries, symbolStr, backtestingDates, searchConfig->getProfitFactorCriterion(), outputFileName);
               rerunner.backtest(Runner);
             }
         }
