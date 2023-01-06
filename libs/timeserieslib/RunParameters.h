@@ -14,8 +14,6 @@ namespace mkc_timeseries
     class RunParameters
     {
         public:
-            typedef typename std::vector<time_duration> TimeFrameCollection;
-
             RunParameters(){};
 
             std::string getConfigFile1Path() { return mConfigFile1Path; }
@@ -25,7 +23,6 @@ namespace mkc_timeseries
             std::string getEodDataFilePath() { return mEodDataFilePath; }
             std::string getApiSource() { return mApiSource; }
             bool shouldUseApi() { return mUseApi; }
-            TimeFrameCollection getTimeFrames() { return mTimeFrames; }
 
             void setUseApi(bool useApi) { mUseApi = useApi; }
             void setConfig1FilePath(std::string filename) { mConfigFile1Path = filename; }
@@ -34,19 +31,16 @@ namespace mkc_timeseries
             void setHourlyDataFilePath(std::string filename) { mHourlyDataFilePath = filename; }
             void setEodDataFilePath(std::string filename) { mEodDataFilePath = filename; }
             void setApiSource(std::string source) { mApiSource = source; }
-            void setTimeFrames(TimeFrameCollection timeFrames) { mTimeFrames = timeFrames; }
 
         private:
             bool mUseApi;
 
             std::string mConfigFile1Path;
             std::string mSearchConfigFilePath;
-
             std::string mApiConfigFilePath;
             std::string mApiSource;
             std::string mHourlyDataFilePath;
             std::string mEodDataFilePath;
-            TimeFrameCollection mTimeFrames;
     };
 }
 
