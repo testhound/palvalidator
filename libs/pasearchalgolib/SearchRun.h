@@ -7,6 +7,7 @@
 #include "SearchController.h"
 #include "runner.hpp"
 #include "RunParameters.h"
+#include "TimeShiftedMultiTimeSeriesCreator.h"
 
 using namespace mkc_timeseries;
 using Decimal = num::DefaultNumber;
@@ -34,7 +35,8 @@ namespace mkc_searchalgo
 
       std::cout << parameters->getSearchConfigFilePath() << std::endl;
       SearchAlgoConfigurationFileReader searchReader(parameters);
-      mSearchConfig = searchReader.readConfigurationFile(mConfiguration, 0, true);
+      mSearchConfig = searchReader.readConfigurationFile(mConfiguration);
+
       mNow = std::time(nullptr);
       std::cout << "Time since epoch: " << static_cast<long>(mNow) << std::endl;
     }
@@ -43,7 +45,7 @@ namespace mkc_searchalgo
     size_t getTargetStopSize() const { return mSearchConfig->getTargetStopPair().size(); }
 
 
-    void run(runner& Runner, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex, ComparisonType patternSearchType)
+    void run(runner& Runner, const DailyTimeShiftedMultiTimeSeriesCreator<Decimal>& timeShiftedData, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex, ComparisonType patternSearchType)
     {
       //separate out short and long runs
       std::vector<bool> los;
@@ -56,8 +58,11 @@ namespace mkc_searchalgo
 
       auto targetstop = mSearchConfig->getTargetStopPair()[targetStopIndex];
 
-      for (size_t timeFrameId = 0; timeFrameId <= mSearchConfig->getNumTimeFrames(); timeFrameId++)
-        {
+      auto timeSeriesIt = timeShiftedData.beginShiftedTimeSeries();
+      std::shared_ptr<OHLCTimeSeries<Decimal>> timeShiftedTimeSeries;
+      for(size_t timeFrameId = 0; timeSeriesIt != timeShiftedData.endShiftedTimeSeries(); timeSeriesIt++, timeFrameId++)
+      {
+          timeShiftedTimeSeries = *timeSeriesIt;
           for (bool side: los)
             {
               std::shared_ptr<Decimal> profitTarget = std::make_shared<Decimal>(targetstop.first * mTargetBase);
@@ -69,18 +74,13 @@ namespace mkc_searchalgo
                                                              stopLoss,
                                                              inSampleOnly,
                                                              timeFrameId,
-                                                             side
+                                                             side,
+                                                             timeShiftedTimeSeries
                                                              ]()-> void {
-                  McptConfigurationFileReader reader(mRunParameters);
-                  std::shared_ptr<McptConfiguration<Decimal>> configuration = nullptr;
-                  configuration = reader.readConfigurationFile(true);
-
-                  SearchAlgoConfigurationFileReader searchReader(mRunParameters);
-                  std::shared_ptr<SearchAlgoConfiguration<Decimal>> searchConfig = searchReader.readConfigurationFile(configuration, static_cast<int>(timeFrameId), false);
 
                   std::cout << "Parsed search algo config: " << mRunParameters->getSearchConfigFilePath() << std::endl;
-                  std::cout << (*searchConfig) << std::endl;
-                  SearchController<Decimal> controller(configuration, searchConfig->getTimeSeries(), searchConfig);
+                  std::cout << (*mSearchConfig) << std::endl;
+                  SearchController<Decimal> controller(mConfiguration, timeShiftedTimeSeries, mSearchConfig);
                   controller.prepare(patternSearchType, inSampleOnly);
                   if (side)
                     {
