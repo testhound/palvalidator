@@ -28,49 +28,9 @@ static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (co
     throw runtime_error("createSecurityAttributes - ticker symbol " +symbol +" is unkown");
 }
 
-static TradingVolume::VolumeUnit getVolumeUnit (std::shared_ptr<SecurityAttributes<Decimal>> attributesOfSecurity)
-{
-  if (attributesOfSecurity->isEquitySecurity())
-    return TradingVolume::SHARES;
-  else
-    return TradingVolume::CONTRACTS;
-}
-
-static std::shared_ptr<TimeSeriesCsvReader<Decimal>>
-getHistoricDataFileReader(const std::string& historicDataFilePath,
-			  const std::string& dataFileFormatStr,
-			  TimeFrame::Duration timeFrame,
-			  TradingVolume::VolumeUnit unitsOfVolume,
-			  const Decimal& tickValue)
-{
-  std::string upperCaseFormatStr = boost::to_upper_copy(dataFileFormatStr);
-
-  if (upperCaseFormatStr == std::string("PAL"))
-    return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-                                                         unitsOfVolume, tickValue);
-  else if (upperCaseFormatStr == std::string("TRADESTATION"))
-    return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-                                                                  unitsOfVolume, tickValue);
-  else if (upperCaseFormatStr == std::string("CSIEXTENDED"))
-    return std::make_shared<CSIExtendedFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-                                                                  unitsOfVolume, tickValue);
-  else if (upperCaseFormatStr == std::string("CSI"))
-    return std::make_shared<CSIFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
-                                                          unitsOfVolume, tickValue);
-  else if (upperCaseFormatStr == std::string("TRADESTATIONINDICATOR1"))
-    return std::make_shared<TradeStationIndicator1CsvReader<Decimal>>(historicDataFilePath,
-                                                                      timeFrame,
-                                                                      unitsOfVolume,
-                                                                      tickValue);
-
-  else
-    throw runtime_error("Historic data file format " +dataFileFormatStr +" not recognized");
-}
-
-
 static std::shared_ptr<mkc_timeseries::Security<Decimal>>
 createSecurity (std::shared_ptr<SecurityAttributes<Decimal>> attributes,
-                std::shared_ptr<TimeSeriesCsvReader<Decimal>> aReader)
+                std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries)
 {
   if (attributes->isEquitySecurity())
     {
@@ -78,13 +38,13 @@ createSecurity (std::shared_ptr<SecurityAttributes<Decimal>> attributes,
         {
           return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(),
                                                            attributes->getName(),
-                                                           aReader->getTimeSeries());
+                                                           timeSeries);
         }
       else if (attributes->isCommonStock())
         {
           return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(),
                                                            attributes->getName(),
-                                                           aReader->getTimeSeries());
+                                                           timeSeries);
         }
       else
         throw runtime_error("Unknown security attribute");
@@ -94,41 +54,29 @@ createSecurity (std::shared_ptr<SecurityAttributes<Decimal>> attributes,
                                                       attributes->getName(),
                                                       attributes->getBigPointValue(),
                                                       attributes->getTick(),
-                                                      aReader->getTimeSeries());
+                                                      timeSeries);
 
 }
 
 class PatternReRunner
 {
 public:
-  PatternReRunner(const std::string& irPath, const std::string& historicDataFilePathStr, const std::string& tickerSymbol,
-                  DateRange backtestingDates, Decimal criterion, const std::string& exportFileName, const std::string& dataFileFormat):
+  PatternReRunner(const std::string& irPath,  std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries, const std::string& tickerSymbol,
+                  DateRange backtestingDates, Decimal criterion, const std::string& exportFileName):
     mPatternsToTest(readFile(irPath)),
-    mSecurity(makeSecurity(historicDataFilePathStr, tickerSymbol, dataFileFormat)),
+    mSecurity(makeSecurity(timeSeries, tickerSymbol)),
     mCriterion(criterion),
     mExportFile(exportFileName)
   {
     mBacktester = std::make_shared<DailyBackTester<Decimal>>(backtestingDates.getFirstDate(),
                                                              backtestingDates.getLastDate());
   }
-  std::shared_ptr<mkc_timeseries::Security<Decimal>> makeSecurity(const std::string& historicDataFilePathStr, const std::string& tickerSymbol, const std::string& dataFileFormat)
+
+  std::shared_ptr<mkc_timeseries::Security<Decimal>> makeSecurity(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries, const std::string& tickerSymbol)
   {
-    std::cout << "Reading timeseries file: " << historicDataFilePathStr << " for symbol: " << tickerSymbol << std::endl;
-    boost::filesystem::path historicDataFilePath (historicDataFilePathStr);
-    if (!exists (historicDataFilePath))
-      throw runtime_error("Historic data file path " +historicDataFilePath.string() +" does not exist");
-
     std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
-    TimeFrame::Duration backTestingTimeFrame = TimeFrame::Duration::DAILY;
 
-    std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(historicDataFilePathStr,
-                                                                                     dataFileFormat,
-                                                                                     backTestingTimeFrame,
-                                                                                     getVolumeUnit(attributes),
-                                                                                     attributes->getTick());
-    reader->readFile();
-
-    return createSecurity(attributes, reader);
+    return createSecurity(attributes, timeSeries);
   }
 
   PriceActionLabSystem* readFile(const std::string& fileName)
