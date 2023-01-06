@@ -62,8 +62,6 @@ namespace mkc_searchalgo
         unsigned int maxConsecutiveLosers,
         unsigned int maxInactivitySpan,
         std::vector<std::pair<Decimal, Decimal>> targetStopPairs,
-        std::vector<boost::posix_time::time_duration> timeFrames,
-        const std::shared_ptr<OHLCTimeSeries<Decimal>>& series,
         unsigned int numPermutations, unsigned int minNumStratsFullPeriod, unsigned int minNumStratsBeforeValidation,
                              Decimal palSafetyFactor,
                              Decimal stepRedundancyMultiplier,
@@ -77,8 +75,6 @@ namespace mkc_searchalgo
       mMaxConsecutiveLosers(maxConsecutiveLosers),
       mMaxInactivitySpan(maxInactivitySpan),
       mTargetStopPairs(targetStopPairs),
-      mTimeFrames(timeFrames),
-      mSeries(series),
       mNumPermutations(numPermutations),
       mMinNumStratsFullPeriod(minNumStratsFullPeriod),
       mMinNumStratsBeforeValidation(minNumStratsBeforeValidation),
@@ -96,8 +92,6 @@ namespace mkc_searchalgo
         mMaxConsecutiveLosers(rhs.mMaxConsecutiveLosers),
         mMaxInactivitySpan(rhs.mMaxInactivitySpan),
         mTargetStopPairs(rhs.mTargetStopPairs),
-        mTimeFrames(rhs.mTimeFrames),
-        mSeries(rhs.mSeries),
         mNumPermutations(rhs.mNumPermutations),
         mMinNumStratsFullPeriod(rhs.mMinNumStratsFullPeriod),
         mMinNumStratsBeforeValidation(rhs.mMinNumStratsBeforeValidation),
@@ -106,27 +100,25 @@ namespace mkc_searchalgo
         mSurvivalFilterMultiplier(rhs.mSurvivalFilterMultiplier)
     {}
 
-    SearchAlgoConfiguration<Decimal>&
+    SearchAlgoConfiguration<Decimal> &
     operator=(const SearchAlgoConfiguration<Decimal> &rhs)
     {
       if (this == &rhs)
-	return *this;
-	mMaxDepth = rhs.mMaxDepth;
-	mMinTrades = rhs.mMinTrades;
-	mActivityMultiplier = rhs.mActivityMultiplier;
-	mPassingStratNumPerRound = rhs.mPassingStratNumPerRound;
-	mProfitFactorCriterion = rhs.mProfitFactorCriterion;
-	mMaxConsecutiveLosers = rhs.mMaxConsecutiveLosers;
-	mMaxInactivitySpan = rhs.mMaxInactivitySpan;
-	mTargetStopPairs = rhs.mTargetStopPairs;
-	mTimeFrames = rhs.mTimeFrames;
-	mSeries = rhs.mSeries;
-	mNumPermutations = rhs.mNumPermutations;
-	mMinNumStratsFullPeriod = rhs.mMinNumStratsFullPeriod;
-	mMinNumStratsBeforeValidation = rhs.mMinNumStratsBeforeValidation;
-	mPalSafetyFactor = rhs.mPalSafetyFactor;
-	mStepRedundancyMultiplier = rhs.mStepRedundancyMultiplier;
-	mSurvivalFilterMultiplier = rhs.mSurvivalFilterMultiplier;
+        return *this;
+      mMaxDepth = rhs.mMaxDepth;
+      mMinTrades = rhs.mMinTrades;
+      mActivityMultiplier = rhs.mActivityMultiplier;
+      mPassingStratNumPerRound = rhs.mPassingStratNumPerRound;
+      mProfitFactorCriterion = rhs.mProfitFactorCriterion;
+      mMaxConsecutiveLosers = rhs.mMaxConsecutiveLosers;
+      mMaxInactivitySpan = rhs.mMaxInactivitySpan;
+      mTargetStopPairs = rhs.mTargetStopPairs;
+      mNumPermutations = rhs.mNumPermutations;
+      mMinNumStratsFullPeriod = rhs.mMinNumStratsFullPeriod;
+      mMinNumStratsBeforeValidation = rhs.mMinNumStratsBeforeValidation;
+      mPalSafetyFactor = rhs.mPalSafetyFactor;
+      mStepRedundancyMultiplier = rhs.mStepRedundancyMultiplier;
+      mSurvivalFilterMultiplier = rhs.mSurvivalFilterMultiplier;
 
       return *this;
     }
@@ -139,7 +131,7 @@ namespace mkc_searchalgo
       return strng << "SearchAlgo Configs:: Depth: " << obj.mMaxDepth << ", MinTrades: " << obj.mMinTrades << ", SortMultiplier: " << obj.mActivityMultiplier
                    << ", PassingStratNumPerRound: " << obj.mPassingStratNumPerRound<< ", ProfitFactorCriterion: " << obj.mProfitFactorCriterion
                    << ", MaxConsecutiveLosers: " << obj.mMaxConsecutiveLosers << ", MaxInactivitySpan: " << obj.mMaxInactivitySpan
-                   << ", Targets&Stops#: "<< obj.mTargetStopPairs.size() << ", TimeFrames#: " << obj.mTimeFrames.size()
+                   << ", Targets&Stops#: "<< obj.mTargetStopPairs.size() << ", "
                    << ", SafetyFactor: " << obj.mPalSafetyFactor << ", StepMultiplier: " << obj.mStepRedundancyMultiplier << ", survivalFilt: " << obj.mSurvivalFilterMultiplier
                    << "\nValidation settings -- # of permutations: " << obj.mNumPermutations
                    << ", Min # of strats full period: "<< obj.mMinNumStratsFullPeriod
@@ -166,19 +158,11 @@ namespace mkc_searchalgo
 
     const std::vector<std::pair<Decimal, Decimal>>& getTargetStopPair() const { return mTargetStopPairs; }
 
-    typename std::vector<boost::posix_time::time_duration>::const_iterator timeFramesBegin() const { return mTimeFrames.begin(); }
-
-    typename std::vector<boost::posix_time::time_duration>::const_iterator timeFramesEnd() const { return mTimeFrames.end(); }
-
-    size_t getNumTimeFrames() const { return mTimeFrames.size(); }
-
     unsigned int getNumPermutations() const { return mNumPermutations; }
 
     unsigned int getMinNumStratsFullPeriod() const { return mMinNumStratsFullPeriod; }
 
     unsigned int getMinNumStratsBeforeValidation() const { return mMinNumStratsBeforeValidation; }
-
-    const std::shared_ptr<OHLCTimeSeries<Decimal>>& getTimeSeries() const { return mSeries; }
 
     const Decimal& getPalProfitabilitySafetyFactor() const { return mPalSafetyFactor; }
 
@@ -195,8 +179,6 @@ namespace mkc_searchalgo
     unsigned int mMaxConsecutiveLosers;
     unsigned int mMaxInactivitySpan;
     std::vector<std::pair<Decimal, Decimal>> mTargetStopPairs;
-    std::vector<boost::posix_time::time_duration> mTimeFrames;
-    std::shared_ptr<OHLCTimeSeries<Decimal>> mSeries;
     unsigned int mNumPermutations;
     unsigned int mMinNumStratsFullPeriod;
     unsigned int mMinNumStratsBeforeValidation;
@@ -216,9 +198,7 @@ namespace mkc_searchalgo
 
     //template <class SecurityT>
     std::shared_ptr<SearchAlgoConfiguration<Decimal>> readConfigurationFile(
-                const std::shared_ptr<McptConfiguration<Decimal>>& mcptConfiguration, 
-                int timeFrameIdToLoad, 
-                bool downloadFile);
+                const std::shared_ptr<McptConfiguration<Decimal>>& mcptConfiguration);
 
   private:
     std::shared_ptr<RunParameters> mRunParameters;
