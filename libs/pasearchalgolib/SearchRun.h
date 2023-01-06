@@ -45,7 +45,7 @@ namespace mkc_searchalgo
     size_t getTargetStopSize() const { return mSearchConfig->getTargetStopPair().size(); }
 
 
-    void run(runner& Runner, const DailyTimeShiftedMultiTimeSeriesCreator<Decimal>& timeShiftedData, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex, ComparisonType patternSearchType)
+    void run(runner& Runner, const TimeShiftedMultiTimeSeriesCreator<Decimal>& timeShiftedData, bool inSampleOnly, SideToRun runSide, size_t targetStopIndex, ComparisonType patternSearchType)
     {
       //separate out short and long runs
       std::vector<bool> los;
