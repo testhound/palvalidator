@@ -3,6 +3,7 @@
 #include "PatternMatcher.h"
 #include "PALMonteCarloValidation.h"
 #include "RunParameters.h"
+#include "TimeShiftedMultiTimeSeriesCreator.h"
 
 //#include <chrono>
 //#include <ctime>
@@ -76,6 +77,24 @@ static int usage_error(const std::vector<std::string>& args)
   std::cout << "  * If --local is specified the next two parameters are the daily file and hourly file. " << std::endl;
   
   return 2;
+}
+
+std::string getIntradayDataPath(std::shared_ptr<RunParameters> runParameters, std::shared_ptr<McptConfiguration<Decimal>> mcptConfig)
+{
+  std::string hourlyDataFilePath = runParameters->getHourlyDataFilePath();
+
+  if (runParameters->shouldUseApi())
+  {
+    // read data from API from the start of the IS data to the end of the OOS data
+    std::string token = getApiTokenFromFile(runParameters->getApiConfigFilePath(), runParameters->getApiSource());
+    DateRange dataReaderDateRange(mcptConfig->getInsampleDateRange().getFirstDate(), mcptConfig->getOosDateRange().getLastDate());
+    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(runParameters->getApiSource(), token);
+    hourlyDataFilePath = dataSourceReader->createTemporaryFile(mcptConfig->getSecurity()->getSymbol(),
+                                                               "hourly", dataReaderDateRange,
+                                                               dataReaderDateRange, true);
+  }
+
+  return hourlyDataFilePath;
 }
 
 int main(int argc, char **argv)
@@ -178,8 +197,14 @@ int main(int argc, char **argv)
       runner runner_instance(static_cast<size_t>(nthreads));
       //build thread-pool-runner
       runner& Runner=runner::instance();
-
+      // TODO: create TimeShift data files here and pass to SearchRun
       SearchRun search(parameters);
+
+      // Create the additional time shifted time series from the intraday data file
+
+      std::string intradayPath(getIntradayDataPath(parameters, search.getConfig()));
+      DailyTimeShiftedMultiTimeSeriesCreator<Decimal> timeShiftedDataCreator(intradayPath, search.getConfig()->getSecurity());
+      timeShiftedDataCreator.createShiftedTimeSeries();
 
       std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
 //      std::string mergedPath = "Merged_1573400279.txt";
@@ -205,7 +230,7 @@ int main(int argc, char **argv)
                   std::string validateISNowString(validateISNowStringInput);
                   if (validateISNowStringInput.empty())
                     {
-                      search.run(Runner, true, sideToRun, i, patternSearchType);
+                      search.run(Runner, timeShiftedDataCreator, true, sideToRun, i, patternSearchType);
                       validateISNowString = std::to_string(search.getNowAsLong());
                     }
                   auto tspair = search.getTargetsAtIndex(i);
@@ -221,7 +246,7 @@ int main(int argc, char **argv)
                       std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_SelectedISLong.txt");
                       std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleLongValidated.txt");
                       PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, true, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(),
-                                             search.getSearchConfig()->getNumTimeFrames(), search.getConfig(), search.getSearchConfig(), Runner);
+                                             search.getConfig(), search.getSearchConfig(), Runner, timeShiftedDataCreator);
                       matcher.countOccurences();
                       bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                       if (exportOk && sideToRun == SideToRun::LongOnly)
@@ -236,7 +261,7 @@ int main(int argc, char **argv)
                       std::string fileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr +  "_SelectedISShort.txt");
                       std::string validatedFileName(symbolStr + "_" + std::string(ToString(inputPatternSearchType)) + "_" + tsStr + "_InSampleShortValidated.txt");
                       PatternMatcher matcher(validateISNowString, tsStr, inputPatternSearchType, false, true, search.getSearchConfig()->getMinNumStratsBeforeValidation(),
-                                             search.getSearchConfig()->getNumTimeFrames(), search.getConfig(), search.getSearchConfig(), Runner);
+                                             search.getConfig(), search.getSearchConfig(), Runner, timeShiftedDataCreator);
                       matcher.countOccurences();
                       bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                       if (exportOk && sideToRun == SideToRun::ShortOnly)
@@ -277,7 +302,7 @@ int main(int argc, char **argv)
                   std::string validateOOSNowString(validateOOSNowStringInput);
                   if (validateOOSNowStringInput.empty())
                     {
-                      search.run(Runner, false, sideToRun, i, patternSearchType);
+                      search.run(Runner, timeShiftedDataCreator, false, sideToRun, i, patternSearchType);
                       validateOOSNowString = std::to_string(search.getNowAsLong());
                     }
 
@@ -293,7 +318,7 @@ int main(int argc, char **argv)
                     {
                       std::string fileName(symbolStr + "_" + tsStr +  "_SelectedOOSLong.txt");
                       PatternMatcher matcher(validateOOSNowString, tsStr, inputPatternSearchType, true, false, search.getSearchConfig()->getMinNumStratsFullPeriod(),
-                                             search.getSearchConfig()->getNumTimeFrames(), search.getConfig(), search.getSearchConfig(), Runner);
+                                             search.getConfig(), search.getSearchConfig(), Runner, timeShiftedDataCreator);
                       matcher.countOccurences();
                       matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
 
@@ -302,7 +327,7 @@ int main(int argc, char **argv)
                     {
                       std::string fileName(symbolStr + "_" + tsStr + "_SelectedOOSShort.txt");
                       PatternMatcher matcher(validateOOSNowString, tsStr, inputPatternSearchType, false, false,  search.getSearchConfig()->getMinNumStratsFullPeriod(),
-                                             search.getSearchConfig()->getNumTimeFrames(), search.getConfig(), search.getSearchConfig(), Runner);
+                                             search.getConfig(), search.getSearchConfig(), Runner, timeShiftedDataCreator);
                       matcher.countOccurences();
                       matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                     }
