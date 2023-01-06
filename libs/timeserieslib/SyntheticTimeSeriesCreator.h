@@ -139,6 +139,8 @@ namespace mkc_timeseries
                 assert(partialDayIt != endIt);
                 assert(partialDayIt->getDateValue() == currentDate);
 
+                lastTimeStamp = partialDayIt->getBarTime();
+
                 while (partialDayIt != endIt)
                 {
                     if (partialDayIt->getDateValue() != currentDate)
@@ -151,6 +153,8 @@ namespace mkc_timeseries
                         partialDayIt++;
                     }
                 }
+
+                return lastTimeStamp;
             }
 
             std::string getTimeFrameFilename(int timeFrameId) 
