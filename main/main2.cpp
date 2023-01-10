@@ -4,6 +4,7 @@
 #include "PALMonteCarloValidation.h"
 #include "RunParameters.h"
 #include "TimeShiftedMultiTimeSeriesCreator.h"
+#include "HistoricDataReader.h"
 
 //#include <chrono>
 //#include <ctime>
@@ -79,22 +80,32 @@ static int usage_error(const std::vector<std::string>& args)
   return 2;
 }
 
-std::string getIntradayDataPath(std::shared_ptr<RunParameters> runParameters, std::shared_ptr<McptConfiguration<Decimal>> mcptConfig)
+std::shared_ptr<HistoricDataReader<Decimal>> getHistoricDataReader(std::shared_ptr<RunParameters> runParameters,
+                                                                   std::shared_ptr<McptConfiguration<Decimal>> mcptConfig)
 {
-  std::string hourlyDataFilePath = runParameters->getHourlyDataFilePath();
+  std::shared_ptr<HistoricDataReader<Decimal>> historicDataReader;
 
-  if (runParameters->shouldUseApi())
-  {
-    // read data from API from the start of the IS data to the end of the OOS data
-    std::string token = getApiTokenFromFile(runParameters->getApiConfigFilePath(), runParameters->getApiSource());
-    DateRange dataReaderDateRange(mcptConfig->getInsampleDateRange().getFirstDate(), mcptConfig->getOosDateRange().getLastDate());
-    std::shared_ptr<DataSourceReader> dataSourceReader = getDataSourceReader(runParameters->getApiSource(), token);
-    hourlyDataFilePath = dataSourceReader->createTemporaryFile(mcptConfig->getSecurity()->getSymbol(),
-                                                               "hourly", dataReaderDateRange,
-                                                               dataReaderDateRange, true);
-  }
+    if (!runParameters->shouldUseApi())
+    {
+      historicDataReader = HistoricDataReaderFactory<Decimal>::createHistoricDataReader(runParameters->getEodDataFilePath(),
+                                                                                        HistoricDataReader<Decimal>::TRADESTATION, TimeFrame::INTRADAY,
+                                                                                        mcptConfig->getSecurity()->getVolumeUnit(),
+                                                                                        mcptConfig->getSecurity()->getTick());
+    }
+    else if(runParameters->shouldUseApi())
+    {
+      std::string token = getApiTokenFromFile(runParameters->getApiConfigFilePath(), runParameters->getApiSource());
+      enum HistoricDataReader<Decimal>::HistoricDataApi apiSource =
+        HistoricDataReaderFactory<Decimal>::getApiFromString(runParameters->getApiSource());
 
-  return hourlyDataFilePath;
+      DateRange datesToCollect(mcptConfig->getInsampleDateRange().getFirstDate(), mcptConfig->getOosDateRange().getLastDate());
+      historicDataReader = HistoricDataReaderFactory<Decimal>::createHistoricDataReader(mcptConfig->getSecurity()->getSymbol(),
+                                                                                        apiSource, token,
+                                                                                        datesToCollect,
+                                                                                        TimeFrame::INTRADAY);
+    }
+
+    return historicDataReader;
 }
 
 int main(int argc, char **argv)
@@ -202,8 +213,8 @@ int main(int argc, char **argv)
 
       // Create the additional time shifted time series from the intraday data file
 
-      std::string intradayPath(getIntradayDataPath(parameters, search.getConfig()));
-      DailyTimeShiftedMultiTimeSeriesCreator<Decimal> timeShiftedDataCreator(intradayPath, search.getConfig()->getSecurity());
+      auto histReader = getHistoricDataReader(parameters, search.getConfig());
+      DailyTimeShiftedMultiTimeSeriesCreator<Decimal> timeShiftedDataCreator(histReader, search.getConfig()->getSecurity());
       timeShiftedDataCreator.createShiftedTimeSeries();
 
       std::string symbolStr = search.getConfig()->getSecurity()->getSymbol();
