@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_MAIN
 
 #include <catch2/catch_test_macros.hpp>
+#include "HistoricDataReader.h"
 #include "TimeShiftedMultiTimeSeriesCreator.h"
 #include "DecimalConstants.h"
 #include "TestUtils.h"
@@ -32,23 +33,25 @@ TEST_CASE ("TimeShiftedMultiTimeSeriesCreator operations", "[DailyTimeShiftedMul
   std::string equitySymbol("SSO");
   std::string equityName("ProShares Ultra S&P500");
 
-  auto ssoDailyFile = std::make_shared<TradeStationFormatCsvReader<DecimalType>>("SSO_RAD_Daily.txt",
-										 TimeFrame::DAILY,
-										 TradingVolume::SHARES,
-										 DecimalConstants<DecimalType>::EquityTick);
-  ssoDailyFile->readFile();
+  auto ssoDailyFile = HistoricDataReaderFactory<DecimalType>::createHistoricDataReader("SSO_RAD_Daily.txt",
+										       HistoricDataReader<DecimalType>::TRADESTATION,
+										       TimeFrame::DAILY,
+										       TradingVolume::SHARES,
+										       DecimalConstants<DecimalType>::EquityTick);
+  ssoDailyFile->read();
 
-  auto ssoIntradayFile = std::make_shared<TradeStationFormatCsvReader<DecimalType>>("SSO_RAD_Hourly.txt",
-										    TimeFrame::INTRADAY,
-										    TradingVolume::SHARES,
-										    DecimalConstants<DecimalType>::EquityTick);
+  auto ssoIntradayFile = HistoricDataReaderFactory<DecimalType>::createHistoricDataReader("SSO_RAD_Hourly.txt",
+											  HistoricDataReader<DecimalType>::TRADESTATION,
+											  TimeFrame::INTRADAY,
+											  TradingVolume::SHARES,
+											  DecimalConstants<DecimalType>::EquityTick);
  
-  ssoIntradayFile->readFile();
+  ssoIntradayFile->read();
 
   auto ssoDaily = std::make_shared<EquitySecurity<DecimalType>>(equitySymbol, equityName, ssoDailyFile->getTimeSeries());
   auto ssoHourly = std::make_shared<EquitySecurity<DecimalType>>(equitySymbol, equityName, ssoIntradayFile->getTimeSeries());
 
-  auto timeShiftedCreator = std::make_shared<DailyTimeShiftedMultiTimeSeriesCreator<DecimalType>>("SSO_RAD_Hourly.txt",
+  auto timeShiftedCreator = std::make_shared<DailyTimeShiftedMultiTimeSeriesCreator<DecimalType>>(ssoIntradayFile,
 												  ssoDaily);
   timeShiftedCreator->createShiftedTimeSeries();
 

@@ -59,7 +59,7 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
     int msftRowCount = reader->getTimeSeries()->getNumEntries();
     msftTimeFrameDiscovery = std::make_shared<TimeFrameDiscovery<DecimalType>>(reader->getTimeSeries());
     msftTimeFrameDiscovery->inferTimeFrames();
-    msftSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries(), "MSFT_RAD_Hourly.txt");
+    msftSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries());
 
     int msftAggregateCount = 0;
     int partialDays = 0;
@@ -67,12 +67,9 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
     {
         time_duration time = msftTimeFrameDiscovery->getTimeFrame(i);
         msftSyntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, time);
-        msftSyntheticTimeSeriesCreator->writeTimeFrameFile(i+1);
         msftAggregateCount += msftSyntheticTimeSeriesCreator->getSyntheticTimeSeries(i+1)->getNumEntries();
 
 	partialDays += msftSyntheticTimeSeriesCreator->getNumPartialDays(i + 1);
-        std::string filename(std::string("MSFT_RAD_Hourly.txt_timeframe_") + std::to_string(i+1));
-        std::remove(filename.c_str());
     }
 
     REQUIRE(msftRowCount + partialDays == msftAggregateCount); // ensure the files written have the same number of entries as the original time series file
@@ -89,7 +86,7 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
     int kcRowCount = reader->getTimeSeries()->getNumEntries();
     kcTimeFrameDiscovery = std::make_shared<TimeFrameDiscovery<DecimalType>>(reader->getTimeSeries());
     kcTimeFrameDiscovery->inferTimeFrames();
-    kcSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries(), "KC_RAD_Hourly.txt");
+    kcSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries());
 
     int  kcAggregateCount = 0;
     int partialDays = 0;
@@ -98,11 +95,8 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
         time_duration time = kcTimeFrameDiscovery->getTimeFrame(i);
         kcSyntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, time);
 
-        std::string filename(std::string("KC_RAD_Hourly.txt_timeframe_") + std::to_string(i+1));
         kcAggregateCount += kcSyntheticTimeSeriesCreator->getSyntheticTimeSeries(i+1)->getNumEntries();
 	partialDays += kcSyntheticTimeSeriesCreator->getNumPartialDays(i + 1);
-
-        std::remove(filename.c_str()); // delete the file
     }
 
     REQUIRE(kcRowCount + partialDays == kcAggregateCount);
@@ -135,7 +129,7 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
         "MSFT_RAD_Hourly.txt", TimeFrame::INTRADAY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick
     );
     reader->readFile();
-    msftSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries(), "MSFT_RAD_Hourly.txt");
+    msftSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries());
     msftTimeFrameDiscovery = std::make_shared<TimeFrameDiscovery<DecimalType>>(reader->getTimeSeries());
     msftTimeFrameDiscovery->inferTimeFrames();
 
@@ -143,7 +137,6 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
     {
         time_duration time = msftTimeFrameDiscovery->getTimeFrame(i);
         msftSyntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, time);
-        msftSyntheticTimeSeriesCreator->writeTimeFrameFile(i+1);
 
         int filesize = msftSyntheticTimeSeriesCreator->getSyntheticTimeSeries(i+1)->getNumEntries();
 
@@ -157,8 +150,6 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
         // the 9:00 time stamp.
         REQUIRE(it->second + msftSyntheticTimeSeriesCreator->getNumPartialDays(i + 1) == filesize); 
 
-        std::string filename(std::string("MSFT_RAD_Hourly.txt_timeframe_") + std::to_string(i+1));
-        std::remove(filename.c_str()); // delete the file
     }
   }
 
@@ -189,7 +180,7 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
         "KC_RAD_Hourly.txt", TimeFrame::INTRADAY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick
     );
     reader->readFile();
-    kcSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries(), "KC_RAD_Hourly.txt");
+    kcSyntheticTimeSeriesCreator = std::make_shared<SyntheticTimeSeriesCreator<DecimalType>>(reader->getTimeSeries());
     kcTimeFrameDiscovery = std::make_shared<TimeFrameDiscovery<DecimalType>>(reader->getTimeSeries());
     kcTimeFrameDiscovery->inferTimeFrames();
 
@@ -198,7 +189,6 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
         time_duration time = kcTimeFrameDiscovery->getTimeFrame(i);
         kcSyntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, time);
 
-        std::string filename(std::string("KC_RAD_Hourly.txt_timeframe_") + std::to_string(i+1));
         int filesize = kcSyntheticTimeSeriesCreator->getSyntheticTimeSeries(i+1)->getNumEntries();
 
         tm.tm_hour = time.hours(); tm.tm_min = time.minutes(); tm.tm_sec = time.seconds();
@@ -210,8 +200,6 @@ TEST_CASE ("SyntheticTimeSeriesCreator operations", "[SyntheticTimeSeriesCreator
         // should be four entries read in from the synthetic timeframe file generated for
         // the 9:00 time stamp.
         REQUIRE(it->second + kcSyntheticTimeSeriesCreator->getNumPartialDays(i + 1) == filesize); 
-
-        std::remove(filename.c_str()); // delete the file
     }
   }
 
