@@ -18,9 +18,8 @@ namespace mkc_timeseries
     public:
         typedef typename std::map<int, std::shared_ptr<OHLCTimeSeries<Decimal>>> SyntheticTimeSeriesMap;
 
-        SyntheticTimeSeriesCreator(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries, std::string hourlyDataFilename) : 
+        SyntheticTimeSeriesCreator(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries) : 
             mOriginalHourlyTimeSeries(timeSeries),
-            mFilename(hourlyDataFilename),
             mTimeSeriesMap(),
             mPartialDayMap(),
             mEntryDate() // Constructs date with value not_a_date_time
@@ -116,6 +115,7 @@ namespace mkc_timeseries
             return mPartialDayMap.at(timeFrameId);
         }
 
+/*
         void writeTimeFrameFile(int timeFrameId)
         {
             std::shared_ptr<OHLCTimeSeries<Decimal>> series = mTimeSeriesMap.at(timeFrameId);
@@ -123,12 +123,11 @@ namespace mkc_timeseries
             PalTimeSeriesCsvWriter<Decimal> csvWriter(timeFrameFilename, *series);
             csvWriter.writeFile();
         }
-
+*/
         SyntheticTimeSeriesMap getSyntheticTimeSeriesMap() { return mTimeSeriesMap; }
 
     private:
         std::shared_ptr<OHLCTimeSeries<Decimal>> mOriginalHourlyTimeSeries;
-        std::string mFilename;
         SyntheticTimeSeriesMap mTimeSeriesMap;
         std::map<int, int> mPartialDayMap;
         Decimal mOpen = DecimalConstants<Decimal>::DecimalZero;
@@ -165,10 +164,12 @@ namespace mkc_timeseries
             return lastTimeStamp;
         }
 
+/*
         std::string getTimeFrameFilename(int timeFrameId)
         {
             return std::string(mFilename + std::string("_timeframe_") + std::to_string(timeFrameId));
         }
+*/
     };
 }
 
