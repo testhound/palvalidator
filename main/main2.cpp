@@ -87,12 +87,12 @@ std::shared_ptr<HistoricDataReader<Decimal>> getHistoricDataReader(std::shared_p
 
     if (!runParameters->shouldUseApi())
     {
-      historicDataReader = HistoricDataReaderFactory<Decimal>::createHistoricDataReader(runParameters->getEodDataFilePath(),
+      historicDataReader = HistoricDataReaderFactory<Decimal>::createHistoricDataReader(runParameters->getHourlyDataFilePath(),
                                                                                         HistoricDataReader<Decimal>::TRADESTATION, TimeFrame::INTRADAY,
                                                                                         mcptConfig->getSecurity()->getVolumeUnit(),
                                                                                         mcptConfig->getSecurity()->getTick());
     }
-    else if(runParameters->shouldUseApi())
+    else
     {
       std::string token = getApiTokenFromFile(runParameters->getApiConfigFilePath(), runParameters->getApiSource());
       enum HistoricDataReader<Decimal>::HistoricDataApi apiSource =
