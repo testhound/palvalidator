@@ -12,6 +12,9 @@ CMakeLists.txt.user*
 libs/build-pasearchalgolib-Desktop-Default/
 libs/timeserieslib/*.o
 libs/timeserieslib/*.a
+libs/timeserieslib/test/TimeShiftedMultiTimeSeriesCreatorTest
+libs/timeserieslib/test/MonteCarloPermutationTest2
+libs/timeserieslib/test/DateRangeTest
 libs/timeserieslib/test/BackTesterTest
 libs/timeserieslib/test/SyntheticTimeSeriesTest
 libs/timeserieslib/test/SecurityBacktestPropertiesTest
@@ -29,6 +32,7 @@ libs/timeserieslib/test/StrategyTransactionTest
 libs/timeserieslib/test/SecurityAttributesFactoryTest
 libs/timeserieslib/test/RobustnessTestUnitTest
 libs/timeserieslib/test/StrategyTransactionManagerTest
+libs/timeserieslib/test/SyntheticTimeSeriesCreatorTest
 libs/timeserieslib/test/MarketOrderTest
 libs/timeserieslib/test/StopOrderTest
 libs/timeserieslib/test/PercentNumberTest
@@ -79,7 +83,9 @@ libs/PALCodeGenLibrary-v2/position.hh
 libs/PALCodeGenLibrary-v2/stack.hh
 libs/PALCodeGenLibrary-v2/*.o
 libs/PALCodeGenLibrary-v2/*.a
-
+tests/RejectedRobustnessOut.txt
+tests/SurvivorRobustnessOut.txt
+tests/SyntheticSeriesOut.csv
 
 
 
