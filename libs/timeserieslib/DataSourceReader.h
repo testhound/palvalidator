@@ -1,6 +1,7 @@
 #ifndef __DATAREADER_H
 #define __DATAREADER_H 1
 
+#include <exception>
 #include <boost/date_time.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
@@ -15,6 +16,17 @@
 
 namespace mkc_timeseries
 {
+  class DataSourceReaderException : public std::runtime_error
+  {
+  public:
+  DataSourceReaderException(const std::string msg)
+    : std::runtime_error(msg)
+      {}
+
+    ~DataSourceReaderException()
+      {}
+  };
+
   class DataSourceReader
   {
       /* a super class for the other data sources.
@@ -34,9 +46,20 @@ namespace mkc_timeseries
     std::string createTemporaryFile(std::string ticker, std::string configTimeFrame,
             DateRange isDateRange, DateRange oosDateRange, bool performDownload)
     {
+      DateRange dRange(isDateRange.getFirstDate(), oosDateRange.getLastDate());
+      return this->createTemporaryFile(ticker, configTimeFrame, dRange, performDownload);
+    }
+
+    /*
+     * Constructes a URI for the platform, downloads the data to a temporary
+     * CSV file, and returns the filename
+     */
+    std::string createTemporaryFile(std::string ticker, std::string configTimeFrame,
+				    DateRange dateRangeToCollect, bool performDownload)
+    {
       setApiTimeFrameRepresentation(configTimeFrame);
-      std::string uri = buildDataFetchUri(ticker, isDateRange.getFirstDate() - boost::gregorian::days(2), 
-            oosDateRange.getLastDate() + boost::gregorian::days(2));
+      std::string uri = buildDataFetchUri(ticker, dateRangeToCollect.getFirstDate() - boost::gregorian::days(2), 
+					  dateRangeToCollect.getLastDate() + boost::gregorian::days(2));
       std::string filename = getFilename(ticker, configTimeFrame);
 
       if (!performDownload) {
@@ -47,7 +70,7 @@ namespace mkc_timeseries
       rapidjson::Document jsonDocument = getJson(uri);
 
       if (!validApiResponse(jsonDocument)) // no data returned - error
-        throw McptConfigurationFileReaderException("No data returned from API call.");
+        throw DataSourceReaderException("No data returned from API call.");
         
       // transform JSON into CSV in TradeStation format.
       std::ofstream csvFile;
