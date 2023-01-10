@@ -30,6 +30,10 @@ TEST_CASE ("PALMonteCarloValidationTest-Security operations", "[Security]")
 {
   //McptConfigurationFileReader reader("C2Config.txt");
   std::shared_ptr<RunParameters> parameters = std::make_shared<RunParameters>();
+  parameters->setUseApi(false);
+  parameters->setEodDataFilePath("./CL_RAD.txt");
+  parameters->setConfig1FilePath("./CL_R1_0_Dev1_Config.txt");
+
   McptConfigurationFileReader reader(parameters);
 
   std::shared_ptr<McptConfiguration<DecimalType>> configuration = reader.readConfigurationFile();
