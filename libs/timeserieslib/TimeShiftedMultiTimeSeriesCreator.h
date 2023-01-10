@@ -7,6 +7,7 @@
 #include "TimeSeriesCsvReader.h"
 #include "Security.h"
 #include "TimeSeriesValidator.h"
+#include "HistoricDataReader.h"
 
 namespace mkc_timeseries
 {
@@ -65,30 +66,26 @@ namespace mkc_timeseries
   class DailyTimeShiftedMultiTimeSeriesCreator : public TimeShiftedMultiTimeSeriesCreator<Decimal>
   {
   public:
-    DailyTimeShiftedMultiTimeSeriesCreator(const std::string intradayDataFilePath, const std::shared_ptr<Security<Decimal>> security)
+    DailyTimeShiftedMultiTimeSeriesCreator(const std::shared_ptr<HistoricDataReader<Decimal>> intradayReader, 
+					   const std::shared_ptr<Security<Decimal>> security)
       : TimeShiftedMultiTimeSeriesCreator<Decimal>(security),
-      mIntradayDataFilePath(intradayDataFilePath)
+      mIntradayDataReader(intradayReader)
     {}
 
     void createShiftedTimeSeries()
       {
-	std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = 
-	  std::make_shared<TradeStationFormatCsvReader<Decimal>>(mIntradayDataFilePath,
-								 TimeFrame::INTRADAY,
-								 this->getSecurity()->getVolumeUnit(),
-								 this->getSecurity()->getTick());
-        reader->readFile();
+        mIntradayDataReader->read();
 
         std::shared_ptr<TimeFrameDiscovery<Decimal>> timeFrameDiscovery = 
-	  std::make_shared<TimeFrameDiscovery<Decimal>>(reader->getTimeSeries());
+	  std::make_shared<TimeFrameDiscovery<Decimal>>(mIntradayDataReader->getTimeSeries());
 
         timeFrameDiscovery->inferTimeFrames();
 
         std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
-          std::make_shared<SyntheticTimeSeriesCreator<Decimal>>(reader->getTimeSeries(), mIntradayDataFilePath);
+          std::make_shared<SyntheticTimeSeriesCreator<Decimal>>(mIntradayDataReader->getTimeSeries());
 
         std::shared_ptr<TimeSeriesValidator<Decimal>> validator = 
-	  std::make_shared<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(),
+	  std::make_shared<TimeSeriesValidator<Decimal>>(mIntradayDataReader->getTimeSeries(),
 							 this->getSecurity()->getTimeSeries(),
 							 timeFrameDiscovery->numTimeFrames());
         validator->validate();
@@ -109,7 +106,7 @@ namespace mkc_timeseries
       }
 
   private:
-    std::string mIntradayDataFilePath;
+    std::shared_ptr<HistoricDataReader<Decimal>> mIntradayDataReader;
   };
 }
 
