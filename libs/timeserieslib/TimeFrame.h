@@ -30,7 +30,7 @@ namespace mkc_timeseries
   class TimeFrame
   {
   public:
-    enum Duration {INTRADAY, DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY} ;
+    enum Duration {INTRADAY, INTRADAY120, INTRADAY60, INTRADAY30, DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY} ;
   };
 
 }
