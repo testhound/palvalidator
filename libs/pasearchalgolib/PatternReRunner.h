@@ -3,6 +3,7 @@
 
 #endif // PATTERNRERUNNER_H
 
+#include "SecurityFactory.h"
 #include "SecurityAttributes.h"
 #include "SecurityAttributesFactory.h"
 #include "PalParseDriver.h"
@@ -16,47 +17,6 @@
 
 using namespace mkc_timeseries;
 using Decimal = num::DefaultNumber;
-
-static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &symbol)
-{
-  SecurityAttributesFactory<Decimal> factory;
-  SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes(symbol);
-
-  if (it != factory.endSecurityAttributes())
-    return it->second;
-  else
-    throw runtime_error("createSecurityAttributes - ticker symbol " +symbol +" is unkown");
-}
-
-static std::shared_ptr<mkc_timeseries::Security<Decimal>>
-createSecurity (std::shared_ptr<SecurityAttributes<Decimal>> attributes,
-                std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries)
-{
-  if (attributes->isEquitySecurity())
-    {
-      if (attributes->isFund())
-        {
-          return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(),
-                                                           attributes->getName(),
-                                                           timeSeries);
-        }
-      else if (attributes->isCommonStock())
-        {
-          return std::make_shared<EquitySecurity<Decimal>>(attributes->getSymbol(),
-                                                           attributes->getName(),
-                                                           timeSeries);
-        }
-      else
-        throw runtime_error("Unknown security attribute");
-    }
-  else
-    return std::make_shared<FuturesSecurity<Decimal>>(attributes->getSymbol(),
-                                                      attributes->getName(),
-                                                      attributes->getBigPointValue(),
-                                                      attributes->getTick(),
-                                                      timeSeries);
-
-}
 
 class PatternReRunner
 {
@@ -74,9 +34,7 @@ public:
 
   std::shared_ptr<mkc_timeseries::Security<Decimal>> makeSecurity(std::shared_ptr<OHLCTimeSeries<Decimal>> timeSeries, const std::string& tickerSymbol)
   {
-    std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
-
-    return createSecurity(attributes, timeSeries);
+    return SecurityFactory<Decimal>::createSecurity(tickerSymbol, timeSeries);
   }
 
   PriceActionLabSystem* readFile(const std::string& fileName)
