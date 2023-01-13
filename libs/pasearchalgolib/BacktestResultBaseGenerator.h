@@ -45,22 +45,6 @@ namespace mkc_searchalgo {
       mSeries(series)
     {}
 
-#if 0
-    static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-                                                       boost::gregorian::date startDate,
-                                                       boost::gregorian::date endDate)
-    {
-      if (theTimeFrame == TimeFrame::DAILY)
-        return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
-      else if (theTimeFrame == TimeFrame::WEEKLY)
-        return std::make_shared<WeeklyBackTester<Decimal>>(startDate, endDate);
-      else if (theTimeFrame == TimeFrame::MONTHLY)
-        return std::make_shared<MonthlyBackTester<Decimal>>(startDate, endDate);
-      else
-        throw PALMonteCarloValidationException("PALMonteCarloValidation::getBackTester - Only daily and monthly time frame supported at present.");
-    }
-#endif
-
   private:
     boost::gregorian::date fitBetweenInSampleDates(boost::gregorian::date dateToFit)
     {
