@@ -98,21 +98,6 @@ namespace mkc_timeseries
     virtual void runPermutationTests() = 0;
 
   protected:
-    std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-                                                       boost::gregorian::date startDate,
-                                                       boost::gregorian::date endDate) const
-    {
-      if (theTimeFrame == TimeFrame::DAILY)
-        return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
-      else if (theTimeFrame == TimeFrame::WEEKLY)
-        return std::make_shared<WeeklyBackTester<Decimal>>(startDate, endDate);
-      else if (theTimeFrame == TimeFrame::MONTHLY)
-        return std::make_shared<MonthlyBackTester<Decimal>>(startDate, endDate);
-      else
-        throw PALMonteCarloValidationException("PALMonteCarloValidation::getBackTester - Only daily and monthly time frame supported at present.");
-    }
-
-  protected:
     std::shared_ptr<McptConfiguration<Decimal>> mMonteCarloConfiguration;
     unsigned long mNumPermutations;
     _StrategySelection<Decimal> mStrategySelectionPolicy;
@@ -187,9 +172,9 @@ namespace mkc_timeseries
           strategyName = longStrategyNameBase + std::to_string(strategyNumber);
           longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
-          auto theBackTester = this->getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                                                   oosDates.getFirstDate(),
-                                                   oosDates.getLastDate());
+          auto theBackTester = BackTesterFactory<Decimal>::getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+									 oosDates.getFirstDate(),
+									 oosDates.getLastDate());
 
           theBackTester->addStrategy(longStrategy);
           //start paralel part
@@ -241,9 +226,9 @@ namespace mkc_timeseries
           strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
           shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
-          auto theBackTester = this->getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                                                   oosDates.getFirstDate(),
-                                                   oosDates.getLastDate());
+          auto theBackTester = BackTesterFactory<Decimal>::getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+									 oosDates.getFirstDate(),
+									 oosDates.getLastDate());
           theBackTester->addStrategy(shortStrategy);
 
           //sends code to the runner
@@ -341,9 +326,9 @@ namespace mkc_timeseries
       auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
       aPortfolio->addSecurity(securityToTest);
 
-      auto theBackTester = this->getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                                               oosDates.getFirstDate(),
-                                               oosDates.getLastDate());
+      auto theBackTester = BackTesterFactory<Decimal>::getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+								     oosDates.getFirstDate(),
+								     oosDates.getLastDate());
 
       // Runs permutations and gets all the tests that can be deemed valid
       BestOfMcptType mcpt(theBackTester, this->mNumPermutations, patternsToTest, aPortfolio);
@@ -536,9 +521,9 @@ namespace mkc_timeseries
           strategyName = longStrategyNameBase + std::to_string(strategyNumber);
           longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
-          theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                                        oosDates.getFirstDate(),
-                                        oosDates.getLastDate());
+          theBackTester = BackTesterFactory<Decimal>::getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+								    oosDates.getFirstDate(),
+								    oosDates.getLastDate());
 
           theBackTester->addStrategy(longStrategy);
           //sends code to be computed to the runner
@@ -586,9 +571,9 @@ namespace mkc_timeseries
           strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
           shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
 
-          theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                                        oosDates.getFirstDate(),
-                                        oosDates.getLastDate());
+          theBackTester = BackTesterFactory<Decimal>::getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
+								    oosDates.getFirstDate(),
+								    oosDates.getLastDate());
           theBackTester->addStrategy(shortStrategy);
 
           //sends the code to the runner
@@ -619,17 +604,6 @@ namespace mkc_timeseries
             std::cerr<<"Strategy: "<<i<<" error: "<<e.what()<<std::endl;
           }
         }
-    }
-
-  private:
-    std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-                                                       boost::gregorian::date startDate,
-                                                       boost::gregorian::date endDate) const
-    {
-      if (theTimeFrame == TimeFrame::DAILY)
-        return std::make_shared<DailyBackTester<Decimal>>(startDate, endDate);
-      else
-        throw PALMonteCarloValidationException("PALMCPTValidation::getBackTester - Only daily time frame supported at presetn.");
     }
 
   private:

@@ -28,8 +28,6 @@ using Decimal = num::DefaultNumber;
 namespace mkc_timeseries
 {
   static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &tickerSymbol);
-  static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-							 const DateRange& backtestingDates);
 
   McptConfigurationFileReader::McptConfigurationFileReader (const std::shared_ptr<RunParameters>& runParameters)
     : mRunParameters(runParameters)
@@ -138,29 +136,14 @@ namespace mkc_timeseries
         system = nullptr;
       }
 
-    return std::make_shared<McptConfiguration<Decimal>>(getBackTester(backTestingTimeFrame, ooSampleDates),
-						  getBackTester(backTestingTimeFrame, inSampleDates),
-						  SecurityFactory<Decimal>::createSecurity (tickerSymbol, historicDataReader->getTimeSeries()),
-						  system, inSampleDates, ooSampleDates,
-              dataFilename);
+    return std::make_shared<McptConfiguration<Decimal>>(BackTesterFactory<Decimal>::getBackTester(backTestingTimeFrame, ooSampleDates),
+							BackTesterFactory<Decimal>::getBackTester(backTestingTimeFrame, inSampleDates),
+							SecurityFactory<Decimal>::createSecurity (tickerSymbol,
+												  historicDataReader->getTimeSeries()),
+							system, inSampleDates, ooSampleDates,
+							dataFilename);
   }
-
-  static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-							 const DateRange& backtestingDates)
-  {
-    if (theTimeFrame == TimeFrame::DAILY)
-      return std::make_shared<DailyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-						  backtestingDates.getLastDate());
-    else if (theTimeFrame == TimeFrame::WEEKLY)
-      return std::make_shared<WeeklyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-						   backtestingDates.getLastDate());
-    else if (theTimeFrame == TimeFrame::MONTHLY)
-      return std::make_shared<MonthlyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-						    backtestingDates.getLastDate());
-    else
-      throw McptConfigurationFileReaderException("getBacktester - cannot create backtester for time frame other than daily or monthly");
-  }
-
+  
   static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &symbol)
   {
     SecurityAttributesFactory<Decimal> factory;

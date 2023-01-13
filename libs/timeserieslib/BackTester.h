@@ -423,6 +423,38 @@ private:
 	return boost_next_week(d);
       }
   };
+
+  template <class Decimal>
+  class BackTesterFactory
+    {
+    public:
+      static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
+								const DateRange& backtestingDates)
+      {
+	if (theTimeFrame == TimeFrame::DAILY)
+	  return std::make_shared<DailyBackTester<Decimal>>(backtestingDates.getFirstDate(),
+						  backtestingDates.getLastDate());
+	else if (theTimeFrame == TimeFrame::WEEKLY)
+	  return std::make_shared<WeeklyBackTester<Decimal>>(backtestingDates.getFirstDate(),
+						   backtestingDates.getLastDate());
+	else if (theTimeFrame == TimeFrame::MONTHLY)
+	  return std::make_shared<MonthlyBackTester<Decimal>>(backtestingDates.getFirstDate(),
+						    backtestingDates.getLastDate());
+	else
+	  throw BackTesterException("BackTesterFactory::getBacktester - cannot create backtester for time frame other than daily, weekly or monthly");
+      }
+
+      static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
+							 boost::gregorian::date startDate,
+							 boost::gregorian::date endDate)
+	{
+	  return BackTesterFactory<Decimal>::getBackTester(theTimeFrame, DateRange(startDate, endDate));
+	}
+
+    };
 }
+
+
+
 
 #endif

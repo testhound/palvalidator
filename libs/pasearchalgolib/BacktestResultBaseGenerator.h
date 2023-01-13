@@ -45,7 +45,7 @@ namespace mkc_searchalgo {
       mSeries(series)
     {}
 
-
+#if 0
     static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
                                                        boost::gregorian::date startDate,
                                                        boost::gregorian::date endDate)
@@ -59,6 +59,7 @@ namespace mkc_searchalgo {
       else
         throw PALMonteCarloValidationException("PALMonteCarloValidation::getBackTester - Only daily and monthly time frame supported at present.");
     }
+#endif
 
   private:
     boost::gregorian::date fitBetweenInSampleDates(boost::gregorian::date dateToFit)
@@ -131,13 +132,13 @@ namespace mkc_searchalgo {
                 {
                   if (fitBetweenInSampleDates(startDate) != startDate)
                     continue;
-                  interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
+                  interimBacktester = BackTesterFactory<Decimal>::getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenInSampleDates(endDate));
                 }
               else
                 {
                   if (fitBetweenIsOosDates(startDate) != startDate)
                     continue;
-                  interimBacktester = getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenIsOosDates(endDate));
+                  interimBacktester = BackTesterFactory<Decimal>::getBackTester(mConfiguration->getSecurity()->getTimeSeries()->getTimeFrame(), startDate, fitBetweenIsOosDates(endDate));
                 }
 
               interimBacktester->addStrategy(comparison.getPalStrategy());
