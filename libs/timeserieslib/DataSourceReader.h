@@ -308,7 +308,38 @@ namespace mkc_timeseries
       }
   };
 
-  std::shared_ptr<DataSourceReader> getDataSourceReader(std::string dataSourceName, std::string apiKey);
-  std::string getApiTokenFromFile(std::string apiConfigFilename, std::string dataSourceName);
+  class DataSourceReaderFactory
+  {
+  public:
+    static std::shared_ptr<DataSourceReader> getDataSourceReader(std::string dataSourceName,
+								 std::string apiKey)
+    {
+      if(boost::iequals(dataSourceName, "finnhub"))
+	return std::make_shared<FinnhubIOReader>(apiKey);
+      else if(boost::iequals(dataSourceName, "barchart"))
+	return std::make_shared<BarchartReader>(apiKey);
+      else
+	throw DataSourceReaderException("Data source " + dataSourceName + " not recognized");
+    }
+
+    static std::string getApiTokenFromFile(std::string apiConfigFilename, std::string dataSourceName)
+    {
+      std::string source, token = "";
+      io::CSVReader<2> csvApiConfig(apiConfigFilename.c_str());
+      csvApiConfig.set_header("Source", "Token");
+
+      while(csvApiConfig.read_row(source, token))
+	if(boost::iequals(dataSourceName, source))
+	  break;
+
+      if(token.empty())
+	throw DataSourceReaderException("Source " + dataSourceName + " does not exist in " + apiConfigFilename);
+
+      return token;
+    }
+
+  };
+  //std::shared_ptr<DataSourceReader> getDataSourceReader(std::string dataSourceName, std::string apiKey);
+  //std::string getApiTokenFromFile(std::string apiConfigFilename, std::string dataSourceName);
 }
 #endif
