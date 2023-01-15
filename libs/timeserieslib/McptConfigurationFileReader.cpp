@@ -27,8 +27,6 @@ using Decimal = num::DefaultNumber;
 
 namespace mkc_timeseries
 {
-  static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &tickerSymbol);
-
   McptConfigurationFileReader::McptConfigurationFileReader (const std::shared_ptr<RunParameters>& runParameters)
     : mRunParameters(runParameters)
   {}
@@ -60,7 +58,7 @@ namespace mkc_timeseries
       std::cout << "******** Warning OOS start date is before IS start date **********" << std::endl << std::endl;
     //throw McptConfigurationFileReaderException("McptConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
 
-    std::shared_ptr<SecurityAttributes<Decimal>> attributes = createSecurityAttributes (tickerSymbol);
+    std::shared_ptr<SecurityAttributes<Decimal>> attributes = getSecurityAttributes<Decimal> (tickerSymbol);
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
     std::string dataFilename = mRunParameters->getEodDataFilePath();
@@ -75,9 +73,9 @@ namespace mkc_timeseries
                                                                                         attributes->getVolumeUnits(),
                                                                                         attributes->getTick());
     }
-    else if(mRunParameters->shouldUseApi())
+    else
     {
-      std::string token = getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
+      std::string token = DataSourceReaderFactory::getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
       enum HistoricDataReader<Decimal>::HistoricDataApi apiSource =
         HistoricDataReaderFactory<Decimal>::getApiFromString(mRunParameters->getApiSource());
       historicDataReader = HistoricDataReaderFactory<Decimal>::createHistoricDataReader(tickerSymbol,
@@ -142,45 +140,5 @@ namespace mkc_timeseries
 												  historicDataReader->getTimeSeries()),
 							system, inSampleDates, ooSampleDates,
 							dataFilename);
-  }
-  
-  static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &symbol)
-  {
-    SecurityAttributesFactory<Decimal> factory;
-    SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
-
-    if (it != factory.endSecurityAttributes())
-      return it->second;
-    else
-      throw McptConfigurationFileReaderException("createSecurityAttributes - ticker symbol " +symbol +" is unkown");
-  }
-
-  std::shared_ptr<DataSourceReader> getDataSourceReader(
-        std::string dataSourceName, 
-        std::string apiKey) 
-  {
-    if(boost::iequals(dataSourceName, "finnhub")) 
-      return std::make_shared<FinnhubIOReader>(apiKey);
-    else if(boost::iequals(dataSourceName, "barchart"))
-      return std::make_shared<BarchartReader>(apiKey);
-    else
-      throw McptConfigurationFileReaderException("Data source " + dataSourceName + " not recognized");
-  }
-
-  std::string getApiTokenFromFile(std::string apiConfigFilename, std::string dataSourceName) 
-  {
-    std::string source, token = "";
-    io::CSVReader<2> csvApiConfig(apiConfigFilename.c_str());
-    csvApiConfig.set_header("Source", "Token");
-
-    while(csvApiConfig.read_row(source, token))
-      if(boost::iequals(dataSourceName, source)) 
-        break;
-
-    if(token.empty()) 
-      throw McptConfigurationFileReaderException(
-          "Source " + dataSourceName + " does not exist in " + apiConfigFilename);
-
-    return token;
   }
 }
