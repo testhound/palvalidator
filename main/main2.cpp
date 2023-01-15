@@ -94,7 +94,7 @@ std::shared_ptr<HistoricDataReader<Decimal>> getHistoricDataReader(std::shared_p
     }
     else
     {
-      std::string token = getApiTokenFromFile(runParameters->getApiConfigFilePath(), runParameters->getApiSource());
+      std::string token = DataSourceReaderFactory::getApiTokenFromFile(runParameters->getApiConfigFilePath(), runParameters->getApiSource());
       enum HistoricDataReader<Decimal>::HistoricDataApi apiSource =
         HistoricDataReaderFactory<Decimal>::getApiFromString(runParameters->getApiSource());
 
