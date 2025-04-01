@@ -134,69 +134,58 @@ using namespace boost::accumulators;
       return sortedVector[mid];
   }
 
-  // Calculate median of entire series
 
   template <typename T>
-  double Median(const std::vector<T>& series)
-  {
+  T StandardDeviation(const std::vector<T>& series) {
+    if (series.size() > 0) {
+        std::vector<double> doubleSeries;
+        for (const T& value : series) {
+            doubleSeries.push_back(value.getAsDouble()); // Convert to double
+        }
+
+        accumulator_set<double, features<tag::variance>> varianceStats;
+        varianceStats = for_each(doubleSeries.begin(), doubleSeries.end(), varianceStats);
+        return T(sqrt(variance(varianceStats))); // Convert back to T
+    } else {
+        return T(0);
+    }
+}
+  
+template <typename T>
+T Median(const std::vector<T>& series) {
     typedef typename std::vector<T>::size_type vec_size_type;
 
-    std::vector<T> sortedVector (series);
-    std::sort (sortedVector.begin(), sortedVector.end());
+    std::vector<T> sortedVector(series);
+    std::sort(sortedVector.begin(), sortedVector.end());
 
     vec_size_type size = sortedVector.size();
-    if (size == 0)
-      throw std::domain_error ("Cannot take median of empty time series");
+    if (size == 0) {
+        throw std::domain_error("Cannot take median of empty time series");
+    }
 
     vec_size_type mid = size / 2;
 
-    if ((size % 2) == 0)
-      return (double) ((sortedVector[mid] + sortedVector[mid - 1])/2.0);
-    else
-      return (double) sortedVector[mid];
-  }
+    if ((size % 2) == 0) {
+        return (sortedVector[mid] + sortedVector[mid - 1]) / T(2.0);
+    } else {
+        return sortedVector[mid];
+    }
+}
 
-  // Calculate standard deviation
-
-  template <typename T>
-  double StandardDeviation(const std::vector<T>& series)
-  {
-    if (series.size() > 0)
-      {
-	accumulator_set<T, features<tag::variance>> varianceStats;
-
-	varianceStats = for_each (series.begin(), series.end(), varianceStats);
-	return sqrt (variance (varianceStats));
-      }
-    else
-      return 0.0;
-  }
-
-// Calculate median of entire series
-
-  template <typename T>
-  double MedianAbsoluteDeviation(const std::vector<T>& series)
-  {
-    if (series.size() > 0)
-      {
-	double firstMedian = Median (series);
-	typename std::vector<T>::const_iterator it = series.begin();
-	double temp;
-
-	std::vector<double> secondMedianVector;
-
-	for (; it != series.end(); it++)
-	  {
-	    temp = abs ((double) *it - firstMedian);
-	    secondMedianVector.push_back (temp);
-	  }
-
-	return Median<double> (secondMedianVector) * 1.4826;
-      }
-    else
-      return 0.0;
-  }
-
+template <typename T>
+T MedianAbsoluteDeviation(const std::vector<T>& series) {
+    if (series.size() > 0) {
+        T firstMedian = Median(series);
+        std::vector<T> secondMedianVector;
+        for (const T& value : series) {
+	  secondMedianVector.push_back((value - firstMedian).abs()); // Use dec::abs
+        }
+        return Median(secondMedianVector) * T(1.4826);
+    } else {
+        return T(0);
+    }
+}
+  
 /* c##################################################################### */
   /* c######################  file Qn.for :  ############################## */
   /* c##################################################################### */
