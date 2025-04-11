@@ -18,8 +18,8 @@
 #include "MonteCarloPermutationTest.h"
 #include "McptConfigurationFileReader.h"
 #include "PalAst.h"
+#include "PermutationTestResultPolicy.h"
 #include "MultipleTestingCorrection.h"
-#include "UnadjustedPValueStrategySelection.h"
 #include "runner.hpp"
 
 namespace mkc_timeseries
@@ -127,6 +127,8 @@ namespace mkc_timeseries
       public PALMonteCarloValidationBase<Decimal,McptType, _StrategySelection>
   {
   public:
+    using PermutationResultType = typename _StrategySelection<Decimal>::PermutationResultType;
+    
     PALMonteCarloValidation(std::shared_ptr<McptConfiguration<Decimal>> configuration,
                             unsigned long numPermutations)
       : PALMonteCarloValidationBase<Decimal,McptType, _StrategySelection>(configuration, numPermutations)
@@ -277,7 +279,7 @@ namespace mkc_timeseries
           }
         }
 
-      this->mStrategySelectionPolicy.selectSurvivingStrategies();
+      this->mStrategySelectionPolicy.correctForMultipleTests();
     }
 
   };
@@ -372,7 +374,7 @@ namespace mkc_timeseries
           this->mStrategySelectionPolicy.addStrategy (pValue, strategy);
         }
 
-      this->mStrategySelectionPolicy.selectSurvivingStrategies();
+      this->mStrategySelectionPolicy.correctForMultipleTests();
     }
 
   };
