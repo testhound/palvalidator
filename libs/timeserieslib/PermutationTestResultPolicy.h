@@ -16,7 +16,7 @@ namespace mkc_timeseries
 {
   // Policy class that represents just a p-value
   // being returned from monte-carlo permutation testing
-  
+
   template <class Decimal>
   class PValueReturnPolicy
   {
@@ -31,7 +31,6 @@ namespace mkc_timeseries
     {
       return pValue;
     }
-    
   };
 
   // Return a p-value and a test statistic from Monte-Carlo
@@ -61,7 +60,7 @@ namespace mkc_timeseries
     PermutationTestingMaxTestStatisticPolicy()
       : mMaxTestStatistic(DecimalConstants<Decimal>::DecimalZero)
     {}
-    
+
     PermutationTestingMaxTestStatisticPolicy (const PermutationTestingMaxTestStatisticPolicy& rhs)
       : mMaxTestStatistic(rhs.mMaxTestStatistic)
     {}
@@ -73,7 +72,6 @@ namespace mkc_timeseries
 	return *this;
 
       mMaxTestStatistic = rhs.mMaxTestStatistic;
-      
       return *this;
     }
 
@@ -87,7 +85,7 @@ namespace mkc_timeseries
     {
       return mMaxTestStatistic;
     }
-    
+
   private:
     Decimal mMaxTestStatistic;
   };
@@ -96,7 +94,7 @@ namespace mkc_timeseries
   // represents a policy of collecting no summary test statistics
   // This policy class is used when we just want to return a
   // p-value from permutation testing
-  
+
   template <class Decimal> class PermutationTestingNullTestStatisticPolicy
   {
   public:
