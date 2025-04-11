@@ -48,16 +48,21 @@ namespace mkc_timeseries
     return syntheticPortfolio;
   }
 
-  template <class Decimal, class BackTestResultPolicy> class DefaultPermuteMarketChangesPolicy
+  template <class Decimal,
+	    class BackTestResultPolicy,
+	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
+	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>> class DefaultPermuteMarketChangesPolicy
   {
   public:
+    using ComputationPolicyReturnType = typename _PermutationTestResultPolicy::ReturnType;
+
     DefaultPermuteMarketChangesPolicy()
     {}
 
     ~DefaultPermuteMarketChangesPolicy()
     {}
 
-    static Decimal
+    static ComputationPolicyReturnType
     runPermutationTest (std::shared_ptr<BackTester<Decimal>> theBackTester,
                         uint32_t numPermutations,
                         const Decimal& baseLineTestStat)
@@ -69,6 +74,9 @@ namespace mkc_timeseries
 
       uint32_t count = 0;
       uint32_t i;
+
+      // Construct test statistics class
+      _PermutationTestStatisticsCollectionPolicy testStatisticCollection;
 
       for (i = 0; i < numPermutations; i++)
         {
@@ -93,10 +101,14 @@ namespace mkc_timeseries
 
           if (testStatistic >= baseLineTestStat)
             count++;
+
+	  testStatisticCollection.updateTestStatistic(testStatistic);
         }
 
-      //return Decimal((count + 1.0) / (numPermutations + 1.0));
-      return Decimal(count) / Decimal (numPermutations);
+      Decimal pValue(Decimal(count) / Decimal (numPermutations));
+      Decimal summaryTestStat(testStatisticCollection.getTestStat());
+
+      return _PermutationTestResultPolicy::createReturnValue(pValue, summaryTestStat);
     }
   };
 
