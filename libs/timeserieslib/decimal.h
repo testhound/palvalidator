@@ -587,7 +587,10 @@ public:
     explicit decimal(int64 value) {
         init(value);
     }
-    explicit decimal(xdouble value) {
+  explicit decimal(std::size_t value) {
+    init(value);
+  }
+  explicit decimal(xdouble value) {
         init(value);
     }
     explicit decimal(double value) {
@@ -1052,6 +1055,10 @@ protected:
     void init(int64 value) {
         m_value = DecimalFactor<Prec>::value * value;
     }
+  void init(std::size_t value)
+  {
+    m_value = DecimalFactor<Prec>::value * value;
+  }
     void init(xdouble value) {
         m_value = RoundPolicy::round(
                 static_cast<xdouble>(DecimalFactor<Prec>::value) * value);
