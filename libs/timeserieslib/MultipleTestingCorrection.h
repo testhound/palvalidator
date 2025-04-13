@@ -30,54 +30,190 @@ namespace mkc_timeseries
   //===========================================================================
   namespace detail {
 
-    // Helper function to prepare the container and build the sorted null distribution.
-    // Returns true if the container is non-empty and a non-empty sorted null distribution can be built.
-    // An "empirical null distribution" is a distribution of a test statistic that is generated from
-    // data where the null hypothesis is assumed to be true. Rather than relying on
-    // theoretical distributions
-    // (like the normal or t-distribution), you build the distribution directly from the
-    // data (usually via resampling or permutation methods). In the context of these
-    // correction methods, the empirical null distribution is created by collecting the
-    // test statistics (e.g.max test statistic) from each hypothesis
-    // (or permutation), then sorting them.
+    // Helper function to prepare the container of hypothesis test results and build a sorted empirical null distribution.
     //
-    // This provides a data‐driven reference against which the observed p-values can be
-    // compared during the multiple testing correction process. The approach is often used
-    // in permutation tests and has been discussed in detail in works like Romano and Wolf (2005).
+    // This function performs two key tasks:
+    //   1. It sorts the container of hypothesis tests in ascending order based on the original (raw) p-values.
+    //      - Each entry in the container is expected to be a tuple where the element at index 0 is the raw p-value.
+    //   2. It constructs the empirical null distribution which is used to compute empirical p-values later.
+    //      - The empirical null distribution is built in one of two ways:
+    //          a. If a synthetic null distribution is provided (container.hasSyntheticNull() is true),
+    //             then that distribution is used directly.
+    //          b. Otherwise, the function iterates through the container and extracts a test statistic
+    //             (typically the maximum test statistic) from each hypothesis (stored at index 1 in the tuple).
+    //      - The resulting null distribution is then sorted.
+    //
+    // Parameters:
+    //   container:
+    //     - A container object that encapsulates the hypothesis test results.
+    //     - It must provide several member functions:
+    //         • getNumStrategies(): Returns the count of hypothesis tests (strategies). If zero, no processing occurs.
+    //         • getInternalContainer(): Returns a reference to the container holding the tuples of test results.
+    //             Each tuple should at least contain:
+    //               - Index 0: the raw (original) p-value.
+    //               - Index 1: the test statistic (or maximum test statistic) used for the null distribution.
+    //         • hasSyntheticNull(): Indicates whether a synthetic null distribution is available.
+    //         • getSyntheticNullDistribution(): Retrieves the synthetic null distribution vector if available.
+    //
+    //   sortedEmpiricalNullDistribution:
+    //     - A reference to a vector that will be populated with the empirical null distribution values.
+    //     - These values are either taken directly from a synthetic null distribution or extracted (and then sorted)
+    //       from the container's test statistics.
+    //
+    // Return Value:
+    //   - Returns true if:
+    //         • The container is non-empty (i.e., it contains at least one hypothesis test),
+    //         • And a non-empty sorted empirical null distribution can be built.
+    //   - Returns false if the container is empty or if the constructed null distribution is empty.
+    //
+    // Detailed Process:
+    //   a. Check if the container has any hypothesis tests by calling getNumStrategies(). If no tests exist, return false.
+    //   b. Obtain a reference to the internal container via getInternalContainer().
+    //   c. Sort the internal container in ascending order based on the original p-values (tuples’ element at index 0).
+    //      - This sorting ensures that subsequent multiple testing adjustments are performed over an ordered set.
+    //   d. Determine how to build the null distribution:
+    //         - If a synthetic null distribution is available (hasSyntheticNull() returns true), assign it directly.
+    //         - Otherwise, loop over each tuple in the internal container and extract the test statistic
+    //           (stored at index 1) to form the null distribution.
+    //   e. Sort the resulting null distribution vector in ascending order.
+    //   f. Return true if the sorted empirical null distribution is not empty, indicating valid data for subsequent tests.
     template <typename Decimal, typename Container>
     bool prepareContainerAndNull(Container& container, std::vector<Decimal>& sortedEmpiricalNullDistribution) {
+      // Verify that the container holds at least one hypothesis test.
       if (container.getNumStrategies() == 0)
         return false;
       
+      // Access the internal container holding the hypothesis test result tuples.
       auto& tsContainer = container.getInternalContainer();
       
-      // Sort the container in ascending order by the original p-value (stored in element index 0).
+      // Sort the container based on the raw p-values (the first element of each tuple) in ascending order.
       std::sort(tsContainer.begin(), tsContainer.end(),
                 [](const auto& a, const auto& b) {
                   return std::get<0>(a) < std::get<0>(b);
                 });
       
-      // Build the null distribution either from a synthetic null or by extracting the max test statistic.
+      // Build the empirical null distribution:
+      // An "empirical null distribution" is a distribution of a test statistic that is generated from
+      // data where the null hypothesis is assumed to be true. Rather than relying on
+      // theoretical distributions
+      // (like the normal or t-distribution), you build the distribution directly from the
+      // data (usually via resampling or permutation methods). In the context of these
+      // correction methods, the empirical null distribution is created by collecting the
+      // test statistics (e.g.max test statistic) from each hypothesis
+      // (or permutation), then sorting them.
+      //
+      // This provides a data‐driven reference against which the observed p-values can be
+      // compared during the multiple testing correction process. The approach is often used
+      // in permutation tests and has been discussed in detail in works like Romano and Wolf (2005).
+
+      // Check if a synthetic null distribution is provided.
       if (container.hasSyntheticNull())
-	{
-	  sortedEmpiricalNullDistribution = container.getSyntheticNullDistribution();
-	}
+      {
+          // If a synthetic null exists, use it directly.
+          sortedEmpiricalNullDistribution = container.getSyntheticNullDistribution();
+      }
       else
-	{
-	  for (const auto& entry : tsContainer)
-	    sortedEmpiricalNullDistribution.push_back(std::get<1>(entry)); // Use maxTestStat stored at index 1.
-	}
+      {
+          // Otherwise, iterate through the container and collect the test statistic
+          // from each hypothesis (stored at index 1 in each tuple). This statistic is used for
+          // constructing the null distribution.
+          for (const auto& entry : tsContainer)
+            sortedEmpiricalNullDistribution.push_back(std::get<1>(entry));
+      }
       
+      // Sort the collected empirical null distribution values in ascending order.
       std::sort(sortedEmpiricalNullDistribution.begin(), sortedEmpiricalNullDistribution.end());
+ 
+      // Return true if the empirical null distribution is non-empty, indicating that we can proceed.
       return !sortedEmpiricalNullDistribution.empty();
     }
 
-    // Helper function to adjust p-values.
-    // The function iterates over the container (reverse for step-down, forward for step-up),
-    // computes the empirical p-value using the sorted null distribution,
-    // computes a candidate adjusted p-value (via computeCandidate lambda),
-    // enforces monotonicity (via updateMono lambda),
-    // and writes the adjusted p-value back into the container (at element index 0).
+    // Helper function to adjust p-values using an empirical null distribution.
+    //
+    // This function implements a general algorithm for resampling-based p-value adjustment as described in
+    // Romano and Wolf (2005, 2016). It supports both step-down and step-up adjustments by iterating over
+    // a container of hypothesis test results in reverse or forward order, respectively.
+    //
+    // Parameters:
+    //   container:
+    //     A container (e.g., vector of tuples) where each element represents a hypothesis test result.
+    //     Each tuple is assumed to have the following structure:
+    //       - Index 0: The observed (raw) p-value (which will be replaced with the adjusted p-value).
+    //       - Index 1: The observed test statistic or the maximum test statistic (from a permutation),
+    //                  used to compute the empirical p-value.
+    //       - (Additional indices may be used, e.g., for storing a strategy pointer.)
+    //
+    //   sortedEmpiricalNullDistribution:
+    //     A sorted vector of test statistics generated under the null hypothesis (the empirical null).
+    //     This distribution is used to compute empirical p-values by determining the proportion of null
+    //     test statistics that are greater than or equal to an observed test statistic.
+    //
+    //   computeCandidate:
+    //     A lambda (or function object) that calculates a candidate for the adjusted p-value. It is
+    //     provided with the computed empirical p-value, the current index (or rank), and the total number
+    //     of tests. For example, in the Romano-Wolf step-down procedure, the candidate might be computed as:
+    //       candidate = empiricalP * (totalTests / (i + 1))
+    //
+    //   updateMono:
+    //     A lambda (or function object) used to enforce monotonicity across the adjusted p-values.
+    //     Monotonicity is a requirement such that the sequence of adjusted p-values does not decrease
+    //     as you move from more extreme to less extreme test results.
+    //     - For step-down corrections (reverse iteration), updateMono returns the minimum of the previous
+    //       adjusted p-value and the current candidate (ensuring the new value does not exceed the previous one).
+    //     - For step-up corrections (forward iteration), updateMono returns the maximum of the previous
+    //       adjusted p-value and the candidate.
+    //
+    //   reverseOrder:
+    //     A boolean flag indicating the direction of iteration:
+    //       - true: iterate in reverse order (step-down procedure). This means starting with the most
+    //               “extreme” (largest) test statistic and moving to the least extreme.
+    //       - false: iterate in forward order (step-up procedure).
+    //
+    //   initialPreviousAdj:
+    //     The starting value for the “previous adjusted p-value” used in the monotonicity enforcement.
+    //     Typically, this is set to 1.0 for step-down corrections (to ensure that the first candidate is used
+    //     directly) and 0.0 for step-up corrections.
+    //
+    // Algorithm Overview:
+    //   1. Determine the total number of hypothesis tests.
+    //   2. Initialize a variable (previousAdjusted) with the starting value (initialPreviousAdj).
+    //   3. Depending on the reverseOrder flag, iterate through the container:
+    //        - For reverse order (step-down):
+    //            a. Loop from the last element (index = totalTests - 1) down to index 0.
+    //        - For forward order (step-up):
+    //            a. Loop from the first element (index = 0) to the last.
+    //
+    //   4. For each test in the container:
+    //        a. Extract the observed test statistic from the current tuple.
+    //        b. Calculate the empirical p-value:
+    //             - Use lower_bound on the sorted empirical null distribution to locate the first element
+    //               that is not less than the observed test statistic.
+    //             - Count how many values in the empirical null are greater than or equal to the observed statistic.
+    //             - Divide this count by the total number of values in the null distribution.
+    //        c. Calculate a candidate adjusted p-value using the computeCandidate lambda.
+    //        d. Enforce monotonicity:
+    //             - If this is the first iteration (depending on the order), the candidate is used directly.
+    //             - Otherwise, use the updateMono lambda to combine the candidate with the previously adjusted p-value.
+    //        e. Update the previous adjusted value and store the adjusted p-value back into the container.
+    //
+    //   5. After processing all tests, the container’s raw p-values are replaced with adjusted p-values that
+    //      incorporate the scaling and monotonicity requirements.
+    //
+    // Usage Examples:
+    //   - In RomanoWolfStepdownCorrection:
+    //         • reverseOrder is true (step-down iteration).
+    //         • initialPreviousAdj is set to 1.0.
+    //         • computeCandidate multiplies the empirical p-value by (totalStrategies / (i + 1)).
+    //         • updateMono returns the minimum of the previous adjusted p-value and the candidate.
+    //
+    //   - In HolmRomanoWolfCorrection:
+    //         • reverseOrder is false (step-up iteration).
+    //         • initialPreviousAdj is set to 0.0.
+    //         • computeCandidate multiplies the empirical p-value by (totalStrategies - i).
+    //         • updateMono returns the maximum of the previous adjusted p-value and the candidate.
+    //
+    // This design, using lambda parameters for key computation steps, makes adjustPValues a flexible helper
+    // that can serve various multiple testing correction procedures by simply changing the parameters.
     template <typename Decimal, typename Container, typename FactorFunc, typename MonoFunc>
     void adjustPValues(Container& container,
                        const std::vector<Decimal>& sortedEmpiricalNullDistribution,
@@ -85,31 +221,69 @@ namespace mkc_timeseries
                        MonoFunc updateMono,
                        bool reverseOrder,
                        Decimal initialPreviousAdj) {
+      // Determine the total number of hypothesis tests.
       const unsigned int totalStrategies = static_cast<unsigned int>(container.size());
+
+      // Initialize the previous adjusted p-value with the provided starting value.
       Decimal previousAdjusted = initialPreviousAdj;
 
+      // For step-down correction, iterate in reverse (from most extreme to least).
       if (reverseOrder) {
-        // Reverse order iteration (step-down correction).
         for (int i = totalStrategies - 1; i >= 0; i--) {
+          // Retrieve the observed test statistic for the current hypothesis.
           Decimal observedTestStat = std::get<1>(container[i]);
-          auto lb = std::lower_bound(sortedEmpiricalNullDistribution.begin(), sortedEmpiricalNullDistribution.end(), observedTestStat);
+
+          // Find the first element in the sorted null distribution that is not less than the observed statistic.
+          // This identifies the number of null distribution values >= the observed test statistic.
+          auto lb = std::lower_bound(sortedEmpiricalNullDistribution.begin(),
+                                     sortedEmpiricalNullDistribution.end(), observedTestStat);
           Decimal countGreaterEqual = static_cast<Decimal>(std::distance(lb, sortedEmpiricalNullDistribution.end()));
+
+          // Compute the empirical p-value as the proportion of null test statistics greater than or equal to the observed one.
           Decimal empiricalP = countGreaterEqual / static_cast<Decimal>(sortedEmpiricalNullDistribution.size());
+
+          // Use the computeCandidate function to get a candidate adjusted p-value.
+          // Typically, this scales the empirical p-value based on the rank (i.e., the index "i") and the total count.
           Decimal candidate = computeCandidate(empiricalP, i, totalStrategies);
-          Decimal adjusted = (i == static_cast<int>(totalStrategies - 1)) ? candidate : updateMono(previousAdjusted, candidate);
+
+          // Enforce monotonicity:
+          //  - For the first iteration (i == totalStrategies - 1), simply assign the candidate.
+          //  - For subsequent iterations, combine the candidate with the previous adjusted value using updateMono.
+          Decimal adjusted = (i == static_cast<int>(totalStrategies - 1)) ?
+                             candidate : updateMono(previousAdjusted, candidate);
+
+          // Update the previous adjusted value.
           previousAdjusted = adjusted;
+
+          // Write the newly computed adjusted p-value back into the container.
           std::get<0>(container[i]) = adjusted;
         }
       } else {
-        // Forward order iteration (step-up correction).
+        // For step-up correction, iterate forward (from least extreme to most).
         for (unsigned int i = 0; i < totalStrategies; i++) {
+          // Retrieve the observed test statistic for the current hypothesis.
           Decimal observedTestStat = std::get<1>(container[i]);
-          auto lb = std::lower_bound(sortedEmpiricalNullDistribution.begin(), sortedEmpiricalNullDistribution.end(), observedTestStat);
+
+          // Find the lower bound in the sorted empirical null distribution.
+          auto lb = std::lower_bound(sortedEmpiricalNullDistribution.begin(),
+                                     sortedEmpiricalNullDistribution.end(), observedTestStat);
           Decimal countGreaterEqual = static_cast<Decimal>(std::distance(lb, sortedEmpiricalNullDistribution.end()));
+
+          // Compute the empirical p-value by dividing by the total number of null samples.
           Decimal empiricalP = countGreaterEqual / static_cast<Decimal>(sortedEmpiricalNullDistribution.size());
+
+          // Calculate a candidate adjusted p-value based on the scaling dictated by computeCandidate.
           Decimal candidate = computeCandidate(empiricalP, i, totalStrategies);
+
+          // Enforce monotonicity:
+          //  - For the very first iteration (i == 0), take the candidate as is.
+          //  - For subsequent iterations, ensure monotonicity by combining with the previous value using updateMono.
           Decimal adjusted = (i == 0) ? candidate : updateMono(previousAdjusted, candidate);
+
+          // Update the previous adjusted p-value.
           previousAdjusted = adjusted;
+
+          // Save the computed adjusted p-value back to the container.
           std::get<0>(container[i]) = adjusted;
         }
       }
