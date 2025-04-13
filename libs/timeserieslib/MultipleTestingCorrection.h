@@ -233,13 +233,15 @@ namespace mkc_timeseries
           // Retrieve the observed test statistic for the current hypothesis.
           Decimal observedTestStat = std::get<1>(container[i]);
 
-          // Find the first element in the sorted null distribution that is not less than the observed statistic.
+          // Find the first element in the sorted null distribution that is not less than
+	  // the observed statistic.
           // This identifies the number of null distribution values >= the observed test statistic.
           auto lb = std::lower_bound(sortedEmpiricalNullDistribution.begin(),
                                      sortedEmpiricalNullDistribution.end(), observedTestStat);
           Decimal countGreaterEqual = static_cast<Decimal>(std::distance(lb, sortedEmpiricalNullDistribution.end()));
 
-          // Compute the empirical p-value as the proportion of null test statistics greater than or equal to the observed one.
+          // Compute the empirical p-value as the proportion of null test statistics
+	  // greater than or equal to the observed one.
           Decimal empiricalP = countGreaterEqual / static_cast<Decimal>(sortedEmpiricalNullDistribution.size());
 
           // Use the computeCandidate function to get a candidate adjusted p-value.
@@ -581,6 +583,18 @@ namespace mkc_timeseries
       testStatisticStrategies_.emplace_back(pValue, maxTestStat, strategy);
     }
 
+    // New method to mark surviving strategies based on an adjusted p-value threshold.
+    void markSurvivingStrategies(Decimal significanceThreshold = DecimalConstants<Decimal>::SignificantPValue)
+    {
+      boost::mutex::scoped_lock Lock(mutex_);
+      for (const auto& tup : testStatisticStrategies_)
+	{
+	  // std::get<0> holds the adjusted p-value.
+	  if (std::get<0>(tup) < significanceThreshold)
+	    survivingStrategies_.push_back(std::get<2>(tup));
+	}
+    }
+    
     size_t getNumStrategies() const {
       boost::mutex::scoped_lock Lock(mutex_);
       return testStatisticStrategies_.size();
@@ -691,7 +705,11 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests() {
+      if (container_.getNumStrategies() == 0)
+	throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
+      
       std::vector<Decimal> sortedEmpiricalNullDistribution;
+
       if (!detail::prepareContainerAndNull(container_, sortedEmpiricalNullDistribution)) {
         std::cerr << "Warning: RomanoWolfStepdownCorrection - Empty container or null distribution." << std::endl;
         return;
@@ -717,12 +735,7 @@ namespace mkc_timeseries
       );
 
       // Mark surviving strategies (adjusted p-value below significance threshold)
-      const Decimal SIGNIFICANCE_THRESHOLD = DecimalConstants<Decimal>::SignificantPValue;
-      for (const auto& tup : tsContainer) {
-        Decimal adjustedPValue = std::get<0>(tup);
-        if (adjustedPValue < SIGNIFICANCE_THRESHOLD)
-          container_.addSurvivingStrategy(std::get<2>(tup));
-      }
+      container_.markSurvivingStrategies(DecimalConstants<Decimal>::SignificantPValue);
     }
 
   private:
@@ -767,9 +780,6 @@ namespace mkc_timeseries
       return container_.getNumStrategies();
     }
 
-    // Note: begin/endSortedStrategy provide iterators to the container BEFORE correction/sorting by adjusted p-value.
-    // Use getInternalContainer() if access to the modified tuples is needed after correctForMultipleTests().
-
     typename std::list<std::shared_ptr<PalStrategy<Decimal>>>::const_iterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
@@ -786,6 +796,9 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests() {
+      if (container_.getNumStrategies() == 0)
+	throw std::runtime_error("HolmRomanoWolfCorrection: No strategies added for multiple testing correction.");
+
       std::vector<Decimal> sortedEmpiricalNullDistribution;
       if (!detail::prepareContainerAndNull(container_, sortedEmpiricalNullDistribution)) {
         std::cerr << "Warning: HolmRomanoWolfCorrection - Empty container or null distribution." << std::endl;
@@ -812,12 +825,7 @@ namespace mkc_timeseries
       );
 
       // Mark surviving strategies (adjusted p-value below significance threshold)
-      const Decimal SIGNIFICANCE_THRESHOLD = DecimalConstants<Decimal>::SignificantPValue;
-      for (const auto& tup : tsContainer) {
-        Decimal adjustedPValue = std::get<0>(tup);
-        if (adjustedPValue < SIGNIFICANCE_THRESHOLD)
-          container_.addSurvivingStrategy(std::get<2>(tup));
-      }
+      container_.markSurvivingStrategies(DecimalConstants<Decimal>::SignificantPValue);
     }
 
   private:
