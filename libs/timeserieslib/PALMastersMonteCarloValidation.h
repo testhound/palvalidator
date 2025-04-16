@@ -440,13 +440,17 @@ namespace mkc_timeseries
 	  // permutations beat it.
 
 	  //This count is turned into a p-value.
+	  using MPP = MasterPermutationPolicy<Decimal, BaselineStatPolicy>;
+	  using StrategyVector = std::vector<std::shared_ptr<PalStrategy<Decimal>>>;
+
+	  unsigned int count = MPP::computePermutationCountForStep(mNumPermutations,
+								   entry.baselineStat,
+								   StrategyVector(active.begin(), active.end()),
+								   templateBackTester,
+								   baseSecurity,
+								   portfolio);
+	  
 	  unsigned int count = MasterPermutationPolicy<Decimal, BaselineStatPolicy>::computePermutationCountForStep(
-														    mNumPermutations,
-														    entry.baselineStat,
-														    vector<shared_ptr<PalStrategy<Decimal>>>(active.begin(), active.end()),
-														    templateBackTester,
-														    baseSecurity,
-														    portfolio);
 
 	  Decimal pval = static_cast<Decimal>(count) / static_cast<Decimal>(mNumPermutations + 1);
 
