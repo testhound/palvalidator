@@ -13,41 +13,10 @@
 #include "BackTester.h"
 #include "SyntheticTimeSeries.h"
 #include "MonteCarloTestPolicy.h"
+#include "SyntheticSecurityHelpers.h"
 
 namespace mkc_timeseries
 {
-  template <class Decimal>
-  inline uint32_t
-  getNumClosedTrades(std::shared_ptr<BackTester<Decimal>> aBackTester)
-  {
-    std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
-        (*(aBackTester->beginStrategies()));
-
-    return backTesterStrategy->getStrategyBroker().getClosedTrades();
-  }
-
-  template <class Decimal>
-  inline shared_ptr<Security<Decimal>>
-  createSyntheticSecurity(shared_ptr<Security<Decimal>> aSecurity)
-  {
-    auto aTimeSeries = aSecurity->getTimeSeries();
-    SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries, aSecurity->getTick(), aSecurity->getTickDiv2());
-    aTimeSeries2.createSyntheticSeries();
-
-    return aSecurity->clone (aTimeSeries2.getSyntheticTimeSeries());
-  }
-
-  template <class Decimal>
-  inline std::shared_ptr<Portfolio<Decimal>>
-  createSyntheticPortfolio (std::shared_ptr<Security<Decimal>> realSecurity,
-                            std::shared_ptr<Portfolio<Decimal>> realPortfolio)
-  {
-    std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio = realPortfolio->clone();
-    syntheticPortfolio->addSecurity (createSyntheticSecurity<Decimal> (realSecurity));
-
-    return syntheticPortfolio;
-  }
-
   template <class Decimal,
 	    class BackTestResultPolicy,
 	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
@@ -93,7 +62,7 @@ namespace mkc_timeseries
               clonedBackTester->addStrategy(clonedStrategy);
               clonedBackTester->backtest();
 
-              stratTrades = getNumClosedTrades<Decimal> (clonedBackTester);
+              stratTrades = BackTesterFactory<Decimal>::getNumClosedTrades<Decimal> (clonedBackTester);
 
             }
 
@@ -108,6 +77,104 @@ namespace mkc_timeseries
       Decimal pValue(Decimal(count) / Decimal (numPermutations));
       Decimal summaryTestStat(testStatisticCollection.getTestStat());
 
+      return _PermutationTestResultPolicy::createReturnValue(pValue, summaryTestStat);
+    }
+  };
+
+  template <class Decimal,
+	    class BackTestResultPolicy,
+	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
+	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>>
+  class DefaultPermuteMarketChangesPolicyMT
+  {
+  public:
+    using ComputationPolicyReturnType = typename _PermutationTestResultPolicy::ReturnType;
+
+    static ComputationPolicyReturnType
+    runPermutationTest(std::shared_ptr<BackTester<Decimal>> theBackTester,
+                       uint32_t numPermutations,
+                       const Decimal& baseLineTestStat)
+    {
+      // Obtain the first strategy and its associated security.
+      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
+	(*(theBackTester->beginStrategies()));
+      std::shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
+
+      // Shared counter for valid test statistics
+      std::atomic<uint32_t> count(0);
+      // Test statistics collection (assumed not thread-safe)
+      _PermutationTestStatisticsCollectionPolicy testStatisticCollection;
+      std::mutex testStatMutex; // Protect testStatisticCollection
+
+      // Determine the number of hardware threads available; default to 2 if undetectable.
+      const unsigned int hardware_threads = std::thread::hardware_concurrency();
+      const unsigned int num_threads = (hardware_threads == 0) ? 2 : hardware_threads;
+
+      // Divide permutation iterations among threads.
+      const unsigned int tasks_per_thread = numPermutations / num_threads;
+      const unsigned int remaining_tasks = numPermutations % num_threads;
+
+      std::vector<std::future<void>> futures;
+
+      for (unsigned int thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+        {
+	  // Each thread gets its portion of permutation iterations.
+	  const unsigned int start_idx = thread_idx * tasks_per_thread;
+	  const unsigned int end_idx = (thread_idx == num_threads - 1)
+	    ? (start_idx + tasks_per_thread + remaining_tasks)
+	    : (start_idx + tasks_per_thread);
+
+	  futures.emplace_back(std::async(std::launch::async, [=, &count, &testStatisticCollection, &testStatMutex]()
+	  {
+	    for (unsigned int i = start_idx; i < end_idx; ++i)
+	      {
+		uint32_t stratTrades = 0;
+		std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy;
+		std::shared_ptr<BackTester<Decimal>> clonedBackTester;
+
+		// Ensure the cloned strategy has executed enough trades.
+		while (stratTrades < BackTestResultPolicy::getMinStrategyTrades())
+		  {
+		    // Create a synthetic portfolio and clone the strategy.
+		    clonedStrategy = aStrategy->clone(
+						      createSyntheticPortfolio<Decimal>(theSecurity, aStrategy->getPortfolio()));
+		    // Clone the backtester and add the cloned strategy.
+		    clonedBackTester = theBackTester->clone();
+		    clonedBackTester->addStrategy(clonedStrategy);
+		    // Run the backtest.
+		    clonedBackTester->backtest();
+
+		    stratTrades = BackTesterFactory<Decimal>::getNumClosedTrades<Decimal>(clonedBackTester);
+		  }
+
+		// Compute the permutation test statistic.
+		Decimal testStatistic = BackTestResultPolicy::getPermutationTestStatistic(clonedBackTester);
+
+		// If the computed statistic meets or exceeds the baseline, update the count.
+		if (testStatistic >= baseLineTestStat)
+		  {
+		    count.fetch_add(1, std::memory_order_relaxed);
+		  }
+
+		// Update the collection of test statistics safely.
+		{
+		  std::lock_guard<std::mutex> lock(testStatMutex);
+		  testStatisticCollection.updateTestStatistic(testStatistic);
+		}
+	      }
+	  }));
+        }
+
+      // Wait for all threads to finish and propagate any exceptions.
+      for (auto& future : futures) {
+	future.get();
+      }
+
+      // Calculate the p-value and summary test statistic.
+      Decimal pValue(Decimal(count.load()) / Decimal(numPermutations));
+      Decimal summaryTestStat(testStatisticCollection.getTestStat());
+
+      // Return the result using the result policy.
       return _PermutationTestResultPolicy::createReturnValue(pValue, summaryTestStat);
     }
   };
