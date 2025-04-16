@@ -28,37 +28,43 @@
 namespace mkc_timeseries
 {
   /**
-   * @class MasterPermutationPolicy
-   * @brief Implements Timothy Masters' stepwise permutation test for multiple hypothesis correction.
-   *
-   * This class provides a parallelized algorithm to control the Family-Wise Error Rate (FWER) in
-   * multiple hypothesis testing scenarios, specifically for financial strategy backtesting.
-   *
-   * ## Purpose
-   * This policy allows testing individual hypotheses (strategies) stepwise, comparing each against
-   * a progressively shrinking active set of candidate strategies. It improves upon traditional
-   * selection-bias algorithms by:
-   * - Offering strong control of the Family-Wise Error Rate (FWER), meaning it accounts for partially true null hypotheses.
-   * - Increasing statistical power by narrowing the null distribution at each step.
-   * - Avoiding inflated p-values caused by conservative multiple comparisons.
-   *
-   * ## Algorithm Summary
-   * 1. Start with a list of active strategies.
-   * 2. For each strategy (ordered by observed performance), compare its baseline statistic to
-   *    the empirical permutation distribution of the max statistic **across currently active strategies**.
-   * 3. Reduce the active strategy set step by step as null hypotheses are rejected.
-   * 4. Maintain strong FWER control and ensure monotonic p-value adjustments.
-   *
-   * ## Parallelization Details
-   * This implementation is multi-threaded for efficiency:
-   * - The permutation loop is split across available CPU cores using std::async.
-   * - Each thread processes a range of permutation iterations.
-   * - Shared state (`count_k`) is safely updated using std::atomic.
-   * - Exceptions within threads are propagated back to the main thread.
-   *
-   * @tparam Decimal Numeric type used for calculations (e.g., double, long double).
-   * @tparam BaselineStatPolicy Policy class that provides the method to compute test statistics.
-   */
+ * @class MasterPermutationPolicy
+ * @brief Computes permutation test statistics for stepwise multiple hypothesis testing in strategy backtesting.
+ *
+ * This class is an integral component of the stepwise permutation testing procedure used by PALMasterMonteCarloValidation.
+ * It computes an empirical distribution of permutation test statistics in order to derive adjusted p-values that control
+ * the Family-Wise Error Rate (FWER) while mitigating selection bias in financial trading strategy evaluations.
+ *
+ * ## Objectives
+ * - Generate synthetic market scenarios by creating synthetic portfolios.
+ * - Ensure that each backtest simulation produces a minimum number of trades for statistic validity.
+ * - Compute the permutation test statistic for each active strategy by repeatedly cloning the strategy and its backtester,
+ *   running the backtest until a predefined minimum trade threshold is reached.
+ * - Aggregate the maximum test statistic over all currently active strategies in each permutation.
+ * - Count the number of permutations (including the original unpermuted case) where the maximum test statistic meets or
+ *   exceeds the observed baseline statistic for a given strategy.
+ *
+ * ## Process Overview
+ * 1. For each permutation iteration:
+ *    - A synthetic portfolio is generated using the given security and base portfolio.
+ * 2. For each active strategy:
+ *    - The strategy is cloned and paired with a cloned backtester.
+ *    - The backtester is executed repeatedly until it produces the minimum required number of trades.
+ *    - A permutation test statistic is computed via the supplied BaselineStatPolicy.
+ * 3. The maximum statistic over all active strategies is computed and compared against the baseline statistic.
+ * 4. A count is maintained of how many permutations yield a maximum statistic greater than or equal to the baseline.
+ *
+ * ## Parallelization Details
+ * - The total number of permutations is divided among available CPU cores using std::async.
+ * - Each thread processes a subset of permutation iterations.
+ * - A shared atomic counter is used to track the number of permutations exceeding the baseline statistic.
+ * - Exceptions in any thread are propagated back to ensure that errors are not silently ignored.
+ *
+ * @tparam Decimal Numeric type used for calculations (e.g., double, long double).
+ * @tparam BaselineStatPolicy Policy class that defines methods to:
+ *         - Determine the minimum number of trades required for a valid test.
+ *         - Compute the permutation test statistic for a backtest result.
+ */
   template <class Decimal, class BaselineStatPolicy>
   class MasterPermutationPolicy
   {
