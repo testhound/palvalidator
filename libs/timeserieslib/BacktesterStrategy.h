@@ -156,6 +156,15 @@ namespace mkc_timeseries
 	return mPortfolio->getNumSecurities();
       }
 
+      void ExitAllPositions(const std::string& tradingSymbol,
+			    const date& orderDate)
+      {
+	if (isLongPosition(tradingSymbol))
+	  ExitLongAllUnitsAtOpen(tradingSymbol, orderDate);
+	else if (isShortPosition(tradingSymbol))
+	  ExitShortAllUnitsAtOpen(tradingSymbol, orderDate);
+      }
+
       void EnterLongOnOpen(const std::string& tradingSymbol, 	
 			   const date& orderDate,
 			   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
@@ -180,6 +189,12 @@ namespace mkc_timeseries
 				  profitTarget); 
       }
 
+      void ExitLongAllUnitsAtOpen(const std::string& tradingSymbol,
+				  const date& orderDate)
+      {
+	mBroker.ExitLongAllUnitsOnOpen(tradingSymbol, orderDate);
+      }
+
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& limitPrice)
@@ -195,6 +210,12 @@ namespace mkc_timeseries
 	//std::cout << "BacktesterStrategy::ExitLongAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
 	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, 
 					 limitBasePrice, percentNum);
+      }
+
+      void ExitShortAllUnitsAtOpen(const std::string& tradingSymbol,
+				   const date& orderDate)
+      {
+	mBroker.ExitShortAllUnitsOnOpen(tradingSymbol, orderDate);
       }
 
       void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
