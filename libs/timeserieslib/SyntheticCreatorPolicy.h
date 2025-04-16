@@ -27,7 +27,7 @@ namespace mkc_timeseries
 
       return syntheticPortfolio;
     }
-  }
+  };
 
   template <class Decimal> class SecurityClonePolicy
   {
@@ -41,6 +41,6 @@ namespace mkc_timeseries
 
       return aSecurity->clone (aTimeSeries2.getSyntheticTimeSeries());
     }
-  }
+  };
 }
 #endif
