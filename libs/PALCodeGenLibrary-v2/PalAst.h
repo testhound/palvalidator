@@ -712,6 +712,9 @@ public:
   SortedPatternIterator patternShortsBegin();
   SortedPatternIterator patternShortsEnd();
 
+  ConstPatternIterator allPatternsBegin() const;
+  ConstPatternIterator allPatternsEnd() const;
+
   void addPattern (PALPatternPtr pattern);
   unsigned long getNumPatterns() const;
   unsigned long getNumLongPatterns() const;
@@ -725,6 +728,7 @@ private:
   MapType mLongsPatternMap;
   MapType mShortsPatternMap;
   PatternTieBreakerPtr mPatternTieBreaker;
+  std::list<PALPatternPtr> mAllPatterns;
 };
 
 ///////////////////////////////

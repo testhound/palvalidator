@@ -18,7 +18,8 @@ PriceActionLabSystem::PriceActionLabSystem (PALPatternPtr pattern,
 					    PatternTieBreakerPtr tieBreaker)
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (tieBreaker)
+    mPatternTieBreaker (tieBreaker),
+    mAllPatterns()
 {
   addPattern (pattern);
 }
@@ -26,7 +27,8 @@ PriceActionLabSystem::PriceActionLabSystem (PALPatternPtr pattern,
 PriceActionLabSystem::PriceActionLabSystem (PatternTieBreakerPtr tieBreaker)
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (tieBreaker)
+    mPatternTieBreaker (tieBreaker),
+    mAllPatterns()
 {
 }
 
@@ -34,7 +36,8 @@ PriceActionLabSystem::PriceActionLabSystem (std::list<PALPatternPtr>& listOfPatt
 					    PatternTieBreakerPtr tieBreaker)
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (tieBreaker)
+    mPatternTieBreaker (tieBreaker),
+    mAllPatterns()
 {
   PriceActionLabSystem::ConstPatternIterator it = listOfPatterns.begin();
   PALPatternPtr p;
@@ -70,6 +73,8 @@ unsigned long PriceActionLabSystem::getNumShortPatterns() const
 void 
 PriceActionLabSystem::addPattern (PALPatternPtr pattern)
 {
+  mAllPatterns.push_back(pattern);
+
   if (pattern->isLongPattern())
     return addLongPattern (pattern);
   else
@@ -77,6 +82,11 @@ PriceActionLabSystem::addPattern (PALPatternPtr pattern)
 }
 
 
+PriceActionLabSystem::ConstPatternIterator PriceActionLabSystem::allPatternsBegin() const
+{ return mAllPatterns.begin(); }
+
+PriceActionLabSystem::ConstPatternIterator PriceActionLabSystem::allPatternsEnd() const
+{ return mAllPatterns.end(); }
 
 void 
 PriceActionLabSystem::addLongPattern (PALPatternPtr pattern)
