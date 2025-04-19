@@ -24,6 +24,7 @@
 #include "number.h"
 #include "DecimalConstants.h"
 #include "SyntheticSecurityHelpers.h"
+#include "PALMonteCarloTypes.h"
 
 namespace mkc_timeseries
 {
@@ -69,9 +70,6 @@ namespace mkc_timeseries
   class MasterPermutationPolicy
   {
   public:
-    using StrategyDataType = std::tuple<std::shared_ptr<PalStrategy<Decimal>>, Decimal, unsigned int>;
-    using StrategyDataContainer = std::vector<StrategyDataType>;
-
     MasterPermutationPolicy() = default;
     ~MasterPermutationPolicy() = default;
 
@@ -100,133 +98,276 @@ namespace mkc_timeseries
     {
       if (active_strategies.empty())
 	{
-	  std::cerr << "Warning: computePermutationCountForStep called with empty active_strategies set." << std::endl;
+	  std::cerr << "Warning: MasterPermutationPolicy::computePermutationCountForStep called with empty active_strategies set." << std::endl;
 	  return 1;
 	}
 
       if (numPermutations == 0)
 	{
-	  throw std::runtime_error("computePermutationCountForStep - Number of permutations cannot be zero.");
+	  throw std::runtime_error("MasterPermutationPolicy::computePermutationCountForStep - Number of permutations cannot be zero.");
 	}
 
       if (!templateBackTester || !theSecurity || !basePortfolioPtr)
 	{
-	  throw std::runtime_error("computePermutationCountForStep - Null pointer provided for backtester, security, or portfolio.");
+	  throw std::runtime_error("MasterPermutationPolicy::computePermutationCountForStep - Null pointer provided for backtester, security, or portfolio.");
 	}
 
-      std::atomic<unsigned int> count_k(1); // Initialize count to include the original (non-permuted) data.
+      std::atomic<unsigned int> count_k(1);
       const unsigned int hardware_threads = std::thread::hardware_concurrency();
       const unsigned int num_threads = (hardware_threads == 0) ? 2 : hardware_threads;
-      const unsigned int tasks_per_thread = numPermutations / num_threads;
-      const unsigned int remaining_tasks = numPermutations % num_threads;
+      // Ensure integer division handles numPermutations < num_threads correctly
+      const unsigned int tasks_per_thread = (numPermutations > 0) ? (numPermutations / num_threads) : 0;
+      const unsigned int remaining_tasks = (numPermutations > 0) ? (numPermutations % num_threads) : 0;
 
       std::vector<std::future<void>> futures;
-
       for (unsigned int thread_idx = 0; thread_idx < num_threads; ++thread_idx)
 	{
-	  const unsigned int start_idx = thread_idx * tasks_per_thread;
-	  const unsigned int end_idx = (thread_idx == num_threads - 1)
-            ? (start_idx + tasks_per_thread + remaining_tasks)
-            : (start_idx + tasks_per_thread);
+	  // Handle case where numPermutations < num_threads
+	  if (tasks_per_thread == 0 && thread_idx >= remaining_tasks)
+	    break;
 
-	  futures.emplace_back(std::async(std::launch::async, [&, start_idx, end_idx]()
-	  {
-            for (unsigned int p = start_idx; p < end_idx; ++p)
+	  const unsigned int start_idx = thread_idx * tasks_per_thread +
+	    std::min(thread_idx, remaining_tasks);
+	  const unsigned int num_tasks_this_thread = tasks_per_thread +
+	    (thread_idx < remaining_tasks ? 1 : 0);
+	  const unsigned int end_idx = start_idx + num_tasks_this_thread;
+
+	  if (num_tasks_this_thread == 0)
+	    continue; // Skip threads with no work
+
+
+	  futures.emplace_back(std::async(std::launch::async, [&, start_idx, end_idx]() { // Pass needed captures
+	    for (unsigned int p = start_idx; p < end_idx; ++p)
 	      {
-                std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio;
-                try
+		std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio;
+		try
 		  {
-                    syntheticPortfolio = createSyntheticPortfolio<Decimal>(theSecurity, basePortfolioPtr);
+		    // Ensure createSyntheticPortfolio is defined and accessible
+		    syntheticPortfolio = createSyntheticPortfolio<Decimal>(theSecurity, basePortfolioPtr);
 		  }
-                catch (const std::exception& e)
+		catch (const std::exception& e)
 		  {
-                    std::cerr << "Error creating synthetic portfolio for permutation " 
-                              << p << ": " << e.what() << std::endl;
-                    throw;
+		    std::cerr << "Error creating synthetic portfolio for permutation " << p << ": " << e.what() << std::endl;
+		    // Decide if throwing is appropriate or if this permutation should be skipped
+		    throw; // Re-throwing for now
 		  }
 
-                Decimal max_stat_perm_this_step = std::numeric_limits<Decimal>::lowest();
+		Decimal max_stat_perm_this_step = std::numeric_limits<Decimal>::lowest();
 
-                for (const auto& active_strategy_ptr : active_strategies)
+		for (const auto& active_strategy_ptr : active_strategies)
 		  {
-                    if (!active_strategy_ptr)
+		    if (!active_strategy_ptr)
 		      {
-                        std::cerr << "Warning: Null strategy pointer encountered in active set during permutation " 
-                                  << p << std::endl;
-                        continue;
+			throw std::runtime_error("Critical Error: Null strategy pointer encountered in active set!");
 		      }
 
-                    uint32_t stratTrades = 0;
-                    Decimal stat_perm_active = std::numeric_limits<Decimal>::lowest();
+		    uint32_t stratTrades = 0;
+		    Decimal stat_perm_active = std::numeric_limits<Decimal>::lowest();
 
-                    // Repeat the cloned backtest until the minimum number of trades is reached.
-                    while (stratTrades < BaselineStatPolicy::getMinStrategyTrades())
+		    // Min trades loop
+		    // Ensure getMinStrategyTrades() is static or accessible on BaselineStatPolicy
+		    while (stratTrades < BaselineStatPolicy::getMinStrategyTrades())
 		      {
-                        std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy;
-                        try
+			std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy;
+			try
 			  {
-                            clonedStrategy = active_strategy_ptr->clone(syntheticPortfolio);
+			    clonedStrategy = active_strategy_ptr->clone(syntheticPortfolio);
 			  }
-                        catch (const std::exception& e)
+			catch (const std::exception& e)
 			  {
-                            std::cerr << "Warning: Failed to clone strategy " 
-                                      << active_strategy_ptr->getStrategyName() 
-                                      << " permutation " << p << ": " << e.what() << std::endl;
-                            break;
-			  }
-
-                        std::shared_ptr<BackTester<Decimal>> clonedBackTester;
-                        try
-			  {
-                            clonedBackTester = templateBackTester->clone();
-			  }
-                        catch (const std::exception& e)
-			  {
-                            std::cerr << "Warning: Failed to clone backtester for strategy " 
-                                      << active_strategy_ptr->getStrategyName() 
-                                      << " permutation " << p << ": " << e.what() << std::endl;
-                            break;
+			    std::cerr << "Warning: Failed to clone strategy " <<
+			      active_strategy_ptr->getStrategyName() << " perm "
+				      << p << ": " << e.what() << std::endl;
+			    break;
 			  }
 
-                        clonedBackTester->addStrategy(clonedStrategy);
+			std::shared_ptr<BackTester<Decimal>> clonedBackTester;
 
-                        try
+			try
 			  {
-                            clonedBackTester->backtest();
-                            stratTrades = BackTesterFactory<Decimal>::getNumClosedTrades<Decimal>(clonedBackTester);
-
-                            if (stratTrades >= BaselineStatPolicy::getMinStrategyTrades())
-			      {
-                                stat_perm_active = BaselineStatPolicy::getPermutationTestStatistic(clonedBackTester);
-			      }
+			    clonedBackTester = templateBackTester->clone();
 			  }
-                        catch (const std::exception& e)
+			catch (const std::exception& e)
 			  {
-                            std::cerr << "Warning: Backtest failed for strategy " 
-                                      << active_strategy_ptr->getStrategyName() 
-                                      << " permutation " << p << ": " << e.what() << std::endl;
+			    std::cerr << "Warning: Failed to clone backtester for strategy " << active_strategy_ptr->getStrategyName() << " perm " << p << ": " << e.what() << std::endl; break;
 			  }
-		      } // End while (stratTrades < BaselineStatPolicy::getMinStrategyTrades())
 
-                    max_stat_perm_this_step = std::max(max_stat_perm_this_step, stat_perm_active);
-		  } // End for each active strategy
+			clonedBackTester->addStrategy(clonedStrategy);
+			try
+			  {
+			    clonedBackTester->backtest();
+			    stratTrades = BackTesterFactory<Decimal>::getNumClosedTrades(clonedBackTester);
+			    if (stratTrades >= BaselineStatPolicy::getMinStrategyTrades()) {
+                                         // Ensure getPermutationTestStatistic is static or accessible
+                                         stat_perm_active = BaselineStatPolicy::getPermutationTestStatistic(clonedBackTester);
+                                     }
+                                 } catch (const std::exception& e) { std::cerr << "Warning: Backtest failed for strategy " << active_strategy_ptr->getStrategyName() << " perm " << p << ": " << e.what() << std::endl; /* Allow continuing? */ }
+                                  // Add a break condition if backtest fails irrecoverably or min trades cannot be met
+                                  if (/* condition to break loop, e.g., too many attempts */ false) break;
+                             } // End while min trades
 
-                if (max_stat_perm_this_step >= baselineStat_k)
-		  {
-                    count_k.fetch_add(1, std::memory_order_relaxed);
-		  }
-	      } // End for each permutation iteration (p)
-	  }));
-	}
+                             max_stat_perm_this_step = std::max(max_stat_perm_this_step, stat_perm_active);
+                         } // End for active_strategies
 
-      for (auto& future : futures)
-	{
-	  future.get();
-	}
+                         if (max_stat_perm_this_step >= baselineStat_k) {
+                             count_k.fetch_add(1, std::memory_order_relaxed);
+                         }
+                     } // End for p (permutations)
+                 })); // End async lambda
+             } // End for threads
 
-      return count_k.load();
-    }
-  }; // End class MasterPermutationPolicy
+             // Wait for futures and handle potential exceptions
+             try {
+                 for (auto& future : futures) { future.get(); }
+             } catch (const std::exception& e) {
+                 std::cerr << "Exception caught during permutation execution (slow policy): " << e.what() << std::endl;
+                 throw; // Re-throw or handle as appropriate
+             }
+             return count_k.load();
+        } // End computePermutationCountForStep
+    }; // End class MasterPermutationPolicy
+
+
+    // --- FastMastersPermutationPolicy (New Fast) ---
+    template <class Decimal, class BaselineStatPolicy>
+    class FastMastersPermutationPolicy
+    {
+    public:
+        using StrategyPtr = std::shared_ptr<PalStrategy<Decimal>>;
+        // *** Use the type alias from the new header ***
+        using LocalStrategyDataContainer = StrategyDataContainer<Decimal>;
+        using AtomicCountsMap = std::map<StrategyPtr, std::atomic<unsigned int>>;
+        using FinalCountsMap = std::map<StrategyPtr, unsigned int>;
+
+        FastMastersPermutationPolicy() = delete; // Static class
+
+        static FinalCountsMap computeAllPermutationCounts(
+            uint32_t numPermutations,
+            const LocalStrategyDataContainer& sorted_strategy_data, // Uses type from PALMonteCarloTypes.h
+            std::shared_ptr<BackTester<Decimal>> templateBackTester,
+            std::shared_ptr<Security<Decimal>> theSecurity,
+            std::shared_ptr<Portfolio<Decimal>> basePortfolioPtr)
+        {
+            if (sorted_strategy_data.empty()) { return {}; }
+
+            if (numPermutations == 0) {
+                 throw std::runtime_error("FastMastersPermutationPolicy::computeAllPermutationCounts - Number of permutations cannot be zero.");
+            }
+             if (!templateBackTester || !theSecurity || !basePortfolioPtr) {
+                 throw std::runtime_error("FastMastersPermutationPolicy::computeAllPermutationCounts - Null pointer provided for backtester, security, or portfolio.");
+            }
+
+
+            AtomicCountsMap atomic_counts;
+            for (const auto& entry : sorted_strategy_data) { // entry is StrategyContext<Decimal>
+                atomic_counts[entry.strategy].store(1);
+            }
+
+            const unsigned int hardware_threads = std::thread::hardware_concurrency();
+            const unsigned int num_threads = (hardware_threads == 0) ? 2 : hardware_threads;
+            const unsigned int tasks_per_thread = (numPermutations > 0) ? (numPermutations / num_threads) : 0;
+            const unsigned int remaining_tasks = (numPermutations > 0) ? (numPermutations % num_threads) : 0;
+
+            std::vector<std::future<void>> futures;
+            for (unsigned int thread_idx = 0; thread_idx < num_threads; ++thread_idx)
+            {
+                 if (tasks_per_thread == 0 && thread_idx >= remaining_tasks) break;
+                 const unsigned int start_idx = thread_idx * tasks_per_thread + std::min(thread_idx, remaining_tasks);
+                 const unsigned int num_tasks_this_thread = tasks_per_thread + (thread_idx < remaining_tasks ? 1 : 0);
+                 const unsigned int end_idx = start_idx + num_tasks_this_thread;
+                 if (num_tasks_this_thread == 0) continue;
+
+                futures.emplace_back(std::async(std::launch::async, [&, start_idx, end_idx]() {
+                    for (unsigned int p = start_idx; p < end_idx; ++p)
+                    {
+                        std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio;
+                         try {
+                             syntheticPortfolio = createSyntheticPortfolio<Decimal>(theSecurity, basePortfolioPtr);
+                         } catch (const std::exception& e) {
+                              std::cerr << "Error creating synthetic portfolio for permutation " << p << ": " << e.what() << std::endl;
+                              throw; // Or skip permutation
+                         }
+
+                        std::map<StrategyPtr, Decimal> permuted_stats_this_rep;
+                        // Backtest ALL strategies for this permutation
+                        for (const auto& entry : sorted_strategy_data)
+                        {
+                            StrategyPtr strategy = entry.strategy;
+                            Decimal stat = std::numeric_limits<Decimal>::lowest();
+                            uint32_t trades = 0;
+
+                             // Min trades loop
+                            while (trades < BaselineStatPolicy::getMinStrategyTrades()) {
+                                 std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrategy;
+                                 try { clonedStrategy = strategy->clone(syntheticPortfolio); }
+                                 catch (const std::exception& e) { std::cerr << "Warning: Failed to clone strategy " << strategy->getStrategyName() << " perm " << p << ": " << e.what() << std::endl; break;}
+
+                                 std::shared_ptr<BackTester<Decimal>> clonedBackTester;
+                                 try { clonedBackTester = templateBackTester->clone(); }
+                                 catch (const std::exception& e) { std::cerr << "Warning: Failed to clone backtester for strategy " << strategy->getStrategyName() << " perm " << p << ": " << e.what() << std::endl; break;}
+
+                                 clonedBackTester->addStrategy(clonedStrategy);
+                                 try {
+                                     clonedBackTester->backtest();
+                                     trades = BackTesterFactory<Decimal>::getNumClosedTrades(clonedBackTester);
+                                     if (trades >= BaselineStatPolicy::getMinStrategyTrades()) {
+                                         stat = BaselineStatPolicy::getPermutationTestStatistic(clonedBackTester);
+                                     }
+                                 } catch (const std::exception& e) { std::cerr << "Warning: Backtest failed for strategy " << strategy->getStrategyName() << " perm " << p << ": " << e.what() << std::endl;}
+                                  if (/* condition to break loop */ false) break;
+                             } // End while min trades
+                            permuted_stats_this_rep[strategy] = stat;
+                        } // End for entry
+
+
+                        Decimal max_f = std::numeric_limits<Decimal>::lowest();
+                        // Iterate WORST to BEST (reverse order of descending sort)
+                        for (int k = sorted_strategy_data.size() - 1; k >= 0; --k)
+                        {
+                            const auto& entry = sorted_strategy_data[k];
+                            StrategyPtr strategy_k = entry.strategy;
+                            const Decimal original_baseline_k = entry.baselineStat;
+                            Decimal permuted_stat_k = std::numeric_limits<Decimal>::lowest();
+
+                            auto it_perm_stat = permuted_stats_this_rep.find(strategy_k);
+                            if (it_perm_stat != permuted_stats_this_rep.end()) {
+                                permuted_stat_k = it_perm_stat->second;
+                            } else {
+                                 std::cerr << "Warning: Permuted stat not found for " << strategy_k->getStrategyName() << " in permutation " << p << std::endl;
+                            }
+
+                            max_f = std::max(max_f, permuted_stat_k);
+
+                            if (max_f >= original_baseline_k)
+                            {
+                                auto it_atomic = atomic_counts.find(strategy_k);
+                                if (it_atomic != atomic_counts.end()) {
+                                     it_atomic->second.fetch_add(1, std::memory_order_relaxed);
+                                } else {
+                                     std::cerr << "Warning: Atomic counter not found for " << strategy_k->getStrategyName() << std::endl;
+                                }
+                            }
+                        } // End for k (worst to best)
+                    } // End for p (permutations)
+                })); // End async lambda
+            } // End for threads
+
+            // Wait for futures and handle potential exceptions
+             try {
+                 for (auto& future : futures) { future.get(); }
+             } catch (const std::exception& e) {
+                 std::cerr << "Exception caught during permutation execution (fast policy): " << e.what() << std::endl;
+                 throw; // Re-throw or handle as appropriate
+             }
+
+
+            FinalCountsMap final_counts;
+            for (const auto& pair : atomic_counts) {
+                final_counts[pair.first] = pair.second.load();
+            }
+            return final_counts;
+        } // End computeAllPermutationCounts
+    }; // End class FastMastersPermutationPolicy
 
 } // namespace mkc_timeseries
 
