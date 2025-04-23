@@ -23,12 +23,12 @@ namespace mkc_timeseries
   class TimeSeriesException : public std::runtime_error
   {
   public:
-  TimeSeriesException(const std::string msg)
-    : std::runtime_error(msg)
-      {}
+    TimeSeriesException(const std::string msg)
+      : std::runtime_error(msg)
+    {}
 
     ~TimeSeriesException()
-      {}
+    {}
 
   };
 
@@ -54,13 +54,13 @@ namespace mkc_timeseries
 
       CacheIterator pos = mOffsetCache.find (offset);
       if (pos != mOffsetCache.end())
-    return pos->second;
+	return pos->second;
       else
-    {
-      std::shared_ptr<TimeSeriesOffset> p (new TimeSeriesOffset (offset));
-      mOffsetCache.insert(std::make_pair(offset, p));
-      return p;
-    }
+	{
+	  std::shared_ptr<TimeSeriesOffset> p (new TimeSeriesOffset (offset));
+	  mOffsetCache.insert(std::make_pair(offset, p));
+	  return p;
+	}
     }
 
   private:
@@ -94,13 +94,13 @@ namespace mkc_timeseries
     ArrayTimeSeriesIndex fromOffset (const std::shared_ptr<TimeSeriesOffset>& offset)
     {
       if (mArrayIndex >= offset->asIntegral())
-    {
-      unsigned long newIndex = mArrayIndex - offset->asIntegral();
-      //return getInstance (newIndex);
-      return ArrayTimeSeriesIndex(newIndex);
-    }
+	{
+	  unsigned long newIndex = mArrayIndex - offset->asIntegral();
+
+	  return ArrayTimeSeriesIndex(newIndex);
+	}
       else
-    throw std::out_of_range("ArrayTimeSeriesIndex: offset cannot be larger than array index");
+	throw std::out_of_range("ArrayTimeSeriesIndex: offset cannot be larger than array index");
     }
 
     unsigned long asIntegral() const
@@ -110,6 +110,9 @@ namespace mkc_timeseries
 
     ArrayTimeSeriesIndex (unsigned long arrayIndex) : mArrayIndex(arrayIndex)
     {}
+
+    ArrayTimeSeriesIndex()
+      : mArrayIndex(0) {}
 
   private:
     unsigned long mArrayIndex;
@@ -139,14 +142,11 @@ namespace mkc_timeseries
 
   template <class Decimal> class NumericTimeSeries
   {
-    using Map = std::map<ptime, std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>;
+    using Map = boost::container::flat_map<ptime, std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>;
 
   public:
-    typedef typename Map::iterator TimeSeriesIterator;
     typedef typename Map::const_iterator ConstTimeSeriesIterator;
     typedef typename Map::const_reverse_iterator ConstReverseTimeSeriesIterator;
-    typedef std::map<ptime, ArrayTimeSeriesIndex>::iterator MappingIterator;
-    typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::iterator RandomAccessIterator;
     typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::const_iterator ConstRandomAccessIterator;
 
     NumericTimeSeries (TimeFrame::Duration timeFrame) :
@@ -154,7 +154,8 @@ namespace mkc_timeseries
       mDateToSequentialIndex(),
       mSequentialTimeSeries(),
       mTimeFrame (timeFrame),
-      mMapAndArrayInSync (true)
+      mMapAndArrayInSync (true),
+      mMutex()
     {}
 
     NumericTimeSeries (TimeFrame::Duration timeFrame,  unsigned long numElements) :
@@ -162,49 +163,86 @@ namespace mkc_timeseries
       mDateToSequentialIndex(),
       mSequentialTimeSeries(),
       mTimeFrame (timeFrame),
-      mMapAndArrayInSync (true)
+      mMapAndArrayInSync (true),
+      mMutex()
     {
       mSequentialTimeSeries.reserve(numElements);
     }
 
-    NumericTimeSeries (const NumericTimeSeries<Decimal>& rhs)
-      :  mSortedTimeSeries(rhs.mSortedTimeSeries),
-     mDateToSequentialIndex(rhs.mDateToSequentialIndex),
-     mSequentialTimeSeries(rhs.mSequentialTimeSeries),
-     mTimeFrame (rhs.mTimeFrame),
-     mMapAndArrayInSync (rhs.mMapAndArrayInSync)
-    {}
-
-    NumericTimeSeries<Decimal>&
-    operator=(const NumericTimeSeries<Decimal> &rhs)
+    NumericTimeSeries(const NumericTimeSeries<Decimal>& rhs)
+      : mSortedTimeSeries(),
+	mDateToSequentialIndex(),
+	mSequentialTimeSeries(),
+	mTimeFrame(rhs.mTimeFrame),
+	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
+	mMutex()
     {
-      if (this == &rhs)
-    return *this;
+      boost::mutex::scoped_lock lock(rhs.mMutex);
       mSortedTimeSeries = rhs.mSortedTimeSeries;
       mDateToSequentialIndex = rhs.mDateToSequentialIndex;
       mSequentialTimeSeries = rhs.mSequentialTimeSeries;
-      mTimeFrame  = rhs.mTimeFrame;
+    }
+
+    NumericTimeSeries(NumericTimeSeries<Decimal>&& rhs) noexcept
+      : mSortedTimeSeries(),
+	mDateToSequentialIndex(),
+	mSequentialTimeSeries(),
+	mTimeFrame(rhs.mTimeFrame),
+	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
+	mMutex()
+    {
+      boost::mutex::scoped_lock lock(rhs.mMutex);
+      mSortedTimeSeries = std::move(rhs.mSortedTimeSeries);
+      mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
+      mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
+    }
+    
+    NumericTimeSeries<Decimal>& operator=(const NumericTimeSeries<Decimal>& rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      boost::mutex::scoped_lock lock(mMutex);
+      boost::mutex::scoped_lock rhsLock(rhs.mMutex);
+
+      mSortedTimeSeries = rhs.mSortedTimeSeries;
+      mDateToSequentialIndex = rhs.mDateToSequentialIndex;
+      mSequentialTimeSeries = rhs.mSequentialTimeSeries;
+      mTimeFrame = rhs.mTimeFrame;
       mMapAndArrayInSync = rhs.mMapAndArrayInSync;
 
       return *this;
     }
 
+    // Move assignment
+    NumericTimeSeries<Decimal>& operator=(NumericTimeSeries<Decimal>&& rhs) noexcept
+    {
+      if (this != &rhs)
+	{
+	  boost::mutex::scoped_lock lock(mMutex);
+	  boost::mutex::scoped_lock rhsLock(rhs.mMutex);
+
+	  mSortedTimeSeries = std::move(rhs.mSortedTimeSeries);
+	  mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
+	  mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
+	  mTimeFrame = rhs.mTimeFrame;
+	  mMapAndArrayInSync = rhs.mMapAndArrayInSync;
+	}
+      
+      return *this;
+    }
+
     void addEntry (std::shared_ptr<NumericTimeSeriesEntry<Decimal>> entry)
     {
+      boost::mutex::scoped_lock lock(mMutex);
       if (entry->getTimeFrame() != getTimeFrame())
-    throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry->getDateTime()) + std::string(" time frames do not match")));
+	throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry->getDateTime()) + std::string(" time frames do not match")));
 
-      ptime dayTime = entry->getDateTime();
-      TimeSeriesIterator pos = mSortedTimeSeries.find (dayTime);
+      auto result = mSortedTimeSeries.emplace(entry->getDateTime(), entry);
+      if (!result.second)
+	throw std::domain_error("NumericTimeSeries:addEntry: entry for time already exists");
 
-      if (pos == mSortedTimeSeries.end())
-    {
-      mSortedTimeSeries.insert(std::make_pair(dayTime, entry));
       mMapAndArrayInSync = false;
-      // std::cout << "mMapAndArrayInSync set to false" << std::endl;
-    }
-      else
-    throw std::domain_error(std::string("NumericTimeSeries:" +boost::posix_time::to_simple_string(dayTime) + std::string(" date already exists")));
     }
 
     void addEntry (const NumericTimeSeriesEntry<Decimal>& entry)
@@ -212,30 +250,24 @@ namespace mkc_timeseries
       addEntry (std::make_shared<NumericTimeSeriesEntry<Decimal>> (entry));
     }
 
-    NumericTimeSeries::TimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate)
-    {
-      ptime dateTime(timeSeriesDate, getDefaultBarTime());
-      return mSortedTimeSeries.find(dateTime);
-    }
-
     NumericTimeSeries::ConstTimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate) const
     {
       ptime dateTime(timeSeriesDate, getDefaultBarTime());
+      boost::mutex::scoped_lock lock(mMutex);
+
       return mSortedTimeSeries.find(dateTime);
     }
 
     std::vector<Decimal> getTimeSeriesAsVector() const
     {
       std::vector<Decimal> series;
-      series.reserve (getNumEntries());
+      boost::mutex::scoped_lock lock(mMutex);
 
-      NumericTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
-
-      for (; it != endSortedAccess(); it++)
-    {
-      series.push_back (it->second->getValue());
-
-    }
+      series.reserve(mSortedTimeSeries.size());
+      for (const auto& kv : mSortedTimeSeries)
+	{
+	  series.push_back(kv.second->getValue());
+	}
 
       return series;
     }
@@ -247,68 +279,36 @@ namespace mkc_timeseries
 
     unsigned long getNumEntries() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mSortedTimeSeries.size();
-    }
-
-    NumericTimeSeries::RandomAccessIterator beginRandomAccess()
-    {
-     if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mSequentialTimeSeries.begin();
-    }
-
-    NumericTimeSeries::RandomAccessIterator endRandomAccess()
-    {
-     if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mSequentialTimeSeries.end();
-    }
-
-    NumericTimeSeries::ConstRandomAccessIterator beginRandomAccess() const
-    {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mSequentialTimeSeries.begin();
-    }
-
-    NumericTimeSeries::ConstRandomAccessIterator endRandomAccess() const
-    {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mSequentialTimeSeries.end();
     }
 
     NumericTimeSeries::ConstRandomAccessIterator
     getRandomAccessIterator(const boost::gregorian::date& d) const
     {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
       ptime dateTime(d, getDefaultBarTime());
-      NumericTimeSeries::MappingIterator pos = getTimeSeriesIndex (dateTime);
+      ensureSynchronized();
+
+      auto pos = mDateToSequentialIndex.find(dateTime);
       if (pos != mDateToSequentialIndex.end())
-    {
-      std::shared_ptr<ArrayTimeSeriesIndex> index = std::make_shared<ArrayTimeSeriesIndex>(pos->second);
-      return (beginRandomAccess() + index->asIntegral());
-    }
-      else
-    return endRandomAccess();
+	{
+	  return mSequentialTimeSeries.begin() + pos->second.asIntegral();
+	}
+      return mSequentialTimeSeries.end();
     }
 
-    NumericTimeSeries::TimeSeriesIterator beginSortedAccess()
+    ConstRandomAccessIterator beginRandomAccess() const
     {
-      return mSortedTimeSeries.begin();
+      ensureSynchronized();
+      return mSequentialTimeSeries.begin();
     }
 
-    NumericTimeSeries::TimeSeriesIterator endSortedAccess()
+    ConstRandomAccessIterator endRandomAccess() const
     {
-      return mSortedTimeSeries.end();
+      ensureSynchronized();
+      return mSequentialTimeSeries.end();
     }
-
+  
     NumericTimeSeries::ConstTimeSeriesIterator beginSortedAccess() const
     {
       return mSortedTimeSeries.begin();
@@ -332,79 +332,30 @@ namespace mkc_timeseries
 
     const boost::gregorian::date getFirstDate() const
     {
-      if (getNumEntries() > 0)
-    {
-      NumericTimeSeries::ConstTimeSeriesIterator it = beginSortedAccess();
-      return it->first.date();
-    }
-      else
-    throw std::domain_error(std::string("NumericTimeSeries:getFirstDate: no entries in time series "));
-    }
+      boost::mutex::scoped_lock lock(mMutex);
+      
+      if (mSortedTimeSeries.empty())
+	throw std::domain_error("NumericTimeSeries:getFirstDate: no entries in time series");
 
+      return mSortedTimeSeries.begin()->first.date();
+    }
 
     const boost::gregorian::date getLastDate() const
     {
-      if (getNumEntries() > 0)
-    {
-      NumericTimeSeries::ConstTimeSeriesIterator it = endSortedAccess();
-      it--;
-      return it->first.date();
-    }
-      else
-    throw std::domain_error(std::string("NumericTimeSeries:getLastDate: no entries in time series "));
-    }
-
-    void ValidateVectorOffset (const ConstRandomAccessIterator& it,
-                   unsigned long offset) const
-    {
-      ValidateVectorOffset (offset);
-
-      if (it != endRandomAccess())
-    {
-      if ((it - offset) >= beginRandomAccess())
-        ;
-      else
-        throw TimeSeriesException ("Offset " +std::to_string (offset) +" outside bounds of time series");
-    }
-      else
-    throw TimeSeriesException ("Iterator is equal to end of internal data structure");
-    }
-
-    void ValidateVectorOffset (unsigned long offset) const
-    {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      if (offset > mSequentialTimeSeries.size())
-    throw TimeSeriesException(std::string("NumericTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
-    }
-
-    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const RandomAccessIterator& it,
-                                         unsigned long offset)
-    {
-      ValidateVectorOffset(it, offset);
-      NumericTimeSeries::RandomAccessIterator new_it = it - offset;
-      return *new_it;
+      boost::mutex::scoped_lock lock(mMutex);
+      
+      if (mSortedTimeSeries.empty())
+	throw std::domain_error("NumericTimeSeries:getLastDate: no entries in time series");
+      
+      return mSortedTimeSeries.rbegin()->first.date();
     }
 
     const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it,
-                                      unsigned long offset) const
+										unsigned long offset) const
     {
       ValidateVectorOffset(it, offset);
       NumericTimeSeries::ConstRandomAccessIterator new_it = it - offset;
       return *new_it;
-    }
-
-    const std::shared_ptr<boost::gregorian::date>&
-    getDate (const RandomAccessIterator& it, unsigned long offset)
-    {
-      return (getTimeSeriesEntry (it, offset)->getDate());
-    }
-
-    const boost::gregorian::date&
-    getDateValue (const RandomAccessIterator& it, unsigned long offset)
-    {
-      return (*getDate(it, offset));
     }
 
     const std::shared_ptr<boost::gregorian::date>&
@@ -416,65 +367,68 @@ namespace mkc_timeseries
     const boost::gregorian::date&
     getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
     {
+      ValidateVectorOffset(it, offset);      
       return (*getDate(it, offset));
     }
 
-   const Decimal& getValue (const RandomAccessIterator& it,
-                  unsigned long offset)
+    const Decimal& getValue (const ConstRandomAccessIterator& it,
+			     unsigned long offset) const
     {
-      return (getTimeSeriesEntry (it, offset)->getValue());
-    }
-
-   const Decimal& getValue (const ConstRandomAccessIterator& it,
-                  unsigned long offset) const
-    {
+      ValidateVectorOffset(it, offset);      
       return (getTimeSeriesEntry (it, offset)->getValue());
     }
 
   private:
+    void ensureSynchronized() const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      if (!mMapAndArrayInSync)
+	synchronize_unlocked();
+    }
+
+    void synchronize_unlocked() const
+    {
+      mSequentialTimeSeries.clear();
+      mDateToSequentialIndex.clear();
+
+      unsigned long index = 0;
+      for (const auto& kv : mSortedTimeSeries)
+	{
+	  mDateToSequentialIndex[kv.first] = ArrayTimeSeriesIndex(index);
+	  mSequentialTimeSeries.push_back(kv.second);
+	  ++index;
+	}
+      mMapAndArrayInSync = true;
+    }
+
+    void ValidateVectorOffset(const ConstRandomAccessIterator& it, unsigned long offset) const
+    {
+      ensureSynchronized();
+      if (it == mSequentialTimeSeries.end())
+	throw TimeSeriesException("Iterator is at end of time series");
+      if ((it - offset) < mSequentialTimeSeries.begin())
+	throw TimeSeriesException("Offset " + std::to_string(offset) + " outside bounds of time series");
+    }
+
+    void ValidateVectorOffset(unsigned long offset) const
+    {
+      ensureSynchronized();
+      if (offset > mSequentialTimeSeries.size())
+	throw TimeSeriesException("Offset " + std::to_string(offset) + " exceeds size of time series");
+    }
+  
     bool isSynchronized() const
     {
       return (mMapAndArrayInSync);
     }
 
-    void syncronizeMapAndArray() const
-    {
-      //std::cout << "syncronizeMapAndArray called" << std::endl;
-
-      if (mSequentialTimeSeries.size() > 0)
-    {
-      mSequentialTimeSeries.clear();
-      mDateToSequentialIndex.clear();
-    }
-
-      NumericTimeSeries<Decimal>::ConstTimeSeriesIterator pos;
-      unsigned long index = 0;
-      for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
-    {
-      mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
-      mSequentialTimeSeries.push_back (pos->second);
-      index++;
-
-    }
-
-      mMapAndArrayInSync = true;
-    }
-
-    NumericTimeSeries::MappingIterator
-    getTimeSeriesIndex (const ptime& d) const
-    {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mDateToSequentialIndex.find (d);
-    }
-
   private:
     Map mSortedTimeSeries;
-    mutable std::map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
+    mutable boost::container::flat_map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
     mutable std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
     mutable bool mMapAndArrayInSync;
+    mutable boost::mutex mMutex;
   };
 
   /*
@@ -485,10 +439,7 @@ namespace mkc_timeseries
 template <class Decimal> class OHLCTimeSeries
   {
   public:
-    typedef typename boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>>::iterator TimeSeriesIterator;
     typedef typename boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstTimeSeriesIterator;
-    typedef boost::container::flat_map<ptime, ArrayTimeSeriesIndex>::iterator MappingIterator;
-    typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::iterator RandomAccessIterator;
     typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstRandomAccessIterator;
 
     NumericTimeSeries<Decimal> OpenTimeSeries() const
@@ -557,35 +508,51 @@ template <class Decimal> class OHLCTimeSeries
       mSequentialTimeSeries(),
       mTimeFrame (timeFrame),
       mMapAndArrayInSync (true),
-      mUnitsOfVolume(unitsOfVolume)
+      mUnitsOfVolume(unitsOfVolume),
+      mMutex()
     {}
 
     OHLCTimeSeries (TimeFrame::Duration timeFrame, TradingVolume::VolumeUnit unitsOfVolume,
-        unsigned long numElements) :
+		    unsigned long numElements) :
       mSortedTimeSeries(),
       mDateToSequentialIndex(),
       mSequentialTimeSeries(),
       mTimeFrame (timeFrame),
       mMapAndArrayInSync (true),
-      mUnitsOfVolume(unitsOfVolume)
+      mUnitsOfVolume(unitsOfVolume),
+      mMutex()
     {
       mSequentialTimeSeries.reserve(numElements);
     }
 
-    OHLCTimeSeries (const OHLCTimeSeries<Decimal>& rhs)
-      :  mSortedTimeSeries(rhs.mSortedTimeSeries),
-     mDateToSequentialIndex(rhs.mDateToSequentialIndex),
-     mSequentialTimeSeries(rhs.mSequentialTimeSeries),
-     mTimeFrame (rhs.mTimeFrame),
-     mMapAndArrayInSync (rhs.mMapAndArrayInSync),
-     mUnitsOfVolume(rhs.mUnitsOfVolume)
-    {}
-
+    OHLCTimeSeries(const OHLCTimeSeries<Decimal>& rhs)
+      : mSortedTimeSeries(),
+	mDateToSequentialIndex(),
+	mSequentialTimeSeries(),
+	mTimeFrame(rhs.mTimeFrame),
+	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
+	mUnitsOfVolume(rhs.mUnitsOfVolume),
+	mMutex() // Create a new mutex for this instance.
+    {
+      // Lock rhs to ensure we copy a consistent state.
+      boost::mutex::scoped_lock lock(rhs.mMutex);
+      mSortedTimeSeries = rhs.mSortedTimeSeries;
+      mDateToSequentialIndex = rhs.mDateToSequentialIndex;
+      mSequentialTimeSeries = rhs.mSequentialTimeSeries;
+    }
+    
     OHLCTimeSeries<Decimal>&
     operator=(const OHLCTimeSeries<Decimal> &rhs)
     {
       if (this == &rhs)
-    return *this;
+	return *this;
+
+      boost::mutex::scoped_lock lock(mMutex);           // Lock this instance
+      boost::mutex::scoped_lock rhsLock(rhs.mMutex);    // Lock rhs to safely read shared state
+
+      // Copy all member *except* the mutex
+      // boost::mutex (and std::mutex) is non-copyable and non-assignable
+      
       mSortedTimeSeries = rhs.mSortedTimeSeries;
       mDateToSequentialIndex = rhs.mDateToSequentialIndex;
       mSequentialTimeSeries = rhs.mSequentialTimeSeries;
@@ -596,43 +563,59 @@ template <class Decimal> class OHLCTimeSeries
       return *this;
     }
 
+    // Move copy constructor
+    OHLCTimeSeries(OHLCTimeSeries<Decimal>&& rhs) noexcept
+      : mSortedTimeSeries(std::move(rhs.mSortedTimeSeries)),
+	mDateToSequentialIndex(std::move(rhs.mDateToSequentialIndex)),
+	mSequentialTimeSeries(std::move(rhs.mSequentialTimeSeries)),
+	mTimeFrame(rhs.mTimeFrame),
+	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
+	mUnitsOfVolume(rhs.mUnitsOfVolume),
+	mMutex() // Fresh mutex
+    {}
+
+    OHLCTimeSeries<Decimal>& operator=(OHLCTimeSeries<Decimal>&& rhs) noexcept
+    {
+      if (this != &rhs)
+	{
+	  boost::mutex::scoped_lock lock(mMutex);
+	  boost::mutex::scoped_lock rhsLock(rhs.mMutex);
+
+	  mSortedTimeSeries = std::move(rhs.mSortedTimeSeries);
+	  mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
+	  mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
+	  mTimeFrame = rhs.mTimeFrame;
+	  mMapAndArrayInSync = rhs.mMapAndArrayInSync;
+	  mUnitsOfVolume = rhs.mUnitsOfVolume;
+	  // Note: mMutex remains unchanged (fresh per object)
+	}
+
+      return *this;
+    }
+    
     void addEntry (OHLCTimeSeriesEntry<Decimal> entry)
     {
+      boost::mutex::scoped_lock lock(mMutex);
       if (entry.getTimeFrame() != getTimeFrame())
-    throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry.getDateTime()) + std::string(" time frames do not match")));
+	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry.getDateTime()) + std::string(" time frames do not match")));
 
-      ptime dayTime = entry.getDateTime();
-      TimeSeriesIterator pos = mSortedTimeSeries.find (dayTime);
-
-      if (pos == mSortedTimeSeries.end())
-    {
-      mSortedTimeSeries.insert(std::make_pair(dayTime, std::move(entry)));
+      auto result = mSortedTimeSeries.emplace(entry.getDateTime(), std::move(entry));
+      if (!result.second)
+	throw std::domain_error("OHLCTimeSeries: entry for time already exists: " + boost::posix_time::to_simple_string(entry.getDateTime()));
+	
       mMapAndArrayInSync = false;
-      // std::cout << "mMapAndArrayInSync set to false" << std::endl;
-    }
-      else
-    throw std::domain_error(std::string("OHLCTimeSeries:" +boost::posix_time::to_simple_string(dayTime) + std::string(" date already exists")));
     }
 
-    TimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate)
+    ConstTimeSeriesIterator getTimeSeriesEntry(const boost::gregorian::date& timeSeriesDate) const
     {
       ptime dateTime(timeSeriesDate, getDefaultBarTime());
+      boost::mutex::scoped_lock lock(mMutex);
       return mSortedTimeSeries.find(dateTime);
     }
 
-    TimeSeriesIterator getTimeSeriesEntry (const ptime& timeSeriesDate)
+    ConstTimeSeriesIterator getTimeSeriesEntry(const ptime& timeSeriesDate) const
     {
-      return mSortedTimeSeries.find(timeSeriesDate);
-    }
-
-    ConstTimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate) const
-    {
-      ptime dateTime(timeSeriesDate, getDefaultBarTime());
-      return mSortedTimeSeries.find(dateTime);
-    }
-
-    ConstTimeSeriesIterator getTimeSeriesEntry (const ptime& timeSeriesDate) const
-    {
+      boost::mutex::scoped_lock lock(mMutex);
       return mSortedTimeSeries.find(timeSeriesDate);
     }
 
@@ -643,6 +626,7 @@ template <class Decimal> class OHLCTimeSeries
 
     unsigned long getNumEntries() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mSortedTimeSeries.size();
     }
 
@@ -651,62 +635,43 @@ template <class Decimal> class OHLCTimeSeries
       return mUnitsOfVolume;
     }
 
-    OHLCTimeSeries::RandomAccessIterator beginRandomAccess()
+    std::vector<OHLCTimeSeriesEntry<Decimal>> getEntriesCopy() const
     {
-     if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mSequentialTimeSeries.begin();
+      synchronize();
+      return mSequentialTimeSeries; // safe copy
     }
-
-    OHLCTimeSeries::RandomAccessIterator endRandomAccess()
-    {
-     if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      return mSequentialTimeSeries.end();
-    }
-
+    
     OHLCTimeSeries::ConstRandomAccessIterator beginRandomAccess() const
     {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
+      synchronize();
       return mSequentialTimeSeries.begin();
     }
 
     OHLCTimeSeries::ConstRandomAccessIterator endRandomAccess() const
     {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
+      synchronize();
       return mSequentialTimeSeries.end();
     }
 
-    OHLCTimeSeries::ConstRandomAccessIterator getRandomAccessIterator(const boost::gregorian::date& d)
+    OHLCTimeSeries::ConstRandomAccessIterator getRandomAccessIterator(const boost::gregorian::date& d) const
     {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
       ptime dateTime(d, getDefaultBarTime());
-      OHLCTimeSeries::MappingIterator pos = getTimeSeriesIndex (dateTime);
+
+      // Lock and synchronize only once
+      {
+        boost::mutex::scoped_lock lock(mMutex);
+        if (!mMapAndArrayInSync)
+            synchronize_unlocked();  // internal version assumes lock is already held
+      }
+
+      auto pos = mDateToSequentialIndex.find(dateTime);
       if (pos != mDateToSequentialIndex.end())
-    {
-      const ArrayTimeSeriesIndex& index = pos->second;
-      return (beginRandomAccess() + index.asIntegral());
-    }
-      else
-    return endRandomAccess();
-    }
+	{
+	  const ArrayTimeSeriesIndex& index = pos->second;
+	  return mSequentialTimeSeries.begin() + index.asIntegral();
+	}
 
-    OHLCTimeSeries::TimeSeriesIterator beginSortedAccess()
-    {
-      return mSortedTimeSeries.begin();
-    }
-
-    OHLCTimeSeries::TimeSeriesIterator endSortedAccess()
-    {
-      return mSortedTimeSeries.end();
+      return mSequentialTimeSeries.end();
     }
 
     OHLCTimeSeries::ConstTimeSeriesIterator beginSortedAccess() const
@@ -721,85 +686,45 @@ template <class Decimal> class OHLCTimeSeries
 
     const boost::gregorian::date getFirstDate() const
     {
-      if (getNumEntries() > 0)
-    {
-      OHLCTimeSeries::ConstTimeSeriesIterator it = beginSortedAccess();
-      return it->first.date();
-    }
-      else
-    throw std::domain_error(std::string("OHLCTimeSeries:getFirstDate: no entries in time series "));
-    }
+      boost::mutex::scoped_lock lock(mMutex);
+ 
+      if (mSortedTimeSeries.empty())
+	throw std::domain_error("OHLCTimeSeries:getFirstDate: no entries in time series");
 
+      return mSortedTimeSeries.begin()->first.date();
+    }
+   
     const ptime getFirstDateTime() const
     {
-      if (getNumEntries() > 0)
-    {
-      OHLCTimeSeries::ConstTimeSeriesIterator it = beginSortedAccess();
-      return it->first;
-    }
-      else
-    throw std::domain_error(std::string("OHLCTimeSeries:getFirstDateTime: no entries in time series "));
-    }
+      boost::mutex::scoped_lock lock(mMutex);
 
+      if (mSortedTimeSeries.empty())
+	throw std::domain_error("OHLCTimeSeries:getFirstDateTime: no entries in time series");
+
+      return mSortedTimeSeries.begin()->first;
+    }
+    
     const boost::gregorian::date getLastDate() const
     {
-      if (getNumEntries() > 0)
-    {
-      OHLCTimeSeries::ConstTimeSeriesIterator it = endSortedAccess();
-      it--;
-      return it->first.date();
-    }
-      else
-    throw std::domain_error(std::string("OHLCTimeSeries:getLastDate: no entries in time series "));
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mSortedTimeSeries.empty())
+	throw std::domain_error("OHLCTimeSeries:getLastDate: no entries in time series");
+
+      return mSortedTimeSeries.rbegin()->first.date();
     }
 
     const ptime getLastDateTime() const
     {
-      if (getNumEntries() > 0)
-    {
-      OHLCTimeSeries::ConstTimeSeriesIterator it = endSortedAccess();
-      it--;
-      return it->first;
-    }
-      else
-    throw std::domain_error(std::string("OHLCTimeSeries:getLastDateTime: no entries in time series "));
-    }
+      boost::mutex::scoped_lock lock(mMutex);
 
-    void ValidateVectorOffset (const ConstRandomAccessIterator& it,
-                   unsigned long offset)
-    {
-      ValidateVectorOffset (offset);
+      if (mSortedTimeSeries.empty())
+	throw std::domain_error("OHLCTimeSeries:getLastDateTime: no entries in time series");
 
-      if (it != endRandomAccess())
-    {
-      if ((it - offset) >= beginRandomAccess())
-        ;
-      else
-        throw TimeSeriesException ("Offset " +std::to_string (offset) +" outside bounds of time series");
-    }
-      else
-    throw TimeSeriesException ("Iterator is equal to end of internal data structure");
-    }
-
-    void ValidateVectorOffset (unsigned long offset)
-    {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
-
-      if (offset > mSequentialTimeSeries.size())
-    throw TimeSeriesException(std::string("OHLCTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
-    }
-
-    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const RandomAccessIterator& it,
-                                     unsigned long offset)
-    {
-      ValidateVectorOffset(it, offset);
-      OHLCTimeSeries::RandomAccessIterator new_it = it - offset;
-      return *new_it;
+      return mSortedTimeSeries.rbegin()->first;
     }
 
     const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it,
-                                      unsigned long offset)
+                                      unsigned long offset) const
     {
       ValidateVectorOffset(it, offset);
       OHLCTimeSeries::ConstRandomAccessIterator new_it = it - offset;
@@ -807,122 +732,62 @@ template <class Decimal> class OHLCTimeSeries
     }
 
     const boost::gregorian::date&
-    getDateValue (const RandomAccessIterator& it, unsigned long offset)
+    getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
     {
       return getTimeSeriesEntry (it, offset).getDateValue();
-    }
-
-    const boost::gregorian::date&
-    getDateValue (const ConstRandomAccessIterator& it, unsigned long offset)
-    {
-      return getTimeSeriesEntry (it, offset).getDateValue();
-    }
-
-    const Decimal& getOpenValue (const RandomAccessIterator& it,
-                      unsigned long offset)
-    {
-      return getTimeSeriesEntry (it, offset).getOpenValue();
     }
 
     const Decimal& getOpenValue (const ConstRandomAccessIterator& it,
-                       unsigned long offset)
+                       unsigned long offset) const
     {
       return getTimeSeriesEntry (it, offset).getOpenValue();
     }
 
-    const Decimal& getHighValue (const RandomAccessIterator& it,
-                       unsigned long offset)
-    {
-      return getTimeSeriesEntry (it, offset).getHighValue();
-    }
-
     const Decimal& getHighValue (const ConstRandomAccessIterator& it,
-                       unsigned long offset)
+                       unsigned long offset) const
     {
       return getTimeSeriesEntry (it, offset).getHighValue();
-    }
-
-    const Decimal& getLowValue (const RandomAccessIterator& it,
-                       unsigned long offset)
-    {
-      return getTimeSeriesEntry (it, offset).getLowValue();
     }
 
     const Decimal& getLowValue (const ConstRandomAccessIterator& it,
-                       unsigned long offset)
+                       unsigned long offset) const
     {
       return (getTimeSeriesEntry (it, offset).getLowValue());
     }
 
-    const Decimal& getCloseValue (const RandomAccessIterator& it,
-                       unsigned long offset)
-    {
-      return getTimeSeriesEntry (it, offset).getCloseValue();
-    }
-
     const Decimal& getCloseValue (const ConstRandomAccessIterator& it,
-                       unsigned long offset)
+                       unsigned long offset) const
     {
       return getTimeSeriesEntry (it, offset).getCloseValue();
     }
     ///
 
-    const Decimal& getVolumeValue (const RandomAccessIterator& it,
-                       unsigned long offset)
-    {
-      return getTimeSeriesEntry (it, offset).getVolumeValue();
-    }
-
     const Decimal& getVolumeValue (const ConstRandomAccessIterator& it,
-                       unsigned long offset)
+                       unsigned long offset) const
     {
       return getTimeSeriesEntry (it, offset).getVolumeValue();
-    }
-
-    ////
-
-    bool isSynchronized()
-    {
-      return (mMapAndArrayInSync);
-    }
-
-    void syncronizeMapAndArray()
-    {
-      //std::cout << "syncronizeMapAndArray called" << std::endl;
-
-      if (mSequentialTimeSeries.size() > 0)
-      {
-        mSequentialTimeSeries.clear();
-        mDateToSequentialIndex.clear();
-      }
-
-      OHLCTimeSeries::TimeSeriesIterator pos;
-      unsigned long index = 0;
-      for (pos = mSortedTimeSeries.begin(); pos != mSortedTimeSeries.end(); ++pos)
-      {
-        mDateToSequentialIndex.insert(std::make_pair(pos->first, ArrayTimeSeriesIndex(index)));
-        mSequentialTimeSeries.push_back(pos->second);
-        index++;
-      }
-
-      mMapAndArrayInSync = true;
     }
 
     bool isDateFound(const boost::gregorian::date& date)
     {
       ptime dateTime(date, getDefaultBarTime());
+
+      boost::mutex::scoped_lock lock(mMutex);      
       return (mSortedTimeSeries.find(dateTime) != mSortedTimeSeries.end());
     }
 
     void deleteEntryByDate(const boost::gregorian::date& date)
     {
-      auto getDateEntryFromDate = [=](auto date) {
+      boost::mutex::scoped_lock lock(mMutex);
+      
+      auto getDateEntryFromDate = [=](auto date)
+      {
         for(auto it = mSortedTimeSeries.begin(); it != mSortedTimeSeries.end(); it++)
-        {
-          boost::gregorian::date mapDate(it->first.date().year(), it->first.date().month(), it->first.date().day());
-          if(mapDate == date)
-            return it;
-        }
+	  {
+	    boost::gregorian::date mapDate(it->first.date().year(), it->first.date().month(), it->first.date().day());
+	    if(mapDate == date)
+	      return it;
+	  }
         return mSortedTimeSeries.end();
       };
 
@@ -934,27 +799,70 @@ template <class Decimal> class OHLCTimeSeries
         mSortedTimeSeries.erase(mapIterator);
         mapIterator = getDateEntryFromDate(date);
       }
-      syncronizeMapAndArray();
+      
+      mMapAndArrayInSync = false;
     }
 
   private:
-
-    OHLCTimeSeries::MappingIterator
-    getTimeSeriesIndex (const ptime& dateTime)
+    void ensureSynchronized() const
     {
-      if (isSynchronized() == false)
-    syncronizeMapAndArray();
+      boost::mutex::scoped_lock lock(mMutex);
+      if (!mMapAndArrayInSync)
+        synchronize_unlocked();
+    }
 
-      return mDateToSequentialIndex.find (dateTime);
+    void synchronize() const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mMapAndArrayInSync)
+	return;
+
+      synchronize_unlocked();
+    }
+
+    void synchronize_unlocked() const
+    {
+      mSequentialTimeSeries.clear();
+      mDateToSequentialIndex.clear();
+    
+      unsigned long index = 0;
+      for (const auto& kv : mSortedTimeSeries)
+	{
+	  mDateToSequentialIndex[kv.first] = ArrayTimeSeriesIndex(index);
+	  mSequentialTimeSeries.push_back(kv.second);
+	  ++index;
+	}
+      mMapAndArrayInSync = true;
+    }
+
+    void ValidateVectorOffset (const ConstRandomAccessIterator& it,
+			       unsigned long offset) const
+    {      
+      ensureSynchronized() ;
+
+      if (it == mSequentialTimeSeries.end())
+        throw TimeSeriesException("Iterator is at end of time series");
+
+      if ((it - offset) < mSequentialTimeSeries.begin())
+        throw TimeSeriesException("Offset " + std::to_string(offset) + " outside bounds of time series");
+    }
+
+    void ValidateVectorOffset (unsigned long offset) const
+    {
+      ensureSynchronized();
+
+      if (offset > mSequentialTimeSeries.size())
+	  throw TimeSeriesException(std::string("OHLCTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
     }
 
   private:
     boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>> mSortedTimeSeries;
-    boost::container::flat_map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
-    std::vector<OHLCTimeSeriesEntry<Decimal>> mSequentialTimeSeries;
+    mutable boost::container::flat_map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
+    mutable std::vector<OHLCTimeSeriesEntry<Decimal>> mSequentialTimeSeries;
     TimeFrame::Duration mTimeFrame;
-    bool mMapAndArrayInSync;
+    mutable bool mMapAndArrayInSync;
     TradingVolume::VolumeUnit mUnitsOfVolume;
+    mutable boost::mutex mMutex;
   };
 
   template <class Decimal>
@@ -987,44 +895,73 @@ template <class Decimal> class OHLCTimeSeries
     return !(lhs == rhs);
   }
 
+  template <class Decimal>
+    std::ostream& operator<<(std::ostream& os, const OHLCTimeSeries<Decimal>& series)
+    {
+        // Optional: Set precision for Decimal types if needed
+        // os << std::fixed << std::setprecision(4); // Example: 4 decimal places
+
+        // Optional: Print a header line
+        os << "DateTime,Open,High,Low,Close,Volume\n";
+
+        // Iterate through the time series using the sorted access iterator
+        for (typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = series.beginSortedAccess();
+             it != series.endSortedAccess(); ++it)
+        {
+            const ptime& dateTime = it->first;                // Get the boost::posix_time::ptime key
+            const OHLCTimeSeriesEntry<Decimal>& entry = it->second; // Get the OHLC entry value
+
+            // Output the date and time (adjust formatting as desired)
+            // Using to_simple_string for combined date and time, or dateTime.date() for just the date
+            os << boost::posix_time::to_simple_string(dateTime);
+
+            // Output the OHLCV values, separated by commas (or tabs, spaces, etc.)
+            os << "," << entry.getOpenValue();
+            os << "," << entry.getHighValue();
+            os << "," << entry.getLowValue();
+            os << "," << entry.getCloseValue();
+            os << "," << entry.getVolumeValue(); // Assuming volume is also desired
+
+            // Add a newline character for the next entry
+            os << "\n";
+        }
+
+        return os; // Return the ostream reference to allow chaining (e.g., std::cout << series << " done";)
+    }
+  
   // Create a new time series containing entries covered by date range
   template <class Decimal>
   OHLCTimeSeries<Decimal> FilterTimeSeries (const OHLCTimeSeries<Decimal>& series, const DateRange& dates)
   {
-    boost::gregorian::date firstDate (dates.getFirstDate());
-    boost::gregorian::date lastDate (dates.getLastDate());
+    boost::gregorian::date firstDate(dates.getFirstDate());
+    boost::gregorian::date lastDate(dates.getLastDate());
 
     ptime firstDateAsPtime(firstDate, getDefaultBarTime());
-    ptime lastDateAsPtime (lastDate, getDefaultBarTime());
+    ptime lastDateAsPtime(lastDate, getDefaultBarTime());
 
-    if ((series.getFirstDate() == firstDate) && (series.getLastDate() == lastDate))
+    const boost::gregorian::date seriesFirstDate = series.getFirstDate();
+    const boost::gregorian::date seriesLastDate = series.getLastDate();
+
+    if ((seriesFirstDate == firstDate) && (seriesLastDate == lastDate))
       return series;
 
-    // Cannot create a new series that starts before the first date of the reference series
-    if (firstDate < series.getFirstDate())
+    if (firstDate < seriesFirstDate)
       throw TimeSeriesException("FilterTimeSeries: Cannot create new series that starts before reference series");
 
-    // Cannot create a new series that starts before the first date of the reference series
-    if (lastDate < series.getFirstDate())
+    if (lastDate < seriesFirstDate)
       throw TimeSeriesException("FilterTimeSeries: Cannot create new series that starts before reference series");
 
-    OHLCTimeSeries<Decimal> resultSeries (series.getTimeFrame(), series.getVolumeUnits(),
-                       series.getNumEntries());
+    OHLCTimeSeries<Decimal> resultSeries(series.getTimeFrame(), series.getVolumeUnits(), series.getNumEntries());
 
     typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = series.beginSortedAccess();
-    if (series.getFirstDate() < firstDate)
-      {
-    for (; it != series.endSortedAccess(); it++)
-      {
-        if (it->first >= firstDateAsPtime)
-          break;
-      }
-      }
 
-    for (; ((it != series.endSortedAccess()) && (it->first <= lastDateAsPtime)) ; it++)
-      {
-    resultSeries.addEntry (it->second);
-      }
+    // Advance to the first relevant point (if needed)
+    while (it != series.endSortedAccess() && it->first < firstDateAsPtime)
+      ++it;
+
+    // Add entries in range
+    for (; it != series.endSortedAccess() && it->first <= lastDateAsPtime; ++it)
+      resultSeries.addEntry(it->second);
 
     return resultSeries;
   }
