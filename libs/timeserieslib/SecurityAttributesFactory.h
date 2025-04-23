@@ -108,7 +108,7 @@ namespace mkc_timeseries
       addCommonStock (std::string("NXPI"), std::string("NXP Semiconductors"),
 		      boost::gregorian::from_undelimited_string("20100806"));
       addCommonStock (std::string("ON"), std::string("On Semiconductor"),
-		      boost::gregorian::from_undelimited_string("2000501"));
+		      boost::gregorian::from_undelimited_string("20000501"));
       addCommonStock (std::string("NEM"), std::string("Nemont Mining"),
 		      boost::gregorian::from_undelimited_string("19830406"));
       addCommonStock (std::string("AMZN"), std::string("Amazon"),
