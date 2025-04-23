@@ -151,7 +151,6 @@ namespace mkc_timeseries
 	  for (; backTesterDate <= backTesterEndDate; backTesterDate = next_period(backTesterDate))
 	    {
 	      orderDate = previous_period (backTesterDate);
-
 	      //std::cout << "Iterating over strategies" << std::endl;
 
 	      for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
@@ -173,7 +172,9 @@ namespace mkc_timeseries
 			  (backtestNumber < this->numBackTestRanges()))
 			  closeAllPositions(previous_period (backTesterDate));
 		      else
-			processStrategyBar (aSecurity, aStrategy, orderDate);
+			{
+			  processStrategyBar (aSecurity, aStrategy, orderDate);
+			}
 
 		      aStrategy->eventProcessPendingOrders (backTesterDate);
 		    }
@@ -450,8 +451,7 @@ private:
 	return BackTesterFactory<Decimal>::getBackTester(theTimeFrame, DateRange(startDate, endDate));
       }
 
-      static template <class Decimal>
-      uint32_t
+      static uint32_t
       getNumClosedTrades(std::shared_ptr<BackTester<Decimal>> aBackTester)
       {
 	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
