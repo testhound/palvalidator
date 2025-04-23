@@ -54,6 +54,8 @@ namespace mkc_timeseries
       : mPositions(),
         mSumWinners(DecimalConstants<Decimal>::DecimalZero),
         mSumLosers(DecimalConstants<Decimal>::DecimalZero),
+	mLogSumWinners(DecimalConstants<Decimal>::DecimalZero),
+	mLogSumLosers(DecimalConstants<Decimal>::DecimalZero),
         mNumWinners(0),
         mNumLosers(0),
         mNumBarsInMarket(0),
@@ -71,6 +73,8 @@ namespace mkc_timeseries
       : mPositions(rhs.mPositions),
         mSumWinners(rhs.mSumWinners),
         mSumLosers(rhs.mSumLosers),
+	mLogSumWinners(rhs.mLogSumWinners),
+	mLogSumLosers(rhs.mLogSumLosers),
         mNumWinners(rhs.mNumWinners),
         mNumLosers(rhs.mNumLosers),
         mRMultipleSum(rhs.mRMultipleSum),
@@ -92,6 +96,8 @@ namespace mkc_timeseries
       mPositions = rhs.mPositions;
       mSumWinners = rhs.mSumWinners;
       mSumLosers = rhs.mSumLosers;
+      mLogSumWinners = rhs.mLogSumWinners;
+      mLogSumLosers = rhs.mLogSumLosers;
       mNumWinners = rhs.mNumWinners;
       mNumLosers = rhs.mNumLosers;
       mRMultipleSum = rhs.mRMultipleSum;
@@ -130,6 +136,7 @@ namespace mkc_timeseries
         {
           mNumWinners++;
           mSumWinners += position->getPercentReturn();
+	  mLogSumWinners += position->getLogTradeReturn();
           mWinnersStats (num::to_double(position->getPercentReturn()));
           mWinnersVect.push_back(num::to_double(position->getPercentReturn()));
           mBarsPerWinningPosition.push_back (position->getNumBarsInPosition());
@@ -138,6 +145,7 @@ namespace mkc_timeseries
         {
           mNumLosers++;
           mSumLosers += position->getPercentReturn();
+	  mLogSumLosers += position->getLogTradeReturn();
           mLosersStats (num::to_double(percReturn));
           mLosersVect.push_back(num::to_double(num::abs(percReturn)));
           mBarsPerLosingPosition.push_back (position->getNumBarsInPosition());
@@ -365,12 +373,12 @@ namespace mkc_timeseries
         return (DecimalConstants<Decimal>::DecimalZero);
     }
 
-    Decimal getProfitFactor() const
+    Decimal getProfitFactorCommon(const Decimal& winnersSum, const Decimal& losersSum) const
     {
       if (getNumPositions() > 0)
         {
           if ((mNumWinners >= 1) and (mNumLosers >= 1))
-            return (mSumWinners / num::abs(mSumLosers));
+            return (winnersSum / num::abs(losersSum));
           else if (mNumWinners == 0)
             return (DecimalConstants<Decimal>::DecimalZero);
           else if (mNumLosers == 0)
@@ -380,8 +388,23 @@ namespace mkc_timeseries
         }
       else
         return (DecimalConstants<Decimal>::DecimalZero);
+
+    }
+    
+    Decimal getProfitFactor() const
+    {
+      return getProfitFactorCommon(mSumWinners, mSumLosers);
     }
 
+    // Add this calculation (natural log of trade returns) which is the preferred
+    // method of Timothy Master's
+    // as described in his book "Permutation and Randomization Tests for
+    // Trading System Development
+    Decimal getLogProfitFactor() const
+    {
+      return getProfitFactorCommon(mLogSumWinners, mLogSumLosers);
+    }
+    
     Decimal getPALProfitability() const
     {
       if (getNumPositions() > 0)
@@ -525,6 +548,8 @@ namespace mkc_timeseries
     std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>> mPositions;
     Decimal mSumWinners;
     Decimal mSumLosers;
+    Decimal mLogSumWinners;
+    Decimal mLogSumLosers;
     unsigned int mNumWinners;
     unsigned int mNumLosers;
     unsigned int mNumBarsInMarket;
