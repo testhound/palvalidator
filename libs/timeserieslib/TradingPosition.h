@@ -13,6 +13,7 @@
 #include <map>
 #include <list>
 #include <cstdint>
+#include <cmath>
 #include "TradingPositionException.h"
 #include "TimeSeriesEntry.h"
 #include "PercentNumber.h"
@@ -28,17 +29,47 @@ namespace mkc_timeseries
   template <class Decimal> class TradingPosition;
 
   template <class Decimal>
+  Decimal calculateNaturalLog(const Decimal& decValue)
+  {
+    // 1. Check if the value is positive (log is undefined for <= 0)
+    if (decValue <= DecimalConstants<Decimal>::DecimalZero)
+      {
+
+	// Handle error: Logarithm of non-positive number is undefined
+	if (decValue == DecimalConstants<Decimal>::DecimalZero)
+	    throw std::domain_error(std::string("calculateNaturalLog: log of zero is undefined"));
+	else
+	    throw std::domain_error(std::string("calculateNaturalLog: log of negative number is undefined"));
+      }
+
+    // 2. Convert the decimal to long double for best standard precision
+    long double floatValue = decValue.getAsXDouble();
+
+    // 3. Calculate the natural logarithm using std::logl
+    long double logResult = std::log (floatValue);
+
+    return Decimal(logResult);
+  }
+
+  template <class Decimal>
   Decimal calculateTradeReturn (const Decimal& referencePrice, 
-					  const Decimal& secondPrice)
-    {
+				const Decimal& secondPrice)
+  {
       return ((secondPrice - referencePrice) / referencePrice);
     }
+
+  template <class Decimal>
+  Decimal calculateLogTradeReturn (const Decimal& referencePrice,
+				   const Decimal& secondPrice)
+  {
+    return calculateNaturalLog (secondPrice / referencePrice);
+  }
 
   template <class Decimal>
     Decimal calculatePercentReturn (const Decimal& referencePrice, 
 					  const Decimal& secondPrice)
     {
-return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalConstants<Decimal>::DecimalOneHundred);
+      return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalConstants<Decimal>::DecimalOneHundred);
     }
 
   template <class Decimal> class OpenPositionBar
@@ -264,6 +295,7 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     virtual const Decimal& getLastClose() const = 0;
     virtual Decimal getPercentReturn() const = 0;
     virtual Decimal getTradeReturn() const = 0;
+    virtual Decimal getLogTradeReturn() const = 0;
     virtual Decimal getTradeReturnMultiplier() const = 0;
     virtual bool isWinningPosition() const = 0;
     virtual bool isLosingPosition() const = 0;
@@ -501,6 +533,13 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
 				      OpenPosition<Decimal>::getLastClose()));
     }
 
+    Decimal getLogTradeReturn() const
+    {
+      return (calculateLogTradeReturn (OpenPosition<Decimal>::getEntryPrice(),
+				      OpenPosition<Decimal>::getLastClose()));
+
+    }
+
     Decimal getTradeReturnMultiplier() const
     {
       return (DecimalConstants<Decimal>::DecimalOne + getTradeReturn());
@@ -555,6 +594,13 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     {
       return -(calculateTradeReturn (OpenPosition<Decimal>::getEntryPrice(), 
 				      OpenPosition<Decimal>::getLastClose()));
+    }
+
+    Decimal getLogTradeReturn() const
+    {
+      return -(calculateLogTradeReturn (OpenPosition<Decimal>::getEntryPrice(),
+					OpenPosition<Decimal>::getLastClose()));
+
     }
 
     Decimal getPercentReturn() const
@@ -773,6 +819,12 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
 				    ClosedPosition<Decimal>::getExitPrice()));
     }
 
+    Decimal getLogTradeReturn() const
+    {
+      return (calculateLogTradeReturn (ClosedPosition<Decimal>::getEntryPrice(),
+				       ClosedPosition<Decimal>::getExitPrice()));
+    }
+
     bool isWinningPosition() const
     {
       return (getTradeReturn() > DecimalConstants<Decimal>::DecimalZero);
@@ -832,6 +884,12 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     {
       return -(calculatePercentReturn (ClosedPosition<Decimal>::getEntryPrice(), 
 				       ClosedPosition<Decimal>::getExitPrice()));
+    }
+
+    Decimal getLogTradeReturn() const
+    {
+      return -(calculateLogTradeReturn (ClosedPosition<Decimal>::getEntryPrice(),
+					ClosedPosition<Decimal>::getExitPrice()));
     }
 
     Decimal getTradeReturnMultiplier() const
@@ -978,6 +1036,11 @@ return (calculateTradeReturn<Decimal>(referencePrice, secondPrice) * DecimalCons
     Decimal getTradeReturn() const
     {
       return mPositionState->getTradeReturn();
+    }
+
+    Decimal getLogTradeReturn() const
+    {
+      return mPositionState->getLogTradeReturn();
     }
 
     Decimal getTradeReturnMultiplier() const
