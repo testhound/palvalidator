@@ -4,6 +4,14 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
+/**
+ * @file TradingOrder.h
+ * @brief Defines the trading order classes used for simulating order lifecycle in the backtesting framework.
+ *
+ * This header implements the class hierarchy and state transitions for all order types: market,
+ * limit, and stop orders, both for entry and exit. It provides observer-based notification of order
+ * state changes and enables polymorphic visitation of order types using the Visitor pattern.
+ */
 #ifndef __TRADING_ORDER_H
 #define __TRADING_ORDER_H 1
 
@@ -37,7 +45,14 @@ namespace mkc_timeseries
   template <class Decimal> class SellAtStopOrder;
   template <class Decimal> class TradingOrderObserver;
   template <class Decimal> class TradingOrder;
-  
+
+  /**
+   * @class TradingOrderVisitor
+   * @brief Visitor interface for processing all order types.
+   *
+   * Responsibilities:
+   * - Provides `visit()` overloads for each supported order type.
+   */
   template <class Decimal>
   class TradingOrderVisitor
   {
@@ -60,6 +75,16 @@ namespace mkc_timeseries
     virtual void visit (SellAtStopOrder<Decimal> *order) = 0;
   };
 
+  /**
+   * @class TradingOrderObserver
+   * @brief Interface for observing state transitions of trading orders.
+   *
+   * Responsibilities:
+   * - Notified upon order execution or cancellation.
+   *
+   * Collaboration:
+   * - StrategyBroker implements this interface to track fills.
+   */
   template <class Decimal>
   class TradingOrderObserver
   {
@@ -89,7 +114,39 @@ namespace mkc_timeseries
     virtual void OrderCanceled (SellAtStopOrder<Decimal> *order) = 0;
   };
  
-
+ /**
+  * @class TradingOrder
+  * @brief Abstract base class for all order types.
+  *
+  * Responsibilities:
+  * - Encapsulate shared data like symbol, units, order date, and state.
+  * - Implement state transitions (pending → executed or canceled).
+  * - Enforce invariant: fill date must be >= order date.
+  * - Notify observers of order execution or cancellation.
+  *
+  * Collaboration:
+  * - Observed by TradingOrderObserver (e.g., StrategyBroker).
+  * - Transition logic implemented via TradingOrderState and its subclasses.
+  * - Order logic extended via subclasses like MarketOrder, LimitOrder, etc.
+  *
+  * Interface Contract:
+  * Subclasses must implement the following core methods:
+  *
+  * - `void notifyOrderExecuted()`
+  *   - Purpose: Invoked after the order has been filled.
+  *   - Contract: Must notify all registered observers that this order is now executed.
+  *   - Should typically include a loop through observer list and call observer->OrderExecuted(this).
+  *
+  * - `void notifyOrderCanceled()`
+  *   - Purpose: Called when the order is canceled.
+  *   - Contract: Must notify all registered observers that this order has been canceled.
+  *   - May also trigger cleanup of any associated strategy state.
+  *
+  * - `void ValidateOrderExecution(const TimeSeriesDate& fillDate, const Decimal& fillPrice) const`
+  *   - Purpose: Validates that the provided fill data is consistent with this order’s contract.
+  *   - Contract: Must throw an exception if fillDate is before the order date, or if the price violates limit/stop conditions.
+  *   - Used to enforce correctness in order processing and simulation integrity.
+  */ 
   template <class Decimal> class TradingOrder
   {
   public:
@@ -147,8 +204,6 @@ namespace mkc_timeseries
     {
       return mOrderID;
     }
-
-    
 
     virtual uint32_t getOrderPriority() const = 0;
     virtual bool isLongOrder() const = 0;
@@ -212,6 +267,14 @@ namespace mkc_timeseries
 
   template <class Decimal> std::atomic<uint32_t> TradingOrder<Decimal>::mOrderIDCount{0};
 
+  /**
+   * @class MarketOrder
+   * @brief Represents an unconditional order to be filled immediately at market price.
+   *
+   * Responsibilities:
+   * - Define execution priority (always highest).
+   * - Serves as base class for entry/exit market orders.
+   */
   template <class Decimal> class MarketOrder : public TradingOrder<Decimal>
     {
     public:
@@ -264,7 +327,14 @@ namespace mkc_timeseries
       {}
   };
 
-  /////////////////////////
+  /**
+   * @class MarketEntryOrder
+   * @brief Abstract base for all market entry orders.
+   *
+   * Responsibilities:
+   * - Add stop loss and profit target percent parameters.
+   * - Provides base logic for long/short entry orders.
+   */
 
   template <class Decimal> class MarketEntryOrder : public MarketOrder<Decimal>
   {
@@ -328,6 +398,14 @@ namespace mkc_timeseries
       Decimal mProfitTarget;   // Profit target in percent from PAL pattern. This is NOT the profit target
   };
 
+  /**
+   * @class MarketOnOpenLongOrder
+   * @brief Long entry order to be executed at market open.
+   *
+   * Responsibilities:
+   * - Implements order identity (long, entry, market).
+   * - Executes observer notification on fill or cancel.
+   */
   template <class Decimal> class MarketOnOpenLongOrder : public MarketEntryOrder<Decimal>
   {
   public:
@@ -389,6 +467,14 @@ namespace mkc_timeseries
     }
   };
 
+  /**
+   * @class MarketOnOpenShortOrder
+   * @brief Short entry order to be executed at market open.
+   *
+   * Responsibilities:
+   * - Implements order identity (short, entry, market).
+   * - Executes observer notification on fill or cancel.
+   */
   template <class Decimal> class MarketOnOpenShortOrder : public MarketEntryOrder<Decimal>
   {
   public:
@@ -450,7 +536,13 @@ namespace mkc_timeseries
   };
 
 
-  // Market on Open exit Orders
+  /**
+   * @class MarketExitOrder
+   * @brief Abstract base for all market exit orders.
+   *
+   * Responsibilities:
+   * - Common functionality for position-closing market orders.
+   */
 
   template <class Decimal> class MarketExitOrder : public MarketOrder<Decimal>
   {
@@ -489,11 +581,10 @@ namespace mkc_timeseries
       }
   };
 
-  //
-  // class MarketOnOpenSellOrder
-  //
-  // Closes a long position
-  //
+  /**
+   * @class MarketOnOpenSellOrder
+   * @brief Closes a long position at market open.
+   */
 
   template <class Decimal> class MarketOnOpenSellOrder : public MarketExitOrder<Decimal>
   {
@@ -555,11 +646,10 @@ namespace mkc_timeseries
   };
 
 
-  //
-  // class MarketOnOpenCoverOrder
-  //
-  // Closes a long position
-  //
+  /**
+   * @class MarketOnOpenCoverOrder
+   * @brief Closes a short position at market open.
+   */
 
   template <class Decimal> class MarketOnOpenCoverOrder : public MarketExitOrder<Decimal>
   {
@@ -620,7 +710,13 @@ namespace mkc_timeseries
     }
   };
 
-  // Limit Orders
+  /**
+   * @class LimitOrder
+   * @brief Abstract base class for all limit orders.
+   *
+   * Responsibilities:
+   * - Define the limit price condition.
+   */
   template <class Decimal> class LimitOrder : public TradingOrder<Decimal>
     {
     public:
@@ -722,13 +818,10 @@ namespace mkc_timeseries
       }
   };
 
-
-  //
-  // class SellAtLimitOrder
-  // 
-  // Used to close a long position
-  //
-
+  /**
+   * @class SellAtLimitOrder
+   * @brief Closes a long position when price >= limit.
+   */
   template <class Decimal> class SellAtLimitOrder : public LimitExitOrder<Decimal>
   {
   public:
@@ -797,11 +890,10 @@ namespace mkc_timeseries
   };
 
 
-  //
-  // class CoverAtLimitOrder
-  // 
-  // Used to close a short position
-  //
+  /**
+   * @class CoverAtLimitOrder
+   * @brief Closes a short position when price <= limit.
+   */
 
   template <class Decimal> class CoverAtLimitOrder : public LimitExitOrder<Decimal>
   {
@@ -871,9 +963,13 @@ namespace mkc_timeseries
     }
   };
 
-  ///////////////////////////////////////////////
-  //  Classes for stop orders
-  ///////////////////////////////////////////////
+  /**
+   * @class StopOrder
+   * @brief Abstract base class for all stop orders.
+   *
+   * Responsibilities:
+   * - Define the stop price condition.
+   */
 
   template <class Decimal> class StopOrder : public TradingOrder<Decimal>
     {
@@ -977,12 +1073,10 @@ namespace mkc_timeseries
       }
   };
 
-  //
-  // class SellAtStopOrder
-  // 
-  // Used to close a long position
-  //
-
+  /**
+   * @class SellAtStopOrder
+   * @brief Closes a long position when price <= stop.
+   */
   template <class Decimal> class SellAtStopOrder : public StopExitOrder<Decimal>
   {
   public:
@@ -1050,11 +1144,10 @@ namespace mkc_timeseries
     }
   };
 
-  //
-  // class CoverAtStopOrder
-  // 
-  // Used to close a short position
-  //
+  /**
+   * @class CoverAtStopOrder
+   * @brief Closes a short position when price >= stop.
+   */
 
   template <class Decimal> class CoverAtStopOrder : public StopExitOrder<Decimal>
   {
@@ -1124,10 +1217,14 @@ namespace mkc_timeseries
     }
   };
 
-  ///////////////////////////////////////////////
-  // TradingOrderState Implementation
-  //////////////////////////////////////////////////
-
+  /**
+   * @class TradingOrderState
+   * @brief Abstract base class representing the state of a trading order.
+   *
+   * Responsibilities:
+   * - Encapsulate order state (pending, executed, or canceled).
+   * - Delegate fill/cancel logic to state-specific subclasses.
+   */
 
   template <class Decimal> class TradingOrderState
   {
@@ -1149,6 +1246,10 @@ namespace mkc_timeseries
     virtual const TimeSeriesDate& getFillDate() const = 0;
   };
 
+  /**
+   * @class PendingOrderState
+   * @brief Represents an order awaiting execution.
+   */
   template <class Decimal> class PendingOrderState : public TradingOrderState<Decimal>
   {
   public:
@@ -1197,6 +1298,10 @@ namespace mkc_timeseries
     }
   };
 
+  /**
+   * @class ExecutedOrderState
+   * @brief Represents an order that has been filled.
+   */
   template <class Decimal> class ExecutedOrderState : public TradingOrderState<Decimal>
   {
   public:
@@ -1252,7 +1357,10 @@ namespace mkc_timeseries
     Decimal mEntryPrice;
   };
 
-
+  /**
+   * @class CanceledOrderState
+   * @brief Represents an order that has been canceled.
+   */
   template <class Decimal> class CanceledOrderState : public TradingOrderState<Decimal>
   {
   public:
