@@ -32,6 +32,13 @@ PriceActionLabSystem::PriceActionLabSystem (PatternTieBreakerPtr tieBreaker)
 {
 }
 
+PriceActionLabSystem::PriceActionLabSystem ()
+  : mLongsPatternMap(),
+    mShortsPatternMap(),
+    mPatternTieBreaker (std::shared_ptr<PatternTieBreaker> (new SmallestVolatilityTieBreaker)),
+    mAllPatterns()
+{}
+
 PriceActionLabSystem::PriceActionLabSystem (std::list<PALPatternPtr>& listOfPatterns, 
 					    PatternTieBreakerPtr tieBreaker)
   : mLongsPatternMap(),
