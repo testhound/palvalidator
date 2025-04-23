@@ -8,6 +8,7 @@
 #define __SYNTHETIC_TIME_SERIES_H 1
 
 #include <cassert>
+#include <boost/thread/mutex.hpp>
 #include "TimeSeries.h"
 #include "VectorDecimal.h"
 #include "RandomMersenne.h"
@@ -69,7 +70,6 @@ namespace mkc_timeseries
 	mRelativeVolume(),
 	mFirstOpen(),
 	mFirstVolume(),
-	mNumElements (aTimeSeries.getNumEntries()),
 	mRandGenerator(),
 	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (aTimeSeries.getTimeFrame(),
 									aTimeSeries.getVolumeUnits(),
@@ -137,47 +137,44 @@ namespace mkc_timeseries
 	}
     }
 
-    SyntheticTimeSeries (const SyntheticTimeSeries& rhs)
-      : mTimeSeries(rhs.mTimeSeries),
-	mDateSeries (rhs.mDateSeries),
-	mRelativeOpen (rhs.mRelativeOpen),
-	mRelativeHigh (rhs.mRelativeHigh),
-	mRelativeLow (rhs.mRelativeLow),
-	mRelativeClose (rhs.mRelativeClose),
-	mRelativeVolume (rhs.mRelativeVolume),
-	mFirstOpen (rhs.mFirstOpen),
-	mFirstVolume (rhs.mFirstVolume),
-	mNumElements (rhs.mNumElements),
-	mRandGenerator(rhs.mRandGenerator),
-	mSyntheticTimeSeries (rhs.mSyntheticTimeSeries),
-	mMinimumTick(rhs.mMinimumTick),
-	mMinimumTickDiv2(rhs.mMinimumTickDiv2)
-    {}
-
-    SyntheticTimeSeries<Decimal>&
-    operator=(const SyntheticTimeSeries<Decimal> &rhs)
+    SyntheticTimeSeries(const SyntheticTimeSeries& rhs)
     {
-      if (this == &rhs)
-	return *this;
-
+      boost::mutex::scoped_lock lock(rhs.mMutex);
       mTimeSeries = rhs.mTimeSeries;
       mDateSeries = rhs.mDateSeries;
       mRelativeOpen = rhs.mRelativeOpen;
       mRelativeHigh = rhs.mRelativeHigh;
       mRelativeLow = rhs.mRelativeLow;
       mRelativeClose = rhs.mRelativeClose;
-      mRelativeVolume = rhs.mRelativeVolume;
       mFirstOpen = rhs.mFirstOpen;
-      mFirstVolume = rhs.mFirstVolume;
-      mNumElements = rhs.mNumElements;
       mRandGenerator = rhs.mRandGenerator;
-      mSyntheticTimeSeries = rhs.mSyntheticTimeSeries;
+      mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries);
       mMinimumTick = rhs.mMinimumTick;
       mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
-      
+    }
+    
+    SyntheticTimeSeries& operator=(const SyntheticTimeSeries& rhs)
+    {
+      if (this != &rhs)
+	{
+	  boost::mutex::scoped_lock lock(mMutex);
+	  boost::mutex::scoped_lock rhsLock(rhs.mMutex);
+
+	  mTimeSeries = rhs.mTimeSeries;
+	  mDateSeries = rhs.mDateSeries;
+	  mRelativeOpen = rhs.mRelativeOpen;
+	  mRelativeHigh = rhs.mRelativeHigh;
+	  mRelativeLow = rhs.mRelativeLow;
+	  mRelativeClose = rhs.mRelativeClose;
+	  mFirstOpen = rhs.mFirstOpen;
+	  mRandGenerator = rhs.mRandGenerator;
+	  mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries);
+	  mMinimumTick = rhs.mMinimumTick;
+	  mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
+	}
       return *this;
     }
-
+    
     /**
      * @brief Creates the synthetic time series by integrating the shuffled relative factors.
      *
@@ -197,6 +194,8 @@ namespace mkc_timeseries
      */
     void createSyntheticSeries()
     {
+      boost::mutex::scoped_lock lock(mMutex);
+
       shuffleOverNightChanges();
       shuffleTradingDayChanges();
 
@@ -210,7 +209,7 @@ namespace mkc_timeseries
       Decimal syntheticOpen, syntheticHigh;
       Decimal syntheticClose, syntheticLow;
 
-      for (unsigned long i = 0; i < mNumElements; i++)
+      for (unsigned long i = 0; i < getNumElements(); i++)
 	{
 	  xPrice *= mRelativeOpen[i];
 	  //xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
@@ -264,10 +263,12 @@ namespace mkc_timeseries
 
     void dumpRelative()
     {
+      boost::mutex::scoped_lock lock(mMutex);
+
       std::ofstream f;
       f.open("relative1.csv");
 
-      for (unsigned int i = 0; i < mNumElements; i++)
+      for (unsigned int i = 0; i < getNumElements(); i++)
 	{
 	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
 	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
@@ -277,10 +278,12 @@ namespace mkc_timeseries
 
     void dumpRelative2()
     {
+      boost::mutex::scoped_lock lock(mMutex);
+
       std::ofstream f;
       f.open("relative2.csv");
 
-      for (unsigned int i = 0; i < mNumElements; i++)
+      for (unsigned int i = 0; i < getNumElements(); i++)
 	{
 	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
 	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
@@ -290,10 +293,12 @@ namespace mkc_timeseries
 
     void dumpRelative3()
     {
+      boost::mutex::scoped_lock lock(mMutex);
+
       std::ofstream f;
       f.open("relative3.csv");
 
-      for (unsigned int i = 0; i < mNumElements; i++)
+      for (unsigned int i = 0; i < getNumElements(); i++)
 	{
 	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
 	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
@@ -303,10 +308,12 @@ namespace mkc_timeseries
 
     void dumpRelative4()
     {
+      boost::mutex::scoped_lock lock(mMutex);
+
       std::ofstream f;
       f.open("relative4.csv");
 
-      for (unsigned int i = 0; i < mNumElements; i++)
+      for (unsigned int i = 0; i < getNumElements(); i++)
 	{
 	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
 	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
@@ -316,6 +323,8 @@ namespace mkc_timeseries
 
     void dumpSyntheticSeries ()
     {
+      boost::mutex::scoped_lock lock(mMutex);
+
       PalTimeSeriesCsvWriter<Decimal> dumpFile("SyntheticSeriesDump.csv", *mSyntheticTimeSeries);
       dumpFile.writeFile();
 
@@ -338,36 +347,44 @@ namespace mkc_timeseries
 
     unsigned long getNumElements() const
     {
-      return mNumElements;
+      boost::mutex::scoped_lock lock(mMutex);
+      return mTimeSeries.getNumEntries(); 
     }
 
     std::shared_ptr<OHLCTimeSeries<Decimal>> getSyntheticTimeSeries() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mSyntheticTimeSeries;
     }
 
-    const std::vector<Decimal>& getRelativeOpen() const
+    const std::vector<Decimal> getRelativeOpen() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mRelativeOpen;
     }
 
-    const std::vector<Decimal>& getRelativeHigh() const
+    const std::vector<Decimal> getRelativeHigh() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mRelativeHigh;
     }
 
-    const std::vector<Decimal>& getRelativeLow() const {
+    const std::vector<Decimal> getRelativeLow() const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
       return mRelativeLow;
     }
 
-    const std::vector<Decimal>& getRelativeClose() const
+    const std::vector<Decimal> getRelativeClose() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mRelativeClose;
     }
 
 #ifdef SYNTHETIC_VOLUME
-    const std::vector<Decimal>& getRelativeVolume() const
+    const std::vector<Decimal> getRelativeVolume() const
     {
+      boost::mutex::scoped_lock lock(mMutex);
       return mRelativeVolume;
     }
 #endif
@@ -384,7 +401,7 @@ namespace mkc_timeseries
      */
     void shuffleOverNightChanges()
     {
-      unsigned long i = mNumElements;
+      unsigned long i = getNumElements();
       unsigned long j;
 
       while (i > 1)
@@ -392,12 +409,9 @@ namespace mkc_timeseries
 	  // Sample without replacement
 	  
 	  j = mRandGenerator.DrawNumberExclusive (i);
-
-	  if (j >= i)
-	    j = i - 1;
 	  i = i - 1;
 
-        std::swap(mRelativeOpen[i], mRelativeOpen[j]);
+	  std::swap(mRelativeOpen[i], mRelativeOpen[j]);
 	}
     }
 
@@ -412,7 +426,7 @@ namespace mkc_timeseries
      */
     void shuffleTradingDayChanges()
     {
-      int i = mNumElements;
+      int i = getNumElements();
       int j;
 
       while (i > 1)
@@ -421,8 +435,6 @@ namespace mkc_timeseries
 	  
 	  j = mRandGenerator.DrawNumberExclusive (i);
 
-	  if (j >= i)
-	    j = i - 1;
 	  i = i - 1;
 
         std::swap(mRelativeHigh[i], mRelativeHigh[j]);
@@ -444,11 +456,11 @@ namespace mkc_timeseries
     vector<Decimal> mRelativeVolume;
     Decimal mFirstOpen;
     Decimal mFirstVolume;
-    unsigned long mNumElements;
     RandomMersenne mRandGenerator;
     std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;
     Decimal mMinimumTick;
     Decimal mMinimumTickDiv2;
+    mutable boost::mutex mMutex;    
   };
 
 }
