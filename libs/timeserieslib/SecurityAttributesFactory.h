@@ -39,14 +39,11 @@ namespace mkc_timeseries
     typedef typename std::map<std::string, std::shared_ptr<SecurityAttributes<Decimal>>>::const_iterator SecurityAttributesIterator;
 
   public:
-    SecurityAttributesFactory ()
+    static SecurityAttributesFactory<Decimal>& instance()
     {
-      initializeEquityAttributes();
-      initializeFuturesAttributes();
+      static SecurityAttributesFactory<Decimal> theOne;
+      return theOne;
     }
-
-    ~SecurityAttributesFactory ()
-    {}
 
     SecurityAttributesIterator getSecurityAttributes(const std::string securitySymbol)
     {
@@ -57,9 +54,8 @@ namespace mkc_timeseries
     {
       return mSecurityAttributes.end();
     }
-
  
-
+  private:
     void initializeEquityAttributes()
     {
       initializeETFAttributes();
@@ -1140,6 +1136,20 @@ namespace mkc_timeseries
     }
 
  private:
+    SecurityAttributesFactory ()
+    {
+      initializeEquityAttributes();
+      initializeFuturesAttributes();
+    }
+
+    ~SecurityAttributesFactory ()
+    {}
+
+    // disable copy/move so there’s truly only one
+    SecurityAttributesFactory(const SecurityAttributesFactory&) = delete;
+    SecurityAttributesFactory& operator=(const SecurityAttributesFactory&) = delete;
+
+    
     Decimal createDecimal(const std::string& valueString)
     {
       return num::fromString<Decimal>(valueString);
@@ -1220,14 +1230,14 @@ namespace mkc_timeseries
 
   private:
     std::map<std::string, std::shared_ptr<SecurityAttributes<Decimal>>> mSecurityAttributes;
-
   };
 
   template <class Decimal>
   std::shared_ptr<SecurityAttributes<Decimal>> getSecurityAttributes (const std::string &symbol)
   {
-    SecurityAttributesFactory<Decimal> factory;
-    typename SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
+    auto& factory = SecurityAttributesFactory<Decimal>::instance();
+    
+    auto it = factory.getSecurityAttributes (symbol);
 
     if (it != factory.endSecurityAttributes())
       return it->second;
