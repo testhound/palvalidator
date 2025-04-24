@@ -23,6 +23,20 @@ using std::shared_ptr;
 
 namespace mkc_timeseries
 {
+  /**
+   * @class ProcessOrderVisitor
+   * @brief Implements the Visitor pattern to apply execution logic to each type of TradingOrder.
+   *
+   * Responsibilities:
+   * - Visit each pending order and evaluate whether it should execute on the current bar.
+   * - Trigger order fills based on price criteria for each order type (e.g., market-on-open, stop, limit).
+   * - Dispatch execution results back to TradingOrderManager and order observers.
+   *
+   * Collaboration:
+   * - Used by TradingOrderManager::processPendingOrders.
+   * - Accesses the latest OHLC data to evaluate fill conditions.
+   * - Invokes TradingOrder::MarkOrderExecuted or MarkOrderCanceled as needed.
+   */
   template <class Decimal> class ProcessOrderVisitor : public TradingOrderVisitor<Decimal>
   {
   public:
@@ -156,8 +170,23 @@ namespace mkc_timeseries
   private:
     OHLCTimeSeriesEntry<Decimal> mTradingBar;
   };
-
- 
+  
+  /**
+   * @class TradingOrderManager
+   * @brief Orchestrates the tracking and execution of all pending trading orders.
+   *
+   * Responsibilities:
+   * - Maintain collections of pending orders sorted by date and order type.
+   * - Route orders through the appropriate execution logic using ProcessOrderVisitor.
+   * - Notify observers when orders are filled or canceled.
+   * - Provide APIs for submitting market, limit, stop, and other custom order types.
+   * - Coordinate with InstrumentPositionManager to ensure orders reflect valid strategy state.
+   *
+   * Collaboration:
+   * - Receives order submissions from StrategyBroker.
+   * - Executes or cancels orders by applying ProcessOrderVisitor logic.
+   * - Notifies registered TradingOrderObservers (e.g., StrategyBroker) when order status changes.
+   */ 
  template <class Decimal> class TradingOrderManager
   {
   public:
