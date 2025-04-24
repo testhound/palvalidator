@@ -29,7 +29,7 @@
 namespace mkc_timeseries
 {
   /**
- * @class MasterPermutationPolicy
+ * @class MastersPermutationPolicy
  * @brief Computes permutation test statistics for stepwise multiple hypothesis testing in strategy backtesting.
  *
  * This class is an integral component of the stepwise permutation testing procedure used by PALMasterMonteCarloValidation.
@@ -67,11 +67,11 @@ namespace mkc_timeseries
  *         - Compute the permutation test statistic for a backtest result.
  */
   template <class Decimal, class BaselineStatPolicy>
-  class MasterPermutationPolicy
+  class MastersPermutationPolicy
   {
   public:
-    MasterPermutationPolicy() = default;
-    ~MasterPermutationPolicy() = default;
+    MastersPermutationPolicy() = default;
+    ~MastersPermutationPolicy() = default;
 
     /**
      * @brief Compute the permutation count for a specific strategy step.
@@ -98,18 +98,18 @@ namespace mkc_timeseries
     {
       if (active_strategies.empty())
 	{
-	  std::cerr << "Warning: MasterPermutationPolicy::computePermutationCountForStep called with empty active_strategies set." << std::endl;
+	  std::cerr << "Warning: MastersPermutationPolicy::computePermutationCountForStep called with empty active_strategies set." << std::endl;
 	  return 1;
 	}
 
       if (numPermutations == 0)
 	{
-	  throw std::runtime_error("MasterPermutationPolicy::computePermutationCountForStep - Number of permutations cannot be zero.");
+	  throw std::runtime_error("MastersPermutationPolicy::computePermutationCountForStep - Number of permutations cannot be zero.");
 	}
 
       if (!templateBackTester || !theSecurity || !basePortfolioPtr)
 	{
-	  throw std::runtime_error("MasterPermutationPolicy::computePermutationCountForStep - Null pointer provided for backtester, security, or portfolio.");
+	  throw std::runtime_error("MastersPermutationPolicy::computePermutationCountForStep - Null pointer provided for backtester, security, or portfolio.");
 	}
 
       std::atomic<unsigned int> count_k(1);
@@ -225,7 +225,7 @@ namespace mkc_timeseries
              }
              return count_k.load();
         } // End computePermutationCountForStep
-    }; // End class MasterPermutationPolicy
+    }; // End class MastersPermutationPolicy
 
 
     // --- FastMastersPermutationPolicy (New Fast) ---
@@ -234,7 +234,6 @@ namespace mkc_timeseries
     {
     public:
         using StrategyPtr = std::shared_ptr<PalStrategy<Decimal>>;
-        // *** Use the type alias from the new header ***
         using LocalStrategyDataContainer = StrategyDataContainer<Decimal>;
         using AtomicCountsMap = std::map<StrategyPtr, std::atomic<unsigned int>>;
         using FinalCountsMap = std::map<StrategyPtr, unsigned int>;
