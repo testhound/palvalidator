@@ -17,6 +17,18 @@ namespace mkc_timeseries
 {
   template <class Decimal> class InstrumentPosition;
 
+  /**
+   * @class InstrumentPositionState
+   * @brief Abstract base for polymorphic position state transitions.
+   *
+   * Responsibilities:
+   * - Define interface for state transitions based on order executions and strategy signals.
+   * - Provide a flexible extension mechanism for long/short state logic.
+   *
+   * Collaboration:
+   * - Implemented by LongInstrumentPositionState and ShortInstrumentPositionState.
+   * - Used internally by InstrumentPosition.
+   */
   template <class Decimal> class InstrumentPositionState
   {
   public:
@@ -390,15 +402,29 @@ namespace mkc_timeseries
     }
   };
 
-  // An InstrumentPosition is made up of one
-  // or more TradingPosition objects
-  //
-  // Each TradingPosition object is assigned a
-  // unit number (starting at 1)
-  //
-  // This will allow closing a single unit at
-  // a time or closing all units at the same
-  // time.
+  /**
+   * @class InstrumentPosition
+   * @brief Encapsulates position state and logic for a single trading symbol.
+   *
+   * Responsibilities:
+   * - Store and manage a list of active positions for a specific symbol.
+   * - Delegate position lifecycle logic to an internal state class (e.g., LongInstrumentPositionState).
+   * - Notify StrategyBroker and other observers of state changes.
+   *
+   * Collaboration:
+   * - Owned by InstrumentPositionManager.
+   * - Works with TradingPosition state objects to reflect live positions.
+   *
+   * An InstrumentPosition is made up of one
+   * or more TradingPosition objects
+   *
+   * Each TradingPosition object is assigned a
+   * unit number (starting at 1)
+   *
+   * This will allow closing a single unit at
+   * a time or closing all units at the same
+   * time.
+   */
 
   template <class Decimal> class InstrumentPosition
   {
