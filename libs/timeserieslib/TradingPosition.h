@@ -4,6 +4,25 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
+/**
+ * @file TradingPosition.h
+ *
+ * @brief Core trading position model including long and short variants. 
+ * Implements the State Design Pattern using TradingPositionState as the base.
+ *
+ * ### Responsibilities:
+ * - Define the interface and data structures for managing open and closed trading positions
+ * - Track position metrics such as entry/exit dates, price, profit/loss, and R-multiples
+ * - Manage the transition between open and closed states for both long and short positions
+ * - Enable observer notification when a position is closed
+ *
+ * ### Collaboration:
+ * - Collaborates with `TradingOrderManager` and `StrategyBroker` for order execution and lifecycle management
+ * - Position state behavior is delegated to derived classes of `TradingPositionState`:
+ *   - `OpenLongPosition`, `OpenShortPosition`, `ClosedLongPosition`, `ClosedShortPosition`
+ * - `TradingPosition` delegates behavior to its current `TradingPositionState` instance and notifies observers
+ */
+
 #ifndef __TRADING_POSITION_H
 #define __TRADING_POSITION_H 1
 
@@ -263,6 +282,18 @@ namespace mkc_timeseries
     std::map<TimeSeriesDate, OpenPositionBar<Decimal>> mPositionBarHistory;
   };
 
+  /**
+   * @class TradingPositionState
+   * @brief Abstract base class representing the state of a TradingPosition.
+   *
+   * Responsibilities:
+   * - Encapsulate logic related to whether the position is open or closed.
+   * - Define interface for closing the position and calculating P&L.
+   * - Allow polymorphic substitution based on long/short and open/closed state.
+   *
+   * Collaboration:
+   * - Subclasses used by TradingPosition to delegate lifecycle behavior.
+   */
   template <class Decimal> class TradingPositionState
   {
   public:
@@ -492,6 +523,15 @@ namespace mkc_timeseries
     Decimal mStopLoss;
   };
 
+  /**
+   * @class OpenLongPosition
+   * @brief Represents an active long position.
+   *
+   * Responsibilities:
+   * - Store entry details and wait for exit signal.
+   * - Determine exit conditions and perform calculations.
+   * - Transition to ClosedLongPosition upon exit.
+   */
   template <class Decimal>
   class OpenLongPosition : public OpenPosition<Decimal>
   {
@@ -561,6 +601,15 @@ namespace mkc_timeseries
 			const Decimal& exitPrice);
   };
 
+  /**
+   * @class OpenShortPosition
+   * @brief Represents an active short position.
+   *
+   * Responsibilities:
+   * - Store entry details and wait for exit signal.
+   * - Determine exit conditions and perform calculations.
+   * - Transition to ClosedShortPosition upon exit.
+   */
   template <class Decimal>
   class OpenShortPosition : public OpenPosition<Decimal>
   {
@@ -630,7 +679,6 @@ namespace mkc_timeseries
 			const boost::gregorian::date exitDate,
 			const Decimal& exitPrice);
   };
-
 
   template <class Decimal> class ClosedPosition : public TradingPositionState<Decimal>
   {
@@ -780,6 +828,15 @@ namespace mkc_timeseries
     return !(lhs == rhs); 
   }
 
+  /**
+   * @class ClosedLongPosition
+   * @brief Represents a closed long position.
+   *
+   * Responsibilities:
+   * - Record exit price and date.
+   * - Finalize P&L and R-multiple.
+   */
+
   template <class Decimal>
   class ClosedLongPosition : public ClosedPosition<Decimal>
   {
@@ -847,6 +904,14 @@ namespace mkc_timeseries
   };
 
 
+  /**
+   * @class ClosedShortPosition
+   * @brief Represents a closed short position.
+   *
+   * Responsibilities:
+   * - Record exit price and date.
+   * - Finalize P&L and R-multiple.
+   */
   template <class Decimal>
   class ClosedShortPosition : public ClosedPosition<Decimal>
   {
@@ -926,6 +991,20 @@ namespace mkc_timeseries
       virtual void PositionClosed (TradingPosition<Decimal> *aPosition) = 0;
   };
 
+  /**
+   * @class TradingPosition
+   * @brief Represents a live or historical trading position in a security.
+   *
+   * Responsibilities:
+   * - Store entry/exit information such as dates, prices, quantity, and P&L.
+   * - Manage transitions between open and closed state using the State Design Pattern.
+   * - Notify observers when a position is closed.
+   *
+   * Collaboration:
+   * - Uses TradingPositionState to encapsulate behavior for open/closed states.
+   * - StrategyBroker acts as an observer to receive updates.
+   * - Updated based on executions received via StrategyBroker::OrderExecuted.
+   */
   template <class Decimal> class TradingPosition
   {
   public:
