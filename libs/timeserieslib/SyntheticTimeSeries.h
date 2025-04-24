@@ -347,7 +347,6 @@ namespace mkc_timeseries
 
     unsigned long getNumElements() const
     {
-      boost::mutex::scoped_lock lock(mMutex);
       return mTimeSeries.getNumEntries(); 
     }
 
