@@ -155,7 +155,6 @@ namespace mkc_timeseries
       // std::shared_ptr<Security<Decimal>> securityToTest = tempSecurity->clone (oosTimeSeries);
 
       //std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
-      securityToTest->getTimeSeries()->syncronizeMapAndArray();
 
       // This line gets the patterns that have been read from the IR file
       PriceActionLabSystem *patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
@@ -327,8 +326,6 @@ namespace mkc_timeseries
       auto tempOosTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>> (oosTimeSeries);
 
       std::shared_ptr<Security<Decimal>> securityToTest = tempSecurity->clone (tempOosTimeSeries);
-
-      securityToTest->getTimeSeries()->syncronizeMapAndArray();
 
       // This line gets the patterns that have been read from the IR file
 //      PriceActionLabSystem *patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
