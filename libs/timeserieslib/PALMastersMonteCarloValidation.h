@@ -138,7 +138,26 @@ template <class Decimal, class BaselineStatPolicy>
 
       void runPermutationTests()
       {
-	mStrategyData = StrategyDataPreparer<Decimal, BaselineStatPolicy>::prepare(mMonteCarloConfiguration);
+	auto baseSecurity = mMonteCarloConfiguration->getSecurity();
+	if (!baseSecurity)
+	  throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");
+
+	auto patterns = mMonteCarloConfiguration->getPricePatterns();
+	if (!patterns)
+	  throw PALMastersMonteCarloValidationException("Price patterns missing in runPermutationTests setup.");
+
+	auto dateRange = mMonteCarloConfiguration->getOosDateRange();
+
+	auto timeFrame = baseSecurity->getTimeSeries()->getTimeFrame();
+	auto templateBackTester = BackTesterFactory::getBackTester(timeFrame
+								   dateRange.getFirstDate(),
+								   dateRange.getLastDate()); 
+	if (!templateBackTester)
+	  throw PALMastersMonteCarloValidationException("Failed to create template backtester.");
+
+	mStrategyData = StrategyDataPreparer<Decimal, BaselineStatPolicy>::prepare(templateBackTester,
+										   baseSecurity,
+										   patterns);
 	    
 	if (mStrategyData.empty()) {
 	  std::cout << "No strategies found for permutation testing." << std::endl;
@@ -151,20 +170,7 @@ template <class Decimal, class BaselineStatPolicy>
 		  [](const StrategyContextType& a, const StrategyContextType& b) {
 		    return a.baselineStat > b.baselineStat;
 		  });
-
-	auto baseSecurity = mMonteCarloConfiguration->getSecurity();
-	if (!baseSecurity)
-	  throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");
-	    
-	auto dateRange = mMonteCarloConfiguration->getOosDateRange(); // Assuming this returns a valid DateRange
-
-	auto timeFrame = baseSecurity->getTimeSeries()->getTimeFrame();
-	auto templateBackTester = BackTesterFactory::getBackTester(timeFrame
-								   dateRange.getFirstDate(),
-								   dateRange.getLastDate()); 
-	if (!templateBackTester)
-	  throw PALMastersMonteCarloValidationException("Failed to create template backtester.");
-
+	
 	auto portfolio = std::make_shared<Portfolio<Decimal>>("PermutationPortfolio");
 	portfolio->addSecurity(baseSecurity->clone(baseSecurity->getTimeSeries()));
 

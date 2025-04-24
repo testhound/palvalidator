@@ -4,7 +4,6 @@
  *  Purpose
  *  -------
  *  Produce the `StrategyDataContainer<Decimal>` used by the permutation algorithms:
- *    • Loads PAL patterns from `McptConfiguration`.
  *    • Builds concrete `PalStrategy` objects (long/short) for each pattern.
  *    • Runs one baseline back‑test per strategy and records the statistic defined
  *      by `BaselineStatPolicy`.
@@ -29,7 +28,6 @@
 #include <memory>
 #include <functional>
 #include <boost/thread/mutex.hpp>            // intact for now
-
 #include "PALMonteCarloTypes.h"
 #include "McptConfigurationFileReader.h"
 #include "PalAst.h"
@@ -49,38 +47,30 @@ namespace mkc_timeseries
         using StrategyContextType      = StrategyContext<Decimal>;
         using StrategyDataContainerType= StrategyDataContainer<Decimal>;
 
-        /**
+      /**
          * @brief  Build strategies and compute their baseline statistics.
-         * @param  cfg  Fully‑initialised `McptConfiguration`.
-         * @return Container sorted **in insertion order** (caller may resort).
-         * @throw  PALMasterMonteCarloValidationException on missing data.
-         */
+         * @param  templateBacktester   BackTester pre-configured with date ranges.
+         * @param  baseSecurity Security to trade (full series).
+         * @param  patterns     PriceActionLabSystem containing patterns.
+         * @return Container sorted in insertion order.
+         * @throw  std::runtime_error on null inputs.
+         */ 
         static StrategyDataContainerType
-        prepare(const std::shared_ptr<McptConfiguration<Decimal>>& configuration)
+        prepare(const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
+                const std::shared_ptr<Security<Decimal>>&    baseSecurity,
+                const PriceActionLabSystem*                  patterns)
         {
-            if (!configuration) { throw std::runtime_error("StrategyDataPreparer::prepare – configuration is null"); }
-
+	    if (!templateBacktester)
+	      throw std::runtime_error("StrategyDataPreparer::prepare – template backtester is null");
+            if (!baseSecurity)
+	      throw std::runtime_error("StrategyDataPreparer::prepare – base security is null");
+            if (!patterns)
+	      throw std::runtime_error("StrategyDataPreparer::prepare – patterns is null");
+	    
             StrategyDataContainerType result;
 
-            // --- Pull common objects from configuration --------------------
-            auto baseSecurity   = configuration->getSecurity();
-            auto patternsToTest = configuration->getPricePatterns();
-            auto oosDates       = configuration->getOosDateRange();
-            if (!baseSecurity)   { throw std::runtime_error("Base security not loaded."); }
-            if (!patternsToTest) { throw std::runtime_error("Price patterns not loaded."); }
-
-            auto timeFrame    = baseSecurity->getTimeSeries()->getTimeFrame();
-            auto oosSeriesPtr = std::make_shared<OHLCTimeSeries<Decimal>>(
-                                   FilterTimeSeries<Decimal>(*baseSecurity->getTimeSeries(), oosDates));
-	    std::cerr << "[DEBUG] Filtered series has "
-		      << oosSeriesPtr->getNumEntries() << " bars from "
-		      << oosSeriesPtr->getFirstDate() << " to "
-		      << oosSeriesPtr->getLastDate() << std::endl;
-	    //std::cout << "Filtered time series: " << *oosSeriesPtr;
-            auto securityOOS  = baseSecurity->clone(oosSeriesPtr);
-
-            auto portfolio    = std::make_shared<Portfolio<Decimal>>(securityOOS->getName() + " OOS Portfolio");
-            portfolio->addSecurity(securityOOS);
+	    auto portfolio = std::make_shared<Portfolio<Decimal>>(baseSecurity->getName() + " Portfolio");
+            portfolio->addSecurity(baseSecurity);
 
             // Runner setup
             runner& Runner = runner::instance();
@@ -89,8 +79,8 @@ namespace mkc_timeseries
 
             // --- Generate tasks – one per pattern --------------------------
             unsigned long idx = 1;
-            for (auto it = patternsToTest->allPatternsBegin();
-                 it != patternsToTest->allPatternsEnd();
+            for (auto it = patterns->allPatternsBegin();
+                 it != patterns->allPatternsEnd();
                  ++it, ++idx)
             {
                 const PALPatternPtr pattern = *it;
@@ -147,14 +137,15 @@ namespace mkc_timeseries
 		 *
 		 ***************************************************************************/
 
-                auto task = [&, strategy]() {
+                auto task = [&, strategy, templateBacktester]() {
                     try {
-                        Decimal stat = runSingleBacktest(strategy, timeFrame, oosDates);
+                        Decimal stat = runSingleBacktest(strategy, templateBacktester);
                         boost::mutex::scoped_lock lock(dataMutex);
                         result.push_back(StrategyContextType{ strategy, stat, 1 });
                     } catch (const std::exception& e) {
                         std::cerr << "Baseline error for " << strategy->getStrategyName()
                                   << ": " << e.what() << std::endl;
+                        throw;
                     }
                 };
 
@@ -241,16 +232,17 @@ namespace mkc_timeseries
 							     std::make_shared<PalShortStrategy<Decimal>>(strategyName, pattern, portfolio));	  
         }
 
-        static Decimal runSingleBacktest(StrategyPtr strategy,
-                                         TimeFrame::Duration timeframe,
-                                         const DateRange&    range)
-        {
-            auto bt = BackTesterFactory<Decimal>::getBackTester(timeframe,
-								range.getFirstDate(),
-								range.getLastDate());
-            bt->addStrategy(strategy);
-            bt->backtest();
-            return BaselineStatPolicy::getPermutationTestStatistic(bt);
-        }
+      /**
+       * @brief Clone the template backtester, add the strategy, and run backtest.
+       */
+      static Decimal runSingleBacktest(StrategyPtr strategy,
+				       const std::shared_ptr<BackTester<Decimal>>& templateBacktester)
+      {
+	auto bt = templateBacktester->clone();
+	bt->addStrategy(strategy);
+	bt->backtest();
+	return BaselineStatPolicy::getPermutationTestStatistic(bt);
+      }
+      
     };
 } // namespace mkc_timeseries
