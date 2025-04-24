@@ -150,8 +150,6 @@ public:
 
   void backtest(runner& Runner)
   {
-
-    mSecurity->getTimeSeries()->syncronizeMapAndArray();
     std::string portfolioName(mSecurity->getName() + std::string(" Portfolio"));
 
     auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
