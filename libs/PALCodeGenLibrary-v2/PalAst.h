@@ -685,18 +685,21 @@ typedef std::shared_ptr<PatternTieBreaker> PatternTieBreakerPtr;
 class PriceActionLabSystem
 {
  private:
-  typedef std::map<unsigned long long, PALPatternPtr> MapType;
+  typedef std::multimap<unsigned long long, PALPatternPtr> MapType;
 
-public:
+  public:
   typedef std::list<PALPatternPtr>::const_iterator ConstPatternIterator;
   typedef MapType::iterator SortedPatternIterator;
   typedef MapType::const_iterator ConstSortedPatternIterator;
 
   PriceActionLabSystem (PALPatternPtr pattern, 
-			PatternTieBreakerPtr tieBreaker);
-  PriceActionLabSystem (PatternTieBreakerPtr tieBreaker);
+			PatternTieBreakerPtr tieBreaker,
+			bool useTieBreaker);
+  PriceActionLabSystem (PatternTieBreakerPtr tieBreaker,
+			bool useTieBreaker = false);
   PriceActionLabSystem (std::list<PALPatternPtr>& listOfPatterns, 
-			PatternTieBreakerPtr tieBreaker);
+			PatternTieBreakerPtr tieBreaker,
+			bool useTieBreaker = false);
   PriceActionLabSystem();
   ~PriceActionLabSystem();
   ConstSortedPatternIterator patternLongsBegin() const;
@@ -723,12 +726,18 @@ public:
 private:
   void addLongPattern (PALPatternPtr pattern);
   void addShortPattern (PALPatternPtr pattern);
+  void initializeAndValidateTieBreaker(PatternTieBreakerPtr providedTieBreaker);
+  void addPatternToMap(PALPatternPtr pattern,
+		       MapType& patternMap, // Pass map by reference
+		       const std::string& mapIdentifier); // For logging
+
 
 private:
   MapType mLongsPatternMap;
   MapType mShortsPatternMap;
   PatternTieBreakerPtr mPatternTieBreaker;
   std::list<PALPatternPtr> mAllPatterns;
+  bool mUseTieBreaker;
 };
 
 ///////////////////////////////

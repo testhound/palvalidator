@@ -14,38 +14,70 @@ void printPattern (PALPatternPtr pattern)
   printPatternDescription(pattern->getPatternDescription());
 }
 
+void PriceActionLabSystem::initializeAndValidateTieBreaker(PatternTieBreakerPtr providedTieBreaker)
+{
+  if (!providedTieBreaker)
+    {
+      if (mUseTieBreaker)
+	{
+	  // User intended to use a tie-breaker, but provided null. Warn and use default.
+	  std::cerr << "Warning: useTieBreaker is true, but provided tieBreaker is null. Using default SmallestVolatilityTieBreaker." << std::endl;
+	  mPatternTieBreaker = std::make_shared<SmallestVolatilityTieBreaker>();
+	}
+      else
+	{
+	  // User did not intend to use tie-breaking logic OR didn't provide one.
+	  // Assign a default one anyway for internal consistency, in case setUseTieBreaker(true) is called later.
+	  // No warning needed here.
+	  mPatternTieBreaker = std::make_shared<SmallestVolatilityTieBreaker>();
+	}
+    }
+  else
+    {
+        // A valid tieBreaker was provided, use it.
+        mPatternTieBreaker = providedTieBreaker;
+    }
+}
+
 PriceActionLabSystem::PriceActionLabSystem (PALPatternPtr pattern, 
-					    PatternTieBreakerPtr tieBreaker)
+					    PatternTieBreakerPtr tieBreaker,
+					    bool useTieBreaker)
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (tieBreaker),
-    mAllPatterns()
+    mAllPatterns(),
+    mUseTieBreaker(useTieBreaker)
 {
+  initializeAndValidateTieBreaker(tieBreaker);
   addPattern (pattern);
 }
 
-PriceActionLabSystem::PriceActionLabSystem (PatternTieBreakerPtr tieBreaker)
+PriceActionLabSystem::PriceActionLabSystem (PatternTieBreakerPtr tieBreaker, bool useTieBreaker)
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (tieBreaker),
-    mAllPatterns()
+    mAllPatterns(),
+    mUseTieBreaker(useTieBreaker)
 {
+  initializeAndValidateTieBreaker(tieBreaker);
 }
 
 PriceActionLabSystem::PriceActionLabSystem ()
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (std::shared_ptr<PatternTieBreaker> (new SmallestVolatilityTieBreaker)),
-    mAllPatterns()
+    mPatternTieBreaker (std::make_shared<SmallestVolatilityTieBreaker>()),
+    mAllPatterns(),
+    mUseTieBreaker(false)
 {}
 
 PriceActionLabSystem::PriceActionLabSystem (std::list<PALPatternPtr>& listOfPatterns, 
-					    PatternTieBreakerPtr tieBreaker)
+					    PatternTieBreakerPtr tieBreaker,
+					    bool useTieBreaker)
   : mLongsPatternMap(),
     mShortsPatternMap(),
-    mPatternTieBreaker (tieBreaker),
-    mAllPatterns()
+    mAllPatterns(),
+    mUseTieBreaker(useTieBreaker)
 {
+  initializeAndValidateTieBreaker(tieBreaker);
+
   PriceActionLabSystem::ConstPatternIterator it = listOfPatterns.begin();
   PALPatternPtr p;
 
@@ -56,7 +88,6 @@ PriceActionLabSystem::PriceActionLabSystem (std::list<PALPatternPtr>& listOfPatt
       p = *it;
       addPattern (p);
     }
-
 }
 
 PriceActionLabSystem::~PriceActionLabSystem()
@@ -95,49 +126,72 @@ PriceActionLabSystem::ConstPatternIterator PriceActionLabSystem::allPatternsBegi
 PriceActionLabSystem::ConstPatternIterator PriceActionLabSystem::allPatternsEnd() const
 { return mAllPatterns.end(); }
 
+void PriceActionLabSystem::addPatternToMap(PALPatternPtr pattern,
+                                           MapType& patternMap, // Pass map by reference
+                                           const std::string& mapIdentifier) // For logging
+{
+  unsigned long long currentHashCode = pattern->hashCode();
+
+  if (!mUseTieBreaker)
+    {
+      // Default behavior: Allow duplicates, simply insert
+      patternMap.insert(std::make_pair(currentHashCode, pattern));
+    }
+  else
+    {
+      // Tie-breaker enabled: Keep only the "best" pattern per hash code
+      auto range = patternMap.equal_range(currentHashCode); // Use the passed-in map
+
+      if (range.first == range.second) {
+	// No existing pattern with this hash code, insert the new one
+	patternMap.insert(std::make_pair(currentHashCode, pattern));
+      }
+      else
+	{
+	  // Existing pattern(s) found, use tie-breaker against the first one found
+	  std::cout << mapIdentifier << " (Tie-Breaker Active): Hash collision detected for code " << currentHashCode << std::endl;
+	  std::cout << "  New Pattern:" << std::endl << "    ";
+	  printPattern (pattern);
+	  std::cout << "  Existing Pattern (representative):" << std::endl << "    ";
+	  printPattern (range.first->second); // Compare against the first existing one
+
+	  if (!mPatternTieBreaker) {
+	    std::cerr << "Error: Tie-breaker is null during pattern addition when tie-breaking is enabled. Cannot proceed." << std::endl;
+	    // Or potentially throw an exception
+	    return; // Avoid dereferencing null pointer
+	  }
+
+	  PALPatternPtr patternToKeep =
+	    mPatternTieBreaker->getTieBreakerPattern (pattern, range.first->second);
+
+	  // Check if the new pattern won the tie-break
+	  if (patternToKeep == pattern)
+	    {
+	      std::cout << "  => New pattern selected by tie-breaker (" << mapIdentifier << "). Replacing existing entry/entries." << std::endl;
+	      // Erase all existing patterns with this hash code from the specific map
+	      patternMap.erase(currentHashCode);
+	      // Insert the new winning pattern into the specific map
+	      patternMap.insert(std::make_pair(currentHashCode, patternToKeep));
+	    }
+	  else
+	    {
+	      std::cout << "  => Existing pattern kept by tie-breaker (" << mapIdentifier << "). Discarding new pattern." << std::endl;
+	      // Do nothing, the existing pattern(s) remain, the new one is not added to the map
+	    }
+	}
+    }
+}
+
 void 
 PriceActionLabSystem::addLongPattern (PALPatternPtr pattern)
 {
-  PriceActionLabSystem::SortedPatternIterator it = mLongsPatternMap.find (pattern->hashCode());
-  if (it == patternLongsEnd())
-      mLongsPatternMap.insert(std::make_pair(pattern->hashCode(), pattern));
-  else
-    {
-      std::cout << "addLongPattern: equivalent hash codes found: " << pattern->hashCode() << " and " << it->second->hashCode() << std::endl;
-      std::cout << "Pattern 1:" << std::endl;
-      printPattern (pattern);
-      std::cout << "Pattern 2:" << std::endl;
-      printPattern (it->second);
-
-      // We don't want the same pattern with different risk reward being generated
-      // so use the tiebreaker
-      PALPatternPtr patternToKeep = 
-	mPatternTieBreaker->getTieBreakerPattern (pattern, it->second);
-
-      mLongsPatternMap.erase (it);
-      mLongsPatternMap.insert(std::make_pair(patternToKeep->hashCode(), patternToKeep));
-    }
+  addPatternToMap(pattern, mLongsPatternMap, "addLongPattern");
 }
 
 void 
 PriceActionLabSystem::addShortPattern (PALPatternPtr pattern)
 {
-  PriceActionLabSystem::SortedPatternIterator it = mShortsPatternMap.find (pattern->hashCode());
-  if (it == patternShortsEnd())
-      mShortsPatternMap.insert(std::make_pair(pattern->hashCode(), pattern));
-  else
-    {
-      std::cout << "addShortPattern: equivalent hash codes found: " << pattern->hashCode() << " and " << it->second->hashCode() << std::endl;
- 
-
-      // We don't want the same pattern with different risk reward being generated
-      // so use the tiebreaker
-      PALPatternPtr patternToKeep = 
-	mPatternTieBreaker->getTieBreakerPattern (pattern, it->second);
-
-      mShortsPatternMap.erase (it);
-      mShortsPatternMap.insert(std::make_pair(patternToKeep->hashCode(), patternToKeep));
-    }
+  addPatternToMap(pattern, mShortsPatternMap, "addShortPattern");
 }
 
 PriceActionLabSystem::ConstSortedPatternIterator 
