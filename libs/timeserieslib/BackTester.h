@@ -32,6 +32,36 @@ namespace mkc_timeseries
     
   };
 
+  /**
+   * @class BackTester
+   * @brief Orchestrates the full backtesting loop by stepping through each trading day,
+   *        triggering strategy logic, processing pending orders, and updating positions
+   *        and order states.
+   *
+   * Responsibilities:
+   * - Drive the simulation loop forward by day.
+   * - Call eventEntryOrders and eventExitOrders on the strategy.
+   * - Trigger execution of pending orders via TradingOrderManager.
+   * - Maintain control flow and ensure correct sequencing of order processing.
+   *
+   * Observer Pattern Collaboration:
+   * - BackTester does not directly observe order fills.
+   * - Instead, it delegates order execution to StrategyBroker via BacktesterStrategy.
+   * - StrategyBroker is registered as an observer with TradingOrderManager.
+   * - When an order is executed, StrategyBroker is notified via OrderExecuted callbacks.
+   *
+   * Collaborators:
+   * - BacktesterStrategy: defines trading logic for entry and exit conditions.
+   * - StrategyBroker: handles order routing, position tracking, and fill notifications.
+   *
+   * Thread Safety:
+   * - This class is **not thread-safe** and must not be shared across threads.
+   * - Each `BackTester` instance must be used exclusively within the context of a single thread.
+   * - All collaborating components (strategies, portfolios, security references, etc.) must be
+   *independently owned per thread.
+   * - Although safe usage is achieved in multithreaded environments via strict ownership isolation,
+   *   the class itself performs no internal locking or concurrency protection.
+   */
   template <class Decimal> class BackTester
   {
     using Map = map<boost::gregorian::date, DateRange>;
@@ -125,6 +155,17 @@ namespace mkc_timeseries
       return mBackTestDates.getFirstDateRange().getLastDate();
     }
 
+    // BackTester::backtest()
+    // └── for each date:
+    //    ├── BacktesterStrategy::eventExitOrders()
+    //    ├── BacktesterStrategy::eventEntryOrders()
+    //    ├── BacktesterStrategy::eventProcessPendingOrders()
+    //          └── StrategyBroker::ProcessPendingOrders()
+    //                  └── TradingOrderManager::processPendingOrders()
+    //                          └── calls visitor.visit(MarketOnOpenLongOrder)
+    //                                └── MarketOnOpenLongOrder::MarkOrderExecuted()
+    //                                      └── Notifies observer StrategyBroker
+    //                                            └── StrategyBroker::OrderExecuted()
     virtual void backtest()
     {
       typename BackTester<Decimal>::StrategyIterator itStrategy;
@@ -281,6 +322,15 @@ private:
       return *this;
     }
 
+    /**
+     * @brief Clone the DailyBackTester with date ranges, but without strategies.
+     *
+     * Only the backtest date configuration is cloned.
+     * The strategy list is left empty to allow caller-controlled population.
+     *
+     * This behavior is intentional to support multithreaded backtesting, where
+     * each thread constructs and assigns strategy instances independently.
+     */
     std::shared_ptr<BackTester<Decimal>> clone() const
     {
       auto back = std::make_shared<DailyBackTester<Decimal>>();
