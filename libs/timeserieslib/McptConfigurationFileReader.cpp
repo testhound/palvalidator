@@ -204,8 +204,8 @@ namespace mkc_timeseries
 
   static std::shared_ptr<SecurityAttributes<Decimal>> createSecurityAttributes (const std::string &symbol)
   {
-    SecurityAttributesFactory<Decimal> factory;
-    SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
+    auto& factory = SecurityAttributesFactory<Decimal>::instance();
+    auto it = factory.getSecurityAttributes (symbol);
 
     if (it != factory.endSecurityAttributes())
       return it->second;
