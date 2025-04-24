@@ -17,6 +17,21 @@
 
 namespace mkc_timeseries
 {
+  /**
+   * @class InstrumentPositionManager
+   * @brief Manages active positions for each trading instrument.
+   *
+   * Responsibilities:
+   * - Maintain and update a collection of TradingPosition objects by trading symbol.
+   * - Route new position objects to the appropriate instrument state (e.g., long or short).
+   * - Handle position additions and updates consistently.
+   * - Reset and clear all internal state upon request.
+   *
+   * Collaboration:
+   * - Used by StrategyBroker to track open and closed positions.
+   * - Each TradingPosition added is handed off to the appropriate InstrumentPosition.
+   * - InstrumentPosition manages the state machine for a single symbol.
+   */
   template <class Decimal> class InstrumentPositionManager
   {
   public:
