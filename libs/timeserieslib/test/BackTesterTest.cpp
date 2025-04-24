@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cpptrace/from_current.hpp>
 #include "../TimeSeriesCsvReader.h"
 #include "../PalStrategy.h"
 #include "../BoostDateHelper.h"
@@ -254,6 +255,19 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
   csvFile.readFile();
 
+  //
+  auto ts = csvFile.getTimeSeries();
+  auto beginIt = ts->beginRandomAccess();
+  auto endIt   = ts->endRandomAccess();
+  auto lastIt  = endIt; --lastIt;
+  std::cerr << "Series covers: "
+	    << to_simple_string(beginIt->getDateValue())
+	    << " through "
+	    << to_simple_string(lastIt->getDateValue())
+	    << "\n";
+
+  //
+  
   std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
 
   std::string futuresSymbol("@C");
@@ -299,7 +313,15 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (palLongBacktester1.getStartDate() == backTesterDate);
     REQUIRE (palLongBacktester1.getEndDate() == backtestEndDate);
 
-    palLongBacktester1.backtest();
+    std::cout << "** PATTERN 1 LONG TRADES, calling backtest method now **" << std::endl;
+    CPPTRACE_TRY
+      {
+	palLongBacktester1.backtest();
+      }
+    CPPTRACE_CATCH(const std::exception& e) {
+        std::cerr<<"Exception: "<<e.what()<<std::endl;
+        cpptrace::from_current_exception().print();
+    }
 
     BackTester<DecimalType>::StrategyIterator it = palLongBacktester1.beginStrategies();
 
@@ -327,6 +349,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
   
 SECTION ("PalStrategy testing for all long trades - pattern 2") 
   {
+
     std::cout << "In second long pattern backtest" << std::endl;
 
     TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
@@ -339,6 +362,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     REQUIRE (palLongBacktester2.getStartDate() == backTesterDate);
     REQUIRE (palLongBacktester2.getEndDate() == backtestEndDate);
 
+    std::cout << "** PATTERN 2 LONG TRADES, calling backtest method now **" << std::endl;
     palLongBacktester2.backtest();
 
     BackTester<DecimalType>::StrategyIterator it = palLongBacktester2.beginStrategies();
