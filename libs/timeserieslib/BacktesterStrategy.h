@@ -44,6 +44,25 @@ namespace mkc_timeseries
 
   extern StrategyOptions defaultStrategyOptions;
 
+  /**
+   * @class BacktesterStrategy
+   * @brief Base class for trading strategies used during backtesting.
+   *
+   * Responsibilities:
+   * - Define strategy-specific entry and exit rules (pure virtual hooks).
+   * - Submit orders using helpers like EnterLongOnOpen or ExitLongAllUnitsAtStop.
+   * - Track pyramiding status, order state, and current simulation bar.
+   * - Delegate execution responsibilities to a StrategyBroker instance.
+   *
+   * Observer Pattern Collaboration:
+   * - Acts as a producer of orders, not an observer.
+   * - Delegates order submission to StrategyBroker.
+   * - Receives callbacks indirectly via changes in position state.
+   *
+   * Collaborators:
+   * - StrategyBroker: receives order requests and manages lifecycle.
+   * - BackTester: invokes strategy events on each simulation step.
+   */
   template <class Decimal> class BacktesterStrategy
     {
     public:
