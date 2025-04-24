@@ -569,7 +569,6 @@ namespace mkc_timeseries
       auto aTimeSeries = aSecurity->getTimeSeries();
       SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries, aSecurity->getTick(), aSecurity->getTickDiv2());
       aTimeSeries2.createSyntheticSeries();
-      aTimeSeries2.getSyntheticTimeSeries()->syncronizeMapAndArray();
 
       return aSecurity->clone (aTimeSeries2.getSyntheticTimeSeries());
     }
