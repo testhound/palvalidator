@@ -42,11 +42,8 @@ namespace mkc_timeseries
   template <class Decimal>
   class SyntheticTimeSeries
   {
-    //using Decimal = decimal<Prec>;
-    //using Decimal = BloombergLP::bdldfp::Decimal64;
-
   public:
-/**
+    /**
      * @brief Constructs a SyntheticTimeSeries based on the provided OHLCTimeSeries.
      *
      * Computes the relative price changes from the input time series and stores them for later use.
