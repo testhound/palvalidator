@@ -1136,10 +1136,21 @@ namespace mkc_timeseries
     }
 
  private:
-    SecurityAttributesFactory ()
+   SecurityAttributesFactory()
     {
-      initializeEquityAttributes();
-      initializeFuturesAttributes();
+      try
+        {
+	  initializeEquityAttributes();
+	  initializeFuturesAttributes();
+        }
+      catch (const std::exception& ex)
+        {
+	  const std::string errorMsg =
+	    "SecurityAttributesFactory initialization failed: "
+	    + std::string(ex.what());
+
+	  throw SecurtyAttributesFactoryException(errorMsg);
+        }
     }
 
     ~SecurityAttributesFactory ()
