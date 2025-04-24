@@ -1,10 +1,9 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 #include "../TimeSeriesCsvReader.h"
 #include "../ClosedPositionHistory.h"
 #include "../TimeSeriesIndicators.h"
 #include "TestUtils.h"
+#include <cmath>
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
@@ -18,10 +17,10 @@ void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openP
 			    const TimeSeriesDate& exitDate,
 			    const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aTimeSeries )
 {
-  OHLCTimeSeries<DecimalType>::TimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
+  OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
   it++;
 
-  OHLCTimeSeries<DecimalType>::TimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
+  OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
   for (; it != itEnd; it++)
     {
       openPosition->addBar (it->second);
@@ -87,6 +86,13 @@ createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& a
   aPos->ClosePosition (exitDate,
 		       exitPrice);
   return aPos;
+}
+
+DecimalType getLnReturn(const DecimalType& entryPrice, const DecimalType exitPrice)
+{
+  DecimalType lnArg (exitPrice / entryPrice);
+  double lnOfReturn = std::log(lnArg.getAsDouble());
+  return DecimalType(lnOfReturn);
 }
 
 void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
@@ -182,6 +188,12 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 						 longExitDate1, longExitPrice1,
 						 oneContract, 12);
   
+  auto position1LogReturn = longPosition1->getLogTradeReturn();
+  auto position1ReferenceLnReturn = getLnReturn(longEntryPrice1, longExitPrice1);
+
+  std::cout << "Position 1 log return " << position1LogReturn << " Calculated ln return = " << position1ReferenceLnReturn << std::endl;
+  std::cout << "position 1 percent return = " << longPosition1->getPercentReturn() << std::endl;
+  
   auto longExitDate2 = TimeSeriesDate (1986, Jun, 12);
   auto longExitPrice2 = createDecimal("3729.28683");
   auto longEntryDate2 = TimeSeriesDate (1986, May, 16);
@@ -190,7 +202,13 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
   auto longPosition2  = createClosedLongPosition (p, longEntryDate2, longEntryPrice2, 
 						  longExitDate2, longExitPrice2,
 						  oneContract, 18);
-  
+
+  auto position2LogReturn = longPosition2->getLogTradeReturn();
+  auto position2ReferenceLnReturn = getLnReturn(longEntryPrice2, longExitPrice2);
+
+    std::cout << "Position 2 log return " << position2LogReturn << " Calculated ln return = " << position2ReferenceLnReturn << std::endl;
+  std::cout << "position 2 percent return = " << longPosition2->getPercentReturn() << std::endl;
+
   auto longPosition3 = createClosedLongPosition (p, TimeSeriesDate(1986, Oct, 29),
 						 createDecimal("3087.43726"),
 						 TimeSeriesDate(1986, Oct, 30),
