@@ -350,7 +350,7 @@ namespace mkc_timeseries
       return mTimeSeries.getNumEntries(); 
     }
 
-    std::shared_ptr<OHLCTimeSeries<Decimal>> getSyntheticTimeSeries() const
+    std::shared_ptr<const OHLCTimeSeries<Decimal>> getSyntheticTimeSeries() const
     {
       boost::mutex::scoped_lock lock(mMutex);
       return mSyntheticTimeSeries;

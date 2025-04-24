@@ -36,7 +36,7 @@ namespace mkc_timeseries
 
       Security (const string& securitySymbol, const string& securityName,
 		const Decimal& bigPointValue, const Decimal& securityTick,
-		std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) :
+		std::shared_ptr<const OHLCTimeSeries<Decimal>> securityTimeSeries) :
 	mSecuritySymbol(securitySymbol),
 	mSecurityName(securityName),
 	mBigPointValue(bigPointValue),
@@ -188,20 +188,20 @@ namespace mkc_timeseries
 	return mSecurityTimeSeries->getLastDate();
       }
 
-      std::shared_ptr<OHLCTimeSeries<Decimal>> getTimeSeries() const
+      std::shared_ptr<const OHLCTimeSeries<Decimal>> getTimeSeries() const
       {
 	return mSecurityTimeSeries;
       }
 
       virtual std::shared_ptr<Security<Decimal>> 
-      clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const = 0;
+      clone(std::shared_ptr<const OHLCTimeSeries<Decimal>> securityTimeSeries) const = 0;
 
     private:
       std::string mSecuritySymbol;
       std::string mSecurityName;
       Decimal mBigPointValue;
       Decimal mTick;
-      std::shared_ptr<OHLCTimeSeries<Decimal>> mSecurityTimeSeries;
+      std::shared_ptr<const OHLCTimeSeries<Decimal>> mSecurityTimeSeries;
       boost::gregorian::date mFirstDate;
       Decimal mTickDiv2;                    // Used to speedup compuation of Round@Tick
     };
@@ -211,13 +211,13 @@ namespace mkc_timeseries
   {
   public:
     EquitySecurity (const string& securitySymbol, const string& securityName,
-		    std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) 
+		    std::shared_ptr<const OHLCTimeSeries<Decimal>> securityTimeSeries) 
       : Security<Decimal> (securitySymbol, securityName, DecimalConstants<Decimal>::DecimalOne,
 			DecimalConstants<Decimal>::EquityTick, securityTimeSeries)
     {
     }
 
-    std::shared_ptr<Security<Decimal>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
+    std::shared_ptr<Security<Decimal>> clone(std::shared_ptr<const OHLCTimeSeries<Decimal>> securityTimeSeries) const
     {
       return std::make_shared<EquitySecurity<Decimal>>(this->getSymbol(),
 						    this->getName(),
@@ -259,18 +259,18 @@ namespace mkc_timeseries
   public:
     FuturesSecurity (const string& securitySymbol, const string& securityName,
 		     const Decimal& bigPointValue, const Decimal& securityTick,
-		     std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries)
+		     std::shared_ptr<const OHLCTimeSeries<Decimal>> securityTimeSeries)
       : Security<Decimal> (securitySymbol, securityName, bigPointValue, securityTick,
 		  securityTimeSeries)
     {}
 
-    std::shared_ptr<Security<Decimal>> clone(std::shared_ptr<OHLCTimeSeries<Decimal>> securityTimeSeries) const
+    std::shared_ptr<Security<Decimal>> clone(std::shared_ptr<const OHLCTimeSeries<Decimal>> securityTimeSeries) const
     {
       return std::make_shared<FuturesSecurity<Decimal>>(this->getSymbol(),
-						     this->getName(),
-						     this->getBigPointValue(),
-						     this->getTick(),
-						     securityTimeSeries);
+							this->getName(),
+							this->getBigPointValue(),
+							this->getTick(),
+							securityTimeSeries);
     }
 
     FuturesSecurity (const FuturesSecurity<Decimal> &rhs)
