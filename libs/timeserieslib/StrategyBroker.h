@@ -34,6 +34,27 @@ namespace mkc_timeseries
       {}
   };
 
+  /**
+   * @class StrategyBroker
+   * @brief Executes trading orders, manages instrument positions, and records closed trades.
+   *
+   * Responsibilities:
+   * - Submit orders to TradingOrderManager for tracking and execution.
+   * - Observe fills and create TradingPosition instances accordingly.
+   * - Track open/closed positions using InstrumentPositionManager.
+   * - Notify observers when positions are closed or modified.
+   *
+   * Observer Pattern Collaboration:
+   * - Implements TradingOrderObserver and TradingPositionObserver interfaces.
+   * - Registers itself with TradingOrderManager.
+   * - Receives OrderExecuted callbacks when orders are filled.
+   * - Uses these callbacks to update positions and notify strategy logic if needed.
+   *
+   * Collaborators:
+   * - BacktesterStrategy: generates order requests.
+   * - TradingOrderManager: queues and processes pending orders.
+   * - InstrumentPositionManager: tracks state of all open positions.
+   */
   template <class Decimal> class StrategyBroker : 
     public TradingOrderObserver<Decimal>, 
     public TradingPositionObserver<Decimal>
@@ -499,8 +520,8 @@ namespace mkc_timeseries
   private:
     const Decimal getTick(const std::string& symbol) const
     {
-      SecurityAttributesFactory<Decimal> factory;
-      typename SecurityAttributesFactory<Decimal>::SecurityAttributesIterator it = factory.getSecurityAttributes (symbol);
+      auto& factory = SecurityAttributesFactory<Decimal>::instance();
+      auto it = factory.getSecurityAttributes (symbol);
 
       if (it != factory.endSecurityAttributes())
 	return it->second->getTick();
