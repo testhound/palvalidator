@@ -181,3 +181,47 @@ TEST_CASE("prepare assigns correct strategy names") {
   REQUIRE(std::find(names.begin(), names.end(), "PAL Long 3")  != names.end());
 }
 
+// New tests using real price series and real patterns from TestUtils.h
+
+TEST_CASE("StrategyDataPreparer::prepare with random price series") {
+  auto bt     = std::make_shared<DummyBackTester>();
+  auto series = getRandomPriceSeries();
+  REQUIRE(series->getNumEntries() > 0);
+  auto sec    = std::make_shared<EquitySecurity<DecimalType>>("RND", "Random Security", series);
+
+  auto patterns = std::make_shared<PriceActionLabSystem>();
+  patterns->addPattern(createDummyPattern(true));
+  patterns->addPattern(createDummyPattern(false));
+
+  CPPTRACE_TRY {
+    auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
+        bt, sec, patterns.get());
+    REQUIRE(results.size() == 2);
+  }
+  CPPTRACE_CATCH(...) {
+    FAIL("Backtest on random series should not throw");
+  }
+}
+
+
+TEST_CASE("StrategyDataPreparer::prepare with random price patterns") {
+  auto bt       = std::make_shared<DummyBackTester>();
+  auto sec      = createDummySecurity();
+  PriceActionLabSystem* patterns = getRandomPricePatterns();
+  REQUIRE(patterns->getNumPatterns() > 0);
+
+  CPPTRACE_TRY {
+    auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
+        bt, sec, patterns);
+    REQUIRE(results.size() == patterns->getNumPatterns());
+    for (const auto& ctx : results) {
+      REQUIRE(ctx.strategy);
+      REQUIRE(ctx.baselineStat == DecimalType("0.42"));
+      REQUIRE(ctx.count == 1);
+    }
+  }
+  CPPTRACE_CATCH(...) {
+    FAIL("Backtest on random patterns should not throw");
+  }
+  delete patterns;
+}
