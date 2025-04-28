@@ -1,6 +1,7 @@
 #pragma once
+#include <unordered_set>
 #include "IPermutationAlgorithm.h"
-#include "MastersPermutationComputationPolicy.h"
+#include "MastersPermutationTestComputationPolicy.h"
 
 namespace mkc_timeseries
 {
@@ -14,24 +15,33 @@ namespace mkc_timeseries
     public:
       std::map<Strat, Decimal> run(const Vec& strategyData,
 				   unsigned long numPermutations,
-				   const std::shared_ptr<BackTester<Decimal>>& tmplBt,
+				   const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
 				   const std::shared_ptr<Portfolio<Decimal>>&  portfolio,
 				   const Decimal& sigLevel) override
         {
             using MPP = MastersPermutationPolicy<Decimal, BaselineStatPolicy>;
 
-	    std::map<StrategyPtr, Decimal> pvals;
+	    std::map<Strat, Decimal> pvals;
             Decimal lastAdj = Decimal(0);
 
+
+	    // Extract the first security from the portfolio
+	    auto it = portfolio->beginPortfolio();
+	    if (it == portfolio->endPortfolio()) {
+	      throw std::runtime_error(
+				       "MastersRomanoWolf::run - portfolio contains no securities");
+	    }
+	    auto secPtr = it->second;  // SecurityPtr
+
             // Active set holds strategies still under consideration.
-            std::unordered_set<StrategyPtr> activeStrategies;
+            std::unordered_set<Strat> activeStrategies;
 	    
-            for (auto& context : strategyData)
+	    for (auto& context : strategyData)
 	      activeStrategies.insert(context.strategy);
 
             for (auto& context : strategyData)
             {
-                const StrategyPtr& S = context.strategy;
+                const Strat& S = context.strategy;
 
                 // If previously resolved (happens when we fail early) just propagate.
                 if (!activeStrategies.count(S))
@@ -41,13 +51,13 @@ namespace mkc_timeseries
                 }
 
                 // Compute permutation count using ONLY currently active strategies.
-                std::vector<StrategyPtr> activeVec(activeStrategies.begin(), activeStrategies.end());
+                std::vector<Strat> activeVec(activeStrategies.begin(), activeStrategies.end());
                 unsigned int exceedCount = MPP::computePermutationCountForStep(
                                                 numPermutations,
                                                 context.baselineStat,
                                                 activeVec,
-                                                tmplBT,
-                                                S,          // strategy under test
+                                                templateBacktester,
+                                                secPtr,
                                                 portfolio);
 
                 Decimal p   = Decimal(exceedCount) / Decimal(numPermutations + 1);
