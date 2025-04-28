@@ -135,21 +135,27 @@ namespace mkc_timeseries
     }
 
     SyntheticTimeSeries(const SyntheticTimeSeries& rhs)
+      : mTimeSeries(rhs.mTimeSeries),
+	mDateSeries(rhs.mDateSeries),
+	mRelativeOpen(rhs.mRelativeOpen),
+	mRelativeHigh(rhs.mRelativeHigh),
+	mRelativeLow(rhs.mRelativeLow),
+	mRelativeClose(rhs.mRelativeClose),
+#ifdef SYNTHETIC_VOLUME
+	mRelativeVolume(rhs.mRelativeVolume),
+#endif
+	mFirstOpen(rhs.mFirstOpen),
+#ifdef SYNTHETIC_VOLUME
+	mFirstVolume(rhs.mFirstVolume),
+#endif
+	mRandGenerator(rhs.mRandGenerator),
+	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries)),
+	mMinimumTick(rhs.mMinimumTick),
+	mMinimumTickDiv2(rhs.mMinimumTickDiv2)
     {
       boost::mutex::scoped_lock lock(rhs.mMutex);
-      mTimeSeries = rhs.mTimeSeries;
-      mDateSeries = rhs.mDateSeries;
-      mRelativeOpen = rhs.mRelativeOpen;
-      mRelativeHigh = rhs.mRelativeHigh;
-      mRelativeLow = rhs.mRelativeLow;
-      mRelativeClose = rhs.mRelativeClose;
-      mFirstOpen = rhs.mFirstOpen;
-      mRandGenerator = rhs.mRandGenerator;
-      mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries);
-      mMinimumTick = rhs.mMinimumTick;
-      mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
     }
-    
+        
     SyntheticTimeSeries& operator=(const SyntheticTimeSeries& rhs)
     {
       if (this != &rhs)
