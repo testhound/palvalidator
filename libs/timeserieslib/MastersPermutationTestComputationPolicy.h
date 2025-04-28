@@ -174,16 +174,18 @@ namespace mkc_timeseries
 		}
 	      else
 		{
-		  uint32_t trades = 0;
-		  while (trades < minTrades) {
-		    auto btClone = templateBackTester->clone();
-		    auto clonedStrat = strat->clone(syntheticPortfolio);
-		    btClone->addStrategy(clonedStrat);
-		    btClone->backtest();
-		    trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
-		    if (trades >= minTrades)
-		      stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
-		  }
+		  auto btClone = templateBackTester->clone();
+		  auto clonedStrat = strat->clone(syntheticPortfolio);
+		  btClone->addStrategy(clonedStrat);
+		  btClone->backtest();
+
+		  uint32_t trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
+		  trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
+		  if (trades >= minTrades)
+		    stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+		  else
+		    // below minimum, count as “no relationship” under the null hypothesis
+		    stat = std::numeric_limits<Decimal>::lowest();
 		}
 
 	      max_stat = std::max( max_stat, stat );
@@ -313,20 +315,22 @@ namespace mkc_timeseries
 	    uint32_t trades = 0;
 	    Decimal stat = std::numeric_limits<Decimal>::lowest();
 
-	    while (trades < BaselineStatPolicy::getMinStrategyTrades())
+	    auto clonedStrat = strategy->clone(syntheticPortfolio);
+	    auto btClone     = templateBackTester->clone();
+	    btClone->addStrategy(clonedStrat);
+	    btClone->backtest();
+
+	    trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
+	    if (trades >= BaselineStatPolicy::getMinStrategyTrades())
 	      {
-		auto clonedStrat = strategy->clone(syntheticPortfolio);
-		auto btClone     = templateBackTester->clone();
-		btClone->addStrategy(clonedStrat);
-		btClone->backtest();
-
-		trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
-		if (trades >= BaselineStatPolicy::getMinStrategyTrades())
-		  {
-		    stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
-		  }
+		stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
 	      }
-
+	    else
+	      {
+		// below minimum, count as “no relationship” under the null hypothesis
+		stat = std::numeric_limits<Decimal>::lowest();
+	      }
+	    
 	    stats_this_perm[strategy] = stat;
 	  }
 
