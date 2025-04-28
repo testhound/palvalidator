@@ -1,10 +1,56 @@
+#include <exception>
+#include <boost/filesystem.hpp>
+#include "PalParseDriver.h"
 #include "TestUtils.h"
-#include "../PercentNumber.h"
-#include "../DecimalConstants.h"
-#include "../TimeFrame.h"
+#include "PercentNumber.h"
+#include "DecimalConstants.h"
+#include "TimeFrame.h"
+#include "TimeSeriesCsvReader.h"
+#include "PalStrategy.h"
+#include "BoostDateHelper.h"
+#include "PalAst.h"
 
 using namespace boost::gregorian;
 using namespace boost::posix_time;
+using namespace mkc_timeseries;
+
+using Num = num::DefaultNumber;
+
+std::shared_ptr<OHLCTimeSeries<Num>> readPALDataFile(const std::string &filename)
+{
+  PALFormatCsvReader<Num> csvFile (filename);
+  csvFile.readFile();
+
+  return (csvFile.getTimeSeries());
+}
+
+PriceActionLabSystem* getPricePatterns(const std::string &irFileName)
+{
+  boost::filesystem::path irFilePath (irFileName);
+
+  if (!exists (irFilePath))
+    throw std::runtime_error("PAL IR path " +irFilePath.string() +" does not exist");
+
+  // Constructor driver (facade) that will parse the IR and return
+  // and AST representation
+  mkc_palast::PalParseDriver driver (irFilePath.string());
+
+  // Read the IR file
+
+  driver.Parse();
+
+  return (driver.getPalStrategies());
+}
+
+PriceActionLabSystem* getRandomPricePatterns()
+{
+  return getPricePatterns("QQQ_IR.txt");
+}
+
+std::shared_ptr<OHLCTimeSeries<DecimalType>> getRandomPriceSeries()
+{
+  return readPALDataFile("QQQ.txt");
+}
 
 date createDate (const std::string& dateString)
 {

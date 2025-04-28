@@ -10,6 +10,22 @@
 typedef dec::decimal<7> DecimalType;
 typedef mkc_timeseries::OHLCTimeSeriesEntry<DecimalType> EntryType;
 
+class PriceActionLabSystem;
+namespace mkc_timeseries { template <class Decimal> class OHLCTimeSeries; }
+
+std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
+readPALDataFile(const std::string &filename);
+
+std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> > getRandomPriceSeries();
+  
+PriceActionLabSystem* getPricePatterns(const std::string &irFileName);
+
+PriceActionLabSystem* getRandomPricePatterns();
+
+// helper that your .cpp defines:
+std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
+getRandomPriceSeries();
+
 std::shared_ptr<EntryType>
 createTimeSeriesEntry (const std::string& dateString,
 		       const std::string& openPrice,
