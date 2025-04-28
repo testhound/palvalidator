@@ -142,9 +142,9 @@ namespace mkc_timeseries
   class PALFormatCsvReader : public TimeSeriesCsvReader<Decimal>
   {
   public:
-    PALFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
-			TradingVolume::VolumeUnit unitsOfVolume,
-			const Decimal& minimumTick) :
+    PALFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame = TimeFrame::DAILY, 
+			TradingVolume::VolumeUnit unitsOfVolume = TradingVolume::SHARES,
+			const Decimal& minimumTick = DecimalConstants<Decimal>::EquityTick) :
       TimeSeriesCsvReader<Decimal> (fileName, timeFrame, unitsOfVolume, minimumTick),
       mCsvFile (fileName.c_str())
     {}
