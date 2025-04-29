@@ -100,7 +100,8 @@ template <class Decimal, class BaselineStatPolicy>
       // Constructor with algorithm selection
       PALMastersMonteCarloValidation(shared_ptr<McptConfiguration<Decimal>> configuration,
 				    unsigned long numPermutations,
-				    std::unique_ptr<IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>> algo)
+				    std::unique_ptr<IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>> algo =
+				     = std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
 	: mMonteCarloConfiguration(configuration),
 	  mNumPermutations(numPermutations),
 	  mStrategySelectionPolicy(),
@@ -205,7 +206,7 @@ template <class Decimal, class BaselineStatPolicy>
       unsigned long mNumPermutations;
       StrategyDataContainerType mStrategyData;
       UnadjustedPValueStrategySelection<Decimal> mStrategySelectionPolicy;
-      std::unique_ptr<IPermutationAlgorithm<Decimal, BaselineStatPolicy>> mAlgorithm;
+      std::unique_ptr<IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>>  mAlgorithm;
     };
 } // namespace mkc_timeseries
 

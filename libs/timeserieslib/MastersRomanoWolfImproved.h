@@ -26,9 +26,14 @@
      * the expensive shuffle/backtest m times per strategy, reducing the complexity to
      * O(N + m × total_backtests).
      *
-     * Based on Masters (2016) "Efficient Computation of Adjusted p-Values for Resampling-Based
-     * Stepdown Multiple Testing" (Romano & Wolf, 2016), this class uses
-     * FastMastersPermutationPolicy to compute counts in a single Monte Carlo sweep.
+     * Based on the algorithm in Timothy Masters book"
+     * "Permutation and Randomization Tests for Trading System Development: Algorithms in C++"
+     *
+     * Which itself is base don "Efficient Computation of Adjusted p-Values for Resampling-Based
+     * Stepdown Multiple Testing" (Romano & Wolf, 2016)
+     *
+     * this class uses
+     * class FastMastersPermutationPolicy to compute counts in a single Monte Carlo sweep.
      *
      * Template Parameters:
      *   @tparam Decimal            Numeric type for test statistics (e.g., double).
@@ -37,7 +42,7 @@
      *                              - getPermutationTestStatistic(bt)
      */
 #pragma once
-#include "IPermutationAlgorithm.h"
+#include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationComputationPolicy.h"
 
 namespace mkc_timeseries
@@ -65,9 +70,9 @@ namespace mkc_timeseries
    */
     template<class Decimal, class BaselineStatPolicy>
     class MastersRomanoWolfImproved final
-        : public IPermutationAlgorithm<Decimal, BaselineStatPolicy>
+        : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>
     {
-        using Base       = IPermutationAlgorithm<Decimal, BaselineStatPolicy>;
+        using Base       = IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>;
         using StrategyPtr= typename Base::StrategyPtr;
         using StrategyVec= typename Base::StrategyVec;
 

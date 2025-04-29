@@ -1,6 +1,6 @@
 #pragma once
 #include <unordered_set>
-#include "IPermutationAlgorithm.h"
+#include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
 
 namespace mkc_timeseries
@@ -28,9 +28,9 @@ namespace mkc_timeseries
      *         - static Decimal getPermutationTestStatistic(bt): statistic extraction.
      */
     template <class Decimal, class BaselineStatPolicy>
-    class MastersRomanoWolf : public IPermutationAlgorithm<Decimal, BaselineStatPolicy>
+    class MastersRomanoWolf : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>
     {
-      using Base  = IPermutationAlgorithm<Decimal, BaselineStatPolicy>;
+      using Base  = IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>;
       using Strat = typename Base::StrategyPtr;
       using Vec   = typename Base::StrategyVec;
 
