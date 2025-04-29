@@ -38,6 +38,8 @@ namespace mkc_timeseries
       /**
        * @brief Execute the stepwise permutation test with strong FWE control.
        *
+       * Precondition: `strategyData` **must** be sorted in **descending** order by
+       *   `baselineStat` (highest first) before calling.
        * Implements Masters’ algorithm:
        *  - Sort strategies descending by their observed baseline statistic.
        *  - Iterate from best to worst (stepwise loop), computing a Monte Carlo null distribution
@@ -47,7 +49,8 @@ namespace mkc_timeseries
        *  - Enforce monotonicity (step-down): p_adj[i] = max(p_i, p_adj[i-1]).
        *  - Stop early when adjusted p-value > alpha, assigning that p-value to all remaining.
        *
-       * @param strategyData      Pre-sorted vector of StrategyContext (strategy + observed statistic).
+       * @param strategyData     Pre-sorted vector of StrategyContext (strategy + observed statistic).
+       *                          **Precondition:** sorted descending by `baselineStat`
        * @param numPermutations   Number of Monte Carlo permutations (m > 0).
        * @param templateBacktester Prototype BackTester to clone for each permutation.
        * @param portfolio         Portfolio owning the target security (used to extract security ptr).

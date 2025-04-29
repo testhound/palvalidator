@@ -42,6 +42,8 @@
      *                              - getPermutationTestStatistic(bt)
      */
 #pragma once
+#include <cassert>
+#include <algorithm>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationComputationPolicy.h"
 
@@ -82,6 +84,10 @@ namespace mkc_timeseries
          *
          * Implements the two-phase improved algorithm:
          *
+	 * 
+	 * Precondition: `strategyData` **must** be sorted in **descending** order by
+	 *   `baselineStat` (highest first) before calling.
+	 *
          * Phase 1: Bulk permutation counts (worst-to-best)
          *   - Call FastMastersPermutationPolicy::computeAllPermutationCounts to
          *     generate a map of each strategy to its exceedance count:
@@ -96,7 +102,8 @@ namespace mkc_timeseries
          *   - If p_adj_i <= alpha, accept (remove tightening bound), else assign
          *     p_adj_i to all remaining and exit.
          *
-         * @param strategyData     Vector of StrategyContext sorted by descending baseline statistic.
+         * @param strategyData     Pre-sorted vector of StrategyContext (strategy + observed statistic).
+	 *                          **Precondition:** sorted descending by `baselineStat`
          * @param numPermutations  Number of permutations (m > 0).
          * @param tmplBT           Prototype backtester to clone per backtest.
          * @param portfolio        Portfolio containing the target security (first element).
@@ -110,6 +117,13 @@ namespace mkc_timeseries
                                            const Decimal&                   sigLevel) override
         {
             using FMPP = FastMastersPermutationPolicy<Decimal, BaselineStatPolicy>;
+
+	    assert(std::is_sorted(strategyData.begin(),
+				  strategyData.end(),
+				  [](auto const& a, auto const& b){
+				    return a.baselineStat > b.baselineStat;
+				  }
+				  ) && "strategyData must be pre-sorted descending!");
 
 	    // Phase 1: compute exceedance counts for every strategy in one Monte Carlo sweep
             //   counts[strategy] = 1 + # permutations where strategy's observed statistic
