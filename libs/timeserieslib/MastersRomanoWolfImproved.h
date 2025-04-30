@@ -147,6 +147,36 @@ namespace mkc_timeseries
 		if (it != counts.end())
 		  c = it->second;
 
+		/**
+		 * Enforce monotonicity on the adjusted p-values in the step-down permutation test.
+		 *
+		 * In a step-down procedure, we rank strategies by their observed statistic (e.g. Profit-Factor)
+		 * from highest (best) to lowest (worst), then compute a “raw” p-value for each:
+		 *
+		 *     // count of permutations whose test statistic ≥ observed, divided by total draws
+		 *     Decimal p = Decimal(c) / Decimal(numPermutations + 1);
+		 *
+		 * To prevent a weaker (lower-ranked) strategy from ever appearing more significant
+		 * than a stronger (higher-ranked) one, we enforce that the sequence of adjusted
+		 * p-values never decreases as we move down the list:
+		 *
+		 *     // take the larger of this strategy’s raw p and the previous (best) adjusted p
+		 *     Decimal adj = std::max(p, lastAdj);
+		 *
+		 * This ensures:
+		 *  1. **Non-decreasing p-values**: Once you hit, say, 0.04 at the top, every following
+		 *     strategy’s adjusted p will be ≥ 0.04.
+		 *  2. **Logical consistency**: You cannot claim a weaker system is more significant
+		 *     than a stronger one.
+		 *  3. **Step-down stopping rule**: As soon as an adjusted p exceeds your α threshold,
+		 *     you can stop: no weaker strategy further down can sneak in below the threshold.
+		 *
+		 * In plain English:
+		 *
+		 * “We first decide how likely it is that pure chance could give us each strategy’s
+		 * observed result.  Then, to keep our decisions consistent from best to worst, we
+		 * never let a later strategy’s p-value drop below the one before it.”
+		 */
                 Decimal p   = Decimal(c) / Decimal(numPermutations + 1);
                 Decimal adj = std::max(p, lastAdj);
                 pvals[context.strategy] = adj;
