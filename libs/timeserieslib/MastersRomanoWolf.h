@@ -1,4 +1,5 @@
 #pragma once
+#include <stdexcept> // Required for std::invalid_argument
 #include <unordered_set>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
@@ -65,6 +66,19 @@ namespace mkc_timeseries
 				   const Decimal& sigLevel) override
         {
             using MPP = MastersPermutationPolicy<Decimal, BaselineStatPolicy>;
+
+	    // Check the precondition and throw if violated
+	    if (!std::is_sorted(strategyData.begin(), strategyData.end(),
+				[](auto const& a, auto const& b) {
+				  return a.baselineStat > b.baselineStat;
+				}))
+	      {
+		const std::string error_message =
+                    "MastersRomanoWolf::run requires strategyData to be "
+                    "pre-sorted in descending order by baselineStat.";
+		
+		throw std::invalid_argument(error_message);
+	      }
 
 	    std::map<Strat, Decimal> pvals;
             Decimal lastAdj = Decimal(0);
