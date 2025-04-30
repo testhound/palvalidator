@@ -45,25 +45,28 @@ public:
  */
 class BoostRunnerExecutor : public IParallelExecutor {
 public:
-    std::future<void> submit(std::function<void()> task) override {
-        // post to the Boost runner
-        auto boostFut = runner::instance().post(std::move(task));
+  std::future<void> submit(std::function<void()> task) override
+  {
+    runner::ensure_initialized(getNCpus());
 
-        // Wrap boost::unique_future into a std::future via std::promise + watcher thread
-        std::promise<void> prom;
-        auto stdFut = prom.get_future();
+    // post to the Boost runner
+    auto boostFut = runner::instance().post(std::move(task));
 
-        std::thread([bf = std::move(boostFut), p = std::move(prom)]() mutable {
-            try {
-                bf.get();  // propagate exceptions from the task
-                p.set_value();
-            } catch (...) {
-                p.set_exception(std::current_exception());
-            }
-        }).detach();
-
-        return stdFut;
-    }
+    // Wrap boost::unique_future into a std::future via std::promise + watcher thread
+    std::promise<void> prom;
+    auto stdFut = prom.get_future();
+    
+    std::thread([bf = std::move(boostFut), p = std::move(prom)]() mutable {
+      try {
+	bf.get();  // propagate exceptions from the task
+	p.set_value();
+      } catch (...) {
+	p.set_exception(std::current_exception());
+      }
+    }).detach();
+    
+    return stdFut;
+  }
 };
 
 } // namespace concurrency
