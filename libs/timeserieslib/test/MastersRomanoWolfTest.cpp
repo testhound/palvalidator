@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include "StrategyDataPreparer.h"
 #include "MastersRomanoWolf.h"
 #include "MastersPermutationTestComputationPolicy.h"
 #include "TestUtils.h"
@@ -170,7 +171,7 @@ TEST_CASE("MastersRomanoWolf run failure early sets same p-value for all remaini
 }
 
 TEST_CASE("MastersRomanoWolf handles randomized statistics") {
-  // set up dummy backtester & portfolio
+    // set up dummy backtester & portfolio
     auto portfolio = createDummyPortfolio();
     auto bt        = std::make_shared<DummyBackTesterEx>();
 
@@ -186,6 +187,10 @@ TEST_CASE("MastersRomanoWolf handles randomized statistics") {
         data.push_back(makeStrategyContext(strat, baseline));
     }
 
+    // Ensure data is sorted by baselineStat in descending order to satisfy precondition
+    std::sort(data.begin(), data.end(),
+              [](auto const &a, auto const &b) { return a.baselineStat > b.baselineStat; });
+
     MastersRomanoWolf<D, RandomStatPolicy> algo;
     auto pvals = algo.run(data, /*numPermutations=*/500, bt, portfolio, /*sigLevel=*/D("0.05"));
 
@@ -196,11 +201,97 @@ TEST_CASE("MastersRomanoWolf handles randomized statistics") {
     }
 
     // 2) Enforce step‐down: as baselineStat increases, adjusted p‐value should not decrease
-    std::sort(data.begin(), data.end(),
-              [](auto &a, auto &b) { return a.baselineStat < b.baselineStat; });
     D prev = D("0.0");
     for (auto &ctx : data) {
         auto v = pvals[ctx.strategy];
+        REQUIRE(v >= prev);
+        prev = v;
+    }
+}
+
+// New tests for unsorted input validation
+TEST_CASE("MastersRomanoWolf run throws on unsorted strategy data") {
+    MastersRomanoWolf<D, DummyStatPolicy> algo;
+    auto bt = std::make_shared<DummyBackTesterEx>();
+    auto portfolio = createDummyPortfolio();
+    // Create two strategies with baselines 0.5 and 1.0
+    auto s1 = std::make_shared<DummyPalStrategyEx>(portfolio);
+    auto s2 = std::make_shared<DummyPalStrategyEx>(portfolio);
+    StrategyContext<D> ctx1 = makeStrategyContext(s1, D("0.5"));
+    StrategyContext<D> ctx2 = makeStrategyContext(s2, D("1.0"));
+    // Unsorted: ascending order (0.5 < 1.0)
+    std::vector<StrategyContext<D>> data{ctx1, ctx2};
+    REQUIRE_THROWS_AS(algo.run(data, 1, bt, portfolio, D("0.05")), std::invalid_argument);
+}
+
+TEST_CASE("MastersRomanoWolf run throws on partially unsorted strategy data") {
+    MastersRomanoWolf<D, DummyStatPolicy> algo;
+    auto bt = std::make_shared<DummyBackTesterEx>();
+    auto portfolio = createDummyPortfolio();
+    // Create three strategies with baselines 1.0, 0.5, 0.8
+    auto sa = std::make_shared<DummyPalStrategyEx>(portfolio);
+    auto sb = std::make_shared<DummyPalStrategyEx>(portfolio);
+    auto sc = std::make_shared<DummyPalStrategyEx>(portfolio);
+    StrategyContext<D> ca = makeStrategyContext(sa, D("1.0"));
+    StrategyContext<D> cb = makeStrategyContext(sb, D("0.5"));
+    StrategyContext<D> cc = makeStrategyContext(sc, D("0.8"));
+    // Partially unsorted: 0.8 follows 0.5
+    std::vector<StrategyContext<D>> data{ca, cb, cc};
+    REQUIRE_THROWS_AS(algo.run(data, 2, bt, portfolio, D("0.05")), std::invalid_argument);
+}
+
+// Integration test using real-world data
+
+template<typename Decimal>
+struct ProfitFactorPolicy {
+    static Decimal getPermutationTestStatistic(const std::shared_ptr<BackTester<Decimal>>& aBackTester) {
+        auto it = aBackTester->beginStrategies();
+        auto backTesterStrategy = *it;
+        return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getLogProfitFactor();
+    }
+    static unsigned int getMinStrategyTrades() { return 3; }
+};
+
+TEST_CASE("MastersRomanoWolf integration test with real price patterns and real time series", "[integration]") {
+    // load a real-world OHLCTimeSeries
+    auto realSeries = getRandomPriceSeries();
+    REQUIRE(realSeries);
+
+    // wrap it in a Security and date-range–configured BackTester
+    auto security = std::make_shared<EquitySecurity<D>>("QQQ", "Invesco Nasdaq 100 ETF", realSeries);
+    auto bt = BackTesterFactory<D>::getBackTester(realSeries->getTimeFrame(),
+                                                  realSeries->getFirstDate(),
+                                                  realSeries->getLastDate());
+
+    // grab PAL patterns
+    auto patterns = getRandomPricePatterns();
+    REQUIRE(patterns);
+
+    // build contexts with ProfitFactorPolicy
+    auto contexts = StrategyDataPreparer<D, ProfitFactorPolicy<D>>::prepare(bt, security, patterns);
+    REQUIRE(!contexts.empty());
+
+    // ensure sorted descending by observed statistic
+    std::sort(contexts.begin(), contexts.end(),
+              [](auto const &a, auto const &b) { return a.baselineStat > b.baselineStat; });
+
+    // portfolio for testing
+    auto portfolio = std::make_shared<Portfolio<D>>(security->getName() + " Portfolio");
+    portfolio->addSecurity(security);
+
+    MastersRomanoWolf<D, ProfitFactorPolicy<D>> algo;
+    unsigned long numPerms = 500;
+    D alpha("0.05");
+    auto pvals = algo.run(contexts, numPerms, bt, portfolio, alpha);
+
+    // should have a p-value for every context
+    REQUIRE(pvals.size() == contexts.size());
+    // p-values in [0,1] and non-decreasing
+    D prev = D("0.0");
+    for (auto& ctx : contexts) {
+        auto v = pvals[ctx.strategy];
+        REQUIRE(v >= D("0.0"));
+        REQUIRE(v <= D("1.0"));
         REQUIRE(v >= prev);
         prev = v;
     }
