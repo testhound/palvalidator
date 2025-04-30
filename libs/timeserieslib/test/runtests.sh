@@ -12,7 +12,7 @@ g++ -o MultipleTestCorrectionTest MultipleTestCorrectionTest.o TestUtils.o ../Lo
 
 g++ -O2 -g -c -std=c++17 -I../ -I. -I/usr/local/include/priceactionlab MastersComputationPolicyTest.cpp
 
-g++ -o MastersComputationPolicyTest MastersComputationPolicyTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system -lboost_filesystem -lCatch2
+g++ -o MastersComputationPolicyTest MastersComputationPolicyTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ../runner.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_thread -lboost_system -lboost_filesystem -lCatch2
 
 g++ -O2 -c -std=c++14 -I../ -I. -I/usr/local/include/priceactionlab -I/usr/local/include StrategyDataPreparerTest.cpp
 
