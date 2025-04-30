@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include "StrategyDataPreparer.h"
 #include "MastersPermutationTestComputationPolicy.h"
 #include "TestUtils.h"
 #include "Security.h"
@@ -19,6 +20,22 @@ namespace {
     }
   };
 
+  struct ProfitFactorPolicy
+  {
+    static DecimalType getPermutationTestStatistic(std::shared_ptr<BackTester<DecimalType>> aBackTester)
+    {
+      std::shared_ptr<BacktesterStrategy<DecimalType>> backTesterStrategy =
+	(*(aBackTester->beginStrategies()));
+      
+      return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getLogProfitFactor();
+    }
+      
+    static unsigned int getMinStrategyTrades() {
+      return 3;
+    }
+
+  };
+  
   struct AlwaysLowStatPolicy {
     static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&) {
       return DecimalType("0.1");
@@ -276,12 +293,97 @@ TEST_CASE("FastMastersPermutationPolicy with randomized statistics produces reas
     strategyData.push_back(makeStrategyContext(strategy, DecimalType("0.35")));
   }
 
+  int numPerms = 100;
+  
   auto result = FastMastersPermutationPolicy<DecimalType, RandomStatPolicy>::computeAllPermutationCounts(
-    100, strategyData, bt, sec, portfolio);
+    numPerms, strategyData, bt, sec, portfolio);
 
   REQUIRE(result.size() == 3);
   for (auto it = result.begin(); it != result.end(); ++it) {
     REQUIRE(it->second >= 1);
-    REQUIRE(it->second <= 101);
+    REQUIRE(it->second <= numPerms + 1);
   }
+}
+
+TEST_CASE("FastMastersPermutationPolicy with real price patterns and real series", "[integration]") {
+    // load a real-world OHLCTimeSeries
+    auto realSeries = getRandomPriceSeries();
+    REQUIRE(realSeries);
+
+    // wrap it in a Security and date‐range–configured BackTester
+    auto security = std::make_shared<EquitySecurity<DecimalType>>("QQQ", "RandomSecurity", realSeries);
+    auto bt = BackTesterFactory<DecimalType>::getBackTester(realSeries->getTimeFrame(),
+							    realSeries->getFirstDate(),
+							    realSeries->getLastDate());
+
+    // grab hundreds of PAL patterns
+    auto patterns = getRandomPricePatterns();
+    REQUIRE(patterns);
+
+    // build strategies and compute their baseline ProfitFactor stats
+    auto strategyData = StrategyDataPreparer<DecimalType, ProfitFactorPolicy>::prepare(bt, security, patterns);
+    REQUIRE(!strategyData.empty());
+
+    // portfolio for synthetic draws
+    auto portfolio = std::make_shared<Portfolio<DecimalType>>(security->getName() + " Portfolio");
+    portfolio->addSecurity(security);
+
+    // run 100 permutations in “fast” mode
+    auto counts = FastMastersPermutationPolicy<DecimalType, ProfitFactorPolicy>::computeAllPermutationCounts(
+        /*numPermutations=*/2500,
+        strategyData,
+        bt,
+        security,
+        portfolio
+    );
+
+    // should have a count for every strategy, and at least 1 (the unpermuted case)
+    REQUIRE(counts.size() == strategyData.size());
+    for (auto const& ctx : strategyData) {
+        REQUIRE(counts.at(ctx.strategy) >= 1);
+    }
+}
+
+TEST_CASE("MastersPermutationPolicy with real price patterns and real series", "[integration]") {
+    // load a real-world OHLCTimeSeries
+    auto realSeries = getRandomPriceSeries();
+    REQUIRE(realSeries);
+
+    // wrap it in a Security and date‐range–configured BackTester
+
+    auto security = std::make_shared<EquitySecurity<DecimalType>>("QQQ", "RandomSecurity", realSeries);
+    auto bt = BackTesterFactory<DecimalType>::getBackTester(realSeries->getTimeFrame(),
+							    realSeries->getFirstDate(),
+							    realSeries->getLastDate());
+
+    // grab hundreds of PAL patterns
+    auto patterns = getRandomPricePatterns();
+    REQUIRE(patterns);
+
+    // build strategies and compute their baseline ProfitFactor stats
+    auto contexts = StrategyDataPreparer<DecimalType, ProfitFactorPolicy>::prepare(bt, security, patterns);
+    REQUIRE(!contexts.empty());
+
+    // extract strategy pointers & baseline of the first
+    std::vector<std::shared_ptr<PalStrategy<DecimalType>>> strategies;
+    for (auto const& ctx : contexts) {
+        strategies.push_back(ctx.strategy);
+    }
+    auto baseline = contexts.front().baselineStat;
+
+    auto portfolio = std::make_shared<Portfolio<DecimalType>>(security->getName() + " Portfolio");
+    portfolio->addSecurity(security);
+
+    // run 100 stepwise permutations for the first strategy
+    auto count = MastersPermutationPolicy<DecimalType, ProfitFactorPolicy>::computePermutationCountForStep(
+        /*numPermutations=*/100,
+        baseline,
+        strategies,
+        bt,
+        security,
+        portfolio
+    );
+
+    // at least the unpermuted (baseline) draw
+    REQUIRE(count >= 1);
 }
