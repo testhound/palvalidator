@@ -1,48 +1,5 @@
-/**************************************************************************************
- *  FastPermutation.h
- *
- *  Implements the **fast approximation** of Masters’ step‑down algorithm.
- *  Characteristics
- *  ---------------
- *    • Pre‑computes max‑statistic counts for *all* strategies in one sweep using
- *      FastMastersPermutationPolicy ⇒ O(N + permutations × back‑tests).
- *    • Step‑down loop then uses those cached counts – no per‑step re‑sampling.
- *    • Produces identical adjusted p‑values to the slow algorithm in practice
- *      for large permutation counts, but > 10× faster on typical test suites.
- *
- *  Dependencies
- *  ------------
- *    • FastMastersPermutationPolicy.h   – bulk permutation count computation
- *************************************************************************************/
-
-/**
- * @class MastersRomanoWolfImproved
-     * @brief Fast stepwise permutation testing algorithm with strong FWE control.
-     *
-     * This "improved" version performs all m permutations in one bulk pass,
-     * computing exceedance counts for each strategy simultaneously (from worst to best),
-     * then applies a step-down inclusion loop (from best to worst) over the precomputed counts.
-     * This is mathematically equivalent to the naive stepwise algorithm but avoids repeating
-     * the expensive shuffle/backtest m times per strategy, reducing the complexity to
-     * O(N + m × total_backtests).
-     *
-     * Based on the algorithm in Timothy Masters book"
-     * "Permutation and Randomization Tests for Trading System Development: Algorithms in C++"
-     *
-     * Which itself is base don "Efficient Computation of Adjusted p-Values for Resampling-Based
-     * Stepdown Multiple Testing" (Romano & Wolf, 2016)
-     *
-     * this class uses
-     * class FastMastersPermutationPolicy to compute counts in a single Monte Carlo sweep.
-     *
-     * Template Parameters:
-     *   @tparam Decimal            Numeric type for test statistics (e.g., double).
-     *   @tparam BaselineStatPolicy Policy providing:
-     *                              - getMinStrategyTrades()
-     *                              - getPermutationTestStatistic(bt)
-     */
 #pragma once
-#include <cassert>
+#include <stdexcept> // Required for std::invalid_argument
 #include <algorithm>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationComputationPolicy.h"
@@ -60,9 +17,14 @@ namespace mkc_timeseries
    * the expensive shuffle/backtest m times per strategy, reducing the complexity to
    * O(N + m × total_backtests).
    *
-   * Based on Masters (2016) "Efficient Computation of Adjusted p-Values for Resampling-Based
-   * Stepdown Multiple Testing" (Romano & Wolf, 2016), this class uses
-   * FastMastersPermutationPolicy to compute counts in a single Monte Carlo sweep.
+   * Based on the algorithm in Timothy Masters book"
+   * "Permutation and Randomization Tests for Trading System Development: Algorithms in C++"
+   *
+   * Which itself is base don "Efficient Computation of Adjusted p-Values for Resampling-Based
+   * Stepdown Multiple Testing" (Romano & Wolf, 2016)
+   *
+   * this class uses
+   * class FastMastersPermutationPolicy to compute counts in a single Monte Carlo sweep.
    *
    * Template Parameters:
    *   @tparam Decimal            Numeric type for test statistics (e.g., double).
@@ -70,7 +32,8 @@ namespace mkc_timeseries
    *                              - getMinStrategyTrades()
    *                              - getPermutationTestStatistic(bt)
    */
-    template<class Decimal, class BaselineStatPolicy>
+
+  template<class Decimal, class BaselineStatPolicy>
     class MastersRomanoWolfImproved final
         : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>
     {
@@ -118,12 +81,18 @@ namespace mkc_timeseries
         {
             using FMPP = FastMastersPermutationPolicy<Decimal, BaselineStatPolicy>;
 
-	    assert(std::is_sorted(strategyData.begin(),
-				  strategyData.end(),
-				  [](auto const& a, auto const& b){
-				    return a.baselineStat > b.baselineStat;
-				  }
-				  ) && "strategyData must be pre-sorted descending!");
+	    // Check the precondition and throw if violated
+	    if (!std::is_sorted(strategyData.begin(), strategyData.end(),
+				[](auto const& a, auto const& b) {
+				  return a.baselineStat > b.baselineStat;
+				}))
+	      {
+		const std::string error_message =
+                    "MastersRomanoWolfImproved::run requires strategyData to be "
+                    "pre-sorted in descending order by baselineStat.";
+		
+		throw std::invalid_argument(error_message);
+	      }
 
 	    // Phase 1: compute exceedance counts for every strategy in one Monte Carlo sweep
             //   counts[strategy] = 1 + # permutations where strategy's observed statistic
