@@ -9,7 +9,7 @@ namespace mkc_timeseries
 {
   template <class Decimal>
   inline shared_ptr<Security<Decimal>>
-  createSyntheticSecurity(shared_ptr<Security<Decimal>> aSecurity)
+  createSyntheticSecurity(const shared_ptr<Security<Decimal>>& aSecurity)
   {
     auto aTimeSeries = aSecurity->getTimeSeries();
     SyntheticTimeSeries<Decimal> aTimeSeries2(*aTimeSeries, aSecurity->getTick(), aSecurity->getTickDiv2());
@@ -20,8 +20,8 @@ namespace mkc_timeseries
 
   template <class Decimal>
   inline std::shared_ptr<Portfolio<Decimal>>
-  createSyntheticPortfolio (std::shared_ptr<Security<Decimal>> realSecurity,
-                            std::shared_ptr<Portfolio<Decimal>> realPortfolio)
+  createSyntheticPortfolio (const std::shared_ptr<Security<Decimal>>& realSecurity,
+                            const std::shared_ptr<Portfolio<Decimal>>& realPortfolio)
   {
     std::shared_ptr<Portfolio<Decimal>> syntheticPortfolio = realPortfolio->clone();
     syntheticPortfolio->addSecurity (createSyntheticSecurity<Decimal> (realSecurity));

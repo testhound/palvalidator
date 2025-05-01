@@ -99,18 +99,18 @@ namespace mkc_timeseries
       virtual ~BacktesterStrategy()
       {}
 
-      virtual void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+      virtual void eventExitOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
 				    const InstrumentPosition<Decimal>& instrPos,
 				    const date& processingDate) = 0;
 
-      virtual void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+      virtual void eventEntryOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
 				     const InstrumentPosition<Decimal>& instrPos,
 				     const date& processingDate) = 0;
 
       virtual const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const = 0;
 
       virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const = 0;
+      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const = 0;
 
       virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
       cloneForBackTesting () const = 0;
