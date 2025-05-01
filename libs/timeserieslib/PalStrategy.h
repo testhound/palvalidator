@@ -11,6 +11,7 @@
 #include <vector>
 #include <map>
 #include <list>
+#include <functional>
 #include "MCPTStrategyAttributes.h"
 #include "PalAst.h"
 #include "BacktesterStrategy.h"
@@ -215,23 +216,29 @@ namespace mkc_timeseries
 	return BacktesterStrategy<Decimal>::getSizeForOrder(aSecurity);
       }
 
+    [[deprecated("Use of this getPositionDirectionVector will throw an exception")]]
     std::vector<int> getPositionDirectionVector() const
       {
+	throw PalStrategyException("getPositionDirectionVector is no longer supported");
 	return mMCPTAttributes.getPositionDirection();
       }
 
+    [[deprecated("Use of this getPositionReturnsVector will throw an exception")]]
     std::vector<Decimal> getPositionReturnsVector() const
       {
+	throw PalStrategyException("getPositionReturnsVector is no longer supported");
 	return mMCPTAttributes.getPositionReturns();
       }
 
+    [[deprecated("Use of this numTradingOpportunities will throw an exception")]]
     unsigned long numTradingOpportunities() const
     {
+      	throw PalStrategyException("numTradingOpportunities is no longer supported");
 	return mMCPTAttributes.numTradingOpportunities();
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>> 
-    clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+    clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
     {
       return std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
 							portfolio);
@@ -375,6 +382,9 @@ namespace mkc_timeseries
   template <class Decimal> class PalStrategy : public BacktesterStrategy<Decimal>
     {
     public:
+       using PatternEvaluator = std::function<bool(const std::shared_ptr<Security<Decimal>>&,
+						   typename Security<Decimal>::ConstRandomAccessIterator)>;
+
     PalStrategy(const std::string& strategyName,
 		std::shared_ptr<PriceActionLabPattern> pattern,
 		std::shared_ptr<Portfolio<Decimal>> portfolio,
@@ -382,12 +392,24 @@ namespace mkc_timeseries
       : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
 	mPalPattern(pattern),
 	mMCPTAttributes()
-	{}
+	{
+	  if (mPalPattern)
+	    {
+	      // compile the real expression once
+	      mPatternEvaluator = compileExpression(mPalPattern->getPatternExpression().get());
+	    }
+	  else
+	    {
+	      // no pattern ⇒ never match
+	      mPatternEvaluator = [](auto const&, auto){ return false; };
+	    }
+	}
 
       PalStrategy(const PalStrategy<Decimal>& rhs)
 	: BacktesterStrategy<Decimal>(rhs),
 	  mPalPattern(rhs.mPalPattern),
-	  mMCPTAttributes(rhs.mMCPTAttributes)
+	  mMCPTAttributes(rhs.mMCPTAttributes),
+	  mPatternEvaluator(rhs.mPatternEvaluator)
       {}
 
       const PalStrategy<Decimal>&
@@ -399,6 +421,7 @@ namespace mkc_timeseries
 	BacktesterStrategy<Decimal>::operator=(rhs);
 	mPalPattern = rhs.mPalPattern;
 	mMCPTAttributes = rhs.mMCPTAttributes;
+	mPatternEvaluator = rhs.mPatternEvaluator;
 	return *this;
       }
 
@@ -426,43 +449,117 @@ namespace mkc_timeseries
 	return mPalPattern;
       }
 
+      [[deprecated("Use of this getPositionDirectionVector will throw an exception")]]
       std::vector<int> getPositionDirectionVector() const
       {
+	throw PalStrategyException("getPositionDirectionVector is no longer supported");
 	return mMCPTAttributes.getPositionDirection();
       }
 
+      [[deprecated("Use of this getPositionReturnsVector will throw an exception")]]
       std::vector<Decimal> getPositionReturnsVector() const
       {
+	throw PalStrategyException("getPositionReturnsVector is no longer supported");
 	return mMCPTAttributes.getPositionReturns();
       }
 
+      [[deprecated("Use of this numTradingOpportunities will throw an exception")]]
       unsigned long numTradingOpportunities() const
       {
+	throw PalStrategyException("numTradingOpportunities is no longer supported");
 	return mMCPTAttributes.numTradingOpportunities();
       }
 
     protected:
+      const PatternEvaluator& getPatternEvaluator() const
+      {
+	return mPatternEvaluator;
+      }
+      
+      static PatternEvaluator compileExpression(PatternExpression* expr)
+      {
+	if (auto pAnd = dynamic_cast<AndExpr*>(expr))
+	  {
+	    auto lhs = compileExpression(pAnd->getLHS());
+	    auto rhs = compileExpression(pAnd->getRHS());
+	    return [lhs, rhs](auto const& sec, auto it) {
+	      return lhs(sec, it) && rhs(sec, it);
+	    };
+	  }
+	else if (auto pGt = dynamic_cast<GreaterThanExpr*>(expr))
+	  {
+	    auto leftFn  = compilePriceBar(pGt->getLHS());
+	    auto rightFn = compilePriceBar(pGt->getRHS());
+	    return [leftFn, rightFn](auto const& sec, auto it) {
+	      return leftFn(sec, it) > rightFn(sec, it);
+	    };
+	  }
+	else
+	  {
+	    throw std::runtime_error("Unknown PatternExpression type");
+	  }
+      }
+
+      static std::function<Decimal(const std::shared_ptr<Security<Decimal>>&,
+				   typename Security<Decimal>::ConstRandomAccessIterator)>
+      compilePriceBar(PriceBarReference* barRef)
+      {
+	auto type   = barRef->getReferenceType();
+	auto offset = barRef->getBarOffset();
+	switch (type)
+	  {
+	  case PriceBarReference::OPEN:
+	    return [offset](auto const& sec, auto it) {
+	      return sec->getOpenValue(it, offset);
+	    };
+	  case PriceBarReference::HIGH:
+	    return [offset](auto const& sec, auto it) {
+	      return sec->getHighValue(it, offset);
+	    };
+	  case PriceBarReference::LOW:
+	    return [offset](auto const& sec, auto it) {
+	      return sec->getLowValue(it, offset);
+	    };
+	  case PriceBarReference::CLOSE:
+	    return [offset](auto const& sec, auto it) {
+	      return sec->getCloseValue(it, offset);
+	    };
+
+	  case PriceBarReference::VOLUME:
+	    return [offset](auto const& sec, auto it) {
+	      return sec->getVolumeValue(it, offset);
+	    };
+
+	  default:
+	    throw std::runtime_error("Unsupported PriceBarReference");
+	  }
+      }
+
+      [[deprecated("Use of this addLongPositionBar no longer supported")]]
       void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
       {
-	mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
+	//mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
       }
 
+      [[deprecated("Use of this addShortPositionBar no longer supported")]]
       void addShortPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
       {
-	mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
+	//mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
       }
 
+      [[deprecated("Use of this addFlatPositionBar no longer supported")]]
       void addFlatPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
       {
-	mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
+	//mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
       }
 
     private:
       std::shared_ptr<PriceActionLabPattern> mPalPattern;
       MCPTStrategyAttributes<Decimal> mMCPTAttributes;
+      PatternEvaluator mPatternEvaluator;
       static TradingVolume OneShare;
       static TradingVolume OneContract;
     };
@@ -499,7 +596,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
       {}
       
       std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
       {
 	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
@@ -522,7 +619,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 						       this->getPortfolio());
       }
 
-      void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+      void eventExitOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
@@ -546,11 +643,11 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 					  fillPrice, stopAsPercent);
 	    instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 
-	    this->addLongPositionBar (aSecurity, processingDate);
+	    //this->addLongPositionBar (aSecurity, processingDate);
 	  }
       }
 
-      void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+      void eventEntryOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
       {
@@ -561,16 +658,17 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 	    if (this->getSecurityBarNumber(sym) > 
 		this->getPalPattern()->getMaxBarsBack())
 	      {
-		PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
+		//PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
 		typename Security<Decimal>::ConstRandomAccessIterator it = 
 		  aSecurity->getRandomAccessIterator (processingDate);
 
-		if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
+		if (this->getPatternEvaluator()(aSecurity, it))
+		  //if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
 		  {
 		    this->EnterLongOnOpen (sym, processingDate);
 		    //std::cout << "PalLongStrategy entered LongOnOpen Order on " << processingDate << std::endl;
 		  }
-		this->addFlatPositionBar (aSecurity, processingDate);
+		//this->addFlatPositionBar (aSecurity, processingDate);
 	      }
 	  }
       }
@@ -607,7 +705,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
       {}
 
       std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
       {
 	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
@@ -629,7 +727,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 						       this->getPalPattern(),
 						       this->getPortfolio());
       }
-      void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+      void eventExitOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
@@ -656,11 +754,11 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 	    this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
 	    instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
-	    this->addShortPositionBar (aSecurity, processingDate);
+	    //this->addShortPositionBar (aSecurity, processingDate);
 	  }
       }
 
-      void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+      void eventEntryOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
       {
@@ -670,16 +768,17 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 	    if (this->getSecurityBarNumber(sym) > 
 		this->getPalPattern()->getMaxBarsBack())
 	      {
-		PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
+		//PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
 		typename Security<Decimal>::ConstRandomAccessIterator it = 
 		  aSecurity->getRandomAccessIterator (processingDate);
 
-		if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
+		if (this->getPatternEvaluator()(aSecurity, it))
+		  //if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
 		  {
 		    //std::cout << "PalShortStrategy entered ShortOnOpen Order on " << processingDate << std::endl;
 		    this->EnterShortOnOpen (sym, processingDate);
 		  }
-		this->addFlatPositionBar (aSecurity, processingDate);
+		//this->addFlatPositionBar (aSecurity, processingDate);
 	      }
 	  }
       }
