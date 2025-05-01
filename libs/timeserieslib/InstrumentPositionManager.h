@@ -135,7 +135,7 @@ namespace mkc_timeseries
     }
 
     void addBarForOpenPosition (const boost::gregorian::date openPositionDate,
-				std::shared_ptr<Portfolio<Decimal>> portfolioOfSecurities)
+				const std::shared_ptr<Portfolio<Decimal>>& portfolioOfSecurities)
     {
       ConstInstrumentPositionIterator posIt = beginInstrumentPositions();
       std::shared_ptr<InstrumentPosition<Decimal>> position;
