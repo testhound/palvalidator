@@ -2,7 +2,7 @@
 #include <stdexcept> // Required for std::invalid_argument
 #include <algorithm>
 #include "IMastersSelectionBiasAlgorithm.h"
-#include "MastersPermutationComputationPolicy.h"
+#include "MastersPermutationTestComputationPolicy.h"
 
 namespace mkc_timeseries
 {
@@ -94,6 +94,14 @@ namespace mkc_timeseries
 		throw std::invalid_argument(error_message);
 	      }
 
+	    // Extract the target security from the portfolio:
+	    auto secIt = portfolio->beginPortfolio();
+	    if (secIt == portfolio->endPortfolio()) {
+	      throw std::runtime_error(
+				       "MastersRomanoWolfImproved::run - portfolio contains no securities");
+	    }
+	    auto secPtr = secIt->second;
+	    
 	    // Phase 1: compute exceedance counts for every strategy in one Monte Carlo sweep
             //   counts[strategy] = 1 + # permutations where strategy's observed statistic
             //                      is beaten by the max-of-all in that permutation.
@@ -102,6 +110,7 @@ namespace mkc_timeseries
                 FMPP::computeAllPermutationCounts(numPermutations,
                                                   strategyData,
                                                   tmplBT,
+						  secPtr,
                                                   portfolio);
 
             std::map<StrategyPtr, Decimal> pvals;
