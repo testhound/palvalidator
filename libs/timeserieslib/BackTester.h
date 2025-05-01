@@ -9,6 +9,7 @@
 
 #include <exception>
 #include <list>
+#include <vector>
 #include <string>
 #include <boost/date_time.hpp>
 #include "number.h"
@@ -62,43 +63,53 @@ namespace mkc_timeseries
    * - Although safe usage is achieved in multithreaded environments via strict ownership isolation,
    *   the class itself performs no internal locking or concurrency protection.
    */
-  template <class Decimal> class BackTester
+  using boost::gregorian::date;
+
+  template <class Decimal>
+  class BackTester
   {
-    using Map = map<boost::gregorian::date, DateRange>;
   public:
-    typedef typename std::list<std::shared_ptr<BacktesterStrategy<Decimal>>>::const_iterator StrategyIterator;
-    typedef typename DateRangeContainer::DateRangeIterator BacktestDateRangeIterator;
+    using StrategyPtr            = BacktesterStrategy<Decimal>*;
+    using StrategyIterator       = typename std::list<std::shared_ptr<BacktesterStrategy<Decimal>>>::const_iterator;
+    using StrategyRawIterator    = typename std::vector<StrategyPtr>::const_iterator;
+    using BacktestDateRangeIterator = typename DateRangeContainer::DateRangeIterator;
 
     explicit BackTester()
       : mStrategyList(),
-      mBackTestDates()
-    {
-    }
+	mStrategyRawList(),
+	mBackTestDates(),
+	mDates()
+    {}
 
     virtual ~BackTester()
     {}
 
-    BackTester(const BackTester<Decimal> &rhs)
+    BackTester(const BackTester& rhs)
       : mStrategyList(rhs.mStrategyList),
-      mBackTestDates(rhs.mBackTestDates)
-    {}
-
-    BackTester<Decimal>& 
-    operator=(const BackTester<Decimal> &rhs)
+	mBackTestDates(rhs.mBackTestDates),
+	mDates(rhs.mDates)
     {
-      if (this == &rhs)
-	return *this;
+      rebuildStrategyRawList();
+    }
 
-      mStrategyList = rhs.mStrategyList;
-      mBackTestDates = rhs.mBackTestDates;
+    BackTester& operator=(const BackTester& rhs)
+    {
+      if (this != &rhs)
+	{
+	  mStrategyList = rhs.mStrategyList;
+	  mBackTestDates = rhs.mBackTestDates;
+	  mDates = rhs.mDates;
+	  rebuildStrategyRawList();
+	}
       return *this;
     }
 
     virtual std::shared_ptr<BackTester<Decimal>> clone() const = 0;
 
-    void addStrategy (std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy)
+    void addStrategy(const std::shared_ptr<BacktesterStrategy<Decimal>>& aStrategy)
     {
       mStrategyList.push_back(aStrategy);
+      mStrategyRawList.push_back(aStrategy.get());
     }
 
     void addDateRange(const DateRange& range)
@@ -116,6 +127,16 @@ namespace mkc_timeseries
       return mStrategyList.end();
     }
 
+    StrategyRawIterator beginStrategiesRaw() const
+    {
+      return mStrategyRawList.begin();
+    }
+
+    StrategyRawIterator endStrategiesRaw() const
+    {
+      return mStrategyRawList.end();
+    }
+
     BacktestDateRangeIterator beginBacktestDateRange() const
     {
       return mBackTestDates.beginDateRange();
@@ -128,100 +149,100 @@ namespace mkc_timeseries
 
     unsigned long numBackTestRanges() const
     {
-	return mBackTestDates.getNumEntries();
+      return mBackTestDates.getNumEntries();
     }
 
-    const ClosedPositionHistory<Decimal>&
-    getClosedPositionHistory() const
+    const ClosedPositionHistory<Decimal>& getClosedPositionHistory() const
     {
-      if (beginStrategies() == endStrategies())
-	throw BackTesterException("BackTester::getClosedPositionHistory - No strategies have been added, so ClosedPositionHistory does not exist");
-
-      return ((*beginStrategies())->getStrategyBroker().getClosedPositionHistory());
+      if (mStrategyList.empty())
+	{
+	  throw BackTesterException("getClosedPositionHistory: No strategies added");
+	}
+      return mStrategyList.front()->getStrategyBroker().getClosedPositionHistory();
     }
 
     uint32_t getNumStrategies() const
     {
-      return mStrategyList.size();
+      return static_cast<uint32_t>(mStrategyList.size());
     }
 
-    const boost::gregorian::date getStartDate() const
+    date getStartDate() const
     {
       return mBackTestDates.getFirstDateRange().getFirstDate();
     }
 
-    const boost::gregorian::date getEndDate() const
+    date getEndDate() const
     {
       return mBackTestDates.getFirstDateRange().getLastDate();
     }
 
-    // BackTester::backtest()
-    // └── for each date:
-    //    ├── BacktesterStrategy::eventExitOrders()
-    //    ├── BacktesterStrategy::eventEntryOrders()
-    //    ├── BacktesterStrategy::eventProcessPendingOrders()
-    //          └── StrategyBroker::ProcessPendingOrders()
-    //                  └── TradingOrderManager::processPendingOrders()
-    //                          └── calls visitor.visit(MarketOnOpenLongOrder)
-    //                                └── MarketOnOpenLongOrder::MarkOrderExecuted()
-    //                                      └── Notifies observer StrategyBroker
-    //                                            └── StrategyBroker::OrderExecuted()
     virtual void backtest()
     {
-      typename BackTester<Decimal>::StrategyIterator itStrategy;
-      typename BackTester<Decimal>::BacktestDateRangeIterator itDateRange;
+      typename BackTester<Decimal>::StrategyRawIterator itStrategy;
       typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
 
-      if (this->getNumStrategies() == 0)
-	throw BackTesterException("No strategies have been added to backtest");
+      if (mStrategyRawList.empty())
+	{
+	  throw BackTesterException("No strategies have been added to backtest");
+	}
 
-      boost::gregorian::date backTesterDate;
-      boost::gregorian::date backTesterEndDate;
-      boost::gregorian::date barBeforeBackTesterEndDate;
-      boost::gregorian::date orderDate;
-      bool multipleBacktestDates = this->numBackTestRanges() > 1;
+      bool multipleRanges   = numBackTestRanges() > 1;
       unsigned int backtestNumber = 0;
 
-      for (itDateRange = this->beginBacktestDateRange(); itDateRange != endBacktestDateRange(); itDateRange++)
+      // ─── Outer loop over each DateRange ────────────────────────────────
+      for (auto itRange = beginBacktestDateRange();
+	   itRange != endBacktestDateRange();
+	   ++itRange)
 	{
-	  backTesterDate = next_period (itDateRange->second.getFirstDate());
-	  backTesterEndDate = itDateRange->second.getLastDate();
-	  barBeforeBackTesterEndDate = previous_period(backTesterEndDate);
+	  // 1) Build the per-range date vector
+	  mDates.clear();
+	  auto rangeStart = itRange->second.getFirstDate();
+	  auto rangeEnd   = itRange->second.getLastDate();
 
-	  backtestNumber++;
-	  for (; backTesterDate <= backTesterEndDate; backTesterDate = next_period(backTesterDate))
+	  // include the first date, then step via next_period()
+	  for (auto d = rangeStart; ; d = next_period(d))
 	    {
-	      orderDate = previous_period (backTesterDate);
-	      //std::cout << "Iterating over strategies" << std::endl;
+	      mDates.push_back(d);
+	      if (d == rangeEnd) break;
+	    }
 
-	      for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
-		   itStrategy++)
+	  // 2) Compute the “last bar” for this range
+	  auto barBeforeBackTesterEndDate = previous_period(rangeEnd);
+	  ++backtestNumber;
+
+	  // ─── Inner loop over days via index ───────────────────────────
+	  for (size_t idx = 1; idx < mDates.size(); ++idx)
+	    {
+	      const date& current   = mDates[idx];
+	      const date& orderDate = mDates[idx - 1];
+
+	      for (itStrategy = beginStrategiesRaw();
+		   itStrategy != endStrategiesRaw();
+		   ++itStrategy)
 		{
-		  auto aStrategy = (*itStrategy);
-		  //std::cout << "Iterating over portfolio in strategy " << aStrategy->getStrategyName() << std::endl;
+		  StrategyPtr strat = *itStrategy;
 
-		  for (iteratorPortfolio = aStrategy->beginPortfolio();
-		       iteratorPortfolio != aStrategy->endPortfolio();
-		       iteratorPortfolio++)
+		  for (iteratorPortfolio = strat->beginPortfolio();
+		       iteratorPortfolio != strat->endPortfolio();
+		       ++iteratorPortfolio)
 		    {
-		      auto aSecurity = iteratorPortfolio->second;
-		  
-		      // If there is more than one date range and this is not the last date range, close
-		      // all positions.
+		      const auto& secPtr = iteratorPortfolio->second;
 
-		      if (multipleBacktestDates && (backTesterDate == barBeforeBackTesterEndDate) &&
-			  (backtestNumber < this->numBackTestRanges()))
-			  closeAllPositions(previous_period (backTesterDate));
+		      if (multipleRanges
+			  && current == barBeforeBackTesterEndDate
+			  && backtestNumber < numBackTestRanges())
+			{
+			  closeAllPositions(orderDate);
+			}
 		      else
 			{
-			  processStrategyBar (aSecurity, aStrategy, orderDate);
+			  processStrategyBar(secPtr, strat, orderDate);
 			}
 
-		      aStrategy->eventProcessPendingOrders (backTesterDate);
+		      strat->eventProcessPendingOrders(current);
 		    }
 		}
 	    }
-
 	}
     }
 
@@ -229,56 +250,64 @@ namespace mkc_timeseries
     virtual TimeSeriesDate previous_period(const TimeSeriesDate& d) const = 0;
     virtual TimeSeriesDate next_period(const TimeSeriesDate& d) const = 0;
 
-private:
-    void processStrategyBar (std::shared_ptr<Security<Decimal>> aSecurity,
-			     std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy,
-			     const date& processingDate)
+  private:
+    void rebuildStrategyRawList()
     {
-      if (aStrategy->doesSecurityHaveTradingData (*aSecurity, processingDate))
-	  {
-	    std::string theSymbol = aSecurity->getSymbol(); 
-	    aStrategy->eventUpdateSecurityBarNumber(theSymbol);
+      mStrategyRawList.clear();
+      mStrategyRawList.reserve(mStrategyList.size());
+      for (const auto& sp : mStrategyList)
+	{
+	  mStrategyRawList.push_back(sp.get());
+	}
+    }
+    
+    void processStrategyBar(
+			    const std::shared_ptr<Security<Decimal>>& security,
+			    StrategyPtr strategy,
+			    const date& processingDate)
+    {
+      if (!strategy->doesSecurityHaveTradingData(*security, processingDate))
+	{
+	  return;
+	}
 
-	    if (!aStrategy->isFlatPosition (theSymbol))
-	      aStrategy->eventExitOrders (aSecurity, 
-					  aStrategy->getInstrumentPosition(theSymbol),
-					  processingDate);
-	    aStrategy->eventEntryOrders(aSecurity, 
-					aStrategy->getInstrumentPosition(theSymbol),
-					processingDate);
-	    
-	  }
+      const auto symbol = security->getSymbol();
+      strategy->eventUpdateSecurityBarNumber(symbol);
+
+      if (!strategy->isFlatPosition(symbol))
+	{
+	  strategy->eventExitOrders(
+				    security,
+				    strategy->getInstrumentPosition(symbol),
+				    processingDate);
+	}
+      strategy->eventEntryOrders(
+				 security,
+				 strategy->getInstrumentPosition(symbol),
+				 processingDate);
     }
 
     void closeAllPositions(const TimeSeriesDate& orderDate)
-      {
-	//std::cout << "BackTester::closeAllPositions: close all positions as of " << orderDate << std::endl;
-	typename BackTester<Decimal>::StrategyIterator itStrategy;
-	typename BacktesterStrategy<Decimal>::PortfolioIterator iteratorPortfolio;
-
-	for (itStrategy = this->beginStrategies(); itStrategy != this->endStrategies();
-	     itStrategy++)
-	  {
-	    auto aStrategy = (*itStrategy);
-
-	    for (iteratorPortfolio = aStrategy->beginPortfolio();
-		 iteratorPortfolio != aStrategy->endPortfolio();
-		 iteratorPortfolio++)
-	      {
-		auto aSecurity = iteratorPortfolio->second;
-		std::string theSymbol = aSecurity->getSymbol();
-
-		aStrategy->eventUpdateSecurityBarNumber(theSymbol);
-		aStrategy->ExitAllPositions(theSymbol, orderDate);
-	      }
-	  }
-      }
+    {
+      for (auto itStrat = beginStrategiesRaw(); itStrat != endStrategiesRaw(); ++itStrat)
+	{
+	  StrategyPtr strategy = *itStrat;
+	  for (auto itPort = strategy->beginPortfolio(); itPort != strategy->endPortfolio(); ++itPort)
+	    {
+	      const auto& securityPtr = itPort->second;
+	      const auto symbol = securityPtr->getSymbol();
+	      strategy->eventUpdateSecurityBarNumber(symbol);
+	      strategy->ExitAllPositions(symbol, orderDate);
+	    }
+	}
+    }
 
   private:
     std::list<std::shared_ptr<BacktesterStrategy<Decimal>>> mStrategyList;
+    std::vector<StrategyPtr> mStrategyRawList;
     DateRangeContainer mBackTestDates;
+    std::vector<boost::gregorian::date> mDates;
   };
-
 
   //
   // class DailyBackTester
