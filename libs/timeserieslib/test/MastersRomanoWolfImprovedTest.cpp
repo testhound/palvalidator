@@ -57,14 +57,14 @@ public:
     std::shared_ptr<PalStrategy<D>> clone2(std::shared_ptr<Portfolio<D>> pf) const override {
         return std::make_shared<DummyPalStrategyEx>(pf);
     }
-    std::shared_ptr<BacktesterStrategy<D>> clone(std::shared_ptr<Portfolio<D>> pf) const override {
+    std::shared_ptr<BacktesterStrategy<D>> clone(const std::shared_ptr<Portfolio<D>>& pf) const override {
         return std::make_shared<DummyPalStrategyEx>(pf);
     }
     std::shared_ptr<BacktesterStrategy<D>> cloneForBackTesting() const override {
         return std::make_shared<DummyPalStrategyEx>(this->getPortfolio());
     }
-    void eventExitOrders(std::shared_ptr<Security<D>>, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
-    void eventEntryOrders(std::shared_ptr<Security<D>>, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
+    void eventExitOrders(const std::shared_ptr<Security<D>>&, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
+    void eventEntryOrders(const std::shared_ptr<Security<D>>&, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
 };
 
 std::shared_ptr<Security<D>> createDummySecurity() {
@@ -106,11 +106,18 @@ TEST_CASE("MastersRomanoWolfImproved handles empty data") {
 }
 
 TEST_CASE("MastersRomanoWolfImproved throws on null backtester") {
+  std::cout << "In null backtester unit test" << std::endl;
     MastersRomanoWolfImproved<D, DummyStatPolicy<D>> algo;
     auto portfolio = createDummyPortfolio();
+
+std::cout << "Finished creating dummy portfolio" << std::endl;
     auto strat = std::make_shared<DummyPalStrategyEx>(portfolio);
+std::cout << "Finished creating dummy strategy" << std::endl;
     StrategyContext<D> ctx = makeStrategyContext(strat, D("0.5"));
+std::cout << "Finished creating Strategy context" << std::endl;
     std::vector<StrategyContext<D>> data{ctx};
+std::cout << "Finished creating vector" << std::endl;
+std::cout << "Calling algo.run" << std::endl;
     REQUIRE_THROWS_AS(algo.run(data, 50, nullptr, portfolio, D("0.05")), std::runtime_error);
 }
 
@@ -145,7 +152,7 @@ TEST_CASE("MastersRomanoWolfImproved works with multiple strategies") {
     for (auto& s : strats) REQUIRE(pvals[s] == D("1.0"));
 }
 
-TEST_CASE("MastersRomanoWolfImproved low statistic raw p-value) {
+TEST_CASE("MastersRomanoWolfImproved low statistic raw p-value") {
     MastersRomanoWolfImproved<D, AlwaysLowStatPolicy<D>> algo;
     auto bt = std::make_shared<DummyBackTesterEx>();
     auto pf = createDummyPortfolio();
@@ -228,7 +235,7 @@ TEST_CASE("MastersRomanoWolfImproved integration with real price patterns and se
     
     auto pf = std::make_shared<Portfolio<D>>(security->getName() + " PF"); pf->addSecurity(security);
     MastersRomanoWolfImproved<D, ProfitFactorPolicy<D>> algo;
-    auto pvals = algo.run(contexts, 200, bt, pf, D("0.05"));
+    auto pvals = algo.run(contexts, 2500, bt, pf, D("0.05"));
     REQUIRE(pvals.size() == contexts.size());
     D prev = D("0.0");
     for (auto& ctx : contexts) {

@@ -83,7 +83,7 @@ namespace {
       return std::make_shared<DummyPalStrategy>(portfolio);
     }
 
-    std::shared_ptr<BacktesterStrategy<DecimalType>> clone(std::shared_ptr<Portfolio<DecimalType>> portfolio) const override {
+    std::shared_ptr<BacktesterStrategy<DecimalType>> clone(const std::shared_ptr<Portfolio<DecimalType>>& portfolio) const override {
       return std::make_shared<DummyPalStrategy>(portfolio);
     }
 
@@ -91,8 +91,8 @@ namespace {
       return std::make_shared<DummyPalStrategy>(this->getPortfolio());
     }
 
-    void eventExitOrders(std::shared_ptr<Security<DecimalType>>, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
-    void eventEntryOrders(std::shared_ptr<Security<DecimalType>>, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
+    void eventExitOrders(const std::shared_ptr<Security<DecimalType>>&, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
+    void eventEntryOrders(const std::shared_ptr<Security<DecimalType>>&, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
   };
 
   std::shared_ptr<Security<DecimalType>> createDummySecurity() {

@@ -60,14 +60,14 @@ public:
     std::shared_ptr<PalStrategy<D>> clone2(std::shared_ptr<Portfolio<D>> pf) const override {
         return std::make_shared<DummyPalStrategyEx>(pf);
     }
-    std::shared_ptr<BacktesterStrategy<D>> clone(std::shared_ptr<Portfolio<D>> pf) const override {
+    std::shared_ptr<BacktesterStrategy<D>> clone(const std::shared_ptr<Portfolio<D>>& pf) const override {
         return std::make_shared<DummyPalStrategyEx>(pf);
     }
     std::shared_ptr<BacktesterStrategy<D>> cloneForBackTesting() const override {
         return std::make_shared<DummyPalStrategyEx>(this->getPortfolio());
     }
-    void eventExitOrders(std::shared_ptr<Security<D>>, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
-    void eventEntryOrders(std::shared_ptr<Security<D>>, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
+    void eventExitOrders(const std::shared_ptr<Security<D>>&, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
+    void eventEntryOrders(const std::shared_ptr<Security<D>>&, const InstrumentPosition<D>&, const boost::gregorian::date&) override {}
 };
 
   // Helpers to create dummy security, portfolio, and strategy context
