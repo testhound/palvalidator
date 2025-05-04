@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <map>
+#include <vector>
 #include <cstdint>
 #include "ThrowAssert.hpp"
 #include "InstrumentPositionManagerException.h"
@@ -39,11 +40,13 @@ namespace mkc_timeseries
 
   public:
     InstrumentPositionManager()
-      : mInstrumentPositions()
+      : mInstrumentPositions(),
+	mBindings()
       {}
 
     InstrumentPositionManager (const InstrumentPositionManager<Decimal>& rhs)
-      : mInstrumentPositions(rhs.mInstrumentPositions)
+      : mInstrumentPositions(rhs.mInstrumentPositions),
+	mBindings(rhs.mBindings)
     {}
 
     InstrumentPositionManager<Decimal>& 
@@ -53,6 +56,7 @@ namespace mkc_timeseries
 	return *this;
 
       mInstrumentPositions = rhs.mInstrumentPositions;
+      mBindings = rhs.mBindings;
 
       return *this;
     }
@@ -135,35 +139,28 @@ namespace mkc_timeseries
     }
 
     void addBarForOpenPosition (const boost::gregorian::date openPositionDate,
-				const std::shared_ptr<Portfolio<Decimal>>& portfolioOfSecurities)
+				Portfolio<Decimal>* portfolioOfSecurities)
     {
-      ConstInstrumentPositionIterator posIt = beginInstrumentPositions();
-      std::shared_ptr<InstrumentPosition<Decimal>> position;
-      typename Portfolio<Decimal>::ConstPortfolioIterator securityIterator;
-      std::shared_ptr<Security<Decimal>> aSecurity;
-      typename Security<Decimal>::ConstRandomAccessIterator timeSeriesEntryIterator;
-
-      for (; posIt != endInstrumentPositions(); posIt++)
-	{
-	  position = posIt->second;
-
-	  if (isFlatPosition (position->getInstrumentSymbol()) == false)
-	    {
-	      securityIterator = portfolioOfSecurities->findSecurity(position->getInstrumentSymbol());
-	      if (securityIterator != portfolioOfSecurities->endPortfolio())
-		{
-		  aSecurity = securityIterator->second;
-
-		  // Make sure the security has historical data for the date in question before
-		  // adding it to the position.
-		  timeSeriesEntryIterator = aSecurity->findTimeSeriesEntry (openPositionDate);
-		  if (timeSeriesEntryIterator != aSecurity->getRandomAccessIteratorEnd())
-		    {
-		      addBar (position->getInstrumentSymbol(), *timeSeriesEntryIterator);
-		    }
-		}
-	    }
-	}
+      // bind once on first bar
+      if (mBindings.empty())
+	bindToPortfolio(portfolioOfSecurities);
+      
+      for (auto& binding : mBindings)
+        {
+	  auto* position = binding.first;
+	  auto* security = binding.second;
+	  
+	  // only add if the position is currently open
+	  if (position->isFlatPosition())
+	    continue;
+	  
+	  // pull the bar from the OHLCTimeSeries
+	  auto it = security->findTimeSeriesEntry(openPositionDate);
+	  if (it != security->getRandomAccessIteratorEnd())
+            {
+	      position->addBar(*it);
+            }
+        }
     }
 
     void closeAllPositions(const std::string& tradingSymbol,
@@ -200,6 +197,27 @@ namespace mkc_timeseries
 
     
   private:
+    void bindToPortfolio(Portfolio<Decimal>* portfolioOfSecurities)
+    {
+      mBindings.clear();
+      mBindings.reserve(mInstrumentPositions.size());
+
+      for (auto itPos = beginInstrumentPositions();
+	   itPos != endInstrumentPositions();
+	   ++itPos)
+        {
+	  InstrumentPosition<Decimal>* position = itPos->second.get();
+	  // look up the matching security in the portfolio
+	  auto secIt = portfolioOfSecurities
+	    ->findSecurity(position->getInstrumentSymbol());
+	  if (secIt != portfolioOfSecurities->endPortfolio())
+            {
+	      // capture raw pointers—no shared_ptr copies
+	      mBindings.emplace_back(position, secIt->second.get());
+            }
+        }
+    }
+
     ConstInstrumentPositionIterator findExistingSymbol (const std::string& symbol) const
     {
       ConstInstrumentPositionIterator pos = mInstrumentPositions.find (symbol);
@@ -225,6 +243,7 @@ namespace mkc_timeseries
 
   private:
     std::map<std::string, std::shared_ptr<InstrumentPosition<Decimal>>> mInstrumentPositions;
+    std::vector<std::pair<InstrumentPosition<Decimal>*, Security<Decimal>*>> mBindings;
   };
 }
 
