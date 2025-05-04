@@ -397,7 +397,7 @@ namespace mkc_timeseries
       // Add historical bar for this date before possibly closing any open
       // positions
       mInstrumentPositionManager.addBarForOpenPosition (orderProcessingDate,
-							mPortfolio);
+							mPortfolio.get());
       mOrderManager.processPendingOrders (orderProcessingDate,
 					  mInstrumentPositionManager);
     }
