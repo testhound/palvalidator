@@ -42,34 +42,34 @@ namespace mkc_timeseries
     {
     public:
       virtual bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-				  std::shared_ptr<Security<Decimal>> aSecurity) const = 0;
+				  Security<Decimal>* aSecurity) const = 0;
       virtual bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 				   std::shared_ptr<PriceActionLabPattern> pattern, 
-				   std::shared_ptr<Security<Decimal>> aSecurity) const = 0;
+				   Security<Decimal>* aSecurity) const = 0;
       virtual void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 				     std::shared_ptr<PriceActionLabPattern> pattern, 
-				     std::shared_ptr<Security<Decimal>> aSecurity,
+				     Security<Decimal>* aSecurity,
 				     const date& processingDate) const = 0;
     };
 
  template <class Decimal> class FlatEntryOrderConditions : public  EntryOrderConditions<Decimal>
    {
      bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 std::shared_ptr<Security<Decimal>> aSecurity) const
+			 Security<Decimal>* aSecurity) const
        {
 	 return true;
        }
 
       bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   std::shared_ptr<Security<Decimal>> aSecurity) const
+			   Security<Decimal>* aSecurity) const
 	{
 	  return strategy->getSecurityBarNumber(aSecurity->getSymbol()) > pattern->getMaxBarsBack();
 	}
 
       void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 			     std::shared_ptr<PriceActionLabPattern> pattern, 
-			     std::shared_ptr<Security<Decimal>> aSecurity,
+			     Security<Decimal>* aSecurity,
 			     const date& processingDate) const
 	{
 	  Decimal target = pattern->getProfitTargetAsDecimal();
@@ -86,14 +86,14 @@ namespace mkc_timeseries
  template <class Decimal> class LongEntryOrderConditions : public  EntryOrderConditions<Decimal>
    {
      bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 std::shared_ptr<Security<Decimal>> aSecurity) const
+			 Security<Decimal>* aSecurity) const
        {
 	return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
        }
 
       bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   std::shared_ptr<Security<Decimal>> aSecurity) const
+			   Security<Decimal>* aSecurity) const
 	{
 	  return (pattern->isLongPattern() &&
 		  (strategy->getSecurityBarNumber(aSecurity->getSymbol()) > 
@@ -102,7 +102,7 @@ namespace mkc_timeseries
 
       void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 			     std::shared_ptr<PriceActionLabPattern> pattern, 
-			     std::shared_ptr<Security<Decimal>> aSecurity,
+			     Security<Decimal>* aSecurity,
 			     const date& processingDate) const
 	{
 	  Decimal target = pattern->getProfitTargetAsDecimal();
@@ -116,14 +116,14 @@ namespace mkc_timeseries
  template <class Decimal> class ShortEntryOrderConditions : public  EntryOrderConditions<Decimal>
    {
      bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 std::shared_ptr<Security<Decimal>> aSecurity) const
+			 Security<Decimal>* aSecurity) const
        {
 	return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
        }
 
       bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   std::shared_ptr<Security<Decimal>> aSecurity) const
+			   Security<Decimal>* aSecurity) const
 	{
 	  return (pattern->isShortPattern() &&
 		  (strategy->getSecurityBarNumber(aSecurity->getSymbol()) > 
@@ -132,7 +132,7 @@ namespace mkc_timeseries
 
       void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 			     std::shared_ptr<PriceActionLabPattern> pattern, 
-			     std::shared_ptr<Security<Decimal>> aSecurity,
+			     Security<Decimal>* aSecurity,
 			     const date& processingDate) const
 	{
 	  Decimal target = pattern->getProfitTargetAsDecimal();
@@ -251,7 +251,7 @@ namespace mkc_timeseries
 							this->getPortfolio());
     }
 
-    void eventEntryOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+    void eventEntryOrders (Security<Decimal>* aSecurity,
 			   const InstrumentPosition<Decimal>& instrPos,
 			   const date& processingDate)
     {
@@ -265,7 +265,7 @@ namespace mkc_timeseries
 	throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknow position state"));
     }
 
-    void eventExitOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+    void eventExitOrders (Security<Decimal>* aSecurity,
 			  const InstrumentPosition<Decimal>& instrPos,
 			  const date& processingDate)
     {
@@ -293,7 +293,7 @@ namespace mkc_timeseries
     }
 
   private:
-    void entryOrdersCommon (std::shared_ptr<Security<Decimal>> aSecurity,
+    void entryOrdersCommon (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate,
 			    const EntryOrderConditions<Decimal>& entryConditions)
@@ -318,7 +318,7 @@ namespace mkc_timeseries
 			orderEntered = true;
 		      }
 
-		    this->addFlatPositionBar (aSecurity, processingDate);
+		    //this->addFlatPositionBar (aSecurity, processingDate);
 		    if (orderEntered)
 		      break;
 		  }
@@ -326,7 +326,7 @@ namespace mkc_timeseries
 	  }
       }
 
-    void eventExitLongOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+    void eventExitLongOrders (Security<Decimal>* aSecurity,
 			      const InstrumentPosition<Decimal>& instrPos,
 			      const date& processingDate,
 			      const Decimal& positionEntryPrice,
@@ -341,7 +341,7 @@ namespace mkc_timeseries
 	instrPos.setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
       }
 
-    void eventExitShortOrders (std::shared_ptr<Security<Decimal>> aSecurity,
+    void eventExitShortOrders (Security<Decimal>* aSecurity,
 			       const InstrumentPosition<Decimal>& instrPos,
 			       const date& processingDate,
 			       const Decimal& positionEntryPrice,
@@ -355,22 +355,25 @@ namespace mkc_timeseries
 	instrPos.setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
       }
 
+    [[deprecated("Use of this addLongPositionBar no longer supported")]]
     void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
     {
-      mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
+      //mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
     }
-    
+
+    [[deprecated("Use of this addShortPositionBar no longer supported")]]
     void addShortPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			     const date& processingDate)
     {
-      mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
+      //mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
     }
 
+    [[deprecated("Use of this addFlatPositionBar no longer supported")]]
     void addFlatPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
     {
-      mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
+      //mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
     }
     
   private:
@@ -382,8 +385,8 @@ namespace mkc_timeseries
   template <class Decimal> class PalStrategy : public BacktesterStrategy<Decimal>
     {
     public:
-       using PatternEvaluator = std::function<bool(const std::shared_ptr<Security<Decimal>>&,
-						   typename Security<Decimal>::ConstRandomAccessIterator)>;
+      using PatternEvaluator = std::function<bool(Security<Decimal>*,
+						  typename Security<Decimal>::ConstRandomAccessIterator)>;
 
     PalStrategy(const std::string& strategyName,
 		std::shared_ptr<PriceActionLabPattern> pattern,
@@ -401,7 +404,7 @@ namespace mkc_timeseries
 	  else
 	    {
 	      // no pattern ⇒ never match
-	      mPatternEvaluator = [](auto const&, auto){ return false; };
+	      mPatternEvaluator = [](Security<Decimal>*, auto){ return false; };
 	    }
 	}
 
@@ -482,7 +485,7 @@ namespace mkc_timeseries
 	  {
 	    auto lhs = compileExpression(pAnd->getLHS());
 	    auto rhs = compileExpression(pAnd->getRHS());
-	    return [lhs, rhs](auto const& sec, auto it) {
+	    return [lhs, rhs](Security<Decimal>* sec, auto it) {
 	      return lhs(sec, it) && rhs(sec, it);
 	    };
 	  }
@@ -490,7 +493,7 @@ namespace mkc_timeseries
 	  {
 	    auto leftFn  = compilePriceBar(pGt->getLHS());
 	    auto rightFn = compilePriceBar(pGt->getRHS());
-	    return [leftFn, rightFn](auto const& sec, auto it) {
+	    return [leftFn, rightFn](Security<Decimal>* sec, auto it) {
 	      return leftFn(sec, it) > rightFn(sec, it);
 	    };
 	  }
@@ -500,41 +503,40 @@ namespace mkc_timeseries
 	  }
       }
 
-      static std::function<Decimal(const std::shared_ptr<Security<Decimal>>&,
-				   typename Security<Decimal>::ConstRandomAccessIterator)>
+      //
+      
+      static std::function<Decimal(Security<Decimal>*, typename Security<Decimal>::ConstRandomAccessIterator)>
       compilePriceBar(PriceBarReference* barRef)
       {
-	auto type   = barRef->getReferenceType();
-	auto offset = barRef->getBarOffset();
-	switch (type)
-	  {
-	  case PriceBarReference::OPEN:
-	    return [offset](auto const& sec, auto it) {
-	      return sec->getOpenValue(it, offset);
-	    };
-	  case PriceBarReference::HIGH:
-	    return [offset](auto const& sec, auto it) {
-	      return sec->getHighValue(it, offset);
-	    };
-	  case PriceBarReference::LOW:
-	    return [offset](auto const& sec, auto it) {
-	      return sec->getLowValue(it, offset);
-	    };
-	  case PriceBarReference::CLOSE:
-	    return [offset](auto const& sec, auto it) {
-	      return sec->getCloseValue(it, offset);
-	    };
-
-	  case PriceBarReference::VOLUME:
-	    return [offset](auto const& sec, auto it) {
-	      return sec->getVolumeValue(it, offset);
-	    };
-
-	  default:
-	    throw std::runtime_error("Unsupported PriceBarReference");
-	  }
+        auto type   = barRef->getReferenceType();
+        auto offset = barRef->getBarOffset();
+        switch (type) {
+	case PriceBarReference::OPEN:
+	  return [offset](Security<Decimal>* sec, auto it) {
+	    return sec->getOpenValue(it, offset);
+	  };
+	case PriceBarReference::HIGH:
+	  return [offset](Security<Decimal>* sec, auto it) {
+	    return sec->getHighValue(it, offset);
+	  };
+	case PriceBarReference::LOW:
+	  return [offset](Security<Decimal>* sec, auto it) {
+	    return sec->getLowValue(it, offset);
+	  };
+	case PriceBarReference::CLOSE:
+	  return [offset](Security<Decimal>* sec, auto it) {
+	    return sec->getCloseValue(it, offset);
+	  };
+	case PriceBarReference::VOLUME:
+	  return [offset](Security<Decimal>* sec, auto it) {
+	    return sec->getVolumeValue(it, offset);
+	  };
+	default:
+	  throw std::runtime_error("Unsupported PriceBarReference");
+        }
       }
-
+      //
+      
       [[deprecated("Use of this addLongPositionBar no longer supported")]]
       void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
@@ -564,8 +566,8 @@ namespace mkc_timeseries
       static TradingVolume OneContract;
     };
 
-template <class Decimal> TradingVolume PalStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
-template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
+  template <class Decimal> TradingVolume PalStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
+  template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
 
   template <class Decimal> class PalLongStrategy : public PalStrategy<Decimal>
     {
@@ -619,7 +621,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 						       this->getPortfolio());
       }
 
-      void eventExitOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
+      void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
@@ -647,7 +649,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 	  }
       }
 
-      void eventEntryOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
+      void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
       {
@@ -727,7 +729,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 						       this->getPalPattern(),
 						       this->getPortfolio());
       }
-      void eventExitOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
+      void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
@@ -758,7 +760,7 @@ template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, Trad
 	  }
       }
 
-      void eventEntryOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
+      void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
       {

@@ -236,7 +236,7 @@ namespace mkc_timeseries
 			}
 		      else
 			{
-			  processStrategyBar(secPtr, strat, orderDate);
+			  processStrategyBar(secPtr.get(), strat, orderDate);
 			}
 
 		      strat->eventProcessPendingOrders(current);
@@ -261,8 +261,7 @@ namespace mkc_timeseries
 	}
     }
     
-    void processStrategyBar(
-			    const std::shared_ptr<Security<Decimal>>& security,
+    inline void processStrategyBar(Security<Decimal>* security,
 			    StrategyPtr strategy,
 			    const date& processingDate)
     {

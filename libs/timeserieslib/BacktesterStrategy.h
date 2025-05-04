@@ -99,11 +99,11 @@ namespace mkc_timeseries
       virtual ~BacktesterStrategy()
       {}
 
-      virtual void eventExitOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
+      virtual void eventExitOrders (Security<Decimal>* aSecurity,
 				    const InstrumentPosition<Decimal>& instrPos,
 				    const date& processingDate) = 0;
 
-      virtual void eventEntryOrders (const std::shared_ptr<Security<Decimal>>& aSecurity,
+      virtual void eventEntryOrders (Security<Decimal>* aSecurity,
 				     const InstrumentPosition<Decimal>& instrPos,
 				     const date& processingDate) = 0;
 
