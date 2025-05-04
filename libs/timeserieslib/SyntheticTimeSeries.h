@@ -212,6 +212,9 @@ namespace mkc_timeseries
       Decimal syntheticOpen, syntheticHigh;
       Decimal syntheticClose, syntheticLow;
 
+      std::vector<OHLCTimeSeriesEntry<Decimal>> bars;
+      bars.reserve(mTimeSeries.getNumEntries());
+      
       for (unsigned long i = 0; i < getNumElements(); i++)
 	{
 	  xPrice *= mRelativeOpen[i];
@@ -241,7 +244,9 @@ namespace mkc_timeseries
 						  DecimalConstants<Decimal>::DecimalZero,
 #endif
 						  mSyntheticTimeSeries->getTimeFrame());
-	      mSyntheticTimeSeries->addEntry(std::move(entry));
+
+	      bars.emplace_back(entry);
+	      //mSyntheticTimeSeries->addEntry(std::move(entry));
 	    }
 	  catch (const TimeSeriesEntryException& e)
 	    {
@@ -262,6 +267,11 @@ namespace mkc_timeseries
 	      throw;
 	    }
 	}
+
+      mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(mTimeSeries.getTimeFrame(),
+								       mTimeSeries.getVolumeUnits(),
+								       bars.begin(),
+								       bars.end());
     }
 
     void dumpRelative()

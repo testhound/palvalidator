@@ -7,13 +7,60 @@
 #ifndef __TIMESERIES_H
 #define __TIMESERIES_H 1
 
+#include "TimeSeriesEntry.h"
 #include <iostream>
-#include <map>
+#include <algorithm>
+#include <iterator>
+#include <type_traits>
 #include <boost/container/flat_map.hpp>
 #include <vector>
+#include <unordered_map>
 #include <boost/thread/mutex.hpp>
-#include "TimeSeriesEntry.h"
+#include <functional>
 #include "DateRange.h"
+
+namespace std
+{
+  /**
+   * @brief Hash functor specialization for Boost.PosixTime ptime.
+   *
+   * Packs the calendar date and minute-of-day into a 64-bit integer key,
+   * then feeds that key into the standard integer hasher.  Designed for
+   * daily and intraday bar timestamps (minute resolution), yielding
+   * a perfect, collision-free mapping within those constraints.
+   *
+   * Key layout (64 bits total):
+   * - High 53+ bits: days since epoch (as returned by day_number())
+   * - Low 11 bits:   minute of day (0–1439)
+   *
+   * @note If your time series never has sub-minute bars, this guarantees
+   *       unique hash keys for each bar timestamp.
+   */
+  template<>
+  struct hash<boost::posix_time::ptime> {
+    static inline size_t computeKey(const boost::posix_time::ptime& t) noexcept
+    {
+      // days since some epoch
+      uint64_t days = t.date().day_number();
+      
+      // minute of day (0–1439)
+      uint64_t minuteOfDay =
+        static_cast<uint64_t>(t.time_of_day().hours()) * 60 +
+        static_cast<uint64_t>(t.time_of_day().minutes());
+
+      // pack into one 64-bit key: high bits = days, low bits = minuteOfDay
+      uint64_t key = (days << 11) | (minuteOfDay & 0x7FF);
+
+      // now feed it to the integer hasher
+      return std::hash<uint64_t>()(key);
+    }
+    
+    std::size_t operator()(boost::posix_time::ptime const& t) const noexcept
+    {
+      return computeKey(t);
+    }
+  };
+}
 
 namespace mkc_timeseries
 {
@@ -431,299 +478,115 @@ namespace mkc_timeseries
     mutable boost::mutex mMutex;
   };
 
-  /*
-    class TimeSeries
-
-   */
-
   /**
    * @brief Represents a time series of Open, High, Low, Close (OHLC) and Volume data.
    * @tparam Decimal The numeric type used for price and volume data (e.g., double, float).
    *
    * This class is central to financial backtesting systems, holding historical
    * price and volume information for instruments like equities or futures.
-   *
-   * It maintains data internally in two synchronized structures:
-   *
-   * 1. A `boost::container::flat_map` (`mSortedTimeSeries`) mapping `ptime` timestamps
-   * to `OHLCTimeSeriesEntry` objects, ensuring time-sorted order and efficient
-   * lookup/insertion/deletion by date/time.
-   * 2. A `std::vector` (`mSequentialTimeSeries`) storing the `OHLCTimeSeriesEntry`
-   * objects in sequential time order, allowing for fast random access by index.
-   *
-   * A `boost::mutex` (`mMutex`) is used to ensure thread safety for concurrent access.
-   * Operations that modify the series (`addEntry`, `deleteEntryByDate`) or require
-   * the vector view (`beginRandomAccess`, `getRandomAccessIterator`, etc.) handle
-   * synchronization between the map and vector representations via the `mMapAndArrayInSync` flag.
-   */  
-  template <class Decimal> class OHLCTimeSeries
+
+   * Maintains a single sorted-invariant vector of entries (`mData`) of type `OHLCTimeSeriesEntry<Decimal>`.
+   * - Insertion via `addEntry(...)` keeps the data sorted (binary search + insert).
+   * - Rejects duplicate timestamps.
+   * - Offers both sorted and random access without any synchronization or finalize steps.
+   */
+  template <class Decimal>
+  class OHLCTimeSeries
   {
   public:
-    typedef typename boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstTimeSeriesIterator;
-    typedef typename std::vector<OHLCTimeSeriesEntry<Decimal>>::const_iterator ConstRandomAccessIterator;
+    using Entry = OHLCTimeSeriesEntry<Decimal>;
+    using ConstTimeSeriesIterator   = typename std::vector<Entry>::const_iterator;
+    using ConstRandomAccessIterator = ConstTimeSeriesIterator;
 
-    /**
-     * @brief Extracts the Open prices into a separate NumericTimeSeries.
-     * @return A NumericTimeSeries<Decimal> containing only the Open values,
-     * sharing the same time frame and dates as this OHLC series.
-     */
-    NumericTimeSeries<Decimal> OpenTimeSeries() const
-    {
-      NumericTimeSeries<Decimal> openSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
-
-      for (; it != endSortedAccess(); it++)
-	{
-	  openSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
-								it->second.getOpenValue(),
-								it->second.getTimeFrame()));
-	}
-
-      return openSeries;
-    }
-
-     /**
-     * @brief Extracts the High prices into a separate NumericTimeSeries.
-     * @return A NumericTimeSeries<Decimal> containing only the High values,
-     * sharing the same time frame and dates as this OHLC series.
-     */
-    NumericTimeSeries<Decimal> HighTimeSeries() const
-    {
-      NumericTimeSeries<Decimal> highSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
-
-      for (; it != endSortedAccess(); it++)
-	{
-	  highSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
-								it->second.getHighValue(),
-								it->second.getTimeFrame()));
-	}
-
-      return highSeries;
-    }
-
-    /**
-     * @brief Extracts the Low prices into a separate NumericTimeSeries.
-     * @return A NumericTimeSeries<Decimal> containing only the Low values,
-     * sharing the same time frame and dates as this OHLC series.
-     */
-    NumericTimeSeries<Decimal> LowTimeSeries() const
-    {
-      NumericTimeSeries<Decimal> lowSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
-
-      for (; it != endSortedAccess(); it++)
-	{
-	  lowSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
-							       it->second.getLowValue(),
-							       it->second.getTimeFrame()));
-	}
-
-      return lowSeries;
-    }
-
-    /**
-     * @brief Extracts the Close prices into a separate NumericTimeSeries.
-     * @return A NumericTimeSeries<Decimal> containing only the Close values,
-     * sharing the same time frame and dates as this OHLC series.
-     */
-    NumericTimeSeries<Decimal> CloseTimeSeries() const
-    {
-      NumericTimeSeries<Decimal> closeSeries(getTimeFrame(), getNumEntries());
-      OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = beginSortedAccess();
-
-      for (; it != endSortedAccess(); it++)
-	{
-	  closeSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it->first,
-								 it->second.getCloseValue(),
-								 it->second.getTimeFrame()));
-	}
-
-      return closeSeries;
-    }
+    /** @name Constructors & Assignment */
+    ///@{
 
     /**
      * @brief Constructs an empty OHLCTimeSeries.
-     * @param timeFrame The time interval between data points (e.g., daily, hourly).
-     * @param unitsOfVolume The units used for the volume data (e.g., shares, contracts).
+     * @param timeFrame The time frame duration for entries in this series (e.g., Daily, Weekly).
+     * @param unitsOfVolume The units for the volume data (e.g., Shares, Contracts).
      */
-    OHLCTimeSeries (TimeFrame::Duration timeFrame, TradingVolume::VolumeUnit unitsOfVolume) :
-      mSortedTimeSeries(),
-      mDateToSequentialIndex(),
-      mSequentialTimeSeries(),
-      mTimeFrame (timeFrame),
-      mMapAndArrayInSync (true),
-      mUnitsOfVolume(unitsOfVolume),
-      mMutex()
+    OHLCTimeSeries(TimeFrame::Duration timeFrame,
+		   TradingVolume::VolumeUnit unitsOfVolume)
+      : mData(),
+	mTimeFrame(timeFrame),
+	mUnitsOfVolume(unitsOfVolume),
+	mIndex()
     {}
 
     /**
-     * @brief Constructs an empty OHLCTimeSeries, reserving space for entries.
-     * @param timeFrame The time interval between data points.
-     * @param unitsOfVolume The units used for the volume data.
-     * @param numElements A hint for reserving space in the internal vector for performance.
+     * @brief Constructs an empty OHLCTimeSeries, reserving space for elements.
+     * @param timeFrame The time frame duration for entries in this series.
+     * @param unitsOfVolume The units for the volume data.
+     * @param reserveCount The initial capacity to reserve in the internal vector.
      */
-    OHLCTimeSeries (TimeFrame::Duration timeFrame, TradingVolume::VolumeUnit unitsOfVolume,
-		    unsigned long numElements) :
-      mSortedTimeSeries(),
-      mDateToSequentialIndex(),
-      mSequentialTimeSeries(),
-      mTimeFrame (timeFrame),
-      mMapAndArrayInSync (true),
-      mUnitsOfVolume(unitsOfVolume),
-      mMutex()
+    OHLCTimeSeries(TimeFrame::Duration timeFrame,
+		   TradingVolume::VolumeUnit unitsOfVolume,
+		   unsigned long reserveCount)
+      : mData(),
+	mTimeFrame(timeFrame),
+	mUnitsOfVolume(unitsOfVolume),
+	mIndex()
     {
-      mSequentialTimeSeries.reserve(numElements);
-    }
-
-    OHLCTimeSeries(const OHLCTimeSeries<Decimal>& rhs)
-      : mSortedTimeSeries(),
-	mDateToSequentialIndex(),
-	mSequentialTimeSeries(),
-	mTimeFrame(rhs.mTimeFrame),
-	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
-	mUnitsOfVolume(rhs.mUnitsOfVolume),
-	mMutex() // Create a new mutex for this instance.
-    {
-      // Lock rhs to ensure we copy a consistent state.
-      boost::mutex::scoped_lock lock(rhs.mMutex);
-      mSortedTimeSeries = rhs.mSortedTimeSeries;
-      mDateToSequentialIndex = rhs.mDateToSequentialIndex;
-      mSequentialTimeSeries = rhs.mSequentialTimeSeries;
-    }
-    
-    OHLCTimeSeries<Decimal>&
-    operator=(const OHLCTimeSeries<Decimal> &rhs)
-    {
-      if (this == &rhs)
-	return *this;
-
-      boost::mutex::scoped_lock lock(mMutex);           // Lock this instance
-      boost::mutex::scoped_lock rhsLock(rhs.mMutex);    // Lock rhs to safely read shared state
-
-      // Copy all member *except* the mutex
-      // boost::mutex (and std::mutex) is non-copyable and non-assignable
-      
-      mSortedTimeSeries = rhs.mSortedTimeSeries;
-      mDateToSequentialIndex = rhs.mDateToSequentialIndex;
-      mSequentialTimeSeries = rhs.mSequentialTimeSeries;
-      mTimeFrame  = rhs.mTimeFrame;
-      mMapAndArrayInSync = rhs.mMapAndArrayInSync;
-      mUnitsOfVolume = rhs.mUnitsOfVolume;
-
-      return *this;
+      mData.reserve(reserveCount);
     }
 
     /**
-     * @brief Move constructor.
-     * @param rhs The OHLCTimeSeries object to move from.
-     * @note Transfers ownership of internal data structures efficiently.
-     * `rhs` is left in a valid but unspecified state (likely empty).
-     * A new mutex is created for the moved-to object. Locks `rhs`.
-     */
-    OHLCTimeSeries(OHLCTimeSeries<Decimal>&& rhs) noexcept
-      : mSortedTimeSeries(std::move(rhs.mSortedTimeSeries)),
-	mDateToSequentialIndex(std::move(rhs.mDateToSequentialIndex)),
-	mSequentialTimeSeries(std::move(rhs.mSequentialTimeSeries)),
-	mTimeFrame(rhs.mTimeFrame),
-	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
-	mUnitsOfVolume(rhs.mUnitsOfVolume),
-	mMutex() // Fresh mutex
-    {}
-
-    /**
-     * @brief Move assignment operator.
-     * @param rhs The OHLCTimeSeries object to move assign from.
-     * @return A reference to this object (`*this`).
-     * @note Transfers ownership of internal data. Handles self-assignment.
-     * `rhs` is left in a valid but unspecified state. Locks both `this` and `rhs`.
-     * The mutex of `this` is not assigned.
-     */
-    OHLCTimeSeries<Decimal>& operator=(OHLCTimeSeries<Decimal>&& rhs) noexcept
-    {
-      if (this != &rhs)
-	{
-	  boost::mutex::scoped_lock lock(mMutex);
-	  boost::mutex::scoped_lock rhsLock(rhs.mMutex);
-
-	  mSortedTimeSeries = std::move(rhs.mSortedTimeSeries);
-	  mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
-	  mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
-	  mTimeFrame = rhs.mTimeFrame;
-	  mMapAndArrayInSync = rhs.mMapAndArrayInSync;
-	  mUnitsOfVolume = rhs.mUnitsOfVolume;
-	  // Note: mMutex remains unchanged (fresh per object)
-	}
-
-      return *this;
-    }
-
-    /**
-     * @brief Adds a new OHLC entry to the time series.
-     * @param entry The OHLCTimeSeriesEntry to add. The entry is moved into the series.
-     * @throws std::domain_error If the entry's time frame doesn't match the series'
-     * time frame, or if an entry for the given timestamp
-     * already exists in the sorted map.
+     * @brief Constructs an OHLCTimeSeries from a range of entries.
      *
-     * @note This operation locks the mutex. It invalidates the sequential (vector)
-     * representation, setting `mMapAndArrayInSync` to false. Subsequent
-     * operations requiring the vector view will trigger synchronization.
+     * Initializes the series with copies of entries from the range [first, last).
+     * The entries are sorted by timestamp after insertion.
+     *
+     * @tparam InputIt The type of the input iterator. Must dereference to OHLCTimeSeriesEntry<Decimal>.
+     * @param tf The time frame duration for entries in this series.
+     * @param units The units for the volume data.
+     * @param first Iterator pointing to the beginning of the range.
+     * @param last Iterator pointing past the end of the range.
+     * @throws TimeSeriesException If any entry in the input range has a time frame different from `tf`.
+     * @note only enable if InputIt::value_type is OHLCTimeSeriesEntry<Decimal>
      */
-    void addEntry (OHLCTimeSeriesEntry<Decimal> entry)
+    template<
+    class InputIt,
+    class = typename std::enable_if<
+        std::is_same<typename std::iterator_traits<InputIt>::value_type,
+		     OHLCTimeSeriesEntry<Decimal>>::value>::type>
+    OHLCTimeSeries(TimeFrame::Duration tf,
+		   TradingVolume::VolumeUnit units,
+		   InputIt first,
+		   InputIt last)
+      : mData(first, last),
+	mTimeFrame(tf),
+	mUnitsOfVolume(units),
+	mIndex()
     {
-      boost::mutex::scoped_lock lock(mMutex);
-      if (entry.getTimeFrame() != getTimeFrame())
-	throw std::domain_error(std::string("OHLCTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry.getDateTime()) + std::string(" time frames do not match")));
+      // 1) Optional: verify every entry has the correct timeFrame
+      for (auto& e : mData) {
+	if (e.getTimeFrame() != tf)
+	  throw TimeSeriesException("ctor: time frame mismatch");
+      }
 
-      auto result = mSortedTimeSeries.emplace(entry.getDateTime(), std::move(entry));
-      if (!result.second)
-	throw std::domain_error("OHLCTimeSeries: entry for time already exists: " + boost::posix_time::to_simple_string(entry.getDateTime()));
-	
-      mMapAndArrayInSync = false;
+      std::sort(mData.begin(), mData.end(),
+		[](auto const &a, auto const &b)
+		{
+		  return a.getDateTime() < b.getDateTime();
+		});
     }
 
-    /**
-     * @brief Retrieves an iterator pointing to the time series entry for a specific date.
-     * @param timeSeriesDate The date (`boost::gregorian::date`) to find.
-     * The search uses the date combined with the result of `getDefaultBarTime()`.
-     * @return A `ConstTimeSeriesIterator` pointing to the entry if found in the sorted map,
-     * otherwise returns `endSortedAccess()`.
-     * @note This operation may lock the mutex briefly if a synchronization check is needed,
-     * but primarily accesses the underlying map.
-     */
-    ConstTimeSeriesIterator getTimeSeriesEntry(const boost::gregorian::date& timeSeriesDate) const
-    {
-      ptime dateTime(timeSeriesDate, getDefaultBarTime());
+    /** @brief Default copy constructor. */
+    OHLCTimeSeries(const OHLCTimeSeries& rhs) = default;
 
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }
+    /** @brief Default copy assignment operator. */
+    OHLCTimeSeries& operator=(const OHLCTimeSeries& rhs) = default;
 
-      return mSortedTimeSeries.find(dateTime);
-    }
+    /** @brief Default move constructor. */
+    OHLCTimeSeries(OHLCTimeSeries&& rhs) noexcept = default;
+
+     /** @brief Default move assignment operator. */
+    OHLCTimeSeries& operator=(OHLCTimeSeries&& rhs) noexcept = default;
+    ///@}
 
     /**
-     * @brief Retrieves an iterator pointing to the time series entry for a specific datetime.
-     * @param timeSeriesDateTime The exact `boost::posix_time::ptime` to find.
-     * @return A `ConstTimeSeriesIterator` pointing to the entry if found in the sorted map,
-     * otherwise returns `endSortedAccess()`.
-     * @note This operation may lock the mutex briefly if a synchronization check is needed,
-     * but primarily accesses the underlying map.
-     */
-    ConstTimeSeriesIterator getTimeSeriesEntry(const ptime& timeSeriesDate) const
-    {
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }
-      
-      return mSortedTimeSeries.find(timeSeriesDate);
-    }
-
-    /**
-     * @brief Gets the time frame duration associated with this series.
-     * @return The `TimeFrame::Duration` (e.g., Daily, Hourly).
+     * @brief Get the time frame of this series.
      */
     TimeFrame::Duration getTimeFrame() const
     {
@@ -731,463 +594,313 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Gets the total number of entries currently in the time series.
-     * @return The number of entries as an `unsigned long`.
-     * @note Locks the mutex to safely access the size of the underlying map.
-     */
-    unsigned long getNumEntries() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mSortedTimeSeries.size();
-    }
-
-    /**
-     * @brief Gets the units used for the volume data in this series.
-     * @return The `TradingVolume::VolumeUnit` (e.g., Shares, Contracts).
+     * @brief Get the volume units of this series.
      */
     TradingVolume::VolumeUnit getVolumeUnits() const
     {
       return mUnitsOfVolume;
     }
 
-    std::vector<OHLCTimeSeriesEntry<Decimal>> getEntriesCopy() const
+    /**
+     * @brief Number of entries in the series.
+     */
+    unsigned long getNumEntries() const
     {
-      synchronize();
-      return mSequentialTimeSeries; // safe copy
+      return static_cast<unsigned long>(mData.size());
     }
 
     /**
-     * @brief Gets a constant random access iterator pointing to the beginning of the sequential time series vector.
-     * A random access iterator is need when accessing something like high from 5 bars ago.
-     * @return A `ConstRandomAccessIterator` to the first element.
-     * @note Ensures the internal vector is synchronized with the map before returning the iterator.
-     * Acquires a lock if synchronization is necessary.
+     * @brief Inserts a new OHLC entry into the time series.
+     *
+     * The entry is inserted in a way that maintains the time-sorted order of the
+     * internal vector. If an entry with the same timestamp already exists,
+     * or if the entry's time frame does not match the series' time frame,
+     * an exception is thrown. This operation invalidates the internal ptime index.
+     *
+     * @param entry The OHLCTimeSeriesEntry to add (passed by value, potentially moved).
+     * @throws std::domain_error If the entry's time frame does not match the series' time frame.
+     * @throws std::domain_error If an entry with the same timestamp already exists.
      */
-    OHLCTimeSeries::ConstRandomAccessIterator beginRandomAccess() const
+    void addEntry(Entry entry)
     {
-      if (!mMapAndArrayInSync)
-	{
-	  boost::mutex::scoped_lock lock(mMutex);
-	  if (!mMapAndArrayInSync)
-	    synchronize_unlocked();
-	}
+      if (entry.getTimeFrame() != getTimeFrame())
+	throw std::domain_error("addEntry: time frame mismatch");
 
-      return mSequentialTimeSeries.begin();
+      auto it = std::lower_bound(
+				 mData.begin(), mData.end(), entry,
+				 [](auto const& a, auto const& b){ return a.getDateTime() < b.getDateTime(); });
+
+      if (it != mData.end() && it->getDateTime() == entry.getDateTime())
+	throw std::domain_error("addEntry: duplicate timestamp");
+
+      mData.insert(it, std::move(entry));
+      if (!mIndex.empty())
+        mIndex.clear();
     }
 
     /**
-     * @brief Gets a constant random access iterator pointing past the end of the sequential time series vector.
-     * @return A `ConstRandomAccessIterator` referring to the past-the-end element.
-     * @note Ensures the internal vector is synchronized with the map before returning the iterator.
-     * Acquires a lock if synchronization is necessary.
+     * @brief Creates a NumericTimeSeries containing only the Open prices from this series.
+     * @return A new NumericTimeSeries object holding the Open prices and corresponding timestamps.
      */
-    OHLCTimeSeries::ConstRandomAccessIterator endRandomAccess() const
+    NumericTimeSeries<Decimal> OpenTimeSeries() const
     {
-      if (!mMapAndArrayInSync)
-	{
-	  boost::mutex::scoped_lock lock(mMutex);
-	  if (!mMapAndArrayInSync)
-	    synchronize_unlocked();
-	}
-
-      return mSequentialTimeSeries.end();
+      NumericTimeSeries<Decimal> out(getTimeFrame(), getNumEntries());
+      for (auto it = beginSortedAccess(); it != endSortedAccess(); ++it)
+	out.addEntry(
+		     NumericTimeSeriesEntry<Decimal>(it->getDateTime(),
+						     it->getOpenValue(),
+						     it->getTimeFrame()));
+      return out;
     }
 
     /**
-     * @brief Gets a random access iterator pointing to the entry for a specific date within the sequential vector.
-     * @param d The `boost::gregorian::date` to find. The search uses the date combined with `getDefaultBarTime()`.
-     * @return A `ConstRandomAccessIterator` pointing to the entry if found, otherwise `endRandomAccess()`.
-     * @note Requires internal synchronization (locks if necessary) to ensure the date-to-index map
-     * and sequential vector are up-to-date.
+     * @brief Creates a NumericTimeSeries containing only the High prices from this series.
+     * @return A new NumericTimeSeries object holding the High prices and corresponding timestamps.
      */
-    OHLCTimeSeries::ConstRandomAccessIterator getRandomAccessIterator(const boost::gregorian::date& d) const
+    NumericTimeSeries<Decimal> HighTimeSeries() const
     {
-      ptime dateTime(d, getDefaultBarTime());
-
-      if (!mMapAndArrayInSync)
-	{
-	  boost::mutex::scoped_lock lock(mMutex);
-	  if (!mMapAndArrayInSync)
-            synchronize_unlocked();  // internal version assumes lock is already held
-	}
-
-      auto pos = mDateToSequentialIndex.find(dateTime);
-      if (pos != mDateToSequentialIndex.end())
-	{
-	  const ArrayTimeSeriesIndex& index = pos->second;
-	  return mSequentialTimeSeries.begin() + index.asIntegral();
-	}
-
-      return mSequentialTimeSeries.end();
+      NumericTimeSeries<Decimal> out(getTimeFrame(), getNumEntries());
+      for (auto it = beginSortedAccess(); it != endSortedAccess(); ++it)
+	out.addEntry(
+		     NumericTimeSeriesEntry<Decimal>(it->getDateTime(),
+						     it->getHighValue(),
+						     it->getTimeFrame()));
+      return out;
     }
 
     /**
-     * @brief Gets a constant iterator pointing to the beginning of the time-sorted map.
-     * @return A `ConstTimeSeriesIterator` to the earliest entry.
-     * @note Accesses the map directly, does not require synchronization itself, but other
-     * concurrent operations might affect the map.
+     * @brief Creates a NumericTimeSeries containing only the Low prices from this series.
+     * @return A new NumericTimeSeries object holding the Low prices and corresponding timestamps.
      */
-    OHLCTimeSeries::ConstTimeSeriesIterator beginSortedAccess() const
+    NumericTimeSeries<Decimal> LowTimeSeries() const
     {
-      return mSortedTimeSeries.begin();
+      NumericTimeSeries<Decimal> out(getTimeFrame(), getNumEntries());
+      for (auto it = beginSortedAccess(); it != endSortedAccess(); ++it)
+	out.addEntry(
+		     NumericTimeSeriesEntry<Decimal>(it->getDateTime(),
+						     it->getLowValue(),
+						     it->getTimeFrame()));
+      return out;
     }
 
     /**
-     * @brief Gets a constant iterator pointing past the end of the time-sorted map.
-     * @return A `ConstTimeSeriesIterator` referring to the past-the-end element.
+     * @brief Creates a NumericTimeSeries containing only the Close prices from this series.
+     * @return A new NumericTimeSeries object holding the Close prices and corresponding timestamps.
      */
-    OHLCTimeSeries::ConstTimeSeriesIterator endSortedAccess() const
+    NumericTimeSeries<Decimal> CloseTimeSeries() const
     {
-      return mSortedTimeSeries.end();
+      NumericTimeSeries<Decimal> out(getTimeFrame(), getNumEntries());
+      for (auto it = beginSortedAccess(); it != endSortedAccess(); ++it)
+	out.addEntry(
+		     NumericTimeSeriesEntry<Decimal>(it->getDateTime(),
+						     it->getCloseValue(),
+						     it->getTimeFrame()));
+      return out;
     }
 
-     /**
-     * @brief Gets the date part of the earliest entry in the time series.
-     * @return The `boost::gregorian::date` of the first entry.
-     * @throws std::domain_error If the time series is empty.
-     * @note Accesses the sorted map. May lock briefly for synchronization status check.
-     */
-    const boost::gregorian::date getFirstDate() const
+    /** @brief Return a copy of all entries. */
+    std::vector<Entry> getEntriesCopy() const
     {
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }
- 
-      if (mSortedTimeSeries.empty())
-	throw std::domain_error("OHLCTimeSeries:getFirstDate: no entries in time series");
+      return mData;
+    }
 
-      return mSortedTimeSeries.begin()->first.date();
+    /** @name Sorted-access iteration (by time) */
+    ///@{
+    ConstTimeSeriesIterator beginSortedAccess() const { return mData.begin(); }
+    ConstTimeSeriesIterator endSortedAccess()   const { return mData.end();   }
+    ///@}
+
+    /**
+     * @brief Lookup entry by date (default bar time).
+     * @return endSortedAccess() if not found.
+     */
+    ConstTimeSeriesIterator getTimeSeriesEntry(const boost::gregorian::date& d) const
+    {
+      return getTimeSeriesEntry(boost::posix_time::ptime(d, getDefaultBarTime()));
     }
 
     /**
-     * @brief Gets the full timestamp (`ptime`) of the earliest entry in the time series.
-     * @return The `boost::posix_time::ptime` of the first entry.
-     * @throws std::domain_error If the time series is empty.
-     * @note Accesses the sorted map. May lock briefly for synchronization status check.
+     * @brief Lookup entry by exact datetime.
      */
-    const ptime getFirstDateTime() const
+    ConstTimeSeriesIterator getTimeSeriesEntry(const boost::posix_time::ptime& dt) const
     {
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }      
+       if (mIndex.empty())
+	buildIndex();
+      
+       auto it = mIndex.find(dt);
+       if (it == mIndex.end())
+	 return mData.end();
 
-      if (mSortedTimeSeries.empty())
-	throw std::domain_error("OHLCTimeSeries:getFirstDateTime: no entries in time series");
+       return mData.begin() + it->second; 
+      
+      
+	/* auto it = std::lower_bound(
+				 mData.begin(), mData.end(), dt,
+				 [](auto const& e, auto const& t){ return e.getDateTime() < t; });
+      return (it != mData.end() && it->getDateTime() == dt)
+      ? it : mData.end(); */
+    }
 
-      return mSortedTimeSeries.begin()->first;
+    /** @name Random-access iteration (by index) */
+
+    ConstRandomAccessIterator beginRandomAccess() const { return mData.begin(); }
+    ConstRandomAccessIterator endRandomAccess()   const { return mData.end();   }
+
+    /**
+     * @brief Get iterator for a specific date in the random-access array.
+     */
+    ConstRandomAccessIterator getRandomAccessIterator(const boost::gregorian::date& d) const
+    {
+      return getTimeSeriesEntry(d);
+    }
+
+    /** @brief First date in series. */
+    boost::gregorian::date getFirstDate() const
+    {
+      if (mData.empty()) throw std::domain_error("getFirstDate: empty series");
+      return mData.front().getDateTime().date();
+    }
+
+    /** @brief First full timestamp. */
+    boost::posix_time::ptime getFirstDateTime() const
+    {
+      if (mData.empty()) throw std::domain_error("getFirstDateTime: empty series");
+      return mData.front().getDateTime();
+    }
+
+    /** @brief Last date in series. */
+    boost::gregorian::date getLastDate() const
+    {
+      if (mData.empty()) throw std::domain_error("getLastDate: empty series");
+      return mData.back().getDateTime().date();
+    }
+
+    /** @brief Last full timestamp. */
+    boost::posix_time::ptime getLastDateTime() const
+    {
+      if (mData.empty()) throw std::domain_error("getLastDateTime: empty series");
+      return mData.back().getDateTime();
     }
 
     /**
-     * @brief Gets the date part of the latest entry in the time series.
-     * @return The `boost::gregorian::date` of the last entry.
-     * @throws std::domain_error If the time series is empty.
-     * @note Accesses the sorted map using reverse iterators. May lock briefly for synchronization status check.
+     * @brief Get entry by iterator and offset.
      */
-    const boost::gregorian::date getLastDate() const
-    {
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }
-
-      if (mSortedTimeSeries.empty())
-	throw std::domain_error("OHLCTimeSeries:getLastDate: no entries in time series");
-
-      return mSortedTimeSeries.rbegin()->first.date();
-    }
-
-     /**
-     * @brief Gets the full timestamp (`ptime`) of the latest entry in the time series.
-     * @return The `boost::posix_time::ptime` of the last entry.
-     * @throws std::domain_error If the time series is empty.
-     * @note Accesses the sorted map using reverse iterators. May lock briefly for synchronization status check.
-     */
-    const ptime getLastDateTime() const
-    {
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }
-
-      if (mSortedTimeSeries.empty())
-	throw std::domain_error("OHLCTimeSeries:getLastDateTime: no entries in time series");
-
-      return mSortedTimeSeries.rbegin()->first;
-    }
-
-    /**
-     * @brief Retrieves a specific entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator` pointing to a position in the sequential vector.
-     * @param offset The number of entries to look back from the iterator's position
-     * (0 means the entry at `it`, 1 means the previous entry, etc.).
-     * @return A constant reference to the `OHLCTimeSeriesEntry<Decimal>` at the calculated position (`it - offset`).
-     * @throws TimeSeriesException If the iterator `it` is the `endRandomAccess` iterator,
-     * or if the calculated position (`it - offset`) falls before
-     * the beginning of the sequential vector.
-     * @note Requires the sequential vector to be synchronized. Ensures synchronization internally (locks if needed).
-     */
-    const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it,
-							    unsigned long offset) const
+    const Entry& getTimeSeriesEntry(const ConstRandomAccessIterator& it,
+				    unsigned long offset) const
     {
       ValidateVectorOffset(it, offset);
-      OHLCTimeSeries::ConstRandomAccessIterator new_it = it - offset;
-      return *new_it;
+      return *(it - offset);
     }
 
     /**
-     * @brief Gets the date value of an entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator`.
-     * @param offset The lookback offset (0 for current `it`, 1 for previous, etc.).
-     * @return A constant reference to the `boost::gregorian::date` of the specified entry.
-     * @throws TimeSeriesException If access is out of bounds (checked via `getTimeSeriesEntry`).
-     * @note Requires synchronization.
+     * @brief Retrieve date value by iterator offset.
      */
-    const boost::gregorian::date&
-    getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
+    const boost::gregorian::date& getDateValue(const ConstRandomAccessIterator& it,
+					       unsigned long offset) const
     {
-      return getTimeSeriesEntry (it, offset).getDateValue();
+      return getTimeSeriesEntry(it, offset).getDateValue();
     }
 
     /**
-     * @brief Gets the Open value of an entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator`.
-     * @param offset The lookback offset.
-     * @return A constant reference to the Open `Decimal` value.
-     * @throws TimeSeriesException If access is out of bounds.
-     * @note Requires synchronization.
+     * @brief Retrieve Open value by iterator offset.
      */
-    const Decimal& getOpenValue (const ConstRandomAccessIterator& it,
-				 unsigned long offset) const
-    {
-      return getTimeSeriesEntry (it, offset).getOpenValue();
-    }
-
-    /**
-     * @brief Gets the High value of an entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator`.
-     * @param offset The lookback offset.
-     * @return A constant reference to the High `Decimal` value.
-     * @throws TimeSeriesException If access is out of bounds.
-     * @note Requires synchronization.
-     */
-    const Decimal& getHighValue (const ConstRandomAccessIterator& it,
-				 unsigned long offset) const
-    {
-      return getTimeSeriesEntry (it, offset).getHighValue();
-    }
-
-    /**
-     * @brief Gets the Low value of an entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator`.
-     * @param offset The lookback offset.
-     * @return A constant reference to the Low `Decimal` value.
-     * @throws TimeSeriesException If access is out of bounds.
-     * @note Requires synchronization.
-     */
-    const Decimal& getLowValue (const ConstRandomAccessIterator& it,
+    const Decimal& getOpenValue(const ConstRandomAccessIterator& it,
 				unsigned long offset) const
     {
-      return (getTimeSeriesEntry (it, offset).getLowValue());
+      return getTimeSeriesEntry(it, offset).getOpenValue();
     }
 
     /**
-     * @brief Gets the Close value of an entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator`.
-     * @param offset The lookback offset.
-     * @return A constant reference to the Close `Decimal` value.
-     * @throws TimeSeriesException If access is out of bounds.
-     * @note Requires synchronization.
+     * @brief Retrieve High value by iterator offset.
      */
-    const Decimal& getCloseValue (const ConstRandomAccessIterator& it,
+    const Decimal& getHighValue(const ConstRandomAccessIterator& it,
+				unsigned long offset) const
+    {
+      return getTimeSeriesEntry(it, offset).getHighValue();
+    }
+
+    /**
+     * @brief Retrieve Low value by iterator offset.
+     */
+    const Decimal& getLowValue(const ConstRandomAccessIterator& it,
+			       unsigned long offset) const
+    {
+      return getTimeSeriesEntry(it, offset).getLowValue();
+    }
+
+    /**
+     * @brief Retrieve Close value by iterator offset.
+     */
+    const Decimal& getCloseValue(const ConstRandomAccessIterator& it,
+				 unsigned long offset) const
+    {
+      return getTimeSeriesEntry(it, offset).getCloseValue();
+    }
+
+    /**
+     * @brief Retrieve Volume value by iterator offset.
+     */
+    const Decimal& getVolumeValue(const ConstRandomAccessIterator& it,
 				  unsigned long offset) const
     {
-      return getTimeSeriesEntry (it, offset).getCloseValue();
+      return getTimeSeriesEntry(it, offset).getVolumeValue();
     }
 
     /**
-     * @brief Gets the Volume value of an entry relative to a random access iterator using an offset.
-     * @param it A `ConstRandomAccessIterator`.
-     * @param offset The lookback offset.
-     * @return A constant reference to the Volume `Decimal` value.
-     * @throws TimeSeriesException If access is out of bounds.
-     * @note Requires synchronization.
+     * @brief Check if a date exists in series.
      */
-    const Decimal& getVolumeValue (const ConstRandomAccessIterator& it,
-				   unsigned long offset) const
+    bool isDateFound(const boost::gregorian::date& d) const
     {
-      return getTimeSeriesEntry (it, offset).getVolumeValue();
+      return getTimeSeriesEntry(d) != mData.end();
     }
 
     /**
-     * @brief Checks if an entry exists for a specific date (using `getDefaultBarTime()`).
-     * @param date The `boost::gregorian::date` to check.
-     * @return `true` if an entry exists for that date at the default bar time in the sorted map, `false` otherwise.
-     * @note This function specifically checks the map for an entry at `ptime(date, getDefaultBarTime())`.
-     * It may lock briefly to check synchronization status.
+     * @brief Remove all entries matching a date (ignoring time).
      */
-    bool isDateFound(const boost::gregorian::date& date)
+    void deleteEntryByDate(const boost::gregorian::date& d)
     {
-      ptime dateTime(date, getDefaultBarTime());
+      mData.erase(
+		  std::remove_if(mData.begin(), mData.end(),
+				 [&](auto const& e){ return e.getDateTime().date() == d; }),
+		  mData.end());
 
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-        }
-
-      return (mSortedTimeSeries.find(dateTime) != mSortedTimeSeries.end());
-    }
-
-    /**
-     * @brief Deletes all entries associated with a specific calendar date from the time series.
-     * @param date The `boost::gregorian::date` for which to delete all entries.
-     * @note This method iterates through the sorted map and removes *all* entries whose
-     * `ptime` key has the specified date part, regardless of the time component.
-     * This is useful for clearing all data for a day (e.g., all hourly bars).
-     * Locks the mutex during the deletion process. Marks the sequential vector
-     * representation as out-of-sync (`mMapAndArrayInSync = false`).
-     */
-    void deleteEntryByDate(const boost::gregorian::date& date)
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      
-      auto getDateEntryFromDate = [=](auto date)
-      {
-        for(auto it = mSortedTimeSeries.begin(); it != mSortedTimeSeries.end(); it++)
-	  {
-	    boost::gregorian::date mapDate(it->first.date().year(), it->first.date().month(), it->first.date().day());
-	    if(mapDate == date)
-	      return it;
-	  }
-        return mSortedTimeSeries.end();
-      };
-
-      // isDateFound only looks for dates at 15:00, we need to delete all times for hourly
-      // time series and the 0:00 time for daily time series
-      auto mapIterator = getDateEntryFromDate(date);
-      while(mapIterator != mSortedTimeSeries.end())
-	{
-	  mSortedTimeSeries.erase(mapIterator);
-	  mapIterator = getDateEntryFromDate(date);
-	}
-      
-      mMapAndArrayInSync = false;
+      if (!mIndex.empty())
+	mIndex.clear();
     }
 
   private:
-    /**
-     * @brief Ensures the sequential vector (`mSequentialTimeSeries`) and index map
-     * (`mDateToSequentialIndex`) are synchronized with the sorted map
-     * (`mSortedTimeSeries`).
-     * @note Acquires a unique lock on `mMutex` if synchronization is needed (`!mMapAndArrayInSync`).
-     * Calls `synchronize_unlocked()` internally if synchronization is performed.
-     * This is called by methods needing the vector view.
-     * @internal
-     */
-    void ensureSynchronized() const
+    void buildIndex() const
     {
-      boost::mutex::scoped_lock lock(mMutex);
-      if (!mMapAndArrayInSync)
-        synchronize_unlocked();
+      mIndex.clear();
+      for (size_t i = 0; i < mData.size(); ++i)
+	mIndex[mData[i].getDateTime()] = i;
     }
 
-    /**
-     * @brief Public interface to trigger synchronization if needed.
-     * @note Acquires a unique lock on `mMutex`. If the series is already synchronized,
-     * it returns quickly. Otherwise, it calls `synchronize_unlocked()`.
-     * @internal
-     */
-    void synchronize() const
+    // Validate iterator-based offset.
+    void ValidateVectorOffset(const ConstRandomAccessIterator& it,
+			      unsigned long offset) const
     {
-      boost::mutex::scoped_lock lock(mMutex);
-      if (mMapAndArrayInSync)
-	return;
-
-      synchronize_unlocked();
+      if (it == mData.end())
+	throw TimeSeriesException("Iterator at end");
+      auto idx = std::distance(mData.begin(), it);
+      if (static_cast<unsigned long>(idx) < offset)
+	throw TimeSeriesException("Offset out of bounds");
     }
 
-     /**
-     * @brief Performs the synchronization of the vector and index map from the sorted map.
-     * @note This function *must* be called while holding a unique lock on `mMutex`.
-     * It clears the vector and index map, then rebuilds them by iterating
-     * through the sorted map. Sets `mMapAndArrayInSync` to true upon completion.
-     * @internal
-     */
-    void synchronize_unlocked() const
+    // Validate index-based offset.
+    void ValidateVectorOffset(unsigned long offset) const
     {
-      mSequentialTimeSeries.clear();
-      mDateToSequentialIndex.clear();
-    
-      unsigned long index = 0;
-      for (const auto& kv : mSortedTimeSeries)
-	{
-	  mDateToSequentialIndex[kv.first] = ArrayTimeSeriesIndex(index);
-	  mSequentialTimeSeries.push_back(kv.second);
-	  ++index;
-	}
-      mMapAndArrayInSync = true;
+      if (offset >= mData.size())
+	throw TimeSeriesException("Offset exceeds series size");
     }
 
-    /**
-     * @brief Validates offset access relative to a random access iterator.
-     * @param it The `ConstRandomAccessIterator` used as the base.
-     * @param offset The lookback offset.
-     * @throws TimeSeriesException If the iterator `it` is `endRandomAccess()` or if
-     * `it - offset` points before `beginRandomAccess()`.
-     * @note Ensures synchronization before performing validation (locks if needed).
-     * @internal
-     */
-    void ValidateVectorOffset (const ConstRandomAccessIterator& it,
-			       unsigned long offset) const
-    {      
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-	  if (!mMapAndArrayInSync)
-	    synchronize_unlocked();
-        }
-
-      if (it == mSequentialTimeSeries.end())
-        throw TimeSeriesException("Iterator is at end of time series");
-
-      if ((it - offset) < mSequentialTimeSeries.begin())
-        throw TimeSeriesException("Offset " + std::to_string(offset) + " outside bounds of time series");
-    }
-
-    /**
-     * @brief Validates an offset against the total size of the sequential time series vector.
-     * @param offset The offset value to check.
-     * @throws TimeSeriesException If the `offset` is greater than the number of elements
-     * in the sequential time series vector (i.e., `offset > size()`).
-     * @note Ensures synchronization before performing validation (locks if needed). This check
-     * seems intended to ensure `offset` can be used as a 1-based index or size,
-     * as `offset == size()` would be a valid lookback from `end() - 1`.
-     * @internal
-     */
-    void ValidateVectorOffset (unsigned long offset) const
-    {
-      if (!mMapAndArrayInSync)
-        {
-	  boost::mutex::scoped_lock lock(mMutex);
-	  if (!mMapAndArrayInSync)
-	    synchronize_unlocked();
-        }
-
-      if (offset > mSequentialTimeSeries.size())
-	throw TimeSeriesException(std::string("OHLCTimeSeries:ValidateVectorOffset ") +std::string(" offset ") +std::to_string (offset) +std::string(" > number of elements in time seres"));
-    }
-
-  private:
-    boost::container::flat_map<ptime, OHLCTimeSeriesEntry<Decimal>> mSortedTimeSeries;
-    mutable boost::container::flat_map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
-    mutable std::vector<OHLCTimeSeriesEntry<Decimal>> mSequentialTimeSeries;
-    TimeFrame::Duration mTimeFrame;
-    mutable bool mMapAndArrayInSync;
-    TradingVolume::VolumeUnit mUnitsOfVolume;
-    mutable boost::mutex mMutex;
+    // ---- Data Members ----
+    std::vector<Entry>         mData;
+    TimeFrame::Duration        mTimeFrame;
+    TradingVolume::VolumeUnit  mUnitsOfVolume;
+    mutable std::unordered_map<ptime,size_t> mIndex;
   };
-
+  
    /**
    * @brief Compares two OHLCTimeSeries for equality.
    * @tparam Decimal The numeric type used in the series.
@@ -1217,7 +930,7 @@ namespace mkc_timeseries
 
     for (; it1 != lhs.endSortedAccess() && it2 != rhs.endSortedAccess(); it1++, it2++)
       {
-    if (it1->second != it2->second)
+	if (*it1 != *it2)
       return false;
       }
 
@@ -1250,22 +963,23 @@ namespace mkc_timeseries
         for (typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = series.beginSortedAccess();
              it != series.endSortedAccess(); ++it)
         {
-            const ptime& dateTime = it->first;                // Get the boost::posix_time::ptime key
-            const OHLCTimeSeriesEntry<Decimal>& entry = it->second; // Get the OHLC entry value
+	  const auto& entry = *it; // Get the OHLC entry value
+	  const ptime& dateTime = entry.getDateTime();                // Get the boost::posix_time::ptime key
 
-            // Output the date and time (adjust formatting as desired)
-            // Using to_simple_string for combined date and time, or dateTime.date() for just the date
-            os << boost::posix_time::to_simple_string(dateTime);
 
-            // Output the OHLCV values, separated by commas (or tabs, spaces, etc.)
-            os << "," << entry.getOpenValue();
-            os << "," << entry.getHighValue();
-            os << "," << entry.getLowValue();
-            os << "," << entry.getCloseValue();
-            os << "," << entry.getVolumeValue(); // Assuming volume is also desired
+	  // Output the date and time (adjust formatting as desired)
+	  // Using to_simple_string for combined date and time, or dateTime.date() for just the date
+	  os << boost::posix_time::to_simple_string(dateTime);
+	  
+	  // Output the OHLCV values, separated by commas (or tabs, spaces, etc.)
+	  os << "," << entry.getOpenValue();
+	  os << "," << entry.getHighValue();
+	  os << "," << entry.getLowValue();
+	  os << "," << entry.getCloseValue();
+	  os << "," << entry.getVolumeValue(); // Assuming volume is also desired
 
-            // Add a newline character for the next entry
-            os << "\n";
+	  // Add a newline character for the next entry
+	  os << "\n";
         }
 
         return os; // Return the ostream reference to allow chaining (e.g., std::cout << series << " done";)
@@ -1284,40 +998,41 @@ namespace mkc_timeseries
    * briefly on the source series to get start/end dates and potentially iterators.
    * The resulting series is a separate copy.
    */
+
   template <class Decimal>
-  OHLCTimeSeries<Decimal> FilterTimeSeries (const OHLCTimeSeries<Decimal>& series, const DateRange& dates)
+  OHLCTimeSeries<Decimal> FilterTimeSeries(const OHLCTimeSeries<Decimal>& series,
+					   const DateRange& dates)
   {
-    boost::gregorian::date firstDate(dates.getFirstDate());
-    boost::gregorian::date lastDate(dates.getLastDate());
+    using TS = OHLCTimeSeries<Decimal>;
 
-    ptime firstDateAsPtime(firstDate, getDefaultBarTime());
-    ptime lastDateAsPtime(lastDate, getDefaultBarTime());
+    auto firstDate = dates.getFirstDate();
+    auto lastDate  = dates.getLastDate();
+    ptime firstP(firstDate, getDefaultBarTime());
+    ptime lastP (lastDate,  getDefaultBarTime());
 
-    const boost::gregorian::date seriesFirstDate = series.getFirstDate();
-    const boost::gregorian::date seriesLastDate = series.getLastDate();
+    // quick-path: full range
+    if (firstDate == series.getFirstDate() && lastDate == series.getLastDate())
+        return series;
 
-    if ((seriesFirstDate == firstDate) && (seriesLastDate == lastDate))
-      return series;
+    if (firstDate < series.getFirstDate())
+        throw TimeSeriesException("FilterTimeSeries: Cannot start before reference series");
+    if (lastDate  < series.getFirstDate())
+        throw TimeSeriesException("FilterTimeSeries: Cannot end before reference series");
 
-    if (firstDate < seriesFirstDate)
-      throw TimeSeriesException("FilterTimeSeries: Cannot create new series that starts before reference series");
+    // reserve to avoid reallocations
+    TS result(series.getTimeFrame(),
+              series.getVolumeUnits(),
+              series.getNumEntries());
 
-    if (lastDate < seriesFirstDate)
-      throw TimeSeriesException("FilterTimeSeries: Cannot create new series that starts before reference series");
+    // now iterate the vector of Entry objects
+    for (auto const& entry : series.getEntriesCopy()) {
+        auto dt = entry.getDateTime();
+        if (dt < firstP)  continue;
+        if (dt > lastP)   break;
+        result.addEntry(entry);
+    }
 
-    OHLCTimeSeries<Decimal> resultSeries(series.getTimeFrame(), series.getVolumeUnits(), series.getNumEntries());
-
-    typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = series.beginSortedAccess();
-
-    // Advance to the first relevant point (if needed)
-    while (it != series.endSortedAccess() && it->first < firstDateAsPtime)
-      ++it;
-
-    // Add entries in range
-    for (; it != series.endSortedAccess() && it->first <= lastDateAsPtime; ++it)
-      resultSeries.addEntry(it->second);
-
-    return resultSeries;
+    return result;
   }
 }
 
