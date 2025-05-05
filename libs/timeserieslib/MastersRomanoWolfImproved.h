@@ -81,7 +81,6 @@ namespace mkc_timeseries
       {
 	if ( !templateBacktester )
 	  {
-	    std::cout << "MastersRomanoWolfImproved::run about to throww null backtester exception" << std::endl;
             throw std::runtime_error("MastersRomanoWolfImproved::run - backtester is null");
 	  }
 
