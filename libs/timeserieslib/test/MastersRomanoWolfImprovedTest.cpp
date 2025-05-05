@@ -106,18 +106,12 @@ TEST_CASE("MastersRomanoWolfImproved handles empty data") {
 }
 
 TEST_CASE("MastersRomanoWolfImproved throws on null backtester") {
-  std::cout << "In null backtester unit test" << std::endl;
     MastersRomanoWolfImproved<D, DummyStatPolicy<D>> algo;
     auto portfolio = createDummyPortfolio();
 
-std::cout << "Finished creating dummy portfolio" << std::endl;
     auto strat = std::make_shared<DummyPalStrategyEx>(portfolio);
-std::cout << "Finished creating dummy strategy" << std::endl;
     StrategyContext<D> ctx = makeStrategyContext(strat, D("0.5"));
-std::cout << "Finished creating Strategy context" << std::endl;
     std::vector<StrategyContext<D>> data{ctx};
-std::cout << "Finished creating vector" << std::endl;
-std::cout << "Calling algo.run" << std::endl;
     REQUIRE_THROWS_AS(algo.run(data, 50, nullptr, portfolio, D("0.05")), std::runtime_error);
 }
 
