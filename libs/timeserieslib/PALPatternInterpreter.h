@@ -7,10 +7,14 @@
 #ifndef __PAL_PATTERN_INTERPRETER_H
 #define __PAL_PATTERN_INTERPRETER_H 1
 
+#include <functional>
+#include <memory>
+#include <stdexcept>
+#include <algorithm>
 #include "PalAst.h"
 #include "Security.h"
 #include "DecimalConstants.h"
-#include <algorithm>
+
 
 namespace mkc_timeseries
 {
@@ -25,45 +29,107 @@ namespace mkc_timeseries
       {}
   };
 
+  /**
+   * @brief Compiles and evaluates PAL pattern expressions efficiently.
+   *
+   * This class provides a way to compile a PatternExpression AST into
+   * a fast, reusable lambda (PatternEvaluator) and also retains
+   * backward-compatible evaluateExpression for existing tests.
+   */
   template <class Decimal> class PALPatternInterpreter
   {
   public:
-// For any date there is a single Security::ConstRandomAccessIterator
-    // Instead of looking up the iterator each time we have the client pass
-    // the iterator. This should save alot of lookup time
+    using PatternEvaluator = std::function<bool(Security<Decimal>*,
+						typename Security<Decimal>::ConstRandomAccessIterator)>;
 
-    static bool evaluateExpression (PatternExpression *expression, 
-				    const std::shared_ptr<Security<Decimal>>& security,
-				    typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)
+    /**
+     * @brief Back-compat wrapper: compile & run in one call.
+     *
+     * Allows existing code/tests to keep calling evaluateExpression(...) without
+     * changing their call sites.
+     *
+     * @param expr      The pattern AST.
+     * @param security  Shared_ptr to the security under test.
+     * @param it        Iterator into its time series.
+     * @return          The result of the compiled predicate.
+     */
+    static bool evaluateExpression(PatternExpression* expr,
+				   const std::shared_ptr<Security<Decimal>>& security,
+				   typename Security<Decimal>::ConstRandomAccessIterator it)
     {
-      if (AndExpr *pAnd = dynamic_cast<AndExpr*>(expression))
+      auto pred = compileEvaluator(expr);
+      return pred(security.get(), it);
+    }
+
+    /**
+     * @brief Compile a PatternExpression into a fast lambda.
+     *
+     * Recursively traverses the AST and builds a boolean predicate.
+     */
+    static PatternEvaluator compileEvaluator(PatternExpression* expr)
+    {
+      if (auto pAnd = dynamic_cast<AndExpr*>(expr))
 	{
-	  bool lhsCond = PALPatternInterpreter<Decimal>::evaluateExpression (pAnd->getLHS(),
-									  security,
-									  iteratorForDate);
-	  if (lhsCond == true)
-	    return PALPatternInterpreter<Decimal>::evaluateExpression (pAnd->getRHS(),
-								    security,
-								    iteratorForDate);
-	  else
-	    return false;
-	}
-      else if (GreaterThanExpr *pGreaterThan = dynamic_cast<GreaterThanExpr*>(expression))
+	  auto L = compileEvaluator(pAnd->getLHS());
+	  auto R = compileEvaluator(pAnd->getRHS());
+	  
+	  return [L,R](Security<Decimal>* s, auto it) {
+	    return L(s,it) && R(s,it);
+        };
+      }
+      else if (auto pGt = dynamic_cast<GreaterThanExpr*>(expr))
 	{
-	  Decimal lhs = PALPatternInterpreter<Decimal>::evaluatePriceBar(pGreaterThan->getLHS(), 
-									    security, 
-									    iteratorForDate);
-	  Decimal rhs = PALPatternInterpreter<Decimal>::evaluatePriceBar(pGreaterThan->getRHS(), 
-									    security, 
-									    iteratorForDate);
-	  return (lhs > rhs);
-	}
-      else
-	throw PalPatternInterpreterException ("PALPatternInterpreter::evaluateExpression Illegal PatternExpression");
+	  auto Lf = compilePriceBar(pGt->getLHS());
+	  auto Rf = compilePriceBar(pGt->getRHS());
+	  
+	  return [Lf,Rf](Security<Decimal>* s, auto it) {
+	    return Lf(s,it) > Rf(s,it);
+        };
+      }
+      else {
+        throw PalPatternInterpreterException(
+          "compileEvaluator: unsupported PatternExpression type");
+      }
     }
 
   private:
-
+    /**
+     * @brief Compile a PriceBarReference into a fast evaluator lambda.
+     */
+    static std::function<Decimal(Security<Decimal>*, typename Security<Decimal>::ConstRandomAccessIterator)>
+    compilePriceBar(PriceBarReference* barRef)
+    {
+      auto offset = barRef->getBarOffset();
+      switch (barRef->getReferenceType()) {
+        case PriceBarReference::OPEN:
+          return [offset](Security<Decimal>* s, auto it) {
+            return s->getOpenValue(it, offset);
+          };
+        case PriceBarReference::HIGH:
+          return [offset](Security<Decimal>* s, auto it) {
+            return s->getHighValue(it, offset);
+          };
+        case PriceBarReference::LOW:
+          return [offset](Security<Decimal>* s, auto it) {
+            return s->getLowValue(it, offset);
+          };
+        case PriceBarReference::CLOSE:
+          return [offset](Security<Decimal>* s, auto it) {
+            return s->getCloseValue(it, offset);
+          };
+        case PriceBarReference::VOLUME:
+          return [offset](Security<Decimal>* s, auto it) {
+            return s->getVolumeValue(it, offset);
+          };
+        default:
+          throw PalPatternInterpreterException(
+            "compilePriceBar: unknown PriceBarReference type");
+      }
+    }
+    
+  private:
+    // LEGACY code. Keep for now as we may come back and wire in IBS or some of the
+    // other indicators
     static const Decimal evaluatePriceBar (PriceBarReference *barReference, 
 					   const std::shared_ptr<Security<Decimal>>& security,
 						  typename Security<Decimal>::ConstRandomAccessIterator iteratorForDate)

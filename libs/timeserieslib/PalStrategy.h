@@ -155,14 +155,16 @@ namespace mkc_timeseries
 		    std::shared_ptr<Portfolio<Decimal>> portfolio,
 		    const StrategyOptions& strategyOptions = defaultStrategyOptions)
       : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
-      mPalPatterns(),
-      mMCPTAttributes(),
-      mStrategyMaxBarsBack(0)
+	mPalPatterns(),
+	mPatternEvaluators(),
+	mMCPTAttributes(),
+	mStrategyMaxBarsBack(0)
     {}
 
     PalMetaStrategy(const PalMetaStrategy<Decimal>& rhs)
 	: BacktesterStrategy<Decimal>(rhs),
       mPalPatterns(rhs.mPalPatterns),
+      mPatternEvaluators(rhs.mPatternEvaluators),
       mMCPTAttributes(rhs.mMCPTAttributes),
       mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack)
       {}
@@ -175,6 +177,7 @@ namespace mkc_timeseries
 
 	BacktesterStrategy<Decimal>::operator=(rhs);
 	mPalPatterns = rhs.mPalPatterns;
+	mPatternEvaluators = rhs.mPatternEvaluators;
 	mMCPTAttributes = rhs.mMCPTAttributes;
 	mStrategyMaxBarsBack = rhs.mStrategyMaxBarsBack;
 	return *this;
@@ -189,6 +192,10 @@ namespace mkc_timeseries
 	  mStrategyMaxBarsBack = pattern->getMaxBarsBack();
 
 	mPalPatterns.push_back(pattern);
+
+	// compile & cache
+	auto eval = PALPatternInterpreter<Decimal>::compileEvaluator(pattern->getPatternExpression().get());
+	mPatternEvaluators.push_back(eval);
       }
 
     uint32_t getPatternMaxBarsBack() const
@@ -298,29 +305,24 @@ namespace mkc_timeseries
 			    const date& processingDate,
 			    const EntryOrderConditions<Decimal>& entryConditions)
       {
+	auto it = aSecurity->getRandomAccessIterator(processingDate);
+	
 	if (entryConditions.canEnterMarket(this, aSecurity))
 	  {
-	    typename PalMetaStrategy<Decimal>::ConstStrategiesIterator itPatterns = this->beginPricePatterns();
-	    bool orderEntered = false;
-
-	    for (; itPatterns != this->endPricePatterns(); itPatterns++)
+	    auto patIt  = mPalPatterns.begin();
+	    auto evalIt = mPatternEvaluators.begin();
+	    for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
+		 ++patIt, ++evalIt)
 	      {
-		std::shared_ptr<PriceActionLabPattern> pricePattern = *itPatterns;
-		if (entryConditions.canTradePattern (this, pricePattern, aSecurity))
-		  {
-		    PatternExpression *expr = pricePattern->getPatternExpression().get();
-		    typename Security<Decimal>::ConstRandomAccessIterator it = 
-		      aSecurity->getRandomAccessIterator (processingDate);
-		    
-		    if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
-		      {
-			entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDate);
-			orderEntered = true;
-		      }
+		std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
+		
+		if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
+		  continue;
 
-		    //this->addFlatPositionBar (aSecurity, processingDate);
-		    if (orderEntered)
-		      break;
+		if ((*evalIt)(aSecurity, it))
+		  {
+		    entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDate);
+		    break;
 		  }
 	      }
 	  }
@@ -378,6 +380,7 @@ namespace mkc_timeseries
     
   private:
     PalPatterns mPalPatterns;
+    std::vector<typename PALPatternInterpreter<Decimal>::PatternEvaluator> mPatternEvaluators;
     MCPTStrategyAttributes<Decimal> mMCPTAttributes;
     unsigned int mStrategyMaxBarsBack;
   };
@@ -385,8 +388,7 @@ namespace mkc_timeseries
   template <class Decimal> class PalStrategy : public BacktesterStrategy<Decimal>
     {
     public:
-      using PatternEvaluator = std::function<bool(Security<Decimal>*,
-						  typename Security<Decimal>::ConstRandomAccessIterator)>;
+      using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
     PalStrategy(const std::string& strategyName,
 		std::shared_ptr<PriceActionLabPattern> pattern,
@@ -399,7 +401,8 @@ namespace mkc_timeseries
 	  if (mPalPattern)
 	    {
 	      // compile the real expression once
-	      mPatternEvaluator = compileExpression(mPalPattern->getPatternExpression().get());
+	      mPatternEvaluator =
+		PALPatternInterpreter<Decimal>::compileEvaluator(mPalPattern->getPatternExpression().get());
 	    }
 	  else
 	    {
@@ -479,62 +482,6 @@ namespace mkc_timeseries
 	return mPatternEvaluator;
       }
       
-      static PatternEvaluator compileExpression(PatternExpression* expr)
-      {
-	if (auto pAnd = dynamic_cast<AndExpr*>(expr))
-	  {
-	    auto lhs = compileExpression(pAnd->getLHS());
-	    auto rhs = compileExpression(pAnd->getRHS());
-	    return [lhs, rhs](Security<Decimal>* sec, auto it) {
-	      return lhs(sec, it) && rhs(sec, it);
-	    };
-	  }
-	else if (auto pGt = dynamic_cast<GreaterThanExpr*>(expr))
-	  {
-	    auto leftFn  = compilePriceBar(pGt->getLHS());
-	    auto rightFn = compilePriceBar(pGt->getRHS());
-	    return [leftFn, rightFn](Security<Decimal>* sec, auto it) {
-	      return leftFn(sec, it) > rightFn(sec, it);
-	    };
-	  }
-	else
-	  {
-	    throw std::runtime_error("Unknown PatternExpression type");
-	  }
-      }
-
-      //
-      
-      static std::function<Decimal(Security<Decimal>*, typename Security<Decimal>::ConstRandomAccessIterator)>
-      compilePriceBar(PriceBarReference* barRef)
-      {
-        auto type   = barRef->getReferenceType();
-        auto offset = barRef->getBarOffset();
-        switch (type) {
-	case PriceBarReference::OPEN:
-	  return [offset](Security<Decimal>* sec, auto it) {
-	    return sec->getOpenValue(it, offset);
-	  };
-	case PriceBarReference::HIGH:
-	  return [offset](Security<Decimal>* sec, auto it) {
-	    return sec->getHighValue(it, offset);
-	  };
-	case PriceBarReference::LOW:
-	  return [offset](Security<Decimal>* sec, auto it) {
-	    return sec->getLowValue(it, offset);
-	  };
-	case PriceBarReference::CLOSE:
-	  return [offset](Security<Decimal>* sec, auto it) {
-	    return sec->getCloseValue(it, offset);
-	  };
-	case PriceBarReference::VOLUME:
-	  return [offset](Security<Decimal>* sec, auto it) {
-	    return sec->getVolumeValue(it, offset);
-	  };
-	default:
-	  throw std::runtime_error("Unsupported PriceBarReference");
-        }
-      }
       //
       
       [[deprecated("Use of this addLongPositionBar no longer supported")]]
