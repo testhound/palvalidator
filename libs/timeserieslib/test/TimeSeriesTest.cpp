@@ -1,6 +1,4 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 #include "../TimeSeriesCsvReader.h"
 #include "../TimeSeries.h"
 #include "../TimeSeriesIndicators.h"
@@ -220,23 +218,23 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("TimeSeries getTimeSeriesEntry by date", "TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::TimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it != spySeries.endSortedAccess());
-      REQUIRE (it->second == entry4);
+      REQUIRE (*it == entry4);
 
-      NumericTimeSeries<DecimalType>::TimeSeriesIterator it2 = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it2 = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it2 != closeSeries.endSortedAccess());
       REQUIRE (it2->second->getValue() == entry4.getCloseValue());
 
-      NumericTimeSeries<DecimalType>::TimeSeriesIterator it3 = openSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it3 = openSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it3 != openSeries.endSortedAccess());
       REQUIRE (it3->second->getValue() == entry4.getOpenValue());
 
-      NumericTimeSeries<DecimalType>::TimeSeriesIterator it4 = highSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it4 = highSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it4 != highSeries.endSortedAccess());
       REQUIRE (it4->second->getValue() == entry4.getHighValue());
 
-      NumericTimeSeries<DecimalType>::TimeSeriesIterator it5 = lowSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it5 = lowSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it5 != lowSeries.endSortedAccess());
       REQUIRE (it5->second->getValue() == entry4.getLowValue());
     }
@@ -245,7 +243,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
     {
       OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2016, Jan, 4));
       REQUIRE  (it != spySeries.endSortedAccess());
-      REQUIRE (it->second == entry2);
+      REQUIRE (*it == entry2);
 
       it = spySeries.getTimeSeriesEntry(date (2016, Jan, 15));
       REQUIRE  (it == spySeries.endSortedAccess());
@@ -253,7 +251,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("TimeSeries getRandomAccessIterator by date const", "TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::ConstRandomAccessIterator it= spySeries.getRandomAccessIterator (date (2016, Jan, 4));
+      auto it= spySeries.getRandomAccessIterator (date (2016, Jan, 4));
       REQUIRE  (it != spySeries.endRandomAccess());
       REQUIRE ((*it) == entry2);
 
@@ -309,7 +307,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("Timeseries RandomAccess Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::RandomAccessIterator it = spySeries.beginRandomAccess();
+      auto it = spySeries.beginRandomAccess();
       REQUIRE ((*it) == entry6);
       it++;
       REQUIRE ((*it) == entry5);
@@ -342,7 +340,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
  SECTION ("Timeseries OHLC test", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::RandomAccessIterator it = spySeries.beginRandomAccess();
+      auto it = spySeries.beginRandomAccess();
       it++;
       it++;
       it++;
@@ -395,7 +393,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
 SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::RandomAccessIterator it = spySeries.beginRandomAccess();
+      auto it = spySeries.beginRandomAccess();
       it++;
       it++;
       it++;
@@ -448,8 +446,7 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
 
  SECTION ("Timeseries Const Value OHLC exception tests", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::ConstRandomAccessIterator it =
-	spySeries.getRandomAccessIterator (date (2016, Jan, 4));
+      auto it = spySeries.getRandomAccessIterator (date (2016, Jan, 4));
 
       DecimalType closeRef2 = spySeries.getCloseValue (it, 4);
 
@@ -458,34 +455,34 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
 
  SECTION ("Timeseries SortedAccess Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::TimeSeriesIterator it = spySeries.beginSortedAccess();
-      REQUIRE ((it->second) == entry6);
+      OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = spySeries.beginSortedAccess();
+      REQUIRE ((*it) == entry6);
       it++;
-      REQUIRE ((it->second) == entry5);
+      REQUIRE ((*it) == entry5);
       it++;
-      REQUIRE ((it->second) == entry4);
+      REQUIRE ((*it) == entry4);
       it++;
-      REQUIRE ((it->second) == entry3);
+      REQUIRE ((*it) == entry3);
       it++;
-      REQUIRE ((it->second) == entry2);
+      REQUIRE ((*it) == entry2);
       it++;
-      REQUIRE ((it->second) == entry1);
+      REQUIRE ((*it) == entry1);
     }
 
  SECTION ("Timeseries SortedAccess Const Iterator test", "[TimeSeries]")
     {
       OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = spySeries.beginSortedAccess();
-      REQUIRE ((it->second) == entry6);
+      REQUIRE ((*it) == entry6);
       it++;
-      REQUIRE ((it->second) == entry5);
+      REQUIRE ((*it) == entry5);
       it++;
-      REQUIRE ((it->second) == entry4);
+      REQUIRE ((*it) == entry4);
       it++;
-      REQUIRE ((it->second) == entry3);
+      REQUIRE ((*it) == entry3);
       it++;
-      REQUIRE ((it->second) == entry2);
+      REQUIRE ((*it) == entry2);
       it++;
-      REQUIRE ((it->second) == entry1);
+      REQUIRE ((*it) == entry1);
     }
 
 

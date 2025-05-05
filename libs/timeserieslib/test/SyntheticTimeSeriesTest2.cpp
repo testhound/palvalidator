@@ -245,7 +245,7 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
       REQUIRE (syntheticSeries.getNumElements() == sampleSeries.getNumEntries());
       REQUIRE (syntheticSeries.getTick() == minimumTick);
       REQUIRE (syntheticSeries.getTickDiv2() == minimumTickDiv2);
-      REQUIRE (syntheticSeries.getFirstOpen() == sampleSeries.beginSortedAccess()->second.getOpenValue());
+      REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue());
     }
 
   SECTION ("Copy Constructor Test")
@@ -306,7 +306,7 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
 
       SECTION ("Test First Open Value")
 	{
-	  REQUIRE (syntheticSeries.getFirstOpen() == sampleSeries.beginSortedAccess()->second.getOpenValue());
+	  REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue());
 	}
     }
 
@@ -316,7 +316,7 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
       REQUIRE (syntheticSeries.getTick() == minimumTick);
       REQUIRE (syntheticSeries.getTickDiv2() == minimumTickDiv2);
       REQUIRE (syntheticSeries.getNumElements() == sampleSeries.getNumEntries());
-      REQUIRE (syntheticSeries.getFirstOpen() == sampleSeries.beginSortedAccess()->second.getOpenValue());
+      REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue());
       REQUIRE (syntheticSeries.getSyntheticTimeSeries() != nullptr);
     }
 

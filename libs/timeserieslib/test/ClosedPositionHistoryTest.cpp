@@ -23,12 +23,12 @@ void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openP
   OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
   for (; it != itEnd; it++)
     {
-      openPosition->addBar (it->second);
+      openPosition->addBar (*it);
     }
 
   // Add exit bar since loop will not do it
 
-  openPosition->addBar (it->second);
+  openPosition->addBar (*it);
 }
 
 std::shared_ptr<TradingPositionLong<DecimalType>>

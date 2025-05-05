@@ -1,9 +1,7 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../TimeSeriesCsvReader.h"
-#include "../PalStrategy.h"
-#include "../BoostDateHelper.h"
+#include <catch2/catch_test_macros.hpp>
+#include "TimeSeriesCsvReader.h"
+#include "PalStrategy.h"
+#include "BoostDateHelper.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
@@ -268,10 +266,10 @@ void backTestLoop(std::shared_ptr<Security<DecimalType>> security, BacktesterStr
 	{
 	  strategy.eventUpdateSecurityBarNumber(security->getSymbol());
 	  if (strategy.isShortPosition (security->getSymbol()) || strategy.isLongPosition (security->getSymbol()))
-	    strategy.eventExitOrders (security, 
+	    strategy.eventExitOrders (security.get(), 
 				      strategy.getInstrumentPosition(security->getSymbol()),
 				      orderDate);
-	  strategy.eventEntryOrders(security, 
+	  strategy.eventEntryOrders(security.get(), 
 				    strategy.getInstrumentPosition(security->getSymbol()),
 				    orderDate);
 	  
@@ -397,7 +395,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	if (longStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
 	  {
 	    longStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
-	    longStrategy1.eventEntryOrders(corn, 
+	    longStrategy1.eventEntryOrders(corn.get(), 
 					   longStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    REQUIRE ( longStrategy1.isFlatPosition (futuresSymbol));
@@ -408,7 +406,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
     if (longStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
       {
 	longStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
-	longStrategy1.eventEntryOrders(corn, 
+	longStrategy1.eventEntryOrders(corn.get(), 
 				       longStrategy1.getInstrumentPosition(futuresSymbol),
 				       orderDate);
       }
@@ -433,7 +431,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	if (shortStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
 	  {
 	    shortStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
-	    shortStrategy1.eventEntryOrders(corn, 
+	    shortStrategy1.eventEntryOrders(corn.get(), 
 					   shortStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    REQUIRE ( shortStrategy1.isFlatPosition (futuresSymbol));
@@ -444,7 +442,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
     if (shortStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
       {
 	shortStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
-	shortStrategy1.eventEntryOrders(corn, 
+	shortStrategy1.eventEntryOrders(corn.get(), 
 				       shortStrategy1.getInstrumentPosition(futuresSymbol),
 				       orderDate);
       }
@@ -468,7 +466,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	if (longStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
 	  {
 	    longStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
-	    longStrategy1.eventEntryOrders(corn, 
+	    longStrategy1.eventEntryOrders(corn.get(), 
 					   longStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 
@@ -490,10 +488,10 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	  {
 	    longStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (longStrategy1.isLongPosition (futuresSymbol))
-	      longStrategy1.eventExitOrders (corn, 
+	      longStrategy1.eventExitOrders (corn.get(), 
 					     longStrategy1.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    longStrategy1.eventEntryOrders(corn, 
+	    longStrategy1.eventEntryOrders(corn.get(), 
 					   longStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	   
@@ -536,7 +534,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	if (shortStrategy1.doesSecurityHaveTradingData (*corn, orderDate))
 	  {
 	    shortStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
-	    shortStrategy1.eventEntryOrders(corn, 
+	    shortStrategy1.eventEntryOrders(corn.get(), 
 					   shortStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 
@@ -558,10 +556,10 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	  {
 	    shortStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (shortStrategy1.isShortPosition (futuresSymbol))
-	      shortStrategy1.eventExitOrders (corn, 
+	      shortStrategy1.eventExitOrders (corn.get(), 
 					     shortStrategy1.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    shortStrategy1.eventEntryOrders(corn, 
+	    shortStrategy1.eventEntryOrders(corn.get(), 
 					   shortStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	   
@@ -607,10 +605,10 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
 	  {
 	    longStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (longStrategy1.isLongPosition (futuresSymbol))
-	      longStrategy1.eventExitOrders (corn, 
+	      longStrategy1.eventExitOrders (corn.get(), 
 					     longStrategy1.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    longStrategy1.eventEntryOrders(corn, 
+	    longStrategy1.eventEntryOrders(corn.get(), 
 					   longStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    
@@ -644,10 +642,10 @@ SECTION ("PalStrategy testing for all long trades - MetaStrategy1 1")
 	  {
 	    metaStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (metaStrategy1.isLongPosition (futuresSymbol))
-	      metaStrategy1.eventExitOrders (corn, 
+	      metaStrategy1.eventExitOrders (corn.get(), 
 					     metaStrategy1.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    metaStrategy1.eventEntryOrders(corn, 
+	    metaStrategy1.eventEntryOrders(corn.get(), 
 					   metaStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    
@@ -681,10 +679,10 @@ SECTION ("PalStrategy testing for all long trades with pyramiding - pattern 1")
 	  {
 	    longStrategyPyramid1.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (longStrategyPyramid1.isLongPosition (futuresSymbol))
-	      longStrategyPyramid1.eventExitOrders (corn, 
+	      longStrategyPyramid1.eventExitOrders (corn.get(), 
 					     longStrategyPyramid1.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    longStrategyPyramid1.eventEntryOrders(corn, 
+	    longStrategyPyramid1.eventEntryOrders(corn.get(), 
 					   longStrategyPyramid1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    
@@ -720,10 +718,10 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
 	  {
 	    longStrategy2.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (longStrategy2.isLongPosition (futuresSymbol))
-	      longStrategy2.eventExitOrders (corn, 
+	      longStrategy2.eventExitOrders (corn.get(), 
 					     longStrategy2.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    longStrategy2.eventEntryOrders(corn, 
+	    longStrategy2.eventEntryOrders(corn.get(), 
 					   longStrategy2.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    
@@ -758,10 +756,10 @@ SECTION ("PalStrategy testing for all short trades")
 	  {
 	    shortStrategy1.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (shortStrategy1.isShortPosition (futuresSymbol))
-	      shortStrategy1.eventExitOrders (corn, 
+	      shortStrategy1.eventExitOrders (corn.get(), 
 					     shortStrategy1.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    shortStrategy1.eventEntryOrders(corn, 
+	    shortStrategy1.eventEntryOrders(corn.get(), 
 					   shortStrategy1.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	   
@@ -801,10 +799,10 @@ SECTION ("PalStrategy testing for all short trades - MetaStrategy2")
 	  {
 	    metaStrategy2.eventUpdateSecurityBarNumber(futuresSymbol);
 	    if (metaStrategy2.isShortPosition (futuresSymbol))
-	      metaStrategy2.eventExitOrders (corn, 
+	      metaStrategy2.eventExitOrders (corn.get(), 
 					     metaStrategy2.getInstrumentPosition(futuresSymbol),
 					     orderDate);
-	    metaStrategy2.eventEntryOrders(corn, 
+	    metaStrategy2.eventEntryOrders(corn.get(), 
 					   metaStrategy2.getInstrumentPosition(futuresSymbol),
 					   orderDate);
 	    
