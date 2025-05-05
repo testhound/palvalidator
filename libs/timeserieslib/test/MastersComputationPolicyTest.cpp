@@ -91,8 +91,8 @@ namespace {
       return std::make_shared<DummyPalStrategy>(this->getPortfolio());
     }
 
-    void eventExitOrders(const std::shared_ptr<Security<DecimalType>>&, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
-    void eventEntryOrders(const std::shared_ptr<Security<DecimalType>>&, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
+    void eventExitOrders(Security<DecimalType> *, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
+    void eventEntryOrders(Security<DecimalType> *, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
   };
 
   std::shared_ptr<Security<DecimalType>> createDummySecurity() {
