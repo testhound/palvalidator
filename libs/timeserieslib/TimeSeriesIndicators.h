@@ -7,6 +7,8 @@
 #ifndef __TIME_SERIES_INDICATORS_H
 #define __TIME_SERIES_INDICATORS_H 1
 
+#include <type_traits>
+#include <cmath>
 #include "TimeSeries.h"
 #include "DecimalConstants.h"
 #include <algorithm>
@@ -17,13 +19,29 @@
 
 namespace mkc_timeseries
 {
-using namespace boost::accumulators;
+  using namespace boost::accumulators;
 
-  // Divides each elementn of series1 by it's corresponding element in series2
-
- template <class Decimal>
- NumericTimeSeries<Decimal> DivideSeries (const NumericTimeSeries<Decimal>& series1,
-				       const NumericTimeSeries<Decimal>& series2)
+    /**
+   * @brief Divides each element of series1 by its corresponding element in series2.
+   *
+   * Creates a new time series where each entry is the result of dividing the
+   * value from series1 by the value from series2 at the same date.
+   * The operation proceeds from the most recent date backwards.
+   * The resulting series will have the length of the shorter of the two input series.
+   * If a denominator value in series2 is zero, the resulting value for that date is zero.
+   *
+   * @tparam Decimal The numeric type used in the time series (e.g., double, a custom decimal class).
+   * @param series1 The time series representing the numerators.
+   * @param series2 The time series representing the denominators.
+   * @return A new NumericTimeSeries containing the element-wise division results.
+   * @throws std::domain_error if the time frames of the two series are different.
+   * @throws std::domain_error if the end dates of the two series are different.
+   * @throws Assertion failure (via throw_assert) if dates do not match during iteration.
+   * @note Handles division by zero by setting the result to DecimalConstants<Decimal>::DecimalZero.
+   */
+  template <class Decimal>
+  NumericTimeSeries<Decimal> DivideSeries (const NumericTimeSeries<Decimal>& series1,
+					   const NumericTimeSeries<Decimal>& series2)
   {
     if (series1.getTimeFrame() != series2.getTimeFrame())
       throw std::domain_error (std::string("DivideSeries:: time frame of two series must be the same"));
@@ -50,13 +68,26 @@ using namespace boost::accumulators;
 	  temp = it1->second->getValue() / it2->second->getValue();
 
 	resultSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it1->first,
-							     temp,
-							     resultTimeFrame));
+								temp,
+								resultTimeFrame));
       }
 
     return resultSeries;
   }
 
+  /**
+   * @brief Calculates the Rate of Change (ROC) for a time series over a specified period.
+   *
+   * The ROC is calculated as: ((currentValue / value_period_ago) - 1) * 100.
+   * The resulting series starts at the index 'period' of the original series.
+   * If the input series has fewer than (period + 1) entries, an empty series is returned.
+   *
+   * @tparam Decimal The numeric type used in the time series.
+   * @param series The input time series.
+   * @param period The lookback period for the ROC calculation.
+   * @return A new NumericTimeSeries containing the ROC values.
+   * @note The first ROC value corresponds to the date at index 'period' in the input series.
+   */
   template <class Decimal>
   NumericTimeSeries<Decimal> RocSeries (const NumericTimeSeries<Decimal>& series, uint32_t period)
   {
@@ -85,15 +116,23 @@ using namespace boost::accumulators;
 	rocValue = ((currentValue / prevValue) - DecimalConstants<Decimal>::DecimalOne) *
 	  DecimalConstants<Decimal>::DecimalOneHundred;
 	resultSeries.addEntry(NumericTimeSeriesEntry<Decimal> (p->getDate(),
-							    rocValue,
-							    series.getTimeFrame()));
+							       rocValue,
+							       series.getTimeFrame()));
       }
 
     return resultSeries;
   }
 
-  // Calculate median of entire series
-
+  /**
+   * @brief Calculates the median value of all entries in a NumericTimeSeries.
+   *
+   * Extracts all values, sorts them, and computes the median.
+   *
+   * @tparam Decimal The numeric type used in the time series.
+   * @param series The input time series.
+   * @return The median value of the series.
+   * @throws std::domain_error if the input time series is empty.
+   */
   template <class Decimal>
   Decimal Median(const NumericTimeSeries<Decimal>& series)
   {
@@ -114,6 +153,17 @@ using namespace boost::accumulators;
       return sortedVector[mid];
   }
 
+  /**
+   * @brief Calculates the median value of elements in a vector of Decimal.
+   *
+   * Makes a copy of the input vector, sorts it, and computes the median.
+   *
+   * @tparam Decimal The numeric type used in the vector.
+   * @param series The input vector of Decimal values.
+   * @return The median value of the vector.
+   * @throws std::domain_error if the input vector is empty.
+   * @note This function operates on a copy of the input vector.
+   */
   template <class Decimal>
   Decimal MedianOfVec(const std::vector<Decimal>& series)
   {
@@ -134,25 +184,21 @@ using namespace boost::accumulators;
       return sortedVector[mid];
   }
 
-
+  /**
+   * @brief Calculates the median value of elements in a generic vector.
+   *
+   * Makes a copy of the input vector, sorts it, and computes the median.
+   * Requires type T to support copy construction, comparison (<), addition (+),
+   * and division by T(2.0).
+   *
+   * @tparam T The data type of the elements in the vector. Must support necessary operations.
+   * @param series The input vector.
+   * @return The median value of the vector.
+   * @throws std::domain_error if the input vector is empty.
+   * @note This function operates on a copy of the input vector.
+   */
   template <typename T>
-  T StandardDeviation(const std::vector<T>& series) {
-    if (series.size() > 0) {
-        std::vector<double> doubleSeries;
-        for (const T& value : series) {
-            doubleSeries.push_back(value.getAsDouble()); // Convert to double
-        }
-
-        accumulator_set<double, features<tag::variance>> varianceStats;
-        varianceStats = for_each(doubleSeries.begin(), doubleSeries.end(), varianceStats);
-        return T(sqrt(variance(varianceStats))); // Convert back to T
-    } else {
-        return T(0);
-    }
-}
-  
-template <typename T>
-T Median(const std::vector<T>& series) {
+  T Median(const std::vector<T>& series) {
     typedef typename std::vector<T>::size_type vec_size_type;
 
     std::vector<T> sortedVector(series);
@@ -160,603 +206,314 @@ T Median(const std::vector<T>& series) {
 
     vec_size_type size = sortedVector.size();
     if (size == 0) {
-        throw std::domain_error("Cannot take median of empty time series");
+      throw std::domain_error("Cannot take median of empty time series");
     }
 
     vec_size_type mid = size / 2;
 
     if ((size % 2) == 0) {
-        return (sortedVector[mid] + sortedVector[mid - 1]) / T(2.0);
+      return (sortedVector[mid] + sortedVector[mid - 1]) / T(2.0);
     } else {
-        return sortedVector[mid];
+      return sortedVector[mid];
     }
-}
+  }
 
-template <typename T>
-T MedianAbsoluteDeviation(const std::vector<T>& series) {
-    if (series.size() > 0) {
-        T firstMedian = Median(series);
-        std::vector<T> secondMedianVector;
-        for (const T& value : series) {
-	  secondMedianVector.push_back((value - firstMedian).abs()); // Use dec::abs
-        }
-        return Median(secondMedianVector) * T(1.4826);
-    } else {
-        return T(0);
+   /**
+   * @brief Calculates the population standard deviation for a vector of arithmetic types.
+   *
+   * This overload is enabled only for standard arithmetic types (int, float, double, etc.).
+   * Calculates the mean, variance (using N in the denominator), and then the square root.
+   *
+   * @tparam T An arithmetic type (e.g., int, float, double). Determined via std::is_arithmetic.
+   * @param series The input vector of arithmetic values.
+   * @return The population standard deviation as a double. Returns 0.0 if the vector is empty.
+   * @note Calculates population standard deviation (divides variance by N).
+   */
+  template <typename T>
+  typename std::enable_if<std::is_arithmetic<T>::value, double>::type
+  StandardDeviation(const std::vector<T>& series)
+  {
+    if (series.empty())
+      return 0.0;
+    double sum = 0.0;
+    for (T v : series) sum += v;
+    double mean = sum / series.size();
+    double var = 0.0;
+    for (T v : series) {
+      double d = v - mean;
+      var += d * d;
     }
-}
+    var /= series.size();
+    return std::sqrt(var);
+  }
+
+  /**
+   * @brief Calculates the population standard deviation for a vector of non-arithmetic types.
+   *
+   * This overload is enabled for types that are not standard arithmetic types
+   * (e.g., custom Decimal classes). It assumes the type T has a `getAsDouble()` method.
+   * Uses boost::accumulators to compute the variance.
+   *
+   * @tparam T A non-arithmetic type, expected to have a `getAsDouble()` method and be constructible from double.
+   * @param series The input vector of values.
+   * @return The population standard deviation as type T. Returns DecimalConstants<T>::DecimalZero if the vector is empty.
+   * @note Calculates population standard deviation (boost::accumulators::variance defaults to N).
+   * @note Requires T to have `getAsDouble()` and be constructible from double.
+   */
+  template <typename T>
+  typename std::enable_if<!std::is_arithmetic<T>::value, T>::type
+  StandardDeviation(const std::vector<T>& series)
+  {
+    if (series.empty())
+      return DecimalConstants<T>::DecimalZero;
+    std::vector<double> vals;
+    vals.reserve(series.size());
+    for (const T& v : series)
+      vals.push_back(v.getAsDouble());
+    accumulator_set<double, features<tag::variance>> stats;
+    stats = for_each(vals.begin(), vals.end(), stats);
+    double var = variance(stats);
+    return T(std::sqrt(var));
+  }
   
-/* c##################################################################### */
-  /* c######################  file Qn.for :  ############################## */
-  /* c##################################################################### */
-  /* c */
-  /* c   This file contains a Fortran function for a new robust estimator */
-  /* c   of scale denoted as Qn, proposed in Rousseeuw and Croux (1993). */
-  /* c   The estimator has a high breakdown point and a smooth and bounded */
-  /* c   influence function. The algorithm given here is very fast (running */
-  /* c   in O(nlogn) time) and needs only O(n) storage space. */
-  /* c */
-  /* c   Rousseeuw, P.J. and Croux, C. (1993), "Alternatives to the */
-  /* c      Median Absolute Deviation," Journal of the American */
-  /* c      Statistical Association, Vol. 88, 1273-1283. */
-  /* c */
-  /* c   A Fortran function for the estimator Sn, described in the same */
-  /* c   paper, is attached above. For both estimators, implementations */
-  /* c   in the Pascal language can be obtained from the authors. */
-  /* c */
-  /* c   This software may be used and copied freely, provided */
-  /* c   reference is made to the abovementioned paper. */
-  /* c */
-  /* c   For questions, problems or comments contact: */
-  /* c */
-  /* c              Peter Rousseeuw (rousse@wins.uia.ac.be) */
-  /* c              Christophe Croux (croux@wins.uia.ac.be) */
-  /* c              Department of Mathematics and Computing */
-  /* c              Universitaire Instelling Antwerpen */
-  /* c              Universiteitsplein 1 */
-  /* c              B-2610 Wilrijk (Antwerp) */
-  /* c              Belgium */
-  /* c */
-  /* c-------------------------------------------------------------------- */
-  /* c */
-  /* c   Efficient algorithm for the scale estimator: */
-  /* c */
-  /* c       Qn = dn * 2.2219 * {|x_i-x_j|; i<j}_(k) */
-  /* c */
-  /* c   Parameters of the function Qn : */
-  /* c       x  : real array containing the observations */
-  /* c       n  : number of observations (n >=2) */
-  /* c */
-  /* c   The function Qn uses the procedures: */
-  /* c      whimed(a,iw,n): finds the weighted high median of an array */
-  /* c                      a of length n, using the array iw (also of */
-  /* c                      length n) with positive integer weights. */
-  /* c      sort(x,n,y) : sorts an array x of length n, and stores the */
-  /* c                    result in an array y (of size at least n) */
-  /* c      pull(a,n,k) : finds the k-th order statistic of an */
-  /* c                    array a of length n */
-  /* c */
+  /**
+   * @brief Calculates the Median Absolute Deviation (MAD), scaled for normality, for arithmetic types.
+   *
+   * Calculates the median of the input data, then the median of the absolute deviations
+   * from that median. The result is scaled by ~1.4826 to make it a consistent
+   * estimator of the standard deviation for normally distributed data.
+   * This overload is enabled only for standard arithmetic types (int, float, double, etc.).
+   *
+   * @tparam T An arithmetic type (e.g., int, float, double). Determined via std::is_arithmetic.
+   * @param series The input vector of arithmetic values.
+   * @return The scaled MAD as a double. Returns 0.0 if the vector is empty.
+   * @note The scaling factor 1.4826 makes the MAD comparable to the standard deviation for normal distributions.
+   */
+  template <typename T>
+  typename std::enable_if<std::is_arithmetic<T>::value, double>::type
+  MedianAbsoluteDeviation(const std::vector<T>& series)
+  {
+    if (series.empty())
+      return 0.0;
+    std::vector<T> sorted(series);
+    std::sort(sorted.begin(), sorted.end());
+    size_t n = sorted.size();
+    double med = (n % 2 == 0)
+      ? (static_cast<double>(sorted[n/2 - 1]) + sorted[n/2]) / 2.0
+      : static_cast<double>(sorted[n/2]);
+    std::vector<double> devs;
+    devs.reserve(n);
+    for (T v : series) devs.push_back(std::abs(static_cast<double>(v) - med));
+    std::sort(devs.begin(), devs.end());
+    if (n % 2 == 0)
+      return ((devs[n/2 - 1] + devs[n/2]) / 2.0) * 1.4826;
+    else
+      return devs[n/2] * 1.4826;
+  }
+
+  /**
+   * @brief Calculates the Median Absolute Deviation (MAD), scaled for normality, for non-arithmetic types.
+   *
+   * Calculates the median of the input data, then the median of the absolute deviations
+   * from that median. The result is scaled by T(1.4826) to make it a consistent
+   * estimator of the standard deviation for normally distributed data.
+   * This overload is enabled for types that are not standard arithmetic types
+   * (e.g., custom Decimal classes). It assumes the type T supports median calculation
+   * (via MedianOfVec), subtraction, absolute value (.abs()), and construction from double.
+   *
+   * @tparam T A non-arithmetic type. Must support operations required by MedianOfVec,
+   * subtraction (-), absolute value (.abs()), and construction from double (e.g., T(1.4826)).
+   * @param series The input vector of values.
+   * @return The scaled MAD as type T. Returns DecimalConstants<T>::DecimalZero if the vector is empty.
+   * @note The scaling factor 1.4826 makes the MAD comparable to the standard deviation for normal distributions.
+   * @note Relies on MedianOfVec for median calculations and assumes T has necessary operators/methods.
+   */
+  template <typename T>
+  typename std::enable_if<!std::is_arithmetic<T>::value, T>::type
+  MedianAbsoluteDeviation(const std::vector<T>& series)
+  {
+    if (series.empty())
+      return DecimalConstants<T>::DecimalZero;
+    // compute median of series
+    T firstMed = MedianOfVec(series);
+    std::vector<T> deviations;
+    deviations.reserve(series.size());
+    for (const T& v : series)
+      deviations.push_back((v - firstMed).abs());
+    T medDev = MedianOfVec(deviations);
+    return medDev * T(1.4826);
+  }
+  
+  /**
+   * @brief High-level documentation of the Qₙ robust scale estimator algorithm.
+   *
+   * Qₙ is a 50%–breakdown‐point estimator with ~82% efficiency under Gaussian
+   * assumptions.  It improves on the Median Absolute Deviation (MAD) by using
+   * pairwise distances and an order‐statistic selection.
+   *
+   * Algorithm Overview:
+   * -------------------
+   * 1. Let n = number of observations. If n < 2, return zero.
+   * 2. Compute:
+   *      h = floor(n/2) + 1
+   *      k = h * (h - 1) / 2
+   * 3. Build a list `diffs` of all |x[j] - x[i]| for 0 ≤ i < j < n.
+   * 4. Use `std::nth_element(diffs.begin(), diffs.begin() + (k-1), diffs.end())`
+   *    to partition `diffs` so that the (k−1)th element is the k-th smallest.
+   *    Let med = diffs[k-1].
+   * 5. Compute the finite–sample correction factor cₙ:
+   *      - For n ≤  9: use tabulated constants for unbiasedness under normality.
+   *      - For n >  9 and n odd:  cₙ = (n / (n + 1.4)) * 2.2219
+   *      - For n >  9 and n even: cₙ = (n / (n + 3.8)) * 2.2219
+   *    Multiply: Qₙ = cₙ * med.
+   *
+   * Complexity and Robustness:
+   * --------------------------
+   * - Time:    O(n²) to generate diffs, plus O(n²) average for nth_element.
+   * - Space:   O(n²) for the `diffs` vector.
+   * - Breakdown point: 50% (resistant to up to half the data being outliers).
+   * - Efficiency: ~82% under Gaussian models (far above ~37% for MAD).
+   *
+   * Pseudocode:
+   * ~~~~~~~~~~
+   *   function Qn(x[1..n]):
+   *       if n < 2: return 0
+   *       h = floor(n/2) + 1
+   *       k = h*(h-1)/2
+   *       diffs = []
+   *       for i in 1..n-1:
+   *           for j in i+1..n:
+   *               diffs.push_back(abs(x[j] - x[i]))
+   *       nth_element(diffs, k-1)
+   *       med = diffs[k-1]
+   *       return c_n(n) * med
+   *
+   * @see Rousseeuw, P.J. and Croux, C. (1993), “Alternatives to the Median Absolute
+   *      Deviation”, Journal of the American Statistical Association.
+   */
 
   template <class Decimal>
   class RobustQn
   {
   public:
-    RobustQn(const NumericTimeSeries<Decimal>& series) :
-      mNumericSeries (series)
+     /**
+     * @brief Construct a Q_n estimator from a time series.
+     *
+     * Copies all values from the given NumericTimeSeries into an internal
+     * vector for computation.
+     *
+     * @param series  Source time series of Decimal values.
+     */
+    explicit RobustQn(const NumericTimeSeries<Decimal>& series)
+      : mData(series.getTimeSeriesAsVector())
     {}
 
-    RobustQn() :
-      mNumericSeries (TimeFrame::DAILY)
-    {}
+    /**
+     * @brief Default construct; use getRobustQn(inputVec) instead.
+     */
+    RobustQn() = default;
 
-    ~RobustQn()
-    {}
-
-    Decimal getRobustQn()
+    /**
+     * @brief Compute Q_n for the stored time series.
+     *
+     * @return  The Q_n robust scale estimate.
+     */
+    Decimal getRobustQn() const
     {
-      std::vector<Decimal> aVector(mNumericSeries.getTimeSeriesAsVector());
-      long size = (long) aVector.size();
-
-      return qn_(aVector.data(), &size);
+      return computeQn(mData);
     }
 
-    Decimal getRobustQn(std::vector<Decimal>& inputVec)
+     /**
+     * @brief Compute Q_n for an arbitrary vector of values.
+     *
+     * Does not modify the input vector.
+     *
+     * @param inputVec  Vector of Decimal values.
+     * @return          The Q_n robust scale estimate.
+     */
+    Decimal getRobustQn(const std::vector<Decimal>& inputVec) const
     {
-      long size = (long) inputVec.size();
-
-      return qn_(inputVec.data(), &size);
+      return computeQn(inputVec);
     }
 
   private:
-    Decimal qn_(Decimal *x, long int *n)
+    std::vector<Decimal> mData;
+
+    /**
+     * @brief Core Q_n computation on a value vector.
+     *
+     * Steps:
+     *   1. Let n = values.size(). If n < 2, return zero.
+     *   2. Compute h = floor(n/2) + 1 and k = h*(h-1)/2.
+     *   3. Build all pairwise absolute differences |x_j - x_i| for i<j.
+     *   4. Use std::nth_element to find the k-th smallest difference.
+     *   5. Multiply the selected difference by the correction factor c_n.
+     *
+     * @param values  Input values for Q_n calculation.
+     * @return        The scaled Q_n estimate.
+     */
+    static Decimal computeQn(const std::vector<Decimal>& values)
     {
-      long int i__1, i__2;
-      Decimal ret_val;
-      static long int h__, i__, j, k;
-      long int p[*n], q[*n];
-      Decimal y[*n];
-      static Decimal dn;
-      static long int jj, nl, nr, knew;
-      long int left[*n];
-      Decimal work[*n];
-      static long int sump, sumq;
-      static long int jhelp;
-      static int found;
-      static Decimal trial;
-      long int right[*n];
-      long int weight[*n];
+      const size_t n = values.size();
+      if (n < 2)
+	return DecimalConstants<Decimal>::DecimalZero;
 
-      /* Parameter adjustments */
-      --x;
+      // h = floor(n/2) + 1, k = h*(h-1)/2
+      const size_t h = n/2 + 1;
+      const size_t k = h*(h - 1)/2;
 
-      /* Function Body */
-      h__ = *n / 2 + 1;
-      k = h__ * (h__ - 1) / 2;
-      sort_(&x[1], n, y);
-      i__1 = *n;
-
-      for (i__ = 1; i__ <= i__1; ++i__)
-	{
-	  left[i__ - 1] = *n - i__ + 2;
-	  right[i__ - 1] = *n;
+      // collect all pairwise absolute differences
+      std::vector<Decimal> diffs;
+      diffs.reserve((n*(n-1))/2);
+      for (size_t i = 0; i + 1 < n; ++i) {
+	for (size_t j = i + 1; j < n; ++j) {
+	  Decimal d = values[j] - values[i];
+	  if (d < DecimalConstants<Decimal>::DecimalZero)
+	    d = -d;
+	  diffs.push_back(d);
 	}
+      }
+        
+      // Select the k-th smallest difference (1-based index)
+      std::nth_element(diffs.begin(), diffs.begin() + k - 1, diffs.end());
+      Decimal med = diffs[k - 1];
 
-      jhelp = *n * (*n + 1) / 2;
-      knew = k + jhelp;
-      nl = jhelp;
-      nr = *n * *n;
-      found = 0;
-
-    L200:
-      if (nr - nl > *n && ! found)
-	{
-	  j = 1;
-	  i__1 = *n;
-
-	  for (i__ = 2; i__ <= i__1; ++i__)
-	    {
-	      if (left[i__ - 1] <= right[i__ - 1])
-		{
-		  weight[j - 1] = right[i__ - 1] - left[i__ - 1] + 1;
-		  jhelp = left[i__ - 1] + weight[j - 1] / 2;
-		  work[j - 1] = y[i__ - 1] - y[*n + 1 - jhelp - 1];
-		  ++j;
-		}
-	    }
-
-	  i__1 = j - 1;
-	  trial = whimed_(work, weight, &i__1);
-	  j = 0;
-
-	  for (i__ = *n; i__ >= 1; --i__)
-	    {
-	    L45:
-	      if (j < *n && y[i__ - 1] - y[*n - j - 1] < trial)
-		{
-		  ++j;
-		  goto L45;
-		}
-	      p[i__ - 1] = j;
-	    }
-
-	  j = *n + 1;
-	  i__1 = *n;
-
-	  for (i__ = 1; i__ <= i__1; ++i__)
-	    {
-	    L55:
-	      if (y[i__ - 1] - y[*n - j + 1] > trial)
-		{
-		  --j;
-		  goto L55;
-		}
-	      q[i__ - 1] = j;
-	    }
-
-	  sump = 0;
-	  sumq = 0;
-	  i__1 = *n;
-
-	  for (i__ = 1; i__ <= i__1; ++i__)
-	    {
-	      sump += p[i__ - 1];
-	      sumq = sumq + q[i__ - 1] - 1;
-	    }
-
-	  if (knew <= sump)
-	    {
-	      i__1 = *n;
-	      for (i__ = 1; i__ <= i__1; ++i__)
-		{
-		  right[i__ - 1] = p[i__ - 1];
-		}
-
-	      nr = sump;
-	    }
-	  else
-	    {
-	      if (knew > sumq)
-		{
-		  i__1 = *n;
-		  for (i__ = 1; i__ <= i__1; ++i__)
-		    {
-		      left[i__ - 1] = q[i__ - 1];
-		    }
-
-		  nl = sumq;
-		}
-	      else
-		{
-		  ret_val = trial;
-		  found = 1;
-		}
-	    }
-	  goto L200;
-	}
-
-      if (! found)
-	{
-	  j = 1;
-	  i__1 = *n;
-	  for (i__ = 2; i__ <= i__1; ++i__)
-	    {
-	      if (left[i__ - 1] <= right[i__ - 1])
-		{
-		  i__2 = right[i__ - 1];
-		  for (jj = left[i__ - 1]; jj <= i__2; ++jj)
-		    {
-		      work[j - 1] = y[i__ - 1] - y[*n - jj];
-		      ++j;
-		    }
-		}
-	    }
-
-	  i__1 = j - 1;
-	  i__2 = knew - nl;
-	  ret_val = pull_(work, &i__1, &i__2);
-	}
-
-      if (*n <= 9)
-	{
-	  if (*n == 2)
-	    dn = dec::fromString<Decimal>("0.399");
-	  else if (*n == 3)
-	    dn = dec::fromString<Decimal>("0.994");
-	  else if (*n == 4)
-	    dn = dec::fromString<Decimal>("0.512");
-	  else if (*n == 5)
-	    dn = dec::fromString<Decimal>("0.844");
-	  else if (*n == 6)
-	    dn = dec::fromString<Decimal>("0.611");
-	  else if (*n == 7)
-	    dn = dec::fromString<Decimal>("0.857");
-	  else if (*n == 8)
-	    dn = dec::fromString<Decimal>("0.669");
-	  else
-	    dn = dec::fromString<Decimal>("0.872");
-	}
-      else
-	{
-	  if (*n % 2 == 1)
-	    dn = Decimal((int) *n) / (Decimal((int) *n) + dec::fromString<Decimal>("1.4"));
-
-	  if (*n % 2 == 0)
-	    dn = Decimal((int) *n) / (Decimal((int)*n) + dec::fromString<Decimal>("3.8"));
-	}
-
-      ret_val = dn * dec::fromString<Decimal>("2.21914") * ret_val;
-      return ret_val;
+      // apply finite-sample correction
+      return computeCorrectionFactor(n) * med;
     }
 
-    int sort_(Decimal *a, long int *n, Decimal *b)
+    /**
+     * @brief Compute the finite-sample correction factor c_n.
+     *
+     * For n <= 9: uses precomputed constants for unbiasedness under normality.
+     * For n > 9: uses asymptotic approximations:
+     *   - n odd:  c_n = (n / (n + 1.4)) * 2.2219
+     *   - n even: c_n = (n / (n + 3.8)) * 2.2219
+     *
+     * @param n  Sample size.
+     * @return   Scaling factor for Q_n estimator.
+     */
+    static Decimal computeCorrectionFactor(size_t n)
     {
-      long int i__1;
-
-      static long int j, jr;
-      static Decimal xx;
-      static long int jnc;
-      static Decimal amm;
-      static long int jss, jndl, jtwe;
-      long int jlv[*n], jrv[*n];
-
-      /* c  Sorts an array a of length n<=1000, and stores */
-      /* c  the result in the array b. */
-      /* Parameter adjustments */
-      --b;
-      --a;
-
-      i__1 = *n;
-      for (j = 1; j <= i__1; ++j)
-	b[j] = a[j];
-
-      jss = 1;
-      jlv[0] = 1;
-      jrv[0] = *n;
-    L10:
-      jndl = jlv[jss - 1];
-      jr = jrv[jss - 1];
-      --jss;
-    L20:
-      jnc = jndl;
-      j = jr;
-      jtwe = (jndl + jr) / 2;
-      xx = b[jtwe];
-
-    L30:
-      if (b[jnc] >= xx)
-	goto L40;
-
-      ++jnc;
-      goto L30;
-
-    L40:
-      if (xx >= b[j])
-	goto L50;
-      --j;
-      goto L40;
-
-    L50:
-      if (jnc > j)
-	goto L60;
-
-      amm = b[jnc];
-      b[jnc] = b[j];
-      b[j] = amm;
-      ++jnc;
-      --j;
-
-    L60:
-      if (jnc <= j)
-	goto L30;
-
-      if (j - jndl < jr - jnc)
-	goto L80;
-
-      if (jndl >= j)
-	goto L70;
-
-      ++jss;
-      jlv[jss - 1] = jndl;
-      jrv[jss - 1] = j;
-
-    L70:
-      jndl = jnc;
-      goto L100;
-
-    L80:
-      if (jnc >= jr)
-	goto L90;
-
-      ++jss;
-      jlv[jss - 1] = jnc;
-      jrv[jss - 1] = jr;
-
-    L90:
-      jr = j;
-
-    L100:
-      if (jndl < jr)
-	goto L20;
-
-      if (jss != 0)
-	goto L10;
-
-      return 0;
+      static constexpr double smallC[10] = {
+	0.0, 0.0,
+	0.399, 0.994, 0.512, 0.844,
+	0.611, 0.857, 0.669, 0.872
+      };
+      double dn;
+      if (n <= 9) {
+	dn = smallC[n];
+      } else if (n % 2 == 1) {
+	dn = static_cast<double>(n) / (n + 1.4);
+      } else {
+	dn = static_cast<double>(n) / (n + 3.8);
+      }
+      // asymptotic consistency factor
+      static constexpr double asymp = 2.2219;
+      return Decimal(dn * asymp);
     }
-
-    Decimal pull_(Decimal *a, long int *n, long int *k)
-    {
-      /* System generated locals */
-      long int i__1;
-      Decimal ret_val;
-
-      /* Local variables */
-      Decimal b[*n];
-      static long int j, l;
-      static Decimal ax;
-      static long int lr, jnc;
-      static Decimal buffer;
-
-      /* c  Finds the kth order statistic of an array a of length n<=1000 */
-      /* Parameter adjustments */
-      --a;
-
-      i__1 = *n;
-      for (j = 1; j <= i__1; ++j)
-	{
-	  b[j - 1] = a[j];
-	}
-
-      l = 1;
-      lr = *n;
-
-    L20:
-      if (l >= lr)
-	{
-	  goto L90;
-	}
-
-      ax = b[*k - 1];
-      jnc = l;
-      j = lr;
-
-    L30:
-      if (jnc > j)
-	{
-	  goto L80;
-	}
-
-    L40:
-      if (b[jnc - 1] >= ax)
-	{
-	  goto L50;
-	}
-
-      ++jnc;
-      goto L40;
-
-    L50:
-      if (b[j - 1] <= ax)
-	{
-	  goto L60;
-	}
-      --j;
-      goto L50;
-
-    L60:
-      if (jnc > j)
-	{
-	  goto L70;
-	}
-
-      buffer = b[jnc - 1];
-      b[jnc - 1] = b[j - 1];
-      b[j - 1] = buffer;
-      ++jnc;
-      --j;
-    L70:
-      goto L30;
-
-    L80:
-      if (j < *k)
-	{
-	  l = jnc;
-	}
-      if (*k < jnc)
-	{
-	  lr = j;
-	}
-      goto L20;
-
-    L90:
-      ret_val = b[*k - 1];
-      return ret_val;
-    } /* pull_ */
-
-
-    /* c */
-    /* c  Algorithm to compute the weighted high median in O(n) time. */
-    /* c */
-    /* c  The whimed is defined as the smallest a(j) such that the sum */
-    /* c  of the weights of all a(i) <= a(j) is strictly greater than */
-    /* c  half of the total weight. */
-    /* c */
-    /* c  Parameters of this function: */
-    /* c        a: real array containing the observations */
-    /* c        n: number of observations */
-    /* c       iw: array of integer weights of the observations. */
-    /* c */
-    /* c  This function uses the function pull. */
-    /* c */
-    /* c  The size of acand, iwcand must be at least n. */
-    /* c */
-
-    Decimal whimed_(Decimal *a, long int *iw, long int *n)
-    {
-      /* System generated locals */
-      long int i__1;
-      Decimal ret_val;
-
-      /* Local variables */
-      static long int i__, nn, wmid;
-
-      Decimal acand[*n];
-      static long int kcand;
-      static Decimal trial;
-      static long int wleft, wrest, wright, wtotal;
-      long int iwcand[*n];
-
-      /* Parameter adjustments */
-      --iw;
-      --a;
-
-      nn = *n;
-      wtotal = 0;
-      i__1 = nn;
-      for (i__ = 1; i__ <= i__1; ++i__)
-	wtotal += iw[i__];
-
-      wrest = 0;
-
-    L100:
-      i__1 = nn / 2 + 1;
-      trial = pull_(&a[1], &nn, &i__1);
-      wleft = 0;
-      wmid = 0;
-      wright = 0;
-      i__1 = nn;
-      for (i__ = 1; i__ <= i__1; ++i__)
-	{
-	  if (a[i__] < trial)
-	    {
-	      wleft += iw[i__];
-	    }
-	  else
-	    {
-	      if (a[i__] > trial) {
-		wright += iw[i__];
-	      }
-	      else
-		{
-		  wmid += iw[i__];
-		}
-	    }
-	}
-
-      if ((wrest << 1) + (wleft << 1) > wtotal)
-	{
-	  kcand = 0;
-	  i__1 = nn;
-	  for (i__ = 1; i__ <= i__1; ++i__)
-	    {
-	      if (a[i__] < trial)
-		{
-		  ++kcand;
-		  acand[kcand - 1] = a[i__];
-		  iwcand[kcand - 1] = iw[i__];
-		}
-	    }
-	  nn = kcand;
-	}
-      else
-	{
-	  if ((wrest << 1) + (wleft << 1) + (wmid << 1) > wtotal)
-	    {
-	      ret_val = trial;
-	      return ret_val;
-	    }
-	  else
-	    {
-	      kcand = 0;
-	      i__1 = nn;
-	      for (i__ = 1; i__ <= i__1; ++i__)
-		{
-		  if (a[i__] > trial)
-		    {
-		      ++kcand;
-		      acand[kcand - 1] = a[i__];
-		      iwcand[kcand - 1] = iw[i__];
-		    }
-		}
-
-	      nn = kcand;
-	      wrest = wrest + wleft + wmid;
-	    }
-	}
-
-      i__1 = nn;
-
-      for (i__ = 1; i__ <= i__1; ++i__)
-	{
-	  a[i__] = acand[i__ - 1];
-	  iw[i__] = iwcand[i__ - 1];
-	}
-      goto L100;
-    }
-
-  private:
-    NumericTimeSeries<Decimal> mNumericSeries;
   };
+
 }
 
 #endif
