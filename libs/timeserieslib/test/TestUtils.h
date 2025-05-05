@@ -2,10 +2,10 @@
 #include <memory>
 
 #include <boost/date_time.hpp>
-#include "../BoostDateHelper.h"
-#include "../PercentNumber.h"
-#include "../TimeSeriesEntry.h"
-#include "../TradingVolume.h"
+#include "BoostDateHelper.h"
+#include "PercentNumber.h"
+#include "TimeSeriesEntry.h"
+#include "TradingVolume.h"
 
 typedef dec::decimal<7> DecimalType;
 typedef mkc_timeseries::OHLCTimeSeriesEntry<DecimalType> EntryType;

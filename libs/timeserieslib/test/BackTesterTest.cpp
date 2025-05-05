@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cpptrace/from_current.hpp>
-#include "../TimeSeriesCsvReader.h"
-#include "../PalStrategy.h"
-#include "../BoostDateHelper.h"
-#include "../BackTester.h"
-#include "../DecimalConstants.h"
+#include "TimeSeriesCsvReader.h"
+#include "PalStrategy.h"
+#include "BoostDateHelper.h"
+#include "BackTester.h"
+#include "DecimalConstants.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
