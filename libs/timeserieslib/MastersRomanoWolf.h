@@ -23,6 +23,20 @@ namespace mkc_timeseries
      *  5. If the adjusted p-value <= alpha, the strategy is declared significant and removed from the active set;
      *     otherwise, the procedure stops and all remaining strategies inherit the same p-value.
      *
+     *   How This Fixes the "Two Annoying Weaknesses" of Romano and Wolf
+     * 1. **Strong Control of FWE (Weakness #1)**
+     *    - Traditional selection-bias tests require the joint null that *all* competitors are unrelated,
+     *      yielding only weak control of family-wise error (valid only if no competitor has any real relationship).
+     *    - By testing and removing each strategy one at a time, this stepwise approach provides *strong*
+     *      control of FWE: it remains valid under any configuration of true and false null hypotheses.
+     *
+     * 2. **Improved Power & Exact p‑Values (Weakness #2)**
+     *    - The classical max-statistic test builds its null by taking the maximum over *all* competitors,
+     *      producing exact p-values only for the top scorer and conservative upper bounds for the rest.
+     *    - Here, as each strategy is removed, the null distribution is *shrunk* (max over fewer competitors),
+     *      yielding p-values that more closely match each competitor’s true null distribution and restoring power
+     *      for “second‑best,” “third‑best,” etc., while still controlling the overall error rate.
+     *
      * @tparam Decimal Numeric type for statistics (e.g., double, long double).
      * @tparam BaselineStatPolicy Policy providing:
      *         - static unsigned int getMinStrategyTrades(): minimum trades threshold.
