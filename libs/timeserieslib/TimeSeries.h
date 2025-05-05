@@ -724,21 +724,21 @@ namespace mkc_timeseries
      */
     ConstTimeSeriesIterator getTimeSeriesEntry(const boost::posix_time::ptime& dt) const
     {
-       if (mIndex.empty())
+      /*       if (mIndex.empty())
 	buildIndex();
       
        auto it = mIndex.find(dt);
        if (it == mIndex.end())
 	 return mData.end();
 
-       return mData.begin() + it->second; 
+       return mData.begin() + it->second;  */
       
       
-	/* auto it = std::lower_bound(
+       auto it = std::lower_bound(
 				 mData.begin(), mData.end(), dt,
 				 [](auto const& e, auto const& t){ return e.getDateTime() < t; });
       return (it != mData.end() && it->getDateTime() == dt)
-      ? it : mData.end(); */
+      ? it : mData.end();
     }
 
     /** @name Random-access iteration (by index) */
