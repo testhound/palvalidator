@@ -53,21 +53,21 @@ namespace mkc_timeseries
 
     void writeFile()
     {
-      typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = 
-	mTimeSeries.beginSortedAccess();
-      ptime timeSeriesDate;
+      for (auto it = mTimeSeries.beginSortedAccess();
+           it != mTimeSeries.endSortedAccess();
+           ++it)
+      {
+        // *it is an OHLCTimeSeriesEntry<Decimal>
+        const auto& entry = *it;
+        ptime       dateTime = entry.getDateTime();
 
-      for (; it != mTimeSeries.endSortedAccess(); it++)
-	{
-	  timeSeriesDate = it->first;
-	  const auto& timeSeriesEntry = it->second;
-
-	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate.date()) << "," << 
-	    timeSeriesEntry.getOpenValue() << "," <<
-	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
-	    timeSeriesEntry.getCloseValue() << std::endl;
-	}
-    }
+        mCsvFile << boost::gregorian::to_iso_string(dateTime.date()) << ","
+                 << entry.getOpenValue()  << ","
+                 << entry.getHighValue()  << ","
+                 << entry.getLowValue()   << ","
+                 << entry.getCloseValue() << std::endl;
+      }
+    }    
 
   private:
     std::ofstream mCsvFile;
@@ -110,23 +110,26 @@ namespace mkc_timeseries
     ~PalVolumeForCloseCsvWriter()
     {}
 
+    /**
+     * @brief Dump the time series to CSV: Date,Open,High,Low,Volume
+     */
     void writeFile()
     {
-      typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = 
-	mTimeSeries.beginSortedAccess();
-      ptime timeSeriesDate;
+      for (auto it = mTimeSeries.beginSortedAccess();
+           it != mTimeSeries.endSortedAccess();
+           ++it)
+      {
+        // *it is an OHLCTimeSeriesEntry<Decimal>
+        const auto& entry = *it;
+        ptime       dateTime = entry.getDateTime();
 
-      for (; it != mTimeSeries.endSortedAccess(); it++)
-	{
-	  timeSeriesDate = it->first;
-	  const auto& timeSeriesEntry = it->second;
-
-	  mCsvFile << boost::gregorian::to_iso_string (timeSeriesDate.date()) << "," << 
-	    timeSeriesEntry.getOpenValue() << "," <<
-	    timeSeriesEntry.getHighValue() << "," << timeSeriesEntry.getLowValue() << "," <<
-	    timeSeriesEntry.getVolumeValue() << std::endl;
-	}
-    }
+        mCsvFile << boost::gregorian::to_iso_string(dateTime.date()) << ","
+                 << entry.getOpenValue()    << ","
+                 << entry.getHighValue()    << ","
+                 << entry.getLowValue()     << ","
+                 << entry.getVolumeValue()  << std::endl;
+      }
+    }    
 
   private:
     std::ofstream mCsvFile;
