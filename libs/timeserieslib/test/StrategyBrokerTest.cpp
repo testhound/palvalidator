@@ -1,10 +1,8 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../TimeSeriesCsvReader.h"
-#include "../ClosedPositionHistory.h"
-#include "../StrategyBroker.h"
-#include "../BoostDateHelper.h"
+#include <catch2/catch_test_macros.hpp>
+#include "TimeSeriesCsvReader.h"
+#include "ClosedPositionHistory.h"
+#include "StrategyBroker.h"
+#include "BoostDateHelper.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
