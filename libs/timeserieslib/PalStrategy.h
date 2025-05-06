@@ -531,11 +531,29 @@ namespace mkc_timeseries
 
   /**
    * @class PalLongStrategy
-   * @brief Concrete PalStrategy for long-only patterns.
+   * @brief Concrete PalStrategy for long‐only price‐action patterns.
    *
-   * Implements entry and exit logic for long trades only.  Inherits getLatestBarReturn()
-   * behavior from PalStrategy, ensuring each bar’s P&L is recorded for high-frequency
-   * resampling tests.  Exits use both profit-target and stop-loss on the current fill price.
+   * This class implements all the entry/exit logic needed to run a long‐only
+   * version of a single PriceActionLabPattern:
+   *  - **Entry**: on each bar, if flat or pyramiding is allowed and the
+   *    pattern evaluator fires, it issues an `EnterLongOnOpen` with the
+   *    configured stop‐loss and profit‐target.
+   *  - **Exit**: for open long positions, it submits both a limit exit at
+   *    profit‐target and a stop‐loss exit, then updates the R‐multiple
+   *    on the filled bar.
+   *
+   * @details
+   * When used under our BackTester, every bar’s P&L—including the bar on which
+   * a profit‐target or stop‐loss fires—is recorded at the finest resolution.
+   * This is critical for building accurate null distributions in both
+   * permutation tests (e.g., Masters’s step‐down algorithm) and bootstrap
+   * confidence intervals, since it:
+   *  - Maintains a large, homogeneous sample of bar‐returns for resampling.
+   *  - Preserves time‐series properties (autocorrelation, volatility clustering).
+   *  - Ensures exit‐bar P&L is never dropped, giving robust, low‐variance
+   *    statistics for significance testing and interval estimation.
+   *
+   * @tparam Decimal  Numeric type for price/return calculations (e.g., double).
    */
   template <class Decimal> class PalLongStrategy : public PalStrategy<Decimal>
     {
@@ -590,10 +608,22 @@ namespace mkc_timeseries
       }
 
       /**
-       * @brief Handle exit orders for open long positions at profit-target or stop-loss.
-       * @param aSecurity       Security being evaluated.
-       * @param instrPos        Current open InstrumentPosition for this security.
-       * @param processingDate  Date of this bar’s processing.
+       * @brief Evaluate and submit exit orders for long positions on this bar.
+       *
+       * @details
+       * BackTester calls this before entries each bar.  For long trades, this method:
+       *  - Retrieves the latest fill price for the current unit(s).
+       *  - Issues a limit order at the configured profit‐target.
+       *  - Issues a stop‐loss order at the configured stop level.
+       *  - Updates the position’s R‐multiple for performance tracking.
+       *
+       * Because StrategyBroker first marks all open positions at the bar‐close,
+       * the exit fill’s P&L (which may occur intrabar) is added to the high‐resolution
+       * returns series via getAllHighResReturns, ensuring no P&L is lost.
+       *
+       * @param aSecurity       Security to exit.
+       * @param instrPos        InstrumentPosition for the current bar.
+       * @param processingDate  Date of this bar.
        */
       void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
@@ -621,8 +651,24 @@ namespace mkc_timeseries
       }
 
       /**
-       * @brief Evaluate entry conditions for long trades on this bar.
+       * @brief Evaluate and submit new long‐entry orders based on the pattern.
+       *
+       * @details
+       * BackTester invokes this immediately after exits each bar.  In a long strategy:
+       *  - If the position is flat or pyramiding is allowed, and
+       *    the bar count exceeds the pattern’s lookback,
+       *    we evaluate the compiled pattern expression on the bar’s data.
+       *  - If the pattern fires, we submit an `EnterLongOnOpen`.
+       *
+       * Ordering ensures that any exits freeing up capital/pyramiding slots happen
+       * before new entries.  All bar‐by‐bar P&L—including exit fills—will
+       * be captured in the unified high‐res series.
+       *
+       * @param aSecurity       Security to evaluate for entry.
+       * @param instrPos        InstrumentPosition for the current bar.
+       * @param processingDate  Date of this bar.
        */
+
       void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
@@ -649,11 +695,27 @@ namespace mkc_timeseries
 
   /**
    * @class PalShortStrategy
-   * @brief Concrete PalStrategy for short-only patterns.
+   * @brief Concrete PalStrategy for short‐only price‐action patterns.
    *
-   * Implements entry and exit logic for short trades only.  Shares high-resolution
-   * bar-return capture via getLatestBarReturn(), enabling robust resampling tests.
-   */
+   * This class implements all the entry/exit logic needed to run a short‐only
+   * version of a single PriceActionLabPattern:
+   *  - **Entry**: on each bar, if flat or pyramiding is allowed and the
+   *    pattern evaluator fires, it issues an `EnterShortOnOpen` with the
+   *    configured stop‐loss and profit‐target.
+   *  - **Exit**: for open short positions, it submits both a limit exit at
+   *    profit‐target and a stop‐loss exit, then updates the R‐multiple
+   *    on the filled bar.
+   *
+   * @details
+   * As with long trades, every bar’s P&L—including the bar on which a short‐side
+   * profit‐target or stop‐loss fires—is captured at the bar level.  This fine‐grained
+   * return series is essential for:
+   *  - Stable permutation‐test null distributions (strong FWE control).
+   *  - Accurate bootstrap of out‐of‐sample performance (tight CI’s).
+   *  - Fair comparison across strategies, since exit‐bar outcomes are never lost.
+   *
+   * @tparam Decimal  Numeric type for price/return calculations (e.g., double).
+ */
   template <class Decimal> class PalShortStrategy : public PalStrategy<Decimal>
     {
     public:
@@ -705,6 +767,20 @@ namespace mkc_timeseries
 						       this->getPalPattern(),
 						       this->getPortfolio());
       }
+
+      /**
+       * @brief Evaluate and submit exit orders for short positions on this bar.
+       *
+       * @details
+       * Called before entry each bar.  For short trades, submits:
+       *  - A limit‐to‐cover at the profit‐target price.
+       *  - A stop‐to‐cover at the stop‐loss price.
+       *  - Records the exit bar’s P&L in the high‐res series.
+       *
+       * @param aSecurity       Security to exit.
+       * @param instrPos        InstrumentPosition for the current bar.
+       * @param processingDate  Date of this bar.
+       */
       void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
@@ -731,6 +807,17 @@ namespace mkc_timeseries
 	  }
       }
 
+      /**
+       * @brief Evaluate and submit new short‐entry orders based on the pattern.
+       *
+       * @details
+       * Called immediately after exits.  Checks if flat/pyramiding allowed,
+       * tests the pattern on this bar, and issues `EnterShortOnOpen` if triggered.
+       *
+       * @param aSecurity       Security to evaluate for entry.
+       * @param instrPos        InstrumentPosition for the current bar.
+       * @param processingDate  Date of this bar.
+       */
       void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)

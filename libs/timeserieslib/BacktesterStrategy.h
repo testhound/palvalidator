@@ -68,6 +68,10 @@ namespace mkc_timeseries
     public:
       typedef typename Portfolio<Decimal>::ConstPortfolioIterator PortfolioIterator;
 
+      /**
+       * @brief Copy constructor.
+       * @param rhs  Strategy to clone state from (name, broker, portfolio, etc.).
+       */
       BacktesterStrategy(const BacktesterStrategy<Decimal>& rhs)
 	: mStrategyName(rhs.mStrategyName),
 	  mBroker(rhs.mBroker),
@@ -76,6 +80,11 @@ namespace mkc_timeseries
 	  mStrategyOptions(mStrategyOptions)
       {}
 
+      /**
+       * @brief Assignment operator.
+       * @param rhs  Strategy to copy state from.
+       * @return Reference to *this.
+       */
       const BacktesterStrategy<Decimal>&
       operator=(const BacktesterStrategy<Decimal>& rhs)
       {
@@ -91,6 +100,10 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      /**
+       * @brief Retrieve this strategy’s unique name.
+       * @return The name given at construction.
+       */
       const std::string& getStrategyName() const
       {
 	return mStrategyName;
@@ -99,14 +112,55 @@ namespace mkc_timeseries
       virtual ~BacktesterStrategy()
       {}
 
+      /**
+       * @brief Called once per bar to submit exit orders (profit‐target, stop‐loss, etc.).
+       *
+       * @details
+       * Within each simulation step, BackTester does:
+       *   1. strategy->eventUpdateSecurityBarNumber(symbol);
+       *   2. if not flat: strategy->eventExitOrders(...);
+       *   3. strategy->eventEntryOrders(...);
+       *
+       * Exits are processed before new entries so that:
+       *  - Exiting positions can free up capital or pyramid slots.
+       *  - You never simultaneously hold overlapping exit and entry orders for the same security.
+       *  - The bar‐by‐bar return series (via getAllHighResReturns) will include any exit
+       *    fill P&L on that bar, since StrategyBroker marks to market before executing fills.
+       *
+       * @param aSecurity       Pointer to the security being evaluated.
+       * @param instrPos        Current multi‐unit InstrumentPosition for that security.
+       * @param processingDate  Date (or timestamp) of this bar.
+       */
       virtual void eventExitOrders (Security<Decimal>* aSecurity,
 				    const InstrumentPosition<Decimal>& instrPos,
 				    const date& processingDate) = 0;
 
+      /**
+       * @brief Called once per bar to submit new entry orders based on strategy signals.
+       *
+       * @details
+       * After exits are submitted, BackTester invokes this to allow the strategy to:
+       *  - Check pattern triggers or indicator signals on the current bar.
+       *  - Submit `EnterLongOnOpen` or `EnterShortOnOpen` with attached stops/targets.
+       *  - Respect pyramiding rules and maximum position sizes.
+       *
+       * Entries run second so that:
+       *  - You enter only after evaluating whether existing positions have exited.
+       *  - Fresh capital or free pyramiding slots are available for new trades.
+       *
+       * @param aSecurity       Pointer to the security being evaluated.
+       * @param instrPos        Current multi‐unit InstrumentPosition for that security.
+       * @param processingDate  Date (or timestamp) of this bar.
+       */
       virtual void eventEntryOrders (Security<Decimal>* aSecurity,
 				     const InstrumentPosition<Decimal>& instrPos,
 				     const date& processingDate) = 0;
 
+       /**
+	* @brief Determine the order size (shares/contracts) for aSecurity.
+	* @param aSecurity  Security whose order size is requested.
+	* @return A TradingVolume object indicating units to trade.
+	*/
       virtual const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const = 0;
 
       virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
@@ -121,16 +175,29 @@ namespace mkc_timeseries
 
       virtual unsigned long numTradingOpportunities() const = 0;
 
+      /**
+       * @brief Whether this strategy allows pyramiding (multiple units) by configuration.
+       * @return True if pyramidingEnabled was set in StrategyOptions.
+       */
       bool isPyramidingEnabled() const
       {
 	  return mStrategyOptions.isPyramidingEnabled();
       }
 
+      /**
+       * @brief Maximum allowed pyramiding layers.
+       * @return Configured maxPyramidPositions from StrategyOptions.
+       */
       unsigned int getMaxPyramidPositions() const
       {
 	return mStrategyOptions.getMaxPyramidPositions();
       }
 
+      /**
+       * @brief Check if we can pyramid another unit in tradingSymbol.
+       * @param tradingSymbol  Ticker symbol to test.
+       * @return True if current units < 1 + maxPyramidPositions.
+       */
       bool strategyCanPyramid(const std::string& tradingSymbol) const
       {
 	if (isPyramidingEnabled())
@@ -145,6 +212,11 @@ namespace mkc_timeseries
 	return false;
       }
 
+      /**
+       * @brief Query whether a flat/long/short position exists for tradingSymbol.
+       * @param tradingSymbol  Ticker symbol to check.
+       * @return True if currently long (or short / flat).
+       */
       bool isLongPosition(const std::string& tradingSymbol) const
       {
 	return mBroker.isLongPosition (tradingSymbol);
@@ -160,11 +232,19 @@ namespace mkc_timeseries
 	return mBroker.isFlatPosition (tradingSymbol);
       }
 
+      /**
+       * @brief Iterate all securities in the strategy’s portfolio.
+       * @return Const iterator to the first security.
+       */
       PortfolioIterator beginPortfolio() const
       {
 	return mPortfolio->beginPortfolio();
       }
 
+      /**
+       * @brief End iterator for the portfolio securities.
+       * @return Const iterator one past the last security.
+       */
       PortfolioIterator endPortfolio() const
       {
 	return mPortfolio->endPortfolio();
@@ -175,6 +255,11 @@ namespace mkc_timeseries
 	return mPortfolio->getNumSecurities();
       }
 
+       /**
+	* @brief Exit all units (long or short) at open price on orderDate.
+	* @param tradingSymbol  Ticker to exit.
+	* @param orderDate      Date when the exit is placed.
+	*/
       void ExitAllPositions(const std::string& tradingSymbol,
 			    const date& orderDate)
       {
@@ -184,6 +269,13 @@ namespace mkc_timeseries
 	  ExitShortAllUnitsAtOpen(tradingSymbol, orderDate);
       }
 
+      /**
+       * @brief Submit a market‐on‐open entry order (long side).
+       * @param tradingSymbol  Ticker to enter.
+       * @param orderDate      Date of the entry bar.
+       * @param stopLoss       Optional stop‐loss price.
+       * @param profitTarget   Optional profit‐target price.
+       */
       void EnterLongOnOpen(const std::string& tradingSymbol, 	
 			   const date& orderDate,
 			   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
@@ -196,6 +288,13 @@ namespace mkc_timeseries
 				 profitTarget); 
       }
 
+      /**
+       * @brief Submit a market‐on‐open entry order (short side).
+       * @param tradingSymbol  Ticker to enter short.
+       * @param orderDate      Date of the entry bar.
+       * @param stopLoss       Optional stop‐loss price.
+       * @param profitTarget   Optional profit‐target price.
+       */
       void EnterShortOnOpen(const std::string& tradingSymbol,	
 			    const date& orderDate,
 			    const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
@@ -208,12 +307,24 @@ namespace mkc_timeseries
 				  profitTarget); 
       }
 
+      /**
+       * @brief Exit all long units at the open of orderDate.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       */
       void ExitLongAllUnitsAtOpen(const std::string& tradingSymbol,
 				  const date& orderDate)
       {
 	mBroker.ExitLongAllUnitsOnOpen(tradingSymbol, orderDate);
       }
 
+      /**
+       * @brief Exit all long units at a hard limit price.
+       * @overload
+       * @param limitPrice     Absolute price to exit at.
+       * @param limitBasePrice Base price for percent‐based exit.
+       * @param percentNum     PercentNumber to compute the limit from base.
+       */
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& limitPrice)
@@ -231,12 +342,20 @@ namespace mkc_timeseries
 					 limitBasePrice, percentNum);
       }
 
+      /**
+       * @brief Exit all short units at a hard limit price.
+       * @overload
+       */
       void ExitShortAllUnitsAtOpen(const std::string& tradingSymbol,
 				   const date& orderDate)
       {
 	mBroker.ExitShortAllUnitsOnOpen(tradingSymbol, orderDate);
       }
 
+      /**
+       * @brief Exit all short units at a hard limit price.
+       * @overload
+       */
       void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				  const date& orderDate,
 				  const Decimal& limitPrice)
@@ -253,6 +372,10 @@ namespace mkc_timeseries
 					 limitBasePrice, percentNum);
       }
 
+      /**
+       * @brief Exit long positions at a stop‐loss price.
+       * @overload
+       */
       void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
 				const Decimal& stopPrice)
@@ -260,6 +383,10 @@ namespace mkc_timeseries
 	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDate, stopPrice);
       }
 
+      /**
+       * @brief Exit long positions at a stop‐loss price.
+       * @overload
+       */
       void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
 				const Decimal& stopBasePrice,
@@ -269,6 +396,10 @@ namespace mkc_timeseries
 					 stopBasePrice, percentNum);
       }
 
+      /**
+       * @brief Exit short positions at a stop‐loss price.
+       * @overload
+       */
       void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& stopPrice)
@@ -285,11 +416,20 @@ namespace mkc_timeseries
 					 stopBasePrice, percentNum);
       }
 
+       /**
+	* @brief Drive the broker’s mark‐to‐market and fill logic for this bar.
+	* @param processingDate  Current bar date.
+	* @see StrategyBroker::ProcessPendingOrders
+	*/
       void eventProcessPendingOrders(const date& processingDate) 
       {
 	mBroker.ProcessPendingOrders (processingDate);
       }
 
+      /**
+       * @brief Increment the per‐security bar count (used for lookback logic).
+       * @param tradingSymbol  Ticker whose bar counter to advance.
+       */
       void eventUpdateSecurityBarNumber(const std::string& tradingSymbol)
       {
 	mSecuritiesProperties.updateBacktestBarNumber (tradingSymbol);
@@ -314,13 +454,23 @@ namespace mkc_timeseries
 	instrPos.setRMultipleStop (riskStop, unitNumber);
       }
 
+     /**
+      * @brief Access the current InstrumentPosition for a security.
+      * @param tradingSymbol  Ticker to retrieve.
+      * @return Const reference to the position object.
+      */
       const InstrumentPosition<Decimal>& 
       getInstrumentPosition(const std::string& tradingSymbol) const
       {
 	return mBroker.getInstrumentPosition(tradingSymbol);
       }
       
-      // Checks to see if a security has trading data for a particular day.
+      /**
+       * @brief Check if aSecurity has data at processingDate.
+       * @param aSecurity      Security to probe.
+       * @param processingDate Date to test.
+       * @return True if time series contains an entry for processingDate.
+       */
 
       bool doesSecurityHaveTradingData (const Security<Decimal>& aSecurity,
 					const date& processingDate)
@@ -342,6 +492,12 @@ namespace mkc_timeseries
       }
 
     protected:
+      /**
+       * @brief Construct a base strategy with portfolio and options.
+       * @param strategyName     Name to assign.
+       * @param portfolio        Shared portfolio pointer.
+       * @param strategyOptions  Risk and pyramiding config.
+       */
       BacktesterStrategy (const std::string& strategyName,
 			  std::shared_ptr<Portfolio<Decimal>> portfolio,
 			  const StrategyOptions& strategyOptions) 
