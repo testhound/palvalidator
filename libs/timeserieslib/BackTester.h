@@ -10,6 +10,7 @@
 #include <exception>
 #include <list>
 #include <vector>
+#include <map>
 #include <string>
 #include <boost/date_time.hpp>
 #include "number.h"
@@ -74,6 +75,9 @@ namespace mkc_timeseries
     using StrategyRawIterator    = typename std::vector<StrategyPtr>::const_iterator;
     using BacktestDateRangeIterator = typename DateRangeContainer::DateRangeIterator;
 
+    /**
+     * @brief Construct an empty BackTester with no strategies or dates.
+     */
     explicit BackTester()
       : mStrategyList(),
 	mStrategyRawList(),
@@ -84,6 +88,10 @@ namespace mkc_timeseries
     virtual ~BackTester()
     {}
 
+    /**
+     * @brief Copy constructor; clones strategy list and date ranges.
+     * @param rhs Other BackTester to copy state from.
+     */
     BackTester(const BackTester& rhs)
       : mStrategyList(rhs.mStrategyList),
 	mBackTestDates(rhs.mBackTestDates),
@@ -92,6 +100,11 @@ namespace mkc_timeseries
       rebuildStrategyRawList();
     }
 
+    /**
+     * @brief Assignment operator; copies strategies, dates, and bar series.
+     * @param rhs Other BackTester to assign from.
+     * @return Reference to this BackTester.
+     */
     BackTester& operator=(const BackTester& rhs)
     {
       if (this != &rhs)
@@ -104,54 +117,82 @@ namespace mkc_timeseries
       return *this;
     }
 
+     /**
+     * @brief Clone this BackTester, preserving configuration but not strategies.
+     * @return Shared pointer to a new BackTester.
+     * @note Must be implemented by derived classes (e.g., DailyBackTester).
+     */
     virtual std::shared_ptr<BackTester<Decimal>> clone() const = 0;
 
+    /**
+     * @brief Add a strategy to be included in backtesting.
+     * @param aStrategy Shared pointer to the strategy instance.
+     */
     void addStrategy(const std::shared_ptr<BacktesterStrategy<Decimal>>& aStrategy)
     {
       mStrategyList.push_back(aStrategy);
       mStrategyRawList.push_back(aStrategy.get());
     }
 
+    /**
+     * @brief Add a date-range over which to run the backtest.
+     * @param range DateRange specifying start and end dates.
+     */
     void addDateRange(const DateRange& range)
     {
       mBackTestDates.addDateRange(range);
     }
 
+    /**
+     * @brief Iterator to the first added strategy.
+     * @return Const iterator to strategy list.
+     */
     StrategyIterator beginStrategies() const
     {
       return mStrategyList.begin();
     }
 
+    /**
+     * @brief Iterator one past the last added strategy.
+     * @return Const iterator to strategy list end.
+     */
     StrategyIterator endStrategies() const
     {
       return mStrategyList.end();
     }
 
-    StrategyRawIterator beginStrategiesRaw() const
-    {
-      return mStrategyRawList.begin();
-    }
-
-    StrategyRawIterator endStrategiesRaw() const
-    {
-      return mStrategyRawList.end();
-    }
-
+    /**
+     * @brief Iterator to the first date-range used in backtesting.
+     * @return Iterator to date-range container start.
+     */
     BacktestDateRangeIterator beginBacktestDateRange() const
     {
       return mBackTestDates.beginDateRange();
     }
 
+    /**
+     * @brief Iterator one past the last date-range.
+     * @return Iterator to date-range container end.
+     */
     BacktestDateRangeIterator endBacktestDateRange() const
     {
       return mBackTestDates.endDateRange();
     }
 
+    /**
+     * @brief Number of distinct backtest date ranges configured.
+     * @return Count of date ranges.
+     */
     unsigned long numBackTestRanges() const
     {
       return mBackTestDates.getNumEntries();
     }
 
+    /**
+     * @brief Retrieve the closed-position history from the first strategy.
+     * @return Reference to ClosedPositionHistory instance.
+     * @throws BackTesterException if no strategies have been added.
+     */
     const ClosedPositionHistory<Decimal>& getClosedPositionHistory() const
     {
       if (mStrategyList.empty())
@@ -161,21 +202,118 @@ namespace mkc_timeseries
       return mStrategyList.front()->getStrategyBroker().getClosedPositionHistory();
     }
 
+     /**
+     * @brief Number of strategies currently registered.
+     * @return Strategy count.
+     */
     uint32_t getNumStrategies() const
     {
       return static_cast<uint32_t>(mStrategyList.size());
     }
 
+    /**
+     * @brief Extract a unified, high-resolution return series for one strategy.
+     *
+     * @details
+     * This method walks every closed trade (via ClosedPositionHistory) and
+     * every still-open position’s bar history to build a flat vector of
+     * per-bar returns, computed as
+     *   \f$\displaystyle r_t = \frac{close_t - close_{t-1}}{close_{t-1}}\f$.
+     * It includes the very bar on which each trade exited, ensuring **no**
+     * realized P&L is ever dropped.
+     *
+     * **Why bar-by-bar?**
+     *  - **Large, homogeneous sample**:  Hundreds or thousands of bar returns
+     *    give far more data points than a handful of trade P&Ls.  This
+     *    drastically reduces estimator variance in resampling-based tests.
+     *  - **Preserved time-series structure**:  Because each return is
+     *    recorded at the native bar frequency—and trades are marked-to-market
+     *    before exit—the resulting series captures autocorrelation and
+     *    volatility clustering.  That lets you validly use block-bootstrap
+     *    or block-permutation schemes when constructing null distributions.
+     *  - **Sharper null distributions**:  In both permutation and bootstrap
+     *    you’re effectively comparing observed statistics to an empirical
+     *    sampling distribution.  Smoother, more finely grained nulls (from
+     *    many bar returns) yield more precise p-values and confidence
+     *    intervals than coarse, trade-level summaries.
+     *  - **Strong FWE control with power**:  When plugged into a step-down
+     *    permutation test (e.g. Masters’s algorithm), each permutation uses
+     *    this rich bar-level statistic.  You maintain strong family-wise
+     *    error control while maximizing power to detect “second-best,”
+     *    “third-best,” etc., strategies.
+     *  - **Robust out-of-sample inference**:  Bootstrapping OOS mean returns
+     *    at the bar level (instead of per-trade) yields tighter, more
+     *    realistic confidence bands—critical for spotting overfitting or
+     *    regime shifts in live trading.
+     *
+     * @param strat  Pointer to the strategy whose history to extract.
+     * @return A flat std::vector<Decimal> of all per-bar returns
+     *         (closed and open) for that strategy.
+     */
+    std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
+    {
+      // 1) closed trades
+      const auto& closedHist = strat->getStrategyBroker()
+                                 .getClosedPositionHistory();
+      std::vector<Decimal> allReturns = closedHist.getHighResBarReturns();
+
+      // 2) any open positions
+      for (auto it = strat->getPortfolio()->beginPortfolio();
+	   it != strat->getPortfolio()->endPortfolio();
+	   ++it)
+	{
+	  auto const& sec     = it->second;
+	  const auto& instrPos = strat->getInstrumentPosition(sec->getSymbol());
+
+	  for (uint32_t u = 1; u <= instrPos.getNumPositionUnits(); ++u)
+	    {
+	      auto posPtr = *instrPos.getInstrumentPosition(u);
+	      auto begin  = posPtr->beginPositionBarHistory();
+	      auto end    = posPtr->endPositionBarHistory();
+	      if (std::distance(begin, end) < 2) 
+                continue;
+
+	      auto prev = begin;
+	      for (auto curr = std::next(begin); curr != end; ++curr)
+		{
+		  Decimal c0 = prev->second.getCloseValue();
+		  Decimal c1 = curr->second.getCloseValue();
+		  allReturns.push_back((c1 - c0) / c0);
+		  prev = curr;
+		}
+	    }
+	}
+
+      return allReturns;
+    }
+
+    /**
+     * @brief Earliest date used across all backtest ranges.
+     * @return Start date of backtest.
+     */
     date getStartDate() const
     {
       return mBackTestDates.getFirstDateRange().getFirstDate();
     }
 
+    /**
+     * @brief Latest date used across all backtest ranges.
+     * @return End date of backtest.
+     */
     date getEndDate() const
     {
       return mBackTestDates.getFirstDateRange().getLastDate();
     }
 
+    /**
+     * @brief Execute the full backtest across all configured date ranges.
+     *
+     * For each date range, saves bar dates, iterates through each bar (skipping the first),
+     * processes entry/exit logic per strategy, records per-bar P&L via getLatestBarReturn(),
+     * and handles multi-range rollovers by closing positions at range boundaries.
+     *
+     * @throws BackTesterException if no strategies are registered.
+     */
     virtual void backtest()
     {
       typename BackTester<Decimal>::StrategyRawIterator itStrategy;
@@ -247,10 +385,33 @@ namespace mkc_timeseries
     }
 
   protected:
+    /**
+     * @brief Return the previous time period (e.g., prior trading day).
+     * @param d Current date.
+     * @return Previous period date.
+     * @note Implemented by derived classes (Daily/Weekly/Monthly).
+     */
     virtual TimeSeriesDate previous_period(const TimeSeriesDate& d) const = 0;
+
+    /**
+     * @brief Return the next time period (e.g., next trading day).
+     * @param d Current date.
+     * @return Next period date.
+     * @note Implemented by derived classes.
+     */
     virtual TimeSeriesDate next_period(const TimeSeriesDate& d) const = 0;
 
   private:
+    StrategyRawIterator beginStrategiesRaw() const
+    {
+      return mStrategyRawList.begin();
+    }
+
+    StrategyRawIterator endStrategiesRaw() const
+    {
+      return mStrategyRawList.end();
+    }
+
     void rebuildStrategyRawList()
     {
       mStrategyRawList.clear();
