@@ -385,11 +385,26 @@ namespace mkc_timeseries
     unsigned int mStrategyMaxBarsBack;
   };
 
+  /**
+   * @brief Base class for price-action-based strategies using a single pattern.
+   *
+   * PalStrategy drives entry and exit logic for a single PriceActionLabPattern, evaluating
+   * pattern expressions bar-by-bar.
+   *
+   * @tparam Decimal Numeric type for prices and returns (e.g., double).
+   */
   template <class Decimal> class PalStrategy : public BacktesterStrategy<Decimal>
     {
     public:
       using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
+      /**
+     * @brief Construct a PalStrategy with a given pattern and portfolio.
+     * @param strategyName  Unique name for this strategy instance.
+     * @param pattern       Shared pointer to the PriceActionLabPattern to trade.
+     * @param portfolio     Shared portfolio of securities and cash.
+     * @param strategyOptions  Configuration options (risk, slippage, etc.).
+     */
     PalStrategy(const std::string& strategyName,
 		std::shared_ptr<PriceActionLabPattern> pattern,
 		std::shared_ptr<Portfolio<Decimal>> portfolio,
@@ -482,8 +497,6 @@ namespace mkc_timeseries
 	return mPatternEvaluator;
       }
       
-      //
-      
       [[deprecated("Use of this addLongPositionBar no longer supported")]]
       void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
 			    const date& processingDate)
@@ -516,6 +529,14 @@ namespace mkc_timeseries
   template <class Decimal> TradingVolume PalStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
   template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
 
+  /**
+   * @class PalLongStrategy
+   * @brief Concrete PalStrategy for long-only patterns.
+   *
+   * Implements entry and exit logic for long trades only.  Inherits getLatestBarReturn()
+   * behavior from PalStrategy, ensuring each bar’s P&L is recorded for high-frequency
+   * resampling tests.  Exits use both profit-target and stop-loss on the current fill price.
+   */
   template <class Decimal> class PalLongStrategy : public PalStrategy<Decimal>
     {
     public:
@@ -568,6 +589,12 @@ namespace mkc_timeseries
 						       this->getPortfolio());
       }
 
+      /**
+       * @brief Handle exit orders for open long positions at profit-target or stop-loss.
+       * @param aSecurity       Security being evaluated.
+       * @param instrPos        Current open InstrumentPosition for this security.
+       * @param processingDate  Date of this bar’s processing.
+       */
       void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
@@ -576,16 +603,13 @@ namespace mkc_timeseries
 	  {
 	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
 	    Decimal target = pattern->getProfitTargetAsDecimal();
-	    //std::cout << "PalLongStrategy::eventExitOrders, getProfitTargetAsDecimal(): " << pattern->getProfitTargetAsDecimal() << std::endl << std::endl;
 	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-	    //std::cout << "PalLongStrategy::eventExitOrders, createPercentNumber(): " << targetAsPercent.getAsPercent() << std::endl << std::endl;
 
 	    Decimal stop = pattern->getStopLossAsDecimal();
 	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
 
 	    Decimal fillPrice = instrPos.getFillPrice();
 
-	    //std::cout << "PalLongStrategy::eventExitOrders, fill Price =  " << fillPrice << std::endl;
 	    this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
 					  fillPrice, targetAsPercent);
 	    this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
@@ -596,6 +620,9 @@ namespace mkc_timeseries
 	  }
       }
 
+      /**
+       * @brief Evaluate entry conditions for long trades on this bar.
+       */
       void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
 			     const date& processingDate)
@@ -607,15 +634,12 @@ namespace mkc_timeseries
 	    if (this->getSecurityBarNumber(sym) > 
 		this->getPalPattern()->getMaxBarsBack())
 	      {
-		//PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
 		typename Security<Decimal>::ConstRandomAccessIterator it = 
 		  aSecurity->getRandomAccessIterator (processingDate);
 
 		if (this->getPatternEvaluator()(aSecurity, it))
-		  //if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
 		  {
 		    this->EnterLongOnOpen (sym, processingDate);
-		    //std::cout << "PalLongStrategy entered LongOnOpen Order on " << processingDate << std::endl;
 		  }
 		//this->addFlatPositionBar (aSecurity, processingDate);
 	      }
@@ -623,8 +647,13 @@ namespace mkc_timeseries
       }
   };
 
-  //
-
+  /**
+   * @class PalShortStrategy
+   * @brief Concrete PalStrategy for short-only patterns.
+   *
+   * Implements entry and exit logic for short trades only.  Shares high-resolution
+   * bar-return capture via getLatestBarReturn(), enabling robust resampling tests.
+   */
   template <class Decimal> class PalShortStrategy : public PalStrategy<Decimal>
     {
     public:
@@ -680,23 +709,18 @@ namespace mkc_timeseries
 			    const InstrumentPosition<Decimal>& instrPos,
 			    const date& processingDate)
       {
-	//std::cout << "PalShortStrategy::eventExitOrders - In eventExitOrders" << std::endl;
 	if (this->isShortPosition (aSecurity->getSymbol()))
 	  {
-	    //std::cout << "!!!! PalShortStrategy::eventExitOrders - isShortPosition true" << std::endl << std::endl;
 	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
 	    Decimal target = pattern->getProfitTargetAsDecimal();
 
-	    //std::cout << "PalShortStrategy::eventExitOrders, getProfitTargetAsDecimal(): " << pattern->getProfitTargetAsDecimal() << std::endl << std::endl;
 	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-	    //std::cout << "PalShortStrategy::eventExitOrders, createPercentNumber(): " << targetAsPercent.getAsPercent() << std::endl << std::endl;
 
 	    Decimal stop = pattern->getStopLossAsDecimal();
-	    //std::cout << "PalShortStrategy::eventExitOrders, getStopLossAsDecimal(): " << pattern->getStopLossAsDecimal() << std::endl << std::endl;
+
 	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
 
 	    Decimal fillPrice = instrPos.getFillPrice();
-	    //std::cout << "PalShortStrategy::eventExitOrders, fill Price =  " << fillPrice << std::endl;
 
 	    this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
 					  fillPrice, targetAsPercent);
@@ -717,14 +741,11 @@ namespace mkc_timeseries
 	    if (this->getSecurityBarNumber(sym) > 
 		this->getPalPattern()->getMaxBarsBack())
 	      {
-		//PatternExpression *expr = this->getPalPattern()->getPatternExpression().get();
 		typename Security<Decimal>::ConstRandomAccessIterator it = 
 		  aSecurity->getRandomAccessIterator (processingDate);
 
 		if (this->getPatternEvaluator()(aSecurity, it))
-		  //if (PALPatternInterpreter<Decimal>::evaluateExpression (expr, aSecurity, it))
 		  {
-		    //std::cout << "PalShortStrategy entered ShortOnOpen Order on " << processingDate << std::endl;
 		    this->EnterShortOnOpen (sym, processingDate);
 		  }
 		//this->addFlatPositionBar (aSecurity, processingDate);
