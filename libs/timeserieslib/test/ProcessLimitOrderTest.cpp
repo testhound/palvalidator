@@ -1,9 +1,7 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../BoostDateHelper.h"
-#include "../TimeSeriesEntry.h"
-#include "../TradingOrderManager.h"
+#include <catch2/catch_test_macros.hpp>
+#include "BoostDateHelper.h"
+#include "TimeSeriesEntry.h"
+#include "TradingOrderManager.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
