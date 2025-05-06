@@ -1,6 +1,4 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 #include "../InstrumentPosition.h"
 #include "../DecimalConstants.h"
 #include "TestUtils.h"
@@ -378,7 +376,7 @@ InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it1 =
     REQUIRE_FALSE (c2InstrumentPositionLong.isShortPosition());
     REQUIRE (c2InstrumentPositionLong.getNumPositionUnits() == 2);
 
-    REQUIRE_THROWS (c2InstrumentPositionLong.addPosition(shortPosition1););
+    REQUIRE_THROWS (c2InstrumentPositionLong.addPosition(shortPosition1));
   }
 
   SECTION ("Test throwing exception if trying to add long position to short")
@@ -388,7 +386,7 @@ InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it1 =
     REQUIRE (c2InstrumentPositionShort.isShortPosition());
     REQUIRE (c2InstrumentPositionShort.getNumPositionUnits() == 2);
 
-    REQUIRE_THROWS (c2InstrumentPositionShort.addPosition(longPosition1););
+    REQUIRE_THROWS (c2InstrumentPositionShort.addPosition(longPosition1));
   }
 }
 

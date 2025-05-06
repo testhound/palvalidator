@@ -1,8 +1,6 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../InstrumentPositionManager.h"
-#include "../DecimalConstants.h"
+#include <catch2/catch_test_macros.hpp>
+#include "InstrumentPositionManager.h"
+#include "DecimalConstants.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
@@ -200,17 +198,17 @@ TEST_CASE ("TradingPosition operations", "[TradingPosition]")
       REQUIRE_FALSE (aPosManager.isFlatPosition(futuresSymbol));
       REQUIRE (aPosManager.getNumPositionUnits (futuresSymbol) == 1);
 
-      aPosManager.addBarForOpenPosition (createDate("19851119"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851120"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851121"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851122"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851125"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851126"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851127"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851129"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851202"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851203"), aPortfolio);
-      aPosManager.addBarForOpenPosition (createDate("19851204"), aPortfolio);
+      aPosManager.addBarForOpenPosition (createDate("19851119"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851120"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851121"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851122"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851125"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851126"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851127"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851129"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851202"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851203"), aPortfolio.get());
+      aPosManager.addBarForOpenPosition (createDate("19851204"), aPortfolio.get());
       
       auto cornPos = aPosManager.getTradingPosition (futuresSymbol, 1);
       REQUIRE (cornPos->getNumBarsInPosition() == 12);
