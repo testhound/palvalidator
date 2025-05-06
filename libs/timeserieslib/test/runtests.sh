@@ -35,6 +35,9 @@ g++ -o OpenPositionHistoryTest OpenPositionHistoryTest.o TestUtils.o ../LogPalPa
 g++ -O2 -c -std=c++14 -I../ -I. -I/usr/local/include/priceactionlab -I/usr/local/include OpenPositionTest.cpp
 g++ -o OpenPositionTest OpenPositionTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ../runner.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system -lboost_thread -lboost_filesystem -lCatch2 -pthread
 
+g++ -O2 -c -std=c++14 -I../ -I. -I/usr/local/include/priceactionlab -I/usr/local/include TradingPositionTest.cpp
+g++ -o TradingPositionTest TradingPositionTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ../runner.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system -lboost_thread -lboost_filesystem -lCatch2 -pthread
+
 g++ -O2 -c -std=c++14 -I../ -I. -I/usr/local/include/priceactionlab -I/usr/local/include -DCPPTRACE_STATIC_DEFINE TimeSeriesTest.cpp
 
 g++ -o TimeSeriesTest TimeSeriesTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ../runner.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system -lboost_thread -lboost_filesystem -lCatch2 -pthread

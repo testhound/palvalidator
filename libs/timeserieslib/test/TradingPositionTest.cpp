@@ -1,9 +1,7 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../TradingPosition.h"
-#include "../PercentNumber.h"
-#include "../DecimalConstants.h"
+#include <catch2/catch_test_macros.hpp>
+#include "TradingPosition.h"
+#include "PercentNumber.h"
+#include "DecimalConstants.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
