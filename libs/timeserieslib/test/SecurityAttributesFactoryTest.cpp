@@ -1,7 +1,5 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../SecurityAttributesFactory.h"
+#include <catch2/catch_test_macros.hpp>
+#include "SecurityAttributesFactory.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
@@ -12,7 +10,8 @@ TEST_CASE ("Security operations", "[Security]")
   std::string equitySymbol("SPY");
   std::string equityName("SPDR S&P 500 ETF");
 
-  SecurityAttributesFactory<DecimalType> factory;
+  auto& factory = SecurityAttributesFactory<DecimalType>::instance();
+
   SecurityAttributesFactory<DecimalType>::SecurityAttributesIterator it;
 
   it = factory.getSecurityAttributes(equitySymbol);
