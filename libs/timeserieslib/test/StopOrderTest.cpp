@@ -1,7 +1,5 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../TradingOrder.h"
+#include <catch2/catch_test_macros.hpp>
+#include "TradingOrder.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
