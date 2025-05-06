@@ -199,6 +199,51 @@ namespace mkc_timeseries
       return mNumBarsInMarket;
     }
 
+    /**
+     * @brief Extract high-resolution bar-by-bar returns from all closed trades.
+     *
+     * Iterates each TradingPosition from its bar history (entry through exit),
+     * computes per-bar returns: (close_t - close_{t-1})/close_{t-1},
+     * and flattens them into a single vector.  Includes the final bar during which
+     * the trade exited, so that exit P&L is captured in the series.
+     *
+     * This high-frequency return series is ideal for permutation or bootstrap testing,
+     * providing a large, homogeneous sample that preserves time-series dependencies
+     * and yields low-variance null distributions.
+     *
+     * @return Vector of Decimal returns, one entry per bar across all closed trades.
+     */
+    std::vector<Decimal> getHighResBarReturns() const
+    {
+        std::vector<Decimal> allReturns;
+        for (auto it = mPositions.begin(); it != mPositions.end(); ++it)
+	  {
+            const auto& posPtr = it->second;
+
+	    // Grab the TradingPositon's  full bar history (entry→exit)
+            auto begin = posPtr->beginPositionBarHistory();
+            auto end   = posPtr->endPositionBarHistory();
+
+            if (std::distance(begin, end) < 2)
+	      continue;		// need at least two bars to compute one P&L
+
+            auto prev = begin;
+
+	    // Compute bar‐by‐bar return for this trade
+            for (auto curr = std::next(begin); curr != end; ++curr)
+	      {
+                // Each iterator points to pair<TimeSeriesDate, OpenPositionBar>
+                Decimal closePrev = prev->second.getCloseValue();
+                Decimal closeCurr = curr->second.getCloseValue();
+                Decimal barReturn = (closeCurr - closePrev) / closePrev;
+
+                allReturns.push_back(barReturn);
+                prev = curr;
+            }
+        }
+        return allReturns;
+    }
+
     Decimal getAverageWinningTrade() const
     {
       if (mNumWinners >= 1)
