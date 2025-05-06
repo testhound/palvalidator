@@ -1,8 +1,6 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../Security.h"
-#include "../SecurityFactory.h"
+#include <catch2/catch_test_macros.hpp>
+#include "Security.h"
+#include "SecurityFactory.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
