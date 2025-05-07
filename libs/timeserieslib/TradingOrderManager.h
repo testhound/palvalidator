@@ -25,32 +25,59 @@ namespace mkc_timeseries
 {
   /**
    * @class ProcessOrderVisitor
-   * @brief Implements the Visitor pattern to apply execution logic to each type of TradingOrder.
+   * @brief Implements the Visitor design pattern to apply order execution logic to various types of TradingOrder objects.
    *
-   * Responsibilities:
-   * - Visit each pending order and evaluate whether it should execute on the current bar.
-   * - Trigger order fills based on price criteria for each order type (e.g., market-on-open, stop, limit).
-   * - Dispatch execution results back to TradingOrderManager and order observers.
+   * @tparam Decimal The decimal type used for financial calculations.
+   *
+   * @details
+   * The `ProcessOrderVisitor` is responsible for determining if a given `TradingOrder`
+   * should be executed based on the market conditions of a specific trading bar.
+   * It encapsulates the fill logic for different order types (market, limit, stop).
+   * An instance of this visitor is typically created with the OHLC data of the current
+   * bar being processed in a backtest. The `TradingOrderManager` then uses this visitor
+   * to iterate over pending orders, dispatching each order to the appropriate `visit` method.
+   *
+   * Key Responsibilities:
+   * - Encapsulate order execution logic for different `TradingOrder` subtypes.
+   * - Evaluate fill conditions using the OHLC data of a specific trading bar.
+   * - Mark orders as executed by calling `TradingOrder::MarkOrderExecuted()` with the fill date and price if conditions are met.
+   * - Perform validation checks on orders before attempting to process them.
    *
    * Collaboration:
-   * - Used by TradingOrderManager::processPendingOrders.
-   * - Accesses the latest OHLC data to evaluate fill conditions.
-   * - Invokes TradingOrder::MarkOrderExecuted or MarkOrderCanceled as needed.
+   * - Used by `TradingOrderManager::processPendingOrders()` to attempt to fill pending orders.
+   * - Operates on `TradingOrder` objects and their derived classes.
+   * - Requires an `OHLCTimeSeriesEntry` (trading bar data) to make execution decisions.
    */
   template <class Decimal> class ProcessOrderVisitor : public TradingOrderVisitor<Decimal>
   {
   public:
+    /**
+     * @brief Constructs a ProcessOrderVisitor with a specific trading bar.
+     * @param tradingBar The OHLC data for the current trading bar against which orders will be evaluated.
+     */
     ProcessOrderVisitor(OHLCTimeSeriesEntry<Decimal> tradingBar)
       : mTradingBar (tradingBar)
     {}
 
+    /**
+     * @brief Destructor.
+     */
     ~ProcessOrderVisitor()
     {}
 
+    /**
+     * @brief Copy constructor.
+     * @param rhs The ProcessOrderVisitor to copy.
+     */
     ProcessOrderVisitor (const ProcessOrderVisitor<Decimal>& rhs)
       : mTradingBar(rhs.mTradingBar)
     {}
 
+     /**
+     * @brief Assignment operator.
+     * @param rhs The ProcessOrderVisitor to assign from.
+     * @return A reference to this visitor.
+     */
     ProcessOrderVisitor<Decimal>& 
     operator=(const ProcessOrderVisitor<Decimal> &rhs)
     {
@@ -61,6 +88,12 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /**
+     * @brief Processes a MarketOnOpenLongOrder.
+     * Market-on-open orders are typically filled at the opening price of the current bar.
+     * @param order Pointer to the MarketOnOpenLongOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (MarketOnOpenLongOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -69,6 +102,12 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
+    /**
+     * @brief Processes a MarketOnOpenSellOrder.
+     * Market-on-open orders are typically filled at the opening price of the current bar.
+     * @param order Pointer to the MarketOnOpenSellOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (MarketOnOpenSellOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -77,6 +116,12 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
+    /**
+     * @brief Processes a MarketOnOpenCoverOrder.
+     * Market-on-open orders are typically filled at the opening price of the current bar.
+     * @param order Pointer to the MarketOnOpenCoverOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (MarketOnOpenCoverOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -85,6 +130,12 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
+    /**
+     * @brief Processes a MarketOnOpenShortOrder.
+     * Market-on-open orders are typically filled at the opening price of the current bar.
+     * @param order Pointer to the MarketOnOpenShortOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (MarketOnOpenShortOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -93,6 +144,13 @@ namespace mkc_timeseries
       order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
     }
 
+    /**
+     * @brief Processes a SellAtLimitOrder.
+     * A sell limit order executes if the market price trades at or above the limit price.
+     * Fill occurs at the limit price or the open if gapping above the limit.
+     * @param order Pointer to the SellAtLimitOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (SellAtLimitOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -106,6 +164,13 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Processes a CoverAtLimitOrder (buy to cover a short position).
+     * A cover limit order executes if the market price trades at or below the limit price.
+     * Fill occurs at the limit price or the open if gapping below the limit.
+     * @param order Pointer to the CoverAtLimitOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (CoverAtLimitOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -119,6 +184,13 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Processes a CoverAtStopOrder (buy stop to cover a short position).
+     * A cover stop order executes if the market price trades at or above the stop price.
+     * Fill occurs at the stop price or the open if gapping above the stop.
+     * @param order Pointer to the CoverAtStopOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (CoverAtStopOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -132,6 +204,13 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Processes a SellAtStopOrder.
+     * A sell stop order executes if the market price trades at or below the stop price.
+     * Fill occurs at the stop price or the open if gapping below the stop.
+     * @param order Pointer to the SellAtStopOrder to process.
+     * @throws TradingOrderException if order validation fails.
+     */
     void visit (SellAtStopOrder<Decimal> *order)
     {
       ValidateOrder (order);
@@ -145,12 +224,23 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Updates the trading bar used by the visitor.
+     * Allows reusing the visitor instance for multiple bars if desired, though typically a new one is created per bar.
+     * @param tradingBar The new OHLCTimeSeriesEntry for subsequent order processing.
+     */
     void updateTradingBar (OHLCTimeSeriesEntry<Decimal> tradingBar)
     {
       mTradingBar = tradingBar;
     }
 
   private:
+    /**
+     * @brief Validates a trading order before processing.
+     * Checks if the bar date is after the order date and if the order is in a pending state.
+     * @param order Pointer to the TradingOrder to validate.
+     * @throws TradingOrderException if validation fails (e.g., bar date not after order date, order not pending).
+     */
     void ValidateOrder (TradingOrder<Decimal>* order)
     {
       if (mTradingBar.getDateValue() <= order->getOrderDate())
@@ -170,23 +260,45 @@ namespace mkc_timeseries
   private:
     OHLCTimeSeriesEntry<Decimal> mTradingBar;
   };
-  
+
   /**
    * @class TradingOrderManager
-   * @brief Orchestrates the tracking and execution of all pending trading orders.
+   * @brief Manages the lifecycle of trading orders, including submission, processing, execution, and cancellation.
    *
-   * Responsibilities:
-   * - Maintain collections of pending orders sorted by date and order type.
-   * - Route orders through the appropriate execution logic using ProcessOrderVisitor.
-   * - Notify observers when orders are filled or canceled.
-   * - Provide APIs for submitting market, limit, stop, and other custom order types.
-   * - Coordinate with InstrumentPositionManager to ensure orders reflect valid strategy state.
+   * @tparam Decimal The decimal type used for financial calculations.
+   *
+   * @details
+   * The `TradingOrderManager` is a central component in a trading system or backtester, responsible for handling
+   * all trading orders. It maintains collections of pending orders, organized by type (market, limit, stop).
+   * When processing orders for a new trading bar, it uses a `ProcessOrderVisitor` to apply the
+   * execution logic specific to each order type against the current market data.
+   * It notifies registered observers (typically `StrategyBroker`) of order status changes (execution or cancellation).
+   *
+   * Key Responsibilities:
+   * - Store and manage collections of pending `TradingOrder` objects.
+   * - Provide an interface for adding new trading orders of various types.
+   * - Process pending orders on each trading bar:
+   * - Fetch relevant market data for each order's security.
+   * - Use `ProcessOrderVisitor` to determine if an order should be filled.
+   * - Handle potential cancellation of orders (e.g., if an exit order's position is already flat due to another order).
+   * - Notify registered `TradingOrderObserver`s of order execution or cancellation events.
+   * - Maintain an aggregated list of all pending orders, sortable by date, for client inspection.
+   *
+   * In a Backtesting Context:
+   * - The `StrategyBroker` submits `TradingOrder`s to the `TradingOrderManager`.
+   * - During the backtest loop, `StrategyBroker` calls `processPendingOrders()` on the `TradingOrderManager` for each new bar.
+   * - The `TradingOrderManager` then attempts to fill orders based on that bar's data.
+   * - Successful fills or cancellations trigger notifications back to the `StrategyBroker`, which then updates
+   * `InstrumentPositionManager`, `StrategyTransactionManager`, etc.
    *
    * Collaboration:
-   * - Receives order submissions from StrategyBroker.
-   * - Executes or cancels orders by applying ProcessOrderVisitor logic.
-   * - Notifies registered TradingOrderObservers (e.g., StrategyBroker) when order status changes.
-   */ 
+   * - Receives `TradingOrder` objects, typically from `StrategyBroker`.
+   * - Uses `Portfolio` to fetch `Security` data (including OHLC bars).
+   * - Employs `ProcessOrderVisitor` to encapsulate order execution logic.
+   * - Interacts with `InstrumentPositionManager` (passed during `processPendingOrders`) to check current position states,
+   * for instance, to cancel exit orders if a position is already flat.
+   * - Notifies `TradingOrderObserver`s (e.g., `StrategyBroker`) about order events.
+   */
  template <class Decimal> class TradingOrderManager
   {
   public:
@@ -206,6 +318,10 @@ namespace mkc_timeseries
     typedef typename  std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Decimal>>>::const_iterator PendingOrderIterator;
 
   public:
+    /**
+     * @brief Constructs a TradingOrderManager.
+     * @param portfolio A shared pointer to the Portfolio, used to access security data for order processing.
+     */
     explicit TradingOrderManager(std::shared_ptr<Portfolio<Decimal>> portfolio)
       : mPortfolio(portfolio),
 	mMarketSellOrders(),
@@ -221,6 +337,10 @@ namespace mkc_timeseries
 	mPendingOrdersUpToDate(false)
       {}
 
+    /**
+     * @brief Copy constructor.
+     * @param rhs The TradingOrderManager to copy.
+     */
     TradingOrderManager (const TradingOrderManager<Decimal>& rhs)
       :  mPortfolio(rhs.mPortfolio),
 	 mMarketSellOrders(rhs.mMarketSellOrders),
@@ -236,9 +356,17 @@ namespace mkc_timeseries
 	 mPendingOrdersUpToDate(rhs.mPendingOrdersUpToDate)
     {}
 
+    /**
+     * @brief Destructor.
+     */
     ~TradingOrderManager()
       {}
 
+    /**
+     * @brief Assignment operator.
+     * @param rhs The TradingOrderManager to assign from.
+     * @return A reference to this manager.
+     */
     TradingOrderManager<Decimal>& 
     operator=(const TradingOrderManager<Decimal> &rhs)
     {
@@ -261,7 +389,11 @@ namespace mkc_timeseries
       return *this;
     }
 
-    // Pending order with no position
+    /**
+     * @brief Adds a MarketOnOpenCoverOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<MarketOnOpenCoverOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -269,7 +401,11 @@ namespace mkc_timeseries
       mMarketCoverOrders.push_back (order);
     }
 
-    // Pending order with no position
+     /**
+     * @brief Adds a MarketOnOpenSellOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<MarketOnOpenSellOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -277,6 +413,11 @@ namespace mkc_timeseries
       mMarketSellOrders.push_back (order);
     }
 
+    /**
+     * @brief Adds a MarketOnOpenLongOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<MarketOnOpenLongOrder<Decimal>>& order)
     {
       ValidateNewOrder (order);
@@ -284,6 +425,11 @@ namespace mkc_timeseries
       mMarketLongOrders.push_back (order);
     }
 
+    /**
+     * @brief Adds a MarketOnOpenShortOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<MarketOnOpenShortOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -291,6 +437,11 @@ namespace mkc_timeseries
       mMarketShortOrders.push_back (order);
     }
 
+    /**
+     * @brief Adds a SellAtLimitOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<SellAtLimitOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -298,6 +449,11 @@ namespace mkc_timeseries
       mLimitSellOrders.push_back (order);
     }
 
+    /**
+     * @brief Adds a CoverAtLimitOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<CoverAtLimitOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -305,6 +461,11 @@ namespace mkc_timeseries
       mLimitCoverOrders.push_back (order);
     }
 
+    /**
+     * @brief Adds a SellAtStopOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<SellAtStopOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -312,6 +473,11 @@ namespace mkc_timeseries
       mStopSellOrders.push_back (order);
     }
 
+     /**
+     * @brief Adds a CoverAtStopOrder to the pending orders.
+     * @param order A shared pointer to the order.
+     * @throws TradingOrderManagerException if the order is not in a valid state to be added.
+     */
     void addTradingOrder (std::shared_ptr<CoverAtStopOrder<Decimal>> order)
     {
       ValidateNewOrder (order);
@@ -319,6 +485,11 @@ namespace mkc_timeseries
       mStopCoverOrders.push_back (order);
     }
 
+    /**
+     * @brief Returns a constant iterator to the beginning of all pending orders, sorted by order date.
+     * The list is populated/updated on demand if it's marked as not up-to-date.
+     * @return A PendingOrderIterator.
+     */
     PendingOrderIterator beginPendingOrders() const
     {
       if (mPendingOrdersUpToDate == false)
@@ -327,6 +498,11 @@ namespace mkc_timeseries
       return mPendingOrders.begin();
     }
 
+    /**
+     * @brief Returns a constant iterator to the end of all pending orders.
+     * The list is populated/updated on demand if it's marked as not up-to-date.
+     * @return A PendingOrderIterator.
+     */
     PendingOrderIterator endPendingOrders() const
     {
        if (mPendingOrdersUpToDate == false)
@@ -335,66 +511,73 @@ namespace mkc_timeseries
       return mPendingOrders.end();
     }
 
-    // Market entry order iterators
+    /** @brief Iterator to the beginning of pending MarketOnOpenLongOrders. */
     MarketLongOrderIterator beginMarketLongOrders() const
     {
       return mMarketLongOrders.begin();
     }
 
+    /** @brief Iterator to the end of pending MarketOnOpenLongOrders. */
     MarketLongOrderIterator endMarketLongOrders() const
     {
       return mMarketLongOrders.end();
     }
 
+    /** @brief Iterator to the beginning of pending MarketOnOpenShortOrders. */
     MarketShortOrderIterator beginMarketShortOrders() const
     {
       return mMarketShortOrders.begin();
     }
 
+    /** @brief Iterator to the end of pending MarketOnOpenShortOrders. */
     MarketShortOrderIterator endMarketShortOrders() const
     {
       return mMarketShortOrders.end();
     }
 
-    // Market exit order iterators
+    /** @brief Iterator to the beginning of pending MarketOnOpenSellOrders. */
     MarketSellOrderIterator beginMarketSellOrders() const
     {
       return mMarketSellOrders.begin();
     }
 
+    /** @brief Iterator to the end of pending MarketOnOpenSellOrders. */
     MarketSellOrderIterator endMarketSellOrders() const
     {
       return mMarketSellOrders.end();
     }
 
+    /** @brief Iterator to the beginning of pending MarketOnOpenCoverOrders. */
     MarketCoverOrderIterator beginMarketCoverOrders() const
     {
       return mMarketCoverOrders.begin();
     }
-
+    
+    /** @brief Iterator to the end of pending MarketOnOpenCoverOrder. */
     MarketCoverOrderIterator endMarketCoverOrders() const
     {
       return mMarketCoverOrders.end();
     }
 
-
-    // Limit exit order iterators
-
+    /** @brief Iterator to the beginning of pending SellAtLimitOrder. */
     LimitSellOrderIterator beginLimitSellOrders() const
     {
       return mLimitSellOrders.begin();
     }
 
+    /** @brief Iterator to the end of pending SellAtLimitOrder. */
     LimitSellOrderIterator endLimitSellOrders() const
     {
       return mLimitSellOrders.end();
     }
 
+    /** @brief Iterator to the beginning of pending CoverAtLimitOrder. */
     LimitCoverOrderIterator beginLimitCoverOrders() const
     {
       return mLimitCoverOrders.begin();
     }
 
+    /** @brief Iterator to the end of pending CoverAtLimitOrder. */
     LimitCoverOrderIterator endLimitCoverOrders() const
     {
       return mLimitCoverOrders.end();
@@ -424,31 +607,52 @@ namespace mkc_timeseries
       return mStopCoverOrders.end();
     }
 
+    /** @brief Gets the total number of pending market exit orders (sell or cover). */
     uint32_t getNumMarketExitOrders() const
     {
       return mMarketSellOrders.size() + mMarketCoverOrders.size();
     }
 
+     /** @brief Gets the total number of pending market entry orders (long or short). */
     uint32_t getNumMarketEntryOrders() const
     {
       return mMarketLongOrders.size() + mMarketShortOrders.size();
     }
 
+    /** @brief Gets the total number of pending limit exit orders. */
     uint32_t getNumLimitExitOrders() const
     {
       return mLimitSellOrders.size() + mLimitCoverOrders.size();
     }
 
+    /** @brief Gets the total number of pending stop exit orders. */
     uint32_t getNumStopExitOrders() const
     {
       return mStopSellOrders.size() + mStopCoverOrders.size();
     }
 
+    /**
+     * @brief Adds an observer to be notified of order events (execution, cancellation).
+     * Typically, a `StrategyBroker` instance would be an observer.
+     * @param observer A reference wrapper to the TradingOrderObserver.
+     */
     void addObserver (std::reference_wrapper<TradingOrderObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
 
+    /**
+     * @brief Processes all pending orders for a given date using the current market conditions.
+     * This is a key method in a backtesting loop. It iterates through different types of orders
+     * (market exits, market entries, stop exits, limit exits in that sequence).
+     * For each relevant order, it fetches the security's bar data for `processingDate`,
+     * then uses a `ProcessOrderVisitor` to attempt to fill the order.
+     * Executed or canceled orders are removed from their pending lists, and observers are notified.
+     *
+     * @param processingDate The current date in the backtest for which orders are being processed.
+     * @param positions A const reference to the InstrumentPositionManager, used to check current
+     * position status (e.g., to cancel an exit order if the position is already flat).
+     */
     void processPendingOrders (const boost::gregorian::date& processingDate,
 			       const InstrumentPositionManager<Decimal>& positions)
     {
@@ -466,6 +670,21 @@ namespace mkc_timeseries
     }
 
   private:
+    /**
+     * @brief Template helper method to process a vector of a specific order type.
+     * Iterates through the given `vectorContainer` of orders. For each order:
+     * - Checks if it's pending and its order date is before the `processingDate`.
+     * - Fetches the security's trading bar for the `processingDate`.
+     * - If the security traded on that date:
+     * - Checks if an exit order's position is already flat (due to another fill) and cancels if so.
+     * - Otherwise, uses `ProcessOrderVisitor` to attempt execution.
+     * - Notifies observers of execution or cancellation.
+     * - Removes the processed order from `vectorContainer`.
+     * @tparam T The specific TradingOrder derived type (e.g., MarketOnOpenLongOrder).
+     * @param processingDate The date for which orders are processed.
+     * @param vectorContainer A reference to the vector holding orders of type T.
+     * @param positions Const reference to InstrumentPositionManager for position status checks.
+     */
     template <typename T>
     void ProcessingPendingOrders(const boost::gregorian::date& processingDate, 
 				 std::vector<std::shared_ptr<T>>& vectorContainer,
@@ -536,6 +755,7 @@ namespace mkc_timeseries
 	}
     }
 
+     /** @brief Processes pending MarketOnOpenSellOrders and MarketOnOpenCoverOrders. */
     void ProcessPendingMarketExitOrders(const boost::gregorian::date& processingDate,
 					const InstrumentPositionManager<Decimal>& positions)
     {
@@ -545,6 +765,7 @@ namespace mkc_timeseries
 								   positions);
     }
 
+     /** @brief Processes pending MarketOnOpenLongOrders and MarketOnOpenShortOrders. */
     void ProcessPendingMarketEntryOrders(const boost::gregorian::date& processingDate,
 					 const InstrumentPositionManager<Decimal>& positions)
     {
@@ -554,6 +775,7 @@ namespace mkc_timeseries
 								   positions);
     }
 
+    /** @brief Processes pending SellAtStopOrders and CoverAtStopOrders. */
     void ProcessPendingStopExitOrders(const boost::gregorian::date& processingDate,
 				      const InstrumentPositionManager<Decimal>& positions)
     {
@@ -563,6 +785,7 @@ namespace mkc_timeseries
 							     positions);
     }
 
+    /** @brief Processes pending SellAtLimitOrder and CoverAtLimitOrder. */
     void ProcessPendingLimitExitOrders(const boost::gregorian::date& processingDate,
 				       const InstrumentPositionManager<Decimal>& positions)
     {
@@ -572,6 +795,11 @@ namespace mkc_timeseries
 							      positions);
     }
 
+    /**
+     * @brief Notifies all registered observers that an order has been executed.
+     * @tparam T The specific TradingOrder derived type.
+     * @param order A shared pointer to the executed order.
+     */
     template <typename T>
     void NotifyOrderExecuted (std::shared_ptr<T> order)
     {
@@ -580,6 +808,11 @@ namespace mkc_timeseries
 	(*it).get().OrderExecuted (order.get());
     }
 
+    /**
+     * @brief Notifies all registered observers that an order has been canceled.
+     * @tparam T The specific TradingOrder derived type.
+     * @param order A shared pointer to the canceled order.
+     */
     template <typename T>
     void NotifyOrderCanceled (std::shared_ptr<T> order)
     {
@@ -588,6 +821,12 @@ namespace mkc_timeseries
 	(*it).get().OrderCanceled (order.get());
     }
 
+     /**
+     * @brief Validates a new order before adding it to the manager.
+     * Ensures the order is not already executed or canceled.
+     * @param order A const shared_ptr to the TradingOrder to validate.
+     * @throws TradingOrderManagerException if the order is already executed or canceled.
+     */
     void ValidateNewOrder (const std::shared_ptr<TradingOrder<Decimal>>& order) const
     {
       if (order->isOrderExecuted())
@@ -597,16 +836,26 @@ namespace mkc_timeseries
 	throw TradingOrderManagerException ("Attempt to add canceled trading order");
     }
 
+    /** @brief Returns an iterator to the beginning of the observer list. */
     ConstObserverIterator beginObserverList() const
     {
       return mObservers.begin();
     }
 
+    /** @brief Returns an iterator to the end of the observer list. */
     ConstObserverIterator endObserverList() const
     {
       return mObservers.end();
     }
 
+     /**
+     * @brief Populates the `mPendingOrders` multimap with all orders from the specific type vectors.
+     * This method is called lazily when `beginPendingOrders` or `endPendingOrders` is accessed
+     * and the `mPendingOrdersUpToDate` flag is false.
+     * The `mPendingOrders` map stores orders sorted by their `getOrderDate()`.
+     * This method is marked `mutable` as it modifies `mPendingOrders` and `mPendingOrdersUpToDate`
+     * but is logically const from the perspective of the manager's observable state of pending orders.
+     */
     void populatePendingOrders() const
     {
       mPendingOrders.clear();
@@ -648,6 +897,13 @@ namespace mkc_timeseries
       mPendingOrdersUpToDate = true;
     }
 
+     /**
+     * @brief Helper method to add a single order to the `mPendingOrders` multimap.
+     * This was part of the original `populatePendingOrders` logic, refactored for clarity if needed elsewhere,
+     * though `populatePendingOrders` now uses a lambda.
+     * @param aOrder A shared pointer to the TradingOrder to add.
+     * @note Marked const as it's called by `populatePendingOrders` which is const. Modifies mutable members.
+     */
     void addOrderToPending(std::shared_ptr<TradingOrder<Decimal>> aOrder) const
     {
       mPendingOrders.insert (std::make_pair (aOrder->getOrderDate(), aOrder));
