@@ -1,11 +1,9 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../TimeSeriesCsvReader.h"
-#include "../TimeSeriesCsvWriter.h"
-#include "../SyntheticTimeSeriesCreator.h"
-#include "../DecimalConstants.h"
-#include "../TimeFrameDiscovery.h"
+#include <catch2/catch_test_macros.hpp>
+#include "TimeSeriesCsvReader.h"
+#include "TimeSeriesCsvWriter.h"
+#include "SyntheticTimeSeriesCreator.h"
+#include "DecimalConstants.h"
+#include "TimeFrameDiscovery.h"
 #include <map>
 
 typedef dec::decimal<7> DecimalType;
