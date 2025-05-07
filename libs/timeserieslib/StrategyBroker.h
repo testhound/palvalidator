@@ -616,11 +616,19 @@ namespace mkc_timeseries
       this->ExitShortAllUnitsAtStop(tradingSymbol, orderDate, orderPrice);
     }
 
+    /**
+     * @brief Returns a constant iterator to the beginning of pending orders in the `TradingOrderManager`.
+     * @return A PendingOrderIterator pointing to the first pending order.
+     */
     PendingOrderIterator beginPendingOrders() const
     {
       return mOrderManager.beginPendingOrders();
     }
 
+    /**
+     * @brief Returns a constant iterator to the end of pending orders in the `TradingOrderManager`.
+     * @return A PendingOrderIterator pointing past the last pending order.
+     */
     PendingOrderIterator endPendingOrders() const
     {
       return mOrderManager.endPendingOrders();
@@ -736,41 +744,81 @@ namespace mkc_timeseries
       ExitOrderExecutedCommon<SellAtStopOrder<Decimal>>(order);
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenShortOrder is canceled.
+     * @param order Pointer to the canceled MarketOnOpenShortOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (MarketOnOpenLongOrder<Decimal> *order)
     {
 
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenShortOrder is canceled.
+     * @param order Pointer to the canceled MarketOnOpenShortOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (MarketOnOpenShortOrder<Decimal> *order)
     {
 
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenSellOrder is canceled.
+     * @param order Pointer to the canceled MarketOnOpenSellOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (MarketOnOpenSellOrder<Decimal> *order)
     {
 
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenCoverOrder is canceled.
+     * @param order Pointer to the canceled MarketOnOpenCoverOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (MarketOnOpenCoverOrder<Decimal> *order)
     {
 
     }
 
+    /**
+     * @brief Callback invoked when a SellAtLimitOrder is canceled.
+     * @param order Pointer to the canceled SellAtLimitOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (SellAtLimitOrder<Decimal> *order)
     {
 
     }
 
+    /**
+     * @brief Callback invoked when a CoverAtLimitOrder is canceled.
+     * @param order Pointer to the canceled CoverAtLimitOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (CoverAtLimitOrder<Decimal> *order)
     {
 
     }
 
+    /**
+     * @brief Callback invoked when a CoverAtStopOrder is canceled.
+     * @param order Pointer to the canceled CoverAtStopOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (CoverAtStopOrder<Decimal> *order)
     {
 
     }
 
+     /**
+     * @brief Callback invoked when a SellAtStopOrder is canceled.
+     * @param order Pointer to the canceled SellAtStopOrder.
+     * @note Currently no action is taken.
+     */
     void OrderCanceled (SellAtStopOrder<Decimal> *order)
     {
 
