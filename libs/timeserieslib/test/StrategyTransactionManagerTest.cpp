@@ -1,10 +1,8 @@
-#define CATCH_CONFIG_MAIN
-
-#include "catch.hpp"
-#include "../TradingOrder.h"
-#include "../TradingPosition.h"
-#include "../StrategyTransactionManager.h"
-#include "../InstrumentPosition.h"
+#include <catch2/catch_test_macros.hpp>
+#include "TradingOrder.h"
+#include "TradingPosition.h"
+#include "StrategyTransactionManager.h"
+#include "InstrumentPosition.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
