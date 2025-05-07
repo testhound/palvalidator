@@ -23,6 +23,10 @@ namespace mkc_timeseries
 {
   using boost::gregorian::date;
 
+  /**
+   * @class StrategyBrokerException
+   * @brief Exception class for StrategyBroker specific errors.
+   */
   class StrategyBrokerException : public std::runtime_error
   {
   public:
@@ -36,24 +40,81 @@ namespace mkc_timeseries
 
   /**
    * @class StrategyBroker
-   * @brief Executes trading orders, manages instrument positions, and records closed trades.
+   * @brief Manages trading order execution, instrument position tracking, and historical trade logging,
+   * serving as a crucial component within a backtesting environment.
    *
-   * Responsibilities:
-   * - Submit orders to TradingOrderManager for tracking and execution.
-   * - Observe fills and create TradingPosition instances accordingly.
-   * - Track open/closed positions using InstrumentPositionManager.
-   * - Notify observers when positions are closed or modified.
+   * @tparam Decimal The decimal type used for financial calculations.
    *
-   * Observer Pattern Collaboration:
-   * - Implements TradingOrderObserver and TradingPositionObserver interfaces.
-   * - Registers itself with TradingOrderManager.
-   * - Receives OrderExecuted callbacks when orders are filled.
-   * - Uses these callbacks to update positions and notify strategy logic if needed.
+   * @details
+   * The StrategyBroker is central to simulating trading activities. It acts as the intermediary between a
+   * trading strategy's logic and the simulated market.
+   * In a backtesting context, the `BacktesterStrategy` makes calls to the `StrategyBroker` to place,
+   * modify, or cancel orders based on its internal logic and market data.
+   *
+   * The `StrategyBroker` then processes these requests, simulates order execution via the `TradingOrderManager`,
+   * updates the state of open positions using the
+   * `InstrumentPositionManager`, and records all transactional details and closed trades in the
+   * `StrategyTransactionManager` and `ClosedPositionHistory` respectively.
+   *
+   * Key Responsibilities in Backtesting:
+   * - Order Submission: Receives order requests (e.g., EnterLongOnOpen, ExitShortAllUnitsAtStop) from
+   * the `BacktesterStrategy` and forwards them to the `TradingOrderManager` for processing.
+   *
+   * - Position Management: Tracks the current state (long, short, flat) and volume of positions for each
+   * instrument, managed by `InstrumentPositionManager`. This information is vital for the `BacktesterStrategy`
+   * to make informed decisions on subsequent trading signals.
+   *
+   * - Fill Simulation and Notification: As an observer of `TradingOrderManager`, it reacts to simulated order
+   * fills (`OrderExecuted` callbacks). Upon execution, it creates or updates `TradingPosition` instances.
+   *
+   * - Trade Lifecycle Management: Manages the lifecycle of a trade from order submission to position closing.
+   * This includes creating `StrategyTransaction` objects that link entry orders, positions, and eventual exit orders.
+   ( These transactions are stored in the `StrategyTransactionManager`.
+   *
+   * - Observer Role: Implements `TradingOrderObserver` and `TradingPositionObserver` to react to events like
+   * order executions and position closures. For instance, when a position is closed, the `PositionClosed` method is
+   * invoked, allowing the broker to update its records and complete the relevant `StrategyTransaction`.
+   *
+   * Workflow in Backtesting Framework:
+   * 1. The `BackTester` drives the simulation on a bar-by-bar basis.
+   *
+   * 2. On each bar, the `BackTester` invokes event handlers (e.g., `eventEntryOrders`, `eventExitOrders`) on
+   * the `BacktesterStrategy`.
+   *
+   * 3. The `BacktesterStrategy` implements the specific trading logic and, based on this logic, issues trading
+   * commands (e.g., buy, sell, set stop-loss) by calling methods on its `StrategyBroker` instance.
+   *
+   * 4. The `StrategyBroker` processes these commands:
+   * - Adds new orders to the `TradingOrderManager`.
+   * - When an entry order is filled, a `TradingPosition` is created, and a `StrategyTransaction` is initiated and
+   * stored in `mStrategyTrades` (an instance of `StrategyTransactionManager`).
+   * - `TradingOrderManager` attempts to fill orders based on market conditions for the current bar.
+   * - If an order is filled, `StrategyBroker` is notified (via `OrderExecuted`) and updates the
+   * `InstrumentPositionManager` and the state of the `StrategyTransaction`.
+   *
+   * 5. `StrategyBroker` also processes pending orders at the appropriate time in the simulation loop,
+   * typically triggered by `BacktesterStrategy` calling `StrategyBroker::ProcessPendingOrders`.
+   *
+   * This class ensures that the trading strategy's decisions are accurately reflected in the simulated portfolio,
+   * providing a realistic assessment of performance.
    *
    * Collaborators:
-   * - BacktesterStrategy: generates order requests.
-   * - TradingOrderManager: queues and processes pending orders.
-   * - InstrumentPositionManager: tracks state of all open positions.
+   * - `BacktesterStrategy`: Generates order requests based on trading logic. The `StrategyBroker`
+   * is a member of `BacktesterStrategy`.
+   *
+   * - `TradingOrderManager`: Queues, tracks, and processes pending trading orders. `StrategyBroker`
+   * adds orders to it and observes it for fills.
+   *
+   * - `InstrumentPositionManager`: Maintains the current state (long, short, flat, volume) of all open positions
+   * for each instrument.
+   *
+   * - `StrategyTransactionManager` (`mStrategyTrades`): Records and manages `StrategyTransaction` objects,
+   ( each representing the full lifecycle of a trade (entry order, position, exit order).
+   * - `ClosedPositionHistory`: Stores a history of all closed trading positions (derived from completed
+   * `StrategyTransaction`s).
+   *
+   * - `Portfolio`: Provides access to security information, such as tick size and historical price data,
+   * necessary for order processing and position valuation.
    */
   template <class Decimal> class StrategyBroker : 
     public TradingOrderObserver<Decimal>, 
@@ -66,6 +127,11 @@ namespace mkc_timeseries
     typedef typename ClosedPositionHistory<Decimal>::ConstPositionIterator ClosedPositionIterator;
 
   public:
+    /**
+     * @brief Construct a StrategyBroker for the given portfolio.
+     * Registers as an observer with the order manager and initializes instrument positions.
+     * @param portfolio Shared pointer to the portfolio of securities.
+     */
     StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio)
       : TradingOrderObserver<Decimal>(),
 	TradingPositionObserver<Decimal>(),
@@ -113,22 +179,63 @@ namespace mkc_timeseries
       return *this;
     }
 
+     /**
+     * @brief Returns a constant iterator to the beginning of sorted strategy transactions.
+     *
+     * A `StrategyTransaction` encapsulates the entire lifecycle of a single trade,
+     * including the initial entry order, the resulting trading position, and the eventual
+     * exit order (once the trade is closed). These transactions are managed by the
+     * internal `StrategyTransactionManager` (`mStrategyTrades`).
+     *
+     * Clients would use this method, along with `endStrategyTransactions()`, to iterate
+     * over all recorded trades (both open and closed) for detailed analysis, reporting,
+     * or debugging purposes. Each `StrategyTransaction` object provides access to the
+     * entry order, the position details, and the exit order (if applicable).
+     * The transactions are typically sorted by their entry date.
+     *
+     * @return A `StrategyTransactionIterator` pointing to the first strategy transaction.
+     * @see StrategyTransaction
+     * @see StrategyTransactionManager
+     * @see endStrategyTransactions()
+     */
     StrategyTransactionIterator beginStrategyTransactions() const
     {
       return mStrategyTrades.beginSortedStrategyTransaction();
     }
 
+    /**
+     * @brief Returns a constant iterator to the end of sorted strategy transactions.
+     *
+     * This method provides the end iterator for the collection of `StrategyTransaction` objects
+     * managed by the internal `StrategyTransactionManager` (`mStrategyTrades`). It is used in conjunction
+     * with `beginStrategyTransactions()` to iterate over all recorded trades.
+     *
+     * @return A `StrategyTransactionIterator` pointing past the last strategy transaction.
+     * @see StrategyTransaction
+     * @see StrategyTransactionManager
+     * @see beginStrategyTransactions()
+     */
     StrategyTransactionIterator endStrategyTransactions() const
     {
       return mStrategyTrades.endSortedStrategyTransaction();
     }
 
+    /**
+     * @brief Retrieves the history of closed trading positions.
+     * This provides a more direct way to access only the positions that have been fully closed.
+     * Each closed position here corresponds to a completed `StrategyTransaction`.
+     * @return A constant reference to the ClosedPositionHistory object.
+     */
     const ClosedPositionHistory<Decimal>&
     getClosedPositionHistory() const
     {
       return mClosedTradeHistory;
     }
 
+    /**
+     * @brief Returns a constant iterator to the beginning of closed trading positions.
+     * @return A ClosedPositionIterator pointing to the first closed position.
+     */
     ClosedPositionIterator beginClosedPositions() const
     {
       return mClosedTradeHistory.beginTradingPositions();
@@ -136,39 +243,78 @@ namespace mkc_timeseries
 
     ClosedPositionIterator endClosedPositions() const
     {
-      return mClosedTradeHistory.beginTradingPositions();
+      return mClosedTradeHistory.endTradingPositions();
     }
 
+    /**
+     * @brief Gets the total number of trades (strategy transactions) initiated, both open and closed.
+     * This count is derived from the `StrategyTransactionManager`.
+     * @return The total number of trades.
+     */
     uint32_t getTotalTrades() const
     {
       return  mStrategyTrades.getTotalTrades();
     }
 
+    /**
+     * @brief Gets the number of currently open trades (strategy transactions that have an entry but no exit yet).
+     * This count is derived from the `StrategyTransactionManager`.
+     * @return The number of open trades.
+     */
     uint32_t getOpenTrades() const
     {
       return  mStrategyTrades.getOpenTrades();
     }
 
+    /**
+     * @brief Gets the number of closed trades (strategy transactions that have both an entry and an exit).
+     * This count is derived from the `StrategyTransactionManager`.
+     * @return The number of closed trades.
+     */
     uint32_t getClosedTrades() const
     {
       return  mStrategyTrades.getClosedTrades();
     }
 
+    /**
+     * @brief Checks if there is an open long position for the specified trading symbol.
+     * @param tradingSymbol The symbol of the instrument.
+     * @return True if a long position exists, false otherwise.
+     */
     bool isLongPosition(const std::string& tradingSymbol) const
     {
       return mInstrumentPositionManager.isLongPosition (tradingSymbol);
     }
 
+    /**
+     * @brief Checks if there is an open short position for the specified trading symbol.
+     * @param tradingSymbol The symbol of the instrument.
+     * @return True if a short position exists, false otherwise.
+     */
     bool isShortPosition(const std::string& tradingSymbol) const
     {
       return mInstrumentPositionManager.isShortPosition (tradingSymbol);
     }
 
+    /**
+     * @brief Checks if there is no open position (flat) for the specified trading symbol.
+     * @param tradingSymbol The symbol of the instrument.
+     * @return True if the position is flat, false otherwise.
+     */
     bool isFlatPosition(const std::string& tradingSymbol) const
     {
       return mInstrumentPositionManager.isFlatPosition (tradingSymbol);
     }
 
+    /**
+     * @brief Submit a market-on-open long order.
+     *
+     * @param tradingSymbol Ticker symbol to trade.
+     * @param orderDate Date of the order.
+     * @param unitsInOrder Number of units to enter.
+     * @param stopLoss Optional stop-loss price.
+     * @param profitTarget Optional profit-target price.
+     */
     void EnterLongOnOpen(const std::string& tradingSymbol, 	
 			 const date& orderDate,
 			 const TradingVolume& unitsInOrder,
@@ -184,6 +330,15 @@ namespace mkc_timeseries
       mOrderManager.addTradingOrder (order);
     }
 
+    /**
+     * @brief Submit a market-on-open short order.
+     *
+     * @param tradingSymbol Ticker symbol to short.
+     * @param orderDate Date of the order.
+     * @param unitsInOrder Number of units to enter.
+     * @param stopLoss Optional stop-loss price.
+     * @param profitTarget Optional profit-target price.
+     */
     void EnterShortOnOpen(const std::string& tradingSymbol,	
 			  const date& orderDate,
 			  const TradingVolume& unitsInOrder,
@@ -199,6 +354,11 @@ namespace mkc_timeseries
       mOrderManager.addTradingOrder (order);
     }
 
+    /**
+     * @brief Exit all long units at market-open.
+     * @param tradingSymbol Ticker symbol to exit.
+     * @param orderDate Date of the exit order.
+     */
     void ExitLongAllUnitsOnOpen(const std::string& tradingSymbol,
 				const date& orderDate,
 				const TradingVolume& unitsInOrder)
@@ -217,6 +377,13 @@ namespace mkc_timeseries
 	}
     }
 
+     /**
+      * @brief Submits a market-on-open order to exit all units of an existing long position.
+      * The volume is determined automatically from the current position.
+      * @param tradingSymbol The symbol of the instrument.
+      * @param orderDate The date on which the order should be placed.
+      * @throws StrategyBrokerException if no long position exists for the symbol.
+      */
     void ExitLongAllUnitsOnOpen(const std::string& tradingSymbol,
 				const date& orderDate)
     {
@@ -231,6 +398,11 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Exit all short units at market-open.
+     * @param tradingSymbol Ticker symbol to exit.
+     * @param orderDate Date of the exit order.
+     */
     void ExitShortAllUnitsOnOpen(const std::string& tradingSymbol,
 				 const date& orderDate)
     {
@@ -248,8 +420,13 @@ namespace mkc_timeseries
 	}
     }
 
-   
-
+    /**
+     * @brief Submits a limit order to sell (exit) all units of an existing long position at a specified limit price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param limitPrice The limit price at which to sell.
+     * @throws StrategyBrokerException if no long position exists for the symbol.
+     */
     void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& limitPrice)
@@ -271,6 +448,15 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Submits a limit order to sell (exit) all units of an existing long position,
+     * with the limit price calculated as a percentage above a base price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param limitBasePrice The base price for calculating the limit price.
+     * @param percentNum The percentage above the base price to set the limit.
+     * @throws StrategyBrokerException if no long position exists for the symbol or if tick data is unavailable.
+     */
     void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& limitBasePrice,
@@ -284,6 +470,13 @@ namespace mkc_timeseries
       this->ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, orderPrice);
     }
 
+    /**
+     * @brief Submits a limit order to cover (exit) all units of an existing short position at a specified limit price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param limitPrice The limit price at which to cover.
+     * @throws StrategyBrokerException if no short position exists for the symbol.
+     */
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				  const date& orderDate,
 				  const Decimal& limitPrice)
@@ -303,6 +496,15 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Submits a limit order to cover (exit) all units of an existing short position,
+     * with the limit price calculated as a percentage below a base price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param limitBasePrice The base price for calculating the limit price.
+     * @param percentNum The percentage below the base price to set the limit.
+     * @throws StrategyBrokerException if no short position exists for the symbol or if tick data is unavailable.
+     */
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& limitBasePrice,
@@ -318,7 +520,13 @@ namespace mkc_timeseries
       this->ExitShortAllUnitsAtLimit (tradingSymbol,orderDate,orderPrice);
     }
 
-    
+    /**
+     * @brief Submits a stop order to sell (exit) all units of an existing long position at a specified stop price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param stopPrice The stop price at which to sell.
+     * @throws StrategyBrokerException if no long position exists for the symbol.
+     */
     void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
 				const Decimal& stopPrice)
@@ -338,6 +546,16 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Submits a stop order to sell (exit) all units of an existing long position,
+     * with the stop price calculated as a percentage below a base price.
+     *
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param stopBasePrice The base price for calculating the stop price.
+     * @param percentNum The percentage below the base price to set the stop.
+     * @throws StrategyBrokerException if no long position exists for the symbol or if tick data is unavailable.
+     */
     void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
 				const date& orderDate,
 				const Decimal& stopBasePrice,
@@ -351,6 +569,13 @@ namespace mkc_timeseries
       this->ExitLongAllUnitsAtStop(tradingSymbol, orderDate, orderPrice);
     }
 
+    /**
+     * @brief Submits a stop order to cover (exit) all units of an existing short position at a specified stop price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param stopPrice The stop price at which to cover.
+     * @throws StrategyBrokerException if no short position exists for the symbol.
+     */
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& stopPrice)
@@ -370,6 +595,15 @@ namespace mkc_timeseries
 	}
     }
 
+    /**
+     * @brief Submits a stop order to cover (exit) all units of an existing short position,
+     * with the stop price calculated as a percentage above a base price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDate The date on which the order should be placed.
+     * @param stopBasePrice The base price for calculating the stop price.
+     * @param percentNum The percentage above the base price to set the stop.
+     * @throws StrategyBrokerException if no short position exists for the symbol or if tick data is unavailable.
+     */
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
 				 const date& orderDate,
 				 const Decimal& stopBasePrice,
@@ -392,6 +626,12 @@ namespace mkc_timeseries
       return mOrderManager.endPendingOrders();
     }
 
+    /**
+     * @brief Processes all pending orders for a given date.
+     * This method is critical in a backtesting loop. It first updates the open positions with the current day's bar data
+     * and then instructs the TradingOrderManager to attempt to fill any pending orders based on this new data.
+     * @param orderProcessingDate The date for which orders are to be processed.
+     */
     void ProcessPendingOrders(const date& orderProcessingDate)
     {
       // Add historical bar for this date before possibly closing any open
@@ -402,6 +642,11 @@ namespace mkc_timeseries
 					  mInstrumentPositionManager);
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenLongOrder is executed.
+     * Creates a new long trading position and records the transaction.
+     * @param order Pointer to the executed MarketOnOpenLongOrder.
+     */
     void OrderExecuted (MarketOnOpenLongOrder<Decimal> *order)
     {
       auto position = createLongTradingPosition (order,
@@ -413,7 +658,11 @@ namespace mkc_timeseries
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
     }
 
-    
+    /**
+     * @brief Callback invoked when a MarketOnOpenShortOrder is executed.
+     * Creates a new short trading position and records the transaction.
+     * @param order Pointer to the executed MarketOnOpenShortOrder.
+     */
     void OrderExecuted (MarketOnOpenShortOrder<Decimal> *order)
     {
       auto position = createShortTradingPosition (order,
@@ -425,21 +674,41 @@ namespace mkc_timeseries
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenSellOrder is executed (exit long).
+     * Handles common logic for exit order execution.
+     * @param order Pointer to the executed MarketOnOpenSellOrder.
+     */
     void OrderExecuted (MarketOnOpenSellOrder<Decimal> *order)
     {
       ExitOrderExecutedCommon<MarketOnOpenSellOrder<Decimal>>(order);
     }
 
+    /**
+     * @brief Callback invoked when a MarketOnOpenCoverOrder is executed (exit short).
+     * Handles common logic for exit order execution.
+     * @param order Pointer to the executed MarketOnOpenCoverOrder.
+     */
     void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order)
     {
       ExitOrderExecutedCommon<MarketOnOpenCoverOrder<Decimal>>(order);
     }
 
+    /**
+     * @brief Callback invoked when a SellAtLimitOrder is executed (exit long).
+     * Handles common logic for exit order execution.
+     * @param order Pointer to the executed SellAtLimitOrder.
+     */
     void OrderExecuted (SellAtLimitOrder<Decimal> *order)
     {
       ExitOrderExecutedCommon<SellAtLimitOrder<Decimal>>(order);
     }
 
+    /**
+     * @brief Callback invoked when a CoverAtLimitOrder is executed (exit short).
+     * Handles common logic for exit order execution.
+     * @param order Pointer to the executed CoverAtLimitOrder.
+     */
     void OrderExecuted (CoverAtLimitOrder<Decimal> *order)
     {
       //std::cout << "Short profit target of " << order->getFillPrice() << " reached on " << order->getFillDate() << std::endl;
@@ -447,11 +716,21 @@ namespace mkc_timeseries
       ExitOrderExecutedCommon<CoverAtLimitOrder<Decimal>>(order);
     }
 
+    /**
+     * @brief Callback invoked when a CoverAtStopOrder is executed (exit short).
+     * Handles common logic for exit order execution.
+     * @param order Pointer to the executed CoverAtStopOrder.
+     */
     void OrderExecuted (CoverAtStopOrder<Decimal> *order)
     {
       ExitOrderExecutedCommon<CoverAtStopOrder<Decimal>>(order);
     }
 
+    /**
+     * @brief Callback invoked when a SellAtStopOrder is executed (exit long).
+     * Handles common logic for exit order execution.
+     * @param order Pointer to the executed SellAtStopOrder.
+     */
     void OrderExecuted (SellAtStopOrder<Decimal> *order)
     {
       ExitOrderExecutedCommon<SellAtStopOrder<Decimal>>(order);
@@ -497,13 +776,24 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Retrieves the current instrument position for a given trading symbol from the `InstrumentPositionManager`.
+     * @param tradingSymbol The symbol of the instrument.
+     * @return A constant reference to the InstrumentPosition object.
+     */
     const InstrumentPosition<Decimal>& 
     getInstrumentPosition(const std::string& tradingSymbol) const
     {
       return mInstrumentPositionManager.getInstrumentPosition (tradingSymbol);
     }
 
-    // Method automatically called when TradingPosition is closed
+    /**
+     * @brief Callback invoked by an observed `TradingPosition` when it is closed.
+     * Finds the corresponding `StrategyTransaction` in `mStrategyTrades` and adds the now-closed
+     * `TradingPosition` to the `mClosedTradeHistory`.
+     * @param aPosition Pointer to the TradingPosition that has been closed.
+     * @throws StrategyBrokerException if the strategy transaction for the closed position cannot be found.
+     */
     void PositionClosed (TradingPosition<Decimal> *aPosition)
     {
       typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator it =
@@ -541,7 +831,15 @@ namespace mkc_timeseries
 	throw StrategyBrokerException("Strategybroker::getTickDiv2 - ticker symbol " +symbol +" is unkown");
 
     }
-    
+
+    /**
+     * @brief Retrieves the OHLC time series entry (bar data) for a given symbol and date from the `Portfolio`.
+     * This data is used, for example, as the entry bar for a new `TradingPosition`.
+     * @param tradingSymbol The trading symbol.
+     * @param d The date for which to retrieve the bar data.
+     * @return The OHLCTimeSeriesEntry for the specified symbol and date.
+     * @throws StrategyBrokerException if the symbol is not found in the portfolio or if data for the date is missing.
+     */
     OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
 							const boost::gregorian::date& d)
     {
@@ -557,6 +855,14 @@ namespace mkc_timeseries
 	throw StrategyBrokerException ("StrategyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
     }
 
+     /**
+     * @brief Creates a new `TradingPositionLong` instance based on an executed order.
+     * The new position observes this `StrategyBroker` instance for closure events.
+     * @param order Pointer to the executed `TradingOrder` that opened the position.
+     * @param stopLoss The stop-loss price for the position.
+     * @param profitTarget The profit target price for the position.
+     * @return A shared pointer to the newly created `TradingPositionLong`.
+     */
     std::shared_ptr<TradingPositionLong<Decimal>>
     createLongTradingPosition (TradingOrder<Decimal> *order, 
 			       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
@@ -573,6 +879,14 @@ namespace mkc_timeseries
       return position;
     }
 
+    /**
+     * @brief Creates a new `TradingPositionShort` instance based on an executed order.
+     * The new position observes this `StrategyBroker` instance for closure events.
+     * @param order Pointer to the executed `TradingOrder` that opened the position.
+     * @param stopLoss The stop-loss price for the position.
+     * @param profitTarget The profit target price for the position.
+     * @return A shared pointer to the newly created `TradingPositionShort`.
+     */
     std::shared_ptr<TradingPositionShort<Decimal>>
     createShortTradingPosition (TradingOrder<Decimal> *order,
 				const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
@@ -592,6 +906,13 @@ namespace mkc_timeseries
       return position;
     }
 
+    /**
+     * @brief Creates a new `StrategyTransaction` linking an entry order with its resulting trading position.
+     * This transaction represents the start of a trade's lifecycle.
+     * @param order A shared pointer to the entry `TradingOrder`.
+     * @param position A shared pointer to the `TradingPosition` created by the order.
+     * @return A shared pointer to the newly created `StrategyTransaction`.
+     */
     std::shared_ptr <StrategyTransaction<Decimal>>
     createStrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> order,
 			       std::shared_ptr<TradingPosition<Decimal>> position)
@@ -599,6 +920,15 @@ namespace mkc_timeseries
       return std::make_shared<StrategyTransaction<Decimal>>(order, position);
     }
 
+     /**
+     * @brief Common logic to handle the execution of an exit order (e.g., sell, cover).
+     * This template method finds all `TradingPosition` units for the given symbol managed by `InstrumentPositionManager`,
+     * marks their corresponding `StrategyTransaction` in `mStrategyTrades` as complete with the provided exit order,
+     * and then instructs the `InstrumentPositionManager` to close out all positions for the symbol at the fill price and date.
+     * @tparam T The type of the executed exit order (e.g., MarketOnOpenSellOrder, CoverAtLimitOrder).
+     * @param order Pointer to the executed exit order.
+     * @throws StrategyBrokerException if the strategy transaction for a closing position cannot be found.
+     */
     template <typename T>
     void ExitOrderExecutedCommon (T *order)
     {
