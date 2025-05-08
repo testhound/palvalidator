@@ -14,6 +14,7 @@
 #include "SyntheticTimeSeries.h"
 #include "MonteCarloTestPolicy.h"
 #include "SyntheticSecurityHelpers.h"
+#include "PermutationTestResultPolicy.h"
 
 namespace mkc_timeseries
 {
@@ -22,8 +23,16 @@ namespace mkc_timeseries
 	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
 	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>> class DefaultPermuteMarketChangesPolicy
   {
+    static_assert(has_return_type<_PermutationTestResultPolicy>::value,
+		  "_PermutationTestResultPolicy must define a nested ::ReturnType");
+    static_assert(has_create_return_value<_PermutationTestResultPolicy>::value,
+		  "_PermutationTestResultPolicy must have static createReturnValue(Decimal, Decimal)");
+    static_assert(has_update_test_statistic<_PermutationTestStatisticsCollectionPolicy>::value,
+		  "_PermutationTestStatisticsCollectionPolicy must implement updateTestStatistic(Decimal)");
+    static_assert(has_get_test_stat<_PermutationTestStatisticsCollectionPolicy>::value,
+		  "_PermutationTestStatisticsCollectionPolicy must implement getTestStat()");
   public:
-    using ComputationPolicyReturnType = typename _PermutationTestResultPolicy::ReturnType;
+    using ReturnType = typename _PermutationTestResultPolicy::ReturnType;
 
     DefaultPermuteMarketChangesPolicy()
     {}
@@ -31,7 +40,7 @@ namespace mkc_timeseries
     ~DefaultPermuteMarketChangesPolicy()
     {}
 
-    static ComputationPolicyReturnType
+    static ReturnType
     runPermutationTest (std::shared_ptr<BackTester<Decimal>> theBackTester,
                         uint32_t numPermutations,
                         const Decimal& baseLineTestStat)
@@ -88,9 +97,9 @@ namespace mkc_timeseries
   class DefaultPermuteMarketChangesPolicyMT
   {
   public:
-    using ComputationPolicyReturnType = typename _PermutationTestResultPolicy::ReturnType;
+    using ReturnType = typename _PermutationTestResultPolicy::ReturnType;
 
-    static ComputationPolicyReturnType
+    static ReturnType
     runPermutationTest(std::shared_ptr<BackTester<Decimal>> theBackTester,
                        uint32_t numPermutations,
                        const Decimal& baseLineTestStat)
