@@ -8,8 +8,10 @@
 #define __PERMUTATION_TEST_RESULT_POLICY_H 1
 
 #include <string>
-
 #include <tuple>
+#include <type_traits>     // for std::void_t, std::false_type, std::true_type
+#include <utility>         // for std::declval
+
 #include "number.h"
 
 namespace mkc_timeseries
@@ -109,6 +111,43 @@ namespace mkc_timeseries
       return DecimalConstants<Decimal>::DecimalZero;
     }
   };
-}
 
+  // 1) Helpers to detect ReturnType and createReturnValue(...)
+  template<typename T, typename = void>
+  struct has_return_type : std::false_type
+  {};
+
+  template<typename T>
+  struct has_return_type<T, std::void_t<typename T::ReturnType>> : std::true_type
+  {};
+
+  template<typename T, typename = void>
+  struct has_create_return_value : std::false_type
+  {};
+
+  template<typename T>
+  struct has_create_return_value<T, std::void_t<
+				      decltype(T::createReturnValue(std::declval<Decimal>(), std::declval<Decimal>()))>> : std::true_type
+  {};
+
+  // 2) Helpers to detect updateTestStatistic(...) and getTestStat()
+  template<typename T, typename = void>
+  struct has_update_test_statistic : std::false_type
+  {};
+
+  template<typename T>
+  struct has_update_test_statistic<T, std::void_t<
+					decltype(std::declval<T&>().updateTestStatistic(std::declval<Decimal>()))
+					>> : std::true_type
+  {};
+
+  template<typename T, typename = void>
+  struct has_get_test_stat : std::false_type
+  {};
+
+  template<typename T>
+  struct has_get_test_stat<T, std::void_t<
+				decltype(std::declval<T&>().getTestStat())>> : std::true_type
+  {};
+}
 #endif
