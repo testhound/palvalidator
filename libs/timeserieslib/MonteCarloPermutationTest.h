@@ -47,16 +47,18 @@ namespace mkc_timeseries
     {}
   };
 
-  template <class Decimal> class MonteCarloPermutationTest
+  template <class Decimal, typename ReturnType = Decimal> class MonteCarloPermutationTest
   {
   public:
+    using ResultType = ReturnType;
+
     MonteCarloPermutationTest()
     {}
 
     virtual ~MonteCarloPermutationTest()
     {}
 
-    virtual Decimal runPermutationTest() = 0;
+    virtual ReturnType runPermutationTest() = 0;
 
   protected:
     uint32_t
@@ -97,15 +99,19 @@ namespace mkc_timeseries
   //
   // This class implements the MCPT by creating synthetic time series and permutting them
   //
-  template <class Decimal,
-            template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
-            typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>> class MonteCarloPermuteMarketChanges : public MonteCarloPermutationTest<Decimal>
-
+   template <class Decimal,
+           template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
+           typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>>
+ class MonteCarloPermuteMarketChanges
+   : public MonteCarloPermutationTest<Decimal, typename _ComputationPolicy::ReturnType>
   {
   public:
+    // pull the policy’s ReturnType in
+    using ReturnType = typename _ComputationPolicy::ReturnType;
+    
     MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Decimal>> backtester,
                                     uint32_t numPermutations)
-      : MonteCarloPermutationTest<Decimal>(),
+      : MonteCarloPermutationTest<Decimal, ReturnType>(),
         mBackTester (backtester),
         mNumPermutations(numPermutations),
         mBaseLineTestStat(DecimalConstants<Decimal>::DecimalZero)
@@ -127,7 +133,7 @@ namespace mkc_timeseries
     {}
 
     // Runs the monte carlo permutation test and return the P-Value
-    Decimal runPermutationTest()
+    ReturnType runPermutationTest()
     {
       std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
           (*(mBackTester->beginStrategies()));
