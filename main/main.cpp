@@ -143,7 +143,7 @@ int main(int argc, char **argv)
             validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
                 MonteCarloPermuteMarketChanges<Num,
                 CumulativeReturnPolicy,
-                ShortCutPermuteMarketChangesPolicy<Num,
+                DefaultPermuteMarketChangesPolicy<Num,
                 CumulativeReturnPolicy<Num>>>>
                 (configuration,
                  numPermutations);
@@ -151,7 +151,7 @@ int main(int argc, char **argv)
             validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
                 MonteCarloPermuteMarketChanges<Num,
                 PessimisticReturnRatioPolicy,
-                ShortCutPermuteMarketChangesPolicy<Num,
+                DefaultPermuteMarketChangesPolicy<Num,
                 PessimisticReturnRatioPolicy<Num>>>>
                 (configuration,
                  numPermutations);
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
             validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
                 MonteCarloPermuteMarketChanges<Num,
                 PalProfitabilityPolicy,
-                ShortCutPermuteMarketChangesPolicy<Num,
+                DefaultPermuteMarketChangesPolicy<Num,
                 PalProfitabilityPolicy<Num>>>>
                 (configuration,
                  numPermutations);
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
             validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
                 MonteCarloPermuteMarketChanges<Num,
                 NormalizedReturnPolicy,
-                ShortCutPermuteMarketChangesPolicy<Num,
+                DefaultPermuteMarketChangesPolicy<Num,
                 NormalizedReturnPolicy<Num>>>>
                 (configuration,
                  numPermutations);
@@ -190,37 +190,6 @@ int main(int argc, char **argv)
                 DefaultPermuteMarketChangesPolicy<Num,
                 PessimisticReturnRatioPolicy<Num>>>>
                 (configuration, numPermutations);
-
-        }
-      else if (validationPolicy == BESTOF_PVALUE)
-        {
-          if (testStatistic == NORMALIZED_RETURN)
-            {
-              printf("Best of MCPT with Normalized return.\n");
-              validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
-                  BestOfMonteCarloPermuteMarketChanges<Num,
-                  NormalizedReturnPolicy,
-                  MultiStrategyPermuteMarketChangesPolicy<Num,
-                  NormalizedReturnPolicy<Num>>>>
-                  (configuration,
-                   numPermutations);
-            }
-          else if (testStatistic == CUMULATIVE_RETURN)
-            {
-              printf("Best of MCPT with Cumulative return.\n");
-              validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
-                  BestOfMonteCarloPermuteMarketChanges<Num,
-                  CumulativeReturnPolicy,
-                  MultiStrategyPermuteMarketChangesPolicy<Num,
-                  CumulativeReturnPolicy<Num>>>>
-                  (configuration,
-                   numPermutations);
-            }
-          else
-            {
-              printf("Best of MCPT requires Normalized Return Policy or Cumulative Return Policy.\n");
-              return 1;
-            }
 
         }
     }
