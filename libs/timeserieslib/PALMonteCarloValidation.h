@@ -10,6 +10,7 @@
 #include <string>
 #include <list>
 #include <sstream>
+#include <thread>
 #include <boost/date_time.hpp>
 #include <tuple>
 #include <type_traits>  // for std::is_same
@@ -121,13 +122,22 @@ namespace mkc_timeseries
     _StrategySelection<Decimal> mStrategySelectionPolicy;
   };
 
-
+  // Number of threads to use for the outer patterns loop
+  static constexpr std::size_t kOuterThreads =
+    std::min<std::size_t>(
+			  4,
+			  std::max<std::size_t>(2, std::thread::hardware_concurrency() / 2));
+			  
   /////////////////////////
   //  The default functionality(non-specialization) for PALMonteCarloValidation
   //
-  template <class Decimal, typename McptType,
-            template <typename> class _StrategySelection> class PALMonteCarloValidation:
-      public PALMonteCarloValidationBase<Decimal,McptType, _StrategySelection>
+  template <class Decimal,
+	    typename McptType,
+            template <typename> class _StrategySelection,
+	    typename Executor = concurrency::ThreadPoolExecutor<kOuterThreads>>
+  class PALMonteCarloValidation: public PALMonteCarloValidationBase<Decimal,
+								    McptType,
+								    _StrategySelection>
   {
   public:
     using ResultType = typename McptType::ResultType;
@@ -150,85 +160,76 @@ namespace mkc_timeseries
     ~PALMonteCarloValidation()
     {}
 
-    void runPermutationTests()
+    void runPermutationTests() override
     {
-      // Create a security with just the OOS time series
-      std::shared_ptr<Security<Decimal>> tempSecurity = this->mMonteCarloConfiguration->getSecurity();
-      auto oosTimeSeries (FilterTimeSeries<Decimal> (*tempSecurity->getTimeSeries(),
-                                                     this->mMonteCarloConfiguration->getOosDateRange()));
-
-      auto tempOosTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>> (oosTimeSeries);
-
-      std::shared_ptr<Security<Decimal>> securityToTest = tempSecurity->clone (tempOosTimeSeries);
-
-      // This line gets the patterns that have been read from the IR file
-      PriceActionLabSystem *patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
-
-      DateRange oosDates = this->mMonteCarloConfiguration->getOosDateRange();
-
-      std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
-
-      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
+      // 1) Prepare data
+      auto tempSecurity = this->mMonteCarloConfiguration->getSecurity();
+      auto oosTS = FilterTimeSeries<Decimal>(*tempSecurity->getTimeSeries(),
+                                             this->mMonteCarloConfiguration->getOosDateRange());
+      auto tempOosTS = std::make_shared<OHLCTimeSeries<Decimal>>(oosTS);
+      auto securityToTest = tempSecurity->clone(tempOosTS);
+      auto patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
+      auto oosDates = this->mMonteCarloConfiguration->getOosDateRange();
+      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(securityToTest->getName() + " Portfolio");
       aPortfolio->addSecurity(securityToTest);
 
-      // Prepare names and thread-runner
       const std::string longPrefix  = "PAL Long Strategy ";
       const std::string shortPrefix = "PAL Short Strategy ";
-      runner& Runner = runner::instance();
-      std::vector<boost::unique_future<void>> futures;
 
-      // Single unified loop over *all* patterns
-      std::size_t strategyNumber = 1;
-      for(auto it = patternsToTest->allPatternsBegin();
-	  it != patternsToTest->allPatternsEnd();
-	  ++it, ++strategyNumber)
-	{
-	  auto patternToTest = *it;  // now a PALPatternPtr
+      // 2) Collect all patterns into a vector for indexing
+      std::vector<PALPatternPtr> patterns;
+      for (auto it = patternsToTest->allPatternsBegin();
+           it != patternsToTest->allPatternsEnd();
+           ++it)
+      {
+        patterns.push_back(*it);
+      }
 
-	  auto strategy = makeStrategy(strategyNumber,
-				       patternToTest,
-				       aPortfolio,
-				       longPrefix,
-				       shortPrefix);
+      const size_t numPatterns = patterns.size();
 
-	  // 2) get a back-tester, add the strategy
-	  auto theBackTester = this->getBackTester(
-						   securityToTest->getTimeSeries()->getTimeFrame(),
-						   oosDates.getFirstDate(),
-						   oosDates.getLastDate());
-	  theBackTester->addStrategy(strategy);
+      // 3) Execute tests in parallel
+      std::mutex               strategyMutex;
+      Executor                 executor{};
 
-	  // 3) dispatch the same work you had before
-	  futures.emplace_back(Runner.post(
-					   [this, strategyNumber, theBackTester = std::move(theBackTester), strategy]()
-					   {
-					     ResultType result;
-					     std::cout << "Running MCPT for strategy " << strategyNumber << "\n";
+      concurrency::parallel_for(
+        numPatterns,
+        executor,
+        [=, &strategyMutex, this](size_t idx)
+        {
+          auto patternToTest = patterns[idx];
+          size_t strategyNumber = idx + 1;
 
-					     McptType mcpt(theBackTester, this->mNumPermutations);
-					     result = mcpt.runPermutationTest();
+          // create concrete strategy
+          auto strategy = makeStrategy(
+            strategyNumber,
+            patternToTest,
+            aPortfolio,
+            longPrefix,
+            shortPrefix
+          );
 
-					     this->mStrategySelectionPolicy.addStrategy(result, strategy);
-					   }));
-	}
+          // backtest
+          auto bt = this->getBackTester(
+            securityToTest->getTimeSeries()->getTimeFrame(),
+            oosDates.getFirstDate(),
+            oosDates.getLastDate()
+          );
+          bt->addStrategy(strategy);
 
-      // wait for all of them, collecting exceptions as before
-      for(auto &f : futures)
-	{
-	  try
-	    {
-	      f.wait();
-	      f.get();
-	    }
-	  catch(const std::exception &e)
-	    {
-	      std::cerr << "Error in MCPT: " << e.what() << std::endl;
-	    }
-	}
-      
+          // run MCPT
+          McptType mcpt(bt, this->mNumPermutations);
+          ResultType result = mcpt.runPermutationTest();
+
+          // record under lock
+          std::lock_guard<std::mutex> lock(strategyMutex);
+          this->mStrategySelectionPolicy.addStrategy(result, strategy);
+        }
+      );
+
+      // 4) Final correction
       this->mStrategySelectionPolicy.correctForMultipleTests();
     }
-
+ 
   private:
      /**
       * Construct either a PalLongStrategy or PalShortStrategy based on
@@ -251,99 +252,6 @@ namespace mkc_timeseries
 	return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, aPortfolio);
     }
     
-  };
-
-  /////////////////////////
-  //  A specialization of PALMonteCarloValidation that operates on BestOf selections
-  //
-  template <class Decimal,
-            template <typename> class _StrategySelection,
-            template <typename> class _BackTestResultPolicy,
-            typename _ComputationPolicy>
-  class PALMonteCarloValidation<Decimal, BestOfMonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy> ,_StrategySelection>:
-      public PALMonteCarloValidationBase<Decimal, BestOfMonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy>, _StrategySelection>
-  {
-  public:
-    typedef BestOfMonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy> BestOfMcptType;
-
-  public:
-    PALMonteCarloValidation<Decimal, BestOfMonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy> ,_StrategySelection>(std::shared_ptr<McptConfiguration<Decimal>> configuration,
-                                                                                                                                                   unsigned long numPermutations)
-      : PALMonteCarloValidationBase<Decimal, BestOfMcptType, _StrategySelection>(configuration, numPermutations)
-    {}
-
-    PALMonteCarloValidation<Decimal, BestOfMonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy> ,_StrategySelection> (const PALMonteCarloValidation<Decimal,
-                                                                                                                                                    BestOfMonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy>, _StrategySelection>& rhs)
-      : PALMonteCarloValidationBase<Decimal, BestOfMcptType, _StrategySelection>(rhs)
-    {}
-
-    ~PALMonteCarloValidation()
-    {}
-
-    void runPermutationTests()
-    {
-      runPermutationTests(this->mMonteCarloConfiguration->getPricePatterns());
-    }
-
-    void runPermutationTests(PriceActionLabSystem* patternsToTest)
-    {
-
-      // Create a security with just the OOS time series
-      std::shared_ptr<Security<Decimal>> tempSecurity = this->mMonteCarloConfiguration->getSecurity();
-      auto oosTimeSeries (FilterTimeSeries<Decimal> (*tempSecurity->getTimeSeries(),
-                                                     this->mMonteCarloConfiguration->getOosDateRange()));
-
-      auto tempOosTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>> (oosTimeSeries);
-
-      std::shared_ptr<Security<Decimal>> securityToTest = tempSecurity->clone (tempOosTimeSeries);
-
-      // This line gets the patterns that have been read from the IR file
-//      PriceActionLabSystem *patternsToTest = this->mMonteCarloConfiguration->getPricePatterns();
-
-      std::cout << "Running Best of permutation test with approximate permutation count of " << (patternsToTest->getNumPatterns() *  this->mNumPermutations)
-                << "\n (" << patternsToTest->getNumPatterns() << " #patterns X " << this->mNumPermutations << " #permutations)" << std::endl;
-
-      DateRange oosDates = this->mMonteCarloConfiguration->getOosDateRange();
-
-      std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
-
-      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
-      aPortfolio->addSecurity(securityToTest);
-
-      auto theBackTester = this->getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                                               oosDates.getFirstDate(),
-                                               oosDates.getLastDate());
-
-      // Runs permutations and gets all the tests that can be deemed valid
-      BestOfMcptType mcpt(theBackTester, this->mNumPermutations, patternsToTest, aPortfolio);
-      Decimal numberOfValidTests = mcpt.runPermutationTest();
-
-      // Get the Results from the combined permutations, mapped to each strategy
-      typename BestOfMcptType::StrategyResultMapType resultsMap;
-      resultsMap = mcpt.getStrategiesResultsMap();
-
-      // Iterate results to retrieve #of times beaten, and calculate pValue
-      for( auto const& [baselineStat, strategyContainer] : resultsMap )
-        {
-	  // Avoid unused warning
-
-	  (void) baselineStat;
-          std::shared_ptr<PalStrategy<Decimal>> strategy = std::get<0>(strategyContainer);
-          uint32_t timesBeaten;
-          timesBeaten = std::get<1>(strategyContainer);
-          //std::cout << "Checking BestOfpValue for: " << strategy->getStrategyName() << "." << std::endl;
-          //std::cout << timesBeaten << " of " << numberOfValidTests.getAsInteger() << std::endl;
-          Decimal pValue;
-          //pValue = Decimal(timesBeaten) / numberOfValidTests;
-          // TODO: For reasons yet unknown this has undefined behavior with large numbers. Needs investigation.
-          double pDouble = double(timesBeaten)/ numberOfValidTests.getAsDouble();
-          pValue = Decimal(pDouble);
-          this->mStrategySelectionPolicy.addStrategy (pValue, strategy);
-        }
-
-      this->mStrategySelectionPolicy.correctForMultipleTests();
-    }
-
   };
 
 
@@ -385,91 +293,6 @@ namespace mkc_timeseries
       return mSurvivingStrategies.size();
     }
 
-    /*  // original code: here for reference. safe to delete
-     void runPermutationTests()
-    {
-      std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
-
-      // This line gets the patterns that have been read from the IR file
-      PriceActionLabSystem *patternsToTest = mMonteCarloConfiguration->getPricePatterns();
-
-      PriceActionLabSystem::ConstSortedPatternIterator longPatternsIterator =
-    patternsToTest->patternLongsBegin();
-
-      DateRange oosDates = mMonteCarloConfiguration->getOosDateRange();
-
-      std::string portfolioName(securityToTest->getName() + std::string(" Portfolio"));
-
-      auto aPortfolio = std::make_shared<Portfolio<Decimal>>(portfolioName);
-      aPortfolio->addSecurity(securityToTest);
-
-      std::shared_ptr<PriceActionLabPattern> patternToTest;
-      std::shared_ptr<PalLongStrategy<Decimal>> longStrategy;
-      std::shared_ptr<BackTester<Decimal>> theBackTester;
-
-      std::string longStrategyNameBase("PAL Long Strategy ");
-
-      std::string strategyName;
-      unsigned long strategyNumber = 1;
-      Decimal pValue;
-
-
-      for (; longPatternsIterator != patternsToTest->patternLongsEnd(); longPatternsIterator++)
-    {
-      patternToTest = longPatternsIterator->second;
-      strategyName = longStrategyNameBase + std::to_string(strategyNumber);
-      longStrategy = std::make_shared<PalLongStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
-
-      theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                       oosDates.getFirstDate(),
-                       oosDates.getLastDate());
-
-      theBackTester->addStrategy(longStrategy);
-
-      // Run Monte Carlo Permutation Tests using the provided backtester
-      OriginalMCPT<Decimal> mcpt(theBackTester, mNumPermutations);
-      pValue = mcpt.runPermutationTest();
-
-      if (pValue < DecimalConstants<Decimal>::SignificantPValue)
-        {
-          mSurvivingStrategies.push_back (longStrategy);
-          std::cout << "Long Pattern found with p-Value < " << pValue << std::endl;
-        }
-
-      strategyNumber++;
-
-    }
-
-      std::cout << std::endl << "MCPT Processing short patterns" << std::endl << std::endl;
-
-      std::shared_ptr<PalShortStrategy<Decimal>> shortStrategy;
-      std::string shortStrategyNameBase("PAL Short Strategy ");
-      PriceActionLabSystem::ConstSortedPatternIterator shortPatternsIterator =
-    patternsToTest->patternShortsBegin();
-
-      for (; shortPatternsIterator != patternsToTest->patternShortsEnd(); shortPatternsIterator++)
-    {
-      patternToTest = shortPatternsIterator->second;
-      strategyName = shortStrategyNameBase + std::to_string(strategyNumber);
-      shortStrategy = std::make_shared<PalShortStrategy<Decimal>>(strategyName, patternToTest, aPortfolio);
-
-      theBackTester = getBackTester(securityToTest->getTimeSeries()->getTimeFrame(),
-                       oosDates.getFirstDate(),
-                       oosDates.getLastDate());
-      theBackTester->addStrategy(shortStrategy);
-      OriginalMCPT<Decimal> mcpt(theBackTester, mNumPermutations);
-      pValue = mcpt.runPermutationTest();
-
-      if (pValue < DecimalConstants<Decimal>::SignificantPValue)
-        {
-          mSurvivingStrategies.push_back (shortStrategy);
-          std::cout << "Short Pattern found with p-Value < " << pValue << std::endl;
-        }
-      strategyNumber++;
-
-    }
-    }
-*/
     void runPermutationTests()
     {
       std::shared_ptr<Security<Decimal>> securityToTest = mMonteCarloConfiguration->getSecurity();
