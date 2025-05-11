@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include "DecimalConstants.h"
+#include "number.h"
 
 namespace mkc_timeseries
 {
@@ -12,11 +13,12 @@ namespace mkc_timeseries
 
       static Decimal computeProfitFactor(const std::vector<Decimal>& xs)
       {
-	Decimal win=0, loss=0;
+	Decimal win(DecimalConstants<Decimal>::DecimalZero);
+	Decimal loss(DecimalConstants<Decimal>::DecimalZero);
 
 	for (auto r: xs)
 	  {
-	    if (r > 0)
+	    if (r > DecimalConstants<Decimal>::DecimalZero)
 	      win += r;
 	    else
 	      loss += r;
@@ -31,7 +33,8 @@ namespace mkc_timeseries
       // LPF = sum(log(1+r>1)) / abs(sum(log(1+r<1)))
       static Decimal computeLogProfitFactor(const std::vector<Decimal>& xs)
       {
-	Decimal lw=0, ll=0;
+	Decimal lw(DecimalConstants<Decimal>::DecimalZero);
+	Decimal ll(DecimalConstants<Decimal>::DecimalZero);
 
 	for (auto r: xs)
 	  {
@@ -40,8 +43,8 @@ namespace mkc_timeseries
 	    if (m <= 0)
 	      continue;
 
-	    Decimal lr = num::to_decimal(std::log(m));
-	    if (r>0)
+	    Decimal lr(std::log(m));
+	    if (r > DecimalConstants<Decimal>::DecimalZero)
 	      lw += lr;
 	    else
 	      ll += lr;

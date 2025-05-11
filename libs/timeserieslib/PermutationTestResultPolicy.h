@@ -112,42 +112,77 @@ namespace mkc_timeseries
     }
   };
 
-  // 1) Helpers to detect ReturnType and createReturnValue(...)
-  template<typename T, typename = void>
-  struct has_return_type : std::false_type
-  {};
+#include <type_traits>
 
-  template<typename T>
-  struct has_return_type<T, std::void_t<typename T::ReturnType>> : std::true_type
-  {};
+#if __cplusplus < 201703L
+namespace std {
+  // C++14 doesn’t have void_t; this polyfill makes it available
+  template<typename...> using void_t = void;
+}
+#endif
 
-  template<typename T, typename = void>
-  struct has_create_return_value : std::false_type
-  {};
+// ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+// helper: detect T::ReturnType
+template<typename T, typename = void>
+struct has_return_type : std::false_type {};
 
-  template<typename T>
-  struct has_create_return_value<T, std::void_t<
-				      decltype(T::createReturnValue(std::declval<Decimal>(), std::declval<Decimal>()))>> : std::true_type
-  {};
+template<typename T>
+struct has_return_type<
+    T,
+    std::void_t<typename T::ReturnType>
+> : std::true_type {};
 
-  // 2) Helpers to detect updateTestStatistic(...) and getTestStat()
-  template<typename T, typename = void>
-  struct has_update_test_statistic : std::false_type
-  {};
 
-  template<typename T>
-  struct has_update_test_statistic<T, std::void_t<
-					decltype(std::declval<T&>().updateTestStatistic(std::declval<Decimal>()))
-					>> : std::true_type
-  {};
+// ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+// helper: detect static createReturnValue(DecimalType, DecimalType)
+template<typename T, typename = void>
+struct has_create_return_value : std::false_type {};
 
-  template<typename T, typename = void>
-  struct has_get_test_stat : std::false_type
-  {};
+template<typename T>
+struct has_create_return_value<
+    T,
+    std::void_t<
+      decltype(
+        T::createReturnValue(
+          std::declval<typename T::DecimalType>(),
+          std::declval<typename T::DecimalType>()
+        )
+      )
+    >
+> : std::true_type {};
 
-  template<typename T>
-  struct has_get_test_stat<T, std::void_t<
-				decltype(std::declval<T&>().getTestStat())>> : std::true_type
-  {};
+
+// ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+// helper: detect member updateTestStatistic(DecimalType)
+template<typename T, typename = void>
+struct has_update_test_statistic : std::false_type {};
+
+template<typename T>
+struct has_update_test_statistic<
+    T,
+    std::void_t<
+      decltype(
+        std::declval<T&>().updateTestStatistic(
+          std::declval<typename T::DecimalType>()
+        )
+      )
+    >
+> : std::true_type {};
+
+
+// ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+// helper: detect member getTestStat()
+template<typename T, typename = void>
+struct has_get_test_stat : std::false_type {};
+
+template<typename T>
+struct has_get_test_stat<
+    T,
+    std::void_t<
+      decltype(
+        std::declval<T&>().getTestStat()
+      )
+    >
+> : std::true_type {};  
 }
 #endif

@@ -37,7 +37,7 @@ namespace mkc_timeseries
       auto stratPtr = *(bt->beginStrategies());
 
       // Pull every bar‐by‐bar return (entry→exit and any still‐open):
-      std::vector<Decimal> barSeries = bt->getAllHighResReturns(stratPtr);
+      std::vector<Decimal> barSeries = bt->getAllHighResReturns(stratPtr.get());
 
       // Compute the bias‐corrected log‐profit‐factor on that fine‐res data:
       return StatUtils<Decimal>::computeLogProfitFactor(barSeries);

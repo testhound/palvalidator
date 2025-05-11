@@ -23,11 +23,6 @@
 
 namespace mkc_timeseries
 {
-  static constexpr std::size_t kInnerThreads =
-    std::thread::hardware_concurrency() > 0
-    ? std::thread::hardware_concurrency()
-    : 2;  // fallback if hardware_concurrency() is zero
-
   /**
    * @class DefaultPermuteMarketChangesPolicy
    * @brief Performs a hypothesis test via Monte-Carlo permutation testing of a trading strategy.
@@ -72,7 +67,7 @@ namespace mkc_timeseries
 	    class BackTestResultPolicy,
 	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
 	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
-	    typename Executor = concurrency::ThreadPoolExecutor<kInnerThreads>>
+	    typename Executor = concurrency::ThreadPoolExecutor<>>
   class DefaultPermuteMarketChangesPolicy
   {
     static_assert(has_return_type<_PermutationTestResultPolicy>::value,

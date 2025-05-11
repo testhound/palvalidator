@@ -5,6 +5,9 @@
 #include <thread>
 #include <vector>
 #include <functional>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
 #include "runner.hpp"  // for BoostRunnerExecutor
 
 /**
@@ -121,31 +124,39 @@ namespace concurrency
   };
 
   /**
-   * @brief A fixed-size thread pool executor.
+   * @brief Fixed-size thread pool executor.
    * Tasks submitted are queued and executed by a pool of worker threads.
    * Template parameter N specifies the number of threads in the pool.
+   *
+   * If N == 0, at runtime we pick std::thread::hardware_concurrency()
+   * (falling back to 2 if that returns 0).
    */
-  template <std::size_t N>
+  template <std::size_t N = 0>
   class ThreadPoolExecutor : public IParallelExecutor {
   public:
     ThreadPoolExecutor()
       : stop_(false)
     {
-      for (std::size_t i = 0; i < N; ++i) {
+      const std::size_t threads =
+	N > 0
+	? N
+	: (std::thread::hardware_concurrency() > 0
+	   ? std::thread::hardware_concurrency()
+	   : 2);
+
+      for (std::size_t i = 0; i < threads; ++i) {
 	workers_.emplace_back([this] {
 	  for (;;) {
 	    std::function<void()> task;
 	    {
-	      std::unique_lock<std::mutex> lock(this->tasksMutex_);
-
-	      this->condition_.wait(lock, [this] {
-		return this->stop_ || !this->tasks_.empty();
+	      std::unique_lock<std::mutex> lock(tasksMutex_);
+	      condition_.wait(lock, [this] {
+		return stop_ || !tasks_.empty();
 	      });
-
-	      if (this->stop_ && this->tasks_.empty())
+	      if (stop_ && tasks_.empty())
 		return;
-	      task = std::move(this->tasks_.front());
-	      this->tasks_.pop();
+	      task = std::move(tasks_.front());
+	      tasks_.pop();
 	    }
 	    task();
 	  }
@@ -153,24 +164,28 @@ namespace concurrency
       }
     }
 
-    ~ThreadPoolExecutor() {
+    ~ThreadPoolExecutor()
+    {
       {
 	std::unique_lock<std::mutex> lock(tasksMutex_);
 	stop_ = true;
       }
       condition_.notify_all();
-      for (std::thread &worker : workers_)
+      for (auto &worker : workers_) {
 	if (worker.joinable())
 	  worker.join();
+      }
     }
 
-    std::future<void> submit(std::function<void()> task) override {
+    // override the pure virtual submit() from IParallelExecutor
+    std::future<void> submit(std::function<void()> task) override
+    {
       auto packaged = std::make_shared<std::packaged_task<void()>>(std::move(task));
-      std::future<void> fut = packaged->get_future();
+      auto fut = packaged->get_future();
       {
 	std::unique_lock<std::mutex> lock(tasksMutex_);
 	if (stop_)
-	  throw std::runtime_error("ThreadPoolExecutor has been stopped");
+	  throw std::runtime_error("enqueue on stopped ThreadPoolExecutor");
 	tasks_.emplace([packaged]() { (*packaged)(); });
       }
       condition_.notify_one();
@@ -178,11 +193,10 @@ namespace concurrency
     }
 
   private:
-    std::vector<std::thread>              workers_;
-    std::queue<std::function<void()>>     tasks_;
-    std::mutex                            tasksMutex_;
-    std::condition_variable               condition_;
-    bool                                  stop_;
+    std::vector<std::thread>          workers_;
+    std::queue<std::function<void()>> tasks_;
+    std::mutex                        tasksMutex_;
+    std::condition_variable           condition_;
+    bool                              stop_;
   };
-  
 } // namespace concurrency
