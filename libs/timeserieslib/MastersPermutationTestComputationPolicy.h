@@ -30,12 +30,6 @@
 
 namespace mkc_timeseries
 {
-   // pick a sensible default pool size for these “5000 permutations” loops
-  static constexpr std::size_t kMasterThreads =
-    std::thread::hardware_concurrency() > 0
-    ? std::thread::hardware_concurrency()
-    : 2;
-
   /**
  * @class MastersPermutationPolicy
  * @brief Computes permutation test statistics for stepwise multiple hypothesis testing in strategy backtesting.
@@ -75,7 +69,7 @@ namespace mkc_timeseries
  *         - Compute the permutation test statistic for a backtest result.
  * @tparam Executor Concurrency executor (defaults to StdAsyncExecutor).
  */
-  template <class Decimal, class BaselineStatPolicy, class Executor = concurrency::ThreadPoolExecutor<kMasterThreads>>
+  template <class Decimal, class BaselineStatPolicy, class Executor = concurrency::ThreadPoolExecutor<>>
   class MastersPermutationPolicy
   {
   public:
@@ -230,7 +224,7 @@ namespace mkc_timeseries
   template<
     class Decimal,
     class BaselineStatPolicy,
-    class Executor = concurrency::ThreadPoolExecutor<kMasterThreads>>
+    class Executor = concurrency::ThreadPoolExecutor<>>
   class FastMastersPermutationPolicy
   {
   public:

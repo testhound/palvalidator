@@ -122,19 +122,13 @@ namespace mkc_timeseries
     _StrategySelection<Decimal> mStrategySelectionPolicy;
   };
 
-  // Number of threads to use for the outer patterns loop
-  static constexpr std::size_t kOuterThreads =
-    std::min<std::size_t>(
-			  4,
-			  std::max<std::size_t>(2, std::thread::hardware_concurrency() / 2));
-			  
   /////////////////////////
   //  The default functionality(non-specialization) for PALMonteCarloValidation
   //
   template <class Decimal,
 	    typename McptType,
             template <typename> class _StrategySelection,
-	    typename Executor = concurrency::ThreadPoolExecutor<kOuterThreads>>
+	    typename Executor = concurrency::StdAsyncExecutor>
   class PALMonteCarloValidation: public PALMonteCarloValidationBase<Decimal,
 								    McptType,
 								    _StrategySelection>
