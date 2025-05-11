@@ -83,7 +83,7 @@ namespace mkc_timeseries
       mTimeSeries->addEntry(std::move(entry));
     }
 
-    const std::shared_ptr<OHLCTimeSeries<Decimal>>& getTimeSeries() const
+    std::shared_ptr<OHLCTimeSeries<Decimal>> getTimeSeries() 
     {
       return mTimeSeries;
     }

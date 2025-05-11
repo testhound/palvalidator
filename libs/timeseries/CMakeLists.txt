@@ -1,0 +1,14 @@
+set(LIB_NAME timeseries)
+
+file(GLOB SRC_LIST
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.txt
+)
+
+add_library(${LIB_NAME} STATIC ${SRC_LIST})
+target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries(${LIB_NAME} priceaction2 ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(timeseries PRIVATE backtesting)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IParallelExecutor.h"
+#include <queue>
 #include <future>
 #include <thread>
 #include <vector>
@@ -109,7 +110,7 @@ namespace concurrency
       // Wrap boost::unique_future into a std::future via std::promise + watcher thread
       std::promise<void> prom;
       auto stdFut = prom.get_future();
-    
+
       std::thread([bf = std::move(boostFut), p = std::move(prom)]() mutable {
 	try {
 	  bf.get();  // propagate exceptions from the task
@@ -118,7 +119,7 @@ namespace concurrency
 	  p.set_exception(std::current_exception());
 	}
       }).detach();
-    
+
       return stdFut;
     }
   };

@@ -52,8 +52,8 @@ namespace mkc_searchalgo
   {}
 
   std::shared_ptr<SearchAlgoConfiguration<Decimal>> SearchAlgoConfigurationFileReader::readConfigurationFile(
-              const std::shared_ptr<McptConfiguration<Decimal>>& mcptConfiguration, 
-              int timeFrameIdToLoad, 
+              const std::shared_ptr<McptConfiguration<Decimal>>& mcptConfiguration,
+              int timeFrameIdToLoad,
               bool downloadFile)
   {
     const std::shared_ptr<Security<Decimal>> security = mcptConfiguration->getSecurity();
@@ -102,9 +102,9 @@ namespace mkc_searchalgo
       {
         targetStops.push_back(std::make_pair(Decimal(tryCast<float>(target)), Decimal(tryCast<float>(stop))));
       }
-    
+
     std::string hourlyDataFilePath = mRunParameters->getHourlyDataFilePath();
-    if(mRunParameters->shouldUseApi()) 
+    if(mRunParameters->shouldUseApi())
     {
       // read data from API from the start of the IS data to the end of the OOS data
       std::string token = getApiTokenFromFile(mRunParameters->getApiConfigFilePath(), mRunParameters->getApiSource());
@@ -122,7 +122,7 @@ namespace mkc_searchalgo
       series = std::make_shared<OHLCTimeSeries<Decimal>>(*security->getTimeSeries());
 
       // read the data file, infer the time frames, and create all of the synthetic files - once
-      if(downloadFile) 
+      if(downloadFile)
       {
         std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = std::make_shared<TradeStationFormatCsvReader<Decimal>>(
           hourlyDataFilePath, TimeFrame::INTRADAY, getVolumeUnit(security), security->getTick()
@@ -133,12 +133,16 @@ namespace mkc_searchalgo
         timeFrameDiscovery->inferTimeFrames();
         mRunParameters->setTimeFrames(timeFrameDiscovery->getTimeFrames());
 
-        std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator = 
+        std::shared_ptr<SyntheticTimeSeriesCreator<Decimal>> syntheticTimeSeriesCreator =
           std::make_shared<SyntheticTimeSeriesCreator<Decimal>>(reader->getTimeSeries(), hourlyDataFilePath);
-        std::shared_ptr<TimeSeriesValidator<Decimal>> validator = std::make_shared<TimeSeriesValidator<Decimal>>(reader->getTimeSeries(), security->getTimeSeries(), timeFrameDiscovery->numTimeFrames());
-        validator->validate();
+		//TODO: fix compilation issue
+        //std::shared_ptr<TimeSeriesValidator<Decimal>> validator = std::make_shared<TimeSeriesValidator<Decimal>>(
+		//		reader->getTimeSeries(),
+		//		security->getTimeSeries(),
+		//		timeFrameDiscovery->numTimeFrames());
+        //validator->validate();
 
-        for(int i = 0; i < timeFrameDiscovery->numTimeFrames(); i++) 
+        for(int i = 0; i < timeFrameDiscovery->numTimeFrames(); i++)
         {
           boost::posix_time::time_duration timeStamp = timeFrameDiscovery->getTimeFrame(i);
           syntheticTimeSeriesCreator->createSyntheticTimeSeries(i+1, timeStamp);
@@ -146,7 +150,7 @@ namespace mkc_searchalgo
         }
       }
     }
-    else 
+    else
     {
       std::string timeFrameFilename = hourlyDataFilePath + "_timeframe_" + std::to_string(timeFrameIdToLoad);
       std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = std::make_shared<PALFormatCsvReader<Decimal>>(

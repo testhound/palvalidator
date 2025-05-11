@@ -1,27 +1,16 @@
 set(LIB_NAME priceaction2)
-set(SRC_LIST EasyLanguageCodeGenerator.cpp
-    PalAst.cpp
-    PalCodeGenerator.cpp
-    PalCodeGenVisitor.cpp
-    PalParseDriver.cpp
-    PriceActionLabSystem.cpp
-    QuantConnectCodeGenerator.cpp
-    TradingBloxCodeGenerator.cpp
-    WealthLabCodeGenerator.cpp
-    PalAst.h
-    PalCodeGenVisitor.h
-    PalParseDriver.h
-    scanner.h
-#    SecurityFactory.h
-#    Security.h
-    EasyLanguageFromTemplateCodeGen.cpp
-    el_template.txt
+
+file(GLOB SRC_LIST
+    ${CMAKE_CURRENT_LIST_DIR}/*.h
+    ${CMAKE_CURRENT_LIST_DIR}/*.hpp
+    ${CMAKE_CURRENT_LIST_DIR}/*.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/*.txt
 )
 
 ################################################################################
 # Bison
 ################################################################################
-set(BisonDir ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2)
+set(BisonDir  ${CMAKE_CURRENT_LIST_DIR})
 find_package(BISON REQUIRED)
 set(BisonOutput ${BisonDir}/location.hh
                 ${BisonDir}/position.hh
@@ -45,13 +34,13 @@ endif()
 ################################################################################
 find_package(FLEX REQUIRED)
 set(FlexOutput PalScanner.hpp PalScanner.cpp)
-set(FlexInput ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/lexer.ll)
+set(FlexInput ${CMAKE_CURRENT_LIST_DIR}/lexer.ll)
 if(FLEX_FOUND)
     add_custom_command(
       OUTPUT ${FlexOutput}
       COMMAND ${FLEX_EXECUTABLE} ${FlexInput}
       DEPENDS ${FlexInput}
-      COMMENT "Generating Lexer files"
+      COMMENT "Generating Lexer files ${FlexInput}"
     )
 endif()
 
@@ -61,4 +50,7 @@ add_library(${LIB_NAME} STATIC
             ${BisonOutput}
             ${FlexOutput})
 
+target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
 target_link_libraries(${LIB_NAME} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(priceaction2 PRIVATE timeseries)
