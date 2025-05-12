@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(USE_BLOOMBERG_DECIMALS false)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+include(CTest)
+
 if(USE_BLOOMBERG_DECIMALS)
   add_definitions(-DUSE_BLOOMBERG_DECIMALS)
 
@@ -61,6 +65,9 @@ include_directories(${CMAKE_SOURCE_DIR}
   ${FLEX_INCLUDE_DIR}
   )
 
+file(GLOB TXT_FILES "${CMAKE_SOURCE_DIR}/dataset/*.txt")
+set(DATASET_FILES ${TXT_FILES} CACHE INTERNAL "List of dataset files")
+
 include(CMakePrintHelpers)
 
 add_subdirectory(libs/timeseries)
@@ -88,4 +95,22 @@ target_link_libraries(${BIN_NAME}
     curl
     )
 
-add_subdirectory(tests)
+    #list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
+
+#add_subdirectory(tests)
+include(FetchContent)
+FetchContent_Declare(
+  cpptrace
+  GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
+  GIT_TAG        v0.8.3 # <HASH or TAG>
+)
+FetchContent_MakeAvailable(cpptrace)
+
+find_package(Catch2 CONFIG REQUIRED)
+
+add_library(Catch INTERFACE)
+
+add_custom_target(tests
+    COMMAND ${CMAKE_CTEST_COMMAND}
+    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests
+)

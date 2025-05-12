@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
-#include "../TimeSeriesCsvReader.h"
-#include "../TimeSeries.h"
-#include "../TimeSeriesIndicators.h"
+#include "TimeSeriesCsvReader.h"
+#include "TimeSeries.h"
+#include "TimeSeriesIndicators.h"
 #include "TestUtils.h"
 #include "number.h"
 

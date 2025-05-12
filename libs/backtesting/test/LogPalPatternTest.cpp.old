@@ -1,0 +1,76 @@
+#define CATCH_CONFIG_MAIN
+
+#include <string>
+#include "catch.hpp"
+#include "number.h"
+#include "LogPalPattern.h"
+#include "TestUtils.h"
+
+using namespace mkc_timeseries;
+
+
+PatternDescription *
+createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate, 
+		   const std::string& percLong, const std::string& percShort,
+		   unsigned int numTrades, unsigned int consecutiveLosses)
+{
+  DecimalType *percentLong = createRawDecimalPtr (percLong);
+  DecimalType *percentShort = createRawDecimalPtr(percShort);
+
+  return new PatternDescription ((char *) fileName.c_str(), index, indexDate, percentLong, percentShort,
+				 numTrades, consecutiveLosses);
+}
+
+LongMarketEntryOnOpen *
+createLongOnOpen()
+{
+  return new LongMarketEntryOnOpen();
+}
+
+ShortMarketEntryOnOpen *
+createShortOnOpen()
+{
+  return new ShortMarketEntryOnOpen();
+}
+
+LongSideProfitTargetInPercent *
+createLongProfitTarget(const std::string& targetPct)
+{
+  return new LongSideProfitTargetInPercent (createRawDecimalPtr (targetPct));
+}
+
+LongSideStopLossInPercent *
+createLongStopLoss(const std::string& targetPct)
+{
+  return new LongSideStopLossInPercent (createRawDecimalPtr (targetPct));
+}
+
+ShortSideProfitTargetInPercent *
+createShortProfitTarget(const std::string& targetPct);
+
+ShortSideStopLossInPercent *
+createShortStopLoss(const std::string& targetPct);
+
+std::shared_ptr<PriceActionLabPattern>
+createShortPattern1();
+
+std::shared_ptr<PriceActionLabPattern>
+createLongPattern1();
+
+
+TEST_CASE ("LogPalPatternTest operations", "[LogPalPattern]")
+{
+  std::ofstream patternOutFile("PatternOutputFile.txt");
+  LogPalPattern::LogPattern (createLongPattern1(), patternOutFile);
+  LogPalPattern::LogPattern (createLongPattern2(), patternOutFile);
+  LogPalPattern::LogPattern (createShortPattern1(), patternOutFile);
+
+
+  SECTION ("RobustnessTester addStrategy test", "[RobustnessTester 1]")
+    {
+
+    }
+
+  
+}
+

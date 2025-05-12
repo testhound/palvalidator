@@ -97,8 +97,7 @@ createShortPattern1()
   return std::make_shared<PriceActionLabPattern>(desc, shortPattern1, entry, target, stop);
 }
 
-std::shared_ptr<PriceActionLabPattern>
-createLongPattern1()
+std::shared_ptr<PriceActionLabPattern> createLongPattern1(DecimalType targetDec= createDecimal("2.56"), DecimalType stopDec = createDecimal("1.28")) {
 {
   PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
                            20131217, std::string("90.00"),
