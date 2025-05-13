@@ -112,3 +112,7 @@ g++ -o MastersRomanoWolfTest MastersRomanoWolfTest.o TestUtils.o ../LogPalPatter
 g++ -O2 -c -std=c++17 -I../ -I. -I/usr/local/include/priceactionlab -I/usr/local/include MastersRomanoWolfImprovedTest.cpp
 
 g++ -o MastersRomanoWolfImprovedTest MastersRomanoWolfImprovedTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ../runner.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system -lboost_thread -lboost_filesystem -lCatch2 -pthread
+
+g++ -O2 -c -std=c++17 -I../ -I. -I/usr/local/include/priceactionlab -I/usr/local/include ValidatorConfigurationTest.cpp
+
+g++ -o ValidatorConfigurationTest ValidatorConfigurationTest.o TestUtils.o ../LogPalPattern.o ../TimeSeriesEntry.o ../TimeSeries.o ../BacktesterStrategy.o ../ValidatorConfiguration.o ../TimeFrameUtility.o ../runner.o ./catch_amalgamated.o -L/usr/local/lib -lboost_date_time -lpriceaction2 -lboost_system -lboost_thread -lboost_filesystem -lCatch2 -pthread
