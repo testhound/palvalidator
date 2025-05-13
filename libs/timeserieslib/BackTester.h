@@ -306,6 +306,34 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Determines whether this is a backtester that operates
+     * on the daily time frame.
+     * @return `true` if operating on the daily time frame `false` otherwise
+     */
+    virtual bool isDailyBackTester() const = 0;
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the weekly time frame.
+     * @return `true` if operating on the weekl time frame `false` otherwise
+     */
+    virtual bool isWeeklyBackTester() const = 0;
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the monthly time frame.
+     * @return `true` if operating on the monthly time frame `false` otherwise
+     */
+    virtual bool isMonthlyBackTester() const = 0;
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on intraday time frames.
+     * @return `true` if operating on intraday time frames `false` otherwise
+     */
+    virtual bool isIntradayBackTester() const = 0;
+    
+    /**
      * @brief Execute the full backtest across all configured date ranges.
      *
      * For each date range, saves bar dates, iterates through each bar (skipping the first),
@@ -530,6 +558,47 @@ namespace mkc_timeseries
       return back;
     }
 
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the daily time frame.
+     * @return `true`
+     */
+    bool isDailyBackTester() const
+    {
+      return true;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the weekly time frame.
+     * @return `false`.
+     */
+    bool isWeeklyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the monthly time frame.
+     * @return `false`.
+     */
+    bool isMonthlyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on intraday time frames.
+     * @return `false`.
+     */
+
+    bool isIntradayBackTester() const
+    {
+      return false;
+    }
+
   protected:
     TimeSeriesDate previous_period(const TimeSeriesDate& d) const
       {
@@ -588,6 +657,47 @@ namespace mkc_timeseries
 	back->addDateRange(it->second);
 
       return back;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the daily time frame.
+     * @return `false`
+     */
+    bool isDailyBackTester() const
+    {
+      return true;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the weekly time frame.
+     * @return `false`.
+     */
+    bool isWeeklyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the monthly time frame.
+     * @return `true`.
+     */
+    bool isMonthlyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on intraday time frames.
+     * @return `false`.
+     */
+
+    bool isIntradayBackTester() const
+    {
+      return false;
     }
 
   protected:
@@ -649,6 +759,46 @@ namespace mkc_timeseries
 	back->addDateRange(it->second);
 
       return back;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the daily time frame.
+     * @return `false`
+     */
+    bool isDailyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the weekly time frame.
+     * @return `true`.
+     */
+    bool isWeeklyBackTester() const
+    {
+      return true;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the monthly time frame.
+     * @return `false`.
+     */
+    bool isMonthlyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on intraday time frames.
+     * @return `false`.
+     */
+    bool isIntradayBackTester() const
+    {
+      return false;
     }
 
   protected:
