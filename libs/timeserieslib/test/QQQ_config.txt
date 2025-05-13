@@ -1,0 +1,1 @@
+QQQ,./QQQ_IR_subset.txt,./QQQ_Data_All.txt,PAL,20070402,20210819,20210820,20250331,Daily

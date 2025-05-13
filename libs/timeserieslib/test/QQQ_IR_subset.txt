@@ -1,0 +1,92 @@
+Code For Selected Patterns
+----------------------------------------------------------------------------------------------------------------------------------
+
+{File:QQQ_IS.txt  Index:540  Index Date:20200512  PL:84.00%  PS:16%  Trades:25  CL:1}
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 12 BARS AGO
+AND CLOSE OF 12 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
+ 
+{File:QQQ_IS.txt  Index:218  Index Date:20200511  PL:85.19%  PS:14.81%  Trades:27  CL:1}
+
+IF HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
+ 
+{File:QQQ_IS.txt  Index:514  Index Date:20200511  PL:80.00%  PS:20%  Trades:25  CL:1}
+
+IF CLOSE OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
+ 
+{File:QQQ_IS.txt  Index:506  Index Date:20200507  PL:84.00%  PS:16%  Trades:25  CL:1}
+
+IF CLOSE OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
+ 
+{File:QQQ_IS.txt  Index:279  Index Date:20200430  PL:82.61%  PS:17.39%  Trades:23  CL:1}
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 DAYS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 5 DAYS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
+ 
+{File:QQQ_IS.txt  Index:184  Index Date:20200429  PL:80.00%  PS:20%  Trades:35  CL:2}
+
+IF HIGH OF 5 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
+ 
+{File:QQQ_IS.txt  Index:329  Index Date:20200427  PL:80.95%  PS:19.05%  Trades:21  CL:1}
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.5736365 %
+AND STOP LOSS AT ENTRY PRICE - 1.147273 %
+----------------------------------------------------------------------------------------------------------------------------------
