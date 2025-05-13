@@ -136,6 +136,8 @@ namespace mkc_timeseries
        */
       virtual bool isFuturesSecurity() const = 0;
 
+      virtual TradingVolume::VolumeUnit getTradingVolumeUnits() const = 0;
+
       /**
        * @brief Finds an iterator pointing to the time series entry for a specific date.
        * @param d The date to find.
@@ -400,6 +402,11 @@ namespace mkc_timeseries
     {
       return false;
     }
+
+    TradingVolume::VolumeUnit getTradingVolumeUnits() const
+    {
+      return TradingVolume::SHARES;
+    }
   };
 
   /**
@@ -479,6 +486,12 @@ namespace mkc_timeseries
     {
       return true;
     }
+
+    TradingVolume::VolumeUnit getTradingVolumeUnits() const
+    {
+      return TradingVolume::CONTRACTS;
+    }
+    
   };
 }
 
