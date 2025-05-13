@@ -48,6 +48,48 @@ public:
     TimeSeriesDate previous_period(const TimeSeriesDate& d) const override { return boost_previous_weekday(d); }
     TimeSeriesDate next_period(const TimeSeriesDate& d) const override { return boost_next_weekday(d); }
     void backtest() override {}
+
+      /**
+     * @brief Determines whether this is a backtester that operates
+     * on the daily time frame.
+     * @return `true`
+     */
+    bool isDailyBackTester() const
+    {
+      return true;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the weekly time frame.
+     * @return `false`.
+     */
+    bool isWeeklyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the monthly time frame.
+     * @return `false`.
+     */
+    bool isMonthlyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on intraday time frames.
+     * @return `false`.
+     */
+
+    bool isIntradayBackTester() const
+    {
+      return false;
+    }
+
 };
 
 class DummyPalStrategyEx : public PalStrategy<D> {
