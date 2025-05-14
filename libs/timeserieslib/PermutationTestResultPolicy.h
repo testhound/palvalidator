@@ -11,8 +11,9 @@
 #include <tuple>
 #include <type_traits>     // for std::void_t, std::false_type, std::true_type
 #include <utility>         // for std::declval
-
 #include "number.h"
+#include "DecimalConstants.h"
+
 
 namespace mkc_timeseries
 {
@@ -23,6 +24,7 @@ namespace mkc_timeseries
   class PValueReturnPolicy
   {
   public:
+    using DecimalType = Decimal;
     using ReturnType = Decimal;
 
     // Return a p-value from Monte-Carlo
@@ -41,6 +43,7 @@ namespace mkc_timeseries
   class PValueAndTestStatisticReturnPolicy
   {
   public:
+    using DecimalType = Decimal;
     using ReturnType = std::tuple<Decimal, Decimal>;
 
     static ReturnType createReturnValue(Decimal pValue, Decimal testStat)
@@ -59,6 +62,7 @@ namespace mkc_timeseries
   template <class Decimal> class PermutationTestingMaxTestStatisticPolicy
   {
   public:
+    using DecimalType = Decimal;
     PermutationTestingMaxTestStatisticPolicy()
       : mMaxTestStatistic(DecimalConstants<Decimal>::DecimalZero)
     {}
@@ -100,6 +104,7 @@ namespace mkc_timeseries
   template <class Decimal> class PermutationTestingNullTestStatisticPolicy
   {
   public:
+    using DecimalType = Decimal;
     PermutationTestingNullTestStatisticPolicy()
     {}
 
