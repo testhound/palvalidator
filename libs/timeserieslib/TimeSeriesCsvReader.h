@@ -7,6 +7,8 @@
 #ifndef __CSVREADER_H
 #define __CSVREADER_H 1
 
+#include <fstream>
+#include <stdexcept>
 #include "TimeSeries.h"
 #include <boost/date_time.hpp>
 #include "DecimalConstants.h"
@@ -30,7 +32,12 @@ namespace mkc_timeseries
 							       unitsOfVolume)),
 	mMinimumTick(minimumTick),
 	mMinimumTickDiv2(minimumTick / DecimalConstants<Decimal>::DecimalTwo)
-    {}
+    {
+      // ensure file exists (all readers inherit this check)
+      std::ifstream fin(mFileName);
+      if (!fin.is_open())
+	throw std::runtime_error("Cannot open file: " + mFileName);
+    }
 
     TimeSeriesCsvReader(const TimeSeriesCsvReader& rhs)
       : mFileName(rhs.mFileName),
@@ -171,6 +178,12 @@ namespace mkc_timeseries
 
     void readFile()
     {
+      // disallow intraday timeframe for PALFormatCsvReader because it is not supported
+      if (this->getTimeFrame() == TimeFrame::INTRADAY)
+        throw std::runtime_error(
+          "PALFormatCsvReader does not support intraday timeframe"
+       );
+      
       mCsvFile.set_header("Date", "Open", "High", "Low", "Close");
 
       std::string dateStamp;
@@ -557,6 +570,7 @@ namespace mkc_timeseries
       boost::date_time::special_values_parser<boost::gregorian::date, char>
 	special_parser;
 
+      int lineNo = 1;
       while (mCsvFile.read_row(dateStamp, timeString, openString, highString, 
 			       lowString, closeString,
 			       volumeString, openInterestString))
@@ -573,7 +587,11 @@ namespace mkc_timeseries
 								      closePrice, 
 								      volume, 
 								      TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	  ++lineNo;
 	}
+      // 2) no data rows at all?
+      if (lineNo == 1)
+        throw std::runtime_error("No data rows found in file: " + this->getFileName());
     }
 
   private:
