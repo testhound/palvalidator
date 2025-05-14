@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(USE_BLOOMBERG_DECIMALS false)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+include(CTest)
+
 if(USE_BLOOMBERG_DECIMALS)
   add_definitions(-DUSE_BLOOMBERG_DECIMALS)
 
@@ -54,9 +58,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -march=native")
 find_package( Threads )
 find_package(Boost REQUIRED COMPONENTS filesystem date_time chrono system program_options regex thread container)
 include_directories(${CMAKE_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/libs/PALCodeGenLibrary-v2/
-  ${CMAKE_SOURCE_DIR}/libs/timeserieslib
-  ${CMAKE_SOURCE_DIR}/libs/pasearchalgolib
   ${Boost_INCLUDE_DIR}
   ${BLOOMBERG_DECIMAL_INCLUDES}
   ${RAPIDJSON_DIR}
@@ -64,11 +65,19 @@ include_directories(${CMAKE_SOURCE_DIR}
   ${FLEX_INCLUDE_DIR}
   )
 
-add_subdirectory(libs/PALCodeGenLibrary-v2/)
-add_subdirectory(libs/timeserieslib)
-add_subdirectory(libs/pasearchalgolib)
+file(GLOB TXT_FILES "${CMAKE_SOURCE_DIR}/dataset/*.txt")
+set(DATASET_FILES ${TXT_FILES} CACHE INTERNAL "List of dataset files")
 
-set(SRC_LIST main/main2.cpp)
+include(CMakePrintHelpers)
+
+add_subdirectory(libs/timeseries)
+add_subdirectory(libs/priceactionlab)
+add_subdirectory(libs/backtesting)
+add_subdirectory(libs/concurrency)
+add_subdirectory(libs/pasearchalgo)
+add_subdirectory(libs/statistics)
+
+set(SRC_LIST main/main.cpp)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
 set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)
@@ -76,10 +85,32 @@ target_link_libraries(${BIN_NAME}
     priceaction2
     backtest
     pasearchalgo
+    statistics
+    concurrency
+    timeseries
+    backtesting
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${BLOOMBERG_DECIMAL_LIBRARIES}
     curl
     )
 
-add_subdirectory(tests)
+    #list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
+
+#add_subdirectory(tests)
+include(FetchContent)
+FetchContent_Declare(
+  cpptrace
+  GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
+  GIT_TAG        v0.8.3 # <HASH or TAG>
+)
+FetchContent_MakeAvailable(cpptrace)
+
+find_package(Catch2 CONFIG REQUIRED)
+
+add_library(Catch INTERFACE)
+
+add_custom_target(tests
+    COMMAND ${CMAKE_CTEST_COMMAND}
+    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests
+)

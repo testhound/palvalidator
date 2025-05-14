@@ -1,35 +1,34 @@
-#define CATCH_CONFIG_MAIN
-
 #include <catch2/catch_test_macros.hpp>
 #include "TimeSeriesCsvReader.h"
 #include "ClosedPositionHistory.h"
 #include "TimeSeriesIndicators.h"
 #include "TestUtils.h"
+#include <cmath>
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-namespace  {
+const static std::string myCornSymbol("C2");
 
-std::string myCornSymbol("C2");
+
 
 void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openPosition,
 			    const TimeSeriesDate& entryDate,
 			    const TimeSeriesDate& exitDate,
 			    const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aTimeSeries )
 {
-  OHLCTimeSeries<DecimalType>::TimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
+  OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
   it++;
 
-  OHLCTimeSeries<DecimalType>::TimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
+  OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
   for (; it != itEnd; it++)
     {
-      openPosition->addBar (it->second);
+      openPosition->addBar (*it);
     }
 
   // Add exit bar since loop will not do it
 
-  openPosition->addBar (it->second);
+  openPosition->addBar (*it);
 }
 
 std::shared_ptr<TradingPositionLong<DecimalType>>
@@ -54,7 +53,7 @@ createClosedLongPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aT
 								 *entry,
 								 tVolume);
 
-  addBarHistoryUntilDate (aPos, entryDate, exitDate, aTimeSeries); 
+  addBarHistoryUntilDate (aPos, entryDate, exitDate, aTimeSeries);
   aPos->ClosePosition (exitDate,
 		       exitPrice);
   return aPos;
@@ -70,7 +69,7 @@ createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& a
 			  const TradingVolume& tVolume,
 			  int dummy)
 {
-  
+
   auto entry = createTimeSeriesEntry (entryDate,
 				      entryPrice,
 				      entryPrice,
@@ -89,63 +88,14 @@ createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& a
   return aPos;
 }
 
-void printPositionHistory(const ClosedPositionHistory<DecimalType>& history)
+DecimalType getLnReturn(const DecimalType& entryPrice, const DecimalType exitPrice)
 {
-  ClosedPositionHistory<DecimalType>::ConstPositionIterator it = history.beginTradingPositions();
-  std::shared_ptr<TradingPosition<DecimalType>> p;
-  std::string posStateString;
-  std::string openStr("Position open");
-  std::string closedStr("Position closed");
-  std::string dirStrLong("Long");
-  std::string dirStrShort("Short");
-  std::string dirStr;
-
-  int positionNum = 1;
-  int numWinners = 0;
-  int numLosers = 0;
-
-  for (; it != history.endTradingPositions(); it++)
-    {
-      p = it->second;
-      if (p->isPositionOpen())
-    posStateString = openStr;
-      else
-    posStateString = closedStr;
-
-      if (p->isLongPosition())
-    dirStr = dirStrLong;
-      else
-    dirStr = dirStrShort;
-
-      std::cout << "Position # " << positionNum << ", " << dirStr << " position state: " << posStateString << std::endl;
-      std::cout << "Position entry date: " << p->getEntryDate() << " entry price: " <<
-    p->getEntryPrice() << std::endl;
-
-      if (p->isPositionClosed())
-    {
-      std::cout << "Position exit date: " << p->getExitDate() << " exit price: " <<
-        p->getExitPrice() << std::endl;
-    }
-
-      if (p->isWinningPosition())
-    {
-      std::cout << "Winning position!" << std::endl;
-      numWinners++;
-    }
-      else
-    {
-      std::cout << "Losing position @#$%" << std::endl;
-      numLosers++;
-    }
-
-      positionNum++;
-
-    }
+  DecimalType lnArg (exitPrice / entryPrice);
+  double lnOfReturn = std::log(lnArg.getAsDouble());
+  return DecimalType(lnOfReturn);
 }
 
-}
-
-TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[ClosedPositionHistory]")
+TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 {
   DecimalType cornTickValue(createDecimal("0.25"));
   PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
@@ -180,19 +130,31 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
   auto longEntryDate1 = TimeSeriesDate (1985, Nov, 15);
   auto longEntryPrice1 = createDecimal("3664.51025");
 
-  auto longPosition1 = createClosedLongPosition (p, longEntryDate1, longEntryPrice1, 
+  auto longPosition1 = createClosedLongPosition (p, longEntryDate1, longEntryPrice1,
 						 longExitDate1, longExitPrice1,
 						 oneContract, 12);
-  
+
+  auto position1LogReturn = longPosition1->getLogTradeReturn();
+  auto position1ReferenceLnReturn = getLnReturn(longEntryPrice1, longExitPrice1);
+
+  std::cout << "Position 1 log return " << position1LogReturn << " Calculated ln return = " << position1ReferenceLnReturn << std::endl;
+  std::cout << "position 1 percent return = " << longPosition1->getPercentReturn() << std::endl;
+
   auto longExitDate2 = TimeSeriesDate (1986, Jun, 12);
   auto longExitPrice2 = createDecimal("3729.28683");
   auto longEntryDate2 = TimeSeriesDate (1986, May, 16);
   auto longEntryPrice2 = createDecimal("3777.64063");
 
-  auto longPosition2  = createClosedLongPosition (p, longEntryDate2, longEntryPrice2, 
+  auto longPosition2  = createClosedLongPosition (p, longEntryDate2, longEntryPrice2,
 						  longExitDate2, longExitPrice2,
 						  oneContract, 18);
-  
+
+  auto position2LogReturn = longPosition2->getLogTradeReturn();
+  auto position2ReferenceLnReturn = getLnReturn(longEntryPrice2, longExitPrice2);
+
+    std::cout << "Position 2 log return " << position2LogReturn << " Calculated ln return = " << position2ReferenceLnReturn << std::endl;
+  std::cout << "position 2 percent return = " << longPosition2->getPercentReturn() << std::endl;
+
   auto longPosition3 = createClosedLongPosition (p, TimeSeriesDate(1986, Oct, 29),
 						 createDecimal("3087.43726"),
 						 TimeSeriesDate(1986, Oct, 30),
@@ -381,7 +343,7 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
   longCumReturn = longCumReturn - DecimalConstants<DecimalType>::DecimalOne;
 
   std::cout << "Cumulative return for longpositions = " << closedLongPositions.getCumulativeReturn() << std::endl;
-  std::vector<unsigned int> barsInPositions(closedLongPositions.beginBarsPerPosition(), 
+  std::vector<unsigned int> barsInPositions(closedLongPositions.beginBarsPerPosition(),
 					    closedLongPositions.endBarsPerPosition()) ;
   unsigned int barsMedian = Median (barsInPositions);
   std::cout << "Median bars in positions = " << barsMedian << std::endl;
@@ -399,23 +361,23 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
   std::cout << "For payoffratio = 2.14, geometric payoff ratio = " << closedLongPositions.getGeometricPayoffRatio() << std::endl;
   REQUIRE (closedLongPositions.getPALProfitability() == createDecimal("58.3333300"));
 
-  
+
   auto shortEntryDate1 = TimeSeriesDate (1986, May, 28);
   auto shortEntryPrice1 = createDecimal("3789.64575");
   auto shortExitDate1 = TimeSeriesDate (1986, Jun, 11);
   auto shortExitPrice1 = createDecimal("3738.86450");
 
-  auto shortPosition1 =  createClosedShortPosition (p, shortEntryDate1, shortEntryPrice1, 
+  auto shortPosition1 =  createClosedShortPosition (p, shortEntryDate1, shortEntryPrice1,
 						    shortExitDate1, shortExitPrice1,
 						    oneContract, 10);
 
- 
+
   auto shortEntryDate2 = TimeSeriesDate (1986, Nov, 10);
   auto shortEntryPrice2 = createDecimal("3100.99854");
   auto shortExitDate2 = TimeSeriesDate (1986, Nov, 12);
   auto shortExitPrice2 = createDecimal("3140.69132");
 
-  auto shortPosition2 = createClosedShortPosition(p, shortEntryDate2, shortEntryPrice2, 
+  auto shortPosition2 = createClosedShortPosition(p, shortEntryDate2, shortEntryPrice2,
 						  shortExitDate2, shortExitPrice2,
 						  oneContract, 2);
 
@@ -423,12 +385,12 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
 					createDecimal("2690.04077"),
 					TimeSeriesDate(1987, Feb, 5),
 					createDecimal("2653.99423"),
-					oneContract, 4); 
+					oneContract, 4);
   auto shortPosition4 = createClosedShortPosition (p, TimeSeriesDate(1987, May, 22),
 					createDecimal("3014.07813"),
 					TimeSeriesDate(1987, May, 26),
 					createDecimal("2973.68948"),
-					oneContract, 2); 
+					oneContract, 2);
   auto shortPosition5 = createClosedShortPosition (p, TimeSeriesDate(1987, Jun, 3),
 					createDecimal("3006.15674"),
 					TimeSeriesDate(1987, Jun, 10),
@@ -438,7 +400,7 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
 					createDecimal("2918.04443"),
 					TimeSeriesDate(1989, Jul, 24),
 					createDecimal("2878.94264"),
-					oneContract, 2); 
+					oneContract, 2);
   auto shortPosition7 = createClosedShortPosition (p, TimeSeriesDate(1990, Nov, 19),
 					createDecimal("2703.38110"),
 					TimeSeriesDate(1990, Nov, 20),
@@ -539,9 +501,9 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
   closedShortPositions.addClosedPosition(shortPosition20);
   closedShortPositions.addClosedPosition(shortPosition21);
 
-  printPositionHistory (closedShortPositions);
+  //printPositionHistory (closedShortPositions);
 
-   std::cout << "Cumulative return for short positions = " << closedShortPositions.getCumulativeReturn() << std::endl;
+  //std::cout << "Cumulative return for short positions = " << closedShortPositions.getCumulativeReturn() << std::endl;
   REQUIRE (closedShortPositions.getNumPositions() == 21);
   REQUIRE (closedShortPositions.getNumWinningPositions() == 17);
   REQUIRE (closedShortPositions.getProfitFactor() >= createDecimal("4.53"));
@@ -549,20 +511,20 @@ TEST_CASE ("ClosedPositionsHistoryTest-ClosedPositionHistory operations", "[Clos
   REQUIRE (closedShortPositions.getPercentLosers() == (createDecimal ("100.00") - closedShortPositions.getPercentWinners()));
   REQUIRE (closedShortPositions.getNumLosingPositions() == 4);
   REQUIRE (closedShortPositions.getPayoffRatio() >= createDecimal("1.06"));
-    std::cout << "For payoffratio = 1.06, median payoff ratio = " << closedShortPositions.getMedianPayoffRatio() << std::endl;
-    std::cout << "For payoffratio = 1.06, geometric payoff ratio = " << closedShortPositions.getGeometricPayoffRatio() << std::endl;
+  //std::cout << "For payoffratio = 1.06, median payoff ratio = " << closedShortPositions.getMedianPayoffRatio() << std::endl;
+  //std::cout << "For payoffratio = 1.06, geometric payoff ratio = " << closedShortPositions.getGeometricPayoffRatio() << std::endl;
   REQUIRE (closedShortPositions.getPALProfitability() >= createDecimal("80.9400000"));
-  std::cout << "Median PAL profitability = " << closedShortPositions.getMedianPALProfitability() << " Geometric PAL profitability = " << closedShortPositions.getGeometricPALProfitability() << std::endl;
+  //std::cout << "Median PAL profitability = " << closedShortPositions.getMedianPALProfitability() << " Geometric PAL profitability = " << closedShortPositions.getGeometricPALProfitability() << std::endl;
 
-  
+
   SECTION ("Test return iterator")
     {
 
 
-      ClosedPositionHistory<DecimalType>::ConstTradeReturnIterator winnersIterator = 
+      ClosedPositionHistory<DecimalType>::ConstTradeReturnIterator winnersIterator =
 	closedLongPositions.beginWinnersReturns();
 
-      ClosedPositionHistory<DecimalType>::ConstTradeReturnIterator losersIterator = 
+      ClosedPositionHistory<DecimalType>::ConstTradeReturnIterator losersIterator =
 	closedLongPositions.beginLosersReturns();
 
       if (longPosition1->isWinningPosition())
@@ -601,13 +563,127 @@ SECTION ("ClosedPositionHistory Longs ConstIterator tests")
 
     REQUIRE (it->first == longPosition3.getEntryDate());
     REQUIRE (*(it->second) == longPosition3);
-    */  
+    */
   }
 
-  
+//
+  // New tests for getHighResBarReturns()
+  //
 
-  
-  
-  
+SECTION("getHighResBarReturns for single-bar trade")
+{
+    ClosedPositionHistory<DecimalType> history;
+
+    // 1) Build a single-bar long position
+    TimeSeriesDate entryDate(2020, Jan, 1);
+    DecimalType entryPrice = createDecimal("100.00");
+    auto entryBar = createTimeSeriesEntry(entryDate,
+                                          entryPrice, entryPrice,
+                                          entryPrice, entryPrice,
+                                          1 /* volume */);
+
+    // ctor seeds history with that one bar
+    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+                     myCornSymbol, entryPrice, *entryBar, oneContract);
+
+    // close on the same bar (no addBar)
+    pos->ClosePosition(entryDate, entryPrice);
+
+    history.addClosedPosition(pos);
+
+    // because there's only one bar, getHighResBarReturns() skips it
+    auto returns = history.getHighResBarReturns();
+    REQUIRE(returns.empty());
 }
 
+SECTION("getHighResBarReturns for two-bar trade")
+{
+    ClosedPositionHistory<DecimalType> history;
+
+    // 1) Entry bar
+    TimeSeriesDate entryDate(2020, Jan, 1);
+    DecimalType entryPrice = createDecimal("100.00");
+    auto entryBar = createTimeSeriesEntry(entryDate,
+                                          entryPrice, entryPrice,
+                                          entryPrice, entryPrice,
+                                          1);
+
+    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+                     myCornSymbol, entryPrice, *entryBar, oneContract);
+
+    // 2) Add a second bar
+    TimeSeriesDate exitDate(2020, Jan, 2);
+    DecimalType exitPrice = createDecimal("110.00");
+    auto secondBar = createTimeSeriesEntry(exitDate,
+                                           exitPrice, exitPrice,
+                                           exitPrice, exitPrice,
+                                           1);
+    pos->addBar(*secondBar);  // ← extend history by one bar :contentReference[oaicite:0]{index=0}&#8203;:contentReference[oaicite:1]{index=1}
+
+    // 3) Close on that second bar
+    pos->ClosePosition(exitDate, exitPrice);
+
+    history.addClosedPosition(pos);
+
+    // Now exactly one high-res return: (110–100)/100 = 0.10
+    auto returns = history.getHighResBarReturns();           // :contentReference[oaicite:2]{index=2}&#8203;:contentReference[oaicite:3]{index=3}
+    REQUIRE(returns.size() == 1);
+    REQUIRE(returns[0] == (exitPrice - entryPrice) / entryPrice);
+}
+
+ SECTION("getHighResBarReturns for eight-bar trade with varying prices")
+{
+    ClosedPositionHistory<DecimalType> history;
+
+    // 1) Prepare an array of eight close prices
+    std::vector<DecimalType> prices = {
+        createDecimal("100.00"),
+        createDecimal("102.00"),
+        createDecimal("101.00"),
+        createDecimal("105.00"),
+        createDecimal("103.00"),
+        createDecimal("108.00"),
+        createDecimal("110.00"),
+        createDecimal("115.00")
+    };
+
+    // 2) Seed the position with the first bar (Jan 1, 2020)
+    TimeSeriesDate baseDate(2020, Jan, 1);
+    auto firstBar = createTimeSeriesEntry(
+        baseDate,
+        prices[0],                           // open
+        prices[0] + createDecimal("0.50"),  // high
+        prices[0] - createDecimal("0.50"),  // low
+        prices[0],                          // close
+        100                                 // volume
+    );
+    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+        myCornSymbol, prices[0], *firstBar, oneContract
+    );
+
+    // 3) Add the next seven bars on Jan 2…Jan 8, each with its own close price
+    for (size_t i = 1; i < prices.size(); ++i) {
+        TimeSeriesDate d(2020, Jan, 1 + static_cast<int>(i));
+        DecimalType open  = prices[i - 1];
+        DecimalType close = prices[i];
+        DecimalType high  = std::max(open, close) + createDecimal("0.50");
+        DecimalType low   = std::min(open, close) - createDecimal("0.50");
+
+        auto bar = createTimeSeriesEntry(d, open, high, low, close, 100);
+        pos->addBar(*bar);
+    }
+
+    // 4) Close on the last bar (Jan 8 at 115.00) and record the position
+    pos->ClosePosition(TimeSeriesDate(2020, Jan, 8), prices.back());
+    history.addClosedPosition(pos);
+
+    // 5) Compute and verify returns: should be 7 of them
+    auto returns = history.getHighResBarReturns();
+    REQUIRE(returns.size() == prices.size() - 1);
+
+    for (size_t i = 1; i < prices.size(); ++i) {
+        DecimalType expected = (prices[i] - prices[i - 1]) / prices[i - 1];
+        REQUIRE(returns[i - 1] == expected);
+    }
+}
+}

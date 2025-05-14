@@ -65,6 +65,8 @@ add_executable(
   ${TEST_SOURCES}
 )
 
+target_link_libraries(${TEST_BINARY} PRIVATE timeseries)
+
 target_link_libraries(
   ${TEST_BINARY} PRIVATE
   priceaction2
