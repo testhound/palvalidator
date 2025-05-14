@@ -125,6 +125,9 @@ namespace mkc_timeseries
                    uint32_t numPermutations,
                    const Decimal& baseLineTestStat)
     {
+      if (numPermutations == 0)
+	throw std::invalid_argument("DefaultPermuteMarketChangesPolicy::runPermutationTest: numPermutations must be > 0");
+
       // Grab the one strategy and its security
       auto aStrategy   = *(theBackTester->beginStrategies());
       auto theSecurity = aStrategy->beginPortfolio()->second;
