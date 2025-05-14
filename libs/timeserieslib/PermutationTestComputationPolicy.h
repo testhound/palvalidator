@@ -121,68 +121,111 @@ namespace mkc_timeseries
      * and may include a summary test statistic from the permutations.
      */
     static ReturnType
-    runPermutationTest (std::shared_ptr<BackTester<Decimal>> theBackTester,
-                        uint32_t numPermutations,
-                        const Decimal& baseLineTestStat)
+    runPermutationTest(std::shared_ptr<BackTester<Decimal>> theBackTester,
+                   uint32_t numPermutations,
+                   const Decimal& baseLineTestStat)
     {
-      std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
-          (*(theBackTester->beginStrategies()));
+      // Grab the one strategy and its security
+      auto aStrategy   = *(theBackTester->beginStrategies());
+      auto theSecurity = aStrategy->beginPortfolio()->second;
 
-      shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
+      // Minimum trades threshold
+      const uint32_t minTrades = BackTestResultPolicy::getMinStrategyTrades();
 
-      // Shared, thread‐safe counters & stats
-      std::atomic<uint32_t>                           count{0};
-      _PermutationTestStatisticsCollectionPolicy      testStatisticCollection;
-      std::mutex                                      testStatMutex;
+      // Atomics for counting valid permutations and “extreme” ones
+      std::atomic<uint32_t> validPerms{0}, extremeCount{0};
 
-      // Our executor policy
-      Executor executor{};
+      // For collecting any summary statistic (e.g. max‐statistic)
+      _PermutationTestStatisticsCollectionPolicy testStatCollector;
+      std::mutex                                 testStatMutex;
 
-      // Define the work for one permutation index 'p'
-      auto work = [=, &count, &testStatisticCollection, &testStatMutex]
-                  (uint32_t /*p*/)
+      // Work lambda for one permutation
+      auto work = [=, &validPerms, &extremeCount, &testStatCollector, &testStatMutex]
+	(uint32_t /*permIndex*/)
       {
-        // 1) clone until you have enough trades
-        uint32_t stratTrades = 0;
-        std::shared_ptr<BacktesterStrategy<Decimal>> clonedStrat;
-        std::shared_ptr<BackTester<Decimal>>         clonedBT;
+        // 1) Clone & backtest
+        auto clonedStrat = aStrategy->clone(
+					    createSyntheticPortfolio<Decimal>(theSecurity,
+									      aStrategy->getPortfolio()));
+        auto clonedBT = theBackTester->clone();
+        clonedBT->addStrategy(clonedStrat);
+        clonedBT->backtest();
 
-        while (stratTrades < BackTestResultPolicy::getMinStrategyTrades())
-        {
-          clonedStrat = aStrategy->clone(
-            createSyntheticPortfolio<Decimal>(theSecurity, aStrategy->getPortfolio())
-          );
-          clonedBT = theBackTester->clone();
-          clonedBT->addStrategy(clonedStrat);
-          clonedBT->backtest();
-
-          stratTrades = BackTesterFactory<Decimal>::getNumClosedTrades<Decimal>(clonedBT);
+        // 2) Count trades; skip if below threshold
+        uint32_t stratTrades =
+	  BackTesterFactory<Decimal>::getNumClosedTrades(clonedBT);
+        if (stratTrades < minTrades) {
+	  return;  // uninformative — do not increment validPerms
         }
 
-        // 2) compute the statistic
-        Decimal testStatistic = BackTestResultPolicy::getPermutationTestStatistic(clonedBT);
+        // 3) Valid permutation: compute statistic
+        Decimal testStat =
+	  BackTestResultPolicy::getPermutationTestStatistic(clonedBT);
 
-        // 3) count if ≥ baseline
-        if (testStatistic >= baseLineTestStat)
-          count.fetch_add(1, std::memory_order_relaxed);
+        // 4) Update atomics
+        validPerms.fetch_add(1, std::memory_order_relaxed);
+        if (testStat >= baseLineTestStat) {
+	  extremeCount.fetch_add(1, std::memory_order_relaxed);
+        }
 
-        // 4) safely update the summary statistic
+        // 5) Update the summary‐statistic policy under lock
         {
-          std::lock_guard<std::mutex> lock(testStatMutex);
-          testStatisticCollection.updateTestStatistic(testStatistic);
+	  std::lock_guard<std::mutex> guard(testStatMutex);
+	  testStatCollector.updateTestStatistic(testStat);
         }
       };
 
-      // Run all permutations in parallel
+      // Execute in parallel
+      Executor executor{};
       concurrency::parallel_for(numPermutations, executor, work);
 
-      // Finalize p-value and summary test stat
-      Decimal pValue(Decimal(count.load()) / Decimal(numPermutations));
-      Decimal summaryTestStat(testStatisticCollection.getTestStat());
+      // 6) Final p‐value calculation over only the valid permutations
+      uint32_t valid = validPerms.load(std::memory_order_relaxed);
+      if (valid == 0) {
+        // no informative draws → cannot reject null
+        return _PermutationTestResultPolicy::createReturnValue(
+							       Decimal(1), testStatCollector.getTestStat());
+      }
 
-      // Return whatever the policy dictates (e.g. pValue only, or tuple)
-      return _PermutationTestResultPolicy::createReturnValue(pValue, summaryTestStat);
-     }
+      uint32_t extreme = extremeCount.load(std::memory_order_relaxed);
+      Decimal pValue = computePermutationPValue(extreme, valid);
+
+      // 7) Grab whatever summary the statistics‐collection policy holds
+      Decimal summaryTestStat = testStatCollector.getTestStat();
+
+      // 8) Return in the shape the ResultPolicy demands
+      return _PermutationTestResultPolicy::createReturnValue(pValue,
+							     summaryTestStat);
+    }
+
+    /**
+     * @brief Computes a bias-corrected Monte Carlo permutation test p-value.
+     *
+     * Applies the “+1” correction often recommended in the permutation-testing literature
+     * (e.g. Good 2005; North et al. 2002) to avoid zero p-values and to yield an unbiased
+     * small-sample estimate.  Given:
+     *   - k = number of permutations whose test statistic ≥ the observed statistic
+     *   - N = total number of permutations run
+     *
+     * this returns
+     * \f[
+     *    p \;=\; \frac{k + 1}{\,N + 1\,}
+     * \f]
+     *
+     * which enforces a minimum p-value of \(1/(N+1)\) when \(k=0\).
+     *
+     * @param k
+     *   Count of “extreme” permutations (i.e. ones at least as good as baseline).
+     * @param N
+     *   Total number of permutations executed.
+     * @return
+     *   A bias-corrected p-value in the interval \([1/(N+1),\,1]\).
+     */
+    static Decimal computePermutationPValue(std::uint32_t k,
+                                            std::uint32_t N)
+    {
+      return Decimal(k + 1) / Decimal(N + 1);
+    }
   };
 }
 #endif
