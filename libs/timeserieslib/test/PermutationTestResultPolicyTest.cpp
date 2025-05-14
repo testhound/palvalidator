@@ -1,4 +1,12 @@
-TEST_CASE("PermutationTesting Policies", "[MultipleTestingCorrection]") {
+#include <catch2/catch_test_macros.hpp>
+#include "PermutationTestResultPolicy.h"
+#include "DecimalConstants.h"
+#include "TestUtils.h"
+
+using namespace mkc_timeseries;
+
+TEST_CASE("PermutationTesting Policies", "[MultipleTestingCorrection]")
+{
     using PolicyMax = PermutationTestingMaxTestStatisticPolicy<DecimalType>;
     using PolicyNull = PermutationTestingNullTestStatisticPolicy<DecimalType>;
 
