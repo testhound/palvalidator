@@ -257,3 +257,34 @@ TEST_CASE("ThreadPoolExecutor vs StdAsyncExecutor same output", "[integration]")
 
   REQUIRE(r1 == r2);
 }
+
+TEST_CASE("runPermutationTest throws if numPermutations==0","[unit]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  DecimalType baseline("0.0");
+  REQUIRE_THROWS_AS(
+		    (DefaultPermuteMarketChangesPolicy<DecimalType,DummyStatPolicy>::runPermutationTest(bt,0,baseline)),
+    std::invalid_argument);
+}
+
+TEST_CASE("numPermutations==1 yields p=1 or 0.5","[unit]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  // Policy that always gives stat==baseline
+  struct EqPolicy {
+    static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&)
+    { return DecimalType("0.5"); }
+    static unsigned getMinStrategyTrades(){ return 0; }
+  };
+  // baseline == statistic → p = (1+1)/(1+1) == 1
+  auto p1 = DefaultPermuteMarketChangesPolicy<DecimalType,EqPolicy>::runPermutationTest(bt,1,DecimalType("0.5"));
+  REQUIRE(p1 == DecimalType("1.0"));
+  // Policy that always gives stat < baseline → p = (0+1)/(1+1) == 0.5
+  struct LtPolicy {
+    static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&)
+    { return DecimalType("0.1"); }
+    static unsigned getMinStrategyTrades(){ return 0; }
+  };
+  auto p2 = DefaultPermuteMarketChangesPolicy<DecimalType,LtPolicy>::runPermutationTest(bt,1,DecimalType("0.5"));
+  REQUIRE(p2 == DecimalType("0.5"));
+}
