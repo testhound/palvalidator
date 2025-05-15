@@ -7,16 +7,13 @@
 #include <iostream>
 #include <algorithm>
 #include <map>
-
 #include <boost/date_time.hpp>
 #include <boost/thread/mutex.hpp>
-
 #include "number.h"
 #include "DecimalConstants.h"
-#include "McptConfiguration.h"
 #include "PalStrategy.h"
 #include "BackTester.h"
-#include "PriceActionLabSystem.h"
+#include "PalAst.h"
 #include "Portfolio.h"
 #include "Security.h"
 #include "TimeSeries.h"
@@ -26,6 +23,7 @@
 #include "PALMonteCarloTypes.h"
 #include "StrategyDataPreparer.h"
 #include "IMastersSelectionBiasAlgorithm.h"
+#include "MastersRomanoWolfImproved.h"
 
 namespace mkc_timeseries
 {
@@ -93,23 +91,19 @@ template <class Decimal, class BaselineStatPolicy>
       using StrategyPtr = std::shared_ptr<PalStrategy<Decimal>>; // Convenience alias
       using StrategyContextType = StrategyContext<Decimal>;
       using StrategyDataContainerType = StrategyDataContainer<Decimal>;
+      using AlgoType = IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>;
 
       // Alias for result iterator
-      using SurvivingStrategiesIterator = typename UnadjustedPValueStrategySelection<Decimal>::surviving_const_iterator;
+      using SurvivingStrategiesIterator = typename UnadjustedPValueStrategySelection<Decimal>::ConstSurvivingStrategiesIterator;
 
       // Constructor with algorithm selection
-      PALMastersMonteCarloValidation(shared_ptr<McptConfiguration<Decimal>> configuration,
-				    unsigned long numPermutations,
-				    std::unique_ptr<IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>> algo =
-				     = std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
-	: mMonteCarloConfiguration(configuration),
-	  mNumPermutations(numPermutations),
+      PALMastersMonteCarloValidation(unsigned long numPermutations,
+				    std::unique_ptr<AlgoType> algo =
+				    std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
+	: mNumPermutations(numPermutations),
 	  mStrategySelectionPolicy(),
 	  mAlgorithm(std::move(algo))
       {
-	if (!configuration)
-	  throw PALMastersMonteCarloValidationException("McptConfiguration cannot be null.");
-
 	if (numPermutations == 0)
 	  throw PALMastersMonteCarloValidationException("Number of permutations cannot be zero.");
       }
@@ -137,22 +131,20 @@ template <class Decimal, class BaselineStatPolicy>
 	return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
       }
 
-      void runPermutationTests()
+      void runPermutationTests(std::shared_ptr<Security<Decimal>> baseSecurity,
+			       PriceActionLabSystem *patterns,
+			       const DateRange& dateRange)
       {
-	auto baseSecurity = mMonteCarloConfiguration->getSecurity();
 	if (!baseSecurity)
 	  throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");
 
-	auto patterns = mMonteCarloConfiguration->getPricePatterns();
 	if (!patterns)
 	  throw PALMastersMonteCarloValidationException("Price patterns missing in runPermutationTests setup.");
 
-	auto dateRange = mMonteCarloConfiguration->getOosDateRange();
-
 	auto timeFrame = baseSecurity->getTimeSeries()->getTimeFrame();
-	auto templateBackTester = BackTesterFactory::getBackTester(timeFrame
-								   dateRange.getFirstDate(),
-								   dateRange.getLastDate()); 
+	auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(timeFrame,
+									    dateRange.getFirstDate(),
+									    dateRange.getLastDate()); 
 	if (!templateBackTester)
 	  throw PALMastersMonteCarloValidationException("Failed to create template backtester.");
 
@@ -162,7 +154,6 @@ template <class Decimal, class BaselineStatPolicy>
 	    
 	if (mStrategyData.empty()) {
 	  std::cout << "No strategies found for permutation testing." << std::endl;
-	  mStrategySelectionPolicy.clear();
 	  return;
 	}
 
@@ -186,7 +177,7 @@ template <class Decimal, class BaselineStatPolicy>
 				  sigLevel);
 
 	for (const auto& entry : mStrategyData) {
-	  Decimal finalPval = DecimalConstants<Decimal>::One; // Default p-value
+	  Decimal finalPval = DecimalConstants<Decimal>::DecimalOne; // Default p-value
 	  auto it = pvalMap.find(entry.strategy);
 
 	  if (it != pvalMap.end()) {
@@ -202,7 +193,6 @@ template <class Decimal, class BaselineStatPolicy>
       }
 
     private:
-      shared_ptr<McptConfiguration<Decimal>> mMonteCarloConfiguration;
       unsigned long mNumPermutations;
       StrategyDataContainerType mStrategyData;
       UnadjustedPValueStrategySelection<Decimal> mStrategySelectionPolicy;

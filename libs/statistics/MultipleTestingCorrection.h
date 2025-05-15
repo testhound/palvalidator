@@ -350,6 +350,7 @@ namespace mkc_timeseries
   class BenjaminiHochbergFdr {
   public:
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
+    using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
     BenjaminiHochbergFdr()
       : mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
@@ -363,10 +364,11 @@ namespace mkc_timeseries
       return container_.getNumStrategies();
     }
 
-    typename BaseStrategyContainer<Decimal>::surviving_const_iterator beginSurvivingStrategies() const {
+    ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
-    typename BaseStrategyContainer<Decimal>::surviving_const_iterator endSurvivingStrategies() const {
+
+    ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
     size_t getNumSurvivingStrategies() const {
@@ -417,6 +419,7 @@ namespace mkc_timeseries
   class AdaptiveBenjaminiHochbergYr2000 {
   public:
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
+     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
     AdaptiveBenjaminiHochbergYr2000()
       : mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
@@ -430,10 +433,11 @@ namespace mkc_timeseries
       return container_.getNumStrategies();
     }
 
-    typename BaseStrategyContainer<Decimal>::surviving_const_iterator beginSurvivingStrategies() const {
+    ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
-    typename BaseStrategyContainer<Decimal>::surviving_const_iterator endSurvivingStrategies() const {
+
+    ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
     size_t getNumSurvivingStrategies() const {
@@ -522,6 +526,7 @@ namespace mkc_timeseries
   class UnadjustedPValueStrategySelection {
   public:
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
+    using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
     UnadjustedPValueStrategySelection() {}
 
@@ -533,10 +538,11 @@ namespace mkc_timeseries
       return container_.getNumStrategies();
     }
 
-    typename BaseStrategyContainer<Decimal>::surviving_const_iterator beginSurvivingStrategies() const {
+    ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
-    typename BaseStrategyContainer<Decimal>::surviving_const_iterator endSurvivingStrategies() const {
+
+    ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
     size_t getNumSurvivingStrategies() const {
@@ -671,6 +677,7 @@ namespace mkc_timeseries
   public:
     typedef typename PValueAndTestStatisticReturnPolicy<Decimal>::ReturnType RomanoWolfReturnType;
     typedef typename TestStatisticStrategyImplementation<Decimal>::TestStatisticContainer TestStatisticContainer;
+    using ConstSurvivingStrategiesIterator = typename TestStatisticStrategyImplementation<Decimal>::surviving_const_iterator;
 
     RomanoWolfStepdownCorrection() {}
 
@@ -689,12 +696,14 @@ namespace mkc_timeseries
       return container_.getNumStrategies();
     }
 
-    typename std::list<std::shared_ptr<PalStrategy<Decimal>>>::const_iterator beginSurvivingStrategies() const {
+    ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
-    typename std::list<std::shared_ptr<PalStrategy<Decimal>>>::const_iterator endSurvivingStrategies() const {
+
+    ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
+
     size_t getNumSurvivingStrategies() const {
       return container_.getNumSurvivingStrategies();
     }
@@ -762,6 +771,7 @@ namespace mkc_timeseries
   public:
     typedef typename PValueAndTestStatisticReturnPolicy<Decimal>::ReturnType HolmRomanoWolfReturnType;
     typedef typename TestStatisticStrategyImplementation<Decimal>::TestStatisticContainer TestStatisticContainer;
+    using ConstSurvivingStrategiesIterator = typename TestStatisticStrategyImplementation<Decimal>::surviving_const_iterator;
 
     HolmRomanoWolfCorrection() {}
 
@@ -780,10 +790,11 @@ namespace mkc_timeseries
       return container_.getNumStrategies();
     }
 
-    typename std::list<std::shared_ptr<PalStrategy<Decimal>>>::const_iterator beginSurvivingStrategies() const {
+    ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
-    typename std::list<std::shared_ptr<PalStrategy<Decimal>>>::const_iterator endSurvivingStrategies() const {
+
+    ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
     size_t getNumSurvivingStrategies() const {
