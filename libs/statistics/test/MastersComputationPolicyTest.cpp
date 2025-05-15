@@ -18,6 +18,12 @@ namespace {
     static unsigned int getMinStrategyTrades() {
       return 0;
     }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
 
   struct ProfitFactorPolicy
@@ -34,6 +40,11 @@ namespace {
       return 3;
     }
 
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
   
   struct AlwaysLowStatPolicy {
@@ -44,6 +55,12 @@ namespace {
     static unsigned int getMinStrategyTrades() {
       return 0;
     }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
 
   struct RandomStatPolicy {
@@ -54,6 +71,12 @@ namespace {
     static unsigned int getMinStrategyTrades() {
       return 0;
     }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
   
   class DummyBackTester : public BackTester<DecimalType> {

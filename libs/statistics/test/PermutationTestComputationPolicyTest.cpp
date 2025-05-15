@@ -33,6 +33,12 @@ namespace {
     {
       return DecimalType{ std::to_string(dist(rng)) };
     }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
   std::mt19937_64 UniformStatPolicy::rng{12345};
   std::uniform_real_distribution<double> UniformStatPolicy::dist{0.0,1.0};
@@ -51,6 +57,12 @@ namespace {
       return DecimalType("0.5");
     }
     static unsigned getMinStrategyTrades() { return 0; }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
 
   // 3) AlwaysLowStatPolicy: always 0.1
@@ -59,6 +71,12 @@ namespace {
       return DecimalType("0.1");
     }
     static unsigned getMinStrategyTrades() { return 0; }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
 
   // 4) NoTradesPolicy: never meets minTrades=1
@@ -67,6 +85,12 @@ namespace {
       return DecimalType("999");
     }
     static unsigned getMinStrategyTrades() { return 1; }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
 
   // --------------------------------------------------------------------------
@@ -80,6 +104,12 @@ namespace {
     static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&){
       return DecimalType{ std::to_string(dist(rng)) };
     }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
   std::mt19937_64 UniformIntegrationNullPolicy::rng{987654};
   std::uniform_real_distribution<double> UniformIntegrationNullPolicy::dist{0.0,1.0};
@@ -274,8 +304,16 @@ TEST_CASE("numPermutations==1 yields p=1 or 0.5","[unit]") {
   struct EqPolicy {
     static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&)
     { return DecimalType("0.5"); }
+
     static unsigned getMinStrategyTrades(){ return 0; }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
+
   // baseline == statistic → p = (1+1)/(1+1) == 1
   auto p1 = DefaultPermuteMarketChangesPolicy<DecimalType,EqPolicy>::runPermutationTest(bt,1,DecimalType("0.5"));
   REQUIRE(p1 == DecimalType("1.0"));
@@ -283,7 +321,14 @@ TEST_CASE("numPermutations==1 yields p=1 or 0.5","[unit]") {
   struct LtPolicy {
     static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&)
     { return DecimalType("0.1"); }
+
     static unsigned getMinStrategyTrades(){ return 0; }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
   auto p2 = DefaultPermuteMarketChangesPolicy<DecimalType,LtPolicy>::runPermutationTest(bt,1,DecimalType("0.5"));
   REQUIRE(p2 == DecimalType("0.5"));

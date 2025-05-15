@@ -16,10 +16,16 @@ namespace {
 
 // Dummy stat policy: always returns 0.5
 struct DummyStatPolicy {
-    static D getPermutationTestStatistic(const std::shared_ptr<BackTester<D>>&) {
+  static D getPermutationTestStatistic(const std::shared_ptr<BackTester<D>>&) {
         return D("0.5");
     }
-    static unsigned int getMinStrategyTrades() { return 0; }
+  static unsigned int getMinStrategyTrades() { return 0; }
+
+  static D getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<D>::DecimalZero;
+    }
+
 };
 
   
@@ -31,14 +37,27 @@ struct DummyStatPolicy {
     static unsigned int getMinStrategyTrades() {
       return 0;
     }
+
+    static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
   };
 
 // Always-low stat policy: always returns 0.1 (to trigger failure)
 struct AlwaysLowStatPolicy {
-    static D getPermutationTestStatistic(const std::shared_ptr<BackTester<D>>&) {
+  static D getPermutationTestStatistic(const std::shared_ptr<BackTester<D>>&) {
         return D("0.1");
     }
-    static unsigned int getMinStrategyTrades() { return 0; }
+
+  static unsigned int getMinStrategyTrades() { return 0; }
+
+  static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+
 };
 
 // Copy of DummyBackTester and DummyPalStrategy from existing tests
@@ -285,12 +304,19 @@ TEST_CASE("MastersRomanoWolf run throws on partially unsorted strategy data") {
 
 template<typename Decimal>
 struct ProfitFactorPolicy {
-    static Decimal getPermutationTestStatistic(const std::shared_ptr<BackTester<Decimal>>& aBackTester) {
+  static Decimal getPermutationTestStatistic(const std::shared_ptr<BackTester<Decimal>>& aBackTester) {
         auto it = aBackTester->beginStrategies();
         auto backTesterStrategy = *it;
         return backTesterStrategy->getStrategyBroker().getClosedPositionHistory().getLogProfitFactor();
+  }
+
+  static unsigned int getMinStrategyTrades() { return 3; }
+
+  static DecimalType getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<DecimalType>::DecimalZero;
     }
-    static unsigned int getMinStrategyTrades() { return 3; }
+
 };
 
 TEST_CASE("MastersRomanoWolf integration test with real price patterns and real time series", "[integration]") {
