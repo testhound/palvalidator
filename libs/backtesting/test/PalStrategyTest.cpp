@@ -767,7 +767,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     printPositionHistory (history);
 
-    int twoPatternTotalTrades = aBroker.getTotalTrades();
+    uint twoPatternTotalTrades = aBroker.getTotalTrades();
 
     REQUIRE (aBroker.getTotalTrades() > 24);
     REQUIRE (aBroker.getOpenTrades() == 0);
@@ -791,7 +791,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
     ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
     printPositionHistory (history2);
 
-    int threePatternTotalTrades = aBroker2.getTotalTrades();
+    uint threePatternTotalTrades = aBroker2.getTotalTrades();
     REQUIRE (threePatternTotalTrades > twoPatternTotalTrades);
 
     StrategyOptions stratOptions(true, 2);  // Enable pyramiding

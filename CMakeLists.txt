@@ -72,12 +72,13 @@ include(CMakePrintHelpers)
 
 add_subdirectory(libs/timeseries)
 add_subdirectory(libs/priceactionlab)
+add_subdirectory(libs/testinfra)
 add_subdirectory(libs/backtesting)
 add_subdirectory(libs/concurrency)
 add_subdirectory(libs/pasearchalgo)
 add_subdirectory(libs/statistics)
 
-set(SRC_LIST main/main.cpp)
+set(SRC_LIST src/palvalidator/main.cpp)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
 set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)

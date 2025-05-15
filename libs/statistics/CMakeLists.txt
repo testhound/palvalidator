@@ -35,6 +35,7 @@ target_link_libraries(${LIB_NAME}_unit_tests ${Boost_LIBRARIES})
 target_link_libraries(${LIB_NAME}_unit_tests "-lcurl")
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE concurrency)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE timeseries)
+target_link_libraries(${LIB_NAME}_unit_tests PRIVATE testinfra)
 
 enable_testing()
 add_test(NAME ${LIB_NAME}_unit_tests COMMAND ${LIB_NAME}_unit_tests)

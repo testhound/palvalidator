@@ -329,7 +329,7 @@ namespace io{
                 int data_begin;
                 int data_end;
 
-                char file_name[error::max_file_name_length+1];
+				std::string file_name;
                 unsigned file_line;
 
                 static std::unique_ptr<ByteSourceBase> open_file(const char*file_name){
@@ -423,16 +423,11 @@ namespace io{
                 }
 
                 void set_file_name(const char*file_name){
-                        if(file_name != nullptr){
-                                strncpy(this->file_name, file_name, sizeof(this->file_name));
-                                this->file_name[sizeof(this->file_name)-1] = '\0';
-                        }else{
-                                this->file_name[0] = '\0';
-                        }
+					this->file_name = file_name ? file_name : "";
                 }
 
                 const char*get_truncated_file_name()const{
-                        return file_name;
+                        return file_name.c_str();
                 }
 
                 void set_file_line(unsigned file_line){
@@ -471,7 +466,7 @@ namespace io{
 
                         if(line_end - data_begin + 1 > block_len){
                                 error::line_length_limit_exceeded err;
-                                err.set_file_name(file_name);
+                                err.set_file_name(file_name.c_str());
                                 err.set_file_line(file_line);
                                 throw err;
                         }

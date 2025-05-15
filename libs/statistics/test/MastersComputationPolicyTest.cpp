@@ -358,7 +358,7 @@ TEST_CASE("FastMastersPermutationPolicy with randomized statistics produces reas
     strategyData.push_back(makeStrategyContext(strategy, DecimalType("0.35")));
   }
 
-  int numPerms = 100;
+  uint numPerms = 100;
   
   auto result = FastMastersPermutationPolicy<DecimalType, RandomStatPolicy>::computeAllPermutationCounts(
     numPerms, strategyData, bt, sec, portfolio);

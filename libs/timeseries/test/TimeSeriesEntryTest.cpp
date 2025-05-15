@@ -1,6 +1,6 @@
 #define CATCH_CONFIG_MAIN
 
-#include "catch.hpp"
+#include <catch2/catch_test_macros.hpp>
 #include "TimeSeriesEntry.h"
 #include "BoostDateHelper.h"
 #include "TestUtils.h"
@@ -12,7 +12,7 @@ using namespace dec;
 
 TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 {
-  
+
 
   DecimalType openPrice1 (fromString<DecimalType>("200.49"));
   auto open1 = std::make_shared<DecimalType> (openPrice1);
@@ -31,13 +31,13 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 
   DecimalType vol1(13990200);
 
-  NumericTimeSeriesEntry<DecimalType> aNonOHLCTimeSeriesEntry  (refDate1, closePrice1,  
+  NumericTimeSeriesEntry<DecimalType> aNonOHLCTimeSeriesEntry  (refDate1, closePrice1,
 						   TimeFrame::DAILY);
   REQUIRE (aNonOHLCTimeSeriesEntry.getDate() == refDate1);
   REQUIRE (aNonOHLCTimeSeriesEntry.getValue() == closePrice1);
   REQUIRE (aNonOHLCTimeSeriesEntry.getTimeFrame() == TimeFrame::DAILY);
 
-  NumericTimeSeriesEntry<DecimalType> aNonOHLCTimeSeriesEntry2  (refDate1, highPrice1,  
+  NumericTimeSeriesEntry<DecimalType> aNonOHLCTimeSeriesEntry2  (refDate1, highPrice1,
 						       TimeFrame::DAILY);
   REQUIRE (aNonOHLCTimeSeriesEntry2.getDate() == refDate1);
   REQUIRE (aNonOHLCTimeSeriesEntry2.getValue() == highPrice1);
@@ -45,7 +45,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
   REQUIRE_FALSE (aNonOHLCTimeSeriesEntry == aNonOHLCTimeSeriesEntry2);
   REQUIRE (aNonOHLCTimeSeriesEntry != aNonOHLCTimeSeriesEntry2);
 
-  auto entry1 = std::make_shared<EntryType>(refDate1, openPrice1, highPrice1, lowPrice1, 
+  auto entry1 = std::make_shared<EntryType>(refDate1, openPrice1, highPrice1, lowPrice1,
 							closePrice1, vol1, TimeFrame::DAILY);
 
   DecimalType openPrice2 (fromString<DecimalType>("205.13"));
@@ -65,7 +65,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 
   DecimalType vol2 (114877900);
 
-  auto entry2 = std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice2, 
+  auto entry2 = std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice2,
 					    closePrice2, vol2, TimeFrame::DAILY);
 
 
@@ -81,10 +81,10 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 
   DecimalType vol3 (114877900);
 
-  auto entry3 = std::make_shared<EntryType>(refDate3, openPrice3, highPrice3, 
-							lowPrice3, 
+  auto entry3 = std::make_shared<EntryType>(refDate3, openPrice3, highPrice3,
+							lowPrice3,
 							closePrice3, vol3, TimeFrame::DAILY);
-  auto errorShareVolume = std::make_shared<TradingVolume>(114877900, 
+  auto errorShareVolume = std::make_shared<TradingVolume>(114877900,
 							  TradingVolume::CONTRACTS);
 
 
@@ -112,7 +112,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
   REQUIRE (entry3->getVolumeValue() == entry2->getVolumeValue());
   REQUIRE (entry3->getTimeFrame() == entry2->getTimeFrame());
   REQUIRE (*entry2 == *entry3);
- 
+
   SECTION ("TimeSeriesEntry inequality tests")
   {
     REQUIRE (*entry1 != *entry2);
@@ -152,7 +152,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 
       DecimalType openPrice (fromString<DecimalType>("105.99"));
       REQUIRE(entry1->getOpenValue() == openPrice);
-	
+
       DecimalType highPrice (fromString<DecimalType>("106.57"));
       REQUIRE(entry1->getHighValue() == highPrice);
 
@@ -177,7 +177,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 	REQUIRE (monthlyDate.year() == 1993);
 	REQUIRE (monthlyDate.month().as_number() == 2);
 	REQUIRE (monthlyDate.day().as_number() == 26);
-	
+
     }
 
   SECTION ("Weekly Time Frame Tests")
@@ -191,7 +191,7 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 	REQUIRE (weeklyDate.year() == 1999);
 	REQUIRE (weeklyDate.month().as_number() == 8);
 	REQUIRE (weeklyDate.day().as_number() == 6);
-	
+
     }
 
   SECTION ("EntryType exception tests")
@@ -204,32 +204,32 @@ TEST_CASE ("TimeSeriesEntry operations", "[TimeSeriesEntry]")
 
 
     // high < open
-    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, highPrice2, openPrice2, lowPrice2, 
+    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, highPrice2, openPrice2, lowPrice2,
 							    closePrice2, vol2, TimeFrame::DAILY));
 
     // high < low
-    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice_temp1, 
+    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice_temp1,
 							     closePrice2, vol2, TimeFrame::DAILY));
 
     // high < close
 
-    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice2, 
-							     closePrice_temp1, vol2, 
+    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice2,
+							     closePrice_temp1, vol2,
 							    TimeFrame::DAILY));
-    
+
 
     // low > open
     DecimalType lowPrice_temp2 (fromString<DecimalType>("205.14"));
     auto low_temp2 = std::make_shared<DecimalType> (lowPrice_temp2);
-  
-    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice_temp2, 
+
+    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice_temp2,
 							    closePrice2, vol2, TimeFrame::DAILY));
 
     // low > close
     DecimalType lowPrice_temp3 (fromString<DecimalType>("203.88"));
     auto low_temp3 = std::make_shared<DecimalType> (lowPrice_temp3);
-  
-    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice_temp3, 
+
+    REQUIRE_THROWS (std::make_shared<EntryType>(refDate2, openPrice2, highPrice2, lowPrice_temp3,
 							    closePrice2, vol2, TimeFrame::DAILY));
   }
 }
