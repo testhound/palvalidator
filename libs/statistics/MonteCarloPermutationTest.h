@@ -140,8 +140,8 @@ namespace mkc_timeseries
 
       this->validateStrategy (aStrategy);
 
-      shared_ptr<Security<Decimal>> theSecurity = aStrategy->beginPortfolio()->second;
-      std::shared_ptr<OHLCTimeSeries<Decimal>> theTimeSeries = theSecurity->getTimeSeries();
+      auto theSecurity = aStrategy->beginPortfolio()->second;
+      auto theTimeSeries = theSecurity->getTimeSeries();
 
       //std::cout << "Running MCPT backtest from " << mBackTester->getStartDate() << " to " << mBackTester->getEndDate() << std::endl << std::endl;
       // Run backtest on security with orginal unpermuted time series
@@ -152,10 +152,10 @@ namespace mkc_timeseries
       if (this->getNumClosedTrades (mBackTester) < _BackTestResultPolicy<Decimal>::getMinStrategyTrades())
         {
           //std::cout << " runPermutationTest: number of trades = " << this->getNumClosedTrades (mBackTester) << std::endl;
-          return DecimalConstants<Decimal>::DecimalOne;
+          mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getMinTradeFailureTestStatistic();
         }
-
-      mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
+      else
+	mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
       //std::cout << "Baseline test stat. for original  strategy equals: " <<  mBaseLineTestStat << ", baseline # trades:" << this->getNumClosedTrades (mBackTester) <<  std::endl << std::endl;
 
       return _ComputationPolicy::runPermutationTest (mBackTester, mNumPermutations, mBaseLineTestStat);

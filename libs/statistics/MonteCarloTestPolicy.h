@@ -45,6 +45,12 @@ namespace mkc_timeseries
 
     /// Minimum number of closed trades required to even attempt this test
     static unsigned int getMinStrategyTrades() { return 3; }
+
+    // Return a test statistic constant if we don't meet the minimum trade criteria
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
   };
 
   template <class Decimal> class NonGranularProfitFactorPolicy
@@ -65,6 +71,11 @@ namespace mkc_timeseries
     static unsigned int getMinStrategyTrades()
     {
       return 3;
+    }
+
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
     }
 
   };
@@ -88,6 +99,11 @@ namespace mkc_timeseries
     static unsigned int getMinStrategyTrades()
     {
       return 3;
+    }
+
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
     }
 
   };
@@ -130,6 +146,11 @@ namespace mkc_timeseries
       return 3;
     }
 
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+
   };
 
   //
@@ -151,6 +172,11 @@ namespace mkc_timeseries
     static unsigned int getMinStrategyTrades()
     {
       return 3;
+    }
+
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
     }
 
   };
@@ -176,6 +202,12 @@ namespace mkc_timeseries
     {
       return 3;
     }
+
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+
   };
 
 }
