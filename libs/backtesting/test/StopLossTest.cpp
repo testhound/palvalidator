@@ -4,7 +4,7 @@
 
 using namespace mkc_timeseries;
 
-TEST_CASE ("ProfitTarget operations", "[ProfitTarget]")
+TEST_CASE ("StopLoss operations", "[StopLoss]")
 {
   using namespace dec;
 
