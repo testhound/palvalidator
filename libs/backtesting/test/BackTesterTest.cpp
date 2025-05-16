@@ -256,8 +256,8 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (aBroker.getClosedTrades() == 24);
 
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
-    printPositionHistorySummary (history);
-    printPositionHistory (history);
+    //printPositionHistorySummary (history);
+    //printPositionHistory (history);
 
     REQUIRE (history.getNumLosingPositions() == 8);
     REQUIRE (history.getNumWinningPositions() == 16);

@@ -629,7 +629,7 @@ SECTION ("PalStrategy testing for all long trades with pyramiding - pattern 1")
     REQUIRE (aBroker.getClosedTrades() > 546); 
 
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
-    printPositionHistory (history);
+    //printPositionHistory (history);
 
     //REQUIRE (history.getNumWinningPositions() == 13);
     //REQUIRE (history.getNumLosingPositions() == 11);
@@ -765,7 +765,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
 
     StrategyBroker<DecimalType> aBroker = metaStrategy3.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
-    printPositionHistory (history);
+    //printPositionHistory (history);
 
     uint twoPatternTotalTrades = aBroker.getTotalTrades();
 
@@ -789,7 +789,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
  
     StrategyBroker<DecimalType> aBroker2 = metaStrategy4.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
-    printPositionHistory (history2);
+    //printPositionHistory (history2);
 
     uint threePatternTotalTrades = aBroker2.getTotalTrades();
     REQUIRE (threePatternTotalTrades > twoPatternTotalTrades);
@@ -804,7 +804,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
     backTestLoop (corn, metaStrategy5, backTestStartDate, backTestEndDate);
     StrategyBroker<DecimalType> aBroker3 = metaStrategy5.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history3 = aBroker3.getClosedPositionHistory();
-    printPositionHistory (history3);
+    //printPositionHistory (history3);
 
     REQUIRE (aBroker3.getTotalTrades() > threePatternTotalTrades);
   }
