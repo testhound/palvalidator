@@ -80,6 +80,9 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
   aIntVec.push_back(5);
   aIntVec.push_back(2);
 
+  double dev (MedianAbsoluteDeviation<unsigned int> (aIntVec));
+  double dev2 (StandardDeviation<unsigned int> (aIntVec));
+
   RobustQn<DecimalType> qn(rocIndicatorSeries);
 
   REQUIRE (aVector.size() == lowSeries.getNumEntries());
@@ -171,15 +174,11 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
       NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator openSeriesIterator = openSeries.beginSortedAccess();
       DecimalType temp;
 
-      std::cout << "SANITY CHECK!" << std::endl << std::endl;
 
       for (; ((closeSeriesIterator != closeSeries.endSortedAccess()) &&
 	      (openSeriesIterator != openSeries.endSortedAccess())); closeSeriesIterator++, openSeriesIterator++, it++)
 	{
-	  std::cout << "On " << boost::posix_time::to_simple_string (it->first);
-	  std::cout << " Dividing " << closeSeriesIterator->second->getValue() << " by " << openSeriesIterator->second->getValue() << std::endl;
 	  temp = closeSeriesIterator->second->getValue() / openSeriesIterator->second->getValue();
-	  std::cout << "Result = " << temp << std::endl;
 	  REQUIRE (it->second->getValue() == temp);
 	}
 

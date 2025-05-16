@@ -690,71 +690,77 @@ namespace mkc_timeseries
 				 std::vector<std::shared_ptr<T>>& vectorContainer,
 				 const InstrumentPositionManager<Decimal>& positions)
     {
-      typedef typename std::shared_ptr<T> OrderPtr;
+      // Alias for convenience
+      using OrderPtr = std::shared_ptr<T>;
 
-      typename std::vector<std::shared_ptr<T>>::const_iterator it = vectorContainer.begin();
-      OrderPtr order;
-      typename Portfolio<Decimal>::ConstPortfolioIterator symbolIt;
-      std::shared_ptr<Security<Decimal>> aSecurity;
-      typename Security<Decimal>::ConstRandomAccessIterator timeSeriesEntryIt;
-
-      for (; it != vectorContainer.end();)
+      auto it = vectorContainer.begin();
+      while (it != vectorContainer.end())
 	{
-	  order = (*it);
-	  
-	  if (order->isOrderPending() && (processingDate > order->getOrderDate()))
+	  OrderPtr order = *it;
+
+	  //
+	  // 1) If this is an exit order created *today* and the position is already flat,
+	  //    cancel it immediately and erase.
+	  //
+	  if (order->isExitOrder()
+	      && order->isOrderPending()
+	      && processingDate == order->getOrderDate()
+	      && positions.isFlatPosition(order->getTradingSymbol()))
 	    {
-	      symbolIt = mPortfolio->findSecurity (order->getTradingSymbol());
+	      order->MarkOrderCanceled();
+	      NotifyOrderCanceled(order);
+	      it = vectorContainer.erase(it);
+	      continue;
+	    }
+
+	  //
+	  // 2) Otherwise, only consider pending orders whose orderDate is strictly
+	  //    before processingDate.
+	  //
+	  if (order->isOrderPending() 
+	      && (processingDate > order->getOrderDate()))
+	    {
+	      auto symbolIt = mPortfolio->findSecurity(order->getTradingSymbol());
 	      if (symbolIt != mPortfolio->endPortfolio())
 		{
-		  aSecurity = symbolIt->second;
-		  // Make sure security trades on the processingDate. It's possible due to holidy or
-		  // non-trading in certain futures market that there is no market data on the processing date
-
-		  timeSeriesEntryIt = aSecurity->findTimeSeriesEntry (processingDate) ;
-		  if (timeSeriesEntryIt != aSecurity->getRandomAccessIteratorEnd())
+		  auto& aSecurity = symbolIt->second;
+		  auto tsIt = aSecurity->findTimeSeriesEntry(processingDate);
+		  if (tsIt != aSecurity->getRandomAccessIteratorEnd())
 		    {
-		      // Check to see if another order has already closed the position.
-		      // This could happen if a stop order was executed on the same day as
-		      // a limit order. 
-		      if (order->isExitOrder() && 
-			  (positions.isFlatPosition (order->getTradingSymbol()) == true))
+		      // If it's an exit and position already flat, cancel
+		      if (order->isExitOrder()
+			  && positions.isFlatPosition(order->getTradingSymbol()))
 			{
 			  order->MarkOrderCanceled();
-			  NotifyOrderCanceled (order);
+			  NotifyOrderCanceled(order);
 			}
 		      else
 			{
-			  ProcessOrderVisitor<Decimal> orderProcessor (*timeSeriesEntryIt);
-			  orderProcessor.visit (order.get());
+			  // Attempt execution via visitor
+			  ProcessOrderVisitor<Decimal> visitor(*tsIt);
+			  visitor.visit(order.get());
 
 			  if (order->isOrderExecuted())
-			    NotifyOrderExecuted (order);
+                            NotifyOrderExecuted(order);
 			  else
 			    {
-			      // Note if a order has data for a trading day and the order is not executed
-			      // we cancel it. The Strategy will need to resubmit the order again.
-			      // Note market orders are always executed so there is not problem with them.
-
 			      order->MarkOrderCanceled();
-			      NotifyOrderCanceled (order);
+			      NotifyOrderCanceled(order);
 			    }
 			}
 
-		      // Remove order from pending list
-		      // Note that this returns the next element in the list after erasing
-
-		      it = vectorContainer.erase (it);
-		    }
-		  else
-		    {
-		      ++it;
+		      // Erase the processed order and advance iterator
+		      it = vectorContainer.erase(it);
+		      continue;
 		    }
 		}
 	    }
+
+	  // 3) All other cases (not yet eligible, same-bar entry, no data, etc.)
+	  //    just skip and advance.
+	  ++it;
 	}
     }
-
      /** @brief Processes pending MarketOnOpenSellOrders and MarketOnOpenCoverOrders. */
     void ProcessPendingMarketExitOrders(const boost::gregorian::date& processingDate,
 					const InstrumentPositionManager<Decimal>& positions)

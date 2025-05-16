@@ -40,7 +40,7 @@ private:
   int mNumClosedTransactions;
 };
 
-TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
+TEST_CASE ("StrategyTransaction Operations", "[StrategyTransaction]")
 {
   std::string equitySymbol("SPY");
   TradingVolume oneShare(1, TradingVolume::SHARES);
