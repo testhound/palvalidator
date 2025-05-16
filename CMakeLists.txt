@@ -78,6 +78,17 @@ add_subdirectory(libs/concurrency)
 add_subdirectory(libs/pasearchalgo)
 add_subdirectory(libs/statistics)
 
+add_subdirectory(src/palvalidator)
+add_subdirectory(src/patterndiscovery)
+
+
+file(GLOB SRC_LIST
+   src/palvalidator/*.h
+   src/palvalidator/*.hpp
+   src/palvalidator/*.cpp
+   src/palvalidator/*.txt
+)
+
 set(SRC_LIST src/palvalidator/main.cpp)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
