@@ -59,7 +59,7 @@ struct runner
       promise->set_value();
     });
 
-    return std::move(res);
+    return res;
   }
 
   /// Returns true if the singleton has already been constructed.
