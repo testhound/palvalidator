@@ -4,6 +4,7 @@
 #include <boost/date_time.hpp>
 #include "BoostDateHelper.h"
 #include "PercentNumber.h"
+#include "TimeSeries.h"
 #include "TimeSeriesEntry.h"
 #include "TradingVolume.h"
 
@@ -75,6 +76,14 @@ createTimeSeriesEntry (const mkc_timeseries::TimeSeriesDate& aDate,
 			const DecimalType& lowPrice,
 			const DecimalType& closePrice,
 			mkc_timeseries::volume_t vol);
+
+std::shared_ptr<mkc_timeseries::OHLCTimeSeriesEntry<DecimalType>>
+createEquityEntry (const std::string& dateString,
+		   const std::string& openPrice,
+		   const std::string& highPrice,
+		   const std::string& lowPrice,
+		   const std::string& closePrice,
+		   mkc_timeseries::volume_t vol);
 
 
 

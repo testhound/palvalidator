@@ -159,6 +159,19 @@ createTimeSeriesEntry (const mkc_timeseries::TimeSeriesDate& aDate,
 
 }
 
+std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
+createEquityEntry (const std::string& dateString,
+		   const std::string& openPrice,
+		   const std::string& highPrice,
+		   const std::string& lowPrice,
+		   const std::string& closePrice,
+		   volume_t vol)
+{
+  return createTimeSeriesEntry(dateString, openPrice,
+			       highPrice, lowPrice,
+			       closePrice, vol);
+}
+
 std::shared_ptr<DecimalType>
 createDecimalPtr(const std::string& valueString)
 {
