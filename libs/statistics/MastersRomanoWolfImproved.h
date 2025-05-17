@@ -1,4 +1,5 @@
 #pragma once
+#include <cassert>
 #include <stdexcept> // Required for std::invalid_argument
 #include <algorithm>
 #include "IMastersSelectionBiasAlgorithm.h"
@@ -119,6 +120,9 @@ namespace mkc_timeseries
 					    secPtr,
 					    portfolio);
 
+	// SANITY CHECK
+        sanityCheckCounts(counts, strategyData);
+
 	std::map<StrategyPtr, Decimal> pvals;
 	Decimal lastAdj = Decimal(0);
 
@@ -178,6 +182,33 @@ namespace mkc_timeseries
 	  }
 
 	return pvals;
+      }
+    private:
+      // Helper to verify that 'counts' has exactly one entry per strategy
+    void sanityCheckCounts(const std::map<StrategyPtr, unsigned int>& counts,
+			   const StrategyVec& strategyData) const
+      {
+	if (counts.size() != strategyData.size())
+	  throw std::logic_error("Permutation count map has wrong number of entries");
+
+	for (auto const& ctx : strategyData) {
+	  if (counts.find(ctx.strategy) == counts.end())
+            throw std::logic_error("Missing permutation count for a strategy");
+	}
+
+	for (auto const& kv : counts)
+	  {
+	    bool found = false;
+	    for (auto const& ctx : strategyData)
+	      if (kv.first == ctx.strategy)
+		{
+		  found = true;
+		  break;
+		}
+
+	    if (!found)
+	      throw std::logic_error("counts map contains an unexpected strategy key");
+	  }
       }
     };
 } // namespace mkc_timeseries
