@@ -5,20 +5,6 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-
-std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
-    createEquityEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    return createTimeSeriesEntry (dateString, openPrice, highPrice, lowPrice, closePrice, vol);
-  }
-
-
-
 TEST_CASE ("Portfolio operations", "[Portfolio]")
 {
   auto entry0 = createEquityEntry ("20160106", "198.34", "200.06", "197.60","198.82",

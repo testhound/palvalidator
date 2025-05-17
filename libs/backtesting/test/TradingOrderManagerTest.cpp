@@ -177,18 +177,6 @@ TradingOrderManager_createContractVolume (volume_t vol)
   return TradingVolume (vol, TradingVolume::CONTRACTS);
 }
 
-std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>>
-    TradingOrderManager_createEquityEntry (const std::string& dateString,
-		       const std::string& openPrice,
-		       const std::string& highPrice,
-		       const std::string& lowPrice,
-		       const std::string& closePrice,
-		       volume_t vol)
-  {
-    return createTimeSeriesEntry (dateString, openPrice, highPrice, lowPrice, closePrice, vol);
-  }
-
-
 std::shared_ptr<CoverAtLimitOrder<DecimalType>>
   createProfitTargetForShortTrade(const date& orderDate)
   {
@@ -218,49 +206,49 @@ std::shared_ptr<CoverAtStopOrder<DecimalType>>
 
 TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
 {
-  auto entry18 = TradingOrderManager_createEquityEntry ("20160119", "189.96", "190.11","186.20","188.06",
+  auto entry18 = createEquityEntry ("20160119", "189.96", "190.11","186.20","188.06",
 				    190196000);
-  auto entry17 = TradingOrderManager_createEquityEntry ("20160115", "186.77","188.76", "185.52","187.81",	
+  auto entry17 = createEquityEntry ("20160115", "186.77","188.76", "185.52","187.81",	
 				    324846400);
-  auto entry16 = TradingOrderManager_createEquityEntry ("20160114", "189.55","193.26", "187.66", "191.93",
+  auto entry16 = createEquityEntry ("20160114", "189.55","193.26", "187.66", "191.93",
 				   240795600);
-  auto entry15 = TradingOrderManager_createEquityEntry ("20160113", "194.45", "194.86", "188.38","188.83",
+  auto entry15 = createEquityEntry ("20160113", "194.45", "194.86", "188.38","188.83",
 				   221168900);
-  auto entry14 = TradingOrderManager_createEquityEntry ("20160112", "193.82", "194.55", "191.14","193.66",
+  auto entry14 = createEquityEntry ("20160112", "193.82", "194.55", "191.14","193.66",
 				   172330500);
-  auto entry13 = TradingOrderManager_createEquityEntry ("20160111", "193.01", "193.41", "189.82","192.11",
+  auto entry13 = createEquityEntry ("20160111", "193.01", "193.41", "189.82","192.11",
 				   187941300);
-  auto entry12 = TradingOrderManager_createEquityEntry ("20160108", "195.19", "195.85", "191.58","191.92",
+  auto entry12 = createEquityEntry ("20160108", "195.19", "195.85", "191.58","191.92",
 				   142662900);
-  auto entry11 = TradingOrderManager_createEquityEntry ("20160107", "195.33", "197.44", "193.59","194.05",
+  auto entry11 = createEquityEntry ("20160107", "195.33", "197.44", "193.59","194.05",
 				   142662900);
-  auto entry10 = TradingOrderManager_createEquityEntry ("20160106", "198.34", "200.06", "197.60","198.82",
+  auto entry10 = createEquityEntry ("20160106", "198.34", "200.06", "197.60","198.82",
 				   142662900);
 
-  auto entry9 = TradingOrderManager_createEquityEntry ("20160105", "201.40", "201.90", "200.05","201.36",
+  auto entry9 = createEquityEntry ("20160105", "201.40", "201.90", "200.05","201.36",
 				   105999900);
 
-  auto entry8 = TradingOrderManager_createEquityEntry ("20160104", "200.49", "201.03", "198.59","201.02",
+  auto entry8 = createEquityEntry ("20160104", "200.49", "201.03", "198.59","201.02",
 				   222353400);
 
-  auto entry7 = TradingOrderManager_createEquityEntry ("20151231", "205.13", "205.89", "203.87","203.87",
+  auto entry7 = createEquityEntry ("20151231", "205.13", "205.89", "203.87","203.87",
 				   114877900);
 
-  auto entry6 = TradingOrderManager_createEquityEntry ("20151230", "207.11", "207.21", "205.76","205.93",
+  auto entry6 = createEquityEntry ("20151230", "207.11", "207.21", "205.76","205.93",
 				   63317700);
 
-  auto entry5 = TradingOrderManager_createEquityEntry ("20151229", "206.51", "207.79", "206.47","207.40",
+  auto entry5 = createEquityEntry ("20151229", "206.51", "207.79", "206.47","207.40",
 				   92640700);
 
-  auto entry4 = TradingOrderManager_createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
+  auto entry4 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21",
 				   65899900);
-  auto entry3 = TradingOrderManager_createEquityEntry ("20151224", "205.72", "206.33", "205.42", "205.68",
+  auto entry3 = createEquityEntry ("20151224", "205.72", "206.33", "205.42", "205.68",
 				   48542200);
-  auto entry2 = TradingOrderManager_createEquityEntry ("20151223", "204.69", "206.07", "204.58", "206.02",
+  auto entry2 = createEquityEntry ("20151223", "204.69", "206.07", "204.58", "206.02",
 				   48542200);
-  auto entry1 = TradingOrderManager_createEquityEntry ("20151222", "202.72", "203.85", "201.55", "203.50",
+  auto entry1 = createEquityEntry ("20151222", "202.72", "203.85", "201.55", "203.50",
 				   111026200);
-  auto entry0 = TradingOrderManager_createEquityEntry ("20151221", "201.41", "201.88", "200.09", "201.67",
+  auto entry0 = createEquityEntry ("20151221", "201.41", "201.88", "200.09", "201.67",
 				   99094300);
  
   auto spySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
@@ -781,8 +769,8 @@ SECTION ("Add and execute short market order, add stop and limit exit orders con
 
 TEST_CASE("TradingOrderManager Extended Tests", "[TradingOrderManager]") {
   std::string symbol = "SPY";
-  auto entry1 = TradingOrderManager_createEquityEntry("20210104", "100", "105", "95", "102", 1000000);
-  auto entry2 = TradingOrderManager_createEquityEntry("20210105", "103", "106", "100", "105", 1000000);
+  auto entry1 = createEquityEntry("20210104", "100", "105", "95", "102", 1000000);
+  auto entry2 = createEquityEntry("20210105", "103", "106", "100", "105", 1000000);
 
   auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
   series->addEntry(*entry1);
@@ -892,7 +880,7 @@ TEST_CASE("TradingOrderManager Extended Tests", "[TradingOrderManager]") {
     manager.addTradingOrder(stopExit);
     manager.addTradingOrder(limitExit);
 
-    auto entry3 = TradingOrderManager_createEquityEntry("20210106", "111", "115", "94", "100", 1000000);
+    auto entry3 = createEquityEntry("20210106", "111", "115", "94", "100", 1000000);
     series->addEntry(*entry3);
     manager.processPendingOrders(entry3->getDateValue(), observer1.getPositionManager());
 

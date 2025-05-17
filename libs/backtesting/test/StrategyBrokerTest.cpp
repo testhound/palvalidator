@@ -404,5 +404,90 @@ TEST_CASE ("StrategyBroker operations", "[StrategyBroker]")
     REQUIRE (positions.getPercentWinners() == DecimalConstants<DecimalType>::DecimalOneHundred);
   }
 
+  SECTION("StrategyBroker test ExitLongAllUnitsOnOpen")
+    {
+      // 1) Enter long on open and process
+      aBroker.EnterLongOnOpen(futuresSymbol, {1985, Nov, 14}, oneContract);
+      aBroker.ProcessPendingOrders({1985, Nov, 15});
+      REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+      // 2) Queue a market‐on‐open exit for all units
+      aBroker.ExitLongAllUnitsOnOpen(futuresSymbol, {1985, Dec, 1});
+      auto pitLong = aBroker.beginPendingOrders();
+      REQUIRE(pitLong != aBroker.endPendingOrders());
+      REQUIRE(pitLong->second->isMarketOrder());
+      REQUIRE(pitLong->second->isExitOrder());
+
+      // 3) Execute the exit and verify flat & closed‐trade count
+      aBroker.ProcessPendingOrders({1985, Dec, 2});
+      REQUIRE(aBroker.isFlatPosition(futuresSymbol));
+      REQUIRE(aBroker.getClosedTrades() == 1);
+    }
+
+  SECTION("StrategyBroker test ExitShortAllUnitsOnOpen")
+    {
+      // 1) Enter short on open and process
+      aBroker.EnterShortOnOpen(futuresSymbol, {1986, May, 28}, oneContract);
+      aBroker.ProcessPendingOrders({1986, May, 29});
+      REQUIRE(aBroker.isShortPosition(futuresSymbol));
+
+      // 2) Queue a market‐on‐open exit for all units
+      aBroker.ExitShortAllUnitsOnOpen(futuresSymbol, {1986, Jun, 15});
+      auto pitShort = aBroker.beginPendingOrders();
+      REQUIRE(pitShort != aBroker.endPendingOrders());
+      REQUIRE(pitShort->second->isMarketOrder());
+      REQUIRE(pitShort->second->isExitOrder());
+
+      // 3) Execute the exit and verify flat & closed‐trade count
+      aBroker.ProcessPendingOrders({1986, Jun, 16});
+      REQUIRE(aBroker.isFlatPosition(futuresSymbol));
+      REQUIRE(aBroker.getClosedTrades() == 1);
+    }
+
+  // -------------------- Exception Tests: Long Side --------------------
+
+  SECTION("StrategyBroker throws on ExitLongAllUnitsOnOpen when flat")
+    {
+      REQUIRE_THROWS_AS(
+			aBroker.ExitLongAllUnitsOnOpen(futuresSymbol, {1985, Nov, 14}),
+			StrategyBrokerException);
+    }
+
+  SECTION("StrategyBroker throws on ExitLongAllUnitsAtLimit when flat")
+    {
+      REQUIRE_THROWS_AS(
+			aBroker.ExitLongAllUnitsAtLimit(futuresSymbol, {1985, Nov, 14}, createDecimal("100.00")),
+			StrategyBrokerException);
+    }
+
+  SECTION("StrategyBroker throws on ExitLongAllUnitsAtStop when flat")
+    {
+      REQUIRE_THROWS_AS(
+			aBroker.ExitLongAllUnitsAtStop(futuresSymbol, {1985, Nov, 14}, createDecimal("100.00")),
+			StrategyBrokerException);
+    }
+
+  // -------------------- Exception Tests: Short Side --------------------
+
+  SECTION("StrategyBroker does nothing on ExitShortAllUnitsOnOpen when flat")
+    {
+      // Currently this method does not throw; ensure no orders are queued
+      aBroker.ExitShortAllUnitsOnOpen(futuresSymbol, {1986, May, 28});
+      REQUIRE(aBroker.beginPendingOrders() == aBroker.endPendingOrders());
+    }
+
+  SECTION("StrategyBroker throws on ExitShortAllUnitsAtLimit when flat")
+    {
+      REQUIRE_THROWS_AS(
+			aBroker.ExitShortAllUnitsAtLimit(futuresSymbol, {1986, May, 28}, createDecimal("100.00")),
+			StrategyBrokerException);
+    }
+
+  SECTION("StrategyBroker throws on ExitShortAllUnitsAtStop when flat")
+    {
+      REQUIRE_THROWS_AS(
+			aBroker.ExitShortAllUnitsAtStop(futuresSymbol, {1986, May, 28}, createDecimal("100.00")),
+			StrategyBrokerException);
+    }
 }
 

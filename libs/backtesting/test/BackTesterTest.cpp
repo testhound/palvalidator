@@ -235,7 +235,6 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (palLongBacktester1.getStartDate() == backTesterDate);
     REQUIRE (palLongBacktester1.getEndDate() == backtestEndDate);
 
-    std::cout << "** PATTERN 1 LONG TRADES, calling backtest method now **" << std::endl;
     CPPTRACE_TRY
       {
 	palLongBacktester1.backtest();
@@ -256,24 +255,18 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (aBroker.getClosedTrades() == 24);
 
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
-    printPositionHistorySummary (history);
-    printPositionHistory (history);
 
     REQUIRE (history.getNumLosingPositions() == 8);
     REQUIRE (history.getNumWinningPositions() == 16);
 
     DecimalType rMultiple = history.getRMultipleExpectancy();
     REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
-    std::cout << "RMultiple for longStrategy1 = " << rMultiple << std::endl << std::endl;;
   }
 
 
 
 SECTION ("PalStrategy testing for all long trades - pattern 2")
   {
-
-    std::cout << "In second long pattern backtest" << std::endl;
-
     TimeSeriesDate backTesterDate(TimeSeriesDate (1985, Mar, 19));
     TimeSeriesDate backtestEndDate(TimeSeriesDate (2011, Oct, 27));
 
@@ -284,7 +277,6 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     REQUIRE (palLongBacktester2.getStartDate() == backTesterDate);
     REQUIRE (palLongBacktester2.getEndDate() == backtestEndDate);
 
-    std::cout << "** PATTERN 2 LONG TRADES, calling backtest method now **" << std::endl;
     palLongBacktester2.backtest();
 
     BackTester<DecimalType>::StrategyIterator it = palLongBacktester2.beginStrategies();
@@ -298,10 +290,9 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     REQUIRE (aBroker2.getClosedTrades() == 45);
 
     ClosedPositionHistory<DecimalType> history = aBroker2.getClosedPositionHistory();
-    //    printPositionHistory (history);
+
     DecimalType rMultiple = history.getRMultipleExpectancy();
     REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
-    std::cout << "RMultiple for longStrategy1 = " << rMultiple << std::endl << std::endl;;
   }
 
  SECTION("BackTester::getAllHighResReturns with PalLongStrategy") {
