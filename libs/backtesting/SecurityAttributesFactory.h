@@ -50,6 +50,11 @@ namespace mkc_timeseries
       return mSecurityAttributes.find(securitySymbol);
     }
 
+    SecurityAttributesIterator beginSecurityAttributes() const
+    {
+      return mSecurityAttributes.begin();
+    }
+
     SecurityAttributesIterator endSecurityAttributes() const
     {
       return mSecurityAttributes.end();
