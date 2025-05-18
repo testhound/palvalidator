@@ -3,12 +3,11 @@
 
 #include <string>
 #include <stdexcept>
-#include <sstream>
 #include <iostream>
 #include <algorithm>
 #include <map>
+#include <memory>
 #include <boost/date_time.hpp>
-#include <boost/thread/mutex.hpp>
 #include "number.h"
 #include "DecimalConstants.h"
 #include "PalStrategy.h"
@@ -17,8 +16,6 @@
 #include "Portfolio.h"
 #include "Security.h"
 #include "TimeSeries.h"
-#include "runner.hpp"
-#include "MastersPermutationTestComputationPolicy.h"
 #include "MultipleTestingCorrection.h"
 #include "PALMonteCarloTypes.h"
 #include "StrategyDataPreparer.h"
@@ -96,7 +93,14 @@ template <class Decimal, class BaselineStatPolicy>
       // Alias for result iterator
       using SurvivingStrategiesIterator = typename UnadjustedPValueStrategySelection<Decimal>::ConstSurvivingStrategiesIterator;
 
-      // Constructor with algorithm selection
+      /*!
+       * @brief Constructor for PALMastersMonteCarloValidation.
+       * @tparam Decimal The numeric type used for calculations.
+       * @tparam BaselineStatPolicy Policy class for computing the baseline statistic.
+       * @param numPermutations The number of permutations to run. Must be greater than zero.
+       * @param algo A unique pointer to the selection bias algorithm implementation. Defaults to MastersRomanoWolfImproved.
+       * @throw PALMastersMonteCarloValidationException if numPermutations is zero.
+       */
       PALMastersMonteCarloValidation(unsigned long numPermutations,
 				    std::unique_ptr<AlgoType> algo =
 				    std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
@@ -114,26 +118,69 @@ template <class Decimal, class BaselineStatPolicy>
       PALMastersMonteCarloValidation(PALMastersMonteCarloValidation&&) noexcept = default;
       PALMastersMonteCarloValidation& operator=(PALMastersMonteCarloValidation&&) noexcept = default;
 
+      /*!
+       * @brief Default virtual destructor.
+       */
       virtual ~PALMastersMonteCarloValidation() = default;
 
+      /*!
+       * @brief Gets an iterator to the beginning of the surviving strategies.
+       * @tparam Decimal The numeric type used for calculations.
+       * @tparam BaselineStatPolicy Policy class for computing the baseline statistic.
+       * @return A const iterator to the first surviving strategy.
+       */
       SurvivingStrategiesIterator beginSurvivingStrategies() const
       {
 	return mStrategySelectionPolicy.beginSurvivingStrategies();
       }
-      
+
+      /*!
+       * @brief Gets an iterator to the end of the surviving strategies.
+       * @tparam Decimal The numeric type used for calculations.
+       * @tparam BaselineStatPolicy Policy class for computing the baseline statistic.
+       * @return A const iterator to the position past the last surviving strategy.
+       */
       SurvivingStrategiesIterator endSurvivingStrategies() const
       {
 	return mStrategySelectionPolicy.endSurvivingStrategies();
       }
 
+      /*!
+       * @brief Gets the number of strategies that survived the permutation testing.
+       * @tparam Decimal The numeric type used for calculations.
+       * @tparam BaselineStatPolicy Policy class for computing the baseline statistic.
+       * @return The count of surviving strategies.
+       */
       unsigned long getNumSurvivingStrategies() const
       {
 	return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
       }
 
+      /*!
+       * @brief Runs the stepwise permutation tests to validate trading strategies.
+       *
+       * This method performs the full stepwise permutation testing procedure:
+       * 1. Prepares strategy data and computes baseline performance metrics for each strategy.
+       * 2. Sorts strategies in descending order based on their baseline statistic.
+       * 3. Utilizes the configured algorithm (e.g., MastersRomanoWolfImproved) to run the permutation tests.
+       * This involves generating null distributions and calculating p-values for strategies iteratively.
+       * 4. Stores the results, including adjusted p-values for all strategies, in the internal
+       * strategy selection policy object.
+       *
+       * @tparam Decimal The numeric type used for calculations.
+       * @tparam BaselineStatPolicy Policy class for computing the baseline statistic.
+       * @param baseSecurity A shared pointer to the base security used for backtesting.
+       * @param patterns A pointer to the PriceActionLabSystem containing the trading patterns/strategies.
+       * @param dateRange The date range over which to run the tests.
+       * @param pValueSignificanceLevel The significance level (alpha) for p-values. Defaults to a predefined significant p-value.
+       * @throw PALMastersMonteCarloValidationException if the base security or patterns are missing,
+       *or if a template backtester cannot be created.
+       */
       void runPermutationTests(std::shared_ptr<Security<Decimal>> baseSecurity,
 			       PriceActionLabSystem *patterns,
-			       const DateRange& dateRange)
+			       const DateRange& dateRange,
+			       const Decimal& pValueSignificanceLevel =
+			       DecimalConstants<Decimal>::SignificantPValue)
       {
 	if (!baseSecurity)
 	  throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");
@@ -167,7 +214,7 @@ template <class Decimal, class BaselineStatPolicy>
 	portfolio->addSecurity(baseSecurity->clone(baseSecurity->getTimeSeries()));
 
 	// Determine Significance Level (Alpha)
-	Decimal sigLevel = DecimalConstants<Decimal>::SignificantPValue; // Or get from config
+	Decimal sigLevel = pValueSignificanceLevel;
 	map<StrategyPtr, Decimal> pvalMap;
 
 	pvalMap = mAlgorithm->run(mStrategyData,
@@ -189,7 +236,7 @@ template <class Decimal, class BaselineStatPolicy>
 
 	  mStrategySelectionPolicy.addStrategy(finalPval, entry.strategy);
 	}
-	mStrategySelectionPolicy.correctForMultipleTests();
+	mStrategySelectionPolicy.correctForMultipleTests(pValueSignificanceLevel);
       }
 
     private:
