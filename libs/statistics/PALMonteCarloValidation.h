@@ -224,6 +224,8 @@ namespace mkc_timeseries
       if (!patterns)
         throw std::invalid_argument("Pattern set must not be null");
 
+      this->mStrategySelectionPolicy.clearForNewTest();
+
       // 1) Prepare data
       auto oosTS     = FilterTimeSeries<Decimal>(*baseSecurity->getTimeSeries(), dateRange);
       auto tempOosTS = std::make_shared<OHLCTimeSeries<Decimal>>(oosTS);
