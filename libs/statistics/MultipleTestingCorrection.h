@@ -559,7 +559,7 @@ namespace mkc_timeseries
 	  const auto& pValue = entry.first;
 	  const auto& strategy = entry.second;
 
-	  if (pValue < pValueSignificanceLevel)
+	  if (pValue <= pValueSignificanceLevel)
 	    container_.addSurvivingStrategy(strategy);
 	}
     }
@@ -600,7 +600,7 @@ namespace mkc_timeseries
       for (const auto& tup : testStatisticStrategies_)
 	{
 	  // std::get<0> holds the adjusted p-value.
-	  if (std::get<0>(tup) < significanceThreshold)
+	  if (std::get<0>(tup) <= significanceThreshold)
 	    survivingStrategies_.push_back(std::get<2>(tup));
 	}
     }
