@@ -106,7 +106,8 @@ namespace mkc_timeseries
 	  const std::string name =
 	    (pattern->isLongPattern() ? "PAL Long " : "PAL Short ")
 	    + std::to_string(idx);
-	  StrategyPtr strategy = createStrategyFromPattern(pattern, name, portfolio);
+
+	  auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio);
 
 	  // Task: run baseline backtest and record statistic
 	  auto task = [strategy,
@@ -133,29 +134,6 @@ namespace mkc_timeseries
     }
 
   private:
-    /**
-     * @brief Create a concrete strategy from a pattern.
-     */
-    static StrategyPtr
-    createStrategyFromPattern
-    (
-     const PALPatternPtr& pattern,
-     const std::string&   strategyName,
-     std::shared_ptr<Portfolio<Decimal>> portfolio
-     )
-    {
-      if (pattern->isLongPattern())
-        {
-	  return std::static_pointer_cast<PalStrategy<Decimal>>(
-								std::make_shared<PalLongStrategy<Decimal>>(strategyName, pattern, portfolio));
-        }
-      else
-        {
-	  return std::static_pointer_cast<PalStrategy<Decimal>>(
-								std::make_shared<PalShortStrategy<Decimal>>(strategyName, pattern, portfolio));
-        }
-    }
-
     /**
      * @brief Clone the backtester, add the strategy, and execute backtest.
      */
