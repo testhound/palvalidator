@@ -20,7 +20,6 @@
 #include "PalStrategy.h"
 #include "BackTester.h"
 #include "MonteCarloPermutationTest.h"
-#include "McptConfigurationFileReader.h"
 #include "PalAst.h"
 #include "PermutationTestResultPolicy.h"
 #include "MultipleTestingCorrection.h"
@@ -99,7 +98,9 @@ namespace mkc_timeseries
      */
     virtual void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
 				     PriceActionLabSystem* patterns,
-				     const DateRange& dateRange) = 0;
+				     const DateRange& dateRange,
+				     const Decimal& pValueSignificanceLevel =
+				     DecimalConstants<Decimal>::SignificantPValue) = 0;
 
     /*!
      * @brief Gets an iterator to the beginning of the list of surviving strategies.
