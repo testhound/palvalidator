@@ -375,7 +375,8 @@ namespace mkc_timeseries
       return container_.getNumSurvivingStrategies();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       auto it = container_.getInternalContainer().rbegin();
       auto itEnd = container_.getInternalContainer().rend();
 
@@ -444,7 +445,8 @@ namespace mkc_timeseries
       return container_.getNumSurvivingStrategies();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       auto it = container_.getInternalContainer().rbegin();
       auto itEnd = container_.getInternalContainer().rend();
       Decimal rank(static_cast<int>(getNumMultiComparisonStrategies()));
@@ -549,15 +551,17 @@ namespace mkc_timeseries
       return container_.getNumSurvivingStrategies();
     }
 
-    void correctForMultipleTests() {
-      const Decimal SIGNIFICANCE_THRESHOLD = DecimalConstants<Decimal>::SignificantPValue;
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue)
+    {
+      for (auto const& entry : container_.getInternalContainer())
+	{
+	  const auto& pValue = entry.first;
+	  const auto& strategy = entry.second;
 
-      for (auto const& entry : container_.getInternalContainer()) {
-        const auto& pValue = entry.first;
-        const auto& strategy = entry.second;
-        if (pValue < SIGNIFICANCE_THRESHOLD)
-          container_.addSurvivingStrategy(strategy);
-      }
+	  if (pValue < pValueSignificanceLevel)
+	    container_.addSurvivingStrategy(strategy);
+	}
     }
 
     // Added for monotonicity test helper compatibility
@@ -713,7 +717,8 @@ namespace mkc_timeseries
         return container_.getInternalContainer();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       if (container_.getNumStrategies() == 0)
 	throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
       
@@ -744,7 +749,7 @@ namespace mkc_timeseries
       );
 
       // Mark surviving strategies (adjusted p-value below significance threshold)
-      container_.markSurvivingStrategies(DecimalConstants<Decimal>::SignificantPValue);
+      container_.markSurvivingStrategies(pValueSignificanceLevel);
     }
 
   private:
@@ -806,7 +811,8 @@ namespace mkc_timeseries
         return container_.getInternalContainer();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       if (container_.getNumStrategies() == 0)
 	throw std::runtime_error("HolmRomanoWolfCorrection: No strategies added for multiple testing correction.");
 
@@ -836,7 +842,7 @@ namespace mkc_timeseries
       );
 
       // Mark surviving strategies (adjusted p-value below significance threshold)
-      container_.markSurvivingStrategies(DecimalConstants<Decimal>::SignificantPValue);
+      container_.markSurvivingStrategies(pValueSignificanceLevel);
     }
 
   private:
