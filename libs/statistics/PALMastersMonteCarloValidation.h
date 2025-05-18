@@ -188,6 +188,7 @@ template <class Decimal, class BaselineStatPolicy>
 	if (!patterns)
 	  throw PALMastersMonteCarloValidationException("Price patterns missing in runPermutationTests setup.");
 
+	mStrategySelectionPolicy.clearForNewTest();
 	auto timeFrame = baseSecurity->getTimeSeries()->getTimeFrame();
 	auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(timeFrame,
 									    dateRange.getFirstDate(),
