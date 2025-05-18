@@ -1,6 +1,6 @@
 #pragma once
 #include <cassert>
-#include <stdexcept> // Required for std::invalid_argument
+#include <stdexcept>
 #include <algorithm>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
@@ -21,10 +21,10 @@ namespace mkc_timeseries
    * Based on the algorithm in Timothy Masters book"
    * "Permutation and Randomization Tests for Trading System Development: Algorithms in C++"
    *
-   * Which itself is base don "Efficient Computation of Adjusted p-Values for Resampling-Based
+   * Which itself is based on "Efficient Computation of Adjusted p-Values for Resampling-Based
    * Stepdown Multiple Testing" (Romano & Wolf, 2016)
    *
-   * this class uses
+   * This class uses
    * class FastMastersPermutationPolicy to compute counts in a single Monte Carlo sweep.
    *
    * Template Parameters:
@@ -113,7 +113,7 @@ namespace mkc_timeseries
 	//                      is beaten by the max-of-all in that permutation.
 	// Bulk compute exceedance counts for every strategy once.
 
-	std::map<StrategyPtr, unsigned int> counts =
+	std::map<StrategyPtr, unsigned int> baseStatExceedanceCounts =
 	  FMPP::computeAllPermutationCounts(numPermutations,
 					    strategyData,
 					    templateBacktester,
@@ -121,19 +121,19 @@ namespace mkc_timeseries
 					    portfolio);
 
 	// SANITY CHECK
-        sanityCheckCounts(counts, strategyData);
+        sanityCheckCounts(baseStatExceedanceCounts, strategyData);
 
 	std::map<StrategyPtr, Decimal> pvals;
-	Decimal lastAdj = Decimal(0);
+	Decimal lastAdjustedPValue = Decimal(0);
 
 	// Phase 2: step-down inclusion loop (best-to-worst)
 	for (auto& context : strategyData)
 	  {
-	    unsigned int c = numPermutations + 1;
+	    unsigned int exceededCount = numPermutations + 1;
 
-	    auto it = counts.find(context.strategy);
-	    if (it != counts.end())
-	      c = it->second;
+	    auto it = baseStatExceedanceCounts.find(context.strategy);
+	    if (it != baseStatExceedanceCounts.end())
+	      exceededCount = it->second;
 
 	    /**
 	     * Enforce monotonicity on the adjusted p-values in the step-down permutation test.
@@ -149,7 +149,7 @@ namespace mkc_timeseries
 	     * p-values never decreases as we move down the list:
 	     *
 	     *     // take the larger of this strategy’s raw p and the previous (best) adjusted p
-	     *     Decimal adj = std::max(p, lastAdj);
+	     *     Decimal adj = std::max(p, lastAdjustedPValue);
 	     *
 	     * This ensures:
 	     *  1. **Non-decreasing p-values**: Once you hit, say, 0.04 at the top, every following
@@ -165,18 +165,18 @@ namespace mkc_timeseries
 	     * observed result.  Then, to keep our decisions consistent from best to worst, we
 	     * never let a later strategy’s p-value drop below the one before it.”
 	     */
-	    Decimal p   = Decimal(c) / Decimal(numPermutations + 1);
-	    Decimal adj = std::max(p, lastAdj);
-	    pvals[context.strategy] = adj;
+	    Decimal pValue   = Decimal(exceededCount) / Decimal(numPermutations + 1);
+	    Decimal adjustedPValue = std::max(pValue, lastAdjustedPValue);
+	    pvals[context.strategy] = adjustedPValue;
 
-	    if (adj <= sigLevel)
-	      lastAdj = adj;      // tighten bound
+	    if (adjustedPValue <= sigLevel)
+	      lastAdjustedPValue = adjustedPValue;      // tighten bound
 	    else
 	      {
 		// failure ⇒ all remaining inherit same p‑value
 		for (auto& later : strategyData)
 		  if (!pvals.count(later.strategy))
-		    pvals[later.strategy] = adj;
+		    pvals[later.strategy] = adjustedPValue;
 		break;
 	      }
 	  }
