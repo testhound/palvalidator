@@ -5,7 +5,7 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
-TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
+TEST_CASE ("SecurityAttributesTest-Security operations", "[SecurityAttributestTest]")
 {
   LeverageAttributes<DecimalType> spyLeverage(createDecimal("1.0"));
   LeverageAttributes<DecimalType> shLeverage(createDecimal("-1.0"));
@@ -29,31 +29,18 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   REQUIRE (shLeverage.getLeverage() == createDecimal("-1.0"));
   REQUIRE (shLeverage.isInverseLeverage());
 
-  std::cout << "Finished testing LeverageAttributes" << std::endl;
-
   REQUIRE (spyAttributes.getExpenseRatio() == spyExpense);
 
-  std::cout << "Finished getting ExpenseRatio" << std::endl;
-
   REQUIRE (spyAttributes.getLeverage() == spyLeverage.getLeverage());
-  std::cout << "Finished getting Leverage" << std::endl;
 
   REQUIRE_FALSE (spyAttributes.isInverseFund());
-
-  std::cout << "Finished getting isInverseFund" << std::endl;
-
-  std::cout << "Finished testing SPY FundAttributes" << std::endl;
 
   REQUIRE (shAttributes.getExpenseRatio() == shExpense);
   REQUIRE (shAttributes.getLeverage() == shLeverage.getLeverage());
   REQUIRE (shAttributes.isInverseFund());
   
-  std::cout << "Finished testing SH FundAttributes" << std::endl;
-
   ETFSecurityAttributes<DecimalType> spy (equitySymbol, equityName, spyAttributes,
 					  spyInception);
-
-  std::cout << "Finished creating ETFSecurityAttributes for SPY" << std::endl;
 
   REQUIRE (spy.getName() == equityName);
   REQUIRE (spy.getSymbol() == equitySymbol);
@@ -64,11 +51,7 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   REQUIRE(spy.getInceptionDate() == spyInception);
   REQUIRE (spy.getVolumeUnits() == TradingVolume::SHARES);
   
-  std::cout << "Finished SPY legacy attribute information" << std::endl;
-
   // Futures security
-
-  std::cout << "Testing FuturesSecurityAttributes" << std::endl;
 
   std::string futuresSymbol("C2");
   std::string futuresName("Corn futures");
@@ -90,4 +73,94 @@ TEST_CASE ("SecurityAttributesTest-Security operations", "[Security]")
   REQUIRE (corn.isFuturesSecurity());
   REQUIRE(corn.getInceptionDate() == randomInception);
   REQUIRE (corn.getVolumeUnits() == TradingVolume::CONTRACTS);
+}
+
+//-----------------------------------------------------------------------------
+// Test comparison operators for LeverageAttributes
+TEST_CASE("LeverageAttributes-ComparisonOperators", "[LeverageAttributes]") {
+    LeverageAttributes<DecimalType> la1(createDecimal("2.5"));
+    LeverageAttributes<DecimalType> la2(createDecimal("2.5"));
+    LeverageAttributes<DecimalType> la3(createDecimal("-2.5"));
+
+    REQUIRE(la1 == la2);
+    REQUIRE_FALSE(la1 != la2);
+
+    REQUIRE_FALSE(la1 == la3);
+    REQUIRE(la1 != la3);
+}
+
+//-----------------------------------------------------------------------------
+// Extended tests for ETFSecurityAttributes (ETF-specific behaviors)
+TEST_CASE("ETFSecurityAttributes-IdentityAndFundChecks", "[ETFSecurityAttributes]") {
+    // Setup a positive-leverage ETF
+    LeverageAttributes<DecimalType> leveragePos(createDecimal("1.0"));
+    date inceptionPos(createDate("20200101"));
+    FundAttributes<DecimalType> fundPos(createDecimal("0.15"), leveragePos);
+    ETFSecurityAttributes<DecimalType> etfPos(
+        "IVV", "iShares Core S&P 500 ETF", fundPos, inceptionPos);
+
+    // Basic identity
+    REQUIRE(etfPos.getSymbol() == "IVV");
+    REQUIRE(etfPos.getName()   == "iShares Core S&P 500 ETF");
+
+    // Fund attributes
+    REQUIRE(etfPos.getExpenseRatio() == createDecimal("0.15"));
+    REQUIRE(etfPos.getLeverage()      == createDecimal("1.0"));
+    REQUIRE_FALSE(etfPos.isInverseFund());
+
+    // Classification
+    REQUIRE(etfPos.isETF());
+    REQUIRE_FALSE(etfPos.isMutualFund());
+    REQUIRE(etfPos.isFund());
+    REQUIRE_FALSE(etfPos.isCommonStock());
+}
+
+//-----------------------------------------------------------------------------
+// Tests for CommonStockSecurityAttributes
+TEST_CASE("CommonStockSecurityAttributes-Basics", "[CommonStockSecurityAttributes]") {
+    date inception(createDate("19950115"));
+    CommonStockSecurityAttributes<DecimalType> cs(
+        "AAPL", "Apple Inc.", inception);
+
+    REQUIRE(cs.getSymbol() == "AAPL");
+    REQUIRE(cs.getName()   == "Apple Inc.");
+
+    // Legacy equity attributes
+    REQUIRE(cs.getBigPointValue() == DecimalConstants<DecimalType>::DecimalOne);
+    REQUIRE(cs.getTick()         == DecimalConstants<DecimalType>::EquityTick);
+    REQUIRE(cs.getInceptionDate() == inception);
+
+    // Security classification
+    REQUIRE(cs.isEquitySecurity());
+    REQUIRE_FALSE(cs.isFuturesSecurity());
+    REQUIRE(cs.isCommonStock());
+    REQUIRE_FALSE(cs.isFund());
+
+    // Volume units
+    REQUIRE(cs.getVolumeUnits() == TradingVolume::SHARES);
+}
+
+//-----------------------------------------------------------------------------
+// Additional tests for FuturesSecurityAttributes
+TEST_CASE("FuturesSecurityAttributes-CommonChecks", "[FuturesSecurityAttributes]") {
+    date inception(createDate("20150310"));
+    FuturesSecurityAttributes<DecimalType> fut(
+        "ES", "E-mini S&P 500", createDecimal("50.0"), createDecimal("0.25"), inception);
+
+    REQUIRE(fut.getSymbol() == "ES");
+    REQUIRE(fut.getName()   == "E-mini S&P 500");
+
+    // Price unit tests
+    REQUIRE(fut.getBigPointValue() == createDecimal("50.0"));
+    REQUIRE(fut.getTick()          == createDecimal("0.25"));
+    REQUIRE(fut.getInceptionDate() == inception);
+
+    // Classification
+    REQUIRE_FALSE(fut.isEquitySecurity());
+    REQUIRE(fut.isFuturesSecurity());
+    REQUIRE_FALSE(fut.isCommonStock());
+    REQUIRE_FALSE(fut.isFund());
+
+    // Volume units
+    REQUIRE(fut.getVolumeUnits() == TradingVolume::CONTRACTS);
 }
