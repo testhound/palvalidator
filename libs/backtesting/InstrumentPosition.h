@@ -171,10 +171,20 @@ namespace mkc_timeseries
   public:
     typedef typename InstrumentPositionState<Decimal>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
   public:
+    /**
+     * @brief Copy constructor (deleted or made private for Singleton).
+     * Here, it's defined as per the original code but typical Singleton would restrict it.
+     * @param rhs The object to copy.
+     */
     FlatInstrumentPositionState (const FlatInstrumentPositionState<Decimal>& rhs)
       : InstrumentPositionState<Decimal>(rhs)
     {}
 
+    /**
+     * @brief Assignment operator.
+     * @param rhs The object to assign from.
+     * @return Reference to this object.
+     */
     FlatInstrumentPositionState<Decimal>& 
     operator=(const FlatInstrumentPositionState<Decimal> &rhs) 
     {
@@ -185,60 +195,114 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /**
+     * @brief Destructor.
+     */
     ~FlatInstrumentPositionState()
     {}
 
+    /**
+     * @brief Gets the singleton instance of FlatInstrumentPositionState.
+     * @return A shared pointer to the singleton instance.
+     */
     static std::shared_ptr<FlatInstrumentPositionState<Decimal>> getInstance()
     {
       return mInstance;
     }
 
+    /**
+     * @brief Gets the number of active trading units.
+     * @return Always 0 for the flat state.
+     */
     uint32_t getNumPositionUnits() const
     {
       return 0;
     }
 
+    /**
+     * @brief Checks if the current state represents a long position.
+     * @return Always false for the flat state.
+     */
     bool isLongPosition() const
     {
       return false;
     }
 
+    /**
+     * @brief Checks if the current state represents a short position.
+     * @return Always false for the flat state.
+     */
     bool isShortPosition() const
     {
       return false;
     }
 
+    /**
+     * @brief Checks if the current state represents a flat position.
+     * @return Always true for the flat state.
+     */
     bool isFlatPosition() const
     {
       return true;
     }
 
+     /**
+     * @brief Attempts to update with a new market data bar.
+     * @param entryBar The OHLCTimeSeriesEntry.
+     * @throw InstrumentPositionException as there are no positions to update in a flat state.
+     */
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: addBar - no positions available in flat state");
     }
 
-
+    /**
+     * @brief Attempts to retrieve a specific trading position unit.
+     * @param unitNumber The 1-based index.
+     * @throw InstrumentPositionException as there are no positions in a flat state.
+     */
     ConstInstrumentPositionIterator getInstrumentPosition (uint32_t unitNumber) const
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: getInstrumentPosition - no positions avaialble in flat state");
     }
 
+    /**
+     * @brief Adds a new trading position unit.
+     * This will cause the InstrumentPosition to transition to either a Long or Short state.
+     * @param iPosition Pointer to the owning InstrumentPosition for state transition.
+     * @param position The TradingPosition unit to add.
+     * @throw InstrumentPositionException if the position is neither long nor short.
+     */
     void addPosition(InstrumentPosition<Decimal>* iPosition,
 		     std::shared_ptr<TradingPosition<Decimal>> position);
 
     
-
+    /**
+     * @brief Attempts to get an iterator to the beginning of trading units.
+     * @throw InstrumentPositionException as there are no positions in a flat state.
+     */
     ConstInstrumentPositionIterator beginInstrumentPosition() const
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: beginInstrumentPosition - no positions avaialble in flat state");
     }
 
+    /**
+     * @brief Attempts to get an iterator to the end of trading units.
+     * @throw InstrumentPositionException as there are no positions in a flat state.
+     */
     ConstInstrumentPositionIterator endInstrumentPosition() const
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: endInstrumentPosition - no positions avaialble in flat state");
     }
 
+    /**
+     * @brief Attempts to close a specific trading position unit.
+     * @param iPosition Pointer to the owning InstrumentPosition.
+     * @param exitDate The exit date.
+     * @param exitPrice The exit price.
+     * @param unitNumber The unit number.
+     * @throw InstrumentPositionException as there are no positions to close in a flat state.
+     */
     void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
 			   const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice,
@@ -247,6 +311,13 @@ namespace mkc_timeseries
       throw InstrumentPositionException("FlatInstrumentPositionState: closeUnitPosition - no positions avaialble in flat state");
     }
 
+    /**
+     * @brief Attempts to close all open trading position units.
+     * @param iPosition Pointer to the owning InstrumentPosition.
+     * @param exitDate The exit date.
+     * @param exitPrice The exit price.
+     * @throw InstrumentPositionException as there are no positions to close in a flat state.
+     */
     void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
 			   const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice)
@@ -255,6 +326,9 @@ namespace mkc_timeseries
     }
 
   private:
+    /**
+     * @brief Private constructor for Singleton pattern.
+     */
     FlatInstrumentPositionState()
       : InstrumentPositionState<Decimal>()
     {}
@@ -348,6 +422,11 @@ namespace mkc_timeseries
       //return mTradingPositionUnits.at (unitNumber - 1);
     }
 
+    /**
+     * @brief Common logic for adding a trading position unit.
+     * @param position The TradingPosition unit to add.
+     * @throw InstrumentPositionException if trying to add a closed position.
+     */
     void addPositionCommon(std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isPositionClosed())
@@ -475,17 +554,34 @@ namespace mkc_timeseries
   template <class Decimal> class LongInstrumentPositionState : public InMarketPositionState<Decimal>
   {
   public:
+     /**
+     * @brief Constructor initializing with the first long trading position unit.
+     * @param position The initial long TradingPosition unit.
+     * @throw InstrumentPositionException if the initial position is not long.
+     */
     LongInstrumentPositionState(std::shared_ptr<TradingPosition<Decimal>> position)
       : InMarketPositionState<Decimal>(position)
     {}
 
+    /**
+     * @brief Copy constructor.
+     * @param rhs The LongInstrumentPositionState to copy.
+     */
     LongInstrumentPositionState (const LongInstrumentPositionState<Decimal>& rhs)
       : InMarketPositionState<Decimal>(rhs)
     {}
 
-    ~ LongInstrumentPositionState()
+    /**
+     * @brief Destructor.
+     */
+    ~LongInstrumentPositionState()
     {}
 
+    /**
+     * @brief Assignment operator.
+     * @param rhs The LongInstrumentPositionState to assign from.
+     * @return Reference to this object.
+     */
     LongInstrumentPositionState<Decimal>& 
     operator=(const LongInstrumentPositionState<Decimal> &rhs) 
     {
@@ -498,7 +594,8 @@ namespace mkc_timeseries
 
     /**
      * @brief Adds a new long trading position unit.
-     * @param iPosition Pointer to the owning InstrumentPosition (unused in this specific override but required by base).
+     * @param iPosition Pointer to the owning InstrumentPosition
+     * unused in this specific override but required by base).
      * @param position The long TradingPosition unit to add.
      * @throw InstrumentPositionException if trying to add a non-long position or a closed position.
      */
@@ -620,16 +717,29 @@ namespace mkc_timeseries
     typedef typename InstrumentPositionState<Decimal>::ConstInstrumentPositionIterator ConstInstrumentPositionIterator;
 
   public:
+    /**
+     * @brief Constructs an InstrumentPosition for a specific symbol, initially in a flat state.
+     * @param instrumentSymbol The trading symbol of the instrument (e.g., "AAPL", "ESZ23").
+     */
     InstrumentPosition (const std::string& instrumentSymbol)
       : mInstrumentSymbol(instrumentSymbol),
 	mInstrumentPositionState(FlatInstrumentPositionState<Decimal>::getInstance())
     {}
 
+    /**
+     * @brief Copy constructor.
+     * @param rhs The InstrumentPosition object to copy.
+     */
     InstrumentPosition (const InstrumentPosition<Decimal>& rhs)
       : mInstrumentSymbol(rhs.mInstrumentSymbol),
 	mInstrumentPositionState(rhs.mInstrumentPositionState)
     {}
 
+    /**
+     * @brief Assignment operator.
+     * @param rhs The InstrumentPosition object to assign from.
+     * @return A reference to this object.
+     */
     InstrumentPosition<Decimal>& 
     operator=(const InstrumentPosition<Decimal> &rhs)
     {
@@ -642,67 +752,134 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /**
+     * @brief Destructor.
+     */
     ~InstrumentPosition()
     {}
 
+    /**
+     * @brief Gets the trading symbol of this instrument position.
+     * @return A const reference to the instrument symbol string.
+     */
     const std::string& getInstrumentSymbol() const
     {
       return mInstrumentSymbol;
     }
 
+    /**
+     * @brief Checks if the instrument is currently in a long position.
+     * @return True if long, false otherwise. Delegates to the current state object.
+     */
     bool isLongPosition() const
     {
       return mInstrumentPositionState->isLongPosition();
     }
 
+    /**
+     * @brief Checks if the instrument is currently in a short position.
+     * @return True if short, false otherwise. Delegates to the current state object.
+     */
     bool isShortPosition() const
     {
       return mInstrumentPositionState->isShortPosition();
     }
 
+    /**
+     * @brief Checks if the instrument is currently flat (no open position).
+     * @return True if flat, false otherwise. Delegates to the current state object.
+     */
     bool isFlatPosition() const
     {
       return mInstrumentPositionState->isFlatPosition();
     }
 
+    /**
+     * @brief Gets the number of open trading units for this instrument.
+     * @return The count of open units. Delegates to the current state object.
+     */
     uint32_t getNumPositionUnits() const
     {
       return mInstrumentPositionState->getNumPositionUnits();
     }
 
+     /**
+     * @brief Retrieves a specific trading position unit by its 1-based index.
+     * @param unitNumber The 1-based index of the unit to retrieve.
+     * @return A constant iterator pointing to the specified TradingPosition.
+     * @throw InstrumentPositionException if unitNumber is out of range or position is flat.
+     * Delegates to the current state.
+     */
     ConstInstrumentPositionIterator
     getInstrumentPosition (uint32_t unitNumber) const
     {
       return mInstrumentPositionState->getInstrumentPosition(unitNumber);
     }
 
+    /**
+     * @brief Gets the fill price of the first trading unit.
+     * @return The entry price of the first unit.
+     * @throw InstrumentPositionException if no units exist (i.e., flat) or unitNumber is invalid.
+     */
     const Decimal& getFillPrice() const
     {
       return getFillPrice(1);
     }
 
+    /**
+     * @brief Gets the fill price of a specific trading unit.
+     * @param unitNumber The 1-based index of the trading unit.
+     * @return The entry price of the specified unit.
+     * @throw InstrumentPositionException if unitNumber is out of range or position is flat.
+     */
     const Decimal& getFillPrice(uint32_t unitNumber) const
     {
       ConstInstrumentPositionIterator pos = getInstrumentPosition(unitNumber);
       return (*pos)->getEntryPrice();
     }
 
+    /**
+     * @brief Sets the R-Multiple based stop loss for the first trading unit.
+     * @param riskStop The R-Multiple stop value.
+     * @throw InstrumentPositionException if no units exist or unitNumber is invalid.
+     */
     void setRMultipleStop (const Decimal& riskStop) const
     {
       this->setRMultipleStop (riskStop, 1);
     }
 
+    /**
+     * @brief Sets the R-Multiple based stop loss for a specific trading unit.
+     * @param riskStop The R-Multiple stop value.
+     * @param unitNumber The 1-based index of the trading unit.
+     * @throw InstrumentPositionException if unitNumber is out of range or position is flat.
+     */
     void setRMultipleStop (const Decimal& riskStop, uint32_t unitNumber) const
     {
       ConstInstrumentPositionIterator pos = getInstrumentPosition(unitNumber);
       (*pos)->setRMultipleStop (riskStop);
     }
 
+     /**
+     * @brief Adds a new market data bar to all open trading units in this position.
+     * Delegates to the current state object.
+     * @param entryBar The OHLCTimeSeriesEntry (bar data) to add.
+     * @throw InstrumentPositionException if the current state is flat.
+     */
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       mInstrumentPositionState->addBar(entryBar);
     }
 
+    /**
+     * @brief Adds a new trading position unit to this instrument.
+     * This method handles state transitions (e.g., from flat to long/short or adding to an
+     * existing long/short position).
+     * Delegates to the current state object's addPosition method.
+     * @param position A shared pointer to the TradingPosition unit to add.
+     * @throw InstrumentPositionException if the position is already closed, if symbols mismatch,
+     * or if trying to add a position of mismatching type (e.g., short to long state).
+     */
     void addPosition(std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isPositionClosed())
@@ -714,16 +891,31 @@ namespace mkc_timeseries
       mInstrumentPositionState->addPosition (this, position);
     }
 
+    /**
+     * @brief Gets a constant iterator to the beginning of the managed trading position units.
+     * @return ConstInstrumentPositionIterator pointing to the first unit.
+     * @throw InstrumentPositionException if the position is flat. Delegates to current state.
+     */
     ConstInstrumentPositionIterator beginInstrumentPosition() const
     {
       return mInstrumentPositionState->beginInstrumentPosition();
     }
 
+    /**
+     * @brief Gets a constant iterator to the end of the managed trading position units.
+     * @return ConstInstrumentPositionIterator pointing past the last unit.
+     * @throw InstrumentPositionException if the position is flat. Delegates to current state.
+     */
     ConstInstrumentPositionIterator endInstrumentPosition() const
     {
       return  mInstrumentPositionState->endInstrumentPosition();
     }
 
+    /**
+     * @brief Calculates the total trading volume across all open units.
+     * @return TradingVolume object representing the total volume.
+     * @throw InstrumentPositionException if the position is flat or if units have inconsistent volume types.
+     */
     TradingVolume getVolumeInAllUnits() const
     {
       if (isFlatPosition() == false)
@@ -750,6 +942,15 @@ namespace mkc_timeseries
       throw InstrumentPositionException ("InstrumentPosition::getVolumeInAllUnits - Cannot get volume when position is flat");
     }
 
+    /**
+     * @brief Closes a specific trading position unit.
+     * Delegates to the current state object. If this closes the last unit, the state will transition to flat.
+     * @param exitDate The date of the exit.
+     * @param exitPrice The price at which the unit is exited.
+     * @param unitNumber The 1-based index of the trading unit to close.
+     * @throw InstrumentPositionException if the unit cannot be closed (e.g., invalid unit number,
+     * lready closed, or position is flat).
+     */
     void closeUnitPosition(const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
@@ -757,6 +958,13 @@ namespace mkc_timeseries
       mInstrumentPositionState->closeUnitPosition(this, exitDate, exitPrice, unitNumber);
     }
 
+    /**
+     * @brief Closes all open trading position units for this instrument.
+     * Delegates to the current state object. The state will transition to flat.
+     * @param exitDate The date of the exit.
+     * @param exitPrice The price at which all units are exited.
+     * @throw InstrumentPositionException if the position is already flat.
+     */
     void closeAllPositions(const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice)
     {
@@ -764,6 +972,11 @@ namespace mkc_timeseries
     }
 
   private:
+    /**
+     * @brief Changes the internal state of this InstrumentPosition.
+     * Called by state objects during transitions (e.g., from Flat to Long, or Long to Flat).
+     * @param newState A shared pointer to the new InstrumentPositionState.
+     */
     void ChangeState (std::shared_ptr<InstrumentPositionState<Decimal>> newState)
     {
       mInstrumentPositionState = newState;
