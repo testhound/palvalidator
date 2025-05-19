@@ -48,7 +48,71 @@ public:
   }
 };
 
-std::shared_ptr<Security<D>> makeTestSecurity() {
+  struct EmptyMapAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
+  {
+    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+        const std::vector<StrategyContext<D>>& strategyData,
+        unsigned long                          numPermutations,
+        const std::shared_ptr<BackTester<D>>&  templateBackTester,
+        const std::shared_ptr<Portfolio<D>>&   portfolio,
+        const D&                               pValueSignificanceLevel) override
+    {
+      return {};  // empty map
+    }
+  };
+
+
+  struct HighPAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
+  {
+    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+        const std::vector<StrategyContext<D>>& strategyData,
+        unsigned long                          numPermutations,
+        const std::shared_ptr<BackTester<D>>&  templateBackTester,
+        const std::shared_ptr<Portfolio<D>>&   portfolio,
+        const D&                               pValueSignificanceLevel) override
+    {
+      std::map<std::shared_ptr<PalStrategy<D>>, D> m;
+      for (auto &ctx : strategyData)
+	m[ctx.strategy] = D("0.10");
+      return m;
+    }
+  };
+
+  struct EqualPAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
+  {
+    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+        const std::vector<StrategyContext<D>>& strategyData,
+        unsigned long                          numPermutations,
+        const std::shared_ptr<BackTester<D>>&  templateBackTester,
+        const std::shared_ptr<Portfolio<D>>&   portfolio,
+        const D&                               pValueSignificanceLevel) override 
+    {
+      std::map<std::shared_ptr<PalStrategy<D>>, D> m;
+      
+      for (auto &ctx : strategyData) m[ctx.strategy] = D("0.05");  // default α
+      return m;
+  }
+};
+
+
+  struct PartialAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
+  {
+    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+        const std::vector<StrategyContext<D>>& strategyData,
+        unsigned long                          numPermutations,
+        const std::shared_ptr<BackTester<D>>&  templateBackTester,
+        const std::shared_ptr<Portfolio<D>>&   portfolio,
+        const D&                               pValueSignificanceLevel) override 
+    {
+      std::map<std::shared_ptr<PalStrategy<D>>, D> m;
+      
+      // only return for the first strategy in the list
+      if (!strategyData.empty())
+	m[strategyData.front().strategy] = D("0.01");
+      return m;
+    }
+  };
+  std::shared_ptr<Security<D>> makeTestSecurity() {
   auto ts = std::make_shared<OHLCTimeSeries<D>>(TimeFrame::DAILY, TradingVolume::SHARES, 5);
   for (int i = 0; i < 5; ++i) {
     std::ostringstream date;
@@ -135,4 +199,65 @@ TEST_CASE("PALMastersMonteCarloValidation works with subset of patterns") {
   validator.runPermutationTests(security, patterns, range);
   REQUIRE(validator.getNumSurvivingStrategies() > 0);
   delete patterns;
+}
+
+TEST_CASE("PALMastersMonteCarloValidation ctor rejects zero permutations") {
+  REQUIRE_THROWS_AS(
+		    (PALMastersMonteCarloValidation<D, DummyStatPolicy>(0)),
+    PALMastersMonteCarloValidationException
+  );
+}
+
+TEST_CASE("Empty-map algorithm yields zero survivors") {
+  PALMastersMonteCarloValidation<D, DummyStatPolicy> v(10, std::make_unique<EmptyMapAlgo>());
+  auto sec      = makeTestSecurity();
+  auto pats     = getRandomPricePatterns();
+  DateRange r{sec->getTimeSeries()->getFirstDate(),
+              sec->getTimeSeries()->getLastDate()};
+  v.runPermutationTests(sec, pats, r);
+  REQUIRE(v.getNumSurvivingStrategies() == 0);
+}
+
+TEST_CASE("High-pvalue algorithm rejects all strategies") {
+  PALMastersMonteCarloValidation<D, DummyStatPolicy> v(10, std::make_unique<HighPAlgo>());
+  auto sec  = makeTestSecurity();
+  auto pats = getRandomPricePatterns();
+  DateRange r{sec->getTimeSeries()->getFirstDate(),
+              sec->getTimeSeries()->getLastDate()};
+  v.runPermutationTests(sec, pats, r);
+  REQUIRE(v.getNumSurvivingStrategies() == 0);
+}
+
+TEST_CASE("p-value == alpha is accepted") {
+  PALMastersMonteCarloValidation<D, DummyStatPolicy> v(10, std::make_unique<EqualPAlgo>());
+  auto sec  = makeTestSecurity();
+  auto pats = getRandomPricePatterns();
+  DateRange r{sec->getTimeSeries()->getFirstDate(),
+              sec->getTimeSeries()->getLastDate()};
+  v.runPermutationTests(sec, pats, r);
+  REQUIRE(v.getNumSurvivingStrategies() > 0);
+}
+
+TEST_CASE("Missing p-values default to 1.0") {
+  PALMastersMonteCarloValidation<D, DummyStatPolicy> v(10, std::make_unique<PartialAlgo>());
+  auto sec  = makeTestSecurity();
+  auto pats = getRandomPricePatterns();
+  DateRange r{sec->getTimeSeries()->getFirstDate(),
+              sec->getTimeSeries()->getLastDate()};
+  v.runPermutationTests(sec, pats, r);
+  // only the one with p=0.01 survives
+  REQUIRE(v.getNumSurvivingStrategies() == 1);
+}
+
+TEST_CASE("No strategies found yields zero survivors")
+{
+  PALMastersMonteCarloValidation<D, DummyStatPolicy> v(10, std::make_unique<DummyAlgo>());
+  auto sec          = makeTestSecurity();
+  auto emptyPatterns = new PriceActionLabSystem();  // no patterns
+  DateRange r{sec->getTimeSeries()->getFirstDate(),
+              sec->getTimeSeries()->getLastDate()};
+
+  v.runPermutationTests(sec, emptyPatterns, r);
+  REQUIRE(v.getNumSurvivingStrategies() == 0);
+  delete emptyPatterns;
 }

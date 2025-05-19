@@ -334,6 +334,21 @@ namespace mkc_timeseries
 
     const SortedStrategyContainer& getInternalContainer() const { return sortedStrategies_; }
 
+    //---------------------------------------------------------------
+  /// @brief  Clear both the sorted‐p‐value map and the survivors list.
+  void clearForNewTest()
+    {
+      // clear sortedStrategies_
+      {
+	boost::mutex::scoped_lock lk1(strategiesMutex_);
+	sortedStrategies_.clear();
+      }
+      // clear survivingStrategies_
+      {
+	boost::mutex::scoped_lock lk2(survivingMutex_);
+	survivingStrategies_.clear();
+      }
+    }
   private:
     SortedStrategyContainer sortedStrategies_;
     SurvivingStrategyContainer survivingStrategies_;
@@ -375,7 +390,8 @@ namespace mkc_timeseries
       return container_.getNumSurvivingStrategies();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       auto it = container_.getInternalContainer().rbegin();
       auto itEnd = container_.getInternalContainer().rend();
 
@@ -403,6 +419,12 @@ namespace mkc_timeseries
      // Added for monotonicity test helper compatibility
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
         return container_.getInternalContainer();
+    }
+
+    /// @brief  Reset state in preparation for a fresh run.
+    void clearForNewTest()
+    {
+      container_.clearForNewTest();
     }
 
   private:
@@ -444,7 +466,8 @@ namespace mkc_timeseries
       return container_.getNumSurvivingStrategies();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       auto it = container_.getInternalContainer().rbegin();
       auto itEnd = container_.getInternalContainer().rend();
       Decimal rank(static_cast<int>(getNumMultiComparisonStrategies()));
@@ -476,6 +499,12 @@ namespace mkc_timeseries
      // Added for monotonicity test helper compatibility
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
         return container_.getInternalContainer();
+    }
+
+    /// @brief  Reset state in preparation for a fresh run.
+    void clearForNewTest()
+    {
+      container_.clearForNewTest();
     }
 
   private:
@@ -549,20 +578,28 @@ namespace mkc_timeseries
       return container_.getNumSurvivingStrategies();
     }
 
-    void correctForMultipleTests() {
-      const Decimal SIGNIFICANCE_THRESHOLD = DecimalConstants<Decimal>::SignificantPValue;
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue)
+    {
+      for (auto const& entry : container_.getInternalContainer())
+	{
+	  const auto& pValue = entry.first;
+	  const auto& strategy = entry.second;
 
-      for (auto const& entry : container_.getInternalContainer()) {
-        const auto& pValue = entry.first;
-        const auto& strategy = entry.second;
-        if (pValue < SIGNIFICANCE_THRESHOLD)
-          container_.addSurvivingStrategy(strategy);
-      }
+	  if (pValue <= pValueSignificanceLevel)
+	    container_.addSurvivingStrategy(strategy);
+	}
     }
 
     // Added for monotonicity test helper compatibility
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
         return container_.getInternalContainer();
+    }
+
+    /// @brief  Reset state in preparation for a fresh run.
+    void clearForNewTest()
+    {
+      container_.clearForNewTest();
     }
 
   private:
@@ -596,7 +633,7 @@ namespace mkc_timeseries
       for (const auto& tup : testStatisticStrategies_)
 	{
 	  // std::get<0> holds the adjusted p-value.
-	  if (std::get<0>(tup) < significanceThreshold)
+	  if (std::get<0>(tup) <= significanceThreshold)
 	    survivingStrategies_.push_back(std::get<2>(tup));
 	}
     }
@@ -639,6 +676,29 @@ namespace mkc_timeseries
       // No lock needed if syntheticNullDistribution_ is only written in setSyntheticNullDistribution
       // and read here after potential write. Assume setSyntheticNullDistribution happens before read.
       return syntheticNullDistribution_;
+    }
+
+    //---------------------------------------------------------------
+    /// @brief  Reset this container to its pristine state.
+    ///         Clears any added strategies, surviving strategies, and synthetic nulls.
+    void clearForNewTest()
+    {
+      // clear raw/test‐stat entries
+      {
+        boost::mutex::scoped_lock lk(mutex_);
+        testStatisticStrategies_.clear();
+      }
+      // clear survivors
+      {
+        boost::mutex::scoped_lock lk(mutex_);
+        survivingStrategies_.clear();
+      }
+      // reset any synthetic null
+      {
+        boost::mutex::scoped_lock lk(mutex_);
+        syntheticNullDistribution_.clear();
+        hasSyntheticNull_ = false;
+      }
     }
 
   private:
@@ -713,7 +773,8 @@ namespace mkc_timeseries
         return container_.getInternalContainer();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       if (container_.getNumStrategies() == 0)
 	throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
       
@@ -744,7 +805,13 @@ namespace mkc_timeseries
       );
 
       // Mark surviving strategies (adjusted p-value below significance threshold)
-      container_.markSurvivingStrategies(DecimalConstants<Decimal>::SignificantPValue);
+      container_.markSurvivingStrategies(pValueSignificanceLevel);
+    }
+
+    /// @brief  Reset state in preparation for a fresh run.
+    void clearForNewTest()
+    {
+      container_.clearForNewTest();
     }
 
   private:
@@ -806,7 +873,8 @@ namespace mkc_timeseries
         return container_.getInternalContainer();
     }
 
-    void correctForMultipleTests() {
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
+				 DecimalConstants<Decimal>::SignificantPValue) {
       if (container_.getNumStrategies() == 0)
 	throw std::runtime_error("HolmRomanoWolfCorrection: No strategies added for multiple testing correction.");
 
@@ -836,7 +904,13 @@ namespace mkc_timeseries
       );
 
       // Mark surviving strategies (adjusted p-value below significance threshold)
-      container_.markSurvivingStrategies(DecimalConstants<Decimal>::SignificantPValue);
+      container_.markSurvivingStrategies(pValueSignificanceLevel);
+    }
+
+    /// @brief  Reset state in preparation for a fresh run.
+    void clearForNewTest()
+    {
+      container_.clearForNewTest();
     }
 
   private:

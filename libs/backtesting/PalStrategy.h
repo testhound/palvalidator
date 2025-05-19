@@ -840,6 +840,17 @@ namespace mkc_timeseries
 	  }
       }
   };
+
+  template<typename Decimal>
+  std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
+							const std::shared_ptr<PriceActionLabPattern>& pattern,
+							const std::shared_ptr<Portfolio<Decimal>>& portfolio)
+  {
+    if (pattern->isLongPattern())
+      return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio);
+    else
+      return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio);
+  }
 }
 
 #endif
