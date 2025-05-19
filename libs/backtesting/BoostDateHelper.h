@@ -41,25 +41,6 @@ namespace mkc_timeseries
     return d - offset;
 }
 
-  /*
-  inline TimeSeriesDate boost_previous_weekday (const boost::gregorian::date& aDate)
-  {
-    date_duration dur(1);
-    TimeSeriesDate temp;
-
-    temp = aDate - dur;
-    if (isWeekday (temp))
-      return temp;
-
-    while (1)
-      {
-	temp = temp - dur;
-	if (isWeekday (temp))
-	  return temp;
-      }
-  }
-  */
-
   inline TimeSeriesDate boost_next_weekday(const TimeSeriesDate& d)
   {
     int dow = d.day_of_week().as_number();
@@ -75,24 +56,6 @@ namespace mkc_timeseries
     return d + offset;
   }
 
-  /*
-  inline TimeSeriesDate boost_next_weekday (const boost::gregorian::date& aDate)
-  {
-    date_duration dur(1);
-    TimeSeriesDate temp;
-
-    temp = aDate + dur;
-    if (isWeekday (temp))
-      return temp;
-
-    while (1)
-      {
-	temp = temp + dur;
-	if (isWeekday (temp))
-	  return temp;
-      }
-  }
-  */
   
   inline TimeSeriesDate boost_next_month (const boost::gregorian::date& aDate)
   {
