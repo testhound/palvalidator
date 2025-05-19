@@ -9,6 +9,7 @@
 
 #include <type_traits>
 #include <cmath>
+
 #include "TimeSeries.h"
 #include "DecimalConstants.h"
 #include <algorithm>
@@ -43,8 +44,16 @@ namespace mkc_timeseries
   NumericTimeSeries<Decimal> DivideSeries (const NumericTimeSeries<Decimal>& series1,
 					   const NumericTimeSeries<Decimal>& series2)
   {
+    // if either input is empty, just return an empty series
+    if (series1.getNumEntries() == 0 || series2.getNumEntries() == 0)
+      return NumericTimeSeries<Decimal>(series1.getTimeFrame());
+
     if (series1.getTimeFrame() != series2.getTimeFrame())
       throw std::domain_error (std::string("DivideSeries:: time frame of two series must be the same"));
+
+    // strict: only equal-length series are allowed
+    if (series1.getNumEntries() != series2.getNumEntries())
+        throw std::domain_error("DivideSeries:: series lengths must be the same");
 
     if (series1.getLastDate() != series2.getLastDate())
       throw std::domain_error (std::string ("DivideSeries:: end date of two series must be the same"));
@@ -91,7 +100,9 @@ namespace mkc_timeseries
   template <class Decimal>
   NumericTimeSeries<Decimal> RocSeries (const NumericTimeSeries<Decimal>& series, uint32_t period)
   {
-    unsigned long initialEntries = std::max (series.getNumEntries() - 1, (unsigned long) 1);
+    size_t n = series.getNumEntries();
+    size_t cap = (n > period ? n - period : 0);
+    unsigned long initialEntries = cap;
 
     NumericTimeSeries<Decimal> resultSeries(series.getTimeFrame(), initialEntries);
     typename NumericTimeSeries<Decimal>::ConstRandomAccessIterator it = series.beginRandomAccess();
@@ -112,6 +123,8 @@ namespace mkc_timeseries
 	currentValue = p->getValue();
 
 	prevValue = series.getValue(it, period);
+	if (prevValue == DecimalConstants<Decimal>::DecimalZero)
+	  throw std::domain_error("RocSeries: division by zero in look-back value");
 
 	rocValue = ((currentValue / prevValue) - DecimalConstants<Decimal>::DecimalOne) *
 	  DecimalConstants<Decimal>::DecimalOneHundred;
@@ -495,25 +508,26 @@ namespace mkc_timeseries
      */
     static Decimal computeCorrectionFactor(size_t n)
     {
-      static constexpr double smallC[10] = {
-	0.0, 0.0,
-	0.399, 0.994, 0.512, 0.844,
-	0.611, 0.857, 0.669, 0.872
-      };
-      double dn;
-      if (n <= 9) {
-	dn = smallC[n];
-      } else if (n % 2 == 1) {
-	dn = static_cast<double>(n) / (n + 1.4);
-      } else {
-	dn = static_cast<double>(n) / (n + 3.8);
-      }
-      // asymptotic consistency factor
+      static constexpr double smallC[10] =
+	{
+	  0.0, 0.0, 0.399, 0.994, 0.512,
+	  0.844, 0.611, 0.857, 0.669, 0.872
+	};
+
+      if (n <= 9)
+	{
+	  // use the exact small-sample constant
+	  return Decimal(smallC[n]);
+	}
+
+      // otherwise use the asymptotic formula
       static constexpr double asymp = 2.2219;
-      return Decimal(dn * asymp);
+      double dn = (n % 2 == 1)
+                  ? (static_cast<double>(n) / (n + 1.4)) * asymp
+                  : (static_cast<double>(n) / (n + 3.8)) * asymp;
+      return Decimal(dn);
     }
   };
-
 }
 
 #endif
