@@ -69,9 +69,6 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
   aIntVec.push_back(5);
   aIntVec.push_back(2);
 
-  double dev (MedianAbsoluteDeviation<unsigned int> (aIntVec));
-  double dev2 (StandardDeviation<unsigned int> (aIntVec));
-
   RobustQn<DecimalType> qn(rocIndicatorSeries);
 
   REQUIRE (aVector.size() == lowSeries.getNumEntries());
