@@ -477,6 +477,9 @@ public:
   bool isShortPattern() const
   { return false; }
   unsigned long long hashCode();
+
+private:
+  unsigned long long mComputedHash;
 };
 
 class ShortMarketEntryOnOpen : public MarketEntryOnOpen
@@ -494,6 +497,9 @@ public:
   bool isShortPattern() const
   { return true; }
   unsigned long long hashCode();
+
+private:
+  unsigned long long mComputedHash;
 };
 
 typedef std::shared_ptr<MarketEntryExpression> MarketEntryPtr;
