@@ -254,33 +254,25 @@ PALPatternPtr
 SmallestVolatilityTieBreaker::getTieBreakerPattern(PALPatternPtr pattern1, 
 						   PALPatternPtr pattern2) const
 {
-  decimal7 stop1 = pattern1->getStopLossAsDecimal();
-  decimal7 stop2 = pattern2->getStopLossAsDecimal();
-  decimal7 target1 = pattern1->getProfitTargetAsDecimal();
-  decimal7 target2 = pattern2->getProfitTargetAsDecimal();
+  auto volRank = [](const PALPatternPtr &p){
+        if (p->isLowVolatilityPattern())       return 0;
+        if (p->isNormalVolatilityPattern())    return 1;
+        if (p->isHighVolatilityPattern())      return 2;
+        if (p->isVeryHighVolatilityPattern())  return 3;
+        // everything else (including VOLATILITY_NONE) → highest rank
+        return 4;
+    };
 
-  if ((stop1 == stop2) && (target1 == target2))
-    {
-      //      std::cout << "getTiebreakerPattern: stop and profit target are equal" << std::endl;
+    int r1 = volRank(pattern1);
+    int r2 = volRank(pattern2);
+
+    if (r1 < r2)
       return pattern1;
-    }
 
-  if (stop1 != stop2)
-    {
-      if (stop1 < stop2)
-	return pattern1;
-      else if (stop1 > stop2)
-	return pattern2;
-    }
-  else if (target1 != target2)
-    {
-      if (target1 < target2)
-	return pattern1;
-      else if (target1 > target2)
-	return pattern2;
-    }
+    if (r2 < r1)
+      return pattern2;
 
-  return pattern1;
+    return pattern1;  // tie → pick the first
 }
 
 
