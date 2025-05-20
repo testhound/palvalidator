@@ -78,4 +78,14 @@ target_link_libraries(${LIB_NAME}_unit_tests PRIVATE testinfra)
 enable_testing()
 add_test(NAME ${LIB_NAME}_unit_tests COMMAND ${LIB_NAME}_unit_tests)
 
+# Set the working directory for the test to the project root
+set_tests_properties(${LIB_NAME}_unit_tests
+    PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
+
+# This line for DATASET_FILES might be redundant or could be removed if
+# setting the working directory solves the issue for all dataset access needs.
+# If ${DATASET_FILES} is defined elsewhere and needed for other purposes, it can remain.
+# Ensure QQQ_IR.txt is accessible via "dataset/QQQ_IR.txt" from CMAKE_SOURCE_DIR
 file(COPY ${DATASET_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
