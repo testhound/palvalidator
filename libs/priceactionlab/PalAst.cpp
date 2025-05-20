@@ -905,10 +905,39 @@ unsigned long long GreaterThanExpr::hashCode()
 // Class AndExpr
 ////////////////////////
 
-AndExpr::AndExpr (PatternExpression *lhs, PatternExpression *rhs)
-  : mLeftHandSide (lhs),
-    mRightHandSide (rhs)
+AndExpr::AndExpr(PatternExpressionPtr lhs, PatternExpressionPtr rhs)
+  : mLeftHandSide(std::move(lhs)),
+    mRightHandSide(std::move(rhs))
 {}
+
+AndExpr::AndExpr (PatternExpression *lhs, PatternExpression *rhs)
+  : mLeftHandSide (),
+    mRightHandSide ()
+{
+  try
+    {
+      // Attempt to obtain a shared_ptr that shares ownership if one already exists
+      // for the object pointed to by lhs_raw.
+      mLeftHandSide = lhs->shared_from_this();
+    }
+  catch (const std::bad_weak_ptr&)
+    {
+      // This exception means lhs_raw points to an object that is either:
+      // 1. Not yet managed by any std::shared_ptr (e.g., from `new GreaterThanExpr(...)`).
+      // 2. Not derived from std::enable_shared_from_this (but we're ensuring it is).
+      // In case 1, AndExpr should take ownership.
+      mLeftHandSide.reset(lhs); // Creates a new shared_ptr that now owns lhs_raw.
+    }
+
+  try
+    {
+      mRightHandSide = rhs->shared_from_this();
+    }
+  catch (const std::bad_weak_ptr&)
+    {
+      mRightHandSide.reset(rhs); // AndExpr takes ownership.
+    }
+}
 
 AndExpr::AndExpr (const AndExpr& rhs)
   : PatternExpression(rhs),
@@ -1476,15 +1505,51 @@ PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
 					      StopLossInPercentExpression* stopLoss, 
 					      VolatilityAttribute volatilityAttribute,
 					      PortfolioAttribute portfolioAttribute)
-  : mPattern (pattern),
-    mEntry (entry),
+  : mEntry (entry),
     mProfitTarget (profitTarget),
     mStopLoss (stopLoss),
-    mPatternDescription (description),
     mVolatilityAttribute (volatilityAttribute),
-  mPortfolioAttribute (portfolioAttribute),
-  mMaxBarsBack(0),
-  mPayOffRatio()
+    mPortfolioAttribute (portfolioAttribute),
+    mMaxBarsBack(0),
+    mPayOffRatio()
+{
+  try
+    {
+      this->mPattern = pattern->shared_from_this();
+    }
+  catch (const std::bad_weak_ptr&) {
+        this->mPattern.reset(pattern); // Take ownership
+    }
+
+    try
+    {
+      this->mPatternDescription = description->shared_from_this();
+    }
+    catch (const std::bad_weak_ptr&) {
+        this->mPatternDescription.reset(description); // Take ownership
+    }
+
+  mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
+  mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
+}
+
+PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
+					     PatternExpressionPtr pattern,
+					     MarketEntryExpression* entry,
+					     ProfitTargetInPercentExpression* profitTarget,
+					     StopLossInPercentExpression* stopLoss,
+					     VolatilityAttribute volatilityAttribute,
+					     PortfolioAttribute portfolioAttribute)
+  : mPattern(std::move(pattern)),
+    mEntry(entry),
+    mProfitTarget(profitTarget),
+    mStopLoss(stopLoss),
+    mPatternDescription(std::move(description)),
+    mVolatilityAttribute(volatilityAttribute),
+    mPortfolioAttribute(portfolioAttribute),
+    mMaxBarsBack(0),
+    mPayOffRatio()
+
 {
   mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
   mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
@@ -1676,6 +1741,42 @@ PriceActionLabPattern::getStringHash (const std::string& key)
 unsigned long long
 PriceActionLabPattern::hashCode()
 {
+  // FNV-1a 64-bit offset and prime:
+  constexpr unsigned long long FNV_offset = 0xcbf29ce484222325ULL;
+  constexpr unsigned long long FNV_prime  = 0x100000001b3ULL;
+
+  unsigned long long h = FNV_offset;
+
+  // 1) base filename string
+  auto key = getBaseFileName();
+  for (char c : key) {
+    h ^= static_cast<unsigned long long>(c);
+    h *= FNV_prime;
+  }
+
+  // 2) fold in each sub-hash
+  auto fold = [&](unsigned long long v){
+    h ^= v;
+    h *= FNV_prime;
+  };
+
+  fold( getPatternExpression()->hashCode() );
+  fold( getPatternDescription()->hashCode() );
+  fold( getMarketEntry()->   hashCode() );
+  fold( getProfitTarget()->  hashCode() );
+  fold( getStopLoss()->      hashCode() );
+
+  // 3) and *finally* our two attributes
+  fold( static_cast<unsigned long long>(mVolatilityAttribute) );
+  fold( static_cast<unsigned long long>(mPortfolioAttribute) );
+
+  return h;
+}
+
+/*
+unsigned long long
+PriceActionLabPattern::hashCode()
+{
   unsigned long long result = 181;
   result = 31 * result + getStringHash (getBaseFileName());
   result = 31 * result + getPatternExpression()->hashCode();
@@ -1687,6 +1788,7 @@ PriceActionLabPattern::hashCode()
   return result;
 
 }
+*/
 
 /////////////////////////////////////////////////////////
 
@@ -1837,7 +1939,7 @@ void AstFactory::initializePriceBars()
 
 PriceBarReference* AstFactory::getPriceOpen (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceOpen[barOffset];
   else
     return new PriceBarOpen (barOffset);
@@ -1845,7 +1947,7 @@ PriceBarReference* AstFactory::getPriceOpen (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getPriceHigh (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceHigh[barOffset];
   else
     return new PriceBarHigh (barOffset);
@@ -1853,7 +1955,7 @@ PriceBarReference* AstFactory::getPriceHigh (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getPriceLow (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceLow[barOffset];
   else
     return new PriceBarLow (barOffset);
@@ -1861,7 +1963,7 @@ PriceBarReference* AstFactory::getPriceLow (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceClose[barOffset];
   else
     return new PriceBarClose (barOffset);
@@ -1869,7 +1971,7 @@ PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVolume[barOffset];
   else
     return new VolumeBarReference (barOffset);
@@ -1877,7 +1979,7 @@ PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedRoc1[barOffset];
   else
     return new Roc1BarReference (barOffset);
@@ -1885,7 +1987,7 @@ PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getIBS1 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS1[barOffset];
   else
     return new IBS1BarReference (barOffset);
@@ -1893,7 +1995,7 @@ PriceBarReference* AstFactory::getIBS1 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getIBS2 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS2[barOffset];
   else
     return new IBS2BarReference (barOffset);
@@ -1901,7 +2003,7 @@ PriceBarReference* AstFactory::getIBS2 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getIBS3 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS3[barOffset];
   else
     return new IBS3BarReference (barOffset);
@@ -1909,7 +2011,7 @@ PriceBarReference* AstFactory::getIBS3 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedMeander[barOffset];
   else
     return new MeanderBarReference (barOffset);
@@ -1917,7 +2019,7 @@ PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getVChartLow (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVChartLow[barOffset];
   else
     return new VChartLowBarReference (barOffset);
@@ -1925,7 +2027,7 @@ PriceBarReference* AstFactory::getVChartLow (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getVChartHigh (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVChartHigh[barOffset];
   else
     return new VChartHighBarReference (barOffset);
