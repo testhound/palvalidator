@@ -860,7 +860,6 @@ TEST_CASE("PriceActionLabSystem Class", "[PriceActionLabSystem]") {
         std::make_shared<GreaterThanExpr>(factory.getPriceOpen(0),
                                           factory.getPriceClose(1));
     MarketEntryExpression* long_entry   = factory.getLongMarketEntryOnOpen();
-    MarketEntryExpression* short_entry  = factory.getShortMarketEntryOnOpen();
     ProfitTargetInPercentExpression* pt1 = factory.getLongProfitTarget(factory.getDecimalNumber(1));
     StopLossInPercentExpression*     sl1 = factory.getLongStopLoss   (factory.getDecimalNumber(1));
 
