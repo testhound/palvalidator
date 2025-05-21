@@ -32,6 +32,24 @@ namespace mkc_timeseries
     
   };
 
+  /**
+   * @class SecurityAttributesFactory
+   * @brief A singleton factory for creating and retrieving SecurityAttributes objects.
+   * @tparam Decimal The numeric type used for calculations (e.g., double, a custom decimal class).
+   *
+   * This factory pre-initializes a collection of common security attributes for various
+   * asset classes including equities (common stocks, ETFs with different leverage) and futures.
+   * It provides a centralized point of access to these attributes.
+   *
+   * Interacts with:
+   * - `SecurityAttributes<Decimal>` and its derived classes
+   * (e.g., `ETFSecurityAttributes`, `FuturesSecurityAttributes`).
+   * - `LeverageAttributes<Decimal>`
+   * - `FundAttributes<Decimal>`
+   * - `DecimalConstants<Decimal>`
+   * - `boost::gregorian::date` for inception dates.
+   * - `num::fromString` for creating Decimal types from strings.
+   */
   template <class Decimal>
   class SecurityAttributesFactory
   {
@@ -39,34 +57,61 @@ namespace mkc_timeseries
     typedef typename std::map<std::string, std::shared_ptr<SecurityAttributes<Decimal>>>::const_iterator SecurityAttributesIterator;
 
   public:
+    /**
+     * @brief Provides access to the singleton instance of the factory.
+     * @return Reference to the singleton SecurityAttributesFactory instance.
+     * @throw SecurtyAttributesFactoryException if initialization fails.
+     */
     static SecurityAttributesFactory<Decimal>& instance()
     {
       static SecurityAttributesFactory<Decimal> theOne;
       return theOne;
     }
 
+    /**
+     * @brief Retrieves the security attributes for a given symbol.
+     * @param securitySymbol The symbol of the security to find (e.g., "SPY", "@ES").
+     * @return A constant iterator to the found security attributes.
+     * If the symbol is not found, it returns an iterator equal to `endSecurityAttributes()`.
+     */
     SecurityAttributesIterator getSecurityAttributes(const std::string securitySymbol)
     {
       return mSecurityAttributes.find(securitySymbol);
     }
 
+    /**
+     * @brief Gets an iterator to the beginning of the stored security attributes.
+     * @return A constant iterator to the beginning of the map.
+     */
     SecurityAttributesIterator beginSecurityAttributes() const
     {
       return mSecurityAttributes.begin();
     }
 
+    /**
+     * @brief Gets an iterator to the end of the stored security attributes.
+     * @return A constant iterator to the end of the map.
+     */
     SecurityAttributesIterator endSecurityAttributes() const
     {
       return mSecurityAttributes.end();
     }
  
   private:
+    /**
+     * @brief Initializes attributes for various equity securities.
+     * Calls helper methods to initialize ETF and common stock attributes.
+     */
     void initializeEquityAttributes()
     {
       initializeETFAttributes();
       initializeCommonStockAttributes();
     }
 
+    /**
+     * @brief Initializes attributes for various futures contracts.
+     * Calls helper methods for different categories of futures.
+     */
     void initializeFuturesAttributes()
     {
       initializeGrainFuturesAttributes();
@@ -83,6 +128,9 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Initializes attributes for a predefined list of common stocks.
+     */
     void initializeCommonStockAttributes()
     {
       addCommonStock (std::string("TXN"), std::string("Texas Instruments"),
@@ -242,6 +290,10 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Initializes attributes for various Exchange-Traded Funds (ETFs).
+     * Calls helper methods for different categories of ETFs.
+     */
     void initializeETFAttributes()
     {
       initialize2XLeveragedETFs();
@@ -274,6 +326,9 @@ namespace mkc_timeseries
 			 boost::gregorian::from_undelimited_string("20000522"));
     }
 
+    /**
+     * @brief Initializes attributes for currency-related ETFs.
+     */
     void initializeCurrencyETFs ()
     {
       addUnLeveragedETF (std::string("UUP"),
@@ -314,6 +369,9 @@ namespace mkc_timeseries
 		       boost::gregorian::from_undelimited_string("20081125"));
     }
 
+    /**
+     * @brief Initializes attributes for commodity-related ETFs.
+     */
     void initializeCommodityETFs ()
     {
       addUnLeveragedETF (std::string("GLD"),
@@ -382,6 +440,9 @@ namespace mkc_timeseries
 			 boost::gregorian::from_undelimited_string("20111115"));
     }
 
+    /**
+     * @brief Initializes attributes for bond-related ETFs.
+     */
     void initializeBondETFs ()
     {
       addUnLeveragedETF (std::string("AGG"),
@@ -503,6 +564,9 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Initializes attributes for international market ETFs.
+     */
     void initializeInternationalETFs ()
     {
       addUnLeveragedETF (std::string("FXI"),
@@ -562,6 +626,9 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Initializes attributes for industry group specific ETFs.
+     */
     void initializeIndustryGroupETFs ()
     {
       addUnLeveragedETF (std::string("KRE"),
@@ -631,6 +698,9 @@ namespace mkc_timeseries
 		       boost::gregorian::from_undelimited_string("20100318"));
     }
 
+    /**
+     * @brief Initializes attributes for sector-specific ETFs.
+     */
     void initializeSectorETFs ()
     {
       addUnLeveragedETF (std::string("XLE"),
@@ -689,6 +759,9 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Initializes attributes for 2x leveraged ETFs.
+     */
     void initialize2XLeveragedETFs()
     {
       addLeveragedETF (std::string("SSO"),
@@ -782,7 +855,10 @@ namespace mkc_timeseries
 		       boost::gregorian::from_undelimited_string("20081201"));
 
     }
-    
+
+    /**
+     * @brief Initializes attributes for 3x leveraged ETFs.
+     */
     void initialize3XLeveragedETFs()
     {
       addLeveragedETF (std::string("TNA"),
@@ -1141,6 +1217,11 @@ namespace mkc_timeseries
     }
 
  private:
+    /**
+     * @brief Private constructor to enforce singleton pattern.
+     * Initializes all security attributes upon first instantiation.
+     * @throw SecurtyAttributesFactoryException if any part of the initialization fails.
+     */
    SecurityAttributesFactory()
     {
       try
@@ -1171,6 +1252,14 @@ namespace mkc_timeseries
       return num::fromString<Decimal>(valueString);
     }
 
+    /**
+     * @brief Adds attributes for a futures contract to the internal map.
+     * @param symbol The trading symbol of the futures contract.
+     * @param futuresName The full name of the futures contract.
+     * @param bigPointValue The value of one full point move.
+     * @param tickValue The minimum price fluctuation.
+     * Uses a default inception date.
+     */
     void addFuturesAttributes(const std::string& symbol, 
 			      const std::string& futuresName,
 			      const Decimal& bigPointValue,
@@ -1186,6 +1275,14 @@ namespace mkc_timeseries
 						attributes));
     }
 
+    /**
+     * @brief Adds attributes for a futures contract with a specific inception date.
+     * @param symbol The trading symbol.
+     * @param futuresName The full name.
+     * @param bigPointValue The value of one full point move.
+     * @param tickValue The minimum price fluctuation.
+     * @param inceptionDate The specific inception date of the futures contract.
+     */
     void addFuturesAttributes(const std::string& symbol,
 			      const std::string& futuresName,
 			      const Decimal& bigPointValue,
@@ -1200,6 +1297,13 @@ namespace mkc_timeseries
 						attributes));
     }
 
+    /**
+     * @brief Adds attributes for an unleveraged ETF to the internal map.
+     * @param symbol The trading symbol.
+     * @param etfName The full name of the ETF.
+     * @param expenseRatio The expense ratio of the ETF (e.g., 0.09 for 0.09%).
+     * @param inceptionDate The inception date of the ETF.
+     */
     void addUnLeveragedETF (const std::string& symbol, const std::string& etfName, 
 			    const Decimal& expenseRatio, 
 			    const boost::gregorian::date& inceptionDate)
@@ -1217,6 +1321,14 @@ namespace mkc_timeseries
 						attributes));
     }
 
+    /**
+     * @brief Adds attributes for a leveraged ETF to the internal map.
+     * @param symbol The trading symbol.
+     * @param etfName The full name of the ETF.
+     * @param expenseRatio The expense ratio of the ETF (e.g., 0.95 for 0.95%).
+     * @param leverage The leverage factor (e.g., 2.0 for 2x, -2.0 for -2x).
+     * @param inceptionDate The inception date of the ETF.
+     */
     void addLeveragedETF (const std::string& symbol, const std::string& etfName, 
 			  const Decimal& expenseRatio,
 			  const Decimal& leverage,
@@ -1235,6 +1347,12 @@ namespace mkc_timeseries
 						attributes));
     }
 
+    /**
+     * @brief Adds attributes for a common stock to the internal map.
+     * @param symbol The trading symbol.
+     * @param stockName The full name of the stock.
+     * @param inceptionDate The inception date of the stock.
+     */
     void addCommonStock (const std::string& symbol, const std::string& stockName,
 			 const boost::gregorian::date& inceptionDate)
     {
@@ -1248,6 +1366,13 @@ namespace mkc_timeseries
     std::map<std::string, std::shared_ptr<SecurityAttributes<Decimal>>> mSecurityAttributes;
   };
 
+  /**
+   * @brief Global helper function to retrieve security attributes using the factory.
+   * @tparam Decimal The numeric type.
+   * @param symbol The security symbol to look up.
+   * @return A shared pointer to the SecurityAttributes for the given symbol.
+   * @throw SecurtyAttributesFactoryException if the symbol is not found in the factory.
+   */
   template <class Decimal>
   std::shared_ptr<SecurityAttributes<Decimal>> getSecurityAttributes (const std::string &symbol)
   {
