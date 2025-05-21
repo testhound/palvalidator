@@ -33,7 +33,7 @@ namespace mkc_timeseries
       
       static Decimal createDecimal (const std::string& valueString)
       {
-	return num::fromString<Decimal>(valueString);
+	return ::dec::fromString<Decimal>(valueString);
       }
     };
 
