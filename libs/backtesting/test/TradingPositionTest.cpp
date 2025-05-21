@@ -484,6 +484,63 @@ SECTION ("TradingPositionShort close position test 2 with R multiple")
     REQUIRE (it->first ==  TimeSeriesDate (1986, Jun, 11));
     REQUIRE (it->second.getTimeSeriesEntry() == *shortEntry9);
   }
-  
+
+  SECTION("Invalid entry price") {
+    REQUIRE_THROWS_AS(
+    TradingPositionLong<DecimalType>("SYM", DecimalConstants<DecimalType>::DecimalZero, *entry0, oneContract),
+    TradingPositionException);
+  }
+
+  SECTION("Negative profit target / stop loss") {
+    TradingPositionLong<DecimalType> pos(tickerSymbol,
+					 entry0->getOpenValue(),
+					 *entry0,
+					 oneContract);
+    REQUIRE_THROWS_AS(pos.setProfitTarget(createDecimal("-1.0")), TradingPositionException);
+    REQUIRE_THROWS_AS(pos.setStopLoss(createDecimal("-0.5")), TradingPositionException);
+  }
+
+  SECTION("Invalid R‐multiple stop") {
+    TradingPositionLong<DecimalType> pos(tickerSymbol,
+					 entry0->getOpenValue(),
+					 *entry0,
+					 oneContract);
+    REQUIRE_THROWS_AS(pos.setRMultipleStop(DecimalConstants<DecimalType>::DecimalZero), TradingPositionException);
+  }
+
+  SECTION("Closing a position with an exit date before its entry date throws") {
+    // Arrange: open a fresh long position
+    TradingPositionLong<DecimalType> pos(
+      tickerSymbol,
+      entry0->getOpenValue(),
+      *entry0,
+      oneContract
+    );
+
+    // Act: try to close it one day before entry
+    date beforeEntry = pos.getEntryDate() - days(1);
+
+    // Assert: should blow up with a domain_error
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(beforeEntry, entry0->getOpenValue()),
+      std::domain_error
+    );
+  }
+
+  SECTION("Adding the same bar twice to an open position throws") {
+    // Arrange: open a fresh long position (initial history contains only entry0)
+    TradingPositionLong<DecimalType> pos(
+					 tickerSymbol,
+					 entry0->getOpenValue(),
+					 *entry0,
+					 oneContract
+					 );
+
+    // First time we add entry1 (a new date), no exception:
+    REQUIRE_NOTHROW(pos.addBar(*entry1));
+
+    // Second time we add entry1 again, should hit the duplicate‐date guard:
+    REQUIRE_THROWS_AS(pos.addBar(*entry1), std::domain_error);
+  }
 }
 
