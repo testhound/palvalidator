@@ -142,5 +142,5 @@ add_library(Catch INTERFACE)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND}
-    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests priceaction2_unit_tests
+    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests priceaction2_unit_tests palvalidator_unit_tests
 )
