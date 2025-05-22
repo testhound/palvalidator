@@ -1,351 +1,146 @@
+#ifndef __SYNTHETIC_TIME_SERIES_H
+#define __SYNTHETIC_TIME_SERIES_H 1
+
 // Copyright (C) MKC Associates, LLC - All Rights Reserved
 // Unauthorized copying of this file, via any medium is strictly prohibited
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
-//
-
-#ifndef __SYNTHETIC_TIME_SERIES_H
-#define __SYNTHETIC_TIME_SERIES_H 1
 
 #include <cassert>
+#include <map>
+#include <vector>
+#include <algorithm>
+#include <numeric>
 #include <boost/thread/mutex.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TimeSeries.h"
 #include "VectorDecimal.h"
 #include "RandomMersenne.h"
-#include <iostream>
-#include <ostream>
-#include <fstream>
-#include "TimeSeriesCsvWriter.h"
 #include "DecimalConstants.h"
 
 namespace mkc_timeseries
 {
-/**
- * @class SyntheticTimeSeries
- * @brief Generates a synthetic OHLC time series by reordering the relative price changes of an input time series.
- *
- * This class takes an existing OHLCTimeSeries and computes relative price factors such as:
- * - RelativeOpen: the ratio of the current day's open to the previous day's close.
- * - RelativeClose: the ratio of the current day's close to the current day's open.
- * - RelativeHigh and RelativeLow: the ratios of the current day's high and low to the current day's open.
- *
- * The computed ratios are stored in corresponding vectors. Two separate shuffling methods are applied:
- * - @ref shuffleOverNightChanges() randomizes the order of the relative open factors.
- * - @ref shuffleTradingDayChanges() randomizes the order of the relative high, low, and close factors.
- *
- * Despite the random shuffling of these factors, the overall final closing price remains the same. This is
- * by design since the synthetic series is constructed by applying multiplicative factors iteratively; the
- * cumulative product, which determines the final closing price, is invariant under a permutation of its factors.
- *
- * @tparam Decimal The numeric type used to represent prices and relative changes.
- */
-  template <class Decimal>
-  class SyntheticTimeSeries
-  {
-  public:
-    /**
-     * @brief Constructs a SyntheticTimeSeries based on the provided OHLCTimeSeries.
-     *
-     * Computes the relative price changes from the input time series and stores them for later use.
-     * The relative factors include mRelativeOpen, mRelativeHigh, mRelativeLow, and mRelativeClose.
-     * These factors are used to recreate a synthetic price evolution that preserves the global, cumulative
-     * price movement of the original data.
-     *
-     * @param aTimeSeries The original OHLC time series.
-     * @param minimumTick The minimum tick size used for rounding prices.
-     * @param minimumTickDiv2 Half of the minimum tick size used for rounding.
-     */
+
+template <class Decimal>
+class SyntheticTimeSeries
+{
+public:
     explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal>& aTimeSeries,
-				 const Decimal& minimumTick,
-				 const Decimal& minimumTickDiv2)
-      : mTimeSeries(aTimeSeries),
-	mDateSeries (aTimeSeries.getNumEntries()),
-	mRelativeOpen(),
-	mRelativeHigh(),
-	mRelativeLow(),
-	mRelativeClose(),
-	mRelativeVolume(),
-	mFirstOpen(),
-	mFirstVolume(),
-	mRandGenerator(),
-	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>> (aTimeSeries.getTimeFrame(),
-									aTimeSeries.getVolumeUnits(),
-									aTimeSeries.getNumEntries())),
-      mMinimumTick(minimumTick),
-      mMinimumTickDiv2(minimumTickDiv2)
+                                 const Decimal& minimumTick,
+                                 const Decimal& minimumTickDiv2)
+      : mTimeSeries(aTimeSeries)
+      , mDateSeries(aTimeSeries.getNumEntries())
+      , mRelativeOpen()
+      , mRelativeHigh()
+      , mRelativeLow()
+      , mRelativeClose()
+#ifdef SYNTHETIC_VOLUME
+      , mRelativeVolume()
+#endif
+      , mFirstOpen(DecimalConstants<Decimal>::DecimalZero)
+#ifdef SYNTHETIC_VOLUME
+      , mFirstVolume(DecimalConstants<Decimal>::DecimalZero)
+#endif
+      , mRandGenerator()
+      , mIsIntraday(aTimeSeries.getTimeFrame() == TimeFrame::Duration::INTRADAY)
+      , mSyntheticTimeSeries(
+            std::make_shared<OHLCTimeSeries<Decimal>>(
+                aTimeSeries.getTimeFrame(),
+                aTimeSeries.getVolumeUnits(),
+                aTimeSeries.getNumEntries()))
+      , mMinimumTick(minimumTick)
+      , mMinimumTickDiv2(minimumTickDiv2)
     {
-      mRelativeOpen.reserve(aTimeSeries.getNumEntries());
-      mRelativeHigh.reserve(aTimeSeries.getNumEntries());
-      mRelativeLow.reserve(aTimeSeries.getNumEntries());
-      mRelativeClose.reserve(aTimeSeries.getNumEntries());
-#ifdef SYNTHETIC_VOLUME
-      mRelativeVolume.reserve(aTimeSeries.getNumEntries());
-#endif
-      Decimal valueOfOne (DecimalConstants<Decimal>::DecimalOne);
-      Decimal currentOpen (DecimalConstants<Decimal>::DecimalZero);
-
-      typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = mTimeSeries.beginRandomAccess();
-
-      mRelativeOpen.push_back(valueOfOne);
-#ifdef SYNTHETIC_VOLUME
-      mRelativeVolume.push_back(valueOfOne);
-#endif      
-      mFirstOpen = mTimeSeries.getOpenValue (it, 0);
-#ifdef SYNTHETIC_VOLUME
-      mFirstVolume = mTimeSeries.getVolumeValue (it, 0);
-#endif
-      mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) / mFirstOpen);
-      mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) / mFirstOpen);
-      mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /mFirstOpen) ;
-      mDateSeries.addElement (mTimeSeries.getDateValue(it, 0));
-
-      it++;
-
-      for (; it != mTimeSeries.endRandomAccess(); it++)
-	{
-	  currentOpen = mTimeSeries.getOpenValue (it, 0);
-
-	   mRelativeOpen.push_back(currentOpen /
-				   mTimeSeries.getCloseValue (it, 1));
-	  mRelativeHigh.push_back(mTimeSeries.getHighValue (it, 0) /
-				   currentOpen) ;
-	  mRelativeLow.push_back(mTimeSeries.getLowValue (it, 0) /
-				  currentOpen) ;
-	  mRelativeClose.push_back(mTimeSeries.getCloseValue (it, 0) /
-	  currentOpen) ;
-
-
-#ifdef SYNTHETIC_VOLUME
-	  if ((mTimeSeries.getVolumeValue (it, 0) > DecimalConstants<Decimal>::DecimalZero) &&
-	      (mTimeSeries.getVolumeValue (it, 1) > DecimalConstants<Decimal>::DecimalZero))
-	    {
-	      mRelativeVolume.push_back (mTimeSeries.getVolumeValue (it, 0) /
-					     mTimeSeries.getVolumeValue (it, 1));
-	      //std::cout << "Relative indicator1 value = " << mTimeSeries.getVolumeValue (it, 0) /
-	      //mTimeSeries.getVolumeValue (it, 1) << std::endl;
-	    }
-	  else
-	    {
-	      mRelativeVolume.push_back (valueOfOne);
-	    }
-#endif
-	  
-	  mDateSeries.addElement (mTimeSeries.getDateValue(it,0));
-	}
+        if (!mIsIntraday)
+            initEodData();
+        else
+            initIntradayData();
     }
 
+    // Copy constructor (skip mutex)
     SyntheticTimeSeries(const SyntheticTimeSeries& rhs)
-      : mTimeSeries(rhs.mTimeSeries),
-	mDateSeries(rhs.mDateSeries),
-	mRelativeOpen(rhs.mRelativeOpen),
-	mRelativeHigh(rhs.mRelativeHigh),
-	mRelativeLow(rhs.mRelativeLow),
-	mRelativeClose(rhs.mRelativeClose),
+      : mTimeSeries(rhs.mTimeSeries)
+      , mDateSeries(rhs.mDateSeries)
+      , mRelativeOpen(rhs.mRelativeOpen)
+      , mRelativeHigh(rhs.mRelativeHigh)
+      , mRelativeLow(rhs.mRelativeLow)
+      , mRelativeClose(rhs.mRelativeClose)
 #ifdef SYNTHETIC_VOLUME
-	mRelativeVolume(rhs.mRelativeVolume),
+      , mRelativeVolume(rhs.mRelativeVolume)
 #endif
-	mFirstOpen(rhs.mFirstOpen),
+      , mFirstOpen(rhs.mFirstOpen)
 #ifdef SYNTHETIC_VOLUME
-	mFirstVolume(rhs.mFirstVolume),
+      , mFirstVolume(rhs.mFirstVolume)
 #endif
-	mRandGenerator(rhs.mRandGenerator),
-	mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries)),
-	mMinimumTick(rhs.mMinimumTick),
-	mMinimumTickDiv2(rhs.mMinimumTickDiv2)
+      , mRandGenerator(rhs.mRandGenerator)
+      , mIsIntraday(rhs.mIsIntraday)
+      , mDailyNormalizedBars(rhs.mDailyNormalizedBars)
+      , mBasisDayBars(rhs.mBasisDayBars)
+      , mOvernightGaps(rhs.mOvernightGaps)
+      , mDayIndices(rhs.mDayIndices)
+      , mSyntheticTimeSeries(std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries))
+      , mMinimumTick(rhs.mMinimumTick)
+      , mMinimumTickDiv2(rhs.mMinimumTickDiv2)
     {
-      boost::mutex::scoped_lock lock(rhs.mMutex);
+        // each instance has its own mutex
     }
-        
+
+    // Copy‐assignment (skip mutex)
     SyntheticTimeSeries& operator=(const SyntheticTimeSeries& rhs)
     {
-      if (this != &rhs)
-	{
-	  boost::mutex::scoped_lock lock(mMutex);
-	  boost::mutex::scoped_lock rhsLock(rhs.mMutex);
-
-	  mTimeSeries = rhs.mTimeSeries;
-	  mDateSeries = rhs.mDateSeries;
-	  mRelativeOpen = rhs.mRelativeOpen;
-	  mRelativeHigh = rhs.mRelativeHigh;
-	  mRelativeLow = rhs.mRelativeLow;
-	  mRelativeClose = rhs.mRelativeClose;
-	  mFirstOpen = rhs.mFirstOpen;
-	  mRandGenerator = rhs.mRandGenerator;
-	  mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(*rhs.mSyntheticTimeSeries);
-	  mMinimumTick = rhs.mMinimumTick;
-	  mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
-	}
-      return *this;
+        if (this != &rhs) {
+            boost::mutex::scoped_lock lk(mMutex);
+            mTimeSeries          = rhs.mTimeSeries;
+            mDateSeries          = rhs.mDateSeries;
+            mRelativeOpen        = rhs.mRelativeOpen;
+            mRelativeHigh        = rhs.mRelativeHigh;
+            mRelativeLow         = rhs.mRelativeLow;
+            mRelativeClose       = rhs.mRelativeClose;
+#ifdef SYNTHETIC_VOLUME
+            mRelativeVolume      = rhs.mRelativeVolume;
+#endif
+            mFirstOpen           = rhs.mFirstOpen;
+#ifdef SYNTHETIC_VOLUME
+            mFirstVolume         = rhs.mFirstVolume;
+#endif
+            mRandGenerator       = rhs.mRandGenerator;
+            mIsIntraday          = rhs.mIsIntraday;
+            mDailyNormalizedBars = rhs.mDailyNormalizedBars;
+            mBasisDayBars        = rhs.mBasisDayBars;
+            mOvernightGaps       = rhs.mOvernightGaps;
+            mDayIndices          = rhs.mDayIndices;
+            mSyntheticTimeSeries = rhs.mSyntheticTimeSeries;
+            mMinimumTick         = rhs.mMinimumTick;
+            mMinimumTickDiv2     = rhs.mMinimumTickDiv2;
+        }
+        return *this;
     }
-    
-    /**
-     * @brief Creates the synthetic time series by integrating the shuffled relative factors.
-     *
-     * The synthetic series is generated by iteratively multiplying an initial price (mFirstOpen) with the
-     * corresponding relative factors:
-     * - First, the open price for the synthetic series is computed by multiplying the current price by the
-     *   relative open factor.
-     * - Then, the price is further updated by applying the relative close factor.
-     * - The high and low values are computed using the synthetic open price and the relative high and low factors,
-     *   followed by a tick-adjustment rounding.
-     *
-     * Despite the random shuffling, the final synthetic closing price matches that of the original series
-     * because the overall product of the relative open and close factors remains unchanged regardless of
-     * their order (multiplication is commutative).
-     *
-     * @exception TimeSeriesEntryException Thrown if an inconsistency is encountered when creating an OHLC entry.
-     */
+
     void createSyntheticSeries()
     {
-      boost::mutex::scoped_lock lock(mMutex);
-
-      shuffleOverNightChanges();
-      shuffleTradingDayChanges();
-
-      // Shuffle is done. Integrate to recreate the market
-
-      Decimal xPrice = mFirstOpen;
-
-#ifdef SYNTHETIC_VOLUME
-      Decimal xVolume = mFirstVolume;
-#endif
-      Decimal syntheticOpen, syntheticHigh;
-      Decimal syntheticClose, syntheticLow;
-
-      std::vector<OHLCTimeSeriesEntry<Decimal>> bars;
-      bars.reserve(mTimeSeries.getNumEntries());
-      
-      for (unsigned long i = 0; i < getNumElements(); i++)
-	{
-	  xPrice *= mRelativeOpen[i];
-	  syntheticOpen = xPrice;
-
-	  xPrice *= mRelativeClose[i];
-	  syntheticClose = xPrice;
-
-	  syntheticHigh = num::Round2Tick (syntheticOpen * mRelativeHigh[i], getTick(), getTickDiv2());
-	  syntheticLow = num::Round2Tick (syntheticOpen * mRelativeLow[i], getTick(), getTickDiv2());
-#ifdef SYNTHETIC_VOLUME
-	  xVolume *= mRelativeVolume[i];
-#endif
-	  
-	  try
-	    {
-	      OHLCTimeSeriesEntry<Decimal> entry (mDateSeries.getDate(i),
-						  num::Round2Tick (syntheticOpen, getTick(), getTickDiv2()),
-						  syntheticHigh,
-						  syntheticLow,
-						  num::Round2Tick (syntheticClose, getTick(), getTickDiv2()),
-#ifdef SYNTHETIC_VOLUME
-						  xVolume,
-#else
-						  DecimalConstants<Decimal>::DecimalZero,
-#endif
-						  mSyntheticTimeSeries->getTimeFrame());
-
-	      bars.emplace_back(entry);
-	      //mSyntheticTimeSeries->addEntry(std::move(entry));
-	    }
-	  catch (const TimeSeriesEntryException& e)
-	    {
-	      std::cout << "TimeSeriesEntryException found with relative OHLC = ";
-	      std::cout << mRelativeOpen[i] << ", " << mRelativeHigh[i] << ", ";
-	      std::cout << mRelativeLow[i] << ", " << mRelativeClose[i] << std::endl;
-	      std::cout << "synthetic OHLC = " << syntheticOpen << ", ";
-	      std::cout <<  num::Round2Tick (syntheticOpen * mRelativeHigh[i], getTick(), getTickDiv2()) << ", ";
-	      std::cout <<  num::Round2Tick (syntheticOpen * mRelativeLow[i], getTick(), getTickDiv2())  << ", ";
-	      std::cout << syntheticClose << std::endl;
-
-	      std::cout << "First open = " << mFirstOpen << std::endl;
-	      std::cout << "Index = " << i << std::endl;
-
-	      std::cout << "Exception = " << e.what() << std::endl;
-	      dumpRelative();
-	      dumpSyntheticSeries ();
-	      throw;
-	    }
-	}
-
-      mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(mTimeSeries.getTimeFrame(),
-								       mTimeSeries.getVolumeUnits(),
-								       bars.begin(),
-								       bars.end());
+        boost::mutex::scoped_lock lock(mMutex);
+        if (!mIsIntraday)
+        {
+            shuffleOverNightChanges();
+            shuffleTradingDayChanges();
+            buildEod();
+        }
+        else
+        {
+            shuffleIntraday();
+            buildIntraday();
+        }
     }
 
-    void dumpRelative()
+    std::shared_ptr<const OHLCTimeSeries<Decimal>> getSyntheticTimeSeries() const
     {
-      boost::mutex::scoped_lock lock(mMutex);
-
-      std::ofstream f;
-      f.open("relative1.csv");
-
-      for (unsigned int i = 0; i < getNumElements(); i++)
-	{
-	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
-	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
-	    mRelativeClose[i] << std::endl;
-	}
+        boost::mutex::scoped_lock lock(mMutex);
+        return mSyntheticTimeSeries;
     }
 
-    void dumpRelative2()
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-
-      std::ofstream f;
-      f.open("relative2.csv");
-
-      for (unsigned int i = 0; i < getNumElements(); i++)
-	{
-	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
-	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
-	    mRelativeClose[i] << std::endl;
-	}
-    }
-
-    void dumpRelative3()
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-
-      std::ofstream f;
-      f.open("relative3.csv");
-
-      for (unsigned int i = 0; i < getNumElements(); i++)
-	{
-	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
-	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
-	    mRelativeClose[i] << std::endl;
-	}
-    }
-
-    void dumpRelative4()
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-
-      std::ofstream f;
-      f.open("relative4.csv");
-
-      for (unsigned int i = 0; i < getNumElements(); i++)
-	{
-	  f << mDateSeries.getDate(i) << "," << mRelativeOpen[i] << "," <<
-	    mRelativeHigh[i] << "," << mRelativeLow[i] << "," <<
-	    mRelativeClose[i] << std::endl;
-	}
-    }
-
-    void dumpSyntheticSeries ()
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-
-      PalTimeSeriesCsvWriter<Decimal> dumpFile("SyntheticSeriesDump.csv", *mSyntheticTimeSeries);
-      dumpFile.writeFile();
-
-    }
-
-    Decimal getFirstOpen () const
-    {
-      return mFirstOpen;
-    }
-
+    // Getters for unit tests
+    Decimal getFirstOpen() const { return mFirstOpen; }
+    unsigned long getNumElements() const { return mTimeSeries.getNumEntries(); }
     const Decimal& getTick() const
     {
       return mMinimumTick;
@@ -356,122 +151,314 @@ namespace mkc_timeseries
       return mMinimumTickDiv2;
     }
 
-    unsigned long getNumElements() const
-    {
-      return mTimeSeries.getNumEntries(); 
-    }
-
-    std::shared_ptr<const OHLCTimeSeries<Decimal>> getSyntheticTimeSeries() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mSyntheticTimeSeries;
-    }
-
-    const std::vector<Decimal> getRelativeOpen() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mRelativeOpen;
-    }
-
-    const std::vector<Decimal> getRelativeHigh() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mRelativeHigh;
-    }
-
-    const std::vector<Decimal> getRelativeLow() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mRelativeLow;
-    }
-
-    const std::vector<Decimal> getRelativeClose() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mRelativeClose;
-    }
-
+    std::vector<Decimal> getRelativeOpen()  const { boost::mutex::scoped_lock lk(mMutex); return mRelativeOpen; }
+    std::vector<Decimal> getRelativeHigh()  const { boost::mutex::scoped_lock lk(mMutex); return mRelativeHigh; }
+    std::vector<Decimal> getRelativeLow()   const { boost::mutex::scoped_lock lk(mMutex); return mRelativeLow; }
+    std::vector<Decimal> getRelativeClose() const { boost::mutex::scoped_lock lk(mMutex); return mRelativeClose; }
 #ifdef SYNTHETIC_VOLUME
-    const std::vector<Decimal> getRelativeVolume() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      return mRelativeVolume;
-    }
+    std::vector<Decimal> getRelativeVolume()const { boost::mutex::scoped_lock lk(mMutex); return mRelativeVolume; }
 #endif
 
-  private:
-    /**
-     * @brief Randomizes the order of the relative overnight price changes.
-     *
-     * This method shuffles the mRelativeOpen vector using a Fisher–Yates-like
-     * algorithm (sampling without replacement).
-     * The overnight changes affect the synthetic open prices. Although their order is randomized,
-     * when paired with the subsequent relative close factors, the final cumulative product
-     * (and hence the final closing price) remains invariant.
-     */
+private:
+    // ---- Original EOD members ----
+    OHLCTimeSeries<Decimal>           mTimeSeries;
+    VectorDate                        mDateSeries;
+    std::vector<Decimal>              mRelativeOpen,
+                                      mRelativeHigh,
+                                      mRelativeLow,
+                                      mRelativeClose;
+#ifdef SYNTHETIC_VOLUME
+    std::vector<Decimal>              mRelativeVolume;
+#endif
+    Decimal                           mFirstOpen;
+#ifdef SYNTHETIC_VOLUME
+    Decimal                           mFirstVolume;
+#endif
+    RandomMersenne                    mRandGenerator;
+
+    // ---- Intraday extension members ----
+    bool                                           mIsIntraday;
+    std::vector<std::vector<OHLCTimeSeriesEntry<Decimal>>> mDailyNormalizedBars;
+    std::vector<OHLCTimeSeriesEntry<Decimal>>      mBasisDayBars;
+    std::vector<Decimal>                           mOvernightGaps;
+    std::vector<size_t>                            mDayIndices;
+
+    // ---- Resulting synthetic series ----
+    std::shared_ptr<OHLCTimeSeries<Decimal>>      mSyntheticTimeSeries;
+    Decimal                                        mMinimumTick, mMinimumTickDiv2;
+    mutable boost::mutex                          mMutex;
+
+    // === EOD methods ===
+
+    void initEodData()
+    {
+        using Iter = typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator;
+        Iter it = mTimeSeries.beginRandomAccess();
+
+        Decimal one = DecimalConstants<Decimal>::DecimalOne;
+        mRelativeOpen.reserve(mTimeSeries.getNumEntries());
+        mRelativeHigh.reserve(mTimeSeries.getNumEntries());
+        mRelativeLow .reserve(mTimeSeries.getNumEntries());
+        mRelativeClose.reserve(mTimeSeries.getNumEntries());
+#ifdef SYNTHETIC_VOLUME
+        mRelativeVolume.reserve(mTimeSeries.getNumEntries());
+#endif
+
+        // first bar
+        mRelativeOpen.push_back(one);
+#ifdef SYNTHETIC_VOLUME
+        mRelativeVolume.push_back(one);
+#endif
+        mFirstOpen = mTimeSeries.getOpenValue(it, 0);
+#ifdef SYNTHETIC_VOLUME
+        mFirstVolume = mTimeSeries.getVolumeValue(it, 0);
+#endif
+        mRelativeHigh.push_back(mTimeSeries.getHighValue(it,0)/mFirstOpen);
+        mRelativeLow .push_back(mTimeSeries.getLowValue (it,0)/mFirstOpen);
+        mRelativeClose.push_back(mTimeSeries.getCloseValue(it,0)/mFirstOpen);
+        mDateSeries.addElement(mTimeSeries.getDateValue(it,0));
+        ++it;
+
+        // remaining bars
+        for (; it!=mTimeSeries.endRandomAccess(); ++it)
+        {
+            Decimal currOpen  = mTimeSeries.getOpenValue(it,0);
+            Decimal prevClose = mTimeSeries.getCloseValue(it,1);
+
+            mRelativeOpen.push_back(currOpen/prevClose);
+            mRelativeHigh.push_back(mTimeSeries.getHighValue(it,0)/currOpen);
+            mRelativeLow .push_back(mTimeSeries.getLowValue (it,0)/currOpen);
+            mRelativeClose.push_back(mTimeSeries.getCloseValue(it,0)/currOpen);
+#ifdef SYNTHETIC_VOLUME
+            Decimal v0 = mTimeSeries.getVolumeValue(it,0),
+                    v1 = mTimeSeries.getVolumeValue(it,1);
+            mRelativeVolume.push_back((v0>DecimalConstants<Decimal>::DecimalZero && v1>DecimalConstants<Decimal>::DecimalZero)
+                                           ? (v0/v1)
+                                           : one);
+#endif
+            mDateSeries.addElement(mTimeSeries.getDateValue(it,0));
+        }
+    }
+
     void shuffleOverNightChanges()
     {
-      unsigned long i = getNumElements();
-      unsigned long j;
-
-      while (i > 1)
-	{
-	  // Sample without replacement
-	  
-	  j = mRandGenerator.DrawNumberExclusive (i);
-	  i = i - 1;
-
-	  std::swap(mRelativeOpen[i], mRelativeOpen[j]);
-	}
+        size_t i = mRelativeOpen.size();
+        while (i>1)
+        {
+            size_t j = mRandGenerator.DrawNumberExclusive(i--);
+            std::swap(mRelativeOpen[i], mRelativeOpen[j]);
+        }
     }
 
-     /**
-     * @brief Randomizes the order of the trading day price changes.
-     *
-     * This method shuffles the mRelativeHigh, mRelativeLow, and mRelativeClose vectors independently (and
-     * mRelativeVolume, if applicable) using a sampling without replacement algorithm.
-     * These shuffles rearrange the intra-day price behavior (highs, lows, and closes) but do not affect the
-     * overall
-     * cumulative product of relative changes. As a result, the final synthetic closing price is preserved.
-     */
     void shuffleTradingDayChanges()
     {
-      int i = getNumElements();
-      int j;
-
-      while (i > 1)
-	{
-	  // Sample without replacement
-	  
-	  j = mRandGenerator.DrawNumberExclusive (i);
-
-	  i = i - 1;
-
-        std::swap(mRelativeHigh[i], mRelativeHigh[j]);
-        std::swap(mRelativeLow[i], mRelativeLow[j]);
-        std::swap(mRelativeClose[i], mRelativeClose[j]);
-#ifdef SYNTHETIC_VOLUME       
-	std::swap(mRelativeVolume[i], mRelativeVolume[j]);
+        size_t i = mRelativeHigh.size();
+        while (i>1)
+        {
+            size_t j = mRandGenerator.DrawNumberExclusive(i--);
+            std::swap(mRelativeHigh[i],  mRelativeHigh[j]);
+            std::swap(mRelativeLow [i],  mRelativeLow [j]);
+            std::swap(mRelativeClose[i], mRelativeClose[j]);
+#ifdef SYNTHETIC_VOLUME
+            std::swap(mRelativeVolume[i], mRelativeVolume[j]);
 #endif
-	}
+        }
     }
 
-  private:
-    OHLCTimeSeries<Decimal> mTimeSeries;
-    VectorDate mDateSeries;
-    vector<Decimal> mRelativeOpen;
-    vector<Decimal> mRelativeHigh;
-    vector<Decimal> mRelativeLow;
-    vector<Decimal> mRelativeClose;
-    vector<Decimal> mRelativeVolume;
-    Decimal mFirstOpen;
-    Decimal mFirstVolume;
-    RandomMersenne mRandGenerator;
-    std::shared_ptr<OHLCTimeSeries<Decimal>> mSyntheticTimeSeries;
-    Decimal mMinimumTick;
-    Decimal mMinimumTickDiv2;
-    mutable boost::mutex mMutex;    
-  };
-
-}
+    void buildEod()
+    {
+        Decimal xPrice = mFirstOpen;
+#ifdef SYNTHETIC_VOLUME
+        Decimal xVolume = mFirstVolume;
 #endif
+        std::vector<OHLCTimeSeriesEntry<Decimal>> bars;
+        bars.reserve(mRelativeOpen.size());
+
+        for (size_t i = 0; i < mRelativeOpen.size(); ++i)
+        {
+            // apply open ratio
+            xPrice *= mRelativeOpen[i];
+            Decimal rawOpen = xPrice;
+
+            // apply close ratio
+            xPrice *= mRelativeClose[i];
+            Decimal rawClose = xPrice;
+
+            // compute high/low from rawOpen
+            Decimal high =
+              num::Round2Tick(rawOpen * mRelativeHigh[i],
+                              getTick(), getTickDiv2());
+            Decimal low  =
+              num::Round2Tick(rawOpen * mRelativeLow [i],
+                              getTick(), getTickDiv2());
+
+            // now round the open and close
+            Decimal open  = num::Round2Tick(rawOpen,  getTick(), getTickDiv2());
+            Decimal close = num::Round2Tick(rawClose, getTick(), getTickDiv2());
+
+#ifdef SYNTHETIC_VOLUME
+            xVolume *= mRelativeVolume[i];
+            bars.emplace_back(
+                mDateSeries.getDate(i),
+                open, high, low, close,
+                xVolume,
+                mTimeSeries.getTimeFrame()
+            );
+#else
+            bars.emplace_back(
+                mDateSeries.getDate(i),
+                open, high, low, close,
+                DecimalConstants<Decimal>::DecimalZero,
+                mTimeSeries.getTimeFrame()
+            );
+#endif
+        }
+
+        mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(
+            mTimeSeries.getTimeFrame(),
+            mTimeSeries.getVolumeUnits(),
+            bars.begin(), bars.end());
+    }
+
+    // === Intraday methods ===
+
+    void initIntradayData()
+    {
+        using Entry = OHLCTimeSeriesEntry<Decimal>;
+        std::map<boost::gregorian::date, std::vector<Entry>> dayMap;
+        for (auto it=mTimeSeries.beginRandomAccess(); it!=mTimeSeries.endRandomAccess(); ++it)
+            dayMap[it->getDateTime().date()].push_back(*it);
+
+        if (dayMap.empty()) return;
+
+        // basis day
+        auto bit = dayMap.begin();
+        mBasisDayBars = bit->second;
+        Decimal prevClose = mBasisDayBars.back().getCloseValue();
+        ++bit;
+
+        // subsequent days
+        for (; bit!=dayMap.end(); ++bit)
+        {
+            auto& dayBars = bit->second;
+            if (dayBars.empty()) continue;
+
+            Decimal open0 = dayBars.front().getOpenValue();
+            mOvernightGaps.push_back(open0 / prevClose);
+            prevClose = dayBars.back().getCloseValue();
+
+            std::vector<Entry> norm;
+            norm.reserve(dayBars.size());
+            for (auto& e : dayBars)
+            {
+#ifdef SYNTHETIC_VOLUME
+                Decimal v0  = dayBars.front().getVolumeValue();
+                Decimal vol = (v0>DecimalConstants<Decimal>::DecimalZero)
+                              ? (e.getVolumeValue()/v0)
+                              : DecimalConstants<Decimal>::DecimalZero;
+                norm.emplace_back(
+                    e.getDateTime(),
+                    e.getOpenValue()  / open0,
+                    e.getHighValue()  / open0,
+                    e.getLowValue()   / open0,
+                    e.getCloseValue() / open0,
+                    vol,
+                    mTimeSeries.getTimeFrame()
+                );
+#else
+                norm.emplace_back(
+                    e.getDateTime(),
+                    e.getOpenValue()  / open0,
+                    e.getHighValue()  / open0,
+                    e.getLowValue()   / open0,
+                    e.getCloseValue() / open0,
+                    DecimalConstants<Decimal>::DecimalZero,
+                    mTimeSeries.getTimeFrame()
+                );
+#endif
+            }
+            mDailyNormalizedBars.push_back(std::move(norm));
+        }
+
+        mDayIndices.resize(mDailyNormalizedBars.size());
+        std::iota(mDayIndices.begin(), mDayIndices.end(), 0u);
+    }
+
+    void shuffleIntraday()
+    {
+        // shuffle intraday bars
+        for (auto& day : mDailyNormalizedBars)
+        {
+            size_t n = day.size();
+            while (n>1)
+            {
+                size_t j = mRandGenerator.DrawNumberExclusive(n--);
+                std::swap(day[n], day[j]);
+            }
+        }
+        // shuffle overnight gaps
+        size_t g = mOvernightGaps.size();
+        while (g>1)
+        {
+            size_t j = mRandGenerator.DrawNumberExclusive(g--);
+            std::swap(mOvernightGaps[g], mOvernightGaps[j]);
+        }
+        // shuffle day order
+        size_t d = mDayIndices.size();
+        while (d>1)
+        {
+            size_t j = mRandGenerator.DrawNumberExclusive(d--);
+            std::swap(mDayIndices[d], mDayIndices[j]);
+        }
+    }
+
+    void buildIntraday()
+    {
+        using Entry = OHLCTimeSeriesEntry<Decimal>;
+        std::vector<Entry> bars;
+        size_t total = mBasisDayBars.size();
+        for (auto& v : mDailyNormalizedBars) total += v.size();
+        bars.reserve(total);
+
+        // basis day unchanged
+        for (auto& e : mBasisDayBars) bars.push_back(e);
+
+        Decimal lastClose = mBasisDayBars.back().getCloseValue();
+        for (size_t idx=0; idx<mDayIndices.size(); ++idx)
+        {
+            lastClose = lastClose * mOvernightGaps[idx];
+            auto& day = mDailyNormalizedBars[mDayIndices[idx]];
+            for (auto& ne : day)
+            {
+                auto dt = ne.getDateTime();
+                // raw open for this bar
+                Decimal rawOpen = lastClose * ne.getOpenValue();
+                // raw close
+                Decimal rawClose = rawOpen * ne.getCloseValue();
+                // high/low from rawOpen
+                Decimal high = num::Round2Tick(rawOpen * ne.getHighValue(), getTick(), getTickDiv2());
+                Decimal low  = num::Round2Tick(rawOpen * ne.getLowValue(),  getTick(), getTickDiv2());
+                // now round open/close
+                Decimal open  = num::Round2Tick(rawOpen,  getTick(), getTickDiv2());
+                Decimal close = num::Round2Tick(rawClose, getTick(), getTickDiv2());
+                lastClose = rawClose;  // ensure continuity in ratio space
+
+                bars.emplace_back(
+                    dt,
+                    open, high, low, close,
+                    DecimalConstants<Decimal>::DecimalZero,
+                    mTimeSeries.getTimeFrame()
+                );
+            }
+        }
+
+        mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal>>(
+            mTimeSeries.getTimeFrame(),
+            mTimeSeries.getVolumeUnits(),
+            bars.begin(), bars.end());
+    }
+};
+
+} // namespace mkc_timeseries
+
+#endif // __SYNTHETIC_TIME_SERIES_H
