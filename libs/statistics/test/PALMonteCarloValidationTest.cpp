@@ -1,9 +1,10 @@
 // PALMonteCarloValidationTest.cpp
 #include <catch2/catch_test_macros.hpp>
-#include "PALMonteCarloValidation.h"      // The class under test citeturn0file1
+#include "ParallelExecutors.h" 
+#include "PALMonteCarloValidation.h"
 #include "Security.h"
 #include "Portfolio.h"
-#include "TestUtils.h"                   // Helpers: createDate, createTimeSeriesEntry, getRandomPricePatterns, getPricePatterns
+#include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using D = DecimalType;
@@ -260,15 +261,25 @@ TEST_CASE("p-value == alpha is accepted (inclusive boundary)") {
   delete pats;
 }
 
-TEST_CASE("Mixed p-values: survivors are < or = alpha") {
-  PALMonteCarloValidation<D, MixedMcpt, UnadjustedPValueStrategySelection> v(1);
-  auto sec  = makeTestSecurity();
-  auto pats = getSubsetOfPatterns(3);
-  DateRange r{sec->getTimeSeries()->getFirstDate(),
-              sec->getTimeSeries()->getLastDate()};
-  v.runPermutationTests(sec, pats, r, D("0.05"));
-  // only idx0 and idx1 should survive
-  REQUIRE(v.getNumSurvivingStrategies() == 2);
-  delete pats;
+TEST_CASE("Mixed p-values: survivors are < or = alpha (sequential)") {
+    // MixedMcpt is not thread safe so use SingleThreadExecutor
+    using SeqValidator = PALMonteCarloValidation<
+        D,
+        MixedMcpt,
+        UnadjustedPValueStrategySelection,
+        concurrency::SingleThreadExecutor
+    >;
+
+    SeqValidator v(3);
+    auto sec = makeTestSecurity();
+    auto pats = getSubsetOfPatterns(3);
+    DateRange r{sec->getTimeSeries()->getFirstDate(), sec->getTimeSeries()->getLastDate()};
+
+    v.runPermutationTests(sec, pats, r);
+    // now always runs in order: call==0 → 0.01, call==1 → 0.05, call==2 → 0.10
+    REQUIRE(v.getNumSurvivingStrategies() == 2);
+
+    delete pats;
 }
+
 
