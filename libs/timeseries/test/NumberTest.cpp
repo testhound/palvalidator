@@ -44,10 +44,25 @@ TEST_CASE("fromString template parses string into decimal", "[number]") {
     REQUIRE(d == createDecimal("2.718"));
 }
 
-TEST_CASE("Round2Tick two-argument overload returns price unchanged", "[number]") {
-    DefaultNumber price = createDecimal("10.03");
-    DefaultNumber tick  = createDecimal("0.05");
-    REQUIRE(num::Round2Tick(price, tick) == price);
+TEST_CASE("Round2Tick two-argument overload rounds to nearest tick correctly", "[number]") {
+    DefaultNumber tick = createDecimal("0.05");
+
+    SECTION("rounds down when remainder < half-tick") {
+        DefaultNumber price = createDecimal("10.02");
+        // 10.02 % 0.05 = 0.02 < 0.025 => 10.00
+        REQUIRE(num::Round2Tick(price, tick) == createDecimal("10.00"));
+    }
+
+    SECTION("rounds up when remainder >= half-tick") {
+        DefaultNumber price = createDecimal("10.03");
+        // 0.03 >= 0.025 => 10.05
+        REQUIRE(num::Round2Tick(price, tick) == createDecimal("10.05"));
+    }
+
+    SECTION("exact multiples remain unchanged") {
+        DefaultNumber price = createDecimal("10.10");
+        REQUIRE(num::Round2Tick(price, tick) == createDecimal("10.10"));
+    }
 }
 
 TEST_CASE("Round2Tick three-argument overload rounds to nearest tick correctly", "[number]") {

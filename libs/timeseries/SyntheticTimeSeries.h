@@ -218,11 +218,9 @@ namespace mkc_timeseries
       for (unsigned long i = 0; i < getNumElements(); i++)
 	{
 	  xPrice *= mRelativeOpen[i];
-	  //xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
 	  syntheticOpen = xPrice;
 
 	  xPrice *= mRelativeClose[i];
-	  //xPrice = num::Round2Tick (xPrice, getTick(), getTickDiv2());
 	  syntheticClose = xPrice;
 
 	  syntheticHigh = num::Round2Tick (syntheticOpen * mRelativeHigh[i], getTick(), getTickDiv2());
