@@ -110,6 +110,7 @@ private:
 class TradingBloxRADCodeGenVisitor : public TradingBloxCodeGenVisitor
 {
 public:
+  using TradingBloxCodeGenVisitor::visit;
   TradingBloxRADCodeGenVisitor(PriceActionLabSystem *system,
 			       const std::string& bloxOutfileFileName);
   ~TradingBloxRADCodeGenVisitor();
@@ -132,6 +133,7 @@ private:
 class TradingBloxPointAdjustedCodeGenVisitor : public TradingBloxCodeGenVisitor
 {
 public:
+  using TradingBloxCodeGenVisitor::visit;
   TradingBloxPointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
 					 const std::string& bloxOutfileFileName);
   ~TradingBloxPointAdjustedCodeGenVisitor();
@@ -199,6 +201,8 @@ private:
 class WealthLabRADCodeGenVisitor : public WealthLabCodeGenVisitor
 {
 public:
+  using WealthLabCodeGenVisitor::visit;
+
   WealthLabRADCodeGenVisitor(PriceActionLabSystem *system);
   WealthLabRADCodeGenVisitor(PriceActionLabSystem *system, 
 			     const std::string& outputFileName);
@@ -219,6 +223,8 @@ private:
 class WealthLabPointAdjustedCodeGenVisitor : public WealthLabCodeGenVisitor
 {
 public:
+  using WealthLabCodeGenVisitor::visit;
+
   WealthLabPointAdjustedCodeGenVisitor(PriceActionLabSystem *system);
   ~WealthLabPointAdjustedCodeGenVisitor();
   void visit (LongSideProfitTargetInPercent *);
@@ -314,6 +320,8 @@ private:
 class EasyLanguageRADCodeGenVisitor : public EasyLanguageCodeGenVisitor
 {
 public:
+  using EasyLanguageCodeGenVisitor::visit;
+
   EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
                              const std::string& templateFileName,
                              const std::string& outputFileName,
@@ -345,6 +353,8 @@ private:
 class EasyLanguagePointAdjustedCodeGenVisitor : public EasyLanguageCodeGenVisitor
 {
 public:
+  using EasyLanguageCodeGenVisitor::visit;
+
   EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
                                           const std::string& templateFileName,
                                           const std::string& outputFileName,
@@ -478,6 +488,8 @@ private:
 class QuantConnectEquityCodeGenVisitor : public QuantConnectCodeGenVisitor
 {
 public:
+  using QuantConnectCodeGenVisitor::visit;
+
   QuantConnectEquityCodeGenVisitor(PriceActionLabSystem *system,
 				   const std::string& oututfileFileName);
   ~QuantConnectEquityCodeGenVisitor();

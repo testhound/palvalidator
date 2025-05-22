@@ -257,7 +257,7 @@ typedef std::shared_ptr<PriceBarReference> PriceBarPtr;
 
 //////////////
 
-class PatternExpression {
+class PatternExpression : public std::enable_shared_from_this<PatternExpression> {
 public:
   PatternExpression();
   PatternExpression (const PatternExpression& rhs);
@@ -290,6 +290,7 @@ private:
 class AndExpr : public PatternExpression
 {
 public:
+  AndExpr(PatternExpressionPtr lhs, PatternExpressionPtr rhs);
   AndExpr (PatternExpression *lhs, PatternExpression *rhs);
   AndExpr (const AndExpr& rhs);
   AndExpr& operator=(const AndExpr &rhs);
@@ -476,6 +477,9 @@ public:
   bool isShortPattern() const
   { return false; }
   unsigned long long hashCode();
+
+private:
+  unsigned long long mComputedHash;
 };
 
 class ShortMarketEntryOnOpen : public MarketEntryOnOpen
@@ -493,13 +497,16 @@ public:
   bool isShortPattern() const
   { return true; }
   unsigned long long hashCode();
+
+private:
+  unsigned long long mComputedHash;
 };
 
 typedef std::shared_ptr<MarketEntryExpression> MarketEntryPtr;
 
 //////////////////////////////
 
-class PatternDescription
+class PatternDescription : public std::enable_shared_from_this<PatternDescription>
 {
 public:
   PatternDescription(const char *fileName, unsigned int patternIndex,
@@ -561,7 +568,7 @@ public:
 };
 
 
-class PriceActionLabPattern
+class PriceActionLabPattern : public std::enable_shared_from_this<PriceActionLabPattern>
 {
  public:
   enum PortfolioAttribute {PORTFOLIO_FILTER_LONG, PORTFOLIO_FILTER_SHORT, PORTFOLIO_FILTER_NONE};
@@ -586,6 +593,15 @@ public:
 			 ProfitTargetInPercentExpression* profitTarget, 
 			 StopLossInPercentExpression* stopLoss);
 
+  // convenience overload to accept shared_ptr *and* attributes
+  PriceActionLabPattern(PatternDescriptionPtr description,
+                        PatternExpressionPtr pattern,
+                        MarketEntryExpression* entry,
+                        ProfitTargetInPercentExpression* profitTarget,
+                        StopLossInPercentExpression* stopLoss,
+                        VolatilityAttribute volatilityAttribute,
+                        PortfolioAttribute portfolioAttribute);
+  
   PriceActionLabPattern (const PriceActionLabPattern& rhs);
   PriceActionLabPattern& operator=(const  PriceActionLabPattern &rhs);
   ~PriceActionLabPattern();
@@ -747,6 +763,8 @@ private:
 class AstFactory
 {
 public:
+  static const int MaxNumBarOffsets = 15;
+  
   AstFactory();
   ~AstFactory();
 
@@ -775,7 +793,7 @@ private:
   void initializePriceBars();
 
 private:
-  static const int MaxNumBarOffsets = 15;
+
 
   PriceBarReference* mPredefinedPriceOpen[MaxNumBarOffsets];
   PriceBarReference* mPredefinedPriceHigh[MaxNumBarOffsets];

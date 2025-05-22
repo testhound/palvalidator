@@ -1,3 +1,4 @@
+#include <random>
 #include "PalAst.h"
 #include "PalCodeGenVisitor.h"
 #include <stdio.h>
@@ -8,12 +9,18 @@ unsigned long long hash_str(const char* s);
 
 unsigned long long hash_str(const char* s)
 {
-   unsigned long long h = 31 /* also prime */;
-   while (*s) {
-     h = (h * 54059) ^ (s[0] * 76963);
-     s++;
-   }
-   return h; // or return h % C;
+    unsigned long long h = 31ULL;
+    while (*s) {
+        h = (h * 54059ULL) ^ (static_cast<unsigned long long>(s[0]) * 76963ULL);
+        ++s;
+    }
+    return h;
+}
+
+// New hash combine utility (FNV-inspired mixing)
+static inline void hash_combine(unsigned long long &seed, unsigned long long value)
+{
+    seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
 }
 
 std::string GetBaseFilename(const char *filename)
@@ -94,16 +101,14 @@ void PriceBarOpen::accept (PalCodeGenVisitor &v)
 
 unsigned long long PriceBarOpen::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 17;
-      result = 53 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("PriceBarOpen");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
 }
 
 PriceBarReference::ReferenceType PriceBarOpen::getReferenceType()
@@ -149,16 +154,14 @@ void PriceBarHigh::accept (PalCodeGenVisitor &v)
 
 unsigned long long PriceBarHigh::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 19;
-      result = 59 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("PriceBarHigh");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
 }
 
 PriceBarReference::ReferenceType PriceBarHigh::getReferenceType()
@@ -205,16 +208,15 @@ void PriceBarLow::accept (PalCodeGenVisitor &v)
 
 unsigned long long PriceBarLow::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 23;
-      result = 61 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("PriceBarLow");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType PriceBarLow::getReferenceType()
@@ -262,16 +264,15 @@ PriceBarClose::accept (PalCodeGenVisitor &v)
 
 unsigned long long PriceBarClose::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 29;
-      result = 67 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("PriceBarClose");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType PriceBarClose::getReferenceType()
@@ -319,16 +320,15 @@ VolumeBarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long VolumeBarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 37;
-      result = 73 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("VolumeBarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType VolumeBarReference::getReferenceType()
@@ -378,16 +378,15 @@ Roc1BarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long Roc1BarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 41;
-      result = 79 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("Roc1BarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType Roc1BarReference::getReferenceType()
@@ -438,16 +437,15 @@ MeanderBarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long MeanderBarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 43;
-      result = 83 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("MeanderBarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType MeanderBarReference::getReferenceType()
@@ -496,16 +494,15 @@ VChartLowBarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long VChartLowBarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 47;
-      result = 89 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("VChartLowBarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType VChartLowBarReference::getReferenceType()
@@ -556,16 +553,15 @@ VChartHighBarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long VChartHighBarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 53;
-      result = 97 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("VChartHighBarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType VChartHighBarReference::getReferenceType()
@@ -614,16 +610,15 @@ IBS1BarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long IBS1BarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 59;
-      result = 101 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("IBS1BarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType IBS1BarReference::getReferenceType()
@@ -673,16 +668,15 @@ IBS2BarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long IBS2BarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 61;
-      result = 103 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("IBS2BarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType IBS2BarReference::getReferenceType()
@@ -735,16 +729,15 @@ IBS3BarReference::accept (PalCodeGenVisitor &v)
 
 unsigned long long IBS3BarReference::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 67;
-      result = 107 * result + getBarOffset();
-      mComputedHash = result;
+      unsigned long long seed = hash_str("IBS3BarReference");
+      hash_combine(seed, static_cast<unsigned long long>(getBarOffset()));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
+
 }
 
 PriceBarReference::ReferenceType IBS3BarReference::getReferenceType()
@@ -892,23 +885,49 @@ GreaterThanExpr::accept (PalCodeGenVisitor &v)
 
 unsigned long long GreaterThanExpr::hashCode()
 {
-  unsigned long long result;
-
-  result = 37;
-  result = 71 * result + getRHS()->hashCode();
-  result = 71 * result + getLHS()->hashCode();
-
-  return result;
+  unsigned long long seed = hash_str("GreaterThanExpr");
+  hash_combine(seed, getLHS()->hashCode());
+  hash_combine(seed, getRHS()->hashCode());
+  return seed;
 }
 
 //////////////////////
 // Class AndExpr
 ////////////////////////
 
-AndExpr::AndExpr (PatternExpression *lhs, PatternExpression *rhs)
-  : mLeftHandSide (lhs),
-    mRightHandSide (rhs)
+AndExpr::AndExpr(PatternExpressionPtr lhs, PatternExpressionPtr rhs)
+  : mLeftHandSide(std::move(lhs)),
+    mRightHandSide(std::move(rhs))
 {}
+
+AndExpr::AndExpr (PatternExpression *lhs, PatternExpression *rhs)
+  : mLeftHandSide (),
+    mRightHandSide ()
+{
+  try
+    {
+      // Attempt to obtain a shared_ptr that shares ownership if one already exists
+      // for the object pointed to by lhs_raw.
+      mLeftHandSide = lhs->shared_from_this();
+    }
+  catch (const std::bad_weak_ptr&)
+    {
+      // This exception means lhs_raw points to an object that is either:
+      // 1. Not yet managed by any std::shared_ptr (e.g., from `new GreaterThanExpr(...)`).
+      // 2. Not derived from std::enable_shared_from_this (but we're ensuring it is).
+      // In case 1, AndExpr should take ownership.
+      mLeftHandSide.reset(lhs); // Creates a new shared_ptr that now owns lhs_raw.
+    }
+
+  try
+    {
+      mRightHandSide = rhs->shared_from_this();
+    }
+  catch (const std::bad_weak_ptr&)
+    {
+      mRightHandSide.reset(rhs); // AndExpr takes ownership.
+    }
+}
 
 AndExpr::AndExpr (const AndExpr& rhs)
   : PatternExpression(rhs),
@@ -952,13 +971,10 @@ AndExpr::accept (PalCodeGenVisitor &v)
 
 unsigned long long AndExpr::hashCode()
 {
-  unsigned long long result;
-
-  result = 41;
-  result = 79 * result + getRHS()->hashCode();
-  result = 79 * result + getLHS()->hashCode();
-
-  return result;
+  unsigned long long seed = hash_str("AndExpr");
+  hash_combine(seed, getLHS()->hashCode());
+  hash_combine(seed, getRHS()->hashCode());
+  return seed;
 }
 
 ////////////////////////////////////////
@@ -998,20 +1014,15 @@ decimal7 *ProfitTargetInPercentExpression::getProfitTarget() const
 unsigned long long 
 ProfitTargetInPercentExpression::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      unsigned long long strHashVal = 
-	hash_str (num::toString (*mProfitTarget).c_str());
-
-      result = 43;
-      result = 97 * result + strHashVal;
-      mComputedHash = result;
+      unsigned long long seed = hash_str("ProfitTargetInPercentExpression");
+      auto s = num::toString(*mProfitTarget);
+      hash_combine(seed, hash_str(s.c_str()));
+      mComputedHash = seed;
     }
 
-  return result;
-
+  return mComputedHash;
 }
 
 //////////////////////////////////////////
@@ -1112,20 +1123,15 @@ decimal7 *StopLossInPercentExpression::getStopLoss() const
 unsigned long long 
 StopLossInPercentExpression::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      unsigned long long strHashVal = 
-	hash_str (num::toString (*mStopLoss).c_str());
-
-      result = 47;
-      result = 101 * result + strHashVal;
-      mComputedHash = result;
+      unsigned long long seed = hash_str("StopLossInPercentExpression");
+      auto s = num::toString(*mStopLoss);
+      hash_combine(seed, hash_str(s.c_str()));
+      mComputedHash = seed;
     }
 
-  return result;
-
+  return mComputedHash;
 }
 ////////////////////////////////////////
 /// class LongSideStopLossInPercent
@@ -1236,7 +1242,8 @@ MarketEntryOnOpen::MarketEntryOnOpen (const MarketEntryOnOpen& rhs)
 ////////////////////////////////////////////////////////
 
 LongMarketEntryOnOpen::LongMarketEntryOnOpen() 
-  : MarketEntryOnOpen()
+  : MarketEntryOnOpen(),
+    mComputedHash(0)
 {}
 
 LongMarketEntryOnOpen::~LongMarketEntryOnOpen()
@@ -1249,11 +1256,13 @@ LongMarketEntryOnOpen::operator=(const LongMarketEntryOnOpen &rhs)
     return *this;
 
   MarketEntryOnOpen::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
   return *this;
 }
 
 LongMarketEntryOnOpen::LongMarketEntryOnOpen (const LongMarketEntryOnOpen& rhs)
-  : MarketEntryOnOpen (rhs)
+  : MarketEntryOnOpen (rhs),
+    mComputedHash(rhs.mComputedHash)
 {}
 
 void 
@@ -1265,7 +1274,18 @@ LongMarketEntryOnOpen::accept (PalCodeGenVisitor &v)
 unsigned long long 
 LongMarketEntryOnOpen::hashCode()
 {
-  return 53;
+ if (mComputedHash == 0) {
+    // Base on the class name
+    unsigned long long seed = hash_str("LongMarketEntryOnOpen");
+    // Generate a one‑time random 64‑bit
+    std::random_device rd;
+    unsigned long long rand_val = (static_cast<unsigned long long>(rd()) << 32) | rd();
+
+    // Mix it in
+    hash_combine(seed, rand_val);
+    mComputedHash = seed;
+  }
+  return mComputedHash;  
 }
 
 /////////////////////////////////////////////////////////
@@ -1273,7 +1293,8 @@ LongMarketEntryOnOpen::hashCode()
 /////////////////////////////////////////////////////////
 
 ShortMarketEntryOnOpen::ShortMarketEntryOnOpen() 
-  : MarketEntryOnOpen()
+  : MarketEntryOnOpen(),
+    mComputedHash(0)
 {}
 
 ShortMarketEntryOnOpen::~ShortMarketEntryOnOpen()
@@ -1286,11 +1307,13 @@ ShortMarketEntryOnOpen::operator=(const ShortMarketEntryOnOpen &rhs)
     return *this;
 
   MarketEntryOnOpen::operator=(rhs);
+  mComputedHash = rhs.mComputedHash;
   return *this;
 }
 
 ShortMarketEntryOnOpen::ShortMarketEntryOnOpen (const ShortMarketEntryOnOpen& rhs)
-  : MarketEntryOnOpen (rhs)
+  : MarketEntryOnOpen (rhs),
+    mComputedHash(rhs.mComputedHash)
 {}
 
 void 
@@ -1302,7 +1325,16 @@ ShortMarketEntryOnOpen::accept (PalCodeGenVisitor &v)
 unsigned long long 
 ShortMarketEntryOnOpen::hashCode()
 {
-  return 59;
+  if (mComputedHash == 0)
+    {
+      unsigned long long seed = hash_str("ShortMarketEntryOnOpen");
+      std::random_device rd;
+      unsigned long long rand_val = (static_cast<unsigned long long>(rd()) << 32) | rd();
+      hash_combine(seed, rand_val);
+      mComputedHash = seed;
+    }
+
+  return mComputedHash;
 }
 
 /////////////////////////////////////////////////////////
@@ -1400,22 +1432,20 @@ PatternDescription::numConsecutiveLosses() const
 unsigned long long 
 PatternDescription::hashCode()
 {
-  unsigned long long result = mComputedHash;
-
-  if (result == 0)
+  if (mComputedHash==0)
     {
-      result = 17;
-      result = 31 * result + hash_str (mFileName.c_str());
-      result = 31 * result + mPatternIndex;
-      result = 31 * result + mIndexDate;
-      result = 31 * result + hash_str (num::toString (*mPercentLong).c_str());
-      result = 31 * result + hash_str (num::toString (*mPercentShort).c_str());
-      result = 31 * result + mNumTrades;
-      result = 31 * result + mConsecutiveLosses;
-      mComputedHash = result;
+      unsigned long long seed = hash_str("PatternDescription");
+      hash_combine(seed, hash_str(mFileName.c_str()));
+      hash_combine(seed, static_cast<unsigned long long>(mPatternIndex));
+      hash_combine(seed, static_cast<unsigned long long>(mIndexDate));
+      hash_combine(seed, hash_str(num::toString(*mPercentLong).c_str()));
+      hash_combine(seed, hash_str(num::toString(*mPercentShort).c_str()));
+      hash_combine(seed, static_cast<unsigned long long>(mNumTrades));
+      hash_combine(seed, static_cast<unsigned long long>(mConsecutiveLosses));
+      mComputedHash = seed;
     }
 
-  return result;
+  return mComputedHash;
 }
 
 void PatternDescription::accept (PalCodeGenVisitor &v)
@@ -1476,15 +1506,51 @@ PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
 					      StopLossInPercentExpression* stopLoss, 
 					      VolatilityAttribute volatilityAttribute,
 					      PortfolioAttribute portfolioAttribute)
-  : mPattern (pattern),
-    mEntry (entry),
+  : mEntry (entry),
     mProfitTarget (profitTarget),
     mStopLoss (stopLoss),
-    mPatternDescription (description),
     mVolatilityAttribute (volatilityAttribute),
-  mPortfolioAttribute (portfolioAttribute),
-  mMaxBarsBack(0),
-  mPayOffRatio()
+    mPortfolioAttribute (portfolioAttribute),
+    mMaxBarsBack(0),
+    mPayOffRatio()
+{
+  try
+    {
+      this->mPattern = pattern->shared_from_this();
+    }
+  catch (const std::bad_weak_ptr&) {
+        this->mPattern.reset(pattern); // Take ownership
+    }
+
+    try
+    {
+      this->mPatternDescription = description->shared_from_this();
+    }
+    catch (const std::bad_weak_ptr&) {
+        this->mPatternDescription.reset(description); // Take ownership
+    }
+
+  mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
+  mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
+}
+
+PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
+					     PatternExpressionPtr pattern,
+					     MarketEntryExpression* entry,
+					     ProfitTargetInPercentExpression* profitTarget,
+					     StopLossInPercentExpression* stopLoss,
+					     VolatilityAttribute volatilityAttribute,
+					     PortfolioAttribute portfolioAttribute)
+  : mPattern(std::move(pattern)),
+    mEntry(entry),
+    mProfitTarget(profitTarget),
+    mStopLoss(stopLoss),
+    mPatternDescription(std::move(description)),
+    mVolatilityAttribute(volatilityAttribute),
+    mPortfolioAttribute(portfolioAttribute),
+    mMaxBarsBack(0),
+    mPayOffRatio()
+
 {
   mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
   mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
@@ -1676,17 +1742,26 @@ PriceActionLabPattern::getStringHash (const std::string& key)
 unsigned long long
 PriceActionLabPattern::hashCode()
 {
-  unsigned long long result = 181;
-  result = 31 * result + getStringHash (getBaseFileName());
-  result = 31 * result + getPatternExpression()->hashCode();
-  result = 31 * result + getPatternDescription()->hashCode();
-  result = 31 * result + getMarketEntry()->hashCode();
-  result = 31 * result + getProfitTarget()->hashCode();
-  result = 31 * result + getStopLoss()->hashCode();
-
-  return result;
-
+  // Start FNV offset
+  constexpr unsigned long long FNV_offset = 0xcbf29ce484222325ULL;
+  unsigned long long seed = FNV_offset;
+  // Combine type identifier
+  hash_combine(seed, hash_str("PriceActionLabPattern"));
+  // Combine base filename
+  auto key = getBaseFileName();
+  hash_combine(seed, getStringHash(key));
+  // Combine sub-components
+  hash_combine(seed, getPatternExpression()->hashCode());
+  hash_combine(seed, getPatternDescription()->hashCode());
+  hash_combine(seed, getMarketEntry()->hashCode());
+  hash_combine(seed, getProfitTarget()->hashCode());
+  hash_combine(seed, getStopLoss()->hashCode());
+  // Combine attributes
+  hash_combine(seed, static_cast<unsigned long long>(mVolatilityAttribute));
+  hash_combine(seed, static_cast<unsigned long long>(mPortfolioAttribute));
+  return seed;
 }
+
 
 /////////////////////////////////////////////////////////
 
@@ -1837,7 +1912,7 @@ void AstFactory::initializePriceBars()
 
 PriceBarReference* AstFactory::getPriceOpen (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceOpen[barOffset];
   else
     return new PriceBarOpen (barOffset);
@@ -1845,7 +1920,7 @@ PriceBarReference* AstFactory::getPriceOpen (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getPriceHigh (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceHigh[barOffset];
   else
     return new PriceBarHigh (barOffset);
@@ -1853,7 +1928,7 @@ PriceBarReference* AstFactory::getPriceHigh (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getPriceLow (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceLow[barOffset];
   else
     return new PriceBarLow (barOffset);
@@ -1861,7 +1936,7 @@ PriceBarReference* AstFactory::getPriceLow (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceClose[barOffset];
   else
     return new PriceBarClose (barOffset);
@@ -1869,7 +1944,7 @@ PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVolume[barOffset];
   else
     return new VolumeBarReference (barOffset);
@@ -1877,7 +1952,7 @@ PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedRoc1[barOffset];
   else
     return new Roc1BarReference (barOffset);
@@ -1885,7 +1960,7 @@ PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getIBS1 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS1[barOffset];
   else
     return new IBS1BarReference (barOffset);
@@ -1893,7 +1968,7 @@ PriceBarReference* AstFactory::getIBS1 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getIBS2 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS2[barOffset];
   else
     return new IBS2BarReference (barOffset);
@@ -1901,7 +1976,7 @@ PriceBarReference* AstFactory::getIBS2 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getIBS3 (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS3[barOffset];
   else
     return new IBS3BarReference (barOffset);
@@ -1909,7 +1984,7 @@ PriceBarReference* AstFactory::getIBS3 (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedMeander[barOffset];
   else
     return new MeanderBarReference (barOffset);
@@ -1917,7 +1992,7 @@ PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getVChartLow (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVChartLow[barOffset];
   else
     return new VChartLowBarReference (barOffset);
@@ -1925,7 +2000,7 @@ PriceBarReference* AstFactory::getVChartLow (unsigned int barOffset)
 
 PriceBarReference* AstFactory::getVChartHigh (unsigned int barOffset)
 {
-  if (barOffset <= AstFactory::MaxNumBarOffsets)
+  if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVChartHigh[barOffset];
   else
     return new VChartHighBarReference (barOffset);
