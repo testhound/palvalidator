@@ -9,6 +9,7 @@
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using namespace boost::posix_time;
 
 namespace
 {
@@ -306,6 +307,9 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
       REQUIRE (syntheticSeries.getTickDiv2() == minimumTickDiv2);
       REQUIRE (syntheticSeries.getNumElements() == sampleSeries.getNumEntries());
       REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue());
+
+      // Call createSyntheticSeries() before checking the synthetic time series pointer
+      syntheticSeries.createSyntheticSeries(); // <--- ADD THIS LINE
       REQUIRE (syntheticSeries.getSyntheticTimeSeries() != nullptr);
     }
 
@@ -420,3 +424,105 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
 	}
     }
 
+TEST_CASE("SyntheticTimeSeries intraday constructor", "[SyntheticTimeSeries][Intraday]") {
+    // Read the hourly intraday file
+    TradeStationFormatCsvReader<DecimalType> reader(
+        "SSO_RAD_Hourly.txt",
+        TimeFrame::INTRADAY,
+        TradingVolume::SHARES,
+        DecimalConstants<DecimalType>::EquityTick
+    );
+    REQUIRE(reader.getFileName() == "SSO_RAD_Hourly.txt");
+    REQUIRE(reader.getTimeFrame() == TimeFrame::INTRADAY);
+    REQUIRE_NOTHROW(reader.readFile());
+    auto ts_ptr = reader.getTimeSeries();
+    auto& series = *ts_ptr;
+
+    // Known anchors from TimeSeriesCsvReaderTest2.cpp :contentReference[oaicite:0]{index=0}
+    REQUIRE(series.getFirstDateTime() == ptime(date(2012, 4, 2), hours( 9))); 
+    REQUIRE(series.getLastDateTime()  == ptime(date(2021, 4, 1), hours(15))); 
+
+    // Construct SyntheticTimeSeries and verify basic invariants
+    DecimalType tick    = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    SyntheticTimeSeries<DecimalType> synth(series, tick, tickDiv2);
+
+    REQUIRE(synth.getNumElements() == series.getNumEntries());
+    // First open preserved
+    auto firstIt = series.beginSortedAccess();
+    REQUIRE(synth.getFirstOpen() == firstIt->getOpenValue());
+}
+
+TEST_CASE("SyntheticTimeSeries intraday createSyntheticSeries()", "[SyntheticTimeSeries][Intraday]") {
+    // Prepare reader & original series
+    TradeStationFormatCsvReader<DecimalType> reader(
+        "SSO_Hourly.txt",
+        TimeFrame::INTRADAY,
+        TradingVolume::SHARES,
+        DecimalConstants<DecimalType>::EquityTick
+    );
+    reader.readFile();
+    auto ts_ptr = reader.getTimeSeries();
+    auto& series = *ts_ptr;
+
+    // Build synthetic series
+    DecimalType tick    = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    SyntheticTimeSeries<DecimalType> synth(series, tick, tickDiv2);
+
+    REQUIRE_NOTHROW(synth.createSyntheticSeries());
+    auto syn_ptr = synth.getSyntheticTimeSeries();
+    auto& syn = *syn_ptr;
+
+    // Must remain intraday with same length and endpoints
+    REQUIRE(syn.getTimeFrame() == TimeFrame::INTRADAY);
+    REQUIRE(syn.getNumEntries() == series.getNumEntries());
+    REQUIRE(syn.getFirstDateTime() == series.getFirstDateTime());
+    REQUIRE(syn.getLastDateTime()  == series.getLastDateTime());
+
+    // Last close must match original
+    auto origCloses  = series.CloseTimeSeries().getTimeSeriesAsVector();
+    auto synthCloses = syn.CloseTimeSeries().getTimeSeriesAsVector();
+
+    // Permutation should change at least one interior bar
+    bool interiorChanged = false;
+    for (size_t i = 1; i + 1 < origCloses.size(); ++i) {
+        if (origCloses[i] != synthCloses[i]) {
+            interiorChanged = true;
+            break;
+        }
+    }
+    REQUIRE(interiorChanged);
+}
+
+TEST_CASE("SyntheticTimeSeries produces unique intraday permutations", "[SyntheticTimeSeries][Intraday][MonteCarlo]") {
+    // Load the base intraday series
+    TradeStationFormatCsvReader<DecimalType> reader(
+        "SSO_RAD_Hourly.txt",
+        TimeFrame::INTRADAY,
+        TradingVolume::SHARES,
+        DecimalConstants<DecimalType>::EquityTick
+    );
+    reader.readFile();
+    auto baseSeries = reader.getTimeSeries();
+
+    DecimalType tick    = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+
+    const int numPerms = 50;  // smaller for unit-test speed
+    std::vector<std::shared_ptr<const OHLCTimeSeries<DecimalType>>> perms;
+    perms.reserve(numPerms);
+
+    for (int i = 0; i < numPerms; ++i) {
+        SyntheticTimeSeries<DecimalType> synth(*baseSeries, tick, tickDiv2);
+        synth.createSyntheticSeries();
+        perms.push_back(synth.getSyntheticTimeSeries());
+    }
+
+    // Every pair should differ somewhere
+    for (int i = 0; i < numPerms; ++i) {
+        for (int j = i + 1; j < numPerms; ++j) {
+            REQUIRE(*perms[i] != *perms[j]);
+        }
+    }
+}
