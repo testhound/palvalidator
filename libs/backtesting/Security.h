@@ -221,7 +221,7 @@ namespace mkc_timeseries
        * @throws std::out_of_range if the resulting position is outside the time series bounds.
        * @details Delegates to `OHLCTimeSeries::getDateValue`.
        */
-      const boost::gregorian::date&
+      boost::gregorian::date
       getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
       {
 	return mSecurityTimeSeries->getDateValue(it, offset); 
