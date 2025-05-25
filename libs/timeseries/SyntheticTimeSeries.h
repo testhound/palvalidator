@@ -17,6 +17,7 @@
 #include "TimeSeries.h"
 #include "VectorDecimal.h" 
 #include "RandomMersenne.h"
+#include "ShuffleUtils.h"
 #include "DecimalConstants.h"
 #include "number.h"
 
@@ -466,7 +467,12 @@ public:
      * @param randGenerator A reference to a random number generator.
      */
     void shuffleFactors(RandomMersenne& randGenerator) override {
-        shuffleIntradayInternal(randGenerator);
+        // Use standalone shuffle utility for better testability
+        for (auto& dayBars : mDailyNormalizedBars) {
+            inplaceShuffle(dayBars, randGenerator);
+        }
+        inplaceShuffle(mOvernightGaps, randGenerator);
+        inplaceShuffle(mDayIndices, randGenerator);
     }
 
     /**
@@ -733,13 +739,13 @@ private:
                 Decimal actualHigh  = preciseDayOpenAnchor * normalizedBar.getHighValue();
                 Decimal actualLow   = preciseDayOpenAnchor * normalizedBar.getLowValue();
                 Decimal actualClose = preciseDayOpenAnchor * normalizedBar.getCloseValue();
-                
-                lastUnroundedCloseForThisDay = actualClose; 
 
                 Decimal open  = num::Round2Tick(actualOpen,  mMinimumTick, mMinimumTickDiv2);
                 Decimal high  = num::Round2Tick(actualHigh,  mMinimumTick, mMinimumTickDiv2);
                 Decimal low   = num::Round2Tick(actualLow,   mMinimumTick, mMinimumTickDiv2);
                 Decimal close = num::Round2Tick(actualClose, mMinimumTick, mMinimumTickDiv2);
+
+                lastUnroundedCloseForThisDay = close;
                 
 #ifdef SYNTHETIC_VOLUME
                 Decimal volume = DecimalConstants<Decimal>::DecimalZero; 
@@ -880,6 +886,11 @@ public:
         mSyntheticTimeSeries = mPimpl->buildSeries();
     }
 
+    // Expose a public method to reseed the underlying RNG.
+    void reseedRNG() {
+        boost::mutex::scoped_lock lock(mMutex);
+        mRandGenerator.seed();
+    }
     /**
      * @brief Retrieves the generated synthetic time series.
      * @return A const shared_ptr to the synthetic OHLCTimeSeries. Returns nullptr if `createSyntheticSeries()` has not been called.
