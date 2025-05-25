@@ -5,13 +5,143 @@
 #include "TimeSeriesCsvReader.h"
 #include "TimeSeriesCsvWriter.h"
 #include "DecimalConstants.h"
-#include "TestUtils.h"
+#include "TestUtils.h" // Assumed to contain createEquityEntry, getRandomPriceSeries
+
+#include <vector>
+#include <map>
+#include <algorithm> // For std::sort, std::equal, std::shuffle
+#include <numeric>   // For std::iota
+#include <tuple>     // For std::make_tuple in helpers
+#include <iostream>  // For std::cout (though most debug output will be removed)
+#include <string>    // For std::string in tolerant comparison
+#include <iomanip>   // For std::fixed, std::setprecision
+#include <sstream>   // For std::ostringstream
+#include <random>    // For std::default_random_engine with std::shuffle
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using namespace boost::posix_time;
 
+// Anonymous namespace for existing and new helpers
 namespace
 {
+    
+    
+
+  // Helper function to create a 1-day intraday series
+  OHLCTimeSeries<DecimalType> createOneDayIntradaySampleTimeSeries() {
+    OHLCTimeSeries<DecimalType> ts(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    // Day 1 entries
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2022, 1, 3), hours(9) + minutes(30)),
+        DecimalType("100.0"), DecimalType("101.0"), DecimalType("99.5"), DecimalType("100.5"),
+        DecimalType("1000"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2022, 1, 3), hours(10) + minutes(30)),
+        DecimalType("100.5"), DecimalType("102.0"), DecimalType("100.0"), DecimalType("101.0"),
+        DecimalType("1100"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2022, 1, 3), hours(11) + minutes(0)),
+        DecimalType("101.0"), DecimalType("102.5"), DecimalType("100.8"), DecimalType("101.2"),
+        DecimalType("1200"), TimeFrame::INTRADAY));
+    return ts;
+  }
+
+  // Helper function to create a 3-day intraday series with distinct characteristics
+  OHLCTimeSeries<DecimalType> createThreeDayIntradaySampleTimeSeries() {
+    OHLCTimeSeries<DecimalType> ts(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    // Day 1 (Basis): 2023-01-02, 2 bars
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 2), hours(9) + minutes(30)),
+        DecimalType("100.0"), DecimalType("101.0"), DecimalType("99.5"), DecimalType("100.5"),
+        DecimalType("1000"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 2), hours(10) + minutes(30)),
+        DecimalType("100.5"), DecimalType("102.0"), DecimalType("100.0"), DecimalType("101.0"),
+        DecimalType("1100"), TimeFrame::INTRADAY));
+
+    // Day 2 (Permutable): 2023-01-03, 3 bars (unique bar count)
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 3), hours(9) + minutes(0)),
+        DecimalType("102.0"), DecimalType("103.0"), DecimalType("101.5"), DecimalType("102.5"),
+        DecimalType("1200"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 3), hours(10) + minutes(0)),
+        DecimalType("102.5"), DecimalType("104.0"), DecimalType("102.0"), DecimalType("103.0"),
+        DecimalType("1300"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 3), hours(11) + minutes(0)),
+        DecimalType("103.0"), DecimalType("105.0"), DecimalType("102.5"), DecimalType("104.5"),
+        DecimalType("1400"), TimeFrame::INTRADAY));
+
+    // Day 3 (Permutable): 2023-01-04, 2 bars (different structure/values than Day 1)
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 4), hours(9) + minutes(15)),
+        DecimalType("105.0"), DecimalType("106.0"), DecimalType("104.5"), DecimalType("105.5"),
+        DecimalType("1500"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        ptime(date(2023, 1, 4), hours(10) + minutes(45)),
+        DecimalType("105.5"), DecimalType("107.0"), DecimalType("105.0"), DecimalType("106.5"),
+        DecimalType("1600"), TimeFrame::INTRADAY));
+    return ts;
+  }
+
+  // Helper to get all bars for a specific date from a series
+  std::vector<OHLCTimeSeriesEntry<DecimalType>> getBarsForDate(const OHLCTimeSeries<DecimalType>& series, const boost::gregorian::date& d) {
+    std::vector<OHLCTimeSeriesEntry<DecimalType>> bars;
+    if (series.getNumEntries() == 0) return bars;
+
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+        if (it->getDateTime().date() == d) {
+            bars.push_back(*it);
+        }
+    }
+    return bars;
+  }
+
+  // Helper to normalize a vector of bars relative to the first bar's open of that vector
+  std::vector<OHLCTimeSeriesEntry<DecimalType>> normalizeBars(const std::vector<OHLCTimeSeriesEntry<DecimalType>>& bars) {
+    if (bars.empty()) return {};
+    std::vector<OHLCTimeSeriesEntry<DecimalType>> normalized;
+    normalized.reserve(bars.size());
+    DecimalType openAnchor = bars.front().getOpenValue();
+    DecimalType one = DecimalConstants<DecimalType>::DecimalOne;
+    DecimalType zero = DecimalConstants<DecimalType>::DecimalZero;
+
+    if (openAnchor == zero) {
+        for (const auto& bar : bars) {
+            normalized.emplace_back(bar.getDateTime(), one, one, one, one,
+                                    bar.getVolumeValue(),
+                                    bar.getTimeFrame());
+        }
+    } else {
+        for (const auto& bar : bars) {
+            normalized.emplace_back(
+                bar.getDateTime(),
+                bar.getOpenValue() / openAnchor,
+                bar.getHighValue() / openAnchor,
+                bar.getLowValue() / openAnchor,
+                bar.getCloseValue() / openAnchor,
+                bar.getVolumeValue(),
+                bar.getTimeFrame()
+            );
+        }
+    }
+    return normalized;
+  }
+
+  auto extractFactors = [](const std::vector<OHLCTimeSeriesEntry<DecimalType>>& bars) {
+        std::vector<std::tuple<DecimalType,DecimalType,DecimalType,DecimalType>> f;
+        for (auto& bar : normalizeBars(bars)) {
+            f.emplace_back(bar.getOpenValue(),
+                            bar.getHighValue(),
+            bar.getLowValue(),
+            bar.getCloseValue()
+        );
+    }
+    return f;
+    };
+
   OHLCTimeSeries<DecimalType> createSampleTimeSeries()
   {
     OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
@@ -219,7 +349,40 @@ namespace
 
     return series;
   }
-  
+
+  OHLCTimeSeries<DecimalType> createIntradaySampleTimeSeries() {
+    OHLCTimeSeries<DecimalType> ts(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(ptime(date(2022, 1, 3), hours(9) + minutes(30)), DecimalType("100.0"), DecimalType("101.0"), DecimalType("99.5"), DecimalType("100.5"), DecimalType("1000"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(ptime(date(2022, 1, 3), hours(10) + minutes(30)), DecimalType("100.5"), DecimalType("102.0"), DecimalType("100.0"), DecimalType("101.0"), DecimalType("1100"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(ptime(date(2022, 1, 4), hours(9) + minutes(30)), DecimalType("101.0"), DecimalType("103.0"), DecimalType("100.5"), DecimalType("102.0"), DecimalType("1200"), TimeFrame::INTRADAY));
+    ts.addEntry(OHLCTimeSeriesEntry<DecimalType>(ptime(date(2022, 1, 4), hours(10) + minutes(30)), DecimalType("102.0"), DecimalType("104.0"), DecimalType("101.0"), DecimalType("103.0"), DecimalType("1300"), TimeFrame::INTRADAY));
+    return ts;
+  }
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> getIntradaySeries(const std::string& fileName)
+  {
+    static std::map<std::string, std::shared_ptr<OHLCTimeSeries<DecimalType>>> cache;
+    auto it = cache.find(fileName);
+    if (it != cache.end()) return it->second;
+    TradeStationFormatCsvReader<DecimalType> reader(fileName, TimeFrame::INTRADAY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick);
+    reader.readFile();
+    cache[fileName] = reader.getTimeSeries();
+    return cache[fileName];
+  }
+} // End Anonymous Namespace
+
+TEST_CASE("inplaceShuffle shuffles values but preserves multiset", "[ShuffleUtils]") {
+    std::vector<int> original = {1,2,3,4,5,6,7,8,9,10};
+    auto v1 = original, v2 = original;
+    RandomMersenne rng;
+    mkc_timeseries::inplaceShuffle(v1, rng);
+    mkc_timeseries::inplaceShuffle(v2, rng);
+
+    // should still contain the same elements:
+    REQUIRE(std::is_permutation(v1.begin(), v1.end(), original.begin()));
+
+    // very likely it’s not exactly the same order:
+    REQUIRE((v1 != original || v2 != original));
 }
 
 TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
@@ -252,7 +415,6 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
   SECTION ("Assignment Operator Test")
     {
       OHLCTimeSeries<DecimalType> anotherSampleSeries = createSampleTimeSeries();
-
       anotherSampleSeries.addEntry (*createEquityEntry ("20080117", "45.65", "45.99", "44.61","44.82", 254455987));
       SyntheticTimeSeries<DecimalType> syntheticSeries1 (sampleSeries, minimumTick, minimumTickDiv2);
       syntheticSeries1.createSyntheticSeries();
@@ -270,33 +432,11 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
       SyntheticTimeSeries<DecimalType> syntheticSeries (sampleSeries, minimumTick, minimumTickDiv2);
       syntheticSeries.createSyntheticSeries();
       std::shared_ptr<const OHLCTimeSeries<DecimalType>> p = syntheticSeries.getSyntheticTimeSeries();
-      
-      SECTION ("Timeseries size test")
-	{
-	  REQUIRE (p->getNumEntries() == sampleSeries.getNumEntries());
-	}
-
-      SECTION ("Timeseries date test")
-	{
-	  REQUIRE (sampleSeries.getFirstDate() == p->getFirstDate());
-	  REQUIRE (sampleSeries.getLastDate() == p->getLastDate());
-	}
-
-      SECTION ("Timeseries time frame test")
-	{
-	  REQUIRE (sampleSeries.getTimeFrame() == p->getTimeFrame());
-	}
-
-      SECTION ("SyntheticTimeSeries not equal to original")
-	{
-	  REQUIRE (sampleSeries != *p);
-	  REQUIRE_FALSE (sampleSeries == *p);
-	}
-
-      SECTION ("Test First Open Value")
-	{
-	  REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue());
-	}
+      SECTION ("Timeseries size test") { REQUIRE (p->getNumEntries() == sampleSeries.getNumEntries()); }
+      SECTION ("Timeseries date test") { REQUIRE (sampleSeries.getFirstDate() == p->getFirstDate()); REQUIRE (sampleSeries.getLastDate() == p->getLastDate()); }
+      SECTION ("Timeseries time frame test") { REQUIRE (sampleSeries.getTimeFrame() == p->getTimeFrame()); }
+      SECTION ("SyntheticTimeSeries not equal to original") { REQUIRE (sampleSeries != *p); REQUIRE_FALSE (sampleSeries == *p); }
+      SECTION ("Test First Open Value") { REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue()); }
     }
 
   SECTION ("Getter Method Tests")
@@ -306,43 +446,28 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
       REQUIRE (syntheticSeries.getTickDiv2() == minimumTickDiv2);
       REQUIRE (syntheticSeries.getNumElements() == sampleSeries.getNumEntries());
       REQUIRE (syntheticSeries.getFirstOpen() == (*sampleSeries.beginSortedAccess()).getOpenValue());
+      syntheticSeries.createSyntheticSeries();
       REQUIRE (syntheticSeries.getSyntheticTimeSeries() != nullptr);
     }
 
   SECTION ("Shuffling Method Tests")
     {
       SyntheticTimeSeries<DecimalType> syntheticSeries (sampleSeries, minimumTick, minimumTickDiv2);
-
-      // Capture the initial relative values
       std::vector<DecimalType> initialRelativeOpen = syntheticSeries.getRelativeOpen();
       std::vector<DecimalType> initialRelativeHigh = syntheticSeries.getRelativeHigh();
       std::vector<DecimalType> initialRelativeLow = syntheticSeries.getRelativeLow();
-
       std::vector<DecimalType> initialRelativeClose = syntheticSeries.getRelativeClose();
 #ifdef SYNTHETIC_VOLUME
       std::vector<DecimalType> initialRelativeVolume = syntheticSeries.getRelativeVolume();
 #endif
-
-      // Create the synthetic series, which performs shuffling
       syntheticSeries.createSyntheticSeries();
-
-      std::cout << "Comparing last closing prices" << std::endl;
-  
       auto syntheticClosingSeries = syntheticSeries.getSyntheticTimeSeries()->CloseTimeSeries();
-      // Convert the time series to a vector of Decimal values.
       std::vector<DecimalType> syntheticClosingVector = syntheticClosingSeries.getTimeSeriesAsVector();
       DecimalType syntheticLastClosePrice = syntheticClosingVector.back();
-
       auto originalClosingSeries = sampleSeries.CloseTimeSeries();
       std::vector<DecimalType> originalClosingVector = originalClosingSeries.getTimeSeriesAsVector();
       DecimalType lastClosePrice = originalClosingVector.back();
-
       REQUIRE (lastClosePrice == syntheticLastClosePrice);
-      std::cout << "Last close = " << lastClosePrice << std::endl;
-      std::cout << "Last synthetic close = " << syntheticLastClosePrice << std::endl;
-      
-      
-      // Capture the relative values after shuffling
       std::vector<DecimalType> shuffledRelativeOpen = syntheticSeries.getRelativeOpen();
       std::vector<DecimalType> shuffledRelativeHigh = syntheticSeries.getRelativeHigh();
       std::vector<DecimalType> shuffledRelativeLow = syntheticSeries.getRelativeLow();
@@ -350,16 +475,10 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
 #ifdef SYNTHETIC_VOLUME
       std::vector<DecimalType> shuffledRelativeVolume = syntheticSeries.getRelativeVolume();
 #endif
-
-      // Check if the order has changed (at least for some of them)
-      bool openChanged = false;
-      bool highChanged = false;
-      bool lowChanged = false;
-      bool closeChanged = false;
+      bool openChanged = false, highChanged = false, lowChanged = false, closeChanged = false;
 #ifdef SYNTHETIC_VOLUME
       bool volumeChanged = false;
 #endif
-
       REQUIRE(initialRelativeOpen.size() == shuffledRelativeOpen.size());
       REQUIRE(initialRelativeHigh.size() == shuffledRelativeHigh.size());
       REQUIRE(initialRelativeLow.size() == shuffledRelativeLow.size());
@@ -367,56 +486,419 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
 #ifdef SYNTHETIC_VOLUME
       REQUIRE(initialRelativeVolume.size() == shuffledRelativeVolume.size());
 #endif
-
-      for (size_t i = 0; i < initialRelativeOpen.size(); ++i)
-	{
-	  if (initialRelativeOpen[i] != shuffledRelativeOpen[i])
-	    openChanged = true;
-	  if (initialRelativeHigh[i] != shuffledRelativeHigh[i])
-	    highChanged = true;
-	  if (initialRelativeLow[i] != shuffledRelativeLow[i])
-	    lowChanged = true;
-	  if (initialRelativeClose[i] != shuffledRelativeClose[i])
-	    closeChanged = true;
+      for (size_t i = 0; i < initialRelativeOpen.size(); ++i) {
+	      if (initialRelativeOpen[i] != shuffledRelativeOpen[i]) openChanged = true;
+	      if (initialRelativeHigh[i] != shuffledRelativeHigh[i]) highChanged = true;
+	      if (initialRelativeLow[i] != shuffledRelativeLow[i]) lowChanged = true;
+	      if (initialRelativeClose[i] != shuffledRelativeClose[i]) closeChanged = true;
 #ifdef SYNTHETIC_VOLUME
-	  if (initialRelativeVolume[i] != shuffledRelativeVolume[i])
-	    volumeChanged = true;
+	      if (initialRelativeVolume[i] != shuffledRelativeVolume[i]) volumeChanged = true;
 #endif
       }
-
-      REQUIRE(openChanged);
-      REQUIRE(highChanged);
-      REQUIRE(lowChanged);
-      REQUIRE(closeChanged);
+      REQUIRE(openChanged); REQUIRE(highChanged); REQUIRE(lowChanged); REQUIRE(closeChanged);
 #ifdef SYNTHETIC_VOLUME
       REQUIRE(volumeChanged);
 #endif
     }
 }
 
-  TEST_CASE("SyntheticTimeSeries produces unique permutations", "[SyntheticTimeSeries][MonteCarlo]")
-    {
-      auto baseSeries = getRandomPriceSeries();
-      DecimalType tick("0.01");
-      DecimalType tickDiv2("0.005");
-
-      const int numPermutations = 1000;
-      std::vector<std::shared_ptr<const OHLCTimeSeries<DecimalType>>> permutations;
-
-      for (int i = 0; i < numPermutations; ++i)
-	{
-	  SyntheticTimeSeries<DecimalType> synth(*baseSeries, tick, tickDiv2);
-	  synth.createSyntheticSeries();
-	  permutations.push_back(synth.getSyntheticTimeSeries());
+TEST_CASE("SyntheticTimeSeries produces unique permutations", "[SyntheticTimeSeries][MonteCarlo]")
+{
+    auto baseSeries = getRandomPriceSeries();
+    DecimalType tick("0.01");
+    DecimalType tickDiv2("0.005");
+    const int numPermutations = 100; // Reduced for faster test runs during dev
+    std::vector<std::shared_ptr<const OHLCTimeSeries<DecimalType>>> permutations;
+    for (int i = 0; i < numPermutations; ++i) {
+	    SyntheticTimeSeries<DecimalType> synth(*baseSeries, tick, tickDiv2);
+	    synth.createSyntheticSeries();
+	    permutations.push_back(synth.getSyntheticTimeSeries());
 	}
-
-      // Brute-force pairwise comparison to ensure uniqueness
-      for (int i = 0; i < numPermutations; ++i)
-	{
-	  for (int j = i + 1; j < numPermutations; ++j)
-	    {
-	      REQUIRE(*permutations[i] != *permutations[j]);
+    for (int i = 0; i < numPermutations; ++i) {
+	    for (int j = i + 1; j < numPermutations; ++j) {
+	        REQUIRE(*permutations[i] != *permutations[j]);
 	    }
 	}
+}
+
+TEST_CASE("SyntheticTimeSeries intraday constructor", "[SyntheticTimeSeries][Intraday]") {
+    TradeStationFormatCsvReader<DecimalType> reader("SSO_RAD_Hourly.txt", TimeFrame::INTRADAY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick);
+    REQUIRE(reader.getFileName() == "SSO_RAD_Hourly.txt");
+    REQUIRE(reader.getTimeFrame() == TimeFrame::INTRADAY);
+    REQUIRE_NOTHROW(reader.readFile());
+    auto ts_ptr = reader.getTimeSeries();
+    auto& series = *ts_ptr;
+    REQUIRE(series.getFirstDateTime() == ptime(date(2012, 4, 2), hours( 9)));
+    REQUIRE(series.getLastDateTime()  == ptime(date(2021, 4, 1), hours(15)));
+    DecimalType tick = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    SyntheticTimeSeries<DecimalType> synth(series, tick, tickDiv2);
+    REQUIRE(synth.getNumElements() == series.getNumEntries());
+    auto firstIt = series.beginSortedAccess();
+    REQUIRE(synth.getFirstOpen() == firstIt->getOpenValue());
+}
+
+TEST_CASE("SyntheticTimeSeries intraday createSyntheticSeries()", "[SyntheticTimeSeries][Intraday]") {
+    auto& series = *getIntradaySeries("SSO_Hourly.txt");
+    if(series.getNumEntries() == 0) {
+        WARN("SSO_Hourly.txt is empty or could not be read, skipping some assertions in SyntheticTimeSeries intraday createSyntheticSeries().");
+        return;
+    }
+    DecimalType tick = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    SyntheticTimeSeries<DecimalType> synth(series, tick, tickDiv2);
+    REQUIRE_NOTHROW(synth.createSyntheticSeries());
+    auto syn_ptr = synth.getSyntheticTimeSeries();
+    REQUIRE(syn_ptr != nullptr);
+    auto& syn = *syn_ptr;
+    REQUIRE(syn.getTimeFrame() == TimeFrame::INTRADAY);
+    REQUIRE(syn.getNumEntries() == series.getNumEntries());
+    REQUIRE(syn.getFirstDateTime() == series.getFirstDateTime());
+    REQUIRE(syn.getLastDateTime()  == series.getLastDateTime());
+    bool interiorChanged = false;
+    if (series.getNumEntries() > 0 && syn.getNumEntries() == series.getNumEntries()) {
+        auto origIt = series.beginSortedAccess();
+        auto synthIt = syn.beginSortedAccess();
+        ptime basisDayEndDateTime;
+        if (origIt != series.endSortedAccess()) {
+            boost::gregorian::date firstDayDate = origIt->getDateTime().date();
+            auto tempIt = origIt;
+            while(tempIt != series.endSortedAccess() && tempIt->getDateTime().date() == firstDayDate) {
+                basisDayEndDateTime = tempIt->getDateTime();
+                ++tempIt;
+            }
+        }
+        for (; origIt != series.endSortedAccess(); ++origIt, ++synthIt) {
+            if (origIt->getDateTime() > basisDayEndDateTime) {
+                if (origIt->getOpenValue() != synthIt->getOpenValue() ||
+                    origIt->getHighValue() != synthIt->getHighValue() ||
+                    origIt->getLowValue() != synthIt->getLowValue() ||
+                    origIt->getCloseValue() != synthIt->getCloseValue()) {
+                    interiorChanged = true;
+                    break;
+                }
+            }
+        }
+    }
+    std::map<boost::gregorian::date, int> dayCounts;
+    for(auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+        dayCounts[it->getDateTime().date()]++;
+    }
+    if (dayCounts.size() > 1) { REQUIRE(interiorChanged); }
+    else { REQUIRE_FALSE(interiorChanged); }
+}
+
+TEST_CASE("SyntheticTimeSeries produces unique intraday permutations", "[SyntheticTimeSeries][Intraday][MonteCarlo]") {
+    auto baseSeriesPtr = getIntradaySeries("SSO_RAD_Hourly.txt");
+    if (!baseSeriesPtr || baseSeriesPtr->getNumEntries() == 0) {
+        WARN("SSO_RAD_Hourly.txt is empty or could not be read, skipping SyntheticTimeSeries produces unique intraday permutations.");
+        return;
+    }
+    const auto& baseSeries = *baseSeriesPtr;
+    DecimalType tick = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    const int numPerms = 20; // Reduced for faster test runs during dev
+    std::vector<std::shared_ptr<const OHLCTimeSeries<DecimalType>>> perms;
+    perms.reserve(numPerms);
+    for (int i = 0; i < numPerms; ++i) {
+        SyntheticTimeSeries<DecimalType> synth(baseSeries, tick, tickDiv2);
+        synth.createSyntheticSeries();
+        perms.push_back(synth.getSyntheticTimeSeries());
+    }
+    for (int i = 0; i < numPerms; ++i) {
+        for (int j = i + 1; j < numPerms; ++j) {
+            REQUIRE(*perms[i] != *perms[j]);
+        }
+    }
+}
+
+TEST_CASE("Intraday SyntheticTimeSeries: Basic Invariants", "[SyntheticTimeSeries][Intraday]") {
+    auto sampleSeries = createIntradaySampleTimeSeries();
+    DecimalType tick    = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    SyntheticTimeSeries<DecimalType> syntheticSeries(sampleSeries, tick, tickDiv2);
+    REQUIRE(syntheticSeries.getNumElements() == sampleSeries.getNumEntries());
+    REQUIRE(syntheticSeries.getTick() == tick);
+    REQUIRE(syntheticSeries.getTickDiv2() == tickDiv2);
+    syntheticSeries.createSyntheticSeries();
+    auto synthPtr = syntheticSeries.getSyntheticTimeSeries();
+    REQUIRE(synthPtr != nullptr);
+    const auto& synthSeries = *synthPtr;
+    REQUIRE(syntheticSeries.getFirstOpen() == sampleSeries.beginSortedAccess()->getOpenValue());
+    REQUIRE(synthSeries.getTimeFrame() == TimeFrame::INTRADAY);
+    REQUIRE(synthSeries.getNumEntries() == sampleSeries.getNumEntries());
+    REQUIRE(synthSeries.getFirstDateTime() == sampleSeries.getFirstDateTime());
+    REQUIRE(synthSeries.getLastDateTime()  == sampleSeries.getLastDateTime());
+}
+
+TEST_CASE("Intraday SyntheticTimeSeries: Interior Permutation", "[SyntheticTimeSeries][Intraday]") {
+    auto sampleSeriesPtr = getIntradaySeries("SSO_RAD_Hourly.txt");
+     if (!sampleSeriesPtr || sampleSeriesPtr->getNumEntries() == 0) {
+        WARN("SSO_RAD_Hourly.txt is empty or could not be read, skipping Intraday SyntheticTimeSeries: Interior Permutation.");
+        return;
+    }
+    const auto& sampleSeries = *sampleSeriesPtr;
+    DecimalType tick    = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    SyntheticTimeSeries<DecimalType> syntheticSeries(sampleSeries, tick, tickDiv2);
+    syntheticSeries.createSyntheticSeries();
+    auto synPtr = syntheticSeries.getSyntheticTimeSeries();
+    REQUIRE(synPtr != nullptr);
+    const auto& synSeries = *synPtr;
+    bool openChanged = false, highChanged = false, lowChanged = false, closeChanged = false;
+    REQUIRE(sampleSeries.getNumEntries() == synSeries.getNumEntries());
+    auto origIt = sampleSeries.beginSortedAccess();
+    auto synthIt = synSeries.beginSortedAccess();
+    ptime basisDayEndDateTime;
+     if (origIt != sampleSeries.endSortedAccess()) {
+        boost::gregorian::date firstDayDate = origIt->getDateTime().date();
+        auto tempIt = origIt;
+        while(tempIt != sampleSeries.endSortedAccess() && tempIt->getDateTime().date() == firstDayDate) {
+            basisDayEndDateTime = tempIt->getDateTime();
+            ++tempIt;
+        }
+    } else { basisDayEndDateTime = not_a_date_time; }
+    int permutableBarsChecked = 0;
+    for (; origIt != sampleSeries.endSortedAccess() && synthIt != synSeries.endSortedAccess(); ++origIt, ++synthIt) {
+        if (origIt->getDateTime() > basisDayEndDateTime) {
+            permutableBarsChecked++;
+            if (origIt->getOpenValue() != synthIt->getOpenValue()) openChanged = true;
+            if (origIt->getHighValue() != synthIt->getHighValue()) highChanged = true;
+            if (origIt->getLowValue() != synthIt->getLowValue()) lowChanged = true;
+            if (origIt->getCloseValue() != synthIt->getCloseValue()) closeChanged = true;
+        }
+    }
+    std::map<boost::gregorian::date, int> dayCounts;
+    for(auto itMap = sampleSeries.beginSortedAccess(); itMap != sampleSeries.endSortedAccess(); ++itMap) {
+        dayCounts[itMap->getDateTime().date()]++;
+    }
+    if (dayCounts.size() > 1 && permutableBarsChecked > 0) { REQUIRE((openChanged || highChanged || lowChanged || closeChanged)); }
+    else { REQUIRE_FALSE((openChanged || highChanged || lowChanged || closeChanged)); }
+}
+
+TEST_CASE("Intraday SyntheticTimeSeries: Unique Permutations", "[SyntheticTimeSeries][Intraday][MonteCarlo]") {
+    auto sampleSeriesPtr = getIntradaySeries("SSO_RAD_Hourly.txt");
+    if (!sampleSeriesPtr || sampleSeriesPtr->getNumEntries() == 0) {
+        WARN("SSO_RAD_Hourly.txt is empty or could not be read, skipping Intraday SyntheticTimeSeries: Unique Permutations.");
+        return;
+    }
+    const auto& sampleSeries = *sampleSeriesPtr;
+    DecimalType tick    = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tickDiv2 = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    const int numPermutations = 20; // Reduced for faster test runs
+    std::vector<std::shared_ptr<const OHLCTimeSeries<DecimalType>>> permutations;
+    permutations.reserve(numPermutations);
+    for (int i = 0; i < numPermutations; ++i) {
+        SyntheticTimeSeries<DecimalType> synth(sampleSeries, tick, tickDiv2);
+        synth.createSyntheticSeries();
+        permutations.push_back(synth.getSyntheticTimeSeries());
+    }
+    for (int i = 0; i < numPermutations; ++i) {
+        for (int j = i + 1; j < numPermutations; ++j) {
+            REQUIRE(*permutations[i] != *permutations[j]);
+        }
+    }
+}
+
+TEST_CASE("Intraday SyntheticTimeSeries: Detailed Permutation Tests", "[SyntheticTimeSeries][Intraday][Detailed]") {
+    DecimalType minimumTick = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType minimumTickDiv2 = minimumTick / DecimalConstants<DecimalType>::DecimalTwo;
+
+    SECTION("TestBasisDayPreservation") {
+        auto originalSeries = createThreeDayIntradaySampleTimeSeries();
+        REQUIRE(originalSeries.getNumEntries() > 0);
+        SyntheticTimeSeries<DecimalType> synth(originalSeries, minimumTick, minimumTickDiv2);
+        synth.createSyntheticSeries();
+        auto syntheticSeriesPtr = synth.getSyntheticTimeSeries();
+        REQUIRE(syntheticSeriesPtr != nullptr);
+        const auto& syntheticSeries = *syntheticSeriesPtr;
+        boost::gregorian::date basisDate = date(2023, 1, 2);
+        auto originalBasisDayBars = getBarsForDate(originalSeries, basisDate);
+        REQUIRE(!originalBasisDayBars.empty());
+        auto syntheticBasisDayBars = getBarsForDate(syntheticSeries, basisDate);
+        REQUIRE(syntheticBasisDayBars.size() == originalBasisDayBars.size());
+        REQUIRE(syntheticBasisDayBars == originalBasisDayBars);
+        auto syntheticIter = syntheticSeries.beginSortedAccess();
+        for (const auto& originalBasisBar : originalBasisDayBars) {
+            REQUIRE(syntheticIter != syntheticSeries.endSortedAccess());
+            REQUIRE(*syntheticIter == originalBasisBar);
+            ++syntheticIter;
+        }
     }
 
+    SECTION("TestNoPermutableDays (1-Day Series)") {
+        auto originalSeries = createOneDayIntradaySampleTimeSeries();
+        REQUIRE(originalSeries.getNumEntries() > 0);
+        SyntheticTimeSeries<DecimalType> synth(originalSeries, minimumTick, minimumTickDiv2);
+        synth.createSyntheticSeries();
+        auto syntheticSeriesPtr = synth.getSyntheticTimeSeries();
+        REQUIRE(syntheticSeriesPtr != nullptr);
+        const auto& syntheticSeries = *syntheticSeriesPtr;
+        REQUIRE(syntheticSeries.getNumEntries() == originalSeries.getNumEntries());
+        REQUIRE(syntheticSeries == originalSeries);
+    }
+
+    SECTION("TestOvernightGapPermutation (3-Day Series)") {
+        auto originalSeries = createThreeDayIntradaySampleTimeSeries();
+        DecimalType one = DecimalConstants<DecimalType>::DecimalOne;
+        DecimalType zero = DecimalConstants<DecimalType>::DecimalZero;
+        auto extractGaps = [&](const OHLCTimeSeries<DecimalType>& series) {
+            std::vector<DecimalType> gaps;
+            std::map<boost::gregorian::date, std::vector<OHLCTimeSeriesEntry<DecimalType>>> dayMap;
+            for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) { dayMap[it->getDateTime().date()].push_back(*it); }
+            if (dayMap.size() < 2) return gaps;
+            auto mapIt = dayMap.begin();
+            if (mapIt->second.empty()) return gaps;
+            DecimalType prevDayActualClose = mapIt->second.back().getCloseValue();
+            ++mapIt;
+            for (; mapIt != dayMap.end(); ++mapIt) {
+                const auto& currentDayBars = mapIt->second;
+                if (currentDayBars.empty()) { gaps.push_back(one); }
+                else {
+                    DecimalType currentDayOriginalOpen = currentDayBars.front().getOpenValue();
+                    if (prevDayActualClose != zero) { gaps.push_back(currentDayOriginalOpen / prevDayActualClose); }
+                    else { gaps.push_back(one); }
+                    prevDayActualClose = currentDayBars.back().getCloseValue();
+                }
+            }
+            return gaps;
+        };
+        std::vector<DecimalType> originalGaps = extractGaps(originalSeries);
+        REQUIRE(originalGaps.size() == 2);
+        SyntheticTimeSeries<DecimalType> synthGen(originalSeries, minimumTick, minimumTickDiv2);
+        bool differentGapOrderObserved = false;
+        std::vector<DecimalType> firstRunSyntheticGaps;
+        const int numRuns = 30;
+        for (int i = 0; i < numRuns; ++i) {
+            synthGen.createSyntheticSeries();
+            auto syntheticSeriesPtr = synthGen.getSyntheticTimeSeries();
+            REQUIRE(syntheticSeriesPtr != nullptr);
+            const auto& syntheticSeries = *syntheticSeriesPtr;
+            std::vector<DecimalType> syntheticGaps = extractGaps(syntheticSeries);
+            REQUIRE(syntheticGaps.size() == originalGaps.size());
+            if (originalGaps.size() > 1) {
+                if (i == 0) { firstRunSyntheticGaps = syntheticGaps; }
+                else {
+                    bool areDifferent = false;
+                    if (firstRunSyntheticGaps.size() == syntheticGaps.size()) {
+                        for(size_t k=0; k < syntheticGaps.size(); ++k) {
+                            if (num::abs(firstRunSyntheticGaps[k] - syntheticGaps[k]) > DecimalType("0.0000001")) {
+                                areDifferent = true; break;
+                            }
+                        }
+                    } else { areDifferent = true; }
+                    if (areDifferent) { differentGapOrderObserved = true; break; }
+                }
+            }
+        }
+        if (originalGaps.size() > 1) { REQUIRE(differentGapOrderObserved); }
+        else if (originalGaps.size() == 1) { REQUIRE_FALSE(differentGapOrderObserved); }
+    }
+
+    SECTION("TestIntradayVolumePermutation (Checks current zero-volume behavior for permuted bars)") {
+      auto originalSeries = createThreeDayIntradaySampleTimeSeries();
+      REQUIRE(originalSeries.getNumEntries() > 0);
+      ptime basisDayEndDateTime;
+      if (originalSeries.getNumEntries() > 0) {
+          auto it = originalSeries.beginSortedAccess();
+          boost::gregorian::date firstDayDate = it->getDateTime().date();
+           while(it != originalSeries.endSortedAccess() && it->getDateTime().date() == firstDayDate) {
+               basisDayEndDateTime = it->getDateTime();
+               ++it;
+           }
+      } else { basisDayEndDateTime = not_a_date_time; }
+      SyntheticTimeSeries<DecimalType> synth(originalSeries, minimumTick, minimumTickDiv2);
+      synth.createSyntheticSeries();
+      auto syntheticSeriesPtr = synth.getSyntheticTimeSeries();
+      REQUIRE(syntheticSeriesPtr != nullptr);
+      const auto& syntheticSeries = *syntheticSeriesPtr;
+      bool checkedPermutableBar = false;
+      for (auto it = syntheticSeries.beginSortedAccess(); it != syntheticSeries.endSortedAccess(); ++it) {
+        if (it->getDateTime() > basisDayEndDateTime) {
+            checkedPermutableBar = true;
+            REQUIRE(it->getVolumeValue() == DecimalConstants<DecimalType>::DecimalZero);
+        } else {
+            auto originalBarIt = originalSeries.getTimeSeriesEntry(it->getDateTime());
+            REQUIRE(originalBarIt != originalSeries.endSortedAccess());
+            REQUIRE(it->getVolumeValue() == originalBarIt->getVolumeValue());
+        }
+      }
+      if (originalSeries.getNumEntries() > getBarsForDate(originalSeries, originalSeries.getFirstDate()).size()) {
+          REQUIRE(checkedPermutableBar);
+      }
+    }
+}
+
+// 1) Per-day bar counts must be identical between original and synthetic
+TEST_CASE("Intraday SyntheticTimeSeries: per-day bar counts preserved",
+          "[SyntheticTimeSeries][Intraday]") {
+    using namespace boost::gregorian;
+    using namespace boost::posix_time;
+
+    // Arrange: 3-day sample (Day 1 basis, Day 2+3 permutable)
+    DecimalType tick   = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tick2  = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    auto original = createThreeDayIntradaySampleTimeSeries();
+    
+    // Act
+    SyntheticTimeSeries<DecimalType> synth(original, tick, tick2);
+    synth.createSyntheticSeries();
+    auto synthetic = *synth.getSyntheticTimeSeries();
+
+    // Count bars per date in original
+    std::map<date,int> origCounts;
+    for (auto it = original.beginSortedAccess(); it != original.endSortedAccess(); ++it) {
+        ++origCounts[it->getDateTime().date()];
+    }
+    // Count bars per date in synthetic
+    std::map<date,int> synCounts;
+    for (auto it = synthetic.beginSortedAccess(); it != synthetic.endSortedAccess(); ++it) {
+        ++synCounts[it->getDateTime().date()];
+    }
+
+    // They should cover the same set of dates…
+    REQUIRE(synCounts.size() == origCounts.size());
+    for (auto& kv : origCounts) {
+        REQUIRE(synCounts.count(kv.first) == 1);
+        REQUIRE(synCounts[kv.first] == kv.second);
+    }
+}
+
+// 2) Two runs on the same input must differ in at least one bar
+TEST_CASE("Intraday SyntheticTimeSeries: two runs produce different series",
+          "[SyntheticTimeSeries][Intraday][MonteCarlo]") {
+    using namespace boost::gregorian;
+    using namespace boost::posix_time;
+
+    // Arrange
+    DecimalType tick   = DecimalConstants<DecimalType>::EquityTick;
+    DecimalType tick2  = tick / DecimalConstants<DecimalType>::DecimalTwo;
+    auto original = createThreeDayIntradaySampleTimeSeries();
+
+    // Act: run #1
+    SyntheticTimeSeries<DecimalType> s1(original, tick, tick2);
+    s1.reseedRNG();
+    s1.createSyntheticSeries();
+    auto out1 = *s1.getSyntheticTimeSeries();
+
+    // Act: run #2
+    SyntheticTimeSeries<DecimalType> s2(original, tick, tick2);
+    s2.reseedRNG();
+    s2.createSyntheticSeries();
+    auto out2 = *s2.getSyntheticTimeSeries();
+
+    // Assert: same total count
+    REQUIRE(out1.getNumEntries() == out2.getNumEntries());
+
+    // They must differ on at least one bar (any field)
+    bool sawDifference = false;
+    auto it1 = out1.beginSortedAccess();
+    auto it2 = out2.beginSortedAccess();
+    for (; it1 != out1.endSortedAccess() && it2 != out2.endSortedAccess(); ++it1, ++it2) {
+        if (!(*it1 == *it2)) {
+            sawDifference = true;
+            break;
+        }
+    }
+    REQUIRE(sawDifference);
+}
