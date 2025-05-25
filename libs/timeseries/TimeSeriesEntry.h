@@ -154,8 +154,6 @@ namespace mkc_timeseries
 			 const Decimal& volumeForEntry,
 			 TimeFrame::Duration timeFrame)
         : mDateTime(entryDateTime),
-	  mDate(entryDateTime.date()),
-	  mTime(entryDateTime.time_of_day()),
           mOpen(open),
           mHigh(high),
           mLow(low),
@@ -218,8 +216,6 @@ namespace mkc_timeseries
 
     OHLCTimeSeriesEntry (const OHLCTimeSeriesEntry<Decimal>& rhs)
       : mDateTime (rhs.mDateTime),
-	mDate(rhs.mDate),
-	mTime(rhs.mTime),
 	mOpen (rhs.mOpen),
 	mHigh (rhs.mHigh),
 	mLow (rhs.mLow),
@@ -235,8 +231,6 @@ namespace mkc_timeseries
 	return *this;
 
       mDateTime = rhs.mDateTime;
-      mDate = rhs.mDate;
-      mTime = rhs.mTime;
       mOpen = rhs.mOpen;
       mHigh = rhs.mHigh;
       mLow = rhs.mLow;
@@ -251,14 +245,14 @@ namespace mkc_timeseries
       return mTimeFrame;
     }
 
-    const boost::gregorian::date& getDateValue() const
+    boost::gregorian::date getDateValue() const
     {
-      return mDate;
+      return mDateTime.date();
     }
 
-    const time_duration& getBarTime() const
+    const time_duration getBarTime() const
     {
-      return mTime;
+      return mDateTime.time_of_day();
     }
 
     const ptime& getDateTime() const
@@ -293,8 +287,6 @@ namespace mkc_timeseries
 
   private:
     ptime mDateTime;
-    boost::gregorian::date mDate;
-    time_duration mTime;
     Decimal mOpen;
     Decimal mHigh;
     Decimal mLow;
