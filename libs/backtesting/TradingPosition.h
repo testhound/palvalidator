@@ -115,7 +115,7 @@ namespace mkc_timeseries
     ~OpenPositionBar()
       {}
 
-    const boost::gregorian::date& getDate() const
+    boost::gregorian::date getDate() const
     {
       return mEntry.getDateValue();
     }

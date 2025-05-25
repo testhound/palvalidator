@@ -411,7 +411,7 @@ namespace mkc_timeseries
       return (getTimeSeriesEntry (it, offset)->getDate());
     }
 
-    const boost::gregorian::date&
+    boost::gregorian::date
     getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
     {
       ValidateVectorOffset(it, offset);      
@@ -795,7 +795,7 @@ namespace mkc_timeseries
     /**
      * @brief Retrieve date value by iterator offset.
      */
-    const boost::gregorian::date& getDateValue(const ConstRandomAccessIterator& it,
+    boost::gregorian::date getDateValue(const ConstRandomAccessIterator& it,
 					       unsigned long offset) const
     {
       return getTimeSeriesEntry(it, offset).getDateValue();
