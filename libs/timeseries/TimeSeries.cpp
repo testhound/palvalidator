@@ -11,5 +11,3 @@ namespace mkc_timeseries
   boost::mutex TimeSeriesOffset::mOffsetCacheMutex;
   std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> TimeSeriesOffset::mOffsetCache;
 }
-
-thread_local randutils::random_generator<pcg32> RandomMersenne::mRandGen {randutils::auto_seed_256{}};
