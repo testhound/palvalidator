@@ -107,14 +107,11 @@ file(GLOB SRC_LIST
    src/palvalidator/*.txt
 )
 
-set(SRC_LIST src/palvalidator/main.cpp)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
 set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${BIN_NAME}
     priceaction2
-    backtest
-    pasearchalgo
     statistics
     concurrency
     timeseries
