@@ -1,10 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "Security.h"
 #include "SecurityFactory.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using boost::posix_time::ptime;
+using boost::posix_time::hours;
 
 TEST_CASE ("Security operations", "[Security]")
 {
@@ -245,4 +248,45 @@ TEST_CASE ("Security operations", "[Security]")
       date randomDate1(2016, 1, 15);
       REQUIRE_THROWS (spy.getRandomAccessIterator(randomDate1));
     }
+
+// --- Intraday findTimeSeriesEntry (ptime) ---
+  SECTION("Intraday findTimeSeriesEntry returns correct iterator or end", "[TimeSeries Access (ptime)]") {
+    // pick a known entry
+    ptime dt2 = entry2->getDateTime();
+    auto it2 = spy.findTimeSeriesEntry(dt2);
+    REQUIRE(it2 != spy.getRandomAccessIteratorEnd());
+    REQUIRE(*it2 == *entry2);  // :contentReference[oaicite:0]{index=0}
+
+    // miss a timestamp that isn't in the series
+    ptime missingDt = dt2 + hours(3);
+    REQUIRE(spy.findTimeSeriesEntry(missingDt) == spy.getRandomAccessIteratorEnd());
+  }
+
+  // --- Intraday getRandomAccessIterator (ptime) ---
+  SECTION("Intraday getRandomAccessIterator throws on missing timestamp", "[TimeSeries Access (ptime)]") {
+    ptime fakeDt(date(2020,1,1), hours(0));
+    REQUIRE_THROWS_AS(spy.getRandomAccessIterator(fakeDt), SecurityException);  // :contentReference[oaicite:1]{index=1}
+  }
+
+  SECTION("Intraday getRandomAccessIterator returns iterator for existing timestamp", "[TimeSeries Access (ptime)]") {
+    ptime dt4 = entry4->getDateTime();
+    auto it4 = spy.getRandomAccessIterator(dt4);
+    REQUIRE(*it4 == *entry4);  // :contentReference[oaicite:2]{index=2}
+  }
+
+  // --- Intraday getDateTimeValue (ptime) ---
+  SECTION("Intraday getDateTimeValue returns correct datetime or throws on bad offset", "[TimeSeries Access (ptime)]") {
+    // locate entry2
+    ptime dt2 = entry2->getDateTime();
+    auto it2 = spy.findTimeSeriesEntry(dt2);
+    REQUIRE(it2 != spy.getRandomAccessIteratorEnd());
+
+    // offset 0 → entry2
+    REQUIRE(spy.getDateTimeValue(it2, 0) == dt2);
+    // offset 1 → previous bar (entry3)
+    REQUIRE(spy.getDateTimeValue(it2, 1) == entry3->getDateTime());  // :contentReference[oaicite:3]{index=3}
+
+    // out-of-bounds offset should throw
+    REQUIRE_THROWS(spy.getDateTimeValue(it2, 10));
+  }
 }
