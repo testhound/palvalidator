@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TradingOrder.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 
 TEST_CASE ("Market Order Operations", "[TradingOrder]")
 {
@@ -309,4 +312,86 @@ TEST_CASE ("Market Order Operations", "[TradingOrder]")
 
     REQUIRE_THROWS (longOrder1.MarkOrderExecuted (fillDate, fillPrice));
   }
+}
+
+// --- MarketOnOpenSellOrder intraday tests ---
+TEST_CASE("MarketOnOpenSellOrder ptime ctor and getters", "[MarketOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 10:00:00");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("IBM");
+    MarketOnOpenSellOrder<DecimalType> order(symbol, units, orderDt);
+
+    // new ptime API
+    REQUIRE(order.getOrderDateTime() == orderDt);
+    // legacy date API still returns just the date
+    REQUIRE(order.getOrderDate()     == orderDt.date());
+}
+
+TEST_CASE("MarketOnOpenSellOrder execute with ptime", "[MarketOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 10:00:00");
+    ptime fillDt  = time_from_string("2025-05-26 15:30:00");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("IBM");
+    DecimalType fillPrice = dec::fromString<DecimalType>("300.75");
+
+    MarketOnOpenSellOrder<DecimalType> order(symbol, units, orderDt);
+    order.MarkOrderExecuted(fillDt, fillPrice);
+
+    REQUIRE(order.isOrderExecuted());
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());
+    REQUIRE(order.getFillPrice()    == fillPrice);
+}
+
+TEST_CASE("MarketOnOpenSellOrder execution before order time throws", "[MarketOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 10:00:00");
+    ptime badFill = time_from_string("2025-05-26 09:45:00");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("IBM");
+    DecimalType fillPrice = dec::fromString<DecimalType>("300.75");
+
+    MarketOnOpenSellOrder<DecimalType> order(symbol, units, orderDt);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(badFill, fillPrice),
+                      TradingOrderNotExecutedException);
+    REQUIRE(order.isOrderPending());
+}
+
+// --- MarketOnOpenCoverOrder intraday tests ---
+TEST_CASE("MarketOnOpenCoverOrder ptime ctor and getters", "[MarketOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 11:15:00");
+    TradingVolume units(50, TradingVolume::SHARES);
+    std::string symbol("SPY");
+    MarketOnOpenCoverOrder<DecimalType> order(symbol, units, orderDt);
+
+    REQUIRE(order.getOrderDateTime() == orderDt);
+    REQUIRE(order.getOrderDate()     == orderDt.date());
+}
+
+TEST_CASE("MarketOnOpenCoverOrder execute with ptime", "[MarketOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 11:15:00");
+    ptime fillDt  = time_from_string("2025-05-27 16:00:00");
+    TradingVolume units(50, TradingVolume::SHARES);
+    std::string symbol("SPY");
+    DecimalType fillPrice = dec::fromString<DecimalType>("450.25");
+
+    MarketOnOpenCoverOrder<DecimalType> order(symbol, units, orderDt);
+    order.MarkOrderExecuted(fillDt, fillPrice);
+
+    REQUIRE(order.isOrderExecuted());
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());
+    REQUIRE(order.getFillPrice()    == fillPrice);
+}
+
+TEST_CASE("MarketOnOpenCoverOrder execution before order time throws", "[MarketOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 11:15:00");
+    ptime badFill = time_from_string("2025-05-27 10:00:00");
+    TradingVolume units(50, TradingVolume::SHARES);
+    std::string symbol("SPY");
+    DecimalType fillPrice = dec::fromString<DecimalType>("450.25");
+
+    MarketOnOpenCoverOrder<DecimalType> order(symbol, units, orderDt);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(badFill, fillPrice),
+                      TradingOrderNotExecutedException);
+    REQUIRE(order.isOrderPending());
 }

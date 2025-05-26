@@ -1,7 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TradingOrder.h"
 #include "TestUtils.h"
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
@@ -264,3 +267,92 @@ TEST_CASE ("Market Order Operations", "[LimitOrder]")
     REQUIRE_THROWS (longOrder1.MarkOrderExecuted (fillDate, fillPrice));
   }
 }
+
+TEST_CASE("SellAtLimitOrder ptime ctor and getters", "[LimitOrder][ptime]") {
+    // intraday timestamp
+    ptime orderDt = time_from_string("2025-05-26 10:30:00");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("AAPL");
+    DecimalType limitPrice = createDecimal("150.00");
+
+    SellAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
+    // new ptime API
+    REQUIRE(order.getOrderDateTime() == orderDt);
+    // legacy date API still returns just the date
+    REQUIRE(order.getOrderDate()     == orderDt.date());
+    REQUIRE(order.getLimitPrice()    == limitPrice);
+}
+
+TEST_CASE("SellAtLimitOrder execute with ptime at or above limit", "[LimitOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 09:45:00");
+    ptime fillDt  = time_from_string("2025-05-26 13:15:30");
+    TradingVolume units(50, TradingVolume::SHARES);
+    std::string symbol("MSFT");
+    DecimalType limitPrice = createDecimal("120.50");
+    DecimalType fillPrice  = createDecimal("121.00");
+
+    SellAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
+    order.MarkOrderExecuted(fillDt, fillPrice);
+    REQUIRE(order.isOrderExecuted());
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());
+    REQUIRE(order.getFillPrice()    == fillPrice);
+}
+
+TEST_CASE("SellAtLimitOrder execution below limit throws", "[LimitOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 14:00:00");
+    ptime fillDt  = time_from_string("2025-05-26 14:05:00");
+    TradingVolume units(200, TradingVolume::SHARES);
+    std::string symbol("GOOG");
+    DecimalType limitPrice = createDecimal("200.00");
+    DecimalType badPrice   = createDecimal("199.99");
+
+    SellAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(fillDt, badPrice),
+                      TradingOrderNotExecutedException);
+    REQUIRE(order.isOrderPending());
+}
+
+// --- CoverAtLimitOrder intraday tests ---
+TEST_CASE("CoverAtLimitOrder ptime ctor and getters", "[LimitOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 11:00:00");
+    TradingVolume units(75, TradingVolume::SHARES);
+    std::string symbol("SPY");
+    DecimalType limitPrice = createDecimal(" 80.00");
+
+    CoverAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
+    REQUIRE(order.getOrderDateTime() == orderDt);
+    REQUIRE(order.getOrderDate()     == orderDt.date());  // :contentReference[oaicite:2]{index=2}
+    REQUIRE(order.getLimitPrice()    == limitPrice);
+}
+
+TEST_CASE("CoverAtLimitOrder execute with ptime at or below limit", "[LimitOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 09:15:00");
+    ptime fillDt  = time_from_string("2025-05-27 16:00:00");
+    TradingVolume units(150, TradingVolume::SHARES);
+    std::string symbol("TSLA");
+    DecimalType limitPrice = createDecimal("95.00");
+    DecimalType fillPrice  = createDecimal("94.50");
+
+    CoverAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
+    order.MarkOrderExecuted(fillDt, fillPrice);
+    REQUIRE(order.isOrderExecuted());
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());  // :contentReference[oaicite:3]{index=3}
+    REQUIRE(order.getFillPrice()    == fillPrice);
+}
+
+TEST_CASE("CoverAtLimitOrder execution above limit throws", "[LimitOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 12:30:00");
+    ptime fillDt  = time_from_string("2025-05-27 12:45:00");
+    TradingVolume units(300, TradingVolume::SHARES);
+    std::string symbol("AMZN");
+    DecimalType limitPrice = createDecimal("50.00");
+    DecimalType badPrice   = createDecimal("50.01");
+
+    CoverAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(fillDt, badPrice),
+                      TradingOrderNotExecutedException);
+    REQUIRE(order.isOrderPending());
+}
+
