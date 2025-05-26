@@ -269,6 +269,15 @@ public:
 protected:
     void notifyOrderExecuted() override { /* Do nothing */ }
     void notifyOrderCanceled() override { /* Do nothing */ }
+
+  // Must override the ptime‐based pure virtual:
+    void ValidateOrderExecution(const boost::posix_time::ptime& fillDateTime,
+                                const Decimal& fillPrice) const override
+    {
+        // Delegate to our date‐based logic:
+        ValidateOrderExecution(fillDateTime.date(), fillPrice);
+    }
+
     void ValidateOrderExecution(const TimeSeriesDate& fillDate, const Decimal& fillPrice) const override {
         if (fillDate < this->getOrderDate())
             throw TradingOrderNotExecutedException("Fill date before order date.");
