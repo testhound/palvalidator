@@ -13,10 +13,12 @@
 #include <vector>
 #include <cstdint>
 #include <string>
-#include <boost/date_time.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp> // For ptime
+#include <boost/date_time/gregorian/gregorian.hpp> // For date
 #include "TradingOrder.h"
 #include "Portfolio.h"
 #include "InstrumentPositionManager.h"
+#include "TimeSeriesEntry.h" // For getDefaultBarTime and OHLCTimeSeriesEntry
 
 using std::vector;
 using std::shared_ptr;
@@ -55,7 +57,7 @@ namespace mkc_timeseries
      * @brief Constructs a ProcessOrderVisitor with a specific trading bar.
      * @param tradingBar The OHLC data for the current trading bar against which orders will be evaluated.
      */
-    ProcessOrderVisitor(OHLCTimeSeriesEntry<Decimal> tradingBar)
+    ProcessOrderVisitor(const OHLCTimeSeriesEntry<Decimal>& tradingBar) // Pass by const reference
       : mTradingBar (tradingBar)
     {}
 
@@ -94,12 +96,12 @@ namespace mkc_timeseries
      * @param order Pointer to the MarketOnOpenLongOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (MarketOnOpenLongOrder<Decimal> *order)
+    void visit (MarketOnOpenLongOrder<Decimal> *order) override
     {
       ValidateOrder (order);
       // Market orders are unconditional
 
-      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateTime(), mTradingBar.getOpenValue());
     }
 
     /**
@@ -108,12 +110,12 @@ namespace mkc_timeseries
      * @param order Pointer to the MarketOnOpenSellOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (MarketOnOpenSellOrder<Decimal> *order)
+    void visit (MarketOnOpenSellOrder<Decimal> *order) override
     {
       ValidateOrder (order);
       // Market orders are unconditional
 
-      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateTime(), mTradingBar.getOpenValue());
     }
 
     /**
@@ -122,12 +124,12 @@ namespace mkc_timeseries
      * @param order Pointer to the MarketOnOpenCoverOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (MarketOnOpenCoverOrder<Decimal> *order)
+    void visit (MarketOnOpenCoverOrder<Decimal> *order) override
     {
       ValidateOrder (order);
       // Market orders are unconditional
 
-      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateTime(), mTradingBar.getOpenValue());
     }
 
     /**
@@ -136,12 +138,12 @@ namespace mkc_timeseries
      * @param order Pointer to the MarketOnOpenShortOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (MarketOnOpenShortOrder<Decimal> *order)
+    void visit (MarketOnOpenShortOrder<Decimal> *order) override
     {
       ValidateOrder (order);
 
       // Market orders are unconditional
-      order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
+      order->MarkOrderExecuted (mTradingBar.getDateTime(), mTradingBar.getOpenValue());
     }
 
     /**
@@ -151,16 +153,18 @@ namespace mkc_timeseries
      * @param order Pointer to the SellAtLimitOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (SellAtLimitOrder<Decimal> *order)
+    void visit (SellAtLimitOrder<Decimal> *order) override
     {
       ValidateOrder (order);
-      if (mTradingBar.getHighValue() > order->getLimitPrice())
+      if (mTradingBar.getHighValue() >= order->getLimitPrice()) // Corrected: >= for sell limit
 	{
-	  // If we gapped up we assume we get the open price
-	  if (mTradingBar.getOpenValue() > order->getLimitPrice())
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
-	  else
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getLimitPrice());
+	  // If we gapped up (open > limit), fill at open. Otherwise, fill at limit price.
+	  // The order's ValidateOrderExecution will ensure fillPrice >= limitPrice.
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() < order->getLimitPrice()) // if open is below limit, but high hit it
+            fillPrice = order->getLimitPrice();
+
+	  order->MarkOrderExecuted (mTradingBar.getDateTime(), fillPrice);
 	}
     }
 
@@ -171,16 +175,19 @@ namespace mkc_timeseries
      * @param order Pointer to the CoverAtLimitOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (CoverAtLimitOrder<Decimal> *order)
+    void visit (CoverAtLimitOrder<Decimal> *order) override
     {
       ValidateOrder (order);
 
-      if (mTradingBar.getLowValue() < order->getLimitPrice())	{
-	  // If we gapped down we assume we get the open price
-	  if (mTradingBar.getOpenValue() < order->getLimitPrice())
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
-	  else
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getLimitPrice());
+      if (mTradingBar.getLowValue() <= order->getLimitPrice()) // Corrected: <= for cover limit
+      {
+	  // If we gapped down (open < limit), fill at open. Otherwise, fill at limit price.
+	  // The order's ValidateOrderExecution will ensure fillPrice <= limitPrice.
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() > order->getLimitPrice()) // if open is above limit, but low hit it
+	    fillPrice = order->getLimitPrice();
+
+	  order->MarkOrderExecuted (mTradingBar.getDateTime(), fillPrice);
 	}
     }
 
@@ -191,16 +198,18 @@ namespace mkc_timeseries
      * @param order Pointer to the CoverAtStopOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (CoverAtStopOrder<Decimal> *order)
+    void visit (CoverAtStopOrder<Decimal> *order) override
     {
       ValidateOrder (order);
-      if (mTradingBar.getHighValue() > order->getStopPrice())
+      if (mTradingBar.getHighValue() >= order->getStopPrice()) // Corrected: >= for cover stop
 	{
-	  // If we gapped up we assume we get the open price
-	  if (mTradingBar.getOpenValue() > order->getStopPrice())
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
-	  else
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getStopPrice());
+	  // If we gapped up (open > stop), fill at open. Otherwise, fill at stop price.
+	  // The order's ValidateOrderExecution will ensure fillPrice >= stopPrice for cover stop.
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() < order->getStopPrice()) // if open is below stop, but high hit it
+            fillPrice = order->getStopPrice();
+
+	  order->MarkOrderExecuted (mTradingBar.getDateTime(), fillPrice);
 	}
     }
 
@@ -211,16 +220,18 @@ namespace mkc_timeseries
      * @param order Pointer to the SellAtStopOrder to process.
      * @throws TradingOrderException if order validation fails.
      */
-    void visit (SellAtStopOrder<Decimal> *order)
+    void visit (SellAtStopOrder<Decimal> *order) override
     {
       ValidateOrder (order);
-      if (mTradingBar.getLowValue() < order->getStopPrice())
+      if (mTradingBar.getLowValue() <= order->getStopPrice()) // Corrected: <= for sell stop
 	{
-	  // If we gapped down we assume we get the open price
-	  if (mTradingBar.getOpenValue() < order->getStopPrice())
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), mTradingBar.getOpenValue());
-	  else
-	    order->MarkOrderExecuted (mTradingBar.getDateValue(), order->getStopPrice());
+	  // If we gapped down (open < stop), fill at open. Otherwise, fill at stop price.
+	  // The order's ValidateOrderExecution will ensure fillPrice <= stopPrice for sell stop.
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() > order->getStopPrice()) // if open is above stop, but low hit it
+	    fillPrice = order->getStopPrice();
+	    
+	  order->MarkOrderExecuted (mTradingBar.getDateTime(), fillPrice);
 	}
     }
 
@@ -229,7 +240,7 @@ namespace mkc_timeseries
      * Allows reusing the visitor instance for multiple bars if desired, though typically a new one is created per bar.
      * @param tradingBar The new OHLCTimeSeriesEntry for subsequent order processing.
      */
-    void updateTradingBar (OHLCTimeSeriesEntry<Decimal> tradingBar)
+    void updateTradingBar (const OHLCTimeSeriesEntry<Decimal>& tradingBar) // Pass by const reference
     {
       mTradingBar = tradingBar;
     }
@@ -237,14 +248,15 @@ namespace mkc_timeseries
   private:
     /**
      * @brief Validates a trading order before processing.
-     * Checks if the bar date is after the order date and if the order is in a pending state.
+     * Checks if the bar datetime is after the order datetime and if the order is in a pending state.
      * @param order Pointer to the TradingOrder to validate.
-     * @throws TradingOrderException if validation fails (e.g., bar date not after order date, order not pending).
+     * @throws TradingOrderException if validation fails (e.g., bar datetime not after order datetime, order not pending).
      */
     void ValidateOrder (TradingOrder<Decimal>* order)
     {
-      if (mTradingBar.getDateValue() <= order->getOrderDate())
-	throw TradingOrderException ("Bar date " +to_simple_string (mTradingBar.getDateValue()) +" must be greater than order date " +to_simple_string (order->getOrderDate()));
+      // For intraday, the bar's datetime must be strictly greater than the order's datetime.
+      if (mTradingBar.getDateTime() <= order->getOrderDateTime())
+	throw TradingOrderException ("Bar datetime " + boost::posix_time::to_simple_string(mTradingBar.getDateTime()) +" must be greater than order datetime " + boost::posix_time::to_simple_string(order->getOrderDateTime()));
 
       if (!order->isOrderPending())
 	{
@@ -253,7 +265,7 @@ namespace mkc_timeseries
 	  else if (order->isOrderCanceled())
 	    throw TradingOrderException ("ProcessOrderVisitor: Canceled order cannot be processed");
 	  else
-	    throw TradingOrderException ("ProcessOrderVisitor: unknow order state");
+	    throw TradingOrderException ("ProcessOrderVisitor: unknown order state");
 	}
     }
 
@@ -315,7 +327,9 @@ namespace mkc_timeseries
 
    
      typedef typename std::list<std::reference_wrapper<TradingOrderObserver<Decimal>>>::const_iterator ConstObserverIterator;
-    typedef typename  std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Decimal>>>::const_iterator PendingOrderIterator;
+    // mPendingOrders is keyed by date for backward compatibility of PendingOrderIterator.
+    // For true intraday sorted iteration of all pending orders, this map would need to be keyed by ptime.
+    typedef typename  std::multimap<boost::posix_time::ptime, std::shared_ptr<TradingOrder<Decimal>>>::const_iterator PendingOrderIterator;
 
   public:
     /**
@@ -642,51 +656,60 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Processes all pending orders for a given date using the current market conditions.
+     * @brief Processes all pending orders for a given datetime using the current market conditions.
      * This is a key method in a backtesting loop. It iterates through different types of orders
      * (market exits, market entries, stop exits, limit exits in that sequence).
-     * For each relevant order, it fetches the security's bar data for `processingDate`,
+     * For each relevant order, it fetches the security's bar data for `processingDateTime`,
      * then uses a `ProcessOrderVisitor` to attempt to fill the order.
      * Executed or canceled orders are removed from their pending lists, and observers are notified.
      *
-     * @param processingDate The current date in the backtest for which orders are being processed.
+     * @param processingDateTime The current datetime in the backtest for which orders are being processed.
      * @param positions A const reference to the InstrumentPositionManager, used to check current
      * position status (e.g., to cancel an exit order if the position is already flat).
      */
-    void processPendingOrders (const boost::gregorian::date& processingDate,
+    void processPendingOrders (const boost::posix_time::ptime& processingDateTime,
 			       const InstrumentPositionManager<Decimal>& positions)
     {
-      ProcessPendingMarketExitOrders(processingDate, positions);
-      ProcessPendingMarketEntryOrders(processingDate, positions);
-      ProcessPendingStopExitOrders(processingDate, positions);
-      ProcessPendingLimitExitOrders(processingDate, positions);
+      ProcessPendingMarketExitOrders(processingDateTime, positions);
+      ProcessPendingMarketEntryOrders(processingDateTime, positions);
+      ProcessPendingStopExitOrders(processingDateTime, positions);
+      ProcessPendingLimitExitOrders(processingDateTime, positions);
 
       // Since we have processed pending orders, our pending order map is no longer
       // up to date
-
       mPendingOrdersUpToDate = false;
-      // NOTE: When closing a position compare number of shares/contracts in order
-      // with number of shares/contracts in position in case position will remain open
+    }
+
+    /**
+     * @brief Processes all pending orders for a given date (using default bar time) using current market conditions.
+     * Legacy overload for backward compatibility. Forwards to the ptime-based processPendingOrders.
+     * @param processingDate The current date in the backtest. Orders are processed against this date's bar data (using default time).
+     * @param positions A const reference to the InstrumentPositionManager.
+     */
+    void processPendingOrders (const boost::gregorian::date& processingDate,
+                               const InstrumentPositionManager<Decimal>& positions)
+    {
+        processPendingOrders(boost::posix_time::ptime(processingDate, getDefaultBarTime()), positions);
     }
 
   private:
     /**
      * @brief Template helper method to process a vector of a specific order type.
      * Iterates through the given `vectorContainer` of orders. For each order:
-     * - Checks if it's pending and its order date is before the `processingDate`.
-     * - Fetches the security's trading bar for the `processingDate`.
-     * - If the security traded on that date:
+     * - Checks if it's pending and its order datetime is before the `processingDateTime`.
+     * - Fetches the security's trading bar for the `processingDateTime`.
+     * - If the security traded on that datetime:
      * - Checks if an exit order's position is already flat (due to another fill) and cancels if so.
      * - Otherwise, uses `ProcessOrderVisitor` to attempt execution.
      * - Notifies observers of execution or cancellation.
      * - Removes the processed order from `vectorContainer`.
      * @tparam T The specific TradingOrder derived type (e.g., MarketOnOpenLongOrder).
-     * @param processingDate The date for which orders are processed.
+     * @param processingDateTime The datetime for which orders are processed.
      * @param vectorContainer A reference to the vector holding orders of type T.
      * @param positions Const reference to InstrumentPositionManager for position status checks.
      */
     template <typename T>
-    void ProcessingPendingOrders(const boost::gregorian::date& processingDate, 
+    void ProcessingPendingOrders(const boost::posix_time::ptime& processingDateTime, 
 				 std::vector<std::shared_ptr<T>>& vectorContainer,
 				 const InstrumentPositionManager<Decimal>& positions)
     {
@@ -704,7 +727,7 @@ namespace mkc_timeseries
 	  //
 	  if (order->isExitOrder()
 	      && order->isOrderPending()
-	      && processingDate == order->getOrderDate()
+	      && processingDateTime == order->getOrderDateTime()
 	      && positions.isFlatPosition(order->getTradingSymbol()))
 	    {
 	      order->MarkOrderCanceled();
@@ -718,13 +741,13 @@ namespace mkc_timeseries
 	  //    before processingDate.
 	  //
 	  if (order->isOrderPending() 
-	      && (processingDate > order->getOrderDate()))
+	      && (processingDateTime > order->getOrderDateTime()))
 	    {
 	      auto symbolIt = mPortfolio->findSecurity(order->getTradingSymbol());
 	      if (symbolIt != mPortfolio->endPortfolio())
 		{
 		  auto& aSecurity = symbolIt->second;
-		  auto tsIt = aSecurity->findTimeSeriesEntry(processingDate);
+		  auto tsIt = aSecurity->findTimeSeriesEntry(processingDateTime);
 		  if (tsIt != aSecurity->getRandomAccessIteratorEnd())
 		    {
 		      // If it's an exit and position already flat, cancel
@@ -761,43 +784,44 @@ namespace mkc_timeseries
 	  ++it;
 	}
     }
-     /** @brief Processes pending MarketOnOpenSellOrders and MarketOnOpenCoverOrders. */
-    void ProcessPendingMarketExitOrders(const boost::gregorian::date& processingDate,
+
+    /** @brief Processes pending MarketOnOpenSellOrders and MarketOnOpenCoverOrders. */
+    void ProcessPendingMarketExitOrders(const boost::posix_time::ptime& processingDateTime,
 					const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<MarketOnOpenSellOrder<Decimal>> (processingDate, mMarketSellOrders, 
+      this->ProcessingPendingOrders<MarketOnOpenSellOrder<Decimal>> (processingDateTime, mMarketSellOrders, 
 								  positions);
-      this->ProcessingPendingOrders<MarketOnOpenCoverOrder<Decimal>> (processingDate, mMarketCoverOrders, 
+      this->ProcessingPendingOrders<MarketOnOpenCoverOrder<Decimal>> (processingDateTime, mMarketCoverOrders, 
 								   positions);
     }
 
      /** @brief Processes pending MarketOnOpenLongOrders and MarketOnOpenShortOrders. */
-    void ProcessPendingMarketEntryOrders(const boost::gregorian::date& processingDate,
+    void ProcessPendingMarketEntryOrders(const boost::posix_time::ptime& processingDateTime,
 					 const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<MarketOnOpenLongOrder<Decimal>> (processingDate, mMarketLongOrders,
+      this->ProcessingPendingOrders<MarketOnOpenLongOrder<Decimal>> (processingDateTime, mMarketLongOrders,
 								  positions);
-      this->ProcessingPendingOrders<MarketOnOpenShortOrder<Decimal>> (processingDate, mMarketShortOrders,
+      this->ProcessingPendingOrders<MarketOnOpenShortOrder<Decimal>> (processingDateTime, mMarketShortOrders,
 								   positions);
     }
 
     /** @brief Processes pending SellAtStopOrders and CoverAtStopOrders. */
-    void ProcessPendingStopExitOrders(const boost::gregorian::date& processingDate,
+    void ProcessPendingStopExitOrders(const boost::posix_time::ptime& processingDateTime,
 				      const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<SellAtStopOrder<Decimal>> (processingDate, mStopSellOrders,
+      this->ProcessingPendingOrders<SellAtStopOrder<Decimal>> (processingDateTime, mStopSellOrders,
 							    positions);
-      this->ProcessingPendingOrders<CoverAtStopOrder<Decimal>> (processingDate, mStopCoverOrders,
+      this->ProcessingPendingOrders<CoverAtStopOrder<Decimal>> (processingDateTime, mStopCoverOrders,
 							     positions);
     }
 
     /** @brief Processes pending SellAtLimitOrder and CoverAtLimitOrder. */
-    void ProcessPendingLimitExitOrders(const boost::gregorian::date& processingDate,
+    void ProcessPendingLimitExitOrders(const boost::posix_time::ptime& processingDateTime,
 				       const InstrumentPositionManager<Decimal>& positions)
     {
-      this->ProcessingPendingOrders<SellAtLimitOrder<Decimal>> (processingDate, mLimitSellOrders,
+      this->ProcessingPendingOrders<SellAtLimitOrder<Decimal>> (processingDateTime, mLimitSellOrders,
 							     positions);
-      this->ProcessingPendingOrders<CoverAtLimitOrder<Decimal>> (processingDate, mLimitCoverOrders,
+      this->ProcessingPendingOrders<CoverAtLimitOrder<Decimal>> (processingDateTime, mLimitCoverOrders,
 							      positions);
     }
 
@@ -897,7 +921,6 @@ namespace mkc_timeseries
       LimitCoverOrderIterator coverLimitIt = beginLimitCoverOrders();
       for (; coverLimitIt != endLimitCoverOrders(); coverLimitIt++)
 	  addOrderToPending (*coverLimitIt);
-
      
 
       mPendingOrdersUpToDate = true;
@@ -905,14 +928,13 @@ namespace mkc_timeseries
 
      /**
      * @brief Helper method to add a single order to the `mPendingOrders` multimap.
-     * This was part of the original `populatePendingOrders` logic, refactored for clarity if needed elsewhere,
-     * though `populatePendingOrders` now uses a lambda.
+     *
      * @param aOrder A shared pointer to the TradingOrder to add.
      * @note Marked const as it's called by `populatePendingOrders` which is const. Modifies mutable members.
      */
     void addOrderToPending(std::shared_ptr<TradingOrder<Decimal>> aOrder) const
     {
-      mPendingOrders.insert (std::make_pair (aOrder->getOrderDate(), aOrder));
+      mPendingOrders.insert (std::make_pair (aOrder->getOrderDateTime(), aOrder));
     }
 
   private:
@@ -929,11 +951,10 @@ namespace mkc_timeseries
 
     // A temporary map to iterate over pending order if a client asks for them
     // The map is cleared before iterating and populate from the above vectors
-    mutable std::multimap<boost::gregorian::date, std::shared_ptr<TradingOrder<Decimal>>> mPendingOrders;
+    // Keyed by date for backward compatibility of PendingOrderIterator.
+    mutable std::multimap<boost::posix_time::ptime, std::shared_ptr<TradingOrder<Decimal>>> mPendingOrders;
     mutable bool mPendingOrdersUpToDate;
  };
 }
 
 #endif
-
-
