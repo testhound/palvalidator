@@ -1,11 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TradingOrder.h"
 #include "TestUtils.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-
-
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 
 TEST_CASE ("Market Order Operations", "[StopOrder]")
 {
@@ -265,4 +266,92 @@ TEST_CASE ("Market Order Operations", "[StopOrder]")
 
     REQUIRE_THROWS (longOrder1.MarkOrderExecuted (fillDate, fillPrice));
   }
+}
+
+// --- SellAtStopOrder intraday tests ---
+TEST_CASE("SellAtStopOrder ptime ctor and getters", "[StopOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 09:30:00");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("XYZ");
+    DecimalType stopPrice = dec::fromString<DecimalType>("50.00");
+
+    SellAtStopOrder<DecimalType> order(symbol, units, orderDt, stopPrice);
+    // new ptime API
+    REQUIRE(order.getOrderDateTime() == orderDt);
+    // legacy date API still returns the date part
+    REQUIRE(order.getOrderDate()     == orderDt.date());  // 
+    REQUIRE(order.getStopPrice()     == stopPrice);
+}
+
+TEST_CASE("SellAtStopOrder execute with ptime at or below stop", "[StopOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 09:30:00");
+    ptime fillDt  = time_from_string("2025-05-26 11:45:15");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("XYZ");
+    DecimalType stopPrice = dec::fromString<DecimalType>("50.00");
+    DecimalType fillPrice = dec::fromString<DecimalType>("49.75");
+
+    SellAtStopOrder<DecimalType> order(symbol, units, orderDt, stopPrice);
+    order.MarkOrderExecuted(fillDt, fillPrice);
+    REQUIRE(order.isOrderExecuted());
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());     // 
+    REQUIRE(order.getFillPrice()    == fillPrice);
+}
+
+TEST_CASE("SellAtStopOrder execution above stop throws", "[StopOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 09:30:00");
+    ptime fillDt  = time_from_string("2025-05-26 10:15:00");
+    TradingVolume units(100, TradingVolume::SHARES);
+    std::string symbol("XYZ");
+    DecimalType stopPrice = dec::fromString<DecimalType>("50.00");
+    DecimalType badPrice  = dec::fromString<DecimalType>("50.01");
+
+    SellAtStopOrder<DecimalType> order(symbol, units, orderDt, stopPrice);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(fillDt, badPrice),
+                      TradingOrderNotExecutedException);
+    REQUIRE(order.isOrderPending());
+}
+
+// --- CoverAtStopOrder intraday tests ---
+TEST_CASE("CoverAtStopOrder ptime ctor and getters", "[StopOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 14:20:00");
+    TradingVolume units(200, TradingVolume::SHARES);
+    std::string symbol("ABC");
+    DecimalType stopPrice = dec::fromString<DecimalType>("75.00");
+
+    CoverAtStopOrder<DecimalType> order(symbol, units, orderDt, stopPrice);
+    REQUIRE(order.getOrderDateTime() == orderDt);
+    REQUIRE(order.getOrderDate()     == orderDt.date());  // 
+    REQUIRE(order.getStopPrice()     == stopPrice);
+}
+
+TEST_CASE("CoverAtStopOrder execute with ptime at or above stop", "[StopOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 14:20:00");
+    ptime fillDt  = time_from_string("2025-05-27 15:00:00");
+    TradingVolume units(200, TradingVolume::SHARES);
+    std::string symbol("ABC");
+    DecimalType stopPrice = dec::fromString<DecimalType>("75.00");
+    DecimalType fillPrice = dec::fromString<DecimalType>("75.25");
+
+    CoverAtStopOrder<DecimalType> order(symbol, units, orderDt, stopPrice);
+    order.MarkOrderExecuted(fillDt, fillPrice);
+    REQUIRE(order.isOrderExecuted());
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());     // 
+    REQUIRE(order.getFillPrice()    == fillPrice);
+}
+
+TEST_CASE("CoverAtStopOrder execution below stop throws", "[StopOrder][ptime]") {
+    ptime orderDt = time_from_string("2025-05-27 14:20:00");
+    ptime fillDt  = time_from_string("2025-05-27 14:30:00");
+    TradingVolume units(200, TradingVolume::SHARES);
+    std::string symbol("ABC");
+    DecimalType stopPrice = dec::fromString<DecimalType>("75.00");
+    DecimalType badPrice  = dec::fromString<DecimalType>("74.99");
+
+    CoverAtStopOrder<DecimalType> order(symbol, units, orderDt, stopPrice);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(fillDt, badPrice),
+                      TradingOrderNotExecutedException);
+    REQUIRE(order.isOrderPending());
 }

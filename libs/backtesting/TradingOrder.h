@@ -20,6 +20,7 @@
 #include <list>
 #include <cstdint>
 #include <string>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TradingOrderException.h"
 #include "TimeSeriesEntry.h"
 #include "DecimalConstants.h"
@@ -147,63 +148,66 @@ namespace mkc_timeseries
   *   - Contract: Must throw an exception if fillDate is before the order date, or if the price violates limit/stop conditions.
   *   - Used to enforce correctness in order processing and simulation integrity.
   */ 
-  template <class Decimal> class TradingOrder
+  template <class Decimal>
+  class TradingOrder
   {
   public:
     typedef typename std::list<std::shared_ptr<TradingOrderObserver<Decimal>>>::const_iterator ConstObserverIterator;
 
   public:
-    TradingOrder(const std::string& tradingSymbol, 
-		 const TradingVolume& unitsInOrder,
-		 const TimeSeriesDate& orderDate);
+    // New ptime-based constructor
+    TradingOrder(const std::string& tradingSymbol,
+                 const TradingVolume& unitsInOrder,
+                 const ptime& orderDateTime)
+      : mTradingSymbol(tradingSymbol),
+	mUnitsInOrder(unitsInOrder),
+	mOrderDateTime(orderDateTime),
+	mOrderState(new PendingOrderState<Decimal>()),
+	mOrderID(++TradingOrder<Decimal>::mOrderIDCount),
+	mObservers()
+    {
+      if (mUnitsInOrder.getTradingVolume() == 0)
+	throw TradingOrderException("TradingOrder constructor - order cannot have zero units for: " + tradingSymbol + " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+    }
 
-    virtual ~TradingOrder()
+    // Legacy constructor (date only)
+    TradingOrder(const std::string& tradingSymbol,
+                 const TradingVolume& unitsInOrder,
+                 const boost::gregorian::date& orderDate)
+      : TradingOrder<Decimal>(tradingSymbol, unitsInOrder, ptime(orderDate, getDefaultBarTime()))
     {}
 
-    TradingOrder (const TradingOrder<Decimal>& rhs)
+    TradingOrder(const TradingOrder<Decimal>& rhs)
       : mTradingSymbol(rhs.mTradingSymbol),
 	mUnitsInOrder(rhs.mUnitsInOrder),
-	mOrderDate (rhs.mOrderDate),
-	mOrderState (rhs.mOrderState),
+	mOrderDateTime(rhs.mOrderDateTime),
+	mOrderState(rhs.mOrderState),
 	mOrderID(rhs.mOrderID),
 	mObservers(rhs.mObservers)
     {}
 
-    TradingOrder<Decimal>& 
-    operator=(const TradingOrder<Decimal> &rhs)
+    TradingOrder<Decimal>& operator=(const TradingOrder<Decimal>& rhs)
     {
       if (this == &rhs)
 	return *this;
-
       mTradingSymbol = rhs.mTradingSymbol;
       mUnitsInOrder = rhs.mUnitsInOrder;
-      mOrderDate = rhs.mOrderDate;
+      mOrderDateTime = rhs.mOrderDateTime;
       mOrderState = rhs.mOrderState;
       mOrderID = rhs.mOrderID;
       mObservers = rhs.mObservers;
-
       return *this;
     }
 
-    const std::string& getTradingSymbol() const
-    {
-      return mTradingSymbol;
-    }
+    const std::string& getTradingSymbol() const { return mTradingSymbol; }
+    const TradingVolume& getUnitsInOrder() const { return mUnitsInOrder; }
 
-    const TradingVolume& getUnitsInOrder() const
-    {
-      return mUnitsInOrder;
-    }
+    // New: get order datetime
+    const ptime& getOrderDateTime() const { return mOrderDateTime; }
+    // Legacy: get only the date portion
+    const boost::gregorian::date getOrderDate() const { return mOrderDateTime.date(); }
 
-    const TimeSeriesDate& getOrderDate() const
-    {
-      return mOrderDate;
-    }
-
-    uint32_t getOrderID() const
-    {
-      return mOrderID;
-    }
+    uint32_t getOrderID() const { return mOrderID; }
 
     virtual uint32_t getOrderPriority() const = 0;
     virtual bool isLongOrder() const = 0;
@@ -214,40 +218,66 @@ namespace mkc_timeseries
     virtual bool isStopOrder() const = 0;
     virtual bool isLimitOrder() const = 0;
 
-    bool isOrderPending() const;
-    bool isOrderExecuted() const;
-    bool isOrderCanceled() const;
-    void MarkOrderExecuted(const TimeSeriesDate& fillDate, 
-			   const Decimal& fillPrice);
-    void MarkOrderCanceled();
-    
-    const Decimal& getFillPrice() const;
-    const TimeSeriesDate& getFillDate() const;
-    virtual void accept (TradingOrderVisitor<Decimal> &visitor) = 0;
+    bool isOrderPending() const { return mOrderState->isOrderPending(); }
+    bool isOrderExecuted() const { return mOrderState->isOrderExecuted(); }
+    bool isOrderCanceled() const { return mOrderState->isOrderCanceled(); }
 
-    void addObserver (std::shared_ptr<TradingOrderObserver<Decimal>> observer)
+    // New: Mark order executed with datetime
+    void MarkOrderExecuted(const ptime& fillDateTime, const Decimal& fillPrice)
+    {
+      ValidateOrderExecution(fillDateTime, fillPrice);
+      if (fillDateTime >= getOrderDateTime())
+        {
+	  mOrderState->MarkOrderExecuted(this, fillDateTime, fillPrice);
+	  this->notifyOrderExecuted();
+        }
+      else
+	throw TradingOrderNotExecutedException("Order fill datetime cannot occur before order datetime");
+    }
+
+    void MarkOrderExecuted(const boost::gregorian::date& fillDate, const Decimal& fillPrice)
+    {
+      MarkOrderExecuted(ptime(fillDate, getDefaultBarTime()), fillPrice);
+    }
+
+    void MarkOrderCanceled()
+    {
+      mOrderState->MarkOrderCanceled(this);
+      this->notifyOrderCanceled();
+    }
+
+    const ptime& getFillDateTime() const { return mOrderState->getFillDateTime(); }
+
+    boost::gregorian::date getFillDate() const { return mOrderState->getFillDateTime().date(); }
+
+    const Decimal& getFillPrice() const { return mOrderState->getFillPrice(); }
+
+    virtual void accept(TradingOrderVisitor<Decimal>& visitor) = 0;
+
+    void addObserver(std::shared_ptr<TradingOrderObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
 
   protected:
-    ConstObserverIterator beginObserverList() const
-    {
-      return mObservers.begin();
-    }
-
-    ConstObserverIterator endObserverList() const
-    {
-      return mObservers.end();
-    }
+    ConstObserverIterator beginObserverList() const { return mObservers.begin(); }
+    ConstObserverIterator endObserverList() const { return mObservers.end(); }
 
     virtual void notifyOrderExecuted() = 0;
     virtual void notifyOrderCanceled() = 0;
-    virtual void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-					const Decimal& fillPrice) const = 0;
+
+    // New: Validate using datetime
+    virtual void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const = 0;
+
+    // Legacy: Validate using date
+    virtual void ValidateOrderExecution(const boost::gregorian::date& fillDate,
+					const Decimal& fillPrice) const
+    {
+      ValidateOrderExecution(ptime(fillDate, getDefaultBarTime()), fillPrice);
+    }
 
   private:
-    void ChangeState (std::shared_ptr<TradingOrderState<Decimal>> newState)
+    void ChangeState(std::shared_ptr<TradingOrderState<Decimal>> newState)
     {
       mOrderState = newState;
     }
@@ -258,7 +288,7 @@ namespace mkc_timeseries
   private:
     std::string mTradingSymbol;
     TradingVolume mUnitsInOrder;
-    TimeSeriesDate mOrderDate;
+    ptime mOrderDateTime;
     std::shared_ptr<TradingOrderState<Decimal>> mOrderState;
     uint32_t mOrderID;
     static std::atomic<uint32_t> mOrderIDCount;
@@ -278,11 +308,18 @@ namespace mkc_timeseries
   template <class Decimal> class MarketOrder : public TradingOrder<Decimal>
     {
     public:
+      // ptime-based constructor
+    MarketOrder(const std::string& tradingSymbol,
+                const TradingVolume& unitsInOrder,
+                const ptime& orderDateTime)
+      : TradingOrder<Decimal>(tradingSymbol, unitsInOrder, orderDateTime)
+      {}
+
       MarketOrder(const std::string& tradingSymbol, 
 			  const TradingVolume& unitsInOrder,
 			  const TimeSeriesDate& orderDate)
-      : TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
-    {}
+	: MarketOrder<Decimal> (tradingSymbol, unitsInOrder, ptime(orderDate, getDefaultBarTime()))
+      {}
 
       virtual ~MarketOrder()
       {}
@@ -321,9 +358,9 @@ namespace mkc_timeseries
       {
 	return 1;
       }
-      
-      void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				  const Decimal& fillPrice) const
+
+      // Market orders are always executed
+      void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const
       {}
   };
 
@@ -339,63 +376,75 @@ namespace mkc_timeseries
   template <class Decimal> class MarketEntryOrder : public MarketOrder<Decimal>
   {
   public:
-      MarketEntryOrder(const std::string& tradingSymbol, 
-		       const TradingVolume& unitsInOrder,
-		       const TimeSeriesDate& orderDate,
-		       const Decimal& stopLoss,
-		       const Decimal& profitTarget)
-      : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate),
-	mStopLoss (stopLoss),
-	mProfitTarget(profitTarget)
-      {}
+    MarketEntryOrder(const std::string& tradingSymbol,
+                     const TradingVolume& unitsInOrder,
+                     const ptime& orderDate,
+                     const Decimal& stopLoss,
+                     const Decimal& profitTarget)
+      : MarketOrder<Decimal>(tradingSymbol, unitsInOrder, orderDate),
+        mStopLoss(stopLoss),
+        mProfitTarget(profitTarget)
+    {}
 
-      virtual ~MarketEntryOrder()
-      {}
+    MarketEntryOrder(const std::string& tradingSymbol,
+		     const TradingVolume& unitsInOrder,
+		     const TimeSeriesDate& orderDate,
+		     const Decimal& stopLoss,
+		     const Decimal& profitTarget)
+      : MarketEntryOrder<Decimal> (tradingSymbol,
+				   unitsInOrder,
+				   ptime(orderDate, getDefaultBarTime()),
+				   stopLoss,
+				   profitTarget)
+    {}
 
-      MarketEntryOrder (const MarketEntryOrder<Decimal>& rhs)
+    virtual ~MarketEntryOrder()
+    {}
+
+    MarketEntryOrder (const MarketEntryOrder<Decimal>& rhs)
       : MarketOrder<Decimal> (rhs)
-      {
-	mStopLoss = rhs.mStopLoss;
-	mProfitTarget = rhs.mProfitTarget;
-      }
+    {
+      mStopLoss = rhs.mStopLoss;
+      mProfitTarget = rhs.mProfitTarget;
+    }
 
-      MarketEntryOrder<Decimal>& 
-      operator=(const MarketEntryOrder<Decimal> &rhs)
-      {
-	if (this == &rhs)
-	  return *this;
-	
-	MarketOrder<Decimal>::operator=(rhs);
-
-	mStopLoss = rhs.mStopLoss;
-	mProfitTarget = rhs.mProfitTarget;
-
+    MarketEntryOrder<Decimal>&
+    operator=(const MarketEntryOrder<Decimal> &rhs)
+    {
+      if (this == &rhs)
 	return *this;
-      }
+	
+      MarketOrder<Decimal>::operator=(rhs);
 
-      bool isEntryOrder() const
-      {
-	return true;
-      }
+      mStopLoss = rhs.mStopLoss;
+      mProfitTarget = rhs.mProfitTarget;
 
-      bool isExitOrder() const
-      {
-	return false;
-      }
+      return *this;
+    }
+
+    bool isEntryOrder() const
+    {
+      return true;
+    } 
+
+    bool isExitOrder() const
+    {
+      return false;
+    }
 
     const Decimal& getStopLoss() const
-      {
-	return mStopLoss;
-      }
+    {
+      return mStopLoss;
+    }
 
     const Decimal& getProfitTarget() const
-      {
-	return mProfitTarget;
-      }
+    {
+      return mProfitTarget;
+    }
 
   private:
-      Decimal mStopLoss;       // Stop loss in percent from PAL pattern. This is NOT the stop proce
-      Decimal mProfitTarget;   // Profit target in percent from PAL pattern. This is NOT the profit target
+    Decimal mStopLoss;       // Stop loss in percent from PAL pattern. This is NOT the stop price
+    Decimal mProfitTarget;   // Profit target in percent from PAL pattern. This is NOT the profit target
   };
 
   /**
@@ -409,13 +458,24 @@ namespace mkc_timeseries
   template <class Decimal> class MarketOnOpenLongOrder : public MarketEntryOrder<Decimal>
   {
   public:
+    MarketOnOpenLongOrder(const std::string& tradingSymbol,
+                         const TradingVolume& unitsInOrder,
+                         const ptime& orderDateTime,
+                         const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                         const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      : MarketEntryOrder<Decimal>(tradingSymbol, unitsInOrder, orderDateTime, stopLoss, profitTarget)
+    {}
 
-    MarketOnOpenLongOrder(const std::string& tradingSymbol, 
-			  const TradingVolume& unitsInOrder,
-			  const TimeSeriesDate& orderDate,
-			  const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			  const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
-      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopLoss, profitTarget)
+    MarketOnOpenLongOrder(const std::string& tradingSymbol,
+                         const TradingVolume& unitsInOrder,
+                         const date& orderDate,
+                         const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                         const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      : MarketOnOpenLongOrder<Decimal>(tradingSymbol,
+				       unitsInOrder,
+				       ptime(orderDate, getDefaultBarTime()),
+				       stopLoss,
+				       profitTarget)
     {}
 
     MarketOnOpenLongOrder (const MarketOnOpenLongOrder<Decimal>& rhs)
@@ -479,11 +539,23 @@ namespace mkc_timeseries
   {
   public:
     MarketOnOpenShortOrder(const std::string& tradingSymbol,
-			   const TradingVolume& unitsInOrder,
-			   const TimeSeriesDate& orderDate,
-			   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			   const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
-      : MarketEntryOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopLoss, profitTarget)
+                         const TradingVolume& unitsInOrder,
+                         const ptime& orderDateTime,
+                         const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                         const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      : MarketEntryOrder<Decimal>(tradingSymbol, unitsInOrder, orderDateTime, stopLoss, profitTarget)
+    {}
+
+    MarketOnOpenShortOrder(const std::string& tradingSymbol,
+                         const TradingVolume& unitsInOrder,
+                         const date& orderDate,
+                         const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                         const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      : MarketOnOpenShortOrder<Decimal>(tradingSymbol,
+				       unitsInOrder,
+				       ptime(orderDate, getDefaultBarTime()),
+				       stopLoss,
+				       profitTarget)
     {}
 
     MarketOnOpenShortOrder (const MarketOnOpenShortOrder<Decimal>& rhs)
@@ -547,10 +619,18 @@ namespace mkc_timeseries
   template <class Decimal> class MarketExitOrder : public MarketOrder<Decimal>
   {
   public:
-      MarketExitOrder(const std::string& tradingSymbol, 
-			  const TradingVolume& unitsInOrder,
-			  const TimeSeriesDate& orderDate)
+      MarketExitOrder(const std::string& tradingSymbol,
+		      const TradingVolume& unitsInOrder,
+		      const ptime& orderDate)
       : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
+      {}
+
+    MarketExitOrder(const std::string& tradingSymbol, 
+		      const TradingVolume& unitsInOrder,
+		      const date& orderDate)
+      : MarketExitOrder<Decimal> (tradingSymbol,
+				  unitsInOrder,
+				  ptime(orderDate, getDefaultBarTime()))
       {}
 
       virtual ~MarketExitOrder()
@@ -590,10 +670,16 @@ namespace mkc_timeseries
   {
   public:
 
-    MarketOnOpenSellOrder(const std::string& tradingSymbol, 
-			  const TradingVolume& unitsInOrder,
-			  const TimeSeriesDate& orderDate)
-      : MarketExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
+    MarketOnOpenSellOrder(const std::string& tradingSymbol,
+                          const TradingVolume& unitsInOrder,
+                          const ptime& orderDate)
+      : MarketExitOrder<Decimal>(tradingSymbol, unitsInOrder, orderDate)
+    {}
+
+    MarketOnOpenSellOrder(const std::string& tradingSymbol,
+                          const TradingVolume& unitsInOrder,
+                          const date& orderDate)
+      : MarketOnOpenSellOrder(tradingSymbol, unitsInOrder, ptime(orderDate, getDefaultBarTime()))
     {}
 
     MarketOnOpenSellOrder (const MarketOnOpenSellOrder<Decimal>& rhs)
@@ -654,15 +740,16 @@ namespace mkc_timeseries
   template <class Decimal> class MarketOnOpenCoverOrder : public MarketExitOrder<Decimal>
   {
   public:
-
-    MarketOnOpenCoverOrder(const std::string& tradingSymbol, 
-			  const TradingVolume& unitsInOrder,
-			  const TimeSeriesDate& orderDate)
-      : MarketExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
+    MarketOnOpenCoverOrder(const std::string& tradingSymbol,
+                           const TradingVolume& unitsInOrder,
+                           const ptime& orderDateTime)
+      : MarketExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime)
     {}
 
-    MarketOnOpenCoverOrder (const MarketOnOpenCoverOrder<Decimal>& rhs)
-      : MarketExitOrder<Decimal> (rhs)
+    MarketOnOpenCoverOrder(const std::string& tradingSymbol,
+                           const TradingVolume& unitsInOrder,
+                           const date& orderDate)
+      : MarketOnOpenCoverOrder<Decimal>(tradingSymbol, unitsInOrder, ptime(orderDate, getDefaultBarTime()))
     {}
 
     MarketOnOpenCoverOrder<Decimal>& 
@@ -720,12 +807,22 @@ namespace mkc_timeseries
   template <class Decimal> class LimitOrder : public TradingOrder<Decimal>
     {
     public:
+      LimitOrder(const std::string& tradingSymbol,
+                 const TradingVolume& unitsInOrder,
+                 const ptime& orderDateTime,
+                 const Decimal& limitPrice)
+        : TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime),
+          mLimitPrice(limitPrice)
+      {}
+
       LimitOrder(const std::string& tradingSymbol, 
-		 const TradingVolume& unitsInOrder,
-		 const TimeSeriesDate& orderDate,
-		 const Decimal& limitPrice)
-	: TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate),
-	  mLimitPrice(limitPrice)
+                 const TradingVolume& unitsInOrder,
+                 const date& orderDate,
+                 const Decimal& limitPrice)
+        : LimitOrder<Decimal> (tradingSymbol,
+			       unitsInOrder,
+			       ptime(orderDate, getDefaultBarTime()),
+			       limitPrice)
       {}
 
       virtual ~LimitOrder()
@@ -779,10 +876,20 @@ namespace mkc_timeseries
     {
     public:
       LimitExitOrder(const std::string& tradingSymbol, 
-		 const TradingVolume& unitsInOrder,
-		 const TimeSeriesDate& orderDate,
-		 const Decimal& limitPrice)
-	: LimitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
+                     const TradingVolume& unitsInOrder,
+                     const ptime& orderDateTime,
+                     const Decimal& limitPrice)
+        : LimitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime, limitPrice)
+      {}
+
+      LimitExitOrder(const std::string& tradingSymbol,
+                     const TradingVolume& unitsInOrder,
+                     const date& orderDate, // Changed TimeSeriesDate to date
+                     const Decimal& limitPrice)
+        : LimitExitOrder<Decimal> (tradingSymbol,
+				   unitsInOrder,
+				   ptime(orderDate, getDefaultBarTime()),
+				   limitPrice)
       {}
 
       virtual ~LimitExitOrder()
@@ -825,11 +932,23 @@ namespace mkc_timeseries
   template <class Decimal> class SellAtLimitOrder : public LimitExitOrder<Decimal>
   {
   public:
+    using TradingOrder<Decimal>::ValidateOrderExecution;
+
+    SellAtLimitOrder(const std::string& tradingSymbol,
+                     const TradingVolume& unitsInOrder,
+                     const ptime& orderDateTime,
+                     const Decimal& limitPrice)
+      : LimitExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime, limitPrice)
+    {}
+
     SellAtLimitOrder(const std::string& tradingSymbol, 
-		     const TradingVolume& unitsInOrder,
-		     const TimeSeriesDate& orderDate,
-		     const Decimal& limitPrice)
-      : LimitExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
+                     const TradingVolume& unitsInOrder,
+                     const date& orderDate,
+                     const Decimal& limitPrice)
+      : SellAtLimitOrder<Decimal> (tradingSymbol,
+				   unitsInOrder,
+				   ptime(orderDate, getDefaultBarTime()),
+				   limitPrice)
     {}
 
     ~SellAtLimitOrder()
@@ -854,12 +973,13 @@ namespace mkc_timeseries
       v.visit(this);
     }
 
-    void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const Decimal& fillPrice) const
+     void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
     {
+      // Base class TradingOrder::MarkOrderExecuted already checks fillDateTime >= orderDateTime
       if (fillPrice < this->getLimitPrice())
-	throw TradingOrderNotExecutedException ("SellAtLimitOrder: fill price cannot be less than limit price");
+        throw TradingOrderNotExecutedException ("SellAtLimitOrder: fill price cannot be less than limit price");
     }
+    
 
     // True in the sense that it closes a long position
     bool isLongOrder() const
@@ -898,11 +1018,23 @@ namespace mkc_timeseries
   template <class Decimal> class CoverAtLimitOrder : public LimitExitOrder<Decimal>
   {
   public:
+    using TradingOrder<Decimal>::ValidateOrderExecution;
+
     CoverAtLimitOrder(const std::string& tradingSymbol, 
-		      const TradingVolume& unitsInOrder,
-		      const TimeSeriesDate& orderDate,
-		      const Decimal& limitPrice)
-      : LimitExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, limitPrice)
+                      const TradingVolume& unitsInOrder,
+                      const ptime& orderDateTime,
+                      const Decimal& limitPrice)
+      : LimitExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime, limitPrice)
+    {}
+
+    CoverAtLimitOrder(const std::string& tradingSymbol,
+                      const TradingVolume& unitsInOrder,
+                      const date& orderDate, // Changed TimeSeriesDate to date
+                      const Decimal& limitPrice)
+      : CoverAtLimitOrder<Decimal> (tradingSymbol,
+				    unitsInOrder,
+				    ptime(orderDate, getDefaultBarTime()),
+				    limitPrice)
     {}
 
     ~CoverAtLimitOrder()
@@ -922,11 +1054,10 @@ namespace mkc_timeseries
       return *this;
     }
 
-    void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const Decimal& fillPrice) const
+    void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
     {
       if (fillPrice > this->getLimitPrice())
-	throw TradingOrderNotExecutedException ("CoverAtLimitOrder: fill price cannot be greater than limit price");
+        throw TradingOrderNotExecutedException ("CoverAtLimitOrder: fill price cannot be greater than limit price");
     }
 
     void accept (TradingOrderVisitor<Decimal> &v)
@@ -974,12 +1105,22 @@ namespace mkc_timeseries
   template <class Decimal> class StopOrder : public TradingOrder<Decimal>
     {
     public:
-      StopOrder(const std::string& tradingSymbol, 
-		const TradingVolume& unitsInOrder,
-		const TimeSeriesDate& orderDate,
-		const Decimal& stopPrice)
-	: TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate),
-	  mStopPrice(stopPrice)
+StopOrder(const std::string& tradingSymbol,
+                const TradingVolume& unitsInOrder,
+                const ptime& orderDateTime,
+                const Decimal& stopPrice)
+        : TradingOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime),
+          mStopPrice(stopPrice)
+      {}
+
+      StopOrder(const std::string& tradingSymbol,
+                const TradingVolume& unitsInOrder,
+                const date& orderDate,
+                const Decimal& stopPrice)
+        : StopOrder<Decimal> (tradingSymbol,
+			      unitsInOrder,
+			      ptime(orderDate, getDefaultBarTime()),
+			      stopPrice)
       {}
 
       virtual ~StopOrder()
@@ -1033,11 +1174,21 @@ namespace mkc_timeseries
   template <class Decimal> class StopExitOrder : public StopOrder<Decimal>
     {
     public:
+      StopExitOrder(const std::string& tradingSymbol,
+                    const TradingVolume& unitsInOrder,
+                    const ptime& orderDateTime,
+                    const Decimal& stopPrice)
+        : StopOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime, stopPrice)
+      {}
+
       StopExitOrder(const std::string& tradingSymbol, 
-		 const TradingVolume& unitsInOrder,
-		 const TimeSeriesDate& orderDate,
-		 const Decimal& stopPrice)
-	: StopOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
+                    const TradingVolume& unitsInOrder,
+                    const date& orderDate,
+                    const Decimal& stopPrice)
+        : StopExitOrder<Decimal> (tradingSymbol,
+				  unitsInOrder,
+				  ptime(orderDate, getDefaultBarTime()),
+				  stopPrice)
       {}
 
       virtual ~StopExitOrder()
@@ -1080,11 +1231,23 @@ namespace mkc_timeseries
   template <class Decimal> class SellAtStopOrder : public StopExitOrder<Decimal>
   {
   public:
-    SellAtStopOrder(const std::string& tradingSymbol, 
-		     const TradingVolume& unitsInOrder,
-		     const TimeSeriesDate& orderDate,
-		     const Decimal& stopPrice)
-      : StopExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
+    using TradingOrder<Decimal>::ValidateOrderExecution;
+
+    SellAtStopOrder(const std::string& tradingSymbol,
+                    const TradingVolume& unitsInOrder,
+                    const ptime& orderDateTime,
+                    const Decimal& stopPrice)
+      : StopExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime, stopPrice)
+    {}
+
+    SellAtStopOrder(const std::string& tradingSymbol,
+                    const TradingVolume& unitsInOrder,
+                    const date& orderDate,
+                    const Decimal& stopPrice)
+      : SellAtStopOrder<Decimal> (tradingSymbol,
+				  unitsInOrder,
+				  ptime(orderDate, getDefaultBarTime()),
+				  stopPrice)
     {}
 
     ~SellAtStopOrder()
@@ -1109,11 +1272,10 @@ namespace mkc_timeseries
       v.visit(this);
     }
 
-    void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const Decimal& fillPrice) const
+    void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
     {
       if (fillPrice > this->getStopPrice())
-	throw TradingOrderNotExecutedException ("SellAtStopOrder: fill price cannot be greater than stop price");
+        throw TradingOrderNotExecutedException ("SellAtStopOrder: fill price cannot be greater than stop price");
     }
 
     // True in the sense that it closes a long position
@@ -1152,11 +1314,23 @@ namespace mkc_timeseries
   template <class Decimal> class CoverAtStopOrder : public StopExitOrder<Decimal>
   {
   public:
+    using TradingOrder<Decimal>::ValidateOrderExecution;
+
+    CoverAtStopOrder(const std::string& tradingSymbol,
+                     const TradingVolume& unitsInOrder,
+                     const ptime& orderDateTime,
+                     const Decimal& stopPrice)
+      : StopExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDateTime, stopPrice)
+    {}
+
     CoverAtStopOrder(const std::string& tradingSymbol, 
-		     const TradingVolume& unitsInOrder,
-		     const TimeSeriesDate& orderDate,
-		     const Decimal& stopPrice)
-      : StopExitOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate, stopPrice)
+                     const TradingVolume& unitsInOrder,
+                     const date& orderDate,
+                     const Decimal& stopPrice)
+      : CoverAtStopOrder<Decimal> (tradingSymbol,
+				   unitsInOrder,
+				   ptime(orderDate, getDefaultBarTime()),
+				   stopPrice)
     {}
 
     ~CoverAtStopOrder()
@@ -1181,11 +1355,10 @@ namespace mkc_timeseries
       v.visit(this);
     }
 
-    void ValidateOrderExecution(const TimeSeriesDate& fillDate, 
-				const Decimal& fillPrice) const
+    void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
     {
       if (fillPrice < this->getStopPrice())
-	throw TradingOrderNotExecutedException ("CoverAtStopOrder: fill price cannot be less than stop price");
+        throw TradingOrderNotExecutedException ("CoverAtStopOrder: fill price cannot be less than stop price");
     }
 
 
@@ -1239,11 +1412,16 @@ namespace mkc_timeseries
     virtual bool isOrderExecuted() const = 0;
     virtual bool isOrderCanceled() const = 0;
     virtual void MarkOrderExecuted(TradingOrder<Decimal>* order,
-				   const TimeSeriesDate& fillDate, 
+                           const ptime& fillDateTime, 
+                           const Decimal& fillPrice) = 0;
+
+    virtual void MarkOrderExecuted(TradingOrder<Decimal>* order,
+				   const TimeSeriesDate& fillDate,
 				   const Decimal& fillPrice) = 0;
     virtual void MarkOrderCanceled(TradingOrder<Decimal>* order) = 0;
     virtual const Decimal& getFillPrice() const = 0;
-    virtual const TimeSeriesDate& getFillDate() const = 0;
+    virtual TimeSeriesDate getFillDate() const = 0;
+    virtual const ptime& getFillDateTime() const = 0;
   };
 
   /**
@@ -1280,16 +1458,29 @@ namespace mkc_timeseries
       throw TradingOrderNotExecutedException("No fill price in pending state");
     }
 
-    const TimeSeriesDate& getFillDate() const
+    TimeSeriesDate getFillDate() const
     {
       throw TradingOrderNotExecutedException("No fill date in pending state");
     }
 
+    const ptime& getFillDateTime() const
+    {
+      throw TradingOrderNotExecutedException("No fill date in pending state");
+    }
+
+    // Takes ptime for fillDateTime
+    void MarkOrderExecuted(TradingOrder<Decimal>* order,
+                           const ptime& fillDateTime,
+                           const Decimal& fillPrice) override
+    {
+      order->ChangeState (std::make_shared<ExecutedOrderState<Decimal>>(fillDateTime, fillPrice));
+    }
+    
     void MarkOrderExecuted(TradingOrder<Decimal>* order,
 			   const TimeSeriesDate& fillDate, 
 			   const Decimal& fillPrice)
     {
-      order->ChangeState (std::make_shared<ExecutedOrderState<Decimal>>(fillDate, fillPrice));
+      MarkOrderExecuted(order, ptime(fillDate, getDefaultBarTime()), fillPrice);
     }
 
     void MarkOrderCanceled(TradingOrder<Decimal>* order)
@@ -1305,11 +1496,16 @@ namespace mkc_timeseries
   template <class Decimal> class ExecutedOrderState : public TradingOrderState<Decimal>
   {
   public:
+    ExecutedOrderState(const ptime& fillDateTime,
+                       const Decimal& fillPrice)
+      : TradingOrderState<Decimal>(),
+        mEntryDateTime(fillDateTime),
+        mEntryPrice(fillPrice)
+      {}
+
     ExecutedOrderState(const TimeSeriesDate& fillDate, 
 			    const Decimal& fillPrice)
-      : TradingOrderState<Decimal>(),
-	mEntryDate(fillDate),
-	mEntryPrice(fillPrice)
+      : ExecutedOrderState<Decimal>(ptime(fillDate, getDefaultBarTime()), fillPrice)
       {}
 
     ~ExecutedOrderState()
@@ -1335,9 +1531,21 @@ namespace mkc_timeseries
       return mEntryPrice;
     }
 
-    const TimeSeriesDate& getFillDate() const
+    TimeSeriesDate getFillDate() const
     {
-      return mEntryDate;
+      return mEntryDateTime.date();
+    }
+
+    const ptime& getFillDateTime() const
+    {
+      return mEntryDateTime;
+    }
+
+    void MarkOrderExecuted(TradingOrder<Decimal>* order,
+                           const ptime& fillDateTime,
+                           const Decimal& fillPrice) override // Added override
+    {
+      throw TradingOrderExecutedException("Trading order has already been executed");
     }
 
     void MarkOrderExecuted(TradingOrder<Decimal>* order,
@@ -1353,7 +1561,7 @@ namespace mkc_timeseries
     }
 
   private:
-    TimeSeriesDate mEntryDate;
+    ptime mEntryDateTime;
     Decimal mEntryPrice;
   };
 
@@ -1391,14 +1599,26 @@ namespace mkc_timeseries
       throw TradingOrderNotExecutedException("No fill price in canceled state");
     }
 
-    const TimeSeriesDate& getFillDate() const
+    TimeSeriesDate getFillDate() const
     {
       throw TradingOrderNotExecutedException("No fill date in canceled state");
     }
 
+    const ptime& getFillDateTime() const
+    {
+      throw TradingOrderNotExecutedException("No fill date/time in canceled state");
+    }
+
     void MarkOrderExecuted(TradingOrder<Decimal>* order,
-			   const TimeSeriesDate& fillDate, 
+			   const TimeSeriesDate& fillDate,
 			   const Decimal& fillPrice)
+    {
+      throw TradingOrderNotExecutedException("Cannot execute a cancelled order");
+    }
+
+    void MarkOrderExecuted(TradingOrder<Decimal>* order,
+                           const ptime& fillDateTime,
+                           const Decimal& fillPrice) override
     {
       throw TradingOrderNotExecutedException("Cannot execute a cancelled order");
     }
@@ -1408,74 +1628,5 @@ namespace mkc_timeseries
       throw TradingOrderExecutedException("Cannot cancel a already canceled order");
     }
   };
-
-  template <class Decimal>
-  inline TradingOrder<Decimal>::TradingOrder(const std::string& tradingSymbol, 
-					  const TradingVolume& unitsInOrder,
-					  const TimeSeriesDate& orderDate)
-    : mTradingSymbol(tradingSymbol),
-      mUnitsInOrder(unitsInOrder),
-      mOrderDate (orderDate),
-      mOrderState(new PendingOrderState<Decimal>()),
-      mOrderID(++TradingOrder<Decimal>::mOrderIDCount),
-      mObservers()
-    {
-      if (mUnitsInOrder.getTradingVolume() == 0)
-	throw TradingOrderException ("TradingOrder constructor - order cannot have zero units for: " +tradingSymbol +" with order date: " +boost::gregorian::to_simple_string (orderDate));
-    }
-
-  template <class Decimal>
-  inline bool TradingOrder<Decimal>::isOrderPending() const
-  {
-    return mOrderState->isOrderPending();
-  }
-  
-  template <class Decimal>  
-  inline bool TradingOrder<Decimal>::isOrderExecuted() const
-  {
-    return mOrderState->isOrderExecuted();
-  }
-
-  template <class Decimal>
-  inline bool TradingOrder<Decimal>::isOrderCanceled() const
-  {
-    return mOrderState->isOrderCanceled();
-  }
-
-  template <class Decimal>
-  inline void TradingOrder<Decimal>::MarkOrderExecuted(const TimeSeriesDate& fillDate, 
-						    const Decimal& fillPrice)
-  {
-    ValidateOrderExecution (fillDate, fillPrice);
-
-    if (fillDate >= getOrderDate())
-      {
-	mOrderState->MarkOrderExecuted (this, fillDate, fillPrice);
-	this->notifyOrderExecuted();
-      }
-    else
-      throw TradingOrderNotExecutedException ("Order fill date cannot occur before order date");
-  }
-
-  template <class Decimal>
-  inline void TradingOrder<Decimal>::MarkOrderCanceled()
-  {
-     mOrderState->MarkOrderCanceled (this);
-     this->notifyOrderCanceled();
-  }
-
-  template <class Decimal>
-  inline const Decimal& TradingOrder<Decimal>::getFillPrice() const
-  {
-    return mOrderState->getFillPrice();
-  }
-
-  template <class Decimal>
-  inline const TimeSeriesDate& TradingOrder<Decimal>::getFillDate() const
-  {
-    return  mOrderState->getFillDate();
-  }
 }
-
-
 #endif

@@ -4,7 +4,10 @@
 #include "TimeSeriesEntry.h" // For TimeSeriesDate
 #include "DecimalConstants.h"
 #include "TradingOrderException.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 // Using declarations for convenience
 using namespace mkc_timeseries;
 
@@ -269,6 +272,15 @@ public:
 protected:
     void notifyOrderExecuted() override { /* Do nothing */ }
     void notifyOrderCanceled() override { /* Do nothing */ }
+
+  // Must override the ptime‐based pure virtual:
+    void ValidateOrderExecution(const boost::posix_time::ptime& fillDateTime,
+                                const Decimal& fillPrice) const override
+    {
+        // Delegate to our date‐based logic:
+        ValidateOrderExecution(fillDateTime.date(), fillPrice);
+    }
+
     void ValidateOrderExecution(const TimeSeriesDate& fillDate, const Decimal& fillPrice) const override {
         if (fillDate < this->getOrderDate())
             throw TradingOrderNotExecutedException("Fill date before order date.");
@@ -395,3 +407,50 @@ TEST_CASE("TradingOrder State Transitions and Notifications", "[trading_orders]"
 							    gOrderDate)), TradingOrderException);
     }
 }
+
+TEST_CASE("MarketOnOpenLongOrder ptime ctor and getters", "[trading_orders][ptime]") {
+    // full datetime of May 26, 2025 11:15:00
+    ptime dt = time_from_string("2025-05-26 11:15:00");
+    MarketOnOpenLongOrder<DecimalType> order(gTradingSymbol,
+                                            gUnitsInOrder,
+                                            dt,
+                                            gStopLossPercent,
+                                            gProfitTargetPercent);
+    // New API
+    REQUIRE(order.getOrderDateTime() == dt);
+    // Legacy date API still works
+    REQUIRE(order.getOrderDate() == dt.date());
+}
+
+TEST_CASE("MarketOnOpenLongOrder execute with ptime", "[trading_orders][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 09:30:00");
+    ptime fillDt  = time_from_string("2025-05-26 12:45:30");
+    MarketOnOpenLongOrder<DecimalType> order(gTradingSymbol,
+                                            gUnitsInOrder,
+                                            orderDt,
+                                            gStopLossPercent,
+                                            gProfitTargetPercent);
+    // Execute at a later datetime
+    order.MarkOrderExecuted(fillDt, gFillPrice);
+    REQUIRE(order.isOrderExecuted());
+    // Verify both full‐time and date‐only accessors
+    REQUIRE(order.getFillDateTime() == fillDt);
+    REQUIRE(order.getFillDate()     == fillDt.date());
+    REQUIRE(order.getFillPrice()    == gFillPrice);
+}
+
+TEST_CASE("MarketOnOpenLongOrder invalid ptime execution throws", "[trading_orders][ptime]") {
+    ptime orderDt = time_from_string("2025-05-26 14:00:00");
+    // fill 30 minutes *before* order time
+    ptime badFill = time_from_string("2025-05-26 13:30:00");
+    MarketOnOpenLongOrder<DecimalType> order(gTradingSymbol,
+                                            gUnitsInOrder,
+                                            orderDt,
+                                            gStopLossPercent,
+                                            gProfitTargetPercent);
+    REQUIRE_THROWS_AS(order.MarkOrderExecuted(badFill, gFillPrice),
+                      TradingOrderNotExecutedException);
+    // Should remain pending
+    REQUIRE(order.isOrderPending());
+}
+
