@@ -504,4 +504,32 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
 
      REQUIRE (spySeries != spySeries2);
    }
+
+  SECTION("TimeSeries getRandomAccessIterator by ptime", "[TimeSeries]") {
+    // pick an existing 2021-04-05 12:00 bar
+    ptime dt4 = intraday_entry4->getDateTime();
+    auto it4 = ssoSeries.getRandomAccessIterator(dt4);
+    REQUIRE(it4 != ssoSeries.endRandomAccess());
+    REQUIRE(*it4 == *intraday_entry4);
+
+    // a timestamp not in the series should return endRandomAccess()
+    ptime missing(dt4.date(), time_duration(16, 0, 0));
+    REQUIRE(ssoSeries.getRandomAccessIterator(missing) == ssoSeries.endRandomAccess());
+  }
+
+  SECTION("TimeSeries getDateTimeValue by ptime iterator", "[TimeSeries]") {
+    // locate the 11:00 bar on 2021-04-05
+    ptime dt3 = intraday_entry3->getDateTime();
+    auto it3 = ssoSeries.getRandomAccessIterator(dt3);
+    REQUIRE(it3 != ssoSeries.endRandomAccess());
+
+    // offset 0 → exact same timestamp
+    REQUIRE(ssoSeries.getDateTimeValue(it3, 0) == dt3);
+    // offset 2 → two bars earlier (09:00 bar)
+    ptime dt1 = intraday_entry1->getDateTime();
+    REQUIRE(ssoSeries.getDateTimeValue(it3, 2) == dt1);
+
+    // offset beyond available history should throw
+    REQUIRE_THROWS_AS(ssoSeries.getDateTimeValue(it3, 5), TimeSeriesException);
+  }
 }
