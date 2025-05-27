@@ -322,7 +322,7 @@ TEST_CASE("CoverAtLimitOrder ptime ctor and getters", "[LimitOrder][ptime]") {
 
     CoverAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
     REQUIRE(order.getOrderDateTime() == orderDt);
-    REQUIRE(order.getOrderDate()     == orderDt.date());  // :contentReference[oaicite:2]{index=2}
+    REQUIRE(order.getOrderDate()     == orderDt.date());
     REQUIRE(order.getLimitPrice()    == limitPrice);
 }
 
