@@ -1,5 +1,5 @@
-#ifndef SHUFFLE_UTILS_H
-#define SHUFFLE_UTILS_H
+#ifndef MKC_TIMESERIES_SHUFFLE_UTILS_H
+#define MKC_TIMESERIES_SHUFFLE_UTILS_H
 
 // Copyright (C) MKC Associates, LLC - All Rights Reserved
 // Unauthorized copying of this file, via any medium is strictly prohibited
