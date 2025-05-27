@@ -251,8 +251,13 @@ namespace mkc_timeseries
 
     /**
      * @brief Adds a new bar's data to all open positions based on date.
-     * This version iterates all managed instruments and updates their positions if they are open
+     * This overload uses only the date portion of the `ptime` object to fetch and add bar data.
+     * It iterates all managed instruments and updates their positions if they are open
      * and have a corresponding bar in the portfolio for the given date.
+     * 
+     * @note This method is distinct from the overload that uses `ptime` as its parameter. 
+     *       While the `ptime` overload considers both date and time, this method focuses solely on the date.
+     * 
      * @param openPositionDate The date for which to fetch and add bar data.
      * @param portfolioOfSecurities A pointer to the Portfolio containing security data.
      */
