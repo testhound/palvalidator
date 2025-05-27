@@ -318,7 +318,7 @@ TEST_CASE("CoverAtLimitOrder ptime ctor and getters", "[LimitOrder][ptime]") {
     ptime orderDt = time_from_string("2025-05-27 11:00:00");
     TradingVolume units(75, TradingVolume::SHARES);
     std::string symbol("SPY");
-    DecimalType limitPrice = createDecimal(" 80.00");
+    DecimalType limitPrice = createDecimal("80.00");
 
     CoverAtLimitOrder<DecimalType> order(symbol, units, orderDt, limitPrice);
     REQUIRE(order.getOrderDateTime() == orderDt);
