@@ -327,7 +327,7 @@ namespace mkc_timeseries
 
    
      typedef typename std::list<std::reference_wrapper<TradingOrderObserver<Decimal>>>::const_iterator ConstObserverIterator;
-    // mPendingOrders is keyed by date for backward compatibility of PendingOrderIterator.
+    // mPendingOrders is now keyed by ptime (boost::posix_time::ptime) to support intraday operations.
     // For true intraday sorted iteration of all pending orders, this map would need to be keyed by ptime.
     typedef typename  std::multimap<boost::posix_time::ptime, std::shared_ptr<TradingOrder<Decimal>>>::const_iterator PendingOrderIterator;
 
