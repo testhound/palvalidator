@@ -802,7 +802,7 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Retrieve date value by iterator offset.
+     * @brief Retrieve datetime (ptime) value by iterator offset.
      */
     const boost::posix_time::ptime& getDateTimeValue(const ConstRandomAccessIterator& it,
 						     unsigned long offset) const
