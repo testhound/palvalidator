@@ -105,11 +105,11 @@ TEST_CASE ("OpenPositionBar operations", "[OpenPositionBar]")
   }
 
   SECTION("OpenPositionBar getDateTime returns correct ptime", "[OpenPositionBar][ptime]") {
-    // bar1 was built from refDate1 at default bar time (15:00)
+    // bar1 was built from refDate1 at default bar time (as returned by getDefaultBarTime())
     ptime expected1(refDate1, getDefaultBarTime());
     REQUIRE(bar1.getDateTime() == expected1);
 
-    // bar2 was built from refDate2 at default bar time (15:00)
+    // bar2 was built from refDate2 at default bar time (as returned by getDefaultBarTime())
     ptime expected2(refDate2, getDefaultBarTime());
     REQUIRE(bar2.getDateTime() == expected2); 
   }
