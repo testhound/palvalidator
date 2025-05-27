@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <boost/thread/mutex.hpp>
 #include <functional>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "DateRange.h"
 
 namespace std
@@ -747,7 +748,15 @@ namespace mkc_timeseries
     ConstRandomAccessIterator endRandomAccess()   const { return mData.end();   }
 
     /**
-     * @brief Get iterator for a specific date in the random-access array.
+     * @brief Get iterator for a specific ptime date in the random-access array.
+     */
+    ConstRandomAccessIterator getRandomAccessIterator(const boost::posix_time::ptime& d) const
+    {
+      return getTimeSeriesEntry(d);
+    }
+
+    /**
+     * @brief Get iterator for a specific gregorian date in the random-access array.
      */
     ConstRandomAccessIterator getRandomAccessIterator(const boost::gregorian::date& d) const
     {
@@ -790,6 +799,15 @@ namespace mkc_timeseries
     {
       ValidateVectorOffset(it, offset);
       return *(it - offset);
+    }
+
+    /**
+     * @brief Retrieve datetime (ptime) value by iterator offset.
+     */
+    const boost::posix_time::ptime& getDateTimeValue(const ConstRandomAccessIterator& it,
+						     unsigned long offset) const
+    {
+      return getTimeSeriesEntry(it, offset).getDateTime();
     }
 
     /**

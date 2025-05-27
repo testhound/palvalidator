@@ -9,6 +9,7 @@
 
 #include <string>
 #include <memory>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TimeSeries.h"
 #include "DecimalConstants.h"
 
@@ -16,6 +17,8 @@ using std::string;
 
 namespace mkc_timeseries
 {
+  using boost::posix_time::ptime;
+
   class SecurityException : public std::runtime_error
   {
   public:
@@ -145,9 +148,37 @@ namespace mkc_timeseries
        * or `getRandomAccessIteratorEnd()` if the date is not in the series.
        * @details Delegates to `OHLCTimeSeries::getRandomAccessIterator`.
        */
+
+      Security::ConstRandomAccessIterator findTimeSeriesEntry (const ptime& d) const
+      {
+	return mSecurityTimeSeries->getRandomAccessIterator(d);
+      }
+
+      /**
+       * @brief Finds an iterator pointing to the time series entry for a specific date.
+       * @param d The date to find.
+       * @return A `ConstRandomAccessIterator` pointing to the entry if found,
+       * or `getRandomAccessIteratorEnd()` if the date is not in the series.
+       */
       Security::ConstRandomAccessIterator findTimeSeriesEntry (const boost::gregorian::date& d) const
 	{
-	  return mSecurityTimeSeries->getRandomAccessIterator(d);
+	  return findTimeSeriesEntry(ptime(d, getDefaultBarTime()));
+	}
+
+      /*
+       * @brief Gets a random access iterator pointing to the time series entry for a specific date.
+       * @param d The date to retrieve the iterator for.
+       * @return A `ConstRandomAccessIterator` pointing to the entry for the given date.
+       * @throws SecurityException if the date `d` is not found in the time series.
+       * @details Delegates to `OHLCTimeSeries::getRandomAccessIterator` and adds error checking.
+       */
+      Security::ConstRandomAccessIterator getRandomAccessIterator (const boost::posix_time::ptime& d) const
+	{
+	  Security::ConstRandomAccessIterator it = mSecurityTimeSeries->getRandomAccessIterator(d);
+	  if (it != getRandomAccessIteratorEnd())
+	    return mSecurityTimeSeries->getRandomAccessIterator(d);
+	  else
+	    throw SecurityException ("No time series entry for date: " +boost::posix_time::to_simple_string (d));
 	}
 
       /**
@@ -155,15 +186,10 @@ namespace mkc_timeseries
        * @param d The date to retrieve the iterator for.
        * @return A `ConstRandomAccessIterator` pointing to the entry for the given date.
        * @throws SecurityException if the date `d` is not found in the time series.
-       * @details Delegates to `OHLCTimeSeries::getRandomAccessIterator` and adds error checking.
        */
       Security::ConstRandomAccessIterator getRandomAccessIterator (const boost::gregorian::date& d) const
 	{
-	  Security::ConstRandomAccessIterator it = mSecurityTimeSeries->getRandomAccessIterator(d);
-	  if (it != getRandomAccessIteratorEnd())
-	    return mSecurityTimeSeries->getRandomAccessIterator(d);
-	  else
-	    throw SecurityException ("No time series entry for date: " +boost::gregorian::to_simple_string (d));
+	  return getRandomAccessIterator(ptime(d, getDefaultBarTime()));
 	}
 
       /**
@@ -211,6 +237,12 @@ namespace mkc_timeseries
 							      unsigned long offset) const
       {
 	return mSecurityTimeSeries->getTimeSeriesEntry(it, offset); 
+      }
+
+      const boost::posix_time::ptime&
+      getDateTimeValue (const ConstRandomAccessIterator& it, unsigned long offset) const
+      {
+	return mSecurityTimeSeries->getDateTimeValue(it, offset);
       }
 
       /**
