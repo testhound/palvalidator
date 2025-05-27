@@ -16,7 +16,8 @@
 #include <boost/accumulators/statistics/median.hpp>
 #include <boost/accumulators/statistics/mean.hpp>
 #include <boost/accumulators/statistics/sum.hpp>
-#include "TradingPosition.h"
+#include "TradingPosition.h" // Provides TradingPosition, ptime
+#include "TimeSeriesEntry.h" // Provides TimeSeriesDate, ptime, getDefaultBarTime (though not directly used for key here)
 
 namespace mkc_timeseries
 {
@@ -25,6 +26,8 @@ namespace mkc_timeseries
   using boost::accumulators::median;
   using boost::accumulators::mean;
   using boost::accumulators::sum;
+  // TimeSeriesDate is boost::gregorian::date, ptime is boost::posix_time::ptime
+  // We will use ptime as the key for the map.
 
   typedef boost::accumulators::tag::median median_tag;
   typedef boost::accumulators::tag::mean mean_tag;
@@ -45,8 +48,9 @@ namespace mkc_timeseries
   template <class Decimal> class ClosedPositionHistory
   {
   public:
-    typedef typename std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>>::iterator PositionIterator;
-    typedef typename std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>>::const_iterator ConstPositionIterator;
+    // Changed map key from TimeSeriesDate (boost::gregorian::date) to ptime
+    typedef typename std::multimap<ptime,std::shared_ptr<TradingPosition<Decimal>>>::iterator PositionIterator;
+    typedef typename std::multimap<ptime,std::shared_ptr<TradingPosition<Decimal>>>::const_iterator ConstPositionIterator;
     typedef std::vector<unsigned int>::const_iterator ConstBarsInPositionIterator;
     typedef std::vector<double>::const_iterator ConstTradeReturnIterator;
 
@@ -120,7 +124,8 @@ namespace mkc_timeseries
       if (position->isPositionOpen())
         throw ClosedPositionHistoryException ("ClosedPositionHistory:addClosedPosition - cannot add open position");
 
-      boost::gregorian::date d = position->getEntryDate();
+      // Changed to use ptime and getEntryDateTime() for the map key
+      ptime dt = position->getEntryDateTime(); //
 
       mBarsPerPosition.push_back (position->getNumBarsInPosition());
       mNumBarsInMarket += position->getNumBarsInPosition();
@@ -128,7 +133,8 @@ namespace mkc_timeseries
       if (position->RMultipleStopSet())
         mRMultipleSum += position->getRMultiple();
 
-      mPositions.insert(std::make_pair(d, position));
+      // Insert using the ptime key
+      mPositions.insert(std::make_pair(dt, position));
 
       Decimal percReturn (position->getPercentReturn());
 
@@ -216,13 +222,13 @@ namespace mkc_timeseries
     std::vector<Decimal> getHighResBarReturns() const
     {
         std::vector<Decimal> allReturns;
-        for (auto it = mPositions.begin(); it != mPositions.end(); ++it)
+        for (auto it = mPositions.begin(); it != mPositions.end(); ++it) // Iterator type changes due to typedef
 	  {
             const auto& posPtr = it->second;
 
 	    // Grab the TradingPositon's  full bar history (entry→exit)
-            auto begin = posPtr->beginPositionBarHistory();
-            auto end   = posPtr->endPositionBarHistory();
+            auto begin = posPtr->beginPositionBarHistory(); // This already deals with ptime keys
+            auto end   = posPtr->endPositionBarHistory();   // This already deals with ptime keys
 
             if (std::distance(begin, end) < 2)
 	      continue;		// need at least two bars to compute one P&L
@@ -232,7 +238,7 @@ namespace mkc_timeseries
 	    // Compute bar‐by‐bar return for this trade
             for (auto curr = std::next(begin); curr != end; ++curr)
 	      {
-                // Each iterator points to pair<TimeSeriesDate, OpenPositionBar>
+                // Each iterator points to pair<ptime, OpenPositionBar>
                 Decimal closePrev = prev->second.getCloseValue();
                 Decimal closeCurr = curr->second.getCloseValue();
                 Decimal barReturn = (closeCurr - closePrev) / closePrev;
@@ -512,6 +518,7 @@ namespace mkc_timeseries
     {
       Decimal cumReturn(0);
 
+      // Iterator type changes due to typedef
       ClosedPositionHistory::ConstPositionIterator it = beginTradingPositions();
       if (it != endTradingPositions())
         {
@@ -520,7 +527,7 @@ namespace mkc_timeseries
 
           for (; it != endTradingPositions(); it++)
             {
-              cumReturn = cumReturn *  it->second->getTradeReturnMultiplier();
+              cumReturn = cumReturn * it->second->getTradeReturnMultiplier();
             }
 
           cumReturn = cumReturn - DecimalConstants<Decimal>::DecimalOne;
@@ -529,11 +536,13 @@ namespace mkc_timeseries
       return cumReturn;
     }
 
+    // Return type changes due to typedef
     ClosedPositionHistory::ConstPositionIterator beginTradingPositions() const
     {
       return mPositions.begin();
     }
 
+    // Return type changes due to typedef
     ClosedPositionHistory::ConstPositionIterator endTradingPositions() const
     {
       return mPositions.end();
@@ -590,7 +599,8 @@ namespace mkc_timeseries
     }
 
   private:
-    std::multimap<TimeSeriesDate,std::shared_ptr<TradingPosition<Decimal>>> mPositions;
+    // Changed map key from TimeSeriesDate to ptime
+    std::multimap<ptime,std::shared_ptr<TradingPosition<Decimal>>> mPositions;
     Decimal mSumWinners;
     Decimal mSumLosers;
     Decimal mLogSumWinners;
@@ -609,22 +619,5 @@ namespace mkc_timeseries
     std::vector<unsigned int> mBarsPerWinningPosition;
     std::vector<unsigned int> mBarsPerLosingPosition;
   };
-
-  /*
- template <class Decimal> class PositionManager
-  {
-    bool isInstrumentLong (const std::string& symbol);
-    bool isInstrumentShort (const std::string& symbol);
-    bool isInstrumentFlat (const std::string& symbol);
-
-  private:
-    typedef std::shared_ptr<TradingPosition<Decimal> TradingPositionPtr;
-
-    std::map<uint32_t, std::shared_ptr<TradingPosition<Decimal>> orderIDToPositionMap;
-    std::multimap<uint32_t, std::shared_ptr<TradingOrder<Decimal>> PositionIDToOrderMap;
-    std::map<uint32_t, std::shared_ptr<TradingOrder<Decimal>> PositionIDToPositionMap;
-    std::map<std::string, std::vector<TradingPositionPtr>> SymbolToOpenPositionMap;
-  };
- */
 }
 #endif

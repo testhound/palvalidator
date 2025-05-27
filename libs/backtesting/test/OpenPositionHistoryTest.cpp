@@ -1,7 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include "TradingPosition.h"
 #include "TestUtils.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
@@ -53,6 +56,7 @@ TEST_CASE ("OpenPositionHistory operations", "[OpenPositionHistory]")
 
   SECTION ("OpenPositionHistory getFirstDate()");
   {
+    std::cout << "In SECTION OpenPositionHistory getFirstDate()" << std::endl << std::endl;
     REQUIRE (positionHistory.getFirstDate() == TimeSeriesDate (2015, Dec, 28));
   }
 
@@ -91,21 +95,21 @@ TEST_CASE ("OpenPositionHistory operations", "[OpenPositionHistory]")
   {
     OpenPositionHistory<DecimalType>::PositionBarIterator it = positionHistory.beginPositionBarHistory();
 
-    REQUIRE (it->first == TimeSeriesDate (2015, Dec, 28));
+    REQUIRE (it->first.date() == TimeSeriesDate (2015, Dec, 28));
     REQUIRE (it->second == *bar1);
     it++;
 
-    REQUIRE (it->first == TimeSeriesDate (2015, Dec, 29));
+    REQUIRE (it->first.date() == TimeSeriesDate (2015, Dec, 29));
     REQUIRE (it->second == *bar2);
     it++;
 
-    REQUIRE (it->first == TimeSeriesDate (2015, Dec, 30));
+    REQUIRE (it->first.date() == TimeSeriesDate (2015, Dec, 30));
     REQUIRE (it->second == *bar3);
 
     it = positionHistory.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first == TimeSeriesDate (2016, Jan, 6));
+    REQUIRE (it->first.date() == TimeSeriesDate (2016, Jan, 6));
     REQUIRE (it->second == *bar7);
 
   }
@@ -114,23 +118,69 @@ SECTION ("OpenPositionHistory ConstIterator operations");
   {
     OpenPositionHistory<DecimalType>::ConstPositionBarIterator it = positionHistory.beginPositionBarHistory();
 
-    REQUIRE (it->first == TimeSeriesDate (2015, Dec, 28));
+    REQUIRE (it->first.date() == TimeSeriesDate (2015, Dec, 28));
     REQUIRE (it->second == *bar1);
     it++;
 
-    REQUIRE (it->first == TimeSeriesDate (2015, Dec, 29));
+    REQUIRE (it->first.date() == TimeSeriesDate (2015, Dec, 29));
     REQUIRE (it->second == *bar2);
     it++;
 
-    REQUIRE (it->first == TimeSeriesDate (2015, Dec, 30));
+    REQUIRE (it->first.date() == TimeSeriesDate (2015, Dec, 30));
     REQUIRE (it->second == *bar3);
 
     it = positionHistory.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first == TimeSeriesDate (2016, Jan, 6));
+    REQUIRE (it->first.date() == TimeSeriesDate (2016, Jan, 6));
     REQUIRE (it->second == *bar7);
 
+  }
+
+  SECTION("Intraday OpenPositionHistory getFirstDateTime/getLastDateTime", "[OpenPositionHistory][ptime]") {
+    // 1) Build three true intraday bars on 2025-05-26 at 09:30, 10:30, 11:30
+    auto entryA = createTimeSeriesEntry(
+      "20250526", "09:30:00",
+      "100.0","101.0","99.0","100.5","100"
+    );
+    auto entryB = createTimeSeriesEntry(
+      "20250526", "10:30:00",
+      "101.0","102.0","100.0","101.5","150"
+    );
+    auto entryC = createTimeSeriesEntry(
+      "20250526", "11:30:00",
+      "102.0","103.0","101.0","102.5","200"
+    );
+
+    OpenPositionHistory<DecimalType> histIntraday(*entryA);
+    histIntraday.addBar(OpenPositionBar<DecimalType>(*entryB));
+    histIntraday.addBar(OpenPositionBar<DecimalType>(*entryC));
+
+    // Expect first/last ptime match exactly those entry timestamps
+    REQUIRE(histIntraday.getFirstDateTime() == entryA->getDateTime());
+    REQUIRE(histIntraday.getLastDateTime()  == entryC->getDateTime());
+  }
+
+  SECTION("Daily OpenPositionHistory getFirstDateTime/getLastDateTime", "[OpenPositionHistory][ptime]") {
+    // 1) Build two DAILY bars (default bar time from getDefaultBarTime)
+    //    use the volume_t overload so they come in as TimeFrame::DAILY
+    auto entryD = createTimeSeriesEntry(
+      "20250525",
+      "200.0","201.0","199.0","200.5",
+      (mkc_timeseries::volume_t)1000
+    );
+    auto entryE = createTimeSeriesEntry(
+      "20250526",
+      "300.0","301.0","299.0","300.5",
+      (mkc_timeseries::volume_t)2000
+    );
+
+    OpenPositionHistory<DecimalType> histDaily(*entryD);
+    histDaily.addBar(OpenPositionBar<DecimalType>(*entryE));
+
+    // The entry->getDateTime() uses default bar-time encapsulated by the DATE-only ctor
+    REQUIRE(histDaily.getFirstDateTime() == entryD->getDateTime());
+    REQUIRE(histDaily.getLastDateTime()  == entryE->getDateTime());
   }
 }
 

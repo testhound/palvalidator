@@ -4,7 +4,10 @@
 #include "TimeSeriesIndicators.h"
 #include "TestUtils.h"
 #include <cmath>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
@@ -550,93 +553,93 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 	}
     }
 
-SECTION ("ClosedPositionHistory Longs ConstIterator tests")
-  {
-    /*
-    ClosedPositionHistory<DecimalType>::ConstPositionIterator  it = closedLongPositions.beginClosedPositions();
+  SECTION ("ClosedPositionHistory Longs ConstIterator tests")
+    {
+      /*
+	ClosedPositionHistory<DecimalType>::ConstPositionIterator  it = closedLongPositions.beginClosedPositions();
 
-    REQUIRE (it->first == longEntryDate1);
-    REQUIRE (*(it->second) == longPosition1);
+	REQUIRE (it->first == longEntryDate1);
+	REQUIRE (*(it->second) == longPosition1);
 
-    it++;
-    it++;
+	it++;
+	it++;
 
-    REQUIRE (it->first == longPosition3.getEntryDate());
-    REQUIRE (*(it->second) == longPosition3);
-    */
-  }
+	REQUIRE (it->first == longPosition3.getEntryDate());
+	REQUIRE (*(it->second) == longPosition3);
+      */
+    }
 
-//
+  //
   // New tests for getHighResBarReturns()
   //
 
-SECTION("getHighResBarReturns for single-bar trade")
-{
-    ClosedPositionHistory<DecimalType> history;
+  SECTION("getHighResBarReturns for single-bar trade")
+    {
+      ClosedPositionHistory<DecimalType> history;
 
-    // 1) Build a single-bar long position
-    TimeSeriesDate entryDate(2020, Jan, 1);
-    DecimalType entryPrice = createDecimal("100.00");
-    auto entryBar = createTimeSeriesEntry(entryDate,
-                                          entryPrice, entryPrice,
-                                          entryPrice, entryPrice,
-                                          1 /* volume */);
+      // 1) Build a single-bar long position
+      TimeSeriesDate entryDate(2020, Jan, 1);
+      DecimalType entryPrice = createDecimal("100.00");
+      auto entryBar = createTimeSeriesEntry(entryDate,
+					    entryPrice, entryPrice,
+					    entryPrice, entryPrice,
+					    1 /* volume */);
 
-    // ctor seeds history with that one bar
-    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
-                     myCornSymbol, entryPrice, *entryBar, oneContract);
+      // ctor seeds history with that one bar
+      auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+								    myCornSymbol, entryPrice, *entryBar, oneContract);
 
-    // close on the same bar (no addBar)
-    pos->ClosePosition(entryDate, entryPrice);
+      // close on the same bar (no addBar)
+      pos->ClosePosition(entryDate, entryPrice);
 
-    history.addClosedPosition(pos);
+      history.addClosedPosition(pos);
 
-    // because there's only one bar, getHighResBarReturns() skips it
-    auto returns = history.getHighResBarReturns();
-    REQUIRE(returns.empty());
-}
+      // because there's only one bar, getHighResBarReturns() skips it
+      auto returns = history.getHighResBarReturns();
+      REQUIRE(returns.empty());
+    }
 
-SECTION("getHighResBarReturns for two-bar trade")
-{
-    ClosedPositionHistory<DecimalType> history;
+  SECTION("getHighResBarReturns for two-bar trade")
+    {
+      ClosedPositionHistory<DecimalType> history;
 
-    // 1) Entry bar
-    TimeSeriesDate entryDate(2020, Jan, 1);
-    DecimalType entryPrice = createDecimal("100.00");
-    auto entryBar = createTimeSeriesEntry(entryDate,
-                                          entryPrice, entryPrice,
-                                          entryPrice, entryPrice,
-                                          1);
+      // 1) Entry bar
+      TimeSeriesDate entryDate(2020, Jan, 1);
+      DecimalType entryPrice = createDecimal("100.00");
+      auto entryBar = createTimeSeriesEntry(entryDate,
+					    entryPrice, entryPrice,
+					    entryPrice, entryPrice,
+					    1);
 
-    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
-                     myCornSymbol, entryPrice, *entryBar, oneContract);
+      auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+								    myCornSymbol, entryPrice, *entryBar, oneContract);
 
-    // 2) Add a second bar
-    TimeSeriesDate exitDate(2020, Jan, 2);
-    DecimalType exitPrice = createDecimal("110.00");
-    auto secondBar = createTimeSeriesEntry(exitDate,
-                                           exitPrice, exitPrice,
-                                           exitPrice, exitPrice,
-                                           1);
-    pos->addBar(*secondBar);  // ← extend history by one bar :contentReference[oaicite:0]{index=0}&#8203;:contentReference[oaicite:1]{index=1}
+      // 2) Add a second bar
+      TimeSeriesDate exitDate(2020, Jan, 2);
+      DecimalType exitPrice = createDecimal("110.00");
+      auto secondBar = createTimeSeriesEntry(exitDate,
+					     exitPrice, exitPrice,
+					     exitPrice, exitPrice,
+					     1);
+      pos->addBar(*secondBar);
 
-    // 3) Close on that second bar
-    pos->ClosePosition(exitDate, exitPrice);
+      // 3) Close on that second bar
+      pos->ClosePosition(exitDate, exitPrice);
 
-    history.addClosedPosition(pos);
+      history.addClosedPosition(pos);
 
-    // Now exactly one high-res return: (110–100)/100 = 0.10
-    auto returns = history.getHighResBarReturns();           // :contentReference[oaicite:2]{index=2}&#8203;:contentReference[oaicite:3]{index=3}
-    REQUIRE(returns.size() == 1);
-    REQUIRE(returns[0] == (exitPrice - entryPrice) / entryPrice);
-}
+      // Now exactly one high-res return: (110–100)/100 = 0.10
+      auto returns = history.getHighResBarReturns();
+      REQUIRE(returns.size() == 1);
+      REQUIRE(returns[0] == (exitPrice - entryPrice) / entryPrice);
+    }
 
- SECTION("getHighResBarReturns for eight-bar trade with varying prices")
-{
-    ClosedPositionHistory<DecimalType> history;
+  SECTION("getHighResBarReturns for eight-bar trade with varying prices")
+    {
+      ClosedPositionHistory<DecimalType> history;
 
-    // 1) Prepare an array of eight close prices
-    std::vector<DecimalType> prices = {
+      // 1) Prepare an array of eight close prices
+      std::vector<DecimalType> prices = {
         createDecimal("100.00"),
         createDecimal("102.00"),
         createDecimal("101.00"),
@@ -645,24 +648,24 @@ SECTION("getHighResBarReturns for two-bar trade")
         createDecimal("108.00"),
         createDecimal("110.00"),
         createDecimal("115.00")
-    };
+      };
 
-    // 2) Seed the position with the first bar (Jan 1, 2020)
-    TimeSeriesDate baseDate(2020, Jan, 1);
-    auto firstBar = createTimeSeriesEntry(
-        baseDate,
-        prices[0],                           // open
-        prices[0] + createDecimal("0.50"),  // high
-        prices[0] - createDecimal("0.50"),  // low
-        prices[0],                          // close
-        100                                 // volume
-    );
-    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
-        myCornSymbol, prices[0], *firstBar, oneContract
-    );
+      // 2) Seed the position with the first bar (Jan 1, 2020)
+      TimeSeriesDate baseDate(2020, Jan, 1);
+      auto firstBar = createTimeSeriesEntry(
+					    baseDate,
+					    prices[0],                           // open
+					    prices[0] + createDecimal("0.50"),  // high
+					    prices[0] - createDecimal("0.50"),  // low
+					    prices[0],                          // close
+					    100                                 // volume
+					    );
+      auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+								    myCornSymbol, prices[0], *firstBar, oneContract
+								    );
 
-    // 3) Add the next seven bars on Jan 2…Jan 8, each with its own close price
-    for (size_t i = 1; i < prices.size(); ++i) {
+      // 3) Add the next seven bars on Jan 2…Jan 8, each with its own close price
+      for (size_t i = 1; i < prices.size(); ++i) {
         TimeSeriesDate d(2020, Jan, 1 + static_cast<int>(i));
         DecimalType open  = prices[i - 1];
         DecimalType close = prices[i];
@@ -671,19 +674,79 @@ SECTION("getHighResBarReturns for two-bar trade")
 
         auto bar = createTimeSeriesEntry(d, open, high, low, close, 100);
         pos->addBar(*bar);
-    }
+      }
 
-    // 4) Close on the last bar (Jan 8 at 115.00) and record the position
-    pos->ClosePosition(TimeSeriesDate(2020, Jan, 8), prices.back());
-    history.addClosedPosition(pos);
+      // 4) Close on the last bar (Jan 8 at 115.00) and record the position
+      pos->ClosePosition(TimeSeriesDate(2020, Jan, 8), prices.back());
+      history.addClosedPosition(pos);
 
-    // 5) Compute and verify returns: should be 7 of them
-    auto returns = history.getHighResBarReturns();
-    REQUIRE(returns.size() == prices.size() - 1);
+      // 5) Compute and verify returns: should be 7 of them
+      auto returns = history.getHighResBarReturns();
+      REQUIRE(returns.size() == prices.size() - 1);
 
-    for (size_t i = 1; i < prices.size(); ++i) {
+      for (size_t i = 1; i < prices.size(); ++i) {
         DecimalType expected = (prices[i] - prices[i - 1]) / prices[i - 1];
         REQUIRE(returns[i - 1] == expected);
+      }
     }
+
+  SECTION("ClosedPositionHistory respects intraday entry datetime as key", "[ClosedPositionHistory][ptime]") {
+    // 1) build a single‐bar intraday entry at 09:15
+    auto e1 = createTimeSeriesEntry(
+				    "20250526", "09:15:00",
+				    "100.0","101.0","99.0","100.5","100"
+				    );
+    ptime entryDT = time_from_string("2025-05-26 09:15:00");
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+
+    // 2) construct & close the position using the ptime overload
+    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+								  myCornSymbol,                     // symbol
+								  e1->getOpenValue(),               // entry price
+								  *e1,                              // entry bar
+								  oneShare                         // volume
+								  );
+    ptime exitDT = time_from_string("2025-05-26 09:20:00");
+    pos->ClosePosition(exitDT, createDecimal("101.00"));  // ptime overload
+
+    // 3) add to history and verify the map key and stored timestamps
+    ClosedPositionHistory<DecimalType> hist;
+    hist.addClosedPosition(pos);
+
+    auto it = hist.beginTradingPositions();
+    REQUIRE(it != hist.endTradingPositions());
+    REQUIRE(it->first == entryDT);                      // key is full ptime
+    REQUIRE(it->second->getEntryDateTime() == entryDT); // stored position rounds-trip
+    REQUIRE(it->second->getExitDateTime()  == exitDT);
+  }
+
+  SECTION("ClosedPositionHistory.getHighResBarReturns on intraday multi‐bar trade", "[ClosedPositionHistory][ptime]") {
+    // 1) build 2-bar intraday position: entry@09:00, bar2@09:05, exit@09:10
+    auto eA = createTimeSeriesEntry("20250526","09:00:00","100","102","99","101","100");
+    auto eB = createTimeSeriesEntry("20250526","09:05:00","101","103","100","102","100");
+    ptime exitDT = time_from_string("2025-05-26 09:10:00");
+
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+    auto pos2 = std::make_shared<TradingPositionLong<DecimalType>>(
+								   myCornSymbol,               // symbol
+								   eA->getOpenValue(),         // entry price
+								   *eA,                        // entry bar
+								   oneShare                   // volume
+								   );
+    pos2->addBar(*eB);            // second intraday bar
+    pos2->ClosePosition(exitDT, createDecimal("102.50"));
+
+    // 2) add to history
+    ClosedPositionHistory<DecimalType> hist2;
+    hist2.addClosedPosition(pos2);
+
+    // we only get one bar‐by‐bar return (entry→bar2)
+    auto returns = hist2.getHighResBarReturns();
+    REQUIRE(returns.size() == 1);
+
+    // expected: (close_B - close_A) / close_A
+    DecimalType r1 = (eB->getCloseValue() - eA->getCloseValue()) / eA->getCloseValue();
+    REQUIRE(returns[0] == r1);
+  }
 }
-}
+

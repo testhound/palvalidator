@@ -3,7 +3,10 @@
 #include "PercentNumber.h"
 #include "DecimalConstants.h"
 #include "TestUtils.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
@@ -431,13 +434,13 @@ SECTION ("TradingPositionShort close position test 2 with R multiple")
   {
     TradingPosition<DecimalType>::ConstPositionBarIterator it = longPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (1985, Nov, 19));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (1985, Nov, 19));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry1);
 
     it = longPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (1985, Dec, 4));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (1985, Dec, 4));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry11);
   }
 
@@ -453,13 +456,13 @@ SECTION ("TradingPositionShort close position test 2 with R multiple")
 
     TradingPosition<DecimalType>::ConstPositionBarIterator it = longPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (1985, Nov, 19));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (1985, Nov, 19));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry1);
 
     it = longPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (1985, Dec, 4));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (1985, Dec, 4));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry11);
   }
 
@@ -475,13 +478,13 @@ SECTION ("TradingPositionShort close position test 2 with R multiple")
 
     TradingPosition<DecimalType>::ConstPositionBarIterator it = shortPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (1986, May, 30));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (1986, May, 30));
     REQUIRE (it->second.getTimeSeriesEntry() == *shortEntry1);
 
     it = shortPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (1986, Jun, 11));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (1986, Jun, 11));
     REQUIRE (it->second.getTimeSeriesEntry() == *shortEntry9);
   }
 
@@ -542,5 +545,75 @@ SECTION ("TradingPositionShort close position test 2 with R multiple")
     // Second time we add entry1 again, should hit the duplicate‐date guard:
     REQUIRE_THROWS_AS(pos.addBar(*entry1), std::domain_error);
   }
+
+  SECTION("TradingPositionLong intraday ptime close and getters", "[TradingPosition][ptime]") {
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    // 1) Create an INTRADAY bar at 2025-05-26 09:30:00
+    auto entry = createTimeSeriesEntry(
+        "20250526", "09:30:00",
+        "100.0","105.0"," 95.0","102.0","10"
+    ); // Intraday entry
+
+    TradingPositionLong<DecimalType> pos(
+        "SYM", entry->getOpenValue(), *entry, oneContract
+    );
+
+    // entry datetime round-trip
+    ptime entryDT = entry->getDateTime();
+    REQUIRE(pos.getEntryDateTime() == entryDT);
+    REQUIRE(pos.getEntryDate()     == entryDT.date());
+
+    // 2) Advance the series by one bar (09:31)
+    auto nextBar = createTimeSeriesEntry(
+        "20250526", "09:31:00",
+        "102.0","106.0"," 96.0","103.0","5"
+    );
+    pos.addBar(*nextBar);
+
+    // 3) Close intraday at 09:35
+    ptime exitDT = time_from_string("2025-05-26 09:35:00");
+    DecimalType exitPrice = createDecimal("104.25");
+    pos.ClosePosition(exitDT, exitPrice); 
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitDateTime() == exitDT);
+    REQUIRE(pos.getExitDate()     == exitDT.date());
+    REQUIRE(pos.getExitPrice()    == exitPrice);
+  }
+
+SECTION("TradingPositionShort intraday ptime close and getters", "[TradingPosition][ptime]") {
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    // 1) Intraday entry at 2025-05-27 14:00:00
+    auto entry = createTimeSeriesEntry(
+        "20250527", "14:00:00",
+        "200.0","205.0","195.0","201.5","20"
+    ); // Intraday entry
+
+    TradingPositionShort<DecimalType> pos(
+        "ABC", entry->getOpenValue(), *entry, oneContract
+    );
+
+    // entry datetime round-trip
+    ptime entryDT = entry->getDateTime();
+    REQUIRE(pos.getEntryDateTime() == entryDT);
+    REQUIRE(pos.getEntryDate()     == entryDT.date());
+
+    // 2) Add one bar at 14:05
+    auto nextBar = createTimeSeriesEntry(
+        "20250527", "14:05:00",
+        "201.5","206.0","196.0","202.0","15"
+    );
+    pos.addBar(*nextBar);
+
+    // 3) Close intraday at 14:10
+    ptime exitDT = time_from_string("2025-05-27 14:10:00");
+    DecimalType exitPrice = createDecimal("199.75");
+    pos.ClosePosition(exitDT, exitPrice);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitDateTime() == exitDT);
+    REQUIRE(pos.getExitDate()     == exitDT.date());
+    REQUIRE(pos.getExitPrice()    == exitPrice);
+ }
 }
 

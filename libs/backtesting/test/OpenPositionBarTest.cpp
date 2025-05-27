@@ -1,6 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include "TradingPosition.h"
 #include "TestUtils.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
@@ -101,6 +104,37 @@ TEST_CASE ("OpenPositionBar operations", "[OpenPositionBar]")
     REQUIRE (bar2 == bar3);
   }
 
+  SECTION("OpenPositionBar getDateTime returns correct ptime", "[OpenPositionBar][ptime]") {
+    // bar1 was built from refDate1 at default bar time (15:00)
+    ptime expected1(refDate1, getDefaultBarTime());
+    REQUIRE(bar1.getDateTime() == expected1);
+
+    // bar2 was built from refDate2 at default bar time (15:00)
+    ptime expected2(refDate2, getDefaultBarTime());
+    REQUIRE(bar2.getDateTime() == expected2); 
+  }
+  
+  SECTION("OpenPositionBar intraday ptime constructor and getDateTime", "[OpenPositionBar][ptime]") {
+    // 1) Build an intraday entry at 2025-05-26 09:42:30
+    auto intradayEntry = createTimeSeriesEntry(
+      "20250526", "09:42:30",
+      "100.00", "101.00", " 99.50", "100.75", "12345"
+    );
+    // Wrap it in an OpenPositionBar
+    OpenPositionBar<DecimalType> intradayBar(*intradayEntry);
+
+    // The bar's getDateTime() must exactly match the entry's ptime
+    ptime expected = intradayEntry->getDateTime();
+    REQUIRE(intradayBar.getDateTime() == expected);
+
+    // Also verify that the date() and bar values carried over
+    REQUIRE(intradayBar.getDate() == expected.date());
+    REQUIRE(intradayBar.getOpenValue()  == intradayEntry->getOpenValue());
+    REQUIRE(intradayBar.getHighValue()  == intradayEntry->getHighValue());
+    REQUIRE(intradayBar.getLowValue()   == intradayEntry->getLowValue());
+    REQUIRE(intradayBar.getCloseValue() == intradayEntry->getCloseValue());
+    REQUIRE(intradayBar.getVolumeValue()== intradayEntry->getVolumeValue());
+  }
   
 }
 

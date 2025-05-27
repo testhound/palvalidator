@@ -1,11 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include "TradingPosition.h"
 #include "TestUtils.h"
-
+#include <boost/date_time/posix_time/posix_time.hpp>
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
-
-
 
 TEST_CASE ("OpenPosition operations", "[OpenPosition]")
 {
@@ -99,13 +99,13 @@ TEST_CASE ("OpenPosition operations", "[OpenPosition]")
   {
     OpenPosition<DecimalType>::PositionBarIterator it = longPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (2015, Dec, 30));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2015, Dec, 30));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry4);
 
     it = longPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (2016, Jan, 4));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2016, Jan, 4));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry2);
   }
 
@@ -113,13 +113,13 @@ TEST_CASE ("OpenPosition operations", "[OpenPosition]")
   {
     OpenPosition<DecimalType>::ConstPositionBarIterator it = longPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (2015, Dec, 30));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2015, Dec, 30));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry4);
 
     it = longPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (2016, Jan, 4));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2016, Jan, 4));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry2);
   }
 
@@ -127,13 +127,13 @@ TEST_CASE ("OpenPosition operations", "[OpenPosition]")
   {
     OpenPosition<DecimalType>::PositionBarIterator it = shortPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (2015, Dec, 30));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2015, Dec, 30));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry4);
 
     it = longPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (2016, Jan, 4));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2016, Jan, 4));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry2);
   }
 
@@ -141,13 +141,13 @@ TEST_CASE ("OpenPosition operations", "[OpenPosition]")
   {
     OpenPosition<DecimalType>::ConstPositionBarIterator it = shortPosition1.beginPositionBarHistory();
     it++;
-    REQUIRE (it->first ==  TimeSeriesDate (2015, Dec, 30));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2015, Dec, 30));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry4);
 
     it = longPosition1.endPositionBarHistory();
     it--;
 
-    REQUIRE (it->first ==  TimeSeriesDate (2016, Jan, 4));
+    REQUIRE (it->first.date() ==  TimeSeriesDate (2016, Jan, 4));
     REQUIRE (it->second.getTimeSeriesEntry() == *entry2);
   }
   
@@ -170,5 +170,51 @@ TEST_CASE ("OpenPosition operations", "[OpenPosition]")
     {
       REQUIRE_THROWS (shortPosition1.getExitDate());
     }
+
+  SECTION("OpenPosition getEntryDateTime returns underlying ptime", "[OpenPosition][ptime]") {
+    // entry5 was used to construct both positions
+    const auto& expected = entry5->getDateTime();
+    REQUIRE(longPosition1.getEntryDateTime() == expected);
+    REQUIRE(shortPosition1.getEntryDateTime() == expected);
+  }
+
+  SECTION("OpenPosition getExitDateTime throws on open", "[OpenPosition][ptime]") {
+    REQUIRE_THROWS_AS(longPosition1.getExitDateTime(), TradingPositionException);
+    REQUIRE_THROWS_AS(shortPosition1.getExitDateTime(), TradingPositionException);
+  }
+
+  SECTION("OpenPosition intraday entryDateTime matches explicit ptime", "[OpenPosition][ptime]") {
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+
+    // 1) Build an intraday bar at 2025-05-26 09:45:00
+    auto intraEntry = createTimeSeriesEntry(
+        "20250526", "09:45:00",
+        "100.00", "101.00", "99.50", "100.75", "12345"
+    );
+
+    OpenLongPosition<DecimalType> longPos(
+        intraEntry->getOpenValue(),
+        *intraEntry,
+        oneShare
+    );
+    ptime expectedLong = time_from_string("2025-05-26 09:45:00");
+    REQUIRE(longPos.getEntryDateTime() == expectedLong);
+    REQUIRE(longPos.getEntryDate()     == expectedLong.date());
+
+    // 2) Build a short position at 2025-05-27 14:20:15
+    auto intraEntry2 = createTimeSeriesEntry(
+        "20250527", "14:20:15",
+        "200.00", "205.00", "195.00", "202.00", "500"
+    );
+
+    OpenShortPosition<DecimalType> shortPos(
+        intraEntry2->getOpenValue(),
+        *intraEntry2,
+        oneShare
+    );
+    ptime expectedShort = time_from_string("2025-05-27 14:20:15");
+    REQUIRE(shortPos.getEntryDateTime() == expectedShort);
+    REQUIRE(shortPos.getEntryDate()     == expectedShort.date());
+  }
 }
 
