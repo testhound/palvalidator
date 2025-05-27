@@ -56,7 +56,6 @@ TEST_CASE ("OpenPositionHistory operations", "[OpenPositionHistory]")
 
   SECTION ("OpenPositionHistory getFirstDate()");
   {
-    std::cout << "In SECTION OpenPositionHistory getFirstDate()" << std::endl << std::endl;
     REQUIRE (positionHistory.getFirstDate() == TimeSeriesDate (2015, Dec, 28));
   }
 
