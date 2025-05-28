@@ -161,15 +161,13 @@ TEST_CASE("IntradaySyntheticTimeSeriesImpl Statistical Properties", "[SyntheticT
         std::vector<DecimalType> sortedSyntheticGapsRecalculated = syntheticGapsRecalculated;
         std::sort(sortedSyntheticGapsRecalculated.begin(), sortedSyntheticGapsRecalculated.end());
 
-	/*
+#ifdef DEBUG
         std::cout << "DEBUG_TEST: Original Precise Gaps (Sorted):" << std::endl;
         for(const auto& gap : sortedOriginalGaps) { std::cout << std::fixed << std::setprecision(7) << num::to_double(gap) << std::endl; }
-	*/
 
-	/*
         std::cout << "DEBUG_TEST: Synthetic Gaps (Re-calculated from rounded output, Sorted):" << std::endl;
         for(const auto& gap : sortedSyntheticGapsRecalculated) { std::cout << std::fixed << std::setprecision(7) << num::to_double(gap) << std::endl; }
-	*/
+#endif
 	
         WARN("Overnight Gaps: Comparing sorted lists of original precise gaps vs. gaps re-calculated from the synthetic series (with rounded bars). Exact element-wise match is not guaranteed due to rounding. See debug output for lists.");
 
