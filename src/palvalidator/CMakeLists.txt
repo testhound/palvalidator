@@ -10,6 +10,7 @@ file(GLOB SRC_LIST
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(${LIB_NAME} PRIVATE backtesting)
+target_link_libraries(${LIB_NAME} PRIVATE statistics)
 
 
 file(GLOB TEST_LIST
