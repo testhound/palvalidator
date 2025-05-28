@@ -1,4 +1,6 @@
+#include <memory> 
 #include <catch2/catch_test_macros.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TimeSeriesCsvReader.h"
 #include "ClosedPositionHistory.h"
 #include "StrategyBroker.h"
@@ -7,18 +9,10 @@
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 
 const static std::string myCornSymbol("@C");
-
-template< class T, class U > 
-std::shared_ptr<T> dynamic_pointer_cast( const std::shared_ptr<U>& r ) noexcept
-{
-    if (auto p = dynamic_cast<typename std::shared_ptr<T>::element_type*>(r.get())) {
-        return std::shared_ptr<T>(r, p);
-    } else {
-        return std::shared_ptr<T>();
-    }
-}
 
 TEST_CASE ("StrategyBroker operations", "[StrategyBroker]")
 {
@@ -489,5 +483,306 @@ TEST_CASE ("StrategyBroker operations", "[StrategyBroker]")
 			aBroker.ExitShortAllUnitsAtStop(futuresSymbol, {1986, May, 28}, createDecimal("100.00")),
 			StrategyBrokerException);
     }
+
+SECTION("StrategyBroker ptime overloads preserve exact datetime", "[StrategyBroker][ptime]") {
+    // 1) ptime-based entry on open
+    ptime entryDT = time_from_string("1985-11-14 08:45:30");
+    DecimalType stopLoss  = createDecimal("250.20");
+    DecimalType profitTgt = createDecimal("255.40");
+    aBroker.EnterLongOnOpen(futuresSymbol, entryDT, oneContract, stopLoss, profitTgt);
+
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+    auto itMkt = aBroker.beginPendingOrders();
+    auto moOrder = std::dynamic_pointer_cast<MarketOnOpenLongOrder<DecimalType>>(itMkt->second);
+    REQUIRE(moOrder);                                       // it's our new ptime ctor
+    REQUIRE(moOrder->getOrderDateTime() == entryDT);        // exact match
+    REQUIRE(moOrder->getOrderDate()     == entryDT.date()); // date part matches
+    aBroker.ProcessPendingOrders(entryDT.date());           // clean up for next test
+
+    // 2) ptime-based ExitLongAllUnitsOnOpen
+    // first reopen same position
+    aBroker.EnterLongOnOpen(futuresSymbol, entryDT, oneContract);
+    aBroker.ProcessPendingOrders(entryDT.date());
+    REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    ptime exitDT = time_from_string("1985-11-15 09:12:00");
+    aBroker.ExitLongAllUnitsOnOpen(futuresSymbol, exitDT);  // :contentReference[oaicite:1]{index=1}
+
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+    auto itExit = aBroker.beginPendingOrders();
+    auto exOrder = std::dynamic_pointer_cast<MarketOnOpenSellOrder<DecimalType>>(itExit->second);
+    REQUIRE(exOrder);
+    REQUIRE(exOrder->getOrderDateTime() == exitDT);
+    REQUIRE(exOrder->getOrderDate()     == exitDT.date());
+ }
+
+ SECTION("StrategyBroker legacy date overloads use default bar time", "[StrategyBroker][ptime]") {
+   using boost::gregorian::days;
+   using mkc_timeseries::getDefaultBarTime;
+
+   // 1) Submit a date-only short entry on 1985-11-14
+   TimeSeriesDate d1(1985, Nov, 14);
+   ptime defaultDT1(d1, getDefaultBarTime());
+
+   DecimalType stopLoss  = createDecimal("255.40");
+   DecimalType profitTgt = createDecimal("250.20");
+
+   aBroker.EnterShortOnOpen(futuresSymbol, d1, oneContract, stopLoss, profitTgt);
+   REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+   {
+     auto it = aBroker.beginPendingOrders();
+     auto moShort = std::dynamic_pointer_cast<MarketOnOpenShortOrder<DecimalType>>(it->second);
+     REQUIRE(moShort);
+     REQUIRE(moShort->getOrderDateTime() == defaultDT1);
+     REQUIRE(moShort->getOrderDate()     == d1);
+   }
+
+   // process the entry on the next day (1985-11-15)
+   TimeSeriesDate d2 = d1 + days(1);
+   aBroker.ProcessPendingOrders(d2);
+   REQUIRE(aBroker.isShortPosition(futuresSymbol));
+
+   // 2) Now submit the date-only cover on 1985-11-15
+   ptime defaultDT2(d2, getDefaultBarTime());
+   aBroker.ExitShortAllUnitsOnOpen(futuresSymbol, d2);
+   REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+   {
+     auto itCover = aBroker.beginPendingOrders();
+     auto cvOrder = std::dynamic_pointer_cast<MarketOnOpenCoverOrder<DecimalType>>(itCover->second);
+     REQUIRE(cvOrder);
+     REQUIRE(cvOrder->getOrderDateTime() == defaultDT2);
+     REQUIRE(cvOrder->getOrderDate()     == d2);
+     REQUIRE(cvOrder->getUnitsInOrder().getTradingVolume() == oneContract.getTradingVolume());
+   }
+ }
+
+ SECTION("StrategyBroker ptime overloads preserve exact datetime", "[StrategyBroker][ptime]") {
+    using boost::gregorian::days;
+
+    // --- 1) ptime-based entry on open ---
+    ptime entryDT = time_from_string("1985-11-14 08:45:30");
+    DecimalType stopLoss  = createDecimal("250.20");
+    DecimalType profitTgt = createDecimal("255.40");
+
+    // queue the entry
+    aBroker.EnterLongOnOpen(futuresSymbol, entryDT, oneContract, stopLoss, profitTgt);
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+
+    // inspect the queued MarketOnOpenLongOrder
+    {
+      auto itMkt  = aBroker.beginPendingOrders();
+      auto moOrder = std::dynamic_pointer_cast<MarketOnOpenLongOrder<DecimalType>>(itMkt->second);
+      REQUIRE(moOrder);
+      REQUIRE(moOrder->getOrderDateTime() == entryDT);
+      REQUIRE(moOrder->getOrderDate()     == entryDT.date());
+    }
+
+    // fill the entry on the *next* bar (one day later)
+    auto fillDate1 = entryDT.date() + days(1);
+    aBroker.ProcessPendingOrders(fillDate1);
+    REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    // --- 2) ptime-based ExitLongAllUnitsOnOpen ---
+    ptime exitDT = time_from_string("1985-11-15 09:12:00");
+
+    // queue the exit
+    aBroker.ExitLongAllUnitsOnOpen(futuresSymbol, exitDT);
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+
+    // inspect the queued MarketOnOpenSellOrder
+    {
+      auto itExit  = aBroker.beginPendingOrders();
+      auto exOrder = std::dynamic_pointer_cast<MarketOnOpenSellOrder<DecimalType>>(itExit->second);
+      REQUIRE(exOrder);
+      REQUIRE(exOrder->getOrderDateTime() == exitDT);
+      REQUIRE(exOrder->getOrderDate()     == exitDT.date());
+    }
+ }
+
+ // 1) DATE-based market entry & exit on open
+ SECTION("StrategyBroker date overloads for MarketOnOpen preserve default bar time", "[StrategyBroker][date]")
+   {
+    using boost::posix_time::ptime;
+    using boost::posix_time::time_from_string;
+
+    // pick a known default bar time
+    auto barTime = getDefaultBarTime();
+
+    // 1a) Long entry
+    date d1(1985, Nov, 14);
+    aBroker.EnterLongOnOpen(futuresSymbol, d1, oneContract);
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto mo = std::dynamic_pointer_cast<MarketOnOpenLongOrder<DecimalType>>(it->second);
+      REQUIRE(mo);
+      // check that the ctor forwarded date→ptime(date, defaultTime)
+      ptime expected = ptime(d1, barTime);
+      REQUIRE(mo->getOrderDateTime() == expected);
+      REQUIRE(mo->getOrderDate()     == d1);
+    }
+    aBroker.ProcessPendingOrders(d1 + days(1));
+    REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    // 1b) Exit on open
+    date d2(1985, Nov, 15);
+    aBroker.ExitLongAllUnitsOnOpen(futuresSymbol, d2);
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto mo = std::dynamic_pointer_cast<MarketOnOpenSellOrder<DecimalType>>(it->second);
+      REQUIRE(mo);
+      ptime expected = ptime(d2, barTime);
+      REQUIRE(mo->getOrderDateTime() == expected);
+      REQUIRE(mo->getOrderDate() == d2);
+    }
+ }
+
+ // ——————————————————————————————————————————————————————————————————————————————
+ // 2) PTIME-based short entry & exit on open
+ SECTION ("StrategyBroker ptime overloads for ShortOnOpen preserve exact datetime", "[StrategyBroker][ptime]") {
+    using boost::posix_time::time_from_string;
+    using boost::gregorian::days;
+
+    // Use a date that your CSV actually contains (e.g. 1985-11-14/15)
+    ptime ent = time_from_string("1985-11-14 08:15:00");
+    ptime ext = time_from_string("1985-11-14 14:45:00");
+
+    // short entry
+    aBroker.EnterShortOnOpen(futuresSymbol, ent, oneContract);
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto mo = std::dynamic_pointer_cast<MarketOnOpenShortOrder<DecimalType>>(it->second);
+      REQUIRE(mo);
+      REQUIRE(mo->getOrderDateTime() == ent);
+      REQUIRE(mo->getOrderDate()     == ent.date());
+    }
+    // process against the next day’s bar (1985-11-15)
+    aBroker.ProcessPendingOrders(ent.date() + days(1));
+    REQUIRE(aBroker.isShortPosition(futuresSymbol));
+
+    // short exit
+    aBroker.ExitShortAllUnitsOnOpen(futuresSymbol, ext);
+    REQUIRE(aBroker.beginPendingOrders() != aBroker.endPendingOrders());
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto mo = std::dynamic_pointer_cast<MarketOnOpenCoverOrder<DecimalType>>(it->second);
+      REQUIRE(mo);
+      REQUIRE(mo->getOrderDateTime() == ext);
+      REQUIRE(mo->getOrderDate() == ext.date());
+    }
+ }
+
+ // ——————————————————————————————————————————————————————————————————————————————
+ // 3) DATE-based limit exits (using 1985-11-14…17)
+
+ // ——————————————————————————————————————————————————————————————————————————————
+// 3) DATE-based limit exits (no fill assert)
+SECTION("StrategyBroker date overloads for Exit…AtLimit forward to ptime with default time", "[StrategyBroker][date]") {
+    using boost::gregorian::date;
+    using boost::gregorian::days;
+    using boost::posix_time::ptime;
+
+    auto barT = getDefaultBarTime();
+    DecimalType limitPrice = createDecimal("150.00");
+    auto pct = PercentNumber<DecimalType>::createPercentNumber(createDecimal("1.00"));
+
+    // 1) Open & fill a long on 1985-11-14
+    date od(1985, Nov, 14);
+    aBroker.EnterLongOnOpen(futuresSymbol, od, oneContract);
+    aBroker.ProcessPendingOrders(od + days(1));
+    REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    // 2) simple-price overload on 1985-11-16
+    date dlim1 = od + days(2);
+    aBroker.ExitLongAllUnitsAtLimit(futuresSymbol, dlim1, limitPrice);
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto lo = std::dynamic_pointer_cast<SellAtLimitOrder<DecimalType>>(it->second);
+      REQUIRE(lo);
+      ptime expected1(dlim1, barT);
+      REQUIRE(lo->getOrderDateTime() == expected1);
+      REQUIRE(lo->getOrderDate()     == dlim1);
+      REQUIRE(lo->getLimitPrice()    == limitPrice);
+    }
+
+    // 3) percent-overload on 1985-11-17
+    date dlim2 = od + days(3);
+    aBroker.ExitLongAllUnitsAtLimit(futuresSymbol, dlim2, limitPrice, pct);
+    {
+      auto it = aBroker.beginPendingOrders();
+
+      // skip the first (simple-price) order, inspect the second
+      ++it;
+      auto lo = std::dynamic_pointer_cast<SellAtLimitOrder<DecimalType>>(it->second);
+      REQUIRE(lo);
+      ptime expected2(dlim2, barT);
+      REQUIRE(lo->getOrderDateTime() == expected2);
+      // recompute the concrete limit price exactly as StrategyBroker does:
+      LongProfitTarget<DecimalType> target(limitPrice, pct);
+      DecimalType expectedPrice = num::Round2Tick(
+        target.getProfitTarget(),
+        aBroker.getTick(futuresSymbol),
+        aBroker.getTickDiv2(futuresSymbol)
+      );
+      REQUIRE(lo->getLimitPrice() == expectedPrice);
+    }
+ }
+
+ SECTION("StrategyBroker ptime overloads for Exit…AtStop preserve exact datetime", "[StrategyBroker][ptime]")
+   {
+    using boost::gregorian::days;
+    using boost::posix_time::time_from_string;
+
+    //DecimalType stopPrice = createDecimal("140.00");
+    DecimalType stopPrice = num::Round2Tick(createDecimal("3656.81982421875"),
+					    aBroker.getTick(futuresSymbol),
+					    aBroker.getTickDiv2(futuresSymbol));
+    auto pct = PercentNumber<DecimalType>::createPercentNumber(createDecimal("2.00"));
+
+    // Open & fill a long on 1985-11-14
+    ptime odt = time_from_string("1985-11-14 09:00:00");
+    aBroker.EnterLongOnOpen(futuresSymbol, odt, oneContract);
+    aBroker.ProcessPendingOrders(odt.date() + days(1));
+    REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    // simple-stop overload at 1985-11-15 10:30:00
+    ptime sdt = time_from_string("1985-11-15 10:30:00");
+    aBroker.ExitLongAllUnitsAtStop(futuresSymbol, sdt, stopPrice);
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto so = std::dynamic_pointer_cast<SellAtStopOrder<DecimalType>>(it->second);
+      REQUIRE(so);
+      REQUIRE(so->getOrderDateTime() == sdt);
+      REQUIRE(so->getStopPrice()      == stopPrice);
+    }
+
+    // fire the stop on the next trading bar (skips weekends/holidays)
+    aBroker.ProcessPendingOrders(boost_next_weekday(sdt.date()));
+    REQUIRE(aBroker.isFlatPosition(futuresSymbol));
+
+    // percent-stop overload at 1985-11-15 14:45:00
+    ptime s2 = time_from_string("1985-11-15 14:45:00");
+    aBroker.EnterLongOnOpen(futuresSymbol, odt, oneContract);
+    aBroker.ProcessPendingOrders(odt.date() + days(1));
+    REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    aBroker.ExitLongAllUnitsAtStop(futuresSymbol, s2, stopPrice, pct);
+    {
+      auto it = aBroker.beginPendingOrders();
+      auto so = std::dynamic_pointer_cast<SellAtStopOrder<DecimalType>>(it->second);
+      REQUIRE(so);
+      REQUIRE(so->getOrderDateTime() == s2);
+
+      LongStopLoss<DecimalType> stopTarget(stopPrice, pct);
+      DecimalType expectedSL = num::Round2Tick(
+        stopTarget.getStopLoss(),
+        aBroker.getTick(futuresSymbol),
+        aBroker.getTickDiv2(futuresSymbol)
+      );
+      REQUIRE(so->getStopPrice() == expectedSL);
+    }
+ }
 }
 
