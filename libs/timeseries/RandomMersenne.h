@@ -11,7 +11,6 @@
 #include "pcg_extras.hpp"
 #include "randutils.hpp"
 #include <random>
-
 using uint32 = unsigned int;
 
 /**
@@ -25,8 +24,14 @@ class RandomMersenne
 {
 public:
   RandomMersenne()
+  : mRandGen(randutils::auto_seed_256{})
   {}
 
+  // Add this public seed method:
+  void seed() {
+    auto newSeed = randutils::auto_seed_256{};
+    mRandGen.seed(newSeed);
+}
   /**
    * @brief Draws a random unsigned 32-bit integer within the inclusive range [min, max].
    *
@@ -60,7 +65,7 @@ public:
     }
 
 private:
-  static thread_local randutils::random_generator<pcg32> mRandGen;
+  randutils::random_generator<pcg32> mRandGen;
   };
 
 #endif
