@@ -10,11 +10,16 @@
 #include <vector>
 #include <cstdint>
 #include "ThrowAssert.hpp"
-#include "TradingPosition.h"
+#include "TradingPosition.h" // Provides TradingPosition, OHLCTimeSeriesEntry, ptime
 #include "DecimalConstants.h"
+#include <boost/date_time/posix_time/posix_time.hpp> // For ptime
+#include "TimeSeriesEntry.h" // For OHLCTimeSeriesEntry and getDefaultBarTime declaration
 
 namespace mkc_timeseries
 {
+  // Forward declaration from TradingPosition.h, ptime is available via TradingPosition.h's includes
+  // using boost::posix_time::ptime; already in TradingPosition.h within mkc_timeseries namespace
+
   template <class Decimal> class InstrumentPosition;
 
   /**
@@ -146,6 +151,20 @@ namespace mkc_timeseries
 				   uint32_t unitNumber) = 0;
 
     /**
+     * @brief Closes a specific trading position unit using ptime.
+     * @param iPosition Pointer to the owning InstrumentPosition object (to allow state
+     * changes if all units are closed).
+     * @param exitDate The ptime (date and time) of the exit.
+     * @param exitPrice The price at which the unit is exited.
+     * @param unitNumber The 1-based index of the trading unit to close.
+     * @throw InstrumentPositionException if the unit cannot be closed or is not found.
+     */
+    virtual void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
+				   const ptime exitDate, // Changed from exitDateTime to exitDate as per user's example
+				   const Decimal& exitPrice,
+				   uint32_t unitNumber) = 0;
+
+    /**
      * @brief Closes all open trading position units.
      * @param iPosition Pointer to the owning InstrumentPosition object (to allow state changes to flat).
      * @param exitDate The date of the exit.
@@ -156,7 +175,16 @@ namespace mkc_timeseries
 				   const boost::gregorian::date exitDate,
 				   const Decimal& exitPrice) = 0;
  
-  
+    /**
+     * @brief Closes all open trading position units using ptime.
+     * @param iPosition Pointer to the owning InstrumentPosition object (to allow state changes to flat).
+     * @param exitDate The ptime (date and time) of the exit.
+     * @param exitPrice The price at which all units are exited.
+     * @throw InstrumentPositionException if called on a state with no positions to close.
+     */
+    virtual void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
+				   const ptime exitDate, // Changed from exitDateTime to exitDate as per user's example
+				   const Decimal& exitPrice) = 0;
   };
 
   /**
@@ -312,6 +340,22 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Attempts to close a specific trading position unit using ptime.
+     * @param iPosition Pointer to the owning InstrumentPosition.
+     * @param exitDate The ptime of exit.
+     * @param exitPrice The exit price.
+     * @param unitNumber The unit number.
+     * @throw InstrumentPositionException as there are no positions to close in a flat state.
+     */
+    void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
+			   const ptime exitDate,
+			   const Decimal& exitPrice,
+			   uint32_t unitNumber)
+    {
+      throw InstrumentPositionException("FlatInstrumentPositionState: closeUnitPosition (ptime) - no positions avaialble in flat state");
+    }
+
+    /**
      * @brief Attempts to close all open trading position units.
      * @param iPosition Pointer to the owning InstrumentPosition.
      * @param exitDate The exit date.
@@ -323,6 +367,20 @@ namespace mkc_timeseries
 			   const Decimal& exitPrice)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeAllPositions - no positions avaialble in flat state");
+    }
+
+    /**
+     * @brief Attempts to close all open trading position units using ptime.
+     * @param iPosition Pointer to the owning InstrumentPosition.
+     * @param exitDate The ptime of exit.
+     * @param exitPrice The exit price.
+     * @throw InstrumentPositionException as there are no positions to close in a flat state.
+     */
+    void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
+			   const ptime exitDate,
+			   const Decimal& exitPrice)
+    {
+      throw InstrumentPositionException("FlatInstrumentPositionState: closeAllPositions (ptime) - no positions avaialble in flat state");
     }
 
   private:
@@ -395,6 +453,7 @@ namespace mkc_timeseries
       
       InstrumentPositionState<Decimal>::operator=(rhs);
       mTradingPositionUnits = rhs.mTradingPositionUnits;
+      return *this; // Added return this
     }
 
     /**
@@ -437,19 +496,19 @@ namespace mkc_timeseries
 
     /**
      * @brief Updates all open trading units with a new market data bar.
-     * Only adds the bar if its date is after the entry date of a unit.
+     * Only adds the bar if its datetime is after the entry datetime of a unit.
      * @param entryBar The OHLCTimeSeriesEntry representing the new bar data.
      */
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       ConstInstrumentPositionIterator it = this->beginInstrumentPosition();
 
-      for (; it != this->endInstrumentPosition(); it++)
+      for (; it != this->endInstrumentPosition(); ++it) // Changed from it++ to ++it for conventional pre-increment
 	{
-	  // Only add a date that is after the entry date. We
+	  // Only add a bar whose datetime is after the entry datetime. We
 	  // already added the first bar when we created the position
 
-	  if (entryBar.getDateValue() > (*it)->getEntryDate())
+	  if (entryBar.getDateTime() > (*it)->getEntryDateTime()) // MODIFIED
 	    (*it)->addBar(entryBar);
 	}
     }
@@ -473,7 +532,7 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Closes a specific trading position unit.
+     * @brief Closes a specific trading position unit using boost::gregorian::date.
      * If closing this unit results in no open units, transitions the InstrumentPosition to Flat state.
      * @param iPosition Pointer to the owning InstrumentPosition for state transition.
      * @param exitDate The date of the exit.
@@ -486,7 +545,24 @@ namespace mkc_timeseries
 			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
     {
-      ConstInstrumentPositionIterator it = getInstrumentPosition (unitNumber);
+      this->closeUnitPosition(iPosition, ptime(exitDate, getDefaultBarTime()), exitPrice, unitNumber);
+    }
+
+    /**
+     * @brief Closes a specific trading position unit using ptime.
+     * If closing this unit results in no open units, transitions the InstrumentPosition to Flat state.
+     * @param iPosition Pointer to the owning InstrumentPosition for state transition.
+     * @param exitDate The ptime of the exit.
+     * @param exitPrice The price at which the unit is exited.
+     * @param unitNumber The 1-based index of the trading unit to close.
+     * @throw InstrumentPositionException if the unit number is invalid, unit not found, or unit already closed.
+     */
+    void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
+			   const ptime exitDate,
+			   const Decimal& exitPrice,
+			   uint32_t unitNumber)
+    {
+      ConstInstrumentPositionIterator it = this->getInstrumentPosition (unitNumber);
       if (it == this->endInstrumentPosition())
 	throw InstrumentPositionException ("InMarketPositionState: closeUnitPosition -cannot find unit number to close position");
 
@@ -498,13 +574,13 @@ namespace mkc_timeseries
       else
 	throw InstrumentPositionException ("InMarketPositionState: closeUnitPosition - unit already closed");
 
-      if (getNumPositionUnits() == 0)
+      if (this->getNumPositionUnits() == 0) // Use this-> for clarity
 	iPosition->ChangeState (FlatInstrumentPositionState<Decimal>::getInstance());
- 
     }
 
+
     /**
-     * @brief Closes all open trading position units.
+     * @brief Closes all open trading position units using boost::gregorian::date.
      * Transitions the InstrumentPosition to Flat state.
      * @param iPosition Pointer to the owning InstrumentPosition for state transition.
      * @param exitDate The date of the exit.
@@ -514,11 +590,25 @@ namespace mkc_timeseries
 			   const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice)
     {
-      ConstInstrumentPositionIterator it = beginInstrumentPosition();
-      for (; it != this->endInstrumentPosition(); it++)
+      this->closeAllPositions(iPosition, ptime(exitDate, getDefaultBarTime()), exitPrice);
+    }
+
+    /**
+     * @brief Closes all open trading position units using ptime.
+     * Transitions the InstrumentPosition to Flat state.
+     * @param iPosition Pointer to the owning InstrumentPosition for state transition.
+     * @param exitDate The ptime of the exit.
+     * @param exitPrice The price at which all units are exited.
+     */
+    void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
+			   const ptime exitDate,
+			   const Decimal& exitPrice)
+    {
+      ConstInstrumentPositionIterator it = this->beginInstrumentPosition();
+      for (; it != this->endInstrumentPosition(); ++it) // Use ++it
 	{
 	  if ((*it)->isPositionOpen())
-	    (*it)->ClosePosition (exitDate, exitPrice);
+	    (*it)->ClosePosition (exitDate, exitPrice); // exitDate is ptime
 	}
 
       mTradingPositionUnits.clear();
@@ -561,7 +651,11 @@ namespace mkc_timeseries
      */
     LongInstrumentPositionState(std::shared_ptr<TradingPosition<Decimal>> position)
       : InMarketPositionState<Decimal>(position)
-    {}
+    {
+        // Additional check if needed, though base constructor handles closed check.
+        // If position is not long, an exception could be thrown here,
+        // but current logic defers type checking to addPosition.
+    }
 
     /**
      * @brief Copy constructor.
@@ -595,7 +689,7 @@ namespace mkc_timeseries
     /**
      * @brief Adds a new long trading position unit.
      * @param iPosition Pointer to the owning InstrumentPosition
-     * unused in this specific override but required by base).
+     * (unused in this specific override but required by base).
      * @param position The long TradingPosition unit to add.
      * @throw InstrumentPositionException if trying to add a non-long position or a closed position.
      */
@@ -645,14 +739,34 @@ namespace mkc_timeseries
   template <class Decimal> class ShortInstrumentPositionState : public InMarketPositionState<Decimal>
   {
   public:
+    /**
+     * @brief Constructor initializing with the first short trading position unit.
+     * @param position The initial short TradingPosition unit.
+     */
     ShortInstrumentPositionState(std::shared_ptr<TradingPosition<Decimal>> position)
       : InMarketPositionState<Decimal>(position)
     {}
 
+    /**
+     * @brief Copy constructor.
+     * @param rhs The ShortInstrumentPositionState to copy.
+     */
     ShortInstrumentPositionState (const ShortInstrumentPositionState<Decimal>& rhs)
       : InMarketPositionState<Decimal>(rhs)
     {}
+    
+    /**
+     * @brief Destructor.
+     */
+    ~ShortInstrumentPositionState() // Added destructor
+    {}
 
+
+    /**
+     * @brief Assignment operator.
+     * @param rhs The ShortInstrumentPositionState to assign from.
+     * @return Reference to this object.
+     */
     ShortInstrumentPositionState<Decimal>& 
     operator=(const ShortInstrumentPositionState<Decimal> &rhs) 
     {
@@ -663,6 +777,13 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /**
+     * @brief Adds a new short trading position unit.
+     * @param iPosition Pointer to the owning InstrumentPosition
+     * (unused in this specific override but required by base).
+     * @param position The short TradingPosition unit to add.
+     * @throw InstrumentPositionException if trying to add a non-short position or a closed position.
+     */
     void addPosition(InstrumentPosition<Decimal>* iPosition,
 		     std::shared_ptr<TradingPosition<Decimal>> position)
     {
@@ -671,16 +792,29 @@ namespace mkc_timeseries
       else
 	throw InstrumentPositionException ("InstrumentPosition: cannot add long position unit to short position");
     }
+
+    /**
+     * @brief Checks if the current state represents a long position.
+     * @return Always false for this state.
+     */
     bool isLongPosition() const
     {
       return false;
     }
 
+    /**
+     * @brief Checks if the current state represents a short position.
+     * @return Always true for this state.
+     */
     bool isShortPosition() const
     {
       return true;
     }
 
+    /**
+     * @brief Checks if the current state represents a flat position.
+     * @return Always false for this state.
+     */
     bool isFlatPosition() const
     {
       return false;
@@ -923,33 +1057,33 @@ namespace mkc_timeseries
 	  volume_t totalVolume = 0;
 	  ConstInstrumentPositionIterator it = beginInstrumentPosition();
 
-	  for (; it != endInstrumentPosition(); it++)
+	  for (; it != endInstrumentPosition(); ++it) // Changed from it++ to ++it
 	    totalVolume += (*it)->getTradingUnits().getTradingVolume();
 
 	  if (totalVolume > 0)
 	    {
-	      it = beginInstrumentPosition();
+	      it = beginInstrumentPosition(); // Reset iterator to get volume unit type
 	      TradingVolume::VolumeUnit volUnit = 
 		(*it)->getTradingUnits().getVolumeUnits();
 
 	      return TradingVolume(totalVolume, volUnit);
 	    }
-	  // Need to throw an exception here
-	  else
-	    throw InstrumentPositionException ("InstrumentPosition::getVolumeInAllUnits - Cannot get volume when position is flat");
+	  // Need to throw an exception here (Original comment)
+	  else // This case (totalVolume <= 0 but not flat) implies an issue or empty units
+	    throw InstrumentPositionException ("InstrumentPosition::getVolumeInAllUnits - No volume in open position or inconsistent state");
 	}
 
       throw InstrumentPositionException ("InstrumentPosition::getVolumeInAllUnits - Cannot get volume when position is flat");
     }
 
     /**
-     * @brief Closes a specific trading position unit.
+     * @brief Closes a specific trading position unit using boost::gregorian::date.
      * Delegates to the current state object. If this closes the last unit, the state will transition to flat.
      * @param exitDate The date of the exit.
      * @param exitPrice The price at which the unit is exited.
      * @param unitNumber The 1-based index of the trading unit to close.
      * @throw InstrumentPositionException if the unit cannot be closed (e.g., invalid unit number,
-     * lready closed, or position is flat).
+     * already closed, or position is flat).
      */
     void closeUnitPosition(const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice,
@@ -959,13 +1093,42 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Closes all open trading position units for this instrument.
+     * @brief Closes a specific trading position unit using ptime.
+     * Delegates to the current state object. If this closes the last unit, the state will transition to flat.
+     * @param exitDate The ptime of the exit.
+     * @param exitPrice The price at which the unit is exited.
+     * @param unitNumber The 1-based index of the trading unit to close.
+     * @throw InstrumentPositionException if the unit cannot be closed.
+     */
+    void closeUnitPosition(const ptime exitDate,
+			   const Decimal& exitPrice,
+			   uint32_t unitNumber)
+    {
+      mInstrumentPositionState->closeUnitPosition(this, exitDate, exitPrice, unitNumber);
+    }
+
+
+    /**
+     * @brief Closes all open trading position units for this instrument using boost::gregorian::date.
      * Delegates to the current state object. The state will transition to flat.
      * @param exitDate The date of the exit.
      * @param exitPrice The price at which all units are exited.
      * @throw InstrumentPositionException if the position is already flat.
      */
     void closeAllPositions(const boost::gregorian::date exitDate,
+			   const Decimal& exitPrice)
+    {
+      mInstrumentPositionState->closeAllPositions(this, exitDate, exitPrice);
+    }
+
+    /**
+     * @brief Closes all open trading position units for this instrument using ptime.
+     * Delegates to the current state object. The state will transition to flat.
+     * @param exitDate The ptime of the exit.
+     * @param exitPrice The price at which all units are exited.
+     * @throw InstrumentPositionException if the position is already flat.
+     */
+    void closeAllPositions(const ptime exitDate,
 			   const Decimal& exitPrice)
     {
       mInstrumentPositionState->closeAllPositions(this, exitDate, exitPrice);

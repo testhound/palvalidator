@@ -33,6 +33,7 @@
 #include <list>
 #include <cstdint>
 #include <cmath>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "TradingPositionException.h"
 #include "TimeSeriesEntry.h"
 #include "PercentNumber.h"
@@ -45,6 +46,9 @@ using namespace boost::gregorian;
 
 namespace mkc_timeseries
 {
+  using boost::posix_time::ptime;
+  using boost::posix_time::to_simple_string;
+  
   template <class Decimal> class TradingPosition;
 
   template <class Decimal>
@@ -120,6 +124,11 @@ namespace mkc_timeseries
       return mEntry.getDateValue();
     }
 
+    const ptime& getDateTime() const
+    {
+      return mEntry.getDateTime();
+    }
+
     const Decimal& getOpenValue() const
     {
       return mEntry.getOpenValue();
@@ -173,8 +182,9 @@ namespace mkc_timeseries
   template <class Decimal> class OpenPositionHistory
   {
   public:
-    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Decimal>>::iterator PositionBarIterator;
-    typedef typename std::map<TimeSeriesDate, OpenPositionBar<Decimal>>::const_iterator ConstPositionBarIterator;
+    using PositionBarMap = std::map<ptime, OpenPositionBar<Decimal>>;
+    using ConstPositionBarIterator = typename PositionBarMap::const_iterator;
+    using PositionBarIterator  = typename PositionBarMap::iterator;
 
     explicit OpenPositionHistory(OHLCTimeSeriesEntry<Decimal> entryBar) :
       mPositionBarHistory()
@@ -201,7 +211,7 @@ namespace mkc_timeseries
 
     void addBar(const OpenPositionBar<Decimal>& entry)
     {
-      boost::gregorian::date d = entry.getDate();
+      ptime d = entry.getDateTime();
       PositionBarIterator pos = mPositionBarHistory.find (d);
 
       if (pos ==  mPositionBarHistory.end())
@@ -209,7 +219,7 @@ namespace mkc_timeseries
 	   mPositionBarHistory.insert(std::make_pair(d, entry));
 	}
       else
-	throw std::domain_error(std::string("OpenPositionHistory:" +boost::gregorian::to_simple_string(d) + std::string(" date already exists")));
+	throw std::domain_error(std::string("OpenPositionHistory:" +boost::posix_time::to_simple_string(d) + std::string(" date already exists")));
     }
 
     unsigned int numBarsInPosition() const
@@ -237,7 +247,18 @@ namespace mkc_timeseries
       return mPositionBarHistory.end();
     }
 
-    const TimeSeriesDate& getFirstDate() const
+    TimeSeriesDate getFirstDate() const
+    {
+      if (numBarsInPosition() > 0)
+	{
+	  OpenPositionHistory::ConstPositionBarIterator it = beginPositionBarHistory();
+	  return it->first.date();
+	}
+      else
+	throw std::domain_error(std::string("OpenPositionHistory:getPositionFirstDate: no bars in position "));
+    }
+
+    const ptime& getFirstDateTime() const
     {
       if (numBarsInPosition() > 0)
 	{
@@ -248,7 +269,19 @@ namespace mkc_timeseries
 	throw std::domain_error(std::string("OpenPositionHistory:getPositionFirstDate: no bars in position "));
     }
 
-    const TimeSeriesDate& getLastDate() const
+    TimeSeriesDate getLastDate() const
+    {
+      if (numBarsInPosition() > 0)
+	{
+	  OpenPositionHistory::ConstPositionBarIterator it = endPositionBarHistory();
+	  it--;
+	  return it->first.date();
+	}
+      else
+	throw std::domain_error(std::string("OpenPositionHistory:getPositionLastDate: no bars in position "));
+    }
+
+    const ptime& getLastDateTime() const
     {
       if (numBarsInPosition() > 0)
 	{
@@ -279,7 +312,7 @@ namespace mkc_timeseries
     }
 
   private:
-    std::map<TimeSeriesDate, OpenPositionBar<Decimal>> mPositionBarHistory;
+    PositionBarMap mPositionBarHistory;
   };
 
   /**
@@ -300,25 +333,23 @@ namespace mkc_timeseries
     typedef typename OpenPositionHistory<Decimal>::PositionBarIterator PositionBarIterator;
     typedef typename OpenPositionHistory<Decimal>::ConstPositionBarIterator ConstPositionBarIterator;
 
-    TradingPositionState()
-    {}
+    TradingPositionState() = default;
 
-    virtual ~TradingPositionState()
-    {}
+    virtual ~TradingPositionState() = default;
 
-    TradingPositionState(const TradingPositionState<Decimal>& rhs)
-    {}
+    TradingPositionState(const TradingPositionState<Decimal>& rhs) = default;
 
     TradingPositionState<Decimal>& 
-    operator=(const TradingPositionState<Decimal> &rhs)
-    {}
+      operator=(const TradingPositionState<Decimal> &rhs) = default;
 
     virtual bool isPositionOpen() const = 0;
     virtual bool isPositionClosed() const = 0;
-    virtual const TimeSeriesDate& getEntryDate() const = 0;
+    virtual TimeSeriesDate getEntryDate() const = 0;
+    virtual const ptime& getEntryDateTime() const = 0;
     virtual const Decimal& getEntryPrice() const = 0;
     virtual const Decimal& getExitPrice() const = 0;
-    virtual const boost::gregorian::date& getExitDate() const = 0;
+    virtual boost::gregorian::date getExitDate() const = 0;
+    virtual const ptime& getExitDateTime() const = 0;
     virtual void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar) = 0;
     virtual const TradingVolume& getTradingUnits() const = 0;
     virtual unsigned int getNumBarsInPosition() const = 0;
@@ -343,6 +374,11 @@ namespace mkc_timeseries
 				std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 				const boost::gregorian::date exitDate,
 				const Decimal& exitPrice) = 0;
+    virtual void ClosePosition (TradingPosition<Decimal>* position,
+				std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+				const ptime exitDate,
+				const Decimal& exitPrice) = 0;
+
   };
   
   template <class Decimal>
@@ -357,7 +393,7 @@ namespace mkc_timeseries
 		  const TradingVolume& unitsInPosition) 
       : TradingPositionState<Decimal>(),
       mEntryPrice(entryPrice),
-      mEntryDate (entryBar.getDateValue()),
+      mEntryDateTime (entryBar.getDateTime()),
       mUnitsInPosition(unitsInPosition),
       mPositionBarHistory (entryBar),
       mBarsInPosition(1),
@@ -369,36 +405,9 @@ namespace mkc_timeseries
 	throw TradingPositionException (std::string("OpenPosition constructor: entry price < 0"));
     }
 
-    OpenPosition(const OpenPosition<Decimal>& rhs) 
-      : TradingPositionState<Decimal>(rhs),
-      mEntryPrice(rhs.mEntryPrice),
-      mEntryDate (rhs.mEntryDate),
-      mUnitsInPosition(rhs.mUnitsInPosition),
-      mPositionBarHistory (rhs.mPositionBarHistory),
-      mBarsInPosition (rhs.mBarsInPosition),
-      mNumBarsSinceEntry(rhs.mNumBarsSinceEntry),
-      mProfitTarget(rhs.mProfitTarget),
-      mStopLoss(rhs.mStopLoss)
-    {}
+    OpenPosition(const OpenPosition<Decimal>& rhs) = default;
 
-    OpenPosition<Decimal>& 
-    operator=(const OpenPosition<Decimal> &rhs)
-    {
-      if (this == &rhs)
-	return *this;
-
-      TradingPositionState<Decimal>::operator=(rhs);
-
-      mEntryPrice = rhs.mEntryPrice;
-      mEntryDate  = rhs.mEntryDate;
-      mUnitsInPosition = rhs.mUnitsInPosition;
-      mPositionBarHistory  = rhs.mPositionBarHistory;
-      mBarsInPosition  = rhs.mBarsInPosition;
-      mNumBarsSinceEntry = rhs.mNumBarsSinceEntry;
-      mProfitTarget = rhs.mProfitTarget;
-      mStopLoss = rhs.mStopLoss;
-      return *this;
-    }
+    OpenPosition<Decimal>& operator=(const OpenPosition<Decimal> &rhs) = default;
 
     virtual ~OpenPosition()
     {}
@@ -439,9 +448,14 @@ namespace mkc_timeseries
       return mEntryPrice;
     }
 
-    const TimeSeriesDate& getEntryDate() const
+    TimeSeriesDate getEntryDate() const
     {
-      return mEntryDate;
+      return mEntryDateTime.date();
+    }
+
+    const ptime& getEntryDateTime() const
+    {
+      return mEntryDateTime;
     }
 
     const Decimal& getExitPrice() const
@@ -449,7 +463,12 @@ namespace mkc_timeseries
       throw TradingPositionException ("No exit price for open position");
     }
 
-    const boost::gregorian::date& getExitDate() const
+    boost::gregorian::date getExitDate() const
+    {
+      throw TradingPositionException ("No exit date for open position");
+    }
+
+    const ptime& getExitDateTime() const
     {
       throw TradingPositionException ("No exit date for open position");
     }
@@ -514,7 +533,7 @@ namespace mkc_timeseries
 
   private:
     Decimal mEntryPrice;
-    TimeSeriesDate mEntryDate;
+    ptime mEntryDateTime;
     TradingVolume mUnitsInPosition;
     OpenPositionHistory<Decimal> mPositionBarHistory;
     unsigned int mBarsInPosition;
@@ -542,19 +561,10 @@ namespace mkc_timeseries
       : OpenPosition<Decimal>(entryPrice, entryBar, unitsInPosition)
     {}
 
-    OpenLongPosition(const OpenLongPosition<Decimal>& rhs) 
-      : OpenPosition<Decimal>(rhs)
-    {}
+    OpenLongPosition(const OpenLongPosition<Decimal>& rhs) = default;
 
-    OpenLongPosition<Decimal>& 
-    operator=(const OpenLongPosition<Decimal> &rhs)
-    {
-      if (this == &rhs)
-	return *this;
+    OpenLongPosition<Decimal>& operator=(const OpenLongPosition<Decimal> &rhs) = default;
 
-      OpenPosition<Decimal>::operator=(rhs);
-      return *this;
-    }
 
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
@@ -599,6 +609,12 @@ namespace mkc_timeseries
 			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
 			const Decimal& exitPrice);
+
+
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+			const ptime exitDate,
+			const Decimal& exitPrice);
   };
 
   /**
@@ -620,19 +636,9 @@ namespace mkc_timeseries
       : OpenPosition<Decimal>(entryPrice, entryBar, unitsInPosition)
     {}
 
-    OpenShortPosition(const OpenShortPosition<Decimal>& rhs) 
-      : OpenPosition<Decimal>(rhs)
-    {}
+    OpenShortPosition(const OpenShortPosition<Decimal>& rhs) = default;
 
-    OpenShortPosition<Decimal>& 
-    operator=(const OpenShortPosition<Decimal> &rhs)
-    {
-      if (this == &rhs)
-	return *this;
-
-      OpenPosition<Decimal>::operator=(rhs);
-      return *this;
-    }
+    OpenShortPosition<Decimal>& operator=(const OpenShortPosition<Decimal> &rhs) = default;
 
     void addBar(const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
@@ -678,6 +684,11 @@ namespace mkc_timeseries
 			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
 			const Decimal& exitPrice);
+
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+			const ptime exitDate,
+			const Decimal& exitPrice);
   };
 
   template <class Decimal> class ClosedPosition : public TradingPositionState<Decimal>
@@ -685,35 +696,32 @@ namespace mkc_timeseries
   public:
     ClosedPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 		    const boost::gregorian::date exitDate,
+		    const Decimal& exitPrice)
+      : ClosedPosition(openPosition,
+		       ptime(exitDate, getDefaultBarTime()),
+		       exitPrice)
+    {}
+    
+    ClosedPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+		    const ptime exitDateTime,
 		    const Decimal& exitPrice) 
       : TradingPositionState<Decimal>(),
-	mOpenPosition (openPosition),
-	mExitDate(exitDate),
+	mOpenPosition(openPosition),
+	mExitDateTime(exitDateTime),
 	mExitPrice(exitPrice)
     {
-      if (exitDate < openPosition->getEntryDate())
-	throw std::domain_error (std::string("ClosedPosition: exit Date" +to_simple_string (exitDate) +" cannot occur before entry date " +to_simple_string (openPosition->getEntryDate())));
+      if (exitDateTime < openPosition->getEntryDateTime())
+	throw std::domain_error (std::string("ClosedPosition: exit Date" +to_simple_string (exitDateTime) +" cannot occur before entry date " +to_simple_string (openPosition->getEntryDateTime())));
+
+      if (exitPrice <= DecimalConstants<Decimal>::DecimalZero) { // Check exit price validity
+        throw TradingPositionException("ClosedPosition constructor: exit price must be positive.");
+      }
+
     }
 
-    ClosedPosition(const ClosedPosition<Decimal>& rhs) 
-      : TradingPositionState<Decimal>(rhs),
-	mOpenPosition (rhs.mOpenPosition),
-	mExitDate(rhs.mExitDate),
-	mExitPrice(rhs.mExitPrice)
-    {}
+    ClosedPosition(const ClosedPosition<Decimal>& rhs) = default;
 
-    ClosedPosition<Decimal>& 
-    operator=(const ClosedPosition<Decimal> &rhs)
-    {
-      if (this == &rhs)
-	return *this;
-
-      TradingPositionState<Decimal>::operator=(rhs);
-      mOpenPosition = rhs.mOpenPosition;
-      mExitDate = rhs.mExitDate;
-      mExitPrice = rhs.mExitPrice;
-      return *this;
-    }
+    ClosedPosition<Decimal>& operator=(const ClosedPosition<Decimal> &rhs) = default;
 
     virtual ~ClosedPosition()
     {}
@@ -728,19 +736,29 @@ namespace mkc_timeseries
       return true;
     }
 
-    const boost::gregorian::date& getEntryDate() const
+    boost::gregorian::date getEntryDate() const
     {
       return mOpenPosition->getEntryDate();
     }
 
+    const ptime& getEntryDateTime() const
+    {
+      return mOpenPosition->getEntryDateTime();
+    }
+    
     const Decimal& getEntryPrice() const
     {
       return mOpenPosition->getEntryPrice();
     }
 
-    const boost::gregorian::date& getExitDate() const
+    boost::gregorian::date getExitDate() const
     {
-      return mExitDate;
+      return mExitDateTime.date();
+    }
+
+    const ptime&  getExitDateTime() const
+    {
+      return mExitDateTime;
     }
 
     const Decimal& getExitPrice() const
@@ -803,23 +821,51 @@ namespace mkc_timeseries
       return mOpenPosition->endPositionBarHistory();
     }
 
+    // Implementations for ClosePosition, which should throw as position is already closed.
+    void ClosePosition (TradingPosition<Decimal>* position,
+                        std::shared_ptr<TradingPositionState<Decimal>> openPositionState,
+                        const boost::gregorian::date exitDate,
+                        const Decimal& exitPriceLocal) override
+    {
+      throw TradingPositionException("ClosedPosition: Cannot close an already closed position (date overload)");
+    }
+
+    void ClosePosition (TradingPosition<Decimal>* position,
+                        std::shared_ptr<TradingPositionState<Decimal>> openPositionState,
+                        const ptime exitDateTimeLocal,
+                        const Decimal& exitPriceLocal) override
+    {
+      throw TradingPositionException("ClosedPosition: Cannot close an already closed position (ptime overload)");
+    }
+
   private:
     std::shared_ptr<TradingPositionState<Decimal>> mOpenPosition;
-    boost::gregorian::date mExitDate;
+    ptime mExitDateTime;
     Decimal mExitPrice;
   };
-
 
   template <class Decimal>
   bool operator==(const ClosedPosition<Decimal>& lhs, const ClosedPosition<Decimal>& rhs)
   {
-    return (lhs.getEntryDate() == rhs.getEntryDate() &&
-	    lhs.getEntryPrice() == rhs.getEntryPrice() &&
-	    lhs.getExitDate() == rhs.getExitDate() &&
-	    lhs.getExitPrice() == rhs.getExitPrice() &&
-	    lhs.getUnitsInPosition() == rhs.getUnitsInPosition() &&
-	    lhs.isLongPosition() == rhs.isLongPosition() &&
-	    lhs.isShortPosition() == rhs.isShortPosition());
+    // 1. Check if they are the same concrete derived type (e.g., both ClosedLongPosition)
+    // This prevents a ClosedLongPosition from being considered equal to a ClosedShortPosition
+    // even if all other financial details were identical.
+    if (typeid(lhs) != typeid(rhs)) {
+        return false;
+    }
+
+    // 2. Compare attributes from the original open position state.
+    //    (getEntryDateTime, getEntryPrice, getTradingUnits in ClosedPosition 
+    //     delegate to the mOpenPosition's state).
+    bool openPositionAttributesMatch = (lhs.getEntryDateTime() == rhs.getEntryDateTime() &&
+                                        lhs.getEntryPrice() == rhs.getEntryPrice() &&
+                                        lhs.getTradingUnits() == rhs.getTradingUnits()); // Use getTradingUnits()
+
+    // 3. Compare attributes specific to the closed state itself.
+    bool closedStateAttributesMatch = (lhs.getExitDateTime() == rhs.getExitDateTime() &&
+                                       lhs.getExitPrice() == rhs.getExitPrice());
+
+    return openPositionAttributesMatch && closedStateAttributesMatch;
   }
 
   template <class Decimal>
@@ -845,6 +891,12 @@ namespace mkc_timeseries
 			const boost::gregorian::date exitDate,
 			const Decimal& exitPrice)
       : ClosedPosition<Decimal>(openPosition, exitDate, exitPrice)
+    {}
+
+    ClosedLongPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+                        const ptime exitDateTime,
+                        const Decimal& exitPrice)
+      : ClosedPosition<Decimal>(openPosition, exitDateTime, exitPrice)
     {}
 
     ClosedLongPosition(const ClosedLongPosition<Decimal>& rhs) 
@@ -900,7 +952,18 @@ namespace mkc_timeseries
     void ClosePosition (TradingPosition<Decimal>* position,
 			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const Decimal& exitPrice);
+			const Decimal& exitPrice)
+    {
+      throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
+    }
+    
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+			const ptime  exitDate,
+			const Decimal& exitPrice)
+    {
+      throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
+    }
   };
 
 
@@ -920,6 +983,12 @@ namespace mkc_timeseries
 			const boost::gregorian::date exitDate,
 			const Decimal& exitPrice)
       : ClosedPosition<Decimal>(openPosition, exitDate, exitPrice)
+    {}
+
+    ClosedShortPosition (std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+                         const ptime exitDateTime,
+                         const Decimal& exitPrice)
+      : ClosedPosition<Decimal>(openPosition, exitDateTime, exitPrice)
     {}
 
     ClosedShortPosition(const ClosedShortPosition<Decimal>& rhs) 
@@ -975,7 +1044,18 @@ namespace mkc_timeseries
     void ClosePosition (TradingPosition<Decimal>* position,
 			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
 			const boost::gregorian::date exitDate,
-			const Decimal& exitPrice);
+			const Decimal& exitPrice)
+    {
+      throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
+    }
+    
+    void ClosePosition (TradingPosition<Decimal>* position,
+			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+			ptime exitDate,
+			const Decimal& exitPrice)
+    {
+      throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
+    }
   };
 
   template <class Decimal>
@@ -1062,9 +1142,14 @@ namespace mkc_timeseries
       return mPositionState->isPositionClosed();
     }
 
-    const TimeSeriesDate& getEntryDate() const
+    TimeSeriesDate getEntryDate() const
     {
       return mPositionState->getEntryDate();
+    }
+
+    const ptime& getEntryDateTime() const
+    {
+      return mPositionState->getEntryDateTime();
     }
 
     const Decimal& getEntryPrice() const
@@ -1077,9 +1162,14 @@ namespace mkc_timeseries
       return mPositionState->getExitPrice();
     }
 
-    const boost::gregorian::date& getExitDate() const
+    boost::gregorian::date getExitDate() const
     {
       return mPositionState->getExitDate();
+    }
+
+    const ptime& getExitDateTime() const
+    {
+      return mPositionState->getExitDateTime();
     }
 
     void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
@@ -1172,10 +1262,18 @@ namespace mkc_timeseries
     void ClosePosition (const boost::gregorian::date exitDate,
 			const Decimal& exitPrice)
     {
-      mPositionState->ClosePosition (this, mPositionState, exitDate, exitPrice);
-      NotifyPositionClosed (this);
+      ptime exitDateTime(exitDate, getDefaultBarTime()); 
+      this->ClosePosition(exitDateTime, exitPrice);
     }
 
+    void ClosePosition (const ptime exitDateTime,
+                        const Decimal& exitPrice)
+    {
+      // mPositionState points to an object (e.g., OpenLongPosition) that has the ptime ClosePosition overload.
+      mPositionState->ClosePosition (this, mPositionState, exitDateTime, exitPrice);
+      NotifyPositionClosed (this);
+    }
+    
     void addObserver (std::reference_wrapper<TradingPositionObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
@@ -1377,39 +1475,40 @@ namespace mkc_timeseries
 
   template <class Decimal>
   inline void OpenLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
-						     std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-						     const boost::gregorian::date exitDate,
-						     const Decimal& exitPrice)
-    {
-      position->ChangeState (std::make_shared<ClosedLongPosition<Decimal>>(openPosition, exitDate, exitPrice));
-    }
+						 std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+						 const boost::gregorian::date exitDate,
+						 const Decimal& exitPrice)
+  {
+    ClosePosition (position, openPosition, ptime(exitDate, getDefaultBarTime()), exitPrice);
+  }
 
   template <class Decimal>
-  inline void OpenShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
-						     std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-						     const boost::gregorian::date exitDate,
-						     const Decimal& exitPrice)
-    {
-      position->ChangeState (std::make_shared<ClosedShortPosition<Decimal>>(openPosition, exitDate, exitPrice));
-    }
+  inline void OpenLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						 std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+						 const ptime exitDate,
+						 const Decimal& exitPrice)
+  {
+    position->ChangeState (std::make_shared<ClosedLongPosition<Decimal>>(openPosition, exitDate, exitPrice));
+  }
 
   template <class Decimal>
-  inline void ClosedLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
-						       std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-						       const boost::gregorian::date exitDate,
-						       const Decimal& exitPrice)
-    {
-      throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
-    }
+  void OpenShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						  std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+						  const boost::gregorian::date exitDate,
+						  const Decimal& exitPrice)
+  {
+    ClosePosition (position, openPosition, ptime(exitDate, getDefaultBarTime()), exitPrice);
+  }
 
   template <class Decimal>
-  inline void ClosedShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
-						       std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-						       const boost::gregorian::date exitDate,
-						       const Decimal& exitPrice)
-    {
-      throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
-    }
+  void OpenShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+						  std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+						  const ptime exitDate,
+						  const Decimal& exitPrice)
+  {
+    position->ChangeState (std::make_shared<ClosedShortPosition<Decimal>>(openPosition, exitDate, exitPrice));
+  }
+
 }
 #endif
 

@@ -2,7 +2,10 @@
 #include "InstrumentPositionManager.h"
 #include "DecimalConstants.h"
 #include "TestUtils.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
@@ -298,6 +301,88 @@ TEST_CASE ("TradingPosition operations", "[TradingManagerPosition]")
       REQUIRE_THROWS (posManager.addInstrument(qqqSymbol));
     }
 
+  SECTION("Intraday addBarForOpenPosition with ptime", "[InstrumentPositionManager][ptime]") {
+    // 1) Build two intraday bars at 09:30 and 10:30
+    auto entry0 = createTimeSeriesEntry(
+      "20250526", "09:30:00",
+      "100.0","105.0","95.0","102.0","10"
+    );
+    auto entry1 = createTimeSeriesEntry(
+      "20250526", "10:30:00",
+      "102.0","107.0","97.0","104.0","15"
+    );
 
+    // 2) Create an intraday series and wrap in a Security/Portfolio
+    auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    series->addEntry(*entry0);
+    series->addEntry(*entry1);
+    auto eq = std::make_shared<EquitySecurity<DecimalType>>("SYM", "Test Equity", series);
+    auto port = std::make_shared<Portfolio<DecimalType>>("P");
+    port->addSecurity(eq);
+
+    // 3) Set up the manager, register the instrument, and open one intraday long
+    InstrumentPositionManager<DecimalType> mgr;
+    mgr.addInstrument("SYM");
+    TradingVolume one(1, TradingVolume::SHARES);
+    auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
+      "SYM", entry0->getOpenValue(), *entry0, one
+    );
+    mgr.addPosition(pos);
+    REQUIRE(pos->getNumBarsInPosition() == 1);
+
+    // 4) Advance by the second bar using the ptime overload
+    ptime dt1 = entry1->getDateTime();
+    mgr.addBarForOpenPosition(dt1, port.get());  // ptime overload
+
+    // 5) Verify the TradingPosition inside the manager saw two bars
+    auto fetched = mgr.getTradingPosition("SYM", 1);
+    REQUIRE(fetched->getNumBarsInPosition() == 2);
+}
+
+SECTION("Intraday closeAllPositions with ptime", "[InstrumentPositionManager][ptime]") {
+    // 1) Rebuild two-bar intraday setup
+    auto entry0 = createTimeSeriesEntry(
+      "20250526", "09:30:00",
+      "100.0","105.0","95.0","102.0","10"
+    );
+    auto entry1 = createTimeSeriesEntry(
+      "20250526", "10:30:00",
+      "102.0","107.0","97.0","104.0","15"
+    );
+    auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    series->addEntry(*entry0);
+    series->addEntry(*entry1);
+    auto eq = std::make_shared<EquitySecurity<DecimalType>>("ABC","Test Equity", series);
+    auto port = std::make_shared<Portfolio<DecimalType>>("P2");
+    port->addSecurity(eq);
+
+    // 2) Open an intraday position
+    InstrumentPositionManager<DecimalType> mgr2;
+    mgr2.addInstrument("ABC");
+    TradingVolume one(1, TradingVolume::SHARES);
+    auto pos2 = std::make_shared<TradingPositionLong<DecimalType>>(
+      "ABC", entry0->getOpenValue(), *entry0, one
+    );
+    mgr2.addPosition(pos2);
+    REQUIRE(mgr2.isLongPosition("ABC"));
+    REQUIRE(mgr2.getNumPositionUnits("ABC") == 1);
+
+    // 3) Close it at 10:30 via the ptime overload
+    ptime exitDT = entry1->getDateTime();
+    DecimalType exitPrice = entry1->getCloseValue();
+    mgr2.closeAllPositions("ABC", exitDT, exitPrice);  // ptime overload
+
+    // 4) After closing, the instrument should be flat and have zero units
+    REQUIRE(mgr2.isFlatPosition("ABC"));
+    REQUIRE(mgr2.getNumPositionUnits("ABC") == 0);
+
+    // 5) Attempting to fetch a unit now throws
+    REQUIRE_THROWS_AS(mgr2.getTradingPosition("ABC", 1), InstrumentPositionException);
+
+    // 6) The original position object was closed in-place—verify its timestamps
+    REQUIRE(pos2->getExitDateTime() == exitDT);
+    REQUIRE(pos2->getExitDate()     == exitDT.date());
+    REQUIRE(pos2->getExitPrice()    == exitPrice);
+ }
 }
 

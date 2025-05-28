@@ -44,12 +44,12 @@ namespace mkc_timeseries
    * - Add new `TradingPosition` objects when entry orders are filled.
    * - Instruct the manager to close positions when exit orders are filled.
    * - The `TradingOrderManager` may also query position states via the `StrategyBroker` to validate
-   *   or process certain order types (e.g., ensuring an exit order corresponds to an existing position).
+   * or process certain order types (e.g., ensuring an exit order corresponds to an existing position).
    * - The `addBarForOpenPosition` method is typically called by the `StrategyBroker`
-   *   (e.g., within its `ProcessPendingOrders` method)
-   *   at each step of the backtest to update all open positions with the latest market data. This is crucial for
-   *   mark-to-market calculations, and for checking if stop-loss or profit-target levels within individual `TradingPosition`
-   *   units have been hit by the current bar's high or low prices.
+   * (e.g., within its `ProcessPendingOrders` method)
+   * at each step of the backtest to update all open positions with the latest market data. This is crucial for
+   * mark-to-market calculations, and for checking if stop-loss or profit-target levels within individual `TradingPosition`
+   * units have been hit by the current bar's high or low prices.
    *
    * Collaboration:
    * - Manages `InstrumentPosition<Decimal>` objects.
@@ -236,7 +236,7 @@ namespace mkc_timeseries
     }
 
    /**
-     * @brief Adds a new bar's data to all open trading position units for a specific instrument.
+     * @brief Adds a new bar's data to all open trading position units for a specific instrument using date.
      * This is used to update an open position with new market data as the simulation progresses.
      * @param tradingSymbol The symbol of the instrument whose positions should be updated.
      * @param entryBar The OHLCTimeSeriesEntry (bar data) to add.
@@ -250,19 +250,38 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Adds a new bar's data to all open trading position units for a specific instrument.
-     * This is used to update an open position with new market data as the simulation progresses.
-     * @param tradingSymbol The symbol of the instrument whose positions should be updated.
-     * @param entryBar The OHLCTimeSeriesEntry (bar data) to add.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
-     * @throws InstrumentPositionException if the instrument is flat (delegated from InstrumentPosition).
+     * @brief Adds a new bar's data to all open positions based on date.
+     * This overload uses only the date portion of the `ptime` object to fetch and add bar data.
+     * It iterates all managed instruments and updates their positions if they are open
+     * and have a corresponding bar in the portfolio for the given date.
+     * 
+     * @note This method is distinct from the overload that uses `ptime` as its parameter. 
+     *       While the `ptime` overload considers both date and time, this method focuses solely on the date.
+     * 
+     * @param openPositionDate The date for which to fetch and add bar data.
+     * @param portfolioOfSecurities A pointer to the Portfolio containing security data.
      */
     void addBarForOpenPosition (const boost::gregorian::date openPositionDate,
 				Portfolio<Decimal>* portfolioOfSecurities)
     {
+        this->addBarForOpenPosition(ptime(openPositionDate, getDefaultBarTime()), portfolioOfSecurities);
+    }
+
+    /**
+     * @brief Adds a new bar's data to all open positions based on ptime.
+     * This version iterates all managed instruments and updates their positions if they are open
+     * and have a corresponding bar in the portfolio for the given ptime.
+     * @param openPositionDateTime The ptime for which to fetch and add bar data.
+     * @param portfolioOfSecurities A pointer to the Portfolio containing security data.
+     */
+    void addBarForOpenPosition (const ptime openPositionDateTime,
+				Portfolio<Decimal>* portfolioOfSecurities)
+    {
       // bind once on first bar
       if (mBindings.empty())
-	bindToPortfolio(portfolioOfSecurities);
+      {
+	    bindToPortfolio(portfolioOfSecurities);
+      }
       
       for (auto& binding : mBindings)
         {
@@ -271,11 +290,14 @@ namespace mkc_timeseries
 	  
 	  // only add if the position is currently open
 	  if (position->isFlatPosition())
+	  {
 	    continue;
+	  }
 	  
 	  // pull the bar from the OHLCTimeSeries
-	  auto it = security->findTimeSeriesEntry(openPositionDate);
-	  if (it != security->getRandomAccessIteratorEnd())
+          // Assumes Security::findTimeSeriesEntry is or will be updated to handle ptime for intraday.
+	  auto it = security->findTimeSeriesEntry(openPositionDateTime);
+	  if (it != security->getRandomAccessIteratorEnd()) // Assuming getRandomAccessIteratorEnd() is the correct end iterator
             {
 	      position->addBar(*it);
             }
@@ -283,7 +305,7 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Closes all open trading position units for a specific instrument.
+     * @brief Closes all open trading position units for a specific instrument using date.
      * @param tradingSymbol The symbol of the instrument whose positions are to be closed.
      * @param exitDate The date of the exit.
      * @param exitPrice The price at which the positions are exited.
@@ -294,13 +316,27 @@ namespace mkc_timeseries
 			   const boost::gregorian::date exitDate,
 			   const Decimal& exitPrice)
     {
-      //std::cout << "Closing all positions for symbol "+tradingSymbol +" on date " << exitDate << std::endl;
-      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
-      pos->closeAllPositions(exitDate, exitPrice);
+      this->closeAllPositions(tradingSymbol, ptime(exitDate, getDefaultBarTime()), exitPrice);
     }
 
     /**
-     * @brief Closes a specific trading position unit for an instrument.
+     * @brief Closes all open trading position units for a specific instrument using ptime.
+     * @param tradingSymbol The symbol of the instrument whose positions are to be closed.
+     * @param exitDateTime The ptime of the exit.
+     * @param exitPrice The price at which the positions are exited.
+     * @throws InstrumentPositionManagerException if the trading symbol is not found.
+     * @throws InstrumentPositionException if the instrument is already flat (delegated from InstrumentPosition).
+     */
+    void closeAllPositions(const std::string& tradingSymbol,
+			   const ptime exitDateTime,
+			   const Decimal& exitPrice)
+    {
+      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
+      pos->closeAllPositions(exitDateTime, exitPrice);
+    }
+
+    /**
+     * @brief Closes a specific trading position unit for an instrument using date.
      * This is used when pyramiding and exiting only a part of the total position.
      * @param tradingSymbol The symbol of the instrument.
      * @param exitDate The date of the exit.
@@ -315,9 +351,29 @@ namespace mkc_timeseries
 			   const Decimal& exitPrice,
 			   uint32_t unitNumber)
     {
-      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
-      pos->closeUnitPosition(exitDate, exitPrice, unitNumber);
+      this->closeUnitPosition(tradingSymbol, ptime(exitDate, getDefaultBarTime()), exitPrice, unitNumber);
     }
+
+    /**
+     * @brief Closes a specific trading position unit for an instrument using ptime.
+     * This is used when pyramiding and exiting only a part of the total position.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param exitDateTime The ptime of the exit.
+     * @param exitPrice The price at which the unit is exited.
+     * @param unitNumber The specific unit number of the TradingPosition to close (1-based index).
+     * @throws InstrumentPositionManagerException if the trading symbol is not found.
+     * @throws InstrumentPositionException if the unit number is invalid or the unit cannot be
+     * closed (delegated from InstrumentPosition).
+     */
+    void closeUnitPosition(const std::string& tradingSymbol,
+			   const ptime exitDateTime,
+			   const Decimal& exitPrice,
+			   uint32_t unitNumber)
+    {
+      std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
+      pos->closeUnitPosition(exitDateTime, exitPrice, unitNumber);
+    }
+
 
     /**
      * @brief Gets the number of open trading position units for a specific instrument.
@@ -381,9 +437,13 @@ namespace mkc_timeseries
     {
       ConstInstrumentPositionIterator pos = mInstrumentPositions.find (symbol);
       if (pos != endInstrumentPositions())
+      {
 	return pos;
+      }
       else
-	throw InstrumentPositionManagerException("InstrumentPositionManager::findExistingSymbol - trading symbol not found");
+      {
+	throw InstrumentPositionManagerException("InstrumentPositionManager::findExistingSymbol - trading symbol '" + symbol + "' not found");
+      }
     }
 
     /**

@@ -2,7 +2,10 @@
 #include "InstrumentPosition.h"
 #include "DecimalConstants.h"
 #include "TestUtils.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
 
+using boost::posix_time::ptime;
+using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 
@@ -387,6 +390,100 @@ InstrumentPosition<DecimalType>::ConstInstrumentPositionIterator it1 =
     REQUIRE (c2InstrumentPositionShort.getNumPositionUnits() == 2);
 
     REQUIRE_THROWS (c2InstrumentPositionShort.addPosition(longPosition1));
+  }
+
+  SECTION("InstrumentPosition addBar with intraday ptime bars", "[InstrumentPosition][ptime]") {
+    // create three intraday bars on 2025-05-26 at 09:30, 10:30, 11:30
+    auto entry0 = createTimeSeriesEntry("20250526", "09:30:00",
+                                        "100.0","101.0"," 99.0","100.5","100");
+    auto entry1 = createTimeSeriesEntry("20250526", "10:30:00",
+                                        "100.5","101.5"," 99.5","101.0","150"); 
+    auto entry2 = createTimeSeriesEntry("20250526", "11:30:00",
+                                        "101.0","102.0","100.0","101.75","200");
+
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+    std::string sym("INTRA");
+
+    // Build a long position at 09:30
+    auto pos0 = std::make_shared<TradingPositionLong<DecimalType>>(
+								   sym, entry0->getOpenValue(), *entry0, oneShare);
+    InstrumentPosition<DecimalType> ip(sym);
+    ip.addPosition(pos0);
+
+    // Add subsequent intraday bars
+    ip.addBar(*entry1);
+    ip.addBar(*entry2);
+
+    // The TradingPosition should have seen 3 bars (entry + two adds)
+    REQUIRE(pos0->getNumBarsInPosition() == 3);
+    REQUIRE(pos0->getLastClose() == entry2->getCloseValue());
+  }
+
+  SECTION("InstrumentPosition closeUnitPosition with ptime overload", "[InstrumentPosition][ptime]") {
+    // two intraday entry bars at 09:30 and 10:00
+    auto eA = createTimeSeriesEntry("20250526", "09:30:00",
+                                    "200.0","201.0","199.0","200.5","100");
+    auto eB = createTimeSeriesEntry("20250526", "10:00:00",
+                                    "201.0","202.0","200.0","201.5","100");
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+    std::string sym("PTIME");
+
+    auto pA = std::make_shared<TradingPositionLong<DecimalType>>(
+								 sym, eA->getOpenValue(), *eA, oneShare);
+    auto pB = std::make_shared<TradingPositionLong<DecimalType>>(
+								 sym, eB->getOpenValue(), *eB, oneShare);
+
+    InstrumentPosition<DecimalType> ip2(sym);
+    ip2.addPosition(pA);
+    ip2.addPosition(pB);
+    REQUIRE(ip2.getNumPositionUnits() == 2);
+
+    // close unit #1 at 11:15
+    ptime exitT = time_from_string("2025-05-26 11:15:00");
+    DecimalType exitPx = dec::fromString<DecimalType>("202.25");
+    ip2.closeUnitPosition(exitT, exitPx, 1);
+
+    // first unit must be closed, second still open
+    REQUIRE(pA->isPositionClosed());
+    REQUIRE(pA->getExitDateTime() == exitT);
+    REQUIRE(pA->getExitPrice()    == exitPx);
+
+    REQUIRE(ip2.getNumPositionUnits() == 1);
+    // remaining unit is B
+    auto it = ip2.getInstrumentPosition(1);
+    REQUIRE((*it)->getEntryPrice() == pB->getEntryPrice());
+  }
+
+  SECTION("InstrumentPosition closeAllPositions with ptime overload", "[InstrumentPosition][ptime]") {
+    // reuse pA & pB from above, but in a fresh InstrumentPosition
+    auto eA = createTimeSeriesEntry("20250526", "09:30:00",
+                                    "300.0","301.0","299.0","300.5","100");
+    auto eB = createTimeSeriesEntry("20250526", "10:00:00",
+                                    "301.0","302.0","300.0","301.5","100");
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+    std::string sym("ALLPT");
+
+    auto pA2 = std::make_shared<TradingPositionLong<DecimalType>>(
+								  sym, eA->getOpenValue(), *eA, oneShare);
+    auto pB2 = std::make_shared<TradingPositionLong<DecimalType>>(
+								  sym, eB->getOpenValue(), *eB, oneShare);
+
+    InstrumentPosition<DecimalType> ip3(sym);
+    ip3.addPosition(pA2);
+    ip3.addPosition(pB2);
+    REQUIRE(ip3.getNumPositionUnits() == 2);
+
+    // close all at 12:00
+    ptime exitAll = time_from_string("2025-05-26 12:00:00");
+    DecimalType exitPx2 = dec::fromString<DecimalType>("302.00");
+    ip3.closeAllPositions(exitAll, exitPx2);
+
+    REQUIRE(ip3.isFlatPosition());
+    // both units should have been closed at the same timestamp
+    REQUIRE(pA2->getExitDateTime() == exitAll);
+    REQUIRE(pB2->getExitDateTime() == exitAll);
+    REQUIRE(pA2->getExitPrice()    == exitPx2);
+    REQUIRE(pB2->getExitPrice()    == exitPx2);
   }
 }
 
