@@ -877,13 +877,11 @@ TEST_CASE("Intraday SyntheticTimeSeries: two runs produce different series",
 
     // Act: run #1
     SyntheticTimeSeries<DecimalType> s1(original, tick, tick2);
-    s1.reseedRNG();
     s1.createSyntheticSeries();
     auto out1 = *s1.getSyntheticTimeSeries();
 
     // Act: run #2
     SyntheticTimeSeries<DecimalType> s2(original, tick, tick2);
-    s2.reseedRNG();
     s2.createSyntheticSeries();
     auto out2 = *s2.getSyntheticTimeSeries();
 
