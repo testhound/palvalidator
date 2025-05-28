@@ -93,9 +93,11 @@ namespace mkc_timeseries
 	mBigPointValue(bigPointValue),
 	mTick(securityTick),
 	mSecurityTimeSeries(securityTimeSeries),
-	mFirstDate(securityTimeSeries->getFirstDate()),
 	mTickDiv2(securityTick/DecimalConstants<Decimal>::DecimalTwo)
-      {}
+      {
+	if (!securityTimeSeries)
+	  throw SecurityException ("Class Security: time series object is null");
+      }
       
       Security (const Security<Decimal> &rhs)
 	: mSecuritySymbol(rhs.mSecuritySymbol),
@@ -103,7 +105,6 @@ namespace mkc_timeseries
 	  mBigPointValue(rhs.mBigPointValue),
 	  mTick(rhs.mTick),
 	  mSecurityTimeSeries(rhs.mSecurityTimeSeries),
-	  mFirstDate(rhs.mFirstDate),
 	  mTickDiv2(rhs.mTickDiv2)
       {}
 
@@ -118,7 +119,6 @@ namespace mkc_timeseries
 	mBigPointValue = rhs.mBigPointValue;
 	mTick = rhs.mTick;
 	mSecurityTimeSeries = rhs.mSecurityTimeSeries;
-	mFirstDate = rhs.mFirstDate;
 	mTickDiv2 = rhs.mTickDiv2;
 	
 	return *this;
@@ -324,18 +324,6 @@ namespace mkc_timeseries
 	return mTickDiv2;
       }
 
-      /** @brief Gets the date of the first entry in the associated time series. */
-      const boost::gregorian::date getFirstDate() const
-      {
-	return mFirstDate;
-      }
-
-      /** @brief Gets the date of the last entry in the associated time series. */
-      const boost::gregorian::date getLastDate() const
-      {
-	return mSecurityTimeSeries->getLastDate();
-      }
-
       /** @brief Gets a shared pointer to the underlying constant time series data. */
       std::shared_ptr<const OHLCTimeSeries<Decimal>> getTimeSeries() const
       {
@@ -357,7 +345,6 @@ namespace mkc_timeseries
       Decimal mBigPointValue;
       Decimal mTick;
       std::shared_ptr<const OHLCTimeSeries<Decimal>> mSecurityTimeSeries;
-      boost::gregorian::date mFirstDate;
       Decimal mTickDiv2;                    // Used to speedup compuation of Round@Tick
     };
 
