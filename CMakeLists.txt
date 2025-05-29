@@ -24,43 +24,9 @@ set(BIN_NAME ${PROJECT_NAME})
 
 set(CMAKE_CXX_STANDARD 17)
 
-set(USE_BLOOMBERG_DECIMALS false)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
-
-if(USE_BLOOMBERG_DECIMALS)
-  add_definitions(-DUSE_BLOOMBERG_DECIMALS)
-
-  set(BLOOMBERG_DIR ${CMAKE_SOURCE_DIR}/../bloomberg)
-
-  set(BLOOMBERG_DECIMAL_LIBRARIES
-    ${BLOOMBERG_DIR}/bde/build/groups/bdl/bdldfp/libbdldfp.a
-    ${BLOOMBERG_DIR}/bde/build/groups/bsl/bsls/libbsls.a
-    ${BLOOMBERG_DIR}/bde/build/groups/bsl/libbsl.a
-    ${BLOOMBERG_DIR}/bde/build/thirdparty/decnumber/libdecnumber.a
-    ${BLOOMBERG_DIR}/bde/build/thirdparty/inteldfp/libinteldfp.a
-    ${BLOOMBERG_DIR}/bde/build/groups/bsl/bslim/libbslim.a
-    ${BLOOMBERG_DIR}/bde/build/groups/bdl/bdlscm/libbdlscm.a
-    ${BLOOMBERG_DIR}/bde/build/groups/bsl/bslscm/libbslscm.a
-    )
-
-  set(BLOOMBERG_DECIMAL_INCLUDES
-    ${BLOOMBERG_DIR}/bde/groups/bdl/bdldfp
-    ${BLOOMBERG_DIR}/bde/groups/bdl/bdlscm
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bsls
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bslscm
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bslmf
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bslstl
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bslalg
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bslma
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bsl+bslhdrs
-    ${BLOOMBERG_DIR}/bde/groups/bsl/bslh
-    ${BLOOMBERG_DIR}/bde/thirdparty
-    ${BLOOMBERG_DIR}/bde/thirdparty/inteldfp/LIBRARY/src
-    )
-endif()
 
 #if(CMAKE_COMPILER_IS_GNUCXX)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
@@ -119,7 +85,6 @@ target_link_libraries(${BIN_NAME}
     backtesting
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
-    ${BLOOMBERG_DECIMAL_LIBRARIES}
     curl
     )
 
