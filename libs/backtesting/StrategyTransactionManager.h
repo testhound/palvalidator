@@ -11,10 +11,12 @@
 #include <cstdint>
 #include <map>
 #include "StrategyTransaction.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 using std::shared_ptr;
 using boost::gregorian::date;
 using std::multimap;
+using boost::posix_time::ptime;
 
 namespace mkc_timeseries
 {
@@ -26,7 +28,7 @@ namespace mkc_timeseries
   class StrategyTransactionManagerException : public std::runtime_error
   {
   public:
-    StrategyTransactionManagerException(const std::string msg) 
+    StrategyTransactionManagerException(const std::string& msg)
       : std::runtime_error(msg)
     {}
     
@@ -78,7 +80,7 @@ namespace mkc_timeseries
    * with their original transaction in `PositionClosed`.
    * - Query trade counts (`getTotalTrades`, `getOpenTrades`, `getClosedTrades`).
    * - Iterate through sorted transactions (`beginSortedStrategyTransaction`, `endSortedStrategyTransaction`) for reporting.
-   * - boost::gregorian::date: Uses Boost dates as keys in the sorted transaction map.
+   * - boost::posix_time::ptime: Uses Boost dates as keys in the sorted transaction map.
    * - std::map: Used internally (`mTransactionByPositionId`) to store transactions keyed by position ID.
    * - std::multimap: Used internally (`mSortedTransactions`) to store transactions keyed by entry date, allowing multiple entries per date.
    * - std::shared_ptr: Manages the lifecycle of `StrategyTransaction` objects.
@@ -88,8 +90,8 @@ namespace mkc_timeseries
   public:
     typedef typename std::map<uint32_t, shared_ptr<StrategyTransaction<Decimal>>>::const_iterator 
       StrategyTransactionIterator;
-    typedef typename multimap<date, shared_ptr<StrategyTransaction<Decimal>>>::const_iterator 
-      SortedStrategyTransactionIterator;
+    using DateMap = multimap<ptime, shared_ptr<StrategyTransaction<Decimal>>>;
+    typedef typename DateMap::const_iterator SortedStrategyTransactionIterator;
 
   public:
     StrategyTransactionManager()
@@ -162,7 +164,7 @@ namespace mkc_timeseries
 	{  
 	  mTransactionByPositionId.insert (std::make_pair(transaction->getTradingPosition()->getPositionID(), 
 							  transaction));
-	  mSortedTransactions.insert(std::make_pair(transaction->getTradingPosition()->getEntryDate(), transaction));
+	  mSortedTransactions.insert(std::make_pair(transaction->getTradingPosition()->getEntryDateTime(), transaction));
 	  if (transaction->isTransactionOpen())
 	    {
 	      // We want to observe when the transaction is complete so
@@ -264,7 +266,7 @@ namespace mkc_timeseries
  
     // Sorted transactions; sorted by position entry date. Need multimap, because we can have multiple
     // positions entered on the same date
-    std::multimap< boost::gregorian::date, shared_ptr<StrategyTransaction<Decimal>>> mSortedTransactions;
+    DateMap mSortedTransactions;
   };
 }
 #endif
