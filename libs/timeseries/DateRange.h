@@ -9,17 +9,21 @@
 
 #include <exception>
 #include <boost/date_time.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <map>
+#include <stdexcept>
+#include <string>
+#include "TimeSeriesEntry.h"
 
 namespace mkc_timeseries
 {
   using std::map;
-  using boost::gregorian::to_simple_string;
+  using boost::posix_time::ptime;
 
   class DateRangeException : public std::runtime_error
   {
   public:
-  DateRangeException(const std::string msg) 
+  DateRangeException(const std::string& msg) 
     : std::runtime_error(msg)
       {}
 
@@ -31,6 +35,11 @@ namespace mkc_timeseries
   {
   public:
     DateRange(const boost::gregorian::date& firstDate, const boost::gregorian::date& lastDate)
+      : DateRange(ptime(firstDate, getDefaultBarTime()),
+		  ptime(lastDate, getDefaultBarTime()))
+    {}
+
+    DateRange(const ptime& firstDate, const ptime& lastDate)
       : mFirstDate(firstDate),
 	mLastDate(lastDate)
     {
@@ -38,45 +47,39 @@ namespace mkc_timeseries
 	throw DateRangeException ("DateRange::DateRange - Second date cannot occur before first date");
     }
 
-    DateRange (const DateRange& rhs)
-      : mFirstDate(rhs.mFirstDate),
-	mLastDate(rhs.mLastDate)
-    {}
+    DateRange(const DateRange&) = default;
+    DateRange& operator=(const DateRange&) = default;
+    ~DateRange() noexcept = default;
 
-    DateRange& 
-    operator=(const DateRange& rhs)
+    boost::gregorian::date getFirstDate() const
     {
-      if (this == &rhs)
-	return *this;
-
-      mFirstDate = rhs.mFirstDate;
-      mLastDate = rhs.mLastDate;
-
-      return *this;
+      return mFirstDate.date();
     }
 
-    ~DateRange()
-    {}
-
-    const boost::gregorian::date& getFirstDate() const
+    const ptime& getFirstDateTime() const
     {
       return mFirstDate;
     }
 
-    const boost::gregorian::date& getLastDate() const
+    boost::gregorian::date getLastDate() const
+    {
+      return mLastDate.date();
+    }
+
+    const ptime& getLastDateTime() const
     {
       return mLastDate;
     }
 
   private:
-    boost::gregorian::date mFirstDate;
-    boost::gregorian::date mLastDate;
+    ptime mFirstDate;
+    ptime mLastDate;
   };
 
   inline bool operator==(const DateRange& lhs, const DateRange& rhs)
     {
-      return ((lhs.getFirstDate() == rhs.getFirstDate()) &&
-	      (lhs.getLastDate() == rhs.getLastDate()));
+      return ((lhs.getFirstDateTime() == rhs.getFirstDateTime()) &&
+	      (lhs.getLastDateTime() == rhs.getLastDateTime()));
     }
 
   inline bool operator!=(const DateRange& lhs, const DateRange& rhs)
@@ -86,35 +89,32 @@ namespace mkc_timeseries
 
   class DateRangeContainer
   {
-    using Map = map<boost::gregorian::date, DateRange>;
+    using Map = map<ptime, DateRange>;
   public:
     typedef typename Map::const_iterator ConstDateRangeIterator;
-    typedef typename Map::const_iterator DateRangeIterator;
 
     DateRangeContainer()
       : mDateRangeMap()
     {}
 
-    ~DateRangeContainer()
-    {}
+    DateRangeContainer(const DateRangeContainer&) = default;
+    DateRangeContainer& operator=(const DateRangeContainer&) = default;
+    ~DateRangeContainer() noexcept = default;
 
-    void addDateRange(const DateRange& range)
-      {
-	boost::gregorian::date firstDate = range.getFirstDate();
-	auto it = mDateRangeMap.find(firstDate);
-
-	if (it == mDateRangeMap.end())
-	  {
-	    mDateRangeMap.insert(std::make_pair(firstDate, std::move(range)));
-	  }
-	else
-	  {
-	    std::string date1_as_string(to_simple_string (firstDate));
-	    std::string date2_as_string(to_simple_string (range.getLastDate()));
-	    std::string range_as_string = std::string("(") + date1_as_string + std::string(",") + date2_as_string + std::string(")");
-	    throw std::domain_error(std::string("DateRangeContainer: " +range_as_string  +std::string(" date range already exists")));
-	  }
-      }
+    void addDateRange(const DateRange& r)
+    {
+      const auto& key = r.getFirstDateTime();
+      auto [it, ok] = mDateRangeMap.emplace(key, r);
+      if (!ok)
+	{
+	  auto msg = "("
+	    + boost::posix_time::to_simple_string(key)
+	    + ","
+	    + boost::posix_time::to_simple_string(r.getLastDateTime())
+	    + ") date range already exists";
+	  throw std::domain_error("DateRangeContainer: " + msg);
+	}
+    }
 
     DateRange getFirstDateRange() const
     {
@@ -143,7 +143,7 @@ namespace mkc_timeseries
     }
 
   private:
-    map<boost::gregorian::date, DateRange> mDateRangeMap;
+    Map mDateRangeMap;
   };
 }
 
