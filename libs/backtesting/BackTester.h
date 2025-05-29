@@ -73,7 +73,7 @@ namespace mkc_timeseries
     using StrategyPtr            = BacktesterStrategy<Decimal>*;
     using StrategyIterator       = typename std::list<std::shared_ptr<BacktesterStrategy<Decimal>>>::const_iterator;
     using StrategyRawIterator    = typename std::vector<StrategyPtr>::const_iterator;
-    using BacktestDateRangeIterator = typename DateRangeContainer::DateRangeIterator;
+    using BacktestDateRangeIterator = typename DateRangeContainer::ConstDateRangeIterator;
 
     /**
      * @brief Construct an empty BackTester with no strategies or dates.
