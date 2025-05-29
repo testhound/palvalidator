@@ -79,12 +79,6 @@ TEST_CASE ("Security operations", "[Security]")
   REQUIRE ((*itBegin) == *entry6);
   REQUIRE ((*itEnd) == *entry0);
 
-  REQUIRE (spy.getFirstDate() == entry6->getDateValue());
-  REQUIRE (spy.getLastDate() == entry0->getDateValue());
-
-  REQUIRE (spy2->getFirstDate() == entry6->getDateValue());
-  REQUIRE (spy2->getLastDate() == entry0->getDateValue());
-
   // Futures security
 
   std::string futuresSymbol("C2");
@@ -161,12 +155,6 @@ TEST_CASE ("Security operations", "[Security]")
 
   REQUIRE ((*itBeginCorn) == *futuresEntry0);
   REQUIRE ((*itEndCorn) == *futuresEntry11);
-
-  REQUIRE (corn.getFirstDate() == futuresEntry0->getDateValue());
-  REQUIRE (corn.getLastDate() == futuresEntry11->getDateValue());
-
-  REQUIRE (corn2->getFirstDate() == futuresEntry0->getDateValue());
-  REQUIRE (corn2->getLastDate() == futuresEntry11->getDateValue());
 
   SECTION ("Equity Security Time Series Access", "[TimeSeries Access]")
     {
@@ -249,7 +237,68 @@ TEST_CASE ("Security operations", "[Security]")
       REQUIRE_THROWS (spy.getRandomAccessIterator(randomDate1));
     }
 
-// --- Intraday findTimeSeriesEntry (ptime) ---
+  SECTION("Trading volume units for equity and futures", "[Security][VolumeUnits]")
+    {
+      REQUIRE(spy.getTradingVolumeUnits() == TradingVolume::SHARES);
+      REQUIRE(corn.getTradingVolumeUnits() == TradingVolume::CONTRACTS);
+    }
+
+  SECTION("TickDiv2 values are half of tick size", "[Security][TickDiv2]")
+    {
+      // Equity tick is 0.01 → tickDiv2 should be 0.005
+      DecimalType expectedEquityHalf = DecimalConstants<DecimalType>::EquityTick / createDecimal("2");
+      REQUIRE(spy.getTickDiv2() == expectedEquityHalf);
+      
+      // Corn futures tick is 0.25 → tickDiv2 should be 0.125
+      DecimalType expectedCornHalf = createDecimal("0.25") / createDecimal("2");
+      REQUIRE(corn.getTickDiv2() == expectedCornHalf);
+    }
+
+  SECTION("findTimeSeriesEntry(date) finds or returns end", "[Security][FindByDate]")
+    {
+      boost::gregorian::date hitDate(2016, 1, 4);
+      auto itHit = spy.findTimeSeriesEntry(hitDate);
+      REQUIRE(itHit != spy.getRandomAccessIteratorEnd());
+      REQUIRE(*itHit == *entry2);
+      
+      // miss
+      boost::gregorian::date missDate(1990, 1, 1);
+      REQUIRE(spy.findTimeSeriesEntry(missDate) == spy.getRandomAccessIteratorEnd());
+    }
+
+  SECTION("Volume access by iterator offset", "[Security][VolumeOffset]")
+    {
+      auto it2 = spy.getRandomAccessIterator(boost::gregorian::date(2016, 1, 4));
+
+      REQUIRE(spy.getVolumeValue(it2, 0) == entry2->getVolumeValue());
+    }
+
+  SECTION("Copy and assignment for EquitySecurity and FuturesSecurity", "[Security][Copy]")
+    {
+      // Equity
+      EquitySecurity<DecimalType> copySpy(spy);
+      REQUIRE(copySpy.getSymbol() == spy.getSymbol());
+      REQUIRE(copySpy.getName()   == spy.getName());
+      REQUIRE(*(copySpy.getTimeSeries()) == *(spy.getTimeSeries()));
+
+      EquitySecurity<DecimalType> assignSpy = spy;
+      REQUIRE(assignSpy.getSymbol() == spy.getSymbol());
+      REQUIRE(assignSpy.getName()   == spy.getName());
+      REQUIRE(*(assignSpy.getTimeSeries()) == *(spy.getTimeSeries()));
+
+      // Futures
+      FuturesSecurity<DecimalType> copyCorn(corn);
+      REQUIRE(copyCorn.getSymbol() == corn.getSymbol());
+      REQUIRE(copyCorn.getName()   == corn.getName());
+      REQUIRE(*(copyCorn.getTimeSeries()) == *(corn.getTimeSeries()));
+
+      FuturesSecurity<DecimalType> assignCorn = corn;
+      REQUIRE(assignCorn.getSymbol() == corn.getSymbol());
+      REQUIRE(assignCorn.getName()   == corn.getName());
+      REQUIRE(*(assignCorn.getTimeSeries()) == *(corn.getTimeSeries()));
+    }
+
+  // --- Intraday findTimeSeriesEntry (ptime) ---
   SECTION("Intraday findTimeSeriesEntry returns correct iterator or end", "[TimeSeries Access (ptime)]") {
     // pick a known entry
     ptime dt2 = entry2->getDateTime();

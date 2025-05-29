@@ -23,8 +23,8 @@ TEST_CASE ("Security operations", "[Security]")
   REQUIRE (aSecurity->getSymbol() == symbol);
     REQUIRE (aSecurity->getBigPointValue() == qqqBigPointValue);
   REQUIRE (aSecurity->getTick() == qqqTickValue);
-  REQUIRE (aSecurity->getFirstDate() == createDate("20070402"));
-  REQUIRE (aSecurity->getLastDate() == createDate("20250331"));
+  REQUIRE (aSecurity->getTimeSeries()->getFirstDate() == createDate("20070402"));
+  REQUIRE (aSecurity->getTimeSeries()->getLastDate() == createDate("20250331"));
   REQUIRE (aSecurity->isEquitySecurity());
   REQUIRE (aSecurity->getTimeSeries()->getTimeFrame() == TimeFrame::DAILY);
 
