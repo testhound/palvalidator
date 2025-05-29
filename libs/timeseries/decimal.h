@@ -844,15 +844,15 @@ public:
         return *this;
     }
 
-    template <typename T>
-    bool operator==(const T &rhs) const {
-        return (*this == static_cast<decimal>(rhs));
-    }
+    //template <typename T>
+    //bool operator==(const T &rhs) const {
+    //    return (*this == static_cast<decimal>(rhs));
+    //}
 
-    template <typename T>
-    bool operator!=(const T &rhs) const {
-        return !(*this == rhs);
-    }
+    //template <typename T>
+    //bool operator!=(const T &rhs) const {
+    //    return !(*this == rhs);
+    //}
 
 #if DEC_USE_SPACESHIP_OPER
     template<typename T>

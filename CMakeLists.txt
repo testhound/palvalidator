@@ -97,6 +97,7 @@ add_subdirectory(libs/pasearchalgo)
 add_subdirectory(libs/statistics)
 
 add_subdirectory(src/palvalidator)
+add_subdirectory(src/palsetup)
 add_subdirectory(src/patterndiscovery)
 
 
