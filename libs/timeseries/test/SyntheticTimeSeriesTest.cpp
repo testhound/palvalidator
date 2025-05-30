@@ -873,8 +873,8 @@ TEST_CASE("Intraday SyntheticTimeSeries: two runs produce different series",
     // Arrange
     DecimalType tick   = DecimalConstants<DecimalType>::EquityTick;
     DecimalType tick2  = tick / DecimalConstants<DecimalType>::DecimalTwo;
-    auto original = createThreeDayIntradaySampleTimeSeries();
-
+    //auto original = createThreeDayIntradaySampleTimeSeries();
+    auto& original = *getIntradaySeries("SSO_Hourly.txt");
     // Act: run #1
     SyntheticTimeSeries<DecimalType> s1(original, tick, tick2);
     s1.createSyntheticSeries();

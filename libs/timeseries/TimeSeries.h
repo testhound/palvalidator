@@ -480,6 +480,214 @@ namespace mkc_timeseries
   };
 
   /**
+   * @class LogNLookupPolicy
+   * @brief Implements O(log n) lookup for OHLCTimeSeries using std::lower_bound.
+   * This policy is stateless.
+   */
+  template <class Decimal>
+  class LogNLookupPolicy
+  {
+  public:
+    using Entry = OHLCTimeSeriesEntry<Decimal>;
+    using ConstTimeSeriesIterator = typename std::vector<Entry>::const_iterator;
+
+    LogNLookupPolicy() = default;
+
+    void addEntry(std::vector<Entry>& data,
+                  TimeFrame::Duration seriesTimeFrame,
+                  Entry entry) const
+    {
+      if (entry.getTimeFrame() != seriesTimeFrame)
+        throw TimeSeriesException("LogNLookupPolicy::addEntry: time frame mismatch for entry " + boost::posix_time::to_simple_string(entry.getDateTime()));
+
+      auto it = std::lower_bound(data.begin(), data.end(), entry,
+                                 [](const Entry& a, const Entry& b) {
+                                   return a.getDateTime() < b.getDateTime();
+                                 });
+
+      if (it != data.end() && it->getDateTime() == entry.getDateTime())
+        throw TimeSeriesException("LogNLookupPolicy::addEntry: duplicate timestamp " + boost::posix_time::to_simple_string(entry.getDateTime()));
+      
+      data.insert(it, std::move(entry));
+    }
+
+    ConstTimeSeriesIterator
+    getTimeSeriesEntry(const std::vector<Entry>& data,
+                       const boost::posix_time::ptime& dt) const
+    {
+      auto it = std::lower_bound(data.begin(), data.end(), dt,
+                                 [](const Entry& e, const boost::posix_time::ptime& tval) {
+                                   return e.getDateTime() < tval;
+                                 });
+      return (it != data.end() && it->getDateTime() == dt) ? it : data.end();
+    }
+
+    void deleteEntryByDate(std::vector<Entry>& data, const boost::posix_time::ptime& d) const
+    {
+      data.erase(
+        std::remove_if(data.begin(), data.end(),
+                       [&](const Entry& e) { return e.getDateTime() == d; }),
+        data.end());
+    }
+
+    void on_construct_from_range(const std::vector<Entry>& /*data*/) const
+    {
+      // No-op for LogN policy as mData is already sorted by OHLCTimeSeries constructor.
+    }
+
+    std::vector<Entry> getEntriesCopy(const std::vector<Entry>& data) const
+    {
+      return data;
+    }
+  };
+
+  /**
+   * @class HashedLookupPolicy
+   * @brief Implements O(1) average time lookup for OHLCTimeSeries using std::unordered_map.
+   * This policy is stateful and manages an internal index and mutex for thread safety.
+   */
+  template <class Decimal>
+  class HashedLookupPolicy
+  {
+  public:
+    using Entry = OHLCTimeSeriesEntry<Decimal>;
+    using ConstTimeSeriesIterator = typename std::vector<Entry>::const_iterator;
+
+  public:
+    HashedLookupPolicy() = default; 
+
+    HashedLookupPolicy(const HashedLookupPolicy& other)
+    {
+      boost::mutex::scoped_lock lock(other.m_mutex);
+      mIndex = other.mIndex;
+    }
+
+    HashedLookupPolicy& operator=(const HashedLookupPolicy& other)
+    {
+      if (this == &other)
+        return *this;
+      
+      boost::mutex::scoped_lock lock_this(m_mutex);
+      boost::mutex::scoped_lock lock_other(other.m_mutex);
+      
+      mIndex = other.mIndex;
+      return *this;
+    }
+
+    HashedLookupPolicy(HashedLookupPolicy&& other) noexcept
+    {
+      boost::mutex::scoped_lock lock(other.m_mutex);
+      mIndex = std::move(other.mIndex);
+    }
+
+    HashedLookupPolicy& operator=(HashedLookupPolicy&& other) noexcept
+    {
+      if (this == &other)
+        return *this;
+
+      boost::mutex::scoped_lock lock_this(m_mutex);
+      boost::mutex::scoped_lock lock_other(other.m_mutex);
+
+      mIndex = std::move(other.mIndex);
+      return *this;
+    }
+
+    void addEntry(std::vector<Entry>& data,
+                  TimeFrame::Duration seriesTimeFrame,
+                  Entry entry)
+    {
+      if (entry.getTimeFrame() != seriesTimeFrame)
+        throw TimeSeriesException("HashedLookupPolicy::addEntry: time frame mismatch for entry " + boost::posix_time::to_simple_string(entry.getDateTime()));
+
+      boost::mutex::scoped_lock lock(m_mutex);
+      auto it = std::lower_bound(data.begin(), data.end(), entry,
+                                 [](const Entry& a, const Entry& b) {
+                                   return a.getDateTime() < b.getDateTime();
+                                 });
+
+      if (it != data.end() && it->getDateTime() == entry.getDateTime())
+        throw TimeSeriesException("HashedLookupPolicy::addEntry: duplicate timestamp " + boost::posix_time::to_simple_string(entry.getDateTime()));
+      
+      data.insert(it, std::move(entry)); 
+
+      if (!mIndex.empty())
+      {
+        mIndex.clear(); 
+      }
+    }
+
+    ConstTimeSeriesIterator
+    getTimeSeriesEntry(const std::vector<Entry>& data,
+                       const boost::posix_time::ptime& dt) const
+    {
+      boost::mutex::scoped_lock lock(m_mutex);
+      if (mIndex.empty() && !data.empty())
+      {
+        buildIndex_nolock(data);
+      }
+
+      auto map_it = mIndex.find(dt);
+      if (map_it == mIndex.end())
+      {
+        return data.end();
+      }
+      
+      if (map_it->second >= data.size()) {
+          mIndex.clear(); 
+          return data.end(); 
+      }
+      return data.begin() + map_it->second;
+    }
+
+    void deleteEntryByDate(std::vector<Entry>& data, const boost::posix_time::ptime& d)
+    {
+      boost::mutex::scoped_lock lock(m_mutex);
+      data.erase(
+        std::remove_if(data.begin(), data.end(),
+                       [&](const Entry& e) { return e.getDateTime() == d; }),
+        data.end()); 
+
+      if (!mIndex.empty())
+      {
+        mIndex.clear(); 
+      }
+    }
+
+    void on_construct_from_range(const std::vector<Entry>& data)
+    {
+      boost::mutex::scoped_lock lock(m_mutex);
+      buildIndex_nolock(data);
+    }
+    
+    std::vector<Entry> getEntriesCopy(const std::vector<Entry>& data) const
+    {
+      boost::mutex::scoped_lock lock(m_mutex);
+      return data; 
+    }
+
+  private:
+    mutable std::unordered_map<boost::posix_time::ptime, size_t> mIndex;
+    mutable boost::mutex m_mutex; 
+
+    void buildIndex_nolock(const std::vector<Entry>& data) const
+    {
+      mIndex.clear();
+      mIndex.reserve(data.size());
+      for (size_t i = 0; i < data.size(); ++i)
+      {
+        mIndex[data[i].getDateTime()] = i;
+      }
+    }
+  };
+
+  // (Forward declaration for the non-member operator==)
+  template <class Decimal, class LookupPolicy>
+  class OHLCTimeSeries;
+
+  template <class Decimal, class LookupPolicy>
+  bool operator==(const OHLCTimeSeries<Decimal, LookupPolicy>& lhs, const OHLCTimeSeries<Decimal, LookupPolicy>& rhs);
+
+  /**
    * @brief Represents a time series of Open, High, Low, Close (OHLC) and Volume data.
    * @tparam Decimal The numeric type used for price and volume data (e.g., double, float).
    *
@@ -491,7 +699,7 @@ namespace mkc_timeseries
    * - Rejects duplicate timestamps.
    * - Offers both sorted and random access without any synchronization or finalize steps.
    */
-  template <class Decimal>
+  template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>>
   class OHLCTimeSeries
   {
   public:
@@ -512,7 +720,7 @@ namespace mkc_timeseries
       : mData(),
 	mTimeFrame(timeFrame),
 	mUnitsOfVolume(unitsOfVolume),
-	mIndex()
+	m_lookup_policy() 
     {}
 
     /**
@@ -527,7 +735,7 @@ namespace mkc_timeseries
       : mData(),
 	mTimeFrame(timeFrame),
 	mUnitsOfVolume(unitsOfVolume),
-	mIndex()
+	m_lookup_policy()
     {
       mData.reserve(reserveCount);
     }
@@ -558,7 +766,7 @@ namespace mkc_timeseries
       : mData(first, last),
 	mTimeFrame(tf),
 	mUnitsOfVolume(units),
-	mIndex()
+	m_lookup_policy()
     {
       // 1) Optional: verify every entry has the correct timeFrame
       for (auto& e : mData) {
@@ -571,6 +779,7 @@ namespace mkc_timeseries
 		{
 		  return a.getDateTime() < b.getDateTime();
 		});
+      m_lookup_policy.on_construct_from_range(mData);
     }
 
     /** @brief Default copy constructor. */
@@ -624,19 +833,24 @@ namespace mkc_timeseries
      */
     void addEntry(Entry entry)
     {
-      if (entry.getTimeFrame() != getTimeFrame())
-	throw std::domain_error("addEntry: time frame mismatch");
+      m_lookup_policy.addEntry(mData, mTimeFrame, std::move(entry));
+    }
 
-      auto it = std::lower_bound(
-				 mData.begin(), mData.end(), entry,
-				 [](auto const& a, auto const& b){ return a.getDateTime() < b.getDateTime(); });
+    bool operator==(const OHLCTimeSeries<Decimal, LookupPolicy>& rhs) const
+    {
+      if (this == &rhs) // Optimization: same object
+	return true;
 
-      if (it != mData.end() && it->getDateTime() == entry.getDateTime())
-	throw std::domain_error("addEntry: duplicate timestamp");
+      // Compare fundamental properties
+      if (mTimeFrame != rhs.mTimeFrame)
+	return false;
 
-      mData.insert(it, std::move(entry));
-      if (!mIndex.empty())
-        mIndex.clear();
+      if (mUnitsOfVolume != rhs.mUnitsOfVolume)
+	return false;
+    
+      // Compare the underlying data vector directly.
+      // std::vector::operator== handles size check and element-wise comparison.
+      return mData == rhs.mData; 
     }
 
     /**
@@ -702,7 +916,7 @@ namespace mkc_timeseries
     /** @brief Return a copy of all entries. */
     std::vector<Entry> getEntriesCopy() const
     {
-      return mData;
+      return m_lookup_policy.getEntriesCopy(mData);;
     }
 
     /** @name Sorted-access iteration (by time) */
@@ -725,21 +939,7 @@ namespace mkc_timeseries
      */
     ConstTimeSeriesIterator getTimeSeriesEntry(const boost::posix_time::ptime& dt) const
     {
-      /*       if (mIndex.empty())
-	buildIndex();
-      
-       auto it = mIndex.find(dt);
-       if (it == mIndex.end())
-	 return mData.end();
-
-       return mData.begin() + it->second;  */
-      
-      
-       auto it = std::lower_bound(
-				 mData.begin(), mData.end(), dt,
-				 [](auto const& e, auto const& t){ return e.getDateTime() < t; });
-      return (it != mData.end() && it->getDateTime() == dt)
-      ? it : mData.end();
+      return m_lookup_policy.getTimeSeriesEntry(mData, dt);
     }
 
     /** @name Random-access iteration (by index) */
@@ -869,31 +1069,28 @@ namespace mkc_timeseries
      */
     bool isDateFound(const boost::gregorian::date& d) const
     {
-      return getTimeSeriesEntry(d) != mData.end();
+      return this->isDateFound(boost::posix_time::ptime(d, getDefaultBarTime()));
     }
 
+    bool isDateFound(const boost::posix_time::ptime& d) const
+    {
+      return getTimeSeriesEntry(d) != mData.end();
+    }
+    
     /**
      * @brief Remove all entries matching a date (ignoring time).
      */
+    void deleteEntryByDate(const boost::posix_time::ptime& d)
+    {
+      m_lookup_policy.deleteEntryByDate(mData, d);
+    }
+
     void deleteEntryByDate(const boost::gregorian::date& d)
     {
-      mData.erase(
-		  std::remove_if(mData.begin(), mData.end(),
-				 [&](auto const& e){ return e.getDateTime().date() == d; }),
-		  mData.end());
-
-      if (!mIndex.empty())
-	mIndex.clear();
+      this->deleteEntryByDate(boost::posix_time::ptime(d, getDefaultBarTime()));
     }
 
   private:
-    void buildIndex() const
-    {
-      mIndex.clear();
-      for (size_t i = 0; i < mData.size(); ++i)
-	mIndex[mData[i].getDateTime()] = i;
-    }
-
     // Validate iterator-based offset.
     void ValidateVectorOffset(const ConstRandomAccessIterator& it,
 			      unsigned long offset) const
@@ -905,18 +1102,11 @@ namespace mkc_timeseries
 	throw TimeSeriesException("Offset out of bounds");
     }
 
-    // Validate index-based offset.
-    void ValidateVectorOffset(unsigned long offset) const
-    {
-      if (offset >= mData.size())
-	throw TimeSeriesException("Offset exceeds series size");
-    }
-
     // ---- Data Members ----
     std::vector<Entry>         mData;
     TimeFrame::Duration        mTimeFrame;
     TradingVolume::VolumeUnit  mUnitsOfVolume;
-    mutable std::unordered_map<ptime,size_t> mIndex;
+    LookupPolicy m_lookup_policy;
   };
   
    /**
@@ -927,32 +1117,13 @@ namespace mkc_timeseries
    * @return true if both series have the same time frame, volume units, number of entries,
    * and all corresponding entries are equal (checked via `operator==` for OHLCTimeSeriesEntry),
    * false otherwise.
-   * @note This comparison iterates through the sorted map view of both series. It acquires locks
-   * briefly to get sizes and potentially iterators safely, depending on implementation details
-   * of the iterator accessors.
    */
-  template <class Decimal>
-  bool operator==(const OHLCTimeSeries<Decimal>& lhs, const OHLCTimeSeries<Decimal>& rhs)
+  // Non-member operator== implemented in terms of the member operator==
+  template <class Decimal, class LookupPolicy>
+  bool operator==(const OHLCTimeSeries<Decimal, LookupPolicy>& lhs,
+		  const OHLCTimeSeries<Decimal, LookupPolicy>& rhs)
   {
-    if (lhs.getNumEntries() != rhs.getNumEntries())
-      return false;
-
-    if (lhs.getTimeFrame() != rhs.getTimeFrame())
-      return false;
-
-    if (lhs.getVolumeUnits() != rhs.getVolumeUnits())
-      return false;
-
-    typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it1 = lhs.beginSortedAccess();
-    typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it2 = rhs.beginSortedAccess();
-
-    for (; it1 != lhs.endSortedAccess() && it2 != rhs.endSortedAccess(); it1++, it2++)
-      {
-	if (*it1 != *it2)
-      return false;
-      }
-
-    return true;
+    return lhs.operator==(rhs); // Or simply lhs == rhs, which will resolve to the member
   }
 
   /**
@@ -962,47 +1133,32 @@ namespace mkc_timeseries
    * @param rhs The right-hand side series.
    * @return true if the series are not equal (based on the `operator==` definition), false otherwise.
    */
-  template <class Decimal>
-  bool operator!=(const OHLCTimeSeries<Decimal>& lhs, const OHLCTimeSeries<Decimal>& rhs)
+  template <class Decimal, class LookupPolicy> // Added LookupPolicy
+  bool operator!=(const OHLCTimeSeries<Decimal, LookupPolicy>& lhs, 
+		  const OHLCTimeSeries<Decimal, LookupPolicy>& rhs)
   {
     return !(lhs == rhs);
   }
 
-  template <class Decimal>
-    std::ostream& operator<<(std::ostream& os, const OHLCTimeSeries<Decimal>& series)
-    {
-        // Optional: Set precision for Decimal types if needed
-        // os << std::fixed << std::setprecision(4); // Example: 4 decimal places
+  template <class Decimal, class LookupPolicy>
+  std::ostream& operator<<(std::ostream& os, const OHLCTimeSeries<Decimal, LookupPolicy>& series)
+  {
+    os << "DateTime,Open,High,Low,Close,Volume\n";
+    // Use getEntriesCopy() to ensure thread-safety via policy
+    for (const auto& entry : series.getEntriesCopy()) 
+      {
+	const auto& dateTime = entry.getDateTime();
+	os << boost::posix_time::to_simple_string(dateTime);
+	os << "," << entry.getOpenValue();
+	os << "," << entry.getHighValue();
+	os << "," << entry.getLowValue();
+	os << "," << entry.getCloseValue();
+	os << "," << entry.getVolumeValue();
+	os << "\n";
+      }
+    return os;
+  }
 
-        // Optional: Print a header line
-        os << "DateTime,Open,High,Low,Close,Volume\n";
-
-        // Iterate through the time series using the sorted access iterator
-        for (typename OHLCTimeSeries<Decimal>::ConstTimeSeriesIterator it = series.beginSortedAccess();
-             it != series.endSortedAccess(); ++it)
-        {
-	  const auto& entry = *it; // Get the OHLC entry value
-	  const ptime& dateTime = entry.getDateTime();                // Get the boost::posix_time::ptime key
-
-
-	  // Output the date and time (adjust formatting as desired)
-	  // Using to_simple_string for combined date and time, or dateTime.date() for just the date
-	  os << boost::posix_time::to_simple_string(dateTime);
-	  
-	  // Output the OHLCV values, separated by commas (or tabs, spaces, etc.)
-	  os << "," << entry.getOpenValue();
-	  os << "," << entry.getHighValue();
-	  os << "," << entry.getLowValue();
-	  os << "," << entry.getCloseValue();
-	  os << "," << entry.getVolumeValue(); // Assuming volume is also desired
-
-	  // Add a newline character for the next entry
-	  os << "\n";
-        }
-
-        return os; // Return the ostream reference to allow chaining (e.g., std::cout << series << " done";)
-    }
-  
   /**
    * @brief Creates a new OHLCTimeSeries containing only the entries within a specified date range.
    * @tparam Decimal The numeric type of the series.
@@ -1016,39 +1172,37 @@ namespace mkc_timeseries
    * briefly on the source series to get start/end dates and potentially iterators.
    * The resulting series is a separate copy.
    */
-
-  template <class Decimal>
-  OHLCTimeSeries<Decimal> FilterTimeSeries(const OHLCTimeSeries<Decimal>& series,
-					   const DateRange& dates)
+template <class Decimal, class LookupPolicy>
+  OHLCTimeSeries<Decimal, LookupPolicy> FilterTimeSeries(
+    const OHLCTimeSeries<Decimal, LookupPolicy>& series,
+    const DateRange& dates)
   {
-    using TS = OHLCTimeSeries<Decimal>;
+    OHLCTimeSeries<Decimal, LookupPolicy> result(series.getTimeFrame(),
+                                                 series.getVolumeUnits());
 
-    auto firstDate = dates.getFirstDate();
-    auto lastDate  = dates.getLastDate();
-    ptime firstP(firstDate, getDefaultBarTime());
-    ptime lastP (lastDate,  getDefaultBarTime());
+    auto firstP = dates.getFirstDateTime(); 
+    auto lastP  = dates.getLastDateTime();  
 
-    // quick-path: full range
-    if (firstDate == series.getFirstDate() && lastDate == series.getLastDate())
-        return series;
+    if (series.getNumEntries() > 0)
+      { 
+        if (firstP < series.getFirstDateTime())
+            throw TimeSeriesException("FilterTimeSeries: Cannot start before reference series");
+        if (lastP < series.getFirstDateTime())
+             throw TimeSeriesException("FilterTimeSeries: Cannot end before reference series");
+      }
+    
+    for (const auto& entry : series.getEntriesCopy())
+      {
+        const auto& dt = entry.getDateTime();
 
-    if (firstDate < series.getFirstDate())
-        throw TimeSeriesException("FilterTimeSeries: Cannot start before reference series");
-    if (lastDate  < series.getFirstDate())
-        throw TimeSeriesException("FilterTimeSeries: Cannot end before reference series");
+        if (dt < firstP)
+	  continue; 
 
-    // reserve to avoid reallocations
-    TS result(series.getTimeFrame(),
-              series.getVolumeUnits(),
-              series.getNumEntries());
-
-    // now iterate the vector of Entry objects
-    for (auto const& entry : series.getEntriesCopy()) {
-        auto dt = entry.getDateTime();
-        if (dt < firstP)  continue;
-        if (dt > lastP)   break;
-        result.addEntry(entry);
-    }
+        if (dt > lastP)
+	  break;    
+        
+        result.addEntry(entry); 
+      }
 
     return result;
   }

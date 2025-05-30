@@ -12,7 +12,10 @@ typedef dec::decimal<7> DecimalType;
 typedef mkc_timeseries::OHLCTimeSeriesEntry<DecimalType> EntryType;
 
 class PriceActionLabSystem;
-namespace mkc_timeseries { template <class Decimal> class OHLCTimeSeries; }
+namespace mkc_timeseries
+{
+  template <class Decimal, class LookupPolicy> class OHLCTimeSeries;
+}
 
 std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
 readPALDataFile(const std::string &filename);
