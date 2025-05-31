@@ -20,18 +20,31 @@ void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openP
 			    const TimeSeriesDate& exitDate,
 			    const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aTimeSeries )
 {
-  OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = aTimeSeries->getTimeSeriesEntry(entryDate);
-  it++;
-
-  OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator itEnd = aTimeSeries->getTimeSeriesEntry(exitDate);
-  for (; it != itEnd; it++)
-    {
-      openPosition->addBar (*it);
+  // Use the new API with sorted iterators instead of getTimeSeriesEntry
+  auto it = aTimeSeries->beginSortedAccess();
+  auto itEnd = aTimeSeries->endSortedAccess();
+  
+  // Find the entry date
+  bool foundEntry = false;
+  for (; it != itEnd; ++it) {
+    if (it->getDateTime().date() == entryDate) {
+      foundEntry = true;
+      ++it; // Move past entry date
+      break;
     }
-
-  // Add exit bar since loop will not do it
-
-  openPosition->addBar (*it);
+  }
+  
+  if (!foundEntry) {
+    return; // Entry date not found
+  }
+  
+  // Add bars until exit date
+  for (; it != itEnd; ++it) {
+    openPosition->addBar(*it);
+    if (it->getDateTime().date() == exitDate) {
+      break; // Exit bar added, we're done
+    }
+  }
 }
 
 std::shared_ptr<TradingPositionLong<DecimalType>>

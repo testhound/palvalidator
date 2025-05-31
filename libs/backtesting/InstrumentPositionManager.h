@@ -295,12 +295,16 @@ namespace mkc_timeseries
 	  }
 	  
 	  // pull the bar from the OHLCTimeSeries
-          // Assumes Security::findTimeSeriesEntry is or will be updated to handle ptime for intraday.
-	  auto it = security->findTimeSeriesEntry(openPositionDateTime);
-	  if (it != security->getRandomAccessIteratorEnd()) // Assuming getRandomAccessIteratorEnd() is the correct end iterator
-            {
-	      position->addBar(*it);
-            }
+	         try
+	         {
+	           auto entry = security->getTimeSeriesEntry(openPositionDateTime);
+	           position->addBar(entry);
+	         }
+	         catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
+	         {
+	           // No data available for this date/time, skip this position update
+	           continue;
+	         }
         }
     }
 

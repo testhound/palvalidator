@@ -931,22 +931,22 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if the symbol is not found in the portfolio or if data for the datetime is missing.
      */
     OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
-							const ptime& dt)
+    			const ptime& dt)
     {
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
       if (symbolIterator != mPortfolio->endPortfolio())
-	{
-        // Assumes getRandomAccessIterator or a new findTimeSeriesEntry(ptime) exists in Security
-	  typename Security<Decimal>::ConstRandomAccessIterator it = 
-	    symbolIterator->second->getRandomAccessIterator (dt); // Or findTimeSeriesEntry(dt)
-
-	  if (it != symbolIterator->second->getRandomAccessIteratorEnd()) // Check against correct end iterator
-	    return (*it);
-	  else
-	    throw StrategyBrokerException ("StrategyBroker::getEntryBar - Bar data not found for " + tradingSymbol + " at " + boost::posix_time::to_simple_string(dt));
-	}
+ {
+        try
+        {
+          return symbolIterator->second->getTimeSeriesEntry(dt);
+        }
+        catch (const mkc_timeseries::TimeSeriesDataNotFoundException& e)
+        {
+          throw StrategyBrokerException ("StrategyBroker::getEntryBar - Bar data not found for " + tradingSymbol + " at " + boost::posix_time::to_simple_string(dt) + ": " + e.what());
+        }
+ }
       else
-	throw StrategyBrokerException ("StrategyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
+ throw StrategyBrokerException ("StrategyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
     }
 
 

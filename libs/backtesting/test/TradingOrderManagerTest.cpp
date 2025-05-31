@@ -117,18 +117,16 @@ public:
 private:
 
   OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
-							const boost::gregorian::date& d)
+  				const boost::gregorian::date& d)
     {
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
       if (symbolIterator != mPortfolio->endPortfolio())
-	{
-	  typename Security<Decimal>::ConstRandomAccessIterator it = 
-	    symbolIterator->second->getRandomAccessIterator (d);
-
-	  return (*it);
-	}
+ {
+   // Use new date-based API instead of iterator-based
+   return symbolIterator->second->getTimeSeriesEntry(d);
+ }
       else
-	throw std::runtime_error ("DummyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
+ throw std::runtime_error ("DummyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
     }
 
   std::shared_ptr<TradingPositionLong<Decimal>>

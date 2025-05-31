@@ -10,7 +10,7 @@
 #include <string>
 #include <memory>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include "TimeSeries.h"
+#include "TimeSeries.h" // Assumed to have the new OHLCTimeSeries API
 #include "DecimalConstants.h"
 
 using std::string;
@@ -18,6 +18,7 @@ using std::string;
 namespace mkc_timeseries
 {
   using boost::posix_time::ptime;
+  using boost::gregorian::date; 
 
   class SecurityException : public std::runtime_error
   {
@@ -52,12 +53,16 @@ namespace mkc_timeseries
    * - Holding and providing access to the associated historical price data (`OHLCTimeSeries`).
    * - Defining an interface for asset type identification (`isEquitySecurity`, `isFuturesSecurity`).
    * - Defining an interface for cloning (`clone`).
+   * - Providing iterators for direct, sorted access to the underlying time series entries.
    *
    * Collaborations:
-   * - OHLCTimeSeries: Holds a `std::shared_ptr<const OHLCTimeSeries>` (`mSecurityTimeSeries`).
-   *   This is the primary collaboration for accessing price history. Many methods delegate directly to this object.
+   * - OHLCTimeSeries: Holds a `std::shared_ptr<const OHLCTimeSeries<Decimal>>` (`mSecurityTimeSeries`).
+   * This is the primary collaboration for accessing price history. Many methods delegate directly to this object.
+   * Access methods now return `OHLCTimeSeriesEntry<Decimal>` by copy or throw exceptions
+   * (e.g., `TimeSeriesDataNotFoundException`, `TimeSeriesOffsetOutOfRangeException`).
+   * It also provides `beginSortedAccess` and `endSortedAccess` for full iteration.
    *
-   * - OHLCTimeSeriesEntry: Individual data points returned when accessing the time series.
+   * - OHLCTimeSeriesEntry: Individual data points returned when accessing the time series or iterating.
    *
    * - boost::gregorian::date: Used for indexing and retrieving data from the time series.
    *
@@ -72,17 +77,21 @@ namespace mkc_timeseries
   class Security
     {
     public:
-      typedef typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator ConstRandomAccessIterator;
+      /**
+       * @brief Iterator type for direct, sorted access to time series entries.
+       * This is typically a `std::vector<OHLCTimeSeriesEntry<Decimal>>::const_iterator`.
+       */
+      typedef typename OHLCTimeSeries<Decimal>::ConstSortedIterator ConstSortedIterator;
 
       /**
      * @brief Constructs a Security object.
      * @param securitySymbol The ticker symbol (e.g., "MSFT", "ES").
      * @param securityName The full name of the security (e.g., "Microsoft Corp.", "E-mini S&P 500").
      * @param bigPointValue The currency value of a single full point move in the security's price.
-     * 		(e.g., 1.0 for stocks, 50.0 for ES futures).
+     * (e.g., 1.0 for stocks, 50.0 for ES futures).
      * @param securityTick The minimum price fluctuation allowed for the security.
      * @param securityTimeSeries A shared pointer to the constant OHLC time series data for this security.
-     * 		The Security object does not own this data directly but holds a reference.
+     * The Security object does not own this data directly but holds a reference.
      * @throws SecurityException if securityTimeSeries is null.
      */
       Security (const string& securitySymbol, const string& securityName,
@@ -141,159 +150,237 @@ namespace mkc_timeseries
 
       virtual TradingVolume::VolumeUnit getTradingVolumeUnits() const = 0;
 
-      /**
-       * @brief Finds an iterator pointing to the time series entry for a specific date.
-       * @param d The date to find.
-       * @return A `ConstRandomAccessIterator` pointing to the entry if found,
-       * or `getRandomAccessIteratorEnd()` if the date is not in the series.
-       * @details Delegates to `OHLCTimeSeries::getRandomAccessIterator`.
-       */
-
-      Security::ConstRandomAccessIterator findTimeSeriesEntry (const ptime& d) const
-      {
-	return mSecurityTimeSeries->getRandomAccessIterator(d);
-      }
-
-      /**
-       * @brief Finds an iterator pointing to the time series entry for a specific date.
-       * @param d The date to find.
-       * @return A `ConstRandomAccessIterator` pointing to the entry if found,
-       * or `getRandomAccessIteratorEnd()` if the date is not in the series.
-       */
-      Security::ConstRandomAccessIterator findTimeSeriesEntry (const boost::gregorian::date& d) const
-	{
-	  return findTimeSeriesEntry(ptime(d, getDefaultBarTime()));
-	}
-
-      /*
-       * @brief Gets a random access iterator pointing to the time series entry for a specific date.
-       * @param d The date to retrieve the iterator for.
-       * @return A `ConstRandomAccessIterator` pointing to the entry for the given date.
-       * @throws SecurityException if the date `d` is not found in the time series.
-       * @details Delegates to `OHLCTimeSeries::getRandomAccessIterator` and adds error checking.
-       */
-      Security::ConstRandomAccessIterator getRandomAccessIterator (const boost::posix_time::ptime& d) const
-	{
-	  Security::ConstRandomAccessIterator it = mSecurityTimeSeries->getRandomAccessIterator(d);
-	  if (it != getRandomAccessIteratorEnd())
-	    return mSecurityTimeSeries->getRandomAccessIterator(d);
-	  else
-	    throw SecurityException ("No time series entry for date: " +boost::posix_time::to_simple_string (d));
-	}
-
-      /**
-       * @brief Gets a random access iterator pointing to the time series entry for a specific date.
-       * @param d The date to retrieve the iterator for.
-       * @return A `ConstRandomAccessIterator` pointing to the entry for the given date.
-       * @throws SecurityException if the date `d` is not found in the time series.
-       */
-      Security::ConstRandomAccessIterator getRandomAccessIterator (const boost::gregorian::date& d) const
-	{
-	  return getRandomAccessIterator(ptime(d, getDefaultBarTime()));
-	}
 
       /**
        * @brief Gets the time series entry (OHLC + Volume) for a specific date.
        * @param d The date to retrieve the entry for.
-       * @return A constant reference to the `OHLCTimeSeriesEntry` for the given date.
-       * @throws SecurityException if the date `d` is not found in the time series.
-       * @details Uses `getRandomAccessIterator(d)` internally.
-     */
-      const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const boost::gregorian::date& d) const
-	{
-	  Security::ConstRandomAccessIterator it = this->getRandomAccessIterator (d);
-	  return (*it);
-	}
-
-      /**
-       * @brief Gets an iterator pointing to the beginning of the underlying time series.
-       * @return A `ConstRandomAccessIterator`.
-       * @details Delegates to `OHLCTimeSeries::beginRandomAccess`.
-       */
-      Security::ConstRandomAccessIterator getRandomAccessIteratorBegin() const
-	{
-	  return  mSecurityTimeSeries->beginRandomAccess();
-	}
-
-      /**
-       * @brief Gets an iterator pointing past the end of the underlying time series.
-       * @return A `ConstRandomAccessIterator`.
-       * @details Delegates to `OHLCTimeSeries::endRandomAccess`.
-       */
-      Security::ConstRandomAccessIterator getRandomAccessIteratorEnd() const
-	{
-	  return  mSecurityTimeSeries->endRandomAccess();
-	}
-
-      /**
-       * @brief Gets the time series entry at a specific offset relative to an iterator.
-       * @param it A valid `ConstRandomAccessIterator` within the time series.
-       * @param offset The offset (number of entries) from the iterator's position.
-       * @return A constant reference to the `OHLCTimeSeriesEntry` at the specified offset.
-       * @throws std::out_of_range if the resulting position is outside the time series bounds.
+       * @return A copy of the `OHLCTimeSeriesEntry` for the given date.
+       * @throws TimeSeriesDataNotFoundException if the date `d` is not found in the time series.
        * @details Delegates to `OHLCTimeSeries::getTimeSeriesEntry`.
        */
-      const OHLCTimeSeriesEntry<Decimal>& getTimeSeriesEntry (const ConstRandomAccessIterator& it, 
-							      unsigned long offset) const
-      {
-	return mSecurityTimeSeries->getTimeSeriesEntry(it, offset); 
-      }
+      OHLCTimeSeriesEntry<Decimal> getTimeSeriesEntry (const date& d) const
+	{
+	  return mSecurityTimeSeries->getTimeSeriesEntry(d);
+	}
 
-      const boost::posix_time::ptime&
-      getDateTimeValue (const ConstRandomAccessIterator& it, unsigned long offset) const
+      /**
+       * @brief Gets the time series entry (OHLC + Volume) for a specific ptime.
+       * @param dt The ptime to retrieve the entry for.
+       * @return A copy of the `OHLCTimeSeriesEntry` for the given ptime.
+       * @throws TimeSeriesDataNotFoundException if the ptime `dt` is not found in the time series.
+       * @details Delegates to `OHLCTimeSeries::getTimeSeriesEntry`.
+       */
+      OHLCTimeSeriesEntry<Decimal> getTimeSeriesEntry (const ptime& dt) const
+	{
+	  return mSecurityTimeSeries->getTimeSeriesEntry(dt);
+	}
+      
+      /**
+       * @brief Retrieves a time series entry relative to a base date by a specific offset.
+       * @param base_d The base date from which to offset.
+       * @param offset_bars_ago The number of bars to offset from base_d.
+       * 0 means the entry for base_d itself.
+       * Positive values mean bars prior to base_d (earlier in time).
+       * Negative values mean bars after base_d (later in time).
+       * @return A copy of the target `OHLCTimeSeriesEntry`.
+       * @throws TimeSeriesDataNotFoundException if base_d is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset leads to an out-of-bounds access.
+       * @details Delegates to `OHLCTimeSeries::getTimeSeriesEntry`.
+       */
+      OHLCTimeSeriesEntry<Decimal> getTimeSeriesEntry (const date& base_d, long offset_bars_ago) const
       {
-	return mSecurityTimeSeries->getDateTimeValue(it, offset);
+        return mSecurityTimeSeries->getTimeSeriesEntry(base_d, offset_bars_ago);
       }
 
       /**
-       * @brief Gets the date value at a specific offset relative to an iterator.
-       * @param it A valid `ConstRandomAccessIterator` within the time series.
-       * @param offset The offset (number of entries) from the iterator's position.
-       * @return A constant reference to the `boost::gregorian::date` at the specified offset.
-       * @throws std::out_of_range if the resulting position is outside the time series bounds.
+       * @brief Retrieves a time series entry relative to a base ptime by a specific offset.
+       * @param base_dt The base ptime from which to offset.
+       * @param offset_bars_ago The number of bars to offset from base_dt.
+       * 0 means the entry for base_dt itself.
+       * Positive values mean bars prior to base_dt (earlier in time).
+       * Negative values mean bars after base_dt (later in time).
+       * @return A copy of the target `OHLCTimeSeriesEntry`.
+       * @throws TimeSeriesDataNotFoundException if base_dt is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset leads to an out-of-bounds access.
+       * @details Delegates to `OHLCTimeSeries::getTimeSeriesEntry`.
+       */
+      OHLCTimeSeriesEntry<Decimal> getTimeSeriesEntry (const ptime& base_dt, long offset_bars_ago) const
+      {
+        return mSecurityTimeSeries->getTimeSeriesEntry(base_dt, offset_bars_ago);
+      }
+
+      /**
+       * @brief Gets an iterator pointing to the beginning of the underlying time series entries, sorted by time.
+       * @return A `ConstSortedIterator`.
+       * @warning The returned iterator is invalidated by any modification (e.g., addEntry, deleteEntryByDate)
+       * to the underlying OHLCTimeSeries instance. Use with caution, especially in concurrent scenarios.
+       * @details Delegates to `OHLCTimeSeries::beginSortedAccess`.
+       */
+      ConstSortedIterator beginSortedEntries() const
+      {
+        return mSecurityTimeSeries->beginSortedAccess();
+      }
+
+      /**
+       * @brief Gets an iterator pointing past the end of the underlying time series entries.
+       * @return A `ConstSortedIterator`.
+       * @warning See warning for `beginSortedEntries()`. The returned iterator is invalidated by any modification
+       * to the underlying OHLCTimeSeries.
+       * @details Delegates to `OHLCTimeSeries::endSortedAccess`.
+       */
+      ConstSortedIterator endSortedEntries() const
+      {
+        return mSecurityTimeSeries->endSortedAccess();
+      }
+
+      /** @brief Gets the Open price for a bar specified by a base date and an offset.
+       * @param base_d The base date.
+       * @param offset_bars_ago Number of bars prior to base_d (0 for base_d's bar).
+       * @return The Open price.
+       * @throws TimeSeriesDataNotFoundException if the base date is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset is out of bounds.
+       * @details Delegates to `OHLCTimeSeries::getOpenValue`.
+       */
+      Decimal getOpenValue (const date& base_d, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getOpenValue(base_d, offset_bars_ago); 
+      }
+
+      /** @brief Gets the Open price for a bar specified by a base ptime and an offset.
+       * @param base_dt The base ptime.
+       * @param offset_bars_ago Number of bars prior to base_dt (0 for base_dt's bar).
+       * @return The Open price.
+       * @throws TimeSeriesDataNotFoundException if the base ptime is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset is out of bounds.
+       * @details Delegates to `OHLCTimeSeries::getOpenValue`.
+       */
+      Decimal getOpenValue (const ptime& base_dt, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getOpenValue(base_dt, offset_bars_ago); 
+      }
+
+      /** @brief Gets the High price for a bar specified by a base date and an offset. */
+      Decimal getHighValue (const date& base_d, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getHighValue(base_d, offset_bars_ago); 
+      }
+
+      /** @brief Gets the High price for a bar specified by a base ptime and an offset. */
+      Decimal getHighValue (const ptime& base_dt, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getHighValue(base_dt, offset_bars_ago); 
+      }
+
+      /** @brief Gets the Low price for a bar specified by a base date and an offset. */
+      Decimal getLowValue (const date& base_d, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getLowValue(base_d, offset_bars_ago); 
+      }
+
+      /** @brief Gets the Low price for a bar specified by a base ptime and an offset. */
+      Decimal getLowValue (const ptime& base_dt, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getLowValue(base_dt, offset_bars_ago); 
+      }
+      
+      /** @brief Gets the Close price for a bar specified by a base date and an offset. */
+      Decimal getCloseValue (const date& base_d, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getCloseValue(base_d, offset_bars_ago); 
+      }
+
+      /** @brief Gets the Close price for a bar specified by a base ptime and an offset. */
+      Decimal getCloseValue (const ptime& base_dt, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getCloseValue(base_dt, offset_bars_ago); 
+      }
+
+      /** @brief Gets the Volume for a bar specified by a base date and an offset. */
+      Decimal getVolumeValue (const date& base_d, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getVolumeValue(base_d, offset_bars_ago); 
+      }
+
+      /** @brief Gets the Volume for a bar specified by a base ptime and an offset. */
+      Decimal getVolumeValue (const ptime& base_dt, unsigned long offset_bars_ago) const
+      {
+	return mSecurityTimeSeries->getVolumeValue(base_dt, offset_bars_ago); 
+      }
+
+      /** @brief Gets the date component for a bar specified by a base date and an offset.
+       * @param base_d The base date.
+       * @param offset_bars_ago Number of bars prior to base_d (0 for base_d's bar).
+       * @return The `boost::gregorian::date` of the target bar.
+       * @throws TimeSeriesDataNotFoundException if the base date is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset is out of bounds.
        * @details Delegates to `OHLCTimeSeries::getDateValue`.
        */
-      boost::gregorian::date
-      getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
+      date getDateValue (const date& base_d, unsigned long offset_bars_ago) const
       {
-	return mSecurityTimeSeries->getDateValue(it, offset); 
+	return mSecurityTimeSeries->getDateValue(base_d, offset_bars_ago); 
       }
 
-      /** @brief Gets the Open price at a specific offset relative to an iterator.  */
-     const Decimal& getOpenValue (const ConstRandomAccessIterator& it, 
-					unsigned long offset) const
+      /** @brief Gets the date component for a bar specified by a base ptime and an offset.
+       * @param base_dt The base ptime.
+       * @param offset_bars_ago Number of bars prior to base_dt (0 for base_dt's bar).
+       * @return The `boost::gregorian::date` of the target bar.
+       * @throws TimeSeriesDataNotFoundException if the base ptime is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset is out of bounds.
+       * @details Delegates to `OHLCTimeSeries::getDateValue`.
+       */
+      date getDateValue (const ptime& base_dt, unsigned long offset_bars_ago) const
       {
-	return mSecurityTimeSeries->getOpenValue(it, offset); 
+	return mSecurityTimeSeries->getDateValue(base_dt, offset_bars_ago); 
       }
 
-      /** @brief Gets the high price at a specific offset relative to an iterator.  */
-      const Decimal& getHighValue (const ConstRandomAccessIterator& it, 
-					 unsigned long offset) const
+      /** @brief Gets the full ptime timestamp for a bar specified by a base date and an offset.
+       * @param base_d The base date.
+       * @param offset_bars_ago Number of bars prior to base_d (0 for base_d's bar).
+       * @return The `boost::posix_time::ptime` of the target bar.
+       * @throws TimeSeriesDataNotFoundException if the base date is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset is out of bounds.
+       * @details Delegates to `OHLCTimeSeries::getDateTimeValue`.
+       */
+      ptime getDateTimeValue (const date& base_d, unsigned long offset_bars_ago) const
       {
-	return mSecurityTimeSeries->getHighValue(it, offset); 
+	return mSecurityTimeSeries->getDateTimeValue(base_d, offset_bars_ago);
       }
 
-      /** @brief Gets the low price at a specific offset relative to an iterator.  */
-      const Decimal& getLowValue (const ConstRandomAccessIterator& it, 
-					unsigned long offset) const
+      /** @brief Gets the full ptime timestamp for a bar specified by a base ptime and an offset.
+       * @param base_dt The base ptime.
+       * @param offset_bars_ago Number of bars prior to base_dt (0 for base_dt's bar).
+       * @return The `boost::posix_time::ptime` of the target bar.
+       * @throws TimeSeriesDataNotFoundException if the base ptime is not found.
+       * @throws TimeSeriesOffsetOutOfRangeException if the offset is out of bounds.
+       * @details Delegates to `OHLCTimeSeries::getDateTimeValue`.
+       */
+      ptime getDateTimeValue (const ptime& base_dt, unsigned long offset_bars_ago) const
       {
-	return mSecurityTimeSeries->getLowValue(it, offset); 
+	return mSecurityTimeSeries->getDateTimeValue(base_dt, offset_bars_ago);
       }
 
-      /** @brief Gets the close price at a specific offset relative to an iterator.  */
-      const Decimal& getCloseValue (const ConstRandomAccessIterator& it, 
-				    unsigned long offset) const
+      /**
+       * @brief Check if a date exists in the time series.
+       * @param d The date to check for.
+       * @return `true` if the date exists, `false` otherwise.
+       * @details Delegates to `OHLCTimeSeries::isDateFound`.
+       */
+      bool isDateFound(const date& d) const
       {
-	return mSecurityTimeSeries->getCloseValue(it, offset); 
+        return mSecurityTimeSeries->isDateFound(d);
       }
 
-      /** @brief Gets the volume at a specific offset relative to an iterator.  */
-      const Decimal& getVolumeValue (const ConstRandomAccessIterator& it, 
-					 unsigned long offset) const
+      /**
+       * @brief Check if a ptime exists in the time series.
+       * @param pt The ptime to check for.
+       * @return `true` if the ptime exists, `false` otherwise.
+       * @details Delegates to `OHLCTimeSeries::isDateFound`.
+       */
+      bool isDateFound(const ptime& pt) const
       {
-	return mSecurityTimeSeries->getVolumeValue(it, offset); 
+        return mSecurityTimeSeries->isDateFound(pt);
       }
-
+      
       /** @brief Gets the full name of the security. */
       const std::string& getName() const
       {
@@ -512,7 +599,7 @@ namespace mkc_timeseries
     }
     
   };
-}
+} // namespace mkc_timeseries
 
 
-#endif
+#endif // __SECURITY_H

@@ -747,34 +747,39 @@ namespace mkc_timeseries
 	      if (symbolIt != mPortfolio->endPortfolio())
 		{
 		  auto& aSecurity = symbolIt->second;
-		  auto tsIt = aSecurity->findTimeSeriesEntry(processingDateTime);
-		  if (tsIt != aSecurity->getRandomAccessIteratorEnd())
+		  try
 		    {
+		      auto entry = aSecurity->getTimeSeriesEntry(processingDateTime);
+		      
 		      // If it's an exit and position already flat, cancel
 		      if (order->isExitOrder()
-			  && positions.isFlatPosition(order->getTradingSymbol()))
-			{
-			  order->MarkOrderCanceled();
-			  NotifyOrderCanceled(order);
-			}
+		   && positions.isFlatPosition(order->getTradingSymbol()))
+		 {
+		   order->MarkOrderCanceled();
+		   NotifyOrderCanceled(order);
+		 }
 		      else
-			{
-			  // Attempt execution via visitor
-			  ProcessOrderVisitor<Decimal> visitor(*tsIt);
-			  visitor.visit(order.get());
+		 {
+		   // Attempt execution via visitor
+		   ProcessOrderVisitor<Decimal> visitor(entry);
+		   visitor.visit(order.get());
 
-			  if (order->isOrderExecuted())
-                            NotifyOrderExecuted(order);
-			  else
-			    {
-			      order->MarkOrderCanceled();
-			      NotifyOrderCanceled(order);
-			    }
-			}
+		   if (order->isOrderExecuted())
+		                          NotifyOrderExecuted(order);
+		   else
+		     {
+		       order->MarkOrderCanceled();
+		       NotifyOrderCanceled(order);
+		     }
+		 }
 
 		      // Erase the processed order and advance iterator
 		      it = vectorContainer.erase(it);
 		      continue;
+		    }
+		  catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
+		    {
+		      // No data available for this date/time, skip this order
 		    }
 		}
 	    }

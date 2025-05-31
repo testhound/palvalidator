@@ -1,4 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <thread>
+#include <future>
+#include <atomic>
+#include <vector>
+#include <random>
+#include <chrono>
 #include "TimeSeriesCsvReader.h"
 #include "TimeSeries.h"
 #include "TimeSeriesIndicators.h"
@@ -8,6 +14,12 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 typedef num::DefaultNumber EquityType;
+
+using boost::posix_time::ptime;
+using boost::posix_time::hours;
+using boost::posix_time::minutes;
+using boost::posix_time::seconds;
+using boost::gregorian::days;
 
 OHLCTimeSeriesEntry<EquityType>
     createWeeklyEquityEntry (const std::string& dateString,
@@ -117,6 +129,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
 
 
+
   SECTION ("Timeseries size test", "[TimeSeries]")
     {
       REQUIRE (spySeries.getNumEntries() == 7);
@@ -200,9 +213,8 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("TimeSeries getTimeSeriesEntry by date", "TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
-      REQUIRE  (it != spySeries.endSortedAccess());
-      REQUIRE (*it == *entry4);
+      auto entry = spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      REQUIRE (entry == *entry4);
 
       NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it2 = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE  (it2 != closeSeries.endSortedAccess());
@@ -223,26 +235,46 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
   SECTION ("TimeSeries getTimeSeriesEntry by date const", "TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it= spySeries.getTimeSeriesEntry(date (2016, Jan, 4));
-      REQUIRE  (it != spySeries.endSortedAccess());
-      REQUIRE (*it == *entry2);
+      auto entry = spySeries.getTimeSeriesEntry(date (2016, Jan, 4));
+      REQUIRE (entry == *entry2);
 
-      it = spySeries.getTimeSeriesEntry(date (2016, Jan, 15));
-      REQUIRE  (it == spySeries.endSortedAccess());
+      REQUIRE_THROWS_AS(spySeries.getTimeSeriesEntry(date (2016, Jan, 15)), mkc_timeseries::TimeSeriesDataNotFoundException);
     }
 
   SECTION ("TimeSeries getRandomAccessIterator by date const", "TimeSeries]")
     {
-      auto it= spySeries.getRandomAccessIterator (date (2016, Jan, 4));
-      REQUIRE  (it != spySeries.endRandomAccess());
-      REQUIRE ((*it) == *entry2);
+      auto it= spySeries.beginRandomAccess();
+      // Find entry2 manually since getRandomAccessIterator is removed
+      bool found = false;
+      for (; it != spySeries.endRandomAccess(); ++it) {
+        if (it->getDateTime().date() == date(2016, Jan, 4)) {
+          REQUIRE ((*it) == *entry2);
+          found = true;
+          break;
+        }
+      }
+      REQUIRE(found);
 
-      it= spySeries.getRandomAccessIterator (date (2016, Jan, 18));
-      REQUIRE  (it == spySeries.endRandomAccess());
+      // Test for non-existent date
+      found = false;
+      for (it = spySeries.beginRandomAccess(); it != spySeries.endRandomAccess(); ++it) {
+        if (it->getDateTime().date() == date(2016, Jan, 18)) {
+          found = true;
+          break;
+        }
+      }
+      REQUIRE_FALSE(found);
 
-      it= spySeries.getRandomAccessIterator (date (2016, Jan, 6));
-      REQUIRE  (it != spySeries.endRandomAccess());
-      REQUIRE ((*it) == *entry0);
+      // Test for entry0
+      found = false;
+      for (it = spySeries.beginRandomAccess(); it != spySeries.endRandomAccess(); ++it) {
+        if (it->getDateTime().date() == date(2016, Jan, 6)) {
+          REQUIRE ((*it) == *entry0);
+          found = true;
+          break;
+        }
+      }
+      REQUIRE(found);
     }
 
   SECTION ("Timeseries date test", "[TimeSeries]")
@@ -322,26 +354,25 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
 
  SECTION ("Timeseries OHLC test", "[TimeSeries]")
     {
-      auto it = spySeries.beginRandomAccess();
-      it++;
-      it++;
-      it++;
-
-      DecimalType openRef2 = spySeries.getOpenValue (it, 2);
+      // Use date-based access instead of iterator-based
+      date testDate(2015, Dec, 31); // entry3 date
+      
+      DecimalType openRef2 = spySeries.getOpenValue(testDate, 2);
       REQUIRE (openRef2 == entry5->getOpenValue());
 
-      DecimalType highRef3 = spySeries.getHighValue (it, 3);
+      DecimalType highRef3 = spySeries.getHighValue(testDate, 3);
       REQUIRE (highRef3 == entry6->getHighValue());
 
-      it++;
+      // Test from entry2 date
+      date testDate2(2016, Jan, 4); // entry2 date
 
-      DecimalType lowRef1 = spySeries.getLowValue (it, 1);
+      DecimalType lowRef1 = spySeries.getLowValue(testDate2, 1);
       REQUIRE (lowRef1 == entry3->getLowValue());
 
-      DecimalType closeRef0 = spySeries.getCloseValue (it, 0);
+      DecimalType closeRef0 = spySeries.getCloseValue(testDate2, 0);
       REQUIRE (closeRef0 == entry2->getCloseValue());
 
-      DecimalType closeRef2 = spySeries.getCloseValue (it, 2);
+      DecimalType closeRef2 = spySeries.getCloseValue(testDate2, 2);
       REQUIRE (closeRef2 == entry4->getCloseValue());
     }
 
@@ -352,24 +383,25 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
       it++;
       it++;
 
-      DecimalType openRef2 = spySeries.getOpenValue (it, 2);
+      // Use iterator dereferencing for offset 0, and date-based access for other offsets
+      DecimalType openRef2 = spySeries.getOpenValue(it->getDateValue(), 2);
       REQUIRE (openRef2 == entry5->getOpenValue());
 
-      boost::gregorian::date dateRef2 = spySeries.getDateValue(it, 2);
+      boost::gregorian::date dateRef2 = spySeries.getDateValue(it->getDateValue(), 2);
       REQUIRE (dateRef2 == entry5->getDateValue());
 
-      DecimalType highRef3 = spySeries.getHighValue (it, 3);
+      DecimalType highRef3 = spySeries.getHighValue(it->getDateValue(), 3);
       REQUIRE (highRef3 == entry6->getHighValue());
 
       it++;
 
-      DecimalType lowRef1 = spySeries.getLowValue (it, 1);
+      DecimalType lowRef1 = spySeries.getLowValue(it->getDateValue(), 1);
       REQUIRE (lowRef1 == entry3->getLowValue());
 
-      DecimalType closeRef0 = spySeries.getCloseValue (it, 0);
+      DecimalType closeRef0 = it->getCloseValue(); // offset 0 - direct access
       REQUIRE (closeRef0 == entry2->getCloseValue());
 
-      DecimalType closeRef2 = spySeries.getCloseValue (it, 2);
+      DecimalType closeRef2 = spySeries.getCloseValue(it->getDateValue(), 2);
       REQUIRE (closeRef2 == entry4->getCloseValue());
     }
 
@@ -380,24 +412,25 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
       it++;
       it++;
 
-      DecimalType openRef2 = spySeries.getOpenValue (it, 2);
+      // Use iterator dereferencing for offset 0, and date-based access for other offsets
+      DecimalType openRef2 = spySeries.getOpenValue(it->getDateValue(), 2);
       REQUIRE (openRef2 == entry5->getOpenValue());
 
-      boost::gregorian::date dateRef2 = spySeries.getDateValue(it, 2);
+      boost::gregorian::date dateRef2 = spySeries.getDateValue(it->getDateValue(), 2);
       REQUIRE (dateRef2 == entry5->getDateValue());
 
-      DecimalType highRef3 = spySeries.getHighValue (it, 3);
+      DecimalType highRef3 = spySeries.getHighValue(it->getDateValue(), 3);
       REQUIRE (highRef3 == entry6->getHighValue());
 
       it++;
 
-      DecimalType lowRef1 = spySeries.getLowValue (it, 1);
+      DecimalType lowRef1 = spySeries.getLowValue(it->getDateValue(), 1);
       REQUIRE (lowRef1 == entry3->getLowValue());
 
-      DecimalType closeRef0 = spySeries.getCloseValue (it, 0);
+      DecimalType closeRef0 = it->getCloseValue(); // offset 0 - direct access
       REQUIRE (closeRef0 == entry2->getCloseValue());
 
-      DecimalType closeRef2 = spySeries.getCloseValue (it, 2);
+      DecimalType closeRef2 = spySeries.getCloseValue(it->getDateValue(), 2);
       REQUIRE (closeRef2 == entry4->getCloseValue());
     }
 
@@ -408,36 +441,38 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
       it++;
       it++;
 
-      DecimalType openRef2 = spySeries.getOpenValue (it, 2);
+      // Use iterator dereferencing for offset 0, and date-based access for other offsets
+      DecimalType openRef2 = spySeries.getOpenValue(it->getDateValue(), 2);
       REQUIRE (openRef2 == entry5->getOpenValue());
 
-      DecimalType highRef3 = spySeries.getHighValue (it, 3);
+      DecimalType highRef3 = spySeries.getHighValue(it->getDateValue(), 3);
       REQUIRE (highRef3 == entry6->getHighValue());
 
       it++;
 
-      DecimalType lowRef1 = spySeries.getLowValue (it, 1);
+      DecimalType lowRef1 = spySeries.getLowValue(it->getDateValue(), 1);
       REQUIRE (lowRef1 == entry3->getLowValue());
 
-      DecimalType closeRef0 = spySeries.getCloseValue (it, 0);
+      DecimalType closeRef0 = it->getCloseValue(); // offset 0 - direct access
       REQUIRE (closeRef0 == entry2->getCloseValue());
 
-      DecimalType closeRef2 = spySeries.getCloseValue (it, 2);
+      DecimalType closeRef2 = spySeries.getCloseValue(it->getDateValue(), 2);
       REQUIRE (closeRef2 == entry4->getCloseValue());
     }
 
  SECTION ("Timeseries Const Value OHLC exception tests", "[TimeSeries]")
     {
-      auto it = spySeries.getRandomAccessIterator (date (2016, Jan, 4));
+      // Use date-based access instead of getRandomAccessIterator
+      date testDate(2016, Jan, 4);
 
-      DecimalType closeRef2 = spySeries.getCloseValue (it, 4);
+      DecimalType closeRef2 = spySeries.getCloseValue(testDate, 4);
 
-      REQUIRE_THROWS (spySeries.getCloseValue (it, 5));
+      REQUIRE_THROWS (spySeries.getCloseValue(testDate, 5));
     }
 
  SECTION ("Timeseries SortedAccess Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = spySeries.beginSortedAccess();
+      OHLCTimeSeries<DecimalType>::ConstSortedIterator it = spySeries.beginSortedAccess();
       REQUIRE ((*it) == *entry6);
       it++;
       REQUIRE ((*it) == *entry5);
@@ -453,7 +488,7 @@ SECTION ("Timeseries Value OHLC test", "[TimeSeries]")
 
  SECTION ("Timeseries SortedAccess Const Iterator test", "[TimeSeries]")
     {
-      OHLCTimeSeries<DecimalType>::ConstTimeSeriesIterator it = spySeries.beginSortedAccess();
+      OHLCTimeSeries<DecimalType>::ConstSortedIterator it = spySeries.beginSortedAccess();
       REQUIRE ((*it) == *entry6);
       it++;
       REQUIRE ((*it) == *entry5);
@@ -508,28 +543,447 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
   SECTION("TimeSeries getRandomAccessIterator by ptime", "[TimeSeries]") {
     // pick an existing 2021-04-05 12:00 bar
     ptime dt4 = intraday_entry4->getDateTime();
-    auto it4 = ssoSeries.getRandomAccessIterator(dt4);
-    REQUIRE(it4 != ssoSeries.endRandomAccess());
-    REQUIRE(*it4 == *intraday_entry4);
+    
+    // Test that the entry exists using the new API
+    REQUIRE(ssoSeries.isDateFound(dt4));
+    auto entry = ssoSeries.getTimeSeriesEntry(dt4);
+    REQUIRE(entry == *intraday_entry4);
 
-    // a timestamp not in the series should return endRandomAccess()
+    // a timestamp not in the series should return false
     ptime missing(dt4.date(), time_duration(16, 0, 0));
-    REQUIRE(ssoSeries.getRandomAccessIterator(missing) == ssoSeries.endRandomAccess());
+    REQUIRE_FALSE(ssoSeries.isDateFound(missing));
   }
 
   SECTION("TimeSeries getDateTimeValue by ptime iterator", "[TimeSeries]") {
     // locate the 11:00 bar on 2021-04-05
     ptime dt3 = intraday_entry3->getDateTime();
-    auto it3 = ssoSeries.getRandomAccessIterator(dt3);
-    REQUIRE(it3 != ssoSeries.endRandomAccess());
-
+    
+    // Test using date-based access instead of iterator-based
     // offset 0 → exact same timestamp
-    REQUIRE(ssoSeries.getDateTimeValue(it3, 0) == dt3);
+    REQUIRE(ssoSeries.getDateTimeValue(dt3, 0) == dt3);
     // offset 2 → two bars earlier (09:00 bar)
     ptime dt1 = intraday_entry1->getDateTime();
-    REQUIRE(ssoSeries.getDateTimeValue(it3, 2) == dt1);
+    REQUIRE(ssoSeries.getDateTimeValue(dt3, 2) == dt1);
 
     // offset beyond available history should throw
-    REQUIRE_THROWS_AS(ssoSeries.getDateTimeValue(it3, 5), TimeSeriesException);
+    REQUIRE_THROWS_AS(ssoSeries.getDateTimeValue(dt3, 5), TimeSeriesOffsetOutOfRangeException);
   }
+}
+
+TEST_CASE ("OHLCTimeSeries with HashedLookupPolicy operations", "[TimeSeries][HashedLookupPolicy]")
+{
+  using HashedSeries = mkc_timeseries::OHLCTimeSeries<DecimalType, mkc_timeseries::HashedLookupPolicy<DecimalType>>;
+
+  auto entry0 = createEquityEntry ("20160106", "198.34", "200.06", "197.60","198.82", 142662900);
+  auto entry1 = createEquityEntry ("20160105", "201.40", "201.90", "200.05","201.36", 105999900);
+  auto entry2 = createEquityEntry ("20160104", "200.49", "201.03", "198.59","201.02", 222353400);
+  auto entry3 = createEquityEntry ("20151231", "205.13", "205.89", "203.87","203.87", 114877900);
+  auto entry4 = createEquityEntry ("20151230", "207.11", "207.21", "205.76","205.93", 63317700);
+  auto entry5 = createEquityEntry ("20151229", "206.51", "207.79", "206.47","207.40", 92640700);
+  auto entry6 = createEquityEntry ("20151228", "204.86", "205.26", "203.94","205.21", 65899900);
+
+  HashedSeries spySeriesHashed(TimeFrame::DAILY, TradingVolume::SHARES);
+  spySeriesHashed.addEntry (*entry4); // 20151230
+  spySeriesHashed.addEntry (*entry6); // 20151228
+  spySeriesHashed.addEntry (*entry2); // 20160104
+  spySeriesHashed.addEntry (*entry3); // 20151231
+  spySeriesHashed.addEntry (*entry1); // 20160105
+  spySeriesHashed.addEntry (*entry5); // 20151229
+  spySeriesHashed.addEntry (*entry0); // 20160106
+
+  SECTION ("Basic operations and lookups with HashedLookupPolicy")
+  {
+    REQUIRE (spySeriesHashed.getNumEntries() == 7);
+    REQUIRE (spySeriesHashed.getTimeFrame() == TimeFrame::DAILY);
+    REQUIRE (spySeriesHashed.getVolumeUnits() == TradingVolume::SHARES);
+
+    // Test getTimeSeriesEntry by ptime (should trigger index build if not already)
+    auto it_e4_p = spySeriesHashed.getTimeSeriesEntry(entry4->getDateTime());
+    REQUIRE (it_e4_p == *entry4);
+    // Entry comparison already done above
+
+    // Test getTimeSeriesEntry by date
+    auto it_e2_d = spySeriesHashed.getTimeSeriesEntry(date(2016, Jan, 4));
+    REQUIRE (it_e2_d == *entry2);
+
+    // Test entry lookup by ptime using new API
+    REQUIRE(spySeriesHashed.isDateFound(entry0->getDateTime()));
+    auto retrieved_entry = spySeriesHashed.getTimeSeriesEntry(entry0->getDateTime());
+    REQUIRE(retrieved_entry == *entry0);
+
+    // Test lookup for non-existent entry
+    REQUIRE_THROWS_AS(spySeriesHashed.getTimeSeriesEntry(date(2016, Jan, 15)), mkc_timeseries::TimeSeriesDataNotFoundException);
+
+    // Test first/last dates/datetimes
+    REQUIRE (spySeriesHashed.getFirstDateTime() == entry6->getDateTime()); // 20151228
+    REQUIRE (spySeriesHashed.getLastDateTime() == entry0->getDateTime());  // 20160106
+  }
+
+  SECTION ("Index invalidation and rebuild with HashedLookupPolicy")
+  {
+    HashedSeries series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(*entry6); // 20151228
+    
+    // First lookup, index built
+    REQUIRE(series.getTimeSeriesEntry(entry6->getDateTime()) == *entry6);
+
+    series.addEntry(*entry5); // 20151229 - Index should be cleared
+
+    // Lookups should work, triggering index rebuild
+    REQUIRE(series.getTimeSeriesEntry(entry6->getDateTime()) == *entry6);
+    REQUIRE(series.getTimeSeriesEntry(entry5->getDateTime()) == *entry5);
+    REQUIRE(series.getNumEntries() == 2);
+
+    series.deleteEntryByDate(entry6->getDateTime()); // Index should be cleared
+    REQUIRE(series.getNumEntries() == 1);
+    REQUIRE_THROWS_AS(series.getTimeSeriesEntry(entry6->getDateTime()), mkc_timeseries::TimeSeriesDataNotFoundException); // entry6 deleted
+    REQUIRE(series.getTimeSeriesEntry(entry5->getDateTime()) == *entry5); // entry5 still there, index rebuilt
+  }
+
+  SECTION ("Copy semantics with HashedLookupPolicy")
+  {
+    HashedSeries original(TimeFrame::DAILY, TradingVolume::SHARES);
+    original.addEntry(*entry0);
+    original.addEntry(*entry1);
+    
+    // Trigger index build on original
+    REQUIRE(original.getTimeSeriesEntry(entry0->getDateTime()) == *entry0);
+
+    HashedSeries copyConstructed(original);
+    REQUIRE(copyConstructed.getNumEntries() == 2);
+    REQUIRE(copyConstructed == original);
+    REQUIRE(copyConstructed.getTimeSeriesEntry(entry0->getDateTime()) == *entry0);
+    REQUIRE(copyConstructed.getTimeSeriesEntry(entry1->getDateTime()) == *entry1);
+
+    // Modify original, copy should be unaffected
+    original.addEntry(*entry2);
+    REQUIRE(original.getNumEntries() == 3);
+    REQUIRE(copyConstructed.getNumEntries() == 2); // Copy unaffected
+    REQUIRE(copyConstructed.getTimeSeriesEntry(entry1->getDateTime()) == *entry1); // Copy's index still works
+
+    HashedSeries copyAssigned(TimeFrame::DAILY, TradingVolume::SHARES);
+    copyAssigned.addEntry(*entry3); // Add something to it first
+    copyAssigned = original; // Assign from modified original
+    
+    REQUIRE(copyAssigned.getNumEntries() == 3);
+    REQUIRE(copyAssigned == original);
+    REQUIRE(copyAssigned.getTimeSeriesEntry(entry2->getDateTime()) == *entry2);
+  }
+  
+  SECTION ("Move semantics with HashedLookupPolicy")
+  {
+    HashedSeries original(TimeFrame::DAILY, TradingVolume::SHARES);
+    original.addEntry(*entry0);
+    original.addEntry(*entry1);
+    REQUIRE(original.getTimeSeriesEntry(entry0->getDateTime()) == *entry0); // Build index
+
+    HashedSeries movedConstructed(std::move(original));
+    REQUIRE(movedConstructed.getNumEntries() == 2);
+    REQUIRE(movedConstructed.getTimeSeriesEntry(entry0->getDateTime()) == *entry0);
+    REQUIRE(movedConstructed.getTimeSeriesEntry(entry1->getDateTime()) == *entry1);
+    // 'original' is now in a valid but unspecified state, typically empty or small.
+    // Depending on std::unordered_map move, its size might be 0 or its data pointers null.
+    // For safety, let's assume it's not to be used for content without re-initialization.
+    // REQUIRE(original.getNumEntries() == 0); // This might be true for std::vector move
+
+    HashedSeries source2(TimeFrame::DAILY, TradingVolume::SHARES);
+    source2.addEntry(*entry2);
+    source2.addEntry(*entry3);
+    REQUIRE(source2.getTimeSeriesEntry(entry2->getDateTime()) == *entry2); // Build index
+
+    HashedSeries movedAssigned(TimeFrame::DAILY, TradingVolume::SHARES);
+    movedAssigned.addEntry(*entry4); // Add something
+    movedAssigned = std::move(source2);
+    REQUIRE(movedAssigned.getNumEntries() == 2);
+    REQUIRE(movedAssigned.getTimeSeriesEntry(entry2->getDateTime()) == *entry2);
+    REQUIRE(movedAssigned.getTimeSeriesEntry(entry3->getDateTime()) == *entry3);
+  }
+
+  SECTION ("Constructor from range with HashedLookupPolicy")
+  {
+    std::vector<OHLCTimeSeriesEntry<DecimalType>> entries;
+    entries.push_back(*entry0);
+    entries.push_back(*entry1);
+    entries.push_back(*entry2); // Entries will be sorted by constructor
+
+    HashedSeries seriesFromRange(TimeFrame::DAILY, TradingVolume::SHARES, entries.begin(), entries.end());
+    REQUIRE(seriesFromRange.getNumEntries() == 3);
+    // Index should be built by on_construct_from_range via constructor
+    REQUIRE(seriesFromRange.getTimeSeriesEntry(entry0->getDateTime()) == *entry0);
+    REQUIRE(seriesFromRange.getTimeSeriesEntry(entry1->getDateTime()) == *entry1);
+    REQUIRE(seriesFromRange.getTimeSeriesEntry(entry2->getDateTime()) == *entry2);
+  }
+   SECTION ("Hashed Policy - Edge case: Empty series lookup")
+    {
+        HashedSeries emptySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+        REQUIRE(emptySeries.getNumEntries() == 0);
+        REQUIRE_THROWS_AS(emptySeries.getTimeSeriesEntry(entry0->getDateTime()), mkc_timeseries::TimeSeriesDataNotFoundException);
+    }
+
+    SECTION ("Hashed Policy - Edge case: Single entry series")
+    {
+        HashedSeries singleEntrySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+        singleEntrySeries.addEntry(*entry0);
+        REQUIRE(singleEntrySeries.getNumEntries() == 1);
+        REQUIRE(singleEntrySeries.getTimeSeriesEntry(entry0->getDateTime()) == *entry0);
+        REQUIRE_THROWS_AS(singleEntrySeries.getTimeSeriesEntry(entry1->getDateTime()), mkc_timeseries::TimeSeriesDataNotFoundException);
+    }
+}
+
+TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries][FilterTimeSeries][Intraday]")
+{
+  // Existing ssoSeries intraday data from TimeSeriesTest.cpp
+  OHLCTimeSeries<DecimalType> ssoSeries(TimeFrame::INTRADAY, TradingVolume::SHARES);
+  auto intraday_entry1 = createTimeSeriesEntry ("20210405", "09:00", "105.99", "106.57", "105.93", "106.54", "0"); // 2021-Apr-05 09:00:00
+  auto intraday_entry2 = createTimeSeriesEntry ("20210405", "10:00", "106.54", "107.29", "106.38", "107.10", "0"); // 2021-Apr-05 10:00:00
+  auto intraday_entry3 = createTimeSeriesEntry ("20210405", "11:00", "107.10", "107.54", "107.03", "107.409", "0"); // 2021-Apr-05 11:00:00
+  auto intraday_entry4 = createTimeSeriesEntry ("20210405", "12:00", "107.42", "107.78", "107.375", "107.47", "0"); // 2021-Apr-05 12:00:00
+  auto intraday_entry5 = createTimeSeriesEntry ("20210405", "13:00", "107.47", "107.60", "107.34", "107.5712", "0"); // 2021-Apr-05 13:00:00
+  auto intraday_entry6 = createTimeSeriesEntry ("20210405", "14:00", "107.59", "107.7099", "107.34", "107.345", "0"); // 2021-Apr-05 14:00:00
+  auto intraday_entry7 = createTimeSeriesEntry ("20210405", "15:00", "107.35", "107.70", "107.16", "107.45", "0");   // 2021-Apr-05 15:00:00
+
+  auto intraday_entry8 = createTimeSeriesEntry ("20210406", "09:00", "107.14", "107.75", "107.02", "107.68", "0");   // 2021-Apr-06 09:00:00
+  auto intraday_entry9 = createTimeSeriesEntry ("20210406", "10:00", "107.73", "107.91", "107.58", "107.739", "0");  // 2021-Apr-06 10:00:00
+  auto intraday_entry10 = createTimeSeriesEntry ("20210406", "11:00", "107.71", "107.9225", "107.55", "107.92", "0"); // 2021-Apr-06 11:00:00
+  // ... add all 14 entries to ssoSeries ...
+  ssoSeries.addEntry(*intraday_entry1); ssoSeries.addEntry(*intraday_entry2); ssoSeries.addEntry(*intraday_entry3);
+  ssoSeries.addEntry(*intraday_entry4); ssoSeries.addEntry(*intraday_entry5); ssoSeries.addEntry(*intraday_entry6);
+  ssoSeries.addEntry(*intraday_entry7); ssoSeries.addEntry(*intraday_entry8); ssoSeries.addEntry(*intraday_entry9);
+  ssoSeries.addEntry(*intraday_entry10);
+  // Manually add remaining test entries to make it complete as per original test file
+  auto intraday_entry11 = createTimeSeriesEntry ("20210406", "12:00", "107.91", "107.91", "107.63", "107.71", "0");
+  auto intraday_entry12 = createTimeSeriesEntry ("20210406", "13:00", "107.70", "107.70", "107.22", "107.60", "0");
+  auto intraday_entry13 = createTimeSeriesEntry ("20210406", "14:00", "107.62", "107.71", "107.44", "107.59", "0");
+  auto intraday_entry14 = createTimeSeriesEntry ("20210406", "15:00", "107.59", "107.64", "106.98", "107.33", "0");
+  ssoSeries.addEntry(*intraday_entry11); ssoSeries.addEntry(*intraday_entry12);
+  ssoSeries.addEntry(*intraday_entry13); ssoSeries.addEntry(*intraday_entry14);
+
+  using HashedSSOSeries = mkc_timeseries::OHLCTimeSeries<DecimalType, mkc_timeseries::HashedLookupPolicy<DecimalType>>;
+  HashedSSOSeries ssoSeriesHashed(TimeFrame::INTRADAY, TradingVolume::SHARES);
+   // Populate ssoSeriesHashed identically to ssoSeries
+  ssoSeriesHashed.addEntry(*intraday_entry1); ssoSeriesHashed.addEntry(*intraday_entry2); ssoSeriesHashed.addEntry(*intraday_entry3);
+  ssoSeriesHashed.addEntry(*intraday_entry4); ssoSeriesHashed.addEntry(*intraday_entry5); ssoSeriesHashed.addEntry(*intraday_entry6);
+  ssoSeriesHashed.addEntry(*intraday_entry7); ssoSeriesHashed.addEntry(*intraday_entry8); ssoSeriesHashed.addEntry(*intraday_entry9);
+  ssoSeriesHashed.addEntry(*intraday_entry10); ssoSeriesHashed.addEntry(*intraday_entry11); ssoSeriesHashed.addEntry(*intraday_entry12);
+  ssoSeriesHashed.addEntry(*intraday_entry13); ssoSeriesHashed.addEntry(*intraday_entry14);
+
+
+  SECTION ("Filter portion of a single day (LogN Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,5), hours(10)), ptime(date(2021,Apr,5), hours(14))); // 10:00 to 14:00 inclusive
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 5); // 10:00, 11:00, 12:00, 13:00, 14:00
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry2->getDateTime()); // 10:00
+    REQUIRE(filtered.getLastDateTime() == intraday_entry6->getDateTime());  // 14:00
+    REQUIRE(filtered.getTimeSeriesEntry(intraday_entry3->getDateTime()) == *intraday_entry3);
+  }
+
+  SECTION ("Filter portion of a single day (Hashed Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,5), hours(10)), ptime(date(2021,Apr,5), hours(14))); // 10:00 to 14:00 inclusive
+    HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
+    REQUIRE(filtered.getNumEntries() == 5); 
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry2->getDateTime()); 
+    REQUIRE(filtered.getLastDateTime() == intraday_entry6->getDateTime());  
+    REQUIRE(filtered.getTimeSeriesEntry(intraday_entry3->getDateTime()) == *intraday_entry3);
+  }
+
+  SECTION ("Filter full single day (LogN Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,6), hours(9)), ptime(date(2021,Apr,6), hours(15)));
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 7); // All 7 entries for 2021-04-06
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry8->getDateTime());
+    REQUIRE(filtered.getLastDateTime() == intraday_entry14->getDateTime());
+  }
+  
+  SECTION ("Filter full single day (Hashed Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,6), hours(9)), ptime(date(2021,Apr,6), hours(15)));
+    HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
+    REQUIRE(filtered.getNumEntries() == 7); 
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry8->getDateTime());
+    REQUIRE(filtered.getLastDateTime() == intraday_entry14->getDateTime());
+  }
+
+  SECTION ("Filter across midnight (LogN Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,5), hours(14)), ptime(date(2021,Apr,6), hours(10))); // 14:00, 15:00 from day 1; 09:00, 10:00 from day 2
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 4);
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry6->getDateTime()); // 2021-04-05 14:00
+    REQUIRE(filtered.getLastDateTime() == intraday_entry9->getDateTime());   // 2021-04-06 10:00
+  }
+
+  SECTION ("Filter across midnight (Hashed Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,5), hours(14)), ptime(date(2021,Apr,6), hours(10))); 
+    HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
+    REQUIRE(filtered.getNumEntries() == 4);
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry6->getDateTime()); 
+    REQUIRE(filtered.getLastDateTime() == intraday_entry9->getDateTime());   
+  }
+
+  SECTION ("Filter range resulting in empty series (LogN Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,5), boost::posix_time::hours(10) + boost::posix_time::minutes(5)), 
+                ptime(date(2021,Apr,5), boost::posix_time::hours(10) + boost::posix_time::minutes(55)));
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 0);
+  }
+
+  SECTION ("Filter range resulting in empty series (Hashed Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,5), hours(10) + minutes(5)), 
+                ptime(date(2021,Apr,5), hours(10) + minutes(55)));
+    HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
+    REQUIRE(filtered.getNumEntries() == 0);
+  }
+
+  SECTION ("Filter range matching a single bar (LogN Policy)")
+  {
+    DateRange range(intraday_entry4->getDateTime(), intraday_entry4->getDateTime()); // Exactly 2021-Apr-05 12:00:00
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 1);
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry4->getDateTime());
+    REQUIRE(*(filtered.beginSortedAccess()) == *intraday_entry4);
+  }
+
+  SECTION ("Filter range matching a single bar (Hashed Policy)")
+  {
+    DateRange range(intraday_entry4->getDateTime(), intraday_entry4->getDateTime()); 
+    HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
+    REQUIRE(filtered.getNumEntries() == 1);
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry4->getDateTime());
+    REQUIRE(*(filtered.beginSortedAccess()) == *intraday_entry4);
+  }
+
+  SECTION ("Filter range completely before series data (LogN Policy)") //
+  {
+    DateRange range(ptime(date(2021,Apr,4), hours(9)), ptime(date(2021,Apr,4), hours(10))); //
+    // This range starts before ssoSeries.getFirstDateTime() (2021-Apr-05 09:00:00)
+    // Expect TimeSeriesException based on FilterTimeSeries precondition in TimeSeries.h
+    REQUIRE_THROWS_AS(FilterTimeSeries(ssoSeries, range), TimeSeriesException); 
+  }
+   
+  SECTION ("Filter range completely after series data (LogN Policy)")
+  {
+    DateRange range(ptime(date(2021,Apr,7), hours(9)), ptime(date(2021,Apr,7), hours(10)));
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 0);
+  }
+
+  SECTION ("Filter range partial start (LogN Policy)") // Starts before, ends within //
+  {
+    DateRange range(ptime(date(2021,Apr,4), hours(9)), intraday_entry2->getDateTime()); // ends 2021-04-05 10:00 //
+    // This range starts before ssoSeries.getFirstDateTime() (2021-Apr-05 09:00:00)
+    // Expect TimeSeriesException based on FilterTimeSeries precondition in TimeSeries.h
+    REQUIRE_THROWS_AS(FilterTimeSeries(ssoSeries, range), TimeSeriesException);
+  }
+
+  SECTION ("Filter range partial end (LogN Policy)") // Starts within, ends after
+  {
+    DateRange range(intraday_entry13->getDateTime(), ptime(date(2021,Apr,7), hours(10))); // starts 2021-04-06 14:00
+    OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
+    REQUIRE(filtered.getNumEntries() == 2); // 14:00 and 15:00 on 2021-04-06
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry13->getDateTime());
+    REQUIRE(filtered.getLastDateTime() == intraday_entry14->getDateTime());
+  }
+}
+
+
+TEST_CASE("OHLCTimeSeries with HashedLookupPolicy concurrent access (Adds and Reads)", "[TimeSeries][HashedLookupPolicy][Concurrency]") {
+    using SeriesType = mkc_timeseries::OHLCTimeSeries<DecimalType, mkc_timeseries::HashedLookupPolicy<DecimalType>>;
+
+    SECTION("Concurrent addEntry and getTimeSeriesEntry operations") {
+        auto sharedSeries = std::make_shared<SeriesType>(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        std::atomic<int> ptime_day_offset_counter(0);
+
+        auto generate_unique_entry = [&](int thread_id_for_value, int entry_idx_in_thread) {
+            int day_offset = ptime_day_offset_counter.fetch_add(1);
+            ptime dt = ptime(date(2020, Jan, 1) + days(day_offset),
+                             hours(12));
+
+            DecimalType val_open = DecimalType(100 + thread_id_for_value * 200 + entry_idx_in_thread);
+            DecimalType val_high = val_open + DecimalType(5);
+            DecimalType val_low  = val_open - DecimalType(5);
+            DecimalType val_close= val_open + DecimalType(2);
+            DecimalType val_vol  = DecimalType(1000 + thread_id_for_value * 100 + entry_idx_in_thread);
+
+            return OHLCTimeSeriesEntry<DecimalType>(
+                dt, val_open, val_high, val_low, val_close, val_vol, TimeFrame::DAILY
+            );
+        };
+
+        const int num_threads = std::max(4u, std::thread::hardware_concurrency());
+        const int entries_per_thread = 200;
+        
+        std::vector<std::future<std::vector<OHLCTimeSeriesEntry<DecimalType>>>> futures;
+        std::vector<std::vector<OHLCTimeSeriesEntry<DecimalType>>> all_added_entries_from_threads(num_threads);
+
+        std::random_device rd;
+        
+        for (int i = 0; i < num_threads; ++i) {
+            futures.emplace_back(std::async(std::launch::async, [&, i, seed = rd()]() {
+                std::vector<OHLCTimeSeriesEntry<DecimalType>> thread_added_entries;
+                thread_added_entries.reserve(entries_per_thread);
+                std::mt19937 local_rng(seed);
+
+                for (int j = 0; j < entries_per_thread; ++j) {
+                    auto entry_to_add = generate_unique_entry(i, j);
+                    
+                    REQUIRE_NOTHROW(sharedSeries->addEntry(entry_to_add));
+                    thread_added_entries.push_back(entry_to_add);
+
+                    if (j % 5 == 0) {
+                        // 1. Lookup the entry just added by this thread
+                        try {
+                            auto retrieved_entry = sharedSeries->getTimeSeriesEntry(entry_to_add.getDateTime());
+                            REQUIRE(retrieved_entry.getCloseValue() == entry_to_add.getCloseValue());
+                        } catch (const mkc_timeseries::TimeSeriesDataNotFoundException&) {
+                            // If it's not found immediately after adding, it might be a timing issue
+                            // The final check after all threads join is more definitive.
+                        }
+
+                        // 2. Lookup a ptime that might exist due to other threads or might not.
+                        int current_max_offset = ptime_day_offset_counter.load();
+                        if (current_max_offset > 0) {
+                           std::uniform_int_distribution<> distrib(0, current_max_offset -1);
+                           ptime lookup_dt = ptime(date(2020, Jan, 1) + days(distrib(local_rng)), hours(12));
+                           try {
+                               sharedSeries->getTimeSeriesEntry(lookup_dt);
+                           } catch (const mkc_timeseries::TimeSeriesDataNotFoundException&) {
+                               // Expected for non-existent entries
+                           }
+                        }
+                    }
+                }
+                return thread_added_entries;
+            }));
+        }
+
+        size_t total_successfully_added_count = 0;
+        for (int i = 0; i < num_threads; ++i) {
+            REQUIRE_NOTHROW(all_added_entries_from_threads[i] = futures[i].get());
+            total_successfully_added_count += all_added_entries_from_threads[i].size();
+        }
+        
+        size_t expected_total_entries = static_cast<size_t>(num_threads) * entries_per_thread;
+        REQUIRE(sharedSeries->getNumEntries() == expected_total_entries);
+        REQUIRE(total_successfully_added_count == expected_total_entries);
+
+        for (int i = 0; i < num_threads; ++i) {
+            for (const auto& expected_entry : all_added_entries_from_threads[i]) {
+                auto retrieved_entry = sharedSeries->getTimeSeriesEntry(expected_entry.getDateTime());
+                INFO("Final Check: ptime: " << boost::posix_time::to_simple_string(expected_entry.getDateTime()) << " from thread " << i);
+                REQUIRE(retrieved_entry == expected_entry);
+            }
+        }
+        
+        ptime non_existent_dt = ptime(date(1999, Dec, 31), hours(12));
+        REQUIRE_THROWS_AS(sharedSeries->getTimeSeriesEntry(non_existent_dt), mkc_timeseries::TimeSeriesDataNotFoundException);
+
+        WARN("Concurrent add and read test completed. Final verification passed.");
+    }
 }

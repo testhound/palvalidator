@@ -71,8 +71,8 @@ TEST_CASE ("Security operations", "[Security]")
   REQUIRE (spy2->isEquitySecurity());
   REQUIRE_FALSE (spy2->isFuturesSecurity());
 
-  Security<DecimalType>::ConstRandomAccessIterator itBegin = spy.getRandomAccessIteratorBegin();
-  Security<DecimalType>::ConstRandomAccessIterator itEnd = spy.getRandomAccessIteratorEnd();
+  Security<DecimalType>::ConstSortedIterator itBegin = spy.beginSortedEntries();
+  Security<DecimalType>::ConstSortedIterator itEnd = spy.endSortedEntries();
 
   itEnd--;
 
@@ -148,8 +148,8 @@ TEST_CASE ("Security operations", "[Security]")
   REQUIRE_FALSE (corn2->isEquitySecurity());
   REQUIRE (corn2->isFuturesSecurity());
 
-  Security<DecimalType>::ConstRandomAccessIterator itBeginCorn = corn.getRandomAccessIteratorBegin();
-  Security<DecimalType>::ConstRandomAccessIterator itEndCorn = corn.getRandomAccessIteratorEnd();
+  Security<DecimalType>::ConstSortedIterator itBeginCorn = corn.beginSortedEntries();
+  Security<DecimalType>::ConstSortedIterator itEndCorn = corn.endSortedEntries();
 
   itEndCorn--;
 
@@ -159,9 +159,10 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access", "[TimeSeries Access]")
     {
       date randomDate1(2016, 1, 4);
-      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
-      REQUIRE (it != spy.getRandomAccessIteratorEnd());
-      REQUIRE ((*it) == *entry2);
+      // Use new API to check entry exists and retrieve it
+      REQUIRE (spy.isDateFound(randomDate1));
+      auto entry = spy.getTimeSeriesEntry(randomDate1);
+      REQUIRE (entry == *entry2);
 
       REQUIRE (spy.getTimeSeriesEntry(randomDate1) == *entry2);
     }
@@ -169,9 +170,10 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Futures Security Time Series Access", "[TimeSeries Access]")
     {
       date randomDate1(1985, 11, 25);
-      Security<DecimalType>::ConstRandomAccessIterator it = corn.getRandomAccessIterator(randomDate1);
-      REQUIRE (it != corn.getRandomAccessIteratorEnd());
-      REQUIRE ((*it) == *futuresEntry5);
+      // Use new API to check entry exists and retrieve it
+      REQUIRE (corn.isDateFound(randomDate1));
+      auto entry = corn.getTimeSeriesEntry(randomDate1);
+      REQUIRE (entry == *futuresEntry5);
 
       REQUIRE (corn.getTimeSeriesEntry(randomDate1) == *futuresEntry5);
     }
@@ -179,62 +181,59 @@ TEST_CASE ("Security operations", "[Security]")
   SECTION ("Equity Security Time Series Access pt. 2", "[TimeSeries Access (2)]")
     {
       date randomDate1(2016, 1, 6);
-      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
-      REQUIRE (it != spy.getRandomAccessIteratorEnd());
-      REQUIRE (spy.getTimeSeriesEntry(it, 0) == *entry0);
-      REQUIRE (spy.getTimeSeriesEntry(it, 1) == *entry1);
-      REQUIRE (spy.getTimeSeriesEntry(it, 2) == *entry2);
-      REQUIRE (spy.getTimeSeriesEntry(it, 3) == *entry3);
-      REQUIRE (spy.getTimeSeriesEntry(it, 4) == *entry4);
-      REQUIRE (spy.getTimeSeriesEntry(it, 5) == *entry5);
-      REQUIRE (spy.getTimeSeriesEntry(it, 6) == *entry6);
+      // Use date-based access instead of iterator-based
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 0) == *entry0);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 1) == *entry1);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 2) == *entry2);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 3) == *entry3);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 4) == *entry4);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 5) == *entry5);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 6) == *entry6);
     }
 
   SECTION ("Equity Security Time Series Access pt. 3", "[TimeSeries Access (3)]")
     {
       date randomDate1(2016, 1, 5);
-      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
-      REQUIRE (it != spy.getRandomAccessIteratorEnd());
-      REQUIRE (spy.getTimeSeriesEntry(it, 0) == *entry1);
-      REQUIRE (spy.getTimeSeriesEntry(it, 1) == *entry2);
-      REQUIRE (spy.getTimeSeriesEntry(it, 2) == *entry3);
-      REQUIRE (spy.getTimeSeriesEntry(it, 3) == *entry4);
-      REQUIRE (spy.getTimeSeriesEntry(it, 4) == *entry5);
-      REQUIRE (spy.getTimeSeriesEntry(it, 5) == *entry6);
+      // Use date-based access instead of iterator-based
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 0) == *entry1);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 1) == *entry2);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 2) == *entry3);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 3) == *entry4);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 4) == *entry5);
+      REQUIRE (spy.getTimeSeriesEntry(randomDate1, 5) == *entry6);
     }
 
   SECTION ("Equity Security Time Series Access pt. 4", "[TimeSeries Access (4)]")
     {
       date randomDate1(2016, 1, 4);
-      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
-
-      date aDate = spy.getDateValue(it, 0);
+      // Use date-based access instead of iterator-based
+      date aDate = spy.getDateValue(randomDate1, 0);
       REQUIRE (aDate == entry2->getDateValue());
-      REQUIRE (spy.getOpenValue(it, 1) == entry3->getOpenValue());
-      REQUIRE (spy.getHighValue(it, 2) == entry4->getHighValue());
-      REQUIRE (spy.getLowValue(it, 3) == entry5->getLowValue());
-      REQUIRE (spy.getCloseValue(it, 4) == entry6->getCloseValue());
+      REQUIRE (spy.getOpenValue(randomDate1, 1) == entry3->getOpenValue());
+      REQUIRE (spy.getHighValue(randomDate1, 2) == entry4->getHighValue());
+      REQUIRE (spy.getLowValue(randomDate1, 3) == entry5->getLowValue());
+      REQUIRE (spy.getCloseValue(randomDate1, 4) == entry6->getCloseValue());
     }
 
   SECTION ("Equity Security Time Series Access pt. 5", "[TimeSeries Access (5)]")
     {
       date randomDate1(2016, 1, 6);
-      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIterator(randomDate1);
-
-      REQUIRE_THROWS (spy.getTimeSeriesEntry (it, 7));
+      // Use date-based access instead of iterator-based
+      REQUIRE_THROWS (spy.getTimeSeriesEntry(randomDate1, 7));
     }
 
   SECTION ("Equity Security Time Series Access pt. 6", "[TimeSeries Access (6)]")
     {
-      Security<DecimalType>::ConstRandomAccessIterator it = spy.getRandomAccessIteratorEnd();
-
-      REQUIRE_THROWS (spy.getTimeSeriesEntry (it, 1));
+      // Test with a date that doesn't exist - should throw
+      date nonExistentDate(2020, 1, 1);
+      REQUIRE_THROWS (spy.getTimeSeriesEntry(nonExistentDate, 1));
     }
 
-  SECTION ("Equity Security Time Series Access pt. 7", "[TimeSeries Access (5)]")
+  SECTION ("Equity Security Time Series Access pt. 7", "[TimeSeries Access (7)]")
     {
       date randomDate1(2016, 1, 15);
-      REQUIRE_THROWS (spy.getRandomAccessIterator(randomDate1));
+      // Test that accessing a non-existent date throws
+      REQUIRE_THROWS (spy.getTimeSeriesEntry(randomDate1));
     }
 
   SECTION("Trading volume units for equity and futures", "[Security][VolumeUnits]")
@@ -254,23 +253,23 @@ TEST_CASE ("Security operations", "[Security]")
       REQUIRE(corn.getTickDiv2() == expectedCornHalf);
     }
 
-  SECTION("findTimeSeriesEntry(date) finds or returns end", "[Security][FindByDate]")
+  SECTION("isDateFound(date) finds or returns false", "[Security][FindByDate]")
     {
       boost::gregorian::date hitDate(2016, 1, 4);
-      auto itHit = spy.findTimeSeriesEntry(hitDate);
-      REQUIRE(itHit != spy.getRandomAccessIteratorEnd());
-      REQUIRE(*itHit == *entry2);
+      REQUIRE(spy.isDateFound(hitDate));
+      auto entry = spy.getTimeSeriesEntry(hitDate);
+      REQUIRE(entry == *entry2);
       
       // miss
       boost::gregorian::date missDate(1990, 1, 1);
-      REQUIRE(spy.findTimeSeriesEntry(missDate) == spy.getRandomAccessIteratorEnd());
+      REQUIRE_FALSE(spy.isDateFound(missDate));
     }
 
   SECTION("Volume access by iterator offset", "[Security][VolumeOffset]")
     {
-      auto it2 = spy.getRandomAccessIterator(boost::gregorian::date(2016, 1, 4));
-
-      REQUIRE(spy.getVolumeValue(it2, 0) == entry2->getVolumeValue());
+      boost::gregorian::date testDate(2016, 1, 4);
+      // Use date-based access instead of iterator-based
+      REQUIRE(spy.getVolumeValue(testDate, 0) == entry2->getVolumeValue());
     }
 
   SECTION("Copy and assignment for EquitySecurity and FuturesSecurity", "[Security][Copy]")
@@ -298,44 +297,45 @@ TEST_CASE ("Security operations", "[Security]")
       REQUIRE(*(assignCorn.getTimeSeries()) == *(corn.getTimeSeries()));
     }
 
-  // --- Intraday findTimeSeriesEntry (ptime) ---
-  SECTION("Intraday findTimeSeriesEntry returns correct iterator or end", "[TimeSeries Access (ptime)]") {
+  // --- Intraday isDateFound (ptime) ---
+  SECTION("Intraday isDateFound returns correct result", "[TimeSeries Access (ptime)]") {
     // pick a known entry
     ptime dt2 = entry2->getDateTime();
-    auto it2 = spy.findTimeSeriesEntry(dt2);
-    REQUIRE(it2 != spy.getRandomAccessIteratorEnd());
-    REQUIRE(*it2 == *entry2);  // :contentReference[oaicite:0]{index=0}
+    REQUIRE(spy.isDateFound(dt2));
+    auto entry = spy.getTimeSeriesEntry(dt2);
+    REQUIRE(entry == *entry2);
 
     // miss a timestamp that isn't in the series
     ptime missingDt = dt2 + hours(3);
-    REQUIRE(spy.findTimeSeriesEntry(missingDt) == spy.getRandomAccessIteratorEnd());
+    REQUIRE_FALSE(spy.isDateFound(missingDt));
   }
 
-  // --- Intraday getRandomAccessIterator (ptime) ---
-  SECTION("Intraday getRandomAccessIterator throws on missing timestamp", "[TimeSeries Access (ptime)]") {
+  // --- Intraday getTimeSeriesEntry (ptime) ---
+  SECTION("Intraday getTimeSeriesEntry throws on missing timestamp", "[TimeSeries Access (ptime)]") {
     ptime fakeDt(date(2020,1,1), hours(0));
-    REQUIRE_THROWS_AS(spy.getRandomAccessIterator(fakeDt), SecurityException);  // :contentReference[oaicite:1]{index=1}
+    REQUIRE_THROWS_AS(spy.getTimeSeriesEntry(fakeDt), TimeSeriesDataNotFoundException);
   }
 
-  SECTION("Intraday getRandomAccessIterator returns iterator for existing timestamp", "[TimeSeries Access (ptime)]") {
+  SECTION("Intraday getTimeSeriesEntry returns entry for existing timestamp", "[TimeSeries Access (ptime)]") {
     ptime dt4 = entry4->getDateTime();
-    auto it4 = spy.getRandomAccessIterator(dt4);
-    REQUIRE(*it4 == *entry4);  // :contentReference[oaicite:2]{index=2}
+    // Use new API to check entry exists and retrieve it
+    REQUIRE(spy.isDateFound(dt4));
+    auto retrieved_entry = spy.getTimeSeriesEntry(dt4);
+    REQUIRE(retrieved_entry == *entry4);
   }
 
   // --- Intraday getDateTimeValue (ptime) ---
   SECTION("Intraday getDateTimeValue returns correct datetime or throws on bad offset", "[TimeSeries Access (ptime)]") {
     // locate entry2
     ptime dt2 = entry2->getDateTime();
-    auto it2 = spy.findTimeSeriesEntry(dt2);
-    REQUIRE(it2 != spy.getRandomAccessIteratorEnd());
-
+    
+    // Use date-based access instead of iterator-based
     // offset 0 → entry2
-    REQUIRE(spy.getDateTimeValue(it2, 0) == dt2);
+    REQUIRE(spy.getDateTimeValue(dt2, 0) == dt2);
     // offset 1 → previous bar (entry3)
-    REQUIRE(spy.getDateTimeValue(it2, 1) == entry3->getDateTime());  // :contentReference[oaicite:3]{index=3}
+    REQUIRE(spy.getDateTimeValue(dt2, 1) == entry3->getDateTime());
 
     // out-of-bounds offset should throw
-    REQUIRE_THROWS(spy.getDateTimeValue(it2, 10));
+    REQUIRE_THROWS(spy.getDateTimeValue(dt2, 10));
   }
 }
