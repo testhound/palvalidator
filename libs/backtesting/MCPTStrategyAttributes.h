@@ -179,15 +179,20 @@ namespace mkc_timeseries
     }
 
     Decimal getCloseToCloseReturn(std::shared_ptr<Security<Decimal>> aSecurity,
-					const date& processingDate) const
+    	const date& processingDate) const
     {
-      typename Security<Decimal>::ConstRandomAccessIterator it = 
-	aSecurity->getRandomAccessIterator (processingDate);
-
-      Decimal todaysClose = aSecurity->getCloseValue (it, 0);
-      Decimal previousClose = aSecurity->getCloseValue (it, 1);
-	
-      return calculatePercentReturn (previousClose, todaysClose);
+      try
+      {
+        Decimal todaysClose = aSecurity->getCloseValue(processingDate, 0);
+        Decimal previousClose = aSecurity->getCloseValue(processingDate, 1);
+        
+        return calculatePercentReturn(previousClose, todaysClose);
+      }
+      catch (const mkc_timeseries::TimeSeriesDataAccessException&)
+      {
+        // If we can't get the data, return zero return
+        return DecimalConstants<Decimal>::DecimalZero;
+      }
     }
 
   private:

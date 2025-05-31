@@ -473,12 +473,17 @@ namespace mkc_timeseries
        */
 
       bool doesSecurityHaveTradingData (const Security<Decimal>& aSecurity,
-					const date& processingDate)
+     const date& processingDate)
       {
-	typename Security<Decimal>::ConstRandomAccessIterator it = 
-	  aSecurity.findTimeSeriesEntry (processingDate);
-
-	return (it != aSecurity.getRandomAccessIteratorEnd());
+        try
+        {
+          aSecurity.getTimeSeriesEntry(processingDate);
+          return true;
+        }
+        catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
+        {
+          return false;
+        }
       }
 
       const StrategyBroker<Decimal>& getStrategyBroker() const
@@ -488,7 +493,12 @@ namespace mkc_timeseries
 
       std::shared_ptr<Portfolio<Decimal>> getPortfolio() const
       {
-	return mPortfolio;
+ return mPortfolio;
+      }
+
+      const StrategyOptions& getStrategyOptions() const
+      {
+ return mStrategyOptions;
       }
 
     protected:

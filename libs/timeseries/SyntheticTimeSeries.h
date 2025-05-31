@@ -127,59 +127,59 @@ private:
 #ifdef SYNTHETIC_VOLUME
         mRelativeVolume.reserve(mSourceTimeSeries.getNumEntries());
 #endif
-        mFirstOpen = mSourceTimeSeries.getOpenValue(it, 0);
+        mFirstOpen = it->getOpenValue();
 #ifdef SYNTHETIC_VOLUME
-        mFirstVolume = mSourceTimeSeries.getVolumeValue(it, 0);
+        mFirstVolume = it->getVolumeValue();
 #endif
-        mRelativeOpen.push_back(one); 
+        mRelativeOpen.push_back(one);
 #ifdef SYNTHETIC_VOLUME
-        mRelativeVolume.push_back(one); 
+        mRelativeVolume.push_back(one);
 #endif
 
         if (mFirstOpen != DecimalConstants<Decimal>::DecimalZero) {
-            mRelativeHigh.push_back(mSourceTimeSeries.getHighValue(it,0) / mFirstOpen);
-            mRelativeLow.push_back(mSourceTimeSeries.getLowValue (it,0) / mFirstOpen);
-            mRelativeClose.push_back(mSourceTimeSeries.getCloseValue(it,0) / mFirstOpen);
-        } else { 
+            mRelativeHigh.push_back(it->getHighValue() / mFirstOpen);
+            mRelativeLow.push_back(it->getLowValue() / mFirstOpen);
+            mRelativeClose.push_back(it->getCloseValue() / mFirstOpen);
+        } else {
             mRelativeHigh.push_back(one);
             mRelativeLow.push_back(one);
             mRelativeClose.push_back(one);
         }
-        mDateSeries.addElement(mSourceTimeSeries.getDateValue(it,0));
+        mDateSeries.addElement(it->getDateValue());
         
         if (mSourceTimeSeries.getNumEntries() > 1) {
-            Iter prev_it = it; 
+            Iter prev_it = it;
             ++it;
             for (; it != mSourceTimeSeries.endRandomAccess(); ++it, ++prev_it)
             {
-                Decimal currOpen  = mSourceTimeSeries.getOpenValue(it,0);
-                Decimal prevClose = mSourceTimeSeries.getCloseValue(prev_it,0); 
+                Decimal currOpen  = it->getOpenValue();
+                Decimal prevClose = prev_it->getCloseValue();
 
                 if (prevClose != DecimalConstants<Decimal>::DecimalZero) {
                     mRelativeOpen.push_back(currOpen / prevClose);
                 } else {
-                    mRelativeOpen.push_back(one); 
+                    mRelativeOpen.push_back(one);
                 }
 
                 if (currOpen != DecimalConstants<Decimal>::DecimalZero) {
-                    mRelativeHigh.push_back(mSourceTimeSeries.getHighValue(it,0) / currOpen);
-                    mRelativeLow.push_back(mSourceTimeSeries.getLowValue (it,0) / currOpen);
-                    mRelativeClose.push_back(mSourceTimeSeries.getCloseValue(it,0) / currOpen);
+                    mRelativeHigh.push_back(it->getHighValue() / currOpen);
+                    mRelativeLow.push_back(it->getLowValue() / currOpen);
+                    mRelativeClose.push_back(it->getCloseValue() / currOpen);
                 } else {
                     mRelativeHigh.push_back(one);
                     mRelativeLow.push_back(one);
                     mRelativeClose.push_back(one);
                 }
 #ifdef SYNTHETIC_VOLUME
-                Decimal v0 = mSourceTimeSeries.getVolumeValue(it,0);
-                Decimal v1 = mSourceTimeSeries.getVolumeValue(prev_it,0);
+                Decimal v0 = it->getVolumeValue();
+                Decimal v1 = prev_it->getVolumeValue();
                 if (v1 > DecimalConstants<Decimal>::DecimalZero) {
                      mRelativeVolume.push_back(v0 / v1);
                 } else {
                      mRelativeVolume.push_back(one);
                 }
 #endif
-                mDateSeries.addElement(mSourceTimeSeries.getDateValue(it,0));
+                mDateSeries.addElement(it->getDateValue());
             }
         }
     }
@@ -595,8 +595,12 @@ public:
 
     std::shared_ptr<const OHLCTimeSeries<Decimal, LookupPolicy>> getSyntheticTimeSeries() const
     {
-        boost::mutex::scoped_lock lock(mMutex);
-        return mSyntheticTimeSeries;
+        std::shared_ptr<const OHLCTimeSeries<Decimal, LookupPolicy>> result;
+        {
+            boost::mutex::scoped_lock lock(mMutex);
+            result = mSyntheticTimeSeries;
+        } // Lock is released here before returning
+        return result;
     }
 
     Decimal getFirstOpen() const { 
@@ -610,26 +614,46 @@ public:
     const Decimal& getTick() const { return mMinimumTick; }
     const Decimal& getTickDiv2() const { return mMinimumTickDiv2; }
     
-    std::vector<Decimal> getRelativeOpen()  const { 
-        boost::mutex::scoped_lock lk(mMutex); 
-        return mPimpl ? mPimpl->getRelativeOpenFactors() : std::vector<Decimal>();
+    std::vector<Decimal> getRelativeOpen()  const {
+        std::vector<Decimal> result;
+        {
+            boost::mutex::scoped_lock lk(mMutex);
+            result = mPimpl ? mPimpl->getRelativeOpenFactors() : std::vector<Decimal>();
+        }
+        return result;
     }
-    std::vector<Decimal> getRelativeHigh()  const { 
-        boost::mutex::scoped_lock lk(mMutex);
-        return mPimpl ? mPimpl->getRelativeHighFactors() : std::vector<Decimal>();
+    std::vector<Decimal> getRelativeHigh()  const {
+        std::vector<Decimal> result;
+        {
+            boost::mutex::scoped_lock lk(mMutex);
+            result = mPimpl ? mPimpl->getRelativeHighFactors() : std::vector<Decimal>();
+        }
+        return result;
     }
-    std::vector<Decimal> getRelativeLow()   const { 
-        boost::mutex::scoped_lock lk(mMutex);
-        return mPimpl ? mPimpl->getRelativeLowFactors() : std::vector<Decimal>();
+    std::vector<Decimal> getRelativeLow()   const {
+        std::vector<Decimal> result;
+        {
+            boost::mutex::scoped_lock lk(mMutex);
+            result = mPimpl ? mPimpl->getRelativeLowFactors() : std::vector<Decimal>();
+        }
+        return result;
     }
-    std::vector<Decimal> getRelativeClose() const { 
-        boost::mutex::scoped_lock lk(mMutex);
-        return mPimpl ? mPimpl->getRelativeCloseFactors() : std::vector<Decimal>();
+    std::vector<Decimal> getRelativeClose() const {
+        std::vector<Decimal> result;
+        {
+            boost::mutex::scoped_lock lk(mMutex);
+            result = mPimpl ? mPimpl->getRelativeCloseFactors() : std::vector<Decimal>();
+        }
+        return result;
     }
 #ifdef SYNTHETIC_VOLUME
-    std::vector<Decimal> getRelativeVolume()const { 
-        boost::mutex::scoped_lock lk(mMutex);
-        return mPimpl ? mPimpl->getRelativeVolumeFactors() : std::vector<Decimal>(); 
+    std::vector<Decimal> getRelativeVolume()const {
+        std::vector<Decimal> result;
+        {
+            boost::mutex::scoped_lock lk(mMutex);
+            result = mPimpl ? mPimpl->getRelativeVolumeFactors() : std::vector<Decimal>();
+        }
+        return result;
     }
 #endif
 

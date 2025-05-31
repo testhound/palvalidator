@@ -85,63 +85,55 @@ TEST_CASE ("PALPatternInterpreter operations", "[PALPatternInterpreter]")
 
   REQUIRE (PalPatternMaxBars::evaluateExpression (shortand4) == 5);
 
-  SECTION ("PALPatternInterpreter testing for all pattern conditions satisfied") 
+  SECTION ("PALPatternInterpreter testing for all pattern conditions satisfied")
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Nov, 15));
-    typename Security<DecimalType>::ConstRandomAccessIterator it = 
-      corn->getRandomAccessIterator (orderDate);
-
-    REQUIRE_FALSE (it == corn->getRandomAccessIteratorEnd());
-    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (and4, corn, it) == true);
+    // Use date-based API instead of iterator-based
+    REQUIRE(corn->isDateFound(orderDate));
+    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (and4, corn, orderDate) == true);
   }
 
-SECTION ("PALPatternInterpreter testing for short pattern condition satisfied") 
+SECTION ("PALPatternInterpreter testing for short pattern condition satisfied")
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1986, May, 28));
-    typename Security<DecimalType>::ConstRandomAccessIterator it = 
-      corn->getRandomAccessIterator (orderDate);
-
-    REQUIRE_FALSE (it == corn->getRandomAccessIteratorEnd());
-    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (shortand4, corn, it) == true);
+    // Use date-based API instead of iterator-based
+    REQUIRE(corn->isDateFound(orderDate));
+    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (shortand4, corn, orderDate) == true);
   }
 
   
-  SECTION ("PALPatternInterpreter testing for long pattern not matched") 
+  SECTION ("PALPatternInterpreter testing for long pattern not matched")
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Mar, 22));
     TimeSeriesDate endDate(TimeSeriesDate (1985, Nov, 14));
 
-    typename Security<DecimalType>::ConstRandomAccessIterator it;
-
     for (; (orderDate <= endDate); orderDate = boost_next_weekday(orderDate))
       {
-	it = corn->findTimeSeriesEntry (orderDate);
-	if (it != corn->getRandomAccessIteratorEnd())
-	  {
-	    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (and4, 
-								    corn, 
-								    it) == false);
-	  }
+ // Use date-based API instead of iterator-based
+ if (corn->isDateFound(orderDate))
+   {
+     REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (and4,
+  						    corn,
+  						    orderDate) == false);
+   }
       }
-	
+ 
 
   }
 
-SECTION ("PALPatternInterpreter testing for short pattern not matched") 
+SECTION ("PALPatternInterpreter testing for short pattern not matched")
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Mar, 22));
     TimeSeriesDate endDate(TimeSeriesDate (1986, May, 27));
 
-    typename Security<DecimalType>::ConstRandomAccessIterator it;
-
     for (; (orderDate <= endDate); orderDate = boost_next_weekday(orderDate))
       {
-	it = corn->findTimeSeriesEntry (orderDate);
-	if (it != corn->getRandomAccessIteratorEnd())
+	// Use date-based API instead of iterator-based
+	if (corn->isDateFound(orderDate))
 	  {
-	    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (shortand4, 
-								    corn, 
-								    it) == false);
+	    REQUIRE ( PALPatternInterpreter<DecimalType>::evaluateExpression (shortand4,
+								    corn,
+								    orderDate) == false);
 	  }
       }
 	

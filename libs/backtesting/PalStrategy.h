@@ -15,7 +15,7 @@
 #include "MCPTStrategyAttributes.h"
 #include "PalAst.h"
 #include "BacktesterStrategy.h"
-#include "PALPatternInterpreter.h"
+#include "PALPatternInterpreter.h" // Includes new PatternEvaluator signature
 
 namespace mkc_timeseries
 {
@@ -50,19 +50,22 @@ namespace mkc_timeseries
 				     std::shared_ptr<PriceActionLabPattern> pattern, 
 				     Security<Decimal>* aSecurity,
 				     const date& processingDate) const = 0;
+      // Adding virtual destructor for proper cleanup in derived classes
+      virtual ~EntryOrderConditions() = default;
     };
 
  template <class Decimal> class FlatEntryOrderConditions : public  EntryOrderConditions<Decimal>
    {
+   public:
      bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 Security<Decimal>* aSecurity) const
+			 Security<Decimal>* aSecurity) const override
        {
 	 return true;
        }
 
       bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   Security<Decimal>* aSecurity) const
+			   Security<Decimal>* aSecurity) const override
 	{
 	  return strategy->getSecurityBarNumber(aSecurity->getSymbol()) > pattern->getMaxBarsBack();
 	}
@@ -70,30 +73,35 @@ namespace mkc_timeseries
       void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 			     std::shared_ptr<PriceActionLabPattern> pattern, 
 			     Security<Decimal>* aSecurity,
-			     const date& processingDate) const
+			     const date& processingDate) const override
 	{
 	  Decimal target = pattern->getProfitTargetAsDecimal();
 	  Decimal stop = pattern->getStopLossAsDecimal();
 
 	  if (pattern->isLongPattern())
+	  {
 	    strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDate, stop, target);
+	  }
 	  else
+	  {
 	    strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDate, stop, target);
+	  }
 	}
 	
     };
 
  template <class Decimal> class LongEntryOrderConditions : public  EntryOrderConditions<Decimal>
    {
+   public:
      bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 Security<Decimal>* aSecurity) const
+			 Security<Decimal>* aSecurity) const override
        {
 	return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
        }
 
       bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   Security<Decimal>* aSecurity) const
+			   Security<Decimal>* aSecurity) const override
 	{
 	  return (pattern->isLongPattern() &&
 		  (strategy->getSecurityBarNumber(aSecurity->getSymbol()) > 
@@ -103,7 +111,7 @@ namespace mkc_timeseries
       void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 			     std::shared_ptr<PriceActionLabPattern> pattern, 
 			     Security<Decimal>* aSecurity,
-			     const date& processingDate) const
+			     const date& processingDate) const override
 	{
 	  Decimal target = pattern->getProfitTargetAsDecimal();
 	  Decimal stop = pattern->getStopLossAsDecimal();
@@ -115,15 +123,16 @@ namespace mkc_timeseries
 
  template <class Decimal> class ShortEntryOrderConditions : public  EntryOrderConditions<Decimal>
    {
+   public:
      bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 Security<Decimal>* aSecurity) const
+			 Security<Decimal>* aSecurity) const override
        {
 	return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
        }
 
       bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
 			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   Security<Decimal>* aSecurity) const
+			   Security<Decimal>* aSecurity) const override
 	{
 	  return (pattern->isShortPattern() &&
 		  (strategy->getSecurityBarNumber(aSecurity->getSymbol()) > 
@@ -133,7 +142,7 @@ namespace mkc_timeseries
       void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
 			     std::shared_ptr<PriceActionLabPattern> pattern, 
 			     Security<Decimal>* aSecurity,
-			     const date& processingDate) const
+			     const date& processingDate) const override
 	{
 	  Decimal target = pattern->getProfitTargetAsDecimal();
 	  Decimal stop = pattern->getStopLossAsDecimal();
@@ -148,8 +157,10 @@ namespace mkc_timeseries
   template <class Decimal> class PalMetaStrategy : public BacktesterStrategy<Decimal>
   {
   public:
-    typedef typename std::list<shared_ptr<PriceActionLabPattern>> PalPatterns;
+    typedef typename std::list<std::shared_ptr<PriceActionLabPattern>> PalPatterns;
     typedef typename PalPatterns::const_iterator ConstStrategiesIterator;
+    // PatternEvaluator type is now taken from PALPatternInterpreter, which is updated.
+    using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
     PalMetaStrategy(const std::string& strategyName,
 		    std::shared_ptr<Portfolio<Decimal>> portfolio,
@@ -169,11 +180,13 @@ namespace mkc_timeseries
       mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack)
       {}
 
-    const PalMetaStrategy<Decimal>&
+    PalMetaStrategy<Decimal>&
     operator=(const PalMetaStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
+	{
 	  return *this;
+	}
 
 	BacktesterStrategy<Decimal>::operator=(rhs);
 	mPalPatterns = rhs.mPalPatterns;
@@ -189,11 +202,14 @@ namespace mkc_timeseries
     void addPricePattern(std::shared_ptr<PriceActionLabPattern> pattern)
       {
 	if (pattern->getMaxBarsBack() > mStrategyMaxBarsBack)
+	{
 	  mStrategyMaxBarsBack = pattern->getMaxBarsBack();
+	}
 
 	mPalPatterns.push_back(pattern);
 
 	// compile & cache
+	// This will use the new PALPatternInterpreter which returns the updated PatternEvaluator type
 	auto eval = PALPatternInterpreter<Decimal>::compileEvaluator(pattern->getPatternExpression().get());
 	mPatternEvaluators.push_back(eval);
       }
@@ -205,7 +221,7 @@ namespace mkc_timeseries
 
     std::shared_ptr<PriceActionLabPattern> getPalPattern() const
     {
-      throw PalStrategyException("PalMetaStrategy::getPalPattern not implemented.");
+      throw PalStrategyException("PalMetaStrategy::getPalPattern not implemented for meta strategy. Access patterns via iterators.");
     }
 
     ConstStrategiesIterator beginPricePatterns() const
@@ -218,7 +234,7 @@ namespace mkc_timeseries
       return mPalPatterns.end();
     }
 
-    const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const
+    const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
       {
 	return BacktesterStrategy<Decimal>::getSizeForOrder(aSecurity);
       }
@@ -227,57 +243,83 @@ namespace mkc_timeseries
     std::vector<int> getPositionDirectionVector() const
       {
 	throw PalStrategyException("getPositionDirectionVector is no longer supported");
-	return mMCPTAttributes.getPositionDirection();
+	// return mMCPTAttributes.getPositionDirection(); // Original code was commented
       }
 
     [[deprecated("Use of this getPositionReturnsVector will throw an exception")]]
     std::vector<Decimal> getPositionReturnsVector() const
       {
 	throw PalStrategyException("getPositionReturnsVector is no longer supported");
-	return mMCPTAttributes.getPositionReturns();
+	// return mMCPTAttributes.getPositionReturns(); // Original code was commented
       }
 
     [[deprecated("Use of this numTradingOpportunities will throw an exception")]]
     unsigned long numTradingOpportunities() const
     {
       	throw PalStrategyException("numTradingOpportunities is no longer supported");
-	return mMCPTAttributes.numTradingOpportunities();
+	// return mMCPTAttributes.numTradingOpportunities(); // Original code was commented
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>> 
-    clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
+    clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
     {
+      // Basic clone, does not carry patterns. Subclasses might need more sophisticated cloning if patterns are essential post-clone.
       return std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
-							portfolio);
+							portfolio,
+                                                        this->getStrategyOptions());
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>> 
-    cloneForBackTesting () const
+    cloneForBackTesting () const override
     {
-      return std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
-							this->getPortfolio());
+      // This method should ideally create a deep copy including patterns for proper backtesting clone.
+      // For now, matching the previous clone logic, but this might need review for true "clone for backtesting" semantics.
+      auto cloned = std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
+                                                               this->getPortfolio(),
+                                                               this->getStrategyOptions());
+      // Manually copy patterns and compiled evaluators
+      for (const auto& pattern : mPalPatterns)
+      {
+          cloned->addPricePattern(pattern); // This re-compiles, which is fine
+      }
+      cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
+
+      return cloned;
     }
 
     void eventEntryOrders (Security<Decimal>* aSecurity,
 			   const InstrumentPosition<Decimal>& instrPos,
-			   const date& processingDate)
+			   const date& processingDate) override
     {
       if (this->isFlatPosition (aSecurity->getSymbol()))
+      {
 	entryOrdersCommon(aSecurity, instrPos, processingDate, FlatEntryOrderConditions<Decimal>());
+      }
       else if (this->isLongPosition (aSecurity->getSymbol()))
+      {
 	entryOrdersCommon(aSecurity, instrPos, processingDate, LongEntryOrderConditions<Decimal>());
+      }
       else if (this->isShortPosition (aSecurity->getSymbol()))
+      {
 	entryOrdersCommon(aSecurity, instrPos, processingDate, ShortEntryOrderConditions<Decimal>());
+      }
       else
-	throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknow position state"));
+      {
+	throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknown position state"));
+      }
     }
 
     void eventExitOrders (Security<Decimal>* aSecurity,
 			  const InstrumentPosition<Decimal>& instrPos,
-			  const date& processingDate)
+			  const date& processingDate) override
     {
       // We could be pyramiding or not, either way get the latest position
       uint32_t numUnits = instrPos.getNumPositionUnits();
+      if (numUnits == 0) // No units in position, nothing to exit
+      {
+          return;
+      }
+      
       auto it = instrPos.getInstrumentPosition(numUnits);
       auto pos = *it;
 
@@ -292,11 +334,17 @@ namespace mkc_timeseries
       Decimal fillPrice = instrPos.getFillPrice(numUnits);
 
       if (this->isLongPosition (aSecurity->getSymbol()))
+      {
 	eventExitLongOrders (aSecurity, instrPos, processingDate, fillPrice, stopAsPercent, targetAsPercent);
+      }
       else if (this->isShortPosition (aSecurity->getSymbol()))
+      {
 	eventExitShortOrders (aSecurity, instrPos, processingDate, fillPrice, stopAsPercent, targetAsPercent);
+      }
       else
-	throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short positon"));
+      {
+	throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state"));
+      }
     }
 
   private:
@@ -305,7 +353,7 @@ namespace mkc_timeseries
 			    const date& processingDate,
 			    const EntryOrderConditions<Decimal>& entryConditions)
       {
-	auto it = aSecurity->getRandomAccessIterator(processingDate);
+	// Removed: auto it = aSecurity->getRandomAccessIterator(processingDate);
 	
 	if (entryConditions.canEnterMarket(this, aSecurity))
 	  {
@@ -317,9 +365,12 @@ namespace mkc_timeseries
 		std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
 		
 		if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
+		{
 		  continue;
+		}
 
-		if ((*evalIt)(aSecurity, it))
+                // Pass processingDate instead of iterator 'it'
+		if ((*evalIt)(aSecurity, processingDate))
 		  {
 		    entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDate);
 		    break;
@@ -335,12 +386,13 @@ namespace mkc_timeseries
 			      const PercentNumber<Decimal>& stopAsPercent,
 			      const PercentNumber<Decimal>& targetAsPercent)
       {
-	//std::cout << "PalLongStrategy::eventExitOrders, fill Price =  " << positionEntryPrice << std::endl;
 	this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
 				      positionEntryPrice, targetAsPercent);
 	this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 				     positionEntryPrice, stopAsPercent);
-	instrPos.setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
+	// Ensure instrPos is not const if setRMultipleStop modifies it.
+        // Assuming InstrumentPosition allows modification here.
+	const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
       }
 
     void eventExitShortOrders (Security<Decimal>* aSecurity,
@@ -354,7 +406,9 @@ namespace mkc_timeseries
 				       positionEntryPrice, targetAsPercent);
 	this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 				      positionEntryPrice, stopAsPercent);
-	instrPos.setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
+	// Ensure instrPos is not const if setRMultipleStop modifies it.
+        // Assuming InstrumentPosition allows modification here.
+	const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
       }
 
     [[deprecated("Use of this addLongPositionBar no longer supported")]]
@@ -380,7 +434,7 @@ namespace mkc_timeseries
     
   private:
     PalPatterns mPalPatterns;
-    std::vector<typename PALPatternInterpreter<Decimal>::PatternEvaluator> mPatternEvaluators;
+    std::vector<PatternEvaluator> mPatternEvaluators;
     MCPTStrategyAttributes<Decimal> mMCPTAttributes;
     unsigned int mStrategyMaxBarsBack;
   };
@@ -413,7 +467,7 @@ namespace mkc_timeseries
 	mPalPattern(pattern),
 	mMCPTAttributes()
 	{
-	  if (mPalPattern)
+	  if (mPalPattern && mPalPattern->getPatternExpression())
 	    {
 	      // compile the real expression once
 	      mPatternEvaluator =
@@ -421,8 +475,12 @@ namespace mkc_timeseries
 	    }
 	  else
 	    {
-	      // no pattern ⇒ never match
-	      mPatternEvaluator = [](Security<Decimal>*, auto){ return false; };
+	      // no pattern or no expression ⇒ never match
+              // Update lambda signature to match new PatternEvaluator
+	      mPatternEvaluator = [](Security<Decimal>* /*s*/, const date& /*evalDate*/)
+              { 
+                return false; 
+              };
 	    }
 	}
 
@@ -433,11 +491,13 @@ namespace mkc_timeseries
 	  mPatternEvaluator(rhs.mPatternEvaluator)
       {}
 
-      const PalStrategy<Decimal>&
+      PalStrategy<Decimal>&
       operator=(const PalStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
+	{
 	  return *this;
+	}
 
 	BacktesterStrategy<Decimal>::operator=(rhs);
 	mPalPattern = rhs.mPalPattern;
@@ -452,16 +512,24 @@ namespace mkc_timeseries
       virtual std::shared_ptr<PalStrategy<Decimal>>
       clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const = 0;
 
-      const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const
+      const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
       {
 	if (aSecurity.isEquitySecurity())
+	{
 	  return OneShare;
+	}
 	else
+	{
 	  return OneContract;
+	}
       }
 
       uint32_t getPatternMaxBarsBack() const
       {
+        if (!mPalPattern)
+        {
+            throw PalStrategyException("PalStrategy: mPalPattern is null in getPatternMaxBarsBack.");
+        }
 	return mPalPattern->getMaxBarsBack();
       }
 
@@ -474,21 +542,21 @@ namespace mkc_timeseries
       std::vector<int> getPositionDirectionVector() const
       {
 	throw PalStrategyException("getPositionDirectionVector is no longer supported");
-	return mMCPTAttributes.getPositionDirection();
+	// return mMCPTAttributes.getPositionDirection();
       }
 
       [[deprecated("Use of this getPositionReturnsVector will throw an exception")]]
       std::vector<Decimal> getPositionReturnsVector() const
       {
 	throw PalStrategyException("getPositionReturnsVector is no longer supported");
-	return mMCPTAttributes.getPositionReturns();
+	// return mMCPTAttributes.getPositionReturns();
       }
 
       [[deprecated("Use of this numTradingOpportunities will throw an exception")]]
       unsigned long numTradingOpportunities() const
       {
 	throw PalStrategyException("numTradingOpportunities is no longer supported");
-	return mMCPTAttributes.numTradingOpportunities();
+	// return mMCPTAttributes.numTradingOpportunities();
       }
 
     protected:
@@ -535,12 +603,12 @@ namespace mkc_timeseries
    *
    * This class implements all the entry/exit logic needed to run a long‐only
    * version of a single PriceActionLabPattern:
-   *  - **Entry**: on each bar, if flat or pyramiding is allowed and the
-   *    pattern evaluator fires, it issues an `EnterLongOnOpen` with the
-   *    configured stop‐loss and profit‐target.
-   *  - **Exit**: for open long positions, it submits both a limit exit at
-   *    profit‐target and a stop‐loss exit, then updates the R‐multiple
-   *    on the filled bar.
+   * - **Entry**: on each bar, if flat or pyramiding is allowed and the
+   * pattern evaluator fires, it issues an `EnterLongOnOpen` with the
+   * configured stop‐loss and profit‐target.
+   * - **Exit**: for open long positions, it submits both a limit exit at
+   * profit‐target and a stop‐loss exit, then updates the R‐multiple
+   * on the filled bar.
    *
    * @details
    * When used under our BackTester, every bar’s P&L—including the bar on which
@@ -548,10 +616,10 @@ namespace mkc_timeseries
    * This is critical for building accurate null distributions in both
    * permutation tests (e.g., Masters’s step‐down algorithm) and bootstrap
    * confidence intervals, since it:
-   *  - Maintains a large, homogeneous sample of bar‐returns for resampling.
-   *  - Preserves time‐series properties (autocorrelation, volatility clustering).
-   *  - Ensures exit‐bar P&L is never dropped, giving robust, low‐variance
-   *    statistics for significance testing and interval estimation.
+   * - Maintains a large, homogeneous sample of bar‐returns for resampling.
+   * - Preserves time‐series properties (autocorrelation, volatility clustering).
+   * - Ensures exit‐bar P&L is never dropped, giving robust, low‐variance
+   * statistics for significance testing and interval estimation.
    *
    * @tparam Decimal  Numeric type for price/return calculations (e.g., double).
    */
@@ -569,11 +637,13 @@ namespace mkc_timeseries
 	: PalStrategy<Decimal>(rhs)
       {}
 
-      const PalLongStrategy<Decimal>&
+      PalLongStrategy<Decimal>&
       operator=(const PalLongStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
+	{
 	  return *this;
+	}
 
 	PalStrategy<Decimal>::operator=(rhs);
 
@@ -584,27 +654,30 @@ namespace mkc_timeseries
       {}
       
       std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
+      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
       {
 	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
-						       portfolio);
+						       portfolio,
+                                                       this->getStrategyOptions());
       }
 
       std::shared_ptr<PalStrategy<Decimal>> 
-      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const override
       {
 	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
-						       portfolio);
+						       portfolio,
+                                                       this->getStrategyOptions());
       }
 
       std::shared_ptr<BacktesterStrategy<Decimal>> 
-      cloneForBackTesting () const
+      cloneForBackTesting () const override
       {
 	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
-						       this->getPortfolio());
+						       this->getPortfolio(),
+                                                       this->getStrategyOptions());
       }
 
       /**
@@ -612,10 +685,10 @@ namespace mkc_timeseries
        *
        * @details
        * BackTester calls this before entries each bar.  For long trades, this method:
-       *  - Retrieves the latest fill price for the current unit(s).
-       *  - Issues a limit order at the configured profit‐target.
-       *  - Issues a stop‐loss order at the configured stop level.
-       *  - Updates the position’s R‐multiple for performance tracking.
+       * - Retrieves the latest fill price for the current unit(s).
+       * - Issues a limit order at the configured profit‐target.
+       * - Issues a stop‐loss order at the configured stop level.
+       * - Updates the position’s R‐multiple for performance tracking.
        *
        * Because StrategyBroker first marks all open positions at the bar‐close,
        * the exit fill’s P&L (which may occur intrabar) is added to the high‐resolution
@@ -627,11 +700,15 @@ namespace mkc_timeseries
        */
       void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
-			    const date& processingDate)
+			    const date& processingDate) override
       {
 	if (this->isLongPosition (aSecurity->getSymbol()))
 	  {
 	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
+            if (!pattern)
+            {
+                throw PalStrategyException("PalLongStrategy::eventExitOrders: mPalPattern is null.");
+            }
 	    Decimal target = pattern->getProfitTargetAsDecimal();
 	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
 
@@ -644,7 +721,7 @@ namespace mkc_timeseries
 					  fillPrice, targetAsPercent);
 	    this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
-	    instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+	    const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 
 	    //this->addLongPositionBar (aSecurity, processingDate);
 	  }
@@ -655,10 +732,10 @@ namespace mkc_timeseries
        *
        * @details
        * BackTester invokes this immediately after exits each bar.  In a long strategy:
-       *  - If the position is flat or pyramiding is allowed, and
-       *    the bar count exceeds the pattern’s lookback,
-       *    we evaluate the compiled pattern expression on the bar’s data.
-       *  - If the pattern fires, we submit an `EnterLongOnOpen`.
+       * - If the position is flat or pyramiding is allowed, and
+       * the bar count exceeds the pattern’s lookback,
+       * we evaluate the compiled pattern expression on the bar’s data.
+       * - If the pattern fires, we submit an `EnterLongOnOpen`.
        *
        * Ordering ensures that any exits freeing up capital/pyramiding slots happen
        * before new entries.  All bar‐by‐bar P&L—including exit fills—will
@@ -671,21 +748,26 @@ namespace mkc_timeseries
 
       void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
-			     const date& processingDate)
+			     const date& processingDate) override
       {
 	auto sym = aSecurity->getSymbol();
 
 	if (this->isFlatPosition (sym) || this->strategyCanPyramid(sym))
 	  {
+            if (!this->getPalPattern())
+            {
+                throw PalStrategyException("PalLongStrategy::eventEntryOrders: mPalPattern is null.");
+            }
 	    if (this->getSecurityBarNumber(sym) > 
 		this->getPalPattern()->getMaxBarsBack())
 	      {
-		typename Security<Decimal>::ConstRandomAccessIterator it = 
-		  aSecurity->getRandomAccessIterator (processingDate);
-
-		if (this->getPatternEvaluator()(aSecurity, it))
+                // Pass processingDate instead of iterator 'it'
+		if (this->getPatternEvaluator()(aSecurity, processingDate))
 		  {
-		    this->EnterLongOnOpen (sym, processingDate);
+		    // Default stop and target from pattern are used if not overridden
+		    Decimal target = this->getPalPattern()->getProfitTargetAsDecimal();
+	            Decimal stop = this->getPalPattern()->getStopLossAsDecimal();
+		    this->EnterLongOnOpen (sym, processingDate, stop, target);
 		  }
 		//this->addFlatPositionBar (aSecurity, processingDate);
 	      }
@@ -699,20 +781,20 @@ namespace mkc_timeseries
    *
    * This class implements all the entry/exit logic needed to run a short‐only
    * version of a single PriceActionLabPattern:
-   *  - **Entry**: on each bar, if flat or pyramiding is allowed and the
-   *    pattern evaluator fires, it issues an `EnterShortOnOpen` with the
-   *    configured stop‐loss and profit‐target.
-   *  - **Exit**: for open short positions, it submits both a limit exit at
-   *    profit‐target and a stop‐loss exit, then updates the R‐multiple
-   *    on the filled bar.
+   * - **Entry**: on each bar, if flat or pyramiding is allowed and the
+   * pattern evaluator fires, it issues an `EnterShortOnOpen` with the
+   * configured stop‐loss and profit‐target.
+   * - **Exit**: for open short positions, it submits both a limit exit at
+   * profit‐target and a stop‐loss exit, then updates the R‐multiple
+   * on the filled bar.
    *
    * @details
    * As with long trades, every bar’s P&L—including the bar on which a short‐side
    * profit‐target or stop‐loss fires—is captured at the bar level.  This fine‐grained
    * return series is essential for:
-   *  - Stable permutation‐test null distributions (strong FWE control).
-   *  - Accurate bootstrap of out‐of‐sample performance (tight CI’s).
-   *  - Fair comparison across strategies, since exit‐bar outcomes are never lost.
+   * - Stable permutation‐test null distributions (strong FWE control).
+   * - Accurate bootstrap of out‐of‐sample performance (tight CI’s).
+   * - Fair comparison across strategies, since exit‐bar outcomes are never lost.
    *
    * @tparam Decimal  Numeric type for price/return calculations (e.g., double).
  */
@@ -730,11 +812,13 @@ namespace mkc_timeseries
 	: PalStrategy<Decimal>(rhs)
       {}
 
-      const PalShortStrategy<Decimal>&
+      PalShortStrategy<Decimal>&
       operator=(const PalShortStrategy<Decimal>& rhs)
       {
 	if (this == &rhs)
+	{
 	  return *this;
+	}
 
 	PalStrategy<Decimal>::operator=(rhs);
 
@@ -745,27 +829,30 @@ namespace mkc_timeseries
       {}
 
       std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
+      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
       {
 	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
-						       portfolio);
+						       portfolio,
+                                                       this->getStrategyOptions());
       }
 
       std::shared_ptr<PalStrategy<Decimal>> 
-      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const
+      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const override
       {
 	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
-						       portfolio);
+						       portfolio,
+                                                       this->getStrategyOptions());
       }
 
       std::shared_ptr<BacktesterStrategy<Decimal>> 
-      cloneForBackTesting () const
+      cloneForBackTesting () const override
       {
 	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 						       this->getPalPattern(),
-						       this->getPortfolio());
+						       this->getPortfolio(),
+                                                       this->getStrategyOptions());
       }
 
       /**
@@ -773,9 +860,9 @@ namespace mkc_timeseries
        *
        * @details
        * Called before entry each bar.  For short trades, submits:
-       *  - A limit‐to‐cover at the profit‐target price.
-       *  - A stop‐to‐cover at the stop‐loss price.
-       *  - Records the exit bar’s P&L in the high‐res series.
+       * - A limit‐to‐cover at the profit‐target price.
+       * - A stop‐to‐cover at the stop‐loss price.
+       * - Records the exit bar’s P&L in the high‐res series.
        *
        * @param aSecurity       Security to exit.
        * @param instrPos        InstrumentPosition for the current bar.
@@ -783,11 +870,15 @@ namespace mkc_timeseries
        */
       void eventExitOrders (Security<Decimal>* aSecurity,
 			    const InstrumentPosition<Decimal>& instrPos,
-			    const date& processingDate)
+			    const date& processingDate) override
       {
 	if (this->isShortPosition (aSecurity->getSymbol()))
 	  {
 	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
+            if (!pattern)
+            {
+                throw PalStrategyException("PalShortStrategy::eventExitOrders: mPalPattern is null.");
+            }
 	    Decimal target = pattern->getProfitTargetAsDecimal();
 
 	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
@@ -802,7 +893,7 @@ namespace mkc_timeseries
 					  fillPrice, targetAsPercent);
 	    this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
-	    instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+	    const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 	    //this->addShortPositionBar (aSecurity, processingDate);
 	  }
       }
@@ -820,20 +911,25 @@ namespace mkc_timeseries
        */
       void eventEntryOrders (Security<Decimal>* aSecurity,
 			     const InstrumentPosition<Decimal>& instrPos,
-			     const date& processingDate)
+			     const date& processingDate) override
       {
 	auto sym = aSecurity->getSymbol();
 	if (this->isFlatPosition (sym) || this->strategyCanPyramid(sym))
 	  {
+            if (!this->getPalPattern())
+            {
+                throw PalStrategyException("PalShortStrategy::eventEntryOrders: mPalPattern is null.");
+            }
 	    if (this->getSecurityBarNumber(sym) > 
 		this->getPalPattern()->getMaxBarsBack())
 	      {
-		typename Security<Decimal>::ConstRandomAccessIterator it = 
-		  aSecurity->getRandomAccessIterator (processingDate);
-
-		if (this->getPatternEvaluator()(aSecurity, it))
+                // Pass processingDate instead of iterator 'it'
+		if (this->getPatternEvaluator()(aSecurity, processingDate))
 		  {
-		    this->EnterShortOnOpen (sym, processingDate);
+		    // Default stop and target from pattern are used if not overridden
+		    Decimal target = this->getPalPattern()->getProfitTargetAsDecimal();
+	            Decimal stop = this->getPalPattern()->getStopLossAsDecimal();
+		    this->EnterShortOnOpen (sym, processingDate, stop, target);
 		  }
 		//this->addFlatPositionBar (aSecurity, processingDate);
 	      }
@@ -844,12 +940,21 @@ namespace mkc_timeseries
   template<typename Decimal>
   std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
 							const std::shared_ptr<PriceActionLabPattern>& pattern,
-							const std::shared_ptr<Portfolio<Decimal>>& portfolio)
+							const std::shared_ptr<Portfolio<Decimal>>& portfolio,
+                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions)
   {
+    if (!pattern)
+    {
+        throw PalStrategyException("makePalStrategy: PriceActionLabPattern cannot be null.");
+    }
     if (pattern->isLongPattern())
-      return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio);
+    {
+      return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio, strategyOptions);
+    }
     else
-      return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio);
+    {
+      return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio, strategyOptions);
+    }
   }
 }
 

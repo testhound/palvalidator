@@ -818,9 +818,8 @@ TEST_CASE("Intraday SyntheticTimeSeries: Detailed Permutation Tests", "[Syntheti
             checkedPermutableBar = true;
             REQUIRE(it->getVolumeValue() == DecimalConstants<DecimalType>::DecimalZero);
         } else {
-            auto originalBarIt = originalSeries.getTimeSeriesEntry(it->getDateTime());
-            REQUIRE(originalBarIt != originalSeries.endSortedAccess());
-            REQUIRE(it->getVolumeValue() == originalBarIt->getVolumeValue());
+            auto originalBar = originalSeries.getTimeSeriesEntry(it->getDateTime());
+            REQUIRE(it->getVolumeValue() == originalBar.getVolumeValue());
         }
       }
       if (originalSeries.getNumEntries() > getBarsForDate(originalSeries, originalSeries.getFirstDate()).size()) {
