@@ -54,8 +54,8 @@ public:
     cloneForBackTesting() const override {
         return std::make_shared<DummyPalStrategy>(this->getPortfolio());
     }
-    void eventExitOrders(Security<DecimalType>*, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
-    void eventEntryOrders(Security<DecimalType>*, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
+    void eventExitOrders(Security<DecimalType>*, const InstrumentPosition<DecimalType>&, const boost::posix_time::ptime&) override {}
+    void eventEntryOrders(Security<DecimalType>*, const InstrumentPosition<DecimalType>&, const boost::posix_time::ptime&) override {}
 };
 
 inline auto createDummySecurity() {
