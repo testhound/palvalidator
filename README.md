@@ -2,10 +2,18 @@
 
 ## How to build executables
 
+For production, use:
 ```
 mkdir build
 cd build
-cmake ..
+cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+```
+
+For debug & profiling puposes, use the following instead:
+```
+mkdir build-debug
+cd build
+cmake -DCMAKE_BUILD_TYPE=Debug ..
 ```
 
 ## How to build & view the doc
