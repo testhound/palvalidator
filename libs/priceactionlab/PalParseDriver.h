@@ -46,9 +46,9 @@ public:
   
   /**
    * @brief Initiates the parsing of the input file.
-   * @return True if parsing was successful, false otherwise.
+   * @return 0 if parsing was successful, non-zero otherwise (following Bison convention).
    */
-  bool Parse();
+  int Parse();
 
 private:
   /**
