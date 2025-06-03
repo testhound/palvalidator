@@ -111,7 +111,7 @@ namespace mkc_timeseries
          */
         static uint32_t extractNumTrades(const BackTester<Decimal>& backTester) {
             // Use the new getNumTrades() method for comprehensive trade count
-            return const_cast<BackTester<Decimal>&>(backTester).getNumTrades();
+            return backTester.getNumTrades();
         }
 
         /**
@@ -125,7 +125,7 @@ namespace mkc_timeseries
          */
         static uint32_t extractNumBarsInTrades(const BackTester<Decimal>& backTester) {
             // Use the new getNumBarsInTrades() method for comprehensive bar count
-            return const_cast<BackTester<Decimal>&>(backTester).getNumBarsInTrades();
+            return backTester.getNumBarsInTrades();
         }
     };
 }
