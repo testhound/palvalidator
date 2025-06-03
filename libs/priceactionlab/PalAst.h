@@ -760,6 +760,11 @@ private:
  * @brief Represents a reference to the Momersion Filter indicator of a price bar.
  */
 /*
+ * @brief Represents a reference to the Momersion Filter indicator of a price bar.
+ *
+ * This class is currently commented out/disabled.
+ */
+/*
 class MomersionFilterBarReference : public PriceBarReference
 {
 public:

@@ -818,9 +818,8 @@ TEST_CASE("Intraday SyntheticTimeSeries: Detailed Permutation Tests", "[Syntheti
             checkedPermutableBar = true;
             REQUIRE(it->getVolumeValue() == DecimalConstants<DecimalType>::DecimalZero);
         } else {
-            auto originalBarIt = originalSeries.getTimeSeriesEntry(it->getDateTime());
-            REQUIRE(originalBarIt != originalSeries.endSortedAccess());
-            REQUIRE(it->getVolumeValue() == originalBarIt->getVolumeValue());
+            auto originalBar = originalSeries.getTimeSeriesEntry(it->getDateTime());
+            REQUIRE(it->getVolumeValue() == originalBar.getVolumeValue());
         }
       }
       if (originalSeries.getNumEntries() > getBarsForDate(originalSeries, originalSeries.getFirstDate()).size()) {
@@ -873,8 +872,8 @@ TEST_CASE("Intraday SyntheticTimeSeries: two runs produce different series",
     // Arrange
     DecimalType tick   = DecimalConstants<DecimalType>::EquityTick;
     DecimalType tick2  = tick / DecimalConstants<DecimalType>::DecimalTwo;
-    auto original = createThreeDayIntradaySampleTimeSeries();
-
+    //auto original = createThreeDayIntradaySampleTimeSeries();
+    auto& original = *getIntradaySeries("SSO_Hourly.txt");
     // Act: run #1
     SyntheticTimeSeries<DecimalType> s1(original, tick, tick2);
     s1.createSyntheticSeries();

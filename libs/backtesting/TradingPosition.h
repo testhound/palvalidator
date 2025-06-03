@@ -1279,10 +1279,10 @@ namespace mkc_timeseries
       mObservers.push_back(observer);
     }
 
-    void setRMultipleStop(const Decimal& rMultipleStop)
+    void setRMultipleStop(const Decimal& rMultipleStop) const
     {
       if (rMultipleStop <= DecimalConstants<Decimal>::DecimalZero)
-	throw TradingPositionException (std::string("TradingPosition:setRMultipleStop =< 0"));
+ throw TradingPositionException (std::string("TradingPosition:setRMultipleStop =< 0"));
 
       mRMultipleStop = rMultipleStop;
       mRMultipleStopSet = true;
@@ -1344,8 +1344,8 @@ namespace mkc_timeseries
     uint32_t mPositionID;
     static std::atomic<uint32_t> mPositionIDCount;
     std::list<std::reference_wrapper<TradingPositionObserver<Decimal>>> mObservers;
-    Decimal mRMultipleStop;
-    bool mRMultipleStopSet;
+    mutable Decimal mRMultipleStop;
+    mutable bool mRMultipleStopSet;
   };
 
   template <class Decimal> std::atomic<uint32_t>  TradingPosition<Decimal>::mPositionIDCount{0};
