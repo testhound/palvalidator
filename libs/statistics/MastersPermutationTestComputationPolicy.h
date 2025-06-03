@@ -25,6 +25,8 @@
 #include "DecimalConstants.h"
 #include "SyntheticSecurityHelpers.h"
 #include "PALMonteCarloTypes.h"
+#include "PermutationTestSubject.h"
+#include "StrategyIdentificationHelper.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 
@@ -70,7 +72,7 @@ namespace mkc_timeseries
  * @tparam Executor Concurrency executor (defaults to StdAsyncExecutor).
  */
   template <class Decimal, class BaselineStatPolicy, class Executor = concurrency::ThreadPoolExecutor<>>
-  class MastersPermutationPolicy
+  class MastersPermutationPolicy : public PermutationTestSubject<Decimal>
   {
   public:
     MastersPermutationPolicy() = default;
@@ -91,7 +93,7 @@ namespace mkc_timeseries
      *
      * @return Number of permutations (including original data) where the max permuted statistic exceeds baselineStat_k.
      */
-    static unsigned int computePermutationCountForStep(
+    unsigned int computePermutationCountForStep(
         uint32_t                                                        numPermutations,
         const Decimal                                                   baselineStat_k,
         const std::vector<std::shared_ptr<PalStrategy<Decimal>>>&       active_strategies,
@@ -102,22 +104,22 @@ namespace mkc_timeseries
     {
       if (active_strategies.empty())
         {
-	  std::cerr << "Warning: no active strategies supplied." << std::endl;
-	  return 1;
+  std::cerr << "Warning: no active strategies supplied." << std::endl;
+  return 1;
         }
 
       if (numPermutations == 0)
         {
-	  throw std::runtime_error(
-				   "MastersPermutationPolicy::computePermutationCountForStep - numPermutations cannot be zero"
-				   );
+  throw std::runtime_error(
+     "MastersPermutationPolicy::computePermutationCountForStep - numPermutations cannot be zero"
+     );
         }
 
       if (!templateBackTester || !theSecurity || !basePortfolioPtr)
         {
-	  throw std::runtime_error(
-				   "MastersPermutationPolicy::computePermutationCountForStep - null pointer provided"
-				   );
+  throw std::runtime_error(
+     "MastersPermutationPolicy::computePermutationCountForStep - null pointer provided"
+     );
         }
 
       Executor executor{};
@@ -138,72 +140,78 @@ namespace mkc_timeseries
       // You get value semantics (thread-safe reads) for everything you only need to read,
       // and reference semantics for that single shared counter you need to update.
       // Define work lambda for a single permutation
-        auto work = [ =, &count_k ]
-        (uint32_t p)
-        {
-	  auto syntheticPortfolio = createSyntheticPortfolio<Decimal>
-            (
-	     theSecurity,
-	     basePortfolioPtr
-	     );
+       auto work = [ =, &count_k, this ]
+       (uint32_t p)
+       {
+  auto syntheticPortfolio = createSyntheticPortfolio<Decimal>
+           (
+     theSecurity,
+     basePortfolioPtr
+     );
 
-	  // Compute maximum statistic across strategies
-	  Decimal max_stat = std::numeric_limits<Decimal>::lowest();
-	  unsigned int minTrades = BaselineStatPolicy::getMinStrategyTrades();
+  // Compute maximum statistic across strategies
+  Decimal max_stat = std::numeric_limits<Decimal>::lowest();
+  unsigned int minTrades = BaselineStatPolicy::getMinStrategyTrades();
 
-	  for ( auto const& strat : active_strategies )
+   for ( auto const& strat : active_strategies )
             {
-	      if ( !strat )
+       if ( !strat )
                 {
-		  throw std::runtime_error
+    throw std::runtime_error
                     (
-		     "Null strategy pointer in active_strategies"
-		     );
+       "Null strategy pointer in active_strategies"
+       );
                 }
 
-	      Decimal stat = std::numeric_limits<Decimal>::lowest();
-	      
-	      if (minTrades == 0)
-		{
-		  // single draw when no minimum trades required
-		  auto btClone = templateBackTester->clone();
-		  auto clonedStrat = strat->clone(syntheticPortfolio);
-		  btClone->addStrategy(clonedStrat);
-		  btClone->backtest();
-		  stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
-		}
-	      else
-		{
-		  auto btClone = templateBackTester->clone();
-		  auto clonedStrat = strat->clone(syntheticPortfolio);
-		  btClone->addStrategy(clonedStrat);
-		  btClone->backtest();
+       Decimal stat = std::numeric_limits<Decimal>::lowest();
+       
+       if (minTrades == 0)
+  {
+    // single draw when no minimum trades required
+    auto btClone = templateBackTester->clone();
+    auto clonedStrat = strat->clone(syntheticPortfolio);
+    btClone->addStrategy(clonedStrat);
+    btClone->backtest();
+    stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+    
+    // Notify observers after successful backtest
+    this->notifyObservers(*btClone, stat);
+  }
+       else
+  {
+    auto btClone = templateBackTester->clone();
+    auto clonedStrat = strat->clone(syntheticPortfolio);
+    btClone->addStrategy(clonedStrat);
+    btClone->backtest();
 
-		  uint32_t trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
-		  trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
-		  if (trades >= minTrades)
-		    stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
-		  else
-		    // below minimum, count as “no relationship” under the null hypothesis
-		    stat = std::numeric_limits<Decimal>::lowest();
-		}
+    // Use enhanced BackTester method for accurate trade counting
+    uint32_t trades = btClone->getNumTrades();
+    if (trades >= minTrades) {
+      stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+      
+      // Notify observers after successful backtest
+      this->notifyObservers(*btClone, stat);
+    } else {
+      // below minimum, count as "no relationship" under the null hypothesis
+      stat = std::numeric_limits<Decimal>::lowest();
+    }
+  }
 
-	      max_stat = std::max( max_stat, stat );
+       max_stat = std::max( max_stat, stat );
             }
 
-	  // Increment count if statistic exceeds baseline
-	  if ( max_stat >= baselineStat_k )
-	      count_k.fetch_add( 1, std::memory_order_relaxed );
+   // Increment count if statistic exceeds baseline
+   if ( max_stat >= baselineStat_k )
+       count_k.fetch_add( 1, std::memory_order_relaxed );
         };
 
         // Execute the work in parallel for each permutation
         concurrency::parallel_for
         (
-	 numPermutations,
-	 executor,
-	 work
-	 );
-
+  numPermutations,
+  executor,
+  work
+  );
         return count_k.load();
     }
   }; // End class MastersPermutationPolicy
@@ -225,7 +233,7 @@ namespace mkc_timeseries
     class Decimal,
     class BaselineStatPolicy,
     class Executor = concurrency::ThreadPoolExecutor<>>
-  class FastMastersPermutationPolicy
+  class FastMastersPermutationPolicy : public PermutationTestSubject<Decimal>
   {
   public:
     using StrategyPtr       = std::shared_ptr<PalStrategy<Decimal>>;
@@ -234,7 +242,8 @@ namespace mkc_timeseries
     using AtomicCountsMap   = std::map<StrategyPtr, std::atomic<unsigned>>;
     using FinalCountsMap    = std::map<StrategyPtr, unsigned>;
 
-    FastMastersPermutationPolicy() = delete;  // static-only
+    FastMastersPermutationPolicy() = default;
+    ~FastMastersPermutationPolicy() = default;
 
     /**
      * @brief Bulk computes exceedance counts for each strategy.
@@ -253,7 +262,7 @@ namespace mkc_timeseries
      * @param basePortfolioPtr Base portfolio for synthetic generation.
      * @return Map from each strategy to its exceedance count.
      */
-    static FinalCountsMap computeAllPermutationCounts
+    FinalCountsMap computeAllPermutationCounts
     (
      uint32_t                                numPermutations,
      const LocalStrategyData&                sorted_strategy_data,
@@ -286,16 +295,16 @@ namespace mkc_timeseries
       AtomicCountsMap atomic_counts;
       for (auto const& ctx : sorted_strategy_data)
         {
-	  atomic_counts[ctx.strategy].store(1);
+   atomic_counts[ctx.strategy].store(1);
         }
 
       Executor executor{};  // default or platform-specific executor
 
       // Define work lambda: processes one permutation index 'p'
-      auto work = [=, &atomic_counts]
+      auto work = [=, &atomic_counts, this]
         (
-	 uint32_t p
-	 )
+  uint32_t p
+  )
       {
 	// 1) Create synthetic portfolio for this permutation
 	auto syntheticPortfolio = createSyntheticPortfolio<Decimal>
@@ -319,15 +328,19 @@ namespace mkc_timeseries
 	    btClone->addStrategy(clonedStrat);
 	    btClone->backtest();
 
-	    trades = BackTesterFactory<Decimal>::getNumClosedTrades(btClone);
+	    // Use enhanced BackTester method for accurate trade counting
+	    trades = btClone->getNumTrades();
 	    if (trades >= BaselineStatPolicy::getMinStrategyTrades())
 	      {
-		stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+	 stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+	 
+	 // NEW: Notify observers after successful backtest
+	 this->notifyObservers(*btClone, stat);
 	      }
 	    else
 	      {
-		// below minimum, count as “no relationship” under the null hypothesis
-		stat = std::numeric_limits<Decimal>::lowest();
+	 // below minimum, count as "no relationship" under the null hypothesis
+	 stat = std::numeric_limits<Decimal>::lowest();
 	      }
 	    
 	    stats_this_perm[strategy] = stat;

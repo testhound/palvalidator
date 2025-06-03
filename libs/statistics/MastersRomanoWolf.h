@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
+#include "PermutationTestSubject.h"
 
 namespace mkc_timeseries
 {
@@ -43,7 +44,8 @@ namespace mkc_timeseries
      *         - static Decimal getPermutationTestStatistic(bt): statistic extraction.
      */
     template <class Decimal, class BaselineStatPolicy>
-    class MastersRomanoWolf : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>
+    class MastersRomanoWolf : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>,
+                              public PermutationTestSubject<Decimal>
     {
       using Base  = IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>;
       using Strat = typename Base::StrategyPtr;
@@ -145,7 +147,19 @@ namespace mkc_timeseries
 		// Repeating steps 1–3( )m times yields {max_stat₁, …, max_statₘ}, the empirical null
 		// distribution of the *best* strategy’s performance by chance.  We’ll later compare
 		// the observed baseline statistic of the current strategy to this null to get its p-value.
-                unsigned int exceedCount = MPP::computePermutationCountForStep(
+                // Create instance of MastersPermutationPolicy for observer support
+                MPP permutationPolicy;
+                
+                // Chain attached observers to the policy instance (pass-through Subject design)
+                std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
+                for (auto* observer : this->m_observers) {
+                    if (observer) {
+                        permutationPolicy.attach(observer);
+                    }
+                }
+                observerLock.unlock();
+                
+                unsigned int exceedCount = permutationPolicy.computePermutationCountForStep(
                                                 numPermutations,
                                                 context.baselineStat,
                                                 activeVec,

@@ -9,6 +9,10 @@
 
 #include <exception>
 #include <vector>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/functional/hash.hpp>
 #include "Portfolio.h"
 #include "InstrumentPosition.h"
 #include "StrategyBroker.h"
@@ -66,19 +70,23 @@ namespace mkc_timeseries
    */
   template <class Decimal> class BacktesterStrategy
     {
+    private:
+      static boost::uuids::random_generator sUuidGenerator;
+      
     public:
       typedef typename Portfolio<Decimal>::ConstPortfolioIterator PortfolioIterator;
 
       /**
-       * @brief Copy constructor.
+       * @brief Copy constructor - generate NEW UUID for cloned strategies.
        * @param rhs  Strategy to clone state from (name, broker, portfolio, etc.).
        */
       BacktesterStrategy(const BacktesterStrategy<Decimal>& rhs)
-	: mStrategyName(rhs.mStrategyName),
-	  mBroker(rhs.mBroker),
-	  mPortfolio(rhs.mPortfolio),
-	  mSecuritiesProperties(rhs.mSecuritiesProperties),
-	  mStrategyOptions(mStrategyOptions)
+ : mStrategyName(rhs.mStrategyName),
+   mBroker(rhs.mBroker),
+   mPortfolio(rhs.mPortfolio),
+   mSecuritiesProperties(rhs.mSecuritiesProperties),
+   mStrategyOptions(rhs.mStrategyOptions),
+   mInstanceId(sUuidGenerator())  // NEW UUID for clone
       {}
 
       /**
@@ -89,16 +97,17 @@ namespace mkc_timeseries
       const BacktesterStrategy<Decimal>&
       operator=(const BacktesterStrategy<Decimal>& rhs)
       {
-	if (this == &rhs)
-	  return *this;
+ if (this == &rhs)
+   return *this;
 
-	mStrategyName = rhs.mStrategyName;
-	mBroker = rhs.mBroker;
-	mPortfolio = rhs.mPortfolio;
-	mSecuritiesProperties = rhs.mSecuritiesProperties;
-	mStrategyOptions = rhs.mStrategyOptions;
-	    
-	return *this;
+ mStrategyName = rhs.mStrategyName;
+ mBroker = rhs.mBroker;
+ mPortfolio = rhs.mPortfolio;
+ mSecuritiesProperties = rhs.mSecuritiesProperties;
+ mStrategyOptions = rhs.mStrategyOptions;
+ mInstanceId = sUuidGenerator();  // Generate NEW UUID for assignment
+     
+ return *this;
       }
 
       /**
@@ -112,6 +121,25 @@ namespace mkc_timeseries
 
       virtual ~BacktesterStrategy()
       {}
+
+      /**
+       * @brief Get the unique instance ID for this strategy
+       * @return UUID that uniquely identifies this strategy instance
+       */
+      const boost::uuids::uuid& getInstanceId() const {
+          return mInstanceId;
+      }
+
+      /**
+       * @brief Get unique hash combining instance ID with pattern-specific hash
+       * @return Combined hash for unique strategy identification
+       * @note This method should be overridden by derived classes to include pattern hash
+       */
+      virtual unsigned long long hashCode() const {
+          // Base implementation uses only UUID
+          boost::hash<boost::uuids::uuid> uuid_hasher;
+          return uuid_hasher(mInstanceId);
+      }
 
       /**
        * @brief Called once per bar to submit exit orders (profit‐target, stop‐loss, etc.).
@@ -739,22 +767,23 @@ namespace mkc_timeseries
        * @param strategyOptions  Risk and pyramiding config.
        */
       BacktesterStrategy (const std::string& strategyName,
-			  std::shared_ptr<Portfolio<Decimal>> portfolio,
-			  const StrategyOptions& strategyOptions) 
-	: mStrategyName(strategyName),
-	  mBroker (portfolio),
-	  mPortfolio (portfolio),
-	  mSecuritiesProperties(),
-	  mStrategyOptions(strategyOptions)
-	{
-	  typename Portfolio<Decimal>::ConstPortfolioIterator it =
-	    mPortfolio->beginPortfolio();
+     std::shared_ptr<Portfolio<Decimal>> portfolio,
+     const StrategyOptions& strategyOptions)
+ : mStrategyName(strategyName),
+   mBroker (portfolio),
+   mPortfolio (portfolio),
+   mSecuritiesProperties(),
+   mStrategyOptions(strategyOptions),
+   mInstanceId(sUuidGenerator())  // Generate unique UUID for this instance
+ {
+   typename Portfolio<Decimal>::ConstPortfolioIterator it =
+     mPortfolio->beginPortfolio();
 
-	  for (; it != mPortfolio->endPortfolio(); it++)
-	    {
-	      mSecuritiesProperties.addSecurity (it->second->getSymbol());
-	    }
-	}
+   for (; it != mPortfolio->endPortfolio(); it++)
+     {
+       mSecuritiesProperties.addSecurity (it->second->getSymbol());
+     }
+ }
 
     private:
       std::string mStrategyName;
@@ -762,6 +791,7 @@ namespace mkc_timeseries
       std::shared_ptr<Portfolio<Decimal>> mPortfolio;
       SecurityBacktestPropertiesManager mSecuritiesProperties;
       StrategyOptions mStrategyOptions;
+      boost::uuids::uuid mInstanceId;  // Moved here to match initialization order
       static TradingVolume OneShare;
       static TradingVolume OneContract;
     };
@@ -778,6 +808,10 @@ namespace mkc_timeseries
 
   template <class Decimal> TradingVolume BacktesterStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
   template <class Decimal> TradingVolume BacktesterStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
+
+  // Static member definition for UUID generator
+  template <class Decimal>
+  boost::uuids::random_generator BacktesterStrategy<Decimal>::sUuidGenerator;
 
 }
 

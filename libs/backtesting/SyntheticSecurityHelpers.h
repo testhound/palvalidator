@@ -1,3 +1,6 @@
+#ifndef __SYNTHETIC_SECURITY_HELPERS_H
+#define __SYNTHETIC_SECURITY_HELPERS_H 1
+
 #include <memory>
 #include "number.h"
 #include "Security.h"
@@ -29,3 +32,5 @@ namespace mkc_timeseries
     return syntheticPortfolio;
   }
 }
+
+#endif

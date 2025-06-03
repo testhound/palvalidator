@@ -100,7 +100,7 @@ struct StubBackTestResultPolicy {
 };
 
 template <class D>
-struct StubComputationPolicy {
+struct StubComputationPolicy : public PermutationTestSubject<D> {
     using ReturnType = std::pair<D, uint32_t>;
     static ReturnType runPermutationTest(
         const std::shared_ptr<BackTester<D>>&,

@@ -102,13 +102,13 @@ public:
         unsigned long                          numPermutations,
         const std::shared_ptr<BackTester<D>>&  templateBackTester,
         const std::shared_ptr<Portfolio<D>>&   portfolio,
-        const D&                               pValueSignificanceLevel) override 
+        const D&                               pValueSignificanceLevel) override
     {
       std::map<std::shared_ptr<PalStrategy<D>>, D> m;
       
       // only return for the first strategy in the list
       if (!strategyData.empty())
-	m[strategyData.front().strategy] = D("0.01");
+ m[strategyData.front().strategy] = D("0.01");
       return m;
     }
   };

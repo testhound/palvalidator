@@ -12,6 +12,7 @@
 #include <map>
 #include <list>
 #include <functional>
+#include <iostream>
 #include "MCPTStrategyAttributes.h"
 #include "PalAst.h"
 #include "BacktesterStrategy.h"
@@ -551,6 +552,27 @@ namespace mkc_timeseries
     std::shared_ptr<PriceActionLabPattern> getPalPattern() const
     {
       return mPalPattern;
+    }
+
+    unsigned long long hashCode() const override
+    {
+      // Get base UUID hash
+      unsigned long long uuidHash = BacktesterStrategy<Decimal>::hashCode();
+      
+          // Get pattern-specific hash
+      unsigned long long patternHash = mPalPattern->hashCode();
+      
+      // Combine using boost::hash_combine algorithm
+      return uuidHash ^ (patternHash + 0x9e3779b9 + (uuidHash << 6) + (uuidHash >> 2));
+    }
+
+    /**
+     * @brief Get the pattern hash component only (for debugging/analysis)
+     * @return Hash from the underlying PriceActionLabPattern
+     */
+    unsigned long long getPatternHash() const
+    {
+      return mPalPattern->hashCode();
     }
 
     [[deprecated("Use of this getPositionDirectionVector will throw an exception")]] // Attribute from HEAD
