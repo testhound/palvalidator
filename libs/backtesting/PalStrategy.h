@@ -16,21 +16,27 @@
 #include "PalAst.h"
 #include "BacktesterStrategy.h"
 #include "PALPatternInterpreter.h" // Includes new PatternEvaluator signature
+#include "TimeSeriesEntry.h" // For getDefaultBarTime, ptime, date
 
 namespace mkc_timeseries
 {
   using boost::gregorian::date;
+  using boost::posix_time::ptime;
+
+  // Assuming mkc_timeseries::getDefaultBarTime() is declared in TimeSeriesEntry.h 
+  // or accessible in this scope. It's used in StrategyBroker.h and TimeSeries.h
+  // extern boost::posix_time::time_duration getDefaultBarTime(); // Example declaration if not in TimeSeriesEntry.h
 
   class PalStrategyException : public std::runtime_error
   {
   public:
-    PalStrategyException(const std::string msg) 
+    PalStrategyException(const std::string msg)
       : std::runtime_error(msg)
     {}
-    
-    ~PalStrategyException()
-    {}
-    
+
+    // virtual destructor for base class not strictly necessary if not inheriting from it,
+    // but good practice if it might be. Default is fine.
+    ~PalStrategyException() override = default; // Changed to override and default
   };
 
   // EntryOrderConditions factors out into a common class the
@@ -38,122 +44,153 @@ namespace mkc_timeseries
   // the strategy is in the state: flat, long or short when
   // the methods are called
 
- template <class Decimal> class EntryOrderConditions
+  template <class Decimal> class EntryOrderConditions
+  {
+  public:
+    virtual bool canEnterMarket(BacktesterStrategy<Decimal> *strategy,
+                                Security<Decimal>* aSecurity) const = 0;
+    virtual bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
+                                 std::shared_ptr<PriceActionLabPattern> pattern,
+                                 Security<Decimal>* aSecurity) const = 0;
+    virtual void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                                   std::shared_ptr<PriceActionLabPattern> pattern,
+                                   Security<Decimal>* aSecurity,
+                                   const date& processingDate) const = 0;
+    virtual void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                                   std::shared_ptr<PriceActionLabPattern> pattern,
+                                   Security<Decimal>* aSecurity,
+                                   const ptime& processingDateTime) const = 0;
+
+    virtual ~EntryOrderConditions() = default;
+  };
+
+  template <class Decimal> class FlatEntryOrderConditions : public EntryOrderConditions<Decimal>
+  {
+  public:
+    bool canEnterMarket(BacktesterStrategy<Decimal> *strategy,
+                        Security<Decimal>* aSecurity) const override
     {
-    public:
-      virtual bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-				  Security<Decimal>* aSecurity) const = 0;
-      virtual bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
-				   std::shared_ptr<PriceActionLabPattern> pattern, 
-				   Security<Decimal>* aSecurity) const = 0;
-      virtual void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
-				     std::shared_ptr<PriceActionLabPattern> pattern, 
-				     Security<Decimal>* aSecurity,
-				     const date& processingDate) const = 0;
-      // Adding virtual destructor for proper cleanup in derived classes
-      virtual ~EntryOrderConditions() = default;
-    };
+      return true;
+    }
 
- template <class Decimal> class FlatEntryOrderConditions : public  EntryOrderConditions<Decimal>
-   {
-   public:
-     bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 Security<Decimal>* aSecurity) const override
-       {
-	 return true;
-       }
+    bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
+                         std::shared_ptr<PriceActionLabPattern> pattern,
+                         Security<Decimal>* aSecurity) const override
+    {
+      return strategy->getSecurityBarNumber(aSecurity->getSymbol()) > pattern->getMaxBarsBack();
+    }
 
-      bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
-			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   Security<Decimal>* aSecurity) const override
-	{
-	  return strategy->getSecurityBarNumber(aSecurity->getSymbol()) > pattern->getMaxBarsBack();
-	}
+    void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                           std::shared_ptr<PriceActionLabPattern> pattern,
+                           Security<Decimal>* aSecurity,
+                           const date& processingDate) const override
+    {
+      createEntryOrders(strategy,
+			pattern,
+			aSecurity,
+			ptime(processingDate,
+			      getDefaultBarTime()));
+    }
 
-      void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
-			     std::shared_ptr<PriceActionLabPattern> pattern, 
-			     Security<Decimal>* aSecurity,
-			     const date& processingDate) const override
-	{
-	  Decimal target = pattern->getProfitTargetAsDecimal();
-	  Decimal stop = pattern->getStopLossAsDecimal();
+    void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                           std::shared_ptr<PriceActionLabPattern> pattern,
+                           Security<Decimal>* aSecurity,
+                           const ptime& processingDateTime) const override
+    {
+      // Core logic using ptime from b1cb953
+      Decimal target = pattern->getProfitTargetAsDecimal();
+      Decimal stop = pattern->getStopLossAsDecimal();
 
-	  if (pattern->isLongPattern())
-	  {
-	    strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDate, stop, target);
-	  }
-	  else
-	  {
-	    strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDate, stop, target);
-	  }
-	}
-	
-    };
+      if (pattern->isLongPattern())
+      {
+        strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+      }
+      else
+      {
+        strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+      }
+    }
+  };
 
- template <class Decimal> class LongEntryOrderConditions : public  EntryOrderConditions<Decimal>
-   {
-   public:
-     bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 Security<Decimal>* aSecurity) const override
-       {
-	return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
-       }
+  template <class Decimal> class LongEntryOrderConditions : public EntryOrderConditions<Decimal>
+  {
+  public:
+    bool canEnterMarket(BacktesterStrategy<Decimal> *strategy,
+                        Security<Decimal>* aSecurity) const override
+    {
+      return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
+    }
 
-      bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
-			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   Security<Decimal>* aSecurity) const override
-	{
-	  return (pattern->isLongPattern() &&
-		  (strategy->getSecurityBarNumber(aSecurity->getSymbol()) > 
-		   pattern->getMaxBarsBack()));
-	}
+    bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
+                         std::shared_ptr<PriceActionLabPattern> pattern,
+                         Security<Decimal>* aSecurity) const override
+    {
+      return (pattern->isLongPattern() &&
+              (strategy->getSecurityBarNumber(aSecurity->getSymbol()) >
+               pattern->getMaxBarsBack()));
+    }
 
-      void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
-			     std::shared_ptr<PriceActionLabPattern> pattern, 
-			     Security<Decimal>* aSecurity,
-			     const date& processingDate) const override
-	{
-	  Decimal target = pattern->getProfitTargetAsDecimal();
-	  Decimal stop = pattern->getStopLossAsDecimal();
+    void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                           std::shared_ptr<PriceActionLabPattern> pattern,
+                           Security<Decimal>* aSecurity,
+                           const date& processingDate) const override
+    {
+      createEntryOrders(strategy, pattern, aSecurity,
+			ptime(processingDate, getDefaultBarTime()));
+    }
 
-	  strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDate, stop, target);
-	}
-	
-    };
+    void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                           std::shared_ptr<PriceActionLabPattern> pattern,
+                           Security<Decimal>* aSecurity,
+                           const ptime& processingDateTime) const override
+    {
+      Decimal target = pattern->getProfitTargetAsDecimal();
+      Decimal stop = pattern->getStopLossAsDecimal();
 
- template <class Decimal> class ShortEntryOrderConditions : public  EntryOrderConditions<Decimal>
-   {
-   public:
-     bool canEnterMarket(BacktesterStrategy<Decimal> *strategy, 
-			 Security<Decimal>* aSecurity) const override
-       {
-	return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
-       }
+      strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+    }
+  };
 
-      bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
-			   std::shared_ptr<PriceActionLabPattern> pattern, 
-			   Security<Decimal>* aSecurity) const override
-	{
-	  return (pattern->isShortPattern() &&
-		  (strategy->getSecurityBarNumber(aSecurity->getSymbol()) > 
-		   pattern->getMaxBarsBack()));
-	}
+  template <class Decimal> class ShortEntryOrderConditions : public EntryOrderConditions<Decimal>
+  {
+  public:
+    bool canEnterMarket(BacktesterStrategy<Decimal> *strategy,
+                        Security<Decimal>* aSecurity) const override
+    {
+       return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
+    }
 
-      void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
-			     std::shared_ptr<PriceActionLabPattern> pattern, 
-			     Security<Decimal>* aSecurity,
-			     const date& processingDate) const override
-	{
-	  Decimal target = pattern->getProfitTargetAsDecimal();
-	  Decimal stop = pattern->getStopLossAsDecimal();
+    bool canTradePattern(BacktesterStrategy<Decimal> *strategy,
+                         std::shared_ptr<PriceActionLabPattern> pattern,
+                         Security<Decimal>* aSecurity) const override
+    {
+      return (pattern->isShortPattern() &&
+              (strategy->getSecurityBarNumber(aSecurity->getSymbol()) >
+               pattern->getMaxBarsBack()));
+    }
 
-	  strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDate, stop, target);
-	}
-	
-    };
+    void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                           std::shared_ptr<PriceActionLabPattern> pattern,
+                           Security<Decimal>* aSecurity,
+                           const date& processingDate) const override
+    {
+      createEntryOrders(strategy, pattern, aSecurity,
+			ptime(processingDate, getDefaultBarTime()));
+    }
+
+    void createEntryOrders(BacktesterStrategy<Decimal> *strategy,
+                           std::shared_ptr<PriceActionLabPattern> pattern,
+                           Security<Decimal>* aSecurity,
+                           const ptime& processingDateTime) const override
+    {
+      Decimal target = pattern->getProfitTargetAsDecimal();
+      Decimal stop = pattern->getStopLossAsDecimal();
+
+      strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+    }
+  };
 
   // A PalMetaStrategy is composed of individual Pal strategies (patterns): long and/or short
-
   template <class Decimal> class PalMetaStrategy : public BacktesterStrategy<Decimal>
   {
   public:
@@ -163,60 +200,58 @@ namespace mkc_timeseries
     using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
     PalMetaStrategy(const std::string& strategyName,
-		    std::shared_ptr<Portfolio<Decimal>> portfolio,
-		    const StrategyOptions& strategyOptions = defaultStrategyOptions)
+                    std::shared_ptr<Portfolio<Decimal>> portfolio,
+                    const StrategyOptions& strategyOptions = defaultStrategyOptions)
       : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
-	mPalPatterns(),
-	mPatternEvaluators(),
-	mMCPTAttributes(),
-	mStrategyMaxBarsBack(0)
+        mPalPatterns(),
+        mPatternEvaluators(),
+        mMCPTAttributes(),
+        mStrategyMaxBarsBack(0)
     {}
 
     PalMetaStrategy(const PalMetaStrategy<Decimal>& rhs)
-	: BacktesterStrategy<Decimal>(rhs),
-      mPalPatterns(rhs.mPalPatterns),
-      mPatternEvaluators(rhs.mPatternEvaluators),
-      mMCPTAttributes(rhs.mMCPTAttributes),
-      mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack)
-      {}
+      : BacktesterStrategy<Decimal>(rhs),
+        mPalPatterns(rhs.mPalPatterns),
+        mPatternEvaluators(rhs.mPatternEvaluators),
+        mMCPTAttributes(rhs.mMCPTAttributes),
+        mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack)
+    {}
 
     PalMetaStrategy<Decimal>&
     operator=(const PalMetaStrategy<Decimal>& rhs)
+    {
+      if (this == &rhs)
       {
-	if (this == &rhs)
-	{
-	  return *this;
-	}
-
-	BacktesterStrategy<Decimal>::operator=(rhs);
-	mPalPatterns = rhs.mPalPatterns;
-	mPatternEvaluators = rhs.mPatternEvaluators;
-	mMCPTAttributes = rhs.mMCPTAttributes;
-	mStrategyMaxBarsBack = rhs.mStrategyMaxBarsBack;
-	return *this;
+        return *this;
       }
 
-    virtual ~PalMetaStrategy()
-      {}
+      BacktesterStrategy<Decimal>::operator=(rhs);
+      mPalPatterns = rhs.mPalPatterns;
+      mPatternEvaluators = rhs.mPatternEvaluators; // Consider if deep copy or re-compilation is needed for stateful evaluators
+      mMCPTAttributes = rhs.mMCPTAttributes;
+      mStrategyMaxBarsBack = rhs.mStrategyMaxBarsBack;
+      return *this;
+    }
+
+    ~PalMetaStrategy() override = default;
 
     void addPricePattern(std::shared_ptr<PriceActionLabPattern> pattern)
-      {
-	if (pattern->getMaxBarsBack() > mStrategyMaxBarsBack)
-	{
-	  mStrategyMaxBarsBack = pattern->getMaxBarsBack();
-	}
+    {
+      if (pattern->getMaxBarsBack() > mStrategyMaxBarsBack)
+        mStrategyMaxBarsBack = pattern->getMaxBarsBack();
 
-	mPalPatterns.push_back(pattern);
+      mPalPatterns.push_back(pattern);
 
-	// compile & cache
-	// This will use the new PALPatternInterpreter which returns the updated PatternEvaluator type
-	auto eval = PALPatternInterpreter<Decimal>::compileEvaluator(pattern->getPatternExpression().get());
-	mPatternEvaluators.push_back(eval);
-      }
+      // compile & cache
+      // This will use the new PALPatternInterpreter which returns the updated PatternEvaluator type
+      // The PatternEvaluator from PALPatternInterpreter.h takes (Security*, date)
+      auto eval = PALPatternInterpreter<Decimal>::compileEvaluator(pattern->getPatternExpression().get());
+      mPatternEvaluators.push_back(eval);
+    }
 
     uint32_t getPatternMaxBarsBack() const
     {
-	return mStrategyMaxBarsBack;
+      return mStrategyMaxBarsBack;
     }
 
     std::shared_ptr<PriceActionLabPattern> getPalPattern() const
@@ -235,203 +270,200 @@ namespace mkc_timeseries
     }
 
     const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
-      {
-	return BacktesterStrategy<Decimal>::getSizeForOrder(aSecurity);
-      }
-
-    [[deprecated("Use of this getPositionDirectionVector will throw an exception")]]
-    std::vector<int> getPositionDirectionVector() const
-      {
-	throw PalStrategyException("getPositionDirectionVector is no longer supported");
-	// return mMCPTAttributes.getPositionDirection(); // Original code was commented
-      }
-
-    [[deprecated("Use of this getPositionReturnsVector will throw an exception")]]
-    std::vector<Decimal> getPositionReturnsVector() const
-      {
-	throw PalStrategyException("getPositionReturnsVector is no longer supported");
-	// return mMCPTAttributes.getPositionReturns(); // Original code was commented
-      }
-
-    [[deprecated("Use of this numTradingOpportunities will throw an exception")]]
-    unsigned long numTradingOpportunities() const
     {
-      	throw PalStrategyException("numTradingOpportunities is no longer supported");
-	// return mMCPTAttributes.numTradingOpportunities(); // Original code was commented
+      return BacktesterStrategy<Decimal>::getSizeForOrder(aSecurity);
     }
 
-    std::shared_ptr<BacktesterStrategy<Decimal>> 
+    [[deprecated("Use of this getPositionDirectionVector will throw an exception")]] // Attribute from HEAD
+    std::vector<int> getPositionDirectionVector() const
+    {
+      throw PalStrategyException("getPositionDirectionVector is no longer supported"); // Message from HEAD
+      // return mMCPTAttributes.getPositionDirection(); // Original code commented out in HEAD
+    }
+
+    [[deprecated("Use of this getPositionReturnsVector will throw an exception")]] // Attribute from HEAD
+    std::vector<Decimal> getPositionReturnsVector() const
+    {
+      throw PalStrategyException("getPositionReturnsVector is no longer supported"); // Message from HEAD
+      // return mMCPTAttributes.getPositionReturns(); // Original code commented out in HEAD
+    }
+
+    [[deprecated("Use of this numTradingOpportunities will throw an exception")]] // Attribute from HEAD
+    unsigned long numTradingOpportunities() const
+    {
+      throw PalStrategyException("numTradingOpportunities is no longer supported"); // Message from HEAD
+      // return mMCPTAttributes.numTradingOpportunities(); // Original code commented out in HEAD
+    }
+
+    std::shared_ptr<BacktesterStrategy<Decimal>>
     clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
     {
-      // Basic clone, does not carry patterns. Subclasses might need more sophisticated cloning if patterns are essential post-clone.
+      // Using HEAD's more detailed clone logic that handles options
       return std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
-							portfolio,
+                                                        portfolio,
                                                         this->getStrategyOptions());
     }
 
-    std::shared_ptr<BacktesterStrategy<Decimal>> 
+    std::shared_ptr<BacktesterStrategy<Decimal>>
     cloneForBackTesting () const override
     {
-      // This method should ideally create a deep copy including patterns for proper backtesting clone.
-      // For now, matching the previous clone logic, but this might need review for true "clone for backtesting" semantics.
       auto cloned = std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
                                                                this->getPortfolio(),
                                                                this->getStrategyOptions());
       // Manually copy patterns and compiled evaluators
       for (const auto& pattern : mPalPatterns)
       {
-          cloned->addPricePattern(pattern); // This re-compiles, which is fine
+          cloned->addPricePattern(pattern);
       }
       cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
 
       return cloned;
     }
 
+    // Bring base class date-based methods into scope if BacktesterStrategy defines them.
+    using BacktesterStrategy<Decimal>::eventEntryOrders;
+    using BacktesterStrategy<Decimal>::eventExitOrders;
+
     void eventEntryOrders (Security<Decimal>* aSecurity,
-			   const InstrumentPosition<Decimal>& instrPos,
-			   const date& processingDate) override
+                           const InstrumentPosition<Decimal>& instrPos,
+                           const ptime& processingDateTime) override
     {
       if (this->isFlatPosition (aSecurity->getSymbol()))
       {
-	entryOrdersCommon(aSecurity, instrPos, processingDate, FlatEntryOrderConditions<Decimal>());
+        entryOrdersCommon(aSecurity, instrPos, processingDateTime, FlatEntryOrderConditions<Decimal>());
       }
       else if (this->isLongPosition (aSecurity->getSymbol()))
       {
-	entryOrdersCommon(aSecurity, instrPos, processingDate, LongEntryOrderConditions<Decimal>());
+        entryOrdersCommon(aSecurity, instrPos, processingDateTime, LongEntryOrderConditions<Decimal>());
       }
       else if (this->isShortPosition (aSecurity->getSymbol()))
       {
-	entryOrdersCommon(aSecurity, instrPos, processingDate, ShortEntryOrderConditions<Decimal>());
+        entryOrdersCommon(aSecurity, instrPos, processingDateTime, ShortEntryOrderConditions<Decimal>());
       }
       else
       {
-	throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknown position state"));
+        throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknown position state"));
       }
     }
 
     void eventExitOrders (Security<Decimal>* aSecurity,
-			  const InstrumentPosition<Decimal>& instrPos,
-			  const date& processingDate) override
+                          const InstrumentPosition<Decimal>& instrPos,
+                          const ptime& processingDateTime) override
     {
-      // We could be pyramiding or not, either way get the latest position
       uint32_t numUnits = instrPos.getNumPositionUnits();
-      if (numUnits == 0) // No units in position, nothing to exit
+      if (numUnits == 0)
       {
           return;
       }
-      
+
       auto it = instrPos.getInstrumentPosition(numUnits);
       auto pos = *it;
 
-      // Get stop loss, profit target and fill price from latest position
-
       Decimal target = pos->getProfitTarget();
       PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-
       Decimal stop = pos->getStopLoss();
       PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
-	
       Decimal fillPrice = instrPos.getFillPrice(numUnits);
 
       if (this->isLongPosition (aSecurity->getSymbol()))
       {
-	eventExitLongOrders (aSecurity, instrPos, processingDate, fillPrice, stopAsPercent, targetAsPercent);
+        eventExitLongOrders (aSecurity, instrPos, processingDateTime, fillPrice, stopAsPercent, targetAsPercent);
       }
       else if (this->isShortPosition (aSecurity->getSymbol()))
       {
-	eventExitShortOrders (aSecurity, instrPos, processingDate, fillPrice, stopAsPercent, targetAsPercent);
+        eventExitShortOrders (aSecurity, instrPos, processingDateTime, fillPrice, stopAsPercent, targetAsPercent);
       }
       else
       {
-	throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state"));
+        throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state"));
       }
     }
 
   private:
+    // Takes ptime for intraday order timing, but uses date for PatternEvaluator
     void entryOrdersCommon (Security<Decimal>* aSecurity,
-			    const InstrumentPosition<Decimal>& instrPos,
-			    const date& processingDate,
-			    const EntryOrderConditions<Decimal>& entryConditions)
-      {
-	// Removed: auto it = aSecurity->getRandomAccessIterator(processingDate);
-	
-	if (entryConditions.canEnterMarket(this, aSecurity))
-	  {
-	    auto patIt  = mPalPatterns.begin();
-	    auto evalIt = mPatternEvaluators.begin();
-	    for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
-		 ++patIt, ++evalIt)
-	      {
-		std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
-		
-		if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
-		{
-		  continue;
-		}
+                            const InstrumentPosition<Decimal>& instrPos, // Parameter not used in logic from
+                            const ptime& processingDateTime,
+                            const EntryOrderConditions<Decimal>& entryConditions)
+    {
+      // No iterator needed for PatternEvaluator based on PALPatternInterpreter.h
 
-                // Pass processingDate instead of iterator 'it'
-		if ((*evalIt)(aSecurity, processingDate))
-		  {
-		    entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDate);
-		    break;
-		  }
-	      }
-	  }
+      if (entryConditions.canEnterMarket(this, aSecurity))
+      {
+        auto patIt  = mPalPatterns.begin();
+        auto evalIt = mPatternEvaluators.begin();
+        for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
+             ++patIt, ++evalIt)
+        {
+          std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
+
+          if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
+          {
+            continue;
+          }
+
+          // PatternEvaluator takes date. Orders are placed using ptime.
+          if ((*evalIt)(aSecurity, processingDateTime.date()))
+          {
+            // entryConditions will use processingDateTime for actual order placement
+            entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
+            break; // Assuming one pattern match per bar is sufficient for meta strategy
+          }
+        }
       }
+    }
 
     void eventExitLongOrders (Security<Decimal>* aSecurity,
-			      const InstrumentPosition<Decimal>& instrPos,
-			      const date& processingDate,
-			      const Decimal& positionEntryPrice,
-			      const PercentNumber<Decimal>& stopAsPercent,
-			      const PercentNumber<Decimal>& targetAsPercent)
-      {
-	this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
-				      positionEntryPrice, targetAsPercent);
-	this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
-				     positionEntryPrice, stopAsPercent);
-	// Ensure instrPos is not const if setRMultipleStop modifies it.
-        // InstrumentPosition::setRMultipleStop is const and uses mutable members
- instrPos.setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
-      }
+                              const InstrumentPosition<Decimal>& instrPos,
+                              const ptime& processingDateTime, // ptime from b1cb953
+                              const Decimal& positionEntryPrice,
+                              const PercentNumber<Decimal>& stopAsPercent,
+                              const PercentNumber<Decimal>& targetAsPercent)
+    {
+      this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
+                                    positionEntryPrice, targetAsPercent);
+      this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
+                                   positionEntryPrice, stopAsPercent);
+      
+      instrPos.setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
+    }
 
     void eventExitShortOrders (Security<Decimal>* aSecurity,
-			       const InstrumentPosition<Decimal>& instrPos,
-			       const date& processingDate,
-			       const Decimal& positionEntryPrice,
-			       const PercentNumber<Decimal>& stopAsPercent,
-			       const PercentNumber<Decimal>& targetAsPercent) 
-      {
-	this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
-				       positionEntryPrice, targetAsPercent);
-	this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
-				      positionEntryPrice, stopAsPercent);
-	// Ensure instrPos is not const if setRMultipleStop modifies it.
-        // InstrumentPosition::setRMultipleStop is const and uses mutable members
- instrPos.setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
-      }
+                               const InstrumentPosition<Decimal>& instrPos,
+                               const ptime& processingDateTime, // ptime from b1cb953
+                               const Decimal& positionEntryPrice,
+                               const PercentNumber<Decimal>& stopAsPercent,
+                               const PercentNumber<Decimal>& targetAsPercent)
+    {
+      this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
+                                     positionEntryPrice, targetAsPercent);
+      this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
+                                    positionEntryPrice, stopAsPercent);
+
+      instrPos.setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
+    }
 
     [[deprecated("Use of this addLongPositionBar no longer supported")]]
-    void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
-			    const date& processingDate)
+    void addLongPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/, // Parameter unused
+                            const date& /*processingDate*/) // Parameter unused
     {
-      //mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
+      // mMCPTAttributes.addLongPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
     }
 
     [[deprecated("Use of this addShortPositionBar no longer supported")]]
-    void addShortPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
-			     const date& processingDate)
+    void addShortPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
+                             const date& /*processingDate*/)
     {
-      //mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
+      // mMCPTAttributes.addShortPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
     }
 
     [[deprecated("Use of this addFlatPositionBar no longer supported")]]
-    void addFlatPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
-			    const date& processingDate)
+    void addFlatPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
+                            const date& /*processingDate*/)
     {
-      //mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
+      // mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
     }
-    
+
   private:
     PalPatterns mPalPatterns;
     std::vector<PatternEvaluator> mPatternEvaluators;
@@ -441,163 +473,146 @@ namespace mkc_timeseries
 
   /**
    * @brief Base class for price-action-based strategies using a single pattern.
-   *
-   * PalStrategy drives entry and exit logic for a single PriceActionLabPattern, evaluating
-   * pattern expressions bar-by-bar.
-   *
-   * @tparam Decimal Numeric type for prices and returns (e.g., double).
    */
   template <class Decimal> class PalStrategy : public BacktesterStrategy<Decimal>
-    {
-    public:
-      using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
+  {
+  public:
+    using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
-      /**
-     * @brief Construct a PalStrategy with a given pattern and portfolio.
-     * @param strategyName  Unique name for this strategy instance.
-     * @param pattern       Shared pointer to the PriceActionLabPattern to trade.
-     * @param portfolio     Shared portfolio of securities and cash.
-     * @param strategyOptions  Configuration options (risk, slippage, etc.).
-     */
     PalStrategy(const std::string& strategyName,
-		std::shared_ptr<PriceActionLabPattern> pattern,
-		std::shared_ptr<Portfolio<Decimal>> portfolio,
-		const StrategyOptions& strategyOptions)
+                std::shared_ptr<PriceActionLabPattern> pattern,
+                std::shared_ptr<Portfolio<Decimal>> portfolio,
+                const StrategyOptions& strategyOptions)
       : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
-	mPalPattern(pattern),
-	mMCPTAttributes()
-	{
-	  if (mPalPattern && mPalPattern->getPatternExpression())
-	    {
-	      // compile the real expression once
-	      mPatternEvaluator =
-		PALPatternInterpreter<Decimal>::compileEvaluator(mPalPattern->getPatternExpression().get());
-	    }
-	  else
-	    {
-	      // no pattern or no expression ⇒ never match
-              // Update lambda signature to match new PatternEvaluator
-	      mPatternEvaluator = [](Security<Decimal>* /*s*/, const date& /*evalDate*/)
-              { 
-                return false; 
-              };
-	    }
-	}
+        mPalPattern(pattern),
+        mMCPTAttributes()
+    {
+      if (!mPalPattern)
+	throw PalStrategyException("PalStrategy: mPalPattern.");
 
-      PalStrategy(const PalStrategy<Decimal>& rhs)
-	: BacktesterStrategy<Decimal>(rhs),
-	  mPalPattern(rhs.mPalPattern),
-	  mMCPTAttributes(rhs.mMCPTAttributes),
-	  mPatternEvaluator(rhs.mPatternEvaluator)
-      {}
-
-      PalStrategy<Decimal>&
-      operator=(const PalStrategy<Decimal>& rhs)
+      if (mPalPattern->getPatternExpression())
       {
-	if (this == &rhs)
-	{
-	  return *this;
-	}
-
-	BacktesterStrategy<Decimal>::operator=(rhs);
-	mPalPattern = rhs.mPalPattern;
-	mMCPTAttributes = rhs.mMCPTAttributes;
-	mPatternEvaluator = rhs.mPatternEvaluator;
-	return *this;
+        mPatternEvaluator =
+          PALPatternInterpreter<Decimal>::compileEvaluator(mPalPattern->getPatternExpression().get());
       }
-
-      virtual ~PalStrategy()
-      {}
-
-      virtual std::shared_ptr<PalStrategy<Decimal>>
-      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const = 0;
-
-      const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
+      else
       {
-	if (aSecurity.isEquitySecurity())
-	{
-	  return OneShare;
-	}
-	else
-	{
-	  return OneContract;
-	}
-      }
-
-      uint32_t getPatternMaxBarsBack() const
-      {
-        if (!mPalPattern)
+        // No pattern, so never match
+        mPatternEvaluator = [](Security<Decimal>*, const date& )
         {
-            throw PalStrategyException("PalStrategy: mPalPattern is null in getPatternMaxBarsBack.");
-        }
-	return mPalPattern->getMaxBarsBack();
+          return false;
+        };
       }
+    }
 
-      std::shared_ptr<PriceActionLabPattern> getPalPattern() const
-      {
-	return mPalPattern;
-      }
+    PalStrategy(const PalStrategy<Decimal>& rhs)
+      : BacktesterStrategy<Decimal>(rhs),
+        mPalPattern(rhs.mPalPattern),
+        mMCPTAttributes(rhs.mMCPTAttributes),
+        mPatternEvaluator(rhs.mPatternEvaluator)
+    {}
 
-      [[deprecated("Use of this getPositionDirectionVector will throw an exception")]]
-      std::vector<int> getPositionDirectionVector() const
+    PalStrategy<Decimal>&
+    operator=(const PalStrategy<Decimal>& rhs)
+    {
+      if (this == &rhs)
       {
-	throw PalStrategyException("getPositionDirectionVector is no longer supported");
-	// return mMCPTAttributes.getPositionDirection();
+        return *this;
       }
+      BacktesterStrategy<Decimal>::operator=(rhs);
+      mPalPattern = rhs.mPalPattern;
+      mMCPTAttributes = rhs.mMCPTAttributes;
+      mPatternEvaluator = rhs.mPatternEvaluator;
+      return *this;
+    }
 
-      [[deprecated("Use of this getPositionReturnsVector will throw an exception")]]
-      std::vector<Decimal> getPositionReturnsVector() const
-      {
-	throw PalStrategyException("getPositionReturnsVector is no longer supported");
-	// return mMCPTAttributes.getPositionReturns();
-      }
+    ~PalStrategy() override = default;
 
-      [[deprecated("Use of this numTradingOpportunities will throw an exception")]]
-      unsigned long numTradingOpportunities() const
-      {
-	throw PalStrategyException("numTradingOpportunities is no longer supported");
-	// return mMCPTAttributes.numTradingOpportunities();
-      }
+    virtual std::shared_ptr<PalStrategy<Decimal>>
+    clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const = 0;
 
-    protected:
-      const PatternEvaluator& getPatternEvaluator() const
+    const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
+    {
+      if (aSecurity.isEquitySecurity())
       {
-	return mPatternEvaluator;
+        return OneShare;
       }
-      
-      [[deprecated("Use of this addLongPositionBar no longer supported")]]
-      void addLongPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
-			    const date& processingDate)
+      else
       {
-	//mMCPTAttributes.addLongPositionBar (aSecurity, processingDate);
+        return OneContract;
       }
+    }
 
-      [[deprecated("Use of this addShortPositionBar no longer supported")]]
-      void addShortPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
-			    const date& processingDate)
-      {
-	//mMCPTAttributes.addShortPositionBar (aSecurity, processingDate);
-      }
+    uint32_t getPatternMaxBarsBack() const
+    {
+      return mPalPattern->getMaxBarsBack();
+    }
 
-      [[deprecated("Use of this addFlatPositionBar no longer supported")]]
-      void addFlatPositionBar(std::shared_ptr<Security<Decimal>> aSecurity,
-			    const date& processingDate)
-      {
-	//mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate);
-      }
+    std::shared_ptr<PriceActionLabPattern> getPalPattern() const
+    {
+      return mPalPattern;
+    }
 
-    private:
-      std::shared_ptr<PriceActionLabPattern> mPalPattern;
-      MCPTStrategyAttributes<Decimal> mMCPTAttributes;
-      PatternEvaluator mPatternEvaluator;
-      static TradingVolume OneShare;
-      static TradingVolume OneContract;
-    };
+    [[deprecated("Use of this getPositionDirectionVector will throw an exception")]] // Attribute from HEAD
+    std::vector<int> getPositionDirectionVector() const
+    {
+      throw PalStrategyException("getPositionDirectionVector is no longer supported"); // Message from HEAD
+      // return mMCPTAttributes.getPositionDirection(); // Original code commented out in HEAD
+    }
+
+    [[deprecated("Use of this getPositionReturnsVector will throw an exception")]] // Attribute from HEAD
+    std::vector<Decimal> getPositionReturnsVector() const
+    {
+      throw PalStrategyException("getPositionReturnsVector is no longer supported"); // Message from HEAD
+      // return mMCPTAttributes.getPositionReturns(); // Original code commented out in HEAD
+    }
+
+    [[deprecated("Use of this numTradingOpportunities will throw an exception")]] // Attribute from HEAD
+    unsigned long numTradingOpportunities() const
+    {
+      throw PalStrategyException("numTradingOpportunities is no longer supported"); // Message from HEAD
+      // return mMCPTAttributes.numTradingOpportunities(); // Original code commented out in HEAD
+    }
+
+  protected:
+    const PatternEvaluator& getPatternEvaluator() const
+    {
+      return mPatternEvaluator;
+    }
+
+    [[deprecated("Use of this addLongPositionBar no longer supported")]]
+    void addLongPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
+                            const date& /*processingDate*/)
+    {
+      //mMCPTAttributes.addLongPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
+    }
+
+    [[deprecated("Use of this addShortPositionBar no longer supported")]]
+    void addShortPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
+                             const date& /*processingDate*/)
+    {
+      //mMCPTAttributes.addShortPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
+    }
+
+    [[deprecated("Use of this addFlatPositionBar no longer supported")]]
+    void addFlatPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
+                            const date& /*processingDate*/)
+    {
+      //mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
+    }
+
+  private:
+    std::shared_ptr<PriceActionLabPattern> mPalPattern;
+    MCPTStrategyAttributes<Decimal> mMCPTAttributes;
+    PatternEvaluator mPatternEvaluator;
+    static TradingVolume OneShare;
+    static TradingVolume OneContract;
+  };
 
   template <class Decimal> TradingVolume PalStrategy<Decimal>::OneShare(1, TradingVolume::SHARES);
   template <class Decimal> TradingVolume PalStrategy<Decimal>::OneContract(1, TradingVolume::CONTRACTS);
 
-  /**
+    /**
    * @class PalLongStrategy
    * @brief Concrete PalStrategy for long‐only price‐action patterns.
    *
@@ -624,158 +639,117 @@ namespace mkc_timeseries
    * @tparam Decimal  Numeric type for price/return calculations (e.g., double).
    */
   template <class Decimal> class PalLongStrategy : public PalStrategy<Decimal>
-    {
-    public:
+  {
+  public:
+    // Bring base class date-based methods into scope
+
+    using BacktesterStrategy<Decimal>::eventEntryOrders;
+    using BacktesterStrategy<Decimal>::eventExitOrders;
+
     PalLongStrategy(const std::string& strategyName,
-		    std::shared_ptr<PriceActionLabPattern> pattern,
-		    std::shared_ptr<Portfolio<Decimal>> portfolio,
-		    const StrategyOptions& strategyOptions = defaultStrategyOptions)
+                    std::shared_ptr<PriceActionLabPattern> pattern,
+                    std::shared_ptr<Portfolio<Decimal>> portfolio,
+                    const StrategyOptions& strategyOptions = defaultStrategyOptions)
       : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions)
-	{}
+    {}
 
-      PalLongStrategy(const PalLongStrategy<Decimal>& rhs)
-	: PalStrategy<Decimal>(rhs)
-      {}
+    PalLongStrategy(const PalLongStrategy<Decimal>& rhs)
+      : PalStrategy<Decimal>(rhs)
+    {}
 
-      PalLongStrategy<Decimal>&
-      operator=(const PalLongStrategy<Decimal>& rhs)
+    PalLongStrategy<Decimal>& // Return Type& from HEAD
+    operator=(const PalLongStrategy<Decimal>& rhs)
+    {
+      if (this == &rhs)
       {
-	if (this == &rhs)
-	{
-	  return *this;
-	}
-
-	PalStrategy<Decimal>::operator=(rhs);
-
-	return *this;
+        return *this;
       }
+      PalStrategy<Decimal>::operator=(rhs);
+      return *this;
+    }
 
-      ~PalLongStrategy()
-      {}
-      
-      std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    ~PalLongStrategy() override = default;
+
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    {
+      return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
+                                                        this->getPalPattern(),
+                                                        portfolio,
+                                                        this->getStrategyOptions());
+    }
+
+    std::shared_ptr<PalStrategy<Decimal>>
+    clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const override
+    {
+      return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
+                                                        this->getPalPattern(),
+                                                        portfolio,
+                                                        this->getStrategyOptions());
+    }
+
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    cloneForBackTesting () const override
+    {
+      return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
+                                                        this->getPalPattern(),
+                                                        this->getPortfolio(),
+                                                        this->getStrategyOptions());
+    }
+
+    /**
+     * @brief Evaluate and submit exit orders for long positions on this bar.
+     */
+    void eventExitOrders (Security<Decimal>* aSecurity,
+                          const InstrumentPosition<Decimal>& instrPos,
+                          const ptime& processingDateTime) override
+    {
+      if (this->isLongPosition (aSecurity->getSymbol()))
       {
-	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
-						       this->getPalPattern(),
-						       portfolio,
-                                                       this->getStrategyOptions());
-      }
+        std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
 
-      std::shared_ptr<PalStrategy<Decimal>> 
-      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const override
+        Decimal target = pattern->getProfitTargetAsDecimal();
+        PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
+        Decimal stop = pattern->getStopLossAsDecimal();
+        PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
+        Decimal fillPrice = instrPos.getFillPrice();
+
+        this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
+                                      fillPrice, targetAsPercent);
+        this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
+                                     fillPrice, stopAsPercent);
+        instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+      }
+    }
+
+    /**
+     * @brief Evaluate and submit new long‐entry orders based on the pattern.
+     */
+    void eventEntryOrders (Security<Decimal>* aSecurity,
+                           const InstrumentPosition<Decimal>& instrPos,
+                           const ptime& processingDateTime) override
+    {
+      auto sym = aSecurity->getSymbol();
+
+      if (this->isFlatPosition (sym) || this->strategyCanPyramid(sym))
       {
-	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
-						       this->getPalPattern(),
-						       portfolio,
-                                                       this->getStrategyOptions());
+        std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
+
+        if (this->getSecurityBarNumber(sym) > pattern->getMaxBarsBack())
+        {
+          // PatternEvaluator uses date part of processingDateTime
+          if (this->getPatternEvaluator()(aSecurity, processingDateTime.date()))
+          {
+            Decimal targetValue = pattern->getProfitTargetAsDecimal();
+            Decimal stopValue = pattern->getStopLossAsDecimal();
+            this->EnterLongOnOpen (sym, processingDateTime, stopValue, targetValue);
+          }
+        }
       }
-
-      std::shared_ptr<BacktesterStrategy<Decimal>> 
-      cloneForBackTesting () const override
-      {
-	return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
-						       this->getPalPattern(),
-						       this->getPortfolio(),
-                                                       this->getStrategyOptions());
-      }
-
-      /**
-       * @brief Evaluate and submit exit orders for long positions on this bar.
-       *
-       * @details
-       * BackTester calls this before entries each bar.  For long trades, this method:
-       * - Retrieves the latest fill price for the current unit(s).
-       * - Issues a limit order at the configured profit‐target.
-       * - Issues a stop‐loss order at the configured stop level.
-       * - Updates the position’s R‐multiple for performance tracking.
-       *
-       * Because StrategyBroker first marks all open positions at the bar‐close,
-       * the exit fill’s P&L (which may occur intrabar) is added to the high‐resolution
-       * returns series via getAllHighResReturns, ensuring no P&L is lost.
-       *
-       * @param aSecurity       Security to exit.
-       * @param instrPos        InstrumentPosition for the current bar.
-       * @param processingDate  Date of this bar.
-       */
-      void eventExitOrders (Security<Decimal>* aSecurity,
-			    const InstrumentPosition<Decimal>& instrPos,
-			    const date& processingDate) override
-      {
-	if (this->isLongPosition (aSecurity->getSymbol()))
-	  {
-	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
-            if (!pattern)
-            {
-                throw PalStrategyException("PalLongStrategy::eventExitOrders: mPalPattern is null.");
-            }
-	    Decimal target = pattern->getProfitTargetAsDecimal();
-	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-
-	    Decimal stop = pattern->getStopLossAsDecimal();
-	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
-
-	    Decimal fillPrice = instrPos.getFillPrice();
-
-	    this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
-					  fillPrice, targetAsPercent);
-	    this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
-					  fillPrice, stopAsPercent);
-	    instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
-
-	    //this->addLongPositionBar (aSecurity, processingDate);
-	  }
-      }
-
-      /**
-       * @brief Evaluate and submit new long‐entry orders based on the pattern.
-       *
-       * @details
-       * BackTester invokes this immediately after exits each bar.  In a long strategy:
-       * - If the position is flat or pyramiding is allowed, and
-       * the bar count exceeds the pattern’s lookback,
-       * we evaluate the compiled pattern expression on the bar’s data.
-       * - If the pattern fires, we submit an `EnterLongOnOpen`.
-       *
-       * Ordering ensures that any exits freeing up capital/pyramiding slots happen
-       * before new entries.  All bar‐by‐bar P&L—including exit fills—will
-       * be captured in the unified high‐res series.
-       *
-       * @param aSecurity       Security to evaluate for entry.
-       * @param instrPos        InstrumentPosition for the current bar.
-       * @param processingDate  Date of this bar.
-       */
-
-      void eventEntryOrders (Security<Decimal>* aSecurity,
-			     const InstrumentPosition<Decimal>& instrPos,
-			     const date& processingDate) override
-      {
-	auto sym = aSecurity->getSymbol();
-
-	if (this->isFlatPosition (sym) || this->strategyCanPyramid(sym))
-	  {
-            if (!this->getPalPattern())
-            {
-                throw PalStrategyException("PalLongStrategy::eventEntryOrders: mPalPattern is null.");
-            }
-	    if (this->getSecurityBarNumber(sym) > 
-		this->getPalPattern()->getMaxBarsBack())
-	      {
-                // Pass processingDate instead of iterator 'it'
-		if (this->getPatternEvaluator()(aSecurity, processingDate))
-		  {
-		    // Default stop and target from pattern are used if not overridden
-		    Decimal target = this->getPalPattern()->getProfitTargetAsDecimal();
-	            Decimal stop = this->getPalPattern()->getStopLossAsDecimal();
-		    this->EnterLongOnOpen (sym, processingDate, stop, target);
-		  }
-		//this->addFlatPositionBar (aSecurity, processingDate);
-	      }
-	  }
-      }
+    }
   };
 
-  /**
+    /**
    * @class PalShortStrategy
    * @brief Concrete PalStrategy for short‐only price‐action patterns.
    *
@@ -797,156 +771,142 @@ namespace mkc_timeseries
    * - Fair comparison across strategies, since exit‐bar outcomes are never lost.
    *
    * @tparam Decimal  Numeric type for price/return calculations (e.g., double).
- */
+   */
   template <class Decimal> class PalShortStrategy : public PalStrategy<Decimal>
-    {
-    public:
+  {
+  public:
+    // Bring base class date-based methods into scope
+    using BacktesterStrategy<Decimal>::eventEntryOrders;
+    using BacktesterStrategy<Decimal>::eventExitOrders;
+
     PalShortStrategy(const std::string& strategyName,
-		     std::shared_ptr<PriceActionLabPattern> pattern,
-		     std::shared_ptr<Portfolio<Decimal>> portfolio,
-		     const StrategyOptions& strategyOptions = defaultStrategyOptions)
+                     std::shared_ptr<PriceActionLabPattern> pattern,
+                     std::shared_ptr<Portfolio<Decimal>> portfolio,
+                     const StrategyOptions& strategyOptions = defaultStrategyOptions)
       : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions)
-	{}
+    {}
 
-      PalShortStrategy(const PalShortStrategy<Decimal>& rhs)
-	: PalStrategy<Decimal>(rhs)
-      {}
+    PalShortStrategy(const PalShortStrategy<Decimal>& rhs)
+      : PalStrategy<Decimal>(rhs)
+    {}
 
-      PalShortStrategy<Decimal>&
-      operator=(const PalShortStrategy<Decimal>& rhs)
+    PalShortStrategy<Decimal>&
+    operator=(const PalShortStrategy<Decimal>& rhs)
+    {
+      if (this == &rhs)
       {
-	if (this == &rhs)
-	{
-	  return *this;
-	}
-
-	PalStrategy<Decimal>::operator=(rhs);
-
-	return *this;
+        return *this;
       }
+      PalStrategy<Decimal>::operator=(rhs);
+      return *this;
+    }
 
-      ~PalShortStrategy()
-      {}
+    ~PalShortStrategy() override = default;
 
-      std::shared_ptr<BacktesterStrategy<Decimal>> 
-      clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
-      {
-	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
-						       this->getPalPattern(),
-						       portfolio,
-                                                       this->getStrategyOptions());
-      }
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    {
+      return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
+                                                         this->getPalPattern(),
+                                                         portfolio,
+                                                         this->getStrategyOptions());
+    }
 
-      std::shared_ptr<PalStrategy<Decimal>> 
-      clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const override
-      {
-	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
-						       this->getPalPattern(),
-						       portfolio,
-                                                       this->getStrategyOptions());
-      }
+    std::shared_ptr<PalStrategy<Decimal>>
+    clone2 (std::shared_ptr<Portfolio<Decimal>> portfolio) const override
+    {
+      return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
+                                                         this->getPalPattern(),
+                                                         portfolio,
+                                                         this->getStrategyOptions());
+    }
 
-      std::shared_ptr<BacktesterStrategy<Decimal>> 
-      cloneForBackTesting () const override
-      {
-	return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
-						       this->getPalPattern(),
-						       this->getPortfolio(),
-                                                       this->getStrategyOptions());
-      }
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    cloneForBackTesting () const override
+    {
+      return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
+                                                         this->getPalPattern(),
+                                                         this->getPortfolio(),
+                                                         this->getStrategyOptions());
+    }
 
-      /**
-       * @brief Evaluate and submit exit orders for short positions on this bar.
-       *
-       * @details
-       * Called before entry each bar.  For short trades, submits:
-       * - A limit‐to‐cover at the profit‐target price.
-       * - A stop‐to‐cover at the stop‐loss price.
-       * - Records the exit bar’s P&L in the high‐res series.
-       *
-       * @param aSecurity       Security to exit.
-       * @param instrPos        InstrumentPosition for the current bar.
-       * @param processingDate  Date of this bar.
+    /**
+     * @brief Evaluate and submit exit orders for short positions on this bar.
+     *
+     * @details
+     * Called before entry each bar.  For short trades, submits:
+     * - A limit‐to‐cover at the profit‐target price.
+     * - A stop‐to‐cover at the stop‐loss price.
+     * - Records the exit bar’s P&L in the high‐res series.
+     *
+     * @param aSecurity			Security to exit.
+     * @param instrPos			InstrumentPosition for the current bar.
+     * @param processingDateTime	Date/Time of this bar.
        */
-      void eventExitOrders (Security<Decimal>* aSecurity,
-			    const InstrumentPosition<Decimal>& instrPos,
-			    const date& processingDate) override
+
+    void eventExitOrders (Security<Decimal>* aSecurity,
+                          const InstrumentPosition<Decimal>& instrPos,
+                          const ptime& processingDateTime) override
+    {
+      if (this->isShortPosition (aSecurity->getSymbol()))
       {
-	if (this->isShortPosition (aSecurity->getSymbol()))
-	  {
-	    std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
-            if (!pattern)
-            {
-                throw PalStrategyException("PalShortStrategy::eventExitOrders: mPalPattern is null.");
-            }
-	    Decimal target = pattern->getProfitTargetAsDecimal();
+        std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
 
-	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
+        Decimal target = pattern->getProfitTargetAsDecimal();
+        PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
+        Decimal stop = pattern->getStopLossAsDecimal();
+        PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
+        Decimal fillPrice = instrPos.getFillPrice();
 
-	    Decimal stop = pattern->getStopLossAsDecimal();
-
-	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
-
-	    Decimal fillPrice = instrPos.getFillPrice();
-
-	    this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDate,
-					  fillPrice, targetAsPercent);
-	    this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
-					  fillPrice, stopAsPercent);
-	    instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
-	    //this->addShortPositionBar (aSecurity, processingDate);
-	  }
+        this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
+                                       fillPrice, targetAsPercent);
+        this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
+                                      fillPrice, stopAsPercent);
+        instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
       }
+    }
 
-      /**
-       * @brief Evaluate and submit new short‐entry orders based on the pattern.
-       *
-       * @details
-       * Called immediately after exits.  Checks if flat/pyramiding allowed,
-       * tests the pattern on this bar, and issues `EnterShortOnOpen` if triggered.
-       *
-       * @param aSecurity       Security to evaluate for entry.
-       * @param instrPos        InstrumentPosition for the current bar.
-       * @param processingDate  Date of this bar.
-       */
-      void eventEntryOrders (Security<Decimal>* aSecurity,
-			     const InstrumentPosition<Decimal>& instrPos,
-			     const date& processingDate) override
+    /**
+     * @brief Evaluate and submit new short‐entry orders based on the pattern.
+     *
+     * @details
+     * Called immediately after exits.  Checks if flat/pyramiding allowed,
+     * tests the pattern on this bar, and issues `EnterShortOnOpen` if triggered.
+     *
+     * @param aSecurity			Security to evaluate for entry.
+     * @param instrPos        		InstrumentPosition for the current bar.
+     * @param processingDateTime	Date of this bar.
+     */
+    void eventEntryOrders (Security<Decimal>* aSecurity,
+                           const InstrumentPosition<Decimal>& instrPos,
+                           const ptime& processingDateTime) override
+    {
+      auto sym = aSecurity->getSymbol();
+      if (this->isFlatPosition (sym) || this->strategyCanPyramid(sym))
       {
-	auto sym = aSecurity->getSymbol();
-	if (this->isFlatPosition (sym) || this->strategyCanPyramid(sym))
-	  {
-            if (!this->getPalPattern())
-            {
-                throw PalStrategyException("PalShortStrategy::eventEntryOrders: mPalPattern is null.");
-            }
-	    if (this->getSecurityBarNumber(sym) > 
-		this->getPalPattern()->getMaxBarsBack())
-	      {
-                // Pass processingDate instead of iterator 'it'
-		if (this->getPatternEvaluator()(aSecurity, processingDate))
-		  {
-		    // Default stop and target from pattern are used if not overridden
-		    Decimal target = this->getPalPattern()->getProfitTargetAsDecimal();
-	            Decimal stop = this->getPalPattern()->getStopLossAsDecimal();
-		    this->EnterShortOnOpen (sym, processingDate, stop, target);
-		  }
-		//this->addFlatPositionBar (aSecurity, processingDate);
-	      }
-	  }
+        std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
+
+        if (this->getSecurityBarNumber(sym) > pattern->getMaxBarsBack())
+        {
+          // PatternEvaluator uses date part of processingDateTime
+          if (this->getPatternEvaluator()(aSecurity, processingDateTime.date()))
+          {
+            // Orders placed with ptime. Explicit stop/target from HEAD
+            Decimal targetValue = pattern->getProfitTargetAsDecimal();
+            Decimal stopValue = pattern->getStopLossAsDecimal();
+            this->EnterShortOnOpen (sym, processingDateTime, stopValue, targetValue);
+          }
+        }
       }
+    }
   };
 
   template<typename Decimal>
   std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
-							const std::shared_ptr<PriceActionLabPattern>& pattern,
-							const std::shared_ptr<Portfolio<Decimal>>& portfolio,
+                                                        const std::shared_ptr<PriceActionLabPattern>& pattern,
+                                                        const std::shared_ptr<Portfolio<Decimal>>& portfolio,
                                                         const StrategyOptions& strategyOptions = defaultStrategyOptions)
   {
-    if (!pattern)
-    {
-        throw PalStrategyException("makePalStrategy: PriceActionLabPattern cannot be null.");
-    }
     if (pattern->isLongPattern())
     {
       return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio, strategyOptions);

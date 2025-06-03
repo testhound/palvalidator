@@ -18,6 +18,7 @@
 namespace mkc_timeseries
 {
   using boost::gregorian::date;
+  using boost::posix_time::ptime;
 
   class StrategyOptions
   {
@@ -131,9 +132,22 @@ namespace mkc_timeseries
        * @param instrPos        Current multi‐unit InstrumentPosition for that security.
        * @param processingDate  Date (or timestamp) of this bar.
        */
+      void eventExitOrders (Security<Decimal>* aSecurity,
+       const InstrumentPosition<Decimal>& instrPos,
+       const date& processingDate)
+      {
+        eventExitOrders(aSecurity, instrPos, ptime(processingDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Called once per bar to submit exit orders using ptime (pure virtual).
+       * @param aSecurity         Pointer to the security being evaluated.
+       * @param instrPos          Current multi‐unit InstrumentPosition for that security.
+       * @param processingDateTime DateTime of this bar.
+       */
       virtual void eventExitOrders (Security<Decimal>* aSecurity,
-				    const InstrumentPosition<Decimal>& instrPos,
-				    const date& processingDate) = 0;
+        const InstrumentPosition<Decimal>& instrPos,
+        const ptime& processingDateTime) = 0;
 
       /**
        * @brief Called once per bar to submit new entry orders based on strategy signals.
@@ -152,9 +166,22 @@ namespace mkc_timeseries
        * @param instrPos        Current multi‐unit InstrumentPosition for that security.
        * @param processingDate  Date (or timestamp) of this bar.
        */
+      void eventEntryOrders (Security<Decimal>* aSecurity,
+        const InstrumentPosition<Decimal>& instrPos,
+        const date& processingDate)
+      {
+        eventEntryOrders(aSecurity, instrPos, ptime(processingDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Called once per bar to submit new entry orders using ptime (pure virtual).
+       * @param aSecurity         Pointer to the security being evaluated.
+       * @param instrPos          Current multi‐unit InstrumentPosition for that security.
+       * @param processingDateTime DateTime of this bar.
+       */
       virtual void eventEntryOrders (Security<Decimal>* aSecurity,
 				     const InstrumentPosition<Decimal>& instrPos,
-				     const date& processingDate) = 0;
+				     const ptime& processingDateTime) = 0;
 
        /**
 	* @brief Determine the order size (shares/contracts) for aSecurity.
@@ -261,12 +288,23 @@ namespace mkc_timeseries
 	* @param orderDate      Date when the exit is placed.
 	*/
       void ExitAllPositions(const std::string& tradingSymbol,
-			    const date& orderDate)
+       const date& orderDate)
+      {
+        ExitAllPositions(tradingSymbol, ptime(orderDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Exit all units (long or short) at open price on orderDateTime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       */
+      void ExitAllPositions(const std::string& tradingSymbol,
+       const ptime& orderDateTime)
       {
 	if (isLongPosition(tradingSymbol))
-	  ExitLongAllUnitsAtOpen(tradingSymbol, orderDate);
+	  ExitLongAllUnitsAtOpen(tradingSymbol, orderDateTime);
 	else if (isShortPosition(tradingSymbol))
-	  ExitShortAllUnitsAtOpen(tradingSymbol, orderDate);
+	  ExitShortAllUnitsAtOpen(tradingSymbol, orderDateTime);
       }
 
       /**
@@ -276,16 +314,31 @@ namespace mkc_timeseries
        * @param stopLoss       Optional stop‐loss price.
        * @param profitTarget   Optional profit‐target price.
        */
-      void EnterLongOnOpen(const std::string& tradingSymbol, 	
-			   const date& orderDate,
+      void EnterLongOnOpen(const std::string& tradingSymbol,
+      const date& orderDate,
+      const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+      const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      {
+        EnterLongOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopLoss, profitTarget);
+      }
+
+      /**
+       * @brief Submit a market‐on‐open entry order (long side) using ptime.
+       * @param tradingSymbol    Ticker to enter.
+       * @param orderDateTime    DateTime of the entry bar.
+       * @param stopLoss         Optional stop‐loss price.
+       * @param profitTarget     Optional profit‐target price.
+       */
+      void EnterLongOnOpen(const std::string& tradingSymbol,
+			   const ptime& orderDateTime,
 			   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
 			   const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
       {
 	auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
-	mBroker.EnterLongOnOpen (tradingSymbol, orderDate, 
+	mBroker.EnterLongOnOpen (tradingSymbol, orderDateTime,
 				 getSizeForOrder(*aSecurity),
 				 stopLoss,
-				 profitTarget); 
+				 profitTarget);
       }
 
       /**
@@ -295,16 +348,31 @@ namespace mkc_timeseries
        * @param stopLoss       Optional stop‐loss price.
        * @param profitTarget   Optional profit‐target price.
        */
-      void EnterShortOnOpen(const std::string& tradingSymbol,	
-			    const date& orderDate,
-			    const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			    const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      void EnterShortOnOpen(const std::string& tradingSymbol,
+       const date& orderDate,
+       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+       const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      {
+        EnterShortOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopLoss, profitTarget);
+      }
+
+      /**
+       * @brief Submit a market‐on‐open entry order (short side) using ptime.
+       * @param tradingSymbol    Ticker to enter short.
+       * @param orderDateTime    DateTime of the entry bar.
+       * @param stopLoss         Optional stop‐loss price.
+       * @param profitTarget     Optional profit‐target price.
+       */
+      void EnterShortOnOpen(const std::string& tradingSymbol,
+       const ptime& orderDateTime,
+       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+       const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
       {
 	auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
-	mBroker.EnterShortOnOpen (tradingSymbol, orderDate, 
+	mBroker.EnterShortOnOpen (tradingSymbol, orderDateTime,
 				  getSizeForOrder(*aSecurity),
 				  stopLoss,
-				  profitTarget); 
+				  profitTarget);
       }
 
       /**
@@ -313,9 +381,20 @@ namespace mkc_timeseries
        * @param orderDate      Date when the exit is placed.
        */
       void ExitLongAllUnitsAtOpen(const std::string& tradingSymbol,
-				  const date& orderDate)
+      const date& orderDate)
       {
-	mBroker.ExitLongAllUnitsOnOpen(tradingSymbol, orderDate);
+	ExitLongAllUnitsAtOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Exit all long units at the open of orderDateTime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       */
+      void ExitLongAllUnitsAtOpen(const std::string& tradingSymbol,
+      const ptime& orderDateTime)
+      {
+	mBroker.ExitLongAllUnitsOnOpen(tradingSymbol, orderDateTime);
       }
 
       /**
@@ -326,19 +405,51 @@ namespace mkc_timeseries
        * @param percentNum     PercentNumber to compute the limit from base.
        */
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& limitPrice)
+				   const date& orderDate,
+				   const Decimal& limitPrice)
       {
-	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, limitPrice);
+	ExitLongAllUnitsAtLimit(tradingSymbol,
+				ptime(orderDate, getDefaultBarTime()),
+				limitPrice);
       }
 
       void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& limitBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
+				   const date& orderDate,
+				   const Decimal& limitBasePrice,
+				   const PercentNumber<Decimal>& percentNum)
       {
-	//std::cout << "BacktesterStrategy::ExitLongAllUnitsAtLimit - limitBasePrice: " << limitBasePrice << " percentNum = " << percentNum.getAsPercent() << std::endl << std::endl;
-	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDate, 
+	ExitLongAllUnitsAtLimit(tradingSymbol,
+				ptime(orderDate, getDefaultBarTime()),
+				limitBasePrice,
+				percentNum);
+      }
+
+      /**
+       * @brief Exit all long units at a hard limit price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param limitPrice       Absolute price to exit at.
+       */
+      void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
+				   const ptime& orderDateTime,
+				   const Decimal& limitPrice)
+      {
+	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDateTime, limitPrice);
+      }
+
+      /**
+       * @brief Exit all long units at a percent-based limit price using ptime.
+       * @param tradingSymbol      Ticker to exit.
+       * @param orderDateTime      DateTime when the exit is placed.
+       * @param limitBasePrice     Base price for percent‐based exit.
+       * @param percentNum         PercentNumber to compute the limit from base.
+       */
+      void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
+				   const ptime& orderDateTime,
+				   const Decimal& limitBasePrice,
+				   const PercentNumber<Decimal>& percentNum)
+      {
+	mBroker.ExitLongAllUnitsAtLimit (tradingSymbol, orderDateTime,
 					 limitBasePrice, percentNum);
       }
 
@@ -349,7 +460,18 @@ namespace mkc_timeseries
       void ExitShortAllUnitsAtOpen(const std::string& tradingSymbol,
 				   const date& orderDate)
       {
-	mBroker.ExitShortAllUnitsOnOpen(tradingSymbol, orderDate);
+	ExitShortAllUnitsAtOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Exit all short units at the open of orderDateTime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       */
+      void ExitShortAllUnitsAtOpen(const std::string& tradingSymbol,
+				   const ptime& orderDateTime)
+      {
+	mBroker.ExitShortAllUnitsOnOpen(tradingSymbol, orderDateTime);
       }
 
       /**
@@ -357,19 +479,49 @@ namespace mkc_timeseries
        * @overload
        */
       void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
-				  const date& orderDate,
-				  const Decimal& limitPrice)
+				    const date& orderDate,
+				    const Decimal& limitPrice)
       {
-	mBroker.ExitShortAllUnitsAtLimit (tradingSymbol, orderDate, limitPrice);
+	ExitShortAllUnitsAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitPrice);
       }
 
       void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& limitBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
+				    const date& orderDate,
+				    const Decimal& limitBasePrice,
+				    const PercentNumber<Decimal>& percentNum)
       {
-	mBroker.ExitShortAllUnitsAtLimit (tradingSymbol, orderDate, 
-					 limitBasePrice, percentNum);
+	ExitShortAllUnitsAtLimit(tradingSymbol,
+				 ptime(orderDate, getDefaultBarTime()),
+				 limitBasePrice, percentNum);
+      }
+
+      /**
+       * @brief Exit all short units at a hard limit price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param limitPrice       Absolute price to exit at.
+       */
+      void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
+				    const ptime& orderDateTime,
+				    const Decimal& limitPrice)
+      {
+	mBroker.ExitShortAllUnitsAtLimit (tradingSymbol, orderDateTime, limitPrice);
+      }
+
+      /**
+       * @brief Exit all short units at a percent-based limit price using ptime.
+       * @param tradingSymbol      Ticker to exit.
+       * @param orderDateTime      DateTime when the exit is placed.
+       * @param limitBasePrice     Base price for percent‐based exit.
+       * @param percentNum         PercentNumber to compute the limit from base.
+       */
+      void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
+				    const ptime& orderDateTime,
+				    const Decimal& limitBasePrice,
+				    const PercentNumber<Decimal>& percentNum)
+      {
+	mBroker.ExitShortAllUnitsAtLimit (tradingSymbol, orderDateTime,
+					  limitBasePrice, percentNum);
       }
 
       /**
@@ -377,10 +529,12 @@ namespace mkc_timeseries
        * @overload
        */
       void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
-				const date& orderDate,
-				const Decimal& stopPrice)
+				  const date& orderDate,
+				  const Decimal& stopPrice)
       {
-	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDate, stopPrice);
+	ExitLongAllUnitsAtStop(tradingSymbol,
+			       ptime(orderDate, getDefaultBarTime()),
+			       stopPrice);
       }
 
       /**
@@ -388,12 +542,43 @@ namespace mkc_timeseries
        * @overload
        */
       void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
-				const date& orderDate,
-				const Decimal& stopBasePrice,
-				const PercentNumber<Decimal>& percentNum)
+				  const date& orderDate,
+				  const Decimal& stopBasePrice,
+				  const PercentNumber<Decimal>& percentNum)
       {
-	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDate, 
-					 stopBasePrice, percentNum);
+	ExitLongAllUnitsAtStop(tradingSymbol,
+			       ptime(orderDate, getDefaultBarTime()),
+			       stopBasePrice,
+			       percentNum);
+      }
+
+      /**
+       * @brief Exit long positions at a stop‐loss price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopPrice        Absolute stop price.
+       */
+      void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
+				  const ptime& orderDateTime,
+				  const Decimal& stopPrice)
+      {
+	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDateTime, stopPrice);
+      }
+
+      /**
+       * @brief Exit long positions at a percent-based stop‐loss price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopBasePrice    Base price for percent‐based stop.
+       * @param percentNum       PercentNumber to compute the stop from base.
+       */
+      void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
+				  const ptime& orderDateTime,
+				  const Decimal& stopBasePrice,
+				  const PercentNumber<Decimal>& percentNum)
+      {
+	mBroker.ExitLongAllUnitsAtStop (tradingSymbol, orderDateTime,
+					stopBasePrice, percentNum);
       }
 
       /**
@@ -401,18 +586,48 @@ namespace mkc_timeseries
        * @overload
        */
       void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& stopPrice)
+				   const date& orderDate,
+				   const Decimal& stopPrice)
       {
-	mBroker.ExitShortAllUnitsAtStop (tradingSymbol, orderDate, stopPrice);
+	ExitShortAllUnitsAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopPrice);
       }
 
       void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& stopBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
+				   const date& orderDate,
+				   const Decimal& stopBasePrice,
+				   const PercentNumber<Decimal>& percentNum)
       {
-	mBroker.ExitShortAllUnitsAtStop (tradingSymbol, orderDate, 
+	ExitShortAllUnitsAtStop(tradingSymbol,
+				ptime(orderDate, getDefaultBarTime()),
+				stopBasePrice, percentNum);
+      }
+
+      /**
+       * @brief Exit short positions at a stop‐loss price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopPrice        Absolute stop price.
+       */
+      void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
+				   const ptime& orderDateTime,
+				   const Decimal& stopPrice)
+      {
+	mBroker.ExitShortAllUnitsAtStop (tradingSymbol, orderDateTime, stopPrice);
+      }
+
+      /**
+       * @brief Exit short positions at a percent-based stop‐loss price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopBasePrice    Base price for percent‐based stop.
+       * @param percentNum       PercentNumber to compute the stop from base.
+       */
+      void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
+				   const ptime& orderDateTime,
+				   const Decimal& stopBasePrice,
+				   const PercentNumber<Decimal>& percentNum)
+      {
+	mBroker.ExitShortAllUnitsAtStop (tradingSymbol, orderDateTime,
 					 stopBasePrice, percentNum);
       }
 
@@ -421,9 +636,19 @@ namespace mkc_timeseries
 	* @param processingDate  Current bar date.
 	* @see StrategyBroker::ProcessPendingOrders
 	*/
-      void eventProcessPendingOrders(const date& processingDate) 
+      void eventProcessPendingOrders(const date& processingDate)
       {
-	mBroker.ProcessPendingOrders (processingDate);
+	eventProcessPendingOrders(ptime(processingDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Drive the broker's mark‐to‐market and fill logic for this bar using ptime.
+       * @param processingDateTime  Current bar datetime.
+       * @see StrategyBroker::ProcessPendingOrders
+       */
+      void eventProcessPendingOrders(const ptime& processingDateTime)
+      {
+	mBroker.ProcessPendingOrders (processingDateTime);
       }
 
       /**
@@ -475,15 +700,20 @@ namespace mkc_timeseries
       bool doesSecurityHaveTradingData (const Security<Decimal>& aSecurity,
      const date& processingDate)
       {
-        try
-        {
-          aSecurity.getTimeSeriesEntry(processingDate);
-          return true;
-        }
-        catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
-        {
-          return false;
-        }
+	return doesSecurityHaveTradingData(aSecurity,
+					   ptime(processingDate, getDefaultBarTime()));
+      }
+
+      /**
+       * @brief Check if aSecurity has data at processingDateTime.
+       * @param aSecurity          Security to probe.
+       * @param processingDateTime DateTime to test.
+       * @return True if time series contains an entry for processingDateTime.
+       */
+      bool doesSecurityHaveTradingData (const Security<Decimal>& aSecurity,
+     const ptime& processingDateTime)
+      {
+ return aSecurity.isDateFound(processingDateTime);
       }
 
       const StrategyBroker<Decimal>& getStrategyBroker() const

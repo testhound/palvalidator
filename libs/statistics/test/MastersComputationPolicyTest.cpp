@@ -142,7 +142,20 @@ namespace {
   class DummyPalStrategy : public PalStrategy<DecimalType> {
   public:
     DummyPalStrategy(std::shared_ptr<Portfolio<DecimalType>> portfolio)
-      : PalStrategy<DecimalType>("dummy", nullptr, portfolio, StrategyOptions(false, 0)) {}
+      : PalStrategy<DecimalType>("dummy", getDummyPattern(), portfolio, StrategyOptions(false, 0)) {}
+
+    static std::shared_ptr<PriceActionLabPattern> getDummyPattern() {
+      static std::shared_ptr<PriceActionLabPattern> dummyPattern;
+      if (!dummyPattern) {
+        // Get a real pattern from the test utility
+        PriceActionLabSystem* patterns = getRandomPricePatterns();
+        if (patterns && patterns->getNumPatterns() > 0) {
+          auto it = patterns->allPatternsBegin();
+          dummyPattern = *it;
+        }
+      }
+      return dummyPattern;
+    }
 
     std::shared_ptr<PalStrategy<DecimalType>> clone2(std::shared_ptr<Portfolio<DecimalType>> portfolio) const override {
       return std::make_shared<DummyPalStrategy>(portfolio);
@@ -156,8 +169,8 @@ namespace {
       return std::make_shared<DummyPalStrategy>(this->getPortfolio());
     }
 
-    void eventExitOrders(Security<DecimalType> *, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
-    void eventEntryOrders(Security<DecimalType> *, const InstrumentPosition<DecimalType>&, const boost::gregorian::date&) override {}
+    void eventExitOrders(Security<DecimalType> *, const InstrumentPosition<DecimalType>&, const boost::posix_time::ptime&) override {}
+    void eventEntryOrders(Security<DecimalType> *, const InstrumentPosition<DecimalType>&, const boost::posix_time::ptime&) override {}
   };
 
   std::shared_ptr<Security<DecimalType>> createDummySecurity() {
