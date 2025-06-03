@@ -46,37 +46,24 @@ PalParseDriver::PalParseDriver(const std::string &fileName)
  * This method opens the file, sets up the scanner to read from this file stream,
  * and then invokes the `parse()` method of the Bison-generated parser.
  *
- * @return True if the parser successfully parsed the file (parser returns 0),
- *         false otherwise.
+ * @return 0 if the parser successfully parsed the file, non-zero otherwise
+ *         (following Bison convention: 0=success, 1=syntax error, 2=memory exhaustion).
  * @note The method uses `std::ifstream` to open and read the file.
  *       The scanner's input stream is switched to this file.
- *       The result of `mParser.parse()` (typically 0 for success from Bison)
- *       is implicitly converted to bool (0 becomes false, non-0 becomes true).
- *       To match typical success (true)/failure (false) boolean logic, one might expect `return (res == 0);`
- *       However, the current implementation `return (res);` means a non-zero parser result (error)
- *       is interpreted as true, and a zero parser result (success) is interpreted as false.
- *       This might be unconventional and should be noted.
- *       For the purpose of this documentation, we describe the existing behavior.
+ *       Returns the raw result from `mParser.parse()` which follows Bison conventions.
  */
-bool PalParseDriver::Parse()
+int PalParseDriver::Parse()
 {
   std::ifstream in(mFileName.c_str()); // Open the input file
   if (!in.good()) {
-      // Consider throwing an exception or logging an error if file can't be opened
-      return false; // Indicate failure if file cannot be opened
+      // Return non-zero to indicate failure if file cannot be opened
+      return 1; // Use 1 to indicate file open error (similar to syntax error)
   }
   mScanner.switch_streams (&in, NULL); // Switch scanner to read from this file stream
   int res = mParser.parse(); // Invoke the Bison-generated parser
   
-  // The return value interpretation:
-  // Bison parser returns 0 on success, non-zero on error.
-  // `return (res);` means:
-  //   - if res is 0 (success), returns false.
-  //   - if res is non-0 (error), returns true.
-  // This is likely an error in logic if true is meant to indicate parse success.
-  // Assuming the intent is to return true on successful parse:
-  // return (res == 0);
-  return (res == 0); // Corrected logic: return true if parser result is 0 (success)
+  // Return the raw Bison result: 0=success, 1=syntax error, 2=memory exhaustion
+  return res;
 }
 
 /**
