@@ -60,7 +60,7 @@ namespace mkc_timeseries
                                    std::shared_ptr<PriceActionLabPattern> pattern,
                                    Security<Decimal>* aSecurity,
                                    const ptime& processingDateTime) const = 0;
-    // Adding virtual destructor for proper cleanup in derived classes (from HEAD)
+
     virtual ~EntryOrderConditions() = default;
   };
 
