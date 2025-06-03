@@ -391,8 +391,8 @@ namespace mkc_timeseries
 	this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 				     positionEntryPrice, stopAsPercent);
 	// Ensure instrPos is not const if setRMultipleStop modifies it.
-        // Assuming InstrumentPosition allows modification here.
-	const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
+        // InstrumentPosition::setRMultipleStop is const and uses mutable members
+ instrPos.setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
       }
 
     void eventExitShortOrders (Security<Decimal>* aSecurity,
@@ -407,8 +407,8 @@ namespace mkc_timeseries
 	this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 				      positionEntryPrice, stopAsPercent);
 	// Ensure instrPos is not const if setRMultipleStop modifies it.
-        // Assuming InstrumentPosition allows modification here.
-	const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
+        // InstrumentPosition::setRMultipleStop is const and uses mutable members
+ instrPos.setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
       }
 
     [[deprecated("Use of this addLongPositionBar no longer supported")]]
@@ -721,7 +721,7 @@ namespace mkc_timeseries
 					  fillPrice, targetAsPercent);
 	    this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
-	    const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+	    instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 
 	    //this->addLongPositionBar (aSecurity, processingDate);
 	  }
@@ -893,7 +893,7 @@ namespace mkc_timeseries
 					  fillPrice, targetAsPercent);
 	    this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDate,
 					  fillPrice, stopAsPercent);
-	    const_cast<InstrumentPosition<Decimal>&>(instrPos).setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+	    instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
 	    //this->addShortPositionBar (aSecurity, processingDate);
 	  }
       }
