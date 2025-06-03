@@ -756,68 +756,27 @@ private:
   unsigned long long mComputedHash;
 };
 
-/**
+/*
  * @brief Represents a reference to the Momersion Filter indicator of a price bar.
+ *
+ * This class is currently commented out/disabled.
  */
 /*
 class MomersionFilterBarReference : public PriceBarReference
 {
 public:
-  /**
-   * @brief Constructs a MomersionFilterBarReference object.
-   * @param barOffset The bar offset.
-   * @param period The period for the Momersion Filter.
-   */
   MomersionFilterBarReference(unsigned int barOffset, unsigned int period);
-  /**
-   * @brief Copy constructor.
-   * @param rhs The MomersionFilterBarReference object to copy.
-   */
   MomersionFilterBarReference (const MomersionFilterBarReference& rhs);
-  /**
-   * @brief Assignment operator.
-   * @param rhs The MomersionFilterBarReference object to assign.
-   * @return A reference to this MomersionFilterBarReference object.
-   */
   MomersionFilterBarReference& operator=(const MomersionFilterBarReference &rhs);
-  /**
-   * @brief Destructor.
-   */
   ~MomersionFilterBarReference();
-  /**
-   * @brief Accepts a PalCodeGenVisitor.
-   * @param v The visitor.
-   */
   void accept (PalCodeGenVisitor &v);
-  /**
-   * @brief Calculates the hash code for this object.
-   * @return The hash code.
-   */
   unsigned long long hashCode();
-  /**
-   * @brief Gets the reference type.
-   * @return The reference type (MOMERSIONFILTER).
-   */
   PriceBarReference::ReferenceType getReferenceType();
-  /**
-   * @brief Gets the number of extra bars needed for this reference.
-   * @return The number of extra bars needed.
-   */
   int extraBarsNeeded() const;
-  /**
-   * @brief Gets the period for the Momersion Filter.
-   * @return The period.
-   */
   unsigned int getMomersionPeriod() const;
   
 private:
-  /**
-   * @brief Cached hash code.
-   */
   unsigned long long mComputedHash;
-  /**
-   * @brief Period for the Momersion Filter.
-   */
   unsigned int mPeriod;
 };
 */
