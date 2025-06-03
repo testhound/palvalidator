@@ -148,7 +148,20 @@ namespace {
   class DummyPalStrategy : public PalStrategy<DecimalType> {
   public:
     DummyPalStrategy(std::shared_ptr<Portfolio<DecimalType>> p)
-      : PalStrategy<DecimalType>("dummy", nullptr, p, StrategyOptions(false,0)) {}
+      : PalStrategy<DecimalType>("dummy", getDummyPattern(), p, StrategyOptions(false,0)) {}
+
+    static std::shared_ptr<PriceActionLabPattern> getDummyPattern() {
+      static std::shared_ptr<PriceActionLabPattern> dummyPattern;
+      if (!dummyPattern) {
+        // Get a real pattern from the test utility
+        PriceActionLabSystem* patterns = getRandomPricePatterns();
+        if (patterns && patterns->getNumPatterns() > 0) {
+          auto it = patterns->allPatternsBegin();
+          dummyPattern = *it;
+        }
+      }
+      return dummyPattern;
+    }
     std::shared_ptr<PalStrategy<DecimalType>> clone2(std::shared_ptr<Portfolio<DecimalType>> p) const override {
       return std::make_shared<DummyPalStrategy>(p);
     }
