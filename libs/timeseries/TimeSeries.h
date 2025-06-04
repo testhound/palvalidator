@@ -314,7 +314,7 @@ namespace mkc_timeseries
       auto result = mSortedTimeSeries.emplace(entry->getDateTime(), entry);
       if (!result.second)
       {
-	throw std::domain_error("NumericTimeSeries:addEntry: entry for time already exists");
+ throw std::domain_error("NumericTimeSeries:addEntry: entry for time already exists: " + boost::posix_time::to_simple_string(entry->getDateTime()));
       }
 
       mMapAndArrayInSync = false;
