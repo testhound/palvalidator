@@ -52,18 +52,18 @@ namespace mkc_searchalgo
         endDate = oosDates.getLastDate();
 
       for (; it != mSeries->endRandomAccess(); it++)
-      {       
+      {
           //Skip if not the sought dates.
-          const auto& seriesDate = mSeries->getDateValue(it, 0);
+          const auto& seriesDate = it->getDateValue();
           if (seriesDate < startDate || seriesDate > endDate)
             continue;
 
-          const Decimal& cOpen = mSeries->getOpenValue (it, 0);
-          const Decimal& cHigh = mSeries->getHighValue (it, 0);
-          const Decimal& cLow = mSeries->getLowValue (it, 0);
-          const Decimal& cClose = mSeries->getCloseValue (it, 0);
+          const Decimal& cOpen = it->getOpenValue();
+          const Decimal& cHigh = it->getHighValue();
+          const Decimal& cLow = it->getLowValue();
+          const Decimal& cClose = it->getCloseValue();
 
-          //auto dt = mSeries->getDateValue(it, 0);
+          //auto dt = it->getDateValue();
           //std::cout << dt << " OHLC: " << cOpen << "," << cHigh << "," << cLow << "," << cClose << std::endl;
 
           mComparisonGenerator->addNewLastBar(cOpen, cHigh, cLow, cClose);

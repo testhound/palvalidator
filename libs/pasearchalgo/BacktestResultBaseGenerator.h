@@ -115,7 +115,7 @@ namespace mkc_searchalgo {
 
       for (; it != mSeries->endRandomAccess(); it++)
       {
-          auto orderDate = mSeries->getDateValue(it, 0);
+          auto orderDate = it->getDateValue();
           i++;
           if (i > 1)  //TimeSeries exception on first bar
             {
@@ -165,7 +165,7 @@ namespace mkc_searchalgo {
       size_t  iCounter = 0; //offsetting first bar problem
       for (auto it = mSeries->beginRandomAccess(); it != mSeries->endRandomAccess(); it++)
         {
-          const auto& seriesDate = mSeries->getDateValue(it, 0);
+          const auto& seriesDate = it->getDateValue();
           if (std::find(validDates.begin(), validDates.end(), seriesDate) == validDates.end())
             continue;
           typename std::map<TimeSeriesDate, std::tuple<Decimal, Decimal, unsigned int>>::const_iterator mapIt = tradesMap.find(seriesDate);
