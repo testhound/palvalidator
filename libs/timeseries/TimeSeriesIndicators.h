@@ -128,7 +128,7 @@ namespace mkc_timeseries
 
 	rocValue = ((currentValue / prevValue) - DecimalConstants<Decimal>::DecimalOne) *
 	  DecimalConstants<Decimal>::DecimalOneHundred;
-	resultSeries.addEntry(NumericTimeSeriesEntry<Decimal> (p->getDate(),
+	resultSeries.addEntry(NumericTimeSeriesEntry<Decimal> (p->getDateTime(),
 							       rocValue,
 							       series.getTimeFrame()));
       }
