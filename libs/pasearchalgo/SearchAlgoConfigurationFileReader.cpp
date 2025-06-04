@@ -162,12 +162,13 @@ namespace mkc_searchalgo
       typename OHLCTimeSeries<Decimal>::ConstRandomAccessIterator it = security->getTimeSeries()->beginRandomAccess();
       for (; it != security->getTimeSeries()->endRandomAccess(); it++)
       {
-        const Decimal& cOpen = security->getTimeSeries()->getOpenValue (it, 0);
-        const Decimal& cHigh = security->getTimeSeries()->getHighValue (it, 0);
-        const Decimal& cLow = security->getTimeSeries()->getLowValue (it, 0);
-        const Decimal& cClose = security->getTimeSeries()->getCloseValue (it, 0);
+        // Use iterator dereferencing to get the entry, then access its values
+        const Decimal& cOpen = it->getOpenValue();
+        const Decimal& cHigh = it->getHighValue();
+        const Decimal& cLow = it->getLowValue();
+        const Decimal& cClose = it->getCloseValue();
 
-        auto dt = security->getTimeSeries()->getDateValue(it, 0);
+        auto dt = it->getDateValue();
         if (!series->isDateFound(dt))
           series->addEntry(OHLCTimeSeriesEntry<Decimal>(dt, cOpen, cHigh, cLow, cClose, DecimalConstants<Decimal>::DecimalZero, security->getTimeSeries()->getTimeFrame()));
         else
@@ -176,7 +177,7 @@ namespace mkc_searchalgo
           break;
         }
       }
-      std::cout << "First date random access: " << series->getDateValue(series->beginRandomAccess(),0) << std::endl;
+      std::cout << "First date random access: " << series->beginRandomAccess()->getDateValue() << std::endl;
       std::cout << "First date sorted access: " << series->getFirstDate() << std::endl;
     }
 

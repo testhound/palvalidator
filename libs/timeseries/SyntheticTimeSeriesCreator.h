@@ -100,7 +100,7 @@ namespace mkc_timeseries
 	// correctly for this bar -- tested this on KC and MSFT data to make sure
 	if(timeFrameId == 1)
 	  syntheticTimeSeries->addEntry(OHLCTimeSeriesEntry<Decimal>(
-								     mEntryDate, mOpen, mHigh, mLow, mClose, mOriginalHourlyTimeSeries->getVolumeValue(mOriginalHourlyTimeSeries->beginRandomAccess(), 0), TimeFrame::DAILY));
+								     mEntryDate, mOpen, mHigh, mLow, mClose, mOriginalHourlyTimeSeries->beginRandomAccess()->getVolumeValue(), TimeFrame::DAILY));
 
 	mTimeSeriesMap.insert(std::make_pair(timeFrameId, syntheticTimeSeries));
       }
