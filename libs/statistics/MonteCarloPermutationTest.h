@@ -164,14 +164,15 @@ namespace mkc_timeseries
       _ComputationPolicy computationPolicy;
       
       // Chain attached observers to the computation policy (pass-through Subject design)
-      std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
-      for (auto* observer : this->m_observers) {
-          if (observer) {
-              computationPolicy.attach(observer);
-          }
+      {
+	std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
+	for (auto* observer : this->m_observers) {
+	  if (observer) {
+            computationPolicy.attach(observer);
+	  }
+	}
       }
-      observerLock.unlock();
-      
+
       return computationPolicy.runPermutationTest (mBackTester, mNumPermutations, mBaseLineTestStat);
     }
 
