@@ -89,3 +89,5 @@ set_tests_properties(${LIB_NAME}_unit_tests
 # If ${DATASET_FILES} is defined elsewhere and needed for other purposes, it can remain.
 # Ensure QQQ_IR.txt is accessible via "dataset/QQQ_IR.txt" from CMAKE_SOURCE_DIR
 file(COPY ${DATASET_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+install(TARGETS ${LIB_NAME} DESTINATION lib)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
