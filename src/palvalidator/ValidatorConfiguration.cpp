@@ -144,6 +144,9 @@ namespace mkc_timeseries
     else if (upperCaseFormatStr == std::string("TRADESTATION"))
             return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
 									  unitsOfVolume, tickValue);
+    else if (upperCaseFormatStr == std::string("INTRADAY::TRADESTATION"))
+            return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
+									  unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("CSIEXTENDED"))
             return std::make_shared<CSIExtendedFuturesCsvReader<Decimal>>(historicDataFilePath, timeFrame,
 									  unitsOfVolume, tickValue);
