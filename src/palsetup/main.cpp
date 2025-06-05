@@ -29,7 +29,7 @@ void writeConfigFile(const std::string& outputDir,
                      const OHLCTimeSeries<Num>& outOfSampleSeries,
                      const std::string& timeFrame)
 {
-  std::string configFileName = outputDir + "/" + tickerSymbol + "_config.csv";
+  fs::path configFileName = fs::path(outputDir) / (tickerSymbol + "_config.csv");
   std::ofstream configFile(configFileName);
   if (!configFile.is_open())
     {
