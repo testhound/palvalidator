@@ -62,22 +62,22 @@ TEST_CASE("Intraday date parsing - ptime format", "[ValidatorConfiguration][Intr
         
         // Create minimal test files to satisfy file existence checks
         std::ofstream irFile("./test_ir.txt");
-        irFile << "Code For Selected Patterns\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
-        irFile << "\n";
-        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}\n";
-        irFile << "\n";
-        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO\n";
-        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH\n";
-        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %\n";
-        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
+        irFile << "Code For Selected Patterns" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO" << std::endl;
+        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %" << std::endl;
+        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
         irFile.close();
         
         std::ofstream dataFile("./test_data.txt");
-        dataFile << "Date,Time,Open,High,Low,Close,Up,Down\n";
-        dataFile << "04/15/2021,09:30:00,130.00,131.00,129.50,130.50,1000,500\n";
-        dataFile << "04/15/2021,09:31:00,130.50,131.25,130.00,131.00,1500,800\n";
+        dataFile << "Date,Time,Open,High,Low,Close,Up,Down" << std::endl;
+        dataFile << "04/15/2021,09:30:00,130.00,131.00,129.50,130.50,1000,500" << std::endl;
+        dataFile << "04/15/2021,09:31:00,130.50,131.25,130.00,131.00,1500,800" << std::endl;
         dataFile.close();
         
         ValidatorConfigurationFileReader reader("test_intraday_config.csv");
@@ -126,21 +126,21 @@ TEST_CASE("EOD date parsing - gregorian format", "[ValidatorConfiguration][EOD]"
         
         // Create minimal test files
         std::ofstream irFile("./test_ir.txt");
-        irFile << "Code For Selected Patterns\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
-        irFile << "\n";
-        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}\n";
-        irFile << "\n";
-        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO\n";
-        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH\n";
-        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %\n";
-        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
+        irFile << "Code For Selected Patterns" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO" << std::endl;
+        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %" << std::endl;
+        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
         irFile.close();
         
         std::ofstream dataFile("./test_data.txt");
-        dataFile << "20210415,400.0000000,401.0000000,399.5000000,400.5000000\n";
-        dataFile << "20210416,400.5000000,402.0000000,400.0000000,401.2500000\n";
+        dataFile << "20210415,400.0000000,401.0000000,399.5000000,400.5000000" << std::endl;
+        dataFile << "20210416,400.5000000,402.0000000,400.0000000,401.2500000" << std::endl;
         dataFile.close();
         
         ValidatorConfigurationFileReader reader("test_eod_config.csv");
@@ -189,22 +189,22 @@ TEST_CASE("Intraday format reader selection", "[ValidatorConfiguration][FormatRe
         
         // Create minimal test files
         std::ofstream irFile("./test_ir.txt");
-        irFile << "Code For Selected Patterns\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
-        irFile << "\n";
-        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}\n";
-        irFile << "\n";
-        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO\n";
-        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH\n";
-        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %\n";
-        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
+        irFile << "Code For Selected Patterns" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO" << std::endl;
+        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %" << std::endl;
+        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
         irFile.close();
         
         std::ofstream dataFile("./test_data.txt");
-        dataFile << "Date,Time,Open,High,Low,Close,Up,Down\n";
-        dataFile << "04/15/2021,09:30:00,350.00,351.00,349.50,350.50,10000,5000\n";
-        dataFile << "04/15/2021,09:31:00,350.50,351.25,350.00,351.00,15000,8000\n";
+        dataFile << "Date,Time,Open,High,Low,Close,Up,Down" << std::endl;
+        dataFile << "04/15/2021,09:30:00,350.00,351.00,349.50,350.50,10000,5000" << std::endl;
+        dataFile << "04/15/2021,09:31:00,350.50,351.25,350.00,351.00,15000,8000" << std::endl;
         dataFile.close();
         
         ValidatorConfigurationFileReader reader("test_format_config.csv");
@@ -245,21 +245,21 @@ TEST_CASE("Date overlap validation", "[ValidatorConfiguration][Validation]")
         
         // Create minimal test files
         std::ofstream irFile("./test_ir.txt");
-        irFile << "Code For Selected Patterns\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
-        irFile << "\n";
-        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}\n";
-        irFile << "\n";
-        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO\n";
-        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH\n";
-        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %\n";
-        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
+        irFile << "Code For Selected Patterns" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO" << std::endl;
+        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %" << std::endl;
+        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
         irFile.close();
         
         std::ofstream dataFile("./test_data.txt");
-        dataFile << "Date,Time,Open,High,Low,Close,Up,Down\n";
-        dataFile << "04/15/2021,09:30:00,250.00,251.00,249.50,250.50,5000,2500\n";
+        dataFile << "Date,Time,Open,High,Low,Close,Up,Down" << std::endl;
+        dataFile << "04/15/2021,09:30:00,250.00,251.00,249.50,250.50,5000,2500" << std::endl;
         dataFile.close();
         
         ValidatorConfigurationFileReader reader("test_overlap_config.csv");
@@ -289,21 +289,21 @@ TEST_CASE("Date format consistency validation", "[ValidatorConfiguration][Format
         
         // Create minimal test files
         std::ofstream irFile("./test_ir.txt");
-        irFile << "Code For Selected Patterns\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
-        irFile << "\n";
-        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}\n";
-        irFile << "\n";
-        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO\n";
-        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH\n";
-        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %\n";
-        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %\n";
-        irFile << "----------------------------------------------------------------------------------------------------------------------------------\n";
+        irFile << "Code For Selected Patterns" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "{File:test_data.txt  Index:1  Index Date:20210415  PL:80.00%  PS:20%  Trades:10  CL:1}" << std::endl;
+        irFile << "" << std::endl;
+        irFile << "IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO" << std::endl;
+        irFile << "THEN BUY NEXT BAR ON THE OPEN WITH" << std::endl;
+        irFile << "PROFIT TARGET AT ENTRY PRICE + 1.0 %" << std::endl;
+        irFile << "AND STOP LOSS AT ENTRY PRICE - 1.0 %" << std::endl;
+        irFile << "----------------------------------------------------------------------------------------------------------------------------------" << std::endl;
         irFile.close();
         
         std::ofstream dataFile("./test_data.txt");
-        dataFile << "Date,Time,Open,High,Low,Close,Up,Down\n";
-        dataFile << "04/15/2021,09:30:00,700.00,701.00,699.50,700.50,8000,4000\n";
+        dataFile << "Date,Time,Open,High,Low,Close,Up,Down" << std::endl;
+        dataFile << "04/15/2021,09:30:00,700.00,701.00,699.50,700.50,8000,4000" << std::endl;
         dataFile.close();
         
         ValidatorConfigurationFileReader reader("test_inconsistent_config.csv");
