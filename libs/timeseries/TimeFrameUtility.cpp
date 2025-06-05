@@ -15,6 +15,8 @@ namespace mkc_timeseries
     
     if (upperCaseTimeFrameStr == std::string("DAILY"))
       return TimeFrame::DAILY;
+    else if (upperCaseTimeFrameStr == std::string("INTRADAY"))
+      return TimeFrame::INTRADAY;
     else if (upperCaseTimeFrameStr == std::string("WEEKLY"))
       return TimeFrame::WEEKLY;
     else if (upperCaseTimeFrameStr == std::string("MONTHLY"))

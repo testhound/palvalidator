@@ -13,6 +13,7 @@
 #include <map>
 #include <string>
 #include <boost/date_time.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include "number.h"
 #include "BoostDateHelper.h"
 #include "BacktesterStrategy.h"
@@ -877,7 +878,135 @@ namespace mkc_timeseries
 
     TimeSeriesDate next_period(const TimeSeriesDate& d) const
       {
-	return boost_next_week(d);
+        return boost_next_week(d);
+      }
+  };
+
+  //
+  // class IntradayBackTester (stub implementation for testing)
+  //
+
+  template <class Decimal>
+  class IntradayBackTester : public BackTester<Decimal>
+  {
+  public:
+    explicit IntradayBackTester(boost::gregorian::date startDate,
+                               boost::gregorian::date endDate)
+      : BackTester<Decimal>()
+    {
+      if (isWeekend (startDate))
+        startDate = boost_next_weekday (startDate);
+
+      if (isWeekend (endDate))
+        endDate = boost_previous_weekday (endDate);
+
+      DateRange r(startDate, endDate);
+      this->addDateRange(r);
+    }
+
+    // Constructor that accepts ptime arguments (for intraday functionality)
+    explicit IntradayBackTester(boost::posix_time::ptime startTime,
+                               boost::posix_time::ptime endTime)
+      : BackTester<Decimal>()
+    {
+      boost::gregorian::date startDate = startTime.date();
+      boost::gregorian::date endDate = endTime.date();
+      
+      if (isWeekend (startDate))
+        startDate = boost_next_weekday (startDate);
+
+      if (isWeekend (endDate))
+        endDate = boost_previous_weekday (endDate);
+
+      DateRange r(startDate, endDate);
+      this->addDateRange(r);
+    }
+
+    IntradayBackTester() :
+      BackTester<Decimal>()
+    {}
+
+    ~IntradayBackTester()
+    {}
+
+    IntradayBackTester(const IntradayBackTester<Decimal> &rhs)
+      :  BackTester<Decimal>(rhs)
+    {}
+
+    IntradayBackTester<Decimal>&
+    operator=(const IntradayBackTester<Decimal> &rhs)
+    {
+      if (this == &rhs)
+        return *this;
+
+      BackTester<Decimal>::operator=(rhs);
+      return *this;
+    }
+
+    /**
+     * @brief Clone the IntradayBackTester with date ranges, but without strategies.
+     * @note This is a stub implementation for testing purposes.
+     */
+    std::shared_ptr<BackTester<Decimal>> clone() const
+    {
+      auto back = std::make_shared<IntradayBackTester<Decimal>>();
+      auto it = this->beginBacktestDateRange();
+      for (; it != this->endBacktestDateRange(); it++)
+        back->addDateRange(it->second);
+
+      return back;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the daily time frame.
+     * @return `false`
+     */
+    bool isDailyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the weekly time frame.
+     * @return `false`.
+     */
+    bool isWeeklyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on the monthly time frame.
+     * @return `false`.
+     */
+    bool isMonthlyBackTester() const
+    {
+      return false;
+    }
+
+    /**
+     * @brief Determines whether this is a backtester that operates
+     * on intraday time frames.
+     * @return `true`.
+     */
+    bool isIntradayBackTester() const
+    {
+      return true;
+    }
+
+  protected:
+    // For stub implementation, use daily logic but could be enhanced for intraday periods
+    TimeSeriesDate previous_period(const TimeSeriesDate& d) const
+      {
+        return boost_previous_weekday(d);
+      }
+
+    TimeSeriesDate next_period(const TimeSeriesDate& d) const
+      {
+        return boost_next_weekday(d);
       }
   };
 
@@ -896,9 +1025,12 @@ namespace mkc_timeseries
 						   backtestingDates.getLastDate());
 	else if (theTimeFrame == TimeFrame::MONTHLY)
 	  return std::make_shared<MonthlyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-						    backtestingDates.getLastDate());
+	                                    backtestingDates.getLastDate());
+	else if (theTimeFrame == TimeFrame::INTRADAY)
+	  return std::make_shared<IntradayBackTester<Decimal>>(backtestingDates.getFirstDateTime(),
+	                                    backtestingDates.getLastDateTime());
 	else
-	  throw BackTesterException("BackTesterFactory::getBacktester - cannot create backtester for time frame other than daily, weekly or monthly");
+	  throw BackTesterException("BackTesterFactory::getBacktester - cannot create backtester for time frame other than daily, weekly, monthly or intraday");
       }
 
       static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
@@ -918,9 +1050,7 @@ namespace mkc_timeseries
       }
 
     };
+
 }
-
-
-
 
 #endif

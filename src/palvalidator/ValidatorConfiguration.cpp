@@ -6,6 +6,8 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include "csv.h"
 #include "ValidatorConfiguration.h"
 #include "PalParseDriver.h"
 #include "TimeFrameUtility.h"
@@ -42,10 +44,28 @@ namespace mkc_timeseries
 
   std::shared_ptr<ValidatorConfiguration<Decimal>> ValidatorConfigurationFileReader::readConfigurationFile()
   {
+    // Check if the file has a header row by reading the first line
+    io::CSVReader<9> csvConfigFileCheck(mConfigurationFileName.c_str());
+    char* firstLine = csvConfigFileCheck.next_line();
+    bool hasHeader = false;
+    if (firstLine) {
+        std::string firstLineStr(firstLine);
+        // Check if first line contains header keywords
+        hasHeader = (firstLineStr.find("Symbol") != std::string::npos &&
+                    firstLineStr.find("IRPath") != std::string::npos &&
+                    firstLineStr.find("DataPath") != std::string::npos);
+    }
+    
+    // Create the main CSV reader
     io::CSVReader<9> csvConfigFile(mConfigurationFileName.c_str());
-
-    csvConfigFile.set_header("Symbol", "IRPath", "DataPath","FileFormat","ISDateStart",
-			     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
+    
+    if (hasHeader) {
+        csvConfigFile.read_header(io::ignore_no_column, "Symbol", "IRPath", "DataPath","FileFormat","ISDateStart",
+                     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
+    } else {
+        csvConfigFile.set_header("Symbol", "IRPath", "DataPath","FileFormat","ISDateStart",
+                     "ISDateEnd", "OOSDateStart", "OOSDateEnd", "TimeFrame");
+    }
 
     std::string tickerSymbol, palIRFilePathStr, historicDataFilePathStr, historicDataFormatStr;
     std::string inSampleStartDate, inSampleEndDate, oosStartDate, oosEndDate;
@@ -54,17 +74,54 @@ namespace mkc_timeseries
     boost::gregorian::date insampleDateStart, insampleDateEnd, oosDateStart, oosDateEnd;
 
     csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, historicDataFilePathStr,
-			    historicDataFormatStr, inSampleStartDate, inSampleEndDate,
-			    oosStartDate, oosEndDate, timeFrameStr);
+       historicDataFormatStr, inSampleStartDate, inSampleEndDate,
+       oosStartDate, oosEndDate, timeFrameStr);
 
 
-    insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
-    insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
+    // Parse dates - handle both YYYYMMDD (gregorian) and YYYYMMDDTHHMMSS (ptime) formats
+    // Enforce format consistency - all dates must use the same format
+    bool isInSamplePtimeFormat = (inSampleStartDate.length() > 8 || inSampleEndDate.length() > 8);
+    bool isOosPtimeFormat = (oosStartDate.length() > 8 || oosEndDate.length() > 8);
+    
+    // Check for format consistency
+    if (isInSamplePtimeFormat != isOosPtimeFormat) {
+        throw ValidatorConfigurationException("ValidatorConfigurationFileReader::readConfigurationFile - Date format inconsistency: all dates must use either YYYYMMDD or YYYYMMDDTHHMMSS format");
+    }
+    
+    // Check that within each date range, both dates use the same format
+    if ((inSampleStartDate.length() > 8) != (inSampleEndDate.length() > 8)) {
+        throw ValidatorConfigurationException("ValidatorConfigurationFileReader::readConfigurationFile - In-sample date format inconsistency: start and end dates must use the same format");
+    }
+    
+    if ((oosStartDate.length() > 8) != (oosEndDate.length() > 8)) {
+        throw ValidatorConfigurationException("ValidatorConfigurationFileReader::readConfigurationFile - Out-of-sample date format inconsistency: start and end dates must use the same format");
+    }
+    
+    if (isInSamplePtimeFormat) {
+        // ptime format (YYYYMMDDTHHMMSS) - extract date portion for DateRange
+        boost::posix_time::ptime ptimeStart = boost::posix_time::from_iso_string(inSampleStartDate);
+        boost::posix_time::ptime ptimeEnd = boost::posix_time::from_iso_string(inSampleEndDate);
+        insampleDateStart = ptimeStart.date();
+        insampleDateEnd = ptimeEnd.date();
+    } else {
+        // gregorian format (YYYYMMDD)
+        insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
+        insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
+    }
 
     DateRange inSampleDates(insampleDateStart, insampleDateEnd);
 
-    oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
-    oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
+    if (isOosPtimeFormat) {
+        // ptime format (YYYYMMDDTHHMMSS) - extract date portion for DateRange
+        boost::posix_time::ptime ptimeStart = boost::posix_time::from_iso_string(oosStartDate);
+        boost::posix_time::ptime ptimeEnd = boost::posix_time::from_iso_string(oosEndDate);
+        oosDateStart = ptimeStart.date();
+        oosDateEnd = ptimeEnd.date();
+    } else {
+        // gregorian format (YYYYMMDD)
+        oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
+        oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
+    }
 
     DateRange ooSampleDates( oosDateStart, oosDateEnd);
 
@@ -85,9 +142,9 @@ namespace mkc_timeseries
     TimeFrame::Duration backTestingTimeFrame = getTimeFrameFromString(timeFrameStr);
 
     std::shared_ptr<TimeSeriesCsvReader<Decimal>> reader = getHistoricDataFileReader(tickerSymbol,
-										     historicDataFilePathStr,
-										     historicDataFormatStr,
-										     backTestingTimeFrame);
+    						     historicDataFilePathStr,
+    						     historicDataFormatStr,
+    						     backTestingTimeFrame);
 
     reader->readFile();
 
@@ -142,6 +199,9 @@ namespace mkc_timeseries
       return std::make_shared<PALFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
 							   unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("TRADESTATION"))
+            return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
+									  unitsOfVolume, tickValue);
+    else if (upperCaseFormatStr == std::string("INTRADAY::TRADESTATION"))
             return std::make_shared<TradeStationFormatCsvReader<Decimal>>(historicDataFilePath, timeFrame,
 									  unitsOfVolume, tickValue);
     else if (upperCaseFormatStr == std::string("CSIEXTENDED"))
