@@ -21,6 +21,7 @@
 #include "StrategyDataPreparer.h"
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersRomanoWolfImproved.h"
+#include "PermutationStatisticsCollector.h"
 
 namespace mkc_timeseries
 {
@@ -102,14 +103,15 @@ template <class Decimal, class BaselineStatPolicy>
        * @throw PALMastersMonteCarloValidationException if numPermutations is zero.
        */
       PALMastersMonteCarloValidation(unsigned long numPermutations,
-				    std::unique_ptr<AlgoType> algo =
-				    std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
-	: mNumPermutations(numPermutations),
-	  mStrategySelectionPolicy(),
-	  mAlgorithm(std::move(algo))
+        std::unique_ptr<AlgoType> algo =
+        std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
+ : mNumPermutations(numPermutations),
+   mStrategySelectionPolicy(),
+   mAlgorithm(std::move(algo)),
+   mStatisticsCollector(std::make_unique<PermutationStatisticsCollector<Decimal>>())
       {
-	if (numPermutations == 0)
-	  throw PALMastersMonteCarloValidationException("Number of permutations cannot be zero.");
+ if (numPermutations == 0)
+   throw PALMastersMonteCarloValidationException("Number of permutations cannot be zero.");
       }
 
       // Default copy/move constructors/assignment (as provided)
@@ -153,7 +155,23 @@ template <class Decimal, class BaselineStatPolicy>
        */
       unsigned long getNumSurvivingStrategies() const
       {
-	return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
+ return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
+      }
+
+      /*!
+       * @brief Get access to the permutation statistics collector
+       * @return Reference to the statistics collector for accessing detailed permutation metrics
+       */
+      const PermutationStatisticsCollector<Decimal>& getStatisticsCollector() const {
+        return *mStatisticsCollector;
+      }
+
+      /*!
+       * @brief Get access to the permutation statistics collector (non-const)
+       * @return Reference to the statistics collector for accessing detailed permutation metrics
+       */
+      PermutationStatisticsCollector<Decimal>& getStatisticsCollector() {
+        return *mStatisticsCollector;
       }
 
       /*!
@@ -218,6 +236,13 @@ template <class Decimal, class BaselineStatPolicy>
 	Decimal sigLevel = pValueSignificanceLevel;
 	map<StrategyPtr, Decimal> pvalMap;
 
+	// Attach the statistics collector to the algorithm for observer pattern
+	// The algorithm will chain this observer to its internal policy instances
+	auto* subject = dynamic_cast<PermutationTestSubject<Decimal>*>(mAlgorithm.get());
+	if (subject) {
+	    subject->attach(mStatisticsCollector.get());
+	}
+
 	pvalMap = mAlgorithm->run(mStrategyData,
 				  mNumPermutations,
 				  templateBackTester,
@@ -245,6 +270,7 @@ template <class Decimal, class BaselineStatPolicy>
       StrategyDataContainerType mStrategyData;
       UnadjustedPValueStrategySelection<Decimal> mStrategySelectionPolicy;
       std::unique_ptr<IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>>  mAlgorithm;
+      std::unique_ptr<PermutationStatisticsCollector<Decimal>> mStatisticsCollector;
     };
 } // namespace mkc_timeseries
 

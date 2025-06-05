@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
+#include "PermutationTestSubject.h"
 
 namespace mkc_timeseries
 {
@@ -36,7 +37,8 @@ namespace mkc_timeseries
 
   template<class Decimal, class BaselineStatPolicy>
     class MastersRomanoWolfImproved final
-        : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>
+        : public IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>,
+          public PermutationTestSubject<Decimal>
     {
         using Base       = IMastersSelectionBiasAlgorithm<Decimal, BaselineStatPolicy>;
         using StrategyPtr= typename Base::StrategyPtr;
@@ -113,8 +115,20 @@ namespace mkc_timeseries
 	//                      is beaten by the max-of-all in that permutation.
 	// Bulk compute exceedance counts for every strategy once.
 
+	// Create instance of FastMastersPermutationPolicy for observer support
+	FMPP fastPermutationPolicy;
+	
+	// Chain attached observers to the policy instance (pass-through Subject design)
+	std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
+	for (auto* observer : this->m_observers) {
+	    if (observer) {
+	        fastPermutationPolicy.attach(observer);
+	    }
+	}
+	observerLock.unlock();
+	
 	std::map<StrategyPtr, unsigned int> baseStatExceedanceCounts =
-	  FMPP::computeAllPermutationCounts(numPermutations,
+	  fastPermutationPolicy.computeAllPermutationCounts(numPermutations,
 					    strategyData,
 					    templateBacktester,
 					    secPtr,

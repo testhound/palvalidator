@@ -288,6 +288,74 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Get the total number of trades (closed + open) for the first strategy
+     * @return Total count of closed trades plus open position units
+     * @throws BackTesterException if no strategies have been added
+     */
+    uint32_t getNumTrades() const
+    {
+        if (mStrategyList.empty()) {
+            throw BackTesterException("getNumTrades: No strategies added");
+        }
+        
+        auto strategy = *(beginStrategies());
+        
+        // Get closed trades count
+        uint32_t closedTrades = strategy->getStrategyBroker().getClosedTrades();
+        
+        // Get open trades count by iterating through instrument positions
+        uint32_t openTrades = 0;
+        for (auto it = strategy->getPortfolio()->beginPortfolio();
+             it != strategy->getPortfolio()->endPortfolio();
+             ++it) {
+            
+            const auto& security = it->second;
+            const auto& instrPos = strategy->getInstrumentPosition(security->getSymbol());
+            
+            // Each position unit represents one trade
+            openTrades += instrPos.getNumPositionUnits();
+        }
+        
+        return closedTrades + openTrades;
+    }
+
+    /**
+     * @brief Get the total number of bars across all trades (closed + open) for the first strategy
+     * @return Total count of bars in all closed and open trades
+     * @throws BackTesterException if no strategies have been added
+     */
+    uint32_t getNumBarsInTrades() const
+    {
+        if (mStrategyList.empty()) {
+            throw BackTesterException("getNumBarsInTrades: No strategies added");
+        }
+        
+        auto strategy = *(beginStrategies());
+        
+        // Get bars from closed trades
+        const auto& closedHistory = strategy->getStrategyBroker().getClosedPositionHistory();
+        uint32_t closedTradeBars = closedHistory.getNumBarsInMarket();
+        
+        // Get bars from open trades
+        uint32_t openTradeBars = 0;
+        for (auto it = strategy->getPortfolio()->beginPortfolio();
+             it != strategy->getPortfolio()->endPortfolio();
+             ++it) {
+            
+            const auto& security = it->second;
+            const auto& instrPos = strategy->getInstrumentPosition(security->getSymbol());
+            
+            // Iterate through each open position unit
+            for (uint32_t unitNum = 1; unitNum <= instrPos.getNumPositionUnits(); ++unitNum) {
+                auto posPtr = *instrPos.getInstrumentPosition(unitNum);
+                openTradeBars += posPtr->getNumBarsInPosition();
+            }
+        }
+        
+        return closedTradeBars + openTradeBars;
+    }
+
+    /**
      * @brief Earliest date used across all backtest ranges.
      * @return Start date of backtest.
      */

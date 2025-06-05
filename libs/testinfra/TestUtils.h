@@ -1,6 +1,5 @@
 #include <string>
 #include <memory>
-
 #include <boost/date_time.hpp>
 #include "BoostDateHelper.h"
 #include "PercentNumber.h"
@@ -9,12 +8,15 @@
 #include "TradingVolume.h"
 
 typedef dec::decimal<7> DecimalType;
+
 typedef mkc_timeseries::OHLCTimeSeriesEntry<DecimalType> EntryType;
 
 class PriceActionLabSystem;
 namespace mkc_timeseries
 {
   template <class Decimal, class LookupPolicy> class OHLCTimeSeries;
+  template <class Decimal> class PalStrategy;
+  template <class Decimal> class Security;
 }
 
 std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
@@ -25,6 +27,14 @@ std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> > getRandomPriceSer
 PriceActionLabSystem* getPricePatterns(const std::string &irFileName);
 
 PriceActionLabSystem* getRandomPricePatterns();
+
+// New helper: returns a shared_ptr to a randomly picked PalStrategy<DecimalType>
+// (Under the hood, it reads all patterns from "QQQ_IR.txt" and picks one at random.)
+std::shared_ptr< mkc_timeseries::PalStrategy<DecimalType> > getRandomPalStrategy();
+
+// Overload that accepts a Security to add to the portfolio
+std::shared_ptr< mkc_timeseries::PalStrategy<DecimalType> >
+getRandomPalStrategy(std::shared_ptr<mkc_timeseries::Security<DecimalType>> security);
 
 // helper that your .cpp defines:
 std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >

@@ -11,6 +11,7 @@
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <iostream>
 #include "number.h"
 #include "DecimalConstants.h"
 #include "BackTester.h"
@@ -18,6 +19,8 @@
 #include "MonteCarloTestPolicy.h"
 #include "SyntheticSecurityHelpers.h"
 #include "PermutationTestResultPolicy.h"
+#include "PermutationTestSubject.h"
+#include "StrategyIdentificationHelper.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 
@@ -68,7 +71,7 @@ namespace mkc_timeseries
 	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
 	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
 	    typename Executor = concurrency::ThreadPoolExecutor<>>
-  class DefaultPermuteMarketChangesPolicy
+  class DefaultPermuteMarketChangesPolicy : public PermutationTestSubject<Decimal>
   {
     static_assert(has_return_type<_PermutationTestResultPolicy>::value,
 		  "_PermutationTestResultPolicy must define a nested ::ReturnType");
@@ -120,7 +123,7 @@ namespace mkc_timeseries
      * the `_PermutationTestResultPolicy`. This typically includes the p-value
      * and may include a summary test statistic from the permutations.
      */
-    static ReturnType
+    ReturnType
     runPermutationTest(std::shared_ptr<BackTester<Decimal>> theBackTester,
                    uint32_t numPermutations,
                    const Decimal& baseLineTestStat)
@@ -128,53 +131,71 @@ namespace mkc_timeseries
       if (numPermutations == 0)
 	throw std::invalid_argument("DefaultPermuteMarketChangesPolicy::runPermutationTest: numPermutations must be > 0");
 
-      // Grab the one strategy and its security
+      // Grab the one strategy and its security BEFORE parallel execution
       auto aStrategy   = *(theBackTester->beginStrategies());
+      
+      // Validate that the strategy has a portfolio with securities
+      if (aStrategy->beginPortfolio() == aStrategy->endPortfolio()) {
+        throw std::runtime_error("DefaultPermuteMarketChangesPolicy::runPermutationTest: Strategy portfolio is empty - use getRandomPalStrategy(security) to create strategy with populated portfolio");
+      }
+      
       auto theSecurity = aStrategy->beginPortfolio()->second;
+      auto originalPortfolio = aStrategy->getPortfolio();
+      
+      // Additional validation
+      if (!theSecurity) {
+        throw std::runtime_error("DefaultPermuteMarketChangesPolicy::runPermutationTest: Security is null");
+      }
+      if (!originalPortfolio) {
+        throw std::runtime_error("DefaultPermuteMarketChangesPolicy::runPermutationTest: Portfolio is null");
+      }
 
       // Minimum trades threshold
       const uint32_t minTrades = BackTestResultPolicy::getMinStrategyTrades();
 
-      // Atomics for counting valid permutations and “extreme” ones
+      // Atomics for counting valid permutations and "extreme" ones
       std::atomic<uint32_t> validPerms{0}, extremeCount{0};
 
       // For collecting any summary statistic (e.g. max‐statistic)
       _PermutationTestStatisticsCollectionPolicy testStatCollector;
       std::mutex                                 testStatMutex;
 
-      // Work lambda for one permutation
+      // Work lambda for one permutation - capture security and portfolio by value to avoid shared access
       auto work = [=, &validPerms, &extremeCount, &testStatCollector, &testStatMutex]
-	(uint32_t /*permIndex*/)
+ (uint32_t permIndex)
       {
-        // 1) Clone & backtest
+        // 1) Clone & backtest - use captured values instead of accessing aStrategy members
         auto clonedStrat = aStrategy->clone(
-					    createSyntheticPortfolio<Decimal>(theSecurity,
-									      aStrategy->getPortfolio()));
+         createSyntheticPortfolio<Decimal>(theSecurity,
+        	      originalPortfolio));
         auto clonedBT = theBackTester->clone();
         clonedBT->addStrategy(clonedStrat);
         clonedBT->backtest();
 
-        // 2) Count trades; skip if below threshold
-        uint32_t stratTrades =
-	  BackTesterFactory<Decimal>::getNumClosedTrades(clonedBT);
+        // 2) Count trades using enhanced BackTester method; skip if below threshold
+        uint32_t stratTrades = clonedBT->getNumTrades();
         if (stratTrades < minTrades) {
-	  return;  // uninformative — do not increment validPerms
+   return;  // uninformative — do not increment validPerms
         }
 
         // 3) Valid permutation: compute statistic
         Decimal testStat =
-	  BackTestResultPolicy::getPermutationTestStatistic(clonedBT);
+   BackTestResultPolicy::getPermutationTestStatistic(clonedBT);
 
-        // 4) Update atomics
+        // 4) Notify observers after successful backtest
+        // Enhanced statistics will be extracted by observers using new BackTester methods
+        this->notifyObservers(*clonedBT, testStat);
+
+        // 5) Update atomics
         validPerms.fetch_add(1, std::memory_order_relaxed);
         if (testStat >= baseLineTestStat) {
-	  extremeCount.fetch_add(1, std::memory_order_relaxed);
+   extremeCount.fetch_add(1, std::memory_order_relaxed);
         }
 
-        // 5) Update the summary‐statistic policy under lock
+        // 6) Update the summary‐statistic policy under lock
         {
-	  std::lock_guard<std::mutex> guard(testStatMutex);
-	  testStatCollector.updateTestStatistic(testStat);
+   std::lock_guard<std::mutex> guard(testStatMutex);
+   testStatCollector.updateTestStatistic(testStat);
         }
       };
 

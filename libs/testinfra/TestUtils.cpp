@@ -1,4 +1,5 @@
 #include <exception>
+#include <random> 
 #include <boost/filesystem.hpp>
 #include "PalParseDriver.h"
 #include "TestUtils.h"
@@ -9,6 +10,7 @@
 #include "PalStrategy.h"
 #include "BoostDateHelper.h"
 #include "PalAst.h"
+#include "Security.h"
 
 using namespace boost::gregorian;
 using namespace boost::posix_time;
@@ -50,6 +52,70 @@ PriceActionLabSystem* getRandomPricePatterns()
 std::shared_ptr<OHLCTimeSeries<DecimalType>> getRandomPriceSeries()
 {
   return readPALDataFile("QQQ.txt");
+}
+
+///
+/// Returns a shared_ptr to a randomly chosen PalStrategy<DecimalType>.
+/// Internally calls getRandomPricePatterns() (which loads "QQQ_IR.txt" :contentReference[oaicite:1]{index=1}),
+/// then picks one PriceActionLabPattern at random, and finally uses makePalStrategy<DecimalType>
+/// to wrap it in either PalLongStrategy or PalShortStrategy (with an empty Portfolio).
+///
+std::shared_ptr< PalStrategy<DecimalType> >
+getRandomPalStrategy()
+{
+    // Create a default QQQ security using the random price series
+    auto timeSeries = getRandomPriceSeries();
+    auto security = std::make_shared<EquitySecurity<DecimalType>>("QQQ", "NASDAQ QQQ Trust", timeSeries);
+    
+    // Use the overloaded version that accepts a security
+    return getRandomPalStrategy(security);
+}
+
+///
+/// Overloaded version that accepts a Security to add to the portfolio.
+/// This ensures the strategy has a populated portfolio for use in permutation tests.
+///
+std::shared_ptr< PalStrategy<DecimalType> >
+getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
+{
+    // 1. Load the PriceActionLabSystem from "QQQ_IR.txt"
+    PriceActionLabSystem* sys = getRandomPricePatterns();
+    if (!sys) {
+        throw std::runtime_error("Failed to load PriceActionLabSystem from getRandomPricePatterns()");
+    }
+
+    // 2. Get total number of patterns
+    unsigned long total = sys->getNumPatterns();
+    if (total == 0) {
+        throw std::runtime_error("No patterns available in PriceActionLabSystem");
+    }
+
+    // 3. Choose a random index in [0, total-1]
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<unsigned long> dist(0, total - 1);
+    unsigned long idx = dist(gen);
+
+    // 4. Advance the iterator to the chosen index
+    auto it = sys->allPatternsBegin();
+    std::advance(it, static_cast<std::ptrdiff_t>(idx));
+    auto chosenPattern = *it;
+    // chosenPattern is std::shared_ptr<PriceActionLabPattern>
+
+    // 5. Build a named Portfolio<DecimalType> and add the provided security
+    auto portfolio = std::make_shared<Portfolio<DecimalType>>("RandomPortfolio");
+    if (security) {
+        portfolio->addSecurity(security);
+    }
+
+    // 6. Build the PalStrategy using the one‐line factory:
+    auto strategy = makePalStrategy<DecimalType>(
+                        "RandomPalStrategy",   // strategy name
+                        chosenPattern,
+                        portfolio
+                    );
+
+    return strategy;
 }
 
 date createDate (const std::string& dateString)

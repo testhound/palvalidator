@@ -17,6 +17,7 @@
 #include "SyntheticTimeSeries.h"
 #include "MonteCarloTestPolicy.h"
 #include "PermutationTestComputationPolicy.h"
+#include "PermutationTestSubject.h"
 #include <boost/accumulators/accumulators.hpp>
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/median.hpp>
@@ -103,7 +104,8 @@ namespace mkc_timeseries
            template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
            typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>>
  class MonteCarloPermuteMarketChanges
-   : public MonteCarloPermutationTest<Decimal, typename _ComputationPolicy::ReturnType>
+   : public MonteCarloPermutationTest<Decimal, typename _ComputationPolicy::ReturnType>,
+     public PermutationTestSubject<Decimal>
   {
   public:
     // pull the policy’s ReturnType in
@@ -158,7 +160,20 @@ namespace mkc_timeseries
 	mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
       //std::cout << "Baseline test stat. for original  strategy equals: " <<  mBaseLineTestStat << ", baseline # trades:" << this->getNumClosedTrades (mBackTester) <<  std::endl << std::endl;
 
-      return _ComputationPolicy::runPermutationTest (mBackTester, mNumPermutations, mBaseLineTestStat);
+      // Create instance of computation policy for observer support
+      _ComputationPolicy computationPolicy;
+      
+      // Chain attached observers to the computation policy (pass-through Subject design)
+      {
+	std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
+	for (auto* observer : this->m_observers) {
+	  if (observer) {
+            computationPolicy.attach(observer);
+	  }
+	}
+      }
+
+      return computationPolicy.runPermutationTest (mBackTester, mNumPermutations, mBaseLineTestStat);
     }
 
   private:

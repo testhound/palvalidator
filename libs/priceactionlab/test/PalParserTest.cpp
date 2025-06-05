@@ -113,7 +113,6 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
     bool inBlockDefinition = false; 
     unsigned lineNum = 0;
 
-    std::cout << "--- Populating Expected Pattern Blocks from: " << path << " ---" << std::endl;
     while (getline(in, line)) {
         lineNum++;
         smatch m; // For headerRe
@@ -134,8 +133,6 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
             currentBlock.file_name_from_header = m[1].str();
             currentBlock.file_index = static_cast<unsigned>(stoul(m[2].str()));
             inBlockDefinition = true;
-            std::cout << "Found Header for Index: " << currentBlock.file_index
-                      << ", File: " << currentBlock.file_name_from_header << " (Source Line: " << lineNum << ")" << std::endl;
         }
 
         if (inBlockDefinition) {
@@ -149,17 +146,12 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
                 c.rhsType   = stringToRefType(compMatch[4].str()); // Fixed: stringToRefType was missing
                 c.rhsOffset = static_cast<unsigned>(stoi(compMatch[5].str()));
                 currentBlock.expected_comparisons.push_back(c);
-                std::cout << "  Index " << currentBlock.file_index << ": Added Expected Comp from source line " << lineNum << ": "
-                          << compMatch[1].str() << " OF " << compMatch[2].str() << " " << compMatch[3].str() << " "
-                          << compMatch[4].str() << " OF " << compMatch[5].str()
-                          << " (LHS Offset: " << c.lhsOffset << ")" << std::endl;
             }
         }
     }
     if (inBlockDefinition) { // Add the last block being processed
         allExpectedPatternBlocks.push_back(currentBlock);
     }
-    std::cout << "--- Finished Populating " << allExpectedPatternBlocks.size() << " Expected Pattern Blocks ---" << std::endl;
 
     // Parse the file to get ASTs
     PalParseDriver driver(path);
@@ -172,8 +164,6 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
         astPatternsList.push_back(*it);
     }
 
-    std::cout << "\n--- Verifying AST ---" << std::endl;
-    std::cout << "Number of AST patterns parsed: " << astPatternsList.size() << std::endl;
     // This assertion might be too strict if some "patterns" in the file are just headers without valid IF/THEN structures
     // that would lead to a PALPatternPtr. For now, let's assume a 1-to-1 mapping.
     REQUIRE(astPatternsList.size() == allExpectedPatternBlocks.size());
@@ -186,9 +176,6 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
         unsigned astPatternIndex = astDesc->getpatternIndex();
         // string astFileName = astDesc->getFileName(); // Be cautious with path comparisons
 
-        std::cout << "\nVerifying Pattern Block " << k << ":" << std::endl;
-        std::cout << "  Expected Index (from file header): " << expectedBlock.file_index
-                  << ", AST Pattern Index: " << astPatternIndex << std::endl;
         REQUIRE(astPatternIndex == expectedBlock.file_index);
 
         const auto& expectedComps = expectedBlock.expected_comparisons;
@@ -198,9 +185,6 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
         }
 
 
-        std::cout << "  Block " << k << " (Index " << astPatternIndex << "): "
-                  << "Expected " << expectedComps.size() << " comparisons (from compRe), Got " << actualCompsFromAST.size() << " from AST." << std::endl;
-        
         if (expectedComps.empty() && actualCompsFromAST.empty()) {
             std::cout << "  Block " << k << " (Index " << astPatternIndex << "): No comparisons in expected or AST. Skipping detail check." << std::endl;
             continue; 
@@ -214,18 +198,6 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
 
             auto lhsRef = currentActualCompAST->getLHS();
             auto rhsRef = currentActualCompAST->getRHS();
-
-            std::cout << "  Comparison " << i << " for block " << k << " (Index " << astPatternIndex << "):" << std::endl;
-            std::cout << "    Expected: "
-                      << refTypeToString(currentExpectedComp.lhsType) << " OF " << currentExpectedComp.lhsOffset
-                      << " " << currentExpectedComp.op << " "
-                      << refTypeToString(currentExpectedComp.rhsType) << " OF " << currentExpectedComp.rhsOffset
-                      << std::endl;
-            std::cout << "    Actual (AST): "
-                      << refTypeToString(lhsRef->getReferenceType()) << " OF " << lhsRef->getBarOffset()
-                      << " > " // Assuming GreaterThanExpr always means '>'
-                      << refTypeToString(rhsRef->getReferenceType()) << " OF " << rhsRef->getBarOffset()
-                      << std::endl;
 
             REQUIRE(lhsRef->getReferenceType() == currentExpectedComp.lhsType);
             REQUIRE(rhsRef->getReferenceType() == currentExpectedComp.rhsType);

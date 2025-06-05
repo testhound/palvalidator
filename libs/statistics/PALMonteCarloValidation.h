@@ -23,6 +23,8 @@
 #include "PalAst.h"
 #include "PermutationTestResultPolicy.h"
 #include "MultipleTestingCorrection.h"
+#include "PermutationStatisticsCollector.h"
+#include "PermutationTestSubject.h"
 #include "runner.hpp"
 
 namespace mkc_timeseries
@@ -172,6 +174,35 @@ namespace mkc_timeseries
     using StrategyPtr = std::shared_ptr<PalStrategy<Decimal>>;
     using ResultType  = typename McptType::ResultType;
 
+  private:
+    // SFINAE helper to check if McptType supports observer pattern
+    template<typename T>
+    static auto test_observer_support(int) -> decltype(
+        std::declval<T>().attach(std::declval<PermutationTestObserver<Decimal>*>()),
+        std::declval<T>().detach(std::declval<PermutationTestObserver<Decimal>*>()),
+        std::true_type{}
+    );
+    
+    template<typename T>
+    static std::false_type test_observer_support(...);
+    
+    // Check if McptType inherits from PermutationTestSubject as an alternative
+    template<typename T>
+    static auto test_subject_inheritance(int) -> decltype(
+        static_cast<PermutationTestSubject<Decimal>*>(std::declval<T*>()),
+        std::true_type{}
+    );
+    
+    template<typename T>
+    static std::false_type test_subject_inheritance(...);
+    
+    // Enhanced detection: Use std::is_base_of as primary check since it's more reliable
+    // than SFINAE for inheritance detection, especially with template instantiation
+    static constexpr bool supports_observer_pattern =
+        std::is_base_of_v<PermutationTestSubject<Decimal>, McptType> ||
+        decltype(test_observer_support<McptType>(0))::value ||
+        decltype(test_subject_inheritance<McptType>(0))::value;
+
   public:
     static_assert(std::is_same<ResultType,
                   decltype(std::declval<McptType>().runPermutationTest())>::value,
@@ -185,7 +216,34 @@ namespace mkc_timeseries
      */
     explicit PALMonteCarloValidation(unsigned long numPermutations)
       : Base(numPermutations)
-    {}
+    {
+      // Only initialize statistics collector if MCPT supports observer pattern
+      if constexpr (supports_observer_pattern) {
+        mStatisticsCollector = std::make_unique<PermutationStatisticsCollector<Decimal>>();
+      }
+    }
+
+    /*!
+     * @brief Get access to the permutation statistics collector
+     * @return Reference to the statistics collector for accessing detailed permutation metrics
+     * @note Only available if McptType supports observer pattern
+     */
+    const PermutationStatisticsCollector<Decimal>& getStatisticsCollector() const {
+        static_assert(supports_observer_pattern,
+                      "Statistics collector only available for MCPT types that support observer pattern");
+        return *mStatisticsCollector;
+    }
+
+    /*!
+     * @brief Get access to the permutation statistics collector (non-const)
+     * @return Reference to the statistics collector for accessing detailed permutation metrics
+     * @note Only available if McptType supports observer pattern
+     */
+    PermutationStatisticsCollector<Decimal>& getStatisticsCollector() {
+        static_assert(supports_observer_pattern,
+                      "Statistics collector only available for MCPT types that support observer pattern");
+        return *mStatisticsCollector;
+    }
 
     /*!
      * @brief Runs permutation tests for the given strategies.
@@ -199,7 +257,9 @@ namespace mkc_timeseries
      * c. Running the specified McptType (Monte Carlo Permutation Test) for the strategy.
      * d. Collecting the raw result (e.g., p-value) and the strategy.
      * 4. The tests for each strategy are executed in parallel using the specified Executor.
-     * 5. After all individual tests are complete, a multiple testing correction (e.g., Bonferroni)
+     * 5. Observer pattern: The statistics collector is attached to each MCPT instance to
+     * collect granular permutation statistics (test statistics, trades, bars).
+     * 6. After all individual tests are complete, a multiple testing correction (e.g., Bonferroni)
      * is applied to the collected results via the strategy selection policy.
      *
      * @param baseSecurity A shared pointer to the security on which strategies will be tested.
@@ -225,6 +285,13 @@ namespace mkc_timeseries
         throw std::invalid_argument("Pattern set must not be null");
 
       this->mStrategySelectionPolicy.clearForNewTest();
+      
+      // Clear statistics collector for new test run (only if observer pattern is supported)
+      if constexpr (supports_observer_pattern) {
+        if (mStatisticsCollector) {
+          mStatisticsCollector->clear();
+        }
+      }
 
       // 1) Prepare data
       auto oosTS     = FilterTimeSeries<Decimal>(*baseSecurity->getTimeSeries(), dateRange);
@@ -244,7 +311,7 @@ namespace mkc_timeseries
       for (auto it = patterns->allPatternsBegin(); it != patterns->allPatternsEnd(); ++it)
         vecPatterns.push_back(*it);
 
-      // 3) Parallel backtests and MCPT
+      // 3) Parallel backtests and MCPT with observer pattern
       std::mutex strategyMutex;
       Executor executor;
       size_t total = vecPatterns.size();
@@ -254,10 +321,10 @@ namespace mkc_timeseries
         [&](size_t idx) {
           auto pattern = vecPatterns[idx];
 
-	  // Build strategy via centralized factory
-	  std::string name = (pattern->isLongPattern() ? longPrefix : shortPrefix)
-	    + std::to_string(idx + 1);
-	  auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio);
+   // Build strategy via centralized factory
+   std::string name = (pattern->isLongPattern() ? longPrefix : shortPrefix)
+     + std::to_string(idx + 1);
+   auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio);
 
           // Use factory to get a backtester for this date range
           auto bt = BackTesterFactory<Decimal>::getBackTester(
@@ -266,8 +333,25 @@ namespace mkc_timeseries
                       dateRange.getLastDate());
           bt->addStrategy(strategy);
 
+          // Create MCPT instance and conditionally attach observer for statistics collection
           McptType mcpt(bt, this->mNumPermutations);
+          
+          // Attach statistics collector to MCPT for observer pattern (only if supported)
+          if constexpr (supports_observer_pattern)
+	    {
+	      if (mStatisticsCollector) {
+		mcpt.attach(mStatisticsCollector.get());
+	      }
+	    }
+          
           ResultType res = mcpt.runPermutationTest();
+          
+          // Detach observer after test completion (only if supported)
+          if constexpr (supports_observer_pattern) {
+            if (mStatisticsCollector) {
+              mcpt.detach(mStatisticsCollector.get());
+            }
+          }
 
           std::lock_guard<std::mutex> lock(strategyMutex);
           this->mStrategySelectionPolicy.addStrategy(res, strategy);
@@ -279,6 +363,9 @@ namespace mkc_timeseries
     }
 
   private:
+    // Observer for collecting granular permutation statistics (only if MCPT supports observer pattern)
+    std::unique_ptr<PermutationStatisticsCollector<Decimal>> mStatisticsCollector;
+    
     static std::shared_ptr<PalStrategy<Decimal>> makeStrategy(
       size_t                              idx,
       const PALPatternPtr&                pattern,

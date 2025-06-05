@@ -193,14 +193,16 @@ namespace {
 TEST_CASE("p=1 when statistic always ≥ baseline", "[unit]") {
   auto bt = std::make_shared<DummyBackTester>();
   bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
-  auto p = DefaultPermuteMarketChangesPolicy<DecimalType,DummyStatPolicy>::runPermutationTest(bt,1,DecimalType("0.4"));
+  DefaultPermuteMarketChangesPolicy<DecimalType,DummyStatPolicy> policy;
+  auto p = policy.runPermutationTest(bt,1,DecimalType("0.4"));
   REQUIRE(p == DecimalType("1.0"));
 }
 
 TEST_CASE("p=(0+1)/(N+1) when statistic always < baseline", "[unit]") {
   auto bt = std::make_shared<DummyBackTester>();
   bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
-  auto p = DefaultPermuteMarketChangesPolicy<DecimalType,AlwaysLowStatPolicy>::runPermutationTest(bt,4,DecimalType("0.5"));
+  DefaultPermuteMarketChangesPolicy<DecimalType,AlwaysLowStatPolicy> policy;
+  auto p = policy.runPermutationTest(bt,4,DecimalType("0.5"));
   REQUIRE(p == DecimalType("0.2"));
 }
 
@@ -212,7 +214,8 @@ TEST_CASE("tuple policy returns both p and summary", "[unit]") {
               PValueAndTestStatisticReturnPolicy<DecimalType>,
               PermutationTestingMaxTestStatisticPolicy<DecimalType>
             >;
-  auto [p,stat] = T::runPermutationTest(bt,1,DecimalType("0.4"));
+  T policy;
+  auto [p,stat] = policy.runPermutationTest(bt,1,DecimalType("0.4"));
   REQUIRE(p    == DecimalType("1.0"));
   REQUIRE(stat == DecimalType("0.5"));
 }
@@ -225,7 +228,8 @@ TEST_CASE("max-statistic policy yields correct max", "[unit]") {
               PValueAndTestStatisticReturnPolicy<DecimalType>,
               PermutationTestingMaxTestStatisticPolicy<DecimalType>
             >;
-  auto [p,stat] = M::runPermutationTest(bt,5,DecimalType("0.4"));
+  M policy;
+  auto [p,stat] = policy.runPermutationTest(bt,5,DecimalType("0.4"));
   REQUIRE(p    == DecimalType("1.0"));
   REQUIRE(stat == DecimalType("0.5"));
 }
@@ -237,7 +241,8 @@ TEST_CASE("p=1 when no permutations meet minTrades", "[unit]") {
               DecimalType, NoTradesPolicy,
               PValueAndTestStatisticReturnPolicy<DecimalType>
             >;
-  auto [p,stat] = N::runPermutationTest(bt,10,DecimalType("0"));
+  N policy;
+  auto [p,stat] = policy.runPermutationTest(bt,10,DecimalType("0"));
   REQUIRE(p    == DecimalType("1.0"));
   REQUIRE(stat == DecimalConstants<DecimalType>::DecimalZero);
 }
@@ -249,7 +254,8 @@ TEST_CASE("P-values under null uniform policy are approx uniform", "[distributio
   std::vector<double> pvals; pvals.reserve(Nruns);
   for(int i=0;i<Nruns;++i) {
     auto baseline = UniformStatPolicy::getPermutationTestStatistic(bt);
-    auto p = UniformNullTester::runPermutationTest(bt,Nperm,baseline);
+    UniformNullTester policy;
+    auto p = policy.runPermutationTest(bt,Nperm,baseline);
     pvals.push_back(p.getAsDouble());
   }
   double mean = std::accumulate(pvals.begin(), pvals.end(), 0.0) / pvals.size();
@@ -267,7 +273,8 @@ TEST_CASE("Integration: p-values under null approx uniform", "[integration]") {
   std::vector<double> pvals; pvals.reserve(Nruns);
   for(int i=0;i<Nruns;++i) {
     auto baseline = UniformIntegrationNullPolicy::getPermutationTestStatistic(bt);
-    auto p = UniformIntegrationTester::runPermutationTest(bt,Nperm,baseline);
+    UniformIntegrationTester policy;
+    auto p = policy.runPermutationTest(bt,Nperm,baseline);
     pvals.push_back(p.getAsDouble());
   }
   double expectedMean = double(Nperm+2) / (2.0*(Nperm+1));
@@ -295,8 +302,10 @@ TEST_CASE("ThreadPoolExecutor vs StdAsyncExecutor same output", "[integration]")
     concurrency::StdAsyncExecutor
   >;
 
-  auto r1 = PoolTester::runPermutationTest(bt, Nperm, baseline);
-  auto r2 = AsyncTester::runPermutationTest(bt, Nperm, baseline);
+  PoolTester poolPolicy;
+  AsyncTester asyncPolicy;
+  auto r1 = poolPolicy.runPermutationTest(bt, Nperm, baseline);
+  auto r2 = asyncPolicy.runPermutationTest(bt, Nperm, baseline);
 
   REQUIRE(r1 == r2);
 }
@@ -306,7 +315,10 @@ TEST_CASE("runPermutationTest throws if numPermutations==0","[unit]") {
   bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
   DecimalType baseline("0.0");
   REQUIRE_THROWS_AS(
-		    (DefaultPermuteMarketChangesPolicy<DecimalType,DummyStatPolicy>::runPermutationTest(bt,0,baseline)),
+		    ([&]() {
+		      DefaultPermuteMarketChangesPolicy<DecimalType,DummyStatPolicy> policy;
+		      return policy.runPermutationTest(bt,0,baseline);
+		    }()),
     std::invalid_argument);
 }
 
@@ -328,7 +340,8 @@ TEST_CASE("numPermutations==1 yields p=1 or 0.5","[unit]") {
   };
 
   // baseline == statistic → p = (1+1)/(1+1) == 1
-  auto p1 = DefaultPermuteMarketChangesPolicy<DecimalType,EqPolicy>::runPermutationTest(bt,1,DecimalType("0.5"));
+  DefaultPermuteMarketChangesPolicy<DecimalType,EqPolicy> policy1;
+  auto p1 = policy1.runPermutationTest(bt,1,DecimalType("0.5"));
   REQUIRE(p1 == DecimalType("1.0"));
   // Policy that always gives stat < baseline → p = (0+1)/(1+1) == 0.5
   struct LtPolicy {
@@ -343,6 +356,7 @@ TEST_CASE("numPermutations==1 yields p=1 or 0.5","[unit]") {
     }
 
   };
-  auto p2 = DefaultPermuteMarketChangesPolicy<DecimalType,LtPolicy>::runPermutationTest(bt,1,DecimalType("0.5"));
+  DefaultPermuteMarketChangesPolicy<DecimalType,LtPolicy> policy2;
+  auto p2 = policy2.runPermutationTest(bt,1,DecimalType("0.5"));
   REQUIRE(p2 == DecimalType("0.5"));
 }
