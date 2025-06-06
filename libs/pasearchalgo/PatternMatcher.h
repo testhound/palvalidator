@@ -20,18 +20,18 @@ using namespace mkc_timeseries;
 namespace mkc_searchalgo
 {
 
-  static std::unique_ptr<PriceActionLabSystem> getPricePatterns(boost::filesystem::path filePath)
+  static std::shared_ptr<PriceActionLabSystem> getPricePatternsFromFile(boost::filesystem::path filePath)
   {
     mkc_palast::PalParseDriver driver (filePath.string());
 
     driver.Parse();
 
     std::cout << "Parsing successfully completed." << std::endl << std::endl;
-    PriceActionLabSystem* system = driver.getPalStrategies();
+    auto system = driver.getPalStrategiesShared();
     std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
     std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
     std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
-    return std::unique_ptr<PriceActionLabSystem>(system);
+    return system;
 
   }
 
@@ -41,7 +41,7 @@ namespace mkc_searchalgo
                                  bool isLong)
   {
     std::cout << "file: " << fPath.string() << std::endl;
-    std::unique_ptr<PriceActionLabSystem> patterns = getPricePatterns(fPath);
+    auto patterns = getPricePatternsFromFile(fPath);
     PriceActionLabSystem::ConstSortedPatternIterator it = (isLong)? patterns->patternLongsBegin(): patterns->patternShortsBegin();
     PriceActionLabSystem::ConstSortedPatternIterator end = (isLong)? patterns->patternLongsEnd(): patterns->patternShortsEnd();
     unsigned long numPatterns = patterns->getNumPatterns();

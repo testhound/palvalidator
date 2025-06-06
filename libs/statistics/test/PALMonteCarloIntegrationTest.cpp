@@ -94,7 +94,6 @@ TEST_CASE("PALMonteCarloValidation Integration Test - Observer Pattern", "[PALMo
         }
         
         // Cleanup
-        delete patterns;
     }
     
     SECTION("Observer Pattern Performance with Full Dataset") {
@@ -131,7 +130,6 @@ TEST_CASE("PALMonteCarloValidation Integration Test - Observer Pattern", "[PALMo
         REQUIRE(validationWithObserver.getStatisticsCollector().getStrategyCount() >= 0);
         
         // Cleanup
-        delete patterns;
     }
     
     SECTION("Observer Pattern with Real-World Data Volume") {
@@ -179,7 +177,6 @@ TEST_CASE("PALMonteCarloValidation Integration Test - Observer Pattern", "[PALMo
         }
         
         // Cleanup
-        delete patterns;
     }
     
     SECTION("Observer Pattern Statistics Validation") {
@@ -243,6 +240,5 @@ TEST_CASE("PALMonteCarloValidation Integration Test - Observer Pattern", "[PALMo
         }
         
         // Cleanup
-        delete patterns;
     }
 }

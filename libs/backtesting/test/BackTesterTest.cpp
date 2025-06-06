@@ -27,25 +27,25 @@ createShortOnOpen();
 LongSideProfitTargetInPercent *
 createLongProfitTarget(const std::string& targetPct)
 {
-  return new LongSideProfitTargetInPercent (createRawDecimalPtr (targetPct));
+  return new LongSideProfitTargetInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
 }
 
 LongSideStopLossInPercent *
 createLongStopLoss(const std::string& targetPct)
 {
-  return new LongSideStopLossInPercent (createRawDecimalPtr (targetPct));
+  return new LongSideStopLossInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
 }
 
 ShortSideProfitTargetInPercent *
 createShortProfitTarget(const std::string& targetPct)
 {
-  return new ShortSideProfitTargetInPercent (createRawDecimalPtr (targetPct));
+  return new ShortSideProfitTargetInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
 }
 
 ShortSideStopLossInPercent *
 createShortStopLoss(const std::string& targetPct)
 {
-  return new ShortSideStopLossInPercent (createRawDecimalPtr (targetPct));
+  return new ShortSideStopLossInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
 }
 
 std::shared_ptr<PriceActionLabPattern>
@@ -93,7 +93,10 @@ static createLongPattern1()
   StopLossInPercentExpression *stop = createLongStopLoss("0.16");
 
   // 2.56 profit target in points = 93.81
-  return std::make_shared<PriceActionLabPattern>(desc, longPattern1, entry, target, stop);
+  return std::make_shared<PriceActionLabPattern>(desc, longPattern1,
+                                                 std::shared_ptr<MarketEntryExpression>(entry),
+                                                 std::shared_ptr<ProfitTargetInPercentExpression>(target),
+                                                 std::shared_ptr<StopLossInPercentExpression>(stop));
 }
 
 std::shared_ptr<PriceActionLabPattern>
