@@ -485,7 +485,7 @@ private:
                 Decimal low   = num::Round2Tick(actualLow,   mMinimumTick, mMinimumTickDiv2);
                 Decimal close = num::Round2Tick(actualClose, mMinimumTick, mMinimumTickDiv2);
 
-                lastUnroundedCloseForThisDay = close;
+                lastUnroundedCloseForThisDay = actualClose;
                 
 #ifdef SYNTHETIC_VOLUME
                 Decimal volume = DecimalConstants<Decimal>::DecimalZero; 
