@@ -83,9 +83,9 @@ namespace {
   }
 
   // Limit patterns to a subset of size maxPatterns
-  PriceActionLabSystem* getSubsetOfPatterns(size_t maxPatterns = 3) {
-    auto* fullSystem = getPricePatterns("QQQ_IR.txt");
-    auto* subset = new PriceActionLabSystem();
+  std::shared_ptr<PriceActionLabSystem> getSubsetOfPatterns(size_t maxPatterns = 3) {
+    auto fullSystem = getPricePatterns("QQQ_IR.txt");
+    auto subset = std::make_shared<PriceActionLabSystem>();
     size_t count = 0;
     for (auto it = fullSystem->allPatternsBegin(); it != fullSystem->allPatternsEnd() && count < maxPatterns; ++it, ++count) {
       subset->addPattern(*it);
@@ -112,7 +112,7 @@ namespace {
 
 TEST_CASE("PALMonteCarloValidation handles null base security") {
     PALMonteCarloValidation<D, DummyMcpt, UnadjustedPValueStrategySelection> validator(10);
-    PriceActionLabSystem* patterns = getRandomPricePatterns();
+    auto patterns = getRandomPricePatterns();
     REQUIRE_THROWS_AS(
         validator.runPermutationTests(nullptr, patterns,
             DateRange(createDate("20200101"), createDate("20200105"))),
@@ -151,11 +151,10 @@ TEST_CASE("PALMonteCarloValidation yields expected number of survivors") {
 TEST_CASE("PALMonteCarloValidation does not crash with empty pattern set") {
     PALMonteCarloValidation<D, DummyMcpt, UnadjustedPValueStrategySelection> validator(10);
     auto security = makeTestSecurity();
-    auto emptyPatterns = new PriceActionLabSystem();
+    auto emptyPatterns = std::make_shared<PriceActionLabSystem>();
     DateRange range(security->getTimeSeries()->getFirstDate(), security->getTimeSeries()->getLastDate());
     validator.runPermutationTests(security, emptyPatterns, range);
     REQUIRE(validator.getNumSurvivingStrategies() == 0);
-    delete emptyPatterns;
 }
 
 TEST_CASE("PALMonteCarloValidation works with subset of patterns") {
@@ -165,7 +164,6 @@ TEST_CASE("PALMonteCarloValidation works with subset of patterns") {
     DateRange range(security->getTimeSeries()->getFirstDate(), security->getTimeSeries()->getLastDate());
     validator.runPermutationTests(security, patterns, range);
     REQUIRE(validator.getNumSurvivingStrategies() > 0);
-    delete patterns;
 }
 
 TEST_CASE("PALMonteCarloValidation ctor rejects zero permutations")
@@ -191,7 +189,6 @@ TEST_CASE("PALMonteCarloValidation with custom alpha rejects all at low threshol
   // DummyMcpt returns p=0.01, so alpha=0.005 kills all
   v.runPermutationTests(sec, pats, r, D("0.005"));
   REQUIRE(v.getNumSurvivingStrategies() == 0);
-  delete pats;
 }
 
 TEST_CASE("PALMonteCarloValidation with custom alpha accepts all at high threshold") {
@@ -202,7 +199,6 @@ TEST_CASE("PALMonteCarloValidation with custom alpha accepts all at high thresho
   // alpha=0.02 accepts all p=0.01
   v.runPermutationTests(sec, pats, r, D("0.02"));
   REQUIRE(v.getNumSurvivingStrategies() == 3);
-  delete pats;
 }
 
 TEST_CASE("PALMonteCarloValidation survivors == num patterns for DummyMcpt") {
@@ -212,7 +208,6 @@ TEST_CASE("PALMonteCarloValidation survivors == num patterns for DummyMcpt") {
   DateRange r{sec->getTimeSeries()->getFirstDate(), sec->getTimeSeries()->getLastDate()};
   v.runPermutationTests(sec, pats, r);
   REQUIRE(v.getNumSurvivingStrategies() == 4);
-  delete pats;
 }
 
 TEST_CASE("PALMonteCarloValidation surfaces MCPT exceptions") {
@@ -221,7 +216,6 @@ TEST_CASE("PALMonteCarloValidation surfaces MCPT exceptions") {
   auto pats = getSubsetOfPatterns(2);
   DateRange r{sec->getTimeSeries()->getFirstDate(), sec->getTimeSeries()->getLastDate()};
   REQUIRE_THROWS_AS(v.runPermutationTests(sec, pats, r), PALMonteCarloValidationException);
-  delete pats;
 }
 
 TEST_CASE("Rerun resets survivors (inclusive boundary)") {
@@ -234,7 +228,6 @@ TEST_CASE("Rerun resets survivors (inclusive boundary)") {
   auto firstCount = v.getNumSurvivingStrategies();
   v.runPermutationTests(sec, pats, r, D("0.05"));
   REQUIRE(v.getNumSurvivingStrategies() == firstCount);
-  delete pats;
 }
 
 TEST_CASE("Default alpha is SignificantPValue and inclusive") {
@@ -246,7 +239,6 @@ TEST_CASE("Default alpha is SignificantPValue and inclusive") {
   // omit alpha param => uses default 0.05 inclusive
   v.runPermutationTests(sec, pats, r);
   REQUIRE(v.getNumSurvivingStrategies() == 1);
-  delete pats;
 }
 
 TEST_CASE("p-value == alpha is accepted (inclusive boundary)") {
@@ -258,7 +250,6 @@ TEST_CASE("p-value == alpha is accepted (inclusive boundary)") {
   v.runPermutationTests(sec, pats, r, D("0.05"));
   // both patterns return 0.05 => both should survive
   REQUIRE(v.getNumSurvivingStrategies() == 2);
-  delete pats;
 }
 
 TEST_CASE("Mixed p-values: survivors are < or = alpha (sequential)") {
@@ -279,7 +270,6 @@ TEST_CASE("Mixed p-values: survivors are < or = alpha (sequential)") {
     // now always runs in order: call==0 → 0.01, call==1 → 0.05, call==2 → 0.10
     REQUIRE(v.getNumSurvivingStrategies() == 2);
 
-    delete pats;
 }
 
 

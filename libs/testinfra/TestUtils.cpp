@@ -1,5 +1,6 @@
 #include <exception>
-#include <random> 
+#include <random>
+#include <iostream>
 #include <boost/filesystem.hpp>
 #include "PalParseDriver.h"
 #include "TestUtils.h"
@@ -11,6 +12,7 @@
 #include "BoostDateHelper.h"
 #include "PalAst.h"
 #include "Security.h"
+#include <typeinfo>
 
 using namespace boost::gregorian;
 using namespace boost::posix_time;
@@ -26,25 +28,24 @@ std::shared_ptr<OHLCTimeSeries<Num>> readPALDataFile(const std::string &filename
   return (csvFile.getTimeSeries());
 }
 
-PriceActionLabSystem* getPricePatterns(const std::string &irFileName)
+
+// New shared_ptr version for modern code
+std::shared_ptr<PriceActionLabSystem> getPricePatterns(const std::string &irFileName)
 {
   boost::filesystem::path irFilePath (irFileName);
 
   if (!exists (irFilePath))
     throw std::runtime_error("PAL IR path " +irFilePath.string() +" does not exist");
 
-  // Constructor driver (facade) that will parse the IR and return
-  // and AST representation
   mkc_palast::PalParseDriver driver (irFilePath.string());
-
-  // Read the IR file
-
   driver.Parse();
 
-  return (driver.getPalStrategies());
+  return driver.getPalStrategies();
 }
 
-PriceActionLabSystem* getRandomPricePatterns()
+
+// New shared_ptr version for modern code
+std::shared_ptr<PriceActionLabSystem> getRandomPricePatterns()
 {
   return getPricePatterns("QQQ_IR.txt");
 }
@@ -56,7 +57,7 @@ std::shared_ptr<OHLCTimeSeries<DecimalType>> getRandomPriceSeries()
 
 ///
 /// Returns a shared_ptr to a randomly chosen PalStrategy<DecimalType>.
-/// Internally calls getRandomPricePatterns() (which loads "QQQ_IR.txt" :contentReference[oaicite:1]{index=1}),
+/// Internally calls getRandomPricePatterns() (which loads "QQQ_IR.txt"),
 /// then picks one PriceActionLabPattern at random, and finally uses makePalStrategy<DecimalType>
 /// to wrap it in either PalLongStrategy or PalShortStrategy (with an empty Portfolio).
 ///
@@ -78,14 +79,26 @@ getRandomPalStrategy()
 std::shared_ptr< PalStrategy<DecimalType> >
 getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
 {
-    // 1. Load the PriceActionLabSystem from "QQQ_IR.txt"
-    PriceActionLabSystem* sys = getRandomPricePatterns();
-    if (!sys) {
-        throw std::runtime_error("Failed to load PriceActionLabSystem from getRandomPricePatterns()");
+    // 1. Load the PriceActionLabSystem from "QQQ_IR.txt" using shared_ptr version
+    // IMPORTANT: Keep the shared_ptr alive to prevent AstFactory destruction
+    static thread_local std::shared_ptr<PriceActionLabSystem> cached_sys = nullptr;
+    
+    if (!cached_sys) {
+        std::cerr << "DEBUG: Loading PriceActionLabSystem from QQQ_IR.txt" << std::endl;
+        cached_sys = getRandomPricePatterns();
+        if (!cached_sys) {
+            throw std::runtime_error("Failed to load PriceActionLabSystem from getRandomPricePatterns()");
+        }
+        std::cerr << "DEBUG: PriceActionLabSystem loaded successfully" << std::endl;
+        std::cerr << "  System pointer: " << cached_sys.get() << std::endl;
+    } else {
+        std::cerr << "DEBUG: Using cached PriceActionLabSystem" << std::endl;
+        std::cerr << "  Cached system pointer: " << cached_sys.get() << std::endl;
     }
 
     // 2. Get total number of patterns
-    unsigned long total = sys->getNumPatterns();
+    unsigned long total = cached_sys->getNumPatterns();
+    std::cerr << "DEBUG: Total patterns available: " << total << std::endl;
     if (total == 0) {
         throw std::runtime_error("No patterns available in PriceActionLabSystem");
     }
@@ -95,12 +108,86 @@ getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
     std::mt19937 gen(rd());
     std::uniform_int_distribution<unsigned long> dist(0, total - 1);
     unsigned long idx = dist(gen);
+    std::cerr << "DEBUG: Chosen pattern index: " << idx << std::endl;
 
     // 4. Advance the iterator to the chosen index
-    auto it = sys->allPatternsBegin();
+    auto it = cached_sys->allPatternsBegin();
     std::advance(it, static_cast<std::ptrdiff_t>(idx));
     auto chosenPattern = *it;
     // chosenPattern is std::shared_ptr<PriceActionLabPattern>
+    
+    std::cerr << "DEBUG: Chosen pattern details:" << std::endl;
+    std::cerr << "  Pattern pointer: " << chosenPattern.get() << std::endl;
+    if (chosenPattern) {
+        std::cerr << "  Pattern file: " << chosenPattern->getFileName() << std::endl;
+        std::cerr << "  Pattern index: " << chosenPattern->getpatternIndex() << std::endl;
+        
+        // Test the isLongPattern() call that's causing the issue
+        std::cerr << "DEBUG: About to call chosenPattern->isLongPattern()..." << std::endl;
+        
+        // Add detailed debugging of the mEntry object
+        auto marketEntry = chosenPattern->getMarketEntry();
+        if (!marketEntry) {
+            std::cerr << "ERROR: MarketEntry is null!" << std::endl;
+            throw std::runtime_error("MarketEntry is null");
+        }
+        
+        std::cerr << "DEBUG: mEntry type: " << typeid(*marketEntry).name() << std::endl;
+        
+        // Check if it's the abstract base class (this should never happen)
+        if (typeid(*marketEntry) == typeid(MarketEntryExpression)) {
+            std::cerr << "FATAL ERROR: mEntry is abstract MarketEntryExpression - this should never happen!" << std::endl;
+            std::cerr << "  Pattern file: " << chosenPattern->getFileName() << std::endl;
+            std::cerr << "  Pattern index: " << chosenPattern->getpatternIndex() << std::endl;
+            throw std::runtime_error("Abstract MarketEntryExpression detected");
+        }
+        
+        // Check for specific concrete types
+        if (auto longEntry = std::dynamic_pointer_cast<LongMarketEntryOnOpen>(marketEntry)) {
+            std::cerr << "DEBUG: Detected LongMarketEntryOnOpen" << std::endl;
+        } else if (auto shortEntry = std::dynamic_pointer_cast<ShortMarketEntryOnOpen>(marketEntry)) {
+            std::cerr << "DEBUG: Detected ShortMarketEntryOnOpen" << std::endl;
+        } else {
+            std::cerr << "WARNING: Unknown MarketEntryExpression type: " << typeid(*marketEntry).name() << std::endl;
+            
+            // Additional debugging for unknown types - check if it's actually abstract
+            std::cerr << "=== FACTORY STATE INVESTIGATION ===" << std::endl;
+            std::cerr << "MarketEntry pointer: " << marketEntry.get() << std::endl;
+            std::cerr << "MarketEntry use_count: " << marketEntry.use_count() << std::endl;
+            
+            // Try to call the pure virtual methods to see what happens
+            try {
+                std::cerr << "Attempting to call isLongPattern()..." << std::endl;
+                bool isLong = marketEntry->isLongPattern();
+                std::cerr << "isLongPattern() returned: " << isLong << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Exception in isLongPattern(): " << e.what() << std::endl;
+            }
+            
+            try {
+                std::cerr << "Attempting to call isShortPattern()..." << std::endl;
+                bool isShort = marketEntry->isShortPattern();
+                std::cerr << "isShortPattern() returned: " << isShort << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Exception in isShortPattern(): " << e.what() << std::endl;
+            }
+            
+            // Check memory around the object
+            std::cerr << "Object size: " << sizeof(*marketEntry) << std::endl;
+            std::cerr << "=== END FACTORY STATE INVESTIGATION ===" << std::endl;
+        }
+        
+        try {
+            bool isLong = chosenPattern->isLongPattern();
+            std::cerr << "  Is long pattern: " << (isLong ? "true" : "false") << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "ERROR: Exception calling isLongPattern(): " << e.what() << std::endl;
+            throw;
+        }
+    } else {
+        std::cerr << "ERROR: Chosen pattern is null!" << std::endl;
+        throw std::runtime_error("Chosen pattern is null");
+    }
 
     // 5. Build a named Portfolio<DecimalType> and add the provided security
     auto portfolio = std::make_shared<Portfolio<DecimalType>>("RandomPortfolio");

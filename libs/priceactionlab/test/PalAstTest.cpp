@@ -47,7 +47,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
     MockPalCodeGenVisitor mock_visitor;
 
     SECTION("Get PriceBarReference Objects") {
-        PriceBarReference* open0 = factory.getPriceOpen(0);
+        auto open0 = factory.getPriceOpen(0);
         REQUIRE(open0 != nullptr);
         REQUIRE(open0->getBarOffset() == 0);
         REQUIRE(open0->getReferenceType() == PriceBarReference::OPEN);
@@ -55,7 +55,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         open0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "PriceBarOpen");
 
-        PriceBarReference* high1 = factory.getPriceHigh(1);
+        auto high1 = factory.getPriceHigh(1);
         REQUIRE(high1 != nullptr);
         REQUIRE(high1->getBarOffset() == 1);
         REQUIRE(high1->getReferenceType() == PriceBarReference::HIGH);
@@ -64,7 +64,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         REQUIRE(mock_visitor.visited_nodes.back() == "PriceBarHigh");
 
 
-        PriceBarReference* low2 = factory.getPriceLow(2);
+        auto low2 = factory.getPriceLow(2);
         REQUIRE(low2 != nullptr);
         REQUIRE(low2->getBarOffset() == 2);
         REQUIRE(low2->getReferenceType() == PriceBarReference::LOW);
@@ -72,7 +72,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         low2->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "PriceBarLow");
 
-        PriceBarReference* close3 = factory.getPriceClose(3);
+        auto close3 = factory.getPriceClose(3);
         REQUIRE(close3 != nullptr);
         REQUIRE(close3->getBarOffset() == 3);
         REQUIRE(close3->getReferenceType() == PriceBarReference::CLOSE);
@@ -80,7 +80,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         close3->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "PriceBarClose");
 
-        PriceBarReference* volume0 = factory.getVolume(0);
+        auto volume0 = factory.getVolume(0);
         REQUIRE(volume0 != nullptr);
         REQUIRE(volume0->getBarOffset() == 0);
         REQUIRE(volume0->getReferenceType() == PriceBarReference::VOLUME);
@@ -88,7 +88,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         volume0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "VolumeBarReference");
 
-        PriceBarReference* roc1_0 = factory.getRoc1(0);
+        auto roc1_0 = factory.getRoc1(0);
         REQUIRE(roc1_0 != nullptr);
         REQUIRE(roc1_0->getBarOffset() == 0);
         REQUIRE(roc1_0->getReferenceType() == PriceBarReference::ROC1);
@@ -96,7 +96,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         roc1_0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "Roc1BarReference");
 
-        PriceBarReference* ibs1_0 = factory.getIBS1(0);
+        auto ibs1_0 = factory.getIBS1(0);
         REQUIRE(ibs1_0 != nullptr);
         REQUIRE(ibs1_0->getBarOffset() == 0);
         REQUIRE(ibs1_0->getReferenceType() == PriceBarReference::IBS1);
@@ -104,7 +104,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         ibs1_0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "IBS1BarReference");
 
-        PriceBarReference* ibs2_0 = factory.getIBS2(0);
+        auto ibs2_0 = factory.getIBS2(0);
         REQUIRE(ibs2_0 != nullptr);
         REQUIRE(ibs2_0->getBarOffset() == 0);
         REQUIRE(ibs2_0->getReferenceType() == PriceBarReference::IBS2);
@@ -112,7 +112,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         ibs2_0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "IBS2BarReference");
 
-        PriceBarReference* ibs3_0 = factory.getIBS3(0);
+        auto ibs3_0 = factory.getIBS3(0);
         REQUIRE(ibs3_0 != nullptr);
         REQUIRE(ibs3_0->getBarOffset() == 0);
         REQUIRE(ibs3_0->getReferenceType() == PriceBarReference::IBS3);
@@ -120,7 +120,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         ibs3_0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "IBS3BarReference");
 
-        PriceBarReference* meander0 = factory.getMeander(0);
+        auto meander0 = factory.getMeander(0);
         REQUIRE(meander0 != nullptr);
         REQUIRE(meander0->getBarOffset() == 0);
         REQUIRE(meander0->getReferenceType() == PriceBarReference::MEANDER);
@@ -128,7 +128,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         meander0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "MeanderBarReference");
 
-        PriceBarReference* vclow0 = factory.getVChartLow(0);
+        auto vclow0 = factory.getVChartLow(0);
         REQUIRE(vclow0 != nullptr);
         REQUIRE(vclow0->getBarOffset() == 0);
         REQUIRE(vclow0->getReferenceType() == PriceBarReference::VCHARTLOW);
@@ -136,7 +136,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         vclow0->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "VChartLowBarReference");
 
-        PriceBarReference* vchigh0 = factory.getVChartHigh(0);
+        auto vchigh0 = factory.getVChartHigh(0);
         REQUIRE(vchigh0 != nullptr);
         REQUIRE(vchigh0->getBarOffset() == 0);
         REQUIRE(vchigh0->getReferenceType() == PriceBarReference::VCHARTHIGH);
@@ -145,10 +145,10 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         REQUIRE(mock_visitor.visited_nodes.back() == "VChartHighBarReference");
 
         // Test caching: subsequent calls with same offset should return same pointer for predefined ones
-        REQUIRE(factory.getPriceOpen(0) == open0);
+        REQUIRE(factory.getPriceOpen(0).get() == open0.get());
         REQUIRE(factory.getPriceOpen(AstFactory::MaxNumBarOffsets -1) != nullptr); // Check last predefined
         // Test beyond predefined
-        PriceBarReference* open_beyond = factory.getPriceOpen(AstFactory::MaxNumBarOffsets + 1);
+        auto open_beyond = factory.getPriceOpen(AstFactory::MaxNumBarOffsets + 1);
         REQUIRE(open_beyond != nullptr);
         REQUIRE(open_beyond->getBarOffset() == AstFactory::MaxNumBarOffsets + 1);
         //This object is created on the fly and is not cleaned up by AstFactory destructor
@@ -159,7 +159,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
     }
 
     SECTION("Get MarketEntryExpression Objects") {
-        MarketEntryExpression* longEntry = factory.getLongMarketEntryOnOpen();
+        auto longEntry = factory.getLongMarketEntryOnOpen();
         REQUIRE(longEntry != nullptr);
         REQUIRE(longEntry->isLongPattern()); //
         REQUIRE_FALSE(longEntry->isShortPattern()); //
@@ -167,7 +167,7 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
         REQUIRE(mock_visitor.visited_nodes.back() == "LongMarketEntryOnOpen");
 
 
-        MarketEntryExpression* shortEntry = factory.getShortMarketEntryOnOpen();
+        auto shortEntry = factory.getShortMarketEntryOnOpen();
         REQUIRE(shortEntry != nullptr);
         REQUIRE(shortEntry->isShortPattern()); //
         REQUIRE_FALSE(shortEntry->isLongPattern()); //
@@ -176,82 +176,82 @@ TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
 
 
         // Test caching
-        REQUIRE(factory.getLongMarketEntryOnOpen() == longEntry);
-        REQUIRE(factory.getShortMarketEntryOnOpen() == shortEntry);
+        REQUIRE(factory.getLongMarketEntryOnOpen().get() == longEntry.get());
+        REQUIRE(factory.getShortMarketEntryOnOpen().get() == shortEntry.get());
     }
 
     SECTION("Get DecimalNumber Objects") {
         char numStr1[] = "123.45";
-        decimal7* dec1_str = factory.getDecimalNumber(numStr1);
+        auto dec1_str = factory.getDecimalNumber(numStr1);
         REQUIRE(dec1_str != nullptr);
         REQUIRE(*dec1_str == num::fromString<decimal7>("123.45"));
 
         char numStr2[] = "67.89";
-        decimal7* dec2_str = factory.getDecimalNumber(numStr2);
+        auto dec2_str = factory.getDecimalNumber(numStr2);
         REQUIRE(dec2_str != nullptr);
         REQUIRE(*dec2_str == num::fromString<decimal7>("67.89"));
-        REQUIRE(factory.getDecimalNumber(numStr1) == dec1_str); // Test caching
+        REQUIRE(factory.getDecimalNumber(numStr1).get() == dec1_str.get()); // Test caching
 
-        decimal7* dec1_int = factory.getDecimalNumber(123);
+        auto dec1_int = factory.getDecimalNumber(123);
         REQUIRE(dec1_int != nullptr);
         REQUIRE(*dec1_int == decimal7(123));
 
-        decimal7* dec2_int = factory.getDecimalNumber(456);
+        auto dec2_int = factory.getDecimalNumber(456);
         REQUIRE(dec2_int != nullptr);
         REQUIRE(*dec2_int == decimal7(456));
-        REQUIRE(factory.getDecimalNumber(123) == dec1_int); // Test caching
+        REQUIRE(factory.getDecimalNumber(123).get() == dec1_int.get()); // Test caching
     }
 
 
     SECTION("Get ProfitTarget Objects") {
-        decimal7* pt_val_5 = factory.getDecimalNumber(5);
-        decimal7* pt_val_10 = factory.getDecimalNumber(10);
+        auto pt_val_5 = factory.getDecimalNumber(5);
+        auto pt_val_10 = factory.getDecimalNumber(10);
 
 
-        LongSideProfitTargetInPercent* long_pt5 = factory.getLongProfitTarget(pt_val_5);
+        auto long_pt5 = factory.getLongProfitTarget(pt_val_5);
         REQUIRE(long_pt5 != nullptr);
-        REQUIRE(long_pt5->getProfitTarget() == pt_val_5);
+        REQUIRE(long_pt5->getProfitTarget() == pt_val_5.get());
         REQUIRE(long_pt5->isLongSideProfitTarget()); //
         REQUIRE_FALSE(long_pt5->isShortSideProfitTarget()); //
         long_pt5->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "LongSideProfitTargetInPercent");
 
-        ShortSideProfitTargetInPercent* short_pt10 = factory.getShortProfitTarget(pt_val_10);
+        auto short_pt10 = factory.getShortProfitTarget(pt_val_10);
         REQUIRE(short_pt10 != nullptr);
-        REQUIRE(short_pt10->getProfitTarget() == pt_val_10);
+        REQUIRE(short_pt10->getProfitTarget() == pt_val_10.get());
         REQUIRE(short_pt10->isShortSideProfitTarget()); //
         REQUIRE_FALSE(short_pt10->isLongSideProfitTarget()); //
         short_pt10->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "ShortSideProfitTargetInPercent");
 
         // Test caching
-        REQUIRE(factory.getLongProfitTarget(pt_val_5) == long_pt5);
-        REQUIRE(factory.getShortProfitTarget(pt_val_10) == short_pt10);
+        REQUIRE(factory.getLongProfitTarget(pt_val_5).get() == long_pt5.get());
+        REQUIRE(factory.getShortProfitTarget(pt_val_10).get() == short_pt10.get());
     }
 
     SECTION("Get StopLoss Objects") {
-        decimal7* sl_val_2 = factory.getDecimalNumber(2);
-        decimal7* sl_val_3 = factory.getDecimalNumber(3);
+        auto sl_val_2 = factory.getDecimalNumber(2);
+        auto sl_val_3 = factory.getDecimalNumber(3);
 
-        LongSideStopLossInPercent* long_sl2 = factory.getLongStopLoss(sl_val_2);
+        auto long_sl2 = factory.getLongStopLoss(sl_val_2);
         REQUIRE(long_sl2 != nullptr);
-        REQUIRE(long_sl2->getStopLoss() == sl_val_2);
+        REQUIRE(long_sl2->getStopLoss() == sl_val_2.get());
         REQUIRE(long_sl2->isLongSideStopLoss()); //
         REQUIRE_FALSE(long_sl2->isShortSideStopLoss()); //
         long_sl2->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "LongSideStopLossInPercent");
 
-        ShortSideStopLossInPercent* short_sl3 = factory.getShortStopLoss(sl_val_3);
+        auto short_sl3 = factory.getShortStopLoss(sl_val_3);
         REQUIRE(short_sl3 != nullptr);
-        REQUIRE(short_sl3->getStopLoss() == sl_val_3);
+        REQUIRE(short_sl3->getStopLoss() == sl_val_3.get());
         REQUIRE(short_sl3->isShortSideStopLoss()); //
         REQUIRE_FALSE(short_sl3->isLongSideStopLoss()); //
         short_sl3->accept(mock_visitor);
         REQUIRE(mock_visitor.visited_nodes.back() == "ShortSideStopLossInPercent");
 
         // Test caching
-        REQUIRE(factory.getLongStopLoss(sl_val_2) == long_sl2);
-        REQUIRE(factory.getShortStopLoss(sl_val_3) == short_sl3);
+        REQUIRE(factory.getLongStopLoss(sl_val_2).get() == long_sl2.get());
+        REQUIRE(factory.getShortStopLoss(sl_val_3).get() == short_sl3.get());
     }
 }
 
@@ -426,35 +426,35 @@ TEST_CASE("PriceBarReference Classes", "[PriceBarReference]") {
 TEST_CASE("PatternExpression Classes", "[PatternExpression]") {
     AstFactory factory;
     MockPalCodeGenVisitor visitor;
-    PriceBarReference* open0 = factory.getPriceOpen(0);
-    PriceBarReference* close1 = factory.getPriceClose(1);
-    PriceBarReference* high0 = factory.getPriceHigh(0);
+    auto open0 = factory.getPriceOpen(0);
+    auto close1 = factory.getPriceClose(1);
+    auto high0 = factory.getPriceHigh(0);
 
 
     SECTION("GreaterThanExpr") {
-        GreaterThanExpr gtExpr(open0, close1);
-        REQUIRE(gtExpr.getLHS() == open0);
-        REQUIRE(gtExpr.getRHS() == close1);
+        GreaterThanExpr gtExpr(open0.get(), close1.get());
+        REQUIRE(gtExpr.getLHS() == open0.get());
+        REQUIRE(gtExpr.getRHS() == close1.get());
         gtExpr.accept(visitor);
         REQUIRE(visitor.visited_nodes.back() == "GreaterThanExpr");
         unsigned long long hc = gtExpr.hashCode();
         REQUIRE(hc != 0);
 
         GreaterThanExpr gtExpr_copy(gtExpr);
-        REQUIRE(gtExpr_copy.getLHS() == open0);
-        REQUIRE(gtExpr_copy.getRHS() == close1);
+        REQUIRE(gtExpr_copy.getLHS() == open0.get());
+        REQUIRE(gtExpr_copy.getRHS() == close1.get());
         REQUIRE(gtExpr_copy.hashCode() == hc);
 
-        GreaterThanExpr gtExpr_assign(high0, open0);
+        GreaterThanExpr gtExpr_assign(high0.get(), open0.get());
         gtExpr_assign = gtExpr;
-        REQUIRE(gtExpr_assign.getLHS() == open0);
-        REQUIRE(gtExpr_assign.getRHS() == close1);
+        REQUIRE(gtExpr_assign.getLHS() == open0.get());
+        REQUIRE(gtExpr_assign.getRHS() == close1.get());
         REQUIRE(gtExpr_assign.hashCode() == hc);
     }
 
     SECTION("AndExpr") {
-        PatternExpressionPtr gtExpr1 = std::make_shared<GreaterThanExpr>(open0, close1);
-        PatternExpressionPtr gtExpr2 = std::make_shared<GreaterThanExpr>(close1, high0);
+        PatternExpressionPtr gtExpr1 = std::make_shared<GreaterThanExpr>(open0.get(), close1.get());
+        PatternExpressionPtr gtExpr2 = std::make_shared<GreaterThanExpr>(close1.get(), high0.get());
 
         // AndExpr takes raw pointers in constructor, but stores shared_ptr
         // This seems a bit risky if not managed carefully by the creator of AndExpr
@@ -473,8 +473,8 @@ TEST_CASE("PatternExpression Classes", "[PatternExpression]") {
         REQUIRE(andExpr_copy.hashCode() == hc);
 
 
-        PatternExpressionPtr gtExpr3 = std::make_shared<GreaterThanExpr>(open0, high0);
-        PatternExpressionPtr gtExpr4 = std::make_shared<GreaterThanExpr>(high0, close1);
+        PatternExpressionPtr gtExpr3 = std::make_shared<GreaterThanExpr>(open0.get(), high0.get());
+        PatternExpressionPtr gtExpr4 = std::make_shared<GreaterThanExpr>(high0.get(), close1.get());
         AndExpr andExpr_assign(gtExpr3.get(), gtExpr4.get());
         andExpr_assign = andExpr;
         REQUIRE(andExpr_assign.getLHS() == gtExpr1.get());
@@ -487,11 +487,11 @@ TEST_CASE("ProfitTargetInPercentExpression Classes", "[ProfitTarget]") {
     AstFactory factory;
     MockPalCodeGenVisitor visitor;
     char ptStr[] = "2.5";
-    decimal7* pt_val = factory.getDecimalNumber(ptStr);
+    auto pt_val = factory.getDecimalNumber(ptStr);
 
     SECTION("LongSideProfitTargetInPercent") {
         LongSideProfitTargetInPercent longPt(pt_val);
-        REQUIRE(longPt.getProfitTarget() == pt_val);
+        REQUIRE(longPt.getProfitTarget() == pt_val.get());
         REQUIRE(longPt.isLongSideProfitTarget()); //
         REQUIRE_FALSE(longPt.isShortSideProfitTarget()); //
         longPt.accept(visitor);
@@ -501,21 +501,21 @@ TEST_CASE("ProfitTargetInPercentExpression Classes", "[ProfitTarget]") {
         REQUIRE(longPt.hashCode() == hc); // Cached
 
         LongSideProfitTargetInPercent longPt_copy(longPt);
-        REQUIRE(longPt_copy.getProfitTarget() == pt_val);
+        REQUIRE(longPt_copy.getProfitTarget() == pt_val.get());
         REQUIRE(longPt_copy.hashCode() == hc);
 
         char ptStr2[] = "3.0";
-        decimal7* pt_val2 = factory.getDecimalNumber(ptStr2);
+        auto pt_val2 = factory.getDecimalNumber(ptStr2);
         LongSideProfitTargetInPercent longPt_assign(pt_val2);
         longPt_assign = longPt;
-        REQUIRE(longPt_assign.getProfitTarget() == pt_val);
+        REQUIRE(longPt_assign.getProfitTarget() == pt_val.get());
         REQUIRE(longPt_assign.hashCode() == hc);
 
 
     }
     SECTION("ShortSideProfitTargetInPercent") {
         ShortSideProfitTargetInPercent shortPt(pt_val);
-        REQUIRE(shortPt.getProfitTarget() == pt_val);
+        REQUIRE(shortPt.getProfitTarget() == pt_val.get());
         REQUIRE(shortPt.isShortSideProfitTarget()); //
         REQUIRE_FALSE(shortPt.isLongSideProfitTarget()); //
         shortPt.accept(visitor);
@@ -531,11 +531,11 @@ TEST_CASE("StopLossInPercentExpression Classes", "[StopLoss]") {
     AstFactory factory;
     MockPalCodeGenVisitor visitor;
     char slStr[] = "1.5";
-    decimal7* sl_val = factory.getDecimalNumber(slStr);
+    auto sl_val = factory.getDecimalNumber(slStr);
 
     SECTION("LongSideStopLossInPercent") {
         LongSideStopLossInPercent longSl(sl_val);
-        REQUIRE(longSl.getStopLoss() == sl_val);
+        REQUIRE(longSl.getStopLoss() == sl_val.get());
         REQUIRE(longSl.isLongSideStopLoss()); //
         REQUIRE_FALSE(longSl.isShortSideStopLoss()); //
         longSl.accept(visitor);
@@ -545,20 +545,20 @@ TEST_CASE("StopLossInPercentExpression Classes", "[StopLoss]") {
         REQUIRE(longSl.hashCode() == hc); // Cached
 
         LongSideStopLossInPercent longSl_copy(longSl);
-        REQUIRE(longSl_copy.getStopLoss() == sl_val);
+        REQUIRE(longSl_copy.getStopLoss() == sl_val.get());
         REQUIRE(longSl_copy.hashCode() == hc);
 
         char slStr2[] = "2.0";
-        decimal7* sl_val2 = factory.getDecimalNumber(slStr2);
+        auto sl_val2 = factory.getDecimalNumber(slStr2);
         LongSideStopLossInPercent longSl_assign(sl_val2);
         longSl_assign = longSl;
-        REQUIRE(longSl_assign.getStopLoss() == sl_val);
+        REQUIRE(longSl_assign.getStopLoss() == sl_val.get());
         REQUIRE(longSl_assign.hashCode() == hc);
     }
 
     SECTION("ShortSideStopLossInPercent") {
         ShortSideStopLossInPercent shortSl(sl_val);
-        REQUIRE(shortSl.getStopLoss() == sl_val);
+        REQUIRE(shortSl.getStopLoss() == sl_val.get());
         REQUIRE(shortSl.isShortSideStopLoss()); //
         REQUIRE_FALSE(shortSl.isLongSideStopLoss()); //
         shortSl.accept(visitor);
@@ -604,15 +604,15 @@ TEST_CASE("PatternDescription Class", "[PatternDescription]") {
     MockPalCodeGenVisitor visitor;
     char pLongStr[] = "70.5";
     char pShortStr[] = "20.3";
-    decimal7* pLong = factory.getDecimalNumber(pLongStr);
-    decimal7* pShort = factory.getDecimalNumber(pShortStr);
+    auto pLong = factory.getDecimalNumber(pLongStr);
+    auto pShort = factory.getDecimalNumber(pShortStr);
 
     PatternDescription pd("testFile.txt", 1, 20230101, pLong, pShort, 100, 5);
     REQUIRE(pd.getFileName() == "testFile.txt");
     REQUIRE(pd.getpatternIndex() == 1);
     REQUIRE(pd.getIndexDate() == 20230101);
-    REQUIRE(pd.getPercentLong() == pLong);
-    REQUIRE(pd.getPercentShort() == pShort);
+    REQUIRE(pd.getPercentLong() == pLong.get());
+    REQUIRE(pd.getPercentShort() == pShort.get());
     REQUIRE(pd.numTrades() == 100);
     REQUIRE(pd.numConsecutiveLosses() == 5);
 
@@ -628,7 +628,7 @@ TEST_CASE("PatternDescription Class", "[PatternDescription]") {
     REQUIRE(pd_copy.hashCode() == hc);
 
     char pLongStr2[] = "60.0";
-    decimal7* pLong2 = factory.getDecimalNumber(pLongStr2);
+    auto pLong2 = factory.getDecimalNumber(pLongStr2);
     PatternDescription pd_assign("other.txt", 2, 20220101, pLong2, pShort, 50, 2);
     pd_assign = pd;
     REQUIRE(pd_assign.getFileName() == "testFile.txt");
@@ -639,22 +639,22 @@ TEST_CASE("PatternDescription Class", "[PatternDescription]") {
 
 TEST_CASE("PalPatternMaxBars Evaluation", "[PalPatternMaxBars]") {
     AstFactory factory;
-    PriceBarReference* open0 = factory.getPriceOpen(0); // extraBarsNeeded = 0
-    PriceBarReference* close1 = factory.getPriceClose(1); // extraBarsNeeded = 0
-    PriceBarReference* roc5 = factory.getRoc1(5);       // extraBarsNeeded = 1
-    PriceBarReference* meander2 = factory.getMeander(2); // extraBarsNeeded = 5
+    auto open0 = factory.getPriceOpen(0); // extraBarsNeeded = 0
+    auto close1 = factory.getPriceClose(1); // extraBarsNeeded = 0
+    auto roc5 = factory.getRoc1(5);       // extraBarsNeeded = 1
+    auto meander2 = factory.getMeander(2); // extraBarsNeeded = 5
 
     SECTION("Single GreaterThanExpr") {
-        GreaterThanExpr gtExpr(open0, close1); // max(0+0, 1+0) = 1
+        GreaterThanExpr gtExpr(open0.get(), close1.get()); // max(0+0, 1+0) = 1
         REQUIRE(PalPatternMaxBars::evaluateExpression(&gtExpr) == 1);
 
-        GreaterThanExpr gtExpr2(roc5, meander2); // max(5+1, 2+5) = max(6,7) = 7
+        GreaterThanExpr gtExpr2(roc5.get(), meander2.get()); // max(5+1, 2+5) = max(6,7) = 7
         REQUIRE(PalPatternMaxBars::evaluateExpression(&gtExpr2) == 7);
     }
 
     SECTION("AndExpr") {
-        PatternExpressionPtr gt1_ptr = std::make_shared<GreaterThanExpr>(open0, close1); // max_bars = 1
-        PatternExpressionPtr gt2_ptr = std::make_shared<GreaterThanExpr>(roc5, meander2); // max_bars = 7
+        PatternExpressionPtr gt1_ptr = std::make_shared<GreaterThanExpr>(open0.get(), close1.get()); // max_bars = 1
+        PatternExpressionPtr gt2_ptr = std::make_shared<GreaterThanExpr>(roc5.get(), meander2.get()); // max_bars = 7
         AndExpr andExpr(gt1_ptr.get(), gt2_ptr.get()); // max(1, 7) = 7
         REQUIRE(PalPatternMaxBars::evaluateExpression(&andExpr) == 7);
 
@@ -664,8 +664,8 @@ TEST_CASE("PalPatternMaxBars Evaluation", "[PalPatternMaxBars]") {
         REQUIRE(PalPatternMaxBars::evaluateExpression(&andExpr2) == 4);
     }
      SECTION("Nested AndExpr") {
-        PatternExpressionPtr o0_c1 = std::make_shared<GreaterThanExpr>(open0, close1); // 1
-        PatternExpressionPtr r5_m2 = std::make_shared<GreaterThanExpr>(roc5, meander2); // 7
+        PatternExpressionPtr o0_c1 = std::make_shared<GreaterThanExpr>(open0.get(), close1.get()); // 1
+        PatternExpressionPtr r5_m2 = std::make_shared<GreaterThanExpr>(roc5.get(), meander2.get()); // 7
         PatternExpressionPtr h3_l4 = std::make_shared<GreaterThanExpr>(factory.getPriceHigh(3), factory.getPriceLow(4)); // 4
 
         AndExpr and1(o0_c1.get(), r5_m2.get()); // max(1,7) = 7
@@ -692,28 +692,28 @@ TEST_CASE("PriceActionLabPattern Class", "[PriceActionLabPattern]") {
     MockPalCodeGenVisitor visitor;
 
     // Setup components for PriceActionLabPattern
-    char pLongStr[] = "70.0"; decimal7* pLong = factory.getDecimalNumber(pLongStr);
-    char pShortStr[] = "30.0"; decimal7* pShort = factory.getDecimalNumber(pShortStr);
+    char pLongStr[] = "70.0"; auto pLong = factory.getDecimalNumber(pLongStr);
+    char pShortStr[] = "30.0"; auto pShort = factory.getDecimalNumber(pShortStr);
     PatternDescription* desc_raw = new PatternDescription("file.txt", 1, 20230101, pLong, pShort, 10, 2);
     PatternDescriptionPtr desc = std::shared_ptr<PatternDescription>(desc_raw);
 
 
-    PriceBarReference* open0 = factory.getPriceOpen(0);
-    PriceBarReference* close1 = factory.getPriceClose(1);
-    PatternExpression* gt_expr_raw = new GreaterThanExpr(open0, close1);
+    auto open0 = factory.getPriceOpen(0);
+    auto close1 = factory.getPriceClose(1);
+    PatternExpression* gt_expr_raw = new GreaterThanExpr(open0.get(), close1.get());
     PatternExpressionPtr pattern_expr = std::shared_ptr<PatternExpression>(gt_expr_raw);
 
 
-    MarketEntryExpression* entry = factory.getLongMarketEntryOnOpen();
+    auto entry = factory.getLongMarketEntryOnOpen();
 
-    char ptStr[] = "5.0"; decimal7* pt_val = factory.getDecimalNumber(ptStr);
-    ProfitTargetInPercentExpression* profit_target = factory.getLongProfitTarget(pt_val);
+    char ptStr[] = "5.0"; auto pt_val = factory.getDecimalNumber(ptStr);
+    auto profit_target = factory.getLongProfitTarget(pt_val);
 
-    char slStr[] = "2.0"; decimal7* sl_val = factory.getDecimalNumber(slStr);
-    StopLossInPercentExpression* stop_loss = factory.getLongStopLoss(sl_val);
+    char slStr[] = "2.0"; auto sl_val = factory.getDecimalNumber(slStr);
+    auto stop_loss = factory.getLongStopLoss(sl_val);
 
     SECTION("Constructor and Basic Getters") {
-        PriceActionLabPattern pal_pattern(desc.get(), pattern_expr.get(), entry, profit_target, stop_loss); // Using raw pointers from shared_ptr
+        PriceActionLabPattern pal_pattern(desc.get(), pattern_expr.get(), entry, profit_target, stop_loss); // Using raw pointers from shared_ptr for first two, shared_ptr for rest
 
         REQUIRE(pal_pattern.getFileName() == "file.txt");
         REQUIRE(pal_pattern.getBaseFileName() == "file"); //
@@ -760,11 +760,11 @@ TEST_CASE("PriceActionLabPattern Class", "[PriceActionLabPattern]") {
     SECTION("Clone method") {
         PriceActionLabPattern original_pattern(desc, pattern_expr, entry, profit_target, stop_loss);
 
-        char newPtStr[] = "6.0"; decimal7* new_pt_val = factory.getDecimalNumber(newPtStr);
-        ProfitTargetInPercentExpression* new_profit_target = factory.getLongProfitTarget(new_pt_val);
+        char newPtStr[] = "6.0"; auto new_pt_val = factory.getDecimalNumber(newPtStr);
+        auto new_profit_target = factory.getLongProfitTarget(new_pt_val);
 
-        char newSlStr[] = "2.5"; decimal7* new_sl_val = factory.getDecimalNumber(newSlStr);
-        StopLossInPercentExpression* new_stop_loss = factory.getLongStopLoss(new_sl_val);
+        char newSlStr[] = "2.5"; auto new_sl_val = factory.getDecimalNumber(newSlStr);
+        auto new_stop_loss = factory.getLongStopLoss(new_sl_val);
 
         PALPatternPtr cloned_pattern = original_pattern.clone(new_profit_target, new_stop_loss);
 
@@ -805,9 +805,9 @@ TEST_CASE("SmallestVolatilityTieBreaker", "[PatternTieBreaker]") {
     // Dummy components for PALPatternPtr creation
     PatternDescriptionPtr desc = std::make_shared<PatternDescription>("f",0,0,factory.getDecimalNumber(0),factory.getDecimalNumber(0),0,0);
     PatternExpressionPtr expr = std::make_shared<GreaterThanExpr>(factory.getPriceOpen(0), factory.getPriceClose(0));
-    MarketEntryExpression* entry = factory.getLongMarketEntryOnOpen();
-    ProfitTargetInPercentExpression* pt = factory.getLongProfitTarget(factory.getDecimalNumber(1));
-    StopLossInPercentExpression* sl = factory.getLongStopLoss(factory.getDecimalNumber(1));
+    auto entry = factory.getLongMarketEntryOnOpen();
+    auto pt = factory.getLongProfitTarget(factory.getDecimalNumber(1));
+    auto sl = factory.getLongStopLoss(factory.getDecimalNumber(1));
 
     SmallestVolatilityTieBreaker tie_breaker;
 
@@ -859,9 +859,9 @@ TEST_CASE("PriceActionLabSystem Class", "[PriceActionLabSystem]") {
     PatternExpressionPtr expr1_ptr =
         std::make_shared<GreaterThanExpr>(factory.getPriceOpen(0),
                                           factory.getPriceClose(1));
-    MarketEntryExpression* long_entry   = factory.getLongMarketEntryOnOpen();
-    ProfitTargetInPercentExpression* pt1 = factory.getLongProfitTarget(factory.getDecimalNumber(1));
-    StopLossInPercentExpression*     sl1 = factory.getLongStopLoss   (factory.getDecimalNumber(1));
+    auto long_entry   = factory.getLongMarketEntryOnOpen();
+    auto pt1 = factory.getLongProfitTarget(factory.getDecimalNumber(1));
+    auto sl1 = factory.getLongStopLoss   (factory.getDecimalNumber(1));
 
     PALPatternPtr long_p1 =
         std::make_shared<PriceActionLabPattern>(

@@ -156,7 +156,7 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
     // Parse the file to get ASTs
     PalParseDriver driver(path);
     REQUIRE(driver.Parse() == 0);
-    PriceActionLabSystem* palSystem = driver.getPalStrategies();
+    auto palSystem = driver.getPalStrategies();
     REQUIRE(palSystem);
 
     std::vector<PALPatternPtr> astPatternsList;
@@ -203,10 +203,12 @@ TEST_CASE("PalParseDriver builds correct AST for each comparison in QQQ_IR.txt",
             REQUIRE(rhsRef->getReferenceType() == currentExpectedComp.rhsType);
             
             if (lhsRef->getBarOffset() != currentExpectedComp.lhsOffset) {
-                std::cerr << "--> MISMATCH on Block " << k << " (AST Index " << astPatternIndex 
+                std::cerr << "--> MISMATCH on Block " << k << " (AST Index " << astPatternIndex
                           << "), Comparison " << i << " for LHS offset!" << std::endl;
-                std::cerr << "    Expected LHS Offset: " << currentExpectedComp.lhsOffset 
-                          << ", Actual AST LHS Offset: " << lhsRef->getBarOffset() << std::endl;
+                std::cerr << "    Expected: " << refTypeToString(currentExpectedComp.lhsType)
+                          << " OF " << currentExpectedComp.lhsOffset << " BARS AGO" << std::endl;
+                std::cerr << "    Actual AST: " << refTypeToString(lhsRef->getReferenceType())
+                          << " OF " << lhsRef->getBarOffset() << " BARS AGO" << std::endl;
                 std::cerr << "    Source lines for this expected block (" << k << "):" << std::endl;
                 for(const auto& srcLine : expectedBlock.source_lines_for_block) {
                     std::cerr << "      " << srcLine << std::endl;

@@ -35,7 +35,7 @@
 // private implementation details that can be changed or removed.
 
 // "%code top" blocks.
-#line 33 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 33 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 
     #include <iostream>
     #include "scanner.h"
@@ -54,22 +54,22 @@
     
     using namespace mkc_palast;
 
-#line 58 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 58 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
 
 
 // First part of user prologue.
-#line 56 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 56 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 
 #include <cstdlib>
 
 #include <cstdio>
-#line 158 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 158 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 
 //#include "PalScanner.hpp"
 
-AstFactory astFactory;
+// Remove global factory - access through driver
 
-#line 73 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 73 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
 
 
 #include "PalParser.hpp"
@@ -165,9 +165,9 @@ AstFactory astFactory;
 #define YYERROR         goto yyerrorlab
 #define YYRECOVERING()  (!!yyerrstatus_)
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 namespace mkc_palast {
-#line 171 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 171 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
 
   /// Build a parser object.
   PalParser::PalParser (class mkc_palast::Scanner& scanner_yyarg, class PalParseDriver& driver_yyarg)
@@ -236,23 +236,6 @@ namespace mkc_palast {
   {
     switch (that.kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.YY_MOVE_OR_COPY< MarketEntryExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.YY_MOVE_OR_COPY< PatternDescription * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.YY_MOVE_OR_COPY< PatternExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.YY_MOVE_OR_COPY< PriceActionLabPattern * > (YY_MOVE (that.value));
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.YY_MOVE_OR_COPY< PriceActionLabPattern::PortfolioAttribute > (YY_MOVE (that.value));
@@ -263,24 +246,6 @@ namespace mkc_palast {
         value.YY_MOVE_OR_COPY< PriceActionLabPattern::VolatilityAttribute > (YY_MOVE (that.value));
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.YY_MOVE_OR_COPY< PriceBarReference * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.YY_MOVE_OR_COPY< ProfitTargetInPercentExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.YY_MOVE_OR_COPY< StopLossInPercentExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.YY_MOVE_OR_COPY< decimal7 * > (YY_MOVE (that.value));
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -288,6 +253,41 @@ namespace mkc_palast {
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.YY_MOVE_OR_COPY< int > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.YY_MOVE_OR_COPY< std::shared_ptr<MarketEntryExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.YY_MOVE_OR_COPY< std::shared_ptr<PatternDescription> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.YY_MOVE_OR_COPY< std::shared_ptr<PatternExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.YY_MOVE_OR_COPY< std::shared_ptr<PriceActionLabPattern> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.YY_MOVE_OR_COPY< std::shared_ptr<PriceBarReference> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.YY_MOVE_OR_COPY< std::shared_ptr<ProfitTargetInPercentExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.YY_MOVE_OR_COPY< std::shared_ptr<StopLossInPercentExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.YY_MOVE_OR_COPY< std::shared_ptr<decimal7> > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -311,23 +311,6 @@ namespace mkc_palast {
   {
     switch (that.kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.move< MarketEntryExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.move< PatternDescription * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.move< PatternExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.move< PriceActionLabPattern * > (YY_MOVE (that.value));
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.move< PriceActionLabPattern::PortfolioAttribute > (YY_MOVE (that.value));
@@ -338,24 +321,6 @@ namespace mkc_palast {
         value.move< PriceActionLabPattern::VolatilityAttribute > (YY_MOVE (that.value));
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.move< PriceBarReference * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.move< ProfitTargetInPercentExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.move< StopLossInPercentExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.move< decimal7 * > (YY_MOVE (that.value));
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -363,6 +328,41 @@ namespace mkc_palast {
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.move< int > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.move< std::shared_ptr<MarketEntryExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.move< std::shared_ptr<PatternDescription> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.move< std::shared_ptr<PatternExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.move< std::shared_ptr<PriceActionLabPattern> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.move< std::shared_ptr<PriceBarReference> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.move< std::shared_ptr<ProfitTargetInPercentExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.move< std::shared_ptr<StopLossInPercentExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.move< std::shared_ptr<decimal7> > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -386,23 +386,6 @@ namespace mkc_palast {
     state = that.state;
     switch (that.kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.copy< MarketEntryExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.copy< PatternDescription * > (that.value);
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.copy< PatternExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.copy< PriceActionLabPattern * > (that.value);
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.copy< PriceActionLabPattern::PortfolioAttribute > (that.value);
@@ -413,24 +396,6 @@ namespace mkc_palast {
         value.copy< PriceActionLabPattern::VolatilityAttribute > (that.value);
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.copy< PriceBarReference * > (that.value);
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.copy< ProfitTargetInPercentExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.copy< StopLossInPercentExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.copy< decimal7 * > (that.value);
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -438,6 +403,41 @@ namespace mkc_palast {
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.copy< int > (that.value);
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.copy< std::shared_ptr<MarketEntryExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.copy< std::shared_ptr<PatternDescription> > (that.value);
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.copy< std::shared_ptr<PatternExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.copy< std::shared_ptr<PriceActionLabPattern> > (that.value);
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.copy< std::shared_ptr<PriceBarReference> > (that.value);
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.copy< std::shared_ptr<ProfitTargetInPercentExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.copy< std::shared_ptr<StopLossInPercentExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.copy< std::shared_ptr<decimal7> > (that.value);
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -460,23 +460,6 @@ namespace mkc_palast {
     state = that.state;
     switch (that.kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.move< MarketEntryExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.move< PatternDescription * > (that.value);
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.move< PatternExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.move< PriceActionLabPattern * > (that.value);
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.move< PriceActionLabPattern::PortfolioAttribute > (that.value);
@@ -487,24 +470,6 @@ namespace mkc_palast {
         value.move< PriceActionLabPattern::VolatilityAttribute > (that.value);
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.move< PriceBarReference * > (that.value);
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.move< ProfitTargetInPercentExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.move< StopLossInPercentExpression * > (that.value);
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.move< decimal7 * > (that.value);
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -512,6 +477,41 @@ namespace mkc_palast {
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.move< int > (that.value);
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.move< std::shared_ptr<MarketEntryExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.move< std::shared_ptr<PatternDescription> > (that.value);
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.move< std::shared_ptr<PatternExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.move< std::shared_ptr<PriceActionLabPattern> > (that.value);
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.move< std::shared_ptr<PriceBarReference> > (that.value);
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.move< std::shared_ptr<ProfitTargetInPercentExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.move< std::shared_ptr<StopLossInPercentExpression> > (that.value);
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.move< std::shared_ptr<decimal7> > (that.value);
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -779,23 +779,6 @@ namespace mkc_palast {
          when using variants.  */
       switch (yyr1_[yyn])
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        yylhs.value.emplace< MarketEntryExpression * > ();
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        yylhs.value.emplace< PatternDescription * > ();
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        yylhs.value.emplace< PatternExpression * > ();
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        yylhs.value.emplace< PriceActionLabPattern * > ();
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         yylhs.value.emplace< PriceActionLabPattern::PortfolioAttribute > ();
@@ -806,24 +789,6 @@ namespace mkc_palast {
         yylhs.value.emplace< PriceActionLabPattern::VolatilityAttribute > ();
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        yylhs.value.emplace< PriceBarReference * > ();
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        yylhs.value.emplace< ProfitTargetInPercentExpression * > ();
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        yylhs.value.emplace< StopLossInPercentExpression * > ();
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        yylhs.value.emplace< decimal7 * > ();
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -831,6 +796,41 @@ namespace mkc_palast {
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         yylhs.value.emplace< int > ();
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        yylhs.value.emplace< std::shared_ptr<MarketEntryExpression> > ();
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        yylhs.value.emplace< std::shared_ptr<PatternDescription> > ();
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        yylhs.value.emplace< std::shared_ptr<PatternExpression> > ();
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        yylhs.value.emplace< std::shared_ptr<PriceActionLabPattern> > ();
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        yylhs.value.emplace< std::shared_ptr<PriceBarReference> > ();
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        yylhs.value.emplace< std::shared_ptr<ProfitTargetInPercentExpression> > ();
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        yylhs.value.emplace< std::shared_ptr<StopLossInPercentExpression> > ();
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        yylhs.value.emplace< std::shared_ptr<decimal7> > ();
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -860,461 +860,502 @@ namespace mkc_palast {
           switch (yyn)
             {
   case 2: // program: patterns
-#line 167 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 167 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
           { 
      	    //printf ("Found program\n"); 
           }
-#line 868 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 868 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 3: // patterns: pattern
-#line 173 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-           { 
+#line 173 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+           {
              //  printf ("Founds patterns\n");
-             driver.addPalPattern (std::shared_ptr<PriceActionLabPattern> (yystack_[0].value.as < PriceActionLabPattern * > ()));
+             driver.addPalPattern (yystack_[0].value.as < std::shared_ptr<PriceActionLabPattern> > ());
       	   }
-#line 877 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 877 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 4: // patterns: patterns pattern
-#line 178 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 178 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
            {
 		//printf ("Founds recursive patterns\n");
-         	driver.addPalPattern (std::shared_ptr<PriceActionLabPattern> (yystack_[0].value.as < PriceActionLabPattern * > ()));
+         	driver.addPalPattern (yystack_[0].value.as < std::shared_ptr<PriceActionLabPattern> > ());
       	   }
-#line 886 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 886 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 5: // pattern: patterndescr TOK_IF pattern_volatility_attr pattern_portfolio_filter_attr conds TOK_THEN entrystmt TOK_WITH profitstmt TOK_AND stopstmt
-#line 185 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-      { 
-      	//printf ("Found pattern\n"); 
-	yylhs.value.as < PriceActionLabPattern * > () = new PriceActionLabPattern (yystack_[10].value.as < PatternDescription * > (), yystack_[6].value.as < PatternExpression * > (), yystack_[4].value.as < MarketEntryExpression * > (), yystack_[2].value.as < ProfitTargetInPercentExpression * > (), yystack_[0].value.as < StopLossInPercentExpression * > (), yystack_[8].value.as < PriceActionLabPattern::VolatilityAttribute > (), yystack_[7].value.as < PriceActionLabPattern::PortfolioAttribute > ()); 
+#line 185 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+      {
+      	//printf ("Found pattern\n");
+	// Create pattern with shared_ptr objects - proper ownership management
+	auto resourceManager = driver.getResourceManagerPtr();
+	auto pattern = resourceManager->createPattern(
+	    yystack_[10].value.as < std::shared_ptr<PatternDescription> > (), // Already shared_ptr<PatternDescription>
+	    yystack_[6].value.as < std::shared_ptr<PatternExpression> > (), // Already shared_ptr<PatternExpression>
+	    yystack_[4].value.as < std::shared_ptr<MarketEntryExpression> > (), yystack_[2].value.as < std::shared_ptr<ProfitTargetInPercentExpression> > (), yystack_[0].value.as < std::shared_ptr<StopLossInPercentExpression> > (), yystack_[8].value.as < PriceActionLabPattern::VolatilityAttribute > (), yystack_[7].value.as < PriceActionLabPattern::PortfolioAttribute > ()  // These are already shared_ptr
+	);
+	yylhs.value.as < std::shared_ptr<PriceActionLabPattern> > () = pattern; // Return shared_ptr directly
+	
+	// NOTE: Do NOT add pattern to driver here - it will be added by the patterns rule
       }
-#line 895 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 904 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 6: // patterndescr: TOK_LBRACE filedesc indexdesc indexdatedesc pldesc psdesc tradesdesc cldesc TOK_RBRACE
-#line 192 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-               { 
-      	       	 //printf ("Found pattern description\n"); 
-		 yylhs.value.as < PatternDescription * > () = new PatternDescription ((char *) yystack_[7].value.as < std::string > ().c_str(), yystack_[6].value.as < int > (), yystack_[5].value.as < int > (), yystack_[4].value.as < decimal7 * > (), yystack_[3].value.as < decimal7 * > (), yystack_[2].value.as < int > (), yystack_[1].value.as < int > ()); 
+#line 201 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+               {
+      	       	 //printf ("Found pattern description\n");
+		 // $5 and $6 are now shared_ptr<decimal7> objects directly from resource manager
+		 yylhs.value.as < std::shared_ptr<PatternDescription> > () = std::make_shared<PatternDescription>((char *) yystack_[7].value.as < std::string > ().c_str(), yystack_[6].value.as < int > (), yystack_[5].value.as < int > (), yystack_[4].value.as < std::shared_ptr<decimal7> > (), yystack_[3].value.as < std::shared_ptr<decimal7> > (), yystack_[2].value.as < int > (), yystack_[1].value.as < int > ());
       	       }
-#line 904 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 914 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 7: // filedesc: TOK_FILE TOK_COLON TOK_IDENTIFIER
-#line 199 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 209 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
           { 
             yylhs.value.as < std::string > () = yystack_[0].value.as < std::string > (); 
           }
-#line 912 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 922 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 8: // indexdesc: TOK_INDEX TOK_COLON integernumber
-#line 205 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 215 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
          { 
 	   yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
          }
-#line 920 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 930 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 9: // indexdatedesc: TOK_INDEX TOK_DATE TOK_COLON integernumber
-#line 211 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 221 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
               { 
 	      	yylhs.value.as < int > () =  yystack_[0].value.as < int > (); 
 	      }
-#line 928 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 938 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 10: // pldesc: TOK_PL TOK_COLON number TOK_PERCENT
-#line 217 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-         { 
-	   //printf ("Found nonterminal PL: %f\n", n->getAsDouble ()); 
-       	   yylhs.value.as < decimal7 * > () = yystack_[1].value.as < decimal7 * > (); 
+#line 227 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+         {
+	   //printf ("Found nonterminal PL: %f\n", n->getAsDouble ());
+       	   yylhs.value.as < std::shared_ptr<decimal7> > () = yystack_[1].value.as < std::shared_ptr<decimal7> > ();
      	 }
-#line 937 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 947 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 11: // pldesc: TOK_PL TOK_COLON integernumber TOK_PERCENT
-#line 222 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-         { 
-	   yylhs.value.as < decimal7 * > () = astFactory.getDecimalNumber (yystack_[1].value.as < int > ()); 
-	 }
-#line 945 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 232 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+         {
+    auto resourceManager = driver.getResourceManagerPtr();
+    yylhs.value.as < std::shared_ptr<decimal7> > () = resourceManager->getDecimalNumber (yystack_[1].value.as < int > ());
+  }
+#line 956 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 12: // psdesc: TOK_PS TOK_COLON number TOK_PERCENT
-#line 228 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-         { 
-	   //printf ("Found nonterminal PS: %f\n", n->getAsDouble ()); 
-       	   yylhs.value.as < decimal7 * > () = yystack_[1].value.as < decimal7 * > (); 
+#line 239 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+         {
+	   //printf ("Found nonterminal PS: %f\n", n->getAsDouble ());
+       	   yylhs.value.as < std::shared_ptr<decimal7> > () = yystack_[1].value.as < std::shared_ptr<decimal7> > ();
      	 }
-#line 954 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 965 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 13: // psdesc: TOK_PS TOK_COLON integernumber TOK_PERCENT
-#line 233 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-         { 
-	   yylhs.value.as < decimal7 * > () = astFactory.getDecimalNumber (yystack_[1].value.as < int > ()); 
-	 }
-#line 962 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 244 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+         {
+    auto resourceManager = driver.getResourceManagerPtr();
+    yylhs.value.as < std::shared_ptr<decimal7> > () = resourceManager->getDecimalNumber (yystack_[1].value.as < int > ());
+  }
+#line 974 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 14: // tradesdesc: TOK_TRADES TOK_COLON integernumber
-#line 239 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 251 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
              { 
 	       yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
 	     }
-#line 970 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 982 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 15: // cldesc: TOK_CL TOK_COLON integernumber
-#line 245 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 257 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
           { 
 	    yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
 	  }
-#line 978 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 990 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 16: // cldesc: TOK_CL TOK_COLON TOK_MINUS
-#line 249 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 261 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
           { 
 	    yylhs.value.as < int > () = 1; 
 	  }
-#line 986 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 998 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 17: // conds: ohlc_comparison
-#line 255 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf ("Found comparison\n"); 
-          yylhs.value.as < PatternExpression * > () = yystack_[0].value.as < PatternExpression * > (); 
+#line 267 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+	  //printf ("Found comparison\n");
+          yylhs.value.as < std::shared_ptr<PatternExpression> > () = yystack_[0].value.as < std::shared_ptr<PatternExpression> > ();
         }
-#line 995 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1007 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 18: // conds: conds TOK_AND ohlc_comparison
-#line 260 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf ("Found recursive comparison\n"); 
-       	  yylhs.value.as < PatternExpression * > () = new AndExpr (yystack_[2].value.as < PatternExpression * > (), yystack_[0].value.as < PatternExpression * > ()); 
+#line 272 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf ("Found recursive comparison\n");
+   auto lhsExpr = yystack_[2].value.as < std::shared_ptr<PatternExpression> > (); // Already shared_ptr<PatternExpression>
+   auto rhsExpr = yystack_[0].value.as < std::shared_ptr<PatternExpression> > (); // Already shared_ptr<PatternExpression>
+       	  yylhs.value.as < std::shared_ptr<PatternExpression> > () = std::make_shared<AndExpr>(lhsExpr, rhsExpr);
       	}
-#line 1004 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1018 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 19: // ohlc_comparison: ohlcref TOK_GREATER_THAN ohlcref
-#line 267 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-                  { 
-		    //printf ("Found greater than ohlc comparison \n"); 
-        	    yylhs.value.as < PatternExpression * > () = new GreaterThanExpr (yystack_[2].value.as < PriceBarReference * > (), yystack_[0].value.as < PriceBarReference * > ()); 
+#line 281 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+                  {
+		    //printf ("Found greater than ohlc comparison \n");
+        	    yylhs.value.as < std::shared_ptr<PatternExpression> > () = std::make_shared<GreaterThanExpr>(yystack_[2].value.as < std::shared_ptr<PriceBarReference> > (), yystack_[0].value.as < std::shared_ptr<PriceBarReference> > ());
       		  }
-#line 1013 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1027 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 20: // ohlcref: TOK_OPEN TOK_OF integernumber TOK_BARS TOK_AGO
-#line 274 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-          { 
-	    //printf("Found ohlc ref for open\n"); 
-      	    yylhs.value.as < PriceBarReference * > () = astFactory.getPriceOpen (yystack_[2].value.as < int > ()); 
+#line 288 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+          {
+	    //printf("Found ohlc ref for open\n");
+	    auto resourceManager = driver.getResourceManagerPtr();
+      	    yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getPriceOpen (yystack_[2].value.as < int > ());
 	  }
-#line 1022 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1037 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 21: // ohlcref: TOK_HIGH TOK_OF integernumber TOK_BARS TOK_AGO
-#line 279 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-         { 
-       	   //printf("Found ohlc ref for high\n"); 
-      	   yylhs.value.as < PriceBarReference * > () = astFactory.getPriceHigh (yystack_[2].value.as < int > ()); 
-   	 }
-#line 1031 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 294 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+         {
+       	   //printf("Found ohlc ref for high\n");
+    auto resourceManager = driver.getResourceManagerPtr();
+       	   yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getPriceHigh (yystack_[2].value.as < int > ());
+     }
+#line 1047 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 22: // ohlcref: TOK_LOW TOK_OF integernumber TOK_BARS TOK_AGO
-#line 284 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-         { 
-	   //printf("Found ohlc ref for low\n"); 
-       	   yylhs.value.as < PriceBarReference * > () = astFactory.getPriceLow (yystack_[2].value.as < int > ()); 
-	 }
-#line 1040 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 300 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+         {
+    //printf("Found ohlc ref for low\n");
+    auto resourceManager = driver.getResourceManagerPtr();
+       	   yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getPriceLow (yystack_[2].value.as < int > ());
+  }
+#line 1057 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 23: // ohlcref: TOK_CLOSE TOK_OF integernumber TOK_BARS TOK_AGO
-#line 289 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getPriceClose (yystack_[2].value.as < int > ()); 
+#line 306 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for close\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getPriceClose (yystack_[2].value.as < int > ());
         }
-#line 1049 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1067 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 24: // ohlcref: TOK_VOLUME TOK_OF integernumber TOK_BARS TOK_AGO
-#line 294 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getVolume (yystack_[2].value.as < int > ()); 
+#line 312 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for volume\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getVolume (yystack_[2].value.as < int > ());
         }
-#line 1058 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1077 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 25: // ohlcref: TOK_ROC1 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 299 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getRoc1 (yystack_[2].value.as < int > ()); 
+#line 318 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for roc1\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getRoc1 (yystack_[2].value.as < int > ());
         }
-#line 1067 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1087 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 26: // ohlcref: TOK_IBS1 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 304 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getIBS1 (yystack_[2].value.as < int > ()); 
+#line 324 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for ibs1\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getIBS1 (yystack_[2].value.as < int > ());
         }
-#line 1076 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1097 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 27: // ohlcref: TOK_IBS2 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 309 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getIBS2 (yystack_[2].value.as < int > ()); 
+#line 330 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for ibs2\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getIBS2 (yystack_[2].value.as < int > ());
         }
-#line 1085 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1107 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 28: // ohlcref: TOK_IBS3 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 314 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getIBS3 (yystack_[2].value.as < int > ()); 
+#line 336 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for ibs3\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getIBS3 (yystack_[2].value.as < int > ());
         }
-#line 1094 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1117 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 29: // ohlcref: TOK_MEANDER TOK_OF integernumber TOK_BARS TOK_AGO
-#line 319 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getMeander (yystack_[2].value.as < int > ()); 
+#line 342 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for meander\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getMeander (yystack_[2].value.as < int > ());
         }
-#line 1103 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1127 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 30: // ohlcref: TOK_VCHARTLOW TOK_OF integernumber TOK_BARS TOK_AGO
-#line 324 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getVChartLow (yystack_[2].value.as < int > ()); 
+#line 348 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for vchartlow\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getVChartLow (yystack_[2].value.as < int > ());
         }
-#line 1112 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1137 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 31: // ohlcref: TOK_VCHARTHIGH TOK_OF integernumber TOK_BARS TOK_AGO
-#line 329 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-        { 
-	  //printf("Found ohlc ref for close\n"); 
-       	  yylhs.value.as < PriceBarReference * > () = astFactory.getVChartHigh (yystack_[2].value.as < int > ()); 
+#line 354 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+        {
+   //printf("Found ohlc ref for vcharthigh\n");
+   auto resourceManager = driver.getResourceManagerPtr();
+       	  yylhs.value.as < std::shared_ptr<PriceBarReference> > () = resourceManager->getVChartHigh (yystack_[2].value.as < int > ());
         }
-#line 1121 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1147 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 32: // entrystmt: TOK_BUY TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN
-#line 342 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 368 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
             {
-		//printf ("Found long market entry on open\n"); 
-      		yylhs.value.as < MarketEntryExpression * > () = astFactory.getLongMarketEntryOnOpen(); 
+		//printf ("Found long market entry on open\n");
+		auto resourceManager = driver.getResourceManagerPtr();
+      		yylhs.value.as < std::shared_ptr<MarketEntryExpression> > () = resourceManager->getLongMarketEntryOnOpen();
 	    }
-#line 1130 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1157 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 33: // entrystmt: TOK_SELL TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN
-#line 347 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-            {
-		//printf ("Found short market entry on open\n"); 
-      		yylhs.value.as < MarketEntryExpression * > () = astFactory.getShortMarketEntryOnOpen(); 
-	    }
-#line 1139 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 374 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+           {
+  //printf ("Found short market entry on open\n");
+  auto resourceManager = driver.getResourceManagerPtr();
+        yylhs.value.as < std::shared_ptr<MarketEntryExpression> > () = resourceManager->getShortMarketEntryOnOpen();
+     }
+#line 1167 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 34: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS number TOK_PERCENT
-#line 354 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-             { 
-	       //printf ("Found long side profit target\n"); 
-       	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getLongProfitTarget(yystack_[1].value.as < decimal7 * > ()); 
+#line 382 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+             {
+	       //printf ("Found long side profit target\n");
+	       auto resourceManager = driver.getResourceManagerPtr();
+       	       yylhs.value.as < std::shared_ptr<ProfitTargetInPercentExpression> > () = resourceManager->getLongProfitTarget(yystack_[1].value.as < std::shared_ptr<decimal7> > ());
       	     }
-#line 1148 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1177 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 35: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS integernumber TOK_PERCENT
-#line 359 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-             { 
-	       //printf ("Found long side profit target\n"); 
-       	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getLongProfitTarget(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
-      	     }
-#line 1157 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 388 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+                     {
+	       //printf ("Found long side profit target\n");
+	       auto resourceManager = driver.getResourceManagerPtr();
+	       auto decimalPtr = resourceManager->getDecimalNumber(yystack_[1].value.as < int > ());
+	      	       yylhs.value.as < std::shared_ptr<ProfitTargetInPercentExpression> > () = resourceManager->getLongProfitTarget(decimalPtr);
+	     	     }
+#line 1188 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 36: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS number TOK_PERCENT
-#line 364 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-             { 
-	       //printf ("Found short side profit target"); 
-	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getShortProfitTarget(yystack_[1].value.as < decimal7 * > ()); 
-      	     }
-#line 1166 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 395 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+            {
+        //printf ("Found short side profit target");
+        auto resourceManager = driver.getResourceManagerPtr();
+        yylhs.value.as < std::shared_ptr<ProfitTargetInPercentExpression> > () = resourceManager->getShortProfitTarget(yystack_[1].value.as < std::shared_ptr<decimal7> > ());
+            }
+#line 1198 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 37: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS integernumber TOK_PERCENT
-#line 369 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-             { 
-	       //printf ("Found short side profit target"); 
-	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getShortProfitTarget(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
-      	     }
-#line 1175 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 401 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+                     {
+	       //printf ("Found short side profit target");
+	       auto resourceManager = driver.getResourceManagerPtr();
+	       auto decimalPtr = resourceManager->getDecimalNumber(yystack_[1].value.as < int > ());
+	       yylhs.value.as < std::shared_ptr<ProfitTargetInPercentExpression> > () = resourceManager->getShortProfitTarget(decimalPtr);
+	     	     }
+#line 1209 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 38: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS number TOK_PERCENT
-#line 376 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 410 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
             {
-		//printf("Found short stop loss statement\n"); 
-       		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getShortStopLoss(yystack_[1].value.as < decimal7 * > ()); 
+		//printf("Found short stop loss statement\n");
+		auto resourceManager = driver.getResourceManagerPtr();
+       		yylhs.value.as < std::shared_ptr<StopLossInPercentExpression> > () = resourceManager->getShortStopLoss(yystack_[1].value.as < std::shared_ptr<decimal7> > ());
             }
-#line 1184 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1219 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 39: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS integernumber TOK_PERCENT
-#line 381 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-            {
-		//printf("Found short stop loss statement\n"); 
-       		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getShortStopLoss(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
-            }
-#line 1193 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 416 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+                    {
+	 //printf("Found short stop loss statement\n");
+	 auto resourceManager = driver.getResourceManagerPtr();
+	 auto decimalPtr = resourceManager->getDecimalNumber(yystack_[1].value.as < int > ());
+	      		yylhs.value.as < std::shared_ptr<StopLossInPercentExpression> > () = resourceManager->getShortStopLoss(decimalPtr);
+	           }
+#line 1230 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 40: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS number TOK_PERCENT
-#line 386 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-           {
-		//printf("Found long stop loss statement\n"); 
- 		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getLongStopLoss(yystack_[1].value.as < decimal7 * > ()); 
+#line 423 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+          {
+  //printf("Found long stop loss statement\n");
+  auto resourceManager = driver.getResourceManagerPtr();
+   yylhs.value.as < std::shared_ptr<StopLossInPercentExpression> > () = resourceManager->getLongStopLoss(yystack_[1].value.as < std::shared_ptr<decimal7> > ());
            }
-#line 1202 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1240 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 41: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS integernumber TOK_PERCENT
-#line 391 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
-           {
-		//printf("Found long stop loss statement\n"); 
- 		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getLongStopLoss(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
-           }
-#line 1211 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 429 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
+                   {
+	 //printf("Found long stop loss statement\n");
+	 auto resourceManager = driver.getResourceManagerPtr();
+	 auto decimalPtr = resourceManager->getDecimalNumber(yystack_[1].value.as < int > ());
+	 	yylhs.value.as < std::shared_ptr<StopLossInPercentExpression> > () = resourceManager->getLongStopLoss(decimalPtr);
+	          }
+#line 1251 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 42: // integernumber: TOK_INT_NUM
-#line 398 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 438 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                 { 
 		  //printf ("Found integer number %d\n", num); 
       		  yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
       		}
-#line 1220 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1260 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 43: // number: TOK_FLOAT_NUM
-#line 405 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 445 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
          {
-		//printf ("Found float number %f\n", num); 
-      		yylhs.value.as < decimal7 * > () =  astFactory.getDecimalNumber ((char *)yystack_[0].value.as < std::string > ().c_str()); 
+		//printf ("Found float number %f\n", num);
+		auto resourceManager = driver.getResourceManagerPtr();
+      		yylhs.value.as < std::shared_ptr<decimal7> > () = resourceManager->getDecimalNumber (yystack_[0].value.as < std::string > ());
          }
-#line 1229 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1270 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 44: // pattern_volatility_attr: TOK_VOLATILITY TOK_COLON volatility_attr
-#line 412 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 453 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                           {
 				yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = yystack_[0].value.as < PriceActionLabPattern::VolatilityAttribute > ();
    			  }
-#line 1237 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1278 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 45: // pattern_volatility_attr: %empty
-#line 416 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 457 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                           {
 				//printf ("Found empty volatility alternative\n");
      				yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_NONE;
    			  }
-#line 1246 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1287 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 46: // pattern_portfolio_filter_attr: TOK_PORTFOLIO TOK_COLON portfolio_attr
-#line 423 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 464 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                                 {
 					yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = yystack_[0].value.as < PriceActionLabPattern::PortfolioAttribute > ();;
 				}
-#line 1254 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1295 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 47: // pattern_portfolio_filter_attr: %empty
-#line 427 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 468 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                                 {
 					yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = PriceActionLabPattern::PORTFOLIO_FILTER_NONE;
 				}
-#line 1262 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1303 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 48: // volatility_attr: TOK_LOW_VOL
-#line 433 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 474 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                   {
 			//printf ("Found low volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_LOW;
    		  }
-#line 1271 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1312 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 49: // volatility_attr: TOK_NORMAL_VOL
-#line 438 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 479 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                 {
 			//printf ("Found normal volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_NORMAL;
 		}
-#line 1280 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1321 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 50: // volatility_attr: TOK_HIGH_VOL
-#line 443 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 484 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                 {
 			//printf ("Found high volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_HIGH;
 		}
-#line 1289 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1330 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 51: // volatility_attr: TOK_VERY_HIGH_VOL
-#line 448 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 489 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                 {
 			//printf ("Found very high volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_VERY_HIGH;
 		}
-#line 1298 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1339 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 52: // portfolio_attr: TOK_PORT_LONG_FILTER
-#line 455 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 496 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                  {
 			yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = PriceActionLabPattern::PORTFOLIO_FILTER_LONG;
 		 }
-#line 1306 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1347 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 53: // portfolio_attr: TOK_PORT_SHORT_FILTER
-#line 459 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 500 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
                  {
 			yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = PriceActionLabPattern::PORTFOLIO_FILTER_SHORT;
 		 }
-#line 1314 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1355 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
     break;
 
 
-#line 1318 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1359 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
 
             default:
               break;
@@ -1855,12 +1896,12 @@ namespace mkc_palast {
   const short
   PalParser::yyrline_[] =
   {
-       0,   166,   166,   172,   177,   184,   191,   198,   204,   210,
-     216,   221,   227,   232,   238,   244,   248,   254,   259,   266,
-     273,   278,   283,   288,   293,   298,   303,   308,   313,   318,
-     323,   328,   341,   346,   353,   358,   363,   368,   375,   380,
-     385,   390,   397,   404,   411,   415,   422,   426,   432,   437,
-     442,   447,   454,   458
+       0,   166,   166,   172,   177,   184,   200,   208,   214,   220,
+     226,   231,   238,   243,   250,   256,   260,   266,   271,   280,
+     287,   293,   299,   305,   311,   317,   323,   329,   335,   341,
+     347,   353,   367,   373,   381,   387,   394,   400,   409,   415,
+     422,   428,   437,   444,   452,   456,   463,   467,   473,   478,
+     483,   488,   495,   499
   };
 
   void
@@ -1891,11 +1932,11 @@ namespace mkc_palast {
 #endif // YYDEBUG
 
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 } // mkc_palast
-#line 1897 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1938 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.cpp"
 
-#line 464 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 505 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
  /*** Additional Code ***/
 
 void mkc_palast::PalParser::error(const mkc_palast::PalParser::location_type& l,

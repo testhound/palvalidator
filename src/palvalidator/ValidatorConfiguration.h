@@ -33,19 +33,23 @@ namespace mkc_timeseries
   class ValidatorConfiguration
   {
   public:
+    // New constructor with shared_ptr
     ValidatorConfiguration (std::shared_ptr<BackTester<Decimal>> aBacktester,
-		       std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
-		       std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
-		       PriceActionLabSystem* patterns,
-		       const DateRange& insampleDateRange,
-		       const DateRange& oosDateRange)
+         std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
+         std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
+         std::shared_ptr<PriceActionLabSystem> patterns,
+         const DateRange& insampleDateRange,
+         const DateRange& oosDateRange)
       : mBacktester (aBacktester),
-	mInSampleBacktester (aInSampleBacktester),
-	mSecurity(aSecurity),
-	mPricePatterns(patterns),
-	mInsampleDateRange(insampleDateRange),
-	mOosDateRange(oosDateRange)
+ mInSampleBacktester (aInSampleBacktester),
+ mSecurity(aSecurity),
+ mPricePatterns(patterns),
+ mInsampleDateRange(insampleDateRange),
+ mOosDateRange(oosDateRange)
     {}
+
+    // Backward compatibility constructor with raw pointer - REMOVED
+    // This constructor was causing memory corruption due to improper shared_ptr management
 
     ValidatorConfiguration (const ValidatorConfiguration& rhs)
       : mBacktester (rhs.mBacktester),
@@ -90,10 +94,12 @@ namespace mkc_timeseries
       return mSecurity;
     }
 
-    PriceActionLabSystem *getPricePatterns() const
+    // New interface returning shared_ptr
+    std::shared_ptr<PriceActionLabSystem> getPricePatterns() const
     {
       return mPricePatterns;
     }
+
 
     const DateRange& getInsampleDateRange() const
     {
@@ -109,7 +115,7 @@ namespace mkc_timeseries
     std::shared_ptr<BackTester<Decimal>> mBacktester;
     std::shared_ptr<BackTester<Decimal>> mInSampleBacktester;
     std::shared_ptr<Security<Decimal>> mSecurity;
-    PriceActionLabSystem *mPricePatterns;
+    std::shared_ptr<PriceActionLabSystem> mPricePatterns;
     DateRange mInsampleDateRange;
     DateRange mOosDateRange;
   };
