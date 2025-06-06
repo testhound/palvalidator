@@ -983,6 +983,17 @@ public:
    * @return Pointer to the right-hand side PatternExpression.
    */
   PatternExpression *getRHS() const;
+  
+  /**
+   * @brief Gets the left-hand side PatternExpression as shared_ptr.
+   * @return Shared pointer to the left-hand side PatternExpression.
+   */
+  std::shared_ptr<PatternExpression> getLHSShared() const;
+  /**
+   * @brief Gets the right-hand side PatternExpression as shared_ptr.
+   * @return Shared pointer to the right-hand side PatternExpression.
+   */
+  std::shared_ptr<PatternExpression> getRHSShared() const;
   /**
    * @brief Accepts a PalCodeGenVisitor.
    * @param v The visitor.
