@@ -7,25 +7,24 @@
 #ifndef __TIMESERIES_H
 #define __TIMESERIES_H 1
 
-#include "TimeSeriesEntry.h" // Assumed to contain OHLCTimeSeriesEntry and extern time_duration getDefaultBarTime();
+#include "TimeSeriesEntry.h"
+#include "IntradayIntervalCalculator.h"
 #include <iostream>
 #include <algorithm>
 #include <iterator>
 #include <type_traits>
-#include <boost/container/flat_map.hpp> // Used by NumericTimeSeries
+#include <boost/container/flat_map.hpp>
 #include <vector>
-#include <unordered_map> // For HashedLookupPolicy
-#include <boost/thread/mutex.hpp> // For HashedLookupPolicy and TimeSeriesOffset
+#include <unordered_map>
+#include <boost/thread/mutex.hpp>
 #include <functional>
-#include <boost/date_time/posix_time/posix_time.hpp> // For ptime
-#include <boost/date_time/gregorian/gregorian.hpp> // For date
-#include "DateRange.h" // Assumed to be available
-#include <string>     // For std::to_string, std::string
-#include <stdexcept>  // For std::runtime_error, std::domain_error, std::out_of_range
-#include <map>        // For TimeSeriesOffset cache
-
-// Assuming getDefaultBarTime() is declared in TimeSeriesEntry.h and defined elsewhere.
-// extern boost::posix_time::time_duration getDefaultBarTime(); // From TimeSeriesEntry.h
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/date_time/gregorian/gregorian.hpp>
+#include <boost/optional.hpp>
+#include "DateRange.h"
+#include <string>
+#include <stdexcept>
+#include <map>
 
 namespace std
 {
@@ -45,7 +44,7 @@ namespace std
       uint64_t key = (days << 11) | (minuteOfDay & 0x7FF);
       return std::hash<uint64_t>()(key);
     }
-    
+
     std::size_t operator()(boost::posix_time::ptime const& t) const noexcept
     {
       return computeKey(t);
@@ -58,40 +57,6 @@ namespace mkc_timeseries
   using boost::posix_time::ptime;
   using boost::posix_time::time_duration;
   using boost::gregorian::date;
-
-  // Original TimeSeriesException (can be used as a base or alongside new ones)
-  class TimeSeriesException : public std::runtime_error
-  {
-  public:
-    TimeSeriesException(const std::string msg)
-      : std::runtime_error(msg)
-    {}
-
-    // Making destructor virtual as it's a base class for exceptions
-    virtual ~TimeSeriesException() = default;
-  };
-
-  // New Exception Classes (as per PR document)
-  class TimeSeriesDataAccessException : public TimeSeriesException
-  {
-  public:
-      explicit TimeSeriesDataAccessException(const std::string& msg) 
-        : TimeSeriesException(msg) {}
-  };
-
-  class TimeSeriesDataNotFoundException : public TimeSeriesDataAccessException
-  {
-  public:
-      explicit TimeSeriesDataNotFoundException(const std::string& msg) 
-        : TimeSeriesDataAccessException(msg) {}
-  };
-
-  class TimeSeriesOffsetOutOfRangeException : public TimeSeriesDataAccessException
-  {
-  public:
-      explicit TimeSeriesOffsetOutOfRangeException(const std::string& msg) 
-        : TimeSeriesDataAccessException(msg) {}
-  };
 
   // TimeSeriesOffset and ArrayTimeSeriesIndex remain unchanged from original TimeSeries.h
   class TimeSeriesOffset
@@ -265,7 +230,7 @@ namespace mkc_timeseries
       mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
       mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
     }
-    
+
     NumericTimeSeries<Decimal>& operator=(const NumericTimeSeries<Decimal>& rhs)
     {
       if (this == &rhs)
@@ -299,7 +264,7 @@ namespace mkc_timeseries
 	  mTimeFrame = rhs.mTimeFrame;
 	  mMapAndArrayInSync = rhs.mMapAndArrayInSync;
 	}
-      
+
       return *this;
     }
 
@@ -308,16 +273,19 @@ namespace mkc_timeseries
       boost::mutex::scoped_lock lock(mMutex);
       if (entry->getTimeFrame() != getTimeFrame())
       {
-	throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry->getDateTime()) + std::string(" time frames do not match")));
+ throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry->getDateTime()) + std::string(" time frames do not match")));
       }
 
       auto result = mSortedTimeSeries.emplace(entry->getDateTime(), entry);
       if (!result.second)
       {
- throw std::domain_error("NumericTimeSeries:addEntry: entry for time already exists: " + boost::posix_time::to_simple_string(entry->getDateTime()));
+	throw std::domain_error("NumericTimeSeries:addEntry: entry for time already exists: " + boost::posix_time::to_simple_string(entry->getDateTime()));
       }
 
       mMapAndArrayInSync = false;
+
+      // Invalidate cached duration when data changes
+      mCachedIntradayDuration.reset();
     }
 
     void addEntry (const NumericTimeSeriesEntry<Decimal>& entry)
@@ -352,6 +320,52 @@ namespace mkc_timeseries
       return mTimeFrame;
     }
 
+    /**
+     * @brief Gets the intraday time frame duration for this numeric time series.
+     * @return boost::posix_time::time_duration representing the most common interval between entries
+     * @throws TimeSeriesException if the time frame is not INTRADAY or insufficient data
+     * @details Analyzes time differences between consecutive entries to determine the predominant interval.
+     * This method uses caching for performance optimization.
+     */
+    boost::posix_time::time_duration getIntradayTimeFrameDuration() const
+    {
+        if (mTimeFrame != TimeFrame::INTRADAY)
+        {
+            throw TimeSeriesException("getIntradayTimeFrameDuration: Method only valid for INTRADAY time frame");
+        }
+
+        boost::mutex::scoped_lock lock(mMutex);
+
+        if (mSortedTimeSeries.size() < 2)
+        {
+            throw TimeSeriesException("getIntradayTimeFrameDuration: Insufficient data - need at least 2 entries");
+        }
+
+        // Check cache first
+        if (mCachedIntradayDuration)
+        {
+            return *mCachedIntradayDuration;
+        }
+
+        // Calculate and cache the result
+        auto duration = IntradayIntervalCalculator::calculateFromSortedMap(mSortedTimeSeries);
+        mCachedIntradayDuration = duration;
+        return duration;
+    }
+
+    /**
+     * @brief Gets the intraday time frame duration in minutes.
+     * @return long representing the most common interval between entries in minutes
+     * @throws TimeSeriesException if the time frame is not INTRADAY or insufficient data
+     * @details This is a convenience method that calls getIntradayTimeFrameDuration()
+     * and extracts the total minutes. Leverages the same caching mechanism.
+     */
+    long getIntradayTimeFrameDurationInMinutes() const
+    {
+        auto duration = getIntradayTimeFrameDuration();
+        return duration.total_seconds() / 60;
+    }
+
     unsigned long getNumEntries() const
     {
       boost::mutex::scoped_lock lock(mMutex);
@@ -383,7 +397,7 @@ namespace mkc_timeseries
       ensureSynchronized();
       return mSequentialTimeSeries.end();
     }
-  
+
     NumericTimeSeries::ConstTimeSeriesIterator beginSortedAccess() const
     {
       return mSortedTimeSeries.begin();
@@ -408,7 +422,7 @@ namespace mkc_timeseries
     const boost::gregorian::date getFirstDate() const
     {
       boost::mutex::scoped_lock lock(mMutex);
-      
+
       if (mSortedTimeSeries.empty())
       {
 	throw std::domain_error("NumericTimeSeries:getFirstDate: no entries in time series");
@@ -420,12 +434,12 @@ namespace mkc_timeseries
     const boost::gregorian::date getLastDate() const
     {
       boost::mutex::scoped_lock lock(mMutex);
-      
+
       if (mSortedTimeSeries.empty())
       {
 	throw std::domain_error("NumericTimeSeries:getLastDate: no entries in time series");
       }
-      
+
       return mSortedTimeSeries.rbegin()->first.date();
     }
 
@@ -453,7 +467,7 @@ namespace mkc_timeseries
     const Decimal& getValue (const ConstRandomAccessIterator& it,
 			     unsigned long offset) const
     {
-      ValidateVectorOffset(it, offset);      
+      ValidateVectorOffset(it, offset);
       return (getTimeSeriesEntry (it, offset)->getValue());
     }
 
@@ -503,7 +517,7 @@ namespace mkc_timeseries
 	throw TimeSeriesException("Offset " + std::to_string(offset) + " exceeds size of time series");
       }
     }
-  
+
     bool isSynchronized() const
     {
       return (mMapAndArrayInSync);
@@ -516,6 +530,7 @@ namespace mkc_timeseries
     TimeFrame::Duration mTimeFrame;
     mutable bool mMapAndArrayInSync;
     mutable boost::mutex mMutex;
+    mutable boost::optional<boost::posix_time::time_duration> mCachedIntradayDuration;
   };
 
   /**
@@ -542,7 +557,7 @@ namespace mkc_timeseries
       }
 
       auto it = std::lower_bound(data.begin(), data.end(), entry,
-                                 [](const Entry& a, const Entry& b) 
+                                 [](const Entry& a, const Entry& b)
                                  {
                                    return a.getDateTime() < b.getDateTime();
                                  });
@@ -551,7 +566,7 @@ namespace mkc_timeseries
       {
         throw TimeSeriesException("LogNLookupPolicy::addEntry: duplicate timestamp " + boost::posix_time::to_simple_string(entry.getDateTime()));
       }
-      
+
       data.insert(it, std::move(entry));
     }
 
@@ -567,7 +582,7 @@ namespace mkc_timeseries
                         const boost::posix_time::ptime& dt) const
     {
       auto it = std::lower_bound(data.begin(), data.end(), dt,
-                                 [](const Entry& e, const boost::posix_time::ptime& tval) 
+                                 [](const Entry& e, const boost::posix_time::ptime& tval)
                                  {
                                    return e.getDateTime() < tval;
                                  });
@@ -620,11 +635,11 @@ namespace mkc_timeseries
       {
         return *this;
       }
-      
+
       boost::mutex::scoped_lock lock_this(m_mutex, boost::defer_lock);
       boost::mutex::scoped_lock lock_other(other.m_mutex, boost::defer_lock);
       std::lock(lock_this, lock_other); // Lock both mutexes to prevent deadlock
-      
+
       mIndex = other.mIndex;
       return *this;
     }
@@ -661,7 +676,7 @@ namespace mkc_timeseries
 
       boost::mutex::scoped_lock lock(m_mutex);
       auto it = std::lower_bound(data.begin(), data.end(), entry,
-                                 [](const Entry& a, const Entry& b) 
+                                 [](const Entry& a, const Entry& b)
                                  {
                                    return a.getDateTime() < b.getDateTime();
                                  });
@@ -670,7 +685,7 @@ namespace mkc_timeseries
       {
         throw TimeSeriesException("HashedLookupPolicy::addEntry: duplicate timestamp " + boost::posix_time::to_simple_string(entry.getDateTime()));
       }
-      
+
       data.insert(it, std::move(entry));
 
       if (!mIndex.empty())
@@ -678,7 +693,7 @@ namespace mkc_timeseries
         mIndex.clear();
       }
     }
-    
+
     /**
      * @brief Gets an iterator to the entry for a specific ptime using the hash index.
      * For internal use by OHLCTimeSeries to support efficient offset calculations.
@@ -702,9 +717,9 @@ namespace mkc_timeseries
       {
         return data.end();
       }
-      
+
       // Stale index check
-      if (map_it->second >= data.size()) 
+      if (map_it->second >= data.size())
       {
           mIndex.clear(); // Clear the stale index
           return data.end();
@@ -725,7 +740,7 @@ namespace mkc_timeseries
         mIndex.clear();
       }
     }
-    
+
     /**
      * @brief Builds the internal hash index from the provided data vector.
      * Called when an OHLCTimeSeries is constructed from a range of entries.
@@ -737,16 +752,16 @@ namespace mkc_timeseries
       boost::mutex::scoped_lock lock(m_mutex);
       buildIndex_nolock(data);
     }
-    
+
     std::vector<Entry> getEntriesCopy(const std::vector<Entry>& data) const
     {
       boost::mutex::scoped_lock lock(m_mutex);
-      return data; 
+      return data;
     }
 
   private:
     mutable std::unordered_map<boost::posix_time::ptime, size_t> mIndex;
-    mutable boost::mutex m_mutex; 
+    mutable boost::mutex m_mutex;
 
     /**
      * @brief Internal helper to build the hash index. Assumes caller holds the lock.
@@ -798,7 +813,7 @@ namespace mkc_timeseries
     using ConstRandomAccessIterator = typename std::vector<Entry>::const_iterator;
 
     /** @name Constructors & Assignment */
-    ///@{
+
 
     /**
      * @brief Constructs an empty OHLCTimeSeries.
@@ -857,7 +872,7 @@ namespace mkc_timeseries
 	mUnitsOfVolume(units),
 	m_lookup_policy()
     {
-      for (auto& e : mData) 
+      for (auto& e : mData)
       {
 	if (e.getTimeFrame() != tf)
         {
@@ -887,16 +902,16 @@ namespace mkc_timeseries
     OHLCTimeSeries& operator=(const OHLCTimeSeries& rhs)
     {
       if (this == &rhs) return *this;
-      
+
       boost::mutex::scoped_lock lock_this(mMutex, boost::defer_lock);
       boost::mutex::scoped_lock lock_rhs(rhs.mMutex, boost::defer_lock);
       std::lock(lock_this, lock_rhs);
-      
+
       mData = rhs.mData;
       mTimeFrame = rhs.mTimeFrame;
       mUnitsOfVolume = rhs.mUnitsOfVolume;
       m_lookup_policy = rhs.m_lookup_policy;
-      
+
       return *this;
     }
 
@@ -914,19 +929,19 @@ namespace mkc_timeseries
     OHLCTimeSeries& operator=(OHLCTimeSeries&& rhs) noexcept
     {
       if (this == &rhs) return *this;
-      
+
       boost::mutex::scoped_lock lock_this(mMutex, boost::defer_lock);
       boost::mutex::scoped_lock lock_rhs(rhs.mMutex, boost::defer_lock);
       std::lock(lock_this, lock_rhs);
-      
+
       mData = std::move(rhs.mData);
       mTimeFrame = rhs.mTimeFrame;
       mUnitsOfVolume = rhs.mUnitsOfVolume;
       m_lookup_policy = std::move(rhs.m_lookup_policy);
-      
+
       return *this;
     }
-    ///@}
+
 
     /**
      * @brief Get the time frame of this series.
@@ -942,6 +957,52 @@ namespace mkc_timeseries
     TradingVolume::VolumeUnit getVolumeUnits() const
     {
       return mUnitsOfVolume;
+    }
+
+    /**
+     * @brief Gets the intraday time frame duration for this OHLC time series.
+     * @return boost::posix_time::time_duration representing the most common interval between entries
+     * @throws TimeSeriesException if the time frame is not INTRADAY or insufficient data
+     * @details Analyzes time differences between consecutive entries to determine the predominant interval.
+     * This method uses caching for performance optimization.
+     */
+    boost::posix_time::time_duration getIntradayTimeFrameDuration() const
+    {
+        if (mTimeFrame != TimeFrame::INTRADAY)
+        {
+            throw TimeSeriesException("getIntradayTimeFrameDuration: Method only valid for INTRADAY time frame");
+        }
+
+        boost::mutex::scoped_lock lock(mMutex);
+
+        if (mData.size() < 2)
+        {
+            throw TimeSeriesException("getIntradayTimeFrameDuration: Insufficient data - need at least 2 entries");
+        }
+
+        // Check cache first
+        if (mCachedIntradayDuration)
+        {
+            return *mCachedIntradayDuration;
+        }
+
+        // Calculate and cache the result
+        auto duration = IntradayIntervalCalculator::calculateFromOHLCEntries(mData);
+        mCachedIntradayDuration = duration;
+        return duration;
+    }
+
+    /**
+     * @brief Gets the intraday time frame duration in minutes.
+     * @return long representing the most common interval between entries in minutes
+     * @throws TimeSeriesException if the time frame is not INTRADAY or insufficient data
+     * @details This is a convenience method that calls getIntradayTimeFrameDuration()
+     * and extracts the total minutes. Leverages the same caching mechanism.
+     */
+    long getIntradayTimeFrameDurationInMinutes() const
+    {
+        auto duration = getIntradayTimeFrameDuration();
+        return duration.total_seconds() / 60;
     }
 
     /**
@@ -967,6 +1028,9 @@ namespace mkc_timeseries
     {
       boost::mutex::scoped_lock lock(mMutex);
       m_lookup_policy.addEntry(mData, mTimeFrame, std::move(entry));
+
+      // Invalidate cached duration when data changes
+      mCachedIntradayDuration.reset();
     }
 
     /**
@@ -1003,7 +1067,7 @@ namespace mkc_timeseries
      * @brief Retrieves a time series entry relative to a base date by a specific offset.
      * Converts the base date to a ptime using the default bar time and calls the ptime overload.
      * @param base_d The base date from which to offset.
-     * @param offset_bars_ago The number of bars to offset from the base_d. 
+     * @param offset_bars_ago The number of bars to offset from the base_d.
      * 0 means the entry for base_d itself.
      * Positive values mean bars prior to base_d (earlier in time).
      * Negative values mean bars after base_d (later in time).
@@ -1054,14 +1118,14 @@ namespace mkc_timeseries
             }
             target_it = base_it + forward_offset;
         }
-        
+
         if (target_it < mData.begin() || target_it >= mData.end())
         {
              throw TimeSeriesOffsetOutOfRangeException("Calculated target iterator is unexpectedly out of bounds for offset " + std::to_string(offset_bars_ago) + " from base date " + boost::posix_time::to_simple_string(base_dt));
         }
         return *target_it; // Return copy
     }
-    
+
     // --- Value Accessor Methods (with date overloads calling ptime versions) ---
     Decimal getOpenValue(const date& base_d, unsigned long offset_bars_ago) const
     {
@@ -1153,7 +1217,7 @@ namespace mkc_timeseries
         return false;
       }
     }
-    
+
     // --- Other methods ---
     NumericTimeSeries<Decimal> OpenTimeSeries() const
     {
@@ -1221,7 +1285,7 @@ namespace mkc_timeseries
     /** @name Sorted-access iteration (by time)
      * @warning Iterators are invalidated by any modification to the series.
      */
-    ///@{
+
     ConstSortedIterator beginSortedAccess() const {
         boost::mutex::scoped_lock lock(mMutex);
         return mData.begin();
@@ -1230,7 +1294,7 @@ namespace mkc_timeseries
         boost::mutex::scoped_lock lock(mMutex);
         return mData.end();
     }
-    ///@}
+
 
     /** @name Legacy random-access iteration (for backward compatibility)
      * @brief Provides iterator access similar to the pre-refactoring API.
@@ -1241,7 +1305,6 @@ namespace mkc_timeseries
      * to use iterator dereferencing (e.g., `it->getOpenValue()`) for offset 0,
      * or use the new date/ptime-based getXValue(date, offset_bars_ago) methods.
      */
-    ///@{
     ConstRandomAccessIterator beginRandomAccess() const {
         boost::mutex::scoped_lock lock(mMutex);
         return mData.begin();
@@ -1250,11 +1313,11 @@ namespace mkc_timeseries
         boost::mutex::scoped_lock lock(mMutex);
         return mData.end();
     }
-    ///@}
 
-    /** @brief First date in series. 
+
+    /** @brief First date in series.
      * @throws TimeSeriesDataNotFoundException if series is empty.
-     */ 
+     */
     date getFirstDate() const
     {
       boost::mutex::scoped_lock lock(mMutex);
@@ -1265,9 +1328,9 @@ namespace mkc_timeseries
       return mData.front().getDateTime().date();
     }
 
-    /** @brief First full timestamp. 
+    /** @brief First full timestamp.
      * @throws TimeSeriesDataNotFoundException if series is empty.
-     */ 
+     */
     ptime getFirstDateTime() const
     {
       boost::mutex::scoped_lock lock(mMutex);
@@ -1303,7 +1366,7 @@ namespace mkc_timeseries
       }
       return mData.back().getDateTime();
     }
-    
+
     /**
      * @brief Remove all entries matching a ptime.
      */
@@ -1311,6 +1374,9 @@ namespace mkc_timeseries
     {
       boost::mutex::scoped_lock lock(mMutex);
       m_lookup_policy.deleteEntryByDate(mData, d);
+
+      // Invalidate cached duration when data changes
+      mCachedIntradayDuration.reset();
     }
 
     /**
@@ -1327,8 +1393,9 @@ namespace mkc_timeseries
     TradingVolume::VolumeUnit  mUnitsOfVolume;
     LookupPolicy               m_lookup_policy;
     mutable boost::mutex       mMutex;
+    mutable boost::optional<boost::posix_time::time_duration> mCachedIntradayDuration;
   };
-  
+
   template <class Decimal, class LookupPolicy>
   bool operator==(const OHLCTimeSeries<Decimal, LookupPolicy>& lhs,
 		  const OHLCTimeSeries<Decimal, LookupPolicy>& rhs)
@@ -1363,7 +1430,7 @@ namespace mkc_timeseries
     if (lhs.getTimeFrame() != rhs.getTimeFrame()) return false;
     if (lhs.getVolumeUnits() != rhs.getVolumeUnits()) return false;
     if (lhs.getNumEntries() != rhs.getNumEntries()) return false; // Quick check
-    
+
     // If LookupPolicy affects equality beyond mData (it shouldn't for content),
     // this direct comparison of mData (via getEntriesCopy if mData is private) is key.
     // The original TimeSeries.h had a member operator==
@@ -1372,8 +1439,8 @@ namespace mkc_timeseries
     return lhs.getEntriesCopy() == rhs.getEntriesCopy(); // Based on member operator== comparing mData
   }
 
-  template <class Decimal, class LookupPolicy> 
-  bool operator!=(const OHLCTimeSeries<Decimal, LookupPolicy>& lhs, 
+  template <class Decimal, class LookupPolicy>
+  bool operator!=(const OHLCTimeSeries<Decimal, LookupPolicy>& lhs,
 		  const OHLCTimeSeries<Decimal, LookupPolicy>& rhs)
   {
     return !(lhs == rhs);
@@ -1418,11 +1485,11 @@ namespace mkc_timeseries
                                                  series.getVolumeUnits());
 
     auto firstP = dates.getFirstDateTime();
-    auto lastP  = dates.getLastDateTime(); 
+    auto lastP  = dates.getLastDateTime();
 
     // Original pre-condition checks from the user-provided TimeSeries.h
     if (series.getNumEntries() > 0)
-      { 
+      {
         // getFirstDateTime() now throws if series is empty, so getNumEntries() check is vital.
         if (firstP < series.getFirstDateTime())
             {
@@ -1434,22 +1501,22 @@ namespace mkc_timeseries
             }
       }
     // If series is empty, the loop below won't run, and an empty result is correctly returned.
-    
+
     for (const auto& entry : series.getEntriesCopy()) // Uses safe getEntriesCopy
       {
         const auto& dt = entry.getDateTime();
 
         if (dt < firstP)
         {
-	  continue; 
+	  continue;
         }
 
         if (dt > lastP)
         {
-	  break;    
+	  break;
         }
-        
-        result.addEntry(entry); 
+
+        result.addEntry(entry);
       }
 
     return result;

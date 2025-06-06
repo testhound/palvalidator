@@ -418,6 +418,30 @@ namespace mkc_timeseries
       }
 
       /**
+       * @brief Gets the intraday time frame duration for this security's time series.
+       * @return boost::posix_time::time_duration representing the most common interval between bars
+       * @throws TimeSeriesException if the security's time frame is not INTRADAY or insufficient data
+       * @details Delegates to the underlying OHLCTimeSeries::getIntradayTimeFrameDuration method.
+       * This is a convenience method for backtesting clients who often work with Security pointers.
+       */
+      boost::posix_time::time_duration getIntradayTimeFrameDuration() const
+      {
+	return mSecurityTimeSeries->getIntradayTimeFrameDuration();
+      }
+
+      /**
+       * @brief Gets the intraday time frame duration in minutes for this security's time series.
+       * @return long representing the most common interval between bars in minutes
+       * @throws TimeSeriesException if the security's time frame is not INTRADAY or insufficient data
+       * @details Delegates to the underlying OHLCTimeSeries::getIntradayTimeFrameDurationInMinutes method.
+       * This is a convenience method for backtesting clients who need the duration in minutes.
+       */
+      long getIntradayTimeFrameDurationInMinutes() const
+      {
+	return mSecurityTimeSeries->getIntradayTimeFrameDurationInMinutes();
+      }
+
+      /**
        * @brief Pure virtual method to create a clone of this Security object, potentially with a different time series.
        * @param securityTimeSeries A shared pointer to the constant OHLC time series data for the new cloned security.
        * This allows creating Securities representing the same instrument but over different date ranges or frequencies.

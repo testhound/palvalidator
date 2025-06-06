@@ -10,6 +10,7 @@
 #include "TimeSeriesIndicators.h"
 #include "TestUtils.h"
 #include "number.h"
+#include "IntradayIntervalCalculator.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
@@ -356,7 +357,7 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
     {
       // Use date-based access instead of iterator-based
       date testDate(2015, Dec, 31); // entry3 date
-      
+
       DecimalType openRef2 = spySeries.getOpenValue(testDate, 2);
       REQUIRE (openRef2 == entry5->getOpenValue());
 
@@ -543,7 +544,7 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
   SECTION("TimeSeries getRandomAccessIterator by ptime", "[TimeSeries]") {
     // pick an existing 2021-04-05 12:00 bar
     ptime dt4 = intraday_entry4->getDateTime();
-    
+
     // Test that the entry exists using the new API
     REQUIRE(ssoSeries.isDateFound(dt4));
     auto entry = ssoSeries.getTimeSeriesEntry(dt4);
@@ -557,7 +558,7 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
   SECTION("TimeSeries getDateTimeValue by ptime iterator", "[TimeSeries]") {
     // locate the 11:00 bar on 2021-04-05
     ptime dt3 = intraday_entry3->getDateTime();
-    
+
     // Test using date-based access instead of iterator-based
     // offset 0 → exact same timestamp
     REQUIRE(ssoSeries.getDateTimeValue(dt3, 0) == dt3);
@@ -623,7 +624,7 @@ TEST_CASE ("OHLCTimeSeries with HashedLookupPolicy operations", "[TimeSeries][Ha
   {
     HashedSeries series(TimeFrame::DAILY, TradingVolume::SHARES);
     series.addEntry(*entry6); // 20151228
-    
+
     // First lookup, index built
     REQUIRE(series.getTimeSeriesEntry(entry6->getDateTime()) == *entry6);
 
@@ -645,7 +646,7 @@ TEST_CASE ("OHLCTimeSeries with HashedLookupPolicy operations", "[TimeSeries][Ha
     HashedSeries original(TimeFrame::DAILY, TradingVolume::SHARES);
     original.addEntry(*entry0);
     original.addEntry(*entry1);
-    
+
     // Trigger index build on original
     REQUIRE(original.getTimeSeriesEntry(entry0->getDateTime()) == *entry0);
 
@@ -664,12 +665,12 @@ TEST_CASE ("OHLCTimeSeries with HashedLookupPolicy operations", "[TimeSeries][Ha
     HashedSeries copyAssigned(TimeFrame::DAILY, TradingVolume::SHARES);
     copyAssigned.addEntry(*entry3); // Add something to it first
     copyAssigned = original; // Assign from modified original
-    
+
     REQUIRE(copyAssigned.getNumEntries() == 3);
     REQUIRE(copyAssigned == original);
     REQUIRE(copyAssigned.getTimeSeriesEntry(entry2->getDateTime()) == *entry2);
   }
-  
+
   SECTION ("Move semantics with HashedLookupPolicy")
   {
     HashedSeries original(TimeFrame::DAILY, TradingVolume::SHARES);
@@ -782,9 +783,9 @@ TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries
   {
     DateRange range(ptime(date(2021,Apr,5), hours(10)), ptime(date(2021,Apr,5), hours(14))); // 10:00 to 14:00 inclusive
     HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
-    REQUIRE(filtered.getNumEntries() == 5); 
-    REQUIRE(filtered.getFirstDateTime() == intraday_entry2->getDateTime()); 
-    REQUIRE(filtered.getLastDateTime() == intraday_entry6->getDateTime());  
+    REQUIRE(filtered.getNumEntries() == 5);
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry2->getDateTime());
+    REQUIRE(filtered.getLastDateTime() == intraday_entry6->getDateTime());
     REQUIRE(filtered.getTimeSeriesEntry(intraday_entry3->getDateTime()) == *intraday_entry3);
   }
 
@@ -796,12 +797,12 @@ TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries
     REQUIRE(filtered.getFirstDateTime() == intraday_entry8->getDateTime());
     REQUIRE(filtered.getLastDateTime() == intraday_entry14->getDateTime());
   }
-  
+
   SECTION ("Filter full single day (Hashed Policy)")
   {
     DateRange range(ptime(date(2021,Apr,6), hours(9)), ptime(date(2021,Apr,6), hours(15)));
     HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
-    REQUIRE(filtered.getNumEntries() == 7); 
+    REQUIRE(filtered.getNumEntries() == 7);
     REQUIRE(filtered.getFirstDateTime() == intraday_entry8->getDateTime());
     REQUIRE(filtered.getLastDateTime() == intraday_entry14->getDateTime());
   }
@@ -817,16 +818,16 @@ TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries
 
   SECTION ("Filter across midnight (Hashed Policy)")
   {
-    DateRange range(ptime(date(2021,Apr,5), hours(14)), ptime(date(2021,Apr,6), hours(10))); 
+    DateRange range(ptime(date(2021,Apr,5), hours(14)), ptime(date(2021,Apr,6), hours(10)));
     HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
     REQUIRE(filtered.getNumEntries() == 4);
-    REQUIRE(filtered.getFirstDateTime() == intraday_entry6->getDateTime()); 
-    REQUIRE(filtered.getLastDateTime() == intraday_entry9->getDateTime());   
+    REQUIRE(filtered.getFirstDateTime() == intraday_entry6->getDateTime());
+    REQUIRE(filtered.getLastDateTime() == intraday_entry9->getDateTime());
   }
 
   SECTION ("Filter range resulting in empty series (LogN Policy)")
   {
-    DateRange range(ptime(date(2021,Apr,5), boost::posix_time::hours(10) + boost::posix_time::minutes(5)), 
+    DateRange range(ptime(date(2021,Apr,5), boost::posix_time::hours(10) + boost::posix_time::minutes(5)),
                 ptime(date(2021,Apr,5), boost::posix_time::hours(10) + boost::posix_time::minutes(55)));
     OHLCTimeSeries<DecimalType> filtered = FilterTimeSeries(ssoSeries, range);
     REQUIRE(filtered.getNumEntries() == 0);
@@ -834,7 +835,7 @@ TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries
 
   SECTION ("Filter range resulting in empty series (Hashed Policy)")
   {
-    DateRange range(ptime(date(2021,Apr,5), hours(10) + minutes(5)), 
+    DateRange range(ptime(date(2021,Apr,5), hours(10) + minutes(5)),
                 ptime(date(2021,Apr,5), hours(10) + minutes(55)));
     HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
     REQUIRE(filtered.getNumEntries() == 0);
@@ -851,7 +852,7 @@ TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries
 
   SECTION ("Filter range matching a single bar (Hashed Policy)")
   {
-    DateRange range(intraday_entry4->getDateTime(), intraday_entry4->getDateTime()); 
+    DateRange range(intraday_entry4->getDateTime(), intraday_entry4->getDateTime());
     HashedSSOSeries filtered = FilterTimeSeries(ssoSeriesHashed, range);
     REQUIRE(filtered.getNumEntries() == 1);
     REQUIRE(filtered.getFirstDateTime() == intraday_entry4->getDateTime());
@@ -863,9 +864,9 @@ TEST_CASE ("FilterTimeSeries with Intraday Data (ptime precision)", "[TimeSeries
     DateRange range(ptime(date(2021,Apr,4), hours(9)), ptime(date(2021,Apr,4), hours(10))); //
     // This range starts before ssoSeries.getFirstDateTime() (2021-Apr-05 09:00:00)
     // Expect TimeSeriesException based on FilterTimeSeries precondition in TimeSeries.h
-    REQUIRE_THROWS_AS(FilterTimeSeries(ssoSeries, range), TimeSeriesException); 
+    REQUIRE_THROWS_AS(FilterTimeSeries(ssoSeries, range), TimeSeriesException);
   }
-   
+
   SECTION ("Filter range completely after series data (LogN Policy)")
   {
     DateRange range(ptime(date(2021,Apr,7), hours(9)), ptime(date(2021,Apr,7), hours(10)));
@@ -897,7 +898,7 @@ TEST_CASE("OHLCTimeSeries with HashedLookupPolicy concurrent access (Adds and Re
 
     SECTION("Concurrent addEntry and getTimeSeriesEntry operations") {
         auto sharedSeries = std::make_shared<SeriesType>(TimeFrame::DAILY, TradingVolume::SHARES);
-        
+
         std::atomic<int> ptime_day_offset_counter(0);
 
         auto generate_unique_entry = [&](int thread_id_for_value, int entry_idx_in_thread) {
@@ -918,12 +919,12 @@ TEST_CASE("OHLCTimeSeries with HashedLookupPolicy concurrent access (Adds and Re
 
         const int num_threads = std::max(4u, std::thread::hardware_concurrency());
         const int entries_per_thread = 200;
-        
+
         std::vector<std::future<std::vector<OHLCTimeSeriesEntry<DecimalType>>>> futures;
         std::vector<std::vector<OHLCTimeSeriesEntry<DecimalType>>> all_added_entries_from_threads(num_threads);
 
         std::random_device rd;
-        
+
         for (int i = 0; i < num_threads; ++i) {
             futures.emplace_back(std::async(std::launch::async, [&, i, seed = rd()]() {
                 std::vector<OHLCTimeSeriesEntry<DecimalType>> thread_added_entries;
@@ -932,7 +933,7 @@ TEST_CASE("OHLCTimeSeries with HashedLookupPolicy concurrent access (Adds and Re
 
                 for (int j = 0; j < entries_per_thread; ++j) {
                     auto entry_to_add = generate_unique_entry(i, j);
-                    
+
                     REQUIRE_NOTHROW(sharedSeries->addEntry(entry_to_add));
                     thread_added_entries.push_back(entry_to_add);
 
@@ -968,7 +969,7 @@ TEST_CASE("OHLCTimeSeries with HashedLookupPolicy concurrent access (Adds and Re
             REQUIRE_NOTHROW(all_added_entries_from_threads[i] = futures[i].get());
             total_successfully_added_count += all_added_entries_from_threads[i].size();
         }
-        
+
         size_t expected_total_entries = static_cast<size_t>(num_threads) * entries_per_thread;
         REQUIRE(sharedSeries->getNumEntries() == expected_total_entries);
         REQUIRE(total_successfully_added_count == expected_total_entries);
@@ -980,10 +981,576 @@ TEST_CASE("OHLCTimeSeries with HashedLookupPolicy concurrent access (Adds and Re
                 REQUIRE(retrieved_entry == expected_entry);
             }
         }
-        
+
         ptime non_existent_dt = ptime(date(1999, Dec, 31), hours(12));
         REQUIRE_THROWS_AS(sharedSeries->getTimeSeriesEntry(non_existent_dt), mkc_timeseries::TimeSeriesDataNotFoundException);
 
         WARN("Concurrent add and read test completed. Final verification passed.");
+    }
+}
+
+TEST_CASE("IntradayIntervalCalculator Tests", "[TimeSeries][IntradayCalculator]")
+{
+  using boost::posix_time::minutes;
+  using boost::posix_time::hours;
+  using boost::posix_time::ptime;
+  using boost::gregorian::date;
+
+  SECTION("Calculate from vector of timestamps")
+    {
+      std::vector<ptime> timestamps = {
+	ptime(date(2021, 4, 5), hours(9)),
+	ptime(date(2021, 4, 5), hours(10)),
+	ptime(date(2021, 4, 5), hours(11)),
+	ptime(date(2021, 4, 5), hours(12))
+      };
+
+      auto duration = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonInterval(timestamps);
+      REQUIRE(duration == hours(1));
+      REQUIRE(duration.total_seconds() / 60 == 60);
+    }
+
+  SECTION("Calculate with irregular intervals")
+    {
+      std::vector<ptime> timestamps = {
+	ptime(date(2021, 4, 5), hours(9)),      // 60 min gap
+	ptime(date(2021, 4, 5), hours(10)),     // 60 min gap
+	ptime(date(2021, 4, 5), hours(11)),     // 60 min gap
+	ptime(date(2021, 4, 5), hours(12)),     // 120 min gap (holiday early close)
+	ptime(date(2021, 4, 5), hours(14)),     // 60 min gap
+	ptime(date(2021, 4, 5), hours(15))
+      };
+
+      auto duration = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonInterval(timestamps);
+      REQUIRE(duration == hours(1)); // Most common is 60 minutes (4 occurrences vs 1)
+    }
+
+  SECTION("Exception tests")
+    {
+      std::vector<ptime> emptyTimestamps;
+      REQUIRE_THROWS_AS(mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonInterval(emptyTimestamps),
+			mkc_timeseries::TimeSeriesException);
+
+      std::vector<ptime> singleTimestamp = { ptime(date(2021, 4, 5), hours(9)) };
+      REQUIRE_THROWS_AS(mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonInterval(singleTimestamp),
+			mkc_timeseries::TimeSeriesException);
+    }
+
+  SECTION("Calculate from vector of timestamps - minutes")
+    {
+      std::vector<ptime> timestamps = {
+	ptime(date(2021, 4, 5), hours(9)),
+	ptime(date(2021, 4, 5), hours(10)),
+	ptime(date(2021, 4, 5), hours(11)),
+	ptime(date(2021, 4, 5), hours(12))
+      };
+
+      auto durationMinutes = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(timestamps);
+      REQUIRE(durationMinutes == 60);
+
+      // Verify consistency with time_duration method
+      auto duration = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonInterval(timestamps);
+      REQUIRE(durationMinutes == duration.total_seconds() / 60);
+    }
+
+  SECTION("Calculate with irregular intervals - minutes")
+    {
+      std::vector<ptime> timestamps = {
+	ptime(date(2021, 4, 5), hours(9)),      // 60 min gap
+	ptime(date(2021, 4, 5), hours(10)),     // 60 min gap
+	ptime(date(2021, 4, 5), hours(11)),     // 60 min gap
+	ptime(date(2021, 4, 5), hours(12)),     // 120 min gap (holiday early close)
+	ptime(date(2021, 4, 5), hours(14)),     // 60 min gap
+	ptime(date(2021, 4, 5), hours(15))
+      };
+
+      auto durationMinutes = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(timestamps);
+      REQUIRE(durationMinutes == 60); // Most common is 60 minutes (4 occurrences vs 1)
+
+      // Verify consistency with time_duration method
+      auto duration = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonInterval(timestamps);
+      REQUIRE(durationMinutes == duration.total_seconds() / 60);
+    }
+
+  SECTION("Exception tests - minutes")
+    {
+      std::vector<ptime> emptyTimestamps;
+      REQUIRE_THROWS_AS(mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(emptyTimestamps),
+			mkc_timeseries::TimeSeriesException);
+
+      std::vector<ptime> singleTimestamp = { ptime(date(2021, 4, 5), hours(9)) };
+      REQUIRE_THROWS_AS(mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(singleTimestamp),
+			mkc_timeseries::TimeSeriesException);
+    }
+
+  SECTION("Various minute intervals")
+    {
+      // Test 5-minute intervals
+      {
+	std::vector<ptime> timestamps = {
+	  ptime(date(2021, 4, 5), hours(9) + minutes(0)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(5)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(10)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(15))
+	};
+
+	auto durationMinutes = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(timestamps);
+	REQUIRE(durationMinutes == 5);
+      }
+
+      // Test 15-minute intervals
+      {
+	std::vector<ptime> timestamps = {
+	  ptime(date(2021, 4, 5), hours(9) + minutes(0)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(15)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(30)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(45))
+	};
+
+	auto durationMinutes = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(timestamps);
+	REQUIRE(durationMinutes == 15);
+      }
+
+      // Test 30-minute intervals
+      {
+	std::vector<ptime> timestamps = {
+	  ptime(date(2021, 4, 5), hours(9) + minutes(0)),
+	  ptime(date(2021, 4, 5), hours(9) + minutes(30)),
+	  ptime(date(2021, 4, 5), hours(10) + minutes(0)),
+	  ptime(date(2021, 4, 5), hours(10) + minutes(30))
+	};
+
+	auto durationMinutes = mkc_timeseries::IntradayIntervalCalculator::calculateMostCommonIntervalInMinutes(timestamps);
+	REQUIRE(durationMinutes == 30);
+      }
+    }
+}
+
+TEST_CASE("Intraday Time Frame Duration Tests", "[TimeSeries][IntradayDuration]")
+{
+  using boost::posix_time::minutes;
+  using boost::posix_time::hours;
+
+  SECTION("OHLCTimeSeries - 60 minute intervals")
+    {
+      OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+      // Add hourly entries
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "10:00", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "11:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series.addEntry(*entry1);
+      series.addEntry(*entry2);
+      series.addEntry(*entry3);
+
+      auto duration = series.getIntradayTimeFrameDuration();
+      REQUIRE(duration == hours(1));
+      REQUIRE(duration.total_seconds() / 60 == 60);
+    }
+
+  SECTION("OHLCTimeSeries - Various intervals (1, 5, 15, 30, 60, 90, 135 minutes)")
+    {
+      // Test 1-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:01", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "09:02", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	auto duration = series.getIntradayTimeFrameDuration();
+	REQUIRE(duration == minutes(1));
+	REQUIRE(duration.total_seconds() / 60 == 1);
+      }
+
+      // Test 5-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:05", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "09:10", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	auto duration = series.getIntradayTimeFrameDuration();
+	REQUIRE(duration == minutes(5));
+	REQUIRE(duration.total_seconds() / 60 == 5);
+      }
+
+      // Test 15-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:15", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "09:30", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	auto duration = series.getIntradayTimeFrameDuration();
+	REQUIRE(duration == minutes(15));
+	REQUIRE(duration.total_seconds() / 60 == 15);
+      }
+
+      // Test 30-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+	auto entry4 = createTimeSeriesEntry("20210405", "10:30", "102.0", "104.0", "101.5", "103.0", "2500");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+	series.addEntry(*entry4);
+
+	auto duration = series.getIntradayTimeFrameDuration();
+	REQUIRE(duration == minutes(30));
+	REQUIRE(duration.total_seconds() / 60 == 30);
+      }
+
+      // Test 90-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "10:30", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "12:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	auto duration = series.getIntradayTimeFrameDuration();
+	REQUIRE(duration == minutes(90));
+	REQUIRE(duration.total_seconds() / 60 == 90);
+      }
+
+      // Test 135-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "11:15", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "13:30", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	auto duration = series.getIntradayTimeFrameDuration();
+	REQUIRE(duration == minutes(135));
+	REQUIRE(duration.total_seconds() / 60 == 135);
+      }
+    }
+
+  SECTION("NumericTimeSeries - 60 minute intervals")
+    {
+      NumericTimeSeries<DecimalType> series(TimeFrame::INTRADAY);
+
+      ptime dt1(date(2021, Apr, 5), hours(9));
+      ptime dt2(date(2021, Apr, 5), hours(10));
+      ptime dt3(date(2021, Apr, 5), hours(11));
+
+      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+
+      auto duration = series.getIntradayTimeFrameDuration();
+      REQUIRE(duration == hours(1));
+      REQUIRE(duration.total_seconds() / 60 == 60);
+    }
+
+  SECTION("Exception tests - Non-INTRADAY time frame")
+    {
+      OHLCTimeSeries<DecimalType> dailySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+      REQUIRE_THROWS_AS(dailySeries.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+
+      OHLCTimeSeries<DecimalType> weeklySeries(TimeFrame::WEEKLY, TradingVolume::SHARES);
+      REQUIRE_THROWS_AS(weeklySeries.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+
+      OHLCTimeSeries<DecimalType> monthlySeries(TimeFrame::MONTHLY, TradingVolume::SHARES);
+      REQUIRE_THROWS_AS(monthlySeries.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+
+      NumericTimeSeries<DecimalType> dailyNumericSeries(TimeFrame::DAILY);
+      REQUIRE_THROWS_AS(dailyNumericSeries.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+    }
+
+  SECTION("Exception tests - Insufficient data")
+    {
+      OHLCTimeSeries<DecimalType> emptySeries(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      REQUIRE_THROWS_AS(emptySeries.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+
+      OHLCTimeSeries<DecimalType> singleEntrySeries(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      auto entry = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      singleEntrySeries.addEntry(*entry);
+      REQUIRE_THROWS_AS(singleEntrySeries.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+    }
+
+  SECTION("Irregular intervals with holiday gaps")
+    {
+      OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+      // Normal 60-minute intervals
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "10:00", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "11:00", "101.0", "103.0", "100.5", "102.0", "2000");
+      auto entry4 = createTimeSeriesEntry("20210405", "12:00", "102.0", "104.0", "101.5", "103.0", "2500");
+
+      // Holiday early close - missing 13:00 bar, next bar at 14:00 (120-minute gap)
+      auto entry5 = createTimeSeriesEntry("20210405", "14:00", "103.0", "105.0", "102.5", "104.0", "3000");
+
+      // Back to normal 60-minute intervals
+      auto entry6 = createTimeSeriesEntry("20210405", "15:00", "104.0", "106.0", "103.5", "105.0", "3500");
+
+      series.addEntry(*entry1);
+      series.addEntry(*entry2);
+      series.addEntry(*entry3);
+      series.addEntry(*entry4);
+      series.addEntry(*entry5);
+      series.addEntry(*entry6);
+
+      // Should return 60 minutes as it's the most common interval (4 occurrences vs 1 occurrence of 120)
+      auto duration = series.getIntradayTimeFrameDuration();
+      REQUIRE(duration == hours(1));
+      REQUIRE(duration.total_seconds() / 60 == 60);
+    }
+
+  SECTION("Duration flexibility tests")
+    {
+      OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series.addEntry(*entry1);
+      series.addEntry(*entry2);
+      series.addEntry(*entry3);
+
+      auto duration = series.getIntradayTimeFrameDuration();
+
+      // Test various ways to extract time information
+      REQUIRE(duration.total_seconds() / 60 == 30);
+      REQUIRE(duration.total_seconds() == 1800);
+      REQUIRE(duration.hours() == 0);
+      REQUIRE(duration.minutes() == 30);
+
+      // Test comparison with boost time_duration objects
+      REQUIRE(duration == minutes(30));
+      REQUIRE(duration < hours(1));
+      REQUIRE(duration > minutes(15));
+    }
+}
+
+TEST_CASE("Intraday Time Frame Duration In Minutes Tests", "[TimeSeries][IntradayDurationMinutes]")
+{
+  using boost::posix_time::minutes;
+  using boost::posix_time::hours;
+
+  SECTION("OHLCTimeSeries - 60 minute intervals")
+    {
+      OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+      // Add hourly entries
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "10:00", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "11:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series.addEntry(*entry1);
+      series.addEntry(*entry2);
+      series.addEntry(*entry3);
+
+      auto durationMinutes = series.getIntradayTimeFrameDurationInMinutes();
+      REQUIRE(durationMinutes == 60);
+
+      // Verify consistency with time_duration method
+      auto duration = series.getIntradayTimeFrameDuration();
+      REQUIRE(durationMinutes == duration.total_seconds() / 60);
+    }
+
+  SECTION("OHLCTimeSeries - Various intervals in minutes")
+    {
+      // Test 1-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:01", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "09:02", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	REQUIRE(series.getIntradayTimeFrameDurationInMinutes() == 1);
+      }
+
+      // Test 5-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:05", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "09:10", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	REQUIRE(series.getIntradayTimeFrameDurationInMinutes() == 5);
+      }
+
+      // Test 15-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:15", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "09:30", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	REQUIRE(series.getIntradayTimeFrameDurationInMinutes() == 15);
+      }
+
+      // Test 30-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	REQUIRE(series.getIntradayTimeFrameDurationInMinutes() == 30);
+      }
+
+      // Test 90-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "10:30", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "12:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	REQUIRE(series.getIntradayTimeFrameDurationInMinutes() == 90);
+      }
+
+      // Test 135-minute intervals
+      {
+	OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+	auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+	auto entry2 = createTimeSeriesEntry("20210405", "11:15", "100.5", "102.0", "100.0", "101.0", "1500");
+	auto entry3 = createTimeSeriesEntry("20210405", "13:30", "101.0", "103.0", "100.5", "102.0", "2000");
+
+	series.addEntry(*entry1);
+	series.addEntry(*entry2);
+	series.addEntry(*entry3);
+
+	REQUIRE(series.getIntradayTimeFrameDurationInMinutes() == 135);
+      }
+    }
+
+  SECTION("NumericTimeSeries - 60 minute intervals")
+    {
+      NumericTimeSeries<DecimalType> series(TimeFrame::INTRADAY);
+
+      ptime dt1(date(2021, Apr, 5), hours(9));
+      ptime dt2(date(2021, Apr, 5), hours(10));
+      ptime dt3(date(2021, Apr, 5), hours(11));
+
+      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+
+      auto durationMinutes = series.getIntradayTimeFrameDurationInMinutes();
+      REQUIRE(durationMinutes == 60);
+
+      // Verify consistency with time_duration method
+      auto duration = series.getIntradayTimeFrameDuration();
+      REQUIRE(durationMinutes == duration.total_seconds() / 60);
+    }
+
+  SECTION("Exception tests - Non-INTRADAY time frame")
+    {
+      OHLCTimeSeries<DecimalType> dailySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+      REQUIRE_THROWS_AS(dailySeries.getIntradayTimeFrameDurationInMinutes(), mkc_timeseries::TimeSeriesException);
+
+      NumericTimeSeries<DecimalType> dailyNumericSeries(TimeFrame::DAILY);
+      REQUIRE_THROWS_AS(dailyNumericSeries.getIntradayTimeFrameDurationInMinutes(), mkc_timeseries::TimeSeriesException);
+    }
+
+  SECTION("Exception tests - Insufficient data")
+    {
+      OHLCTimeSeries<DecimalType> emptySeries(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      REQUIRE_THROWS_AS(emptySeries.getIntradayTimeFrameDurationInMinutes(), mkc_timeseries::TimeSeriesException);
+
+      OHLCTimeSeries<DecimalType> singleEntrySeries(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      auto entry = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      singleEntrySeries.addEntry(*entry);
+      REQUIRE_THROWS_AS(singleEntrySeries.getIntradayTimeFrameDurationInMinutes(), mkc_timeseries::TimeSeriesException);
+    }
+
+  SECTION("Consistency between duration methods")
+    {
+      OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series.addEntry(*entry1);
+      series.addEntry(*entry2);
+      series.addEntry(*entry3);
+
+      auto duration = series.getIntradayTimeFrameDuration();
+      auto durationMinutes = series.getIntradayTimeFrameDurationInMinutes();
+
+      // Both methods should return consistent results
+      REQUIRE(durationMinutes == duration.total_seconds() / 60);
+      REQUIRE(durationMinutes == 30);
+    }
+
+  SECTION("Irregular intervals with holiday gaps")
+    {
+      OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+      // Normal 30-minute intervals
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+      auto entry4 = createTimeSeriesEntry("20210405", "10:30", "102.0", "104.0", "101.5", "103.0", "2500");
+
+      // Holiday early close - missing 11:00 bar, next bar at 12:00 (90-minute gap)
+      auto entry5 = createTimeSeriesEntry("20210405", "12:00", "103.0", "105.0", "102.5", "104.0", "3000");
+
+      // Back to normal 30-minute intervals
+      auto entry6 = createTimeSeriesEntry("20210405", "12:30", "104.0", "106.0", "103.5", "105.0", "3500");
+
+      series.addEntry(*entry1);
+      series.addEntry(*entry2);
+      series.addEntry(*entry3);
+      series.addEntry(*entry4);
+      series.addEntry(*entry5);
+      series.addEntry(*entry6);
+
+      // Should return 30 minutes as it's the most common interval (4 occurrences vs 1 occurrence of 90)
+      auto durationMinutes = series.getIntradayTimeFrameDurationInMinutes();
+      REQUIRE(durationMinutes == 30);
+
+      // Verify consistency with time_duration method
+      auto duration = series.getIntradayTimeFrameDuration();
+      REQUIRE(durationMinutes == duration.total_seconds() / 60);
     }
 }

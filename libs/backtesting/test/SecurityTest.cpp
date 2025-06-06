@@ -8,6 +8,7 @@ using namespace mkc_timeseries;
 using namespace boost::gregorian;
 using boost::posix_time::ptime;
 using boost::posix_time::hours;
+using boost::posix_time::minutes;
 
 TEST_CASE ("Security operations", "[Security]")
 {
@@ -337,5 +338,309 @@ TEST_CASE ("Security operations", "[Security]")
 
     // out-of-bounds offset should throw
     REQUIRE_THROWS(spy.getDateTimeValue(dt2, 10));
+  }
+
+  SECTION("Security getIntradayTimeFrameDuration - Intraday series", "[Security][IntradayDuration]")
+  {
+    // Create intraday time series with 30-minute intervals
+    auto intradaySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+    auto entry4 = createTimeSeriesEntry("20210405", "10:30", "102.0", "104.0", "101.5", "103.0", "2500");
+
+    intradaySeries->addEntry(*entry1);
+    intradaySeries->addEntry(*entry2);
+    intradaySeries->addEntry(*entry3);
+    intradaySeries->addEntry(*entry4);
+
+    EquitySecurity<DecimalType> intradayEquity("SPY", "SPDR S&P 500 ETF", intradaySeries);
+
+    auto duration = intradayEquity.getIntradayTimeFrameDuration();
+    REQUIRE(duration == minutes(30));
+    REQUIRE(duration.total_seconds() / 60 == 30);
+  }
+
+  SECTION("Security getIntradayTimeFrameDuration - Hourly intervals", "[Security][IntradayDuration]")
+  {
+    // Create intraday time series with 60-minute intervals
+    auto intradaySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::CONTRACTS);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "3700.0", "3710.0", "3690.0", "3705.0", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "10:00", "3705.0", "3720.0", "3700.0", "3715.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "11:00", "3715.0", "3730.0", "3710.0", "3725.0", "2000");
+
+    intradaySeries->addEntry(*entry1);
+    intradaySeries->addEntry(*entry2);
+    intradaySeries->addEntry(*entry3);
+
+    DecimalType esBigPointValue(createDecimal("50.0"));
+    DecimalType esTickValue(createDecimal("0.25"));
+    FuturesSecurity<DecimalType> intradayFutures("ES", "E-mini S&P 500", esBigPointValue, esTickValue, intradaySeries);
+
+    auto duration = intradayFutures.getIntradayTimeFrameDuration();
+    REQUIRE(duration == hours(1));
+    REQUIRE(duration.total_seconds() / 60 == 60);
+  }
+
+  SECTION("Security getIntradayTimeFrameDuration - Exception for non-intraday", "[Security][IntradayDuration]")
+  {
+    // Use existing daily spy and corn series from the test
+    REQUIRE_THROWS_AS(spy.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+    REQUIRE_THROWS_AS(corn.getIntradayTimeFrameDuration(), mkc_timeseries::TimeSeriesException);
+  }
+
+  SECTION("Security getIntradayTimeFrameDuration - Various intervals", "[Security][IntradayDuration]")
+  {
+    // Test 5-minute intervals
+    {
+      auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:05", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "09:10", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series->addEntry(*entry1);
+      series->addEntry(*entry2);
+      series->addEntry(*entry3);
+
+      EquitySecurity<DecimalType> security("TEST", "Test Security", series);
+      auto duration = security.getIntradayTimeFrameDuration();
+      REQUIRE(duration == minutes(5));
+      REQUIRE(duration.total_seconds() / 60 == 5);
+    }
+
+    // Test 15-minute intervals
+    {
+      auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:15", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "09:30", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series->addEntry(*entry1);
+      series->addEntry(*entry2);
+      series->addEntry(*entry3);
+
+      EquitySecurity<DecimalType> security("TEST2", "Test Security 2", series);
+      auto duration = security.getIntradayTimeFrameDuration();
+      REQUIRE(duration == minutes(15));
+      REQUIRE(duration.total_seconds() / 60 == 15);
+    }
+
+    // Test 90-minute intervals
+    {
+      auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::CONTRACTS);
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "3700.0", "3710.0", "3690.0", "3705.0", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "10:30", "3705.0", "3720.0", "3700.0", "3715.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "12:00", "3715.0", "3730.0", "3710.0", "3725.0", "2000");
+
+      series->addEntry(*entry1);
+      series->addEntry(*entry2);
+      series->addEntry(*entry3);
+
+      DecimalType bigPointValue(createDecimal("50.0"));
+      DecimalType tickValue(createDecimal("0.25"));
+      FuturesSecurity<DecimalType> security("TEST3", "Test Futures", bigPointValue, tickValue, series);
+      auto duration = security.getIntradayTimeFrameDuration();
+      REQUIRE(duration == minutes(90));
+      REQUIRE(duration.total_seconds() / 60 == 90);
+    }
+  }
+
+  SECTION("Security getIntradayTimeFrameDuration - Irregular intervals", "[Security][IntradayDuration]")
+  {
+    // Create intraday time series with mostly 30-minute intervals but one 60-minute gap
+    auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+    auto entry4 = createTimeSeriesEntry("20210405", "10:30", "102.0", "104.0", "101.5", "103.0", "2500");
+    // Missing 11:00 bar - holiday early close
+    auto entry5 = createTimeSeriesEntry("20210405", "12:00", "103.0", "105.0", "102.5", "104.0", "3000");
+    auto entry6 = createTimeSeriesEntry("20210405", "12:30", "104.0", "106.0", "103.5", "105.0", "3500");
+
+    series->addEntry(*entry1);
+    series->addEntry(*entry2);
+    series->addEntry(*entry3);
+    series->addEntry(*entry4);
+    series->addEntry(*entry5);
+    series->addEntry(*entry6);
+
+    EquitySecurity<DecimalType> security("IRREG", "Irregular Security", series);
+
+    // Should return 30 minutes as it's the most common interval (4 occurrences vs 1 occurrence of 90 minutes)
+    auto duration = security.getIntradayTimeFrameDuration();
+    REQUIRE(duration == minutes(30));
+    REQUIRE(duration.total_seconds() / 60 == 30);
+  }
+
+  SECTION("Security getIntradayTimeFrameDurationInMinutes - Intraday series", "[Security][IntradayDurationMinutes]")
+  {
+    // Create intraday time series with 30-minute intervals
+    auto intradaySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+    auto entry4 = createTimeSeriesEntry("20210405", "10:30", "102.0", "104.0", "101.5", "103.0", "2500");
+
+    intradaySeries->addEntry(*entry1);
+    intradaySeries->addEntry(*entry2);
+    intradaySeries->addEntry(*entry3);
+    intradaySeries->addEntry(*entry4);
+
+    EquitySecurity<DecimalType> intradayEquity("SPY", "SPDR S&P 500 ETF", intradaySeries);
+
+    auto durationMinutes = intradayEquity.getIntradayTimeFrameDurationInMinutes();
+    REQUIRE(durationMinutes == 30);
+
+    // Verify consistency with time_duration method
+    auto duration = intradayEquity.getIntradayTimeFrameDuration();
+    REQUIRE(durationMinutes == duration.total_seconds() / 60);
+  }
+
+  SECTION("Security getIntradayTimeFrameDurationInMinutes - Hourly intervals", "[Security][IntradayDurationMinutes]")
+  {
+    // Create intraday time series with 60-minute intervals
+    auto intradaySeries = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::CONTRACTS);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "3700.0", "3710.0", "3690.0", "3705.0", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "10:00", "3705.0", "3720.0", "3700.0", "3715.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "11:00", "3715.0", "3730.0", "3710.0", "3725.0", "2000");
+
+    intradaySeries->addEntry(*entry1);
+    intradaySeries->addEntry(*entry2);
+    intradaySeries->addEntry(*entry3);
+
+    DecimalType esBigPointValue(createDecimal("50.0"));
+    DecimalType esTickValue(createDecimal("0.25"));
+    FuturesSecurity<DecimalType> intradayFutures("ES", "E-mini S&P 500", esBigPointValue, esTickValue, intradaySeries);
+
+    auto durationMinutes = intradayFutures.getIntradayTimeFrameDurationInMinutes();
+    REQUIRE(durationMinutes == 60);
+
+    // Verify consistency with time_duration method
+    auto duration = intradayFutures.getIntradayTimeFrameDuration();
+    REQUIRE(durationMinutes == duration.total_seconds() / 60);
+  }
+
+  SECTION("Security getIntradayTimeFrameDurationInMinutes - Exception for non-intraday", "[Security][IntradayDurationMinutes]")
+  {
+    // Use existing daily spy and corn series from the test
+    REQUIRE_THROWS_AS(spy.getIntradayTimeFrameDurationInMinutes(), mkc_timeseries::TimeSeriesException);
+    REQUIRE_THROWS_AS(corn.getIntradayTimeFrameDurationInMinutes(), mkc_timeseries::TimeSeriesException);
+  }
+
+  SECTION("Security getIntradayTimeFrameDurationInMinutes - Various intervals", "[Security][IntradayDurationMinutes]")
+  {
+    // Test 5-minute intervals
+    {
+      auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:05", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "09:10", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series->addEntry(*entry1);
+      series->addEntry(*entry2);
+      series->addEntry(*entry3);
+
+      EquitySecurity<DecimalType> security("TEST", "Test Security", series);
+      REQUIRE(security.getIntradayTimeFrameDurationInMinutes() == 5);
+    }
+
+    // Test 15-minute intervals
+    {
+      auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "09:15", "100.5", "102.0", "100.0", "101.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "09:30", "101.0", "103.0", "100.5", "102.0", "2000");
+
+      series->addEntry(*entry1);
+      series->addEntry(*entry2);
+      series->addEntry(*entry3);
+
+      EquitySecurity<DecimalType> security("TEST2", "Test Security 2", series);
+      REQUIRE(security.getIntradayTimeFrameDurationInMinutes() == 15);
+    }
+
+    // Test 90-minute intervals
+    {
+      auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::CONTRACTS);
+      auto entry1 = createTimeSeriesEntry("20210405", "09:00", "3700.0", "3710.0", "3690.0", "3705.0", "1000");
+      auto entry2 = createTimeSeriesEntry("20210405", "10:30", "3705.0", "3720.0", "3700.0", "3715.0", "1500");
+      auto entry3 = createTimeSeriesEntry("20210405", "12:00", "3715.0", "3730.0", "3710.0", "3725.0", "2000");
+
+      series->addEntry(*entry1);
+      series->addEntry(*entry2);
+      series->addEntry(*entry3);
+
+      DecimalType bigPointValue(createDecimal("50.0"));
+      DecimalType tickValue(createDecimal("0.25"));
+      FuturesSecurity<DecimalType> security("TEST3", "Test Futures", bigPointValue, tickValue, series);
+      REQUIRE(security.getIntradayTimeFrameDurationInMinutes() == 90);
+    }
+  }
+
+  SECTION("Security getIntradayTimeFrameDurationInMinutes - Irregular intervals", "[Security][IntradayDurationMinutes]")
+  {
+    // Create intraday time series with mostly 30-minute intervals but one 90-minute gap
+    auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "09:30", "100.5", "102.0", "100.0", "101.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "10:00", "101.0", "103.0", "100.5", "102.0", "2000");
+    auto entry4 = createTimeSeriesEntry("20210405", "10:30", "102.0", "104.0", "101.5", "103.0", "2500");
+    // Missing 11:00 bar - holiday early close
+    auto entry5 = createTimeSeriesEntry("20210405", "12:00", "103.0", "105.0", "102.5", "104.0", "3000");
+    auto entry6 = createTimeSeriesEntry("20210405", "12:30", "104.0", "106.0", "103.5", "105.0", "3500");
+
+    series->addEntry(*entry1);
+    series->addEntry(*entry2);
+    series->addEntry(*entry3);
+    series->addEntry(*entry4);
+    series->addEntry(*entry5);
+    series->addEntry(*entry6);
+
+    EquitySecurity<DecimalType> security("IRREG", "Irregular Security", series);
+
+    // Should return 30 minutes as it's the most common interval (4 occurrences vs 1 occurrence of 90 minutes)
+    auto durationMinutes = security.getIntradayTimeFrameDurationInMinutes();
+    REQUIRE(durationMinutes == 30);
+
+    // Verify consistency with time_duration method
+    auto duration = security.getIntradayTimeFrameDuration();
+    REQUIRE(durationMinutes == duration.total_seconds() / 60);
+  }
+
+  SECTION("Security getIntradayTimeFrameDurationInMinutes - Consistency tests", "[Security][IntradayDurationMinutes]")
+  {
+    // Create intraday time series with 15-minute intervals
+    auto series = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::INTRADAY, TradingVolume::SHARES);
+
+    auto entry1 = createTimeSeriesEntry("20210405", "09:00", "100.0", "101.0", "99.0", "100.5", "1000");
+    auto entry2 = createTimeSeriesEntry("20210405", "09:15", "100.5", "102.0", "100.0", "101.0", "1500");
+    auto entry3 = createTimeSeriesEntry("20210405", "09:30", "101.0", "103.0", "100.5", "102.0", "2000");
+    auto entry4 = createTimeSeriesEntry("20210405", "09:45", "102.0", "104.0", "101.5", "103.0", "2500");
+
+    series->addEntry(*entry1);
+    series->addEntry(*entry2);
+    series->addEntry(*entry3);
+    series->addEntry(*entry4);
+
+    EquitySecurity<DecimalType> security("CONS", "Consistency Test Security", series);
+
+    // Test multiple calls return same result (caching)
+    auto duration1 = security.getIntradayTimeFrameDurationInMinutes();
+    auto duration2 = security.getIntradayTimeFrameDurationInMinutes();
+    auto duration3 = security.getIntradayTimeFrameDurationInMinutes();
+
+    REQUIRE(duration1 == 15);
+    REQUIRE(duration1 == duration2);
+    REQUIRE(duration2 == duration3);
+
+    // Test consistency with time_duration method
+    auto timeDuration = security.getIntradayTimeFrameDuration();
+    REQUIRE(duration1 == timeDuration.total_seconds() / 60);
   }
 }
