@@ -24,9 +24,11 @@ readPALDataFile(const std::string &filename);
 
 std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> > getRandomPriceSeries();
   
-PriceActionLabSystem* getPricePatterns(const std::string &irFileName);
 
-PriceActionLabSystem* getRandomPricePatterns();
+// New shared_ptr versions for memory management rearchitecture
+std::shared_ptr<PriceActionLabSystem> getPricePatterns(const std::string &irFileName);
+
+std::shared_ptr<PriceActionLabSystem> getRandomPricePatterns();
 
 // New helper: returns a shared_ptr to a randomly picked PalStrategy<DecimalType>
 // (Under the hood, it reads all patterns from "QQQ_IR.txt" and picks one at random.)

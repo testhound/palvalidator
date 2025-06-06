@@ -32,7 +32,7 @@
 
 
 /**
- ** \file /workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp
+ ** \file /home/collison/palvalidator_new/libs/priceactionlab/PalParser.hpp
  ** Define the mkc_palast::parser class.
  */
 
@@ -42,10 +42,10 @@
 // especially those whose name start with YY_ or yy_.  They are
 // private implementation details that can be changed or removed.
 
-#ifndef YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
-# define YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
+#ifndef YY_YY_HOME_COLLISON_PALVALIDATOR_NEW_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
+# define YY_YY_HOME_COLLISON_PALVALIDATOR_NEW_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
 // "%code requires" blocks.
-#line 13 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 13 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 
     #include <iostream>
     #include <string>
@@ -59,7 +59,7 @@
         class PalParseDriver;
     }
 
-#line 63 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
+#line 63 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.hpp"
 
 # include <cassert>
 # include <cstdlib> // std::abort
@@ -198,9 +198,9 @@
 # define YYDEBUG 1
 #endif
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 namespace mkc_palast {
-#line 204 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
+#line 204 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.hpp"
 
 
 
@@ -419,40 +419,13 @@ namespace mkc_palast {
     /// An auxiliary type to compute the largest semantic type.
     union union_type
     {
-      // entrystmt
-      char dummy1[sizeof (MarketEntryExpression *)];
-
-      // patterndescr
-      char dummy2[sizeof (PatternDescription *)];
-
-      // conds
-      // ohlc_comparison
-      char dummy3[sizeof (PatternExpression *)];
-
-      // pattern
-      char dummy4[sizeof (PriceActionLabPattern *)];
-
       // pattern_portfolio_filter_attr
       // portfolio_attr
-      char dummy5[sizeof (PriceActionLabPattern::PortfolioAttribute)];
+      char dummy1[sizeof (PriceActionLabPattern::PortfolioAttribute)];
 
       // pattern_volatility_attr
       // volatility_attr
-      char dummy6[sizeof (PriceActionLabPattern::VolatilityAttribute)];
-
-      // ohlcref
-      char dummy7[sizeof (PriceBarReference *)];
-
-      // profitstmt
-      char dummy8[sizeof (ProfitTargetInPercentExpression *)];
-
-      // stopstmt
-      char dummy9[sizeof (StopLossInPercentExpression *)];
-
-      // pldesc
-      // psdesc
-      // number
-      char dummy10[sizeof (decimal7 *)];
+      char dummy2[sizeof (PriceActionLabPattern::VolatilityAttribute)];
 
       // TOK_INT_NUM
       // indexdesc
@@ -460,7 +433,34 @@ namespace mkc_palast {
       // tradesdesc
       // cldesc
       // integernumber
-      char dummy11[sizeof (int)];
+      char dummy3[sizeof (int)];
+
+      // entrystmt
+      char dummy4[sizeof (std::shared_ptr<MarketEntryExpression>)];
+
+      // patterndescr
+      char dummy5[sizeof (std::shared_ptr<PatternDescription>)];
+
+      // conds
+      // ohlc_comparison
+      char dummy6[sizeof (std::shared_ptr<PatternExpression>)];
+
+      // pattern
+      char dummy7[sizeof (std::shared_ptr<PriceActionLabPattern>)];
+
+      // ohlcref
+      char dummy8[sizeof (std::shared_ptr<PriceBarReference>)];
+
+      // profitstmt
+      char dummy9[sizeof (std::shared_ptr<ProfitTargetInPercentExpression>)];
+
+      // stopstmt
+      char dummy10[sizeof (std::shared_ptr<StopLossInPercentExpression>)];
+
+      // pldesc
+      // psdesc
+      // number
+      char dummy11[sizeof (std::shared_ptr<decimal7>)];
 
       // TOK_IDENTIFIER
       // TOK_FLOAT_NUM
@@ -719,23 +719,6 @@ namespace mkc_palast {
       {
         switch (this->kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.move< MarketEntryExpression * > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.move< PatternDescription * > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.move< PatternExpression * > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.move< PriceActionLabPattern * > (std::move (that.value));
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.move< PriceActionLabPattern::PortfolioAttribute > (std::move (that.value));
@@ -746,24 +729,6 @@ namespace mkc_palast {
         value.move< PriceActionLabPattern::VolatilityAttribute > (std::move (that.value));
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.move< PriceBarReference * > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.move< ProfitTargetInPercentExpression * > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.move< StopLossInPercentExpression * > (std::move (that.value));
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.move< decimal7 * > (std::move (that.value));
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -771,6 +736,41 @@ namespace mkc_palast {
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.move< int > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.move< std::shared_ptr<MarketEntryExpression> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.move< std::shared_ptr<PatternDescription> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.move< std::shared_ptr<PatternExpression> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.move< std::shared_ptr<PriceActionLabPattern> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.move< std::shared_ptr<PriceBarReference> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.move< std::shared_ptr<ProfitTargetInPercentExpression> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.move< std::shared_ptr<StopLossInPercentExpression> > (std::move (that.value));
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.move< std::shared_ptr<decimal7> > (std::move (that.value));
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -798,62 +798,6 @@ namespace mkc_palast {
 #else
       basic_symbol (typename Base::kind_type t, const location_type& l)
         : Base (t)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, MarketEntryExpression *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const MarketEntryExpression *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, PatternDescription *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const PatternDescription *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, PatternExpression *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const PatternExpression *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, PriceActionLabPattern *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const PriceActionLabPattern *& v, const location_type& l)
-        : Base (t)
-        , value (v)
         , location (l)
       {}
 #endif
@@ -887,62 +831,6 @@ namespace mkc_palast {
 #endif
 
 #if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, PriceBarReference *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const PriceBarReference *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, ProfitTargetInPercentExpression *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const ProfitTargetInPercentExpression *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, StopLossInPercentExpression *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const StopLossInPercentExpression *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
-      basic_symbol (typename Base::kind_type t, decimal7 *&& v, location_type&& l)
-        : Base (t)
-        , value (std::move (v))
-        , location (std::move (l))
-      {}
-#else
-      basic_symbol (typename Base::kind_type t, const decimal7 *& v, const location_type& l)
-        : Base (t)
-        , value (v)
-        , location (l)
-      {}
-#endif
-
-#if 201103L <= YY_CPLUSPLUS
       basic_symbol (typename Base::kind_type t, int&& v, location_type&& l)
         : Base (t)
         , value (std::move (v))
@@ -950,6 +838,118 @@ namespace mkc_palast {
       {}
 #else
       basic_symbol (typename Base::kind_type t, const int& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<MarketEntryExpression>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<MarketEntryExpression>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<PatternDescription>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<PatternDescription>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<PatternExpression>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<PatternExpression>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<PriceActionLabPattern>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<PriceActionLabPattern>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<PriceBarReference>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<PriceBarReference>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<ProfitTargetInPercentExpression>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<ProfitTargetInPercentExpression>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<StopLossInPercentExpression>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<StopLossInPercentExpression>& v, const location_type& l)
+        : Base (t)
+        , value (v)
+        , location (l)
+      {}
+#endif
+
+#if 201103L <= YY_CPLUSPLUS
+      basic_symbol (typename Base::kind_type t, std::shared_ptr<decimal7>&& v, location_type&& l)
+        : Base (t)
+        , value (std::move (v))
+        , location (std::move (l))
+      {}
+#else
+      basic_symbol (typename Base::kind_type t, const std::shared_ptr<decimal7>& v, const location_type& l)
         : Base (t)
         , value (v)
         , location (l)
@@ -994,23 +994,6 @@ namespace mkc_palast {
         // Value type destructor.
 switch (yykind)
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.template destroy< MarketEntryExpression * > ();
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.template destroy< PatternDescription * > ();
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.template destroy< PatternExpression * > ();
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.template destroy< PriceActionLabPattern * > ();
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.template destroy< PriceActionLabPattern::PortfolioAttribute > ();
@@ -1021,24 +1004,6 @@ switch (yykind)
         value.template destroy< PriceActionLabPattern::VolatilityAttribute > ();
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.template destroy< PriceBarReference * > ();
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.template destroy< ProfitTargetInPercentExpression * > ();
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.template destroy< StopLossInPercentExpression * > ();
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.template destroy< decimal7 * > ();
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -1046,6 +1011,41 @@ switch (yykind)
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.template destroy< int > ();
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.template destroy< std::shared_ptr<MarketEntryExpression> > ();
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.template destroy< std::shared_ptr<PatternDescription> > ();
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.template destroy< std::shared_ptr<PatternExpression> > ();
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.template destroy< std::shared_ptr<PriceActionLabPattern> > ();
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.template destroy< std::shared_ptr<PriceBarReference> > ();
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.template destroy< std::shared_ptr<ProfitTargetInPercentExpression> > ();
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.template destroy< std::shared_ptr<StopLossInPercentExpression> > ();
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.template destroy< std::shared_ptr<decimal7> > ();
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -2578,23 +2578,6 @@ switch (yykind)
   {
     switch (this->kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.copy< MarketEntryExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.copy< PatternDescription * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.copy< PatternExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.copy< PriceActionLabPattern * > (YY_MOVE (that.value));
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.copy< PriceActionLabPattern::PortfolioAttribute > (YY_MOVE (that.value));
@@ -2605,24 +2588,6 @@ switch (yykind)
         value.copy< PriceActionLabPattern::VolatilityAttribute > (YY_MOVE (that.value));
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.copy< PriceBarReference * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.copy< ProfitTargetInPercentExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.copy< StopLossInPercentExpression * > (YY_MOVE (that.value));
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.copy< decimal7 * > (YY_MOVE (that.value));
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -2630,6 +2595,41 @@ switch (yykind)
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.copy< int > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.copy< std::shared_ptr<MarketEntryExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.copy< std::shared_ptr<PatternDescription> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.copy< std::shared_ptr<PatternExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.copy< std::shared_ptr<PriceActionLabPattern> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.copy< std::shared_ptr<PriceBarReference> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.copy< std::shared_ptr<ProfitTargetInPercentExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.copy< std::shared_ptr<StopLossInPercentExpression> > (YY_MOVE (that.value));
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.copy< std::shared_ptr<decimal7> > (YY_MOVE (that.value));
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -2669,23 +2669,6 @@ switch (yykind)
     super_type::move (s);
     switch (this->kind ())
     {
-      case symbol_kind::S_entrystmt: // entrystmt
-        value.move< MarketEntryExpression * > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_patterndescr: // patterndescr
-        value.move< PatternDescription * > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_conds: // conds
-      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
-        value.move< PatternExpression * > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_pattern: // pattern
-        value.move< PriceActionLabPattern * > (YY_MOVE (s.value));
-        break;
-
       case symbol_kind::S_pattern_portfolio_filter_attr: // pattern_portfolio_filter_attr
       case symbol_kind::S_portfolio_attr: // portfolio_attr
         value.move< PriceActionLabPattern::PortfolioAttribute > (YY_MOVE (s.value));
@@ -2696,24 +2679,6 @@ switch (yykind)
         value.move< PriceActionLabPattern::VolatilityAttribute > (YY_MOVE (s.value));
         break;
 
-      case symbol_kind::S_ohlcref: // ohlcref
-        value.move< PriceBarReference * > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_profitstmt: // profitstmt
-        value.move< ProfitTargetInPercentExpression * > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_stopstmt: // stopstmt
-        value.move< StopLossInPercentExpression * > (YY_MOVE (s.value));
-        break;
-
-      case symbol_kind::S_pldesc: // pldesc
-      case symbol_kind::S_psdesc: // psdesc
-      case symbol_kind::S_number: // number
-        value.move< decimal7 * > (YY_MOVE (s.value));
-        break;
-
       case symbol_kind::S_TOK_INT_NUM: // TOK_INT_NUM
       case symbol_kind::S_indexdesc: // indexdesc
       case symbol_kind::S_indexdatedesc: // indexdatedesc
@@ -2721,6 +2686,41 @@ switch (yykind)
       case symbol_kind::S_cldesc: // cldesc
       case symbol_kind::S_integernumber: // integernumber
         value.move< int > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_entrystmt: // entrystmt
+        value.move< std::shared_ptr<MarketEntryExpression> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_patterndescr: // patterndescr
+        value.move< std::shared_ptr<PatternDescription> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_conds: // conds
+      case symbol_kind::S_ohlc_comparison: // ohlc_comparison
+        value.move< std::shared_ptr<PatternExpression> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_pattern: // pattern
+        value.move< std::shared_ptr<PriceActionLabPattern> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_ohlcref: // ohlcref
+        value.move< std::shared_ptr<PriceBarReference> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_profitstmt: // profitstmt
+        value.move< std::shared_ptr<ProfitTargetInPercentExpression> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_stopstmt: // stopstmt
+        value.move< std::shared_ptr<StopLossInPercentExpression> > (YY_MOVE (s.value));
+        break;
+
+      case symbol_kind::S_pldesc: // pldesc
+      case symbol_kind::S_psdesc: // psdesc
+      case symbol_kind::S_number: // number
+        value.move< std::shared_ptr<decimal7> > (YY_MOVE (s.value));
         break;
 
       case symbol_kind::S_TOK_IDENTIFIER: // TOK_IDENTIFIER
@@ -2794,11 +2794,11 @@ switch (yykind)
   }
 
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/collison/palvalidator_new/libs/priceactionlab/grammar.yy"
 } // mkc_palast
-#line 2800 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
+#line 2800 "/home/collison/palvalidator_new/libs/priceactionlab/PalParser.hpp"
 
 
 
 
-#endif // !YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
+#endif // !YY_YY_HOME_COLLISON_PALVALIDATOR_NEW_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED

@@ -18,9 +18,9 @@ namespace mkc_timeseries
     outputFileStream << "IF ";
     LogPalPattern::LogExpression (pattern->getPatternExpression().get(), outputFileStream);
 
-    LogPalPattern::LogMarketExpression (pattern->getMarketEntry(), outputFileStream);
-    LogPalPattern::LogProfitTarget (pattern->getProfitTarget(), outputFileStream);
-    LogPalPattern::LogStopLoss (pattern->getStopLoss(), outputFileStream);
+    LogPalPattern::LogMarketExpression (pattern->getMarketEntry().get(), outputFileStream);
+    LogPalPattern::LogProfitTarget (pattern->getProfitTarget().get(), outputFileStream);
+    LogPalPattern::LogStopLoss (pattern->getStopLoss().get(), outputFileStream);
     LogPalPattern::LogPatternSeparator(outputFileStream);
     outputFileStream << std::endl;
   }

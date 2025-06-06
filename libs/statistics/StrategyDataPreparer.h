@@ -67,7 +67,7 @@ namespace mkc_timeseries
     (
      const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
      const std::shared_ptr<Security<Decimal>>&    baseSecurity,
-     const PriceActionLabSystem*                  patterns
+     std::shared_ptr<PriceActionLabSystem>        patterns
      )
     {
       // Validate inputs

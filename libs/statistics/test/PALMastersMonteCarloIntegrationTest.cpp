@@ -44,7 +44,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test with Real Price Patterns", "
     SECTION("Complete permutation test with random price patterns and statistics collection")
     {
         // Get random price patterns from TestUtils
-        std::unique_ptr<PriceActionLabSystem> palSystem(getRandomPricePatterns());
+        auto palSystem = getRandomPricePatterns();
         REQUIRE(palSystem != nullptr);
         REQUIRE(palSystem->getNumPatterns() > 0);
         
@@ -65,7 +65,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test with Real Price Patterns", "
         REQUIRE(selectedPatterns.size() <= maxPatterns);
         
         // Create a new PriceActionLabSystem with selected patterns
-        auto testPalSystem = std::make_unique<PriceActionLabSystem>();
+        auto testPalSystem = std::make_shared<PriceActionLabSystem>();
         for (const auto& pattern : selectedPatterns)
         {
             testPalSystem->addPattern(pattern);
@@ -153,7 +153,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test with Real Price Patterns", "
             INFO("DIAGNOSTIC: Fixed shared_lock -> unique_lock in UuidStrategyPermutationStatsAggregator::addValue()");
             
             // Run the permutation test
-            REQUIRE_NOTHROW(validation->runPermutationTests(security, testPalSystem.get(), dateRange, alpha));
+            REQUIRE_NOTHROW(validation->runPermutationTests(security, testPalSystem, dateRange, alpha));
             
             INFO("DIAGNOSTIC: runPermutationTests completed successfully - no segfault!");
             
@@ -181,7 +181,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test with Real Price Patterns", "
             INFO("Testing with NoMinTradePolicy (0 minimum trades)");
             
             // Run the permutation test
-            REQUIRE_NOTHROW(noMinValidation->runPermutationTests(security, testPalSystem.get(), dateRange, alpha));
+            REQUIRE_NOTHROW(noMinValidation->runPermutationTests(security, testPalSystem, dateRange, alpha));
             
             // Check if any strategies were processed
             INFO("NoMinTradePolicy - Number of strategies tracked: " << noMinStatsCollector.getStrategyCount());
@@ -204,7 +204,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test with Real Price Patterns", "
             auto smallValidation = std::make_unique<PALMastersMonteCarloValidation<DecimalType, StatPolicy>>(smallPermutations);
             auto& smallStatsCollector = smallValidation->getStatisticsCollector();
             
-            REQUIRE_NOTHROW(smallValidation->runPermutationTests(security, testPalSystem.get(), dateRange, alpha));
+            REQUIRE_NOTHROW(smallValidation->runPermutationTests(security, testPalSystem, dateRange, alpha));
             
             // Check if observer received notifications
             INFO("Small test - strategies tracked: " << smallStatsCollector.getStrategyCount());
@@ -224,7 +224,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test with Real Price Patterns", "
                 auto freshValidation = std::make_unique<PALMastersMonteCarloValidation<DecimalType, StatPolicy>>(permCount);
                 auto& freshStatsCollector = freshValidation->getStatisticsCollector();
                 
-                REQUIRE_NOTHROW(freshValidation->runPermutationTests(security, testPalSystem.get(), dateRange, alpha));
+                REQUIRE_NOTHROW(freshValidation->runPermutationTests(security, testPalSystem, dateRange, alpha));
                 
                 INFO("Permutation count " << permCount << " completed with "
                      << freshStatsCollector.getStrategyCount() << " strategies tracked");
@@ -238,7 +238,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test - Pattern Subset Analysis", 
     SECTION("Analyze statistics across different pattern subsets")
     {
         // Get random price patterns
-        std::unique_ptr<PriceActionLabSystem> palSystem(getRandomPricePatterns());
+        auto palSystem = getRandomPricePatterns();
         REQUIRE(palSystem != nullptr);
         
         // Test with different pattern subset sizes
@@ -264,7 +264,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test - Pattern Subset Analysis", 
             }
             
             // Create test system with subset
-            auto testPalSystem = std::make_unique<PriceActionLabSystem>();
+            auto testPalSystem = std::make_shared<PriceActionLabSystem>();
             for (const auto& pattern : selectedPatterns)
             {
                 testPalSystem->addPattern(pattern);
@@ -301,7 +301,7 @@ TEST_CASE("PAL Masters Monte Carlo Integration Test - Pattern Subset Analysis", 
             
             // Run permutation test
             DecimalType alpha = DecimalType("0.05");
-            REQUIRE_NOTHROW(validation->runPermutationTests(security, testPalSystem.get(), dateRange, alpha));
+            REQUIRE_NOTHROW(validation->runPermutationTests(security, testPalSystem, dateRange, alpha));
             
             INFO("Subset size " << subsetSize << " - " << statsCollector.getStrategyCount() << " strategies tracked");
         }

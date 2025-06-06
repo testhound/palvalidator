@@ -1347,10 +1347,16 @@ PatternExpression::~PatternExpression()
  * @param rhs Pointer to the PriceBarReference on the right-hand side of the comparison.
  * @note This class assumes that the ownership of `lhs` and `rhs` is managed elsewhere (typically by AstFactory).
  */
-GreaterThanExpr::GreaterThanExpr (PriceBarReference *lhs, PriceBarReference *rhs)
+GreaterThanExpr::GreaterThanExpr (std::shared_ptr<PriceBarReference> lhs, std::shared_ptr<PriceBarReference> rhs)
   : PatternExpression(),
     mLhs(lhs),
     mRhs(rhs)
+{}
+
+GreaterThanExpr::GreaterThanExpr (PriceBarReference *lhs, PriceBarReference *rhs)
+  : PatternExpression(),
+    mLhs(lhs ? std::shared_ptr<PriceBarReference>(lhs, [](PriceBarReference*){}) : nullptr),
+    mRhs(rhs ? std::shared_ptr<PriceBarReference>(rhs, [](PriceBarReference*){}) : nullptr)
 {}
 
 /**
@@ -1359,8 +1365,8 @@ GreaterThanExpr::GreaterThanExpr (PriceBarReference *lhs, PriceBarReference *rhs
  */
 GreaterThanExpr::GreaterThanExpr (const GreaterThanExpr& rhs)
   : PatternExpression(rhs), // Call base class copy constructor
-  mLhs(rhs.mLhs),           // Copy pointer (shallow copy, ownership managed by factory)
-  mRhs(rhs.mRhs)            // Copy pointer (shallow copy, ownership managed by factory)
+  mLhs(rhs.mLhs),           // Copy shared_ptr (increases ref count)
+  mRhs(rhs.mRhs)            // Copy shared_ptr (increases ref count)
 {}
 
 /**
@@ -1368,15 +1374,15 @@ GreaterThanExpr::GreaterThanExpr (const GreaterThanExpr& rhs)
  * @param rhs The GreaterThanExpr object to assign from.
  * @return A reference to this GreaterThanExpr object.
  */
-GreaterThanExpr& 
+GreaterThanExpr&
 GreaterThanExpr::operator=(const GreaterThanExpr &rhs)
 {
   if (this == &rhs) // Self-assignment check
     return *this;
 
   PatternExpression::operator=(rhs); // Call base class assignment
-  mLhs = rhs.mLhs; // Copy pointer
-  mRhs = rhs.mRhs; // Copy pointer
+  mLhs = rhs.mLhs; // Copy shared_ptr
+  mRhs = rhs.mRhs; // Copy shared_ptr
   return *this;
 }
 
@@ -1393,6 +1399,11 @@ GreaterThanExpr::~GreaterThanExpr()
  */
 PriceBarReference *GreaterThanExpr::getLHS() const
 {
+  return mLhs.get();
+}
+
+std::shared_ptr<PriceBarReference> GreaterThanExpr::getLHSShared() const
+{
   return mLhs;
 }
 
@@ -1401,6 +1412,11 @@ PriceBarReference *GreaterThanExpr::getLHS() const
  * @return Pointer to the right-hand side PriceBarReference.
  */
 PriceBarReference *GreaterThanExpr::getRHS() const
+{
+  return mRhs.get();
+}
+
+std::shared_ptr<PriceBarReference> GreaterThanExpr::getRHSShared() const
 {
   return mRhs;
 }
@@ -1424,8 +1440,8 @@ GreaterThanExpr::accept (PalCodeGenVisitor &v)
 unsigned long long GreaterThanExpr::hashCode()
 {
   unsigned long long seed = hash_str("GreaterThanExpr"); // Start with class name hash
-  hash_combine(seed, getLHS()->hashCode()); // Combine hash of LHS
-  hash_combine(seed, getRHS()->hashCode()); // Combine hash of RHS
+  if (mLhs) hash_combine(seed, mLhs->hashCode()); // Combine hash of LHS
+  if (mRhs) hash_combine(seed, mRhs->hashCode()); // Combine hash of RHS
   return seed;
 }
 
@@ -1564,10 +1580,9 @@ unsigned long long AndExpr::hashCode()
 
 /**
  * @brief Constructs a ProfitTargetInPercentExpression.
- * @param profitTarget Pointer to a decimal7 value representing the profit target in percent.
- *        The ownership of this pointer is managed by AstFactory.
+ * @param profitTarget Shared pointer to a decimal7 value representing the profit target in percent.
  */
-ProfitTargetInPercentExpression::ProfitTargetInPercentExpression(decimal7 *profitTarget)
+ProfitTargetInPercentExpression::ProfitTargetInPercentExpression(std::shared_ptr<decimal7> profitTarget)
   : mProfitTarget (profitTarget),
     mComputedHash(0) // Initialize computed hash
 {}
@@ -1609,6 +1624,15 @@ ProfitTargetInPercentExpression::~ProfitTargetInPercentExpression()
  */
 decimal7 *ProfitTargetInPercentExpression::getProfitTarget() const
 {
+  return mProfitTarget.get();
+}
+
+/**
+ * @brief Gets the profit target value as shared_ptr.
+ * @return Shared pointer to the decimal7 profit target value.
+ */
+std::shared_ptr<decimal7> ProfitTargetInPercentExpression::getProfitTargetShared() const
+{
   return mProfitTarget;
 }
 
@@ -1619,14 +1643,16 @@ decimal7 *ProfitTargetInPercentExpression::getProfitTarget() const
  * It is cached after the first computation.
  * @return The 64-bit hash code.
  */
-unsigned long long 
+unsigned long long
 ProfitTargetInPercentExpression::hashCode()
 {
   if (mComputedHash==0) // Check if hash is already computed
     {
       unsigned long long seed = hash_str("ProfitTargetInPercentExpression"); // Start with class name hash
-      auto s = num::toString(*mProfitTarget); // Convert decimal to string
-      hash_combine(seed, hash_str(s.c_str())); // Combine hash of the string value
+      if (mProfitTarget) {
+        auto s = num::toString(*mProfitTarget); // Convert decimal to string
+        hash_combine(seed, hash_str(s.c_str())); // Combine hash of the string value
+      }
       mComputedHash = seed; // Cache the result
     }
 
@@ -1637,9 +1663,9 @@ ProfitTargetInPercentExpression::hashCode()
 
 /**
  * @brief Constructs a LongSideProfitTargetInPercent object.
- * @param profitTarget Pointer to the decimal7 profit target value.
+ * @param profitTarget Shared pointer to the decimal7 profit target value.
  */
-LongSideProfitTargetInPercent::LongSideProfitTargetInPercent (decimal7 *profitTarget)
+LongSideProfitTargetInPercent::LongSideProfitTargetInPercent (std::shared_ptr<decimal7> profitTarget)
   : ProfitTargetInPercentExpression (profitTarget) // Call base constructor
 {}
 
@@ -1686,9 +1712,9 @@ LongSideProfitTargetInPercent::accept (PalCodeGenVisitor &v)
 
 /**
  * @brief Constructs a ShortSideProfitTargetInPercent object.
- * @param profitTarget Pointer to the decimal7 profit target value.
+ * @param profitTarget Shared pointer to the decimal7 profit target value.
  */
-ShortSideProfitTargetInPercent::ShortSideProfitTargetInPercent (decimal7 *profitTarget)
+ShortSideProfitTargetInPercent::ShortSideProfitTargetInPercent (std::shared_ptr<decimal7> profitTarget)
   : ProfitTargetInPercentExpression (profitTarget) // Call base constructor
 {}
 
@@ -1735,10 +1761,9 @@ ShortSideProfitTargetInPercent::accept (PalCodeGenVisitor &v)
 
 /**
  * @brief Constructs a StopLossInPercentExpression.
- * @param stopLoss Pointer to a decimal7 value representing the stop loss in percent.
- *        The ownership of this pointer is managed by AstFactory.
+ * @param stopLoss Shared pointer to a decimal7 value representing the stop loss in percent.
  */
-StopLossInPercentExpression::StopLossInPercentExpression(decimal7 *stopLoss) : 
+StopLossInPercentExpression::StopLossInPercentExpression(std::shared_ptr<decimal7> stopLoss) :
   mStopLoss (stopLoss),
   mComputedHash(0) // Initialize computed hash
 {}
@@ -1780,6 +1805,15 @@ StopLossInPercentExpression::~StopLossInPercentExpression()
  */
 decimal7 *StopLossInPercentExpression::getStopLoss() const
 {
+  return mStopLoss.get();
+}
+
+/**
+ * @brief Gets the stop loss value as shared_ptr.
+ * @return Shared pointer to the decimal7 stop loss value.
+ */
+std::shared_ptr<decimal7> StopLossInPercentExpression::getStopLossShared() const
+{
   return mStopLoss;
 }
 
@@ -1790,14 +1824,16 @@ decimal7 *StopLossInPercentExpression::getStopLoss() const
  * It is cached after the first computation.
  * @return The 64-bit hash code.
  */
-unsigned long long 
+unsigned long long
 StopLossInPercentExpression::hashCode()
 {
   if (mComputedHash==0) // Check if hash is already computed
     {
       unsigned long long seed = hash_str("StopLossInPercentExpression"); // Start with class name hash
-      auto s = num::toString(*mStopLoss); // Convert decimal to string
-      hash_combine(seed, hash_str(s.c_str())); // Combine hash of the string value
+      if (mStopLoss) {
+        auto s = num::toString(*mStopLoss); // Convert decimal to string
+        hash_combine(seed, hash_str(s.c_str())); // Combine hash of the string value
+      }
       mComputedHash = seed; // Cache the result
     }
 
@@ -1808,9 +1844,9 @@ StopLossInPercentExpression::hashCode()
 
 /**
  * @brief Constructs a LongSideStopLossInPercent object.
- * @param stopLoss Pointer to the decimal7 stop loss value.
+ * @param stopLoss Shared pointer to the decimal7 stop loss value.
  */
-LongSideStopLossInPercent::LongSideStopLossInPercent(decimal7 *stopLoss) 
+LongSideStopLossInPercent::LongSideStopLossInPercent(std::shared_ptr<decimal7> stopLoss)
   : StopLossInPercentExpression (stopLoss) // Call base constructor
 {}
 
@@ -1857,9 +1893,9 @@ LongSideStopLossInPercent::accept (PalCodeGenVisitor &v)
 
 /**
  * @brief Constructs a ShortSideStopLossInPercent object.
- * @param stopLoss Pointer to the decimal7 stop loss value.
+ * @param stopLoss Shared pointer to the decimal7 stop loss value.
  */
-ShortSideStopLossInPercent::ShortSideStopLossInPercent(decimal7 *stopLoss) 
+ShortSideStopLossInPercent::ShortSideStopLossInPercent(std::shared_ptr<decimal7> stopLoss)
   : StopLossInPercentExpression (stopLoss) // Call base constructor
 {}
 
@@ -2144,7 +2180,7 @@ ShortMarketEntryOnOpen::hashCode()
  * @note Ownership of `percentLong` and `percentShort` pointers is managed by `AstFactory`.
  */
 PatternDescription::PatternDescription(const char *fileName, unsigned int patternIndex,
-		     unsigned long indexDate, decimal7* percentLong, decimal7* percentShort,
+		     unsigned long indexDate, std::shared_ptr<decimal7> percentLong, std::shared_ptr<decimal7> percentShort,
 		     unsigned int numTrades, unsigned int consecutiveLosses)
   : mFileName (fileName),
     mPatternIndex (patternIndex),
@@ -2234,18 +2270,38 @@ PatternDescription::getIndexDate() const
  * @brief Gets the historical percentage of profitable long trades.
  * @return Pointer to the decimal7 value for percent long.
  */
-decimal7* 
+decimal7*
 PatternDescription::getPercentLong() const
 {
-  return mPercentLong;
+  return mPercentLong.get();
 }
 
 /**
  * @brief Gets the historical percentage of profitable short trades.
  * @return Pointer to the decimal7 value for percent short.
  */
-decimal7* 
+decimal7*
 PatternDescription::getPercentShort() const
+{
+  return mPercentShort.get();
+}
+
+/**
+ * @brief Gets the historical percentage of profitable long trades as shared_ptr.
+ * @return Shared pointer to the decimal7 value for percent long.
+ */
+std::shared_ptr<decimal7>
+PatternDescription::getPercentLongShared() const
+{
+  return mPercentLong;
+}
+
+/**
+ * @brief Gets the historical percentage of profitable short trades as shared_ptr.
+ * @return Shared pointer to the decimal7 value for percent short.
+ */
+std::shared_ptr<decimal7>
+PatternDescription::getPercentShortShared() const
 {
   return mPercentShort;
 }
@@ -2277,7 +2333,7 @@ PatternDescription::numConsecutiveLosses() const
  * It is cached after the first computation.
  * @return The 64-bit hash code.
  */
-unsigned long long 
+unsigned long long
 PatternDescription::hashCode()
 {
   if (mComputedHash==0) // Check if hash is already computed
@@ -2286,8 +2342,12 @@ PatternDescription::hashCode()
       hash_combine(seed, hash_str(mFileName.c_str()));         // Combine filename
       hash_combine(seed, static_cast<unsigned long long>(mPatternIndex)); // Combine pattern index
       hash_combine(seed, static_cast<unsigned long long>(mIndexDate));    // Combine index date
-      hash_combine(seed, hash_str(num::toString(*mPercentLong).c_str()));  // Combine percent long (as string)
-      hash_combine(seed, hash_str(num::toString(*mPercentShort).c_str())); // Combine percent short (as string)
+      if (mPercentLong) {
+        hash_combine(seed, hash_str(num::toString(*mPercentLong).c_str()));  // Combine percent long (as string)
+      }
+      if (mPercentShort) {
+        hash_combine(seed, hash_str(num::toString(*mPercentShort).c_str())); // Combine percent short (as string)
+      }
       hash_combine(seed, static_cast<unsigned long long>(mNumTrades));          // Combine number of trades
       hash_combine(seed, static_cast<unsigned long long>(mConsecutiveLosses)); // Combine consecutive losses
       mComputedHash = seed; // Cache the result
@@ -2322,13 +2382,13 @@ std::map<std::string, unsigned long long> PriceActionLabPattern:: mCachedStringH
  * @param stopLoss Pointer to the StopLossInPercentExpression.
  * @note Ownership of raw pointers is typically managed by AstFactory or through conversion to shared_ptr in other constructors.
  */
-PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description, 
-					      PatternExpression* pattern, 
-					      MarketEntryExpression* entry, 
-					      ProfitTargetInPercentExpression* profitTarget, 
-					      StopLossInPercentExpression* stopLoss)
-  : PriceActionLabPattern (description, pattern, entry, 
-			   profitTarget, stopLoss, 
+PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
+					      PatternExpression* pattern,
+					      std::shared_ptr<MarketEntryExpression> entry,
+					      std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+					      std::shared_ptr<StopLossInPercentExpression> stopLoss)
+  : PriceActionLabPattern (description, pattern, entry,
+			   profitTarget, stopLoss,
 			   VOLATILITY_NONE, PORTFOLIO_FILTER_NONE) // Delegate to the more specific constructor
 {}
 
@@ -2339,18 +2399,18 @@ PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
  * @param stopLoss Pointer to the new StopLossInPercentExpression.
  * @return A shared_ptr to the newly created PriceActionLabPattern.
  */
-shared_ptr<PriceActionLabPattern> 
-PriceActionLabPattern::clone (ProfitTargetInPercentExpression* profitTarget, 
-			      StopLossInPercentExpression* stopLoss)
+shared_ptr<PriceActionLabPattern>
+PriceActionLabPattern::clone (std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+			      std::shared_ptr<StopLossInPercentExpression> stopLoss)
 {
   // Creates a new pattern instance, copying existing description, pattern expression, and market entry,
   // but using the provided profit target and stop loss.
   // Attributes like volatility and portfolio filter are taken from the original pattern.
   return std::make_shared<PriceActionLabPattern>(getPatternDescription(), // shared_ptr
 						  getPatternExpression(),  // shared_ptr
-						  getMarketEntry(),        // raw pointer
-						  profitTarget,            // raw pointer
-						  stopLoss,                // raw pointer
+						  getMarketEntry(),        // shared_ptr
+						  profitTarget,            // shared_ptr
+						  stopLoss,                // shared_ptr
                                                   mVolatilityAttribute,    // existing attribute
                                                   mPortfolioAttribute);    // existing attribute
 }
@@ -2367,15 +2427,15 @@ PriceActionLabPattern::clone (ProfitTargetInPercentExpression* profitTarget,
  */
 PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
 					      PatternExpressionPtr pattern,
-					      MarketEntryExpression* entry, 
-					      ProfitTargetInPercentExpression* profitTarget, 
-					      StopLossInPercentExpression* stopLoss)
+					      std::shared_ptr<MarketEntryExpression> entry,
+					      std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+					      std::shared_ptr<StopLossInPercentExpression> stopLoss)
   : mPattern (pattern),
     mEntry (entry),
     mProfitTarget (profitTarget),
     mStopLoss (stopLoss),
     mPatternDescription (description),
-    mVolatilityAttribute(VOLATILITY_NONE), 
+    mVolatilityAttribute(VOLATILITY_NONE),
     mPortfolioAttribute (PORTFOLIO_FILTER_NONE),
     mMaxBarsBack(0),
     mPayOffRatio()
@@ -2397,11 +2457,11 @@ PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
  * Calculates `mMaxBarsBack` and `mPayOffRatio` upon construction.
  * This constructor handles cases where `description` or `pattern` might not yet be managed by a shared_ptr.
  */
-PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description, 
-					      PatternExpression* pattern, 
-					      MarketEntryExpression* entry, 
-					      ProfitTargetInPercentExpression* profitTarget, 
-					      StopLossInPercentExpression* stopLoss, 
+PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
+					      PatternExpression* pattern,
+					      std::shared_ptr<MarketEntryExpression> entry,
+					      std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+					      std::shared_ptr<StopLossInPercentExpression> stopLoss,
 					      VolatilityAttribute volatilityAttribute,
 					      PortfolioAttribute portfolioAttribute)
   : mEntry (entry),
@@ -2449,9 +2509,9 @@ PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
  */
 PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
 					     PatternExpressionPtr pattern,
-					     MarketEntryExpression* entry,
-					     ProfitTargetInPercentExpression* profitTarget,
-					     StopLossInPercentExpression* stopLoss,
+					     std::shared_ptr<MarketEntryExpression> entry,
+					     std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+					     std::shared_ptr<StopLossInPercentExpression> stopLoss,
 					     VolatilityAttribute volatilityAttribute,
 					     PortfolioAttribute portfolioAttribute)
   : mPattern(std::move(pattern)), // Move shared_ptr
@@ -2517,7 +2577,8 @@ PriceActionLabPattern::operator=(const  PriceActionLabPattern &rhs)
  * handle their own lifecycle.
  */
 PriceActionLabPattern::~PriceActionLabPattern()
-{}
+{
+}
 
 /**
  * @brief Gets the pattern expression component of this trading pattern.
@@ -2572,17 +2633,18 @@ PriceActionLabPattern::getIndexDate() const
  * @brief Gets the market entry expression component.
  * @return Pointer to the MarketEntryExpression.
  */
-MarketEntryExpression* 
+std::shared_ptr<MarketEntryExpression>
 PriceActionLabPattern::getMarketEntry() const
 {
   return mEntry;
 }
 
+
 /**
  * @brief Gets the profit target expression component.
  * @return Pointer to the ProfitTargetInPercentExpression.
  */
-ProfitTargetInPercentPtr 
+std::shared_ptr<ProfitTargetInPercentExpression>
 PriceActionLabPattern::getProfitTarget() const
 {
   return mProfitTarget;
@@ -2604,7 +2666,7 @@ PriceActionLabPattern::getProfitTargetAsDecimal() const
  * @brief Gets the stop loss expression component.
  * @return Pointer to the StopLossInPercentExpression.
  */
-StopLossInPercentPtr 
+std::shared_ptr<StopLossInPercentExpression>
 PriceActionLabPattern::getStopLoss() const
 {
   return mStopLoss;
@@ -2789,9 +2851,9 @@ PriceActionLabPattern::hashCode()
  * to optimize memory usage and performance by reusing these objects.
  * Also initializes specific market entry objects.
  */
-AstFactory::AstFactory() : 
-  mLongEntryOnOpen (new LongMarketEntryOnOpen ()),    // Pre-create long entry on open
-  mShortEntryOnOpen (new ShortMarketEntryOnOpen ()),   // Pre-create short entry on open
+AstFactory::AstFactory() :
+  mLongEntryOnOpen (std::make_shared<LongMarketEntryOnOpen>()),    // Pre-create long entry on open
+  mShortEntryOnOpen (std::make_shared<ShortMarketEntryOnOpen>()),   // Pre-create short entry on open
   mDecimalNumMap(),      // Initialize map for string-to-decimal caching
   mDecimalNumMap2(),     // Initialize map for int-to-decimal caching
   mLongsProfitTargets(), // Initialize map for long profit target caching
@@ -2811,29 +2873,8 @@ AstFactory::AstFactory() :
  */
 AstFactory::~AstFactory()
 {
-  // Delete pre-created market entry objects
-  delete mLongEntryOnOpen;
-  delete mShortEntryOnOpen;
-
-  // Delete pre-created PriceBarReference objects
-  for (unsigned int i = 0; i < AstFactory::MaxNumBarOffsets; i++)
-    {
-      delete mPredefinedPriceOpen[i];
-      delete mPredefinedPriceHigh[i];
-      delete mPredefinedPriceLow[i];
-      delete mPredefinedPriceClose[i];
-      delete mPredefinedVolume[i];
-      delete mPredefinedRoc1[i];
-      delete mPredefinedMeander[i];
-      delete mPredefinedVChartLow[i];
-      delete mPredefinedVChartHigh[i];
-      delete mPredefinedIBS1[i];
-      delete mPredefinedIBS2[i];
-      delete mPredefinedIBS3[i];
-    }
-  // Cached DecimalPtr, LongSideProfitTargetInPercent, ShortSideProfitTargetInPercent,
-  // LongSideStopLossInPercent, ShortSideStopLossInPercent objects stored in maps
-  // are managed by std::shared_ptr and will be deallocated automatically.
+  // All objects are now managed by std::shared_ptr and will be deallocated automatically
+  // when their reference counts drop to zero.
 }
 
 /**
@@ -2843,99 +2884,73 @@ AstFactory::~AstFactory()
  * @param profitTarget Pointer to the decimal7 profit target value.
  * @return Pointer to the cached or newly created LongSideProfitTargetInPercent object.
  */
-LongSideProfitTargetInPercent *AstFactory::getLongProfitTarget (decimal7 *profitTarget)
+std::shared_ptr<LongSideProfitTargetInPercent> AstFactory::getLongProfitTarget (std::shared_ptr<decimal7> profitTarget)
 {
   std::map<decimal7, std::shared_ptr<LongSideProfitTargetInPercent>>::const_iterator pos;
 
   pos = mLongsProfitTargets.find (*profitTarget); // Check cache
   if (pos != mLongsProfitTargets.end())
-    return (pos->second.get()); // Return cached object
+    return pos->second; // Return cached shared_ptr
   else
     {
-      // Create new, store in shared_ptr, cache it, then return raw pointer
+      // Create new, store in shared_ptr, cache it, then return shared_ptr
       auto p = std::make_shared<LongSideProfitTargetInPercent>(profitTarget);
       mLongsProfitTargets.insert (std::make_pair(*profitTarget, p));
-      return p.get();
+      return p;
     }
 }
 
-/**
- * @brief Gets or creates a ShortSideProfitTargetInPercent object.
- * Works similarly to getLongProfitTarget, caching objects by their profit target value.
- * @param profitTarget Pointer to the decimal7 profit target value.
- * @return Pointer to the cached or newly created ShortSideProfitTargetInPercent object.
- */
-ShortSideProfitTargetInPercent *AstFactory::getShortProfitTarget (decimal7 *profitTarget)
+std::shared_ptr<ShortSideProfitTargetInPercent> AstFactory::getShortProfitTarget (std::shared_ptr<decimal7> profitTarget)
 {
   std::map<decimal7, std::shared_ptr<ShortSideProfitTargetInPercent>>::const_iterator pos;
 
   pos = mShortsProfitTargets.find (*profitTarget); // Check cache
   if (pos != mShortsProfitTargets.end())
-    return (pos->second.get()); // Return cached object
+    return pos->second; // Return cached shared_ptr
   else
     {
       auto p = std::make_shared<ShortSideProfitTargetInPercent>(profitTarget);
       mShortsProfitTargets.insert (std::make_pair(*profitTarget, p));
-      return p.get();
+      return p;
     }
 }
 
-/**
- * @brief Gets or creates a LongSideStopLossInPercent object.
- * Caches objects by their stop loss value.
- * @param stopLoss Pointer to the decimal7 stop loss value.
- * @return Pointer to the cached or newly created LongSideStopLossInPercent object.
- */
-LongSideStopLossInPercent *AstFactory::getLongStopLoss(decimal7 *stopLoss)
+std::shared_ptr<LongSideStopLossInPercent> AstFactory::getLongStopLoss(std::shared_ptr<decimal7> stopLoss)
 {
   std::map<decimal7, std::shared_ptr<LongSideStopLossInPercent>>::const_iterator pos;
 
   pos = mLongsStopLoss.find (*stopLoss); // Check cache
   if (pos != mLongsStopLoss.end())
-    return (pos->second.get()); // Return cached object
+    return pos->second; // Return cached shared_ptr
   else
     {
       auto p = std::make_shared<LongSideStopLossInPercent>(stopLoss);
       mLongsStopLoss.insert (std::make_pair(*stopLoss, p));
-      return p.get();
+      return p;
     }
 }
 
-/**
- * @brief Gets or creates a ShortSideStopLossInPercent object.
- * Caches objects by their stop loss value.
- * @param stopLoss Pointer to the decimal7 stop loss value.
- * @return Pointer to the cached or newly created ShortSideStopLossInPercent object.
- */
-ShortSideStopLossInPercent *AstFactory::getShortStopLoss(decimal7 *stopLoss)
+std::shared_ptr<ShortSideStopLossInPercent> AstFactory::getShortStopLoss(std::shared_ptr<decimal7> stopLoss)
 {
   std::map<decimal7, std::shared_ptr<ShortSideStopLossInPercent>>::const_iterator pos;
 
   pos = mShortsStopLoss.find (*stopLoss); // Check cache
   if (pos != mShortsStopLoss.end())
-    return (pos->second.get()); // Return cached object
+    return pos->second; // Return cached shared_ptr
   else
     {
       auto p = std::make_shared<ShortSideStopLossInPercent>(stopLoss);
       mShortsStopLoss.insert (std::make_pair(*stopLoss, p));
-      return p.get();
+      return p;
     }
 }
 
-/**
- * @brief Gets the pre-created LongMarketEntryOnOpen object.
- * @return Pointer to the LongMarketEntryOnOpen object.
- */
-MarketEntryExpression* AstFactory::getLongMarketEntryOnOpen()
+std::shared_ptr<MarketEntryExpression> AstFactory::getLongMarketEntryOnOpen()
 {
   return mLongEntryOnOpen;
 }
 
-/**
- * @brief Gets the pre-created ShortMarketEntryOnOpen object.
- * @return Pointer to the ShortMarketEntryOnOpen object.
- */
-MarketEntryExpression* AstFactory::getShortMarketEntryOnOpen()
+std::shared_ptr<MarketEntryExpression> AstFactory::getShortMarketEntryOnOpen()
 {
     return mShortEntryOnOpen;
 }
@@ -2949,20 +2964,20 @@ void AstFactory::initializePriceBars()
 {
   for (unsigned int i = 0; i < AstFactory::MaxNumBarOffsets; i++)
     {
-      mPredefinedPriceOpen[i] = new PriceBarOpen (i);
-      mPredefinedPriceHigh[i] = new PriceBarHigh (i);
-      mPredefinedPriceLow[i] = new PriceBarLow (i);
-      mPredefinedPriceClose[i] = new PriceBarClose (i);
-      mPredefinedVolume[i] = new VolumeBarReference (i);
-      mPredefinedRoc1[i] = new Roc1BarReference (i);
+      mPredefinedPriceOpen[i] = std::make_shared<PriceBarOpen>(i);
+      mPredefinedPriceHigh[i] = std::make_shared<PriceBarHigh>(i);
+      mPredefinedPriceLow[i] = std::make_shared<PriceBarLow>(i);
+      mPredefinedPriceClose[i] = std::make_shared<PriceBarClose>(i);
+      mPredefinedVolume[i] = std::make_shared<VolumeBarReference>(i);
+      mPredefinedRoc1[i] = std::make_shared<Roc1BarReference>(i);
 
-      mPredefinedIBS1[i] = new IBS1BarReference (i);
-      mPredefinedIBS2[i] = new IBS2BarReference (i);
-      mPredefinedIBS3[i] = new IBS3BarReference (i);
+      mPredefinedIBS1[i] = std::make_shared<IBS1BarReference>(i);
+      mPredefinedIBS2[i] = std::make_shared<IBS2BarReference>(i);
+      mPredefinedIBS3[i] = std::make_shared<IBS3BarReference>(i);
       
-      mPredefinedMeander[i] = new MeanderBarReference (i);
-      mPredefinedVChartLow[i] = new VChartLowBarReference (i);
-      mPredefinedVChartHigh[i] = new VChartHighBarReference (i);
+      mPredefinedMeander[i] = std::make_shared<MeanderBarReference>(i);
+      mPredefinedVChartLow[i] = std::make_shared<VChartLowBarReference>(i);
+      mPredefinedVChartHigh[i] = std::make_shared<VChartHighBarReference>(i);
     }
 }
 
@@ -2973,12 +2988,12 @@ void AstFactory::initializePriceBars()
  * @param barOffset The bar offset.
  * @return Pointer to a PriceBarOpen object.
  */
-PriceBarReference* AstFactory::getPriceOpen (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getPriceOpen (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceOpen[barOffset];
   else
-    return new PriceBarOpen (barOffset); // Not cached if beyond MaxNumBarOffsets
+    return std::make_shared<PriceBarOpen>(barOffset);
 }
 
 /**
@@ -2987,12 +3002,12 @@ PriceBarReference* AstFactory::getPriceOpen (unsigned int barOffset)
  * @param barOffset The bar offset.
  * @return Pointer to a PriceBarHigh object.
  */
-PriceBarReference* AstFactory::getPriceHigh (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getPriceHigh (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceHigh[barOffset];
   else
-    return new PriceBarHigh (barOffset);
+    return std::make_shared<PriceBarHigh>(barOffset);
 }
 
 /**
@@ -3001,12 +3016,12 @@ PriceBarReference* AstFactory::getPriceHigh (unsigned int barOffset)
  * @param barOffset The bar offset.
  * @return Pointer to a PriceBarLow object.
  */
-PriceBarReference* AstFactory::getPriceLow (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getPriceLow (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceLow[barOffset];
   else
-    return new PriceBarLow (barOffset);
+    return std::make_shared<PriceBarLow>(barOffset);
 }
 
 /**
@@ -3015,40 +3030,28 @@ PriceBarReference* AstFactory::getPriceLow (unsigned int barOffset)
  * @param barOffset The bar offset.
  * @return Pointer to a PriceBarClose object.
  */
-PriceBarReference* AstFactory::getPriceClose (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getPriceClose (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedPriceClose[barOffset];
   else
-    return new PriceBarClose (barOffset);
+    return std::make_shared<PriceBarClose>(barOffset);
 }
 
-/**
- * @brief Gets a VolumeBarReference for the given bar offset.
- * Returns a pre-cached object or creates a new one.
- * @param barOffset The bar offset.
- * @return Pointer to a VolumeBarReference object.
- */
-PriceBarReference* AstFactory::getVolume (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getVolume (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVolume[barOffset];
   else
-    return new VolumeBarReference (barOffset);
+    return std::make_shared<VolumeBarReference>(barOffset);
 }
 
-/**
- * @brief Gets a Roc1BarReference for the given bar offset.
- * Returns a pre-cached object or creates a new one.
- * @param barOffset The bar offset.
- * @return Pointer to a Roc1BarReference object.
- */
-PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getRoc1 (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedRoc1[barOffset];
   else
-    return new Roc1BarReference (barOffset);
+    return std::make_shared<Roc1BarReference>(barOffset);
 }
 
 /**
@@ -3057,130 +3060,126 @@ PriceBarReference* AstFactory::getRoc1 (unsigned int barOffset)
  * @param barOffset The bar offset.
  * @return Pointer to an IBS1BarReference object.
  */
-PriceBarReference* AstFactory::getIBS1 (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getIBS1 (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS1[barOffset];
   else
-    return new IBS1BarReference (barOffset);
+    return std::make_shared<IBS1BarReference>(barOffset);
 }
+
 
 /**
  * @brief Gets an IBS2BarReference for the given bar offset.
  * Returns a pre-cached object or creates a new one.
  * @param barOffset The bar offset.
- * @return Pointer to an IBS2BarReference object.
+ * @return Shared pointer to an IBS2BarReference object.
  */
-PriceBarReference* AstFactory::getIBS2 (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getIBS2 (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS2[barOffset];
   else
-    return new IBS2BarReference (barOffset);
+    return std::make_shared<IBS2BarReference>(barOffset);
 }
+
 
 /**
  * @brief Gets an IBS3BarReference for the given bar offset.
  * Returns a pre-cached object or creates a new one.
  * @param barOffset The bar offset.
- * @return Pointer to an IBS3BarReference object.
+ * @return Shared pointer to an IBS3BarReference object.
  */
-PriceBarReference* AstFactory::getIBS3 (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getIBS3 (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedIBS3[barOffset];
   else
-    return new IBS3BarReference (barOffset);
+    return std::make_shared<IBS3BarReference>(barOffset);
 }
+
+
 
 /**
  * @brief Gets a MeanderBarReference for the given bar offset.
  * Returns a pre-cached object or creates a new one.
  * @param barOffset The bar offset.
- * @return Pointer to a MeanderBarReference object.
+ * @return Shared pointer to a MeanderBarReference object.
  */
-PriceBarReference* AstFactory::getMeander (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getMeander (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedMeander[barOffset];
   else
-    return new MeanderBarReference (barOffset);
+    return std::make_shared<MeanderBarReference>(barOffset);
 }
+
+
 
 /**
  * @brief Gets a VChartLowBarReference for the given bar offset.
  * Returns a pre-cached object or creates a new one.
  * @param barOffset The bar offset.
- * @return Pointer to a VChartLowBarReference object.
+ * @return Shared pointer to a VChartLowBarReference object.
  */
-PriceBarReference* AstFactory::getVChartLow (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getVChartLow (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVChartLow[barOffset];
   else
-    return new VChartLowBarReference (barOffset);
+    return std::make_shared<VChartLowBarReference>(barOffset);
 }
+
+
 
 /**
  * @brief Gets a VChartHighBarReference for the given bar offset.
  * Returns a pre-cached object or creates a new one.
  * @param barOffset The bar offset.
- * @return Pointer to a VChartHighBarReference object.
+ * @return Shared pointer to a VChartHighBarReference object.
  */
-PriceBarReference* AstFactory::getVChartHigh (unsigned int barOffset)
+std::shared_ptr<PriceBarReference> AstFactory::getVChartHigh (unsigned int barOffset)
 {
   if (barOffset < AstFactory::MaxNumBarOffsets)
     return mPredefinedVChartHigh[barOffset];
   else
-    return new VChartHighBarReference (barOffset);
+    return std::make_shared<VChartHighBarReference>(barOffset);
 }
 
-/**
- * @brief Gets or creates a decimal7 number from a string representation.
- * Caches decimal7 objects created from strings to reuse them.
- * @param numString The C-style string representing the number.
- * @return Pointer to the cached or newly created decimal7 object.
- *         The factory manages the lifetime of this object via a shared_ptr.
- */
-decimal7 * AstFactory::getDecimalNumber (char *numString)
+
+
+std::shared_ptr<decimal7> AstFactory::getDecimalNumber (char *numString)
 {
   std::string key(numString);
-  std::map<std::string, DecimalPtr>::iterator pos;
+  std::map<std::string, std::shared_ptr<decimal7>>::iterator pos;
 
   pos = mDecimalNumMap.find (key); // Check cache
   if (pos != mDecimalNumMap.end())
-    return (pos->second.get()); // Return cached object's raw pointer
+    return pos->second; // Return cached shared_ptr
   else
     {
-      // Create new, store in shared_ptr, cache it, then return raw pointer
-      decimal7 num = num::fromString<decimal7 >(numString);
-      DecimalPtr p(new decimal7 (num));
+      // Create new, store in shared_ptr, cache it, then return shared_ptr
+      decimal7 num = num::fromString<decimal7 >(key);
+      auto p = std::make_shared<decimal7>(num);
       mDecimalNumMap.insert (std::make_pair(key, p));
-      return p.get();
+      return p;
     }
 }
 
-/**
- * @brief Gets or creates a decimal7 number from an integer.
- * Caches decimal7 objects created from integers to reuse them.
- * @param num The integer value.
- * @return Pointer to the cached or newly created decimal7 object.
- *         The factory manages the lifetime of this object via a shared_ptr.
- */
-decimal7 * AstFactory::getDecimalNumber (int num)
+std::shared_ptr<decimal7> AstFactory::getDecimalNumber (int num)
 {
   int key = num;
-  std::map<int, DecimalPtr>::iterator pos;
+  std::map<int, std::shared_ptr<decimal7>>::iterator pos;
 
   pos = mDecimalNumMap2.find (key); // Check cache using integer key
   if (pos != mDecimalNumMap2.end())
-    return (pos->second.get()); // Return cached object's raw pointer
+    return pos->second; // Return cached shared_ptr
   else
     {
-      // Create new, store in shared_ptr, cache it, then return raw pointer
-      DecimalPtr p(new decimal7 (num));
+      // Create new, store in shared_ptr, cache it, then return shared_ptr
+      auto p = std::make_shared<decimal7>(num);
       mDecimalNumMap2.insert (std::make_pair(key, p));
-      return p.get();
+      return p;
     }
 }
 
