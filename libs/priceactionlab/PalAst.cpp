@@ -1546,10 +1546,30 @@ AndExpr::getLHS() const
  * @brief Gets the right-hand side PatternExpression.
  * @return Raw pointer to the right-hand side PatternExpression.
  */
-PatternExpression* 
+PatternExpression*
 AndExpr::getRHS() const
 {
   return mRightHandSide.get(); // Returns the raw pointer from the shared_ptr
+}
+
+/**
+ * @brief Gets the left-hand side PatternExpression as shared_ptr.
+ * @return Shared pointer to the left-hand side PatternExpression.
+ */
+std::shared_ptr<PatternExpression>
+AndExpr::getLHSShared() const
+{
+  return mLeftHandSide;
+}
+
+/**
+ * @brief Gets the right-hand side PatternExpression as shared_ptr.
+ * @return Shared pointer to the right-hand side PatternExpression.
+ */
+std::shared_ptr<PatternExpression>
+AndExpr::getRHSShared() const
+{
+  return mRightHandSide;
 }
 
 /**
