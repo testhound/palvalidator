@@ -1,6 +1,6 @@
-project(PalValidator)
+cmake_minimum_required(VERSION 3.1)
 
-cmake_minimum_required(VERSION 2.8)
+project(PalValidator VERSION 1.0.0 LANGUAGES CXX)
 
 find_package(Doxygen REQUIRED)
 
@@ -41,11 +41,8 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Coverage")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -g -pg")
 endif()
 
-#set(Boost_DEBUG ON)
-#set(Boost_VERBOSE ON)
-
 find_package( Threads )
-find_package(Boost REQUIRED COMPONENTS filesystem date_time chrono system program_options regex thread container)
+find_package(Boost REQUIRED CONFIG COMPONENTS filesystem date_time chrono system program_options regex thread container)
 include_directories(${CMAKE_SOURCE_DIR}
   ${Boost_INCLUDE_DIR}
   ${BLOOMBERG_DECIMAL_INCLUDES}

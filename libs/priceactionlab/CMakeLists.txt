@@ -52,8 +52,8 @@ add_library(${LIB_NAME} STATIC
 
 target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(${LIB_NAME} ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(priceaction2 PRIVATE timeseries)
+target_link_libraries(${LIB_NAME} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_NAME} PRIVATE timeseries)
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
@@ -69,8 +69,8 @@ target_link_libraries(${LIB_NAME}_unit_tests PRIVATE backtesting)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE statistics)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE Catch2::Catch2WithMain)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE cpptrace::cpptrace)
-target_link_libraries(${LIB_NAME}_unit_tests ${Boost_LIBRARIES})
-target_link_libraries(${LIB_NAME}_unit_tests "-lcurl")
+target_link_libraries(${LIB_NAME}_unit_tests PRIVATE ${Boost_LIBRARIES})
+target_link_libraries(${LIB_NAME}_unit_tests PRIVATE "-lcurl")
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE concurrency)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE timeseries)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE testinfra)
