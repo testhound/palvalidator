@@ -96,8 +96,6 @@ namespace {
       return std::make_shared<DummyBackTester>();
     }
 
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const { return boost_previous_weekday(d); }
-    TimeSeriesDate next_period(const TimeSeriesDate& d) const { return boost_next_weekday(d); }
 
     /**
      * @brief Determines whether this is a backtester that operates

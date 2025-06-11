@@ -67,8 +67,6 @@ public:
     std::shared_ptr<BackTester<D>> clone() const override {
         return std::make_shared<DummyBackTesterEx>();
     }
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const override { return boost_previous_weekday(d); }
-    TimeSeriesDate next_period(const TimeSeriesDate& d) const override { return boost_next_weekday(d); }
     /**
      * @brief Determines whether this is a backtester that operates
      * on the daily time frame.

@@ -403,8 +403,8 @@ namespace mkc_timeseries
             continue;
           }
 
-          // PatternEvaluator takes date. Orders are placed using ptime.
-          if ((*evalIt)(aSecurity, processingDateTime.date()))
+          // PatternEvaluator now takes ptime. Orders are placed using ptime.
+          if ((*evalIt)(aSecurity, processingDateTime))
           {
             // entryConditions will use processingDateTime for actual order placement
             entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
@@ -499,7 +499,7 @@ namespace mkc_timeseries
       else
       {
         // No pattern, so never match
-        mPatternEvaluator = [](Security<Decimal>*, const date& )
+        mPatternEvaluator = [](Security<Decimal>*, const boost::posix_time::ptime& )
         {
           return false;
         };
@@ -759,8 +759,8 @@ namespace mkc_timeseries
 
         if (this->getSecurityBarNumber(sym) > pattern->getMaxBarsBack())
         {
-          // PatternEvaluator uses date part of processingDateTime
-          if (this->getPatternEvaluator()(aSecurity, processingDateTime.date()))
+          // PatternEvaluator now uses full processingDateTime
+          if (this->getPatternEvaluator()(aSecurity, processingDateTime))
           {
             Decimal targetValue = pattern->getProfitTargetAsDecimal();
             Decimal stopValue = pattern->getStopLossAsDecimal();
@@ -910,8 +910,8 @@ namespace mkc_timeseries
 
         if (this->getSecurityBarNumber(sym) > pattern->getMaxBarsBack())
         {
-          // PatternEvaluator uses date part of processingDateTime
-          if (this->getPatternEvaluator()(aSecurity, processingDateTime.date()))
+          // PatternEvaluator now uses full processingDateTime
+          if (this->getPatternEvaluator()(aSecurity, processingDateTime))
           {
             // Orders placed with ptime. Explicit stop/target from HEAD
             Decimal targetValue = pattern->getProfitTargetAsDecimal();
