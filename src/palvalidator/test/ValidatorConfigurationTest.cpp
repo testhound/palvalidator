@@ -2,7 +2,6 @@
 #include "ValidatorConfiguration.h"
 #include "TestUtils.h"
 #include <fstream>
-#include <chrono>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 using namespace mkc_timeseries;
