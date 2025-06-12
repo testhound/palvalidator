@@ -4,32 +4,30 @@
 #include <shared_mutex>
 #include "PalAst.h"
 
-namespace mkc_palast {
-
-/**
- * @brief Resource manager for AST factory and memory management.
- * 
- * This class replaces the global AstFactory with a managed resource approach
- * that provides thread-safe access and clear ownership semantics using shared_ptr.
- */
-class AstResourceManager {
-private:
-    std::shared_ptr<AstFactory> mFactory;
-    mutable std::shared_mutex mFactoryMutex;
-    
-public:
+namespace mkc_palast
+{
+  /**
+   * @brief Resource manager for AST factory and memory management.
+   * 
+   * This class replaces the global AstFactory with a managed resource approach
+   * that provides thread-safe access and clear ownership semantics using shared_ptr.
+   */
+  class AstResourceManager
+  {
+  public:
     /**
      * @brief Constructs an AstResourceManager with a new AstFactory.
      */
-    AstResourceManager() : mFactory(std::make_shared<AstFactory>()) {}
+    AstResourceManager()
+      : mFactory(std::make_shared<AstFactory>())
+    {}
     
     /**
-     * @brief Thread-safe access to the factory.
      * @return Shared pointer to the AstFactory.
      */
-    std::shared_ptr<AstFactory> getFactory() const {
-        std::shared_lock<std::shared_mutex> lock(mFactoryMutex);
-        return mFactory;
+    std::shared_ptr<AstFactory> getFactory() const
+    {
+      return mFactory;
     }
     
     /**
@@ -44,14 +42,14 @@ public:
      * @return Shared pointer to the created PriceActionLabPattern.
      */
     std::shared_ptr<PriceActionLabPattern> createPattern(
-        std::shared_ptr<PatternDescription> description,
-        std::shared_ptr<PatternExpression> pattern,
-        std::shared_ptr<MarketEntryExpression> entry,
-        std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
-        std::shared_ptr<StopLossInPercentExpression> stopLoss,
-        PriceActionLabPattern::VolatilityAttribute volatilityAttr = PriceActionLabPattern::VOLATILITY_NONE,
-        PriceActionLabPattern::PortfolioAttribute portfolioAttr = PriceActionLabPattern::PORTFOLIO_FILTER_NONE
-    );
+							 std::shared_ptr<PatternDescription> description,
+							 std::shared_ptr<PatternExpression> pattern,
+							 std::shared_ptr<MarketEntryExpression> entry,
+							 std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+							 std::shared_ptr<StopLossInPercentExpression> stopLoss,
+							 PriceActionLabPattern::VolatilityAttribute volatilityAttr = PriceActionLabPattern::VOLATILITY_NONE,
+							 PriceActionLabPattern::PortfolioAttribute portfolioAttr = PriceActionLabPattern::PORTFOLIO_FILTER_NONE
+							 );
     
     // All methods now return shared_ptr for consistent memory management
     std::shared_ptr<PriceBarReference> getPriceOpen(unsigned int barOffset);
@@ -78,6 +76,9 @@ public:
     
     std::shared_ptr<StopLossInPercentExpression> getLongStopLoss(std::shared_ptr<decimal7> stopLoss);
     std::shared_ptr<StopLossInPercentExpression> getShortStopLoss(std::shared_ptr<decimal7> stopLoss);
-};
+
+  private:
+    std::shared_ptr<AstFactory> mFactory;
+  };
 
 } // namespace mkc_palast

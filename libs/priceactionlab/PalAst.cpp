@@ -2906,6 +2906,7 @@ AstFactory::~AstFactory()
  */
 std::shared_ptr<LongSideProfitTargetInPercent> AstFactory::getLongProfitTarget (std::shared_ptr<decimal7> profitTarget)
 {
+  std::lock_guard<std::mutex> lock(mLongsProfitTargetsMutex);
   std::map<decimal7, std::shared_ptr<LongSideProfitTargetInPercent>>::const_iterator pos;
 
   pos = mLongsProfitTargets.find (*profitTarget); // Check cache
@@ -2922,6 +2923,7 @@ std::shared_ptr<LongSideProfitTargetInPercent> AstFactory::getLongProfitTarget (
 
 std::shared_ptr<ShortSideProfitTargetInPercent> AstFactory::getShortProfitTarget (std::shared_ptr<decimal7> profitTarget)
 {
+  std::lock_guard<std::mutex> lock(mShortsProfitTargetsMutex);
   std::map<decimal7, std::shared_ptr<ShortSideProfitTargetInPercent>>::const_iterator pos;
 
   pos = mShortsProfitTargets.find (*profitTarget); // Check cache
@@ -2937,6 +2939,7 @@ std::shared_ptr<ShortSideProfitTargetInPercent> AstFactory::getShortProfitTarget
 
 std::shared_ptr<LongSideStopLossInPercent> AstFactory::getLongStopLoss(std::shared_ptr<decimal7> stopLoss)
 {
+  std::lock_guard<std::mutex> lock(mLongsStopLossMutex);
   std::map<decimal7, std::shared_ptr<LongSideStopLossInPercent>>::const_iterator pos;
 
   pos = mLongsStopLoss.find (*stopLoss); // Check cache
@@ -2952,6 +2955,7 @@ std::shared_ptr<LongSideStopLossInPercent> AstFactory::getLongStopLoss(std::shar
 
 std::shared_ptr<ShortSideStopLossInPercent> AstFactory::getShortStopLoss(std::shared_ptr<decimal7> stopLoss)
 {
+  std::lock_guard<std::mutex> lock(mShortsStopLossMutex);
   std::map<decimal7, std::shared_ptr<ShortSideStopLossInPercent>>::const_iterator pos;
 
   pos = mShortsStopLoss.find (*stopLoss); // Check cache
@@ -3170,6 +3174,7 @@ std::shared_ptr<PriceBarReference> AstFactory::getVChartHigh (unsigned int barOf
 
 std::shared_ptr<decimal7> AstFactory::getDecimalNumber (char *numString)
 {
+  std::lock_guard<std::mutex> lock(mDecimalNumMapMutex);
   std::string key(numString);
   std::map<std::string, std::shared_ptr<decimal7>>::iterator pos;
 
@@ -3188,6 +3193,7 @@ std::shared_ptr<decimal7> AstFactory::getDecimalNumber (char *numString)
 
 std::shared_ptr<decimal7> AstFactory::getDecimalNumber (int num)
 {
+  std::lock_guard<std::mutex> lock(mDecimalNumMap2Mutex);
   int key = num;
   std::map<int, std::shared_ptr<decimal7>>::iterator pos;
 

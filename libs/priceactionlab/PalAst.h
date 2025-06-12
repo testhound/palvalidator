@@ -1,6 +1,7 @@
 #ifndef PALAST_H
 #define PALAST_H
 
+#include <mutex>
 #include <memory>
 #include <string>
 #include <map>
@@ -2376,6 +2377,9 @@ public:
    */
   ~AstFactory();
 
+  AstFactory(const AstFactory&) = delete;
+  AstFactory& operator=(const AstFactory&) = delete;
+  
   /**
    * @brief Gets a PriceBarOpen reference for the given bar offset.
    * @param barOffset The bar offset.
@@ -2613,6 +2617,12 @@ private:
    * @brief Map for caching ShortSideStopLossInPercent objects.
    */
   std::map<decimal7, std::shared_ptr<ShortSideStopLossInPercent>> mShortsStopLoss;
+  mutable std::mutex mDecimalNumMapMutex;
+  mutable std::mutex mDecimalNumMap2Mutex;
+  mutable std::mutex mLongsProfitTargetsMutex;
+  mutable std::mutex mShortsProfitTargetsMutex;
+  mutable std::mutex mLongsStopLossMutex;
+  mutable std::mutex mShortsStopLossMutex;
 };
 
 
