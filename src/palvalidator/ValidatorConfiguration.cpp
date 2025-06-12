@@ -188,7 +188,7 @@ namespace mkc_timeseries
     driver.Parse();
 
     std::cout << "Parsing successfully completed." << std::endl << std::endl;
-    PriceActionLabSystem* system = driver.getPalStrategies();
+    auto system = driver.getPalStrategies();
     std::cout << "Total number IR patterns = " << system->getNumPatterns() << std::endl;
     std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
     std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;

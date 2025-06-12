@@ -36,12 +36,12 @@ namespace mkc_timeseries
   {
   public:
     McptConfiguration (std::shared_ptr<BackTester<Decimal>> aBacktester,
-		       std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
-		       std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
-		       PriceActionLabSystem* patterns,
-		       const DateRange& insampleDateRange,
-		       const DateRange& oosDateRange,
-		       const std::string dataFilePath)
+         std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
+         std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
+         std::shared_ptr<PriceActionLabSystem> patterns,
+         const DateRange& insampleDateRange,
+         const DateRange& oosDateRange,
+         const std::string dataFilePath)
       : mBacktester (aBacktester),
 	mInSampleBacktester (aInSampleBacktester),
 	mSecurity(aSecurity),
@@ -97,7 +97,7 @@ namespace mkc_timeseries
       return mSecurity;
     }
 
-    PriceActionLabSystem *getPricePatterns() const
+    std::shared_ptr<PriceActionLabSystem> getPricePatterns() const
     {
       return mPricePatterns;
     }
@@ -126,7 +126,7 @@ namespace mkc_timeseries
     std::shared_ptr<BackTester<Decimal>> mBacktester;
     std::shared_ptr<BackTester<Decimal>> mInSampleBacktester;
     std::shared_ptr<Security<Decimal>> mSecurity;
-    PriceActionLabSystem *mPricePatterns;
+    std::shared_ptr<PriceActionLabSystem> mPricePatterns;
     DateRange mInsampleDateRange;
     DateRange mOosDateRange;
     std::string mDataFileFormatStr;

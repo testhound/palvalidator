@@ -13,22 +13,22 @@ createDescription (const std::string& fileName, unsigned int index, unsigned lon
 		   const std::string& percLong, const std::string& percShort,
 		   unsigned int numTrades, unsigned int consecutiveLosses);
 
-LongMarketEntryOnOpen *
+std::shared_ptr<LongMarketEntryOnOpen>
 createLongOnOpen();
 
-ShortMarketEntryOnOpen *
+std::shared_ptr<ShortMarketEntryOnOpen>
 createShortOnOpen();
 
-LongSideProfitTargetInPercent *
+std::shared_ptr<LongSideProfitTargetInPercent>
 createLongProfitTarget(const std::string& targetPct);
 
-LongSideStopLossInPercent *
+std::shared_ptr<LongSideStopLossInPercent>
 createLongStopLoss(const std::string& targetPct);
 
-ShortSideProfitTargetInPercent *
+std::shared_ptr<ShortSideProfitTargetInPercent>
 createShortProfitTarget(const std::string& targetPct);
 
-ShortSideStopLossInPercent *
+std::shared_ptr<ShortSideStopLossInPercent>
 createShortStopLoss(const std::string& targetPct);
 
 #endif

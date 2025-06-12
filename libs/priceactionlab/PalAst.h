@@ -1,6 +1,7 @@
 #ifndef PALAST_H
 #define PALAST_H
 
+#include <mutex>
 #include <memory>
 #include <string>
 #include <map>
@@ -8,6 +9,8 @@
 #include <fstream>
 #include <algorithm>
 #include <exception>
+#include <iostream>
+#include <typeinfo>
 #include "number.h"
 
 using decimal7 = num::DefaultNumber;
@@ -867,8 +870,15 @@ class GreaterThanExpr : public PatternExpression
 public:
   /**
    * @brief Constructs a GreaterThanExpr object.
-   * @param lhs Pointer to the left-hand side PriceBarReference.
-   * @param rhs Pointer to the right-hand side PriceBarReference.
+   * @param lhs Shared pointer to the left-hand side PriceBarReference.
+   * @param rhs Shared pointer to the right-hand side PriceBarReference.
+   */
+  GreaterThanExpr (std::shared_ptr<PriceBarReference> lhs, std::shared_ptr<PriceBarReference> rhs);
+  
+  /**
+   * @brief Legacy constructor for backward compatibility.
+   * @param lhs Raw pointer to the left-hand side PriceBarReference.
+   * @param rhs Raw pointer to the right-hand side PriceBarReference.
    */
   GreaterThanExpr (PriceBarReference *lhs, PriceBarReference *rhs);
   /**
@@ -897,6 +907,17 @@ public:
    * @return Pointer to the right-hand side PriceBarReference.
    */
   PriceBarReference * getRHS() const;
+  
+  /**
+   * @brief Gets the left-hand side PriceBarReference as shared_ptr.
+   * @return Shared pointer to the left-hand side PriceBarReference.
+   */
+  std::shared_ptr<PriceBarReference> getLHSShared() const;
+  /**
+   * @brief Gets the right-hand side PriceBarReference as shared_ptr.
+   * @return Shared pointer to the right-hand side PriceBarReference.
+   */
+  std::shared_ptr<PriceBarReference> getRHSShared() const;
   /**
    * @brief Accepts a PalCodeGenVisitor.
    * @param v The visitor.
@@ -910,13 +931,13 @@ public:
 
 private:
   /**
-   * @brief Pointer to the left-hand side PriceBarReference.
+   * @brief Shared pointer to the left-hand side PriceBarReference.
    */
-  PriceBarReference *mLhs;
+  std::shared_ptr<PriceBarReference> mLhs;
   /**
-   * @brief Pointer to the right-hand side PriceBarReference.
+   * @brief Shared pointer to the right-hand side PriceBarReference.
    */
-  PriceBarReference *mRhs;
+  std::shared_ptr<PriceBarReference> mRhs;
 };
 
 /**
@@ -963,6 +984,17 @@ public:
    * @return Pointer to the right-hand side PatternExpression.
    */
   PatternExpression *getRHS() const;
+  
+  /**
+   * @brief Gets the left-hand side PatternExpression as shared_ptr.
+   * @return Shared pointer to the left-hand side PatternExpression.
+   */
+  std::shared_ptr<PatternExpression> getLHSShared() const;
+  /**
+   * @brief Gets the right-hand side PatternExpression as shared_ptr.
+   * @return Shared pointer to the right-hand side PatternExpression.
+   */
+  std::shared_ptr<PatternExpression> getRHSShared() const;
   /**
    * @brief Accepts a PalCodeGenVisitor.
    * @param v The visitor.
@@ -997,9 +1029,9 @@ class ProfitTargetInPercentExpression
 public:
   /**
    * @brief Constructs a ProfitTargetInPercentExpression object.
-   * @param profitTarget Pointer to the profit target value (decimal7).
+   * @param profitTarget Shared pointer to the profit target value (decimal7).
    */
-  ProfitTargetInPercentExpression(decimal7 *profitTarget);
+  ProfitTargetInPercentExpression(std::shared_ptr<decimal7> profitTarget);
   /**
    * @brief Copy constructor.
    * @param rhs The ProfitTargetInPercentExpression object to copy.
@@ -1020,6 +1052,12 @@ public:
    * @return Pointer to the profit target value (decimal7).
    */
   decimal7 *getProfitTarget() const;
+  
+  /**
+   * @brief Gets the profit target value as shared_ptr.
+   * @return Shared pointer to the profit target value (decimal7).
+   */
+  std::shared_ptr<decimal7> getProfitTargetShared() const;
 
   /**
    * @brief Accepts a PalCodeGenVisitor.
@@ -1044,9 +1082,9 @@ public:
 
  private:
   /**
-   * @brief Pointer to the profit target value. Owned by the factory and shared.
+   * @brief Shared pointer to the profit target value.
    */
-  decimal7 *mProfitTarget;   // Owned by the factory and shared
+  std::shared_ptr<decimal7> mProfitTarget;
   /**
    * @brief Cached hash code.
    */
@@ -1061,9 +1099,9 @@ class LongSideProfitTargetInPercent : public ProfitTargetInPercentExpression
 public:
   /**
    * @brief Constructs a LongSideProfitTargetInPercent object.
-   * @param profitTarget Pointer to the profit target value (decimal7).
+   * @param profitTarget Shared pointer to the profit target value (decimal7).
    */
-  LongSideProfitTargetInPercent (decimal7 *profitTarget);
+  LongSideProfitTargetInPercent (std::shared_ptr<decimal7> profitTarget);
   /**
    * @brief Copy constructor.
    * @param rhs The LongSideProfitTargetInPercent object to copy.
@@ -1113,9 +1151,9 @@ class ShortSideProfitTargetInPercent : public ProfitTargetInPercentExpression
 public:
   /**
    * @brief Constructs a ShortSideProfitTargetInPercent object.
-   * @param profitTarget Pointer to the profit target value (decimal7).
+   * @param profitTarget Shared pointer to the profit target value (decimal7).
    */
-  ShortSideProfitTargetInPercent (decimal7 *profitTarget);
+  ShortSideProfitTargetInPercent (std::shared_ptr<decimal7> profitTarget);
   /**
    * @brief Copy constructor.
    * @param rhs The ShortSideProfitTargetInPercent object to copy.
@@ -1173,9 +1211,9 @@ class StopLossInPercentExpression
 public:
   /**
    * @brief Constructs a StopLossInPercentExpression object.
-   * @param stopLoss Pointer to the stop loss value (decimal7).
+   * @param stopLoss Shared pointer to the stop loss value (decimal7).
    */
-  StopLossInPercentExpression(decimal7 *stopLoss);
+  StopLossInPercentExpression(std::shared_ptr<decimal7> stopLoss);
   /**
    * @brief Copy constructor.
    * @param rhs The StopLossInPercentExpression object to copy.
@@ -1196,6 +1234,12 @@ public:
    * @return Pointer to the stop loss value (decimal7).
    */
   decimal7 *getStopLoss() const;
+  
+  /**
+   * @brief Gets the stop loss value as shared_ptr.
+   * @return Shared pointer to the stop loss value (decimal7).
+   */
+  std::shared_ptr<decimal7> getStopLossShared() const;
   /**
    * @brief Calculates the hash code for this object.
    * @return The hash code.
@@ -1219,9 +1263,9 @@ public:
 
  private:
   /**
-   * @brief Pointer to the stop loss value.
+   * @brief Shared pointer to the stop loss value.
    */
-  decimal7 *mStopLoss;
+  std::shared_ptr<decimal7> mStopLoss;
   /**
    * @brief Cached hash code.
    */
@@ -1236,9 +1280,9 @@ class LongSideStopLossInPercent : public StopLossInPercentExpression
 public:
   /**
    * @brief Constructs a LongSideStopLossInPercent object.
-   * @param stopLoss Pointer to the stop loss value (decimal7).
+   * @param stopLoss Shared pointer to the stop loss value (decimal7).
    */
-  LongSideStopLossInPercent (decimal7 *stopLoss);
+  LongSideStopLossInPercent (std::shared_ptr<decimal7> stopLoss);
   /**
    * @brief Destructor.
    */
@@ -1287,9 +1331,9 @@ class ShortSideStopLossInPercent : public StopLossInPercentExpression
 public:
   /**
    * @brief Constructs a ShortSideStopLossInPercent object.
-   * @param stopLoss Pointer to the stop loss value (decimal7).
+   * @param stopLoss Shared pointer to the stop loss value (decimal7).
    */
-  ShortSideStopLossInPercent (decimal7 *stopLoss);
+  ShortSideStopLossInPercent (std::shared_ptr<decimal7> stopLoss);
   /**
    * @brief Destructor.
    */
@@ -1399,7 +1443,7 @@ public:
   /**
    * @brief Virtual destructor.
    */
-  virtual ~MarketEntryOnOpen() = 0;
+  virtual ~MarketEntryOnOpen();
   /**
    * @brief Assignment operator.
    * @param rhs The MarketEntryOnOpen object to assign.
@@ -1549,8 +1593,8 @@ public:
    * @param consecutiveLosses The maximum number of consecutive losses.
    */
   PatternDescription(const char *fileName, unsigned int patternIndex,
-		     unsigned long indexDate, decimal7* percentLong, decimal7* percentShort,
-		     unsigned int numTrades, unsigned int consecutiveLosses);
+      unsigned long indexDate, std::shared_ptr<decimal7> percentLong, std::shared_ptr<decimal7> percentShort,
+      unsigned int numTrades, unsigned int consecutiveLosses);
   /**
    * @brief Copy constructor.
    * @param rhs The PatternDescription object to copy.
@@ -1592,6 +1636,17 @@ public:
    * @return Pointer to the percentage of short trades.
    */
   decimal7* getPercentShort() const;
+  
+  /**
+   * @brief Gets the percentage of long trades as shared_ptr.
+   * @return Shared pointer to the percentage of long trades.
+   */
+  std::shared_ptr<decimal7> getPercentLongShared() const;
+  /**
+   * @brief Gets the percentage of short trades as shared_ptr.
+   * @return Shared pointer to the percentage of short trades.
+   */
+  std::shared_ptr<decimal7> getPercentShortShared() const;
   /**
    * @brief Gets the total number of trades.
    * @return The total number of trades.
@@ -1628,13 +1683,13 @@ private:
    */
   unsigned long mIndexDate;
   /**
-   * @brief Pointer to the percentage of long trades.
+   * @brief Shared pointer to the percentage of long trades.
    */
-  decimal7* mPercentLong;
+  std::shared_ptr<decimal7> mPercentLong;
   /**
-   * @brief Pointer to the percentage of short trades.
+   * @brief Shared pointer to the percentage of short trades.
    */
-  decimal7* mPercentShort;
+  std::shared_ptr<decimal7> mPercentShort;
   /**
    * @brief The total number of trades for this pattern.
    */
@@ -1728,57 +1783,57 @@ public:
    * @param profitTarget Pointer to the ProfitTargetInPercentExpression.
    * @param stopLoss Pointer to the StopLossInPercentExpression.
    */
-  PriceActionLabPattern (PatternDescription* description, PatternExpression* pattern, 
-			 MarketEntryExpression* entry, 
-			 ProfitTargetInPercentExpression* profitTarget, 
-			 StopLossInPercentExpression* stopLoss);
+  PriceActionLabPattern (PatternDescription* description, PatternExpression* pattern,
+   std::shared_ptr<MarketEntryExpression> entry,
+   std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+   std::shared_ptr<StopLossInPercentExpression> stopLoss);
 
   /**
    * @brief Constructs a PriceActionLabPattern with volatility and portfolio attributes.
    * @param description Pointer to the PatternDescription.
    * @param pattern Pointer to the PatternExpression.
-   * @param entry Pointer to the MarketEntryExpression.
-   * @param profitTarget Pointer to the ProfitTargetInPercentExpression.
-   * @param stopLoss Pointer to the StopLossInPercentExpression.
+   * @param entry Shared pointer to the MarketEntryExpression.
+   * @param profitTarget Shared pointer to the ProfitTargetInPercentExpression.
+   * @param stopLoss Shared pointer to the StopLossInPercentExpression.
    * @param volatilityAttribute The volatility attribute.
    * @param portfolioAttribute The portfolio filter attribute.
    */
-  PriceActionLabPattern (PatternDescription* description, PatternExpression* pattern, 
-			 MarketEntryExpression* entry, 
-			 ProfitTargetInPercentExpression* profitTarget, 
-			 StopLossInPercentExpression* stopLoss, 
-			 VolatilityAttribute volatilityAttribute,
-			 PortfolioAttribute portfolioAttribute);
+  PriceActionLabPattern (PatternDescription* description, PatternExpression* pattern,
+   std::shared_ptr<MarketEntryExpression> entry,
+   std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+   std::shared_ptr<StopLossInPercentExpression> stopLoss,
+   VolatilityAttribute volatilityAttribute,
+   PortfolioAttribute portfolioAttribute);
 
   /**
    * @brief Constructs a PriceActionLabPattern with shared pointers for description and pattern.
    * @param description Shared pointer to the PatternDescription.
    * @param pattern Shared pointer to the PatternExpression.
-   * @param entry Pointer to the MarketEntryExpression.
-   * @param profitTarget Pointer to the ProfitTargetInPercentExpression.
-   * @param stopLoss Pointer to the StopLossInPercentExpression.
+   * @param entry Shared pointer to the MarketEntryExpression.
+   * @param profitTarget Shared pointer to the ProfitTargetInPercentExpression.
+   * @param stopLoss Shared pointer to the StopLossInPercentExpression.
    */
-  PriceActionLabPattern (PatternDescriptionPtr description, 
-			 PatternExpressionPtr pattern,
-			 MarketEntryExpression* entry, 
-			 ProfitTargetInPercentExpression* profitTarget, 
-			 StopLossInPercentExpression* stopLoss);
+  PriceActionLabPattern (PatternDescriptionPtr description,
+   PatternExpressionPtr pattern,
+   std::shared_ptr<MarketEntryExpression> entry,
+   std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+   std::shared_ptr<StopLossInPercentExpression> stopLoss);
 
   /**
    * @brief Convenience overload to construct a PriceActionLabPattern with shared pointers and attributes.
    * @param description Shared pointer to the PatternDescription.
    * @param pattern Shared pointer to the PatternExpression.
-   * @param entry Pointer to the MarketEntryExpression.
-   * @param profitTarget Pointer to the ProfitTargetInPercentExpression.
-   * @param stopLoss Pointer to the StopLossInPercentExpression.
+   * @param entry Shared pointer to the MarketEntryExpression.
+   * @param profitTarget Shared pointer to the ProfitTargetInPercentExpression.
+   * @param stopLoss Shared pointer to the StopLossInPercentExpression.
    * @param volatilityAttribute The volatility attribute.
    * @param portfolioAttribute The portfolio filter attribute.
    */
   PriceActionLabPattern(PatternDescriptionPtr description,
                         PatternExpressionPtr pattern,
-                        MarketEntryExpression* entry,
-                        ProfitTargetInPercentExpression* profitTarget,
-                        StopLossInPercentExpression* stopLoss,
+                        std::shared_ptr<MarketEntryExpression> entry,
+                        std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+                        std::shared_ptr<StopLossInPercentExpression> stopLoss,
                         VolatilityAttribute volatilityAttribute,
                         PortfolioAttribute portfolioAttribute);
   
@@ -1800,12 +1855,12 @@ public:
 
   /**
    * @brief Clones the pattern with new profit target and stop loss.
-   * @param profitTarget Pointer to the new ProfitTargetInPercentExpression.
-   * @param stopLoss Pointer to the new StopLossInPercentExpression.
+   * @param profitTarget Shared pointer to the new ProfitTargetInPercentExpression.
+   * @param stopLoss Shared pointer to the new StopLossInPercentExpression.
    * @return A shared pointer to the cloned PriceActionLabPattern.
    */
-  shared_ptr<PriceActionLabPattern> clone (ProfitTargetInPercentExpression* profitTarget, 
-					   StopLossInPercentExpression* stopLoss);
+  shared_ptr<PriceActionLabPattern> clone (std::shared_ptr<ProfitTargetInPercentExpression> profitTarget,
+  		   std::shared_ptr<StopLossInPercentExpression> stopLoss);
 
   /**
    * @brief Gets the file name from the pattern description.
@@ -1836,14 +1891,14 @@ public:
   PatternExpressionPtr getPatternExpression() const;
   /**
    * @brief Gets the market entry expression.
-   * @return Pointer to the MarketEntryExpression.
+   * @return Shared pointer to the MarketEntryExpression.
    */
-  MarketEntryExpression* getMarketEntry() const;
+  std::shared_ptr<MarketEntryExpression> getMarketEntry() const;
   /**
    * @brief Gets the profit target expression.
-   * @return Pointer to the ProfitTargetInPercentExpression.
+   * @return Shared pointer to the ProfitTargetInPercentExpression.
    */
-  ProfitTargetInPercentPtr getProfitTarget() const;
+  std::shared_ptr<ProfitTargetInPercentExpression> getProfitTarget() const;
   /**
    * @brief Gets the profit target value as a decimal.
    * @return The profit target value.
@@ -1851,9 +1906,14 @@ public:
   decimal7 getProfitTargetAsDecimal() const;
   /**
    * @brief Gets the stop loss expression.
-   * @return Pointer to the StopLossInPercentExpression.
+   * @return Shared pointer to the StopLossInPercentExpression.
    */
-  StopLossInPercentPtr getStopLoss() const;
+  std::shared_ptr<StopLossInPercentExpression> getStopLoss() const;
+  
+  // Legacy raw pointer interface for backward compatibility
+  MarketEntryExpression* getMarketEntryRaw() const { return mEntry.get(); }
+  ProfitTargetInPercentExpression* getProfitTargetRaw() const { return mProfitTarget.get(); }
+  StopLossInPercentExpression* getStopLossRaw() const { return mStopLoss.get(); }
   /**
    * @brief Gets the stop loss value as a decimal.
    * @return The stop loss value.
@@ -1893,13 +1953,47 @@ public:
    * @return True if it is a long pattern, false otherwise.
    */
   bool isLongPattern() const
-  { return mEntry->isLongPattern(); }
+  {
+    if (!mEntry) {
+      std::cerr << "ERROR: mEntry is null in isLongPattern() for pattern "
+                << getFileName() << " index " << getpatternIndex() << std::endl;
+      return false;
+    }
+    
+    // Check if we have an abstract base class (this should never happen)
+    if (typeid(*mEntry) == typeid(MarketEntryExpression)) {
+      std::cerr << "FATAL ERROR: Pattern " << getFileName() << " index " << getpatternIndex()
+                << " has abstract MarketEntryExpression instead of concrete implementation!" << std::endl;
+      std::cerr << "  This indicates a memory corruption or object construction issue." << std::endl;
+      // Return a safe default instead of calling pure virtual function
+      return false;
+    }
+    
+    return mEntry->isLongPattern();
+  }
   /**
    * @brief Checks if this is a short pattern.
    * @return True if it is a short pattern, false otherwise.
    */
   bool isShortPattern() const
-  { return mEntry->isShortPattern(); }
+  {
+    if (!mEntry) {
+      std::cerr << "ERROR: mEntry is null in isShortPattern() for pattern "
+                << getFileName() << " index " << getpatternIndex() << std::endl;
+      return false;
+    }
+    
+    // Check if we have an abstract base class (this should never happen)
+    if (typeid(*mEntry) == typeid(MarketEntryExpression)) {
+      std::cerr << "FATAL ERROR: Pattern " << getFileName() << " index " << getpatternIndex()
+                << " has abstract MarketEntryExpression in isShortPattern()!" << std::endl;
+      std::cerr << "  This indicates a memory corruption or object construction issue." << std::endl;
+      // Return a safe default instead of calling pure virtual function
+      return false;
+    }
+    
+    return mEntry->isShortPattern();
+  }
   /**
    * @brief Calculates the hash code for this pattern.
    * @return The hash code.
@@ -1960,17 +2054,17 @@ private:
    */
   PatternExpressionPtr mPattern;
   /**
-   * @brief Pointer to the market entry expression.
+   * @brief Shared pointer to the market entry expression.
    */
-  MarketEntryExpression* mEntry;
+  std::shared_ptr<MarketEntryExpression> mEntry;
   /**
-   * @brief Pointer to the profit target expression.
+   * @brief Shared pointer to the profit target expression.
    */
-  ProfitTargetInPercentExpression *mProfitTarget;
+  std::shared_ptr<ProfitTargetInPercentExpression> mProfitTarget;
   /**
-   * @brief Pointer to the stop loss expression.
+   * @brief Shared pointer to the stop loss expression.
    */
-  StopLossInPercentExpression *mStopLoss;
+  std::shared_ptr<StopLossInPercentExpression> mStopLoss;
   /**
    * @brief Shared pointer to the pattern description.
    */
@@ -2283,124 +2377,157 @@ public:
    */
   ~AstFactory();
 
+  AstFactory(const AstFactory&) = delete;
+  AstFactory& operator=(const AstFactory&) = delete;
+  
   /**
    * @brief Gets a PriceBarOpen reference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a PriceBarOpen object.
+   * @return Shared pointer to a PriceBarOpen object.
    */
-  PriceBarReference* getPriceOpen (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getPriceOpen (unsigned int barOffset);
   /**
    * @brief Gets a PriceBarHigh reference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a PriceBarHigh object.
+   * @return Shared pointer to a PriceBarHigh object.
    */
-  PriceBarReference* getPriceHigh (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getPriceHigh (unsigned int barOffset);
   /**
    * @brief Gets a PriceBarLow reference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a PriceBarLow object.
+   * @return Shared pointer to a PriceBarLow object.
    */
-  PriceBarReference* getPriceLow (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getPriceLow (unsigned int barOffset);
   /**
    * @brief Gets a PriceBarClose reference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a PriceBarClose object.
+   * @return Shared pointer to a PriceBarClose object.
    */
-  PriceBarReference* getPriceClose (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getPriceClose (unsigned int barOffset);
   /**
    * @brief Gets a VolumeBarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a VolumeBarReference object.
+   * @return Shared pointer to a VolumeBarReference object.
    */
-  PriceBarReference* getVolume (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getVolume (unsigned int barOffset);
   /**
    * @brief Gets a Roc1BarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a Roc1BarReference object.
+   * @return Shared pointer to a Roc1BarReference object.
    */
-  PriceBarReference* getRoc1 (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getRoc1 (unsigned int barOffset);
   /**
    * @brief Gets an IBS1BarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to an IBS1BarReference object.
+   * @return Shared pointer to an IBS1BarReference object.
    */
-  PriceBarReference* getIBS1 (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getIBS1 (unsigned int barOffset);
   /**
    * @brief Gets an IBS2BarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to an IBS2BarReference object.
+   * @return Shared pointer to an IBS2BarReference object.
    */
-  PriceBarReference* getIBS2 (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getIBS2 (unsigned int barOffset);
   /**
    * @brief Gets an IBS3BarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to an IBS3BarReference object.
+   * @return Shared pointer to an IBS3BarReference object.
    */
-  PriceBarReference* getIBS3 (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getIBS3 (unsigned int barOffset);
   /**
    * @brief Gets a MeanderBarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a MeanderBarReference object.
+   * @return Shared pointer to a MeanderBarReference object.
    */
-  PriceBarReference* getMeander (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getMeander (unsigned int barOffset);
   /**
    * @brief Gets a VChartLowBarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a VChartLowBarReference object.
+   * @return Shared pointer to a VChartLowBarReference object.
    */
-  PriceBarReference* getVChartLow (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getVChartLow (unsigned int barOffset);
   /**
    * @brief Gets a VChartHighBarReference for the given bar offset.
    * @param barOffset The bar offset.
-   * @return Pointer to a VChartHighBarReference object.
+   * @return Shared pointer to a VChartHighBarReference object.
    */
-  PriceBarReference* getVChartHigh (unsigned int barOffset);
+  std::shared_ptr<PriceBarReference> getVChartHigh (unsigned int barOffset);
   /**
    * @brief Gets a LongMarketEntryOnOpen expression.
-   * @return Pointer to a LongMarketEntryOnOpen object.
+   * @return Shared pointer to a LongMarketEntryOnOpen object.
    */
-  MarketEntryExpression* getLongMarketEntryOnOpen();
+  std::shared_ptr<MarketEntryExpression> getLongMarketEntryOnOpen();
   /**
    * @brief Gets a ShortMarketEntryOnOpen expression.
-   * @return Pointer to a ShortMarketEntryOnOpen object.
+   * @return Shared pointer to a ShortMarketEntryOnOpen object.
    */
-  MarketEntryExpression* getShortMarketEntryOnOpen();
+  std::shared_ptr<MarketEntryExpression> getShortMarketEntryOnOpen();
   /**
    * @brief Gets a decimal7 number from a string.
    * @param numString The string representation of the number.
-   * @return Pointer to a decimal7 object.
+   * @return Shared pointer to a decimal7 object.
    */
-  decimal7 *getDecimalNumber (char *numString);
+  std::shared_ptr<decimal7> getDecimalNumber (char *numString);
   /**
    * @brief Gets a decimal7 number from an integer.
    * @param num The integer value.
-   * @return Pointer to a decimal7 object.
+   * @return Shared pointer to a decimal7 object.
    */
-  decimal7 *getDecimalNumber (int num);
+  std::shared_ptr<decimal7> getDecimalNumber (int num);
   /**
    * @brief Gets a LongSideProfitTargetInPercent expression.
-   * @param profitTarget Pointer to the profit target value.
-   * @return Pointer to a LongSideProfitTargetInPercent object.
+   * @param profitTarget Shared pointer to the profit target value.
+   * @return Shared pointer to a LongSideProfitTargetInPercent object.
    */
-  LongSideProfitTargetInPercent *getLongProfitTarget (decimal7 *profitTarget);
+  std::shared_ptr<LongSideProfitTargetInPercent> getLongProfitTarget (std::shared_ptr<decimal7> profitTarget);
   /**
    * @brief Gets a ShortSideProfitTargetInPercent expression.
-   * @param profitTarget Pointer to the profit target value.
-   * @return Pointer to a ShortSideProfitTargetInPercent object.
+   * @param profitTarget Shared pointer to the profit target value.
+   * @return Shared pointer to a ShortSideProfitTargetInPercent object.
    */
-  ShortSideProfitTargetInPercent *getShortProfitTarget (decimal7 *profitTarget);
+  std::shared_ptr<ShortSideProfitTargetInPercent> getShortProfitTarget (std::shared_ptr<decimal7> profitTarget);
   /**
    * @brief Gets a LongSideStopLossInPercent expression.
-   * @param stopLoss Pointer to the stop loss value.
-   * @return Pointer to a LongSideStopLossInPercent object.
+   * @param stopLoss Shared pointer to the stop loss value.
+   * @return Shared pointer to a LongSideStopLossInPercent object.
    */
-  LongSideStopLossInPercent *getLongStopLoss(decimal7 *stopLoss);
+  std::shared_ptr<LongSideStopLossInPercent> getLongStopLoss(std::shared_ptr<decimal7> stopLoss);
   /**
    * @brief Gets a ShortSideStopLossInPercent expression.
-   * @param stopLoss Pointer to the stop loss value.
-   * @return Pointer to a ShortSideStopLossInPercent object.
+   * @param stopLoss Shared pointer to the stop loss value.
+   * @return Shared pointer to a ShortSideStopLossInPercent object.
    */
-  ShortSideStopLossInPercent *getShortStopLoss(decimal7 *stopLoss);
+  std::shared_ptr<ShortSideStopLossInPercent> getShortStopLoss(std::shared_ptr<decimal7> stopLoss);
+
+  // Legacy raw pointer interface for backward compatibility during migration
+  PriceBarReference* getPriceOpenRaw (unsigned int barOffset) { return getPriceOpen(barOffset).get(); }
+  PriceBarReference* getPriceHighRaw (unsigned int barOffset) { return getPriceHigh(barOffset).get(); }
+  PriceBarReference* getPriceLowRaw (unsigned int barOffset) { return getPriceLow(barOffset).get(); }
+  PriceBarReference* getPriceCloseRaw (unsigned int barOffset) { return getPriceClose(barOffset).get(); }
+  PriceBarReference* getVolumeRaw (unsigned int barOffset) { return getVolume(barOffset).get(); }
+  PriceBarReference* getRoc1Raw (unsigned int barOffset) { return getRoc1(barOffset).get(); }
+  PriceBarReference* getIBS1Raw (unsigned int barOffset) { return getIBS1(barOffset).get(); }
+  PriceBarReference* getIBS2Raw (unsigned int barOffset) { return getIBS2(barOffset).get(); }
+  PriceBarReference* getIBS3Raw (unsigned int barOffset) { return getIBS3(barOffset).get(); }
+  PriceBarReference* getMeanderRaw (unsigned int barOffset) { return getMeander(barOffset).get(); }
+  PriceBarReference* getVChartLowRaw (unsigned int barOffset) { return getVChartLow(barOffset).get(); }
+  PriceBarReference* getVChartHighRaw (unsigned int barOffset) { return getVChartHigh(barOffset).get(); }
+  MarketEntryExpression* getLongMarketEntryOnOpenRaw() { return getLongMarketEntryOnOpen().get(); }
+  MarketEntryExpression* getShortMarketEntryOnOpenRaw() { return getShortMarketEntryOnOpen().get(); }
+  decimal7* getDecimalNumberRaw (char *numString) { return getDecimalNumber(numString).get(); }
+  decimal7* getDecimalNumberRaw (int num) { return getDecimalNumber(num).get(); }
+  LongSideProfitTargetInPercent* getLongProfitTargetRaw (decimal7 *profitTarget) {
+    return getLongProfitTarget(std::shared_ptr<decimal7>(profitTarget, [](decimal7*){})).get();
+  }
+  ShortSideProfitTargetInPercent* getShortProfitTargetRaw (decimal7 *profitTarget) {
+    return getShortProfitTarget(std::shared_ptr<decimal7>(profitTarget, [](decimal7*){})).get();
+  }
+  LongSideStopLossInPercent* getLongStopLossRaw(decimal7 *stopLoss) {
+    return getLongStopLoss(std::shared_ptr<decimal7>(stopLoss, [](decimal7*){})).get();
+  }
+  ShortSideStopLossInPercent* getShortStopLossRaw(decimal7 *stopLoss) {
+    return getShortStopLoss(std::shared_ptr<decimal7>(stopLoss, [](decimal7*){})).get();
+  }
 
 private:
   /**
@@ -2413,67 +2540,67 @@ private:
   /**
    * @brief Array of predefined PriceBarOpen references.
    */
-  PriceBarReference* mPredefinedPriceOpen[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedPriceOpen[MaxNumBarOffsets];
   /**
    * @brief Array of predefined PriceBarHigh references.
    */
-  PriceBarReference* mPredefinedPriceHigh[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedPriceHigh[MaxNumBarOffsets];
   /**
    * @brief Array of predefined PriceBarLow references.
    */
-  PriceBarReference* mPredefinedPriceLow[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedPriceLow[MaxNumBarOffsets];
   /**
    * @brief Array of predefined PriceBarClose references.
    */
-  PriceBarReference* mPredefinedPriceClose[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedPriceClose[MaxNumBarOffsets];
   /**
    * @brief Array of predefined VolumeBarReference objects.
    */
-  PriceBarReference* mPredefinedVolume[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedVolume[MaxNumBarOffsets];
   /**
    * @brief Array of predefined Roc1BarReference objects.
    */
-  PriceBarReference* mPredefinedRoc1[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedRoc1[MaxNumBarOffsets];
   /**
    * @brief Array of predefined IBS1BarReference objects.
    */
-  PriceBarReference* mPredefinedIBS1[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedIBS1[MaxNumBarOffsets];
   /**
    * @brief Array of predefined IBS2BarReference objects.
    */
-  PriceBarReference* mPredefinedIBS2[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedIBS2[MaxNumBarOffsets];
   /**
    * @brief Array of predefined IBS3BarReference objects.
    */
-  PriceBarReference* mPredefinedIBS3[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedIBS3[MaxNumBarOffsets];
   /**
    * @brief Array of predefined MeanderBarReference objects.
    */
-  PriceBarReference* mPredefinedMeander[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedMeander[MaxNumBarOffsets];
   /**
    * @brief Array of predefined VChartLowBarReference objects.
    */
-  PriceBarReference* mPredefinedVChartLow[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedVChartLow[MaxNumBarOffsets];
   /**
    * @brief Array of predefined VChartHighBarReference objects.
    */
-  PriceBarReference* mPredefinedVChartHigh[MaxNumBarOffsets];
+  std::shared_ptr<PriceBarReference> mPredefinedVChartHigh[MaxNumBarOffsets];
   /**
    * @brief Predefined LongMarketEntryOnOpen expression.
    */
-  MarketEntryExpression* mLongEntryOnOpen;
+  std::shared_ptr<MarketEntryExpression> mLongEntryOnOpen;
   /**
    * @brief Predefined ShortMarketEntryOnOpen expression.
    */
-  MarketEntryExpression* mShortEntryOnOpen;
+  std::shared_ptr<MarketEntryExpression> mShortEntryOnOpen;
   /**
    * @brief Map for caching decimal numbers created from strings.
    */
-  std::map<std::string, DecimalPtr> mDecimalNumMap;
+  std::map<std::string, std::shared_ptr<decimal7>> mDecimalNumMap;
   /**
    * @brief Map for caching decimal numbers created from integers.
    */
-  std::map<int, DecimalPtr> mDecimalNumMap2;
+  std::map<int, std::shared_ptr<decimal7>> mDecimalNumMap2;
   /**
    * @brief Map for caching LongSideProfitTargetInPercent objects.
    */
@@ -2490,6 +2617,12 @@ private:
    * @brief Map for caching ShortSideStopLossInPercent objects.
    */
   std::map<decimal7, std::shared_ptr<ShortSideStopLossInPercent>> mShortsStopLoss;
+  mutable std::mutex mDecimalNumMapMutex;
+  mutable std::mutex mDecimalNumMap2Mutex;
+  mutable std::mutex mLongsProfitTargetsMutex;
+  mutable std::mutex mShortsProfitTargetsMutex;
+  mutable std::mutex mLongsStopLossMutex;
+  mutable std::mutex mShortsStopLossMutex;
 };
 
 

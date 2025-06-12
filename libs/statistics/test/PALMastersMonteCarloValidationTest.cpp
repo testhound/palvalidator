@@ -120,9 +120,9 @@ public:
   return std::make_shared<EquitySecurity<D>>("AAPL", "Apple", ts);
 }
 
-PriceActionLabSystem* getSubsetOfPatterns(size_t maxPatterns = 3) {
-  auto* fullSystem = getPricePatterns("QQQ_IR.txt");
-  auto* subset = new PriceActionLabSystem();
+std::shared_ptr<PriceActionLabSystem> getSubsetOfPatterns(size_t maxPatterns = 3) {
+  auto fullSystem = getPricePatterns("QQQ_IR.txt");
+  auto subset = std::make_shared<PriceActionLabSystem>();
 
   size_t count = 0;
   for (auto it = fullSystem->allPatternsBegin(); it != fullSystem->allPatternsEnd() && count < maxPatterns; ++it, ++count) {
@@ -135,7 +135,7 @@ PriceActionLabSystem* getSubsetOfPatterns(size_t maxPatterns = 3) {
 
 TEST_CASE("PALMastersMonteCarloValidation handles null base security") {
   PALMastersMonteCarloValidation<D, DummyStatPolicy> validator(10, std::make_unique<DummyAlgo>());
-  PriceActionLabSystem* dummyPatterns = getRandomPricePatterns();
+  auto dummyPatterns = getRandomPricePatterns();
   REQUIRE_THROWS_AS(validator.runPermutationTests(nullptr, dummyPatterns, DateRange(createDate("20200101"), createDate("20200105"))), PALMastersMonteCarloValidationException);
 }
 
@@ -167,11 +167,10 @@ TEST_CASE("PALMastersMonteCarloValidation yields expected number of survivors") 
 TEST_CASE("PALMastersMonteCarloValidation does not crash with empty pattern set") {
   PALMastersMonteCarloValidation<D, DummyStatPolicy> validator(10, std::make_unique<DummyAlgo>());
   auto security = makeTestSecurity();
-  auto emptyPatterns = new PriceActionLabSystem();
+  auto emptyPatterns = std::make_shared<PriceActionLabSystem>();
   DateRange range(security->getTimeSeries()->getFirstDate(), security->getTimeSeries()->getLastDate());
   validator.runPermutationTests(security, emptyPatterns, range);
   REQUIRE(validator.getNumSurvivingStrategies() == 0);
-  delete emptyPatterns;
 }
 
 TEST_CASE("PALMastersMonteCarloValidation works with subset of patterns") {
@@ -196,7 +195,6 @@ TEST_CASE("PALMastersMonteCarloValidation works with subset of patterns") {
 
   validator.runPermutationTests(security, patterns, range);
   REQUIRE(validator.getNumSurvivingStrategies() > 0);
-  delete patterns;
 }
 
 TEST_CASE("PALMastersMonteCarloValidation ctor rejects zero permutations") {
@@ -251,11 +249,10 @@ TEST_CASE("No strategies found yields zero survivors")
 {
   PALMastersMonteCarloValidation<D, DummyStatPolicy> v(10, std::make_unique<DummyAlgo>());
   auto sec          = makeTestSecurity();
-  auto emptyPatterns = new PriceActionLabSystem();  // no patterns
+  auto emptyPatterns = std::make_shared<PriceActionLabSystem>();  // no patterns
   DateRange r{sec->getTimeSeries()->getFirstDate(),
               sec->getTimeSeries()->getLastDate()};
 
   v.runPermutationTests(sec, emptyPatterns, r);
   REQUIRE(v.getNumSurvivingStrategies() == 0);
-  delete emptyPatterns;
 }

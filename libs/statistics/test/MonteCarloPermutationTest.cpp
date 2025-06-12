@@ -45,7 +45,7 @@ public:
       static std::shared_ptr<PriceActionLabPattern> dummyPattern;
       if (!dummyPattern) {
         // Get a real pattern from the test utility
-        PriceActionLabSystem* patterns = getRandomPricePatterns();
+        auto patterns = getRandomPricePatterns();
         if (patterns && patterns->getNumPatterns() > 0) {
           auto it = patterns->allPatternsBegin();
           dummyPattern = *it;

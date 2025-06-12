@@ -146,7 +146,8 @@ PriceActionLabSystem::PriceActionLabSystem (std::list<PALPatternPtr>& listOfPatt
  * Cleans up resources. Shared_ptrs manage their own memory.
  */
 PriceActionLabSystem::~PriceActionLabSystem()
-{}
+{
+}
 
 /**
  * @brief Gets the total number of unique patterns stored in the system (longs + shorts).

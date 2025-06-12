@@ -99,10 +99,10 @@ namespace mkc_timeseries
      * @param dateRange The date range for which the permutation tests should be run.
      */
     virtual void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
-				     PriceActionLabSystem* patterns,
-				     const DateRange& dateRange,
-				     const Decimal& pValueSignificanceLevel =
-				     DecimalConstants<Decimal>::SignificantPValue) = 0;
+         std::shared_ptr<PriceActionLabSystem> patterns,
+         const DateRange& dateRange,
+         const Decimal& pValueSignificanceLevel =
+         DecimalConstants<Decimal>::SignificantPValue) = 0;
 
     /*!
      * @brief Gets an iterator to the beginning of the list of surviving strategies.
@@ -274,10 +274,10 @@ namespace mkc_timeseries
      * @override
      */
     void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
-			     PriceActionLabSystem* patterns,
-			     const DateRange& dateRange,
-			     const Decimal& pValueSignificanceLevel =
-			     DecimalConstants<Decimal>::SignificantPValue) override
+        std::shared_ptr<PriceActionLabSystem> patterns,
+        const DateRange& dateRange,
+        const Decimal& pValueSignificanceLevel =
+        DecimalConstants<Decimal>::SignificantPValue) override
     {
       if (!baseSecurity)
         throw std::invalid_argument("Base security must not be null");
@@ -420,9 +420,9 @@ namespace mkc_timeseries
 
     // 3) Signature now parallels PALMonteCarloValidation
     void runPermutationTests(
-			     std::shared_ptr<Security<Decimal>> baseSecurity,
-			     PriceActionLabSystem*             patterns,
-			     const DateRange&                  dateRange)
+        std::shared_ptr<Security<Decimal>> baseSecurity,
+        std::shared_ptr<PriceActionLabSystem> patterns,
+        const DateRange&                  dateRange)
     {
       if (!baseSecurity)
 	throw std::invalid_argument("Base security must not be null");

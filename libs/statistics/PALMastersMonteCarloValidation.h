@@ -195,10 +195,10 @@ template <class Decimal, class BaselineStatPolicy>
        *or if a template backtester cannot be created.
        */
       void runPermutationTests(std::shared_ptr<Security<Decimal>> baseSecurity,
-			       PriceActionLabSystem *patterns,
-			       const DateRange& dateRange,
-			       const Decimal& pValueSignificanceLevel =
-			       DecimalConstants<Decimal>::SignificantPValue)
+          std::shared_ptr<PriceActionLabSystem> patterns,
+          const DateRange& dateRange,
+          const Decimal& pValueSignificanceLevel =
+          DecimalConstants<Decimal>::SignificantPValue)
       {
 	if (!baseSecurity)
 	  throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");

@@ -40,8 +40,8 @@ createDescription (const std::string& fileName, unsigned int index, unsigned lon
                    const DecimalType& percLong, const DecimalType& percShort,
                    unsigned int numTrades, unsigned int consecutiveLosses)
 {
-    auto pL = new DecimalType(percLong);
-    auto pS = new DecimalType(percShort);
+    auto pL = std::make_shared<DecimalType>(percLong);
+    auto pS = std::make_shared<DecimalType>(percShort);
     return std::make_unique<PatternDescription>(const_cast<char*>(fileName.c_str()), index, indexDate, pL, pS, numTrades, consecutiveLosses);
 }
 
@@ -54,19 +54,19 @@ std::unique_ptr<ShortMarketEntryOnOpen> createShortOnOpen() {
 }
 
 std::unique_ptr<LongSideProfitTargetInPercent> createLongProfitTarget(const DecimalType& targetPct) {
-    return std::make_unique<LongSideProfitTargetInPercent>(new DecimalType(targetPct));
+    return std::make_unique<LongSideProfitTargetInPercent>(std::make_shared<DecimalType>(targetPct));
 }
 
 std::unique_ptr<LongSideStopLossInPercent> createLongStopLoss(const DecimalType& stopPct) {
-    return std::make_unique<LongSideStopLossInPercent>(new DecimalType(stopPct));
+    return std::make_unique<LongSideStopLossInPercent>(std::make_shared<DecimalType>(stopPct));
 }
 
 std::unique_ptr<ShortSideProfitTargetInPercent> createShortProfitTarget(const DecimalType& targetPct) {
-    return std::make_unique<ShortSideProfitTargetInPercent>(new DecimalType(targetPct));
+    return std::make_unique<ShortSideProfitTargetInPercent>(std::make_shared<DecimalType>(targetPct));
 }
 
 std::unique_ptr<ShortSideStopLossInPercent> createShortStopLoss(const DecimalType& stopPct) {
-    return std::make_unique<ShortSideStopLossInPercent>(new DecimalType(stopPct));
+    return std::make_unique<ShortSideStopLossInPercent>(std::make_shared<DecimalType>(stopPct));
 }
 
 
@@ -110,7 +110,9 @@ std::shared_ptr<PriceActionLabPattern> createShortPattern1() {
     auto stop = createShortStopLoss(createDecimal("1.28"));
 
     return std::make_shared<PriceActionLabPattern>(desc.release(), shortPatternExpr.release(),
-                                                    entry.release(), target.release(), stop.release());
+                                                    std::shared_ptr<MarketEntryExpression>(entry.release()),
+                                                    std::shared_ptr<ProfitTargetInPercentExpression>(target.release()),
+                                                    std::shared_ptr<StopLossInPercentExpression>(stop.release()));
 }
 
 
@@ -143,7 +145,9 @@ std::shared_ptr<PriceActionLabPattern> createLongPattern1() {
     auto stop = createLongStopLoss(createDecimal("1.28"));
 
     return std::make_shared<PriceActionLabPattern>(desc.release(), longPatternExpr.release(),
-                                                    entry.release(), target.release(), stop.release());
+                                                    std::shared_ptr<MarketEntryExpression>(entry.release()),
+                                                    std::shared_ptr<ProfitTargetInPercentExpression>(target.release()),
+                                                    std::shared_ptr<StopLossInPercentExpression>(stop.release()));
 }
 
 // --- Portfolio / Security Setup Helpers ---

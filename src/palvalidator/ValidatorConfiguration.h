@@ -33,14 +33,17 @@ namespace mkc_timeseries
   {
   public:
     ValidatorConfiguration(std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
-                          PriceActionLabSystem* patterns,
-                          const DateRange& insampleDateRange,
-                          const DateRange& oosDateRange)
+			   std::shared_ptr<PriceActionLabSystem> patterns,
+			   const DateRange& insampleDateRange,
+			   const DateRange& oosDateRange)
       : mSecurity(aSecurity),
         mPricePatterns(patterns),
         mInsampleDateRange(insampleDateRange),
         mOosDateRange(oosDateRange)
     {}
+
+    // Backward compatibility constructor with raw pointer - REMOVED
+    // This constructor was causing memory corruption due to improper shared_ptr management
 
     ValidatorConfiguration (const ValidatorConfiguration& rhs)
       : mSecurity(rhs.mSecurity),
@@ -71,10 +74,12 @@ namespace mkc_timeseries
       return mSecurity;
     }
 
-    PriceActionLabSystem *getPricePatterns() const
+    // New interface returning shared_ptr
+    std::shared_ptr<PriceActionLabSystem> getPricePatterns() const
     {
       return mPricePatterns;
     }
+
 
     const DateRange& getInsampleDateRange() const
     {
@@ -88,7 +93,7 @@ namespace mkc_timeseries
 
   private:
     std::shared_ptr<Security<Decimal>> mSecurity;
-    PriceActionLabSystem *mPricePatterns;
+    std::shared_ptr<PriceActionLabSystem> mPricePatterns;
     DateRange mInsampleDateRange;
     DateRange mOosDateRange;
   };

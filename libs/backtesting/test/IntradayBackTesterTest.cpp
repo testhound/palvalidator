@@ -15,22 +15,22 @@ using namespace boost::gregorian;
 // Helper to create a simple long pattern that fires if the close is greater than the open.
 std::shared_ptr<PriceActionLabPattern> createSimpleIntradayLongPattern()
 {
-    // Create decimal pointers for percentLong and percentShort
-    auto percentLong = new decimal7(createDecimal("100"));
-    auto percentShort = new decimal7(createDecimal("0"));
+    // Create shared_ptr for percentLong and percentShort
+    auto percentLong = std::make_shared<decimal7>(createDecimal("100"));
+    auto percentShort = std::make_shared<decimal7>(createDecimal("0"));
     
     auto desc = new PatternDescription("dummy.txt", 1, 20240101, percentLong, percentShort, 1, 0);
     auto co = new PriceBarClose(0);
     auto o = new PriceBarOpen(0);
     auto expr = new GreaterThanExpr(co, o);
-    auto entry = new LongMarketEntryOnOpen();
+    auto entry = std::make_shared<LongMarketEntryOnOpen>();
     
-    // Create decimal pointers for profit target and stop loss
-    auto targetDecimal = new decimal7(createDecimal("1.0"));
-    auto stopDecimal = new decimal7(createDecimal("0.5"));
+    // Create shared_ptr for profit target and stop loss
+    auto targetDecimal = std::make_shared<decimal7>(createDecimal("1.0"));
+    auto stopDecimal = std::make_shared<decimal7>(createDecimal("0.5"));
     
-    auto target = new LongSideProfitTargetInPercent(targetDecimal); // 1% target
-    auto stop = new LongSideStopLossInPercent(stopDecimal);     // 0.5% stop
+    auto target = std::make_shared<LongSideProfitTargetInPercent>(targetDecimal); // 1% target
+    auto stop = std::make_shared<LongSideStopLossInPercent>(stopDecimal);     // 0.5% stop
 
     return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
 }
@@ -38,23 +38,23 @@ std::shared_ptr<PriceActionLabPattern> createSimpleIntradayLongPattern()
 // Helper to create a simple short pattern that fires if the close is less than the open.
 std::shared_ptr<PriceActionLabPattern> createSimpleIntradayShortPattern()
 {
-    // Create decimal pointers for percentLong and percentShort
-    auto percentLong = new decimal7(createDecimal("0"));
-    auto percentShort = new decimal7(createDecimal("100"));
+    // Create shared_ptr for percentLong and percentShort
+    auto percentLong = std::make_shared<decimal7>(createDecimal("0"));
+    auto percentShort = std::make_shared<decimal7>(createDecimal("100"));
     
     auto desc = new PatternDescription("dummy.txt", 1, 20240101, percentLong, percentShort, 1, 0);
     auto co = new PriceBarClose(0);
     auto o = new PriceBarOpen(0);
     // Use GreaterThanExpr with swapped arguments to simulate "less than" (o > co means co < o)
     auto expr = new GreaterThanExpr(o, co);
-    auto entry = new ShortMarketEntryOnOpen();
+    auto entry = std::make_shared<ShortMarketEntryOnOpen>();
     
-    // Create decimal pointers for profit target and stop loss
-    auto targetDecimal = new decimal7(createDecimal("1.0"));
-    auto stopDecimal = new decimal7(createDecimal("0.5"));
+    // Create shared_ptr for profit target and stop loss
+    auto targetDecimal = std::make_shared<decimal7>(createDecimal("1.0"));
+    auto stopDecimal = std::make_shared<decimal7>(createDecimal("0.5"));
     
-    auto target = new ShortSideProfitTargetInPercent(targetDecimal); // 1% target
-    auto stop = new ShortSideStopLossInPercent(stopDecimal);    // 0.5% stop
+    auto target = std::make_shared<ShortSideProfitTargetInPercent>(targetDecimal); // 1% target
+    auto stop = std::make_shared<ShortSideStopLossInPercent>(stopDecimal);    // 0.5% stop
 
     return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
 }

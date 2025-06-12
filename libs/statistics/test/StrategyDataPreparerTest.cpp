@@ -76,14 +76,14 @@ namespace {
 
   PALPatternPtr createDummyPattern(bool isLong = true) {
     auto desc = std::make_shared<PatternDescription>("dummy", 0, 20200101,
-        new DecimalType("1.0"), new DecimalType("1.0"), 10, 0);
+        std::make_shared<DecimalType>("1.0"), std::make_shared<DecimalType>("1.0"), 10, 0);
     auto expr = std::make_shared<GreaterThanExpr>(
         new PriceBarClose(0), new PriceBarOpen(0));
     auto entry = isLong
-        ? static_cast<MarketEntryExpression*>(new LongMarketEntryOnOpen())
-        : static_cast<MarketEntryExpression*>(new ShortMarketEntryOnOpen());
-    auto target = new LongSideProfitTargetInPercent(new DecimalType("5.0"));
-    auto stop   = new LongSideStopLossInPercent(new DecimalType("2.0"));
+        ? std::shared_ptr<MarketEntryExpression>(new LongMarketEntryOnOpen())
+        : std::shared_ptr<MarketEntryExpression>(new ShortMarketEntryOnOpen());
+    auto target = std::shared_ptr<ProfitTargetInPercentExpression>(new LongSideProfitTargetInPercent(std::make_shared<DecimalType>("5.0")));
+    auto stop   = std::shared_ptr<StopLossInPercentExpression>(new LongSideStopLossInPercent(std::make_shared<DecimalType>("2.0")));
     return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
   }
 
@@ -128,7 +128,7 @@ TEST_CASE("StrategyDataPreparer::prepare returns strategies for valid inputs") {
 
   CPPTRACE_TRY {
     auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-        bt, sec, patterns.get());
+        bt, sec, patterns);
     REQUIRE(results.size() == 2);
     for (const auto& ctx : results) {
       REQUIRE(ctx.strategy);
@@ -150,12 +150,12 @@ TEST_CASE("StrategyDataPreparer::prepare throws on null inputs") {
 
   REQUIRE_THROWS_AS(
       (StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-          nullptr, sec, patterns.get())),
+          nullptr, sec, patterns)),
       std::runtime_error);
 
   REQUIRE_THROWS_AS(
       (StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-          bt, nullptr, patterns.get())),
+          bt, nullptr, patterns)),
       std::runtime_error);
 
   REQUIRE_THROWS_AS(
@@ -170,7 +170,7 @@ TEST_CASE("prepare returns empty container when no patterns") {
   PriceActionLabSystem emptyPatterns;
 
   auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-      bt, sec, &emptyPatterns);
+      bt, sec, std::make_shared<PriceActionLabSystem>(emptyPatterns));
 
   REQUIRE(results.empty());
 }
@@ -193,7 +193,7 @@ TEST_CASE("prepare propagates exception from back-tester") {
 
   REQUIRE_THROWS(
 		 (StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-									      bt, sec, patterns.get())));
+									      bt, sec, patterns)));
 }
 
 TEST_CASE("prepare assigns correct strategy names") {
@@ -205,7 +205,7 @@ TEST_CASE("prepare assigns correct strategy names") {
   patterns->addPattern(createDummyPattern(true));
 
   auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-      bt, sec, patterns.get());
+      bt, sec, patterns);
   REQUIRE(results.size() == 3);
 
   std::vector<std::string> names;
@@ -231,7 +231,7 @@ TEST_CASE("StrategyDataPreparer::prepare with random price series") {
 
   CPPTRACE_TRY {
     auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-        bt, sec, patterns.get());
+        bt, sec, patterns);
     REQUIRE(results.size() == 2);
   }
   CPPTRACE_CATCH(...) {
@@ -243,7 +243,7 @@ TEST_CASE("StrategyDataPreparer::prepare with random price series") {
 TEST_CASE("StrategyDataPreparer::prepare with random price patterns") {
   auto bt       = std::make_shared<DummyBackTester>();
   auto sec      = createDummySecurity();
-  PriceActionLabSystem* patterns = getRandomPricePatterns();
+  auto patterns = getRandomPricePatterns();
   REQUIRE(patterns->getNumPatterns() > 0);
 
   CPPTRACE_TRY {
@@ -259,5 +259,4 @@ TEST_CASE("StrategyDataPreparer::prepare with random price patterns") {
   CPPTRACE_CATCH(...) {
     FAIL("Backtest on random patterns should not throw");
   }
-  delete patterns;
 }

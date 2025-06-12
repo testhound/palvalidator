@@ -17,35 +17,49 @@ using namespace boost::posix_time;
 // Pattern: Enters long if the close of the current bar is greater than the high of the previous bar.
 std::shared_ptr<PriceActionLabPattern> createIntradayLongPattern()
 {
-    PatternDescription *desc = createDescription(std::string("IntradayLong.txt"), 1, 20230103, "60.00", "40.00", 10, 2);
+    // Create description using shared_ptr
+    auto percentLong = std::make_shared<DecimalType>(createDecimal("60.00"));
+    auto percentShort = std::make_shared<DecimalType>(createDecimal("40.00"));
+    auto desc = std::make_shared<PatternDescription>("IntradayLong.txt", 1, 20230103,
+                                                     percentLong, percentShort, 10, 2);
     
-    auto close0 = new PriceBarClose(0); // Current bar's close
-    auto high1 = new PriceBarHigh(1);   // Previous bar's high
-    auto longPattern = new GreaterThanExpr(close0, high1);
+    auto close0 = std::make_shared<PriceBarClose>(0); // Current bar's close
+    auto high1 = std::make_shared<PriceBarHigh>(1);   // Previous bar's high
+    auto longPattern = std::make_shared<GreaterThanExpr>(close0, high1);
 
-    MarketEntryExpression *entry = createLongOnOpen();
+    auto entry = createLongOnOpen();
     // Using smaller percentages suitable for intraday volatility
-    ProfitTargetInPercentExpression *target = createLongProfitTarget("0.50"); // 0.50%
-    StopLossInPercentExpression *stop = createShortStopLoss("0.25");         // 0.25%
+    auto target = createLongProfitTarget("0.50"); // 0.50%
+    auto stop = createLongStopLoss("0.25");       // 0.25% (Note: Fixed to use LongStopLoss, not ShortStopLoss)
 
-    return std::make_shared<PriceActionLabPattern>(desc, longPattern, entry, target, stop);
+    return std::make_shared<PriceActionLabPattern>(desc, longPattern,
+                                                   entry,
+                                                   target,
+                                                   stop);
 }
 
 // Helper function to create a simple intraday short pattern
 // Pattern: Enters short if the close of the current bar is less than the low of the previous bar.
 std::shared_ptr<PriceActionLabPattern> createIntradayShortPattern()
 {
-    PatternDescription *desc = createDescription(std::string("IntradayShort.txt"), 1, 20230103, "40.00", "60.00", 10, 2);
+    // Create description using shared_ptr
+    auto percentLong = std::make_shared<DecimalType>(createDecimal("40.00"));
+    auto percentShort = std::make_shared<DecimalType>(createDecimal("60.00"));
+    auto desc = std::make_shared<PatternDescription>("IntradayShort.txt", 1, 20230103,
+                                                     percentLong, percentShort, 10, 2);
 
-    auto low1 = new PriceBarLow(1);     // Previous bar's low
-    auto close0 = new PriceBarClose(0); // Current bar's close
-    auto shortPattern = new GreaterThanExpr(low1, close0); // low1 > close0 is equivalent to close0 < low1
+    auto low1 = std::make_shared<PriceBarLow>(1);     // Previous bar's low
+    auto close0 = std::make_shared<PriceBarClose>(0); // Current bar's close
+    auto shortPattern = std::make_shared<GreaterThanExpr>(low1, close0); // low1 > close0 is equivalent to close0 < low1
 
-    MarketEntryExpression *entry = createShortOnOpen();
-    ProfitTargetInPercentExpression *target = createShortProfitTarget("0.50");
-    StopLossInPercentExpression *stop = createShortStopLoss("0.25");
+    auto entry = createShortOnOpen();
+    auto target = createShortProfitTarget("0.50");
+    auto stop = createShortStopLoss("0.25");
 
-    return std::make_shared<PriceActionLabPattern>(desc, shortPattern, entry, target, stop);
+    return std::make_shared<PriceActionLabPattern>(desc, shortPattern,
+                                                   entry,
+                                                   target,
+                                                   stop);
 }
 
 

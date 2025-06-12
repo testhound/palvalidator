@@ -13,6 +13,7 @@
 
 #include "PalAst.h"
 #include "PalParseDriver.h"
+#include "AstResourceManager.h"
 #include "scanner.h" // Needs to be included for Scanner definition used by mScanner
 
 namespace mkc_palast {
@@ -34,8 +35,10 @@ PalParseDriver::PalParseDriver(const std::string &fileName)
     mParser (mScanner, *this), // Initialize parser, passing scanner and this driver
     m_location(0),      // Initialize location counter
     mFileName(fileName), // Store the filename
+    // Create a new AstResourceManager for memory management
+    mResourceManager(std::make_shared<AstResourceManager>()),
     // Create a new PriceActionLabSystem with a default SmallestVolatilityTieBreaker
-    mPalStrategies(new PriceActionLabSystem (std::shared_ptr<PatternTieBreaker> (new SmallestVolatilityTieBreaker)))
+    mPalStrategies(std::make_shared<PriceActionLabSystem>(std::shared_ptr<PatternTieBreaker>(new SmallestVolatilityTieBreaker)))
 {
   // Constructor body is empty as initialization is done in the initializer list.
 }
@@ -74,10 +77,16 @@ int PalParseDriver::Parse()
  *
  * @return Pointer to the `PriceActionLabSystem` object.
  */
-PriceActionLabSystem *
-PalParseDriver::getPalStrategies()
+std::shared_ptr<PriceActionLabSystem>
+PalParseDriver::getPalStrategies() const
 {
   return mPalStrategies;
+}
+
+std::shared_ptr<AstResourceManager>
+PalParseDriver::getResourceManager() const
+{
+  return mResourceManager;
 }
 
 /**

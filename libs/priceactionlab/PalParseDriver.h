@@ -9,6 +9,7 @@
 #include <vector>
 #include <memory>
 #include "PalAst.h"
+#include "AstResourceManager.h"
 #include "scanner.h"
 #include "PalParser.hpp"
 
@@ -40,9 +41,21 @@ public:
   
   /**
    * @brief Retrieves the collection of parsed PAL strategies.
-   * @return Pointer to the PriceActionLabSystem object managing the parsed patterns.
+   * @return Shared pointer to the PriceActionLabSystem object managing the parsed patterns.
    */
-  PriceActionLabSystem* getPalStrategies();
+  std::shared_ptr<PriceActionLabSystem> getPalStrategies() const;
+  
+  /**
+   * @brief Get resource manager for advanced usage.
+   * @return Shared pointer to the AstResourceManager.
+   */
+  std::shared_ptr<AstResourceManager> getResourceManager() const;
+  
+  /**
+   * @brief Keep existing interface for grammar compatibility.
+   * @return Raw pointer to the resource manager for grammar use.
+   */
+  AstResourceManager* getResourceManagerPtr() const { return mResourceManager.get(); }
   
   /**
    * @brief Initiates the parsing of the input file.
@@ -94,10 +107,14 @@ private:
   std::string mFileName;
   
   /**
-   * @brief Pointer to the PriceActionLabSystem that stores the parsed patterns.
-   * The PalParseDriver takes ownership of this object.
+   * @brief Shared pointer to the AstResourceManager for memory management.
    */
-  PriceActionLabSystem* mPalStrategies;
+  std::shared_ptr<AstResourceManager> mResourceManager;
+  
+  /**
+   * @brief Shared pointer to the PriceActionLabSystem that stores the parsed patterns.
+   */
+  std::shared_ptr<PriceActionLabSystem> mPalStrategies;
 };
 } // namespace mkc_palast
 

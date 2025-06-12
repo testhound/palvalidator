@@ -12,7 +12,7 @@ using Num = num::DefaultNumber;
 
 template <template <typename> class _SurvivingStrategyPolicy, typename _McptType>
 static void
-validateByPermuteMarketChanges (const std::shared_ptr<McptConfiguration<Num>>& configuration, unsigned int numPermutations, PriceActionLabSystem* pal, const std::string& validationOutputFile)
+validateByPermuteMarketChanges (const std::shared_ptr<McptConfiguration<Num>>& configuration, unsigned int numPermutations, std::shared_ptr<PriceActionLabSystem> pal, const std::string& validationOutputFile)
 {
   std::cout << "starting validation." << std::endl;
   PALMonteCarloValidation<Num,_McptType,_SurvivingStrategyPolicy> validation(configuration, numPermutations);
@@ -27,7 +27,7 @@ validateByPermuteMarketChanges (const std::shared_ptr<McptConfiguration<Num>>& c
 
 }
 
-static void validate(const std::shared_ptr<McptConfiguration<Num>>& configuration, unsigned int numPermutations, PriceActionLabSystem* pal, const std::string& validationOutputFile)
+static void validate(const std::shared_ptr<McptConfiguration<Num>>& configuration, unsigned int numPermutations, std::shared_ptr<PriceActionLabSystem> pal, const std::string& validationOutputFile)
 {
   validateByPermuteMarketChanges <UnadjustedPValueStrategySelection,
       BestOfMonteCarloPermuteMarketChanges<Num,
@@ -226,9 +226,9 @@ int main(int argc, char **argv)
                       bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                       if (exportOk && sideToRun == SideToRun::LongOnly)
                         {
-                          std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                          auto sys = getPricePatternsShared(fileName);
                           if (sys->getNumPatterns() > 0)
-                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys, validatedFileName);
                         }
                     }
                   if (sideToRun != SideToRun::LongOnly && mergingPhase)
@@ -241,9 +241,9 @@ int main(int argc, char **argv)
                       bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
                       if (exportOk && sideToRun == SideToRun::ShortOnly)
                         {
-                          std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                          auto sys = getPricePatternsShared(fileName);
                           if (sys->getNumPatterns() > 0)
-                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);            }
+                            validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys, validatedFileName);            }
                     }
                   if (sideToRun == SideToRun::LongShort && mergingPhase)
                     {
@@ -259,9 +259,9 @@ int main(int argc, char **argv)
                       //bool exportOk = matcher.exportSelectPatterns<Num>(&tspair.first, &tspair.second, fileName, portfolio);
 
 
-                      std::unique_ptr<PriceActionLabSystem> sys = getPricePatterns(fileName);
+                      auto sys = getPricePatternsShared(fileName);
                       if (sys->getNumPatterns() > 0)
-                        validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys.get(), validatedFileName);
+                        validate(search.getConfig(), search.getSearchConfig()->getNumPermutations(), sys, validatedFileName);
 
                     }
 
