@@ -71,7 +71,6 @@ namespace mkc_timeseries
     std::string inSampleStartDate, inSampleEndDate, oosStartDate, oosEndDate;
     std::string timeFrameStr;
 
-    boost::gregorian::date insampleDateStart, insampleDateEnd, oosDateStart, oosDateEnd;
 
     csvConfigFile.read_row (tickerSymbol, palIRFilePathStr, historicDataFilePathStr,
        historicDataFormatStr, inSampleStartDate, inSampleEndDate,
@@ -97,35 +96,34 @@ namespace mkc_timeseries
         throw ValidatorConfigurationException("ValidatorConfigurationFileReader::readConfigurationFile - Out-of-sample date format inconsistency: start and end dates must use the same format");
     }
     
-    if (isInSamplePtimeFormat) {
-        // ptime format (YYYYMMDDTHHMMSS) - extract date portion for DateRange
-        boost::posix_time::ptime ptimeStart = boost::posix_time::from_iso_string(inSampleStartDate);
-        boost::posix_time::ptime ptimeEnd = boost::posix_time::from_iso_string(inSampleEndDate);
-        insampleDateStart = ptimeStart.date();
-        insampleDateEnd = ptimeEnd.date();
-    } else {
-        // gregorian format (YYYYMMDD)
-        insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
-        insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
-    }
+    // NEW: Preserve ptime information when detected
+    DateRange inSampleDates = [&]() {
+        if (isInSamplePtimeFormat) {
+            boost::posix_time::ptime ptimeStart = boost::posix_time::from_iso_string(inSampleStartDate);
+            boost::posix_time::ptime ptimeEnd = boost::posix_time::from_iso_string(inSampleEndDate);
+            return DateRange(ptimeStart, ptimeEnd);  // Preserves time precision
+        } else {
+            // Backward compatibility for gregorian dates
+            boost::gregorian::date insampleDateStart = boost::gregorian::from_undelimited_string(inSampleStartDate);
+            boost::gregorian::date insampleDateEnd = boost::gregorian::from_undelimited_string(inSampleEndDate);
+            return DateRange(insampleDateStart, insampleDateEnd);
+        }
+    }();
 
-    DateRange inSampleDates(insampleDateStart, insampleDateEnd);
+    DateRange ooSampleDates = [&]() {
+        if (isOosPtimeFormat) {
+            boost::posix_time::ptime ptimeStart = boost::posix_time::from_iso_string(oosStartDate);
+            boost::posix_time::ptime ptimeEnd = boost::posix_time::from_iso_string(oosEndDate);
+            return DateRange(ptimeStart, ptimeEnd);  // Preserves time precision
+        } else {
+            // Backward compatibility for gregorian dates
+            boost::gregorian::date oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
+            boost::gregorian::date oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
+            return DateRange(oosDateStart, oosDateEnd);
+        }
+    }();
 
-    if (isOosPtimeFormat) {
-        // ptime format (YYYYMMDDTHHMMSS) - extract date portion for DateRange
-        boost::posix_time::ptime ptimeStart = boost::posix_time::from_iso_string(oosStartDate);
-        boost::posix_time::ptime ptimeEnd = boost::posix_time::from_iso_string(oosEndDate);
-        oosDateStart = ptimeStart.date();
-        oosDateEnd = ptimeEnd.date();
-    } else {
-        // gregorian format (YYYYMMDD)
-        oosDateStart = boost::gregorian::from_undelimited_string(oosStartDate);
-        oosDateEnd = boost::gregorian::from_undelimited_string(oosEndDate);
-    }
-
-    DateRange ooSampleDates( oosDateStart, oosDateEnd);
-
-    if (oosDateStart <= insampleDateEnd)
+    if (ooSampleDates.getFirstDateTime() <= inSampleDates.getLastDateTime())
       throw ValidatorConfigurationException("ValidatorConfigurationFileReader::readConfigurationFile - OOS start date starts before insample end date");
 
     boost::filesystem::path irFilePath (palIRFilePathStr);
@@ -150,19 +148,35 @@ namespace mkc_timeseries
 
     auto security = SecurityFactory<Decimal>::createSecurity(tickerSymbol, reader->getTimeSeries());
 
-    //  insampleDateStart
-    boost::gregorian::date timeSeriesStartDate = reader->getTimeSeries()->getFirstDate();
-    if (insampleDateStart < timeSeriesStartDate)
-
+    // Validate that the in-sample start time is not too far before the time series start
+    boost::posix_time::ptime timeSeriesStartDateTime = reader->getTimeSeries()->getFirstDateTime();
+    if (inSampleDates.getFirstDateTime() < timeSeriesStartDateTime)
       {
-	boost::gregorian::date_period daysBetween(insampleDateStart, timeSeriesStartDate);
-	if (daysBetween.length().days() > 10)
-	  {
-	    std::string inSampleDateStr(boost::gregorian::to_simple_string (insampleDateStart));
-	    std::string timeSeriesDateStr(boost::gregorian::to_simple_string (timeSeriesStartDate));
+        boost::posix_time::time_duration timeBetween = timeSeriesStartDateTime - inSampleDates.getFirstDateTime();
+        
+        // Calculate maximum allowed gap based on the time series interval
+        boost::posix_time::time_duration maxAllowedGap;
+        if (backTestingTimeFrame == TimeFrame::INTRADAY && reader->getTimeSeries()->getNumEntries() >= 2) {
+            // For intraday data, use the actual interval and allow up to 10 intervals worth of gap
+            try {
+                boost::posix_time::time_duration interval = reader->getTimeSeries()->getIntradayTimeFrameDuration();
+                maxAllowedGap = interval * 10;  // Allow up to 10 intervals
+            } catch (const std::exception&) {
+                // Fallback to 10 days if interval calculation fails
+                maxAllowedGap = boost::posix_time::hours(240);
+            }
+        } else {
+            // For EOD data or when interval can't be determined, use 10 days
+            maxAllowedGap = boost::posix_time::hours(240);
+        }
+        
+        if (timeBetween > maxAllowedGap)
+          {
+            std::string inSampleDateStr = boost::posix_time::to_simple_string(inSampleDates.getFirstDateTime());
+            std::string timeSeriesDateStr = boost::posix_time::to_simple_string(timeSeriesStartDateTime);
 
-	    throw ValidatorConfigurationException (std::string("Number of days between configuration file IS start date of ") +inSampleDateStr +std::string(" and TimeSeries start date of ") +timeSeriesDateStr +std::string(" is greater than 10 days"));
-	  }
+            throw ValidatorConfigurationException (std::string("Time gap between configuration file IS start time of ") +inSampleDateStr +std::string(" and TimeSeries start time of ") +timeSeriesDateStr +std::string(" is greater than allowed maximum"));
+          }
       }
 
     // Constructor driver (facade) that will parse the IR and return
@@ -179,10 +193,8 @@ namespace mkc_timeseries
     std::cout << "Total long IR patterns = " << system->getNumLongPatterns() << std::endl;
     std::cout << "Total short IR patterns = " << system->getNumShortPatterns() << std::endl;
 
-    auto oosBackTester = BackTesterFactory<Decimal>::getBackTester(backTestingTimeFrame, ooSampleDates);
-    auto isBackTester  = BackTesterFactory<Decimal>::getBackTester(backTestingTimeFrame, inSampleDates);
-    return std::make_shared<ValidatorConfiguration<Decimal>>(oosBackTester, isBackTester, security,
-							     system, inSampleDates, ooSampleDates);
+    // SIMPLIFIED: Constructor call without BackTester creation
+    return std::make_shared<ValidatorConfiguration<Decimal>>(security, system, inSampleDates, ooSampleDates);
   }
 
   

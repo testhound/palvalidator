@@ -141,8 +141,6 @@ namespace {
     void backtest() override {}
 
   protected:
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const override { return d; }
-    TimeSeriesDate next_period    (const TimeSeriesDate& d) const override { return d; }
   };
 
   class DummyPalStrategy : public PalStrategy<DecimalType> {

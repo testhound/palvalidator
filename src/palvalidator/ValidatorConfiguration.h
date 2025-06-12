@@ -12,7 +12,6 @@
 #include <boost/date_time.hpp>
 #include "Security.h"
 #include "DateRange.h"
-#include "BackTester.h"
 #include "PalAst.h"
 #include "number.h"
 
@@ -33,57 +32,39 @@ namespace mkc_timeseries
   class ValidatorConfiguration
   {
   public:
-    ValidatorConfiguration (std::shared_ptr<BackTester<Decimal>> aBacktester,
-		       std::shared_ptr<BackTester<Decimal>> aInSampleBacktester,
-		       std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
-		       PriceActionLabSystem* patterns,
-		       const DateRange& insampleDateRange,
-		       const DateRange& oosDateRange)
-      : mBacktester (aBacktester),
-	mInSampleBacktester (aInSampleBacktester),
-	mSecurity(aSecurity),
-	mPricePatterns(patterns),
-	mInsampleDateRange(insampleDateRange),
-	mOosDateRange(oosDateRange)
+    ValidatorConfiguration(std::shared_ptr<mkc_timeseries::Security<Decimal>> aSecurity,
+                          PriceActionLabSystem* patterns,
+                          const DateRange& insampleDateRange,
+                          const DateRange& oosDateRange)
+      : mSecurity(aSecurity),
+        mPricePatterns(patterns),
+        mInsampleDateRange(insampleDateRange),
+        mOosDateRange(oosDateRange)
     {}
 
     ValidatorConfiguration (const ValidatorConfiguration& rhs)
-      : mBacktester (rhs.mBacktester),
-	mInSampleBacktester (rhs.mInSampleBacktester),
-	mSecurity(rhs.mSecurity),
-	mPricePatterns(rhs.mPricePatterns),
-	mInsampleDateRange(rhs.mInsampleDateRange),
-	mOosDateRange(rhs.mOosDateRange)
+      : mSecurity(rhs.mSecurity),
+        mPricePatterns(rhs.mPricePatterns),
+        mInsampleDateRange(rhs.mInsampleDateRange),
+        mOosDateRange(rhs.mOosDateRange)
     {}
 
     ValidatorConfiguration<Decimal>&
     operator=(const ValidatorConfiguration<Decimal> &rhs)
     {
       if (this == &rhs)
-	return *this;
+        return *this;
 
-      mBacktester = rhs.mBacktester;
-      mInSampleBacktester = rhs.mInSampleBacktester;
-      mSecurity= rhs.mSecurity;
-      mPricePatterns= rhs.mPricePatterns;
-      mInsampleDateRange= rhs.mInsampleDateRange;
-      mOosDateRange= rhs.mOosDateRange;
+      mSecurity = rhs.mSecurity;
+      mPricePatterns = rhs.mPricePatterns;
+      mInsampleDateRange = rhs.mInsampleDateRange;
+      mOosDateRange = rhs.mOosDateRange;
 
       return *this;
     }
 
     ~ValidatorConfiguration()
     {}
-
-    std::shared_ptr<BackTester<Decimal>> getBackTester() const
-    {
-      return mBacktester;
-    }
-
-    std::shared_ptr<BackTester<Decimal>> getInSampleBackTester() const
-    {
-      return mInSampleBacktester;
-    }
 
     std::shared_ptr<Security<Decimal>> getSecurity() const
     {
@@ -106,8 +87,6 @@ namespace mkc_timeseries
     }
 
   private:
-    std::shared_ptr<BackTester<Decimal>> mBacktester;
-    std::shared_ptr<BackTester<Decimal>> mInSampleBacktester;
     std::shared_ptr<Security<Decimal>> mSecurity;
     PriceActionLabSystem *mPricePatterns;
     DateRange mInsampleDateRange;

@@ -17,6 +17,8 @@
 #include "number.h"
 #include "BoostDateHelper.h"
 #include "BacktesterStrategy.h"
+#include "MarketHours.h"
+#include "TimeFrameDiscovery.h"
 
 
 namespace mkc_timeseries
@@ -82,8 +84,7 @@ namespace mkc_timeseries
     explicit BackTester()
       : mStrategyList(),
 	mStrategyRawList(),
-	mBackTestDates(),
-	mDates()
+	mBackTestDates()
     {}
 
     virtual ~BackTester()
@@ -95,8 +96,7 @@ namespace mkc_timeseries
      */
     BackTester(const BackTester& rhs)
       : mStrategyList(rhs.mStrategyList),
-	mBackTestDates(rhs.mBackTestDates),
-	mDates(rhs.mDates)
+	mBackTestDates(rhs.mBackTestDates)
     {
       rebuildStrategyRawList();
     }
@@ -112,7 +112,6 @@ namespace mkc_timeseries
 	{
 	  mStrategyList = rhs.mStrategyList;
 	  mBackTestDates = rhs.mBackTestDates;
-	  mDates = rhs.mDates;
 	  rebuildStrategyRawList();
 	}
       return *this;
@@ -366,12 +365,30 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Earliest date/time used across all backtest ranges.
+     * @return Start date of backtest.
+     */
+    boost::posix_time::ptime getStartDateTime() const
+    {
+      return mBackTestDates.getFirstDateRange().getFirstDateTime();
+    }
+
+    /**
      * @brief Latest date used across all backtest ranges.
      * @return End date of backtest.
      */
     date getEndDate() const
     {
       return mBackTestDates.getFirstDateRange().getLastDate();
+    }
+
+        /**
+     * @brief Latest date used across all backtest ranges.
+     * @return End date of backtest.
+     */
+    boost::posix_time::ptime getEndDateTime() const
+    {
+      return mBackTestDates.getFirstDateRange().getLastDateTime();
     }
 
     /**
@@ -421,7 +438,7 @@ namespace mkc_timeseries
 	  throw BackTesterException("No strategies have been added to backtest");
 	}
 
-      bool multipleRanges   = numBackTestRanges() > 1;
+      bool multipleRanges = numBackTestRanges() > 1;
       unsigned int backtestNumber = 0;
 
       // ─── Outer loop over each DateRange ────────────────────────────────
@@ -429,27 +446,22 @@ namespace mkc_timeseries
 	   itRange != endBacktestDateRange();
 	   ++itRange)
 	{
-	  // 1) Build the per-range date vector
-	  mDates.clear();
-	  auto rangeStart = itRange->second.getFirstDate();
-	  auto rangeEnd   = itRange->second.getLastDate();
+	  // 1) Get the unified timestamp sequence from actual data
+	  auto timestamps = getUnifiedTimestampSequence(itRange->second);
 
-	  // include the first date, then step via next_period()
-	  for (auto d = rangeStart; ; d = next_period(d))
-	    {
-	      mDates.push_back(d);
-	      if (d == rangeEnd) break;
-	    }
+	  if (timestamps.empty()) {
+	    continue; // Skip ranges with no data
+	  }
 
-	  // 2) Compute the “last bar” for this range
-	  auto barBeforeBackTesterEndDate = previous_period(rangeEnd);
+	  // 2) Compute the "last bar" for this range
+	  auto barBeforeBackTesterEndDateTime = timestamps.back();
 	  ++backtestNumber;
 
-	  // ─── Inner loop over days via index ───────────────────────────
-	  for (size_t idx = 1; idx < mDates.size(); ++idx)
+	  // ─── Inner loop over actual timestamps (ptime-based) ───────────────────────────
+	  for (size_t idx = 1; idx < timestamps.size(); ++idx)
 	    {
-	      const date& current   = mDates[idx];
-	      const date& orderDate = mDates[idx - 1];
+	      const auto& currentTimestamp = timestamps[idx];
+	      const auto& orderTimestamp = timestamps[idx - 1];
 
 	      for (itStrategy = beginStrategiesRaw();
 		   itStrategy != endStrategiesRaw();
@@ -464,39 +476,22 @@ namespace mkc_timeseries
 		      const auto& secPtr = iteratorPortfolio->second;
 
 		      if (multipleRanges
-			  && current == barBeforeBackTesterEndDate
+			  && currentTimestamp >= barBeforeBackTesterEndDateTime
 			  && backtestNumber < numBackTestRanges())
 			{
-			  closeAllPositions(orderDate);
+			  closeAllPositions(orderTimestamp);
 			}
 		      else
 			{
-			  processStrategyBar(secPtr.get(), strat, orderDate);
+			  processStrategyBar(secPtr.get(), strat, orderTimestamp);
 			}
 
-		      strat->eventProcessPendingOrders(current);
+		      strat->eventProcessPendingOrders(currentTimestamp);
 		    }
 		}
 	    }
 	}
     }
-
-  protected:
-    /**
-     * @brief Return the previous time period (e.g., prior trading day).
-     * @param d Current date.
-     * @return Previous period date.
-     * @note Implemented by derived classes (Daily/Weekly/Monthly).
-     */
-    virtual TimeSeriesDate previous_period(const TimeSeriesDate& d) const = 0;
-
-    /**
-     * @brief Return the next time period (e.g., next trading day).
-     * @param d Current date.
-     * @return Next period date.
-     * @note Implemented by derived classes.
-     */
-    virtual TimeSeriesDate next_period(const TimeSeriesDate& d) const = 0;
 
   private:
     StrategyRawIterator beginStrategiesRaw() const
@@ -521,9 +516,9 @@ namespace mkc_timeseries
     
     inline void processStrategyBar(Security<Decimal>* security,
 			    StrategyPtr strategy,
-			    const date& processingDate)
+			    const boost::posix_time::ptime& processingDateTime)
     {
-      if (!strategy->doesSecurityHaveTradingData(*security, processingDate))
+      if (!strategy->doesSecurityHaveTradingData(*security, processingDateTime))
 	{
 	  return;
 	}
@@ -536,15 +531,15 @@ namespace mkc_timeseries
 	  strategy->eventExitOrders(
 				    security,
 				    strategy->getInstrumentPosition(symbol),
-				    processingDate);
+				    processingDateTime);  // Pass ptime directly!
 	}
       strategy->eventEntryOrders(
 				 security,
 				 strategy->getInstrumentPosition(symbol),
-				 processingDate);
+				 processingDateTime);  // Pass ptime directly!
     }
 
-    void closeAllPositions(const TimeSeriesDate& orderDate)
+    void closeAllPositions(const boost::posix_time::ptime& orderDateTime)
     {
       for (auto itStrat = beginStrategiesRaw(); itStrat != endStrategiesRaw(); ++itStrat)
 	{
@@ -554,16 +549,59 @@ namespace mkc_timeseries
 	      const auto& securityPtr = itPort->second;
 	      const auto symbol = securityPtr->getSymbol();
 	      strategy->eventUpdateSecurityBarNumber(symbol);
-	      strategy->ExitAllPositions(symbol, orderDate);
+	      strategy->ExitAllPositions(symbol, orderDateTime);  // Pass ptime directly!
 	    }
 	}
+    }
+
+  private:
+    /**
+     * @brief Get unified timestamp sequence from all securities in the portfolio
+     * @param dateRange The date range to filter timestamps
+     * @return Sorted vector of all unique timestamps across all securities
+     */
+    std::vector<boost::posix_time::ptime> getUnifiedTimestampSequence(const DateRange& dateRange)
+    {
+      std::set<boost::posix_time::ptime> allTimestamps;
+
+      // Collect timestamps from all securities
+      for (auto itStrategy = beginStrategiesRaw();
+	   itStrategy != endStrategiesRaw();
+	   ++itStrategy)
+	{
+	  StrategyPtr strat = *itStrategy;
+	  for (auto itPortfolio = strat->beginPortfolio();
+	       itPortfolio != strat->endPortfolio();
+	       ++itPortfolio)
+	    {
+	      const auto& security = itPortfolio->second;
+	      auto timeSeries = security->getTimeSeries();
+
+	      // Get all timestamps from this security's time series
+	      for (auto it = timeSeries->beginSortedAccess();
+		   it != timeSeries->endSortedAccess();
+		   ++it)
+		{
+		  auto timestamp = it->getDateTime();  // Already ptime!
+
+		  // Filter by ptime range - maintains full precision!
+		  if (timestamp >= dateRange.getFirstDateTime() &&
+		      timestamp <= dateRange.getLastDateTime())
+		    {
+		      allTimestamps.insert(timestamp);
+		    }
+		}
+	    }
+	}
+
+      // Convert to sorted vector
+      return std::vector<boost::posix_time::ptime>(allTimestamps.begin(), allTimestamps.end());
     }
 
   private:
     std::list<std::shared_ptr<BacktesterStrategy<Decimal>>> mStrategyList;
     std::vector<StrategyPtr> mStrategyRawList;
     DateRangeContainer mBackTestDates;
-    std::vector<boost::gregorian::date> mDates;
   };
 
   //
@@ -669,15 +707,6 @@ namespace mkc_timeseries
     }
 
   protected:
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const
-      {
-	return boost_previous_weekday(d);
-      }
-
-    TimeSeriesDate next_period(const TimeSeriesDate& d) const
-      {
-	return boost_next_weekday(d);
-      }
   };
 
   //
@@ -735,7 +764,7 @@ namespace mkc_timeseries
      */
     bool isDailyBackTester() const
     {
-      return true;
+      return false;
     }
 
     /**
@@ -755,7 +784,7 @@ namespace mkc_timeseries
      */
     bool isMonthlyBackTester() const
     {
-      return false;
+      return true;
     }
 
     /**
@@ -770,15 +799,6 @@ namespace mkc_timeseries
     }
 
   protected:
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const
-      {
-	return boost_previous_month(d);
-      }
-
-    TimeSeriesDate next_period(const TimeSeriesDate& d) const
-      {
-	return boost_next_month(d);
-      }
   };
 
   // Weekly
@@ -871,59 +891,35 @@ namespace mkc_timeseries
     }
 
   protected:
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const
-      {
-	return boost_previous_week(d);
-      }
-
-    TimeSeriesDate next_period(const TimeSeriesDate& d) const
-      {
-        return boost_next_week(d);
-      }
   };
 
   //
-  // class IntradayBackTester (stub implementation for testing)
+  // class IntradayBackTester - Full implementation for intraday backtesting
   //
 
   template <class Decimal>
   class IntradayBackTester : public BackTester<Decimal>
   {
+  private:
+    
   public:
-    explicit IntradayBackTester(boost::gregorian::date startDate,
-                               boost::gregorian::date endDate)
-      : BackTester<Decimal>()
+    /**
+     * @brief Primary Constructor: Creates a backtester for a precise ptime range.
+     * @param startDateTime The exact start timestamp of the backtest range.
+     * @param endDateTime The exact end timestamp of the backtest range.
+     */
+    IntradayBackTester(const boost::posix_time::ptime& startDateTime,
+                       const boost::posix_time::ptime& endDateTime)
     {
-      if (isWeekend (startDate))
-        startDate = boost_next_weekday (startDate);
-
-      if (isWeekend (endDate))
-        endDate = boost_previous_weekday (endDate);
-
-      DateRange r(startDate, endDate);
-      this->addDateRange(r);
+      this->addDateRange(DateRange(startDateTime, endDateTime));
     }
-
-    // Constructor that accepts ptime arguments (for intraday functionality)
-    explicit IntradayBackTester(boost::posix_time::ptime startTime,
-                               boost::posix_time::ptime endTime)
-      : BackTester<Decimal>()
-    {
-      boost::gregorian::date startDate = startTime.date();
-      boost::gregorian::date endDate = endTime.date();
-      
-      if (isWeekend (startDate))
-        startDate = boost_next_weekday (startDate);
-
-      if (isWeekend (endDate))
-        endDate = boost_previous_weekday (endDate);
-
-      DateRange r(startDate, endDate);
-      this->addDateRange(r);
-    }
-
-    IntradayBackTester() :
-      BackTester<Decimal>()
+    
+    /**
+     * @brief Default Constructor: Creates an empty intraday backtester.
+     *        Date ranges must be added via addDateRange() before use.
+     */
+    IntradayBackTester()
+        : BackTester<Decimal>()
     {}
 
     ~IntradayBackTester()
@@ -940,19 +936,22 @@ namespace mkc_timeseries
         return *this;
 
       BackTester<Decimal>::operator=(rhs);
+      
       return *this;
     }
 
     /**
-     * @brief Clone the IntradayBackTester with date ranges, but without strategies.
-     * @note This is a stub implementation for testing purposes.
+     * @brief Clone the IntradayBackTester with configuration, but without strategies.
      */
-    std::shared_ptr<BackTester<Decimal>> clone() const
+    std::shared_ptr<BackTester<Decimal>> clone() const override
     {
+      if (this->numBackTestRanges() == 0)
+	throw BackTesterException("Cannot clone IntradayBackTester with no date ranges");
+
       auto back = std::make_shared<IntradayBackTester<Decimal>>();
-      auto it = this->beginBacktestDateRange();
-      for (; it != this->endBacktestDateRange(); it++)
-        back->addDateRange(it->second);
+
+      for (auto it = this->beginBacktestDateRange(); it != this->endBacktestDateRange(); ++it)
+	back->addDateRange(it->second);
 
       return back;
     }
@@ -962,7 +961,7 @@ namespace mkc_timeseries
      * on the daily time frame.
      * @return `false`
      */
-    bool isDailyBackTester() const
+    bool isDailyBackTester() const override
     {
       return false;
     }
@@ -972,7 +971,7 @@ namespace mkc_timeseries
      * on the weekly time frame.
      * @return `false`.
      */
-    bool isWeeklyBackTester() const
+    bool isWeeklyBackTester() const override
     {
       return false;
     }
@@ -982,7 +981,7 @@ namespace mkc_timeseries
      * on the monthly time frame.
      * @return `false`.
      */
-    bool isMonthlyBackTester() const
+    bool isMonthlyBackTester() const override
     {
       return false;
     }
@@ -992,65 +991,102 @@ namespace mkc_timeseries
      * on intraday time frames.
      * @return `true`.
      */
-    bool isIntradayBackTester() const
+    bool isIntradayBackTester() const override
     {
       return true;
     }
-
-  protected:
-    // For stub implementation, use daily logic but could be enhanced for intraday periods
-    TimeSeriesDate previous_period(const TimeSeriesDate& d) const
-      {
-        return boost_previous_weekday(d);
-      }
-
-    TimeSeriesDate next_period(const TimeSeriesDate& d) const
-      {
-        return boost_next_weekday(d);
-      }
   };
 
   template <class Decimal>
   class BackTesterFactory
+  {
+  public:
+    /**
+     * @brief Create a backtester of the specified timeframe over the given date range.
+     *        Supports DAILY, WEEKLY, MONTHLY, and INTRADAY using a unified API.
+     * @param theTimeFrame Timeframe duration enum.
+     * @param backtestingDates DateRange defining start/end (date or ptime as needed).
+     * @return Shared pointer to a BackTester specialized for the timeframe.
+     * @throws BackTesterException if timeframe is unsupported.
+     */
+    static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
+							      const DateRange& backtestingDates)
     {
-    public:
-      static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-								const DateRange& backtestingDates)
-      {
-	if (theTimeFrame == TimeFrame::DAILY)
+      switch (theTimeFrame)
+        {
+        case TimeFrame::DAILY:
 	  return std::make_shared<DailyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-						  backtestingDates.getLastDate());
-	else if (theTimeFrame == TimeFrame::WEEKLY)
+							    backtestingDates.getLastDate());
+
+        case TimeFrame::WEEKLY:
 	  return std::make_shared<WeeklyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-						   backtestingDates.getLastDate());
-	else if (theTimeFrame == TimeFrame::MONTHLY)
+							     backtestingDates.getLastDate());
+
+        case TimeFrame::MONTHLY:
 	  return std::make_shared<MonthlyBackTester<Decimal>>(backtestingDates.getFirstDate(),
-	                                    backtestingDates.getLastDate());
-	else if (theTimeFrame == TimeFrame::INTRADAY)
+							      backtestingDates.getLastDate());
+
+        case TimeFrame::INTRADAY:
 	  return std::make_shared<IntradayBackTester<Decimal>>(backtestingDates.getFirstDateTime(),
-	                                    backtestingDates.getLastDateTime());
-	else
-	  throw BackTesterException("BackTesterFactory::getBacktester - cannot create backtester for time frame other than daily, weekly, monthly or intraday");
-      }
+							       backtestingDates.getLastDateTime());
 
-      static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
-								boost::gregorian::date startDate,
-								boost::gregorian::date endDate)
-      {
-	return BackTesterFactory<Decimal>::getBackTester(theTimeFrame, DateRange(startDate, endDate));
-      }
+        default:
+	  throw BackTesterException("BackTesterFactory::getBackTester - unsupported timeframe");
+        }
+    }
 
-      static uint32_t
-      getNumClosedTrades(std::shared_ptr<BackTester<Decimal>> aBackTester)
-      {
-	std::shared_ptr<BacktesterStrategy<Decimal>> backTesterStrategy =
-	  (*(aBackTester->beginStrategies()));
+    /**
+     * @brief Create a backtester using date-only bounds.
+     *        Internally wraps dates into a DateRange and dispatches to getBackTester(..., DateRange).
+     * @param theTimeFrame Timeframe duration enum.
+     * @param startDate   Start date (midnight) for backtest.
+     * @param endDate     End date (midnight) for backtest.
+     * @return Shared pointer to a BackTester for DAILY, WEEKLY, or MONTHLY timeframe.
+     * @throws BackTesterException if timeframe is INTRADAY or unsupported.
+     */
+    static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
+							      boost::gregorian::date startDate,
+							      boost::gregorian::date endDate)
+    {
+      if (theTimeFrame == TimeFrame::INTRADAY)
+        {
+	  throw BackTesterException(
+				    "BackTesterFactory::getBackTester(date) - INTRADAY timeframe requires ptime bounds");
+        }
+      return getBackTester(theTimeFrame, DateRange(startDate, endDate));
+    }
 
-	return backTesterStrategy->getStrategyBroker().getClosedTrades();
-      }
+    /**
+     * @brief Create an INTRADAY backtester using full ptime bounds.
+     *        Only valid for INTRADAY timeframe; throws for non-INTRADAY.
+     * @param theTimeFrame Timeframe duration enum; must be INTRADAY.
+     * @param startDateTime Exact start timestamp for intraday backtest.
+     * @param endDateTime   Exact end timestamp for intraday backtest.
+     * @return Shared pointer to an IntradayBackTester.
+     * @throws BackTesterException if timeframe is not INTRADAY.
+     */
+    static std::shared_ptr<BackTester<Decimal>> getBackTester(TimeFrame::Duration theTimeFrame,
+							      boost::posix_time::ptime startDateTime,
+							      boost::posix_time::ptime endDateTime)
+    {
+      if (theTimeFrame != TimeFrame::INTRADAY)
+        {
+	  throw BackTesterException(
+				    "BackTesterFactory::getBackTester(ptime) - non-INTRADAY timeframe cannot use ptime bounds");
+        }
+      return getBackTester(theTimeFrame, DateRange(startDateTime, endDateTime));
+    }
 
-    };
-
+    /**
+     * @brief Convenience: retrieve total closed trades from the first strategy.
+     * @param aBackTester Shared pointer to an initialized BackTester.
+     * @return Number of closed trades recorded.
+     */
+    static uint32_t getNumClosedTrades(std::shared_ptr<BackTester<Decimal>> aBackTester)
+    {
+      auto strat = *(aBackTester->beginStrategies());
+      return strat->getStrategyBroker().getClosedTrades();
+    }
+  };
 }
-
 #endif

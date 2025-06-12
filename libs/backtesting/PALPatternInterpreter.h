@@ -16,6 +16,7 @@
 #include "Security.h" // Includes new Security API and indirectly TimeSeries.h (for exceptions)
 #include "DecimalConstants.h"
 #include <boost/date_time/gregorian/gregorian_types.hpp> // For boost::gregorian::date
+#include <boost/date_time/posix_time/posix_time.hpp> // For boost::posix_time::ptime
 
 namespace mkc_timeseries
 {
@@ -43,18 +44,35 @@ namespace mkc_timeseries
     /**
      * @brief Defines the signature for a compiled pattern evaluator.
      *
-     * The evaluator takes a pointer to a Security object and an evaluation date.
-     * It returns true if the pattern matches for that security on that date, false otherwise.
+     * The evaluator takes a pointer to a Security object and an evaluation datetime.
+     * It returns true if the pattern matches for that security on that datetime, false otherwise.
      * It will also return false if a data access error occurs during evaluation.
      */
     using PatternEvaluator = std::function<bool(Security<Decimal>*,
-						const boost::gregorian::date& evalDate)>;
+    	const boost::posix_time::ptime& evalDateTime)>;
 
     /**
-     * @brief Back-compat wrapper: compile & run in one call.
+     * @brief Main ptime-based evaluation method.
+     *
+     * Allows code to call evaluateExpression(...) with an evaluation datetime.
+     *
+     * @param expr          The pattern AST.
+     * @param security      Shared_ptr to the security under test.
+     * @param evalDateTime  The datetime on which to evaluate the pattern.
+     * @return              The result of the compiled predicate.
+     */
+    static bool evaluateExpression(PatternExpression* expr,
+      const std::shared_ptr<Security<Decimal>>& security,
+      const boost::posix_time::ptime& evalDateTime)
+    {
+      auto pred = compileEvaluator(expr);
+      return pred(security.get(), evalDateTime);
+    }
+
+    /**
+     * @brief Backward compatibility overload that delegates to ptime version.
      *
      * Allows existing code/tests to call evaluateExpression(...) with an evaluation date.
-     * The iterator-based version is removed due to API changes.
      *
      * @param expr      The pattern AST.
      * @param security  Shared_ptr to the security under test.
@@ -62,12 +80,13 @@ namespace mkc_timeseries
      * @return          The result of the compiled predicate.
      */
     static bool evaluateExpression(PatternExpression* expr,
-				   const std::shared_ptr<Security<Decimal>>& security,
-				   const boost::gregorian::date& evalDate)
+      const std::shared_ptr<Security<Decimal>>& security,
+      const boost::gregorian::date& evalDate)
     {
-      auto pred = compileEvaluator(expr);
-      return pred(security.get(), evalDate);
+      return evaluateExpression(expr, security,
+                               boost::posix_time::ptime(evalDate, getDefaultBarTime()));
     }
+
 
     /**
      * @brief Compile a PatternExpression into a fast lambda.
@@ -85,10 +104,10 @@ namespace mkc_timeseries
 	  auto L = compileEvaluator(pAnd->getLHS());
 	  auto R = compileEvaluator(pAnd->getRHS());
 	  
-	  return [L,R](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> bool 
+	  return [L,R](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> bool
           {
             // Lambdas L and R already handle their own exceptions and return false if an error occurs.
-	    return L(s, evalDate) && R(s, evalDate);
+	    return L(s, evalDateTime) && R(s, evalDateTime);
           };
       }
       else if (auto pGt = dynamic_cast<GreaterThanExpr*>(expr))
@@ -96,19 +115,19 @@ namespace mkc_timeseries
 	  auto Lf = compilePriceBar(pGt->getLHS());
 	  auto Rf = compilePriceBar(pGt->getRHS());
 	  
-	  return [Lf,Rf](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> bool 
+	  return [Lf,Rf](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> bool
           {
             try
             {
-              Decimal lhs_val = Lf(s, evalDate);
-              Decimal rhs_val = Rf(s, evalDate);
+              Decimal lhs_val = Lf(s, evalDateTime);
+              Decimal rhs_val = Rf(s, evalDateTime);
               return lhs_val > rhs_val;
             }
             catch (const mkc_timeseries::TimeSeriesDataAccessException& e)
             {
               // Optional: Log the exception for debugging if needed
-              // std::cerr << "PALPatternInterpreter: Data access error in GreaterThanExpr for date "
-              //           << boost::gregorian::to_iso_extended_string(evalDate) << ": " << e.what() << std::endl;
+              // std::cerr << "PALPatternInterpreter: Data access error in GreaterThanExpr for datetime "
+              //           << boost::posix_time::to_iso_extended_string(evalDateTime) << ": " << e.what() << std::endl;
               return false; // Expression evaluates to false if data is inaccessible
             }
           };
@@ -121,9 +140,9 @@ namespace mkc_timeseries
         auto L = compileEvaluator(pOr->getLHS());
         auto R = compileEvaluator(pOr->getRHS());
 
-        return [L,R](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> bool
+        return [L,R](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> bool
         {
-          return L(s, evalDate) || R(s, evalDate);
+          return L(s, evalDateTime) || R(s, evalDateTime);
         };
       }
       */
@@ -142,36 +161,36 @@ namespace mkc_timeseries
      * @param barRef Pointer to the PriceBarReference AST node.
      * @return A lambda `std::function<Decimal(Security<Decimal>*, const boost::gregorian::date&)>`.
      */
-    static std::function<Decimal(Security<Decimal>*, const boost::gregorian::date&)>
+    static std::function<Decimal(Security<Decimal>*, const boost::posix_time::ptime&)>
     compilePriceBar(PriceBarReference* barRef)
     {
       auto offset = barRef->getBarOffset(); // This is typically unsigned long
       switch (barRef->getReferenceType()) 
       {
         case PriceBarReference::OPEN:
-          return [offset](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> Decimal 
+          return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
           {
-            return s->getOpenValue(evalDate, offset);
+            return s->getOpenValue(evalDateTime, offset);
           };
         case PriceBarReference::HIGH:
-          return [offset](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> Decimal 
+          return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
           {
-            return s->getHighValue(evalDate, offset);
+            return s->getHighValue(evalDateTime, offset);
           };
         case PriceBarReference::LOW:
-          return [offset](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> Decimal 
+          return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
           {
-            return s->getLowValue(evalDate, offset);
+            return s->getLowValue(evalDateTime, offset);
           };
         case PriceBarReference::CLOSE:
-          return [offset](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> Decimal 
+          return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
           {
-            return s->getCloseValue(evalDate, offset);
+            return s->getCloseValue(evalDateTime, offset);
           };
         case PriceBarReference::VOLUME:
-          return [offset](Security<Decimal>* s, const boost::gregorian::date& evalDate) -> Decimal 
+          return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
           {
-            return s->getVolumeValue(evalDate, offset);
+            return s->getVolumeValue(evalDateTime, offset);
           };
         // MEANDER, IBS, etc. are not directly handled by compilePriceBar in this version based on PR.
         // If they were to be used in compiled expressions, compilePriceBar would need cases for them,
@@ -187,47 +206,47 @@ namespace mkc_timeseries
     // Keep for now as we may come back and wire in IBS or some of the
     // other indicators into the compiled expressions, or for specific direct use.
     // These methods will throw TimeSeriesDataAccessException if data is not found.
-    static Decimal evaluatePriceBar (PriceBarReference *barReference, 
-					   Security<Decimal>* security, // Changed from shared_ptr
-					   const boost::gregorian::date& evalDate) // Changed from iterator
+    static Decimal evaluatePriceBar (PriceBarReference *barReference,
+       Security<Decimal>* security, // Changed from shared_ptr
+       const boost::posix_time::ptime& evalDateTime) // Changed from iterator to ptime
     {
       unsigned long offset = barReference->getBarOffset();
       switch (barReference->getReferenceType())
 	{
 	case PriceBarReference::OPEN:
-	  return security->getOpenValue(evalDate, offset);
+	  return security->getOpenValue(evalDateTime, offset);
 	  
 	case PriceBarReference::HIGH:
-	  return security->getHighValue(evalDate, offset);
+	  return security->getHighValue(evalDateTime, offset);
 	  
 	case PriceBarReference::LOW:
-	  return security->getLowValue(evalDate, offset);
+	  return security->getLowValue(evalDateTime, offset);
 	  
 	case PriceBarReference::CLOSE:
-	  return security->getCloseValue(evalDate, offset);
+	  return security->getCloseValue(evalDateTime, offset);
 
 	case PriceBarReference::VOLUME:
-	  return security->getVolumeValue(evalDate, offset);
+	  return security->getVolumeValue(evalDateTime, offset);
 
 	case PriceBarReference::MEANDER:
 	  // Hack Meander to VWAP to see if it works
 	  //return PALPatternInterpreter<Decimal>::Meander (security, evalDate, offset);
-	  return PALPatternInterpreter<Decimal>::Vwap (security, evalDate, offset);
+	  return PALPatternInterpreter<Decimal>::Vwap (security, evalDateTime, offset);
 
 	case PriceBarReference::VCHARTLOW:
-	  return PALPatternInterpreter<Decimal>::ValueChartLow (security, evalDate, offset);
+	  return PALPatternInterpreter<Decimal>::ValueChartLow (security, evalDateTime, offset);
 
 	case PriceBarReference::VCHARTHIGH:
-	  return PALPatternInterpreter<Decimal>::ValueChartHigh (security, evalDate, offset);
+	  return PALPatternInterpreter<Decimal>::ValueChartHigh (security, evalDateTime, offset);
 
 	case PriceBarReference::IBS1:
-	  return PALPatternInterpreter<Decimal>::IBS1 (security, evalDate, offset);
+	  return PALPatternInterpreter<Decimal>::IBS1 (security, evalDateTime, offset);
 
 	case PriceBarReference::IBS2:
-	  return PALPatternInterpreter<Decimal>::IBS2 (security, evalDate, offset);
+	  return PALPatternInterpreter<Decimal>::IBS2 (security, evalDateTime, offset);
 
 	case PriceBarReference::IBS3:
-	  return PALPatternInterpreter<Decimal>::IBS3 (security, evalDate, offset);
+	  return PALPatternInterpreter<Decimal>::IBS3 (security, evalDateTime, offset);
 
 	default:
 	  throw PalPatternInterpreterException ("PALPatternInterpreter::evaluatePriceBar - unknown PriceBarReference derived class"); 
@@ -235,8 +254,8 @@ namespace mkc_timeseries
     }
 
     static Decimal Meander(Security<Decimal>* security, // Changed from shared_ptr
-				  const boost::gregorian::date& evalDate, // Changed from iterator
-				  unsigned long offset) // 'offset' is the lookback for the reference bar for Meander calculation
+     const boost::posix_time::ptime& evalDateTime, // Changed from iterator to ptime
+     unsigned long offset) // 'offset' is the lookback for the reference bar for Meander calculation
     {
       // The 'offset' parameter defines the base bar for the Meander calculation.
       // Subsequent lookups (0 to 4) are relative to this 'evalDate' considering the 'offset'.
@@ -250,11 +269,11 @@ namespace mkc_timeseries
 	{
           // offset + i: current bar of the 5-day window
           // offset + i + 1: previous bar to the current bar of the 5-day window
-	  prevClose = security->getCloseValue (evalDate, offset + i + 1);
-	  currentOpen = security->getOpenValue (evalDate, offset + i);
-	  currentHigh = security->getHighValue (evalDate, offset + i);
-	  currentClose = security->getCloseValue (evalDate, offset + i);
-	  currentLow = security->getLowValue (evalDate, offset + i);
+	  prevClose = security->getCloseValue (evalDateTime, offset + i + 1);
+	  currentOpen = security->getOpenValue (evalDateTime, offset + i);
+	  currentHigh = security->getHighValue (evalDateTime, offset + i);
+	  currentClose = security->getCloseValue (evalDateTime, offset + i);
+	  currentLow = security->getLowValue (evalDateTime, offset + i);
 
           if (prevClose == DecimalConstants<Decimal>::DecimalZero)
           {
@@ -265,19 +284,19 @@ namespace mkc_timeseries
 	}
       Decimal avg( sum / denom);
       // Result is projected from the most recent close of the Meander period (evalDate offset by 'offset')
-      return security->getCloseValue (evalDate, offset) * (DecimalConstants<Decimal>::DecimalOne + avg);
+      return security->getCloseValue (evalDateTime, offset) * (DecimalConstants<Decimal>::DecimalOne + avg);
     }
 
     static Decimal IBS1(Security<Decimal>* security, // Changed
-			    const boost::gregorian::date& evalDate, // Changed
-			    unsigned long offset) // 'offset' refers to the bar for which IBS1 is calculated (0 for evalDate, 1 for prior bar, etc.)
+      const boost::posix_time::ptime& evalDateTime, // Changed to ptime
+      unsigned long offset) // 'offset' refers to the bar for which IBS1 is calculated (0 for evalDateTime, 1 for prior bar, etc.)
     {
       Decimal currentClose, currentHigh, currentLow;
       
-      currentHigh = security->getHighValue (evalDate, offset);
-      currentLow = security->getLowValue (evalDate, offset);
-      // currentOpen = security->getOpenValue (evalDate, offset); // Open not used in IBS
-      currentClose = security->getCloseValue (evalDate, offset);
+      currentHigh = security->getHighValue (evalDateTime, offset);
+      currentLow = security->getLowValue (evalDateTime, offset);
+      // currentOpen = security->getOpenValue (evalDateTime, offset); // Open not used in IBS
+      currentClose = security->getCloseValue (evalDateTime, offset);
 
       Decimal num(currentClose - currentLow);
       Decimal denom(currentHigh - currentLow);
@@ -293,46 +312,46 @@ namespace mkc_timeseries
     }
 
   static Decimal IBS2(Security<Decimal>* security, // Changed
-			    const boost::gregorian::date& evalDate, // Changed
-			    unsigned long offset) // 'offset' is for the most recent bar of the IBS2 calculation
+      const boost::posix_time::ptime& evalDateTime, // Changed to ptime
+      unsigned long offset) // 'offset' is for the most recent bar of the IBS2 calculation
   {
     // IBS2 is the average of IBS1 for the bar at 'offset' (from evalDate)
     // and IBS1 for the bar 'offset + 1' (one bar prior to that).
-    Decimal ibsThisBar(IBS1 (security, evalDate, offset));
-    Decimal ibsPrevBar(IBS1 (security, evalDate, offset + 1));
+    Decimal ibsThisBar(IBS1 (security, evalDateTime, offset));
+    Decimal ibsPrevBar(IBS1 (security, evalDateTime, offset + 1));
 
     return (ibsThisBar + ibsPrevBar)/DecimalConstants<Decimal>::DecimalTwo;
   }
 
   static Decimal IBS3(Security<Decimal>* security, // Changed
-			    const boost::gregorian::date& evalDate, // Changed
-			    unsigned long offset) // 'offset' is for the most recent bar of the IBS3 calculation
+      const boost::posix_time::ptime& evalDateTime, // Changed to ptime
+      unsigned long offset) // 'offset' is for the most recent bar of the IBS3 calculation
   {
     static Decimal decThree (num::fromString<Decimal>("3.0"));
     
     // IBS3 averages IBS1 for the bar at 'offset', 'offset + 1', and 'offset + 2'.
-    Decimal ibsBar0(IBS1 (security, evalDate, offset));
-    Decimal ibsBar1(IBS1 (security, evalDate, offset + 1));
-    Decimal ibsBar2(IBS1 (security, evalDate, offset + 2));
+    Decimal ibsBar0(IBS1 (security, evalDateTime, offset));
+    Decimal ibsBar1(IBS1 (security, evalDateTime, offset + 1));
+    Decimal ibsBar2(IBS1 (security, evalDateTime, offset + 2));
 
     return (ibsBar0 + ibsBar1 + ibsBar2)/decThree;
   }
 
   static Decimal Vwap(Security<Decimal>* security, // Changed
-			  const boost::gregorian::date& evalDate, // Changed
-			  unsigned long offset) // 'offset' is for the bar whose VWAP (simplified) is calculated
+    const boost::posix_time::ptime& evalDateTime, // Changed to ptime
+    unsigned long offset) // 'offset' is for the bar whose VWAP (simplified) is calculated
     {
       static Decimal decThree (num::fromString<Decimal>("3.0"));
 
       Decimal currentOpen, currentHigh, currentLow, currentClose;
       Decimal priceAvg;
       
-      currentHigh = security->getHighValue (evalDate, offset);
-      currentLow = security->getLowValue (evalDate, offset);
+      currentHigh = security->getHighValue (evalDateTime, offset);
+      currentLow = security->getLowValue (evalDateTime, offset);
       priceAvg = (currentHigh + currentLow)/DecimalConstants<Decimal>::DecimalTwo; // Typical price
 
-      currentOpen = security->getOpenValue (evalDate, offset);
-      currentClose = security->getCloseValue (evalDate, offset);
+      currentOpen = security->getOpenValue (evalDateTime, offset);
+      currentClose = security->getCloseValue (evalDateTime, offset);
       Decimal num (currentOpen + currentClose + priceAvg); // Sum of O, C, Typical
 
       return (num / decThree); // Average of O, C, Typical
@@ -345,8 +364,8 @@ namespace mkc_timeseries
     }
     
     static Decimal ValueChartHigh(Security<Decimal>* security, // Changed
-					const boost::gregorian::date& evalDate, // Changed
-					unsigned long offset) // 'offset' is for the bar whose ValueChartHigh is calculated
+    const boost::posix_time::ptime& evalDateTime, // Changed to ptime
+    unsigned long offset) // 'offset' is for the bar whose ValueChartHigh is calculated
     {
       static Decimal decFive (num::fromString<Decimal>("5.0"));
 	    
@@ -363,12 +382,12 @@ namespace mkc_timeseries
           unsigned long current_bar_lookback = offset + i;
           unsigned long prev_bar_lookback = offset + i + 1;
 
-	  currentCloseForRange = security->getCloseValue (evalDate, current_bar_lookback);
-	  prevClose = security->getCloseValue (evalDate, prev_bar_lookback);
+	  currentCloseForRange = security->getCloseValue (evalDateTime, current_bar_lookback);
+	  prevClose = security->getCloseValue (evalDateTime, prev_bar_lookback);
 	  closeToCloseRange = num::abs (currentCloseForRange - prevClose);
 	  
-	  currentHigh = security->getHighValue (evalDate, current_bar_lookback);
-	  currentLow = security->getLowValue (evalDate, current_bar_lookback);
+	  currentHigh = security->getHighValue (evalDateTime, current_bar_lookback);
+	  currentLow = security->getLowValue (evalDateTime, current_bar_lookback);
 	  highLowRange = currentHigh - currentLow;
 
 	  range = std::max (closeToCloseRange, highLowRange);
@@ -382,7 +401,7 @@ namespace mkc_timeseries
 
       averagePrice = priceAvgSum / decFive;
       // Relative high of the target bar (evalDate + offset)
-      relativeHigh = security->getHighValue (evalDate, offset) - averagePrice;
+      relativeHigh = security->getHighValue (evalDateTime, offset) - averagePrice;
       avgTrueRange = trueRangeSum / decFive;
       volatilityUnit = avgTrueRange * volatilityUnitConstant();
 
@@ -398,8 +417,8 @@ namespace mkc_timeseries
     }
 
     static Decimal ValueChartLow(Security<Decimal>* security, // Changed
-					const boost::gregorian::date& evalDate, // Changed
-					unsigned long offset) // 'offset' is for the bar whose ValueChartLow is calculated
+    const boost::posix_time::ptime& evalDateTime, // Changed to ptime
+    unsigned long offset) // 'offset' is for the bar whose ValueChartLow is calculated
     {
       static Decimal decFive (num::fromString<Decimal>("5.0"));
 	    
@@ -419,15 +438,15 @@ namespace mkc_timeseries
           unsigned long current_bar_lookback = offset + i;
           unsigned long prev_bar_lookback = offset + i + 1;
 
-	  prevClose = security->getCloseValue (evalDate, prev_bar_lookback);
-	  currentHigh = security->getHighValue (evalDate, current_bar_lookback);
-	  currentLow = security->getLowValue (evalDate, current_bar_lookback);
+	  prevClose = security->getCloseValue (evalDateTime, prev_bar_lookback);
+	  currentHigh = security->getHighValue (evalDateTime, current_bar_lookback);
+	  currentLow = security->getLowValue (evalDateTime, current_bar_lookback);
 
 	  priceAvg = (currentHigh + currentLow)/DecimalConstants<Decimal>::DecimalTwo;
 	  priceAvgSum = priceAvgSum + priceAvg;
 	  
           // True range calculation as per ValueChartHigh interpretation
-          currentCloseForRange = security->getCloseValue(evalDate, current_bar_lookback);
+          currentCloseForRange = security->getCloseValue(evalDateTime, current_bar_lookback);
           closeToCloseRange = num::abs(currentCloseForRange - prevClose);
           highLowRange = currentHigh - currentLow;
           range = std::max(closeToCloseRange, highLowRange);
@@ -438,7 +457,7 @@ namespace mkc_timeseries
 
       averagePrice = priceAvgSum / decFive;
       // Relative low of the target bar (evalDate + offset)
-      relativeLow = security->getLowValue (evalDate, offset) - averagePrice;
+      relativeLow = security->getLowValue (evalDateTime, offset) - averagePrice;
       avgTrueRange = trueRangeSum / decFive;
       volatilityUnit = avgTrueRange * volatilityUnitConstant();
 
