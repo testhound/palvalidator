@@ -2,7 +2,7 @@
 %require "3.0"
 /* Write out a header file containing the token defines */
 %defines
-%define parser_class_name {PalParser}
+%define api.parser.class {PalParser}
 
 %define api.token.constructor
 %define api.value.type variant
