@@ -7,6 +7,7 @@
 #include "DecimalConstants.h"
 #include "TestUtils.h"
 #include "MonteCarloTestPolicy.h"
+#include "PalStrategyTestHelpers.h"
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
@@ -18,35 +19,6 @@ createDescription (const std::string& fileName, unsigned int index, unsigned lon
 		   const std::string& percLong, const std::string& percShort,
 		   unsigned int numTrades, unsigned int consecutiveLosses);
 
-LongMarketEntryOnOpen *
-createLongOnOpen();
-
-ShortMarketEntryOnOpen *
-createShortOnOpen();
-
-LongSideProfitTargetInPercent *
-createLongProfitTarget(const std::string& targetPct)
-{
-  return new LongSideProfitTargetInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
-}
-
-LongSideStopLossInPercent *
-createLongStopLoss(const std::string& targetPct)
-{
-  return new LongSideStopLossInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
-}
-
-ShortSideProfitTargetInPercent *
-createShortProfitTarget(const std::string& targetPct)
-{
-  return new ShortSideProfitTargetInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
-}
-
-ShortSideStopLossInPercent *
-createShortStopLoss(const std::string& targetPct)
-{
-  return new ShortSideStopLossInPercent (std::shared_ptr<decimal7>(createRawDecimalPtr (targetPct)));
-}
 
 std::shared_ptr<PriceActionLabPattern>
 createShortPattern1();
@@ -54,49 +26,52 @@ createShortPattern1();
 std::shared_ptr<PriceActionLabPattern>
 static createLongPattern1()
 {
-  PatternDescription *desc = createDescription(std::string("C2_122AR.txt"), 39,
-					       20131217, std::string("90.00"),
-					       std::string("10.00"), 21, 2);
+  // Create description using shared_ptr
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("90.00"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+  auto desc = std::make_shared<PatternDescription>("C2_122AR.txt", 39, 20131217,
+                                                   percentLong, percentShort, 21, 2);
 
-  auto open5 = new PriceBarOpen(5);
-  auto close5 = new PriceBarClose(5);
-  auto gt1 = new GreaterThanExpr (open5, close5);
+  // Create price bar references using shared_ptr
+  auto open5 = std::make_shared<PriceBarOpen>(5);
+  auto close5 = std::make_shared<PriceBarClose>(5);
+  auto gt1 = std::make_shared<GreaterThanExpr>(open5, close5);
 
-  auto close6 = new PriceBarClose(6);
-  auto gt2 = new GreaterThanExpr (close5, close6);
+  auto close6 = std::make_shared<PriceBarClose>(6);
+  auto gt2 = std::make_shared<GreaterThanExpr>(close5, close6);
 
   // OPEN OF 5 BARS AGO > CLOSE OF 5 BARS AGO
   // AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
-  auto and1 = new AndExpr (gt1, gt2);
+  auto and1 = std::make_shared<AndExpr>(gt1, gt2);
 
-  auto open6 = new PriceBarOpen(6);
-  auto gt3 = new GreaterThanExpr (close6, open6);
+  auto open6 = std::make_shared<PriceBarOpen>(6);
+  auto gt3 = std::make_shared<GreaterThanExpr>(close6, open6);
 
-  auto close8 = new PriceBarClose(8);
-  auto gt4 = new GreaterThanExpr (open6, close8);
+  auto close8 = std::make_shared<PriceBarClose>(8);
+  auto gt4 = std::make_shared<GreaterThanExpr>(open6, close8);
 
   // CLOSE OF 6 BARS AGO > OPEN OF 6 BARS AGO
   // AND OPEN OF 6 BARS AGO > CLOSE OF 8 BARS AGO
-  auto and2 = new AndExpr (gt3, gt4);
+  auto and2 = std::make_shared<AndExpr>(gt3, gt4);
 
-  auto open8 = new PriceBarOpen (8);
-  auto gt5 = new GreaterThanExpr (close8, open8);
+  auto open8 = std::make_shared<PriceBarOpen>(8);
+  auto gt5 = std::make_shared<GreaterThanExpr>(close8, open8);
 
   // CLOSE OF 6 BARS AGO > OPEN OF 6 BARS AGO
   // AND OPEN OF 6 BARS AGO > CLOSE OF 8 BARS AGO
   // CLOSE OF 8 BARS AGO > OPEN OF 8 BARS AGO
 
-  auto and3 = new AndExpr (and2, gt5);
-  auto longPattern1 = new AndExpr (and1, and3);
-  MarketEntryExpression *entry = createLongOnOpen();
-  ProfitTargetInPercentExpression *target = createLongProfitTarget("0.32");
-  StopLossInPercentExpression *stop = createLongStopLoss("0.16");
+  auto and3 = std::make_shared<AndExpr>(and2, gt5);
+  auto longPattern1 = std::make_shared<AndExpr>(and1, and3);
+  auto entry = createLongOnOpen();
+  auto target = createLongProfitTarget("0.32");
+  auto stop = createLongStopLoss("0.16");
 
   // 2.56 profit target in points = 93.81
   return std::make_shared<PriceActionLabPattern>(desc, longPattern1,
-                                                 std::shared_ptr<MarketEntryExpression>(entry),
-                                                 std::shared_ptr<ProfitTargetInPercentExpression>(target),
-                                                 std::shared_ptr<StopLossInPercentExpression>(stop));
+                                                 entry,
+                                                 target,
+                                                 stop);
 }
 
 std::shared_ptr<PriceActionLabPattern>
