@@ -13,8 +13,8 @@ target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(${LIB_NAME} PRIVATE priceaction2 ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(${LIB_NAME} PRIVATE statistics)
+target_link_libraries(${LIB_NAME} PUBLIC priceactionlab ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_NAME} PUBLIC statistics)
 
 install(TARGETS ${LIB_NAME} DESTINATION lib)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} DESTINATION include FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")

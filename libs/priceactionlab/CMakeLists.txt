@@ -1,4 +1,4 @@
-set(LIB_NAME priceaction2)
+set(LIB_NAME priceactionlab)
 
 file(GLOB SRC_LIST
     ${CMAKE_CURRENT_LIST_DIR}/*.h
@@ -34,7 +34,7 @@ endif()
 ################################################################################
 find_package(FLEX REQUIRED)
 set(FlexOutput PalScanner.hpp PalScanner.cpp)
-set(FlexInput ${CMAKE_CURRENT_LIST_DIR}/lexer.ll)
+set(FlexInput ${CMAKE_CURRENT_LIST_DIR}/lexer.ll ${CMAKE_CURRENT_LIST_DIR}/scanner.h)
 if(FLEX_FOUND)
     add_custom_command(
       OUTPUT ${FlexOutput}
@@ -43,6 +43,7 @@ if(FLEX_FOUND)
       COMMENT "Generating Lexer files ${FlexInput}"
     )
 endif()
+#message(STATUS "SRC_LIST = ${SRC_LIST}")
 
 ################################################################################
 add_library(${LIB_NAME} STATIC
@@ -52,8 +53,10 @@ add_library(${LIB_NAME} STATIC
 
 target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(${LIB_NAME} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(${LIB_NAME} PRIVATE timeseries)
+target_link_libraries(${LIB_NAME} PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_NAME} PUBLIC statistics)
+target_link_libraries(${LIB_NAME} PUBLIC concurrency)
+target_link_libraries(${LIB_NAME} PUBLIC timeseries)
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp

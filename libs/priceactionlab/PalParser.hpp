@@ -32,7 +32,7 @@
 
 
 /**
- ** \file /workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp
+ ** \file /home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp
  ** Define the mkc_palast::parser class.
  */
 
@@ -42,10 +42,10 @@
 // especially those whose name start with YY_ or yy_.  They are
 // private implementation details that can be changed or removed.
 
-#ifndef YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
-# define YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
+#ifndef YY_YY_HOME_ZACKEL_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
+# define YY_YY_HOME_ZACKEL_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
 // "%code requires" blocks.
-#line 13 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 13 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 
     #include <iostream>
     #include <string>
@@ -59,7 +59,7 @@
         class PalParseDriver;
     }
 
-#line 63 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
+#line 63 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
 
 # include <cassert>
 # include <cstdlib> // std::abort
@@ -198,9 +198,9 @@
 # define YYDEBUG 1
 #endif
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 namespace mkc_palast {
-#line 204 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
+#line 204 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
 
 
 
@@ -2794,11 +2794,11 @@ switch (yykind)
   }
 
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 } // mkc_palast
-#line 2800 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
+#line 2800 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.hpp"
 
 
 
 
-#endif // !YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED
+#endif // !YY_YY_HOME_ZACKEL_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_PALPARSER_HPP_INCLUDED

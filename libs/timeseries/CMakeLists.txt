@@ -10,8 +10,8 @@ file(GLOB SRC_LIST
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(${LIB_NAME} PRIVATE priceaction2 ${CMAKE_THREAD_LIBS_INIT})
-target_link_libraries(${LIB_NAME} PRIVATE backtesting)
+target_link_libraries(${LIB_NAME} PUBLIC priceactionlab ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_NAME} PUBLIC backtesting)
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp

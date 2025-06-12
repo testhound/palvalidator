@@ -31,12 +31,12 @@
 // version 2.2 of Bison.
 
 /**
- ** \file /workspace/codementor/palvalidator/libs/priceactionlab/location.hh
+ ** \file /home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/location.hh
  ** Define the mkc_palast::location class.
  */
 
-#ifndef YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_LOCATION_HH_INCLUDED
-# define YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_LOCATION_HH_INCLUDED
+#ifndef YY_YY_HOME_ZACKEL_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_LOCATION_HH_INCLUDED
+# define YY_YY_HOME_ZACKEL_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_LOCATION_HH_INCLUDED
 
 # include <iostream>
 # include <string>
@@ -53,9 +53,9 @@
 #  endif
 # endif
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 namespace mkc_palast {
-#line 59 "/workspace/codementor/palvalidator/libs/priceactionlab/location.hh"
+#line 59 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/location.hh"
 
   /// A point in a source file.
   class position
@@ -299,8 +299,8 @@ namespace mkc_palast {
     return ostr;
   }
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 } // mkc_palast
-#line 305 "/workspace/codementor/palvalidator/libs/priceactionlab/location.hh"
+#line 305 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/location.hh"
 
-#endif // !YY_YY_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_LOCATION_HH_INCLUDED
+#endif // !YY_YY_HOME_ZACKEL_WORKSPACE_CODEMENTOR_PALVALIDATOR_LIBS_PRICEACTIONLAB_LOCATION_HH_INCLUDED

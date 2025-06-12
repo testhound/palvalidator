@@ -57,12 +57,12 @@ set(DATASET_FILES ${TXT_FILES} CACHE INTERNAL "List of dataset files")
 include(CMakePrintHelpers)
 
 add_subdirectory(libs/timeseries)
-add_subdirectory(libs/priceactionlab)
 add_subdirectory(libs/testinfra)
 add_subdirectory(libs/backtesting)
 add_subdirectory(libs/concurrency)
 add_subdirectory(libs/pasearchalgo)
 add_subdirectory(libs/statistics)
+add_subdirectory(libs/priceactionlab)
 
 add_subdirectory(src/palvalidator)
 add_subdirectory(src/palsetup)
@@ -80,7 +80,7 @@ add_executable(${PROJECT_NAME} ${SRC_LIST})
 
 set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${BIN_NAME}
-    priceaction2
+    priceactionlab
     statistics
     concurrency
     timeseries

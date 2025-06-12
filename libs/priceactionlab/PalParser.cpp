@@ -35,7 +35,7 @@
 // private implementation details that can be changed or removed.
 
 // "%code top" blocks.
-#line 33 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 33 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 
     #include <iostream>
     #include "scanner.h"
@@ -54,22 +54,22 @@
     
     using namespace mkc_palast;
 
-#line 58 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 58 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
 
 
 // First part of user prologue.
-#line 56 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 56 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 
 #include <cstdlib>
 
 #include <cstdio>
-#line 158 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 158 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 
 //#include "PalScanner.hpp"
 
 AstFactory astFactory;
 
-#line 73 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 73 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
 
 
 #include "PalParser.hpp"
@@ -165,9 +165,9 @@ AstFactory astFactory;
 #define YYERROR         goto yyerrorlab
 #define YYRECOVERING()  (!!yyerrstatus_)
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 namespace mkc_palast {
-#line 171 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 171 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
 
   /// Build a parser object.
   PalParser::PalParser (class mkc_palast::Scanner& scanner_yyarg, class PalParseDriver& driver_yyarg)
@@ -860,461 +860,461 @@ namespace mkc_palast {
           switch (yyn)
             {
   case 2: // program: patterns
-#line 167 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 167 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
           { 
      	    //printf ("Found program\n"); 
           }
-#line 868 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 868 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 3: // patterns: pattern
-#line 173 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 173 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
            { 
              //  printf ("Founds patterns\n");
              driver.addPalPattern (std::shared_ptr<PriceActionLabPattern> (yystack_[0].value.as < PriceActionLabPattern * > ()));
       	   }
-#line 877 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 877 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 4: // patterns: patterns pattern
-#line 178 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 178 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
            {
 		//printf ("Founds recursive patterns\n");
          	driver.addPalPattern (std::shared_ptr<PriceActionLabPattern> (yystack_[0].value.as < PriceActionLabPattern * > ()));
       	   }
-#line 886 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 886 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 5: // pattern: patterndescr TOK_IF pattern_volatility_attr pattern_portfolio_filter_attr conds TOK_THEN entrystmt TOK_WITH profitstmt TOK_AND stopstmt
-#line 185 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 185 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
       { 
       	//printf ("Found pattern\n"); 
 	yylhs.value.as < PriceActionLabPattern * > () = new PriceActionLabPattern (yystack_[10].value.as < PatternDescription * > (), yystack_[6].value.as < PatternExpression * > (), yystack_[4].value.as < MarketEntryExpression * > (), yystack_[2].value.as < ProfitTargetInPercentExpression * > (), yystack_[0].value.as < StopLossInPercentExpression * > (), yystack_[8].value.as < PriceActionLabPattern::VolatilityAttribute > (), yystack_[7].value.as < PriceActionLabPattern::PortfolioAttribute > ()); 
       }
-#line 895 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 895 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 6: // patterndescr: TOK_LBRACE filedesc indexdesc indexdatedesc pldesc psdesc tradesdesc cldesc TOK_RBRACE
-#line 192 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 192 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                { 
       	       	 //printf ("Found pattern description\n"); 
 		 yylhs.value.as < PatternDescription * > () = new PatternDescription ((char *) yystack_[7].value.as < std::string > ().c_str(), yystack_[6].value.as < int > (), yystack_[5].value.as < int > (), yystack_[4].value.as < decimal7 * > (), yystack_[3].value.as < decimal7 * > (), yystack_[2].value.as < int > (), yystack_[1].value.as < int > ()); 
       	       }
-#line 904 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 904 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 7: // filedesc: TOK_FILE TOK_COLON TOK_IDENTIFIER
-#line 199 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 199 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
           { 
             yylhs.value.as < std::string > () = yystack_[0].value.as < std::string > (); 
           }
-#line 912 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 912 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 8: // indexdesc: TOK_INDEX TOK_COLON integernumber
-#line 205 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 205 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
 	   yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
          }
-#line 920 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 920 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 9: // indexdatedesc: TOK_INDEX TOK_DATE TOK_COLON integernumber
-#line 211 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 211 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
               { 
 	      	yylhs.value.as < int > () =  yystack_[0].value.as < int > (); 
 	      }
-#line 928 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 928 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 10: // pldesc: TOK_PL TOK_COLON number TOK_PERCENT
-#line 217 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 217 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
 	   //printf ("Found nonterminal PL: %f\n", n->getAsDouble ()); 
        	   yylhs.value.as < decimal7 * > () = yystack_[1].value.as < decimal7 * > (); 
      	 }
-#line 937 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 937 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 11: // pldesc: TOK_PL TOK_COLON integernumber TOK_PERCENT
-#line 222 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 222 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
 	   yylhs.value.as < decimal7 * > () = astFactory.getDecimalNumber (yystack_[1].value.as < int > ()); 
 	 }
-#line 945 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 945 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 12: // psdesc: TOK_PS TOK_COLON number TOK_PERCENT
-#line 228 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 228 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
 	   //printf ("Found nonterminal PS: %f\n", n->getAsDouble ()); 
        	   yylhs.value.as < decimal7 * > () = yystack_[1].value.as < decimal7 * > (); 
      	 }
-#line 954 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 954 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 13: // psdesc: TOK_PS TOK_COLON integernumber TOK_PERCENT
-#line 233 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 233 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
 	   yylhs.value.as < decimal7 * > () = astFactory.getDecimalNumber (yystack_[1].value.as < int > ()); 
 	 }
-#line 962 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 962 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 14: // tradesdesc: TOK_TRADES TOK_COLON integernumber
-#line 239 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 239 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
              { 
 	       yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
 	     }
-#line 970 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 970 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 15: // cldesc: TOK_CL TOK_COLON integernumber
-#line 245 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 245 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
           { 
 	    yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
 	  }
-#line 978 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 978 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 16: // cldesc: TOK_CL TOK_COLON TOK_MINUS
-#line 249 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 249 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
           { 
 	    yylhs.value.as < int > () = 1; 
 	  }
-#line 986 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 986 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 17: // conds: ohlc_comparison
-#line 255 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 255 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf ("Found comparison\n"); 
           yylhs.value.as < PatternExpression * > () = yystack_[0].value.as < PatternExpression * > (); 
         }
-#line 995 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 995 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 18: // conds: conds TOK_AND ohlc_comparison
-#line 260 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 260 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf ("Found recursive comparison\n"); 
        	  yylhs.value.as < PatternExpression * > () = new AndExpr (yystack_[2].value.as < PatternExpression * > (), yystack_[0].value.as < PatternExpression * > ()); 
       	}
-#line 1004 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1004 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 19: // ohlc_comparison: ohlcref TOK_GREATER_THAN ohlcref
-#line 267 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 267 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                   { 
 		    //printf ("Found greater than ohlc comparison \n"); 
         	    yylhs.value.as < PatternExpression * > () = new GreaterThanExpr (yystack_[2].value.as < PriceBarReference * > (), yystack_[0].value.as < PriceBarReference * > ()); 
       		  }
-#line 1013 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1013 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 20: // ohlcref: TOK_OPEN TOK_OF integernumber TOK_BARS TOK_AGO
-#line 274 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 274 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
           { 
 	    //printf("Found ohlc ref for open\n"); 
       	    yylhs.value.as < PriceBarReference * > () = astFactory.getPriceOpen (yystack_[2].value.as < int > ()); 
 	  }
-#line 1022 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1022 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 21: // ohlcref: TOK_HIGH TOK_OF integernumber TOK_BARS TOK_AGO
-#line 279 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 279 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
        	   //printf("Found ohlc ref for high\n"); 
       	   yylhs.value.as < PriceBarReference * > () = astFactory.getPriceHigh (yystack_[2].value.as < int > ()); 
    	 }
-#line 1031 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1031 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 22: // ohlcref: TOK_LOW TOK_OF integernumber TOK_BARS TOK_AGO
-#line 284 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 284 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          { 
 	   //printf("Found ohlc ref for low\n"); 
        	   yylhs.value.as < PriceBarReference * > () = astFactory.getPriceLow (yystack_[2].value.as < int > ()); 
 	 }
-#line 1040 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1040 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 23: // ohlcref: TOK_CLOSE TOK_OF integernumber TOK_BARS TOK_AGO
-#line 289 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 289 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getPriceClose (yystack_[2].value.as < int > ()); 
         }
-#line 1049 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1049 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 24: // ohlcref: TOK_VOLUME TOK_OF integernumber TOK_BARS TOK_AGO
-#line 294 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 294 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getVolume (yystack_[2].value.as < int > ()); 
         }
-#line 1058 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1058 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 25: // ohlcref: TOK_ROC1 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 299 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 299 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getRoc1 (yystack_[2].value.as < int > ()); 
         }
-#line 1067 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1067 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 26: // ohlcref: TOK_IBS1 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 304 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 304 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getIBS1 (yystack_[2].value.as < int > ()); 
         }
-#line 1076 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1076 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 27: // ohlcref: TOK_IBS2 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 309 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 309 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getIBS2 (yystack_[2].value.as < int > ()); 
         }
-#line 1085 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1085 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 28: // ohlcref: TOK_IBS3 TOK_OF integernumber TOK_BARS TOK_AGO
-#line 314 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 314 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getIBS3 (yystack_[2].value.as < int > ()); 
         }
-#line 1094 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1094 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 29: // ohlcref: TOK_MEANDER TOK_OF integernumber TOK_BARS TOK_AGO
-#line 319 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 319 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getMeander (yystack_[2].value.as < int > ()); 
         }
-#line 1103 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1103 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 30: // ohlcref: TOK_VCHARTLOW TOK_OF integernumber TOK_BARS TOK_AGO
-#line 324 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 324 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getVChartLow (yystack_[2].value.as < int > ()); 
         }
-#line 1112 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1112 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 31: // ohlcref: TOK_VCHARTHIGH TOK_OF integernumber TOK_BARS TOK_AGO
-#line 329 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 329 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
         { 
 	  //printf("Found ohlc ref for close\n"); 
        	  yylhs.value.as < PriceBarReference * > () = astFactory.getVChartHigh (yystack_[2].value.as < int > ()); 
         }
-#line 1121 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1121 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 32: // entrystmt: TOK_BUY TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN
-#line 342 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 342 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
             {
 		//printf ("Found long market entry on open\n"); 
       		yylhs.value.as < MarketEntryExpression * > () = astFactory.getLongMarketEntryOnOpen(); 
 	    }
-#line 1130 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1130 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 33: // entrystmt: TOK_SELL TOK_NEXT TOK_BAR TOK_ON TOK_THE TOK_OPEN
-#line 347 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 347 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
             {
 		//printf ("Found short market entry on open\n"); 
       		yylhs.value.as < MarketEntryExpression * > () = astFactory.getShortMarketEntryOnOpen(); 
 	    }
-#line 1139 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1139 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 34: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS number TOK_PERCENT
-#line 354 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 354 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
              { 
 	       //printf ("Found long side profit target\n"); 
        	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getLongProfitTarget(yystack_[1].value.as < decimal7 * > ()); 
       	     }
-#line 1148 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1148 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 35: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS integernumber TOK_PERCENT
-#line 359 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 359 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
              { 
 	       //printf ("Found long side profit target\n"); 
        	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getLongProfitTarget(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
       	     }
-#line 1157 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1157 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 36: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS number TOK_PERCENT
-#line 364 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 364 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
              { 
 	       //printf ("Found short side profit target"); 
 	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getShortProfitTarget(yystack_[1].value.as < decimal7 * > ()); 
       	     }
-#line 1166 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1166 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 37: // profitstmt: TOK_PROFIT TOK_TARGET TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS integernumber TOK_PERCENT
-#line 369 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 369 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
              { 
 	       //printf ("Found short side profit target"); 
 	       yylhs.value.as < ProfitTargetInPercentExpression * > () = astFactory.getShortProfitTarget(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
       	     }
-#line 1175 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1175 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 38: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS number TOK_PERCENT
-#line 376 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 376 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
             {
 		//printf("Found short stop loss statement\n"); 
        		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getShortStopLoss(yystack_[1].value.as < decimal7 * > ()); 
             }
-#line 1184 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1184 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 39: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_PLUS integernumber TOK_PERCENT
-#line 381 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 381 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
             {
 		//printf("Found short stop loss statement\n"); 
        		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getShortStopLoss(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
             }
-#line 1193 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1193 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 40: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS number TOK_PERCENT
-#line 386 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 386 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
            {
 		//printf("Found long stop loss statement\n"); 
  		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getLongStopLoss(yystack_[1].value.as < decimal7 * > ()); 
            }
-#line 1202 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1202 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 41: // stopstmt: TOK_STOP TOK_LOSS TOK_AT TOK_ENTRY TOK_PRICE TOK_MINUS integernumber TOK_PERCENT
-#line 391 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 391 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
            {
 		//printf("Found long stop loss statement\n"); 
  		yylhs.value.as < StopLossInPercentExpression * > () = astFactory.getLongStopLoss(astFactory.getDecimalNumber (yystack_[1].value.as < int > ())); 
            }
-#line 1211 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1211 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 42: // integernumber: TOK_INT_NUM
-#line 398 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 398 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                 { 
 		  //printf ("Found integer number %d\n", num); 
       		  yylhs.value.as < int > () = yystack_[0].value.as < int > (); 
       		}
-#line 1220 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1220 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 43: // number: TOK_FLOAT_NUM
-#line 405 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 405 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
          {
 		//printf ("Found float number %f\n", num); 
       		yylhs.value.as < decimal7 * > () =  astFactory.getDecimalNumber ((char *)yystack_[0].value.as < std::string > ().c_str()); 
          }
-#line 1229 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1229 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 44: // pattern_volatility_attr: TOK_VOLATILITY TOK_COLON volatility_attr
-#line 412 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 412 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                           {
 				yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = yystack_[0].value.as < PriceActionLabPattern::VolatilityAttribute > ();
    			  }
-#line 1237 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1237 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 45: // pattern_volatility_attr: %empty
-#line 416 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 416 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                           {
 				//printf ("Found empty volatility alternative\n");
      				yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_NONE;
    			  }
-#line 1246 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1246 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 46: // pattern_portfolio_filter_attr: TOK_PORTFOLIO TOK_COLON portfolio_attr
-#line 423 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 423 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                                 {
 					yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = yystack_[0].value.as < PriceActionLabPattern::PortfolioAttribute > ();;
 				}
-#line 1254 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1254 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 47: // pattern_portfolio_filter_attr: %empty
-#line 427 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 427 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                                 {
 					yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = PriceActionLabPattern::PORTFOLIO_FILTER_NONE;
 				}
-#line 1262 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1262 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 48: // volatility_attr: TOK_LOW_VOL
-#line 433 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 433 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                   {
 			//printf ("Found low volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_LOW;
    		  }
-#line 1271 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1271 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 49: // volatility_attr: TOK_NORMAL_VOL
-#line 438 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 438 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                 {
 			//printf ("Found normal volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_NORMAL;
 		}
-#line 1280 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1280 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 50: // volatility_attr: TOK_HIGH_VOL
-#line 443 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 443 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                 {
 			//printf ("Found high volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_HIGH;
 		}
-#line 1289 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1289 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 51: // volatility_attr: TOK_VERY_HIGH_VOL
-#line 448 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 448 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                 {
 			//printf ("Found very high volatility token\n");
 			yylhs.value.as < PriceActionLabPattern::VolatilityAttribute > () = PriceActionLabPattern::VOLATILITY_VERY_HIGH;
 		}
-#line 1298 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1298 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 52: // portfolio_attr: TOK_PORT_LONG_FILTER
-#line 455 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 455 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                  {
 			yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = PriceActionLabPattern::PORTFOLIO_FILTER_LONG;
 		 }
-#line 1306 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1306 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
   case 53: // portfolio_attr: TOK_PORT_SHORT_FILTER
-#line 459 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 459 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
                  {
 			yylhs.value.as < PriceActionLabPattern::PortfolioAttribute > () = PriceActionLabPattern::PORTFOLIO_FILTER_SHORT;
 		 }
-#line 1314 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1314 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
     break;
 
 
-#line 1318 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1318 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
 
             default:
               break;
@@ -1891,11 +1891,11 @@ namespace mkc_palast {
 #endif // YYDEBUG
 
 
-#line 10 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 10 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
 } // mkc_palast
-#line 1897 "/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
+#line 1897 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/PalParser.cpp"
 
-#line 464 "/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
+#line 464 "/home/zackel/workspace/codementor/palvalidator/libs/priceactionlab/grammar.yy"
  /*** Additional Code ***/
 
 void mkc_palast::PalParser::error(const mkc_palast::PalParser::location_type& l,

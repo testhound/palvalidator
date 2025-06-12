@@ -12,9 +12,12 @@ add_library(${LIB_NAME} STATIC ${SRC_LIST})
 include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(${LIB_NAME} PRIVATE priceaction2 ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${LIB_NAME} INTERFACE priceactionlab ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(${LIB_NAME} PUBLIC statistics)
+target_link_libraries(${LIB_NAME} PUBLIC concurrency)
+target_link_libraries(${LIB_NAME} PUBLIC timeseries)
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
