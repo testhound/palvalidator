@@ -17,17 +17,17 @@ using std::string;
 namespace mkc_timeseries
 {
   //
-  // class SecurtyAttributesFactoryException
+  // class SecurityAttributesFactoryException
   //
 
-  class SecurtyAttributesFactoryException : public std::domain_error
+  class SecurityAttributesFactoryException : public std::domain_error
   {
   public:
-    SecurtyAttributesFactoryException(const std::string msg) 
+    SecurityAttributesFactoryException(const std::string msg) 
       : std::domain_error(msg)
     {}
     
-    ~SecurtyAttributesFactoryException()
+    ~SecurityAttributesFactoryException()
     {}
     
   };
@@ -60,7 +60,7 @@ namespace mkc_timeseries
     /**
      * @brief Provides access to the singleton instance of the factory.
      * @return Reference to the singleton SecurityAttributesFactory instance.
-     * @throw SecurtyAttributesFactoryException if initialization fails.
+     * @throw SecurityAttributesFactoryException if initialization fails.
      */
     static SecurityAttributesFactory<Decimal>& instance()
     {
@@ -1221,7 +1221,7 @@ namespace mkc_timeseries
     /**
      * @brief Private constructor to enforce singleton pattern.
      * Initializes all security attributes upon first instantiation.
-     * @throw SecurtyAttributesFactoryException if any part of the initialization fails.
+     * @throw SecurityAttributesFactoryException if any part of the initialization fails.
      */
    SecurityAttributesFactory()
     {
@@ -1236,7 +1236,7 @@ namespace mkc_timeseries
 	    "SecurityAttributesFactory initialization failed: "
 	    + std::string(ex.what());
 
-	  throw SecurtyAttributesFactoryException(errorMsg);
+	  throw SecurityAttributesFactoryException(errorMsg);
         }
     }
 
@@ -1372,7 +1372,7 @@ namespace mkc_timeseries
    * @tparam Decimal The numeric type.
    * @param symbol The security symbol to look up.
    * @return A shared pointer to the SecurityAttributes for the given symbol.
-   * @throw SecurtyAttributesFactoryException if the symbol is not found in the factory.
+   * @throw SecurityAttributesFactoryException if the symbol is not found in the factory.
    */
   template <class Decimal>
   std::shared_ptr<SecurityAttributes<Decimal>> getSecurityAttributes (const std::string &symbol)
@@ -1384,7 +1384,7 @@ namespace mkc_timeseries
     if (it != factory.endSecurityAttributes())
       return it->second;
     else
-      throw SecurtyAttributesFactoryException("getSecurityAttributes - ticker symbol " +symbol +" is unkown");
+      throw SecurityAttributesFactoryException("getSecurityAttributes - ticker symbol " +symbol +" is unknown");
   }
 }
 #endif
