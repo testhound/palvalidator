@@ -1384,7 +1384,7 @@ namespace mkc_timeseries
     if (it != factory.endSecurityAttributes())
       return it->second;
     else
-      throw SecurityAttributesFactoryException("getSecurityAttributes - ticker symbol " +symbol +" is unkown");
+      throw SecurityAttributesFactoryException("getSecurityAttributes - ticker symbol " +symbol +" is unknown");
   }
 }
 #endif
