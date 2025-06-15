@@ -102,7 +102,7 @@ TEST_CASE("SecurityAttributesFactory-UnknownSymbolIterator", "[SecurityAttribute
 }
 
 TEST_CASE("getSecurityAttributes-FreeFunctionThrows", "[SecurityAttributesFactory]") {
-    REQUIRE_THROWS_AS(getSecurityAttributes<DecimalType>("UNKNOWN"), SecurtyAttributesFactoryException);
+    REQUIRE_THROWS_AS(getSecurityAttributes<DecimalType>("UNKNOWN"), SecurityAttributesFactoryException);
 }
 
 TEST_CASE("SecurityAttributesFactory-Singleton", "[SecurityAttributesFactory]") {
