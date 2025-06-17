@@ -38,17 +38,20 @@ namespace mkc_timeseries
     class StrategyIdentificationHelper {
     public:
         /**
-         * @brief Extract strategy hash from BackTester using UUID + pattern hash
+         * @brief Extract strategy hash from BackTester using pattern hash for stable identification
          * @param backTester The BackTester containing the strategy
-         * @return Combined hash from strategy's UUID and pattern
-         * 
-         * This method extracts the unique hash that combines the strategy's instance
-         * UUID with its pattern hash, providing guaranteed uniqueness across all
-         * strategy instances, even those with identical patterns.
+         * @return Pattern hash for stable identification across strategy clones
+         *
+         * This method extracts the pattern hash which remains stable across strategy clones.
+         * This enables statistics collected during permutation tests (where strategies are cloned)
+         * to be retrieved later using the original strategy objects. The pattern hash provides
+         * stable identification based on strategy configuration rather than instance UUID.
          */
         static unsigned long long extractStrategyHash(const BackTester<Decimal>& backTester) {
             auto strategy = *(backTester.beginStrategies());
-            return strategy->hashCode();  // Now includes UUID + pattern hash
+            // Use pattern hash for stable identification across clones
+            auto palStrategy = dynamic_cast<const PalStrategy<Decimal>*>(strategy.get());
+            return palStrategy ? palStrategy->getPatternHash() : 0;
         }
 
         /**
