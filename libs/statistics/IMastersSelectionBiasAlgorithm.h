@@ -25,7 +25,7 @@ namespace mkc_timeseries
      *  -------------
      *      using Algo = FastPermutation<double, ProfitFactorStat>;
      *      auto algo = std::make_unique<Algo>();
-     *      std::map<StrategyPtr, double> pvals =
+     *      std::map<unsigned long long, double> pvals =
      *          algo->run(strategies, 1000, tmplBackTester, portfolio, 0.05);
      *
      *  Template parameters
@@ -38,8 +38,8 @@ namespace mkc_timeseries
      *  -----------------------------------
      *    • Must be **stateless** between invocations.  All per‑run state lives on the stack.
      *    • Must **not** modify `strategyData`.
-     *    • Return value must contain **exactly** the same set of StrategyPtr keys as appear
-     *      in `strategyData`.
+     *    • Return value must contain **exactly** the same set of strategy hashes as appear
+     *      in `strategyData` (obtained via strategy->getPatternHash()).
      *    • Each returned p‑value must lie in the closed interval [0, 1].
      *    • The algorithm is responsible for enforcing *monotonicity* of adjusted p‑values
      *      when its statistical method requires it (Masters step‑down procedure).
@@ -57,7 +57,7 @@ namespace mkc_timeseries
 
         virtual ~IMastersSelectionBiasAlgorithm() = default;
 
-        virtual std::map<StrategyPtr, Decimal> run(
+        virtual std::map<unsigned long long, Decimal> run(
             const StrategyVec&                 strategyData,
             unsigned long                      numPermutations,
             const std::shared_ptr<BackTester<Decimal>>& templateBackTester,
