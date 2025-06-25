@@ -75,11 +75,11 @@ namespace mkc_timeseries
        * @return Map from each strategy ptr to its adjusted p-value.
        * @throws std::runtime_error if portfolio empty.
        */
-      std::map<Strat, Decimal> run(const Vec& strategyData,
-				   unsigned long numPermutations,
-				   const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
-				   const std::shared_ptr<Portfolio<Decimal>>&  portfolio,
-				   const Decimal& sigLevel) override
+      std::map<unsigned long long, Decimal> run(const Vec& strategyData,
+       unsigned long numPermutations,
+       const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
+       const std::shared_ptr<Portfolio<Decimal>>&  portfolio,
+       const Decimal& sigLevel) override
         {
             using MPP = MastersPermutationPolicy<Decimal, BaselineStatPolicy>;
 
@@ -96,35 +96,36 @@ namespace mkc_timeseries
 		throw std::invalid_argument(error_message);
 	      }
 
-	    std::map<Strat, Decimal> pvals;
-            Decimal lastAdj = Decimal(0);
+	    std::map<unsigned long long, Decimal> pvals;
+	           Decimal lastAdj = Decimal(0);
 
 
 	    // Extract the first security from the portfolio
 	    auto it = portfolio->beginPortfolio();
 	    if (it == portfolio->endPortfolio()) {
 	      throw std::runtime_error(
-				       "MastersRomanoWolf::run - portfolio contains no securities");
+	          "MastersRomanoWolf::run - portfolio contains no securities");
 	    }
 	    auto secPtr = it->second;  // SecurityPtr
 
-            // Active set holds strategies still under consideration.
-            std::unordered_set<Strat> activeStrategies;
+	           // Active set holds strategies still under consideration.
+	           std::unordered_set<Strat> activeStrategies;
 	    
 	    for (auto& context : strategyData)
 	      activeStrategies.insert(context.strategy);
 
 	    // Stepwise accumulation loop (from best to worst competitor)
-            for (auto& context : strategyData)
-            {
-                const Strat& S = context.strategy;
+	           for (auto& context : strategyData)
+	           {
+	               const Strat& S = context.strategy;
+	               auto strategyHash = S->getPatternHash();
 
-                // If previously resolved (happens when we fail early) just propagate.
-                if (!activeStrategies.count(S))
-                {
-                    pvals[S] = lastAdj;
-                    continue;
-                }
+	               // If previously resolved (happens when we fail early) just propagate.
+	               if (!activeStrategies.count(S))
+	               {
+	                   pvals[strategyHash] = lastAdj;
+	                   continue;
+	               }
 
                 // Compute permutation count using ONLY currently active strategies.
                 std::vector<Strat> activeVec(activeStrategies.begin(), activeStrategies.end());
@@ -168,28 +169,31 @@ namespace mkc_timeseries
                                                 portfolio);
 
 		// Step 2: estimate p-value = (# exceedances) / (m+1)
-                Decimal p   = Decimal(exceedCount) / Decimal(numPermutations + 1);
+		              Decimal p   = Decimal(exceedCount) / Decimal(numPermutations + 1);
 
 		 // Step 3: step-down monotonicity adjustment
-                Decimal adj = std::max(p, lastAdj);          // step‑down monotonicity
-                pvals[S]    = adj;
+		              Decimal adj = std::max(p, lastAdj);          // step‑down monotonicity
+		              pvals[strategyHash] = adj;
 
-                if (adj <= sigLevel)
-                {
+		              if (adj <= sigLevel)
+		              {
 		  // As we remove one surviving strategy at each step, the set over which we take the
 		  // maximum shrinks—and so the null distribution tightens—giving us more power on
 		  // subsequent (weaker) strategies while preserving strong control of the family-wise error rate.
 		  
-                    lastAdj = adj;
-                    activeStrategies.erase(S);
-                }
-                else
-                {
-                    // Failure ⇒ all remaining strategies inherit same p‑value.
-                    for (auto& R : activeStrategies)
-		      pvals[R] = adj;
-                    break;
-                }
+		                  lastAdj = adj;
+		                  activeStrategies.erase(S);
+		              }
+		              else
+		              {
+		                  // Failure ⇒ all remaining strategies inherit same p‑value.
+		                  for (auto& R : activeStrategies)
+		    {
+		      auto rHash = R->getPatternHash();
+		      pvals[rHash] = adj;
+		    }
+		                  break;
+		              }
             }
             return pvals;
 	}
