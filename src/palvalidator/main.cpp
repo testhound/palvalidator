@@ -13,6 +13,7 @@
 #include "ValidatorConfiguration.h"
 #include "SecurityAttributesFactory.h"
 #include "PALMastersMonteCarloValidation.h"
+#include "PALRomanoWolfMonteCarloValidation.h" 
 #include "PALMonteCarloValidation.h"
 #include "MonteCarloPermutationTest.h"
 #include "MultipleTestingCorrection.h"
@@ -177,6 +178,58 @@ public:
   }
 };
 
+class PALRomanoWolfValidationWrapper : public ValidationInterface
+{
+private:
+  PALRomanoWolfMonteCarloValidation<Num, BacktestingStatPolicy<Num>> validation;
+    
+public:
+  explicit PALRomanoWolfValidationWrapper(unsigned long numPermutations)
+    : validation(numPermutations)
+  {
+  }
+    
+  void runPermutationTests(std::shared_ptr<Security<Num>> baseSecurity,
+                           std::shared_ptr<PriceActionLabSystem> patterns,
+                           const DateRange& dateRange,
+                           const Num& pvalThreshold) override
+  {
+    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true);
+  }
+    
+  SurvivingStrategiesIterator beginSurvivingStrategies() const override
+  {
+    return validation.beginSurvivingStrategies();
+  }
+    
+  SurvivingStrategiesIterator endSurvivingStrategies() const override
+  {
+    return validation.endSurvivingStrategies();
+  }
+    
+  int getNumSurvivingStrategies() const override
+  {
+    return validation.getNumSurvivingStrategies();
+  }
+
+  const PermutationStatisticsCollector<Num>& getStatisticsCollector() const override
+  {
+    // NOTE: The new Romano-Wolf class does not have a statistics collector.
+    // This method will throw an exception as defined in the base interface.
+    throw std::runtime_error("PALRomanoWolfValidationWrapper does not support statistics collection");
+  }
+  
+  std::vector<std::pair<std::shared_ptr<PalStrategy<Num>>, Num>> getAllTestedStrategies() const override
+  {
+    return validation.getAllTestedStrategies();
+  }
+  
+  Num getStrategyPValue(std::shared_ptr<PalStrategy<Num>> strategy) const override
+  {
+    return validation.getStrategyPValue(strategy);
+  }
+};
+
 // Wrapper for Romano-Wolf validation
 class RomanoWolfValidationWrapper : public ValidationInterface
 {
@@ -297,7 +350,7 @@ std::unique_ptr<ValidationInterface> createValidation(ValidationMethod method, u
       return std::make_unique<MastersValidationWrapper>(numPermutations);
 
     case ValidationMethod::RomanoWolf:
-      return std::make_unique<RomanoWolfValidationWrapper>(numPermutations);
+      return std::make_unique<PALRomanoWolfValidationWrapper>(numPermutations);
 
     case ValidationMethod::BenjaminiHochberg:
       return std::make_unique<BenjaminiHochbergValidationWrapper>(numPermutations);
@@ -953,7 +1006,8 @@ void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecur
 	  auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
 								     theTimeFrame,
 								     backtestingDates);
-	  auto& monteCarloStats = validation->getStatisticsCollector();
+	  // Note: monteCarloStats not used for surviving patterns in this implementation
+	  // auto& monteCarloStats = validation->getStatisticsCollector();
 	  survivingPatternsFile << "Surviving Pattern:" << std::endl << std::endl;
 	  LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
 	  survivingPatternsFile << std::endl;
