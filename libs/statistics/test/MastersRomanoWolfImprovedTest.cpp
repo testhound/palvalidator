@@ -7,6 +7,7 @@
 #include <vector>
 #include <cstdlib>
 #include <algorithm>
+#include <set>
 
 using namespace mkc_timeseries;
 typedef DecimalType D;
@@ -198,7 +199,8 @@ TEST_CASE("MastersRomanoWolfImproved basic single-strategy test") {
 
     auto pvals = algo.run(data, 10, bt, portfolio, D("1.0"));
     REQUIRE(pvals.size() == 1);
-    REQUIRE(pvals[strat] == D("1.0"));
+    auto strategyHash = strat->getPatternHash();
+    REQUIRE(pvals[strategyHash] == D("1.0"));
 }
 
 TEST_CASE("MastersRomanoWolfImproved works with multiple strategies") {
@@ -215,8 +217,18 @@ TEST_CASE("MastersRomanoWolfImproved works with multiple strategies") {
     }
 
     auto pvals = algo.run(data, 20, bt, pf, D("1.0"));
-    REQUIRE(pvals.size() == strats.size());
-    for (auto& s : strats) REQUIRE(pvals[s] == D("1.0"));
+    
+    // Collect unique strategy hashes
+    std::set<unsigned long long> uniqueHashes;
+    for (auto& s : strats) {
+        uniqueHashes.insert(s->getPatternHash());
+    }
+    
+    REQUIRE(pvals.size() == uniqueHashes.size());
+    for (auto& s : strats) {
+        auto strategyHash = s->getPatternHash();
+        REQUIRE(pvals[strategyHash] == D("1.0"));
+    }
 }
 
 TEST_CASE("MastersRomanoWolfImproved low statistic raw p-value") {
@@ -231,9 +243,16 @@ TEST_CASE("MastersRomanoWolfImproved low statistic raw p-value") {
      unsigned long m = 5;
     D alpha("0.4");
     auto pvals = algo.run(data, m, bt, pf, alpha);
-    REQUIRE(pvals.size() == data.size());
+    
+    // Collect unique strategy hashes
+    std::set<unsigned long long> uniqueHashes;
+    for (auto& ctx : data) {
+        uniqueHashes.insert(ctx.strategy->getPatternHash());
+    }
+    
+    REQUIRE(pvals.size() == uniqueHashes.size());
     // When statistic is always < alpha, raw p-value = 1/(m+1) == 1/6
-    D expected = D("1") / D("6"); 
+    D expected = D("1") / D("6");
     for (auto& kv : pvals)
         REQUIRE(kv.second == expected);
 }
@@ -254,8 +273,20 @@ TEST_CASE("MastersRomanoWolfImproved enforces step-down monotonicity") {
 
     auto pvals = algo.run(data, 100, bt, pf, D("0.05"));
     D prev = D("0.0");
+    // Since multiple strategies may have the same hash, we need to iterate through unique hashes
+    // in the same order as the original data (sorted by baseline stat)
+    std::vector<unsigned long long> uniqueHashesInOrder;
+    std::set<unsigned long long> seenHashes;
     for (auto& ctx : data) {
-        auto v = pvals[ctx.strategy];
+        auto strategyHash = ctx.strategy->getPatternHash();
+        if (seenHashes.find(strategyHash) == seenHashes.end()) {
+            uniqueHashesInOrder.push_back(strategyHash);
+            seenHashes.insert(strategyHash);
+        }
+    }
+    
+    for (auto& strategyHash : uniqueHashesInOrder) {
+        auto v = pvals[strategyHash];
         REQUIRE(v >= prev);
         REQUIRE((v >= D("0.0") && v <= D("1.0")));
         prev = v;
@@ -313,7 +344,8 @@ TEST_CASE("MastersRomanoWolfImproved integration with real price patterns and se
     REQUIRE(pvals.size() == contexts.size());
     D prev = D("0.0");
     for (auto& ctx : contexts) {
-        auto v = pvals[ctx.strategy];
+        auto strategyHash = ctx.strategy->getPatternHash();
+        auto v = pvals[strategyHash];
         REQUIRE(v >= prev);
         REQUIRE((v >= D("0.0") && v <= D("1.0")));
         prev = v;

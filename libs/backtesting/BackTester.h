@@ -270,6 +270,17 @@ namespace mkc_timeseries
 	      auto posPtr = *instrPos.getInstrumentPosition(u);
 	      auto begin  = posPtr->beginPositionBarHistory();
 	      auto end    = posPtr->endPositionBarHistory();
+
+	      if (begin == end)
+		continue;
+
+	      // --- NEW LOGIC TO INCLUDE THE FIRST BAR'S P&L FOR OPEN POSITIONS ---
+	      const Decimal& entryPrice = posPtr->getEntryPrice();
+	      const auto& entryBar = begin->second;
+	      const Decimal& entryBarClose = entryBar.getCloseValue();
+          
+	      allReturns.push_back((entryBarClose - entryPrice) / entryPrice);
+
 	      if (std::distance(begin, end) < 2) 
                 continue;
 
@@ -287,12 +298,68 @@ namespace mkc_timeseries
       return allReturns;
     }
 
+    std::vector<ExpandedBarMetrics<Decimal>> getExpandedHighResReturns(StrategyPtr strat) const
+    {
+      std::vector<ExpandedBarMetrics<Decimal>> allMetrics;
+      
+      // Closed trades
+      const auto& closedHist = strat->getStrategyBroker().getClosedPositionHistory();
+      auto closedMetrics = closedHist.getExpandedHighResBarReturns();
+      allMetrics.insert(allMetrics.end(), closedMetrics.begin(), closedMetrics.end());
+      
+      // Open trades
+      for (auto it = strat->getPortfolio()->beginPortfolio();
+	   it != strat->getPortfolio()->endPortfolio();
+	   ++it)
+	{
+	  const auto& sec = it->second;
+	  const auto& instrPos = strat->getInstrumentPosition(sec->getSymbol());
+	  
+	  for (uint32_t u = 1; u <= instrPos.getNumPositionUnits(); ++u)
+	    {
+	      auto posPtr = *instrPos.getInstrumentPosition(u);
+	      auto begin = posPtr->beginPositionBarHistory();
+	      auto end = posPtr->endPositionBarHistory();
+	      
+	      if (std::distance(begin, end) < 2)
+                continue;
+	      
+	      auto prev = begin;
+	      for (auto curr = std::next(begin); curr != end; ++curr)
+		{
+		  const auto& prevBar = prev->second;
+		  const auto& bar = curr->second;
+		  
+		  Decimal prevClose = prevBar.getCloseValue();
+		  Decimal open = bar.getOpenValue();
+		  Decimal high = bar.getHighValue();
+		  Decimal low = bar.getLowValue();
+		  Decimal close = bar.getCloseValue();
+		  
+		  if (prevClose == Decimal(0))
+                    continue;
+
+		  ExpandedBarMetrics<Decimal> metrics;
+		  metrics.closeToClose = (close - prevClose) / prevClose;
+		  metrics.openToClose = (close - open) / open;
+		  metrics.highToOpen  = (high - open) / open;
+		  metrics.lowToOpen   = (low - open) / open;
+
+		  allMetrics.push_back(metrics);
+		  prev = curr;
+		}
+	    }
+	}
+
+      return allMetrics;
+    }
+
     /**
      * @brief Get the total number of trades (closed + open) for the first strategy
      * @return Total count of closed trades plus open position units
      * @throws BackTesterException if no strategies have been added
      */
-    uint32_t getNumTrades() const
+    virtual uint32_t getNumTrades() const
     {
         if (mStrategyList.empty()) {
             throw BackTesterException("getNumTrades: No strategies added");
@@ -324,7 +391,7 @@ namespace mkc_timeseries
      * @return Total count of bars in all closed and open trades
      * @throws BackTesterException if no strategies have been added
      */
-    uint32_t getNumBarsInTrades() const
+    virtual uint32_t getNumBarsInTrades() const
     {
         if (mStrategyList.empty()) {
             throw BackTesterException("getNumBarsInTrades: No strategies added");
@@ -910,6 +977,7 @@ namespace mkc_timeseries
      */
     IntradayBackTester(const boost::posix_time::ptime& startDateTime,
                        const boost::posix_time::ptime& endDateTime)
+      : BackTester<Decimal>()
     {
       this->addDateRange(DateRange(startDateTime, endDateTime));
     }
@@ -919,7 +987,7 @@ namespace mkc_timeseries
      *        Date ranges must be added via addDateRange() before use.
      */
     IntradayBackTester()
-        : BackTester<Decimal>()
+      : BackTester<Decimal>()
     {}
 
     ~IntradayBackTester()
@@ -1077,6 +1145,17 @@ namespace mkc_timeseries
       return getBackTester(theTimeFrame, DateRange(startDateTime, endDateTime));
     }
 
+    static std::shared_ptr<BackTester<Decimal>>
+    backTestStrategy(const std::shared_ptr<BacktesterStrategy<Decimal>>& aStrategy,
+		     TimeFrame::Duration theTimeFrame,
+		     const DateRange& backtestingDates)
+    {
+      auto backtester = getBackTester(theTimeFrame, backtestingDates);
+      backtester->addStrategy(aStrategy);
+      backtester->backtest();
+      return backtester;
+    }
+    
     /**
      * @brief Convenience: retrieve total closed trades from the first strategy.
      * @param aBackTester Shared pointer to an initialized BackTester.

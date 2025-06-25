@@ -10,35 +10,40 @@
 #include <unordered_map>
 #include <shared_mutex>
 #include <vector>
+#include <functional>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/nil_generator.hpp>
 #include "PermutationTestObserver.h"
 #include "ThreadSafeAccumulator.h"
 #include "PalStrategy.h"
+#include "StrategyIdentificationHelper.h"
 
 namespace mkc_timeseries
 {
     /**
      * @class UuidStrategyPermutationStatsAggregator
-     * @brief Advanced statistics aggregator using UUID-based strategy identification
-     * 
-     * This class provides a sophisticated statistics collection system that combines
-     * UUID-based strategy identification with Boost.Accumulators for efficient
-     * statistics computation. It's designed for high-performance permutation testing
-     * where multiple strategies may have identical patterns but need separate tracking.
-     * 
+     * @brief Advanced statistics aggregator using combined hash strategy identification
+     *
+     * This class provides a sophisticated statistics collection system that uses
+     * combined hash strategy identification (pattern hash + strategy name hash) with
+     * Boost.Accumulators for efficient statistics computation. It's designed for
+     * high-performance permutation testing where strategies are cloned with new UUIDs
+     * but need stable identification with proper disambiguation.
+     *
      * Key Features:
-     * - **UUID-Based Uniqueness**: Eliminates strategy collision risk across distributed systems
+     * - **Combined Hash Identification**: Uses pattern hash + strategy name hash for stable identification with disambiguation
+     * - **Monte Carlo Compatibility**: Statistics collected during permutation tests can be retrieved later
+     * - **Strategy Disambiguation**: Different strategies with same pattern are properly distinguished
      * - **Boost.Accumulators Integration**: 75% code reduction, 90% memory efficiency
      * - **Thread-Safe Design**: Concurrent permutation testing support
-     * - **Debugging Support**: Maps hashes back to UUIDs and pattern hashes
+     * - **Debugging Support**: Maps combined hashes back to UUIDs and strategy pointers
      * - **Pattern Analysis**: Groups strategies by pattern for comparative analysis
-     * 
+     *
      * Architecture:
-     * - Primary key: Combined hash (UUID + pattern hash)
-     * - Secondary mappings: Hash → Strategy pointer, UUID, pattern hash
-     * - Statistics storage: Per-strategy, per-metric ThreadSafeAccumulator instances
-     * 
+     * - Primary key: Combined hash (pattern hash ^ (strategy name hash << 1))
+     * - Secondary mappings: Combined hash → Strategy pointer, UUID, pattern hash
+     * - Statistics storage: Per-combined-hash, per-metric ThreadSafeAccumulator instances
+     *
      * @tparam Decimal Numeric type for calculations (e.g., double)
      */
     template <class Decimal>
@@ -46,12 +51,12 @@ namespace mkc_timeseries
     private:
         using MetricType = typename PermutationTestObserver<Decimal>::MetricType;
         
-        // Use strategy hash (UUID + pattern) as primary key
-        std::unordered_map<unsigned long long, 
-                          std::unordered_map<MetricType, ThreadSafeAccumulator<Decimal>>> 
+        // Use pattern hash as primary key for stable identification across clones
+        std::unordered_map<unsigned long long,
+                          std::unordered_map<MetricType, ThreadSafeAccumulator<Decimal>>>
                           m_strategyMetrics;
         
-        // Map hash back to strategy pointer for interface compatibility
+        // Map pattern hash back to strategy pointer for interface compatibility
         std::unordered_map<unsigned long long, const PalStrategy<Decimal>*> m_hashToStrategy;
         
         // Additional mapping for debugging and analysis
@@ -60,16 +65,19 @@ namespace mkc_timeseries
         
         mutable std::shared_mutex m_mapMutex;
 
+
     public:
         /**
          * @brief Add a value to the statistics for a specific strategy and metric
-         * @param strategyHash Combined hash (UUID + pattern) identifying the strategy
+         * @param strategyHash Combined hash identifying the strategy (pattern hash + strategy name hash for stable identification across clones)
          * @param strategy Pointer to the PalStrategy instance
          * @param metric Type of metric being recorded
          * @param value The value to add to the accumulator
-         * 
+         *
          * This method stores the value in the appropriate ThreadSafeAccumulator and
-         * maintains the debugging mappings for analysis purposes.
+         * maintains the debugging mappings for analysis purposes. Uses combined hash
+         * (pattern hash + strategy name hash) for stable identification across strategy
+         * clones with proper disambiguation during permutation testing.
          */
         void addValue(unsigned long long strategyHash,
                       const PalStrategy<Decimal>* strategy,
@@ -97,14 +105,20 @@ namespace mkc_timeseries
         std::optional<Decimal> getMin(const PalStrategy<Decimal>* strategy, MetricType metric) const {
             if (!strategy) return std::nullopt;
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
+            
             std::shared_lock<std::shared_mutex> mapLock(m_mapMutex);
             
             auto stratIt = m_strategyMetrics.find(hash);
-            if (stratIt == m_strategyMetrics.end()) return std::nullopt;
+            if (stratIt == m_strategyMetrics.end()) {
+                return std::nullopt;
+            }
             
             auto metricIt = stratIt->second.find(metric);
-            if (metricIt == stratIt->second.end()) return std::nullopt;
+            if (metricIt == stratIt->second.end()) {
+                return std::nullopt;
+            }
             
             return metricIt->second.getMin();
         }
@@ -118,7 +132,8 @@ namespace mkc_timeseries
         std::optional<Decimal> getMax(const PalStrategy<Decimal>* strategy, MetricType metric) const {
             if (!strategy) return std::nullopt;
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
             std::shared_lock<std::shared_mutex> mapLock(m_mapMutex);
             
             auto stratIt = m_strategyMetrics.find(hash);
@@ -139,7 +154,8 @@ namespace mkc_timeseries
         std::optional<double> getMedian(const PalStrategy<Decimal>* strategy, MetricType metric) const {
             if (!strategy) return std::nullopt;
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
             std::shared_lock<std::shared_mutex> mapLock(m_mapMutex);
             
             auto stratIt = m_strategyMetrics.find(hash);
@@ -160,7 +176,8 @@ namespace mkc_timeseries
         std::optional<double> getStdDev(const PalStrategy<Decimal>* strategy, MetricType metric) const {
             if (!strategy) return std::nullopt;
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
             std::shared_lock<std::shared_mutex> mapLock(m_mapMutex);
             
             auto stratIt = m_strategyMetrics.find(hash);
@@ -205,7 +222,8 @@ namespace mkc_timeseries
         size_t getPermutationCount(const PalStrategy<Decimal>* strategy, MetricType metric) const {
             if (!strategy) return 0;
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
             std::shared_lock<std::shared_mutex> mapLock(m_mapMutex);
             
             auto stratIt = m_strategyMetrics.find(hash);
@@ -227,7 +245,8 @@ namespace mkc_timeseries
         boost::uuids::uuid getStrategyUuid(const PalStrategy<Decimal>* strategy) const {
             if (!strategy) return boost::uuids::nil_uuid();
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
             std::shared_lock<std::shared_mutex> lock(m_mapMutex);
             
             auto it = m_hashToUuid.find(hash);
@@ -242,7 +261,8 @@ namespace mkc_timeseries
         unsigned long long getPatternHash(const PalStrategy<Decimal>* strategy) const {
             if (!strategy) return 0;
             
-            unsigned long long hash = strategy->hashCode();
+            // Use centralized combined hash computation for consistency
+            unsigned long long hash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
             std::shared_lock<std::shared_mutex> lock(m_mapMutex);
             
             auto it = m_hashToPatternHash.find(hash);

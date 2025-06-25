@@ -728,6 +728,22 @@ namespace mkc_timeseries
     {
       if (this->isLongPosition (aSecurity->getSymbol()))
       {
+        // NEW: Check for 8-bar exit rule first (takes priority)
+        uint32_t numUnits = instrPos.getNumPositionUnits();
+        if (numUnits > 0)
+        {
+          auto it = instrPos.getInstrumentPosition(numUnits);
+          auto pos = *it;
+          
+          if (pos->getNumBarsSinceEntry() >= 8)
+          {
+            // Exit all units at market after 8 bars
+            this->ExitLongAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
+            return; // Don't place other exit orders
+          }
+        }
+
+        // EXISTING: Profit target and stop loss logic
         std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
 
         Decimal target = pattern->getProfitTargetAsDecimal();
@@ -872,6 +888,22 @@ namespace mkc_timeseries
     {
       if (this->isShortPosition (aSecurity->getSymbol()))
       {
+        // NEW: Check for 8-bar exit rule first (takes priority)
+        uint32_t numUnits = instrPos.getNumPositionUnits();
+        if (numUnits > 0)
+        {
+          auto it = instrPos.getInstrumentPosition(numUnits);
+          auto pos = *it;
+          
+          if (pos->getNumBarsSinceEntry() >= 8)
+          {
+            // Exit all units at market after 8 bars
+            this->ExitShortAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
+            return; // Don't place other exit orders
+          }
+        }
+
+        // EXISTING: Profit target and stop loss logic
         std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
 
         Decimal target = pattern->getProfitTargetAsDecimal();

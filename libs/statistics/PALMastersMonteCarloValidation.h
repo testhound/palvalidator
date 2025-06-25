@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <fstream>
 #include <boost/date_time.hpp>
 #include "number.h"
 #include "DecimalConstants.h"
@@ -20,6 +21,7 @@
 #include "PALMonteCarloTypes.h"
 #include "StrategyDataPreparer.h"
 #include "IMastersSelectionBiasAlgorithm.h"
+#include "MastersRomanoWolf.h"
 #include "MastersRomanoWolfImproved.h"
 #include "PermutationStatisticsCollector.h"
 
@@ -104,7 +106,7 @@ template <class Decimal, class BaselineStatPolicy>
        */
       PALMastersMonteCarloValidation(unsigned long numPermutations,
         std::unique_ptr<AlgoType> algo =
-        std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
+        std::make_unique<MastersRomanoWolf<Decimal,BaselineStatPolicy>>())
  : mNumPermutations(numPermutations),
    mStrategySelectionPolicy(),
    mAlgorithm(std::move(algo)),
@@ -155,7 +157,7 @@ template <class Decimal, class BaselineStatPolicy>
        */
       unsigned long getNumSurvivingStrategies() const
       {
- return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
+	return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
       }
 
       /*!
@@ -172,6 +174,23 @@ template <class Decimal, class BaselineStatPolicy>
        */
       PermutationStatisticsCollector<Decimal>& getStatisticsCollector() {
         return *mStatisticsCollector;
+      }
+
+      /*!
+       * @brief Get all tested strategies with their p-values
+       * @return Vector of pairs containing strategy and its p-value
+       */
+      std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
+        return mStrategySelectionPolicy.getAllTestedStrategies();
+      }
+
+      /*!
+       * @brief Get the p-value for a specific strategy
+       * @param strategy The strategy to get the p-value for
+       * @return The p-value for the strategy
+       */
+      Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
+        return mStrategySelectionPolicy.getStrategyPValue(strategy);
       }
 
       /*!
@@ -195,10 +214,11 @@ template <class Decimal, class BaselineStatPolicy>
        *or if a template backtester cannot be created.
        */
       void runPermutationTests(std::shared_ptr<Security<Decimal>> baseSecurity,
-          std::shared_ptr<PriceActionLabSystem> patterns,
-          const DateRange& dateRange,
-          const Decimal& pValueSignificanceLevel =
-          DecimalConstants<Decimal>::SignificantPValue)
+			       std::shared_ptr<PriceActionLabSystem> patterns,
+			       const DateRange& dateRange,
+			       const Decimal& pValueSignificanceLevel =
+			       DecimalConstants<Decimal>::SignificantPValue,
+			       bool verbose = false)
       {
 	if (!baseSecurity)
 	  throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");
@@ -209,11 +229,10 @@ template <class Decimal, class BaselineStatPolicy>
 	mStrategySelectionPolicy.clearForNewTest();
 	auto timeFrame = baseSecurity->getTimeSeries()->getTimeFrame();
 	auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(timeFrame,
-									    dateRange.getFirstDate(),
-									    dateRange.getLastDate()); 
+									    dateRange);
 	if (!templateBackTester)
 	  throw PALMastersMonteCarloValidationException("Failed to create template backtester.");
-
+	
 	mStrategyData = StrategyDataPreparer<Decimal, BaselineStatPolicy>::prepare(templateBackTester,
 										   baseSecurity,
 										   patterns);
@@ -223,18 +242,49 @@ template <class Decimal, class BaselineStatPolicy>
 	  return;
 	}
 
+	if (verbose)
+	  {
+	    std::cout << "PALMastersMonteCarloValidation starting validation for " << std::endl;
+	    std::cout << "Out-of-Sample Date Range: " << dateRange.getFirstDateTime()
+		      << " to " << dateRange.getLastDateTime() << std::endl;
+	  }
+	
 	// Sort DESCENDING by baselineStat (best first)
 	std::sort(mStrategyData.begin(), mStrategyData.end(),
 		  [](const StrategyContextType& a, const StrategyContextType& b) {
 		    return a.baselineStat > b.baselineStat;
 		  });
 	
+	// Write sorted strategy data to file if verbose is enabled
+	if (verbose)
+	  {
+	    std::string filename = baseSecurity->getSymbol() + "_StrategyData.txt";
+	    std::ofstream outFile(filename);
+	    
+	    if (outFile.is_open())
+	      {
+		outFile << "Strategy Name\tBaseline Statistic\tNumber of Trades\n";
+		for (const auto& strategyContext : mStrategyData)
+		  {
+		    outFile << strategyContext.strategy->getStrategyName() << "\t"
+			    << strategyContext.baselineStat << "\t"
+			    << strategyContext.count << "\n";
+		  }
+		outFile.close();
+		std::cout << "Strategy data written to file: " << filename << std::endl;
+	      }
+	    else
+	      {
+		std::cerr << "Warning: Could not open file " << filename << " for writing strategy data." << std::endl;
+	      }
+	  }
+	
 	auto portfolio = std::make_shared<Portfolio<Decimal>>("PermutationPortfolio");
 	portfolio->addSecurity(baseSecurity->clone(baseSecurity->getTimeSeries()));
 
 	// Determine Significance Level (Alpha)
 	Decimal sigLevel = pValueSignificanceLevel;
-	map<StrategyPtr, Decimal> pvalMap;
+	std::map<unsigned long long, Decimal> pvalMap;
 
 	// Attach the statistics collector to the algorithm for observer pattern
 	// The algorithm will chain this observer to its internal policy instances
@@ -249,20 +299,35 @@ template <class Decimal, class BaselineStatPolicy>
 				  portfolio,
 				  sigLevel);
 
-	for (const auto& entry : mStrategyData) {
-	  Decimal finalPval = DecimalConstants<Decimal>::DecimalOne; // Default p-value
-	  auto it = pvalMap.find(entry.strategy);
+	if (verbose)
+	  std::cout << "PALMastersMonteCarloValidation: finishing validation, populating strategy selection policy" << std::endl;
+	
+	for (const auto& entry : mStrategyData)
+	  {
+	    Decimal finalPval = DecimalConstants<Decimal>::DecimalOne; // Default p-value
+	    auto strategyHash = entry.strategy->getPatternHash();
+	    auto it = pvalMap.find(strategyHash);
 
-	  if (it != pvalMap.end()) {
-	    finalPval = it->second;
-	  } else {
-	    std::cerr << "Warning: Final p-value not found for strategy "
-		      << entry.strategy->getStrategyName() << ", assigning 1.0" << std::endl;
+	    if (it != pvalMap.end())
+	      {
+		finalPval = it->second;
+	      }
+	    else
+	      {
+		std::cerr << "Warning: Final p-value not found for strategy "
+			  << entry.strategy->getStrategyName() << ", assigning 1.0" << std::endl;
+	      }
+
+	    //if (verbose)
+	    //std::cout << "PALMastersMonteCarloValidation adding strategy" << std::endl;
+	    
+	    mStrategySelectionPolicy.addStrategy(finalPval, entry.strategy);
 	  }
-
-	  mStrategySelectionPolicy.addStrategy(finalPval, entry.strategy);
-	}
+	
 	mStrategySelectionPolicy.correctForMultipleTests(pValueSignificanceLevel);
+
+	if (verbose)
+	  std::cout << "PALMastersMonteCarloValidation finished validation" << std::endl;
       }
 
     private:

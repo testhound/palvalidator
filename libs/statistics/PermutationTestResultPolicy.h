@@ -31,7 +31,12 @@ namespace mkc_timeseries
     // permutation testing
 
     // the second parameter is unused and is by convention zero
-    static ReturnType createReturnValue(Decimal pValue, Decimal unused)
+    static ReturnType createReturnValue(Decimal pValue, Decimal testStatistic)
+    {
+      return pValue;
+    }
+
+    static ReturnType createReturnValue(Decimal pValue, Decimal testStatistic, Decimal baselineStat)
     {
       return pValue;
     }
@@ -50,9 +55,35 @@ namespace mkc_timeseries
     {
       return std::make_tuple(pValue, testStat);
     }
+
+    static ReturnType createReturnValue(Decimal pValue, Decimal testStatistic, Decimal baselineStat)
+    {
+      return std::make_tuple(pValue, testStatistic);
+    }
   };
 
 
+  // Returns a complete result set from a permutation test
+  template <class Decimal>
+  class FullPermutationResultPolicy
+  {
+  public:
+    using DecimalType = Decimal;
+    // The tuple now holds: <raw pValue, baselineStat, maxPermutedStat>
+    using ReturnType = std::tuple<Decimal, Decimal, Decimal>;
+
+    // 2-parameter version for compatibility with static assertion
+    static std::tuple<Decimal, Decimal> createReturnValue(Decimal pValue, Decimal testStatistic)
+    {
+      return std::make_tuple(pValue, testStatistic);
+    }
+
+    static ReturnType createReturnValue(Decimal pValue, Decimal testStatistic, Decimal baselineStat)
+    {
+      return std::make_tuple(pValue, testStatistic, baselineStat);
+    }
+  };
+  
   //// Policy classes related to collection permutation test statistics
 
   // class PermutationTestingMaxTestStatisticPolicy represents collecting
@@ -149,6 +180,25 @@ struct has_create_return_value<
     std::void_t<
       decltype(
         T::createReturnValue(
+          std::declval<typename T::DecimalType>(),
+          std::declval<typename T::DecimalType>()
+        )
+      )
+    >
+> : std::true_type {};
+
+// ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+// helper: detect static createReturnValue(DecimalType, DecimalType, DecimalType)
+template<typename T, typename = void>
+struct has_create_return_value_3param : std::false_type {};
+
+template<typename T>
+struct has_create_return_value_3param<
+    T,
+    std::void_t<
+      decltype(
+        T::createReturnValue(
+          std::declval<typename T::DecimalType>(),
           std::declval<typename T::DecimalType>(),
           std::declval<typename T::DecimalType>()
         )

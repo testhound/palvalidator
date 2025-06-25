@@ -37,6 +37,21 @@ namespace mkc_timeseries
         virtual ~PermutationTestObserver() = default;
 
         /**
+         * @brief Extensible statistics retrieval using enum for metric types
+         *
+         * This enum allows adding new metrics without changing the observer interface.
+         * Each metric represents a different aspect of strategy performance that can
+         * be collected during permutation testing.
+         */
+        enum class MetricType {
+            PERMUTED_TEST_STATISTIC,  ///< The main performance statistic (e.g., Sharpe ratio)
+            NUM_TRADES,               ///< Total number of trades (closed + open)
+            NUM_BARS_IN_TRADES,       ///< Total bars across all trades (closed + open)
+            BASELINE_STAT_EXCEEDANCE_RATE ///< Percentage of permutations where a strategy's baseline statistic was exceeded by the maximum statistic across all strategies in that permutation
+            // Future metrics can be added here without interface changes
+        };
+
+        /**
          * @brief Called by subjects when a permutation backtest completes
          * @param permutedBacktester The BackTester instance after running on synthetic data
          * @param permutedTestStatistic The performance statistic from this permutation
@@ -47,18 +62,16 @@ namespace mkc_timeseries
         ) = 0;
 
         /**
-         * @brief Extensible statistics retrieval using enum for metric types
-         * 
-         * This enum allows adding new metrics without changing the observer interface.
-         * Each metric represents a different aspect of strategy performance that can
-         * be collected during permutation testing.
+         * @brief Called by subjects when a specific metric is calculated for a strategy
+         * @param strategy The strategy for which the metric is being reported
+         * @param metricType The type of metric being reported
+         * @param metricValue The calculated metric value
          */
-        enum class MetricType {
-            PERMUTED_TEST_STATISTIC,  ///< The main performance statistic (e.g., Sharpe ratio)
-            NUM_TRADES,               ///< Total number of trades (closed + open)
-            NUM_BARS_IN_TRADES        ///< Total bars across all trades (closed + open)
-            // Future metrics can be added here without interface changes
-        };
+        virtual void updateMetric(
+            const PalStrategy<Decimal>* strategy,
+            MetricType metricType,
+            const Decimal& metricValue
+        ) = 0;
 
         // Strategy identification handled by observer implementation using strategy pointer
         virtual std::optional<Decimal> getMinMetric(const PalStrategy<Decimal>* strategy, MetricType metric) const = 0;

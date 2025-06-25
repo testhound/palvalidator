@@ -543,8 +543,8 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     //printPositionHistory (history);
 
-    REQUIRE (history.getNumWinningPositions() == 13);
-    REQUIRE (history.getNumLosingPositions() == 11);
+    REQUIRE (history.getNumWinningPositions() == 14);
+    REQUIRE (history.getNumLosingPositions() == 10);
  
   }
 
@@ -649,9 +649,9 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
       }
 
     StrategyBroker<DecimalType> aBroker = longStrategy2.getStrategyBroker();
-    REQUIRE (aBroker.getTotalTrades() == 45);
+    REQUIRE (aBroker.getTotalTrades() == 46);
     REQUIRE (aBroker.getOpenTrades() == 0);
-    REQUIRE (aBroker.getClosedTrades() == 45); 
+    REQUIRE (aBroker.getClosedTrades() == 46); 
 
     //ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     //printPositionHistory (history);

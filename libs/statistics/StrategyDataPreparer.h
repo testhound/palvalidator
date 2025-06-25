@@ -116,11 +116,17 @@ namespace mkc_timeseries
 		       &dataMutex]()
 	  {
 	    // Execute backtest; allow exceptions to propagate and be handled by executor
-	    Decimal stat = runSingleBacktest(strategy, templateBacktester);
+	    auto btClone = templateBacktester->clone();
+	    btClone->addStrategy(strategy);
+	    btClone->backtest();
+	    Decimal stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+	    
+	    // Get the number of trades from the backtest
+	    unsigned int numTrades = btClone->getNumTrades();
 
 	    // Append result under lock
 	    std::lock_guard<std::mutex> lock(dataMutex);
-	    result.push_back(StrategyContextType{ strategy, stat, 1 });
+	    result.push_back(StrategyContextType{ strategy, stat, numTrades });
 	  };
 
 	  // Submit task to executor
@@ -134,21 +140,6 @@ namespace mkc_timeseries
     }
 
   private:
-    /**
-     * @brief Clone the backtester, add the strategy, and execute backtest.
-     */
-    static Decimal
-    runSingleBacktest
-    (
-     StrategyPtr                                  strategy,
-     const std::shared_ptr<BackTester<Decimal>>&  templateBacktester
-     )
-    {
-      auto btClone = templateBacktester->clone();
-      btClone->addStrategy(strategy);
-      btClone->backtest();
-      return BaselineStatPolicy::getPermutationTestStatistic(btClone);
-    }
   };
 
 } // namespace mkc_timeseries

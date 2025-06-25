@@ -240,6 +240,16 @@ namespace {
       m_strategyHashes.push_back(strategyHash);
     }
 
+    void updateMetric(const PalStrategy<DecimalType>* strategy,
+                     typename PermutationTestObserver<DecimalType>::MetricType metricType,
+                     const DecimalType& metricValue) override {
+      // For testing purposes, we can just ignore this or store it if needed
+      // This is a simplified implementation for the test observer
+      (void)strategy;
+      (void)metricType;
+      (void)metricValue;
+    }
+
     // Required interface methods (simplified for testing)
     std::optional<Decimal> getMinMetric(const PalStrategy<Decimal>* strategy, typename PermutationTestObserver<Decimal>::MetricType metric) const override {
       return std::nullopt;
@@ -418,7 +428,8 @@ TEST_CASE("FastMastersPermutationPolicy basic test with single strategy") {
     10, strategyData, bt, sec, portfolio);
 
   REQUIRE(result.size() == 1);
-  REQUIRE(result[strategy] >= 1);
+  auto strategyHash = strategy->getPatternHash();
+  REQUIRE(result[strategyHash] >= 1);
 }
 
 TEST_CASE("FastMastersPermutationPolicy handles multiple strategies") {
@@ -468,7 +479,8 @@ TEST_CASE("FastMastersPermutationPolicy returns counts of 1 when no permutation 
   auto result = policy.computeAllPermutationCounts(
     10, strategyData, bt, sec, portfolio);
 
-  REQUIRE(result[strategy] == 1);
+  auto strategyHash = strategy->getPatternHash();
+  REQUIRE(result[strategyHash] == 1);
 }
 
 TEST_CASE("FastMastersPermutationPolicy with randomized statistics produces reasonable counts") {
@@ -535,8 +547,9 @@ TEST_CASE("FastMastersPermutationPolicy with real price patterns and real series
     // should have a count for every strategy, and at least 1 (the unpermuted case)
     REQUIRE(counts.size() == strategyData.size());
     for (auto const& ctx : strategyData) {
-        REQUIRE(counts.at(ctx.strategy) >= 1);
-    }
+          auto strategyHash = ctx.strategy->getPatternHash();
+          REQUIRE(counts.at(strategyHash) >= 1);
+      }
 }
 
 TEST_CASE("MastersPermutationPolicy with real price patterns and real series", "[integration]") {
@@ -672,7 +685,8 @@ TEST_CASE("FastMastersPermutationPolicy Observer Integration") {
   
   // Verify results are reasonable
   REQUIRE(result.size() == 1);
-  REQUIRE(result[strategy] >= 1);
+  auto strategyHash = strategy->getPatternHash();
+  REQUIRE(result[strategyHash] >= 1);
   
   // Verify enhanced statistics are captured
   auto tradeCounts = observerPtr->getNumTrades();

@@ -607,9 +607,9 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 
       history.addClosedPosition(pos);
 
-      // because there's only one bar, getHighResBarReturns() skips it
+      // We now get the return for the first bar
       auto returns = history.getHighResBarReturns();
-      REQUIRE(returns.empty());
+      REQUIRE(returns.empty() == false);
     }
 
   SECTION("getHighResBarReturns for two-bar trade")
@@ -643,9 +643,11 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 
       // Now exactly one high-res return: (110–100)/100 = 0.10
       auto returns = history.getHighResBarReturns();
-      REQUIRE(returns.size() == 1);
-      REQUIRE(returns[0] == (exitPrice - entryPrice) / entryPrice);
+      REQUIRE(returns.size() == 2);
+      REQUIRE(returns[1] == (exitPrice - entryPrice) / entryPrice);
     }
+
+  // In ClosedPositionHistoryTest.cpp
 
   SECTION("getHighResBarReturns for eight-bar trade with varying prices")
     {
@@ -653,34 +655,36 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 
       // 1) Prepare an array of eight close prices
       std::vector<DecimalType> prices = {
-        createDecimal("100.00"),
-        createDecimal("102.00"),
-        createDecimal("101.00"),
+        createDecimal("100.00"), // Bar 1 Close
+        createDecimal("102.00"), // Bar 2 Close
+        createDecimal("101.00"), // Bar 3 Close
         createDecimal("105.00"),
         createDecimal("103.00"),
         createDecimal("108.00"),
         createDecimal("110.00"),
-        createDecimal("115.00")
+        createDecimal("115.00")  // Bar 8 Close
       };
 
-      // 2) Seed the position with the first bar (Jan 1, 2020)
+      // 2) Seed the position with the first bar.
+      // In this test setup, entry price = open = close for the first bar.
       TimeSeriesDate baseDate(2020, Jan, 1);
+      DecimalType entryPrice = prices[0];
       auto firstBar = createTimeSeriesEntry(
 					    baseDate,
-					    prices[0],                           // open
-					    prices[0] + createDecimal("0.50"),  // high
-					    prices[0] - createDecimal("0.50"),  // low
-					    prices[0],                          // close
-					    100                                 // volume
+					    entryPrice,                          // open
+					    entryPrice + createDecimal("0.50"),  // high
+					    entryPrice - createDecimal("0.50"),  // low
+					    entryPrice,                          // close
+					    100                                  // volume
 					    );
       auto pos = std::make_shared<TradingPositionLong<DecimalType>>(
-								    myCornSymbol, prices[0], *firstBar, oneContract
+								    myCornSymbol, entryPrice, *firstBar, oneContract
 								    );
 
-      // 3) Add the next seven bars on Jan 2…Jan 8, each with its own close price
+      // 3) Add the next seven bars
       for (size_t i = 1; i < prices.size(); ++i) {
         TimeSeriesDate d(2020, Jan, 1 + static_cast<int>(i));
-        DecimalType open  = prices[i - 1];
+        DecimalType open  = prices[i - 1]; // Open of current bar is close of previous
         DecimalType close = prices[i];
         DecimalType high  = std::max(open, close) + createDecimal("0.50");
         DecimalType low   = std::min(open, close) - createDecimal("0.50");
@@ -689,20 +693,30 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
         pos->addBar(*bar);
       }
 
-      // 4) Close on the last bar (Jan 8 at 115.00) and record the position
+      // 4) Close on the last bar and record the position
       pos->ClosePosition(TimeSeriesDate(2020, Jan, 8), prices.back());
       history.addClosedPosition(pos);
 
-      // 5) Compute and verify returns: should be 7 of them
+      // 5) --- CORRECTED VERIFICATION LOGIC ---
       auto returns = history.getHighResBarReturns();
-      REQUIRE(returns.size() == prices.size() - 1);
+      REQUIRE(returns.size() == prices.size());
 
+      // 5a) Verify the first return (entry bar's intra-bar return)
+      // In this specific test, entryPrice (100) == close of first bar (100), so return is 0.
+      DecimalType expectedFirstReturn = (firstBar->getCloseValue() - entryPrice) / entryPrice;
+      REQUIRE(returns[0] == expectedFirstReturn);
+      REQUIRE(returns[0] == createDecimal("0.0"));
+
+      // 5b) Verify all subsequent close-to-close returns
       for (size_t i = 1; i < prices.size(); ++i) {
+        // Return for bar i should be (close_i - close_{i-1}) / close_{i-1}
         DecimalType expected = (prices[i] - prices[i - 1]) / prices[i - 1];
-        REQUIRE(returns[i - 1] == expected);
+        
+        // Check against returns[i] because returns[0] holds the first special case
+        REQUIRE(returns[i] == expected);
       }
     }
-
+  
   SECTION("ClosedPositionHistory respects intraday entry datetime as key", "[ClosedPositionHistory][ptime]") {
     // 1) build a single‐bar intraday entry at 09:15
     auto e1 = createTimeSeriesEntry(
@@ -753,13 +767,14 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
     ClosedPositionHistory<DecimalType> hist2;
     hist2.addClosedPosition(pos2);
 
-    // we only get one bar‐by‐bar return (entry→bar2)
     auto returns = hist2.getHighResBarReturns();
-    REQUIRE(returns.size() == 1);
+    REQUIRE(returns.size() == 2);
 
     // expected: (close_B - close_A) / close_A
+    DecimalType r0 = (eA->getCloseValue() - eA->getOpenValue()) / eA->getOpenValue();
     DecimalType r1 = (eB->getCloseValue() - eA->getCloseValue()) / eA->getCloseValue();
-    REQUIRE(returns[0] == r1);
+    REQUIRE(returns[0] == r0);
+    REQUIRE(returns[1] == r1);
   }
 }
 

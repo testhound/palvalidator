@@ -8,6 +8,7 @@
 #define __STRATEGY_IDENTIFICATION_HELPER_H 1
 
 #include <boost/uuid/uuid.hpp>
+#include <functional>
 #include "BackTester.h"
 #include "BacktesterStrategy.h"
 #include "PalStrategy.h"
@@ -38,17 +39,51 @@ namespace mkc_timeseries
     class StrategyIdentificationHelper {
     public:
         /**
-         * @brief Extract strategy hash from BackTester using UUID + pattern hash
+         * @brief Compute combined hash from pattern hash and strategy name for stable identification
+         * @param patternHash The pattern hash component
+         * @param strategyName The strategy name for disambiguation
+         * @return Combined hash for stable identification with disambiguation
+         *
+         * CENTRALIZED HASH COMPUTATION: This is the single source of truth for strategy
+         * identification hashing. All storage and retrieval operations must use this method
+         * to ensure consistency and prevent hash mismatches.
+         */
+        static unsigned long long computeCombinedHash(unsigned long long patternHash, const std::string& strategyName) {
+            std::hash<std::string> stringHasher;
+            unsigned long long nameHash = stringHasher(strategyName);
+            return patternHash ^ (nameHash << 1); // Simple hash combination
+        }
+
+        /**
+         * @brief Extract strategy hash from BackTester using combined hash for stable identification
          * @param backTester The BackTester containing the strategy
-         * @return Combined hash from strategy's UUID and pattern
-         * 
-         * This method extracts the unique hash that combines the strategy's instance
-         * UUID with its pattern hash, providing guaranteed uniqueness across all
-         * strategy instances, even those with identical patterns.
+         * @return Combined hash (pattern + name) for stable identification across strategy clones
+         *
+         * This method extracts the combined hash which remains stable across strategy clones
+         * and provides disambiguation between strategies with the same pattern but different names.
+         * This enables statistics collected during permutation tests (where strategies are cloned)
+         * to be retrieved later using the original strategy objects.
          */
         static unsigned long long extractStrategyHash(const BackTester<Decimal>& backTester) {
             auto strategy = *(backTester.beginStrategies());
-            return strategy->hashCode();  // Now includes UUID + pattern hash
+            auto palStrategy = dynamic_cast<const PalStrategy<Decimal>*>(strategy.get());
+            if (!palStrategy) return 0;
+            
+            // Use centralized combined hash computation for consistency
+            return computeCombinedHash(palStrategy->getPatternHash(), palStrategy->getStrategyName());
+        }
+
+        /**
+         * @brief Extract combined hash directly from PalStrategy
+         * @param strategy The PalStrategy instance
+         * @return Combined hash (pattern + name) for stable identification
+         *
+         * Convenience method for computing combined hash directly from a strategy pointer.
+         * Uses the same centralized hash computation as extractStrategyHash.
+         */
+        static unsigned long long extractCombinedHash(const PalStrategy<Decimal>* strategy) {
+            if (!strategy) return 0;
+            return computeCombinedHash(strategy->getPatternHash(), strategy->getStrategyName());
         }
 
         /**
