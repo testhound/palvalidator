@@ -151,13 +151,7 @@ namespace mkc_timeseries
 
       // If we have too few trades don't trust results
 
-      if (this->getNumClosedTrades (mBackTester) < _BackTestResultPolicy<Decimal>::getMinStrategyTrades())
-        {
-          //std::cout << " runPermutationTest: number of trades = " << this->getNumClosedTrades (mBackTester) << std::endl;
-          mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getMinTradeFailureTestStatistic();
-        }
-      else
-	mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
+      mBaseLineTestStat = _BackTestResultPolicy<Decimal>::getPermutationTestStatistic(mBackTester);
       //std::cout << "Baseline test stat. for original  strategy equals: " <<  mBaseLineTestStat << ", baseline # trades:" << this->getNumClosedTrades (mBackTester) <<  std::endl << std::endl;
 
       // Create instance of computation policy for observer support

@@ -189,6 +189,11 @@ std::shared_ptr<PalStrategy<DecimalType>> createDummyPalStrategy(
 
 // *** HELPER FUNCTION WITH FIX ***
 // Calculates initial empirical p-value based on test statistic and null distribution
+// In MultipleTestCorrectionTest.cpp
+
+// *** REVISED HELPER FUNCTION ***
+// This version uses 'if constexpr' to handle the different 'addStrategy' signatures
+// for different correction policies.
 template <typename CorrectionClass>
 void addStrategyWithEmpiricalPValue(
     CorrectionClass& correction,
@@ -200,21 +205,29 @@ void addStrategyWithEmpiricalPValue(
          throw std::runtime_error("Synthetic null distribution is empty in test setup");
     }
 
-    // Count elements in nullDistribution >= testStat
     size_t countGreaterEqual = std::count_if(nullDistribution.begin(), nullDistribution.end(),
                                              [&](const DecimalType& nullVal) {
                                                  return nullVal >= testStat;
                                              });
+    
+    // The raw p-value is calculated the same way for all tests.
+    DecimalType empiricalPValue = DecimalType(static_cast<long>(countGreaterEqual)) / DecimalType(static_cast<long>(nullDistribution.size()));
 
-    // Calculate empirical p-value
-    // --- FIX: Explicitly cast size_t results to int before constructing DecimalType ---
-    DecimalType empiricalPValue = DecimalType(static_cast<int>(countGreaterEqual)) / DecimalType(static_cast<int>(nullDistribution.size()));
-
-    // Add strategy using the calculated p-value and the original test statistic
-    // The tuple format is {p-value, maxTestStat}
-    correction.addStrategy({empiricalPValue, testStat}, strategy);
+    // Use `if constexpr` to call the correct overload based on the policy type
+    if constexpr (std::is_same_v<CorrectionClass, mkc_timeseries::RomanoWolfStepdownCorrection<DecimalType>>)
+    {
+        // This is our new, corrected class. It expects the 3-element FullResultType tuple.
+        // We pass the `testStat` as both the max_permuted_stat (index 1) and baseline_stat (index 2)
+        // for the purpose of this unit test.
+        correction.addStrategy({empiricalPValue, testStat, testStat}, strategy);
+    }
+    else
+    {
+        // This handles the older classes (HolmRomanoWolfCorrection, RomanoWolfStepdownCorrection2)
+        // that expect a 2-element tuple of {p-value, test-stat}.
+        correction.addStrategy({empiricalPValue, testStat}, strategy);
+    }
 }
-
 
 // Helper to check monotonicity of adjusted p-values
 template <typename CorrectionClass>

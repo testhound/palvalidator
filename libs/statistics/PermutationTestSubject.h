@@ -88,6 +88,29 @@ namespace mkc_timeseries
                 }
             }
         }
+
+        /**
+         * @brief Notify observers with a specific metric value for a strategy
+         * @param strategy The strategy for which the metric is being reported
+         * @param metricType The type of metric being reported
+         * @param metricValue The calculated metric value
+         *
+         * This overloaded method allows notifying observers about specific metrics
+         * that are calculated after permutation testing completes, such as
+         * baseline statistic exceedance rates.
+         */
+        virtual void notifyObservers(
+            const PalStrategy<Decimal>* strategy,
+            typename PermutationTestObserver<Decimal>::MetricType metricType,
+            const Decimal& metricValue) {
+            
+            std::shared_lock<std::shared_mutex> lock(m_observersMutex);
+            for (auto* observer : m_observers) {
+                if (observer) {
+                    observer->updateMetric(strategy, metricType, metricValue);
+                }
+            }
+        }
     };
 }
 

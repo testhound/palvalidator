@@ -45,6 +45,15 @@ namespace mkc_timeseries
 
   };
 
+  template <class Decimal>
+  struct ExpandedBarMetrics
+  {
+    Decimal closeToClose;
+    Decimal openToClose;
+    Decimal highToOpen;
+    Decimal lowToOpen;
+  };
+  
   template <class Decimal> class ClosedPositionHistory
   {
   public:
@@ -77,10 +86,11 @@ namespace mkc_timeseries
       : mPositions(rhs.mPositions),
         mSumWinners(rhs.mSumWinners),
         mSumLosers(rhs.mSumLosers),
-	mLogSumWinners(rhs.mLogSumWinners),
-	mLogSumLosers(rhs.mLogSumLosers),
+ mLogSumWinners(rhs.mLogSumWinners),
+ mLogSumLosers(rhs.mLogSumLosers),
         mNumWinners(rhs.mNumWinners),
         mNumLosers(rhs.mNumLosers),
+        mNumBarsInMarket(rhs.mNumBarsInMarket),
         mRMultipleSum(rhs.mRMultipleSum),
         mWinnersStats(rhs.mWinnersStats),
         mLosersStats(rhs.mLosersStats),
@@ -104,6 +114,7 @@ namespace mkc_timeseries
       mLogSumLosers = rhs.mLogSumLosers;
       mNumWinners = rhs.mNumWinners;
       mNumLosers = rhs.mNumLosers;
+      mNumBarsInMarket = rhs.mNumBarsInMarket;
       mRMultipleSum = rhs.mRMultipleSum;
       mWinnersStats = rhs.mWinnersStats;
       mLosersStats = rhs.mLosersStats;
@@ -227,9 +238,21 @@ namespace mkc_timeseries
             const auto& posPtr = it->second;
 
 	    // Grab the TradingPositon's  full bar history (entry→exit)
-            auto begin = posPtr->beginPositionBarHistory(); // This already deals with ptime keys
-            auto end   = posPtr->endPositionBarHistory();   // This already deals with ptime keys
+            auto begin = posPtr->beginPositionBarHistory();
+            auto end   = posPtr->endPositionBarHistory();
 
+	    // A valid position must have at least one bar.
+            if (begin == end)
+	      continue;
+
+	    // --- NEW LOGIC TO INCLUDE THE FIRST BAR'S P&L ---
+            const Decimal& entryPrice = posPtr->getEntryPrice(); // 
+            const auto& entryBar = begin->second;
+            const Decimal& entryBarClose = entryBar.getCloseValue(); // 
+
+            // Calculate and add the return for the entry bar itself (Entry Price -> Close of Entry Bar)
+            allReturns.push_back((entryBarClose - entryPrice) / entryPrice);
+	    
             if (std::distance(begin, end) < 2)
 	      continue;		// need at least two bars to compute one P&L
 
@@ -248,6 +271,48 @@ namespace mkc_timeseries
             }
         }
         return allReturns;
+    }
+
+    std::vector<ExpandedBarMetrics<Decimal>> getExpandedHighResBarReturns() const
+    {
+      std::vector<ExpandedBarMetrics<Decimal>> result;
+
+      for (const auto& posEntry : mPositions)
+	{
+	  const auto& pos = posEntry.second;
+	  auto barIt = pos->beginPositionBarHistory();
+	  auto endIt = pos->endPositionBarHistory();
+
+	  if (barIt == endIt)
+            continue;
+
+	  auto prev = barIt;
+	  for (auto curr = std::next(barIt); curr != endIt; ++curr)
+	    {
+	      const auto& prevBar = prev->second;
+	      const auto& bar = curr->second;
+
+	      Decimal prevClose = prevBar.getCloseValue();
+	      Decimal open = bar.getOpenValue();
+	      Decimal high = bar.getHighValue();
+	      Decimal low = bar.getLowValue();
+	      Decimal close = bar.getCloseValue();
+
+	      if (prevClose == Decimal(0))
+                continue;
+
+	      ExpandedBarMetrics<Decimal> metrics;
+	      metrics.closeToClose = (close - prevClose) / prevClose;
+	      metrics.openToClose = (close - open) / open;
+	      metrics.highToOpen  = (high - open) / open;
+	      metrics.lowToOpen   = (low - open) / open;
+
+	      result.push_back(metrics);
+	      prev = curr;
+	    }
+	}
+
+      return result;
     }
 
     Decimal getAverageWinningTrade() const
@@ -429,7 +494,12 @@ namespace mkc_timeseries
       if (getNumPositions() > 0)
         {
           if ((mNumWinners >= 1) and (mNumLosers >= 1))
-            return (winnersSum / num::abs(losersSum));
+	    {
+	      if (num::abs(losersSum) == DecimalConstants<Decimal>::DecimalZero)
+		return (DecimalConstants<Decimal>::DecimalOneHundred);
+	      else
+		return (winnersSum / num::abs(losersSum));
+	    }
           else if (mNumWinners == 0)
             return (DecimalConstants<Decimal>::DecimalZero);
           else if (mNumLosers == 0)

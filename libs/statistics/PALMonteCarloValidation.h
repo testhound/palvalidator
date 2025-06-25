@@ -99,10 +99,11 @@ namespace mkc_timeseries
      * @param dateRange The date range for which the permutation tests should be run.
      */
     virtual void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
-         std::shared_ptr<PriceActionLabSystem> patterns,
-         const DateRange& dateRange,
-         const Decimal& pValueSignificanceLevel =
-         DecimalConstants<Decimal>::SignificantPValue) = 0;
+				     std::shared_ptr<PriceActionLabSystem> patterns,
+				     const DateRange& dateRange,
+				     const Decimal& pValueSignificanceLevel =
+				     DecimalConstants<Decimal>::SignificantPValue,
+				     bool verbose = false) = 0;
 
     /*!
      * @brief Gets an iterator to the beginning of the list of surviving strategies.
@@ -246,6 +247,23 @@ namespace mkc_timeseries
     }
 
     /*!
+     * @brief Get all tested strategies with their p-values
+     * @return Vector of pairs containing strategy and its p-value
+     */
+    std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
+        return this->mStrategySelectionPolicy.getAllTestedStrategies();
+    }
+
+    /*!
+     * @brief Get the p-value for a specific strategy
+     * @param strategy The strategy to get the p-value for
+     * @return The p-value for the strategy
+     */
+    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
+        return this->mStrategySelectionPolicy.getStrategyPValue(strategy);
+    }
+
+    /*!
      * @brief Runs permutation tests for the given strategies.
      *
      * This implementation involves:
@@ -274,10 +292,11 @@ namespace mkc_timeseries
      * @override
      */
     void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
-        std::shared_ptr<PriceActionLabSystem> patterns,
-        const DateRange& dateRange,
-        const Decimal& pValueSignificanceLevel =
-        DecimalConstants<Decimal>::SignificantPValue) override
+			     std::shared_ptr<PriceActionLabSystem> patterns,
+			     const DateRange& dateRange,
+			     const Decimal& pValueSignificanceLevel =
+			     DecimalConstants<Decimal>::SignificantPValue,
+			     bool verbose = false) override
     {
       if (!baseSecurity)
         throw std::invalid_argument("Base security must not be null");
@@ -292,6 +311,9 @@ namespace mkc_timeseries
           mStatisticsCollector->clear();
         }
       }
+
+      if (verbose)
+	std::cout << "PALMonteCarloValidation starting validation" << std::endl;
 
       // 1) Prepare data
       auto oosTS     = FilterTimeSeries<Decimal>(*baseSecurity->getTimeSeries(), dateRange);
@@ -329,8 +351,7 @@ namespace mkc_timeseries
           // Use factory to get a backtester for this date range
           auto bt = BackTesterFactory<Decimal>::getBackTester(
                       baseSecurity->getTimeSeries()->getTimeFrame(),
-                      dateRange.getFirstDate(),
-                      dateRange.getLastDate());
+                      dateRange);
           bt->addStrategy(strategy);
 
           // Create MCPT instance and conditionally attach observer for statistics collection
@@ -360,6 +381,9 @@ namespace mkc_timeseries
 
       // 4) Final family-wise error correction
       this->mStrategySelectionPolicy.correctForMultipleTests(pValueSignificanceLevel);
+
+      if (verbose)
+	std::cout << "PALMonteCarloValidation finished validation" << std::endl;
     }
 
   private:

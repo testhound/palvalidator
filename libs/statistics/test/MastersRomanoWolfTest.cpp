@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <cstdlib>
+#include <set>
 
 using namespace mkc_timeseries;
 
@@ -198,7 +199,8 @@ TEST_CASE("MastersRomanoWolf run basic test with single strategy") {
     // Use high significance to allow removal without failure
     auto pvals = algo.run(data, 1, bt, portfolio, D("1.0"));
     REQUIRE(pvals.size() == 1);
-    REQUIRE(pvals[strategy] == D("1.0"));
+    auto strategyHash = strategy->getPatternHash();
+    REQUIRE(pvals[strategyHash] == D("1.0"));
 }
 
 TEST_CASE("MastersRomanoWolf run works with multiple strategies") {
@@ -214,9 +216,17 @@ TEST_CASE("MastersRomanoWolf run works with multiple strategies") {
     }
 
     auto pvals = algo.run(data, 1, bt, portfolio, D("1.0"));
-    REQUIRE(pvals.size() == strategies.size());
+    
+    // Collect unique strategy hashes
+    std::set<unsigned long long> uniqueHashes;
     for (auto& strat : strategies) {
-        REQUIRE(pvals[strat] == D("1.0"));
+        uniqueHashes.insert(strat->getPatternHash());
+    }
+    
+    REQUIRE(pvals.size() == uniqueHashes.size());
+    for (auto& strat : strategies) {
+        auto strategyHash = strat->getPatternHash();
+        REQUIRE(pvals[strategyHash] == D("1.0"));
     }
 }
 
@@ -234,10 +244,18 @@ TEST_CASE("MastersRomanoWolf run failure early sets same p-value for all remaini
 
     // Use low significance to trigger failure on first step
     auto pvals = algo.run(data, 1, bt, portfolio, D("0.4"));
-    REQUIRE(pvals.size() == strategies.size());
+    
+    // Collect unique strategy hashes
+    std::set<unsigned long long> uniqueHashes;
+    for (auto& strat : strategies) {
+        uniqueHashes.insert(strat->getPatternHash());
+    }
+    
+    REQUIRE(pvals.size() == uniqueHashes.size());
     // p = 1/(1+1) = 0.5
     for (auto& strat : strategies) {
-        REQUIRE(pvals[strat] == D("0.5"));
+        auto strategyHash = strat->getPatternHash();
+        REQUIRE(pvals[strategyHash] == D("0.5"));
     }
 }
 
@@ -274,7 +292,8 @@ TEST_CASE("MastersRomanoWolf handles randomized statistics") {
     // 2) Enforce step‐down: as baselineStat increases, adjusted p‐value should not decrease
     D prev = D("0.0");
     for (auto &ctx : data) {
-        auto v = pvals[ctx.strategy];
+        auto strategyHash = ctx.strategy->getPatternHash();
+        auto v = pvals[strategyHash];
         REQUIRE(v >= prev);
         prev = v;
     }
@@ -367,7 +386,8 @@ TEST_CASE("MastersRomanoWolf integration test with real price patterns and real 
     // p-values in [0,1] and non-decreasing
     D prev = D("0.0");
     for (auto& ctx : contexts) {
-        auto v = pvals[ctx.strategy];
+        auto strategyHash = ctx.strategy->getPatternHash();
+        auto v = pvals[strategyHash];
         REQUIRE(v >= D("0.0"));
         REQUIRE(v <= D("1.0"));
         REQUIRE(v >= prev);

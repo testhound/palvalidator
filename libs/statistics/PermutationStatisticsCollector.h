@@ -34,6 +34,20 @@ namespace mkc_timeseries
         UuidStrategyPermutationStatsAggregator<Decimal> m_statsAggregator;
 
     public:
+      void recordExceedanceRate(const PalStrategy<Decimal>* strategy, const Decimal& rate)
+      {
+	if (!strategy) {
+	  std::cout << "[DIAGNOSTIC] WARNING: Null strategy in recordExceedanceRate" << std::endl;
+	  return;
+	}
+
+	unsigned long long strategyHash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
+
+	m_statsAggregator.addValue(strategyHash, strategy,
+				   PermutationTestObserver<Decimal>::MetricType::BASELINE_STAT_EXCEEDANCE_RATE,
+				   rate);
+      }
+
         /**
          * @brief Called by subjects when a permutation backtest completes
          * @param permutedBacktester The BackTester instance after running on synthetic data
@@ -42,7 +56,7 @@ namespace mkc_timeseries
         void update(const BackTester<Decimal>& permutedBacktester,
                     const Decimal& permutedTestStatistic) override {
             
-            // Extract strategy identification using UUID-based approach
+            // Extract strategy identification using centralized hash computation
             unsigned long long strategyHash = StrategyIdentificationHelper<Decimal>::extractStrategyHash(permutedBacktester);
             const PalStrategy<Decimal>* strategy = StrategyIdentificationHelper<Decimal>::extractPalStrategy(permutedBacktester);
             
@@ -57,11 +71,33 @@ namespace mkc_timeseries
             uint32_t numTrades = StrategyIdentificationHelper<Decimal>::extractNumTrades(permutedBacktester);
             uint32_t numBarsInTrades = StrategyIdentificationHelper<Decimal>::extractNumBarsInTrades(permutedBacktester);
             
-            // Store all metrics using UUID-based aggregator
+            // Store all metrics using centralized hash computation
             m_statsAggregator.addValue(strategyHash, strategy, MetricType::PERMUTED_TEST_STATISTIC, permutedTestStatistic);
             m_statsAggregator.addValue(strategyHash, strategy, MetricType::NUM_TRADES, Decimal(numTrades));
             m_statsAggregator.addValue(strategyHash, strategy, MetricType::NUM_BARS_IN_TRADES, Decimal(numBarsInTrades));
             
+        }
+
+        /**
+         * @brief Called by subjects when a specific metric is calculated for a strategy
+         * @param strategy The strategy for which the metric is being reported
+         * @param metricType The type of metric being reported
+         * @param metricValue The calculated metric value
+         */
+        void updateMetric(const PalStrategy<Decimal>* strategy,
+                         MetricType metricType,
+                         const Decimal& metricValue) override {
+            
+            if (!strategy) {
+                std::cout << "[DIAGNOSTIC] WARNING: Null strategy in updateMetric" << std::endl;
+                return;
+            }
+            
+            // Extract strategy identification using centralized hash computation
+            unsigned long long strategyHash = StrategyIdentificationHelper<Decimal>::extractCombinedHash(strategy);
+            
+            // Store the metric using centralized hash computation
+            m_statsAggregator.addValue(strategyHash, strategy, metricType, metricValue);
         }
 
         // Base PermutationTestObserver interface implementation

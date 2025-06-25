@@ -19,6 +19,7 @@ namespace mkc_timeseries
       static Decimal DecimalOneHundred;
       static Decimal DecimalOne;
       static Decimal DecimalOnePointFive;
+      static Decimal DecimalOnePointSevenFive;
       static Decimal DecimalMinusOne;
       static Decimal DecimalTwo;
       static Decimal DecimalThree;
@@ -62,10 +63,13 @@ namespace mkc_timeseries
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalOnePointFive(DecimalConstants<Decimal>::createDecimal("1.5"));
 
+    template <class Decimal> Decimal 
+    DecimalConstants<Decimal>::DecimalOnePointSevenFive(DecimalConstants<Decimal>::createDecimal("1.75"));
+
   template <class Decimal> Decimal DecimalConstants<Decimal>::EquityTick(0.01);
   //template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.045);
   template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.05);
-  template <class Decimal> Decimal DecimalConstants<Decimal>::DefaultFDR(0.25);
+  template <class Decimal> Decimal DecimalConstants<Decimal>::DefaultFDR(0.20);
 
 
   template <class Decimal>

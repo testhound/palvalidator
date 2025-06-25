@@ -2,6 +2,7 @@
 #include <cassert>
 #include <stdexcept>
 #include <algorithm>
+#include <set>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
 #include "PermutationTestSubject.h"
@@ -76,152 +77,302 @@ namespace mkc_timeseries
          * @param sigLevel         Desired familywise error rate alpha.
          * @return Map from strategy ptr to its adjusted p-value.
          */
-      std::map<StrategyPtr, Decimal> run(const StrategyVec&                strategyData,
-					 unsigned long                     numPermutations,
-					 const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
-					 const std::shared_ptr<Portfolio<Decimal>>&  portfolio,
-					 const Decimal&                   sigLevel) override
+      std::map<unsigned long long, Decimal> run(const StrategyVec&                strategyData,
+     unsigned long                     numPermutations,
+     const std::shared_ptr<BackTester<Decimal>>& templateBacktester,
+     const std::shared_ptr<Portfolio<Decimal>>&  portfolio,
+     const Decimal&                   sigLevel) override
       {
-	if ( !templateBacktester )
-	  {
-            throw std::runtime_error("MastersRomanoWolfImproved::run - backtester is null");
-	  }
+ if ( !templateBacktester )
+   {
+     throw std::runtime_error("MastersRomanoWolfImproved::run - backtester is null");
+   }
 
-	using FMPP = FastMastersPermutationPolicy<Decimal, BaselineStatPolicy>;
+ using FMPP = FastMastersPermutationPolicy<Decimal, BaselineStatPolicy>;
 
-	// Check the precondition and throw if violated
-	if (!std::is_sorted(strategyData.begin(), strategyData.end(),
-			    [](auto const& a, auto const& b) {
-			      return a.baselineStat > b.baselineStat;
-			    }))
-	  {
-	    const std::string error_message =
-	      "MastersRomanoWolfImproved::run requires strategyData to be "
-	      "pre-sorted in descending order by baselineStat.";
-		
-	    throw std::invalid_argument(error_message);
-	  }
+ // Check the precondition and throw if violated
+ if (!std::is_sorted(strategyData.begin(), strategyData.end(),
+       [](auto const& a, auto const& b) {
+         return a.baselineStat > b.baselineStat;
+       }))
+   {
+     const std::string error_message =
+       "MastersRomanoWolfImproved::run requires strategyData to be "
+       "pre-sorted in descending order by baselineStat.";
+  
+     throw std::invalid_argument(error_message);
+   }
 
-	// Extract the target security from the portfolio:
-	auto secIt = portfolio->beginPortfolio();
-	if (secIt == portfolio->endPortfolio()) {
-	  throw std::runtime_error(
-				   "MastersRomanoWolfImproved::run - portfolio contains no securities");
+ // Extract the target security from the portfolio:
+ auto secIt = portfolio->beginPortfolio();
+ if (secIt == portfolio->endPortfolio()) {
+   throw std::runtime_error(
+       "MastersRomanoWolfImproved::run - portfolio contains no securities");
+ }
+ auto secPtr = secIt->second;
+     
+ // Phase 1: compute exceedance counts for every strategy in one Monte Carlo sweep
+ //   counts[strategy] = 1 + # permutations where strategy's observed statistic
+ //                      is beaten by the max-of-all in that permutation.
+ // Bulk compute exceedance counts for every strategy once.
+
+ // Create instance of FastMastersPermutationPolicy for observer support
+ FMPP fastPermutationPolicy;
+ 
+ // Chain attached observers to the policy instance (pass-through Subject design)
+ std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
+ for (auto* observer : this->m_observers) {
+     if (observer) {
+         fastPermutationPolicy.attach(observer);
+     }
+ }
+ observerLock.unlock();
+ 
+ auto baseStatExceedanceCounts = fastPermutationPolicy.computeAllPermutationCounts(numPermutations,
+         strategyData,
+         templateBacktester,
+         secPtr,
+         portfolio);
+
+ // SANITY CHECK
+ sanityCheckCounts(baseStatExceedanceCounts, strategyData);
+ sanityCheckCounts(strategyData,
+     baseStatExceedanceCounts,
+     std::string("Check after computeAllPermutationCounts"));
+ /*
+ Decimal denom = Decimal(numPermutations + 1);
+
+ for (const auto& ctx : strategyData)
+   {
+     StrategyPtr strategy = ctx.strategy;
+
+     auto it = baseStatExceedanceCounts.find(strategy);
+     if (it == baseStatExceedanceCounts.end())
+       throw std::logic_error("Missing exceedance count for strategy in statistics export.");
+
+     unsigned int count = it->second;
+     Decimal rate = Decimal(count) / denom;
+
+     // Notify all attached observers
+     for (auto* observer : this->m_observers)
+       {
+  auto* collector = dynamic_cast<PermutationStatisticsCollector<Decimal>*>(observer);
+  if (collector)
+    {
+      collector->recordExceedanceRate(strategy.get(), rate * Decimal(100)); // store as percentage
+    }
+       }
+   }
+ */
+
+ // Setup for formatted output
+ std::cout << "\n--- Step-Down P-Value Adjustment Log ---\n";
+ std::cout << std::left << std::setw(28) << "Strategy Name"
+    << std::setw(15) << "Exceed Count"
+    << std::setw(15) << "Raw P-Value"
+    << std::setw(20) << "Adjusted P-Value" << "\n";
+ std::cout << std::string(80, '-') << std::endl;
+
+ std::map<unsigned long long, Decimal> pvals;
+ Decimal lastAdjustedPValue = Decimal(0);
+
+ // Phase 2: step-down inclusion loop (best-to-worst)
+ for (auto& context : strategyData)
+   {
+     unsigned int exceededCount = numPermutations + 1;
+
+     auto strategyHash = context.strategy->getPatternHash();
+     auto it = baseStatExceedanceCounts.find(strategyHash);
+     if (it != baseStatExceedanceCounts.end())
+       exceededCount = it->second;
+
+     /**
+      * Enforce monotonicity on the adjusted p-values in the step-down permutation test.
+      *
+      * In a step-down procedure, we rank strategies by their observed statistic (e.g. Profit-Factor)
+      * from highest (best) to lowest (worst), then compute a "raw" p-value for each:
+      *
+      *     // count of permutations whose test statistic ≥ observed, divided by total draws
+      *     Decimal p = Decimal(c) / Decimal(numPermutations + 1);
+      *
+      * To prevent a weaker (lower-ranked) strategy from ever appearing more significant
+      * than a stronger (higher-ranked) one, we enforce that the sequence of adjusted
+      * p-values never decreases as we move down the list:
+      *
+      *     // take the larger of this strategy's raw p and the previous (best) adjusted p
+      *     Decimal adj = std::max(p, lastAdjustedPValue);
+      *
+      * This ensures:
+      *  1. **Non-decreasing p-values**: Once you hit, say, 0.04 at the top, every following
+      *     strategy's adjusted p will be ≥ 0.04.
+      *  2. **Logical consistency**: You cannot claim a weaker system is more significant
+      *     than a stronger one.
+      *  3. **Step-down stopping rule**: As soon as an adjusted p exceeds your α threshold,
+      *     you can stop: no weaker strategy further down can sneak in below the threshold.
+      *
+      * In plain English:
+      *
+      * "We first decide how likely it is that pure chance could give us each strategy's
+      * observed result.  Then, to keep our decisions consistent from best to worst, we
+ -	     * never let a later strategy's p-value drop below the one before it."
+ +	     * never let a later strategy's p-value drop below the one before it."
+      */
+     Decimal pValue   = Decimal(exceededCount) / Decimal(numPermutations + 1);
+     Decimal adjustedPValue = std::max(pValue, lastAdjustedPValue);
+     pvals[strategyHash] = adjustedPValue;
+
+     std::cout << std::left << std::setw(28) << context.strategy->getStrategyName()
+              << std::setw(15) << exceededCount
+              << std::fixed << std::setprecision(7) << std::setw(15) << pValue
+              << std::setw(20) << adjustedPValue << "\n";
+     
+     // *****************************
+     if (adjustedPValue <= sigLevel)
+       lastAdjustedPValue = adjustedPValue;      // tighten bound
+     else
+       {
+  //
+  // Propagate the failing p-value to all remaining strategies
+  for (auto& later_ctx : strategyData)
+    {
+      if (pvals.find(later_ctx.strategy->getPatternHash()) == pvals.end())
+        {
+   pvals[later_ctx.strategy->getPatternHash()] = adjustedPValue;
+   
+   // Also log these subsequent strategies so the report is complete
+   std::cout << std::left << std::setw(28) << later_ctx.strategy->getStrategyName()
+      << std::setw(15) << "---" // No count for these
+      << std::fixed << std::setprecision(7) << std::setw(15) << "---" // No raw p-value
+      << std::setw(20) << adjustedPValue << " (Inherited)" << "\n";
+        }
+    }
+  //
+  // failure ⇒ all remaining inherit same p‑value
+  /*
+  for (auto& later : strategyData)
+    {
+      auto laterHash = later.strategy->getPatternHash();
+      if (!pvals.count(laterHash))
+        pvals[laterHash] = adjustedPValue;
+        } */
+  break;
+       }
+   }
+
+ std::map<unsigned long long, Decimal> baselineStats;
+ for (const auto& ctx : strategyData)
+   {
+     auto strategyID = ctx.strategy->getPatternHash();
+     baselineStats[strategyID] = ctx.baselineStat;
+   }
+
+ // Final sanity check before returning
+ finalSanityAudit(strategyData,
+    baselineStats,
+    baseStatExceedanceCounts,
+    pvals);
+
+ return pvals;
+      }
+    private:
+      // Helper to verify that 'counts' has an entry for every unique strategy hash
+    void sanityCheckCounts(const std::map<unsigned long long, unsigned int>& counts,
+			   const StrategyVec& strategyData) const
+      {
+	// Collect unique strategy hashes from strategyData
+	std::set<unsigned long long> expectedHashes;
+	for (auto const& ctx : strategyData) {
+	  auto strategyHash = ctx.strategy->getPatternHash();
+	  expectedHashes.insert(strategyHash);
 	}
-	auto secPtr = secIt->second;
+
+	// Check that counts map has exactly the expected unique hashes
+	if (counts.size() != expectedHashes.size())
+	  throw std::logic_error("Permutation count map has wrong number of unique entries");
+	
+	// Check that every expected hash is present in counts
+	for (auto const& expectedHash : expectedHashes) {
+	  if (counts.find(expectedHash) == counts.end())
+            throw std::logic_error("Missing permutation count for a strategy hash");
+	}
+	
+	// Check that counts doesn't contain unexpected hashes
+	for (auto const& kv : counts)
+	  {
+	    if (expectedHashes.find(kv.first) == expectedHashes.end())
+	      throw std::logic_error("counts map contains an unexpected strategy hash key");
+	  }
+      }
+
+      void sanityCheckCounts(const StrategyVec& sorted_strategy_data,
+			     const std::map<unsigned long long, unsigned int>& final_counts,
+			     const std::string& contextTag)
+      {
+	for (const auto& ctx : sorted_strategy_data)
+	  {
+	    const auto& strategy = ctx.strategy;
+	    auto strategyID = strategy->getPatternHash();
 	    
-	// Phase 1: compute exceedance counts for every strategy in one Monte Carlo sweep
-	//   counts[strategy] = 1 + # permutations where strategy's observed statistic
-	//                      is beaten by the max-of-all in that permutation.
-	// Bulk compute exceedance counts for every strategy once.
-
-	// Create instance of FastMastersPermutationPolicy for observer support
-	FMPP fastPermutationPolicy;
-	
-	// Chain attached observers to the policy instance (pass-through Subject design)
-	std::shared_lock<std::shared_mutex> observerLock(this->m_observersMutex);
-	for (auto* observer : this->m_observers) {
-	    if (observer) {
-	        fastPermutationPolicy.attach(observer);
-	    }
-	}
-	observerLock.unlock();
-	
-	std::map<StrategyPtr, unsigned int> baseStatExceedanceCounts =
-	  fastPermutationPolicy.computeAllPermutationCounts(numPermutations,
-					    strategyData,
-					    templateBacktester,
-					    secPtr,
-					    portfolio);
-
-	// SANITY CHECK
-        sanityCheckCounts(baseStatExceedanceCounts, strategyData);
-
-	std::map<StrategyPtr, Decimal> pvals;
-	Decimal lastAdjustedPValue = Decimal(0);
-
-	// Phase 2: step-down inclusion loop (best-to-worst)
-	for (auto& context : strategyData)
-	  {
-	    unsigned int exceededCount = numPermutations + 1;
-
-	    auto it = baseStatExceedanceCounts.find(context.strategy);
-	    if (it != baseStatExceedanceCounts.end())
-	      exceededCount = it->second;
-
-	    /**
-	     * Enforce monotonicity on the adjusted p-values in the step-down permutation test.
-	     *
-	     * In a step-down procedure, we rank strategies by their observed statistic (e.g. Profit-Factor)
-	     * from highest (best) to lowest (worst), then compute a “raw” p-value for each:
-	     *
-	     *     // count of permutations whose test statistic ≥ observed, divided by total draws
-	     *     Decimal p = Decimal(c) / Decimal(numPermutations + 1);
-	     *
-	     * To prevent a weaker (lower-ranked) strategy from ever appearing more significant
-	     * than a stronger (higher-ranked) one, we enforce that the sequence of adjusted
-	     * p-values never decreases as we move down the list:
-	     *
-	     *     // take the larger of this strategy’s raw p and the previous (best) adjusted p
-	     *     Decimal adj = std::max(p, lastAdjustedPValue);
-	     *
-	     * This ensures:
-	     *  1. **Non-decreasing p-values**: Once you hit, say, 0.04 at the top, every following
-	     *     strategy’s adjusted p will be ≥ 0.04.
-	     *  2. **Logical consistency**: You cannot claim a weaker system is more significant
-	     *     than a stronger one.
-	     *  3. **Step-down stopping rule**: As soon as an adjusted p exceeds your α threshold,
-	     *     you can stop: no weaker strategy further down can sneak in below the threshold.
-	     *
-	     * In plain English:
-	     *
-	     * “We first decide how likely it is that pure chance could give us each strategy’s
-	     * observed result.  Then, to keep our decisions consistent from best to worst, we
-	     * never let a later strategy’s p-value drop below the one before it.”
-	     */
-	    Decimal pValue   = Decimal(exceededCount) / Decimal(numPermutations + 1);
-	    Decimal adjustedPValue = std::max(pValue, lastAdjustedPValue);
-	    pvals[context.strategy] = adjustedPValue;
-
-	    if (adjustedPValue <= sigLevel)
-	      lastAdjustedPValue = adjustedPValue;      // tighten bound
-	    else
+	    if (final_counts.find(strategyID) == final_counts.end())
 	      {
-		// failure ⇒ all remaining inherit same p‑value
-		for (auto& later : strategyData)
-		  if (!pvals.count(later.strategy))
-		    pvals[later.strategy] = adjustedPValue;
-		break;
+		std::ostringstream msg;
+		msg << "[sanityCheckCounts][" << contextTag << "] Missing entry for strategy ID: " << strategyID << "\n";
+		msg << "  Baseline stat: " << ctx.baselineStat << "\n";
+		msg << "  Trade count: " << ctx.count << "\n";
+		msg << "  Strategy pointer: " << static_cast<const void*>(strategy.get()) << "\n";
+		msg << "  This may indicate inconsistent hashing or use of cloned strategies.\n";
+		throw std::runtime_error(msg.str());
+	      }
+	  }
+      }
+
+      void finalSanityAudit(const StrategyVec& sorted_strategy_data,
+			    const std::map<unsigned long long, Decimal>& baseline_stats,
+			    const std::map<unsigned long long, unsigned int>& final_counts,
+			    const std::map<unsigned long long, Decimal>& adjusted_p_values)
+      {
+	for (const auto& ctx : sorted_strategy_data)
+	  {
+	    auto strategyID = ctx.strategy->getPatternHash();
+
+	    if (baseline_stats.find(strategyID) == baseline_stats.end())
+	      {
+		std::ostringstream msg;
+		msg << "[finalSanityAudit] Missing baseline stat for strategy ID: " << strategyID;
+		throw std::runtime_error(msg.str());
+	      }
+
+	    if (final_counts.find(strategyID) == final_counts.end())
+	      {
+		std::ostringstream msg;
+		msg << "[finalSanityAudit] Missing exceedance count for strategy ID: " << strategyID;
+		throw std::runtime_error(msg.str());
+	      }
+
+	    if (adjusted_p_values.find(strategyID) == adjusted_p_values.end())
+	      {
+		std::ostringstream msg;
+		msg << "[finalSanityAudit] Missing adjusted p-value for strategy ID: " << strategyID;
+		throw std::runtime_error(msg.str());
 	      }
 	  }
 
-	return pvals;
-      }
-    private:
-      // Helper to verify that 'counts' has exactly one entry per strategy
-    void sanityCheckCounts(const std::map<StrategyPtr, unsigned int>& counts,
-			   const StrategyVec& strategyData) const
-      {
-	if (counts.size() != strategyData.size())
-	  throw std::logic_error("Permutation count map has wrong number of entries");
-
-	for (auto const& ctx : strategyData) {
-	  if (counts.find(ctx.strategy) == counts.end())
-            throw std::logic_error("Missing permutation count for a strategy");
-	}
-
-	for (auto const& kv : counts)
+	// Check that adjusted p-values are non-decreasing
+	Decimal lastP = Decimal(0);
+	for (const auto& ctx : sorted_strategy_data)
 	  {
-	    bool found = false;
-	    for (auto const& ctx : strategyData)
-	      if (kv.first == ctx.strategy)
-		{
-		  found = true;
-		  break;
-		}
+	    auto strategyID = ctx.strategy->getPatternHash();
+	    Decimal currentP = adjusted_p_values.at(strategyID);
 
-	    if (!found)
-	      throw std::logic_error("counts map contains an unexpected strategy key");
+	    if (currentP < lastP)
+	      {
+		std::ostringstream msg;
+		msg << "[finalSanityAudit] Adjusted p-values must be monotonically non-decreasing.\n";
+		msg << "  Violation: strategy ID " << strategyID << ", adjusted p: " << currentP << ", previous: " << lastP;
+		throw std::runtime_error(msg.str());
+	      }
+
+	    lastP = currentP;
 	  }
       }
     };

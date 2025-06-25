@@ -74,9 +74,9 @@ namespace mkc_timeseries
   class DefaultPermuteMarketChangesPolicy : public PermutationTestSubject<Decimal>
   {
     static_assert(has_return_type<_PermutationTestResultPolicy>::value,
-		  "_PermutationTestResultPolicy must define a nested ::ReturnType");
-    static_assert(has_create_return_value<_PermutationTestResultPolicy>::value,
-		  "_PermutationTestResultPolicy must have static createReturnValue(Decimal, Decimal)");
+    "_PermutationTestResultPolicy must define a nested ::ReturnType");
+    static_assert(has_create_return_value_3param<_PermutationTestResultPolicy>::value,
+    "_PermutationTestResultPolicy must have static createReturnValue(Decimal, Decimal, Decimal)");
     static_assert(has_update_test_statistic<_PermutationTestStatisticsCollectionPolicy>::value,
 		  "_PermutationTestStatisticsCollectionPolicy must implement updateTestStatistic(Decimal)");
     static_assert(has_get_test_stat<_PermutationTestStatisticsCollectionPolicy>::value,
@@ -151,7 +151,7 @@ namespace mkc_timeseries
       }
 
       // Minimum trades threshold
-      const uint32_t minTrades = BackTestResultPolicy::getMinStrategyTrades();
+      //const uint32_t minTrades = BackTestResultPolicy::getMinStrategyTrades();
 
       // Atomics for counting valid permutations and "extreme" ones
       std::atomic<uint32_t> validPerms{0}, extremeCount{0};
@@ -173,10 +173,10 @@ namespace mkc_timeseries
         clonedBT->backtest();
 
         // 2) Count trades using enhanced BackTester method; skip if below threshold
-        uint32_t stratTrades = clonedBT->getNumTrades();
-        if (stratTrades < minTrades) {
-   return;  // uninformative — do not increment validPerms
-        }
+        //uint32_t stratTrades = clonedBT->getNumTrades();
+        //if (stratTrades < minTrades) {
+	//return;  // uninformative — do not increment validPerms
+        //}
 
         // 3) Valid permutation: compute statistic
         Decimal testStat =
@@ -208,7 +208,9 @@ namespace mkc_timeseries
       if (valid == 0) {
         // no informative draws → cannot reject null
         return _PermutationTestResultPolicy::createReturnValue(
-							       Decimal(1), testStatCollector.getTestStat());
+							       Decimal(1),
+							       testStatCollector.getTestStat(),
+							       baseLineTestStat);
       }
 
       uint32_t extreme = extremeCount.load(std::memory_order_relaxed);
@@ -219,7 +221,8 @@ namespace mkc_timeseries
 
       // 8) Return in the shape the ResultPolicy demands
       return _PermutationTestResultPolicy::createReturnValue(pValue,
-							     summaryTestStat);
+							     summaryTestStat,
+							     baseLineTestStat);
     }
 
     /**

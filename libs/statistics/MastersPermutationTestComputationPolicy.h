@@ -14,7 +14,7 @@
 #include <atomic>
 #include <thread>
 #include <future>
-
+#include <fstream>
 // --- Assumed necessary includes from your project ---
 #include "BackTester.h"
 #include "PalStrategy.h"
@@ -29,6 +29,7 @@
 #include "StrategyIdentificationHelper.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "PermutationTestObserver.h"
 
 namespace mkc_timeseries
 {
@@ -239,30 +240,35 @@ namespace mkc_timeseries
     using StrategyPtr       = std::shared_ptr<PalStrategy<Decimal>>;
     using LocalStrategyData = StrategyDataContainer<Decimal>;
     using LocalStrategyDataContainer = StrategyDataContainer<Decimal>;
-    using AtomicCountsMap   = std::map<StrategyPtr, std::atomic<unsigned>>;
-    using FinalCountsMap    = std::map<StrategyPtr, unsigned>;
+    using AtomicCountsMap   = std::map<unsigned long long, std::atomic<unsigned>>;
+    using FinalCountsMap    = std::map<unsigned long long, unsigned>;
 
     FastMastersPermutationPolicy() = default;
     ~FastMastersPermutationPolicy() = default;
 
     /**
-     * @brief Bulk computes exceedance counts for each strategy.
+     * @brief Bulk computes exceedance counts for each strategy using the corrected fast stepwise algorithm.
      *
-     * Divides [0..numPermutations) into chunks, runs in parallel,
-     * and for each permutation:
-     *   1. Generate a synthetic portfolio.
-     *   2. Run backtests for every strategy and record each statistic.
-     *   3. Compute the maximum statistic over all strategies.
-     *   4. For each strategy whose baseline <= max, increment its count.
+     * This corrected implementation faithfully follows the author's "fast" algorithm.
+     * It divides the permutation work into chunks for parallel execution. For each permutation:
+     * 1. A synthetic (shuffled) portfolio is generated.
+     * 2. Backtests are run for ALL strategies against the synthetic data to get their permuted statistics for this single run.
+     * 3. A loop iterates from the WORST-PERFORMING strategy to the BEST-PERFORMING strategy. This loop now includes
+     * logic to process each unique strategy hash only once.
+     * 4. In this loop, a running maximum statistic (`max_f_so_far`) is updated. For each unique strategy, its baseline statistic
+     * is compared against the `max_f_so_far`, which includes itself and all weaker strategies tested so far.
+     * 5. If the baseline is exceeded, the strategy's specific counter is incremented.
+     *
+     * This correctly builds the shrinking null distributions required for the stepwise test, increasing statistical power.
      *
      * @param numPermutations Number of permutation iterations (>0).
-     * @param sorted_strategy_data Pre-sorted container of StrategyContext.
-     * @param templateBackTester BackTester to clone each iteration.
+     * @param sorted_strategy_data Pre-sorted container of StrategyContext (must be sorted DESCENDING, best-to-worst).
+     * @param templateBacktester BackTester to clone each iteration.
      * @param theSecurity Security to create synthetic data.
      * @param basePortfolioPtr Base portfolio for synthetic generation.
-     * @return Map from each strategy to its exceedance count.
+     * @return Map from each strategy's hash to its final exceedance count.
      */
-    FinalCountsMap computeAllPermutationCounts
+    std::map<unsigned long long, unsigned int> computeAllPermutationCounts
     (
      uint32_t                                numPermutations,
      const LocalStrategyData&                sorted_strategy_data,
@@ -295,88 +301,164 @@ namespace mkc_timeseries
       AtomicCountsMap atomic_counts;
       for (auto const& ctx : sorted_strategy_data)
         {
-   atomic_counts[ctx.strategy].store(1);
+	  auto strategyID = ctx.strategy->getPatternHash();
+	  atomic_counts[strategyID].store(1);
         }
 
+      std::vector<std::stringstream> threadLogs(numPermutations);
       Executor executor{};  // default or platform-specific executor
 
       // Define work lambda: processes one permutation index 'p'
-      auto work = [=, &atomic_counts, this]
-        (
-  uint32_t p
-  )
+      auto work = [=, &atomic_counts, &threadLogs, this] (uint32_t p)
       {
-	// 1) Create synthetic portfolio for this permutation
+	auto& log = threadLogs[p];
+	
+	// --- PHASE 1: BACKTESTING ---
+	// For this single permutation, run a backtest for every strategy on the same shuffled data
+	// to get their permuted performance statistics.
+
+	log << "\n[Permutation " << p << "]\n";
+	
+	// 1a) Create synthetic portfolio for this permutation
 	auto syntheticPortfolio = createSyntheticPortfolio<Decimal>
 	  (
 	   theSecurity,
 	   basePortfolioPtr
 	   );
 
-	// 2) Compute statistic for each strategy
-	std::map<StrategyPtr, Decimal> stats_this_perm;
+	// 1b) Compute and store permuted statistics in a vector that mirrors sorted_strategy_data
+	std::vector<Decimal> permuted_stats;
+	permuted_stats.reserve(sorted_strategy_data.size());
+
 	for (auto const& ctx : sorted_strategy_data)
 	  {
 	    auto strategy = ctx.strategy;
+	    auto strategyID = strategy->getPatternHash();
 
-	    // Clone backtester until minimum trades satisfied
 	    uint32_t trades = 0;
 	    Decimal stat = std::numeric_limits<Decimal>::lowest();
-
 	    auto clonedStrat = strategy->clone(syntheticPortfolio);
-	    auto btClone     = templateBackTester->clone();
+	    auto btClone = templateBackTester->clone();
 	    btClone->addStrategy(clonedStrat);
 	    btClone->backtest();
 
-	    // Use enhanced BackTester method for accurate trade counting
 	    trades = btClone->getNumTrades();
 	    if (trades >= BaselineStatPolicy::getMinStrategyTrades())
 	      {
-	 stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
-	 
-	 // NEW: Notify observers after successful backtest
-	 this->notifyObservers(*btClone, stat);
+		stat = BaselineStatPolicy::getPermutationTestStatistic(btClone);
+		this->notifyObservers(*btClone, stat);
 	      }
 	    else
 	      {
-	 // below minimum, count as "no relationship" under the null hypothesis
-	 stat = std::numeric_limits<Decimal>::lowest();
+		stat = std::numeric_limits<Decimal>::lowest();
+		this->notifyObservers(*btClone, stat);
 	      }
+
+	    permuted_stats.push_back(stat);
+	    log << "  Backtest: " << strategy->getStrategyName()
+		<< " | Perm Stat: " << stat << " | Trades: " << trades << "\n";
+	  }
+
+	// --- PHASE 2: CORRECTED COUNTING LOGIC ---
+	// This loop correctly implements the "fast" stepwise algorithm by ensuring
+	// that every strategy contributes to the running max `max_f_so_far`,
+	// while only performing the count comparison once per unique strategy hash.
+
+	log << "  Counting (Worst-to-Best):\n";
+	Decimal max_f_so_far = std::numeric_limits<Decimal>::lowest();
+	std::set<unsigned long long> counted_hashes; // Tracks hashes counted in this perm.
+
+	// Iterate from WORST to BEST to build the expanding null distribution
+	for (int i = sorted_strategy_data.size() - 1; i >= 0; --i)
+	  {
+	    const auto& ctx = sorted_strategy_data[i];
+	    auto strategyID = ctx.strategy->getPatternHash();
 	    
-	    stats_this_perm[strategy] = stat;
-	  }
-
-	// 3) Determine max statistic
-	Decimal max_f = std::numeric_limits<Decimal>::lowest();
-	for (auto const& entry : stats_this_perm)
-	  {
-	    max_f = std::max(max_f, entry.second);
-	  }
-
-	// 4) Increment counters for any strategy beaten by max_f
-	for (auto const& ctx : sorted_strategy_data)
-	  {
-	    if (max_f >= ctx.baselineStat)
+	    // The permuted stat for EVERY strategy must be included in the running max.
+	    max_f_so_far = std::max(max_f_so_far, permuted_stats[i]);
+	    
+	    // Only perform the comparison and count once per unique strategy hash.
+	    if (counted_hashes.find(strategyID) == counted_hashes.end())
 	      {
-		atomic_counts[ctx.strategy].fetch_add(1, std::memory_order_relaxed);
+		// Compare a strategy's baseline against the max of itself and all weaker strategies.
+		if (max_f_so_far >= ctx.baselineStat)
+		  {
+		    atomic_counts.at(strategyID).fetch_add(1, std::memory_order_relaxed);
+		    log << "    [EXCEEDED] " << ctx.strategy->getStrategyName()
+			<< " | Baseline: " << ctx.baselineStat
+			<< " <= Max-so-far: " << max_f_so_far << "\n";
+		  }
+		counted_hashes.insert(strategyID);
 	      }
 	  }
       };
 
       // Run work in parallel across all permutation indices
-      concurrency::parallel_for
-        (
-	 numPermutations,
-	 executor,
-	 work
-	 );
+      concurrency::parallel_for(numPermutations, executor, work);
+      
+      // The rest of this function is for logging and converting the atomic map
+      // to a regular map for the return value. This part is correct.
+      
+      std::ofstream debugFile("/home/collison/sandbox/fast_masters_debug_log.txt");
+      if(debugFile.is_open())
+      {
+        debugFile << "=== DEBUG LOG FOR FastMastersPermutationPolicy ===\n";
+        debugFile << "Number of permutations: " << numPermutations << "\n\n";
+        
+        for (const auto& ctx : sorted_strategy_data)
+          debugFile << "Strategy: " << ctx.strategy->getStrategyName()
+                    << " (Hash: " << ctx.strategy->getPatternHash() << ")"
+                    << " | Baseline Stat: " << ctx.baselineStat << "\n";
+        
+        for (const auto& log : threadLogs)
+          debugFile << log.str();
+      
+        std::map<unsigned long long, unsigned int> final_counts;
+        debugFile << "\n=== FINAL EXCEEDANCE COUNTS ===\n";
+        for (auto const& pair : atomic_counts)
+          {
+            final_counts[pair.first] = pair.second.load();
+            Decimal rate = Decimal(final_counts[pair.first]) /
+              Decimal(numPermutations + 1) * Decimal(100.0);
 
-      // Collect final counts into a non-atomic map
-      FinalCountsMap final_counts;
+            for (const auto& ctx : sorted_strategy_data) {
+              if (ctx.strategy->getPatternHash() == pair.first) {
+                debugFile << "Strategy: " << ctx.strategy->getStrategyName()
+                          << " | Exceed Count: " << final_counts[pair.first]
+                          << " | Rate: " << rate << "%\n";
+                break;
+              }
+            }
+          }
+        debugFile.close();
+      }
+
+      // Final conversion from atomic map to standard map to return
+      std::map<unsigned long long, unsigned int> final_counts;
       for (auto const& pair : atomic_counts)
-        {
-	  final_counts[pair.first] = pair.second.load();
-        }
+      {
+          final_counts[pair.first] = pair.second.load();
+      }
+
+      // Notify observers with the final exceedance rates
+      for (auto const& ctx : sorted_strategy_data)
+      {
+          auto strategy = ctx.strategy;
+          auto strategyID = strategy->getPatternHash();
+          // Check if strategyID exists in final_counts to avoid exception with duplicates
+          if(final_counts.count(strategyID))
+          {
+              unsigned int exceedanceCount = final_counts.at(strategyID);
+              
+              Decimal exceedanceRate = (static_cast<Decimal>(exceedanceCount) /
+                                       static_cast<Decimal>(numPermutations + 1)) *
+                                       static_cast<Decimal>(100.0);
+              
+              this->notifyObservers(strategy.get(),
+                                   PermutationTestObserver<Decimal>::MetricType::BASELINE_STAT_EXCEEDANCE_RATE,
+                                   exceedanceRate);
+          }
+      }
 
       return final_counts;
     }

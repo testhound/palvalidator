@@ -432,19 +432,34 @@ namespace mkc_timeseries
     Decimal mFalseDiscoveryRate;
   };
 
-
   //===========================================================================
   // Policy: AdaptiveBenjaminiHochbergYr2000
-  // [Code for AdaptiveBenjaminiHochbergYr2000 remains unchanged]
+  // REVISED: Now supports Slope-based, Tail-based, and Storey's Smoothed
+  //          estimation methods for m0, selectable via an enum.
   //===========================================================================
+  //
+  // based on the paper "On the Adaptive Control of the False Discovery Rate in
+  // Multiple Testing with Independent Statistics" by Benjamini and Hochberg (2000)
+  // with an added estimator inspired by Storey (2002).
+  //
   template <class Decimal>
   class AdaptiveBenjaminiHochbergYr2000 {
   public:
-    typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
-     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
+    // Enum to select the estimation method for the number of true nulls (m0).
+    enum class EstimationMethod {
+      SlopeBased,      // Benjamini & Hochberg (2000) slope-based method
+      TailBased,       // Benjamini & Hochberg (2000) simple tail-based method
+      StoreySmoothed   // Storey (2002) inspired smoother using linear regression
+    };
 
-    AdaptiveBenjaminiHochbergYr2000()
-      : mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
+    typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
+    using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
+
+    // Constructor now accepts an enum to select the estimation method.
+    // By default, it uses the robust slope-based method.
+    explicit AdaptiveBenjaminiHochbergYr2000(EstimationMethod method = EstimationMethod::SlopeBased)
+      : m_estimationMethod(method),
+	mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
     {}
 
     void addStrategy(const ReturnType& pValue, std::shared_ptr<PalStrategy<Decimal>> aStrategy) {
@@ -468,84 +483,228 @@ namespace mkc_timeseries
 
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
 				 DecimalConstants<Decimal>::SignificantPValue) {
+      if (getNumMultiComparisonStrategies() == 0)
+        return; // Nothing to do
+
+      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests" << std::endl;
+      Decimal m0_estimate;
+
+      // Use a switch to select the estimation method for m0.
+      // This provides a clean and extensible design.
+      switch (m_estimationMethod)
+	{
+	case EstimationMethod::TailBased:
+	  m0_estimate = estimateM0TailBased();
+	  break;
+
+	case EstimationMethod::StoreySmoothed:
+	  m0_estimate = estimateM0StoreySmoothed();
+	  break;
+
+	case EstimationMethod::SlopeBased:
+	default:
+	  m0_estimate = estimateM0SlopeBased();
+	  break;
+	}
+
       auto it = container_.getInternalContainer().rbegin();
       auto itEnd = container_.getInternalContainer().rend();
+
+      
+      // Now, proceed with the BH procedure using the chosen m0 estimate
       Decimal rank(static_cast<int>(getNumMultiComparisonStrategies()));
-      Decimal criticalValue = 0;
+      Decimal criticalValue = DecimalConstants<Decimal>::DecimalZero;
 
-      calculateSlopes();
-      Decimal numTests = calculateMPrime();
+      Decimal mPrime = std::min(Decimal(rank), m0_estimate * rank);
 
-      // std::cout << "AdaptiveBenjaminiHochbergYr2000:: mPrime = " << numTests
-      //           << ", m = " << getNumMultiComparisonStrategies() << std::endl;
+      std::string estimatorLabel = (m_estimationMethod ==  EstimationMethod::StoreySmoothed)
+	? "Storey Smoother"
+	: "Tail Single Lambda";
+      
+      std::cout << "[" << estimatorLabel << "] pi0 = " << m0_estimate
+		<< ", mPrime = " << mPrime << ", m = " << rank << "\n";
+      std::cout << "AdaptiveBenjaminiHochbergYr2000::Rank = " << rank << std::endl;
 
-      for (; it != itEnd; ++it) {
-        Decimal pValue = it->first;
-        criticalValue = (rank / numTests) * mFalseDiscoveryRate;
-        // std::cout << "AdaptiveBenjaminiHochbergYr2000:: pValue = " << pValue
-        //           << ", Critical value = " << criticalValue << std::endl;
-        if (pValue < criticalValue)
-          break;
-        else
-          rank = rank - DecimalConstants<Decimal>::DecimalOne;
-      }
-      for (; it != itEnd; ++it) {
-        container_.addSurvivingStrategy(it->second);
-      }
-      // std::cout << "AdaptiveBenjaminiHochbergYr2000::Number of multi comparison strategies = " << getNumMultiComparisonStrategies() << std::endl;
-      // std::cout << "AdaptiveBenjaminiHochbergYr2000::Number of surviving strategies after correction = " << getNumSurvivingStrategies() << std::endl;
+      for (; it != itEnd; ++it)
+	{
+	  Decimal pValue = it->first;
+	  criticalValue = (rank / m0_estimate) * mFalseDiscoveryRate;
+
+	  std::cout << "pValue = " << pValue << ", criticalValue = " << criticalValue << std::endl;
+	  if (pValue < criticalValue)
+	    break;
+	  else
+	    rank = rank - DecimalConstants<Decimal>::DecimalOne;
+	}
+    
+      // Add all strategies from the break-point onwards (i.e., those that passed the test)
+
+      for (; it != itEnd; ++it)
+	{
+	  std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests adding surviving strategies" << std::endl;
+	  container_.addSurvivingStrategy(it->second);
+	}
     }
 
-     // Added for monotonicity test helper compatibility
+    // (Other public methods like getInternalContainer, getAllTestedStrategies, etc. remain unchanged)
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
-        return container_.getInternalContainer();
+      return container_.getInternalContainer();
     }
-
-    /// @brief  Reset state in preparation for a fresh run.
+    std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
+      std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> result;
+      for (const auto& entry : container_.getInternalContainer()) {
+	result.emplace_back(entry.second, entry.first); // strategy, p-value
+      }
+      return result;
+    }
+    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
+      for (const auto& entry : container_.getInternalContainer()) {
+	if (entry.second == strategy) {
+	  return entry.first; // return p-value
+	}
+      }
+      return Decimal(1.0); // Default high p-value if not found
+    }
     void clearForNewTest()
     {
       container_.clearForNewTest();
     }
 
   private:
-    void calculateSlopes() {
-      if (getNumMultiComparisonStrategies() > 0) {
-        Decimal m(static_cast<int>(getNumMultiComparisonStrategies()));
-        Decimal i = DecimalConstants<Decimal>::DecimalOne;
-        mSlopes.clear();
-        for (auto it = container_.getInternalContainer().begin(); it != container_.getInternalContainer().end(); ++it) {
-          Decimal pValue = it->first;
-          Decimal num = (DecimalConstants<Decimal>::DecimalOne - pValue);
-          Decimal denom = (m + DecimalConstants<Decimal>::DecimalOne - i);
-          Decimal slope = num / denom;
-          mSlopes.push_back(slope);
-          //   std::cout << "AdaptiveBenjaminiHochbergYr2000::calculateSlopes, i = " << i
-          //             << ", slope = " << slope << std::endl;
-          i = i + DecimalConstants<Decimal>::DecimalOne;
-        }
-      }
+    // Method 1: B&H (2000) Simple Tail-Based Estimator
+    Decimal estimateM0TailBased() const {
+      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0TailBased" << std::endl;
+      const auto& strategies = container_.getInternalContainer();
+      const size_t m = strategies.size();
+      if (m == 0) return Decimal(0);
+
+      const Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.5");
+      size_t count = std::count_if(strategies.begin(), strategies.end(),
+				   [lambda](const auto& pair) {
+				     return pair.first > lambda;
+				   });
+    
+      Decimal pi0_hat = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
+      Decimal m0_hat = std::min(DecimalConstants<Decimal>::DecimalOne, pi0_hat) * static_cast<Decimal>(m);
+      return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
     }
 
-    Decimal calculateMPrime() {
+    // Method 2: B&H (2000) Slope-Based Estimator
+    Decimal estimateM0SlopeBased() {
+      calculateSlopes(); // Note: This has a side effect of populating mSlopes
       Decimal m(static_cast<int>(getNumMultiComparisonStrategies()));
       for (unsigned int i = 1; i < mSlopes.size(); i++) {
-        if (mSlopes[i] < mSlopes[i - 1]) {
-          Decimal temp = (DecimalConstants<Decimal>::DecimalOne / mSlopes[i]) + DecimalConstants<Decimal>::DecimalOne;
-          //   std::cout << "AdaptiveBenjaminiHochbergYr2000::calculateMPrime, i = " << i
-          //             << ", mSlopes[" << i << "] = " << mSlopes[i]
-          //             << ", mSlopes[" << i - 1 << "] = " << mSlopes[i - 1] << std::endl;
-          //   std::cout << "AdaptiveBenjaminiHochbergYr2000::calculateMPrime = " << temp << std::endl;
-          return std::min(temp, m);
-        }
+	if (mSlopes[i] < mSlopes[i - 1]) {
+	  if (mSlopes[i] <= DecimalConstants<Decimal>::DecimalZero) continue; // Avoid division by zero/negative
+	  Decimal temp = (DecimalConstants<Decimal>::DecimalOne / mSlopes[i]) + DecimalConstants<Decimal>::DecimalOne;
+	  return std::min(temp, m);
+	}
       }
       return m;
     }
+  
+    // Method 3: Storey (2002) Inspired Smoother with Linear Regression
+    Decimal estimateM0StoreySmoothed() const {
+      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothed" << std::endl;
+      const auto& strategies = container_.getInternalContainer();
+      const size_t m = strategies.size();
+      if (m < 2) return Decimal(m); // Need at least 2 points for regression
+
+      std::vector<Decimal> lambdas;
+      std::vector<Decimal> pi0s;
+
+      // Use Decimal type throughout for consistency
+      for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.25");
+           lambda < DecimalConstants<Decimal>::createDecimal("0.60");
+           lambda += DecimalConstants<Decimal>::createDecimal("0.05")) {
+        lambdas.push_back(lambda);
+        size_t count = std::count_if(strategies.begin(), strategies.end(),
+                                     [lambda](const auto& entry) {
+				       return entry.first > lambda;
+                                     });
+        Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
+        pi0s.push_back(std::min(DecimalConstants<Decimal>::DecimalOne, pi0));
+
+	std::cout << "[StoreySmoother] lambda = " << lambda
+                  << ", m0(lambda) = " << pi0s.back() << std::endl;
+      }
+
+      if (lambdas.empty()) return Decimal(m);
+
+      // Linear regression: pi0 ≈ a + b * lambda
+      Decimal sumX = DecimalConstants<Decimal>::DecimalZero,
+              sumY = DecimalConstants<Decimal>::DecimalZero,
+              sumXY = DecimalConstants<Decimal>::DecimalZero,
+              sumXX = DecimalConstants<Decimal>::DecimalZero;
+      size_t n = lambdas.size();
+      for (size_t i = 0; i < n; ++i) {
+        sumX += lambdas[i];
+        sumY += pi0s[i];
+        sumXY += lambdas[i] * pi0s[i];
+        sumXX += lambdas[i] * lambdas[i];
+      }
+
+      Decimal denom = static_cast<Decimal>(n) * sumXX - sumX * sumX;
+      if (denom == DecimalConstants<Decimal>::DecimalZero) return Decimal(m); // Avoid division by zero
+
+      Decimal slope = (static_cast<Decimal>(n) * sumXY - sumX * sumY) / denom;
+      Decimal intercept = (sumY - slope * sumX) / static_cast<Decimal>(n);
+
+      // ==> LOGGING: Log the final regression parameters
+      std::cout << "[StoreySmoother] Linear regression: slope = " << slope
+                << ", intercept = " << intercept << std::endl;
+
+      // ==> LOGGING: Log residuals for each lambda
+      std::cout << "--- Residual Analysis ---" << std::endl;
+      for (size_t i = 0; i < n; ++i) {
+        Decimal fitted = slope * lambdas[i] + intercept;
+        Decimal actual = pi0s[i];
+        Decimal residual = actual - fitted;
+        std::cout << "[StoreySmoother] lambda = " << lambdas[i]
+                  << ", fitted = " << fitted
+                  << ", actual = " << actual
+                  << ", residual = " << residual << std::endl;
+      }
+      std::cout << "-------------------------" << std::endl;
+      
+      // Extrapolate pi0 at lambda = 1.0 and clamp between 0 and 1
+      Decimal extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero, std::min(DecimalConstants<Decimal>::DecimalOne, intercept + slope));
+    
+      // Convert pi0 proportion estimate to m0 count estimate
+      Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
+
+      // ==> LOGGING: Log the final extrapolated results
+      std::cout << "[StoreySmoother] Smoothed pi0 = " << extrapolatedPi0
+                << ", mPrime = " << m0_hat
+                << ", m = " << static_cast<Decimal>(m) << std::endl;
+      return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
+    }
+
+    void calculateSlopes() {
+      mSlopes.clear();
+      // ... (implementation of calculateSlopes is unchanged)
+      if (getNumMultiComparisonStrategies() > 0) {
+	Decimal m(static_cast<int>(getNumMultiComparisonStrategies()));
+	Decimal i = DecimalConstants<Decimal>::DecimalOne;
+      
+	for (auto it = container_.getInternalContainer().begin(); it != container_.getInternalContainer().end(); ++it) {
+	  Decimal pValue = it->first;
+	  Decimal num = (DecimalConstants<Decimal>::DecimalOne - pValue);
+	  Decimal denom = (m + DecimalConstants<Decimal>::DecimalOne - i);
+	  Decimal slope = (denom > 0) ? (num / denom) : DecimalConstants<Decimal>::DecimalZero; // Avoid division by zero
+	  mSlopes.push_back(slope);
+	  i = i + DecimalConstants<Decimal>::DecimalOne;
+	}
+      }
+    }
 
     BaseStrategyContainer<Decimal> container_;
-    Decimal mFalseDiscoveryRate;
     std::vector<Decimal> mSlopes;
-  };
 
+    // Configuration member
+    EstimationMethod m_estimationMethod;
+    Decimal mFalseDiscoveryRate;
+  };
 
   //===========================================================================
   // Policy: UnadjustedPValueStrategySelection
@@ -594,6 +753,24 @@ namespace mkc_timeseries
     // Added for monotonicity test helper compatibility
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
         return container_.getInternalContainer();
+    }
+
+    // New methods for accessing all tested strategies and their p-values
+    std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
+        std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> result;
+        for (const auto& entry : container_.getInternalContainer()) {
+            result.emplace_back(entry.second, entry.first); // strategy, p-value
+        }
+        return result;
+    }
+
+    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
+        for (const auto& entry : container_.getInternalContainer()) {
+            if (entry.second == strategy) {
+                return entry.first; // return p-value
+            }
+        }
+        return Decimal(1.0); // Default high p-value if not found
     }
 
     /// @brief  Reset state in preparation for a fresh run.
@@ -709,7 +886,186 @@ namespace mkc_timeseries
     bool hasSyntheticNull_ = false;
   };
 
+  template <class Decimal>
+  class StrategyBaselineResultContainer
+  {
+  public:
+    // The tuple now holds: < baselineStat, shared_ptr_to_strategy >
+    using InternalContainer = std::vector<std::tuple<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>;
+    using surviving_const_iterator = typename std::list<std::shared_ptr<PalStrategy<Decimal>>>::const_iterator;
 
+    StrategyBaselineResultContainer() {}
+
+    void addStrategy(const Decimal& baselineStat, std::shared_ptr<PalStrategy<Decimal>> strategy)
+    {
+      boost::mutex::scoped_lock Lock(mutex_);
+      internal_container_.emplace_back(baselineStat, strategy);
+    }
+
+    void markSurvivingStrategies(const std::vector<std::tuple<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>& adjusted_p_values,
+                                 Decimal significanceThreshold)
+    {
+      boost::mutex::scoped_lock Lock(mutex_);
+      survivingStrategies_.clear();
+      for (const auto& tup : adjusted_p_values) {
+        if (std::get<0>(tup) <= significanceThreshold) {
+	  survivingStrategies_.push_back(std::get<1>(tup));
+        }
+      }
+    }
+    
+    InternalContainer& getInternalContainer() { return internal_container_; }
+    size_t getNumStrategies() const
+    {
+      boost::mutex::scoped_lock Lock(mutex_);
+      return internal_container_.size();
+    }
+
+    surviving_const_iterator beginSurvivingStrategies() const { return survivingStrategies_.begin(); }
+    surviving_const_iterator endSurvivingStrategies() const { return survivingStrategies_.end(); }
+    
+    size_t getNumSurvivingStrategies() const
+    {
+      boost::mutex::scoped_lock Lock(mutex_);
+      return survivingStrategies_.size();
+    }
+    
+    void clearForNewTest()
+    {
+      boost::mutex::scoped_lock lk(mutex_);
+      internal_container_.clear();
+      survivingStrategies_.clear();
+    }
+
+  private:
+    InternalContainer internal_container_;
+    std::list<std::shared_ptr<PalStrategy<Decimal>>> survivingStrategies_;
+    mutable boost::mutex mutex_;
+  };
+
+
+  //
+// In MultipleTestingCorrection.h
+
+template <class Decimal>
+class RomanoWolfStepdownCorrection {
+public:
+    using FullResultType = std::tuple<Decimal, Decimal, Decimal>; // pValue, baselineStat, maxPermutedStat
+    using ConstSurvivingStrategiesIterator = typename StrategyBaselineResultContainer<Decimal>::surviving_const_iterator;
+    using StrategyPair = std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>;
+
+    RomanoWolfStepdownCorrection() : m_isSyntheticNull(false) {}
+
+    // This method accepts the full result from each permutation test.
+    void addStrategy(const FullResultType& result, std::shared_ptr<PalStrategy<Decimal>> strategy) 
+    {
+      const Decimal& maxPermutedStat = std::get<1>(result); // The statistic for the null distribution
+      const Decimal& baselineStat    = std::get<2>(result); // The statistic to be tested
+
+      container_.addStrategy(baselineStat, strategy);
+      
+      // Only add to the empirical null if a synthetic one hasn't been provided.
+      if (!m_isSyntheticNull) {
+          empiricalNullDistribution_.push_back(maxPermutedStat);
+      }
+    }
+
+    // Method to allow injection of a pre-computed null distribution, e.g., for testing.
+    void setSyntheticNullDistribution(const std::vector<Decimal>& syntheticNull)
+    {
+        empiricalNullDistribution_ = syntheticNull;
+        m_isSyntheticNull = !syntheticNull.empty();
+    }
+
+    // Returns the total number of strategies being evaluated.
+    size_t getNumMultiComparisonStrategies() const {
+      return container_.getNumStrategies();
+    }
+    
+    // Returns a vector of pairs, each containing a strategy and its final adjusted p-value.
+    std::vector<StrategyPair> getAllTestedStrategies() const {
+        return m_final_p_values;
+    }
+
+    // Looks up a specific strategy and returns its final adjusted p-value.
+    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
+        for (const auto& entry : m_final_p_values) {
+            if (entry.first == strategy) {
+                return entry.second; // return adjusted p-value
+            }
+        }
+        return Decimal(1.0); // Default: not found or did not pass
+    }
+
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel = DecimalConstants<Decimal>::SignificantPValue)
+    {
+        // Throw an exception if called with no data, to match the test's expectation.
+        if (container_.getNumStrategies() == 0)
+            throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
+
+        if (empiricalNullDistribution_.empty())
+            throw std::runtime_error("RomanoWolfStepdownCorrection: Empirical null distribution is empty.");
+
+        auto& strategyResults = container_.getInternalContainer();
+
+        // Sort strategies by baseline stat (descending)
+        std::sort(strategyResults.begin(), strategyResults.end(),
+                  [](const auto& a, const auto& b) {
+                      return std::get<0>(a) > std::get<0>(b); 
+                  });
+
+        std::sort(empiricalNullDistribution_.begin(), empiricalNullDistribution_.end());
+
+        std::vector<StrategyPair> temp_p_values;
+        Decimal last_p_adj = DecimalConstants<Decimal>::DecimalZero;
+
+        for (const auto& result_tuple : strategyResults) {
+            const Decimal& baselineStat = std::get<0>(result_tuple);
+            const auto& strategy = std::get<1>(result_tuple);
+
+            auto lb = std::lower_bound(empiricalNullDistribution_.begin(), empiricalNullDistribution_.end(), baselineStat);
+            Decimal countGreaterEqual = static_cast<Decimal>(std::distance(lb, empiricalNullDistribution_.end()));
+            Decimal p_raw = countGreaterEqual / static_cast<Decimal>(empiricalNullDistribution_.size());
+            
+            Decimal p_adj = std::max(last_p_adj, p_raw);
+            
+            temp_p_values.emplace_back(strategy, p_adj); // Storing as <strategy, p_value>
+            last_p_adj = p_adj;
+        }
+
+        // Store the final adjusted p-values in the member variable
+        m_final_p_values = temp_p_values;
+        
+        // Create a temporary structure for the container to mark survivors
+        std::vector<std::tuple<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> pvals_for_marking;
+        for (const auto& p : m_final_p_values) {
+            pvals_for_marking.emplace_back(p.second, p.first);
+        }
+
+        container_.markSurvivingStrategies(pvals_for_marking, pValueSignificanceLevel);
+    }
+    
+    ConstSurvivingStrategiesIterator beginSurvivingStrategies() const { return container_.beginSurvivingStrategies(); }
+    ConstSurvivingStrategiesIterator endSurvivingStrategies() const { return container_.endSurvivingStrategies(); }
+    size_t getNumSurvivingStrategies() const { return container_.getNumSurvivingStrategies(); }
+    
+    void clearForNewTest()
+    {
+      container_.clearForNewTest();
+      empiricalNullDistribution_.clear();
+      m_isSyntheticNull = false;
+      m_final_p_values.clear();
+    }
+
+private:
+    StrategyBaselineResultContainer<Decimal> container_;
+    std::vector<Decimal> empiricalNullDistribution_; 
+    bool m_isSyntheticNull;
+    // New member to store the final results for the getter methods
+    std::vector<StrategyPair> m_final_p_values;
+};
+  //
+  
   //===========================================================================
   // Policy: RomanoWolfStepdownCorrection
   // Revised empirical p-value calculation.
@@ -733,17 +1089,19 @@ namespace mkc_timeseries
   //
 
   template <class Decimal>
-  class RomanoWolfStepdownCorrection {
+  class RomanoWolfStepdownCorrection2 {
   public:
     typedef typename PValueAndTestStatisticReturnPolicy<Decimal>::ReturnType RomanoWolfReturnType;
     typedef typename TestStatisticStrategyImplementation<Decimal>::TestStatisticContainer TestStatisticContainer;
     using ConstSurvivingStrategiesIterator = typename TestStatisticStrategyImplementation<Decimal>::surviving_const_iterator;
 
-    RomanoWolfStepdownCorrection() {}
+    RomanoWolfStepdownCorrection2() {}
 
     void addStrategy(const RomanoWolfReturnType& result, std::shared_ptr<PalStrategy<Decimal>> strategy) {
       Decimal pValue = std::get<0>(result);
       Decimal maxTestStat = std::get<1>(result);
+
+      std::cout << "Romanowolf:: Strategy being added with p-value = " << pValue << ", Max Test Stat = " << maxTestStat << std::endl;
       container_.addStrategy(pValue, maxTestStat, strategy);
     }
 
@@ -773,10 +1131,28 @@ namespace mkc_timeseries
         return container_.getInternalContainer();
     }
 
+    // New methods for accessing all tested strategies and their p-values
+    std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
+        std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> result;
+        for (const auto& entry : container_.getInternalContainer()) {
+            result.emplace_back(std::get<2>(entry), std::get<0>(entry)); // strategy, adjusted p-value
+        }
+        return result;
+    }
+
+    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
+        for (const auto& entry : container_.getInternalContainer()) {
+            if (std::get<2>(entry) == strategy) {
+                return std::get<0>(entry); // return adjusted p-value
+            }
+        }
+        return Decimal(1.0); // Default high p-value if not found
+    }
+
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
-				 DecimalConstants<Decimal>::SignificantPValue) {
+     DecimalConstants<Decimal>::SignificantPValue) {
       if (container_.getNumStrategies() == 0)
-	throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
+ throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
       
       std::vector<Decimal> sortedEmpiricalNullDistribution;
 

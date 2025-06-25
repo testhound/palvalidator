@@ -84,13 +84,10 @@ getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
     static thread_local std::shared_ptr<PriceActionLabSystem> cached_sys = nullptr;
     
     if (!cached_sys) {
-        std::cerr << "DEBUG: Loading PriceActionLabSystem from QQQ_IR.txt" << std::endl;
         cached_sys = getRandomPricePatterns();
         if (!cached_sys) {
             throw std::runtime_error("Failed to load PriceActionLabSystem from getRandomPricePatterns()");
         }
-        std::cerr << "DEBUG: PriceActionLabSystem loaded successfully" << std::endl;
-        std::cerr << "  System pointer: " << cached_sys.get() << std::endl;
     } else {
         std::cerr << "DEBUG: Using cached PriceActionLabSystem" << std::endl;
         std::cerr << "  Cached system pointer: " << cached_sys.get() << std::endl;
@@ -98,7 +95,7 @@ getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
 
     // 2. Get total number of patterns
     unsigned long total = cached_sys->getNumPatterns();
-    std::cerr << "DEBUG: Total patterns available: " << total << std::endl;
+
     if (total == 0) {
         throw std::runtime_error("No patterns available in PriceActionLabSystem");
     }
@@ -108,7 +105,6 @@ getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
     std::mt19937 gen(rd());
     std::uniform_int_distribution<unsigned long> dist(0, total - 1);
     unsigned long idx = dist(gen);
-    std::cerr << "DEBUG: Chosen pattern index: " << idx << std::endl;
 
     // 4. Advance the iterator to the chosen index
     auto it = cached_sys->allPatternsBegin();
@@ -116,14 +112,9 @@ getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
     auto chosenPattern = *it;
     // chosenPattern is std::shared_ptr<PriceActionLabPattern>
     
-    std::cerr << "DEBUG: Chosen pattern details:" << std::endl;
-    std::cerr << "  Pattern pointer: " << chosenPattern.get() << std::endl;
     if (chosenPattern) {
-        std::cerr << "  Pattern file: " << chosenPattern->getFileName() << std::endl;
-        std::cerr << "  Pattern index: " << chosenPattern->getpatternIndex() << std::endl;
         
         // Test the isLongPattern() call that's causing the issue
-        std::cerr << "DEBUG: About to call chosenPattern->isLongPattern()..." << std::endl;
         
         // Add detailed debugging of the mEntry object
         auto marketEntry = chosenPattern->getMarketEntry();

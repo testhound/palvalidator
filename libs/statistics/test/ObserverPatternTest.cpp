@@ -132,6 +132,16 @@ TEST_CASE("PermutationTestSubject observer management", "[observer][subject]") {
             updateCount++;
             lastStatistic = permutedTestStatistic;
         }
+
+        void updateMetric(const PalStrategy<DecimalType>* strategy,
+                         MetricType metricType,
+                         const DecimalType& metricValue) override {
+            // For testing purposes, we can just ignore this or store it if needed
+            // This is a simplified implementation for the test observer
+            (void)strategy;
+            (void)metricType;
+            (void)metricValue;
+        }
         
         std::optional<DecimalType> getMinMetric(const PalStrategy<DecimalType>* strategy, MetricType metric) const override {
             return std::nullopt;

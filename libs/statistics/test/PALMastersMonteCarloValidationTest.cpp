@@ -34,13 +34,14 @@ public:
 
 class DummyAlgo : public IMastersSelectionBiasAlgorithm<D, DummyStatPolicy> {
 public:
-  std::map<std::shared_ptr<PalStrategy<D>>, D> run(const std::vector<StrategyContext<D>>& strategyData,
-                                                    unsigned long,
-                                                    const std::shared_ptr<BackTester<D>>&,
-                                                    const std::shared_ptr<Portfolio<D>>&, const D&) override {
-    std::map<std::shared_ptr<PalStrategy<D>>, D> result;
+  std::map<unsigned long long, D> run(const std::vector<StrategyContext<D>>& strategyData,
+                                      unsigned long,
+                                      const std::shared_ptr<BackTester<D>>&,
+                                      const std::shared_ptr<Portfolio<D>>&, const D&) override {
+    std::map<unsigned long long, D> result;
     for (const auto& ctx : strategyData) {
-      result[ctx.strategy] = D("0.01");
+      auto strategyHash = ctx.strategy->getPatternHash();
+      result[strategyHash] = D("0.01");
     }
     return result;
   }
@@ -48,7 +49,7 @@ public:
 
   struct EmptyMapAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
   {
-    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+    std::map<unsigned long long, D> run(
         const std::vector<StrategyContext<D>>& strategyData,
         unsigned long                          numPermutations,
         const std::shared_ptr<BackTester<D>>&  templateBackTester,
@@ -62,32 +63,37 @@ public:
 
   struct HighPAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
   {
-    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+    std::map<unsigned long long, D> run(
         const std::vector<StrategyContext<D>>& strategyData,
         unsigned long                          numPermutations,
         const std::shared_ptr<BackTester<D>>&  templateBackTester,
         const std::shared_ptr<Portfolio<D>>&   portfolio,
         const D&                               pValueSignificanceLevel) override
     {
-      std::map<std::shared_ptr<PalStrategy<D>>, D> m;
-      for (auto &ctx : strategyData)
-	m[ctx.strategy] = D("0.10");
+      std::map<unsigned long long, D> m;
+      for (auto &ctx : strategyData) {
+        auto strategyHash = ctx.strategy->getPatternHash();
+        m[strategyHash] = D("0.10");
+      }
       return m;
     }
   };
 
   struct EqualPAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
   {
-    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+    std::map<unsigned long long, D> run(
         const std::vector<StrategyContext<D>>& strategyData,
         unsigned long                          numPermutations,
         const std::shared_ptr<BackTester<D>>&  templateBackTester,
         const std::shared_ptr<Portfolio<D>>&   portfolio,
-        const D&                               pValueSignificanceLevel) override 
+        const D&                               pValueSignificanceLevel) override
     {
-      std::map<std::shared_ptr<PalStrategy<D>>, D> m;
+      std::map<unsigned long long, D> m;
       
-      for (auto &ctx : strategyData) m[ctx.strategy] = D("0.05");  // default α
+      for (auto &ctx : strategyData) {
+        auto strategyHash = ctx.strategy->getPatternHash();
+        m[strategyHash] = D("0.05");  // default α
+      }
       return m;
   }
 };
@@ -95,18 +101,20 @@ public:
 
   struct PartialAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
   {
-    std::map<std::shared_ptr<PalStrategy<D>>, D> run(
+    std::map<unsigned long long, D> run(
         const std::vector<StrategyContext<D>>& strategyData,
         unsigned long                          numPermutations,
         const std::shared_ptr<BackTester<D>>&  templateBackTester,
         const std::shared_ptr<Portfolio<D>>&   portfolio,
         const D&                               pValueSignificanceLevel) override
     {
-      std::map<std::shared_ptr<PalStrategy<D>>, D> m;
+      std::map<unsigned long long, D> m;
       
       // only return for the first strategy in the list
-      if (!strategyData.empty())
- m[strategyData.front().strategy] = D("0.01");
+      if (!strategyData.empty()) {
+        auto strategyHash = strategyData.front().strategy->getPatternHash();
+        m[strategyHash] = D("0.01");
+      }
       return m;
     }
   };
@@ -176,13 +184,14 @@ TEST_CASE("PALMastersMonteCarloValidation does not crash with empty pattern set"
 TEST_CASE("PALMastersMonteCarloValidation works with subset of patterns") {
   class FixedPValueAlgo : public IMastersSelectionBiasAlgorithm<D, DummyStatPolicy> {
   public:
-    std::map<std::shared_ptr<PalStrategy<D>>, D> run(const std::vector<StrategyContext<D>>& strategyData,
-                                                     unsigned long,
-                                                     const std::shared_ptr<BackTester<D>>&,
-                                                     const std::shared_ptr<Portfolio<D>>&, const D&) override {
-      std::map<std::shared_ptr<PalStrategy<D>>, D> result;
+    std::map<unsigned long long, D> run(const std::vector<StrategyContext<D>>& strategyData,
+                                        unsigned long,
+                                        const std::shared_ptr<BackTester<D>>&,
+                                        const std::shared_ptr<Portfolio<D>>&, const D&) override {
+      std::map<unsigned long long, D> result;
       for (const auto& ctx : strategyData) {
-        result[ctx.strategy] = D("0.02");
+        auto strategyHash = ctx.strategy->getPatternHash();
+        result[strategyHash] = D("0.02");
       }
       return result;
     }
