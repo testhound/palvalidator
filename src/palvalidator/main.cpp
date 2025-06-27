@@ -67,27 +67,6 @@ std::string getValidationMethodString(ValidationMethod method)
     }
 }
 
-// Template declarations moved outside of function scope
-using RomanoWolfStatCollectionPolicy = PermutationTestingMaxTestStatisticPolicy<Num>;
-using RomanoWolfResultReturnPolicy = FullPermutationResultPolicy<Num>;
-template<typename T>
-using RomanoWolfStrategySelectionPolicy = RomanoWolfStepdownCorrection<T>;
-
-// Now, assemble these into the full Computation Policy
-using RomanoWolfComputationPolicy = DefaultPermuteMarketChangesPolicy<
-    Num,
-    BacktestingStatPolicy<Num>,   // Instantiated type, not template template parameter
-    RomanoWolfResultReturnPolicy,           // Override the default PValueReturnPolicy
-    RomanoWolfStatCollectionPolicy          // Override the default PermutationTestingNullTestStatisticPolicy
->;
-
-// Finally, define the fully configured Monte Carlo Test type
-using RomanoWolfMcpt = MonteCarloPermuteMarketChanges<
-    Num,
-    BacktestingStatPolicy,
-    RomanoWolfComputationPolicy
->;
-
 using BenjaminiResultReturnPolicy = PValueReturnPolicy<Num>;
 using BenjaminiStatCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Num>;
 using BenjaminiComputationPolicy = DefaultPermuteMarketChangesPolicy<
@@ -144,7 +123,7 @@ public:
                            const DateRange& dateRange,
                            const Num& pvalThreshold) override
   {
-    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true);
+    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true, true);
   }
     
   SurvivingStrategiesIterator beginSurvivingStrategies() const override
@@ -194,7 +173,7 @@ public:
                            const DateRange& dateRange,
                            const Num& pvalThreshold) override
   {
-    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true);
+    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true, true);
   }
     
   SurvivingStrategiesIterator beginSurvivingStrategies() const override
@@ -230,62 +209,7 @@ public:
   }
 };
 
-// Wrapper for Romano-Wolf validation
-class RomanoWolfValidationWrapper : public ValidationInterface
-{
-private:
-  PALMonteCarloValidation<Num,
-  	  RomanoWolfMcpt,                      // The fully configured test runner
-  	  RomanoWolfStrategySelectionPolicy         // Template template parameter
-  	  > validation;
-    
-public:
-  explicit RomanoWolfValidationWrapper(unsigned long numPermutations)
-    : validation(numPermutations)
-  {
-  }
-    
-  void runPermutationTests(std::shared_ptr<Security<Num>> baseSecurity,
-                           std::shared_ptr<PriceActionLabSystem> patterns,
-                           const DateRange& dateRange,
-                           const Num& pvalThreshold) override
-  {
-    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true);
-  }
-    
-  SurvivingStrategiesIterator beginSurvivingStrategies() const override
-  {
-    return validation.beginSurvivingStrategies();
-  }
-    
-  SurvivingStrategiesIterator endSurvivingStrategies() const override
-  {
-    return validation.endSurvivingStrategies();
-  }
-    
-  int getNumSurvivingStrategies() const override
-  {
-    return validation.getNumSurvivingStrategies();
-  }
 
-  const PermutationStatisticsCollector<Num>& getStatisticsCollector() const
-  {
-    return validation.getStatisticsCollector();
-  }
-  
-  std::vector<std::pair<std::shared_ptr<PalStrategy<Num>>, Num>> getAllTestedStrategies() const override
-  {
-    return validation.getAllTestedStrategies();
-  }
-  
-  Num getStrategyPValue(std::shared_ptr<PalStrategy<Num>> strategy) const override
-  {
-    return validation.getStrategyPValue(strategy);
-  }
-};
-
-//
-// Wrapper for Romano-Wolf validation
 class BenjaminiHochbergValidationWrapper : public ValidationInterface
 {
 private:
