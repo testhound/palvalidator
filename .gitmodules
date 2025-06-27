@@ -1,0 +1,3 @@
+[submodule "libraries/Alglib"]
+	path = libraries/Alglib
+	url = https://github.com/erl987/alglib.git
