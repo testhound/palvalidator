@@ -596,6 +596,16 @@ namespace mkc_timeseries
       // return mMCPTAttributes.numTradingOpportunities(); // Original code commented out in HEAD
     }
 
+    bool isLongStrategy() const
+    {
+      return mPalPattern->isLongPattern();
+    }
+
+    bool isShortStrategy() const
+    {
+      return mPalPattern->isShortPattern();
+    }
+
   protected:
     const PatternEvaluator& getPatternEvaluator() const
     {

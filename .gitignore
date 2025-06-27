@@ -9,6 +9,11 @@ run.sh
 *.cpp~
 \#*\#
 CMakeLists.txt.user*
+libs/priceactionlab/PalParser.cpp
+libs/priceactionlab/PalParser.hpp
+libs/priceactionlab/location.hh
+libs/priceactionlab/position.hh
+libs/priceactionlab/stack.hh
 libs/build-pasearchalgolib-Desktop-Default/
 libs/timeserieslib/*.o
 libs/timeserieslib/*.a

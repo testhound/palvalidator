@@ -99,6 +99,8 @@ public:
 };
 
 
+  // Test mock that returns a p-value for only one strategy, total,
+  // even if called multiple times (e.g., for long and short families).
   struct PartialAlgo : IMastersSelectionBiasAlgorithm<D, DummyStatPolicy>
   {
     std::map<unsigned long long, D> run(
@@ -108,16 +110,26 @@ public:
         const std::shared_ptr<Portfolio<D>>&   portfolio,
         const D&                               pValueSignificanceLevel) override
     {
+      // If we've already returned a passing p-value, return an empty map for subsequent calls.
+      if (hasFired) {
+          return {};
+      }
+
       std::map<unsigned long long, D> m;
       
       // only return for the first strategy in the list
       if (!strategyData.empty()) {
         auto strategyHash = strategyData.front().strategy->getPatternHash();
         m[strategyHash] = D("0.01");
+        hasFired = true; // Set the flag so we don't fire again
       }
       return m;
     }
+
+  private:
+    bool hasFired{false};
   };
+
   std::shared_ptr<Security<D>> makeTestSecurity() {
   auto ts = std::make_shared<OHLCTimeSeries<D>>(TimeFrame::DAILY, TradingVolume::SHARES, 5);
   for (int i = 0; i < 5; ++i) {

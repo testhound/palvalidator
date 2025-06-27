@@ -13,6 +13,7 @@
 #include "ValidatorConfiguration.h"
 #include "SecurityAttributesFactory.h"
 #include "PALMastersMonteCarloValidation.h"
+#include "PALRomanoWolfMonteCarloValidation.h" 
 #include "PALMonteCarloValidation.h"
 #include "MonteCarloPermutationTest.h"
 #include "MultipleTestingCorrection.h"
@@ -65,27 +66,6 @@ std::string getValidationMethodString(ValidationMethod method)
       throw std::invalid_argument("Unknown validation method");
     }
 }
-
-// Template declarations moved outside of function scope
-using RomanoWolfStatCollectionPolicy = PermutationTestingMaxTestStatisticPolicy<Num>;
-using RomanoWolfResultReturnPolicy = FullPermutationResultPolicy<Num>;
-template<typename T>
-using RomanoWolfStrategySelectionPolicy = RomanoWolfStepdownCorrection<T>;
-
-// Now, assemble these into the full Computation Policy
-using RomanoWolfComputationPolicy = DefaultPermuteMarketChangesPolicy<
-    Num,
-    BacktestingStatPolicy<Num>,   // Instantiated type, not template template parameter
-    RomanoWolfResultReturnPolicy,           // Override the default PValueReturnPolicy
-    RomanoWolfStatCollectionPolicy          // Override the default PermutationTestingNullTestStatisticPolicy
->;
-
-// Finally, define the fully configured Monte Carlo Test type
-using RomanoWolfMcpt = MonteCarloPermuteMarketChanges<
-    Num,
-    BacktestingStatPolicy,
-    RomanoWolfComputationPolicy
->;
 
 using BenjaminiResultReturnPolicy = PValueReturnPolicy<Num>;
 using BenjaminiStatCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Num>;
@@ -143,7 +123,7 @@ public:
                            const DateRange& dateRange,
                            const Num& pvalThreshold) override
   {
-    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true);
+    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true, true);
   }
     
   SurvivingStrategiesIterator beginSurvivingStrategies() const override
@@ -177,17 +157,13 @@ public:
   }
 };
 
-// Wrapper for Romano-Wolf validation
-class RomanoWolfValidationWrapper : public ValidationInterface
+class PALRomanoWolfValidationWrapper : public ValidationInterface
 {
 private:
-  PALMonteCarloValidation<Num,
-  	  RomanoWolfMcpt,                      // The fully configured test runner
-  	  RomanoWolfStrategySelectionPolicy         // Template template parameter
-  	  > validation;
+  PALRomanoWolfMonteCarloValidation<Num, BacktestingStatPolicy<Num>> validation;
     
 public:
-  explicit RomanoWolfValidationWrapper(unsigned long numPermutations)
+  explicit PALRomanoWolfValidationWrapper(unsigned long numPermutations)
     : validation(numPermutations)
   {
   }
@@ -197,7 +173,7 @@ public:
                            const DateRange& dateRange,
                            const Num& pvalThreshold) override
   {
-    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true);
+    validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, true, true);
   }
     
   SurvivingStrategiesIterator beginSurvivingStrategies() const override
@@ -215,9 +191,11 @@ public:
     return validation.getNumSurvivingStrategies();
   }
 
-  const PermutationStatisticsCollector<Num>& getStatisticsCollector() const
+  const PermutationStatisticsCollector<Num>& getStatisticsCollector() const override
   {
-    return validation.getStatisticsCollector();
+    // NOTE: The new Romano-Wolf class does not have a statistics collector.
+    // This method will throw an exception as defined in the base interface.
+    throw std::runtime_error("PALRomanoWolfValidationWrapper does not support statistics collection");
   }
   
   std::vector<std::pair<std::shared_ptr<PalStrategy<Num>>, Num>> getAllTestedStrategies() const override
@@ -231,8 +209,7 @@ public:
   }
 };
 
-//
-// Wrapper for Romano-Wolf validation
+
 class BenjaminiHochbergValidationWrapper : public ValidationInterface
 {
 private:
@@ -297,7 +274,7 @@ std::unique_ptr<ValidationInterface> createValidation(ValidationMethod method, u
       return std::make_unique<MastersValidationWrapper>(numPermutations);
 
     case ValidationMethod::RomanoWolf:
-      return std::make_unique<RomanoWolfValidationWrapper>(numPermutations);
+      return std::make_unique<PALRomanoWolfValidationWrapper>(numPermutations);
 
     case ValidationMethod::BenjaminiHochberg:
       return std::make_unique<BenjaminiHochbergValidationWrapper>(numPermutations);
@@ -953,7 +930,8 @@ void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecur
 	  auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
 								     theTimeFrame,
 								     backtestingDates);
-	  auto& monteCarloStats = validation->getStatisticsCollector();
+	  // Note: monteCarloStats not used for surviving patterns in this implementation
+	  // auto& monteCarloStats = validation->getStatisticsCollector();
 	  survivingPatternsFile << "Surviving Pattern:" << std::endl << std::endl;
 	  LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
 	  survivingPatternsFile << std::endl;
