@@ -16,7 +16,7 @@
 #include <iostream>
 #include <memory>
 #include <boost/thread/mutex.hpp>
-
+#include "libalglib/interpolation.h"
 #include "number.h"
 #include "DecimalConstants.h"
 #include "PermutationTestResultPolicy.h"
@@ -449,7 +449,8 @@ namespace mkc_timeseries
     enum class EstimationMethod {
       SlopeBased,      // Benjamini & Hochberg (2000) slope-based method
       TailBased,       // Benjamini & Hochberg (2000) simple tail-based method
-      StoreySmoothed   // Storey (2002) inspired smoother using linear regression
+      StoreySmoothed,   // Storey (2002) inspired smoother using linear regression
+      StoreySmoothedALGLIB // NEW: Storey smoother using ALGLIB splines
     };
 
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
@@ -457,7 +458,7 @@ namespace mkc_timeseries
 
     // Constructor now accepts an enum to select the estimation method.
     // By default, it uses the robust slope-based method.
-    explicit AdaptiveBenjaminiHochbergYr2000(EstimationMethod method = EstimationMethod::SlopeBased)
+    explicit AdaptiveBenjaminiHochbergYr2000(EstimationMethod method = EstimationMethod::StoreySmoothedALGLIB)
       : m_estimationMethod(method),
 	mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
     {}
@@ -501,6 +502,10 @@ namespace mkc_timeseries
 	  m0_estimate = estimateM0StoreySmoothed();
 	  break;
 
+	case EstimationMethod::StoreySmoothedALGLIB:
+          m0_estimate = estimateM0StoreySmoothedALGLIB();
+          break;
+
 	case EstimationMethod::SlopeBased:
 	default:
 	  m0_estimate = estimateM0SlopeBased();
@@ -541,8 +546,13 @@ namespace mkc_timeseries
 
       for (; it != itEnd; ++it)
 	{
-	  std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests adding surviving strategies" << std::endl;
+	  Decimal pValue = it->first;
+	  criticalValue = (rank / m0_estimate) * mFalseDiscoveryRate;
+	  std::cout << "pValue = " << pValue << ", criticalValue = " << criticalValue << std::endl;
+
 	  container_.addSurvivingStrategy(it->second);
+	  std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests adding surviving strategies" << std::endl;
+	  rank = rank - DecimalConstants<Decimal>::DecimalOne;
 	}
     }
 
@@ -680,9 +690,90 @@ namespace mkc_timeseries
       return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
     }
 
+    Decimal estimateM0StoreySmoothedALGLIB() const
+    {
+      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothedALGLIB" << std::endl;
+      const auto& strategies = container_.getInternalContainer();
+      const size_t m = strategies.size();
+      if (m < 2) return Decimal(m);
+
+      // 1. Generate the (lambda, pi0) data points.
+      std::vector<double> lambdas; // Use double as ALGLIB expects it
+      std::vector<double> pi0s;
+
+      for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.05");
+           lambda < DecimalConstants<Decimal>::createDecimal("0.95");
+           lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
+        
+        size_t count = std::count_if(strategies.begin(), strategies.end(),
+                                     [lambda](const auto& entry) {
+                                       return entry.first > lambda;
+                                     });
+        
+        Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
+        
+        // Convert Decimal to double for ALGLIB
+        double lambda_double = static_cast<double>(lambda.getAsDouble());
+        double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
+        
+        lambdas.push_back(lambda_double);
+        pi0s.push_back(pi0_double);
+      }
+
+      if (lambdas.empty())
+        return Decimal(m);
+
+      // 2. Convert std::vector to ALGLIB's real_1d_array format.
+      alglib::real_1d_array x; // lambdas
+      x.setcontent(lambdas.size(), lambdas.data());
+
+      alglib::real_1d_array y; // pi0s
+      y.setcontent(pi0s.size(), pi0s.data());
+
+      // 3. Fit the smoothing spline using the MODERN spline1dfit function.
+      alglib::spline1dinterpolant s;
+      alglib::spline1dfitreport rep;
+      
+      const alglib::ae_int_t n_points = static_cast<alglib::ae_int_t>(lambdas.size());
+      const alglib::ae_int_t m_basis = n_points; // Number of basis functions. Using n_points is a safe choice.
+      
+      // The smoothing parameter. A small value like this adds minor, stabilizing smoothing.
+      // This may require tuning depending on the nature of your p-value distributions.
+      const double lambdans = 1.0e-5;
+
+      // Note: The modern spline1dfit does not return an 'info' code.
+      // It may throw an alglib::ap_error exception on failure.
+      try
+      {
+        alglib::spline1dfit(x, y, n_points, m_basis, lambdans, s, rep);
+      }
+      catch(const alglib::ap_error& e)
+      {
+          // Fitting failed, fall back to the total number of tests.
+          std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
+          return Decimal(m);
+      }
+      
+      // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
+      double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
+
+      // Convert back to Decimal type
+      Decimal extrapolatedPi0 = static_cast<Decimal>(extrapolated_pi0_double);
+
+      // 5. Clamp the result and compute the final m0 estimate.
+      extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero,
+				 std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
+      Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
+
+      std::cout << "[StoreySmootherALGLIB] Smoothed pi0 (at lambda=1.0) = " << extrapolatedPi0
+                << ", m0_hat = " << m0_hat
+                << ", m = " << static_cast<Decimal>(m) << std::endl;
+                
+      return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
+    }
+
     void calculateSlopes() {
       mSlopes.clear();
-      // ... (implementation of calculateSlopes is unchanged)
       if (getNumMultiComparisonStrategies() > 0) {
 	Decimal m(static_cast<int>(getNumMultiComparisonStrategies()));
 	Decimal i = DecimalConstants<Decimal>::DecimalOne;
