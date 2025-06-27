@@ -26,42 +26,29 @@
 #include "SyntheticSecurityHelpers.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "StrategyFamilyPartitioner.h" // Added include for new functionality
 
 
 namespace mkc_timeseries
 {
   /**
    * @class PALRomanoWolfMonteCarloValidation
-   * @brief Implements an efficient, batch-oriented stepwise permutation test based on Romano & Wolf (2016).
+   * @brief Implements the Romano & Wolf stepwise permutation test with flexible partitioning.
    *
-   * This class serves as a high-level orchestrator for running a multiple hypothesis test that
-   * correctly implements the "efficient computation" methodology. It processes all candidate
-   * strategies in a single, unified permutation block, avoiding the inefficiency of re-running
-   * permutations for each individual strategy.
+   * This class can partition strategies in two ways:
+   * 1.  (Default) By direction (all LONG vs. all SHORT).
+   * 2.  (Optional) By detailed strategy family (e.g., Long-Trend, Short-Momentum)
+   * via the `StrategyFamilyPartitioner`.
    *
-   * ## Core Architectural Changes
-   * This implementation now tests LONG and SHORT strategies as two separate families to avoid
-   * contaminating the null distributions and to increase statistical power.
-   * The process is as follows:
-   *
-   * 1.  **Partition Strategies**: All strategies are prepared and then separated into a "longs"
-   * family and a "shorts" family.
-   * 2.  **Run Test Per-Family**: A dedicated helper function runs the full 3-stage test on each family:
-   * a. **Efficient Permutation Stage**: Run a single block of N permutations for the family.
-   * b. **Exceedance Count Stage ("Worst-to-Best" Pass)**: Calculate exceedance counts.
-   * c. **P-Value Adjustment Stage ("Best-to-Worst" Pass)**: Adjust p-values for monotonicity.
-   * 3.  **Combine Results**: The p-values from both tests are merged, and the final list of
-   * survivors is determined from the combined results.
-   *
-   * @tparam Decimal The numeric type for calculations (e.g., double).
-   * @tparam BaselineStatPolicy A policy class defining how to compute the performance statistic.
-   * @tparam Executor A policy for parallel execution of the permutation loop.
+   * @tparam Decimal The numeric type for calculations.
+   * @tparam BaselineStatPolicy A policy class for computing the performance statistic.
+   * @tparam Executor A policy for parallel execution.
    */
   template <class Decimal, class BaselineStatPolicy, class Executor = concurrency::ThreadPoolExecutor<>>
   class PALRomanoWolfMonteCarloValidation
   {
   public:
-    // Type aliases for clarity, consistent with PALMastersMonteCarloValidation
+    // Type aliases for clarity
     using StrategyPtr = std::shared_ptr<PalStrategy<Decimal>>;
     using StrategyContextType = StrategyContext<Decimal>;
     using StrategyDataContainerType = StrategyDataContainer<Decimal>;
@@ -82,15 +69,16 @@ namespace mkc_timeseries
         std::shared_ptr<PriceActionLabSystem> patterns,
         const DateRange& dateRange,
         const Decimal& pValueSignificanceLevel = DecimalConstants<Decimal>::SignificantPValue,
-        bool verbose = false)
+        bool verbose = false,
+        bool partitionByFamily = false) // New argument to control partitioning
     {
       if (!baseSecurity || !patterns)
         throw std::invalid_argument("PALRomanoWolfMonteCarloValidation::runPermutationTests - baseSecurity and patterns must not be null.");
 
       if (verbose)
-        std::cout << "Starting separate Long/Short Romano-Wolf validation..." << std::endl;
+        std::cout << "Starting Romano-Wolf validation..." << std::endl;
 
-      // Prepare baseline stats for ALL strategies first
+      // 1. Prepare baseline stats for ALL strategies first
       auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(baseSecurity->getTimeSeries()->getTimeFrame(), dateRange);
       StrategyDataContainerType allStrategyData = StrategyDataPreparer<Decimal, BaselineStatPolicy>::prepare(templateBackTester, baseSecurity, patterns);
       
@@ -100,47 +88,79 @@ namespace mkc_timeseries
         return;
       }
 
-      // Partition strategies into LONG and SHORT families
-      StrategyDataContainerType longStrategies, shortStrategies;
-      for (const auto& context : allStrategyData)
-      {
-        if (context.strategy->isLongStrategy())
-          longStrategies.push_back(context);
-        else if (context.strategy->isShortStrategy())
-          shortStrategies.push_back(context);
-      }
-
-      if (verbose)
-      {
-        std::cout << "Partitioned strategies: " << longStrategies.size() << " Long, " 
-                  << shortStrategies.size() << " Short." << std::endl;
-      }
-
-      // Run separate tests and collect p-values
       std::map<StrategyPtr, Decimal> finalPValues;
 
-      if (!longStrategies.empty())
+      // 2. Execute tests based on partitioning choice
+      if (partitionByFamily)
       {
-        if (verbose) std::cout << "\n--- Testing LONG Strategy Family ---" << std::endl;
-        auto longPValues = runTestForFamily(longStrategies, templateBackTester, baseSecurity, verbose);
-        finalPValues.insert(longPValues.begin(), longPValues.end());
-      }
+        if (verbose) std::cout << "Partitioning strategies by detailed family (Category + Direction)..." << std::endl;
+        StrategyFamilyPartitioner<Decimal> partitioner(allStrategyData);
+        if (verbose)
+        {
+          printFamilyStatistics(partitioner);
+        }
 
-      if (!shortStrategies.empty())
+        for (const auto& familyPair : partitioner)
+        {
+          const auto& familyKey = familyPair.first;
+          const auto& strategyFamily = familyPair.second;
+          if (strategyFamily.empty()) continue;
+
+          if (verbose)
+            std::cout << "\n--- Testing " << FamilyKeyToString(familyKey) << " Strategy Family (" << strategyFamily.size() << " strategies) ---" << std::endl;
+
+          auto familyPValues = runTestForFamily(strategyFamily, templateBackTester, baseSecurity, verbose);
+          finalPValues.insert(familyPValues.begin(), familyPValues.end());
+        }
+      }
+      else
       {
-        if (verbose) std::cout << "\n--- Testing SHORT Strategy Family ---" << std::endl;
-        auto shortPValues = runTestForFamily(shortStrategies, templateBackTester, baseSecurity, verbose);
-        finalPValues.insert(shortPValues.begin(), shortPValues.end());
+        // Default behavior: partition into LONG and SHORT families
+        if (verbose) std::cout << "Partitioning strategies by Direction (Long vs. Short)..." << std::endl;
+        StrategyDataContainerType longStrategies, shortStrategies;
+        for (const auto& context : allStrategyData)
+        {
+          if (context.strategy->isLongStrategy())
+            longStrategies.push_back(context);
+          else if (context.strategy->isShortStrategy())
+            shortStrategies.push_back(context);
+        }
+
+        if (verbose)
+        {
+          std::cout << "Partitioned strategies: " << longStrategies.size() << " Long, " 
+                    << shortStrategies.size() << " Short." << std::endl;
+        }
+
+        if (!longStrategies.empty())
+        {
+          if (verbose) std::cout << "\n--- Testing LONG Strategy Family ---" << std::endl;
+          auto longPValues = runTestForFamily(longStrategies, templateBackTester, baseSecurity, verbose);
+          finalPValues.insert(longPValues.begin(), longPValues.end());
+        }
+
+        if (!shortStrategies.empty())
+        {
+          if (verbose) std::cout << "\n--- Testing SHORT Strategy Family ---" << std::endl;
+          auto shortPValues = runTestForFamily(shortStrategies, templateBackTester, baseSecurity, verbose);
+          finalPValues.insert(shortPValues.begin(), shortPValues.end());
+        }
       }
       
-      // Populate final results policy with combined p-values from both tests
+      // 3. Populate final results policy with combined p-values from all tested families
       mStrategySelectionPolicy.clearForNewTest();
       for (const auto& strategyContext : allStrategyData)
       {
-          // It's possible a strategy has no p-value if its family was empty
           if (finalPValues.count(strategyContext.strategy))
           {
             mStrategySelectionPolicy.addStrategy(finalPValues.at(strategyContext.strategy), strategyContext.strategy);
+          }
+          else
+          {
+            if (verbose)
+              std::cerr << "Warning: P-Value for strategy " << strategyContext.strategy->getStrategyName() 
+                        << " not found, defaulting to 1.0" << std::endl;
+            mStrategySelectionPolicy.addStrategy(DecimalConstants<Decimal>::DecimalOne, strategyContext.strategy);
           }
       }
       mStrategySelectionPolicy.correctForMultipleTests(pValueSignificanceLevel);
@@ -179,11 +199,6 @@ namespace mkc_timeseries
   private:
     /**
      * @brief Private helper to run the 3-stage Romano-Wolf test on a single family of strategies.
-     * @param strategyFamily A container with strategies of the same type (all long or all short).
-     * @param templateBackTester A template backtester instance to clone.
-     * @param baseSecurity The security to test against.
-     * @param verbose Flag to enable detailed logging.
-     * @return A map of strategy pointers to their final adjusted p-values for this family.
      */
     std::map<StrategyPtr, Decimal> runTestForFamily(
         const StrategyDataContainerType& strategyFamily,
@@ -191,8 +206,6 @@ namespace mkc_timeseries
         std::shared_ptr<Security<Decimal>> baseSecurity,
         bool verbose)
     {
-      // The incoming strategyFamily is a subset of the already-prepared data.
-      // We just need to sort this specific family.
       StrategyDataContainerType sortedStrategyData = strategyFamily;
       std::sort(sortedStrategyData.begin(), sortedStrategyData.end(),
                 [](const StrategyContextType& a, const StrategyContextType& b) {

@@ -24,6 +24,7 @@
 #include "MastersRomanoWolf.h"
 #include "MastersRomanoWolfImproved.h"
 #include "PermutationStatisticsCollector.h"
+#include "StrategyFamilyPartitioner.h" // Added include for new functionality
 
 namespace mkc_timeseries
 {
@@ -45,14 +46,10 @@ namespace mkc_timeseries
    * @class PALMastersMonteCarloValidation
    * @brief Orchestrator for Timothy Masters' stepwise permutation test.
    *
-   * This implementation now tests LONG and SHORT strategies as two separate families to avoid
-   * contaminating the null distributions and to increase statistical power. The process is:
-   * 1. Prepare baseline statistics for all strategies.
-   * 2. Partition strategies into separate "long" and "short" families.
-   * 3. Execute the chosen IMastersSelectionBiasAlgorithm (e.g., MastersRomanoWolf) independently
-   * for each family.
-   * 4. Merge the p-value results from both tests.
-   * 5. Populate the final results for surviving strategies.
+   * This class can partition strategies in two ways:
+   * 1.  (Default) By direction (all LONG vs. all SHORT).
+   * 2.  (Optional) By detailed strategy family (e.g., Long-Trend, Short-Momentum)
+   * using the `StrategyFamilyPartitioner`.
    *
    * @tparam Decimal Numeric type for calculations.
    * @tparam BaselineStatPolicy Policy for computing the performance statistic.
@@ -72,7 +69,7 @@ template <class Decimal, class BaselineStatPolicy>
       
       PALMastersMonteCarloValidation(unsigned long numPermutations,
         std::unique_ptr<AlgoType> algo =
-        std::make_unique<MastersRomanoWolf<Decimal,BaselineStatPolicy>>())
+        std::make_unique<MastersRomanoWolfImproved<Decimal,BaselineStatPolicy>>())
         : mNumPermutations(numPermutations),
           mStrategySelectionPolicy(),
           mAlgorithm(std::move(algo)),
@@ -124,9 +121,9 @@ template <class Decimal, class BaselineStatPolicy>
       void runPermutationTests(std::shared_ptr<Security<Decimal>> baseSecurity,
 			       std::shared_ptr<PriceActionLabSystem> patterns,
 			       const DateRange& dateRange,
-			       const Decimal& pValueSignificanceLevel =
-			       DecimalConstants<Decimal>::SignificantPValue,
-			       bool verbose = false)
+			       const Decimal& pValueSignificanceLevel = DecimalConstants<Decimal>::SignificantPValue,
+			       bool verbose = false,
+                               bool partitionByFamily = false) // New argument to control partitioning
       {
         if (!baseSecurity)
           throw PALMastersMonteCarloValidationException("Base security missing in runPermutationTests setup.");
@@ -136,8 +133,7 @@ template <class Decimal, class BaselineStatPolicy>
 
         mStrategySelectionPolicy.clearForNewTest();
         auto timeFrame = baseSecurity->getTimeSeries()->getTimeFrame();
-        auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(timeFrame,
-                                                                          dateRange);
+        auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(timeFrame, dateRange);
         if (!templateBackTester)
           throw PALMastersMonteCarloValidationException("Failed to create template backtester.");
         
@@ -154,21 +150,6 @@ template <class Decimal, class BaselineStatPolicy>
         if (verbose)
           std::cout << "PALMastersMonteCarloValidation starting validation..." << std::endl;
         
-        // 2. Partition into LONG and SHORT families
-        StrategyDataContainerType longStrategies, shortStrategies;
-        for (const auto& context : mStrategyData) {
-            if (context.strategy->isLongStrategy()) {
-                longStrategies.push_back(context);
-            } else if (context.strategy->isShortStrategy()) {
-                shortStrategies.push_back(context);
-            }
-        }
-        
-        if (verbose) {
-            std::cout << "Partitioned strategies: " << longStrategies.size() << " Long, " 
-                      << shortStrategies.size() << " Short." << std::endl;
-        }
-
         auto portfolio = std::make_shared<Portfolio<Decimal>>("PermutationPortfolio");
         portfolio->addSecurity(baseSecurity->clone(baseSecurity->getTimeSeries()));
         
@@ -181,26 +162,76 @@ template <class Decimal, class BaselineStatPolicy>
             subject->attach(mStatisticsCollector.get());
         }
 
-        // 3. Run test for LONG family
-        if (!longStrategies.empty()) {
-            if (verbose) std::cout << "\n--- Testing LONG Strategy Family ---" << std::endl;
-            std::sort(longStrategies.begin(), longStrategies.end(),
-                      [](const StrategyContextType& a, const StrategyContextType& b) {
-                          return a.baselineStat > b.baselineStat; // Sort descending
-                      });
-            auto longPvals = mAlgorithm->run(longStrategies, mNumPermutations, templateBackTester, portfolio, sigLevel);
-            pvalMap.insert(longPvals.begin(), longPvals.end());
-        }
+        // --- Execute tests based on partitioning choice ---
+        if (partitionByFamily)
+        {
+            // 2a. Use the new StrategyFamilyPartitioner
+            if (verbose) std::cout << "Partitioning strategies by detailed family (Category + Direction)..." << std::endl;
 
-        // 4. Run test for SHORT family
-        if (!shortStrategies.empty()) {
-            if (verbose) std::cout << "\n--- Testing SHORT Strategy Family ---" << std::endl;
-            std::sort(shortStrategies.begin(), shortStrategies.end(),
-                      [](const StrategyContextType& a, const StrategyContextType& b) {
-                          return a.baselineStat > b.baselineStat; // Sort descending
-                      });
-            auto shortPvals = mAlgorithm->run(shortStrategies, mNumPermutations, templateBackTester, portfolio, sigLevel);
-            pvalMap.insert(shortPvals.begin(), shortPvals.end());
+            StrategyFamilyPartitioner<Decimal> partitioner(mStrategyData);
+            if (verbose) {
+                printFamilyStatistics(partitioner);
+            }
+
+            for (const auto& familyPair : partitioner)
+            {
+                const StrategyFamilyKey& familyKey = familyPair.first;
+                StrategyDataContainerType strategyFamily = familyPair.second; // Make a mutable copy
+
+                if (strategyFamily.empty()) continue;
+
+                if (verbose)
+                    std::cout << "\n--- Testing " << FamilyKeyToString(familyKey) << " Strategy Family (" << strategyFamily.size() << " strategies) ---" << std::endl;
+
+                std::sort(strategyFamily.begin(), strategyFamily.end(),
+                          [](const StrategyContextType& a, const StrategyContextType& b) {
+                              return a.baselineStat > b.baselineStat; // Sort descending
+                          });
+                auto familyPvals = mAlgorithm->run(strategyFamily, mNumPermutations, templateBackTester, portfolio, sigLevel);
+                pvalMap.insert(familyPvals.begin(), familyPvals.end());
+            }
+
+        }
+        else
+        {
+            // 2b. Partition into default LONG and SHORT families (original behavior)
+            if (verbose) std::cout << "Partitioning strategies by Direction (Long vs. Short)..." << std::endl;
+
+            StrategyDataContainerType longStrategies, shortStrategies;
+            for (const auto& context : mStrategyData) {
+                if (context.strategy->isLongStrategy()) {
+                    longStrategies.push_back(context);
+                } else if (context.strategy->isShortStrategy()) {
+                    shortStrategies.push_back(context);
+                }
+            }
+            
+            if (verbose) {
+                std::cout << "Partitioned strategies: " << longStrategies.size() << " Long, " 
+                          << shortStrategies.size() << " Short." << std::endl;
+            }
+
+            // 3. Run test for LONG family
+            if (!longStrategies.empty()) {
+                if (verbose) std::cout << "\n--- Testing LONG Strategy Family ---" << std::endl;
+                std::sort(longStrategies.begin(), longStrategies.end(),
+                          [](const StrategyContextType& a, const StrategyContextType& b) {
+                              return a.baselineStat > b.baselineStat; // Sort descending
+                          });
+                auto longPvals = mAlgorithm->run(longStrategies, mNumPermutations, templateBackTester, portfolio, sigLevel);
+                pvalMap.insert(longPvals.begin(), longPvals.end());
+            }
+
+            // 4. Run test for SHORT family
+            if (!shortStrategies.empty()) {
+                if (verbose) std::cout << "\n--- Testing SHORT Strategy Family ---" << std::endl;
+                std::sort(shortStrategies.begin(), shortStrategies.end(),
+                          [](const StrategyContextType& a, const StrategyContextType& b) {
+                              return a.baselineStat > b.baselineStat; // Sort descending
+                          });
+                auto shortPvals = mAlgorithm->run(shortStrategies, mNumPermutations, templateBackTester, portfolio, sigLevel);
+                pvalMap.insert(shortPvals.begin(), shortPvals.end());
+            }
         }
 
         if (verbose)
@@ -219,8 +250,6 @@ template <class Decimal, class BaselineStatPolicy>
               }
             else
               {
-                // This might happen if a strategy was neither long nor short, or if a family was empty.
-                // It's a safe fallback.
                 if (verbose)
                     std::cerr << "Warning: Final p-value not found for strategy "
                               << entry.strategy->getStrategyName() << " (Hash: " << strategyHash 
