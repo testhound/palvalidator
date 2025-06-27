@@ -333,7 +333,6 @@ namespace mkc_timeseries
 	for (auto const& ctx : sorted_strategy_data)
 	  {
 	    auto strategy = ctx.strategy;
-	    auto strategyID = strategy->getPatternHash();
 
 	    uint32_t trades = 0;
 	    Decimal stat = std::numeric_limits<Decimal>::lowest();
