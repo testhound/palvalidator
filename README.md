@@ -87,6 +87,59 @@ git commit -m "Update Alglib submodule"
 git push
 ```
 
+### Branch Switching with Submodules
+
+When switching between branches that have different submodule configurations, you may see warnings like:
+```
+warning: unable to rmdir 'libraries/Alglib': Directory not empty
+```
+
+This happens when switching to a branch without the submodule while untracked files exist in the submodule directory. To handle this:
+
+1. **After switching branches, clean up leftover submodule directories:**
+   ```bash
+   git checkout master  # or any branch without the submodule
+   # If you see the warning, manually clean up:
+   rm -rf libraries/Alglib  # Remove the leftover directory
+   ```
+
+2. **When switching back to a branch with submodules:**
+   ```bash
+   git checkout your-feature-branch
+   git submodule update --init --recursive  # Reinitialize submodules
+   ```
+
+3. **To avoid this issue in the future, use git's submodule-aware checkout:**
+   ```bash
+   git checkout --recurse-submodules your-branch-name
+   ```
+
+### Working with Upstream Changes
+
+**Switching to master branch (without submodules):**
+If your local master branch doesn't have submodules yet, you can switch normally:
+```bash
+git checkout master
+# If you see the "Directory not empty" warning, clean up:
+rm -rf libraries/Alglib
+```
+
+**Updating master branch with upstream submodule changes:**
+If the upstream master branch now has submodule changes merged in:
+```bash
+git checkout master
+git fetch origin
+git rebase origin/master  # or git merge origin/master
+git submodule update --init --recursive  # Initialize new submodules
+```
+
+**Alternative using pull:**
+```bash
+git checkout master
+git pull origin master
+git submodule update --init --recursive
+```
+
 ## How to build executables
 
 For production, use:
