@@ -128,7 +128,7 @@ namespace mkc_timeseries
       bool is_breakout = false;
       bool is_pullback = false;
 
-#if 1
+#if 0
       std::cout << "\n--- Starting Classification for Pattern ---" << std::endl;
 #endif
 
@@ -150,7 +150,7 @@ namespace mkc_timeseries
 	}
       }
         
-#if 1
+#if 0
       std::cout << "Context Scores: Bullish=" << bullish_context_score << ", Bearish=" << bearish_context_score << std::endl;
 #endif
         
@@ -172,7 +172,7 @@ namespace mkc_timeseries
 	is_pullback = true;
 	scores[StrategyCategory::MOMENTUM] += 5;
 	rationale_pts.push_back("Strong Signal: Detected a PULLBACK in a strong uptrend.");
-      } else if (pattern->isShortPattern() && net_context < -1 && has_short_term_rally) {
+      } else if (pattern->isShortPattern() && net_context <= -1 && has_short_term_rally) { // FIX: Changed < to <=
 	is_pullback = true;
 	scores[StrategyCategory::MOMENTUM] += 5;
 	rationale_pts.push_back("Strong Signal: Detected a PULLBACK in a strong downtrend.");
@@ -215,7 +215,7 @@ namespace mkc_timeseries
 	}
       }
 
-#if 1
+#if 0
       std::cout << "Final Scores: Trend=" << scores[StrategyCategory::TREND_FOLLOWING]
 		<< ", Momentum=" << scores[StrategyCategory::MOMENTUM]
 		<< ", MeanReversion=" << scores[StrategyCategory::MEAN_REVERSION] << std::endl;
