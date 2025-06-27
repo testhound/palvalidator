@@ -21,7 +21,63 @@ git commit -m "Add Alglib submodule"
 git push
 ```
 
-To update an existing submodule to a newer commit:
+### Troubleshooting Submodule Issues
+
+If you see "untracked content" or "modified" status for a submodule after adding it, this usually means the submodule directory has untracked files or isn't properly initialized. To fix this:
+
+1. **Check the submodule status:**
+   ```bash
+   git submodule status
+   ```
+
+2. **If the submodule shows as uninitialized (no commit hash), initialize it:**
+   ```bash
+   git submodule update --init libraries/Alglib
+   ```
+
+3. **If there are untracked files in the submodule, investigate and clean them:**
+   ```bash
+   cd libraries/Alglib
+   git status  # Check what's untracked
+   ls -la      # List all files including hidden ones
+   ```
+   
+   Common causes of untracked content:
+   - Build artifacts (`.o`, `.so`, `.dll`, `.exe` files)
+   - IDE files (`.vscode/`, `.idea/`, etc.)
+   - Temporary files
+   
+   To clean untracked files:
+   ```bash
+   git clean -fd  # Remove untracked files and directories (be careful!)
+   # Or more safely, remove specific files:
+   # rm -rf build/  # if there's a build directory
+   # rm *.o         # if there are object files
+   cd ../..
+   ```
+   
+   **Specific case for Alglib:** If you see `libalglib/alglibversion.h` as untracked, this is a generated build artifact (created from `alglibversion.template`) that's needed for builds but shouldn't be tracked. The best approach is to ignore it:
+   ```bash
+   git config submodule.libraries/Alglib.ignore untracked
+   ```
+   
+   This tells git to ignore untracked files in the Alglib submodule, allowing the generated `alglibversion.h` file to remain for builds while not causing git status issues.
+   
+   Note: The `alglibversion.h` file will be regenerated during the build process from the `alglibversion.template` file that's properly tracked in the repository.
+
+4. **Alternative: Ignore untracked content (if the files should remain):**
+   If the untracked files are meant to be there (like build outputs), you can configure git to ignore them:
+   ```bash
+   git config submodule.libraries/Alglib.ignore untracked
+   ```
+
+5. **Then add and commit the submodule reference:**
+   ```bash
+   git add libraries/Alglib
+   git commit -m "Add Alglib submodule"
+   ```
+
+### Updating an existing submodule to a newer commit:
 ```bash
 cd libraries/Alglib
 git pull origin main  # or the appropriate branch
