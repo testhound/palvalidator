@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <string>
 #include <vector>
 #include <memory>
@@ -452,4 +453,137 @@ TEST_CASE("RomanoWolfStepdownCorrection - Synthetic Null", "[MultipleTestingCorr
 	REQUIRE_THROWS_AS(correction.correctForMultipleTests(), std::runtime_error);
         //REQUIRE(correction.getNumSurvivingStrategies() == 0);
     }
+}
+
+
+TEST_CASE("AdaptiveBH: Basic scenario with a mix of p-values", "[AdaptiveBenjaminiHochbergYr2000]")
+{
+    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector(createDecimal("0.25"));
+
+    // Add 10 "significant" p-values and 10 "non-significant" ones
+    for (int i = 1; i <= 10; ++i) {
+        // p-values from 0.005 to 0.05
+        fdrCorrector.addStrategy(DecimalType(i) / DecimalType(200), createDummyPalStrategy("AdaptiveBH_Sig_" + std::to_string(i), sharedPattern(), sharedPortfolio()));
+    }
+    for (int i = 1; i <= 10; ++i) {
+        // p-values from 0.55 to 1.0
+        fdrCorrector.addStrategy(createDecimal("0.5") + (DecimalType(i) / DecimalType(20)), createDummyPalStrategy("AdaptiveBH_NonSig_" + std::to_string(i), sharedPattern(), sharedPortfolio()));
+    }
+
+    REQUIRE(fdrCorrector.getNumMultiComparisonStrategies() == 20);
+
+    // Bypassing the spline estimator for a deterministic test.
+    // We know 10 of the 20 tests are from the "true null" distribution.
+    fdrCorrector.setM0ForTesting(createDecimal("10.0"));
+
+    fdrCorrector.correctForMultipleTests();
+
+    // With a known m0=10, FDR=0.25, the 10 truly significant p-values should all pass.
+    // Let's check the cutoff:
+    // For rank k=10 (p-value=0.05): critical value = (10/10) * 0.25 = 0.25. (0.05 < 0.25 -> pass)
+    // This means all 10 should survive.
+    CHECK(fdrCorrector.getNumSurvivingStrategies() == 10);
+}
+
+TEST_CASE("AdaptiveBH: Edge case with no strategies added", "[AdaptiveBenjaminiHochbergYr2000]")
+{
+    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector(createDecimal("0.25"));
+    REQUIRE(fdrCorrector.getNumMultiComparisonStrategies() == 0);
+
+    // Should not throw or crash when run with no data
+    fdrCorrector.correctForMultipleTests();
+    CHECK(fdrCorrector.getNumSurvivingStrategies() == 0);
+}
+
+TEST_CASE("AdaptiveBH: Test of the spline-to-fallback mechanism", "[AdaptiveBenjaminiHochbergYr2000]")
+{
+    // Redirect std::cerr to a stringstream to capture any warning messages
+    std::stringstream buffer;
+    auto old_cerr_buf = std::cerr.rdbuf(buffer.rdbuf());
+
+    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector(createDecimal("0.25"));
+
+    // Add a small number of identical, low p-values. This is an unusual
+    // distribution that is more likely to cause the spline to extrapolate poorly
+    // and trigger our fallback condition (m0_estimate <= 0).
+    auto portfolio = sharedPortfolio();
+    auto pattern = sharedPattern();
+    fdrCorrector.addStrategy(createDecimal("0.01"), createDummyPalStrategy("TestStrategy1", pattern, portfolio));
+    fdrCorrector.addStrategy(createDecimal("0.01"), createDummyPalStrategy("TestStrategy2", pattern, portfolio));
+    fdrCorrector.addStrategy(createDecimal("0.01"), createDummyPalStrategy("TestStrategy3", pattern, portfolio));
+    
+    fdrCorrector.correctForMultipleTests();
+
+    // Restore the original cerr buffer
+    std::cerr.rdbuf(old_cerr_buf);
+
+    // If the fallback was triggered, this test will pass. If the primary spline
+    // estimator succeeded and produced a reasonable result, this check might fail,
+    // which is still useful information.
+
+    // Check the numerical result based on the FALLBACK logic.
+    // m = 3. Number of p > 0.5 is 0.
+    // pi0_hat = 0 / ((1 - 0.5) * 3) = 0.
+    // m0_hat is clamped to a minimum of 1. So, m0_estimate = 1.
+    // All p-values are 0.01.
+    // For rank 3: crit = (3/1)*0.25 = 0.75. (0.01 < 0.75 -> pass) -> this is the cutoff.
+    // Therefore, all 3 strategies should survive.
+    CHECK(fdrCorrector.getNumSurvivingStrategies() == 3);
+}
+
+TEST_CASE("AdaptiveBH: Edge case where no strategies should survive", "[AdaptiveBenjaminiHochbergYr2000]")
+{
+    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector(createDecimal("0.05"));
+
+    // Add p-values that are clearly not significant.
+    for (int i = 0; i < 10; ++i) {
+        fdrCorrector.addStrategy(createDecimal("0.4") + createDecimal(std::to_string(i))/createDecimal("100"), createDummyPalStrategy("AdaptiveBH_NoSurv_" + std::to_string(i), sharedPattern(), sharedPortfolio()));
+    }
+    
+    REQUIRE(fdrCorrector.getNumMultiComparisonStrategies() == 10);
+
+    // Bypassing the spline estimator for a deterministic test.
+    // We know all 10 tests are from the "true null" distribution.
+    fdrCorrector.setM0ForTesting(createDecimal("10.0"));
+
+    fdrCorrector.correctForMultipleTests();
+
+    // With m0=10, the highest-ranked p-value (~0.49, rank=10) has a critical value
+    // of (10/10)*0.05 = 0.05. Since 0.49 is not less than 0.05, nothing should survive.
+    CHECK(fdrCorrector.getNumSurvivingStrategies() == 0);
+}
+
+TEST_CASE("AdaptiveBH: Test the estimateFDRForPValue method", "[AdaptiveBenjaminiHochbergYr2000]")
+{
+    auto portfolio = sharedPortfolio();
+    auto pattern = sharedPattern();
+    
+    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector;
+
+    // Create a scenario where pi0 is known to be ~0.9
+    // 10 "true alternative" p-values
+    for (int i = 0; i < 10; ++i) {
+        fdrCorrector.addStrategy(createDecimal("0.0001"), createDummyPalStrategy("AdaptiveBH_Alt_" + std::to_string(i), pattern, portfolio));
+    }
+    // 90 "true null" p-values, uniformly distributed on [0,1]
+    for (int i = 1; i <= 90; ++i) {
+        fdrCorrector.addStrategy(createDecimal(std::to_string(i)) / createDecimal("90"), createDummyPalStrategy("AdaptiveBH_Null_" + std::to_string(i), pattern, portfolio));
+    }
+    
+    REQUIRE(fdrCorrector.getNumMultiComparisonStrategies() == 100);
+
+    // We want to estimate the FDR for a p-value cutoff of 0.05
+    DecimalType p_cutoff = createDecimal("0.05");
+    DecimalType estimatedFDR = fdrCorrector.estimateFDRForPValue(p_cutoff);
+    
+    // Manual calculation for expected result:
+    // pi0 should be estimated to be around 0.9.
+    // m = 100.
+    // R(0.05) = 10 (from the true alternatives) + ~4 (from the 90 nulls, since 0.05*90=4.5) = 14
+    // Expected FDR = (pi0 * p_cutoff * m) / R
+    // Expected FDR ~= (0.9 * 0.05 * 100) / 14 = 4.5 / 14 ~= 0.321
+    
+    // Using Catch2's Approx for floating point comparison with a relative margin.
+    // A larger margin is needed because the statistical estimation has inherent variability.
+    CHECK(estimatedFDR.getAsDouble() == Catch::Approx(0.321).margin(0.15));
 }

@@ -15,6 +15,11 @@
 #include <algorithm>
 #include <iostream>
 #include <memory>
+#include <numeric>
+#include <cmath>
+#include <limits>
+#include <iomanip>
+#include <optional>
 #include <boost/thread/mutex.hpp>
 #include "libalglib/interpolation.h"
 #include "number.h"
@@ -434,34 +439,22 @@ namespace mkc_timeseries
 
   //===========================================================================
   // Policy: AdaptiveBenjaminiHochbergYr2000
-  // REVISED: Now supports Slope-based, Tail-based, and Storey's Smoothed
-  //          estimation methods for m0, selectable via an enum.
-  //===========================================================================
   //
   // based on the paper "On the Adaptive Control of the False Discovery Rate in
   // Multiple Testing with Independent Statistics" by Benjamini and Hochberg (2000)
-  // with an added estimator inspired by Storey (2002).
+  // with an added estimator inspired by
+  // "A direct approach to false discovery rates" Storey (2002).
   //
   template <class Decimal>
   class AdaptiveBenjaminiHochbergYr2000 {
   public:
-    // Enum to select the estimation method for the number of true nulls (m0).
-    enum class EstimationMethod {
-      SlopeBased,      // Benjamini & Hochberg (2000) slope-based method
-      TailBased,       // Benjamini & Hochberg (2000) simple tail-based method
-      StoreySmoothed,   // Storey (2002) inspired smoother using linear regression
-      StoreySmoothedALGLIB // NEW: Storey smoother using ALGLIB splines
-    };
-
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
     // Constructor now accepts an enum to select the estimation method.
     // By default, it uses the robust slope-based method.
-    explicit AdaptiveBenjaminiHochbergYr2000(const Decimal& falseDiscoveryRate = DecimalConstants<Decimal>::DefaultFDR,
-					     EstimationMethod method = EstimationMethod::StoreySmoothedALGLIB)
-      : m_estimationMethod(method),
-	mFalseDiscoveryRate(falseDiscoveryRate)
+    explicit AdaptiveBenjaminiHochbergYr2000(const Decimal& falseDiscoveryRate = DecimalConstants<Decimal>::DefaultFDR)
+      : mFalseDiscoveryRate(falseDiscoveryRate)
     {}
 
     void addStrategy(const ReturnType& pValue, std::shared_ptr<PalStrategy<Decimal>> aStrategy) {
@@ -484,100 +477,110 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
-     DecimalConstants<Decimal>::SignificantPValue) {
+				 DecimalConstants<Decimal>::SignificantPValue)
+    {
       if (getNumMultiComparisonStrategies() == 0)
-        return; // Nothing to do
+        return;
 
       std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests" << std::endl;
       std::cout << "pValueSignificanceLevel = " << pValueSignificanceLevel << std::endl;
       std::cout << "mFalseDiscoveryRate = " << mFalseDiscoveryRate << std::endl;
+
       Decimal m0_estimate;
-
-      // Use a switch to select the estimation method for m0.
-      // This provides a clean and extensible design.
-      switch (m_estimationMethod)
+      // Check if a test-specific m0 value has been provided.
+      if (m_test_m0_override.has_value())
 	{
-	case EstimationMethod::TailBased:
-	  m0_estimate = estimateM0TailBased();
-	  break;
-
-	case EstimationMethod::StoreySmoothed:
-	  m0_estimate = estimateM0StoreySmoothed();
-	  break;
-
-	case EstimationMethod::StoreySmoothedALGLIB:
-          m0_estimate = estimateM0StoreySmoothedALGLIB();
-          break;
-
-	case EstimationMethod::SlopeBased:
-	default:
-	  m0_estimate = estimateM0SlopeBased();
-	  break;
+	  m0_estimate = m_test_m0_override.value();
+	}
+      else
+	{
+	  try
+	    {
+	      m0_estimate = estimateM0StoreySmoothedALGLIB();
+	      if (m0_estimate <= DecimalConstants<Decimal>::DecimalZero)
+		throw std::runtime_error("Spline-based m0 estimate was zero or negative.");
+	    }
+	  catch (const std::exception& e)
+	    {
+	      std::cerr << "[Warning] AdaptiveBenjaminiHochberg: Spline estimator failed ('" << e.what()
+			<< "'). Falling back to robust tail-based estimator." << std::endl;
+	      m0_estimate = estimateM0TailBased_InternalFallback();
+	    }
 	}
 
-      auto it = container_.getInternalContainer().rbegin();
-      auto itEnd = container_.getInternalContainer().rend();
-
-      
-      // Now, proceed with the BH procedure using the chosen m0 estimate
+      auto const& container = container_.getInternalContainer();
       Decimal rank(static_cast<int>(getNumMultiComparisonStrategies()));
-      Decimal criticalValue = DecimalConstants<Decimal>::DecimalZero;
+      bool cutoff_found = false;
 
-      Decimal mPrime = std::min(Decimal(rank), m0_estimate * rank);
+      std::cout << "--- Benjamini-Hochberg Adaptive Procedure ---" << std::endl;
+      std::cout << "Total Tests (m): " << getNumMultiComparisonStrategies()
+		<< ", Estimated True Nulls (m0): " << m0_estimate
+		<< ", FDR (q): " << mFalseDiscoveryRate << std::endl;
+      Decimal estimatedFDR = estimateFDRForPValue(pValueSignificanceLevel);
+      std::cout << "** Estimated FDR for pvalue of " << pValueSignificanceLevel << ", = " << estimatedFDR << std::endl;
 
-      std::string estimatorLabel = (m_estimationMethod ==  EstimationMethod::StoreySmoothed)
-	? "Storey Smoother"
-	: "Tail Single Lambda";
-      
-      std::cout << "[" << estimatorLabel << "] pi0 = " << m0_estimate
-		<< ", mPrime = " << mPrime << ", m = " << rank << "\n";
-      std::cout << "AdaptiveBenjaminiHochbergYr2000::Rank = " << rank << std::endl;
+      std::cout << "-----------------------------------------------" << std::endl;
 
-      for (; it != itEnd; ++it)
+      // Iterate through all strategies from highest p-value to lowest
+      for (auto it = container.rbegin(); it != container.rend(); ++it)
 	{
 	  Decimal pValue = it->first;
-	  criticalValue = (rank / m0_estimate) * mFalseDiscoveryRate;
 
-	  std::cout << "pValue = " << pValue << ", criticalValue = " << criticalValue << std::endl;
-	  if (pValue < criticalValue)
-	    break;
+	  // Calculate the critical value for the current rank
+	  Decimal criticalValue = (rank / m0_estimate) * mFalseDiscoveryRate;
+
+	  // Print the comparison for this step
+	  std::cout << "Checking p-value: " << std::left << std::setw(12) << pValue
+		    << "(rank " << std::setw(3) << rank << ")"
+		    << " vs. Critical Value: " << std::left << std::setw(12) << criticalValue;
+
+	  // If we haven't found the cutoff yet, check if this p-value meets the criterion.
+	  // Once the condition is met, all subsequent (smaller) p-values are also significant.
+	  if (!cutoff_found && pValue < criticalValue)
+            cutoff_found = true;
+
+	  if (cutoff_found)
+	    {
+	      std::cout << "  ==> SIGNIFICANT" << std::endl;
+	      container_.addSurvivingStrategy(it->second);
+	    }
 	  else
-	    rank = rank - DecimalConstants<Decimal>::DecimalOne;
-	}
-    
-      // Add all strategies from the break-point onwards (i.e., those that passed the test)
-
-      for (; it != itEnd; ++it)
-	{
-	  Decimal pValue = it->first;
-	  criticalValue = (rank / m0_estimate) * mFalseDiscoveryRate;
-	  std::cout << "pValue = " << pValue << ", criticalValue = " << criticalValue << std::endl;
-
-	  container_.addSurvivingStrategy(it->second);
-	  std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests adding surviving strategies" << std::endl;
+	    {
+	      std::cout << "  ==> Not Significant" << std::endl;
+	    }
+        
+	  // Decrement rank for the next (smaller) p-value
 	  rank = rank - DecimalConstants<Decimal>::DecimalOne;
 	}
+      
+      std::cout << "--- Procedure Complete. Found " << getNumSurvivingStrategies() << " surviving strategies. ---" << std::endl;
     }
 
-    // (Other public methods like getInternalContainer, getAllTestedStrategies, etc. remain unchanged)
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
       return container_.getInternalContainer();
     }
-    std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
+    
+    std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>>
+    getAllTestedStrategies() const
+    {
       std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> result;
       for (const auto& entry : container_.getInternalContainer()) {
 	result.emplace_back(entry.second, entry.first); // strategy, p-value
       }
       return result;
     }
-    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
-      for (const auto& entry : container_.getInternalContainer()) {
-	if (entry.second == strategy) {
-	  return entry.first; // return p-value
+    
+    Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const
+    {
+      for (const auto& entry : container_.getInternalContainer())
+	{
+	  if (entry.second == strategy) {
+	    return entry.first; // return p-value
+	  }
 	}
-      }
       return Decimal(1.0); // Default high p-value if not found
     }
+
     void clearForNewTest()
     {
       container_.clearForNewTest();
@@ -585,7 +588,7 @@ namespace mkc_timeseries
 
   private:
     // Method 1: B&H (2000) Simple Tail-Based Estimator
-    Decimal estimateM0TailBased() const {
+    Decimal estimateM0TailBased_InternalFallback()  const {
       std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0TailBased" << std::endl;
       const auto& strategies = container_.getInternalContainer();
       const size_t m = strategies.size();
@@ -602,202 +605,228 @@ namespace mkc_timeseries
       return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
     }
 
-    // Method 2: B&H (2000) Slope-Based Estimator
-    Decimal estimateM0SlopeBased() {
-      calculateSlopes(); // Note: This has a side effect of populating mSlopes
-      Decimal m(static_cast<int>(getNumMultiComparisonStrategies()));
-      for (unsigned int i = 1; i < mSlopes.size(); i++) {
-	if (mSlopes[i] < mSlopes[i - 1]) {
-	  if (mSlopes[i] <= DecimalConstants<Decimal>::DecimalZero) continue; // Avoid division by zero/negative
-	  Decimal temp = (DecimalConstants<Decimal>::DecimalOne / mSlopes[i]) + DecimalConstants<Decimal>::DecimalOne;
-	  return std::min(temp, m);
-	}
-      }
-      return m;
-    }
-  
-    // Method 3: Storey (2002) Inspired Smoother with Linear Regression
-    Decimal estimateM0StoreySmoothed() const {
-      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothed" << std::endl;
-      const auto& strategies = container_.getInternalContainer();
-      const size_t m = strategies.size();
-      if (m < 2) return Decimal(m); // Need at least 2 points for regression
+  Decimal estimateM0StoreySmoothedALGLIB() const
+  {
+    std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothedALGLIB" << std::endl;
+    const auto& strategies = container_.getInternalContainer();
+    const size_t m = strategies.size();
+    if (m < 2) return Decimal(m);
 
-      std::vector<Decimal> lambdas;
-      std::vector<Decimal> pi0s;
+    // 1. Generate the (lambda, pi0) data points.
+    std::vector<double> lambdas; // Use double as ALGLIB expects it
+    std::vector<double> pi0s;
 
-      // Use Decimal type throughout for consistency
-      for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.25");
-           lambda < DecimalConstants<Decimal>::createDecimal("0.60");
-           lambda += DecimalConstants<Decimal>::createDecimal("0.05")) {
-        lambdas.push_back(lambda);
-        size_t count = std::count_if(strategies.begin(), strategies.end(),
-                                     [lambda](const auto& entry) {
-				       return entry.first > lambda;
-                                     });
-        Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
-        pi0s.push_back(std::min(DecimalConstants<Decimal>::DecimalOne, pi0));
-
-	std::cout << "[StoreySmoother] lambda = " << lambda
-                  << ", m0(lambda) = " << pi0s.back() << std::endl;
-      }
-
-      if (lambdas.empty()) return Decimal(m);
-
-      // Linear regression: pi0 ≈ a + b * lambda
-      Decimal sumX = DecimalConstants<Decimal>::DecimalZero,
-              sumY = DecimalConstants<Decimal>::DecimalZero,
-              sumXY = DecimalConstants<Decimal>::DecimalZero,
-              sumXX = DecimalConstants<Decimal>::DecimalZero;
-      size_t n = lambdas.size();
-      for (size_t i = 0; i < n; ++i) {
-        sumX += lambdas[i];
-        sumY += pi0s[i];
-        sumXY += lambdas[i] * pi0s[i];
-        sumXX += lambdas[i] * lambdas[i];
-      }
-
-      Decimal denom = static_cast<Decimal>(n) * sumXX - sumX * sumX;
-      if (denom == DecimalConstants<Decimal>::DecimalZero) return Decimal(m); // Avoid division by zero
-
-      Decimal slope = (static_cast<Decimal>(n) * sumXY - sumX * sumY) / denom;
-      Decimal intercept = (sumY - slope * sumX) / static_cast<Decimal>(n);
-
-      // ==> LOGGING: Log the final regression parameters
-      std::cout << "[StoreySmoother] Linear regression: slope = " << slope
-                << ", intercept = " << intercept << std::endl;
-
-      // ==> LOGGING: Log residuals for each lambda
-      std::cout << "--- Residual Analysis ---" << std::endl;
-      for (size_t i = 0; i < n; ++i) {
-        Decimal fitted = slope * lambdas[i] + intercept;
-        Decimal actual = pi0s[i];
-        Decimal residual = actual - fitted;
-        std::cout << "[StoreySmoother] lambda = " << lambdas[i]
-                  << ", fitted = " << fitted
-                  << ", actual = " << actual
-                  << ", residual = " << residual << std::endl;
-      }
-      std::cout << "-------------------------" << std::endl;
+    for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.05");
+         lambda <= DecimalConstants<Decimal>::createDecimal("0.95"); // Use <= to include 0.95
+         lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
       
-      // Extrapolate pi0 at lambda = 1.0 and clamp between 0 and 1
-      Decimal extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero, std::min(DecimalConstants<Decimal>::DecimalOne, intercept + slope));
+      size_t count = std::count_if(strategies.begin(), strategies.end(),
+                                   [lambda](const auto& entry) {
+                                     return entry.first > lambda;
+                                   });
+      
+      // Avoid division by zero if lambda is close to 1
+      if (DecimalConstants<Decimal>::DecimalOne - lambda <= DecimalConstants<Decimal>::DecimalZero) continue;
+
+      Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
+      
+      double lambda_double = static_cast<double>(lambda.getAsDouble());
+      double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
+      
+      lambdas.push_back(lambda_double);
+      pi0s.push_back(pi0_double);
+    }
+
+    if (lambdas.empty())
+      return Decimal(m);
+
+    // Find the optimal smoothing parameter using cross-validation
+    const double optimal_lambdans = findOptimalLambdansViaCrossValidation(lambdas, pi0s);
+
+    // 2. Convert std::vector to ALGLIB's real_1d_array format.
+    alglib::real_1d_array x; // lambdas
+    x.setcontent(lambdas.size(), lambdas.data());
+
+    alglib::real_1d_array y; // pi0s
+    y.setcontent(pi0s.size(), pi0s.data());
+
+    // 3. Fit the smoothing spline using the MODERN spline1dfit function.
+    alglib::spline1dinterpolant s;
+    alglib::spline1dfitreport rep;
     
-      // Convert pi0 proportion estimate to m0 count estimate
-      Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
+    const alglib::ae_int_t n_points = static_cast<alglib::ae_int_t>(lambdas.size());
+    const alglib::ae_int_t m_basis = n_points; // Number of basis functions.
 
-      // ==> LOGGING: Log the final extrapolated results
-      std::cout << "[StoreySmoother] Smoothed pi0 = " << extrapolatedPi0
-                << ", mPrime = " << m0_hat
-                << ", m = " << static_cast<Decimal>(m) << std::endl;
-      return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
-    }
-
-    Decimal estimateM0StoreySmoothedALGLIB() const
+    // Use the optimal lambdans found via cross-validation.
+    try
     {
-      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothedALGLIB" << std::endl;
-      const auto& strategies = container_.getInternalContainer();
-      const size_t m = strategies.size();
-      if (m < 2) return Decimal(m);
-
-      // 1. Generate the (lambda, pi0) data points.
-      std::vector<double> lambdas; // Use double as ALGLIB expects it
-      std::vector<double> pi0s;
-
-      for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.05");
-           lambda < DecimalConstants<Decimal>::createDecimal("0.95");
-           lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
-        
-        size_t count = std::count_if(strategies.begin(), strategies.end(),
-                                     [lambda](const auto& entry) {
-                                       return entry.first > lambda;
-                                     });
-        
-        Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
-        
-        // Convert Decimal to double for ALGLIB
-        double lambda_double = static_cast<double>(lambda.getAsDouble());
-        double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
-        
-        lambdas.push_back(lambda_double);
-        pi0s.push_back(pi0_double);
-      }
-
-      if (lambdas.empty())
+      alglib::spline1dfit(x, y, n_points, m_basis, optimal_lambdans, s, rep);
+    }
+    catch(const alglib::ap_error& e)
+    {
+        // Fitting failed, fall back to the total number of tests.
+        std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
         return Decimal(m);
-
-      // 2. Convert std::vector to ALGLIB's real_1d_array format.
-      alglib::real_1d_array x; // lambdas
-      x.setcontent(lambdas.size(), lambdas.data());
-
-      alglib::real_1d_array y; // pi0s
-      y.setcontent(pi0s.size(), pi0s.data());
-
-      // 3. Fit the smoothing spline using the MODERN spline1dfit function.
-      alglib::spline1dinterpolant s;
-      alglib::spline1dfitreport rep;
-      
-      const alglib::ae_int_t n_points = static_cast<alglib::ae_int_t>(lambdas.size());
-      const alglib::ae_int_t m_basis = n_points; // Number of basis functions. Using n_points is a safe choice.
-      
-      // The smoothing parameter. A small value like this adds minor, stabilizing smoothing.
-      // This may require tuning depending on the nature of your p-value distributions.
-      const double lambdans = 1.0e-5;
-
-      // Note: The modern spline1dfit does not return an 'info' code.
-      // It may throw an alglib::ap_error exception on failure.
-      try
-      {
-        alglib::spline1dfit(x, y, n_points, m_basis, lambdans, s, rep);
-      }
-      catch(const alglib::ap_error& e)
-      {
-          // Fitting failed, fall back to the total number of tests.
-          std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
-          return Decimal(m);
-      }
-      
-      // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
-      double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
-
-      // Convert back to Decimal type
-      Decimal extrapolatedPi0 = static_cast<Decimal>(extrapolated_pi0_double);
-
-      // 5. Clamp the result and compute the final m0 estimate.
-      extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero,
-				 std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
-      Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
-
-      std::cout << "[StoreySmootherALGLIB] Smoothed pi0 (at lambda=1.0) = " << extrapolatedPi0
-                << ", m0_hat = " << m0_hat
-                << ", m = " << static_cast<Decimal>(m) << std::endl;
-                
-      return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
     }
+    
+    // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
+    double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
 
-    void calculateSlopes() {
-      mSlopes.clear();
-      if (getNumMultiComparisonStrategies() > 0) {
-	Decimal m(static_cast<int>(getNumMultiComparisonStrategies()));
-	Decimal i = DecimalConstants<Decimal>::DecimalOne;
-      
-	for (auto it = container_.getInternalContainer().begin(); it != container_.getInternalContainer().end(); ++it) {
-	  Decimal pValue = it->first;
-	  Decimal num = (DecimalConstants<Decimal>::DecimalOne - pValue);
-	  Decimal denom = (m + DecimalConstants<Decimal>::DecimalOne - i);
-	  Decimal slope = (denom > 0) ? (num / denom) : DecimalConstants<Decimal>::DecimalZero; // Avoid division by zero
-	  mSlopes.push_back(slope);
-	  i = i + DecimalConstants<Decimal>::DecimalOne;
+    // Convert back to Decimal type
+    Decimal extrapolatedPi0 = static_cast<Decimal>(extrapolated_pi0_double);
+
+    // 5. Clamp the result and compute the final m0 estimate.
+    extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero,
+       std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
+    Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
+
+    std::cout << "[StoreySmootherALGLIB] Smoothed pi0 (at lambda=1.0) = " << extrapolatedPi0
+              << ", m0_hat = " << m0_hat
+              << ", m = " << static_cast<Decimal>(m) << std::endl;
+              
+    return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
+  }
+
+  /**
+   * @brief Finds the optimal smoothing parameter ('lambdans') for spline fitting using k-fold cross-validation.
+   * @param lambdas The vector of lambda values (x-coordinates).
+   * @param pi0s The vector of pi0 estimates (y-coordinates).
+   * @param k_folds The number of folds to use for cross-validation.
+   * @return The 'lambdans' value that resulted in the lowest average cross-validated error.
+   */
+  double findOptimalLambdansViaCrossValidation(const std::vector<double>& lambdas,
+                                               const std::vector<double>& pi0s,
+                                               int k_folds = 10) const
+  {
+      // A pre-defined grid of lambdans values to test on a log scale.
+      const std::vector<double> lambdans_to_test =
+	{
+          1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1, 1.0
+	};
+
+      const size_t n_data_points = lambdas.size();
+      if (n_data_points < static_cast<size_t>(k_folds))
+	{
+          std::cerr << "[CrossValidation] Warning: Not enough data points (" << n_data_points 
+                    << ") for " << k_folds << "-fold cross-validation. Returning default lambdans." << std::endl;
+          return 1.0e-5; // Return a sensible default if CV is not possible.
 	}
+
+      double best_lambdans = lambdans_to_test[0];
+      double min_avg_rmse = std::numeric_limits<double>::max();
+
+      std::cout << "[CrossValidation] Starting " << k_folds << "-fold cross-validation to find optimal lambdans..." << std::endl;
+
+      // Iterate over each candidate lambdans value to test its performance.
+      for (double current_lambdans : lambdans_to_test) {
+          std::vector<double> fold_rmses;
+          size_t fold_size = n_data_points / k_folds;
+
+          // Perform k-fold validation for the current_lambdans.
+          for (int k = 0; k < k_folds; ++k) {
+              size_t start_index = k * fold_size;
+              // Ensure the last fold includes all remaining points.
+              size_t end_index = (k == k_folds - 1) ? n_data_points : start_index + fold_size;
+
+              std::vector<double> train_x, train_y, val_x, val_y;
+              train_x.reserve(n_data_points - (end_index - start_index));
+              train_y.reserve(n_data_points - (end_index - start_index));
+
+              // Partition data into the current training and validation sets.
+              for (size_t i = 0; i < n_data_points; ++i) {
+                  if (i >= start_index && i < end_index) {
+                      val_x.push_back(lambdas[i]);
+                      val_y.push_back(pi0s[i]);
+                  } else {
+                      train_x.push_back(lambdas[i]);
+                      train_y.push_back(pi0s[i]);
+                  }
+              }
+              
+              if (train_x.empty() || val_x.empty()) continue;
+
+              // Fit the spline on the training data for this fold.
+              alglib::real_1d_array x_train_alg, y_train_alg;
+              x_train_alg.setcontent(train_x.size(), train_x.data());
+              y_train_alg.setcontent(train_y.size(), train_y.data());
+
+              alglib::spline1dinterpolant s;
+              alglib::spline1dfitreport rep;
+              try {
+                  alglib::spline1dfit(x_train_alg, y_train_alg, train_x.size(), n_data_points, current_lambdans, s, rep);
+              } catch(const alglib::ap_error& e) {
+                  std::cerr << "ALGLIB fitting failed during CV for lambdans=" << current_lambdans << ". Msg: " << e.msg << std::endl;
+                  continue; 
+              }
+
+              // Calculate the sum of squared errors on the validation set.
+              double fold_sse = 0.0;
+              for (size_t i = 0; i < val_x.size(); ++i) {
+                  double predicted_y = alglib::spline1dcalc(s, val_x[i]);
+                  fold_sse += std::pow(predicted_y - val_y[i], 2);
+              }
+              fold_rmses.push_back(std::sqrt(fold_sse / val_x.size()));
+          }
+
+          if (fold_rmses.empty()) continue;
+
+          // Average the RMSE across all k folds.
+          double avg_rmse = std::accumulate(fold_rmses.begin(), fold_rmses.end(), 0.0) / fold_rmses.size();
+          std::cout << "[CrossValidation]   lambdans = " << std::scientific << current_lambdans
+                    << ", Avg. RMSE = " << std::fixed << avg_rmse << std::endl;
+
+          // Update the best lambdans if the current one yields a lower average error.
+          if (avg_rmse < min_avg_rmse) {
+              min_avg_rmse = avg_rmse;
+              best_lambdans = current_lambdans;
+          }
       }
+
+      std::cout << "[CrossValidation] Search complete. Optimal lambdans found: " << std::scientific << best_lambdans
+                << " (with min avg. RMSE = " << std::fixed << min_avg_rmse << ")" << std::endl;
+
+      return best_lambdans;
+  }
+
+  public:
+    // Hypothetical new method for the class
+    Decimal estimateFDRForPValue(const Decimal& pValueCutoff)
+    {
+      // 1. Ensure m0 (or pi0) has been estimated.
+      //    This might involve running the spline estimation if not already done.
+      Decimal m0_estimate = estimateM0StoreySmoothedALGLIB();
+      Decimal pi0_estimate = m0_estimate / getNumMultiComparisonStrategies();
+
+      // 2. Count the number of rejected hypotheses for the given cutoff.
+      Decimal num_rejections(DecimalConstants<Decimal>::DecimalZero);
+      for (const auto& entry : container_.getInternalContainer())
+	{
+	  if (entry.first <= pValueCutoff) {
+	    num_rejections += DecimalConstants<Decimal>::DecimalOne;
+	  }
+	}
+
+      if (num_rejections == DecimalConstants<Decimal>::DecimalZero) {
+        return DecimalConstants<Decimal>::DecimalZero;
+      }
+
+      // 3. Apply the formula to estimate the FDR.
+      Decimal m = static_cast<Decimal>(getNumMultiComparisonStrategies());
+      Decimal estimated_fdr = (pi0_estimate * pValueCutoff * m) / num_rejections;
+
+      return std::min(Decimal(1.0), estimated_fdr); // FDR cannot be > 1
     }
 
+    /**
+     * @brief [For Unit Testing Only] Sets a fixed m0 value, bypassing the spline estimator.
+     */
+    void setM0ForTesting(const Decimal& m0) {
+        m_test_m0_override = m0;
+    }
+    
     BaseStrategyContainer<Decimal> container_;
-    std::vector<Decimal> mSlopes;
-
-    // Configuration member
-    EstimationMethod m_estimationMethod;
     Decimal mFalseDiscoveryRate;
+    std::optional<Decimal> m_test_m0_override;
   };
 
   //===========================================================================
