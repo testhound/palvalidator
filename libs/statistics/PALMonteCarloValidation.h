@@ -83,6 +83,22 @@ namespace mkc_timeseries
         throw std::invalid_argument("Number of permutations must be positive");
     }
 
+    /*!
+     * @brief Constructs the PALMonteCarloValidationBase with additional arguments for strategy selection policy.
+     * @param numPermutations The number of permutations to be performed in the Monte Carlo tests.
+     * Must be a positive value.
+     * @param args Additional arguments to be forwarded to the strategy selection policy constructor.
+     * @throw std::invalid_argument if numPermutations is zero.
+     */
+    template<typename... Args>
+    explicit PALMonteCarloValidationBase(unsigned long numPermutations, Args&&... args)
+      : mNumPermutations(numPermutations),
+        mStrategySelectionPolicy(std::forward<Args>(args)...)
+    {
+      if (mNumPermutations == 0)
+        throw std::invalid_argument("Number of permutations must be positive");
+    }
+
     PALMonteCarloValidationBase(const PALMonteCarloValidationBase&) = default;
     PALMonteCarloValidationBase& operator=(const PALMonteCarloValidationBase&) = default;
     virtual ~PALMonteCarloValidationBase() = default;
@@ -217,6 +233,23 @@ namespace mkc_timeseries
      */
     explicit PALMonteCarloValidation(unsigned long numPermutations)
       : Base(numPermutations)
+    {
+      // Only initialize statistics collector if MCPT supports observer pattern
+      if constexpr (supports_observer_pattern) {
+        mStatisticsCollector = std::make_unique<PermutationStatisticsCollector<Decimal>>();
+      }
+    }
+
+    /*!
+     * @brief Constructs the PALMonteCarloValidation object with additional arguments for strategy selection policy.
+     * @param numPermutations The number of permutations to be performed in the Monte Carlo tests.
+     * Must be a positive value.
+     * @param args Additional arguments to be forwarded to the strategy selection policy constructor.
+     * @throw std::invalid_argument if numPermutations is zero (via base class constructor).
+     */
+    template<typename... Args>
+    explicit PALMonteCarloValidation(unsigned long numPermutations, Args&&... args)
+      : Base(numPermutations, std::forward<Args>(args)...)
     {
       // Only initialize statistics collector if MCPT supports observer pattern
       if constexpr (supports_observer_pattern) {

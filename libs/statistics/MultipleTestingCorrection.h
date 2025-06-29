@@ -458,9 +458,10 @@ namespace mkc_timeseries
 
     // Constructor now accepts an enum to select the estimation method.
     // By default, it uses the robust slope-based method.
-    explicit AdaptiveBenjaminiHochbergYr2000(EstimationMethod method = EstimationMethod::StoreySmoothedALGLIB)
+    explicit AdaptiveBenjaminiHochbergYr2000(const Decimal& falseDiscoveryRate = DecimalConstants<Decimal>::DefaultFDR,
+					     EstimationMethod method = EstimationMethod::StoreySmoothedALGLIB)
       : m_estimationMethod(method),
-	mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
+	mFalseDiscoveryRate(falseDiscoveryRate)
     {}
 
     void addStrategy(const ReturnType& pValue, std::shared_ptr<PalStrategy<Decimal>> aStrategy) {
@@ -483,11 +484,13 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
-				 DecimalConstants<Decimal>::SignificantPValue) {
+     DecimalConstants<Decimal>::SignificantPValue) {
       if (getNumMultiComparisonStrategies() == 0)
         return; // Nothing to do
 
       std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests" << std::endl;
+      std::cout << "pValueSignificanceLevel = " << pValueSignificanceLevel << std::endl;
+      std::cout << "mFalseDiscoveryRate = " << mFalseDiscoveryRate << std::endl;
       Decimal m0_estimate;
 
       // Use a switch to select the estimation method for m0.
