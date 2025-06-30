@@ -1,6 +1,7 @@
 #include <exception>
 #include <random>
 #include <iostream>
+#include <atomic>
 #include <boost/filesystem.hpp>
 #include "PalParseDriver.h"
 #include "TestUtils.h"
@@ -186,9 +187,14 @@ getRandomPalStrategy(std::shared_ptr<Security<DecimalType>> security)
         portfolio->addSecurity(security);
     }
 
-    // 6. Build the PalStrategy using the one‐line factory:
+    // 6. Build the PalStrategy using the one‐line factory with unique name:
+    // Generate unique strategy name to ensure different combined hashes even for same pattern
+    static std::atomic<uint64_t> strategyCounter{0};
+    std::string uniqueStrategyName = "RandomPalStrategy_" +
+                                   std::to_string(chosenPattern->getpatternIndex()) + "_" +
+                                   std::to_string(strategyCounter.fetch_add(1));
     auto strategy = makePalStrategy<DecimalType>(
-                        "RandomPalStrategy",   // strategy name
+                        uniqueStrategyName,   // unique strategy name
                         chosenPattern,
                         portfolio
                     );
