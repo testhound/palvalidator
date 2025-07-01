@@ -216,58 +216,81 @@ namespace mkc_timeseries
       return mNumBarsInMarket;
     }
 
-    /**
+/**
      * @brief Extract high-resolution bar-by-bar returns from all closed trades.
      *
-     * Iterates each TradingPosition from its bar history (entry through exit),
-     * computes per-bar returns: (close_t - close_{t-1})/close_{t-1},
-     * and flattens them into a single vector.  Includes the final bar during which
-     * the trade exited, so that exit P&L is captured in the series.
+     * @details
+     * Iterates through each closed `TradingPosition` and its bar history to
+     * compute per-bar returns. This method provides a more accurate return
+     * calculation for the final bar of the trade by using the actual `exitPrice`
+     * from the `TradingPosition` instead of the bar's close price. This ensures
+     * the return series perfectly reflects the realized P&L of the strategy.
      *
-     * This high-frequency return series is ideal for permutation or bootstrap testing,
-     * providing a large, homogeneous sample that preserves time-series dependencies
-     * and yields low-variance null distributions.
+     * For all intermediate bars, a standard mark-to-market (close-to-reference)
+     * return is used. The sequence of returns is:
+     * 1. (First Bar Close - Entry Price) / Entry Price
+     * 2. (Second Bar Close - First Bar Close) / First Bar Close
+     * 3. ...
+     * 4. (Exit Price - Last Bar's Previous Close) / Last Bar's Previous Close
      *
      * @return Vector of Decimal returns, one entry per bar across all closed trades.
      */
     std::vector<Decimal> getHighResBarReturns() const
     {
         std::vector<Decimal> allReturns;
-        for (auto it = mPositions.begin(); it != mPositions.end(); ++it) // Iterator type changes due to typedef
-	  {
-            const auto& posPtr = it->second;
+        // Iterate through each closed position in the history
+        for (auto it = mPositions.begin(); it != mPositions.end(); ++it)
+        {
+            const auto& pos = it->second; // pos is a std::shared_ptr<TradingPosition<Decimal>>
 
-	    // Grab the TradingPositon's  full bar history (entry→exit)
-            auto begin = posPtr->beginPositionBarHistory();
-            auto end   = posPtr->endPositionBarHistory();
+            auto bar_it = pos->beginPositionBarHistory();
+            auto bar_end = pos->endPositionBarHistory();
 
-	    // A valid position must have at least one bar.
-            if (begin == end)
-	      continue;
+            if (bar_it == bar_end) {
+                continue; // Skip positions with no bar history
+            }
 
-	    // --- NEW LOGIC TO INCLUDE THE FIRST BAR'S P&L ---
-            const Decimal& entryPrice = posPtr->getEntryPrice(); // 
-            const auto& entryBar = begin->second;
-            const Decimal& entryBarClose = entryBar.getCloseValue(); // 
+            // The first reference price is the actual entry price of the trade
+            Decimal prevReferencePrice = pos->getEntryPrice();
 
-            // Calculate and add the return for the entry bar itself (Entry Price -> Close of Entry Bar)
-            allReturns.push_back((entryBarClose - entryPrice) / entryPrice);
-	    
-            if (std::distance(begin, end) < 2)
-	      continue;		// need at least two bars to compute one P&L
+            // Loop through all bars that were recorded while the position was open
+            for (; bar_it != bar_end; ++bar_it)
+            {
+                const auto& currentBar = bar_it->second;
+                Decimal returnForThisBar;
 
-            auto prev = begin;
+                // Check if this is the last bar in the position's recorded history
+                if (std::next(bar_it) == bar_end)
+                {
+                    // For the final bar, the return is calculated to the actual exit price
+                    Decimal exitPrice = pos->getExitPrice();
+                    if (prevReferencePrice != DecimalConstants<Decimal>::DecimalZero)
+                        returnForThisBar = (exitPrice - prevReferencePrice) / prevReferencePrice;
+                    else
+                        returnForThisBar = DecimalConstants<Decimal>::DecimalZero;
 
-	    // Compute bar‐by‐bar return for this trade
-            for (auto curr = std::next(begin); curr != end; ++curr)
-	      {
-                // Each iterator points to pair<ptime, OpenPositionBar>
-                Decimal closePrev = prev->second.getCloseValue();
-                Decimal closeCurr = curr->second.getCloseValue();
-                Decimal barReturn = (closeCurr - closePrev) / closePrev;
+                }
+                else
+                {
+                    // For all intermediate bars, calculate the mark-to-market return (close-to-reference)
+                    Decimal currentClose = currentBar.getCloseValue();
+                     if (prevReferencePrice != DecimalConstants<Decimal>::DecimalZero)
+                        returnForThisBar = (currentClose - prevReferencePrice) / prevReferencePrice;
+                    else
+                        returnForThisBar = DecimalConstants<Decimal>::DecimalZero;
 
-                allReturns.push_back(barReturn);
-                prev = curr;
+
+                    // The reference for the next bar becomes the close of the current bar
+                    prevReferencePrice = currentClose;
+                }
+
+                // For short positions, a decrease in price is a gain, so we invert the return.
+                if (pos->isShortPosition())
+                {
+                    returnForThisBar *= -1;
+                }
+
+                allReturns.push_back(returnForThisBar);
             }
         }
         return allReturns;
