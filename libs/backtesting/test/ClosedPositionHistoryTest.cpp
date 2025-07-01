@@ -29,8 +29,9 @@ void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openP
   for (; it != itEnd; ++it) {
     if (it->getDateTime().date() == entryDate) {
       foundEntry = true;
-      ++it; // Move past entry date
-      break;
+      // Don't advance iterator here, the entry bar itself is handled by the constructor.
+      // This loop adds subsequent bars.
+      break; 
     }
   }
   
@@ -40,9 +41,11 @@ void addBarHistoryUntilDate (std::shared_ptr<TradingPosition<DecimalType>> openP
   
   // Add bars until exit date
   for (; it != itEnd; ++it) {
-    openPosition->addBar(*it);
-    if (it->getDateTime().date() == exitDate) {
-      break; // Exit bar added, we're done
+    if (it->getDateTime().date() > entryDate)
+        openPosition->addBar(*it);
+
+    if (it->getDateTime().date() >= exitDate) {
+      break; // Exit bar's date reached, we're done
     }
   }
 }
@@ -56,17 +59,21 @@ createClosedLongPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& aT
 			  const TradingVolume& tVolume,
 			  int dummy)
 {
+  // Correctly find the entry bar by iterating
+  auto series_it = aTimeSeries->beginSortedAccess();
+  auto series_end = aTimeSeries->endSortedAccess();
+  auto entry_bar_it = std::find_if(series_it, series_end, 
+                                   [&](const OHLCTimeSeriesEntry<DecimalType>& entry) {
+                                       return entry.getDateTime().date() == entryDate;
+                                   });
 
-  auto entry = createTimeSeriesEntry (entryDate,
-				      entryPrice,
-				      entryPrice,
-				      entryPrice,
-				      entryPrice,
-				      tVolume.getTradingVolume());
+  if (entry_bar_it == series_end)
+      throw std::runtime_error("Entry date not found in time series for createClosedLongPosition");
+
 
   auto aPos = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol,
 								 entryPrice,
-								 *entry,
+								 *entry_bar_it,
 								 tVolume);
 
   addBarHistoryUntilDate (aPos, entryDate, exitDate, aTimeSeries);
@@ -85,17 +92,20 @@ createClosedShortPosition (const std::shared_ptr<OHLCTimeSeries<DecimalType>>& a
 			  const TradingVolume& tVolume,
 			  int dummy)
 {
+  // Correctly find the entry bar by iterating
+  auto series_it = aTimeSeries->beginSortedAccess();
+  auto series_end = aTimeSeries->endSortedAccess();
+  auto entry_bar_it = std::find_if(series_it, series_end, 
+                                   [&](const OHLCTimeSeriesEntry<DecimalType>& entry) {
+                                       return entry.getDateTime().date() == entryDate;
+                                   });
 
-  auto entry = createTimeSeriesEntry (entryDate,
-				      entryPrice,
-				      entryPrice,
-				      entryPrice,
-				      entryPrice,
-				      tVolume.getTradingVolume());
+  if (entry_bar_it == series_end)
+      throw std::runtime_error("Entry date not found in time series for createClosedShortPosition");
 
   auto aPos = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol,
 						       entryPrice,
-						       *entry,
+						       *entry_bar_it,
 						       tVolume);
   addBarHistoryUntilDate (aPos, entryDate, exitDate, aTimeSeries);
 
@@ -666,7 +676,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
       };
 
       // 2) Seed the position with the first bar.
-      // In this test setup, entry price = open = close for the first bar.
+      // In this specific test, entry price = open = close for the first bar.
       TimeSeriesDate baseDate(2020, Jan, 1);
       DecimalType entryPrice = prices[0];
       auto firstBar = createTimeSeriesEntry(
@@ -751,6 +761,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
     // 1) build 2-bar intraday position: entry@09:00, bar2@09:05, exit@09:10
     auto eA = createTimeSeriesEntry("20250526","09:00:00","100","102","99","101","100");
     auto eB = createTimeSeriesEntry("20250526","09:05:00","101","103","100","102","100");
+    DecimalType exitPrice = createDecimal("102.50");
     ptime exitDT = time_from_string("2025-05-26 09:10:00");
 
     TradingVolume oneShare(1, TradingVolume::SHARES);
@@ -761,7 +772,7 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 								   oneShare                   // volume
 								   );
     pos2->addBar(*eB);            // second intraday bar
-    pos2->ClosePosition(exitDT, createDecimal("102.50"));
+    pos2->ClosePosition(exitDT, exitPrice);
 
     // 2) add to history
     ClosedPositionHistory<DecimalType> hist2;
@@ -770,11 +781,71 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
     auto returns = hist2.getHighResBarReturns();
     REQUIRE(returns.size() == 2);
 
-    // expected: (close_B - close_A) / close_A
+    // 3) Verify returns
+    // Return 1: from entry price to close of first bar
     DecimalType r0 = (eA->getCloseValue() - eA->getOpenValue()) / eA->getOpenValue();
-    DecimalType r1 = (eB->getCloseValue() - eA->getCloseValue()) / eA->getCloseValue();
+    // Return 2: from close of first bar to actual exit price
+    DecimalType r1 = (exitPrice - eA->getCloseValue()) / eA->getCloseValue();
+    
     REQUIRE(returns[0] == r0);
     REQUIRE(returns[1] == r1);
   }
-}
 
+  // *** NEW TESTS FOR SHORT POSITIONS ***
+  SECTION("getHighResBarReturns for Short Positions")
+  {
+      TradingVolume oneShare(1, TradingVolume::SHARES);
+
+      // Test Case 1: A winning short trade (price goes down)
+      ClosedPositionHistory<DecimalType> winning_history;
+      DecimalType entryPriceWin = createDecimal("100.00");
+      auto entryBarWin = createTimeSeriesEntry(date(2023, 1, 1), entryPriceWin, entryPriceWin, entryPriceWin, createDecimal("100.00"), 100);
+      auto midBarWin = createTimeSeriesEntry(date(2023, 1, 2), createDecimal("100.00"), createDecimal("100.00"), createDecimal("97.00"), createDecimal("98.00"), 100);
+      DecimalType exitPriceWin = createDecimal("95.00");
+
+
+      auto winningShortPos = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, entryPriceWin, *entryBarWin, oneShare);
+      winningShortPos->addBar(*midBarWin);
+      winningShortPos->ClosePosition(date(2023, 1, 2), exitPriceWin); // Exit on the second bar
+      winning_history.addClosedPosition(winningShortPos);
+
+      auto winning_returns = winning_history.getHighResBarReturns();
+      REQUIRE(winning_returns.size() == 2);
+
+      // Return 1: (close of entry bar - entry price) / entry price, negated.
+      // (100 - 100) / 100 = 0. Negated is still 0.
+      DecimalType expectedReturn1_win = (entryBarWin->getCloseValue() - entryPriceWin) / entryPriceWin;
+      REQUIRE(winning_returns[0] == (expectedReturn1_win * -1));
+
+      // Return 2: (exit price - close of previous bar) / close of previous bar, negated.
+      // (95 - 100) / 100 = -0.05. Negated is +0.05.
+      DecimalType expectedReturn2_win = (exitPriceWin - entryBarWin->getCloseValue()) / entryBarWin->getCloseValue();
+      REQUIRE(winning_returns[1] == (expectedReturn2_win * -1));
+
+
+      // Test Case 2: A losing short trade (price goes up)
+      ClosedPositionHistory<DecimalType> losing_history;
+      DecimalType entryPriceLose = createDecimal("100.00");
+      auto entryBarLose = createTimeSeriesEntry(date(2023, 1, 5), entryPriceLose, entryPriceLose, entryPriceLose, createDecimal("100.00"), 100);
+      auto midBarLose = createTimeSeriesEntry(date(2023, 1, 6), createDecimal("100.00"), createDecimal("103.00"), createDecimal("99.00"), createDecimal("102.00"), 100);
+      DecimalType exitPriceLose = createDecimal("105.00");
+
+      auto losingShortPos = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, entryPriceLose, *entryBarLose, oneShare);
+      losingShortPos->addBar(*midBarLose);
+      losingShortPos->ClosePosition(date(2023, 1, 6), exitPriceLose); // Exit on the second bar
+      losing_history.addClosedPosition(losingShortPos);
+
+      auto losing_returns = losing_history.getHighResBarReturns();
+      REQUIRE(losing_returns.size() == 2);
+
+      // Return 1: (close of entry bar - entry price) / entry price, negated.
+      // (100 - 100) / 100 = 0. Negated is 0.
+      DecimalType expectedReturn1_lose = (entryBarLose->getCloseValue() - entryPriceLose) / entryPriceLose;
+      REQUIRE(losing_returns[0] == (expectedReturn1_lose * -1));
+
+      // Return 2: (exit price - close of previous bar) / close of previous bar, negated.
+      // (105 - 100) / 100 = +0.05. Negated is -0.05.
+      DecimalType expectedReturn2_lose = (exitPriceLose - entryBarLose->getCloseValue()) / entryBarLose->getCloseValue();
+      REQUIRE(losing_returns[1] == (expectedReturn2_lose * -1));
+  }
+}
