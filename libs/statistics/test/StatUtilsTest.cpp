@@ -27,7 +27,7 @@ TEST_CASE("StatUtils::computeProfitFactor", "[StatUtils]") {
         // Gross Losses = -0.05 + -0.10 = -0.15
         // Profit Factor = 0.30 / abs(-0.15) = 2.0
         DecimalType expected("2.0");
-        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns, false) == expected);
     }
 
     // Test a scenario with only positive returns.
@@ -35,7 +35,7 @@ TEST_CASE("StatUtils::computeProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns = {DecimalType("0.10"), DecimalType("0.05"), DecimalType("0.20")};
         // With zero losses, the function should return a fixed large number to signify high profitability.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalOneHundred;
-        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns, false) == expected);
     }
 
     // Test a scenario with only negative returns.
@@ -43,7 +43,7 @@ TEST_CASE("StatUtils::computeProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns = {DecimalType("-0.10"), DecimalType("-0.05"), DecimalType("-0.20")};
         // With zero wins, the profit factor should be 0.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalZero;
-        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns, false) == expected);
     }
 
     // Test an edge case with an empty input vector.
@@ -51,7 +51,7 @@ TEST_CASE("StatUtils::computeProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns;
         // An empty set of returns implies no losses, so it should be treated as the no-loss case.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalOneHundred;
-        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns, false) == expected);
     }
 
     // Test a scenario where all returns are zero.
@@ -59,7 +59,7 @@ TEST_CASE("StatUtils::computeProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns = {DecimalType("0.0"), DecimalType("0.0"), DecimalType("0.0")};
         // Zero returns mean no wins and no losses.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalOneHundred;
-        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeProfitFactor(returns, false) == expected);
     }
 
     // Test the log-compressed variant of the profit factor calculation.
@@ -82,7 +82,7 @@ TEST_CASE("StatUtils::computeLogProfitFactor", "[StatUtils]") {
         // Log Losses = log(0.95) + log(0.9) ~= -0.051293 + -0.105360 = -0.156653
         // Log PF = 0.277631 / abs(-0.156653) ~= 1.77233
         double expected_val = (std::log(1.1) + std::log(1.2)) / std::abs(std::log(0.95) + std::log(0.9));
-        REQUIRE(num::to_double(StatUtils<DecimalType>::computeLogProfitFactor(returns)) == Catch::Approx(expected_val));
+        REQUIRE(num::to_double(StatUtils<DecimalType>::computeLogProfitFactor(returns, false)) == Catch::Approx(expected_val));
     }
 
     // Test with only winning trades.
@@ -90,7 +90,7 @@ TEST_CASE("StatUtils::computeLogProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns = {DecimalType("0.1"), DecimalType("0.2")};
         // No log losses, should return the constant for high profitability.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalOneHundred;
-        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns, false) == expected);
     }
 
     // Test with only losing trades.
@@ -98,7 +98,7 @@ TEST_CASE("StatUtils::computeLogProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns = {DecimalType("-0.1"), DecimalType("-0.2")};
         // No log wins, should be 0.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalZero;
-        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns, false) == expected);
     }
 
     // Test an edge case with an empty input vector.
@@ -106,7 +106,7 @@ TEST_CASE("StatUtils::computeLogProfitFactor", "[StatUtils]") {
         std::vector<DecimalType> returns;
         // No log wins or losses, treated as the no-loss case.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalOneHundred;
-        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns, false) == expected);
     }
 
     // Test that returns which would result in invalid log arguments (e.g., log(0) or log(<0)) are ignored.
@@ -115,7 +115,7 @@ TEST_CASE("StatUtils::computeLogProfitFactor", "[StatUtils]") {
         // log(1 + (-1.0)) and log(1 + (-1.5)) are invalid and should be skipped.
         // Only log(1 + 0.5) is valid. This results in Log Wins > 0 and Log Losses = 0.
         DecimalType expected = DecimalConstants<DecimalType>::DecimalOneHundred;
-        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns) == expected);
+        REQUIRE(StatUtils<DecimalType>::computeLogProfitFactor(returns, false) == expected);
     }
 
     // Test the log-compressed variant of the log profit factor.
@@ -186,5 +186,93 @@ TEST_CASE("StatUtils::computeProfitability", "[StatUtils]") {
 
         REQUIRE(num::to_double(pf) == Catch::Approx(2.0));
         REQUIRE(num::to_double(p) == Catch::Approx(50.0));
+    }
+}
+
+TEST_CASE("StatUtils::bootstrapWithReplacement", "[StatUtils][Bootstrap]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Random thread-local bootstrap produces same-sized output") {
+        std::vector<DecimalType> input = { DecimalType("0.1"), DecimalType("0.2"), DecimalType("0.3") };
+        auto result = Stat::bootstrapWithReplacement(input);
+        REQUIRE(result.size() == input.size());
+        for (const auto& val : result) {
+            REQUIRE((val == DecimalType("0.1") || val == DecimalType("0.2") || val == DecimalType("0.3")));
+        }
+    }
+
+    SECTION("Seeded bootstrap returns deterministic result") {
+        std::vector<DecimalType> input = { DecimalType("0.1"), DecimalType("0.2"), DecimalType("0.3") };
+        auto result1 = Stat::bootstrapWithReplacement(input, 5, 12345);
+        auto result2 = Stat::bootstrapWithReplacement(input, 5, 12345);
+
+        REQUIRE(result1.size() == 5);
+        REQUIRE(result2.size() == 5);
+        REQUIRE(result1 == result2);  // Deterministic behavior
+    }
+
+    SECTION("Bootstrap with explicit sample size larger than input") {
+        std::vector<DecimalType> input = { DecimalType("0.1"), DecimalType("0.2") };
+        auto result = Stat::bootstrapWithReplacement(input, 10);
+        REQUIRE(result.size() == 10);
+        for (const auto& val : result) {
+            REQUIRE((val == DecimalType("0.1") || val == DecimalType("0.2")));
+        }
+    }
+
+    SECTION("Bootstrap with empty input throws exception") {
+      std::vector<DecimalType> input;
+      REQUIRE_THROWS_AS(Stat::bootstrapWithReplacement(input), std::invalid_argument);
+    }
+}
+
+TEST_CASE("StatUtils::getBootStrappedProfitability with deterministic seed", "[StatUtils][Bootstrap]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Bootstrap with fixed seed produces reproducible profitability result") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15")
+        };
+
+        constexpr size_t numBootstraps = 10;
+        constexpr uint64_t seed = 42;
+
+        auto result1 = Stat::getBootStrappedProfitability(
+            returns,
+            Stat::computeProfitability,
+            numBootstraps,
+            seed
+        );
+
+        auto result2 = Stat::getBootStrappedProfitability(
+            returns,
+            Stat::computeProfitability,
+            numBootstraps,
+            seed
+        );
+
+        // Must be reproducible
+        REQUIRE(num::to_double(std::get<0>(result1)) == Catch::Approx(num::to_double(std::get<0>(result2))));
+        REQUIRE(num::to_double(std::get<1>(result1)) == Catch::Approx(num::to_double(std::get<1>(result2))));
+    }
+
+    SECTION("Bootstrap returns zero when sample size is too small") {
+        std::vector<DecimalType> smallSample = {
+            DecimalType("0.05"), DecimalType("-0.03")
+        };
+
+        auto result = Stat::getBootStrappedProfitability(
+            smallSample,
+            Stat::computeProfitability,
+            5,
+            123
+        );
+
+        REQUIRE(result == std::make_tuple(
+            DecimalConstants<DecimalType>::DecimalZero,
+            DecimalConstants<DecimalType>::DecimalZero
+        ));
     }
 }

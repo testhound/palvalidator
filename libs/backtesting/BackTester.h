@@ -250,14 +250,14 @@ namespace mkc_timeseries
      * @return A flat std::vector<Decimal> of all per-bar returns
      *         (closed and open) for that strategy.
      */
-    std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
+virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
     {
-      // 1) closed trades
-      const auto& closedHist = strat->getStrategyBroker()
-                                 .getClosedPositionHistory();
+      // 1) Get all high-resolution returns from closed trades.
+      // This logic is now correctly encapsulated in ClosedPositionHistory.
+      const auto& closedHist = strat->getStrategyBroker().getClosedPositionHistory();
       std::vector<Decimal> allReturns = closedHist.getHighResBarReturns();
 
-      // 2) any open positions
+      // 2) Append high-resolution returns from any currently open positions.
       for (auto it = strat->getPortfolio()->beginPortfolio();
 	   it != strat->getPortfolio()->endPortfolio();
 	   ++it)
@@ -274,23 +274,29 @@ namespace mkc_timeseries
 	      if (begin == end)
 		continue;
 
-	      // --- NEW LOGIC TO INCLUDE THE FIRST BAR'S P&L FOR OPEN POSITIONS ---
-	      const Decimal& entryPrice = posPtr->getEntryPrice();
-	      const auto& entryBar = begin->second;
-	      const Decimal& entryBarClose = entryBar.getCloseValue();
-          
-	      allReturns.push_back((entryBarClose - entryPrice) / entryPrice);
+	      // For open positions, the first reference price is the entry price
+	      Decimal prevReferencePrice = posPtr->getEntryPrice();
 
-	      if (std::distance(begin, end) < 2) 
-                continue;
-
-	      auto prev = begin;
-	      for (auto curr = std::next(begin); curr != end; ++curr)
+	      for (auto curr = begin; curr != end; ++curr)
 		{
-		  Decimal c0 = prev->second.getCloseValue();
-		  Decimal c1 = curr->second.getCloseValue();
-		  allReturns.push_back((c1 - c0) / c0);
-		  prev = curr;
+		  Decimal currentClose = curr->second.getCloseValue();
+                  Decimal returnForBar;
+
+                  if (prevReferencePrice != DecimalConstants<Decimal>::DecimalZero)
+                      returnForBar = (currentClose - prevReferencePrice) / prevReferencePrice;
+                  else
+                      returnForBar = DecimalConstants<Decimal>::DecimalZero;
+
+
+                  if (posPtr->isShortPosition())
+                  {
+                    returnForBar *= -1;
+                  }
+
+		  allReturns.push_back(returnForBar);
+
+                  // Update the reference price for the next bar's calculation
+		  prevReferencePrice = currentClose;
 		}
 	    }
 	}

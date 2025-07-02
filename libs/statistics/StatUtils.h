@@ -2,8 +2,12 @@
 #include <vector>
 #include <cmath>
 #include <tuple>
+#include <random>
+#include <functional> 
 #include "DecimalConstants.h"
 #include "number.h"
+#include "TimeSeriesIndicators.h"
+#include "randutils.hpp"
 
 namespace mkc_timeseries
 {
@@ -15,38 +19,6 @@ namespace mkc_timeseries
   template<class Decimal>
     struct StatUtils
     {
-    private:
-      /**
-       * @brief A private helper function to compute a factor from gains and losses.
-       * @details This function encapsulates the core ratio calculation and handles the
-       * division-by-zero case where losses are zero. It can also apply
-       * logarithmic compression to the result.
-       * @param gains The total sum of positive values (wins).
-       * @param losses The total sum of negative values (losses).
-       * @param compressResult A boolean flag; if true, applies log(1 + pf) to the result.
-       * @return The calculated factor as a Decimal.
-       */
-      static Decimal computeFactor(const Decimal& gains, const Decimal& losses, bool compressResult)
-      {
-        Decimal pf;
-	
-        // If there are no losses, return a fixed large number to signify a highly profitable state.
-        if (losses == DecimalConstants<Decimal>::DecimalZero)
-          {
-            pf = DecimalConstants<Decimal>::DecimalOneHundred;
-          }
-        else
-          {
-            pf = gains / num::abs(losses);
-          }
-	
-        // Apply log compression to the final profit factor if requested
-        if (compressResult)
-          return Decimal(std::log(num::to_double(DecimalConstants<Decimal>::DecimalOne + pf)));
-        else
-          return pf;
-      }
-
     public:
       /**
        * @brief Computes the Profit Factor from a series of returns.
@@ -70,6 +42,16 @@ namespace mkc_timeseries
           }
 	
         return computeFactor(win, loss, compressResult);
+      }
+
+      static Decimal computeProfitFactor(const std::vector<Decimal>& xs)
+      {
+	return computeProfitFactor(xs, false);
+      }
+      
+      static Decimal computeLogProfitFactor(const std::vector<Decimal>& xs)
+      {
+	return computeLogProfitFactor(xs, false);
       }
 
       /**
@@ -168,5 +150,148 @@ namespace mkc_timeseries
 
         return std::make_tuple(pf, p);
       }
-    };
+
+      static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
+								       std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
+								       size_t numBootstraps = 20)
+      {
+	if (barReturns.size() < 5)
+	  return std::make_tuple(DecimalConstants<Decimal>::DecimalZero,
+				 DecimalConstants<Decimal>::DecimalZero);
+
+	std::vector<Decimal> pfValues;
+	std::vector<Decimal> profitabilityValues;
+	pfValues.reserve(numBootstraps);
+	profitabilityValues.reserve(numBootstraps);
+
+	for (size_t i = 0; i < numBootstraps; ++i)
+	  {
+	    auto sample = StatUtils<Decimal>::bootstrapWithReplacement(barReturns);
+	    auto [pf, profitability] = statisticFunc(sample);
+	    pfValues.push_back(pf);
+	    profitabilityValues.push_back(profitability);
+	  }
+
+	Decimal medianPF = mkc_timeseries::MedianOfVec(pfValues);
+	Decimal medianProfitability = mkc_timeseries::MedianOfVec(profitabilityValues);
+
+	return std::make_tuple(medianPF, medianProfitability);
+      }
+
+      static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
+								       std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
+								       size_t numBootstraps,
+								       uint64_t seed)
+      {
+	if (barReturns.size() < 5)
+	  return std::make_tuple(DecimalConstants<Decimal>::DecimalZero,
+                               DecimalConstants<Decimal>::DecimalZero);
+	
+	std::vector<Decimal> pfValues;
+	std::vector<Decimal> profitabilityValues;
+	pfValues.reserve(numBootstraps);
+	profitabilityValues.reserve(numBootstraps);
+
+	for (size_t i = 0; i < numBootstraps; ++i)
+	  {
+	    auto sample = StatUtils<Decimal>::bootstrapWithReplacement(barReturns, 0, seed + i);  // ensure different samples
+	    auto [pf, profitability] = statisticFunc(sample);
+	    pfValues.push_back(pf);
+	    profitabilityValues.push_back(profitability);
+	  }
+
+	Decimal medianPF = mkc_timeseries::MedianOfVec(pfValues);
+	Decimal medianProfitability = mkc_timeseries::MedianOfVec(profitabilityValues);
+
+	return std::make_tuple(medianPF, medianProfitability);
+      }
+
+      // 🌐 Overload 1: Random bootstrap using thread-local rng
+      static std::vector<Decimal> bootstrapWithReplacement(const std::vector<Decimal>& input, size_t sampleSize = 0)
+      {
+	thread_local static randutils::mt19937_rng rng;
+	return bootstrapWithRNG(input, sampleSize, rng);
+      }
+
+      // 🔐 Overload 2: Deterministic bootstrap using seed
+      static std::vector<Decimal> bootstrapWithReplacement(const std::vector<Decimal>& input, size_t sampleSize, uint64_t seed)
+      {
+	std::array<uint32_t, 2> seed_data = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+	randutils::seed_seq_fe128 seed_seq(seed_data.begin(), seed_data.end());
+	randutils::mt19937_rng rng(seed_seq);
+	return bootstrapWithRNG(input, sampleSize, rng);
+      }
+
+      static Decimal getBootStrappedStatistic(const std::vector<Decimal>& barReturns,
+					      std::function<Decimal(const std::vector<Decimal>&)> statisticFunc,
+					      size_t numBootstraps = 20)
+      {
+	if (barReturns.size() < 5)
+	  return DecimalConstants<Decimal>::DecimalZero;
+
+	std::vector<Decimal> statistics;
+	statistics.reserve(numBootstraps);
+	
+	for (size_t i = 0; i < numBootstraps; ++i)
+	  {
+	    auto sample = StatUtils<Decimal>::bootstrapWithReplacement(barReturns);
+	    statistics.push_back(statisticFunc(sample));
+	  }
+
+	return mkc_timeseries::MedianOfVec(statistics);
+      }
+
+    private:
+      /**
+       * @brief A private helper function to compute a factor from gains and losses.
+       * @details This function encapsulates the core ratio calculation and handles the
+       * division-by-zero case where losses are zero. It can also apply
+       * logarithmic compression to the result.
+       * @param gains The total sum of positive values (wins).
+       * @param losses The total sum of negative values (losses).
+       * @param compressResult A boolean flag; if true, applies log(1 + pf) to the result.
+       * @return The calculated factor as a Decimal.
+       */
+      static Decimal computeFactor(const Decimal& gains, const Decimal& losses, bool compressResult)
+      {
+        Decimal pf;
+	
+        // If there are no losses, return a fixed large number to signify a highly profitable state.
+        if (losses == DecimalConstants<Decimal>::DecimalZero)
+          {
+            pf = DecimalConstants<Decimal>::DecimalOneHundred;
+          }
+        else
+          {
+            pf = gains / num::abs(losses);
+          }
+	
+        // Apply log compression to the final profit factor if requested
+        if (compressResult)
+          return Decimal(std::log(num::to_double(DecimalConstants<Decimal>::DecimalOne + pf)));
+        else
+          return pf;
+      }
+
+      // 🔒 Internal bootstrap helper that takes a user-supplied RNG
+      template<typename RNG>
+      static std::vector<Decimal> bootstrapWithRNG(const std::vector<Decimal>& input, size_t sampleSize, RNG& rng)
+      {
+	if (input.empty())
+	  throw std::invalid_argument("bootstrapWithRNG: input vector must not be empty");
+
+	if (sampleSize == 0)
+	  sampleSize = input.size();
+
+	std::vector<Decimal> result;
+	result.reserve(sampleSize);
+
+	for (size_t i = 0; i < sampleSize; ++i) {
+	  size_t index = rng.uniform(size_t(0), input.size() - 1);
+	  result.push_back(input[index]);
+	}
+
+	return result;
+      }
+  };
 }
