@@ -3,6 +3,9 @@
 #include <stdexcept>
 #include <algorithm>
 #include <set>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
 #include "IMastersSelectionBiasAlgorithm.h"
 #include "MastersPermutationTestComputationPolicy.h"
 #include "PermutationTestSubject.h"
@@ -167,11 +170,10 @@ namespace mkc_timeseries
 
  // Setup for formatted output
  std::cout << "\n--- Step-Down P-Value Adjustment Log ---\n";
- std::cout << std::left << std::setw(28) << "Strategy Name"
-    << std::setw(15) << "Exceed Count"
-    << std::setw(15) << "Raw P-Value"
-    << std::setw(20) << "Adjusted P-Value" << "\n";
- std::cout << std::string(80, '-') << std::endl;
+ std::cout << "Strategy Name"
+           << " | " << "Exceed Count"
+           << " | " << "Raw P-Value"
+           << " | " << "Adjusted P-Value" << "\n";
 
  std::map<unsigned long long, Decimal> pvals;
  Decimal lastAdjustedPValue = Decimal(0);
@@ -221,10 +223,10 @@ namespace mkc_timeseries
      Decimal adjustedPValue = std::max(pValue, lastAdjustedPValue);
      pvals[strategyHash] = adjustedPValue;
 
-     std::cout << std::left << std::setw(28) << context.strategy->getStrategyName()
-              << std::setw(15) << exceededCount
-              << std::fixed << std::setprecision(7) << std::setw(15) << pValue
-              << std::setw(20) << adjustedPValue << "\n";
+     std::cout << context.strategy->getStrategyName()
+              << " | " << exceededCount
+              << " | " << pValue
+              << " | " << adjustedPValue << "\n";
      
      // *****************************
      if (adjustedPValue <= sigLevel)
@@ -240,10 +242,10 @@ namespace mkc_timeseries
    pvals[later_ctx.strategy->getPatternHash()] = adjustedPValue;
    
    // Also log these subsequent strategies so the report is complete
-   std::cout << std::left << std::setw(28) << later_ctx.strategy->getStrategyName()
+   std::cout << std::left << std::setw(30) << later_ctx.strategy->getStrategyName()
       << std::setw(15) << "---" // No count for these
-      << std::fixed << std::setprecision(7) << std::setw(15) << "---" // No raw p-value
-      << std::setw(20) << adjustedPValue << " (Inherited)" << "\n";
+      << std::setw(18) << "---" // No raw p-value
+      << std::fixed << std::setprecision(7) << std::setw(20) << adjustedPValue << " (Inherited)" << "\n";
         }
     }
   //
