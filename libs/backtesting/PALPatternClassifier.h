@@ -128,14 +128,11 @@ namespace mkc_timeseries
       bool is_breakout = false;
       bool is_pullback = false;
 
-#if 0
-      std::cout << "\n--- Starting Classification for Pattern ---" << std::endl;
-#endif
-
       int bullish_context_score = 0;
       int bearish_context_score = 0;
       bool has_short_term_dip = false;
       bool has_short_term_rally = false;
+      size_t max_offset = 0;
 
       for (const auto& cond : conditions) {
 	PriceBarReference* lhs = cond->getLHS();
@@ -148,14 +145,12 @@ namespace mkc_timeseries
 	  bearish_context_score++;
 	  if (std::abs((int)lhs->getBarOffset() - (int)rhs->getBarOffset()) <= 2) has_short_term_dip = true;
 	}
+      
+	max_offset = std::max({max_offset, (size_t)lhs->getBarOffset(), (size_t)rhs->getBarOffset()});
       }
-        
-#if 0
-      std::cout << "Context Scores: Bullish=" << bullish_context_score << ", Bearish=" << bearish_context_score << std::endl;
-#endif
-        
+      
       int net_context = bullish_context_score - bearish_context_score;
-        
+      
       // --- Heuristic 1: Payoff Ratio is a powerful signal ---
       if (pattern->getPayoffRatio() > decimal7("0.0")) {
 	if (pattern->getPayoffRatio() < decimal7("1.0")) {
@@ -166,19 +161,23 @@ namespace mkc_timeseries
 	  scores[StrategyCategory::TREND_FOLLOWING] += 1;
 	}
       }
-        
+      
       // --- Heuristic 2: Specific pattern signatures ---
-      if (pattern->isLongPattern() && net_context > 1 && has_short_term_dip) {
+      // FIX 1: A high-confidence momentum pullback should not have a mean-reverting payoff ratio.
+      if (pattern->isLongPattern() && net_context > 1 && has_short_term_dip && pattern->getPayoffRatio() >= decimal7("1.0")) {
 	is_pullback = true;
 	scores[StrategyCategory::MOMENTUM] += 5;
 	rationale_pts.push_back("Strong Signal: Detected a PULLBACK in a strong uptrend.");
-      } else if (pattern->isShortPattern() && net_context <= -1 && has_short_term_rally) { // FIX: Changed < to <=
+      } else if (pattern->isShortPattern() && net_context < -1 && has_short_term_rally && pattern->getPayoffRatio() >= decimal7("1.0")) { 
 	is_pullback = true;
 	scores[StrategyCategory::MOMENTUM] += 5;
 	rationale_pts.push_back("Strong Signal: Detected a PULLBACK in a strong downtrend.");
       }
-      // FINAL FIX: Add specific logic for pullbacks in a balanced context (net_context == 0),
-      // which is characteristic of the "Complex Momentum Pullback" test case.
+      else if (pattern->isShortPattern() && net_context == -1 && pattern->getPayoffRatio() > decimal7("1.5") && has_short_term_rally) {
+        is_pullback = true;
+        scores[StrategyCategory::MOMENTUM] += 5;
+        rationale_pts.push_back("Signal: Detected a PULLBACK in a weak downtrend, confirmed by high payoff ratio.");
+      }
       else if (net_context == 0) {
 	if (pattern->isLongPattern() && has_short_term_dip) {
 	  scores[StrategyCategory::MOMENTUM] += 3;
@@ -191,7 +190,6 @@ namespace mkc_timeseries
 	}
       }
 
-
       for (const auto& cond : conditions) {
 	PriceBarReference* lhs = cond->getLHS();
 	PriceBarReference* rhs = cond->getRHS();
@@ -201,11 +199,16 @@ namespace mkc_timeseries
 	}
       }
 
-      if ((net_context > 1 || net_context < -1) && pattern->getPayoffRatio() < decimal7("1.0")) {
+      // FIX 2: Split the Trend Exhaustion logic. The max_offset check is only needed to differentiate
+      // short mean-reversion from longer-term short trend-following patterns.
+      bool is_bullish_exhaustion = (net_context > 1 && pattern->getPayoffRatio() < decimal7("1.0"));
+      bool is_bearish_exhaustion = (net_context <= -1 && pattern->getPayoffRatio() < decimal7("1.0") && max_offset < 3);
+
+      if (is_bullish_exhaustion || is_bearish_exhaustion) {
 	scores[StrategyCategory::MEAN_REVERSION] += 4;
 	rationale_pts.push_back("Signal: Strong trend context combined with low payoff suggests Trend Exhaustion.");
       }
-        
+      
       // --- Heuristic 3: General Trend Alignment (if not a specific signature) ---
       if (!is_pullback) {
 	if (net_context > 0) { // Bullish context
@@ -214,12 +217,6 @@ namespace mkc_timeseries
 	  if (pattern->isShortPattern()) scores[StrategyCategory::TREND_FOLLOWING] += 3; else scores[StrategyCategory::MEAN_REVERSION] += 3;
 	}
       }
-
-#if 0
-      std::cout << "Final Scores: Trend=" << scores[StrategyCategory::TREND_FOLLOWING]
-		<< ", Momentum=" << scores[StrategyCategory::MOMENTUM]
-		<< ", MeanReversion=" << scores[StrategyCategory::MEAN_REVERSION] << std::endl;
-#endif
 
       // --- Final Decision ---
       ClassificationResult result;

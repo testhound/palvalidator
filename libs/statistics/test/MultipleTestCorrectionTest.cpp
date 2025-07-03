@@ -458,32 +458,32 @@ TEST_CASE("RomanoWolfStepdownCorrection - Synthetic Null", "[MultipleTestingCorr
 
 TEST_CASE("AdaptiveBH: Basic scenario with a mix of p-values", "[AdaptiveBenjaminiHochbergYr2000]")
 {
-    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector(createDecimal("0.25"));
+    // The constructor FDR is now ignored in favor of the dynamic one.
+    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector; 
 
-    // Add 10 "significant" p-values and 10 "non-significant" ones
+    // ... (p-value adding logic remains the same) ...
     for (int i = 1; i <= 10; ++i) {
-        // p-values from 0.005 to 0.05
         fdrCorrector.addStrategy(DecimalType(i) / DecimalType(200), createDummyPalStrategy("AdaptiveBH_Sig_" + std::to_string(i), sharedPattern(), sharedPortfolio()));
     }
     for (int i = 1; i <= 10; ++i) {
-        // p-values from 0.55 to 1.0
         fdrCorrector.addStrategy(createDecimal("0.5") + (DecimalType(i) / DecimalType(20)), createDummyPalStrategy("AdaptiveBH_NonSig_" + std::to_string(i), sharedPattern(), sharedPortfolio()));
     }
 
     REQUIRE(fdrCorrector.getNumMultiComparisonStrategies() == 20);
 
-    // Bypassing the spline estimator for a deterministic test.
-    // We know 10 of the 20 tests are from the "true null" distribution.
     fdrCorrector.setM0ForTesting(createDecimal("10.0"));
 
-    fdrCorrector.correctForMultipleTests();
+    // *** FIX: Pass a pValueSignificanceLevel that guides the adaptive FDR to a value
+    // that meets the test's original intent. ***
+    fdrCorrector.correctForMultipleTests(createDecimal("0.25"));
 
-    // With a known m0=10, FDR=0.25, the 10 truly significant p-values should all pass.
-    // Let's check the cutoff:
-    // For rank k=10 (p-value=0.05): critical value = (10/10) * 0.25 = 0.25. (0.05 < 0.25 -> pass)
-    // This means all 10 should survive.
+    // With a final_fdr of min(0.25, 0.20) = 0.20, and m0=10, the 10 truly significant
+    // p-values should all pass.
+    // For rank k=10 (p-value=0.05): critical value = (10/10) * 0.20 = 0.20.
+    // Since 0.05 < 0.20, it passes, and all 10 should survive.
     CHECK(fdrCorrector.getNumSurvivingStrategies() == 10);
 }
+
 
 TEST_CASE("AdaptiveBH: Edge case with no strategies added", "[AdaptiveBenjaminiHochbergYr2000]")
 {

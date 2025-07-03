@@ -609,6 +609,7 @@ class random_generator {
 public:
     using engine_type       = RandomEngine;
     using default_seed_type = DefaultSeedSeq;
+    using result_type       = typename RandomEngine::result_type;
 private:
     engine_type engine_;
 
@@ -641,9 +642,10 @@ private:
     }
 
     template <typename SeedSeq>
-    static SeedSeq seed_seq_cast(SeedSeq&& seq,
+    static auto seed_seq_cast(SeedSeq&& seq,
                                    typename std::enable_if<
                                      !has_base_seed_seq<SeedSeq>(0)>::type* = 0)
+                                         -> SeedSeq&
     {
         return seq;
     }

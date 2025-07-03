@@ -76,7 +76,12 @@ namespace mkc_timeseries
         throw std::invalid_argument("PALRomanoWolfMonteCarloValidation::runPermutationTests - baseSecurity and patterns must not be null.");
 
       if (verbose)
-        std::cout << "Starting Romano-Wolf validation..." << std::endl;
+	{
+	  std::cout << "Starting Romano-Wolf validation..." << std::endl;
+	  std::cout << "OOS Date Range: " << dateRange.getFirstDateTime()
+		    << " to " << dateRange.getLastDateTime() << std::endl;
+	}
+		  
 
       // 1. Prepare baseline stats for ALL strategies first
       auto templateBackTester = BackTesterFactory<Decimal>::getBackTester(baseSecurity->getTimeSeries()->getTimeFrame(), dateRange);
@@ -93,12 +98,18 @@ namespace mkc_timeseries
       // 2. Execute tests based on partitioning choice
       if (partitionByFamily)
       {
-        if (verbose) std::cout << "Partitioning strategies by detailed family (Category + Direction)..." << std::endl;
-        StrategyFamilyPartitioner<Decimal> partitioner(allStrategyData);
+	bool partitionBySubType = (patterns->getNumPatterns() >= 1000) ? true : false;
+	
+	if (verbose)
+	  {
+	    std::string detail = partitionBySubType ? "Category, SubType, and Direction" :
+	      "Category and Direction";
+	    std::cout << "Partitioning strategies by detailed family (" << detail << ")..." << std::endl;
+	  }
+
+        StrategyFamilyPartitioner<Decimal> partitioner(allStrategyData, partitionBySubType);
         if (verbose)
-        {
           printFamilyStatistics(partitioner);
-        }
 
         for (const auto& familyPair : partitioner)
         {

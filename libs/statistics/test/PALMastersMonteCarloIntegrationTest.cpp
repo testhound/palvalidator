@@ -28,7 +28,7 @@ public:
         }
         auto stratPtr = *(bt->beginStrategies());
         std::vector<Decimal> barSeries = bt->getAllHighResReturns(stratPtr.get());
-        return StatUtils<Decimal>::computeLogProfitFactor(barSeries);
+        return StatUtils<Decimal>::computeLogProfitFactor(barSeries, false);
     }
     
     static unsigned int getMinStrategyTrades() { return 0; } // No minimum!

@@ -8,6 +8,7 @@
 #define __DECIMAL_CONSTANT_H 1
 
 #include <string>
+#include "decimal.h"
 
 namespace mkc_timeseries
 {
@@ -34,7 +35,7 @@ namespace mkc_timeseries
       
       static Decimal createDecimal (const std::string& valueString)
       {
-	return ::dec::fromString<Decimal>(valueString);
+	return dec::fromString<Decimal>(valueString);
       }
     };
 

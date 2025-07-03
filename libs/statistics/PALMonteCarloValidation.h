@@ -346,7 +346,12 @@ namespace mkc_timeseries
       }
 
       if (verbose)
-	std::cout << "PALMonteCarloValidation starting validation" << std::endl;
+	{
+	  std::cout << "PALMonteCarloValidation starting validation" << std::endl;
+	  std::cout << "OOS Date Range: " << dateRange.getFirstDateTime()
+		    << " to " << dateRange.getLastDateTime() << std::endl;
+	}
+
 
       // 1) Prepare data
       auto oosTS     = FilterTimeSeries<Decimal>(*baseSecurity->getTimeSeries(), dateRange);

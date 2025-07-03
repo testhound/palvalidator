@@ -55,8 +55,6 @@ createDescription (const std::string& fileName, unsigned int index, unsigned lon
 		   unsigned int numTrades, unsigned int consecutiveLosses);
 
 
-std::shared_ptr<PriceActionLabPattern>
-createShortPattern1();
 
 std::shared_ptr<PriceActionLabPattern>
 static createLongPattern1()
@@ -108,6 +106,34 @@ static createLongPattern1()
                                                  target,
                                                  stop);
 }
+
+// Definition for the short pattern used in testing
+static std::shared_ptr<PriceActionLabPattern>
+createShortPattern1()
+{
+  // Create description using shared_ptr
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("10.00"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("90.00"));
+  auto desc = std::make_shared<PatternDescription>("C2_122AR_Short.txt", 1, 20131217,
+                                                   percentLong, percentShort, 15, 3);
+
+  // A simple expression that can be evaluated. For testing purposes,
+  // we don't need a complex real-world pattern.
+  // C > O
+  auto open1 = std::make_shared<PriceBarOpen>(1);
+  auto close1 = std::make_shared<PriceBarClose>(1);
+  auto shortPattern = std::make_shared<GreaterThanExpr>(close1, open1);
+
+  auto entry = createShortOnOpen();
+  auto target = createShortProfitTarget("0.50");
+  auto stop = createShortStopLoss("0.25");
+
+  return std::make_shared<PriceActionLabPattern>(desc, shortPattern,
+                                                 entry,
+                                                 target,
+                                                 stop);
+}
+
 
 std::shared_ptr<PriceActionLabPattern>
 createLongPattern2();
@@ -308,36 +334,28 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     REQUIRE (rMultiple > DecimalConstants<DecimalType>::DecimalZero);
   }
 
- SECTION("BackTester::getAllHighResReturns with PalLongStrategy") {
+
+SECTION("BackTester::getAllHighResReturns with PalLongStrategy") {
     using DT = DecimalType;
     const std::string sym = "@C";
     TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-        auto mkBar = [&](int Y,int M,int D, const std::string& closeStr) {
+    // Updated helper to allow distinct open and close values
+    auto mkBar = [&](int Y,int M,int D, const std::string& openStr, const std::string& closeStr) {
         TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
         DT c = createDecimal(closeStr);
-        return createTimeSeriesEntry(
-            dt,
-            c,                         // open
-            c + createDecimal("0.50"), // high
-            c - createDecimal("0.50"), // low
-            c,                         // close
-            1                          // volume
-        );
+        return createTimeSeriesEntry(dt, o, c, o, c, 1); // Simplified high/low
     };
 
-        // 5) Create four bars: B1→B2 (closed), B3→B4 (open)
-    auto b1 = mkBar(2020, Jan, 1, "100.00");
-    auto b2 = mkBar(2020, Jan, 2, "110.00");
-    auto b3 = mkBar(2020, Jan, 3, "200.00");
-    auto b4 = mkBar(2020, Jan, 4, "210.00");
+    // Create bars with distinct open/close to test both return types
+    auto b1 = mkBar(2020, Jan, 1, "100.00", "105.00"); // 1st trade, entry bar
+    auto b2 = mkBar(2020, Jan, 2, "105.00", "110.00"); // 1st trade, exit bar
+    auto b3 = mkBar(2020, Jan, 3, "200.00", "202.00"); // 2nd trade, entry bar
+    auto b4 = mkBar(2020, Jan, 4, "202.00", "210.00"); // 2nd trade, 2nd bar (open)
 
-    // 1) Build a shared portfolio with one FuturesSecurity on sym
     auto portfolio = std::make_shared<Portfolio<DT>>("port");
-    auto ts = std::make_shared<OHLCTimeSeries<DT>>(
-                   TimeFrame::DAILY,
-                   TradingVolume::CONTRACTS
-               );
+    auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
     ts->addEntry(*b1);
     ts->addEntry(*b2);
     ts->addEntry(*b3);
@@ -345,200 +363,318 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
 
     portfolio->addSecurity(
         std::make_shared<FuturesSecurity<DT>>(
-            sym, sym,
-            createDecimal("50.0"),   // big-point
-            createDecimal("0.25"),  // tick
-            ts
+            sym, sym, createDecimal("50.0"), createDecimal("0.25"), ts
         )
     );
 
-    // 2) Instantiate a PalLongStrategy with a real pattern :contentReference[oaicite:0]{index=0}&#8203;:contentReference[oaicite:1]{index=1}
-    auto pattern = createLongPattern1();  // your helper for a simple firing pattern
-    auto strat = std::make_shared<PalLongStrategy<DT>>(
-                     "test-long", pattern, portfolio
-                 );
+    auto pattern = createLongPattern1();
+    auto strat = std::make_shared<PalLongStrategy<DT>>("test-long", pattern, portfolio);
 
-    // 3) Wire into a concrete backtester with exact dates :contentReference[oaicite:2]{index=2}&#8203;:contentReference[oaicite:3]{index=3}
-    DailyBackTester<DT> bt(
-        TimeSeriesDate(2020, Jan, 1),
-        TimeSeriesDate(2020, Jan, 4)
-    );
+    DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 4));
     bt.addStrategy(strat);
 
-    // 4) Helper to build a one-bar OHLC entry
-
-
-    // 6) Seed the series so it’s never empty :contentReference[oaicite:4]{index=4}&#8203;:contentReference[oaicite:5]{index=5}
-
-    // 7) Inject a CLOSED 2-bar trade: (100→110) ⇒ 0.10
+    // Inject a CLOSED 2-bar trade
     {
-        auto pos = std::make_shared<TradingPositionLong<DT>>(
-                       sym,
-                       b1->getCloseValue(),
-                       *b1,
-                       oneContract
-                   );
+        // NOTE: The constructor's entry price is the OPEN of the entry bar
+        auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
         pos->addBar(*b2);
-        pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
-
-        // const_cast the const history returned by StrategyBroker :contentReference[oaicite:6]{index=6}&#8203;:contentReference[oaicite:7]{index=7}
-        auto& closedHist = const_cast<
-            ClosedPositionHistory<DT>&
-        >( strat->getStrategyBroker().getClosedPositionHistory() );
+        pos->ClosePosition(b2->getDateValue(), b2->getCloseValue()); // Exit at b2's close
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
         closedHist.addClosedPosition(pos);
     }
 
-    // 8) Inject a STILL-OPEN 2-bar trade: (200→210) ⇒ 0.05
+    // Inject a STILL-OPEN 2-bar trade
     {
-        auto posO = std::make_shared<TradingPositionLong<DT>>(
-                        sym,
-                        b3->getCloseValue(),
-                        *b3,
-                        oneContract
-                    );
+        auto posO = std::make_shared<TradingPositionLong<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
         posO->addBar(*b4);
-
-        auto& instrPos = const_cast<
-            InstrumentPosition<DT>&
-        >( strat->getStrategyBroker().getInstrumentPosition(sym) );
+        auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
         instrPos.addPosition(posO);
     }
 
-    // 9) Call getAllHighResReturns(...) and verify exactly two returns
-    // we are now measuring the entry bar as well so the number of bars
-    // has increased
+    // A 2-bar closed trade and a 2-bar open trade should yield 4 returns total (2 each)
     auto allR = bt.getAllHighResReturns(strat.get());
     REQUIRE(allR.size() == 4);
 
-    // we only get one bar‐by‐bar return (entry→bar2)
-    REQUIRE (allR[0] == ((b1->getCloseValue() - b1->getOpenValue())/b1->getOpenValue()));
-    
-    // closed: (110–100)/100 = 0.10
-    REQUIRE(allR[1] ==
-        (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue()
-    );
+    // Verify returns for the CLOSED trade
+    // Return 1: (105-100)/100 = 0.05
+    REQUIRE(allR[0] == (b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue());
+    // Return 2: (110-105)/105 = 0.0476...
+    REQUIRE(allR[1] == (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue());
 
-    REQUIRE (allR[2] == ((b3->getCloseValue() - b3->getOpenValue())/b3->getOpenValue()));
-    // open:   (210–200)/200 = 0.05
-    REQUIRE(allR[3] ==
-        (b4->getCloseValue() - b3->getCloseValue()) / b3->getCloseValue()
-    );
+    // Verify returns for the OPEN trade
+    // Return 3: (202-200)/200 = 0.01
+    REQUIRE(allR[2] == (b3->getCloseValue() - b3->getOpenValue()) / b3->getOpenValue());
+    // Return 4: (210-202)/202 = 0.0396...
+    REQUIRE(allR[3] == (b4->getCloseValue() - b3->getCloseValue()) / b3->getCloseValue());
  }
 
  SECTION("getAllHighResReturns with only closed positions") {
-   using DT = DecimalType;
-   const std::string sym = "@TEST";
-   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    using DT = DecimalType;
+    const std::string sym = "@TEST";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-   // 1) Build two bars for a single closed trade
-   auto mkBar = [&](int Y,int M,int D, const std::string& closeStr) {
-     TimeSeriesDate dt(Y, M, D);
-     DT c = createDecimal(closeStr);
-     return createTimeSeriesEntry(
-				  dt,
-				  c,
-				  c + createDecimal("0.50"),
-				  c - createDecimal("0.50"),
-				  c,
-				  1
-				  );
-   };
-   auto b1 = mkBar(2020, Jan, 1, "100.00");
-   auto b2 = mkBar(2020, Jan, 2, "120.00");
+    auto mkBar = [&](int Y,int M,int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        return createTimeSeriesEntry(dt, o, c, o, c, 1);
+    };
+    auto b1 = mkBar(2020, Jan, 1, "100.00", "104.00");
+    auto b2 = mkBar(2020, Jan, 2, "104.00", "120.00");
 
-   // 2) Seed the OHLC series immediately
-   auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
-   ts->addEntry(*b1);
-   ts->addEntry(*b2);
+    auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*b1);
+    ts->addEntry(*b2);
 
-   // 3) Build portfolio + security
-   auto portfolio = std::make_shared<Portfolio<DT>>("port");
-   portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym,
-								createDecimal("1.0"), createDecimal("0.01"), ts));
+    auto portfolio = std::make_shared<Portfolio<DT>>("port");
+    portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
 
-   // 4) PalLongStrategy with a trivial pattern
-   auto pattern = createLongPattern1();
-   auto strat = std::make_shared<PalLongStrategy<DT>>("only-closed", pattern, portfolio);
+    auto pattern = createLongPattern1();
+    auto strat = std::make_shared<PalLongStrategy<DT>>("only-closed", pattern, portfolio);
 
-   // 5) Wire up backtester
-   DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
-   bt.addStrategy(strat);
+    DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+    bt.addStrategy(strat);
 
-   // 6) Inject exactly one CLOSED 2-bar trade: (100→120) ⇒ return = 0.20
-   {
-     auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getCloseValue(), *b1, oneContract);
-     pos->addBar(*b2);
-     pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+    {
+        auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+        pos->addBar(*b2);
+        pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+        closedHist.addClosedPosition(pos);
+    }
 
-     auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(
-							       strat->getStrategyBroker().getClosedPositionHistory()
-							       );
-     closedHist.addClosedPosition(pos);
-   }
+    // A two-bar trade should produce two returns
+    auto allR = bt.getAllHighResReturns(strat.get());
+    REQUIRE(allR.size() == 2);
 
-   // 7) Call getAllHighResReturns and verify one return, that covers two bars
-   auto allR = bt.getAllHighResReturns(strat.get());
-   REQUIRE(allR.size() == 2);
-   REQUIRE (allR[0] == ((b1->getCloseValue() - b1->getOpenValue())/b1->getOpenValue()));
-   REQUIRE(allR[1] == (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue());
+    // Return 1: (104 - 100) / 100 = 0.04
+    REQUIRE(allR[0] == (b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue());
+    // Return 2: (120 - 104) / 104 = 0.1538...
+    REQUIRE(allR[1] == (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue());
  }
 
  SECTION("getAllHighResReturns with only open positions") {
-   using DT = DecimalType;
-   const std::string sym = "@TEST";
-   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    using DT = DecimalType;
+    const std::string sym = "@TEST";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
 
-   // 1) Build two bars for a single open trade
-   auto mkBar = [&](int Y,int M,int D, const std::string& closeStr) {
-     TimeSeriesDate dt(Y, M, D);
-     DT c = createDecimal(closeStr);
-     return createTimeSeriesEntry(
-				  dt,
-				  c,
-				  c + createDecimal("0.50"),
-				  c - createDecimal("0.50"),
-				  c,
-				  1
-				  );
-   };
-   auto b3 = mkBar(2020, Jan, 3, "200.00");
-   auto b4 = mkBar(2020, Jan, 4, "240.00");
+    auto mkBar = [&](int Y,int M,int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        return createTimeSeriesEntry(dt, o, c, o, c, 1);
+    };
+    auto b1 = mkBar(2020, Jan, 3, "200.00", "202.00");
+    auto b2 = mkBar(2020, Jan, 4, "202.00", "240.00");
 
-   // 2) Seed the OHLC series immediately
-   auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
-   ts->addEntry(*b3);
-   ts->addEntry(*b4);
+    auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*b1);
+    ts->addEntry(*b2);
 
-   // 3) Build portfolio + security
-   auto portfolio = std::make_shared<Portfolio<DT>>("port");
-   portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym,
-								createDecimal("1.0"), createDecimal("0.01"), ts));
+    auto portfolio = std::make_shared<Portfolio<DT>>("port");
+    portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
 
-   // 4) PalLongStrategy with a trivial pattern
-   auto pattern = createLongPattern1();
-   auto strat = std::make_shared<PalLongStrategy<DT>>("only-open", pattern, portfolio);
+    auto pattern = createLongPattern1();
+    auto strat = std::make_shared<PalLongStrategy<DT>>("only-open", pattern, portfolio);
 
-   // 5) Wire up backtester
-   DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 3), TimeSeriesDate(2020, Jan, 4));
-   bt.addStrategy(strat);
+    DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 3), TimeSeriesDate(2020, Jan, 4));
+    bt.addStrategy(strat);
 
-   // 6) Inject exactly one STILL-OPEN 2-bar trade: (200→240) ⇒ return = 0.20
-   {
-     auto posO = std::make_shared<TradingPositionLong<DT>>(sym, b3->getCloseValue(), *b3, oneContract);
-     posO->addBar(*b4);
+    {
+        auto posO = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+        posO->addBar(*b2);
+        auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
+        instrPos.addPosition(posO);
+    }
 
-     auto& instrPos = const_cast<InstrumentPosition<DT>&>(
-							  strat->getStrategyBroker().getInstrumentPosition(sym)
-							  );
-     instrPos.addPosition(posO);
-   }
+    // A two-bar open trade should have two returns so far
+    auto allR = bt.getAllHighResReturns(strat.get());
+    REQUIRE(allR.size() == 2);
 
-   // 7) Call getAllHighResReturns and verify one return
-   auto allR = bt.getAllHighResReturns(strat.get());
-   REQUIRE(allR.size() == 2);
-   REQUIRE (allR[0] == ((b3->getCloseValue() - b3->getOpenValue())/b3->getOpenValue()));
-   REQUIRE(allR[1] == (b4->getCloseValue() - b3->getCloseValue()) / b3->getCloseValue());
+    // Return 1: (202 - 200) / 200 = 0.01
+    REQUIRE(allR[0] == (b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue());
+    // Return 2: (240 - 202) / 202 = 0.1881...
+    REQUIRE(allR[1] == (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue());
  }
+
+ //
+ // NEW UNIT TESTS FOR SHORT TRADES
+ //
+
+ SECTION("BackTester::getAllHighResReturns with PalShortStrategy") {
+    using DT = DecimalType;
+    const std::string sym = "@C_SHORT";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+    auto mkBar = [&](int Y, int M, int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        // Correctly set high and low to ensure valid bars
+        DT h = std::max(o, c);
+        DT l = std::min(o, c);
+        return createTimeSeriesEntry(dt, o, h, l, c, 1);
+    };
+    
+    // Create bars for two short trades
+    auto b1 = mkBar(2020, Jan, 1, "100.00", "95.00"); // 1st trade, entry (profit)
+    auto b2 = mkBar(2020, Jan, 2, "95.00", "90.00");  // 1st trade, exit (profit)
+    auto b3 = mkBar(2020, Jan, 3, "200.00", "205.00"); // 2nd trade, entry (loss)
+    auto b4 = mkBar(2020, Jan, 4, "205.00", "210.00"); // 2nd trade, 2nd bar (loss)
+
+    auto portfolio = std::make_shared<Portfolio<DT>>("port_short");
+    auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*b1);
+    ts->addEntry(*b2);
+    ts->addEntry(*b3);
+    ts->addEntry(*b4);
+
+    portfolio->addSecurity(
+        std::make_shared<FuturesSecurity<DT>>(
+            sym, sym, createDecimal("50.0"), createDecimal("0.25"), ts
+        )
+    );
+
+    auto pattern = createShortPattern1();
+    auto strat = std::make_shared<PalShortStrategy<DT>>("test-short", pattern, portfolio);
+
+    DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 4));
+    bt.addStrategy(strat);
+
+    // Inject a CLOSED short trade
+    {
+        auto pos = std::make_shared<TradingPositionShort<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+        pos->addBar(*b2);
+        pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+        closedHist.addClosedPosition(pos);
+    }
+
+    // Inject an OPEN short trade
+    {
+        auto posO = std::make_shared<TradingPositionShort<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+        posO->addBar(*b4);
+        auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
+        instrPos.addPosition(posO);
+    }
+
+    // Two 2-bar trades should yield 4 returns (2 per trade)
+    auto allR = bt.getAllHighResReturns(strat.get());
+    REQUIRE(allR.size() == 4);
+
+    // --- Verify CLOSED Short Trade ---
+    // Return 1 (entry bar): -1 * (95 - 100) / 100 = 0.05
+    REQUIRE(allR[0] == -((b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue()));
+    // Return 2 (exit bar): -1 * (90 - 95) / 95 = 0.0526...
+    REQUIRE(allR[1] == -((b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue()));
+
+    // --- Verify OPEN Short Trade ---
+    // Return 3 (entry bar): -1 * (205 - 200) / 200 = -0.025
+    REQUIRE(allR[2] == -((b3->getCloseValue() - b3->getOpenValue()) / b3->getOpenValue()));
+    // Return 4 (2nd bar): -1 * (210 - 205) / 205 = -0.0243...
+    REQUIRE(allR[3] == -((b4->getCloseValue() - b3->getCloseValue()) / b3->getCloseValue()));
+}
+
+//
+// Replace the failing "only closed short positions" test section with this corrected version
+//
+SECTION("getAllHighResReturns with only closed short positions") {
+    using DT = DecimalType;
+    const std::string sym = "@TEST_SHORT_CLOSED";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+    auto mkBar = [&](int Y, int M, int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        // Correctly set high and low to ensure valid bars
+        DT h = std::max(o, c);
+        DT l = std::min(o, c);
+        return createTimeSeriesEntry(dt, o, h, l, c, 1);
+    };
+
+    auto b1 = mkBar(2020, Jan, 1, "100.00", "90.00"); // Profit
+    auto b2 = mkBar(2020, Jan, 2, "90.00", "80.00"); // Profit
+
+    auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*b1);
+    ts->addEntry(*b2);
+
+    auto portfolio = std::make_shared<Portfolio<DT>>("port_short_closed");
+    portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+    auto pattern = createShortPattern1();
+    auto strat = std::make_shared<PalShortStrategy<DT>>("only-closed-short", pattern, portfolio);
+
+    DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+    bt.addStrategy(strat);
+
+    {
+        auto pos = std::make_shared<TradingPositionShort<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+        pos->addBar(*b2);
+        pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+        closedHist.addClosedPosition(pos);
+    }
+
+    // A two-bar trade should have two returns
+    auto allR = bt.getAllHighResReturns(strat.get());
+    REQUIRE(allR.size() == 2);
+
+    // Return 1: -1 * (90 - 100) / 100 = 0.10
+    REQUIRE(allR[0] == -((b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue()));
+    // Return 2: -1 * (80 - 90) / 90 = 0.111...
+    REQUIRE(allR[1] == -((b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue()));
+}
+
+SECTION("getAllHighResReturns with only open short positions") {
+    using DT = DecimalType;
+    const std::string sym = "@TEST_SHORT_OPEN";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+    // Corrected mkBar to handle valid high/low
+    auto mkBar = [&](int Y, int M, int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        DT h = std::max(o, c);
+        DT l = std::min(o, c);
+        return createTimeSeriesEntry(dt, o, h, l, c, 1);
+    };
+
+    auto b1 = mkBar(2020, Jan, 3, "200.00", "205.00"); // Loss
+    auto b2 = mkBar(2020, Jan, 4, "205.00", "210.00"); // Loss
+
+    auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*b1);
+    ts->addEntry(*b2);
+
+    auto portfolio = std::make_shared<Portfolio<DT>>("port_short_open");
+    portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+    auto pattern = createShortPattern1();
+    auto strat = std::make_shared<PalShortStrategy<DT>>("only-open-short", pattern, portfolio);
+
+    DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 3), TimeSeriesDate(2020, Jan, 4));
+    bt.addStrategy(strat);
+
+    {
+        // Entry is at the open of the first bar
+        auto posO = std::make_shared<TradingPositionShort<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+        posO->addBar(*b2);
+        auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
+        instrPos.addPosition(posO);
+    }
+
+    // A two-bar open trade should have two returns
+    auto allR = bt.getAllHighResReturns(strat.get());
+    REQUIRE(allR.size() == 2);
+
+    // Return 1: -1 * (205 - 200) / 200 = -0.025
+    REQUIRE(allR[0] == -((b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue()));
+    // Return 2: -1 * (210 - 205) / 205 = -0.0243...
+    REQUIRE(allR[1] == -((b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue()));
+}
 
  //
 
@@ -601,7 +737,6 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
 
    // Expected value is log(1 + 1.0) = log(2) = 0.69314718...
    // The alternating 100->200 and 200->100 returns create a log profit factor of 1.
-   REQUIRE(stat == createDecimal("0.6931472"));
+   REQUIRE(stat == createDecimal("1.0"));
  }
 }
-

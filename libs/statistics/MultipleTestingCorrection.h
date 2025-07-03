@@ -508,17 +508,23 @@ namespace mkc_timeseries
 	    }
 	}
 
+      m0_estimate = std::max(DecimalConstants<Decimal>::DecimalOne, m0_estimate);
+
+      // Calculate the dynamic FDR using the provided p-value cutoff.
+      Decimal dynamic_fdr = estimateFDRForPValue(pValueSignificanceLevel, m0_estimate);
+
+      const Decimal fdr_ceiling = DecimalConstants<Decimal>::createDecimal("0.20");
+      Decimal final_fdr = std::min(fdr_ceiling, dynamic_fdr);
+      
       auto const& container = container_.getInternalContainer();
       Decimal rank(static_cast<int>(getNumMultiComparisonStrategies()));
       bool cutoff_found = false;
 
       std::cout << "--- Benjamini-Hochberg Adaptive Procedure ---" << std::endl;
+
       std::cout << "Total Tests (m): " << getNumMultiComparisonStrategies()
 		<< ", Estimated True Nulls (m0): " << m0_estimate
-		<< ", FDR (q): " << mFalseDiscoveryRate << std::endl;
-      Decimal estimatedFDR = estimateFDRForPValue(pValueSignificanceLevel);
-      std::cout << "** Estimated FDR for pvalue of " << pValueSignificanceLevel << ", = " << estimatedFDR << std::endl;
-
+		<< ", Final Adaptive FDR (q): " << final_fdr << std::endl;
       std::cout << "-----------------------------------------------" << std::endl;
 
       // Iterate through all strategies from highest p-value to lowest
@@ -527,12 +533,12 @@ namespace mkc_timeseries
 	  Decimal pValue = it->first;
 
 	  // Calculate the critical value for the current rank
-	  Decimal criticalValue = (rank / m0_estimate) * mFalseDiscoveryRate;
+	  Decimal criticalValue = (rank / m0_estimate) * final_fdr;
 
 	  // Print the comparison for this step
-	  std::cout << "Checking p-value: " << std::left << std::setw(12) << pValue
-		    << "(rank " << std::setw(3) << rank << ")"
-		    << " vs. Critical Value: " << std::left << std::setw(12) << criticalValue;
+	  std::cout << "Checking p-value: "  << pValue
+		    << "(rank " << rank << ")"
+		    << " vs. Critical Value: " << criticalValue;
 
 	  // If we haven't found the cutoff yet, check if this p-value meets the criterion.
 	  // Once the condition is met, all subsequent (smaller) p-values are also significant.
@@ -668,7 +674,11 @@ namespace mkc_timeseries
         std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
         return Decimal(m);
     }
-    
+
+    // std::cout << "[SplineFit Report] Termination Type: " << rep.terminationtype << std::endl;
+    std::cout << "[SplineFit Report] RMS Error: " << rep.rmserror << std::endl;
+    std::cout << "[SplineFit Report] Max Error: " << rep.maxerror << std::endl;
+
     // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
     double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
 
@@ -684,7 +694,7 @@ namespace mkc_timeseries
               << ", m0_hat = " << m0_hat
               << ", m = " << static_cast<Decimal>(m) << std::endl;
               
-    return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
+    return m0_hat;
   }
 
   /**
@@ -789,12 +799,18 @@ namespace mkc_timeseries
   }
 
   public:
-    // Hypothetical new method for the class
     Decimal estimateFDRForPValue(const Decimal& pValueCutoff)
     {
-      // 1. Ensure m0 (or pi0) has been estimated.
-      //    This might involve running the spline estimation if not already done.
       Decimal m0_estimate = estimateM0StoreySmoothedALGLIB();
+      return estimateFDRForPValue(pValueCutoff, m0_estimate);
+    }
+    
+    // Hypothetical new method for the class
+    Decimal estimateFDRForPValue(const Decimal& pValueCutoff, const Decimal& m0_estimate)
+    {
+      if (getNumMultiComparisonStrategies() == 0)
+	return Decimal(0);
+
       Decimal pi0_estimate = m0_estimate / getNumMultiComparisonStrategies();
 
       // 2. Count the number of rejected hypotheses for the given cutoff.

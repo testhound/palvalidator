@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <set>
 #include <thread>
 
 using namespace mkc_timeseries;
@@ -439,26 +440,36 @@ TEST_CASE("FastMastersPermutationPolicy handles multiple strategies") {
   auto portfolio = createDummyPortfolio();
 
   FastMastersPermutationPolicy<DecimalType, DummyStatPolicy>::LocalStrategyDataContainer strategyData;
+  
+  // --- FIX STARTS HERE ---
+  // Use a set to ensure all strategy hashes are unique for the test
+  std::set<unsigned long long> usedHashes;
 
-  for (int i = 0; i < 5; ++i) {
+  while (strategyData.size() < 5) {
     auto strategy = getRandomPalStrategy();
-    StrategyContext<DecimalType> ctx;
-    ctx.strategy = strategy;
-    ctx.baselineStat = DecimalType("0.5");
-    ctx.count = 0;
-    strategyData.push_back(ctx);
-  }
+    auto strategyHash = strategy->getPatternHash();
 
+    // If the hash has not been used yet, add the strategy
+    if (usedHashes.find(strategyHash) == usedHashes.end()) {
+      usedHashes.insert(strategyHash);
+      
+      StrategyContext<DecimalType> ctx;
+      ctx.strategy = strategy;
+      ctx.baselineStat = DecimalType("0.5");
+      ctx.count = 0;
+      strategyData.push_back(ctx);
+    }
+  }
   // Create instance instead of using static method
   FastMastersPermutationPolicy<DecimalType, DummyStatPolicy> policy;
   auto result = policy.computeAllPermutationCounts(
     1000, strategyData, bt, sec, portfolio);
 
   REQUIRE(result.size() == 5);
-  for (auto it = result.begin(); it != result.end(); ++it) {
-    REQUIRE(it->second >= 1);
+  for (auto const& [hash, count] : result) {
+    REQUIRE(count >= 1);
   }
-}
+}  
 
 TEST_CASE("FastMastersPermutationPolicy returns counts of 1 when no permutation exceeds baseline") {
   std::cout << "In FastMastersPermutationPolicy returns count of 1" << std::endl;
