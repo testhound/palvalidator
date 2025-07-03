@@ -148,7 +148,12 @@ template <class Decimal, class BaselineStatPolicy>
         }
 
         if (verbose)
-          std::cout << "PALMastersMonteCarloValidation starting validation..." << std::endl;
+	  {
+	    std::cout << "PALMastersMonteCarloValidation starting validation..." << std::endl;
+	    std::cout << "OOS Date Range: " << dateRange.getFirstDateTime()
+		      << " to " << dateRange.getLastDateTime() << std::endl;
+	  }
+
         
         auto portfolio = std::make_shared<Portfolio<Decimal>>("PermutationPortfolio");
         portfolio->addSecurity(baseSecurity->clone(baseSecurity->getTimeSeries()));
@@ -165,13 +170,20 @@ template <class Decimal, class BaselineStatPolicy>
         // --- Execute tests based on partitioning choice ---
         if (partitionByFamily)
         {
-            // 2a. Use the new StrategyFamilyPartitioner
-            if (verbose) std::cout << "Partitioning strategies by detailed family (Category + Direction)..." << std::endl;
+	    bool partitionBySubType = (patterns->getNumPatterns() >= 1000) ? true : false;
 
-            StrategyFamilyPartitioner<Decimal> partitioner(mStrategyData);
-            if (verbose) {
-                printFamilyStatistics(partitioner);
-            }
+	  // 2a. Use the new StrategyFamilyPartitioner
+
+	    if (verbose)
+	      {
+		std::string detail = partitionBySubType ? "Category, SubType, and Direction" :
+		  "Category and Direction";
+		std::cout << "Partitioning strategies by detailed family (" << detail << ")..." << std::endl;
+	      }
+	    
+            StrategyFamilyPartitioner<Decimal> partitioner(mStrategyData, partitionBySubType);
+            if (verbose)
+	      printFamilyStatistics(partitioner);
 
             for (const auto& familyPair : partitioner)
             {
