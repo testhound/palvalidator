@@ -59,7 +59,7 @@ public:
     bool isIntradayBackTester() const override { return false; }
 };
 
-TEST_CASE("GatedProfitabilityScaledPalPolicy tests", "[MonteCarloTestPolicy]") {
+TEST_CASE("BootStrappedProfitabilityPFPolicy tests", "[MonteCarloTestPolicy]") {
     using DT = DecimalType;
 
     auto portfolio = std::make_shared<Portfolio<DT>>("TestPortfolio");
@@ -68,14 +68,14 @@ TEST_CASE("GatedProfitabilityScaledPalPolicy tests", "[MonteCarloTestPolicy]") {
     auto backtester = std::make_shared<MockPolicyBackTester<DT>>();
     backtester->addStrategy(palStrategy);
 
-    const auto minTrades = GatedProfitabilityScaledPalPolicy<DT>::getMinStrategyTrades();
-    const auto minBars = GatedProfitabilityScaledPalPolicy<DT>::getMinBarSeriesSize();
-    const DT failureStat = GatedProfitabilityScaledPalPolicy<DT>::getMinTradeFailureTestStatistic();
+    const auto minTrades = BootStrappedProfitabilityPFPolicy<DT>::getMinStrategyTrades();
+    const auto minBars = BootStrappedProfitabilityPFPolicy<DT>::getMinBarSeriesSize();
+    const DT failureStat = BootStrappedProfitabilityPFPolicy<DT>::getMinTradeFailureTestStatistic();
 
     SECTION("Fails if number of trades is below minimum threshold") {
         backtester->setNumTrades(minTrades - 1);
         backtester->setHighResReturns({DT(1.0)});
-        DT statistic = GatedProfitabilityScaledPalPolicy<DT>::getPermutationTestStatistic(backtester);
+        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
         REQUIRE(statistic == failureStat);
     }
 
@@ -83,7 +83,7 @@ TEST_CASE("GatedProfitabilityScaledPalPolicy tests", "[MonteCarloTestPolicy]") {
         std::vector<DT> returns(minBars - 1, DT(0.1));
         backtester->setNumTrades(minTrades);
         backtester->setHighResReturns(returns);
-        DT statistic = GatedProfitabilityScaledPalPolicy<DT>::getPermutationTestStatistic(backtester);
+        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
         REQUIRE(statistic == failureStat);
     }
 
@@ -94,7 +94,7 @@ TEST_CASE("GatedProfitabilityScaledPalPolicy tests", "[MonteCarloTestPolicy]") {
         backtester->setNumTrades(minTrades);
         backtester->setHighResReturns(returns);
 
-	DT statistic = GatedProfitabilityScaledPalPolicy<DT>::getDeterministicTestStatistic(backtester);
+	DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getDeterministicTestStatistic(backtester);
         REQUIRE(statistic == failureStat);
     }
 
@@ -104,14 +104,14 @@ TEST_CASE("GatedProfitabilityScaledPalPolicy tests", "[MonteCarloTestPolicy]") {
         backtester->setHighResReturns(returns);
 
         auto [expectedPF, expectedProfitability] = StatUtils<DT>::computeProfitability(returns);
-        DT targetPF = GatedProfitabilityScaledPalPolicy<DT>::getTargetProfitFactor();
+        DT targetPF = BootStrappedProfitabilityPFPolicy<DT>::getTargetProfitFactor();
         DT payoffRatio = palPattern->getProfitTargetAsDecimal() / palPattern->getStopLossAsDecimal();
         DT expectedPAL = (targetPF / (targetPF + payoffRatio)) * DT(100);
         DT profitabilityRatio = std::min(expectedProfitability / expectedPAL, DT(1.0));
         DT pfRatio = std::min(expectedPF / targetPF, DT("1.5"));
         DT expectedFinalScore = profitabilityRatio * pfRatio; // Should be 1.5
 
-        DT statistic = GatedProfitabilityScaledPalPolicy<DT>::getDeterministicTestStatistic(backtester);
+        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getDeterministicTestStatistic(backtester);
         REQUIRE_THAT(num::to_double(statistic), Catch::Matchers::WithinAbs(num::to_double(expectedFinalScore), 0.0001));
     }
 
@@ -123,14 +123,14 @@ TEST_CASE("GatedProfitabilityScaledPalPolicy tests", "[MonteCarloTestPolicy]") {
         backtester->setHighResReturns(returns);
 
         auto [expectedPF, expectedProfitability] = StatUtils<DT>::computeProfitability(returns);
-        DT targetPF = GatedProfitabilityScaledPalPolicy<DT>::getTargetProfitFactor();
+        DT targetPF = BootStrappedProfitabilityPFPolicy<DT>::getTargetProfitFactor();
         DT payoffRatio = palPattern->getProfitTargetAsDecimal() / palPattern->getStopLossAsDecimal();
         DT expectedPAL = (targetPF / (targetPF + payoffRatio)) * DT(100);
         DT profitabilityRatio = std::min(expectedProfitability / expectedPAL, DT(1.0));
         DT pfRatio = std::min(expectedPF / targetPF, DT("1.5"));
         DT expectedFinalScore = profitabilityRatio * pfRatio; // Should be 1.25
 
-        DT statistic = GatedProfitabilityScaledPalPolicy<DT>::getDeterministicTestStatistic(backtester);
+        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getDeterministicTestStatistic(backtester);
         REQUIRE_THAT(num::to_double(statistic), Catch::Matchers::WithinAbs(num::to_double(expectedFinalScore), 0.0001));
     }
 }
