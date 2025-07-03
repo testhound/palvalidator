@@ -49,11 +49,6 @@ namespace mkc_timeseries
 	return computeProfitFactor(xs, false);
       }
       
-      static Decimal computeLogProfitFactor(const std::vector<Decimal>& xs)
-      {
-	return computeLogProfitFactor(xs, false);
-      }
-
       /**
        * @brief Computes the Log Profit Factor from a series of returns.
        * @details This variant takes the logarithm of each return (plus one) before summing,
