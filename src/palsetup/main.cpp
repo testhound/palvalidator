@@ -38,7 +38,7 @@ void writeConfigFile(const std::string& outputDir,
     }
 
   std::string irPath     = "./" + tickerSymbol + "_IR.txt";
-  std::string dataPath   = "./" + tickerSymbol + "_Data.txt";
+  std::string dataPath   = "./" + tickerSymbol + "_ALL.txt";
   std::string fileFormat = (timeFrame == "Intraday") ? "INTRADAY::TRADESTATION" : "PAL";
 
   // Dates in YYYYMMDD format - use DateTime for intraday to preserve time information
@@ -211,6 +211,15 @@ int main(int argc, char** argv)
       fs::create_directories(palDir);
       fs::create_directories(valDir);
 
+      // Create 8 subdirectories under palDir for parallel processing
+      std::vector<fs::path> palSubDirs;
+      for (int i = 1; i <= 8; ++i)
+        {
+          fs::path subDir = palDir / ("pal_" + std::to_string(i));
+          fs::create_directories(subDir);
+          palSubDirs.push_back(subDir);
+        }
+
       // 5. Create and read time series
       shared_ptr<TimeSeriesCsvReader<Num>> reader;
       if (fileType >= 1 && fileType <= 5)
@@ -297,44 +306,62 @@ int main(int argc, char** argv)
 	  return 1;
         }
 
-      // 8. Generate target/stop files
-      std::ofstream tsFile1((palDir / (tickerSymbol + "_0_5_.TRS")).string());
-      tsFile1 << (stopValue * Num(0.5)) << std::endl << stopValue << std::endl;
-      tsFile1.close();
+      Num half(DecimalConstants<Num>::createDecimal("0.5"));
+      
+      // 8. Generate target/stop files and data files for each subdirectory
+      for (const auto& currentPalDir : palSubDirs)
+        {
+          // Generate target/stop files in current subdirectory
+          std::ofstream tsFile1((currentPalDir / (tickerSymbol + "_0_5_.TRS")).string());
+          tsFile1 << (stopValue * half) << std::endl << stopValue << std::endl;
+          tsFile1.close();
 
-      std::ofstream tsFile2((palDir / (tickerSymbol + "_1_0_.TRS")).string());
-      tsFile2 << stopValue << std::endl << stopValue << std::endl;
-      tsFile2.close();
+          std::ofstream tsFile2((currentPalDir / (tickerSymbol + "_1_0_.TRS")).string());
+          tsFile2 << stopValue << std::endl << stopValue << std::endl;
+          tsFile2.close();
 
-      // 9. Write data files
+          std::ofstream tsFile3((currentPalDir / (tickerSymbol + "_2_0_.TRS")).string());
+          tsFile3 << (stopValue * DecimalConstants<Num>::DecimalTwo) << std::endl << stopValue << std::endl;
+          tsFile3.close();
+
+          // Write data files to current subdirectory
+          if (timeFrameStr == "Intraday")
+            {
+              // For intraday: insample uses PAL intraday format
+              PalIntradayCsvWriter<Num> insampleWriter((currentPalDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries);
+              insampleWriter.writeFile();
+            }
+          else
+            {
+              // For non-intraday: all files use standard PAL EOD format
+              PalTimeSeriesCsvWriter<Num> insampleWriter((currentPalDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries);
+              insampleWriter.writeFile();
+            }
+        }
+
+      // 9. Write validation files (unchanged - these go to valDir, not palDir)
       if (timeFrameStr == "Intraday")
         {
-	  // For intraday: insample uses PAL intraday format, validation files use TradeStation intraday format
-	  PalIntradayCsvWriter<Num> insampleWriter((palDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries);
-	  insampleWriter.writeFile();
-	  TradeStationIntradayCsvWriter<Num> allWriter((valDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
-	  allWriter.writeFile();
-	  TradeStationIntradayCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
-	  oosWriter.writeFile();
-	  if (reservedSize > 0)
+   TradeStationIntradayCsvWriter<Num> allWriter((valDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
+   allWriter.writeFile();
+   TradeStationIntradayCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
+   oosWriter.writeFile();
+   if (reservedSize > 0)
             {
-	      TradeStationIntradayCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
-	      reservedWriter.writeFile();
+       TradeStationIntradayCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
+       reservedWriter.writeFile();
             }
         }
       else
         {
-	  // For non-intraday: all files use standard PAL EOD format
-	  PalTimeSeriesCsvWriter<Num> insampleWriter((palDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries);
-	  insampleWriter.writeFile();
-	  PalTimeSeriesCsvWriter<Num> allWriter((valDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
-	  allWriter.writeFile();
-	  PalTimeSeriesCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
-	  oosWriter.writeFile();
-	  if (reservedSize > 0)
+   PalTimeSeriesCsvWriter<Num> allWriter((valDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
+   allWriter.writeFile();
+   PalTimeSeriesCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
+   oosWriter.writeFile();
+   if (reservedSize > 0)
             {
-	      PalTimeSeriesCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
-	      reservedWriter.writeFile();
+       PalTimeSeriesCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
+       reservedWriter.writeFile();
             }
         }
 
