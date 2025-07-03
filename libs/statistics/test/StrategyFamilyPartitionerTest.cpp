@@ -4,7 +4,6 @@
 #include <vector>
 #include <numeric>
 
-// MKC Timeseries Includes
 #include "number.h"
 #include "PalAst.h"
 #include "PalStrategy.h"
@@ -91,7 +90,7 @@ TEST_CASE("StrategyFamilyPartitioner operations", "[StrategyFamilyPartitioner]")
         },
         false, "2.0", "1.0");
 
-    // Long Trend-Following
+    // Long Trend-Following (Continuation)
     auto longTrendPattern = createTestPattern(factory,
         {
             std::make_shared<GreaterThanExpr>(factory.getPriceClose(0), factory.getPriceClose(1)),
@@ -99,21 +98,34 @@ TEST_CASE("StrategyFamilyPartitioner operations", "[StrategyFamilyPartitioner]")
         },
         true, "4.0", "2.0");
 
-    // Short Mean-Reversion (fade a rally with low payoff)
+    // Short Mean-Reversion (Trend Exhaustion)
     auto shortMeanRevPattern = createTestPattern(factory,
         {
             std::make_shared<GreaterThanExpr>(factory.getPriceClose(2), factory.getPriceClose(1)),
             std::make_shared<GreaterThanExpr>(factory.getPriceClose(1), factory.getPriceClose(0))
         },
-        false, "0.8", "1.6"); // Low payoff ratio is key for this classification
+        false, "0.8", "1.6");
 
-    // Long Unclassified
+    // Long Unclassified (Ambiguous)
     auto unclassifiedPattern = createTestPattern(factory,
         { std::make_shared<GreaterThanExpr>(factory.getPriceOpen(0), factory.getPriceLow(0)) },
         true, "1.1", "1.0");
 
 
-    // --- 2. Test Scenarios ---
+    // --- 2. Create the container of strategies for testing ---
+    StrategyDataContainer<Decimal> mixedContainer = {
+        createTestStrategyContext("LongMomentum1", longMomentumPattern, portfolio),
+        createTestStrategyContext("LongMomentum2", longMomentumPattern, portfolio),
+        createTestStrategyContext("ShortMomentum1", shortMomentumPattern, portfolio),
+        createTestStrategyContext("LongTrend1", longTrendPattern, portfolio),
+        createTestStrategyContext("LongTrend2", longTrendPattern, portfolio),
+        createTestStrategyContext("LongTrend3", longTrendPattern, portfolio),
+        createTestStrategyContext("ShortMeanRev1", shortMeanRevPattern, portfolio),
+        createTestStrategyContext("LongUnclassified1", unclassifiedPattern, portfolio)
+    };
+
+
+    // --- 3. Test Scenarios ---
 
     SECTION("Empty strategy list")
     {
@@ -126,20 +138,9 @@ TEST_CASE("StrategyFamilyPartitioner operations", "[StrategyFamilyPartitioner]")
         REQUIRE(partitioner.begin() == partitioner.end());
     }
 
-    SECTION("Partitioning a mixed universe of strategies")
+    SECTION("Partitioning by Category only (default behavior)")
     {
-        // Create a container with a diverse set of strategies
-        StrategyDataContainer<Decimal> mixedContainer = {
-            createTestStrategyContext("LongMomentum1", longMomentumPattern, portfolio),
-            createTestStrategyContext("LongMomentum2", longMomentumPattern, portfolio),
-            createTestStrategyContext("ShortMomentum1", shortMomentumPattern, portfolio),
-            createTestStrategyContext("LongTrend1", longTrendPattern, portfolio),
-            createTestStrategyContext("LongTrend2", longTrendPattern, portfolio),
-            createTestStrategyContext("LongTrend3", longTrendPattern, portfolio),
-            createTestStrategyContext("ShortMeanRev1", shortMeanRevPattern, portfolio),
-            createTestStrategyContext("LongUnclassified1", unclassifiedPattern, portfolio)
-        };
-
+        // Construct without the second argument, testing the default path
         StrategyFamilyPartitioner<Decimal> partitioner(mixedContainer);
 
         // --- A. Check top-level counts ---
@@ -147,12 +148,13 @@ TEST_CASE("StrategyFamilyPartitioner operations", "[StrategyFamilyPartitioner]")
         REQUIRE(partitioner.getNumberOfFamilies() == 5); // LongMom, ShortMom, LongTrend, ShortMR, LongUnc
 
         // --- B. Check individual family counts using getFamilyCount ---
-        StrategyFamilyKey longMomKey        = {StrategyCategory::MOMENTUM, true};
-        StrategyFamilyKey shortMomKey       = {StrategyCategory::MOMENTUM, false};
-        StrategyFamilyKey longTrendKey      = {StrategyCategory::TREND_FOLLOWING, true};
-        StrategyFamilyKey shortMeanRevKey   = {StrategyCategory::MEAN_REVERSION, false};
-        StrategyFamilyKey longUnclassifiedKey = {StrategyCategory::UNCLASSIFIED, true};
-        StrategyFamilyKey nonExistentKey    = {StrategyCategory::TREND_FOLLOWING, false};
+        // FIX: Initialize StrategyFamilyKey with all three members
+        StrategyFamilyKey longMomKey        = {StrategyCategory::MOMENTUM, StrategySubType::NONE, true};
+        StrategyFamilyKey shortMomKey       = {StrategyCategory::MOMENTUM, StrategySubType::NONE, false};
+        StrategyFamilyKey longTrendKey      = {StrategyCategory::TREND_FOLLOWING, StrategySubType::NONE, true};
+        StrategyFamilyKey shortMeanRevKey   = {StrategyCategory::MEAN_REVERSION, StrategySubType::NONE, false};
+        StrategyFamilyKey longUnclassifiedKey = {StrategyCategory::UNCLASSIFIED, StrategySubType::NONE, true};
+        StrategyFamilyKey nonExistentKey    = {StrategyCategory::TREND_FOLLOWING, StrategySubType::NONE, false};
 
         REQUIRE(partitioner.getFamilyCount(longMomKey) == 2);
         REQUIRE(partitioner.getFamilyCount(shortMomKey) == 1);
@@ -186,33 +188,32 @@ TEST_CASE("StrategyFamilyPartitioner operations", "[StrategyFamilyPartitioner]")
         REQUIRE_THAT(totalPercentage, Catch::Matchers::WithinAbs(100.0, 0.01));
     }
 
-    SECTION("Single family universe")
+    SECTION("Partitioning by detailed Category and Sub-Type")
     {
-        StrategyDataContainer<Decimal> singleFamilyContainer = {
-            createTestStrategyContext("LongTrend1", longTrendPattern, portfolio),
-            createTestStrategyContext("LongTrend2", longTrendPattern, portfolio),
-            createTestStrategyContext("LongTrend3", longTrendPattern, portfolio)
-        };
+        // Construct with partitionBySubType = true to test the new path
+        StrategyFamilyPartitioner<Decimal> partitioner(mixedContainer, true);
 
-        StrategyFamilyPartitioner<Decimal> partitioner(singleFamilyContainer);
+        // The number of families should be the same in this specific test case,
+        // but the keys will be more specific.
+        REQUIRE(partitioner.getTotalStrategyCount() == 8);
+        REQUIRE(partitioner.getNumberOfFamilies() == 5);
 
-        REQUIRE(partitioner.getTotalStrategyCount() == 3);
-        REQUIRE(partitioner.getNumberOfFamilies() == 1);
+        // Define the more specific keys including the sub-type
+        StrategyFamilyKey longMomBreakoutKey = {StrategyCategory::MOMENTUM, StrategySubType::BREAKOUT, true};
+        StrategyFamilyKey shortMomPullbackKey = {StrategyCategory::MOMENTUM, StrategySubType::PULLBACK, false};
+        StrategyFamilyKey longTrendContinuationKey = {StrategyCategory::TREND_FOLLOWING, StrategySubType::CONTINUATION, true};
+        StrategyFamilyKey shortMRExhaustionKey = {StrategyCategory::MEAN_REVERSION, StrategySubType::TREND_EXHAUSTION, false};
+        StrategyFamilyKey longUnclassifiedAmbiguousKey = {StrategyCategory::UNCLASSIFIED, StrategySubType::AMBIGUOUS, true};
 
-        auto stats = partitioner.getStatistics();
-        REQUIRE(stats.size() == 1);
+        // Check counts for the new, granular families
+        REQUIRE(partitioner.getFamilyCount(longMomBreakoutKey) == 2);
+        REQUIRE(partitioner.getFamilyCount(shortMomPullbackKey) == 1);
+        REQUIRE(partitioner.getFamilyCount(longTrendContinuationKey) == 3);
+        REQUIRE(partitioner.getFamilyCount(shortMRExhaustionKey) == 1);
+        REQUIRE(partitioner.getFamilyCount(longUnclassifiedAmbiguousKey) == 1);
 
-        const auto& singleStat = stats[0];
-        REQUIRE(singleStat.count == 3);
-        REQUIRE(singleStat.key.category == StrategyCategory::TREND_FOLLOWING);
-        REQUIRE(singleStat.key.isLong == true);
-        REQUIRE_THAT(singleStat.percentageOfTotal, Catch::Matchers::WithinAbs(100.0, 0.01));
-
-        // Check iterator and direct access
-        auto it = partitioner.begin();
-        REQUIRE(it->second.size() == 3);
-        REQUIRE(it->first.category == StrategyCategory::TREND_FOLLOWING);
-        it++;
-        REQUIRE(it == partitioner.end());
+        // Ensure that a key with the wrong sub-type finds nothing
+        StrategyFamilyKey wrongSubtypeKey = {StrategyCategory::MOMENTUM, StrategySubType::CONTINUATION, true};
+        REQUIRE(partitioner.getFamilyCount(wrongSubtypeKey) == 0);
     }
 }
