@@ -36,3 +36,10 @@ enable_testing()
 add_test(NAME ${LIB_NAME}_test COMMAND ${LIB_NAME}_unit_tests)
 
 file(COPY ${DATASET_FILES} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
+# Copy config directory for tests
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test/config)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test/config DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+    # Also copy to the binary root in case tests run from there
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test/config DESTINATION ${CMAKE_BINARY_DIR})
+endif()
