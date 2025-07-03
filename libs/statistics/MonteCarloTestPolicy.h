@@ -88,8 +88,8 @@ namespace mkc_timeseries
       }
 
       // --- NEW: Enforce minimum activity thresholds ---
-      const unsigned int minTradesRequired = AllHighResLogPFPolicy<Decimal>::getMinStrategyTrades();
-      const unsigned int minBarsRequired = 10;
+      const unsigned int minTradesRequired = BootStrappedProfitFactorPolicy<Decimal>::getMinStrategyTrades();
+      const unsigned int minBarsRequired = BootStrappedProfitFactorPolicy<Decimal>::getMinBarSeriesSize();
       
       // Get the total number of trades for the backtest run.
       uint32_t numTrades = bt->getNumTrades();
@@ -104,13 +104,16 @@ namespace mkc_timeseries
       }
 
       // Explicitly disambiguate the overload for computeLogProfitFactor
-      auto computeLogPF = static_cast<Decimal(*)(const std::vector<Decimal>&)>(StatUtils<Decimal>::computeLogProfitFactor);
+      auto computePF = static_cast<Decimal(*)(const std::vector<Decimal>&)>(StatUtils<Decimal>::computeProfitFactor);
 
-      return StatUtils<Decimal>::getBootStrappedStatistic(barSeries, computeLogPF);
+      return StatUtils<Decimal>::getBootStrappedStatistic(barSeries, computePF);
     }
 
     /// Minimum number of closed trades required to even attempt this test
     static unsigned int getMinStrategyTrades() { return 3; }
+
+    // Minimum number of bars in the series to be considered statistically significant
+    static unsigned int getMinBarSeriesSize() { return 6; }
 
     // Return a test statistic constant if we don't meet the minimum trade criteria
     static Decimal getMinTradeFailureTestStatistic()
@@ -1196,7 +1199,7 @@ public:
   };
   //
 template <class Decimal>
-  class GatedProfitabilityScaledPalPolicy
+  class BootStrappedProfitabilityPFPolicy
   {
   public:
     /**
@@ -1223,7 +1226,7 @@ template <class Decimal>
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
       if (bt->getNumStrategies() != 1)
-        throw BackTesterException("GatedProfitabilityScaledPalPolicy: Expected one strategy");
+        throw BackTesterException("BootStrappedProfitabilityPFPolicy: Expected one strategy");
 
       auto strat = *(bt->beginStrategies());
       uint32_t numTrades = bt->getNumTrades();
@@ -1248,11 +1251,13 @@ template <class Decimal>
 										  StatUtils<Decimal>::computeProfitability);
         
       // --- 2. Gatekeeper Stage ---
+
+      /*
       if (pf < getMinProfitFactor())
       {
         return getMinTradeFailureTestStatistic();
       }
-
+      */
       // --- 3. Performance Scaling Stage ---
 
       // a) Calculate Profitability Performance Ratio (replaces PAL ratio)
@@ -1350,7 +1355,7 @@ template <class Decimal>
     static unsigned int getMinStrategyTrades() { return 3; }
     
     // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize() { return 10; }
+    static unsigned int getMinBarSeriesSize() { return 6; }
 
     // The hard gate for entry
     static Decimal getMinProfitFactor() { return DecimalConstants<Decimal>::DecimalOnePointSevenFive; }
