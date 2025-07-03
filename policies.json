@@ -1,0 +1,38 @@
+{
+  "computation_policies": {
+    "_comment_enabled": "Only policies in this list will be available for selection. Remove policies to hide them from users.",
+    "enabled": [
+      "GatedPerformanceScaledPalPolicy",
+      "RobustProfitFactorPolicy",
+      "AllHighResLogPFPolicy",
+      "BootStrappedProfitFactorPolicy",
+      "BootStrappedProfitabilityPFPolicy"
+    ],
+    "default": "GatedPerformanceScaledPalPolicy",
+    "groups": {
+      "recommended": {
+        "policies": ["GatedPerformanceScaledPalPolicy", "RobustProfitFactorPolicy"],
+        "description": "Recommended policies for most use cases"
+      },
+      "basic": {
+        "policies": ["RobustProfitFactorPolicy", "AllHighResLogPFPolicy"],
+        "description": "Basic profit factor policies for standard analysis"
+      },
+      "advanced": {
+        "policies": ["GatedPerformanceScaledPalPolicy"],
+        "description": "Advanced PAL analysis with performance gating and scaling"
+      },
+      "experimental": {
+        "policies": ["BootStrappedProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy"],
+        "description": "Bootstrap-based policies for statistical robustness testing"
+      }
+    }
+  },
+  "policy_settings": {
+    "show_descriptions": true,
+    "allow_multiple_selection": false,
+    "sort_by": "category",
+    "filter_experimental": false,
+    "interactive_mode": true
+  }
+}
