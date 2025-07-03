@@ -54,6 +54,9 @@ include_directories(${CMAKE_SOURCE_DIR}
 file(GLOB TXT_FILES "${CMAKE_SOURCE_DIR}/dataset/*.txt")
 set(DATASET_FILES ${TXT_FILES} CACHE INTERNAL "List of dataset files")
 
+# Copy policy configuration file to build directory
+configure_file("${CMAKE_SOURCE_DIR}/policies.json" "${CMAKE_BINARY_DIR}/policies.json" COPYONLY)
+
 include(CMakePrintHelpers)
 
 add_subdirectory(libs/timeseries)
@@ -113,3 +116,4 @@ add_custom_target(tests
 
 install(TARGETS PalValidator DESTINATION bin)
 install(TARGETS palsetup DESTINATION bin)
+install(FILES "${CMAKE_SOURCE_DIR}/policies.json" DESTINATION bin)
