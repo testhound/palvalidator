@@ -26,6 +26,7 @@
 #include "DecimalConstants.h"
 #include "PermutationTestResultPolicy.h"
 #include "PalStrategy.h"
+#include "TimeSeriesIndicators.h"
 
 namespace mkc_timeseries
 {
@@ -611,90 +612,92 @@ namespace mkc_timeseries
       return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
     }
 
-  Decimal estimateM0StoreySmoothedALGLIB() const
-  {
-    std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothedALGLIB" << std::endl;
-    const auto& strategies = container_.getInternalContainer();
-    const size_t m = strategies.size();
-    if (m < 2) return Decimal(m);
+    Decimal estimateM0StoreySmoothedALGLIB() const
+    {
+      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothedALGLIB" << std::endl;
+      const auto& strategies = container_.getInternalContainer();
+      const size_t m = strategies.size();
+      if (m < 2) return Decimal(m);
 
-    // 1. Generate the (lambda, pi0) data points.
-    std::vector<double> lambdas; // Use double as ALGLIB expects it
-    std::vector<double> pi0s;
+      // 1. Generate the (lambda, pi0) data points.
+      std::vector<double> lambdas; // Use double as ALGLIB expects it
+      std::vector<double> pi0s;
 
-    for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.05");
-         lambda <= DecimalConstants<Decimal>::createDecimal("0.95"); // Use <= to include 0.95
-         lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
+      for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.05");
+	   lambda <= DecimalConstants<Decimal>::createDecimal("0.95"); // Use <= to include 0.95
+	   lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
       
-      size_t count = std::count_if(strategies.begin(), strategies.end(),
-                                   [lambda](const auto& entry) {
-                                     return entry.first > lambda;
-                                   });
+	size_t count = std::count_if(strategies.begin(), strategies.end(),
+				     [lambda](const auto& entry) {
+				       return entry.first > lambda;
+				     });
       
-      // Avoid division by zero if lambda is close to 1
-      if (DecimalConstants<Decimal>::DecimalOne - lambda <= DecimalConstants<Decimal>::DecimalZero) continue;
+	// Avoid division by zero if lambda is close to 1
+	if (DecimalConstants<Decimal>::DecimalOne - lambda <= DecimalConstants<Decimal>::DecimalZero) continue;
 
-      Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
+	Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
       
-      double lambda_double = static_cast<double>(lambda.getAsDouble());
-      double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
+	double lambda_double = static_cast<double>(lambda.getAsDouble());
+	double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
       
-      lambdas.push_back(lambda_double);
-      pi0s.push_back(pi0_double);
-    }
+	lambdas.push_back(lambda_double);
+	pi0s.push_back(pi0_double);
+      }
 
-    if (lambdas.empty())
-      return Decimal(m);
+      if (lambdas.empty())
+	return Decimal(m);
 
-    // Find the optimal smoothing parameter using cross-validation
-    const double optimal_lambdans = findOptimalLambdansViaCrossValidation(lambdas, pi0s);
+      // Find the optimal smoothing parameter using cross-validation
+      const double optimal_lambdans = findOptimalLambdansViaCrossValidation(lambdas, pi0s);
 
-    // 2. Convert std::vector to ALGLIB's real_1d_array format.
-    alglib::real_1d_array x; // lambdas
-    x.setcontent(lambdas.size(), lambdas.data());
+      // 2. Convert std::vector to ALGLIB's real_1d_array format.
+      alglib::real_1d_array x; // lambdas
+      x.setcontent(lambdas.size(), lambdas.data());
 
-    alglib::real_1d_array y; // pi0s
-    y.setcontent(pi0s.size(), pi0s.data());
+      alglib::real_1d_array y; // pi0s
+      y.setcontent(pi0s.size(), pi0s.data());
 
-    // 3. Fit the smoothing spline using the MODERN spline1dfit function.
-    alglib::spline1dinterpolant s;
-    alglib::spline1dfitreport rep;
+      // 3. Fit the smoothing spline using the MODERN spline1dfit function.
+      alglib::spline1dinterpolant s;
+      alglib::spline1dfitreport rep;
     
-    const alglib::ae_int_t n_points = static_cast<alglib::ae_int_t>(lambdas.size());
-    const alglib::ae_int_t m_basis = n_points; // Number of basis functions.
+      const alglib::ae_int_t n_points = static_cast<alglib::ae_int_t>(lambdas.size());
+      const alglib::ae_int_t m_basis = std::clamp(static_cast<alglib::ae_int_t>(std::sqrt(n_points)),
+						  static_cast<alglib::ae_int_t>(10),
+						  static_cast<alglib::ae_int_t>(100));
 
-    // Use the optimal lambdans found via cross-validation.
-    try
-    {
-      alglib::spline1dfit(x, y, n_points, m_basis, optimal_lambdans, s, rep);
-    }
-    catch(const alglib::ap_error& e)
-    {
-        // Fitting failed, fall back to the total number of tests.
-        std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
-        return Decimal(m);
-    }
+      // Use the optimal lambdans found via cross-validation.
+      try
+	{
+	  alglib::spline1dfit(x, y, n_points, m_basis, optimal_lambdans, s, rep);
+	}
+      catch(const alglib::ap_error& e)
+	{
+	  // Fitting failed, fall back to the total number of tests.
+	  std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
+	  return Decimal(m);
+	}
 
-    // std::cout << "[SplineFit Report] Termination Type: " << rep.terminationtype << std::endl;
-    std::cout << "[SplineFit Report] RMS Error: " << rep.rmserror << std::endl;
-    std::cout << "[SplineFit Report] Max Error: " << rep.maxerror << std::endl;
+      // std::cout << "[SplineFit Report] Termination Type: " << rep.terminationtype << std::endl;
+      std::cout << "[SplineFit Report] RMS Error: " << rep.rmserror << std::endl;
+      std::cout << "[SplineFit Report] Max Error: " << rep.maxerror << std::endl;
 
-    // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
-    double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
+      // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
+      double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
 
-    // Convert back to Decimal type
-    Decimal extrapolatedPi0 = static_cast<Decimal>(extrapolated_pi0_double);
+      // Convert back to Decimal type
+      Decimal extrapolatedPi0 = static_cast<Decimal>(extrapolated_pi0_double);
 
-    // 5. Clamp the result and compute the final m0 estimate.
-    extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero,
-       std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
-    Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
+      // 5. Clamp the result and compute the final m0 estimate.
+      extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero,
+				 std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
+      Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
 
-    std::cout << "[StoreySmootherALGLIB] Smoothed pi0 (at lambda=1.0) = " << extrapolatedPi0
-              << ", m0_hat = " << m0_hat
-              << ", m = " << static_cast<Decimal>(m) << std::endl;
+      std::cout << "[StoreySmootherALGLIB] Smoothed pi0 (at lambda=1.0) = " << extrapolatedPi0
+		<< ", m0_hat = " << m0_hat
+		<< ", m = " << static_cast<Decimal>(m) << std::endl;
               
-    return m0_hat;
+      return m0_hat;
   }
 
   /**

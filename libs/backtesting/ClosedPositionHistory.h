@@ -16,8 +16,9 @@
 #include <boost/accumulators/statistics/median.hpp>
 #include <boost/accumulators/statistics/mean.hpp>
 #include <boost/accumulators/statistics/sum.hpp>
-#include "TradingPosition.h" // Provides TradingPosition, ptime
-#include "TimeSeriesEntry.h" // Provides TimeSeriesDate, ptime, getDefaultBarTime (though not directly used for key here)
+#include "TradingPosition.h"
+#include "TimeSeriesEntry.h"
+#include "StatUtils.h"
 
 namespace mkc_timeseries
 {
@@ -547,6 +548,19 @@ namespace mkc_timeseries
     Decimal getLogProfitFactor() const
     {
       return getProfitFactorCommon(mLogSumWinners, mLogSumLosers);
+    }
+
+    Decimal getHighResProfitFactor() const
+    {
+      auto returns = getHighResBarReturns();
+      return StatUtils<Decimal>::computeProfitFactor(returns, false);
+    }
+
+    Decimal getHighResProfitability() const
+    {
+      auto returns = getHighResBarReturns();
+      auto [pf, profitability] = StatUtils<Decimal>::computeProfitability(returns);
+      return profitability;
     }
     
     Decimal getPALProfitability() const

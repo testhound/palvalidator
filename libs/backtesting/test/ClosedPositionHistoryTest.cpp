@@ -163,9 +163,6 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
   auto position1LogReturn = longPosition1->getLogTradeReturn();
   auto position1ReferenceLnReturn = getLnReturn(longEntryPrice1, longExitPrice1);
 
-  std::cout << "Position 1 log return " << position1LogReturn << " Calculated ln return = " << position1ReferenceLnReturn << std::endl;
-  std::cout << "position 1 percent return = " << longPosition1->getPercentReturn() << std::endl;
-
   auto longExitDate2 = TimeSeriesDate (1986, Jun, 12);
   auto longExitPrice2 = createDecimal("3729.28683");
   auto longEntryDate2 = TimeSeriesDate (1986, May, 16);
@@ -177,9 +174,6 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 
   auto position2LogReturn = longPosition2->getLogTradeReturn();
   auto position2ReferenceLnReturn = getLnReturn(longEntryPrice2, longExitPrice2);
-
-    std::cout << "Position 2 log return " << position2LogReturn << " Calculated ln return = " << position2ReferenceLnReturn << std::endl;
-  std::cout << "position 2 percent return = " << longPosition2->getPercentReturn() << std::endl;
 
   auto longPosition3 = createClosedLongPosition (p, TimeSeriesDate(1986, Oct, 29),
 						 createDecimal("3087.43726"),
@@ -368,11 +362,9 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
   longCumReturn = longCumReturn * longPosition24->getTradeReturnMultiplier();
   longCumReturn = longCumReturn - DecimalConstants<DecimalType>::DecimalOne;
 
-  std::cout << "Cumulative return for longpositions = " << closedLongPositions.getCumulativeReturn() << std::endl;
   std::vector<unsigned int> barsInPositions(closedLongPositions.beginBarsPerPosition(),
 					    closedLongPositions.endBarsPerPosition()) ;
-  unsigned int barsMedian = Median (barsInPositions);
-  std::cout << "Median bars in positions = " << barsMedian << std::endl;
+
   REQUIRE (barsInPositions.size() == 24);
 
   REQUIRE (longCumReturn == closedLongPositions.getCumulativeReturn());
@@ -383,8 +375,6 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
   REQUIRE (closedLongPositions.getNumWinningPositions() == 14);
   REQUIRE (closedLongPositions.getNumLosingPositions() == 10);
   REQUIRE (closedLongPositions.getPayoffRatio() == createDecimal("2.1407415"));
-  std::cout << "For payoffratio = 2.14, median payoff ratio = " << closedLongPositions.getMedianPayoffRatio() << std::endl;
-  std::cout << "For payoffratio = 2.14, geometric payoff ratio = " << closedLongPositions.getGeometricPayoffRatio() << std::endl;
   REQUIRE (closedLongPositions.getPALProfitability() == createDecimal("58.3333300"));
 
 
