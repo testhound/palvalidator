@@ -1128,10 +1128,16 @@ public:
         
       // --- 1. Gatekeeper Stage ---
       Decimal pf = closedPositions.getProfitFactor();
+
+      // Don't gate keep anymore since they messes up the
+      // the distribution of p-values
+
+      /*
       if (pf < getMinProfitFactor())
         {
 	  return getMinTradeFailureTestStatistic();
         }
+      */
 
       // --- 2. Performance Scaling Stage ---
 
