@@ -121,7 +121,9 @@ void writeBacktestPerformanceReport(std::ofstream& file, std::shared_ptr<BackTes
     file << "Percent Winners: " << positionHistory.getPercentWinners() << "%" << std::endl;
     file << "Percent Losers: " << positionHistory.getPercentLosers() << "%" << std::endl;
     file << "Profit Factor: " << positionHistory.getProfitFactor() << std::endl;
+    file << "High Resolution Profit Factor: " << positionHistory.getHighResProfitFactor() << std::endl;
     file << "PAL Profitability: " << positionHistory.getPALProfitability() << "%" << std::endl;
+    file << "High Resolution Profitability: " << positionHistory.getHighResProfitability() << std::endl;
     file << "===================================" << std::endl << std::endl;
 }
 
