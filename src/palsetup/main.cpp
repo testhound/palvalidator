@@ -77,6 +77,15 @@ void writeConfigFile(const std::string& outputDir,
   std::cout << "Configuration file written: " << configFileName << std::endl;
 }
 
+// Generate timeframe directory name based on timeframe and minutes
+std::string createTimeFrameDirectoryName(const std::string& timeFrameStr, int intradayMinutes = 0)
+{
+  if (timeFrameStr == "Intraday") {
+    return "Intraday_" + std::to_string(intradayMinutes);
+  }
+  return timeFrameStr;
+}
+
 // Factory for CSV readers using specified time frame
 shared_ptr< TimeSeriesCsvReader<Num> >
 createTimeSeriesReader(int fileType,
@@ -183,6 +192,23 @@ int main(int argc, char** argv)
         }
       timeFrame = getTimeFrameFromString(timeFrameStr);
 
+      // Handle intraday minutes input
+      int intradayMinutes = 90; // default
+      if (timeFrameStr == "Intraday") {
+        std::cout << "Enter number of minutes for intraday timeframe (1-1440, default 90): ";
+        std::string minutesInput;
+        std::getline(std::cin, minutesInput);
+        if (!minutesInput.empty()) {
+          try {
+            intradayMinutes = std::stoi(minutesInput);
+            intradayMinutes = std::clamp(intradayMinutes, 1, 1440);
+          } catch (...) {
+            std::cerr << "Invalid input for minutes. Using default 90." << std::endl;
+            intradayMinutes = 90;
+          }
+        }
+      }
+
       // 3. Read and parse reserve percentage (default 5%)
       double reservedPercent = 5.0;
       std::cout << "Enter percent of data to reserve (0-100, default 5): ";
@@ -202,14 +228,26 @@ int main(int argc, char** argv)
         }
       reservedPercent = std::clamp(reservedPercent, 0.0, 100.0);
 
-      // 4. Prepare output directories
+      // 4. Prepare output directories with timeframe differentiation
       fs::path baseDir = tickerSymbol + "_Validation";
       if (fs::exists(baseDir))
-	fs::remove_all(baseDir);
-      fs::path palDir = baseDir / "PAL_Files";
-      fs::path valDir = baseDir / "Validation_Files";
+ fs::remove_all(baseDir);
+      
+      // Create timeframe-specific subdirectory
+      std::string timeFrameDirName = createTimeFrameDirectoryName(timeFrameStr, intradayMinutes);
+      fs::path timeFrameDir = baseDir / timeFrameDirName;
+      fs::path palDir = timeFrameDir / "PAL_Files";
+      fs::path valDir = timeFrameDir / "Validation_Files";
       fs::create_directories(palDir);
       fs::create_directories(valDir);
+
+      // Create risk-reward subdirectories within validation directory
+      fs::path riskReward05Dir = valDir / "Risk_Reward_0_5";
+      fs::path riskReward11Dir = valDir / "Risk_Reward_1_1";
+      fs::path riskReward21Dir = valDir / "Risk_Reward_2_1";
+      fs::create_directories(riskReward05Dir);
+      fs::create_directories(riskReward11Dir);
+      fs::create_directories(riskReward21Dir);
 
       // Create 8 subdirectories under palDir for parallel processing
       std::vector<fs::path> palSubDirs;
@@ -339,29 +377,46 @@ int main(int argc, char** argv)
             }
         }
 
-      // 9. Write validation files (unchanged - these go to valDir, not palDir)
+      // 9. Write validation files with risk-reward segregation
+      // Write ALL.txt files to each risk-reward subdirectory
+      std::vector<fs::path> riskRewardDirs = {riskReward05Dir, riskReward11Dir, riskReward21Dir};
+      
+      for (const auto& rrDir : riskRewardDirs)
+        {
+          if (timeFrameStr == "Intraday")
+            {
+              TradeStationIntradayCsvWriter<Num> allWriter((rrDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
+              allWriter.writeFile();
+            }
+          else
+            {
+              PalTimeSeriesCsvWriter<Num> allWriter((rrDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
+              allWriter.writeFile();
+            }
+          
+          // Write config file to each risk-reward subdirectory
+          writeConfigFile(rrDir.string(), tickerSymbol, insampleSeries, outOfSampleSeries, timeFrameStr);
+        }
+
+      // Write OOS and reserved files to main validation directory
       if (timeFrameStr == "Intraday")
         {
-   TradeStationIntradayCsvWriter<Num> allWriter((valDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
-   allWriter.writeFile();
-   TradeStationIntradayCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
-   oosWriter.writeFile();
-   if (reservedSize > 0)
+          TradeStationIntradayCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
+          oosWriter.writeFile();
+          if (reservedSize > 0)
             {
-       TradeStationIntradayCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
-       reservedWriter.writeFile();
+              TradeStationIntradayCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
+              reservedWriter.writeFile();
             }
         }
       else
         {
-   PalTimeSeriesCsvWriter<Num> allWriter((valDir / (tickerSymbol + "_ALL.txt")).string(), *aTimeSeries);
-   allWriter.writeFile();
-   PalTimeSeriesCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
-   oosWriter.writeFile();
-   if (reservedSize > 0)
+          PalTimeSeriesCsvWriter<Num> oosWriter((valDir / (tickerSymbol + "_OOS.txt")).string(), outOfSampleSeries);
+          oosWriter.writeFile();
+          if (reservedSize > 0)
             {
-       PalTimeSeriesCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
-       reservedWriter.writeFile();
+              PalTimeSeriesCsvWriter<Num> reservedWriter((valDir / (tickerSymbol + "_reserved.txt")).string(), reservedSeries);
+              reservedWriter.writeFile();
             }
         }
 
@@ -373,8 +428,7 @@ int main(int argc, char** argv)
       std::cout << "Std = " << StdDev << std::endl;
       std::cout << "Stop = " << stopValue << std::endl;
 
-      // 11. Write configuration file
-      writeConfigFile(valDir.string(), tickerSymbol, insampleSeries, outOfSampleSeries, timeFrameStr);
+      // Configuration files are now written to each risk-reward subdirectory above
 
     }
   else
