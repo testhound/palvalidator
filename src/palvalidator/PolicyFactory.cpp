@@ -138,9 +138,7 @@ public:
                            bool verbose = false,
                            bool partitionByFamily = false) override
     {
-        // Note: Benjamini-Hochberg validation doesn't support partitionByFamily parameter
-        // The parameter is ignored for interface compatibility
-        validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, verbose);
+        validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, verbose, partitionByFamily);
     }
     
     std::vector<std::shared_ptr<PalStrategy<Num>>> getSurvivingStrategies() const override
@@ -270,9 +268,21 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidationWrapp
 }
 
 template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>(unsigned long permutations)
+{
+    return std::make_unique<MastersValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>>(permutations);
+}
+
+template<>
 std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>(unsigned long permutations)
 {
     return std::make_unique<MastersValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>(unsigned long permutations)
+{
+    return std::make_unique<MastersValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations);
 }
 
 // Romano-Wolf specializations for all policies
@@ -367,9 +377,21 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWr
 }
 
 template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>(unsigned long permutations)
+{
+    return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>>(permutations);
+}
+
+template<>
 std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>(unsigned long permutations)
 {
     return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>(unsigned long permutations)
+{
+    return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations);
 }
 
 // Benjamini-Hochberg specializations for all policies
@@ -479,10 +501,24 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValid
 }
 
 template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>(
+    unsigned long permutations, double falseDiscoveryRate)
+{
+    return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>>(permutations, Num(falseDiscoveryRate));
+}
+
+template<>
 std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>(
     unsigned long permutations, double falseDiscoveryRate)
 {
     return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>>(permutations, Num(falseDiscoveryRate));
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>(
+    unsigned long permutations, double falseDiscoveryRate)
+{
+    return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations, Num(falseDiscoveryRate));
 }
 
 // Public factory methods

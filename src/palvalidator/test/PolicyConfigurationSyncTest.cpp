@@ -69,7 +69,9 @@ TEST_CASE("Policy configuration JSON and code defaults should be synchronized", 
         auto enabled = config.getEnabledPolicies();
         
         REQUIRE(std::find(enabled.begin(), enabled.end(), "BootStrappedProfitFactorPolicy") != enabled.end());
+        REQUIRE(std::find(enabled.begin(), enabled.end(), "BootStrappedLogProfitFactorPolicy") != enabled.end());
         REQUIRE(std::find(enabled.begin(), enabled.end(), "BootStrappedProfitabilityPFPolicy") != enabled.end());
+        REQUIRE(std::find(enabled.begin(), enabled.end(), "BootStrappedLogProfitabilityPFPolicy") != enabled.end());
     }
     
     SECTION("Experimental filtering should be disabled") {
