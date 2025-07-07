@@ -33,14 +33,15 @@ endif()
 # Flex
 ################################################################################
 find_package(FLEX REQUIRED)
-set(FlexOutput PalScanner.hpp PalScanner.cpp)
-set(FlexInput ${CMAKE_CURRENT_LIST_DIR}/lexer.ll ${CMAKE_CURRENT_LIST_DIR}/scanner.h)
+set(FlexOutput ${CMAKE_CURRENT_BINARY_DIR}/PalScanner.hpp ${CMAKE_CURRENT_BINARY_DIR}/PalScanner.cpp)
+set(FlexInput ${CMAKE_CURRENT_LIST_DIR}/lexer.ll)
 if(FLEX_FOUND)
     add_custom_command(
       OUTPUT ${FlexOutput}
       COMMAND ${FLEX_EXECUTABLE} ${FlexInput}
-      DEPENDS ${FlexInput}
-      COMMENT "Generating Lexer files ${FlexInput}"
+      DEPENDS ${FlexInput} ${CMAKE_CURRENT_LIST_DIR}/scanner.h
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      COMMENT "Generating Lexer files from ${FlexInput}"
     )
 endif()
 #message(STATUS "SRC_LIST = ${SRC_LIST}")
