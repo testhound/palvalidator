@@ -82,7 +82,63 @@ namespace mkc_timeseries
       // We expect exactly one strategy per cloned backtester:
       if (bt->getNumStrategies() != 1) {
 	      throw BackTesterException(
-				  "AllHighResLogPFPolicy::getPermutationTestStatistic - "
+				  "BootStrappedProfitFactorPolicy::getPermutationTestStatistic - "
+				  "expected one strategy, got "
+				  + std::to_string(bt->getNumStrategies()));
+      }
+
+      // --- NEW: Enforce minimum activity thresholds ---
+      const unsigned int minTradesRequired = BootStrappedProfitFactorPolicy<Decimal>::getMinStrategyTrades();
+      const unsigned int minBarsRequired = BootStrappedProfitFactorPolicy<Decimal>::getMinBarSeriesSize();
+
+      // Get the total number of trades for the backtest run.
+      uint32_t numTrades = bt->getNumTrades();
+
+      // Pull every bar‐by‐bar return (entry→exit and any still‐open):
+      std::vector<Decimal> barSeries = bt->getAllHighResReturns((*(bt->beginStrategies())).get());
+
+      // If the thresholds are not met, return a neutral (zero) statistic.
+      if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired)
+      {
+          return DecimalConstants<Decimal>::DecimalZero;
+      }
+
+      // Use lambda to call computeProfitFactor with default parameter
+      auto computePF = [](const std::vector<Decimal>& series) -> Decimal {
+        return StatUtils<Decimal>::computeProfitFactor(series);
+      };
+
+      return StatUtils<Decimal>::getBootStrappedStatistic(barSeries, computePF);
+    }
+
+    /// Minimum number of closed trades required to even attempt this test
+    static unsigned int getMinStrategyTrades() { return 3; }
+
+    // Minimum number of bars in the series to be considered statistically significant
+    static unsigned int getMinBarSeriesSize() { return 10; }
+
+    // Return a test statistic constant if we don't meet the minimum trade criteria
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+  };
+
+    template <class Decimal>
+  class BootStrappedLogProfitFactorPolicy
+  {
+  public:
+    /**
+     * @brief Compute the permutation‐test statistic as the log‐profit‐factor
+     *        over every bar‐by‐bar return (closed + open) for the sole strategy.
+     */
+
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    {
+      // We expect exactly one strategy per cloned backtester:
+      if (bt->getNumStrategies() != 1) {
+	      throw BackTesterException(
+				  "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - "
 				  "expected one strategy, got " 
 				  + std::to_string(bt->getNumStrategies()));
       }
@@ -103,17 +159,18 @@ namespace mkc_timeseries
           return DecimalConstants<Decimal>::DecimalZero;
       }
 
-      // Explicitly disambiguate the overload for computeLogProfitFactor
-      auto computePF = static_cast<Decimal(*)(const std::vector<Decimal>&)>(StatUtils<Decimal>::computeProfitFactor);
-
-      return StatUtils<Decimal>::getBootStrappedStatistic(barSeries, computePF);
+      // Use computeLogProfitFactor with default second parameter (false)
+      return StatUtils<Decimal>::getBootStrappedStatistic(barSeries,
+        [](const std::vector<Decimal>& series) -> Decimal {
+          return StatUtils<Decimal>::computeLogProfitFactor(series, false);
+        });
     }
 
     /// Minimum number of closed trades required to even attempt this test
     static unsigned int getMinStrategyTrades() { return 3; }
 
     // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize() { return 6; }
+    static unsigned int getMinBarSeriesSize() { return 10; }
 
     // Return a test statistic constant if we don't meet the minimum trade criteria
     static Decimal getMinTradeFailureTestStatistic()
@@ -541,6 +598,7 @@ public:
         Decimal tradeScore = DecimalConstants<Decimal>::DecimalZero;
         Decimal pf = closedPositions.getProfitFactor();
         Decimal palProfitability = closedPositions.getPALProfitability();
+	Decimal one(DecimalConstants<Decimal>::DecimalOne);
 
         // Defensively check for valid, non-zero metrics
         if (pf > DecimalConstants<Decimal>::DecimalZero && palProfitability > DecimalConstants<Decimal>::DecimalZero)
@@ -566,7 +624,7 @@ public:
                                              ? (palProfitability / expectedPALProfitability)
                                              : DecimalConstants<Decimal>::DecimalOne;
 
-                    penaltyRatio = std::max(Decimal(0.1), std::min(Decimal(1.0), penaltyRatio));
+                    penaltyRatio = std::max(Decimal(0.1), std::min(one, penaltyRatio));
                     tradeScore = (pf - Decimal(1.0)) * penaltyRatio;
                 }
             }
@@ -1268,6 +1326,7 @@ template <class Decimal>
 
       // a) Calculate Profitability Performance Ratio (replaces PAL ratio)
       Decimal profitabilityPerformanceRatio = DecimalConstants<Decimal>::DecimalZero;
+      Decimal one(DecimalConstants<Decimal>::DecimalOne);
 
       if (profitability > DecimalConstants<Decimal>::DecimalZero)
       {
@@ -1293,12 +1352,12 @@ template <class Decimal>
           }
         }
       }
-      profitabilityPerformanceRatio = std::min(profitabilityPerformanceRatio, Decimal(1.0));
+      profitabilityPerformanceRatio = std::min(profitabilityPerformanceRatio, one);
 
       // b) Calculate Profit Factor Performance Ratio (using high-res PF)
       Decimal pfPerformanceRatio = pf / getTargetProfitFactor();
       // Clamp to prevent extreme scores from a single massive trade
-      pfPerformanceRatio = std::min(pfPerformanceRatio, Decimal(1.5));
+      pfPerformanceRatio = std::min(pfPerformanceRatio, DecimalConstants<Decimal>::DecimalOnePointFive);
 
       // c) Combine performance scores
       Decimal combinedPerformanceScore = profitabilityPerformanceRatio * pfPerformanceRatio;
@@ -1328,6 +1387,8 @@ template <class Decimal>
       if (pf < getMinProfitFactor())
         return failureStat;
 
+      Decimal one(DecimalConstants<Decimal>::DecimalOne);
+      Decimal oneHundred(DecimalConstants<Decimal>::DecimalOneHundred);
       Decimal profitabilityPerformanceRatio = DecimalConstants<Decimal>::DecimalZero;
       if (profitability > DecimalConstants<Decimal>::DecimalZero)
 	{
@@ -1341,7 +1402,7 @@ template <class Decimal>
 		{
 		  Decimal payoffRatio = target / stop;
 		  Decimal desiredPF = getTargetProfitFactor();
-		  Decimal expectedPALProfitability = (desiredPF / (desiredPF + payoffRatio)) * Decimal(100);
+		  Decimal expectedPALProfitability = (desiredPF / (desiredPF + payoffRatio)) * oneHundred;
 		  if (expectedPALProfitability > DecimalConstants<Decimal>::DecimalZero)
 		    {
 		      profitabilityPerformanceRatio = profitability / expectedPALProfitability;
@@ -1349,10 +1410,10 @@ template <class Decimal>
 		}
 	    }
 	}
-      profitabilityPerformanceRatio = std::min(profitabilityPerformanceRatio, Decimal(1.0));
+      profitabilityPerformanceRatio = std::min(profitabilityPerformanceRatio, one);
 
       Decimal pfPerformanceRatio = pf / getTargetProfitFactor();
-      pfPerformanceRatio = std::min(pfPerformanceRatio, Decimal(1.5));
+      pfPerformanceRatio = std::min(pfPerformanceRatio, DecimalConstants<Decimal>::DecimalOnePointFive);
       
       return profitabilityPerformanceRatio * pfPerformanceRatio;
     }
@@ -1361,7 +1422,7 @@ template <class Decimal>
     static unsigned int getMinStrategyTrades() { return 3; }
     
     // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize() { return 6; }
+    static unsigned int getMinBarSeriesSize() { return 10; }
 
     // The hard gate for entry
     static Decimal getMinProfitFactor() { return DecimalConstants<Decimal>::DecimalOnePointSevenFive; }
@@ -1373,6 +1434,136 @@ template <class Decimal>
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
+  };
+
+/**
+   * @class BootStrappedLogProfitabilityPFPolicy
+   * @brief A log-space version of BootStrappedProfitabilityPFPolicy.
+   *
+   * This policy computes a score based on bootstrapped log-space metrics. It is designed
+   * to be robust to outliers by operating on logarithms of returns.
+   *
+   * The scoring logic is analogous to the linear-space version:
+   * 1.  Metric Calculation: Bootstraps the high-resolution return series to find the
+   * median Log Profit Factor (LPF) and median Log Profitability.
+   *
+   * 2.  Performance Scaling: Calculates two performance ratios in log space.
+   * a) Log Profitability Ratio: The observed median Log Profitability divided by an
+   * *expected* Log Profitability. The expectation is derived from the strategy's
+   * own defined payoff ratio and a target LPF.
+   * b) LPF Ratio: The observed median LPF divided by a target LPF.
+   *
+   * 3.  The final score is the product of these two ratios, rewarding strategies that
+   * achieve both high magnitude and high efficiency in log space.
+   */
+  template <class Decimal>
+  class BootStrappedLogProfitabilityPFPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    {
+      if (bt->getNumStrategies() != 1)
+        throw BackTesterException("BootStrappedLogProfitabilityPFPolicy: Expected one strategy");
+
+      auto strat = *(bt->beginStrategies());
+      uint32_t numTrades = bt->getNumTrades();
+
+      if (numTrades < getMinStrategyTrades()) {
+        return getMinTradeFailureTestStatistic();
+      }
+
+      // --- 1. Metric Calculation Stage ---
+      std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+
+      if (barSeries.size() < getMinBarSeriesSize()) {
+        return getMinTradeFailureTestStatistic();
+      }
+
+      // Get bootstrapped median log profit factor and log profitability
+      auto [lpf, log_profitability] = StatUtils<Decimal>::getBootStrappedLogProfitability(barSeries);
+ 
+      // --- 2. Performance Scaling Stage (in Log Space) ---
+
+      Decimal zero(DecimalConstants<Decimal>::DecimalZero);
+      Decimal one(DecimalConstants<Decimal>::DecimalOne);
+
+      // a) Calculate Log Profitability Performance Ratio
+      Decimal profitabilityPerformanceRatio(zero);
+
+      if (log_profitability > DecimalConstants<Decimal>::DecimalZero)
+      {
+        auto palStrat = std::dynamic_pointer_cast<PalStrategy<Decimal>>(strat);
+        if (palStrat)
+        {
+          auto pattern = palStrat->getPalPattern();
+          Decimal profitTarget = pattern->getProfitTargetAsDecimal();
+          Decimal stopLoss = pattern->getStopLossAsDecimal();
+
+          if (stopLoss > DecimalConstants<Decimal>::DecimalZero && profitTarget > DecimalConstants<Decimal>::DecimalZero)
+          {
+            // Transform the strategy's linear profit target and stop loss into log space
+            // to create an expected Log Payoff Ratio (LRWL).
+            Decimal expected_log_win = Decimal(std::log(num::to_double(one + profitTarget)));
+            Decimal expected_log_loss = num::abs(Decimal(std::log(num::to_double(one - stopLoss))));
+
+            Decimal expectedLRWL = DecimalConstants<Decimal>::DecimalZero;
+            if (expected_log_loss > DecimalConstants<Decimal>::DecimalZero)
+            {
+                expectedLRWL = expected_log_win / expected_log_loss;
+            }
+
+            Decimal targetLogPF = getTargetLogProfitFactor();
+
+            // Calculate the expected profitability using a formula that is consistent with log space:
+            // P_log = 100 * LPF / (LPF + LRWL)
+            Decimal expectedLogProfitability(zero);
+            Decimal denominator = targetLogPF + expectedLRWL;
+            if (denominator > DecimalConstants<Decimal>::DecimalZero)
+            {
+              expectedLogProfitability = (DecimalConstants<Decimal>::DecimalOneHundred * targetLogPF) / denominator;
+            }
+
+            if (expectedLogProfitability > DecimalConstants<Decimal>::DecimalZero)
+            {
+              profitabilityPerformanceRatio = log_profitability / expectedLogProfitability;
+            }
+          }
+        }
+      }
+      profitabilityPerformanceRatio = std::min(profitabilityPerformanceRatio, DecimalConstants<Decimal>::DecimalOne);
+
+      // b) Calculate Log Profit Factor Performance Ratio
+      Decimal lpfPerformanceRatio = lpf / getTargetLogProfitFactor();
+
+       // Clamp to avoid extreme scores
+      lpfPerformanceRatio = std::min(lpfPerformanceRatio, DecimalConstants<Decimal>::DecimalOnePointFive);
+
+      // c) Combine performance scores
+      Decimal finalScore = profitabilityPerformanceRatio * lpfPerformanceRatio;
+
+      return finalScore;
+    }
+
+    // --- Configurable Thresholds for Log Space ---
+    static unsigned int getMinStrategyTrades() { return 3; }
+    static unsigned int getMinBarSeriesSize() { return 10; }
+
+    /**
+     * @brief Defines the target Log Profit Factor.
+     * @details This is the natural log of the linear target (e.g., log(2.0)).
+     * A value of 0.0 is breakeven. A value of ~0.693 corresponds to a linear PF of 2.0.
+     */
+    static Decimal getTargetLogProfitFactor() { return TargetLogPF; }
+
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+  private:
+    private:
+    // Pre-calculate the target log profit factor once to avoid repeated calculations.
+    // C++17 allows inline static member initialization.
+    static inline const Decimal TargetLogPF = Decimal(std::log(2.0));
   };
 }
 

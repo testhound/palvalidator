@@ -10,10 +10,13 @@
 
 using namespace mkc_timeseries;
 
+// Helper function to create a mock PriceActionLabPattern for testing.
+// This pattern is for a long strategy.
 std::shared_ptr<PriceActionLabPattern>
 createTestLongPattern(const std::string& profitTargetStr, const std::string& stopLossStr)
 {
-    mkc_palast::AstResourceManager resourceManager;
+    // Using a static resource manager to cache AST nodes is efficient.
+    static mkc_palast::AstResourceManager resourceManager;
     auto percentLong = resourceManager.getDecimalNumber("100.0");
     auto percentShort = resourceManager.getDecimalNumber("0.0");
     auto description = std::make_shared<PatternDescription>("TestPattern.txt", 1, 20230101,
@@ -22,15 +25,19 @@ createTestLongPattern(const std::string& profitTargetStr, const std::string& sto
     auto o0 = resourceManager.getPriceOpen(0);
     auto patternExpr = std::make_shared<GreaterThanExpr>(c0, o0);
     auto entry = resourceManager.getLongMarketEntryOnOpen();
-    auto ptValue = resourceManager.getDecimalNumber(profitTargetStr);
-    auto slValue = resourceManager.getDecimalNumber(stopLossStr);
+    auto ptValue = resourceManager.getDecimalNumber(profitTargetStr.c_str());
+    auto slValue = resourceManager.getDecimalNumber(stopLossStr.c_str());
     auto profitTarget = resourceManager.getLongProfitTarget(ptValue);
     auto stopLoss = resourceManager.getLongStopLoss(slValue);
-    return resourceManager.createPattern(description, patternExpr, entry,
+    
+    // The cast is necessary because the factory returns a base class pointer.
+    return std::make_shared<PriceActionLabPattern>(description, patternExpr, entry,
                                          std::dynamic_pointer_cast<ProfitTargetInPercentExpression>(profitTarget),
                                          std::dynamic_pointer_cast<StopLossInPercentExpression>(stopLoss));
 }
 
+// A mock BackTester class that allows us to inject specific return series
+// and trade counts to test the policies' logic without running a full backtest.
 template <class Decimal>
 class MockPolicyBackTester : public BackTester<Decimal> {
 private:
@@ -43,94 +50,224 @@ public:
     void setNumTrades(uint32_t trades) { mNumTrades = trades; }
     void setHighResReturns(const std::vector<Decimal>& returns) { mHighResReturns = returns; }
 
+    // Override base class methods to return our mock data.
     uint32_t getNumTrades() const override { return mNumTrades; }
     std::vector<Decimal> getAllHighResReturns(typename BackTester<Decimal>::StrategyPtr strat) const override { return mHighResReturns; }
 
+    // The clone method is required by the permutation testing framework.
     std::shared_ptr<BackTester<Decimal>> clone() const override {
         auto mock = std::make_shared<MockPolicyBackTester<Decimal>>();
         mock->setNumTrades(this->mNumTrades);
         mock->setHighResReturns(this->mHighResReturns);
+        // Ensure the cloned backtester also has the strategy.
+        for (auto it = this->beginStrategies(); it != this->endStrategies(); ++it)
+            mock->addStrategy(*it);
+            
         return mock;
     }
 
+    // These methods are required by the BackTester interface.
     bool isDailyBackTester() const override { return true; }
     bool isWeeklyBackTester() const override { return false; }
     bool isMonthlyBackTester() const override { return false; }
     bool isIntradayBackTester() const override { return false; }
 };
 
-TEST_CASE("BootStrappedProfitabilityPFPolicy tests", "[MonteCarloTestPolicy]") {
-    using DT = DecimalType;
+// Test suite for the bootstrapped Monte Carlo policies.
+TEST_CASE("Bootstrapped Monte Carlo Policies", "[MonteCarloTestPolicy]") {
+  using DT = DecimalType;
 
-    auto portfolio = std::make_shared<Portfolio<DT>>("TestPortfolio");
-    auto palPattern = createTestLongPattern("2.0", "1.0");
-    auto palStrategy = std::make_shared<PalLongStrategy<DT>>("TestPalStrategy", palPattern, portfolio);
-    auto backtester = std::make_shared<MockPolicyBackTester<DT>>();
-    backtester->addStrategy(palStrategy);
+  // --- Setup common objects for all tests in this suite ---
+  auto portfolio = std::make_shared<Portfolio<DT>>("TestPortfolio");
+  auto backtester = std::make_shared<MockPolicyBackTester<DT>>();
+    
+  // Create a strategy with a 2% profit target and 1% stop loss (2:1 payoff ratio).
+  auto palPattern = createTestLongPattern("0.02", "0.01");
+  auto palStrategy = std::make_shared<PalLongStrategy<DT>>("TestPalStrategy", palPattern, portfolio);
+  backtester->addStrategy(palStrategy);
 
+  // A sample return series with a positive expected outcome.
+  std::vector<DT> returns;
+  returns.insert(returns.end(), 15, DT("0.02")); // 15 wins of 2%
+  returns.insert(returns.end(), 10, DT("-0.01")); // 10 losses of 1%
+
+  // --- Tests for BootStrappedProfitFactorPolicy ---
+  SECTION("BootStrappedProfitFactorPolicy") {
+    const auto minTrades = BootStrappedProfitFactorPolicy<DT>::getMinStrategyTrades();
+    const auto minBars = BootStrappedProfitFactorPolicy<DT>::getMinBarSeriesSize();
+    const DT failureStat = BootStrappedProfitFactorPolicy<DT>::getMinTradeFailureTestStatistic();
+
+    SECTION("Fails if number of trades is below minimum") {
+      backtester->setNumTrades(minTrades - 1);
+      backtester->setHighResReturns(returns); // Sufficient bars
+      DT statistic = BootStrappedProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
+    }
+
+    SECTION("Fails if number of bars is below minimum") {
+      std::vector<DT> smallReturnSeries(minBars - 1, DT("0.01"));
+      backtester->setNumTrades(minTrades); // Sufficient trades
+      backtester->setHighResReturns(smallReturnSeries);
+      DT statistic = BootStrappedProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
+    }
+
+    SECTION("Calculates a statistic whose distribution is centered on the true profit factor") {
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(returns);
+
+      DT truePF = StatUtils<DT>::computeProfitFactor(returns);
+            
+      std::vector<DT> results;
+      results.reserve(100);
+      for(int i = 0; i < 100; ++i) {
+	results.push_back(BootStrappedProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester));
+      }
+
+      DT mean_pf = StatUtils<DT>::computeMean(results);
+      DT stddev_pf = StatUtils<DT>::computeStdDev(results, mean_pf);
+
+      // The true value should be within 3 standard deviations of the bootstrapped mean.
+      REQUIRE_THAT(num::to_double(truePF), Catch::Matchers::WithinAbs(num::to_double(mean_pf), num::to_double(stddev_pf * DT(3.0))));
+    }
+  }
+
+  // --- Tests for BootStrappedLogProfitFactorPolicy ---
+  SECTION("BootStrappedLogProfitFactorPolicy") {
+    const auto minTrades = BootStrappedLogProfitFactorPolicy<DT>::getMinStrategyTrades();
+    const auto minBars = BootStrappedLogProfitFactorPolicy<DT>::getMinBarSeriesSize();
+    const DT failureStat = BootStrappedLogProfitFactorPolicy<DT>::getMinTradeFailureTestStatistic();
+
+    SECTION("Fails if number of trades is below minimum") {
+      backtester->setNumTrades(minTrades - 1);
+      backtester->setHighResReturns(returns);
+      DT statistic = BootStrappedLogProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
+    }
+
+    SECTION("Fails if number of bars is below minimum") {
+      std::vector<DT> smallReturnSeries(minBars - 1, DT("0.01"));
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(smallReturnSeries);
+      DT statistic = BootStrappedLogProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
+    }
+
+    SECTION("Calculates a statistic whose distribution is centered on the true log profit factor") {
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(returns);
+      DT trueLPF = StatUtils<DT>::computeLogProfitFactor(returns);
+            
+      std::vector<DT> results;
+      results.reserve(100);
+      for(int i = 0; i < 100; ++i) {
+	results.push_back(BootStrappedLogProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester));
+      }
+
+      DT mean_lpf = StatUtils<DT>::computeMean(results);
+      DT stddev_lpf = StatUtils<DT>::computeStdDev(results, mean_lpf);
+
+      REQUIRE_THAT(num::to_double(trueLPF), Catch::Matchers::WithinAbs(num::to_double(mean_lpf), num::to_double(stddev_lpf * DT(3.0))));
+    }
+  }
+    
+  // --- Tests for BootStrappedProfitabilityPFPolicy ---
+  SECTION("BootStrappedProfitabilityPFPolicy") {
     const auto minTrades = BootStrappedProfitabilityPFPolicy<DT>::getMinStrategyTrades();
     const auto minBars = BootStrappedProfitabilityPFPolicy<DT>::getMinBarSeriesSize();
     const DT failureStat = BootStrappedProfitabilityPFPolicy<DT>::getMinTradeFailureTestStatistic();
 
-    SECTION("Fails if number of trades is below minimum threshold") {
-        backtester->setNumTrades(minTrades - 1);
-        backtester->setHighResReturns({DT(1.0)});
-        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
-        REQUIRE(statistic == failureStat);
+    SECTION("Fails if number of trades is below minimum") {
+      backtester->setNumTrades(minTrades - 1);
+      backtester->setHighResReturns(returns);
+      DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
     }
 
-    SECTION("Fails if high-resolution return series is too small") {
-        std::vector<DT> returns(minBars - 1, DT(0.1));
-        backtester->setNumTrades(minTrades);
-        backtester->setHighResReturns(returns);
-        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
-        REQUIRE(statistic == failureStat);
+    SECTION("Fails if number of bars is below minimum") {
+      std::vector<DT> smallReturnSeries(minBars - 1, DT("0.01"));
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(smallReturnSeries);
+      DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
     }
 
-    SECTION("Fails if bootstrapped Profit Factor is below the gate") {
-        std::vector<DT> returns;
-        returns.insert(returns.end(), 10, DT("0.15"));
-        returns.insert(returns.end(), 10, DT("-0.1"));
-        backtester->setNumTrades(minTrades);
-        backtester->setHighResReturns(returns);
+    SECTION("Calculates a score whose distribution is centered on the expected value") {
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(returns);
 
-	DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getDeterministicTestStatistic(backtester);
-        REQUIRE(statistic == failureStat);
+      // Manually calculate the expected score based on the true (non-bootstrapped) metrics.
+      auto [truePF, trueProfitability] = StatUtils<DT>::computeProfitability(returns);
+            
+      DT targetPF = BootStrappedProfitabilityPFPolicy<DT>::getTargetProfitFactor();
+      DT payoffRatio = palPattern->getPayoffRatio();
+      DT expectedPALProfitability = (targetPF / (targetPF + payoffRatio)) * DT(100);
+
+      DT profitabilityRatio = std::min(DT(1.0), trueProfitability / expectedPALProfitability);
+      DT pfRatio = std::min(DT(1.5), truePF / targetPF);
+      DT expectedScore = profitabilityRatio * pfRatio;
+            
+      std::vector<DT> results;
+      results.reserve(100);
+      for(int i = 0; i < 100; ++i) {
+	results.push_back(BootStrappedProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester));
+      }
+
+      DT mean_score = StatUtils<DT>::computeMean(results);
+      DT stddev_score = StatUtils<DT>::computeStdDev(results, mean_score);
+            
+      REQUIRE_THAT(num::to_double(expectedScore), Catch::Matchers::WithinAbs(num::to_double(mean_score), num::to_double(stddev_score * DT(3.0))));
+    }
+  }
+
+  // --- Tests for BootStrappedLogProfitabilityPFPolicy ---
+  SECTION("BootStrappedLogProfitabilityPFPolicy") {
+    const auto minTrades = BootStrappedLogProfitabilityPFPolicy<DT>::getMinStrategyTrades();
+    const auto minBars = BootStrappedLogProfitabilityPFPolicy<DT>::getMinBarSeriesSize();
+    const DT failureStat = BootStrappedLogProfitabilityPFPolicy<DT>::getMinTradeFailureTestStatistic();
+
+    SECTION("Fails if number of trades is below minimum") {
+      backtester->setNumTrades(minTrades - 1);
+      backtester->setHighResReturns(returns);
+      DT statistic = BootStrappedLogProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
     }
 
-    SECTION("Successful calculation with strong performance") {
-        std::vector<DT> returns(20, DT("0.1"));
-        backtester->setNumTrades(20);
-        backtester->setHighResReturns(returns);
-
-        auto [expectedPF, expectedProfitability] = StatUtils<DT>::computeProfitability(returns);
-        DT targetPF = BootStrappedProfitabilityPFPolicy<DT>::getTargetProfitFactor();
-        DT payoffRatio = palPattern->getProfitTargetAsDecimal() / palPattern->getStopLossAsDecimal();
-        DT expectedPAL = (targetPF / (targetPF + payoffRatio)) * DT(100);
-        DT profitabilityRatio = std::min(expectedProfitability / expectedPAL, DT(1.0));
-        DT pfRatio = std::min(expectedPF / targetPF, DT("1.5"));
-        DT expectedFinalScore = profitabilityRatio * pfRatio; // Should be 1.5
-
-        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getDeterministicTestStatistic(backtester);
-        REQUIRE_THAT(num::to_double(statistic), Catch::Matchers::WithinAbs(num::to_double(expectedFinalScore), 0.0001));
+    SECTION("Fails if number of bars is below minimum") {
+      std::vector<DT> smallReturnSeries(minBars - 1, DT("0.01"));
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(smallReturnSeries);
+      DT statistic = BootStrappedLogProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
     }
 
-    SECTION("Successful calculation with mixed performance") {
-        std::vector<DT> returns;
-        returns.insert(returns.end(), 10, DT("0.5"));
-        returns.insert(returns.end(), 10, DT("-0.2"));
-        backtester->setNumTrades(20);
-        backtester->setHighResReturns(returns);
+    SECTION("Calculates a score whose distribution is centered on the expected value") {
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(returns);
 
-        auto [expectedPF, expectedProfitability] = StatUtils<DT>::computeProfitability(returns);
-        DT targetPF = BootStrappedProfitabilityPFPolicy<DT>::getTargetProfitFactor();
-        DT payoffRatio = palPattern->getProfitTargetAsDecimal() / palPattern->getStopLossAsDecimal();
-        DT expectedPAL = (targetPF / (targetPF + payoffRatio)) * DT(100);
-        DT profitabilityRatio = std::min(expectedProfitability / expectedPAL, DT(1.0));
-        DT pfRatio = std::min(expectedPF / targetPF, DT("1.5"));
-        DT expectedFinalScore = profitabilityRatio * pfRatio; // Should be 1.25
+      // Manually calculate the expected score based on the true (non-bootstrapped) metrics.
+      auto [trueLPF, trueLP] = StatUtils<DT>::computeLogProfitability(returns);
+            
+      DecimalType expected_log_win = DT(std::log(num::to_double(DT(1.0) + palPattern->getProfitTargetAsDecimal())));
+      DecimalType expected_log_loss = num::abs(DT(std::log(num::to_double(DT(1.0) - palPattern->getStopLossAsDecimal()))));
+      DecimalType expectedLRWL = expected_log_win / expected_log_loss;
+      DecimalType targetLogPF = BootStrappedLogProfitabilityPFPolicy<DT>::getTargetLogProfitFactor();
+      DecimalType expectedLogProfitability = (DT(100.0) * targetLogPF) / (targetLogPF + expectedLRWL);
 
-        DT statistic = BootStrappedProfitabilityPFPolicy<DT>::getDeterministicTestStatistic(backtester);
-        REQUIRE_THAT(num::to_double(statistic), Catch::Matchers::WithinAbs(num::to_double(expectedFinalScore), 0.0001));
+      DecimalType profitabilityRatio = std::min(DT(1.0), trueLP / expectedLogProfitability);
+      DecimalType lpfRatio = std::min(DT(1.5), trueLPF / targetLogPF);
+      DecimalType expectedScore = profitabilityRatio * lpfRatio;
+            
+      std::vector<DT> results;
+      results.reserve(100);
+      for(int i = 0; i < 100; ++i) {
+	results.push_back(BootStrappedLogProfitabilityPFPolicy<DT>::getPermutationTestStatistic(backtester));
+      }
+
+      DT mean_score = StatUtils<DT>::computeMean(results);
+      DT stddev_score = StatUtils<DT>::computeStdDev(results, mean_score);
+            
+      REQUIRE_THAT(num::to_double(expectedScore), Catch::Matchers::WithinAbs(num::to_double(mean_score), num::to_double(stddev_score * DT(3.0))));
     }
+  }
 }
