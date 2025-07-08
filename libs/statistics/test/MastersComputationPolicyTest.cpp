@@ -162,7 +162,7 @@ namespace {
   class DummyPalStrategy : public PalStrategy<DecimalType> {
   public:
     DummyPalStrategy(std::shared_ptr<Portfolio<DecimalType>> portfolio)
-      : PalStrategy<DecimalType>("dummy", getDummyPattern(), portfolio, StrategyOptions(false, 0)) {}
+      : PalStrategy<DecimalType>("dummy", getDummyPattern(), portfolio, StrategyOptions(false, 0, 8)) {}
 
     static std::shared_ptr<PriceActionLabPattern> getDummyPattern() {
       static std::shared_ptr<PriceActionLabPattern> dummyPattern;

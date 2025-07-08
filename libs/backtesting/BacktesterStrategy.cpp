@@ -2,6 +2,6 @@
 
 namespace mkc_timeseries
 {
-  StrategyOptions defaultStrategyOptions(false, 0);
+  StrategyOptions defaultStrategyOptions(false, 0, 8);
 }
 

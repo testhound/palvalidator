@@ -744,10 +744,11 @@ namespace mkc_timeseries
         {
           auto it = instrPos.getInstrumentPosition(numUnits);
           auto pos = *it;
-          
-          if (pos->getNumBarsSinceEntry() >= 8)
+
+	  unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
+	  
+          if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
           {
-            // Exit all units at market after 8 bars
             this->ExitLongAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
             return; // Don't place other exit orders
           }
@@ -904,10 +905,11 @@ namespace mkc_timeseries
         {
           auto it = instrPos.getInstrumentPosition(numUnits);
           auto pos = *it;
-          
-          if (pos->getNumBarsSinceEntry() >= 8)
+
+	  unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
+          if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
           {
-            // Exit all units at market after 8 bars
+            // Exit all units at market after maxHold bars
             this->ExitShortAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
             return; // Don't place other exit orders
           }

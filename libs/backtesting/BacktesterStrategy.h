@@ -27,9 +27,10 @@ namespace mkc_timeseries
   class StrategyOptions
   {
   public:
-    StrategyOptions (bool pyramidingEnabled, unsigned int maxPyramidPositions)
+    StrategyOptions (bool pyramidingEnabled, unsigned int maxPyramidPositions, unsigned int maxHoldingPeriod)
       : mPyramidPositions (pyramidingEnabled),
-	mMaxPyramidPositions(maxPyramidPositions)
+	mMaxPyramidPositions(maxPyramidPositions),
+	mMaxHoldingPeriod(maxHoldingPeriod)
     {}
 
     bool isPyramidingEnabled() const
@@ -42,9 +43,16 @@ namespace mkc_timeseries
 	return mMaxPyramidPositions;
       }
 
+    unsigned int getMaxHoldingPeriod() const
+    {
+      return mMaxHoldingPeriod;
+    }
+    
+
   private:
     bool mPyramidPositions;
     unsigned int mMaxPyramidPositions;
+    unsigned int mMaxHoldingPeriod;
   };
 
   extern StrategyOptions defaultStrategyOptions;
