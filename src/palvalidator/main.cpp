@@ -628,17 +628,24 @@ void runValidationForRomanoWolf(std::shared_ptr<ValidatorConfiguration<Num>> con
 // Orchestrator for Benjamini-Hochberg Validation
 void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Num>> config,
                                        const ValidationParameters& params,
-                                       const std::string& policyName)
+                                       const std::string& policyName,
+                                       bool partitionByFamily = false)
 {
     std::cout << "\nUsing Benjamini-Hochberg validation with " << policyName
               << " and " << params.permutations << " permutations." << std::endl;
     
     std::cout << "[INFO] False Discovery Rate (FDR) set to: " << params.falseDiscoveryRate << std::endl;
 
+    if (partitionByFamily) {
+        std::cout << "Pattern partitioning: By detailed family (Category, SubType, Direction)" << std::endl;
+    } else {
+        std::cout << "Pattern partitioning: None (all patterns tested together)" << std::endl;
+    }
+
     try {
         auto validation = statistics::PolicyFactory::createBenjaminiHochbergValidation(
             policyName, params.permutations, params.falseDiscoveryRate.getAsDouble());
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::BenjaminiHochberg, policyName);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::BenjaminiHochberg, policyName, partitionByFamily);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Benjamini-Hochberg validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -711,12 +718,21 @@ int main(int argc, char **argv)
         }
     }
     
-    // Ask about pattern partitioning for Masters and Romano-Wolf methods
+    // Ask about pattern partitioning for Masters, Romano-Wolf, and Benjamini-Hochberg methods
     bool partitionByFamily = false;
-    if (validationMethod == ValidationMethod::Masters || validationMethod == ValidationMethod::RomanoWolf) {
+    if (validationMethod == ValidationMethod::Masters ||
+        validationMethod == ValidationMethod::RomanoWolf ||
+        validationMethod == ValidationMethod::BenjaminiHochberg) {
         std::cout << "\nPattern Partitioning Options:" << std::endl;
-        std::cout << "  1. By Direction Only (Long vs Short) - Default" << std::endl;
-        std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+        
+        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "  1. No Partitioning (all patterns tested together) - Default" << std::endl;
+            std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+        } else {
+            std::cout << "  1. By Direction Only (Long vs Short) - Default" << std::endl;
+            std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+        }
+        
         std::cout << "Choose partitioning method (1 or 2): ";
         std::getline(std::cin, input);
         
@@ -724,7 +740,11 @@ int main(int argc, char **argv)
             partitionByFamily = true;
             std::cout << "Selected: Detailed family partitioning" << std::endl;
         } else {
-            std::cout << "Selected: Direction-only partitioning (default)" << std::endl;
+            if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+                std::cout << "Selected: No partitioning (default)" << std::endl;
+            } else {
+                std::cout << "Selected: Direction-only partitioning (default)" << std::endl;
+            }
         }
     }
     
@@ -779,8 +799,14 @@ int main(int argc, char **argv)
               << " to " << config->getInsampleDateRange().getLastDateTime() << std::endl;
     std::cout << "Validation Method: " << getValidationMethodString(validationMethod) << std::endl;
     std::cout << "Computation Policy: " << selectedPolicy << std::endl;
-    if (validationMethod == ValidationMethod::Masters || validationMethod == ValidationMethod::RomanoWolf) {
-        std::cout << "Pattern Partitioning: " << (partitionByFamily ? "By Detailed Family" : "By Direction Only") << std::endl;
+    if (validationMethod == ValidationMethod::Masters ||
+        validationMethod == ValidationMethod::RomanoWolf ||
+        validationMethod == ValidationMethod::BenjaminiHochberg) {
+        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "Pattern Partitioning: " << (partitionByFamily ? "By Detailed Family" : "None") << std::endl;
+        } else {
+            std::cout << "Pattern Partitioning: " << (partitionByFamily ? "By Detailed Family" : "By Direction Only") << std::endl;
+        }
     }
     std::cout << "Permutations: " << params.permutations << std::endl;
     std::cout << "P-Value Threshold: " << params.pValueThreshold << std::endl;
@@ -800,7 +826,7 @@ int main(int argc, char **argv)
                 runValidationForRomanoWolf(config, params, selectedPolicy, partitionByFamily);
                 break;
             case ValidationMethod::BenjaminiHochberg:
-                runValidationForBenjaminiHochberg(config, params, selectedPolicy);
+                runValidationForBenjaminiHochberg(config, params, selectedPolicy, partitionByFamily);
                 break;
         }
     } catch (const std::exception& e) {

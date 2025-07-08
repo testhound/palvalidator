@@ -31,7 +31,7 @@
 %option c++
 %option yyclass="PalScanner"
 %option outfile="PalScanner.cpp" 
-/* %option header-file="PalScanner.hpp" */
+%option header-file="PalScanner.hpp"
 %option nodefault
 %option noyywrap
 %option prefix="MkcPalAst_"

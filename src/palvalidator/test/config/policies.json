@@ -1,29 +1,31 @@
 {
   "computation_policies": {
     "enabled": [
-      "GatedPerformanceScaledPalPolicy",
       "RobustProfitFactorPolicy",
       "AllHighResLogPFPolicy",
+      "GatedPerformanceScaledPalPolicy",
       "BootStrappedProfitFactorPolicy",
-      "BootStrappedProfitabilityPFPolicy"
+      "BootStrappedLogProfitFactorPolicy",
+      "BootStrappedProfitabilityPFPolicy",
+      "BootStrappedLogProfitabilityPFPolicy"
     ],
     "default": "GatedPerformanceScaledPalPolicy",
     "groups": {
       "recommended": {
-        "policies": ["GatedPerformanceScaledPalPolicy", "RobustProfitFactorPolicy"],
-        "description": "Recommended policies for most use cases"
+        "policies": ["BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy"],
+        "description": "Primary bootstrap-based policies for robust statistical analysis"
       },
       "basic": {
-        "policies": ["RobustProfitFactorPolicy", "AllHighResLogPFPolicy"],
-        "description": "Basic profit factor policies for standard analysis"
+        "policies": ["BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy", "RobustProfitFactorPolicy", "AllHighResLogPFPolicy"],
+        "description": "Bootstrap and basic profit factor policies for standard analysis"
       },
       "advanced": {
         "policies": ["GatedPerformanceScaledPalPolicy"],
         "description": "Advanced PAL analysis with performance gating and scaling"
       },
       "experimental": {
-        "policies": ["BootStrappedProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy"],
-        "description": "Bootstrap-based policies for statistical robustness testing"
+        "policies": [],
+        "description": "Experimental policies for testing new approaches"
       }
     }
   },

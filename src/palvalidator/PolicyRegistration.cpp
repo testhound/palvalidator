@@ -191,6 +191,18 @@ void initializePolicyRegistry() {
         {"Sufficient sample size", "Bootstrap libraries"}
     );
     
+    registerPolicyWithMetadata<mkc_timeseries::BootStrappedLogProfitFactorPolicy>(
+        "BootStrappedLogProfitFactorPolicy",
+        "Bootstrap Log Profit Factor",
+        "Bootstrap-based logarithmic profit factor analysis for enhanced statistical robustness",
+        "experimental",
+        true,
+        "0.9.0",
+        "MKC Associates",
+        {"bootstrap", "log-profit-factor", "statistical", "experimental"},
+        {"Sufficient sample size", "Bootstrap libraries"}
+    );
+    
     registerPolicyWithMetadata<mkc_timeseries::BootStrappedProfitabilityPFPolicy>(
         "BootStrappedProfitabilityPFPolicy",
         "Bootstrap Profitability with PF",
@@ -200,6 +212,18 @@ void initializePolicyRegistry() {
         "0.8.0",
         "MKC Associates",
         {"bootstrap", "profitability", "profit-factor", "experimental"},
+        {"Large dataset", "Statistical computing resources"}
+    );
+    
+    registerPolicyWithMetadata<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>(
+        "BootStrappedLogProfitabilityPFPolicy",
+        "Bootstrap Log Profitability with PF",
+        "Log-space bootstrap profitability analysis with profit factor metrics for robust outlier handling",
+        "experimental",
+        true,
+        "0.8.0",
+        "MKC Associates",
+        {"bootstrap", "log-profitability", "profit-factor", "log-space", "experimental"},
         {"Large dataset", "Statistical computing resources"}
     );
 }

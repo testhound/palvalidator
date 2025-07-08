@@ -4,6 +4,7 @@
 #include <tuple>
 #include <random>
 #include <functional> 
+#include <numeric> // Required for std::accumulate
 #include "DecimalConstants.h"
 #include "number.h"
 #include "TimeSeriesIndicators.h"
@@ -42,11 +43,6 @@ namespace mkc_timeseries
           }
 	
         return computeFactor(win, loss, compressResult);
-      }
-
-      static Decimal computeProfitFactor(const std::vector<Decimal>& xs)
-      {
-	return computeProfitFactor(xs, false);
       }
       
       /**
@@ -146,31 +142,70 @@ namespace mkc_timeseries
         return std::make_tuple(pf, p);
       }
 
+      /**
+       * @brief Computes the Log Profit Factor and Log Profitability.
+       * @details This is the log-space equivalent of `computeProfitability`. It calculates
+       * the ratio of summed log-returns (Log Profit Factor) and a measure of
+       * efficiency (Log Profitability) based on the Log Payoff Ratio.
+       * @param xs A vector of returns.
+       * @return A std::tuple<Decimal, Decimal> containing:
+       * - get<0>: The Log Profit Factor.
+       * - get<1>: The Log Profitability as a percentage.
+       */
+      static std::tuple<Decimal, Decimal> computeLogProfitability(const std::vector<Decimal>& xs)
+      {
+          if (xs.empty()) {
+              return std::make_tuple(DecimalConstants<Decimal>::DecimalZero, DecimalConstants<Decimal>::DecimalZero);
+          }
+
+          Decimal log_wins(DecimalConstants<Decimal>::DecimalZero);
+          Decimal log_losses(DecimalConstants<Decimal>::DecimalZero);
+          size_t num_wins = 0;
+          size_t num_losses = 0;
+
+          for (const auto& r : xs) {
+              double m = 1 + num::to_double(r);
+              if (m <= 0) continue;
+
+              Decimal lr(std::log(m));
+              if (r > DecimalConstants<Decimal>::DecimalZero) {
+                  log_wins += lr;
+                  num_wins++;
+              } else if (r < DecimalConstants<Decimal>::DecimalZero) {
+                  log_losses += lr;
+                  num_losses++;
+              }
+          }
+
+          // 1. Calculate Log Profit Factor (LPF)
+          Decimal lpf = computeFactor(log_wins, log_losses, false);
+
+          // 2. Calculate Log Payoff Ratio (LRWL)
+          Decimal lrwl(DecimalConstants<Decimal>::DecimalZero);
+          if (num_wins > 0 && num_losses > 0) {
+              Decimal avg_log_win = log_wins / Decimal(num_wins);
+              Decimal avg_log_loss = num::abs(log_losses) / Decimal(num_losses);
+              if (avg_log_loss > DecimalConstants<Decimal>::DecimalZero) {
+                  lrwl = avg_log_win / avg_log_loss;
+              }
+          }
+
+          // 3. Calculate Log Profitability (P_log)
+          Decimal p_log(DecimalConstants<Decimal>::DecimalZero);
+          Decimal denominator = lpf + lrwl;
+          if (denominator > DecimalConstants<Decimal>::DecimalZero) {
+              p_log = (DecimalConstants<Decimal>::DecimalOneHundred * lpf) / denominator;
+          }
+
+          return std::make_tuple(lpf, p_log);
+      }
+
       static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
 								       std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
-								       size_t numBootstraps = 20)
+								       size_t numBootstraps = 100)
       {
-	if (barReturns.size() < 5)
-	  return std::make_tuple(DecimalConstants<Decimal>::DecimalZero,
-				 DecimalConstants<Decimal>::DecimalZero);
-
-	std::vector<Decimal> pfValues;
-	std::vector<Decimal> profitabilityValues;
-	pfValues.reserve(numBootstraps);
-	profitabilityValues.reserve(numBootstraps);
-
-	for (size_t i = 0; i < numBootstraps; ++i)
-	  {
-	    auto sample = StatUtils<Decimal>::bootstrapWithReplacement(barReturns);
-	    auto [pf, profitability] = statisticFunc(sample);
-	    pfValues.push_back(pf);
-	    profitabilityValues.push_back(profitability);
-	  }
-
-	Decimal medianPF = mkc_timeseries::MedianOfVec(pfValues);
-	Decimal medianProfitability = mkc_timeseries::MedianOfVec(profitabilityValues);
-
-	return std::make_tuple(medianPF, medianProfitability);
+	thread_local static randutils::mt19937_rng rng;
+        return getBootstrappedTupleStatistic(barReturns, statisticFunc, numBootstraps, rng);
       }
 
       static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
@@ -178,48 +213,44 @@ namespace mkc_timeseries
 								       size_t numBootstraps,
 								       uint64_t seed)
       {
-	if (barReturns.size() < 5)
-	  return std::make_tuple(DecimalConstants<Decimal>::DecimalZero,
-                               DecimalConstants<Decimal>::DecimalZero);
-	
-	std::vector<Decimal> pfValues;
-	std::vector<Decimal> profitabilityValues;
-	pfValues.reserve(numBootstraps);
-	profitabilityValues.reserve(numBootstraps);
+        randutils::mt19937_rng rng(seed);
+        return getBootstrappedTupleStatistic(barReturns, statisticFunc, numBootstraps, rng);
+      }
 
-	for (size_t i = 0; i < numBootstraps; ++i)
-	  {
-	    auto sample = StatUtils<Decimal>::bootstrapWithReplacement(barReturns, 0, seed + i);  // ensure different samples
-	    auto [pf, profitability] = statisticFunc(sample);
-	    pfValues.push_back(pf);
-	    profitabilityValues.push_back(profitability);
-	  }
+      static std::tuple<Decimal, Decimal> getBootStrappedLogProfitability(const std::vector<Decimal>& barReturns,
+                                                                          size_t numBootstraps = 100)
+      {
+          thread_local static randutils::mt19937_rng rng;
+          return getBootstrappedTupleStatistic(barReturns, &StatUtils<Decimal>::computeLogProfitability, numBootstraps, rng);
+      }
 
-	Decimal medianPF = mkc_timeseries::MedianOfVec(pfValues);
-	Decimal medianProfitability = mkc_timeseries::MedianOfVec(profitabilityValues);
-
-	return std::make_tuple(medianPF, medianProfitability);
+      static std::tuple<Decimal, Decimal> getBootStrappedLogProfitability(const std::vector<Decimal>& barReturns,
+                                                                          size_t numBootstraps,
+									  uint64_t seed)
+      {
+          randutils::mt19937_rng rng(seed);
+          return getBootstrappedTupleStatistic(barReturns, &StatUtils<Decimal>::computeLogProfitability, numBootstraps, rng);
       }
 
       // 🌐 Overload 1: Random bootstrap using thread-local rng
       static std::vector<Decimal> bootstrapWithReplacement(const std::vector<Decimal>& input, size_t sampleSize = 0)
       {
-	thread_local static randutils::mt19937_rng rng;
-	return bootstrapWithRNG(input, sampleSize, rng);
+	      thread_local static randutils::mt19937_rng rng;
+	      return bootstrapWithRNG(input, sampleSize, rng);
       }
 
       // 🔐 Overload 2: Deterministic bootstrap using seed
       static std::vector<Decimal> bootstrapWithReplacement(const std::vector<Decimal>& input, size_t sampleSize, uint64_t seed)
       {
-	std::array<uint32_t, 2> seed_data = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
-	randutils::seed_seq_fe128 seed_seq(seed_data.begin(), seed_data.end());
-	randutils::mt19937_rng rng(seed_seq);
-	return bootstrapWithRNG(input, sampleSize, rng);
+	      std::array<uint32_t, 2> seed_data = {static_cast<uint32_t>(seed), static_cast<uint32_t>(seed >> 32)};
+	      randutils::seed_seq_fe128 seed_seq(seed_data.begin(), seed_data.end());
+	      randutils::mt19937_rng rng(seed_seq);
+	      return bootstrapWithRNG(input, sampleSize, rng);
       }
 
       static Decimal getBootStrappedStatistic(const std::vector<Decimal>& barReturns,
 					      std::function<Decimal(const std::vector<Decimal>&)> statisticFunc,
-					      size_t numBootstraps = 20)
+					      size_t numBootstraps = 100)
       {
 	if (barReturns.size() < 5)
 	  return DecimalConstants<Decimal>::DecimalZero;
@@ -234,6 +265,38 @@ namespace mkc_timeseries
 	  }
 
 	return mkc_timeseries::MedianOfVec(statistics);
+      }
+
+      /**
+       * @brief Computes the arithmetic mean of a vector of Decimal values.
+       * @param data The vector of data points.
+       * @return The mean of the data.
+       */
+      static Decimal computeMean(const std::vector<Decimal>& data)
+      {
+          if (data.empty()) {
+              return DecimalConstants<Decimal>::DecimalZero;
+          }
+          Decimal sum = std::accumulate(data.begin(), data.end(), DecimalConstants<Decimal>::DecimalZero);
+          return sum / Decimal(data.size());
+      }
+
+      /**
+       * @brief Computes the sample standard deviation of a vector of Decimal values.
+       * @param data The vector of data points.
+       * @param mean The pre-computed mean of the data.
+       * @return The sample standard deviation.
+       */
+      static Decimal computeStdDev(const std::vector<Decimal>& data, const Decimal& mean)
+      {
+          if (data.size() < 2) {
+              return DecimalConstants<Decimal>::DecimalZero;
+          }
+          Decimal sq_sum = std::accumulate(data.begin(), data.end(), DecimalConstants<Decimal>::DecimalZero,
+              [&mean](const Decimal& acc, const Decimal& val) {
+                  return acc + (val - mean) * (val - mean);
+              });
+          return Decimal(std::sqrt(num::to_double(sq_sum / Decimal(data.size() - 1))));
       }
 
     private:
@@ -287,6 +350,36 @@ namespace mkc_timeseries
 	}
 
 	return result;
+      }
+
+      // 🔒 Internal core logic for bootstrapping tuple-based statistics
+      template<typename RNG>
+      static std::tuple<Decimal, Decimal> getBootstrappedTupleStatistic(
+          const std::vector<Decimal>& barReturns,
+          std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
+          size_t numBootstraps,
+          RNG& rng)
+      {
+          if (barReturns.size() < 5)
+              return std::make_tuple(DecimalConstants<Decimal>::DecimalZero, DecimalConstants<Decimal>::DecimalZero);
+
+          std::vector<Decimal> stat1_values;
+          std::vector<Decimal> stat2_values;
+          stat1_values.reserve(numBootstraps);
+          stat2_values.reserve(numBootstraps);
+
+          for (size_t i = 0; i < numBootstraps; ++i)
+          {
+              auto sample = bootstrapWithRNG(barReturns, 0, rng);
+              auto [stat1, stat2] = statisticFunc(sample);
+              stat1_values.push_back(stat1);
+              stat2_values.push_back(stat2);
+          }
+
+          Decimal median_stat1 = mkc_timeseries::MedianOfVec(stat1_values);
+          Decimal median_stat2 = mkc_timeseries::MedianOfVec(stat2_values);
+
+          return std::make_tuple(median_stat1, median_stat2);
       }
   };
 }

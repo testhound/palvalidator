@@ -397,7 +397,8 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
-				 DecimalConstants<Decimal>::SignificantPValue) {
+     DecimalConstants<Decimal>::SignificantPValue,
+     [[maybe_unused]] bool partitionByFamily = false) {
       auto it = container_.getInternalContainer().rbegin();
       auto itEnd = container_.getInternalContainer().rend();
 
@@ -478,7 +479,8 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
-				 DecimalConstants<Decimal>::SignificantPValue)
+     DecimalConstants<Decimal>::SignificantPValue,
+     bool partitionByFamily = false)
     {
       if (getNumMultiComparisonStrategies() == 0)
         return;
@@ -486,81 +488,56 @@ namespace mkc_timeseries
       std::cout << "In method AdaptiveBenjaminiHochbergYr2000::correctForMultipleTests" << std::endl;
       std::cout << "pValueSignificanceLevel = " << pValueSignificanceLevel << std::endl;
       std::cout << "mFalseDiscoveryRate = " << mFalseDiscoveryRate << std::endl;
+      std::cout << "partitionByFamily parameter = " << (partitionByFamily ? "true" : "false") << std::endl;
+      if (partitionByFamily) {
+        std::cout << "Family partitioning enabled: Long and Short strategies will be corrected separately" << std::endl;
+      }
 
-      Decimal m0_estimate;
-      // Check if a test-specific m0 value has been provided.
-      if (m_test_m0_override.has_value())
-	{
-	  m0_estimate = m_test_m0_override.value();
-	}
-      else
-	{
-	  try
-	    {
-	      m0_estimate = estimateM0StoreySmoothedALGLIB();
-	      if (m0_estimate <= DecimalConstants<Decimal>::DecimalZero)
-		throw std::runtime_error("Spline-based m0 estimate was zero or negative.");
-	    }
-	  catch (const std::exception& e)
-	    {
-	      std::cerr << "[Warning] AdaptiveBenjaminiHochberg: Spline estimator failed ('" << e.what()
-			<< "'). Falling back to robust tail-based estimator." << std::endl;
-	      m0_estimate = estimateM0TailBased_InternalFallback();
-	    }
-	}
-
-      m0_estimate = std::max(DecimalConstants<Decimal>::DecimalOne, m0_estimate);
-
-      // Calculate the dynamic FDR using the provided p-value cutoff.
-      Decimal dynamic_fdr = estimateFDRForPValue(pValueSignificanceLevel, m0_estimate);
-
-      const Decimal fdr_ceiling = DecimalConstants<Decimal>::createDecimal("0.20");
-      Decimal final_fdr = std::min(fdr_ceiling, dynamic_fdr);
-      
-      auto const& container = container_.getInternalContainer();
-      Decimal rank(static_cast<int>(getNumMultiComparisonStrategies()));
-      bool cutoff_found = false;
-
-      std::cout << "--- Benjamini-Hochberg Adaptive Procedure ---" << std::endl;
-
-      std::cout << "Total Tests (m): " << getNumMultiComparisonStrategies()
-		<< ", Estimated True Nulls (m0): " << m0_estimate
-		<< ", Final Adaptive FDR (q): " << final_fdr << std::endl;
-      std::cout << "-----------------------------------------------" << std::endl;
-
-      // Iterate through all strategies from highest p-value to lowest
-      for (auto it = container.rbegin(); it != container.rend(); ++it)
-	{
-	  Decimal pValue = it->first;
-
-	  // Calculate the critical value for the current rank
-	  Decimal criticalValue = (rank / m0_estimate) * final_fdr;
-
-	  // Print the comparison for this step
-	  std::cout << "Checking p-value: "  << pValue
-		    << "(rank " << rank << ")"
-		    << " vs. Critical Value: " << criticalValue;
-
-	  // If we haven't found the cutoff yet, check if this p-value meets the criterion.
-	  // Once the condition is met, all subsequent (smaller) p-values are also significant.
-	  if (!cutoff_found && pValue < criticalValue)
-            cutoff_found = true;
-
-	  if (cutoff_found)
-	    {
-	      std::cout << "  ==> SIGNIFICANT" << std::endl;
-	      container_.addSurvivingStrategy(it->second);
-	    }
-	  else
-	    {
-	      std::cout << "  ==> Not Significant" << std::endl;
-	    }
+      if (partitionByFamily) {
+        // Family partitioning path: partition strategies and apply corrections separately
+        const auto& allStrategies = container_.getInternalContainer();
         
-	  // Decrement rank for the next (smaller) p-value
-	  rank = rank - DecimalConstants<Decimal>::DecimalOne;
-	}
-      
-      std::cout << "--- Procedure Complete. Found " << getNumSurvivingStrategies() << " surviving strategies. ---" << std::endl;
+        // Partition strategies by family (Long vs Short)
+        std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> longStrategies, shortStrategies;
+        
+        for (const auto& entry : allStrategies) {
+          const auto& strategy = entry.second;
+          
+          // Determine family based on strategy type using PalStrategy methods
+          if (strategy->isLongStrategy()) {
+            longStrategies.emplace_back(entry.first, entry.second);
+          } else if (strategy->isShortStrategy()) {
+            shortStrategies.emplace_back(entry.first, entry.second);
+          }
+        }
+        
+        std::cout << "Family partitioning: " << longStrategies.size()
+                  << " Long strategies, " << shortStrategies.size()
+                  << " Short strategies" << std::endl;
+        
+        // Apply corrections separately to each family
+        if (!longStrategies.empty()) {
+          std::cout << "Processing Long family..." << std::endl;
+          processFamily(longStrategies, pValueSignificanceLevel, "Long");
+        }
+        
+        if (!shortStrategies.empty()) {
+          std::cout << "Processing Short family..." << std::endl;
+          processFamily(shortStrategies, pValueSignificanceLevel, "Short");
+        }
+      } else {
+        // Unified correction path: treat all strategies as one family
+        const auto& allStrategies = container_.getInternalContainer();
+        std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> unifiedFamily;
+        
+        // Convert container format to family format
+        for (const auto& entry : allStrategies) {
+          unifiedFamily.emplace_back(entry.first, entry.second);
+        }
+        
+        std::cout << "Unified correction: processing all " << unifiedFamily.size() << " strategies together" << std::endl;
+        processFamily(unifiedFamily, pValueSignificanceLevel, "Unified");
+      }
     }
 
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
@@ -594,111 +571,231 @@ namespace mkc_timeseries
     }
 
   private:
-    // Method 1: B&H (2000) Simple Tail-Based Estimator
-    Decimal estimateM0TailBased_InternalFallback()  const {
-      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0TailBased" << std::endl;
-      const auto& strategies = container_.getInternalContainer();
-      const size_t m = strategies.size();
-      if (m == 0) return Decimal(0);
+    // Helper method to process a single family (Long or Short strategies)
+    void processFamily(const std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies,
+                       const Decimal& pValueSignificanceLevel,
+                       const std::string& familyName)
+    {
+      if (familyStrategies.empty()) return;
+      
+      std::cout << "Processing " << familyName << " family with " << familyStrategies.size() << " strategies" << std::endl;
+      
+      // Estimate m0 for this family
+      Decimal m0_estimate;
+      if (m_test_m0_override.has_value()) {
+        m0_estimate = m_test_m0_override.value();
+      } else {
+        const size_t m = familyStrategies.size();
+        
+        // Define a threshold for what constitutes a "high" p-value for our dynamic check.
+        const Decimal high_p_value_threshold = DecimalConstants<Decimal>::createDecimal("0.8");
+        size_t high_p_value_count = std::count_if(familyStrategies.begin(), familyStrategies.end(),
+                                                  [high_p_value_threshold](const auto& pair) {
+                                                    return pair.first > high_p_value_threshold;
+                                                  });
+        
+        // Dynamic Trigger: If the proportion of very high p-values is low (e.g., < 10%),
+        // the spline estimator may be unstable. In this case, we choose the robust tail-based estimator.
+        const bool use_fallback_estimator = (m > 0) && ((static_cast<double>(high_p_value_count) / m) < 0.10);
 
-      const Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.5");
-      size_t count = std::count_if(strategies.begin(), strategies.end(),
-				   [lambda](const auto& pair) {
-				     return pair.first > lambda;
-				   });
+        if (use_fallback_estimator) {
+          std::cout << "[" << familyName << " Family] P-value distribution has a sparse tail ("
+                    << high_p_value_count << "/" << m << " p-values > " << high_p_value_threshold
+                    << "). Using robust tail-based estimator." << std::endl;
+          m0_estimate = estimateM0TailBasedForFamily(familyStrategies);
+        } else {
+          std::cout << "[" << familyName << " Family] P-value distribution appears stable. Attempting spline-based estimator." << std::endl;
+          try {
+            m0_estimate = estimateM0StoreySmoothedForFamily(familyStrategies);
+            if (m0_estimate <= DecimalConstants<Decimal>::DecimalZero)
+              throw std::runtime_error("Spline-based m0 estimate was zero or negative.");
+          } catch (const std::exception& e) {
+            std::cerr << "[Warning] " << familyName << " Family: Spline estimator failed ('" << e.what()
+                      << "'). Falling back to robust tail-based estimator." << std::endl;
+            m0_estimate = estimateM0TailBasedForFamily(familyStrategies);
+          }
+        }
+      }
+      
+      m0_estimate = std::max(DecimalConstants<Decimal>::DecimalOne, m0_estimate);
+      
+      // Calculate the dynamic FDR using the provided p-value cutoff.
+      Decimal dynamic_fdr = estimateFDRForPValueForFamily(familyStrategies, pValueSignificanceLevel, m0_estimate);
+      
+      const Decimal fdr_ceiling = DecimalConstants<Decimal>::createDecimal("0.20");
+      Decimal final_fdr = std::min(fdr_ceiling, dynamic_fdr);
+      
+      // Create a sorted container for this family (sorted by p-value in ascending order)
+      auto sortedFamily = familyStrategies;
+      std::sort(sortedFamily.begin(), sortedFamily.end(),
+                [](const auto& a, const auto& b) {
+                  return a.first < b.first;
+                });
+      
+      Decimal rank(static_cast<int>(sortedFamily.size()));
+      bool cutoff_found = false;
+      
+      std::cout << "--- " << familyName << " Family Benjamini-Hochberg Adaptive Procedure ---" << std::endl;
+      std::cout << "Total Tests (m): " << sortedFamily.size()
+                << ", Estimated True Nulls (m0): " << m0_estimate
+                << ", Final Adaptive FDR (q): " << final_fdr << std::endl;
+      std::cout << "-----------------------------------------------" << std::endl;
+      
+      // Iterate through family strategies from highest p-value to lowest
+      for (auto it = sortedFamily.rbegin(); it != sortedFamily.rend(); ++it) {
+        Decimal pValue = it->first;
+        
+        // Calculate the critical value for the current rank
+        Decimal criticalValue = (rank / m0_estimate) * final_fdr;
+        
+        // Print the comparison for this step
+        std::cout << "[" << familyName << "] Checking p-value: " << pValue
+                  << " (rank " << rank << ")"
+                  << " vs. Critical Value: " << criticalValue;
+        
+        // If we haven't found the cutoff yet, check if this p-value meets the criterion.
+        // Once the condition is met, all subsequent (smaller) p-values are also significant.
+        if (!cutoff_found && pValue < criticalValue)
+          cutoff_found = true;
+        
+        if (cutoff_found) {
+          std::cout << "  ==> SIGNIFICANT" << std::endl;
+          container_.addSurvivingStrategy(it->second);
+        } else {
+          std::cout << "  ==> Not Significant" << std::endl;
+        }
+        
+        // Decrement rank for the next (smaller) p-value
+        rank = rank - DecimalConstants<Decimal>::DecimalOne;
+      }
+      
+      std::cout << "--- " << familyName << " Family Procedure Complete ---" << std::endl;
+    }
     
+    // Helper method to estimate m0 using tail-based method for a specific family
+    Decimal estimateM0TailBasedForFamily(const std::vector<std::pair<Decimal,
+					 std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
+    {
+      const size_t m = familyStrategies.size();
+      if (m == 0) return Decimal(0);
+      
+      const Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.5");
+      size_t count = std::count_if(familyStrategies.begin(), familyStrategies.end(),
+                                   [lambda](const auto& pair) {
+                                     return pair.first > lambda;
+                                   });
+      
       Decimal pi0_hat = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
       Decimal m0_hat = std::min(DecimalConstants<Decimal>::DecimalOne, pi0_hat) * static_cast<Decimal>(m);
       return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
     }
-
-    Decimal estimateM0StoreySmoothedALGLIB() const
+    
+    // Helper method to estimate m0 using spline-based method for a specific family
+    Decimal estimateM0StoreySmoothedForFamily(const std::vector<std::pair<Decimal,
+					      std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
-      std::cout << "In method AdaptiveBenjaminiHochbergYr2000::estimateM0StoreySmoothedALGLIB" << std::endl;
-      const auto& strategies = container_.getInternalContainer();
-      const size_t m = strategies.size();
+      const size_t m = familyStrategies.size();
       if (m < 2) return Decimal(m);
-
-      // 1. Generate the (lambda, pi0) data points.
-      std::vector<double> lambdas; // Use double as ALGLIB expects it
+      
+      // Generate the (lambda, pi0) data points for this family
+      std::vector<double> lambdas;
       std::vector<double> pi0s;
-
+      
       for (Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.05");
-	   lambda <= DecimalConstants<Decimal>::createDecimal("0.95"); // Use <= to include 0.95
-	   lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
-      
-	size_t count = std::count_if(strategies.begin(), strategies.end(),
-				     [lambda](const auto& entry) {
-				       return entry.first > lambda;
-				     });
-      
-	// Avoid division by zero if lambda is close to 1
-	if (DecimalConstants<Decimal>::DecimalOne - lambda <= DecimalConstants<Decimal>::DecimalZero) continue;
-
-	Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
-      
-	double lambda_double = static_cast<double>(lambda.getAsDouble());
-	double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
-      
-	lambdas.push_back(lambda_double);
-	pi0s.push_back(pi0_double);
+           lambda <= DecimalConstants<Decimal>::createDecimal("0.95");
+           lambda += DecimalConstants<Decimal>::createDecimal("0.01")) {
+        
+        size_t count = std::count_if(familyStrategies.begin(), familyStrategies.end(),
+                                     [lambda](const auto& entry) {
+                                       return entry.first > lambda;
+                                     });
+        
+        // Avoid division by zero if lambda is close to 1
+        if (DecimalConstants<Decimal>::DecimalOne - lambda <= DecimalConstants<Decimal>::DecimalZero) continue;
+        
+        Decimal pi0 = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
+        
+        double lambda_double = static_cast<double>(lambda.getAsDouble());
+        double pi0_double = static_cast<double>(std::min(DecimalConstants<Decimal>::DecimalOne, pi0).getAsDouble());
+        
+        lambdas.push_back(lambda_double);
+        pi0s.push_back(pi0_double);
       }
-
+      
       if (lambdas.empty())
-	return Decimal(m);
-
+        return Decimal(m);
+      
       // Find the optimal smoothing parameter using cross-validation
       const double optimal_lambdans = findOptimalLambdansViaCrossValidation(lambdas, pi0s);
-
-      // 2. Convert std::vector to ALGLIB's real_1d_array format.
-      alglib::real_1d_array x; // lambdas
+      
+      // Convert std::vector to ALGLIB's real_1d_array format.
+      alglib::real_1d_array x;
       x.setcontent(lambdas.size(), lambdas.data());
-
-      alglib::real_1d_array y; // pi0s
+      
+      alglib::real_1d_array y;
       y.setcontent(pi0s.size(), pi0s.data());
-
-      // 3. Fit the smoothing spline using the MODERN spline1dfit function.
+      
+      // Fit the smoothing spline using the MODERN spline1dfit function.
       alglib::spline1dinterpolant s;
       alglib::spline1dfitreport rep;
-    
+      
       const alglib::ae_int_t n_points = static_cast<alglib::ae_int_t>(lambdas.size());
       const alglib::ae_int_t m_basis = std::clamp(static_cast<alglib::ae_int_t>(std::sqrt(n_points)),
-						  static_cast<alglib::ae_int_t>(10),
-						  static_cast<alglib::ae_int_t>(100));
-
+                                                  static_cast<alglib::ae_int_t>(10),
+                                                  static_cast<alglib::ae_int_t>(100));
+      
       // Use the optimal lambdans found via cross-validation.
-      try
-	{
-	  alglib::spline1dfit(x, y, n_points, m_basis, optimal_lambdans, s, rep);
-	}
-      catch(const alglib::ap_error& e)
-	{
-	  // Fitting failed, fall back to the total number of tests.
-	  std::cerr << "ALGLIB spline fitting failed: " << e.msg << std::endl;
-	  return Decimal(m);
-	}
-
-      // std::cout << "[SplineFit Report] Termination Type: " << rep.terminationtype << std::endl;
-      std::cout << "[SplineFit Report] RMS Error: " << rep.rmserror << std::endl;
-      std::cout << "[SplineFit Report] Max Error: " << rep.maxerror << std::endl;
-
-      // 4. Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
+      try {
+        alglib::spline1dfit(x, y, n_points, m_basis, optimal_lambdans, s, rep);
+      } catch(const alglib::ap_error& e) {
+        // Fitting failed, fall back to the total number of tests.
+        std::cerr << "ALGLIB spline fitting failed for family: " << e.msg << std::endl;
+        return Decimal(m);
+      }
+      
+      // Evaluate the spline at lambda = 1.0 to get the pi0 estimate.
       double extrapolated_pi0_double = alglib::spline1dcalc(s, 1.0);
-
+      
       // Convert back to Decimal type
       Decimal extrapolatedPi0 = static_cast<Decimal>(extrapolated_pi0_double);
-
-      // 5. Clamp the result and compute the final m0 estimate.
+      
+      // Clamp the result and compute the final m0 estimate.
       extrapolatedPi0 = std::max(DecimalConstants<Decimal>::DecimalZero,
-				 std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
+                                 std::min(DecimalConstants<Decimal>::DecimalOne, extrapolatedPi0));
       Decimal m0_hat = extrapolatedPi0 * static_cast<Decimal>(m);
-
-      std::cout << "[StoreySmootherALGLIB] Smoothed pi0 (at lambda=1.0) = " << extrapolatedPi0
-		<< ", m0_hat = " << m0_hat
-		<< ", m = " << static_cast<Decimal>(m) << std::endl;
-              
+      
       return m0_hat;
-  }
+    }
+    
+    // Helper method to estimate FDR for a specific family
+    Decimal estimateFDRForPValueForFamily(const std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies,
+                                          const Decimal& pValueCutoff,
+                                          const Decimal& m0_estimate) const
+    {
+      if (familyStrategies.empty())
+        return Decimal(0);
+      
+      Decimal pi0_estimate = m0_estimate / familyStrategies.size();
+      
+      // Count the number of rejected hypotheses for the given cutoff.
+      Decimal num_rejections(DecimalConstants<Decimal>::DecimalZero);
+      for (const auto& entry : familyStrategies) {
+        if (entry.first <= pValueCutoff) {
+          num_rejections += DecimalConstants<Decimal>::DecimalOne;
+        }
+      }
+      
+      if (num_rejections == DecimalConstants<Decimal>::DecimalZero) {
+        return DecimalConstants<Decimal>::DecimalZero;
+      }
+      
+      // Apply the formula to estimate the FDR.
+      Decimal m = static_cast<Decimal>(familyStrategies.size());
+      Decimal estimated_fdr = (pi0_estimate * pValueCutoff * m) / num_rejections;
+      
+      return std::min(Decimal(1.0), estimated_fdr); // FDR cannot be > 1
+    }
+
 
   /**
    * @brief Finds the optimal smoothing parameter ('lambdans') for spline fitting using k-fold cross-validation.
@@ -804,36 +901,20 @@ namespace mkc_timeseries
   public:
     Decimal estimateFDRForPValue(const Decimal& pValueCutoff)
     {
-      Decimal m0_estimate = estimateM0StoreySmoothedALGLIB();
-      return estimateFDRForPValue(pValueCutoff, m0_estimate);
-    }
-    
-    // Hypothetical new method for the class
-    Decimal estimateFDRForPValue(const Decimal& pValueCutoff, const Decimal& m0_estimate)
-    {
-      if (getNumMultiComparisonStrategies() == 0)
-	return Decimal(0);
-
-      Decimal pi0_estimate = m0_estimate / getNumMultiComparisonStrategies();
-
-      // 2. Count the number of rejected hypotheses for the given cutoff.
-      Decimal num_rejections(DecimalConstants<Decimal>::DecimalZero);
-      for (const auto& entry : container_.getInternalContainer())
-	{
-	  if (entry.first <= pValueCutoff) {
-	    num_rejections += DecimalConstants<Decimal>::DecimalOne;
-	  }
-	}
-
-      if (num_rejections == DecimalConstants<Decimal>::DecimalZero) {
-        return DecimalConstants<Decimal>::DecimalZero;
+      // Collect unified family like lines 528-535
+      const auto& allStrategies = container_.getInternalContainer();
+      std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> unifiedFamily;
+      
+      // Convert container format to family format
+      for (const auto& entry : allStrategies) {
+        unifiedFamily.emplace_back(entry.first, entry.second);
       }
-
-      // 3. Apply the formula to estimate the FDR.
-      Decimal m = static_cast<Decimal>(getNumMultiComparisonStrategies());
-      Decimal estimated_fdr = (pi0_estimate * pValueCutoff * m) / num_rejections;
-
-      return std::min(Decimal(1.0), estimated_fdr); // FDR cannot be > 1
+      
+      // Estimate m0 for the unified family using the family-based method
+      Decimal m0_estimate = estimateM0StoreySmoothedForFamily(unifiedFamily);
+      
+      // Call the family-based method
+      return estimateFDRForPValueForFamily(unifiedFamily, pValueCutoff, m0_estimate);
     }
 
     /**
@@ -880,7 +961,8 @@ namespace mkc_timeseries
     }
 
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
-				 DecimalConstants<Decimal>::SignificantPValue)
+     DecimalConstants<Decimal>::SignificantPValue,
+     [[maybe_unused]] bool partitionByFamily = false)
     {
       for (auto const& entry : container_.getInternalContainer())
 	{
@@ -1139,7 +1221,8 @@ public:
         return Decimal(1.0); // Default: not found or did not pass
     }
 
-    void correctForMultipleTests(const Decimal& pValueSignificanceLevel = DecimalConstants<Decimal>::SignificantPValue)
+    void correctForMultipleTests(const Decimal& pValueSignificanceLevel = DecimalConstants<Decimal>::SignificantPValue,
+                                 [[maybe_unused]] bool partitionByFamily = false)
     {
         // Throw an exception if called with no data, to match the test's expectation.
         if (container_.getNumStrategies() == 0)
@@ -1292,7 +1375,8 @@ private:
     }
 
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
-     DecimalConstants<Decimal>::SignificantPValue) {
+     DecimalConstants<Decimal>::SignificantPValue,
+     [[maybe_unused]] bool partitionByFamily = false) {
       if (container_.getNumStrategies() == 0)
  throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
       
@@ -1392,7 +1476,8 @@ private:
     }
 
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
-				 DecimalConstants<Decimal>::SignificantPValue) {
+     DecimalConstants<Decimal>::SignificantPValue,
+     [[maybe_unused]] bool partitionByFamily = false) {
       if (container_.getNumStrategies() == 0)
 	throw std::runtime_error("HolmRomanoWolfCorrection: No strategies added for multiple testing correction.");
 

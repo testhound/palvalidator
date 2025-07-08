@@ -103,7 +103,9 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
         "AllHighResLogPFPolicy",
         "GatedPerformanceScaledPalPolicy",
         "BootStrappedProfitFactorPolicy",
-        "BootStrappedProfitabilityPFPolicy"
+        "BootStrappedLogProfitFactorPolicy",
+        "BootStrappedProfitabilityPFPolicy",
+        "BootStrappedLogProfitabilityPFPolicy"
     };
     
     config.defaultPolicy_ = "GatedPerformanceScaledPalPolicy";
@@ -115,13 +117,13 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
     
     // Create default groups
     config.policyGroups_["recommended"] = PolicyGroup(
-        {"GatedPerformanceScaledPalPolicy", "RobustProfitFactorPolicy"},
-        "Recommended policies for most use cases"
+        {"BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy"},
+        "Primary bootstrap-based policies for robust statistical analysis"
     );
     
     config.policyGroups_["basic"] = PolicyGroup(
-        {"RobustProfitFactorPolicy", "AllHighResLogPFPolicy"},
-        "Basic profit factor policies for standard analysis"
+        {"BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy", "RobustProfitFactorPolicy", "AllHighResLogPFPolicy"},
+        "Bootstrap and basic profit factor policies for standard analysis"
     );
     
     config.policyGroups_["advanced"] = PolicyGroup(
@@ -130,8 +132,8 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
     );
     
     config.policyGroups_["experimental"] = PolicyGroup(
-        {"BootStrappedProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy"},
-        "Bootstrap-based policies for statistical robustness testing"
+        {},
+        "Experimental policies for testing new approaches"
     );
     
     return config;
@@ -151,13 +153,14 @@ PolicyConfiguration PolicyConfiguration::createWithAllPolicies(const std::vector
     std::vector<std::string> experimentalPolicies;
     
     for (const std::string& policy : availablePolicies) {
-        if (policy.find("Basic") != std::string::npos || 
+        if (policy.find("Basic") != std::string::npos ||
             policy.find("Simple") != std::string::npos ||
             policy == "RobustProfitFactorPolicy" ||
-            policy == "AllHighResLogPFPolicy") {
+            policy == "AllHighResLogPFPolicy" ||
+            policy.find("Bootstrap") != std::string::npos ||
+            policy.find("BootStrapped") != std::string::npos) {
             basicPolicies.push_back(policy);
-        } else if (policy.find("Experimental") != std::string::npos ||
-                   policy.find("Bootstrap") != std::string::npos) {
+        } else if (policy.find("Experimental") != std::string::npos) {
             experimentalPolicies.push_back(policy);
         } else {
             advancedPolicies.push_back(policy);

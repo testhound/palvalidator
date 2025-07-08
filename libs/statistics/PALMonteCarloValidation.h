@@ -115,11 +115,12 @@ namespace mkc_timeseries
      * @param dateRange The date range for which the permutation tests should be run.
      */
     virtual void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
-				     std::shared_ptr<PriceActionLabSystem> patterns,
-				     const DateRange& dateRange,
-				     const Decimal& pValueSignificanceLevel =
-				     DecimalConstants<Decimal>::SignificantPValue,
-				     bool verbose = false) = 0;
+        std::shared_ptr<PriceActionLabSystem> patterns,
+        const DateRange& dateRange,
+        const Decimal& pValueSignificanceLevel =
+        DecimalConstants<Decimal>::SignificantPValue,
+        bool verbose = false,
+        bool partitionByFamily = false) = 0;
 
     /*!
      * @brief Gets an iterator to the beginning of the list of surviving strategies.
@@ -190,6 +191,7 @@ namespace mkc_timeseries
     using Base = PALMonteCarloValidationBase<Decimal, McptType, _StrategySelection>;
     using StrategyPtr = std::shared_ptr<PalStrategy<Decimal>>;
     using ResultType  = typename McptType::ResultType;
+
 
   private:
     // SFINAE helper to check if McptType supports observer pattern
@@ -325,11 +327,12 @@ namespace mkc_timeseries
      * @override
      */
     void runPermutationTests(shared_ptr<Security<Decimal>> baseSecurity,
-			     std::shared_ptr<PriceActionLabSystem> patterns,
-			     const DateRange& dateRange,
-			     const Decimal& pValueSignificanceLevel =
-			     DecimalConstants<Decimal>::SignificantPValue,
-			     bool verbose = false) override
+       std::shared_ptr<PriceActionLabSystem> patterns,
+       const DateRange& dateRange,
+       const Decimal& pValueSignificanceLevel =
+       DecimalConstants<Decimal>::SignificantPValue,
+       bool verbose = false,
+       bool partitionByFamily = false) override
     {
       if (!baseSecurity)
         throw std::invalid_argument("Base security must not be null");
@@ -345,13 +348,14 @@ namespace mkc_timeseries
         }
       }
 
-      if (verbose)
-	{
-	  std::cout << "PALMonteCarloValidation starting validation" << std::endl;
-	  std::cout << "OOS Date Range: " << dateRange.getFirstDateTime()
-		    << " to " << dateRange.getLastDateTime() << std::endl;
-	}
-
+      if (verbose) {
+        std::cout << "PALMonteCarloValidation starting validation" << std::endl;
+        std::cout << "OOS Date Range: " << dateRange.getFirstDateTime()
+                  << " to " << dateRange.getLastDateTime() << std::endl;
+        if (partitionByFamily) {
+          std::cout << "Family partitioning enabled: Long and Short strategies will be corrected separately" << std::endl;
+        }
+      }
 
       // 1) Prepare data
       auto oosTS     = FilterTimeSeries<Decimal>(*baseSecurity->getTimeSeries(), dateRange);
@@ -371,20 +375,21 @@ namespace mkc_timeseries
       for (auto it = patterns->allPatternsBegin(); it != patterns->allPatternsEnd(); ++it)
         vecPatterns.push_back(*it);
 
-      // 3) Parallel backtests and MCPT with observer pattern
+      // Run MCPT for all strategies and add to policy
       std::mutex strategyMutex;
       Executor executor;
       size_t total = vecPatterns.size();
 
+      // 3) Parallel backtests and MCPT with observer pattern
       concurrency::parallel_for(
         total, executor,
         [&](size_t idx) {
           auto pattern = vecPatterns[idx];
 
-   // Build strategy via centralized factory
-   std::string name = (pattern->isLongPattern() ? longPrefix : shortPrefix)
-     + std::to_string(idx + 1);
-   auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio);
+          // Build strategy via centralized factory
+          std::string name = (pattern->isLongPattern() ? longPrefix : shortPrefix)
+            + std::to_string(idx + 1);
+          auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio);
 
           // Use factory to get a backtester for this date range
           auto bt = BackTesterFactory<Decimal>::getBackTester(
@@ -396,12 +401,11 @@ namespace mkc_timeseries
           McptType mcpt(bt, this->mNumPermutations);
           
           // Attach statistics collector to MCPT for observer pattern (only if supported)
-          if constexpr (supports_observer_pattern)
-	    {
-	      if (mStatisticsCollector) {
-		mcpt.attach(mStatisticsCollector.get());
-	      }
-	    }
+          if constexpr (supports_observer_pattern) {
+            if (mStatisticsCollector) {
+              mcpt.attach(mStatisticsCollector.get());
+            }
+          }
           
           ResultType res = mcpt.runPermutationTest();
           
@@ -417,11 +421,12 @@ namespace mkc_timeseries
         }
       );
 
-      // 4) Final family-wise error correction
-      this->mStrategySelectionPolicy.correctForMultipleTests(pValueSignificanceLevel);
+      // 4) Apply multiple testing correction (with family partitioning if requested)
+      // All policies now support the partitionByFamily parameter
+      this->mStrategySelectionPolicy.correctForMultipleTests(pValueSignificanceLevel, partitionByFamily);
 
       if (verbose)
-	std::cout << "PALMonteCarloValidation finished validation" << std::endl;
+        std::cout << "PALMonteCarloValidation finished validation" << std::endl;
     }
 
   private:

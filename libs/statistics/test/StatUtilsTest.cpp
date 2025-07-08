@@ -9,6 +9,7 @@
 #include <catch2/catch_approx.hpp> // For Catch::Approx
 #include <vector>
 #include <cmath> // For std::log
+#include <numeric> // For std::accumulate
 
 #include "StatUtils.h"
 #include "TestUtils.h" // For DecimalType typedef
@@ -274,5 +275,122 @@ TEST_CASE("StatUtils::getBootStrappedProfitability with deterministic seed", "[S
             DecimalConstants<DecimalType>::DecimalZero,
             DecimalConstants<DecimalType>::DecimalZero
         ));
+    }
+}
+
+TEST_CASE("StatUtils::getBootStrappedLogProfitability with deterministic seed", "[StatUtils][Bootstrap]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Bootstrap with fixed seed produces reproducible log profitability result") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15")
+        };
+
+        constexpr size_t numBootstraps = 10;
+        constexpr uint64_t seed = 42;
+
+        // Call the function twice with the same seed
+        auto result1 = Stat::getBootStrappedLogProfitability(
+            returns,
+            numBootstraps,
+            seed
+        );
+
+        auto result2 = Stat::getBootStrappedLogProfitability(
+            returns,
+            numBootstraps,
+            seed
+        );
+
+        // The results must be identical due to the fixed seed
+        REQUIRE(num::to_double(std::get<0>(result1)) == Catch::Approx(num::to_double(std::get<0>(result2))));
+        REQUIRE(num::to_double(std::get<1>(result1)) == Catch::Approx(num::to_double(std::get<1>(result2))));
+    }
+}
+
+TEST_CASE("StatUtils non-seeded bootstrap methods are statistically sound", "[StatUtils][Bootstrap][Stochastic]") {
+    using Stat = StatUtils<DecimalType>;
+
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+        DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+        DecimalType("0.25")
+    };
+
+    // Calculate the "true" statistics from the original data to serve as a benchmark.
+    auto [true_lpf, true_lp] = Stat::computeLogProfitability(returns);
+    auto [true_pf, true_p] = Stat::computeProfitability(returns);
+    auto true_single_pf = Stat::computeProfitFactor(returns);
+
+    SECTION("getBootStrappedLogProfitability (non-seeded) distribution is centered on true value") {
+        constexpr int num_runs = 200;
+        std::vector<DecimalType> lpf_results;
+        std::vector<DecimalType> lp_results;
+        lpf_results.reserve(num_runs);
+        lp_results.reserve(num_runs);
+
+        // Run the non-deterministic function many times to get a distribution of results.
+        for (int i = 0; i < num_runs; ++i) {
+            auto [lpf, lp] = Stat::getBootStrappedLogProfitability(returns, 100); // 100 bootstraps per run
+            lpf_results.push_back(lpf);
+            lp_results.push_back(lp);
+        }
+
+        // Calculate the mean and standard deviation of the resulting distributions.
+        DecimalType mean_lpf = Stat::computeMean(lpf_results);
+        DecimalType stddev_lpf = Stat::computeStdDev(lpf_results, mean_lpf);
+
+        DecimalType mean_lp = Stat::computeMean(lp_results);
+        DecimalType stddev_lp = Stat::computeStdDev(lp_results, mean_lp);
+
+        // The true value should be within a reasonable range of the bootstrapped mean.
+        // A 3-sigma range is a common choice for such statistical tests.
+        REQUIRE(num::to_double(true_lpf) == Catch::Approx(num::to_double(mean_lpf)).margin(num::to_double(stddev_lpf * DecimalType(3.0))));
+        REQUIRE(num::to_double(true_lp) == Catch::Approx(num::to_double(mean_lp)).margin(num::to_double(stddev_lp * DecimalType(3.0))));
+    }
+    
+    SECTION("getBootStrappedProfitability (non-seeded) distribution is centered on true value") {
+        constexpr int num_runs = 200;
+        std::vector<DecimalType> pf_results;
+        std::vector<DecimalType> p_results;
+        pf_results.reserve(num_runs);
+        p_results.reserve(num_runs);
+
+        for (int i = 0; i < num_runs; ++i) {
+            auto [pf, p] = Stat::getBootStrappedProfitability(returns, Stat::computeProfitability, 100);
+            pf_results.push_back(pf);
+            p_results.push_back(p);
+        }
+
+        DecimalType mean_pf = Stat::computeMean(pf_results);
+        DecimalType stddev_pf = Stat::computeStdDev(pf_results, mean_pf);
+
+        DecimalType mean_p = Stat::computeMean(p_results);
+        DecimalType stddev_p = Stat::computeStdDev(p_results, mean_p);
+
+        REQUIRE(num::to_double(true_pf) == Catch::Approx(num::to_double(mean_pf)).margin(num::to_double(stddev_pf * DecimalType(3.0))));
+        REQUIRE(num::to_double(true_p) == Catch::Approx(num::to_double(mean_p)).margin(num::to_double(stddev_p * DecimalType(3.0))));
+    }
+
+    SECTION("getBootStrappedStatistic (non-seeded) distribution is centered on true value") {
+        auto computePF = [](const std::vector<DecimalType>& series) -> DecimalType {
+            return Stat::computeProfitFactor(series);
+        };
+        
+        constexpr int num_runs = 200;
+        std::vector<DecimalType> pf_results;
+        pf_results.reserve(num_runs);
+
+        for (int i = 0; i < num_runs; ++i) {
+            pf_results.push_back(Stat::getBootStrappedStatistic(returns, computePF, 100));
+        }
+
+        DecimalType mean_pf = Stat::computeMean(pf_results);
+        DecimalType stddev_pf = Stat::computeStdDev(pf_results, mean_pf);
+
+        REQUIRE(num::to_double(true_single_pf) == Catch::Approx(num::to_double(mean_pf)).margin(num::to_double(stddev_pf * DecimalType(3.0))));
     }
 }

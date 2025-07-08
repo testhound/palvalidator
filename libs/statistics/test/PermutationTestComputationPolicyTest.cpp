@@ -96,12 +96,17 @@ namespace {
   // --------------------------------------------------------------------------
   // Integration-style: a distinct uniform-null policy
   // --------------------------------------------------------------------------
-  struct UniformIntegrationNullPolicy {
-    static std::mt19937_64 rng;
-    static std::uniform_real_distribution<double> dist;
 
+  struct UniformIntegrationNullPolicy
+  {
     static unsigned getMinStrategyTrades() { return 0; }
+  
     static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&){
+      // Use thread_local to ensure each thread gets its own independent generator,
+      // solving the statistical dependence issue while keeping the static interface.
+      thread_local static std::mt19937_64 rng(std::random_device{}());
+      thread_local static std::uniform_real_distribution<double> dist(0.0, 1.0);
+
       return DecimalType{ std::to_string(dist(rng)) };
     }
 
@@ -109,11 +114,8 @@ namespace {
     {
       return DecimalConstants<DecimalType>::DecimalZero;
     }
-
   };
-  std::mt19937_64 UniformIntegrationNullPolicy::rng{987654};
-  std::uniform_real_distribution<double> UniformIntegrationNullPolicy::dist{0.0,1.0};
-
+  
   using UniformIntegrationTester = DefaultPermuteMarketChangesPolicy<
     DecimalType,
     UniformIntegrationNullPolicy,
@@ -264,20 +266,41 @@ TEST_CASE("P-values under null uniform policy are approx uniform", "[distributio
 // Integration-style tests
 // ----------------------------------------------------------------------------
 
+// In PermutationTestComputationPolicyTest.cpp
+
 TEST_CASE("Integration: p-values under null approx uniform", "[integration]") {
   auto bt = std::make_shared<DummyBackTester>();
   bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
-  constexpr uint32_t Nperm = 500; constexpr int Nruns = 200;
-  std::vector<double> pvals; pvals.reserve(Nruns);
-  for(int i=0;i<Nruns;++i) {
+  constexpr uint32_t Nperm = 500; 
+  constexpr int Nruns = 200;
+  std::vector<double> pvals; 
+  pvals.reserve(Nruns);
+
+  // --- Start of Corrected Code ---
+  for(int i = 0; i < Nruns; ++i) {
+    // Generate the baseline by calling the static method directly.
+    // The thread_local generator inside the method will handle independence.
     auto baseline = UniformIntegrationNullPolicy::getPermutationTestStatistic(bt);
+
+    // The policy object is stateless, as it should be.
     UniformIntegrationTester policy;
-    auto p = policy.runPermutationTest(bt,Nperm,baseline);
+    auto p = policy.runPermutationTest(bt, Nperm, baseline);
     pvals.push_back(p.getAsDouble());
   }
-  double expectedMean = double(Nperm+2) / (2.0*(Nperm+1));
+  // --- End of Corrected Code ---
+
+  double expectedMean = double(Nperm + 2) / (2.0 * (Nperm + 1));
   double mean = std::accumulate(pvals.begin(), pvals.end(), 0.0) / pvals.size();
-  REQUIRE(mean == Catch::Approx(expectedMean).margin(0.05));
+
+  // We calculate the theoretical standard deviation of the *sample mean* to set a robust margin.
+  // For a continuous U(0,1) distribution (a good approximation here), variance is 1/12.
+  // The standard error of the mean is sqrt(variance / num_samples).
+  const double p_value_variance = 1.0 / 12.0;
+  const double std_error_of_mean = std::sqrt(p_value_variance / Nruns);
+  
+  // We check if the observed mean is within 3 standard deviations of the expected mean.
+  // This is a standard statistical check that is robust to random fluctuations.
+  REQUIRE(mean == Catch::Approx(expectedMean).margin(3.0 * std_error_of_mean));
 }
 
 TEST_CASE("ThreadPoolExecutor vs StdAsyncExecutor same output", "[integration]") {
