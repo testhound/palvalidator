@@ -225,9 +225,12 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 
   std::string strategy1Name("PAL Long Strategy 1");
 
+  StrategyOptions options(false, 0, 0);
+  
   PalLongStrategy<DecimalType> longStrategy1(strategy1Name,
-				   createLongPattern1(), 
-				   aPortfolio);
+					     createLongPattern1(), 
+					     aPortfolio,
+					     options);
   REQUIRE (longStrategy1.getPatternMaxBarsBack() == 8);
   REQUIRE (longStrategy1.getSizeForOrder (*corn) == oneContract);
   REQUIRE (longStrategy1.isFlatPosition (futuresSymbol));
@@ -263,7 +266,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   REQUIRE_FALSE (longStrategy2.isLongPosition (futuresSymbol));
   REQUIRE_FALSE (longStrategy2.isShortPosition (futuresSymbol));
 
-  StrategyOptions enablePyramid(true, 2);
+  StrategyOptions enablePyramid(true, 2, 8);
 
   PalLongStrategy<DecimalType> longStrategyPyramid1(strategy1Name,
 						    createLongPattern3(), 
@@ -543,8 +546,8 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     //printPositionHistory (history);
 
-    REQUIRE (history.getNumWinningPositions() == 14);
-    REQUIRE (history.getNumLosingPositions() == 10);
+    REQUIRE (history.getNumWinningPositions() == 13);
+    REQUIRE (history.getNumLosingPositions() == 11);
  
   }
 
@@ -780,7 +783,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
     uint threePatternTotalTrades = aBroker2.getTotalTrades();
     REQUIRE (threePatternTotalTrades > twoPatternTotalTrades);
 
-    StrategyOptions stratOptions(true, 2);  // Enable pyramiding
+    StrategyOptions stratOptions(true, 2, 8);  // Enable pyramiding
     std::string metaStrategy5Name("PAL Meta Strategy 5");
     PalMetaStrategy<DecimalType> metaStrategy5(metaStrategy5Name, aPortfolio, stratOptions);
     metaStrategy5.addPricePattern(createLongPattern1());

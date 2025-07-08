@@ -114,7 +114,7 @@ public:
 class DummyPalStrategyEx : public PalStrategy<D> {
 public:
     DummyPalStrategyEx(std::shared_ptr<Portfolio<D>> pf)
-      : PalStrategy<D>("dummy", getDummyPattern(), pf, StrategyOptions(false, 0)) {}
+      : PalStrategy<D>("dummy", getDummyPattern(), pf, StrategyOptions(false, 0, 8)) {}
 
     static std::shared_ptr<PriceActionLabPattern> getDummyPattern() {
       static std::shared_ptr<PriceActionLabPattern> dummyPattern;
