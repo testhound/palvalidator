@@ -209,24 +209,81 @@ int main(int argc, char** argv)
         }
       }
 
-      // 3. Read and parse reserve percentage (default 5%)
-      double reservedPercent = 5.0;
-      std::cout << "Enter percent of data to reserve (0-100, default 5): ";
-      std::string reservedPercentStr;
-      std::getline(std::cin, reservedPercentStr);
-      if (!reservedPercentStr.empty())
+      // 3. Read and parse data split percentages with validation
+      double insamplePercent, outOfSamplePercent, reservedPercent;
+      bool validPercentages = false;
+      
+      while (!validPercentages)
         {
-	  try
+          // Get in-sample percentage (default 80%)
+          insamplePercent = 80.0;
+          std::cout << "Enter percent of data for in-sample (0-100, default 80): ";
+          std::string insamplePercentStr;
+          std::getline(std::cin, insamplePercentStr);
+          if (!insamplePercentStr.empty())
             {
-	      reservedPercent = std::stod(reservedPercentStr);
+              try
+                {
+                  insamplePercent = std::stod(insamplePercentStr);
+                }
+              catch (...)
+                {
+                  std::cerr << "Invalid input for in-sample percent. Using default 80%." << std::endl;
+                  insamplePercent = 80.0;
+                }
             }
-	  catch (...)
+          insamplePercent = std::clamp(insamplePercent, 0.0, 100.0);
+
+          // Get out-of-sample percentage
+          outOfSamplePercent = 0.0;
+          std::cout << "Enter percent of data for out-of-sample (0-100): ";
+          std::string outOfSamplePercentStr;
+          std::getline(std::cin, outOfSamplePercentStr);
+          if (!outOfSamplePercentStr.empty())
             {
-	      std::cerr << "Invalid input for reserved percent. Using default 5%." << std::endl;
-	      reservedPercent = 5.0;
+              try
+                {
+                  outOfSamplePercent = std::stod(outOfSamplePercentStr);
+                }
+              catch (...)
+                {
+                  std::cerr << "Invalid input for out-of-sample percent. Using 0%." << std::endl;
+                  outOfSamplePercent = 0.0;
+                }
+            }
+          outOfSamplePercent = std::clamp(outOfSamplePercent, 0.0, 100.0);
+
+          // Get reserved percentage (default 5%)
+          reservedPercent = 5.0;
+          std::cout << "Enter percent of data to reserve (0-100, default 5): ";
+          std::string reservedPercentStr;
+          std::getline(std::cin, reservedPercentStr);
+          if (!reservedPercentStr.empty())
+            {
+              try
+                {
+                  reservedPercent = std::stod(reservedPercentStr);
+                }
+              catch (...)
+                {
+                  std::cerr << "Invalid input for reserved percent. Using default 5%." << std::endl;
+                  reservedPercent = 5.0;
+                }
+            }
+          reservedPercent = std::clamp(reservedPercent, 0.0, 100.0);
+
+          // Validate that total doesn't exceed 100%
+          double totalPercent = insamplePercent + outOfSamplePercent + reservedPercent;
+          if (totalPercent <= 100.0)
+            {
+              validPercentages = true;
+            }
+          else
+            {
+              std::cerr << "Error: Total percentage (" << totalPercent
+                        << "%) exceeds 100%. Please enter the percentages again." << std::endl;
             }
         }
-      reservedPercent = std::clamp(reservedPercent, 0.0, 100.0);
 
       // 4. Prepare output directories with timeframe differentiation
       fs::path baseDir = tickerSymbol + "_Validation";
@@ -296,10 +353,9 @@ int main(int argc, char** argv)
 
       // 6. Split into insample, out-of-sample, and reserved (last)
       size_t totalSize    = aTimeSeries->getNumEntries();
+      size_t insampleSize = static_cast<size_t>(totalSize * (insamplePercent / 100.0));
+      size_t oosSize      = static_cast<size_t>(totalSize * (outOfSamplePercent / 100.0));
       size_t reservedSize = static_cast<size_t>(totalSize * (reservedPercent / 100.0));
-      size_t remaining    = totalSize - reservedSize;
-      size_t insampleSize = static_cast<size_t>(remaining * 0.8);
-      size_t oosSize      = remaining - insampleSize;
 
       OHLCTimeSeries<Num> reservedSeries(aTimeSeries->getTimeFrame(), aTimeSeries->getVolumeUnits());
       OHLCTimeSeries<Num> insampleSeries(aTimeSeries->getTimeFrame(), aTimeSeries->getVolumeUnits());
@@ -421,6 +477,8 @@ int main(int argc, char** argv)
         }
 
       // 10. Output statistics
+      std::cout << "In-sample% = " << insamplePercent << "%\n";
+      std::cout << "Out-of-sample% = " << outOfSamplePercent << "%\n";
       std::cout << "Reserved% = " << reservedPercent << "%\n";
       std::cout << "Median = " << medianOfRoc << std::endl;
       std::cout << "Qn  = " << robustQn << std::endl;
