@@ -81,7 +81,7 @@ static std::string getCurrentTimestamp()
     auto time_t = std::chrono::system_clock::to_time_t(now);
     
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M");
+    ss << std::put_time(std::localtime(&time_t), "%b_%d_%Y_%H%M");
     return ss.str();
 }
 

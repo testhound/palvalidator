@@ -511,6 +511,17 @@ namespace mkc_timeseries
           }
         }
         
+        // Sort both vectors to match the original container's sorting (by p-value in ascending order)
+        std::sort(longStrategies.begin(), longStrategies.end(),
+                  [](const auto& a, const auto& b) {
+                    return a.first < b.first;
+                  });
+
+        std::sort(shortStrategies.begin(), shortStrategies.end(),
+                  [](const auto& a, const auto& b) {
+                    return a.first < b.first;
+                  });
+
         std::cout << "Family partitioning: " << longStrategies.size()
                   << " Long strategies, " << shortStrategies.size()
                   << " Short strategies" << std::endl;
@@ -618,6 +629,7 @@ namespace mkc_timeseries
       }
       
       m0_estimate = std::max(DecimalConstants<Decimal>::DecimalOne, m0_estimate);
+      Decimal m0_estimate_bootstrap = estimateM0_BootstrapAveraged(familyStrategies);
       
       // Calculate the dynamic FDR using the provided p-value cutoff.
       Decimal dynamic_fdr = estimateFDRForPValueForFamily(familyStrategies, pValueSignificanceLevel, m0_estimate);
@@ -638,7 +650,9 @@ namespace mkc_timeseries
       std::cout << "--- " << familyName << " Family Benjamini-Hochberg Adaptive Procedure ---" << std::endl;
       std::cout << "Total Tests (m): " << sortedFamily.size()
                 << ", Estimated True Nulls (m0): " << m0_estimate
-                << ", Final Adaptive FDR (q): " << final_fdr << std::endl;
+		<< ", [Bootstrap True Nulls (m0)]: " << m0_estimate_bootstrap
+                << ", Final Adaptive FDR (q): " << final_fdr
+		<< ", [Estimated FDR]: " << dynamic_fdr << std::endl;
       std::cout << "-----------------------------------------------" << std::endl;
       
       // Iterate through family strategies from highest p-value to lowest
@@ -670,6 +684,52 @@ namespace mkc_timeseries
       }
       
       std::cout << "--- " << familyName << " Family Procedure Complete ---" << std::endl;
+    }
+
+    Decimal estimateM0_BootstrapAveraged(const std::vector<std::pair<Decimal,
+					 std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
+    {
+      const Decimal one = DecimalConstants<Decimal>::DecimalOne;
+      const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+
+      size_t m = familyStrategies.size();
+      if (m == 0)
+	return zero;
+
+      std::vector<Decimal> lambdaGrid = {
+        Decimal("0.50"), Decimal("0.55"), Decimal("0.60"), Decimal("0.65"),
+        Decimal("0.70"), Decimal("0.75"), Decimal("0.80"), Decimal("0.85"),
+        Decimal("0.90"), Decimal("0.95")
+      };
+
+      std::vector<Decimal> pi0Estimates;
+
+      for (const Decimal& lambda : lambdaGrid)
+	{
+	  size_t countGreater = 0;
+	  for (const auto& pair : familyStrategies)
+	    {
+	      if (pair.first > lambda)
+                ++countGreater;
+	    }
+
+	  Decimal numerator = static_cast<Decimal>(countGreater);
+	  Decimal denominator = (one - lambda) * static_cast<Decimal>(m);
+	  if (denominator == zero) continue;
+
+	  Decimal pi0 = numerator / denominator;
+	  if (pi0 > one) pi0 = one;
+
+	  pi0Estimates.push_back(pi0);
+	}
+
+      if (pi0Estimates.empty()) return static_cast<Decimal>(m);  // fallback if something went wrong
+
+      // Compute the average
+      Decimal sum = std::accumulate(pi0Estimates.begin(), pi0Estimates.end(), zero);
+      Decimal avgPi0 = sum / static_cast<Decimal>(pi0Estimates.size());
+
+      return avgPi0 * static_cast<Decimal>(m);
     }
     
     // Helper method to estimate m0 using tail-based method for a specific family
