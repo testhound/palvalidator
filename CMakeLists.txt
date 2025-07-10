@@ -69,6 +69,7 @@ add_subdirectory(libs/priceactionlab)
 add_subdirectory(libraries/Alglib)
 add_subdirectory(src/palvalidator)
 add_subdirectory(src/palsetup)
+add_subdirectory(src/palcodegen)
 add_subdirectory(src/patterndiscovery)
 
 
@@ -116,4 +117,5 @@ add_custom_target(tests
 
 install(TARGETS PalValidator DESTINATION bin)
 install(TARGETS palsetup DESTINATION bin)
+install(TARGETS palcodegen DESTINATION bin)
 install(FILES "${CMAKE_SOURCE_DIR}/policies.json" DESTINATION bin)

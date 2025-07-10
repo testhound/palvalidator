@@ -498,44 +498,14 @@ public:
    * @brief Constructs an EasyLanguageCodeGenVisitor.
    * @param system Pointer to the PriceActionLabSystem.
    * @param outputFileName The name for the output EasyLanguage file.
-   * @param dev1Detail Stop/target details for deviation 1 patterns.
-   * @param dev2Detail Stop/target details for deviation 2 patterns.
    */
   EasyLanguageCodeGenVisitor(PriceActionLabSystem *system, 
-			     const std::string& outputFileName,
-			     const StopTargetDetail& dev1Detail,
-			     const StopTargetDetail& dev2Detail);
-
-  /**
-   * @brief Constructs an EasyLanguageCodeGenVisitor using a template file.
-   * @param system Pointer to the PriceActionLabSystem.
-   * @param templateFileName The name of the EasyLanguage template file.
-   * @param outputFileName The name for the output EasyLanguage file.
-   * @param dev1Detail Stop/target details for deviation 1 patterns.
-   * @param dev2Detail Stop/target details for deviation 2 patterns.
-   */
-  EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
-                             const std::string& templateFileName,
-                             const std::string& outputFileName,
-                             const StopTargetDetail& dev1Detail,
-                             const StopTargetDetail& dev2Detail);
+			     const std::string& outputFileName);
 
   /**
    * @brief Virtual destructor.
    */
   virtual ~EasyLanguageCodeGenVisitor();
-  /**
-   * @brief Checks if a pattern is a deviation 1 type pattern.
-   * @param pattern Pointer to the PriceActionLabPattern.
-   * @return True if the pattern is deviation 1, false otherwise.
-   */
-  bool isDev1Pattern(PriceActionLabPattern *pattern);
-  /**
-   * @brief Checks if a pattern is a deviation 2 type pattern.
-   * @param pattern Pointer to the PriceActionLabPattern.
-   * @return True if the pattern is deviation 2, false otherwise.
-   */
-  bool isDev2Pattern(PriceActionLabPattern *pattern);
   
   /**
    * @brief Generates the EasyLanguage code by processing a template file.
@@ -622,10 +592,6 @@ private:
   std::ifstream mTemplateFile;
   /** @brief Output file stream for the generated EasyLanguage code. */
   std::ofstream mEasyLanguageFileName;
-  /** @brief Stop/target details for deviation 1 patterns. */
-  StopTargetDetail mDev1Detail;
-  /** @brief Stop/target details for deviation 2 patterns. */
-  StopTargetDetail mDev2Detail;
 };
 
 /**
@@ -639,16 +605,10 @@ public:
   /**
    * @brief Constructs an EasyLanguageRADCodeGenVisitor.
    * @param system Pointer to the PriceActionLabSystem.
-   * @param templateFileName The name of the EasyLanguage template file.
    * @param outputFileName The name for the output EasyLanguage file.
-   * @param dev1Detail Stop/target details for deviation 1 patterns.
-   * @param dev2Detail Stop/target details for deviation 2 patterns.
    */
   EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
-                             const std::string& templateFileName,
-                             const std::string& outputFileName,
-                             const StopTargetDetail& dev1Detail,
-                             const StopTargetDetail& dev2Detail);
+                             const std::string& outputFileName);
 
   /**
    * @brief Destructor.
@@ -701,10 +661,7 @@ public:
    * @param dev2Detail Stop/target details for deviation 2 patterns.
    */
   EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
-                                          const std::string& templateFileName,
-                                          const std::string& outputFileName,
-                                          const StopTargetDetail& dev1Detail,
-                                          const StopTargetDetail& dev2Detail);
+                                          const std::string& outputFileName);
 
   /**
    * @brief Destructor.
