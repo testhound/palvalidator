@@ -548,8 +548,10 @@ TEST_CASE("AdaptiveBH: Edge case where no strategies should survive", "[Adaptive
 
     fdrCorrector.correctForMultipleTests();
 
-    // With m0=10, the highest-ranked p-value (~0.49, rank=10) has a critical value
-    // of (10/10)*0.05 = 0.05. Since 0.49 is not less than 0.05, nothing should survive.
+    // With m0=10 and m=10, the estimated pi0 is 1.0.
+    // The largest p-value (p=0.49, rank=10) has a q-value of (10 * 0.49) / 10 = 0.49.
+    // Due to monotonicity, all other q-values are also at least 0.49.
+    // Since 0.49 is not <= 0.05 (the target FDR), nothing should survive.
     CHECK(fdrCorrector.getNumSurvivingStrategies() == 0);
 }
 

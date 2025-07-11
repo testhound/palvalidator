@@ -450,6 +450,11 @@ namespace mkc_timeseries
   template <class Decimal>
   class AdaptiveBenjaminiHochbergYr2000 {
   public:
+    struct EstimatorResult {
+      Decimal m0;
+      std::string method;
+    };
+
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
@@ -529,12 +534,12 @@ namespace mkc_timeseries
         // Apply corrections separately to each family
         if (!longStrategies.empty()) {
           std::cout << "Processing Long family..." << std::endl;
-          processFamily(longStrategies, pValueSignificanceLevel, "Long");
+          processFamily2(longStrategies, "Long");
         }
         
         if (!shortStrategies.empty()) {
           std::cout << "Processing Short family..." << std::endl;
-          processFamily(shortStrategies, pValueSignificanceLevel, "Short");
+          processFamily2(shortStrategies, "Short");
         }
       } else {
         // Unified correction path: treat all strategies as one family
@@ -547,7 +552,7 @@ namespace mkc_timeseries
         }
         
         std::cout << "Unified correction: processing all " << unifiedFamily.size() << " strategies together" << std::endl;
-        processFamily(unifiedFamily, pValueSignificanceLevel, "Unified");
+        processFamily2(unifiedFamily, "Unified");
       }
     }
 
@@ -686,6 +691,158 @@ namespace mkc_timeseries
       std::cout << "--- " << familyName << " Family Procedure Complete ---" << std::endl;
     }
 
+   /**
+    * @brief Adaptive Benjamini-Hochberg FDR control using q-values and m0 estimation.
+    *
+    * This method performs False Discovery Rate (FDR) control on a family of hypothesis tests.
+    * It applies an adaptive form of the Benjamini-Hochberg (BH) procedure by estimating the
+    * proportion of true null hypotheses (m0) from the data. It then calculates *q-values* for
+    * each p-value and compares them to a target FDR threshold.
+    *
+    * @param familyStrategies A vector of (p-value, strategy) pairs representing the tests in this family.
+    * @param familyName The name of the family (used for logging).
+    *
+    * ## Key Concepts
+    *
+    * - **p-value**: The probability under the null hypothesis of observing a test statistic
+    *   at least as extreme as the one observed. In multiple testing, raw p-values can lead
+    *   to a high number of false discoveries.
+    *
+    * - **q-value**: The minimum FDR at which a particular test may be called significant.
+    *   It adjusts the p-value to account for the multiplicity of tests, making it more conservative.
+    *   If a q-value is less than or equal to the target FDR, the corresponding test is considered significant.
+    *
+    * - **m0**: The estimated number of true null hypotheses among all tests.
+    *   Adaptive procedures attempt to estimate m0 < m to gain power while still controlling FDR.
+    *
+    * ## Procedure Summary:
+    *
+    * 1. Sort all p-values in ascending order.
+    * 2. Estimate m0 using the best available estimator (spline, bootstrap, Grenander, etc.).
+    * 3. Compute the q-value for each test using:
+    *
+    *      q(i) = min_{j ≥ i} [ m0 * p(j) / j ]
+    *
+    *    This ensures q-values are monotonic and interpretable as an adjusted p-value.
+    * 4. Any test with q(i) ≤ target FDR (mFalseDiscoveryRate) is declared significant.
+    * 5. Log the results and update the set of surviving strategies.
+    *
+    * ## Why Use q-values?
+    *
+    * In multiple testing, controlling the family-wise error rate (e.g., using Bonferroni)
+    * can be overly conservative. The BH procedure allows more discoveries while still
+    * controlling the FDR. q-values provide a way to report results similar to p-values
+    * but with built-in FDR control. They allow the analyst to say, “This discovery is
+    * expected to be a false positive only X% of the time,” which is often more useful
+    * in exploratory settings.
+    */
+    void processFamily2(const std::vector<std::pair<Decimal,
+			std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies,
+			const std::string& familyName)
+    {
+      std::cout << "--- " << familyName << " Family Benjamini-Hochberg Adaptive Q-Value Procedure ---" << std::endl;
+      const size_t m = familyStrategies.size();
+      if (m == 0)
+	return;
+
+      // Sort by ascending p-value
+      std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> sorted = familyStrategies;
+      std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+      });
+
+      Decimal m0;
+
+      if (m_test_m0_override.has_value())
+	{
+	  m0 = m_test_m0_override.value();
+	  std::cout << "[Estimator] Using unit test override for m0 (m0=" << m0 << ")" << std::endl;
+	}
+      else
+	{
+	  // If not, use the default adaptive selection logic.
+	  auto estimatorResult = selectBestM0EstimatorForFamily(sorted);
+	  m0 = estimatorResult.m0;
+	}
+
+      std::cout << "Total Tests (m): " << m << ", Estimated True Nulls (m0): " << m0 << std::endl;
+
+    // Compute q-values in reverse order to enforce monotonicity
+      
+      std::vector<Decimal> qvalues(m);
+      Decimal prevQ = DecimalConstants<Decimal>::DecimalOne;
+      for (int i = static_cast<int>(m) - 1; i >= 0; --i)
+	{
+	  size_t rank = i + 1;
+	  Decimal p = sorted[i].first;
+	  Decimal q = (m0 * p) / rank;
+	  q = std::min(q, prevQ);  // enforce monotonicity
+	  qvalues[i] = q;
+	  prevQ = q;
+	}
+
+      // Determine significance
+      for (size_t i = 0; i < m; ++i) {
+        Decimal p = sorted[i].first;
+        Decimal q = qvalues[i];
+        Decimal rank = static_cast<Decimal>(i + 1);
+        Decimal criticalValue = mFalseDiscoveryRate;
+
+        std::cout << "[" << familyName << "] Checking p-value: " << p << " (rank " << rank << ")"
+                  << ", q-value: " << q << ", Target FDR: " << criticalValue;
+
+        if (q <= criticalValue)
+	  {
+            std::cout << "  ==> SIGNIFICANT" << std::endl;
+            container_.addSurvivingStrategy(sorted[i].second);
+	  }
+	else
+	  {
+            std::cout << "  ==> Not Significant" << std::endl;
+	  }
+      }
+    }
+    
+    AdaptiveBenjaminiHochbergYr2000::EstimatorResult selectBestM0EstimatorForFamily(const std::vector<std::pair<Decimal,
+										    std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
+    {
+      const size_t m = familyStrategies.size();
+      if (m == 0) {
+        return { Decimal(0), "None" };
+      }
+
+      // --- Rule 1: For small sample sizes, always use the simple, robust tail-based estimator. ---
+      if (m < 30)
+	{
+	  Decimal m0 = estimateM0TailBasedForFamily(familyStrategies);
+	  std::cout << "[Estimator] Small sample (m < 30). Using robust Tail-based estimator (m0=" << m0 << ")" << std::endl;
+	  return { m0, "Tail" };
+	}
+
+      // --- Rule 2: For larger samples, the Bootstrap method is the primary estimator. ---
+      Decimal m0_bootstrap = estimateM0_BootstrapAveraged(familyStrategies);
+      std::cout << "[Estimator] Primary estimator: Bootstrap result (m0=" << m0_bootstrap << ")" << std::endl;
+
+      // --- Rule 3: Sanity Check ---
+      // If the bootstrap estimate is nonsensically low (e.g., less than 25% of hypotheses are null)
+      // or out of bounds, it suggests an unusual p-value distribution. In this case,
+      // we must fall back to the most conservative and reliable estimator.
+      const Decimal m_decimal = static_cast<Decimal>(m);
+      if (m0_bootstrap < m_decimal * Decimal("0.25") || m0_bootstrap > m_decimal)
+	{
+	  std::cout << "[Estimator] Bootstrap estimate is outside of reasonable bounds. "
+		    << "Falling back to the safest estimator." << std::endl;
+        
+	  Decimal m0_fallback = estimateM0TailBasedForFamily(familyStrategies);
+	  std::cout << "[Estimator] Fallback estimator: Tail-based result (m0=" << m0_fallback << ")" << std::endl;
+	  return { m0_fallback, "Tail (Fallback)" };
+	}
+
+      // --- Rule 4: If the bootstrap estimate is reasonable, use it. ---
+      std::cout << "[Estimator] Bootstrap estimate is reasonable. Using result." << std::endl;
+      return { m0_bootstrap, "Bootstrap" };      
+    }
+    
     Decimal estimateM0_BootstrapAveraged(const std::vector<std::pair<Decimal,
 					 std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
