@@ -24,6 +24,20 @@ constexpr int INVALID_INPUT_ERROR = 4;
  * @param defaultValue The default value if user presses enter
  * @return User input or default value
  */
+/**
+ * @brief Trims whitespace from both ends of a string
+ * @param str The string to trim
+ * @return Trimmed string
+ */
+string trim(const string& str) {
+    size_t start = str.find_first_not_of(" \t\n\r\f\v");
+    if (start == string::npos) {
+        return "";
+    }
+    size_t end = str.find_last_not_of(" \t\n\r\f\v");
+    return str.substr(start, end - start + 1);
+}
+
 string getUserInput(const string& prompt, const string& defaultValue = "") {
     cout << prompt;
     if (!defaultValue.empty()) {
@@ -33,6 +47,9 @@ string getUserInput(const string& prompt, const string& defaultValue = "") {
     
     string input;
     getline(cin, input);
+    
+    // Trim whitespace from input
+    input = trim(input);
     
     if (input.empty() && !defaultValue.empty()) {
         return defaultValue;
@@ -115,17 +132,80 @@ void displayHeader() {
 }
 
 /**
+ * @brief Displays usage information
+ */
+void displayUsage(const string& programName) {
+    cout << "Usage: " << programName << " [OPTIONS] [INPUT_FILE] [OUTPUT_FILE]" << endl;
+    cout << endl;
+    cout << "Arguments:" << endl;
+    cout << "  INPUT_FILE   Path to the PAL IR file to process" << endl;
+    cout << "  OUTPUT_FILE  Path for the generated output file" << endl;
+    cout << endl;
+    cout << "Options:" << endl;
+    cout << "  -p, --platform PLATFORM  Trading platform (default: TradeStation)" << endl;
+    cout << "  -h, --help               Show this help message" << endl;
+    cout << endl;
+    cout << "If INPUT_FILE and OUTPUT_FILE are not provided, the program will" << endl;
+    cout << "prompt for them interactively." << endl;
+    cout << endl;
+}
+
+/**
  * @brief Main program entry point
  */
-int main() {
+int main(int argc, char* argv[]) {
     displayHeader();
     
-    try {
-        // Get PAL IR file path from user
-        string irFilePathStr = getUserInput("Enter PAL IR file path");
-        if (irFilePathStr.empty()) {
-            cerr << "Error: PAL IR file path cannot be empty" << endl;
+    string irFilePathStr;
+    string outputFileName;
+    string platform = "TradeStation";
+    bool showHelp = false;
+    
+    // Parse command line arguments
+    for (int i = 1; i < argc; i++) {
+        string arg = argv[i];
+        
+        if (arg == "-h" || arg == "--help") {
+            showHelp = true;
+            break;
+        } else if (arg == "-p" || arg == "--platform") {
+            if (i + 1 < argc) {
+                platform = argv[++i];
+            } else {
+                cerr << "Error: --platform option requires a value" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+        } else if (arg.length() > 0 && arg[0] == '-') {
+            cerr << "Error: Unknown option: " << arg << endl;
+            displayUsage(argv[0]);
             return INVALID_INPUT_ERROR;
+        } else {
+            // Positional arguments: input file, then output file
+            if (irFilePathStr.empty()) {
+                irFilePathStr = arg;
+            } else if (outputFileName.empty()) {
+                outputFileName = arg;
+            } else {
+                cerr << "Error: Too many arguments provided" << endl;
+                displayUsage(argv[0]);
+                return INVALID_INPUT_ERROR;
+            }
+        }
+    }
+    
+    if (showHelp) {
+        displayUsage(argv[0]);
+        return SUCCESS;
+    }
+    
+    try {
+        // Get PAL IR file path (from command line or user input)
+        if (irFilePathStr.empty()) {
+            irFilePathStr = getUserInput("Enter PAL IR file path");
+            if (irFilePathStr.empty()) {
+                cerr << "Error: PAL IR file path cannot be empty" << endl;
+                return INVALID_INPUT_ERROR;
+            }
         }
         
         filesystem::path irFilePath(irFilePathStr);
@@ -135,8 +215,10 @@ int main() {
             return FILE_SYSTEM_ERROR;
         }
         
-        // Get trading platform (default to TradeStation)
-        string platform = getUserInput("Select trading platform", "TradeStation");
+        // Get trading platform (from command line, user input, or default)
+        if (platform.empty()) {
+            platform = getUserInput("Select trading platform", "TradeStation");
+        }
         
         // Currently only TradeStation is supported
         if (platform != "TradeStation") {
@@ -144,11 +226,13 @@ int main() {
             return INVALID_INPUT_ERROR;
         }
         
-        // Get output file name from user
-        string outputFileName = getUserInput("Enter output file name");
+        // Get output file name (from command line or user input)
         if (outputFileName.empty()) {
-            cerr << "Error: Output file name cannot be empty" << endl;
-            return INVALID_INPUT_ERROR;
+            outputFileName = getUserInput("Enter output file name");
+            if (outputFileName.empty()) {
+                cerr << "Error: Output file name cannot be empty" << endl;
+                return INVALID_INPUT_ERROR;
+            }
         }
         
         filesystem::path outputFilePath(outputFileName);
@@ -177,19 +261,16 @@ int main() {
             return PARSING_ERROR;
         }
         
-        cout << "Generating " << platform << " EasyLanguage code..." << endl;
+         cout << "Generating " << platform << " EasyLanguage code..." << endl;
         
         // Create the code generator
         try {
-            EasyLanguageRADCodeGenVisitor codeGen(system.get(), outputFileName);
-            
+             EasyLanguageRADCodeGenVisitor codeGen(system, outputFileName);
+             
             // Generate the code
             codeGen.generateCode();
             
-            cout << "Code generation completed successfully!" << endl;
-            cout << "Output written to: " << outputFileName << endl;
-            
-        } catch (const exception& e) {
+         } catch (const exception& e) {
             cerr << "Error: Code generation failed: " << e.what() << endl;
             return CODE_GENERATION_ERROR;
         }
