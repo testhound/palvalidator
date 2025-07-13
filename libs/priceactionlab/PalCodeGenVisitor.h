@@ -499,8 +499,8 @@ public:
    * @param system Pointer to the PriceActionLabSystem.
    * @param outputFileName The name for the output EasyLanguage file.
    */
-  EasyLanguageCodeGenVisitor(PriceActionLabSystem *system, 
-			     const std::string& outputFileName);
+  EasyLanguageCodeGenVisitor(std::shared_ptr<PriceActionLabSystem> system,
+  	     const std::string& outputFileName);
 
   /**
    * @brief Virtual destructor.
@@ -607,8 +607,8 @@ public:
    * @param system Pointer to the PriceActionLabSystem.
    * @param outputFileName The name for the output EasyLanguage file.
    */
-  EasyLanguageRADCodeGenVisitor(PriceActionLabSystem *system,
-                             const std::string& outputFileName);
+  EasyLanguageRADCodeGenVisitor(std::shared_ptr<PriceActionLabSystem> system,
+                              const std::string& outputFileName);
 
   /**
    * @brief Destructor.
@@ -660,7 +660,7 @@ public:
    * @param dev1Detail Stop/target details for deviation 1 patterns.
    * @param dev2Detail Stop/target details for deviation 2 patterns.
    */
-  EasyLanguagePointAdjustedCodeGenVisitor(PriceActionLabSystem *system,
+  EasyLanguagePointAdjustedCodeGenVisitor(std::shared_ptr<PriceActionLabSystem> system,
                                           const std::string& outputFileName);
 
   /**
