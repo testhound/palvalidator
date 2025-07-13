@@ -36,20 +36,20 @@ const std::string EasyLanguageCodeGenVisitor::SHORT_TARGET_SETTER_MARKER = "////
  * @param dev1Detail Stop-loss and profit-target details for "Deviation 1" patterns.
  * @param dev2Detail Stop-loss and profit-target details for "Deviation 2" patterns.
  */
-EasyLanguageCodeGenVisitor::EasyLanguageCodeGenVisitor(PriceActionLabSystem *system,
+EasyLanguageCodeGenVisitor::EasyLanguageCodeGenVisitor(std::shared_ptr<PriceActionLabSystem> system,
 						       const std::string& outputFileName)
   : PalCodeGenVisitor(),
     mTradingSystemPatterns(system),
     mEasyLanguageFileName(outputFileName)
 {
-    // The mTemplateFile member has been removed.
 }
 
 /**
  * @brief Destructor for EasyLanguageCodeGenVisitor.
  */
 EasyLanguageCodeGenVisitor::~EasyLanguageCodeGenVisitor()
-{}
+{
+}
 
 /**
  * @brief Inserts generated EasyLanguage code for long patterns into the output file stream.
@@ -103,7 +103,6 @@ void EasyLanguageCodeGenVisitor::generateCode()
     }
 
     // --- Start of Embedded Template ---
-    *outFile << "" << std::endl << "{" << std::endl;
     *outFile << "// Copyright (C) MKC Associates, LLC - All Rights Reserved" << std::endl;
     *outFile << "// Unauthorized copying of this file, via any medium is strictly prohibited" << std::endl;
     *outFile << "// Proprietary and confidential" << std::endl;
@@ -114,14 +113,14 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "        Int Reverse_Option( 2 {0=ignore, 1=exit, 2=reverse} )," << std::endl;
     *outFile << "       	Int TurnOnEntryBarStop( 0  { 0:OFF  <>0:ON } )," << std::endl;
     *outFile << "        Double EntryBarStopLevel( 0 { <= 0:OFF  > 0: ON } )," << std::endl;
-    *outFile << "        PrintDebug( False ) ;" << std::endl;
+    *outFile << "        PrintDebug( False );" << std::endl;
     *outFile << "// Added by D Cohn on 7/19/2019" << std::endl << std::endl;
     *outFile << "vars: shortStop (0), longStop (0), stopPercent (0);" << std::endl;
     *outFile << "vars: LongEntryFound (false), ShortEntryFound (false), noNextDayOrders(false);" << std::endl;
     *outFile << "vars: oscVChartLow(0.0), oscVChartHigh(0.0);" << std::endl;
     *outFile << "vars: MinHoldPeriod(4.0), MaxHoldPeriod(10.0);" << std::endl;
     *outFile << "vars: profitTargetPercent(0.0), TargPrL(0.0), TargPrS(0.0);" << std::endl;
-    *outFile << "vars: shortStopDistance(0.0), longStopDistance(0.0), UnAdjustedClose(0.0);" << std::endl;
+    *outFile << "vars: shortStopDistance(0.0), longStopDistance(0.0);" << std::endl;
     *outFile << "vars: profitTargetDistance(0.0), unAdjCloseAtEntry(0.0);" << std::endl;
     *outFile << "vars: stopStr(\"\"), targetStr(\"\");" << std::endl;
     *outFile << "Vars:	stopPercent_new(0)," << std::endl;
@@ -141,36 +140,33 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "        Double TT( 0 )," << std::endl;
     *outFile << "        Double CS( 0 )," << std::endl;
     *outFile << "        Double AEP( 0 )," << std::endl;
-    *outFile << "	Double BPV( BigPointValue ),  // Added 4/24/2020 by Emerald" << std::endl;
-    *outFile << "        Bool ExitSet( False ) ;" << std::endl;
+    *outFile << "        Bool ExitSet( False );" << std::endl;
     *outFile << "Once ( BarStatus(1) = 2 ) Begin // Modified by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "	SetStopContract ;" << std::endl;
+    *outFile << "	SetStopContract;" << std::endl;
     *outFile << "// Added 4/24/2020 by Emerald:  Set all built-in TS stops to be on a per contract basis" << std::endl << std::endl;
     *outFile << "        If PrintDebug Then   // Added by D Cohn on 7/19/2019" << std::endl;
-    *outFile << "                ClearPrintLog ;" << std::endl;
-    *outFile << "End ;" << std::endl << std::endl << std::endl;
-    *outFile << "MP = MarketPosition ;   // Added by D Cohn on 7/19/2019" << std::endl;
-    *outFile << "TT = TotalTrades ;" << std::endl;
-    *outFile << "// Added by D Cohn on 7/19/2019" << std::endl;
-    *outFile << "CS = CurrentShares ;    // Added by D Cohn on 7/19/2019" << std::endl;
-    *outFile << "AEP = AvgEntryPrice ;" << std::endl;
-    *outFile << "oscVChartLow  = _VChartLow( 5, 0.2 ) ;" << std::endl;
-    *outFile << "oscVChartHigh = _VChartHigh( 5, 0.2 ) ;" << std::endl;
-    *outFile << "UnAdjustedClose = C of Data2 ;" << std::endl << std::endl;
-    *outFile << "LongEntryFound  = false;" << std::endl;
-    *outFile << "ShortEntryFound = false;" << std::endl;
-    *outFile << "// This section of code Added by D Cohn on 7/19/2019 to replace Strategy Host to update the EntryPrice on new entries and pyramid entries" << std::endl;
-    *outFile << "If ( MP[1] <> MP and MP <> 0 ) or ( CS[1] > 0 and CS > CS[1] ) or ( MP = 0 and TT[1] + 1 < TT ) Then Begin" << std::endl << std::endl;
-    *outFile << "        MyBarsSinceEntry = 0 ;" << std::endl;
-    *outFile << "If MP[1] <> MP and MP <> 0 Then" << std::endl;
-    *outFile << "                myEntryPrice = EntryPrice" << std::endl;
-    *outFile << "        Else If CS > CS[1] Then" << std::endl;
-    *outFile << "                myEntryPrice = ( ( CS * AEP ) - ( CS[1] * AEP[1] ) ) / ( CS - CS[1] ) ;" << std::endl;
-    *outFile << "End ;" << std::endl << std::endl;
-    *outFile << "If MP = 0 Then       // Added by D Cohn on 7/28/2019 to reset Exits blocking entries" << std::endl;
-    *outFile << "        ExitSet = False ;" << std::endl;
-    *outFile << "If PrintDebug Then" << std::endl;
-    *outFile << "        Print( BarDateTime.ToString(), \":NEW , \", MyBarsSinceEntry:0:0, \" , \", MyEntryPrice:0:2, \" , \", ExitPrice(1):0:2, \" , \", MP:0:0, \" , \", NetProfit:0:2 ) ;" << std::endl;
+    *outFile << "                ClearPrintLog;" << std::endl;
+    *outFile << "End;" << std::endl << std::endl << std::endl;
+    *outFile << "\tMP = MarketPosition;" << std::endl;
+    *outFile << "\tTT = TotalTrades;" << std::endl;
+    *outFile << "\tCS = CurrentShares;    // Added by D Cohn on 7/19/2019" << std::endl;
+    *outFile << "\tAEP = AvgEntryPrice;" << std::endl;
+    *outFile << "\toscVChartLow  = VChartLow( 5, 0.2 );" << std::endl;
+    *outFile << "\toscVChartHigh = VChartHigh( 5, 0.2 );" << std::endl;
+    *outFile << "\tLongEntryFound  = false;" << std::endl;
+    *outFile << "\tShortEntryFound = false;" << std::endl;
+    *outFile << "\tIf ( MP[1] <> MP and MP <> 0 ) or ( CS[1] > 0 and CS > CS[1] ) or ( MP = 0 and TT[1] + 1 < TT ) Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\tMyBarsSinceEntry = 0;" << std::endl;
+    *outFile << "\t\tIf MP[1] <> MP and MP <> 0 Then" << std::endl;
+    *outFile << "\t\t\tmyEntryPrice = EntryPrice" << std::endl;
+    *outFile << "\t\tElse If CS > CS[1] Then" << std::endl;
+    *outFile << "\t\t\tmyEntryPrice = ( ( CS * AEP ) - ( CS[1] * AEP[1] ) ) / ( CS - CS[1] );" << std::endl;
+    *outFile << "\tEnd;" << std::endl << std::endl;
+    *outFile << "\tIf MP = 0 Then" << std::endl;
+    *outFile << "\t\tExitSet = False;" << std::endl;
+    *outFile << "\tIf PrintDebug Then" << std::endl;
+    *outFile << "\t\tPrint( BarDateTime.ToString(), \":NEW , \", MyBarsSinceEntry:0:0, \" , \", MyEntryPrice:0:2, \" , \", ExitPrice(1):0:2, \" , \", MP:0:0, \" , \", NetProfit:0:2 );" << std::endl;
     *outFile << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
     *outFile << "//////" << std::endl;
     *outFile << "////// LONG ENTRY SETUPS: CODE Simplified and streamlined By D Cohn on 7/22/2019" << std::endl;
@@ -193,118 +189,129 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << std::endl << std::endl;
 
     // --- Resuming Static Template ---
-    *outFile << "AllowEntry = MP = 0 or ( MP <> 0 and CurrentEntries <= MaxPyramids and LongEntryFound <> ShortEntryFound ) ;" << std::endl;
-    *outFile << "// Streamlined by D Cohn on 7/22/2019" << std::endl << std::endl;
-    *outFile << "//  Unnecessary Begin and End statements removed below by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "If Reverse_Option = 0 and MP = 1 and ShortEntryFound and AllowEntry Then" << std::endl;
-    *outFile << "        AllowEntry = false;" << std::endl;
-    *outFile << "If Reverse_Option = 0 and MP = -1 and LongEntryFound and AllowEntry Then" << std::endl;
-    *outFile << "        AllowEntry = false;" << std::endl;
-    *outFile << "If Reverse_Option = 1 and MP = 1 and ShortEntryFound and (AllowEntry or MaxPyramids = 0) Then Begin" << std::endl;
-    *outFile << "        Sell (\"Rev LX\") ALL contracts next bar at market;" << std::endl;
-    *outFile << "AllowEntry = false;" << std::endl;
-    *outFile << "End ;" << std::endl << std::endl;
-    *outFile << "If Reverse_Option = 1 and MP = -1 and LongEntryFound and (AllowEntry or MaxPyramids = 0) Then Begin" << std::endl;
-    *outFile << "        BuyToCover (\"Rev SX\") ALL contracts next bar at market;" << std::endl;
-    *outFile << "AllowEntry = false;" << std::endl;
-    *outFile << "End ;" << std::endl << std::endl;
-    *outFile << "If Reverse_Option = 2 and MP = 1 and ShortEntryFound and (AllowEntry or MaxPyramids = 0) Then" << std::endl;
-    *outFile << "        AllowEntry = true;" << std::endl;
-    *outFile << "If Reverse_Option = 2 and MP = -1 and LongEntryFound and (AllowEntry or MaxPyramids = 0) Then" << std::endl;
-    *outFile << "        AllowEntry = true;" << std::endl;
-    *outFile << "//If entry allowed update key variables used to determine exits:  Modified by D Cohn on 7/28/2019" << std::endl;
-    *outFile << "If AllowEntry Then Begin" << std::endl << std::endl;
-    *outFile << "        stopPercent_new      = stopPercent;" << std::endl;
-    *outFile << "profitTgtPct_new     = profitTargetPercent;" << std::endl;
-    *outFile << "        MinHoldPeriod_new    = MinHoldPeriod;" << std::endl;
-    *outFile << "        MaxHoldPeriod_new    = MaxHoldPeriod;" << std::endl;
-    *outFile << "longStopDistance_new = longStopDistance;" << std::endl;
-    *outFile << "        longStop_new         = longStop;" << std::endl;
-    *outFile << "        shortStopDist_new    = shortStopDistance;" << std::endl;
-    *outFile << "shortStop_new        = shortStop;" << std::endl << std::endl;
-    *outFile << "End ;" << std::endl;
-    *outFile << "//  Change exit calculations to happen before entries below so that if an exit occurs entries are blocked: 7/28/2019 by D Cohn" << std::endl;
-    *outFile << "//Exit long" << std::endl;
-    *outFile << "If MP = 1 Then Begin" << std::endl << std::endl;
-    *outFile << "        noNextDayOrders = false;" << std::endl;
-    *outFile << "If myBarsSinceEntry >= ( MaxHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin  // Code streamlined by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "                noNextDayOrders = true;" << std::endl;
-    *outFile << "ExitSet = True ;" << std::endl;
-    *outFile << "                Sell (\"L Max hold time\") at next bar at Market ;" << std::endl;
-    *outFile << "        End ;" << std::endl;
-    *outFile << "If myBarsSinceEntry = 0 Then Begin" << std::endl;
+    *outFile << "\tAllowEntry = MP = 0 or ( MP <> 0 and CurrentEntries <= MaxPyramids and LongEntryFound <> ShortEntryFound );" << std::endl;
+    *outFile << "\tIf Reverse_Option = 0 and MP = 1 and ShortEntryFound and AllowEntry Then" << std::endl;
+    *outFile << "\t\tAllowEntry = false;" << std::endl;
+    *outFile << "\tIf Reverse_Option = 0 and MP = -1 and LongEntryFound and AllowEntry Then" << std::endl;
+    *outFile << "\t\t AllowEntry = false;" << std::endl;
+    *outFile << "\tIf Reverse_Option = 1 and MP = 1 and ShortEntryFound and (AllowEntry or MaxPyramids = 0) Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\tSell (\"Rev LX\") ALL contracts next bar at market;" << std::endl;
+    *outFile << "\t\tAllowEntry = false;" << std::endl;
+    *outFile << "\tEnd;" << std::endl << std::endl;
+    *outFile << "\tIf Reverse_Option = 1 and MP = -1 and LongEntryFound and (AllowEntry or MaxPyramids = 0) Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\tBuyToCover (\"Rev SX\") ALL contracts next bar at market;" << std::endl;
+    *outFile << "\t\tAllowEntry = false;" << std::endl;
+    *outFile << "\tEnd;" << std::endl << std::endl;
+    *outFile << "\tIf Reverse_Option = 2 and MP = 1 and ShortEntryFound and (AllowEntry or MaxPyramids = 0) Then" << std::endl;
+    *outFile << "\t\tAllowEntry = true;" << std::endl;
+    *outFile << "\tIf Reverse_Option = 2 and MP = -1 and LongEntryFound and (AllowEntry or MaxPyramids = 0) Then" << std::endl;
+    *outFile << "\t\tAllowEntry = true;" << std::endl;
+    *outFile << "\tIf AllowEntry Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\tstopPercent_new  = stopPercent;" << std::endl;
+    *outFile << "\t\tprofitTgtPct_new = profitTargetPercent;" << std::endl;
+    *outFile << "\t\tMinHoldPeriod_new = MinHoldPeriod;" << std::endl;
+    *outFile << "\t\tMaxHoldPeriod_new = MaxHoldPeriod;" << std::endl;
+    *outFile << "\t\tlongStopDistance_new = longStopDistance;" << std::endl;
+    *outFile << "\t\tlongStop_new = longStop;" << std::endl;
+    *outFile << "\t\tshortStopDist_new = shortStopDistance;" << std::endl;
+    *outFile << "\t\tshortStop_new = shortStop;" << std::endl;
+    *outFile << "\tEnd;" << std::endl;
+    *outFile << "\tIf MP = 1 Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\tnoNextDayOrders = false;" << std::endl;
+    *outFile << "\t\tIf myBarsSinceEntry >= ( MaxHoldPeriod_new - 1 ) and noNextDayOrders = false Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tnoNextDayOrders = true;" << std::endl;
+    *outFile << "\t\t\tExitSet = True;" << std::endl;
+    *outFile << "\t\t\tSell (\"L Max hold time\") at next bar at Market;" << std::endl << std::endl;
+    *outFile << "\t\tEnd;" << std::endl;
+    *outFile << "\t\tIf myBarsSinceEntry = 0 Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
 
     // --- Dynamic Section 3: Setting Long Targets ---
     setStopTargetLong();
-    *outFile << "        End ;" << std::endl;
+    *outFile << "\t\tEnd;" << std::endl << std::endl;
 
     // --- Resuming Static Template ---
-    *outFile << "If myBarsSinceEntry >= ( MinHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin  // Code streamlined by D Cohn on 7/22/2019" << std::endl << std::endl;
-    *outFile << "                If oscVChartHigh >= 10 Then Begin  // Code streamlined by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "                        noNextDayOrders = true;" << std::endl;
-    *outFile << "ExitSet = True ;" << std::endl;
-    *outFile << "                        Sell (\"OB Exit\") at next bar at Market ;" << std::endl;
-    *outFile << "                End ;" << std::endl << std::endl;
-    *outFile << "        End ;" << std::endl;
-    *outFile << "If noNextDayOrders = False Then Begin" << std::endl;
-    *outFile << "                Sell (\"PT LX\") at next bar at TargPrL Limit ;" << std::endl;
-    *outFile << "Sell (\"Stop LX\") at next bar at longStop_new Stop ;" << std::endl;
-    *outFile << "        End ;" << std::endl << std::endl;
-    *outFile << "End ;" << std::endl;
-    *outFile << "//Exit short" << std::endl;
-    *outFile << "If MP = -1 Then Begin" << std::endl << std::endl;
-    *outFile << "        noNextDayOrders = false;" << std::endl;
-    *outFile << "If myBarsSinceEntry >= ( MaxHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin  // Code streamlined by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "                noNextDayOrders = true;" << std::endl;
-    *outFile << "ExitSet = True ;" << std::endl;
-    *outFile << "                Buy to Cover (\"S Max hold time\") at next bar at Market ;" << std::endl;
-    *outFile << "        End ;" << std::endl;
-    *outFile << "If myBarsSinceEntry >= ( MinHoldPeriod_new - 1 ) and noNextDayOrders = false Then Begin		  // Code streamlined by D Cohn on 7/22/2019" << std::endl << std::endl;
-    *outFile << "                If oscVChartLow <= -10 Then Begin   // Code streamlined by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "                        noNextDayOrders = true;" << std::endl;
-    *outFile << "ExitSet = True ;" << std::endl;
-    *outFile << "                        Buy to Cover (\"OS Exit\") at next bar at Market ;" << std::endl;
-    *outFile << "                End ;" << std::endl << std::endl;
-    *outFile << "        End ;" << std::endl;
-    *outFile << "If myBarsSinceEntry = 0 Then Begin" << std::endl;
+    *outFile << "\t\tIf myBarsSinceEntry >= ( MinHoldPeriod_new - 1 ) and noNextDayOrders = false Then" << std::endl;
+    *outFile << "\t\tBegin"  << std::endl;
+    *outFile << "\t\t\tIf oscVChartHigh >= 10 Then" << std::endl;
+    *outFile << "\t\t\tBegin" << std::endl;
+    *outFile << " \t\t\t\tnoNextDayOrders = true;" << std::endl;
+    *outFile << "\t\t\t\tExitSet = True;" << std::endl;
+    *outFile << "\t\t\t\tSell (\"OB Exit\") at next bar at Market;" << std::endl;
+    *outFile << "\t\t\tEnd;" << std::endl << std::endl;
+    *outFile << "\t\tEnd;" << std::endl << std::endl;
+    *outFile << "\t\tIf noNextDayOrders = False Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tSell (\"PT LX\") at next bar at TargPrL Limit;" << std::endl;
+    *outFile << "\t\t\tSell (\"Stop LX\") at next bar at longStop_new Stop;" << std::endl;
+    *outFile << "\t\tEnd;" << std::endl << std::endl;
+    *outFile << "\tEnd;" << std::endl << std::endl;
+    *outFile << "\tIf MP = -1 Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\tnoNextDayOrders = false;" << std::endl;
+    *outFile << "\t\tIf myBarsSinceEntry >= ( MaxHoldPeriod_new - 1 ) and noNextDayOrders = false Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tnoNextDayOrders = true;" << std::endl;
+    *outFile << "\t\t\tExitSet = True;" << std::endl;
+    *outFile << "\t\t\tBuy to Cover (\"S Max hold time\") at next bar at Market;" << std::endl;
+    *outFile << "\t\tEnd;" << std::endl;
+    *outFile << "\t\tIf myBarsSinceEntry >= ( MinHoldPeriod_new - 1 ) and noNextDayOrders = false Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tIf oscVChartLow <= -10 Then" << std::endl;
+    *outFile << "\t\t\tBegin" << std::endl;
+    *outFile << "\t\t\t\tnoNextDayOrders = true;" << std::endl;
+    *outFile << "\t\t\t\tExitSet = True;" << std::endl;
+    *outFile << "\t\t\t\tBuy to Cover (\"OS Exit\") at next bar at Market;" << std::endl;
+    *outFile << "\t\t\tEnd;" << std::endl << std::endl;
+    *outFile << "\t\tEnd;" << std::endl;
+    *outFile << "\t\tIf myBarsSinceEntry = 0 Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
 
     // --- Dynamic Section 4: Setting Short Targets ---
     setStopTargetShort();
-    *outFile << "        End ;" << std::endl;
+    *outFile << "\t\tEnd;" << std::endl;
 
     // --- Resuming Static Template ---
-    *outFile << "If noNextDayOrders = False Then Begin" << std::endl;
-    *outFile << "                Buy to Cover (\"PT SX\") at next bar at TargPrS Limit ;" << std::endl;
-    *outFile << "Buy to Cover (\"Stop SX\") at next bar at shortStop_new Stop ;" << std::endl;
-    *outFile << "        End ;" << std::endl << std::endl;
-    *outFile << "End ;" << std::endl;
-    *outFile << "//Code moved to after exit calculations to block Entries after Market exits have been set" << std::endl;
-    *outFile << "If AllowEntry Then Begin" << std::endl << std::endl;
-    *outFile << "        // Code below streamlined by D Cohn on 7/22/2019" << std::endl;
-    *outFile << "        // Code modified by D Cohn on 7/28/2019:  Allow reversal from Long to Short and Short to Long even if ExitSet is true, but do not allow pyramid in same direction if an Exit has been set." << std::endl;
-    *outFile << "If LongEntryFound and ShortEntryFound = False and ( MP < 0 or ( MP >= 0 and ( ExitSet = False ) ) ) Then Begin" << std::endl << std::endl;
-    *outFile << "                Commentary (\"Manual stop = open of next bar - \", stopStr, NewLine);" << std::endl;
-    *outFile << "Commentary (\"Manual profit target = open of next bar + \", targetStr, NewLine);" << std::endl;
-    *outFile << "Buy (\"LE1\") at next bar at Market ;" << std::endl << std::endl;
-    *outFile << "		// Added 4/24/2020 by Emerald: If the Entry Bar Stop enabled and the MP" << std::endl;
-    *outFile << "		//  is not Long then enable the stop on the entry bar only" << std::endl;
-    *outFile << "                If TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP <= 0 Then  " << std::endl;
-    *outFile << "                	SetStopLoss( EntryBarStopLevel * stopPercent * Close * BPV ) ;" << std::endl;
-    *outFile << "End" << std::endl;
-    *outFile << "        Else If ShortEntryFound and LongEntryFound = False and ( MP > 0 or ( MP <= 0 and ( ExitSet = False ) ) ) Then Begin" << std::endl << std::endl;
-    *outFile << "                Commentary (\"Manual stop = open of next bar + \", stopStr, NewLine);" << std::endl;
-    *outFile << "Commentary (\"Manual profit target = open of next bar - \", targetStr, NewLine);" << std::endl;
-    *outFile << "Sell short (\"SE1\") at next bar at Market ;" << std::endl << std::endl;
-    *outFile << "		// Added 4/24/2020 by Emerald: If the Entry Bar Stop enabled and the MP is not" << std::endl;
-    *outFile << "		//  Long then enable the stop on the entry bar only" << std::endl;
-    *outFile << "                If TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP >= 0 Then " << std::endl;
-    *outFile << "                	SetStopLoss( EntryBarStopLevel * stopPercent * Close * BPV ) ;" << std::endl;
-    *outFile << "End ;" << std::endl << std::endl;
-    *outFile << "End ;" << std::endl << std::endl;
+    *outFile << "\t\tIf noNextDayOrders = False Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tBuy to Cover (\"PT SX\") at next bar at TargPrS Limit;" << std::endl;
+    *outFile << "\t\t\tBuy to Cover (\"Stop SX\") at next bar at shortStop_new Stop;" << std::endl;
+    *outFile << "\t\tEnd;" << std::endl << std::endl;
+    *outFile << "\tEnd;" << std::endl << std::endl;
+    *outFile << "\t//Code moved to after exit calculations to block Entries after Market exits have been set" << std::endl;
+    *outFile << "\tIf AllowEntry Then" << std::endl;
+    *outFile << "\tBegin" << std::endl;
+    *outFile << "\t\t// Allow reversal from Long to Short and Short to Long even if ExitSet is true, " << std::endl;
+    *outFile << "\t\t//but do not allow pyramid in same direction if an Exit has been set." << std::endl;
+    *outFile << "\t\tIf LongEntryFound and ShortEntryFound = False and ( MP < 0 or ( MP >= 0 and ( ExitSet = False ) ) ) Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tCommentary (\"Manual stop = open of next bar - \", stopStr, NewLine);" << std::endl;
+    *outFile << "\t\t\tCommentary (\"Manual profit target = open of next bar + \", targetStr, NewLine);" << std::endl;
+    *outFile << "\t\t\tBuy (\"LE1\") at next bar at Market;" << std::endl << std::endl;
+    *outFile << "\t\t\t// Added 4/24/2020 by Emerald: If the Entry Bar Stop enabled and the MP" << std::endl;
+    *outFile << "\t\t\t//  is not Long then enable the stop on the entry bar only" << std::endl;
+    *outFile << "\t\t\tIf TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP <= 0 Then  " << std::endl;
+    *outFile << "\t\t\t\tSetStopLoss( EntryBarStopLevel * stopPercent * Close);" << std::endl;
+    *outFile << "\t\tEnd;" << std::endl;
+    *outFile << "\t\tElse If ShortEntryFound and LongEntryFound = False and ( MP > 0 or ( MP <= 0 and ( ExitSet = False ) ) ) Then" << std::endl;
+    *outFile << "\t\tBegin" << std::endl;
+    *outFile << "\t\t\tCommentary (\"Manual stop = open of next bar + \", stopStr, NewLine);" << std::endl;
+    *outFile << "\t\t\tCommentary (\"Manual profit target = open of next bar - \", targetStr, NewLine);" << std::endl;
+    *outFile << "\t\t\tSell short (\"SE1\") at next bar at Market;" << std::endl << std::endl;
+    *outFile << "\t\t\t// Added 4/24/2020 by Emerald: If the Entry Bar Stop enabled and the MP is not" << std::endl;
+    *outFile << "\t\t\t//  Long then enable the stop on the entry bar only" << std::endl;
+    *outFile << "\t\t\tIf TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP >= 0 Then " << std::endl;
+    *outFile << "\t\t\t\tSetStopLoss( EntryBarStopLevel * stopPercent * Close);" << std::endl;
+    *outFile << "\t\tEnd; " << std::endl << std::endl;
+    *outFile << "\tEnd;" << std::endl << std::endl;
     *outFile << "//End of code" << std::endl;
     *outFile << "If BarStatus(1) = 2 Then" << std::endl;
     *outFile << "        myBarsSinceEntry = myBarsSinceEntry + 1;" << std::endl;
-    *outFile << "}" << std::endl;
     // --- End of Embedded Template ---
 }
 
@@ -566,7 +573,7 @@ void EasyLanguageCodeGenVisitor::visit (PriceActionLabPattern *pattern)
  * @param system Pointer to the PriceActionLabSystem.
  * @param outputFileName Path to the output EasyLanguage file.
  */
-EasyLanguageRADCodeGenVisitor::EasyLanguageRADCodeGenVisitor (PriceActionLabSystem *system,
+EasyLanguageRADCodeGenVisitor::EasyLanguageRADCodeGenVisitor (std::shared_ptr<PriceActionLabSystem> system,
 							      const std::string& outputFileName)
   : EasyLanguageCodeGenVisitor (system, outputFileName)
 {}
@@ -584,8 +591,8 @@ EasyLanguageRADCodeGenVisitor::~EasyLanguageRADCodeGenVisitor()
 void EasyLanguageRADCodeGenVisitor::setStopTargetLong()
 {
     std::ofstream *outFile = getOutputFileStream();
-    *outFile << "\t\tlongStop_new = Round2Fraction (myEntryPrice * stopPercent_new);" << std::endl;
-    *outFile << "\t\tTargPrL = Round2Fraction (myEntryPrice * profitTgtPct_new);" << std::endl;
+    *outFile << "\t\t\tlongStop_new = Round2Fraction (myEntryPrice * stopPercent_new);" << std::endl;
+    *outFile << "\t\t\tTargPrL = Round2Fraction (myEntryPrice * profitTgtPct_new);" << std::endl;
 }
 
 /**
@@ -595,8 +602,8 @@ void EasyLanguageRADCodeGenVisitor::setStopTargetLong()
 void EasyLanguageRADCodeGenVisitor::setStopTargetShort()
 {
     std::ofstream *outFile = getOutputFileStream();
-    *outFile << "\t\tshortStop_new = Round2Fraction (myEntryPrice * stopPercent_new);" << std::endl;
-    *outFile << "\t\tTargPrS = Round2Fraction (myEntryPrice * profitTgtPct_new);" << std::endl;
+    *outFile << "\t\t\tshortStop_new = Round2Fraction (myEntryPrice * stopPercent_new);" << std::endl;
+    *outFile << "\t\t\tTargPrS = Round2Fraction (myEntryPrice * profitTgtPct_new);" << std::endl;
 }
 
 
@@ -668,7 +675,7 @@ EasyLanguageRADCodeGenVisitor::visit (ShortSideStopLossInPercent *stopLoss)
  * @param outputFileName Path to the output EasyLanguage file.
  */
 EasyLanguagePointAdjustedCodeGenVisitor
-::EasyLanguagePointAdjustedCodeGenVisitor (PriceActionLabSystem *system,
+::EasyLanguagePointAdjustedCodeGenVisitor (std::shared_ptr<PriceActionLabSystem> system,
 					   const std::string& outputFileName)
 
   : EasyLanguageCodeGenVisitor (system, outputFileName)
