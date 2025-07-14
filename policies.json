@@ -8,7 +8,8 @@
       "BootStrappedProfitFactorPolicy",
       "BootStrappedLogProfitFactorPolicy",
       "BootStrappedProfitabilityPFPolicy",
-      "BootStrappedLogProfitabilityPFPolicy"
+      "BootStrappedLogProfitabilityPFPolicy",
+      "BootStrappedSharpeRatioPolicy"
     ],
     "default": "GatedPerformanceScaledPalPolicy",
     "groups": {
@@ -21,7 +22,7 @@
         "description": "Bootstrap and basic profit factor policies for standard analysis"
       },
       "advanced": {
-        "policies": ["GatedPerformanceScaledPalPolicy"],
+        "policies": ["GatedPerformanceScaledPalPolicy", "BootStrappedSharpeRatioPolicy"],
         "description": "Advanced PAL analysis with performance gating and scaling"
       },
       "experimental": {

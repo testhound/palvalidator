@@ -170,7 +170,55 @@ TEST_CASE("Bootstrapped Monte Carlo Policies", "[MonteCarloTestPolicy]") {
       REQUIRE_THAT(num::to_double(trueLPF), Catch::Matchers::WithinAbs(num::to_double(mean_lpf), num::to_double(stddev_lpf * DT(3.0))));
     }
   }
-    
+
+  SECTION("BootStrappedSharpeRatioPolicy") {
+    const auto minTrades = BootStrappedSharpeRatioPolicy<DT>::getMinStrategyTrades();
+    const auto minBars = BootStrappedSharpeRatioPolicy<DT>::getMinBarSeriesSize();
+    const DT failureStat = BootStrappedSharpeRatioPolicy<DT>::getMinTradeFailureTestStatistic();
+
+    SECTION("Fails if number of trades is below minimum") {
+      backtester->setNumTrades(minTrades - 1);
+      backtester->setHighResReturns(returns); // Sufficient bars
+      DT statistic = BootStrappedSharpeRatioPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
+    }
+
+    SECTION("Fails if number of bars is below minimum") {
+      std::vector<DT> smallReturnSeries(minBars - 1, DT("0.01"));
+      backtester->setNumTrades(minTrades); // Sufficient trades
+      backtester->setHighResReturns(smallReturnSeries);
+      DT statistic = BootStrappedSharpeRatioPolicy<DT>::getPermutationTestStatistic(backtester);
+      REQUIRE(statistic == failureStat);
+    }
+
+    SECTION("Calculates a composite score whose distribution is centered on the expected value") {
+      backtester->setNumTrades(minTrades);
+      backtester->setHighResReturns(returns);
+
+      // Manually calculate the expected score based on the true (non-bootstrapped) metrics.
+      // This mirrors the logic inside the policy class.
+      DT mean_return = StatUtils<DT>::computeMean(returns);
+      DT stddev_return = StatUtils<DT>::computeStdDev(returns, mean_return);
+      DT trueSharpe = (stddev_return > DT(0)) ? (mean_return / stddev_return) : DT(0);
+
+      DT confidenceFactor = DT(std::log(1.0 + static_cast<double>(returns.size())));
+      DT expectedScore = trueSharpe * confidenceFactor;
+            
+      std::vector<DT> results;
+      results.reserve(100);
+      for(int i = 0; i < 100; ++i) {
+        results.push_back(BootStrappedSharpeRatioPolicy<DT>::getPermutationTestStatistic(backtester));
+      }
+
+      DT mean_score = StatUtils<DT>::computeMean(results);
+      DT stddev_score = StatUtils<DT>::computeStdDev(results, mean_score);
+            
+      // The true value should be within 3 standard deviations of the bootstrapped mean.
+      // This confirms the bootstrap is correctly sampling around the true statistic.
+      REQUIRE_THAT(num::to_double(expectedScore), Catch::Matchers::WithinAbs(num::to_double(mean_score), num::to_double(stddev_score * DT(3.0))));
+    }
+  }
+
   // --- Tests for BootStrappedProfitabilityPFPolicy ---
   SECTION("BootStrappedProfitabilityPFPolicy") {
     const auto minTrades = BootStrappedProfitabilityPFPolicy<DT>::getMinStrategyTrades();

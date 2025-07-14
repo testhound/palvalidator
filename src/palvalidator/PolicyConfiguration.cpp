@@ -105,7 +105,8 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
         "BootStrappedProfitFactorPolicy",
         "BootStrappedLogProfitFactorPolicy",
         "BootStrappedProfitabilityPFPolicy",
-        "BootStrappedLogProfitabilityPFPolicy"
+        "BootStrappedLogProfitabilityPFPolicy",
+        "BootStrappedSharpeRatioPolicy"
     };
     
     config.defaultPolicy_ = "GatedPerformanceScaledPalPolicy";
@@ -117,7 +118,7 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
     
     // Create default groups
     config.policyGroups_["recommended"] = PolicyGroup(
-        {"BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy"},
+        {"BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy", "BootStrappedSharpeRatioPolicy"},
         "Primary bootstrap-based policies for robust statistical analysis"
     );
     
