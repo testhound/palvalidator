@@ -393,6 +393,33 @@ virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
     }
 
     /**
+     * @brief Calculates the estimated annualized number of trades based on the backtest period.
+     *
+     * This method uses the total number of trades generated during the backtest and
+     * normalizes it to a one-year period. This provides a data-driven estimate for
+     * a strategy's trading frequency, which is essential for calculating annualized costs.
+     *
+     * @return The estimated number of trades per year as a double.
+     * @throws BackTesterException if the backtest duration is zero or negative.
+     */
+    double getEstimatedAnnualizedTrades() const
+    {
+        uint32_t total_trades = getNumTrades();
+
+        boost::gregorian::days duration_in_days = getEndDate() - getStartDate();
+        
+        if (duration_in_days.days() <= 0)
+        {
+            throw BackTesterException("getEstimatedAnnualizedTrades: Backtest duration must be positive.");
+        }
+
+        // Convert duration to years (using 365.25 to account for leap years)
+        double duration_in_years = duration_in_days.days() / 365.25;
+
+        return static_cast<double>(total_trades) / duration_in_years;
+    }
+
+    /**
      * @brief Get the total number of bars across all trades (closed + open) for the first strategy
      * @return Total count of bars in all closed and open trades
      * @throws BackTesterException if no strategies have been added
