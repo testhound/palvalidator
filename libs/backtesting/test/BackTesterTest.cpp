@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <cpptrace/from_current.hpp>
 #include "TimeSeriesCsvReader.h"
 #include "PalStrategy.h"
@@ -739,4 +740,77 @@ SECTION("getAllHighResReturns with only open short positions") {
    // The alternating 100->200 and 200->100 returns create a log profit factor of 1.
    REQUIRE(stat == createDecimal("1.0"));
  }
+}
+
+TEST_CASE("BackTester::getEstimatedAnnualizedTrades", "[BackTester]") {
+
+    // A simple mock class to control the inputs for the method under test.
+    // This isolates the test from the complexities of a full backtest run.
+    struct MockAnnualizationBackTester : public DailyBackTester<DecimalType> {
+        uint32_t m_num_trades = 0;
+
+        // Constructor that calls the base class constructor to set the date range
+        MockAnnualizationBackTester(date start_date, date end_date)
+            : DailyBackTester<DecimalType>(start_date, end_date) {}
+
+        // Override only the method that we need to control for the test
+        uint32_t getNumTrades() const override {
+            return m_num_trades;
+        }
+    };
+
+    SECTION("Two-year period with 100 trades") {
+        // Use non-weekend dates to avoid constructor adjustments
+        date start = date(2020, Jan, 1); // Wednesday
+        date end = date(2022, Jan, 1);   // Saturday -> will be adjusted to 2021-Dec-31
+        MockAnnualizationBackTester bt(start, end);
+        bt.m_num_trades = 100;
+
+        // Calculate duration based on the backtester's actual dates
+        double duration_in_days = (bt.getEndDate() - bt.getStartDate()).days();
+        double duration_in_years = duration_in_days / 365.25;
+        double expected_annual_trades = 100.0 / duration_in_years;
+
+        REQUIRE(bt.getEstimatedAnnualizedTrades() == Catch::Approx(expected_annual_trades));
+    }
+
+    SECTION("Six-month period with 25 trades") {
+        // Use non-weekend dates
+        date start = date(2021, Jan, 1); // Friday
+        date end = date(2021, Jul, 1);   // Thursday
+        MockAnnualizationBackTester bt(start, end);
+        bt.m_num_trades = 25;
+
+        double duration_in_days = (bt.getEndDate() - bt.getStartDate()).days();
+        double duration_in_years = duration_in_days / 365.25;
+        double expected_annual_trades = 25.0 / duration_in_years;
+        REQUIRE(bt.getEstimatedAnnualizedTrades() == Catch::Approx(expected_annual_trades));
+    }
+
+    SECTION("One-year period with 1 trade") {
+        // Use non-weekend dates
+        date start = date(2021, Jan, 1); // Friday
+        date end = date(2022, Jan, 1);   // Saturday -> becomes 2021-Dec-31
+        MockAnnualizationBackTester bt(start, end);
+        bt.m_num_trades = 1;
+
+        double duration_in_days = (bt.getEndDate() - bt.getStartDate()).days();
+        double duration_in_years = duration_in_days / 365.25;
+        double expected_annual_trades = 1.0 / duration_in_years;
+        REQUIRE(bt.getEstimatedAnnualizedTrades() == Catch::Approx(expected_annual_trades));
+    }
+    
+    SECTION("Zero or negative duration throws exception") {
+        // Test case 1: Constructor should throw if end < start
+        // 2022-Jan-01 (Sat) -> becomes 2021-Dec-31 (Fri)
+        // 2022-Jan-02 (Sun) -> becomes 2022-Jan-03 (Mon)
+        // So start > end, which is invalid for DateRange constructor
+        REQUIRE_THROWS_AS(MockAnnualizationBackTester(date(2022, Jan, 2), date(2022, Jan, 1)), std::runtime_error);
+
+        // Test case 2: Method should throw if duration is zero
+        // Use a valid, non-weekend date for start and end
+        MockAnnualizationBackTester bt(date(2022, Jan, 3), date(2022, Jan, 3));
+        bt.m_num_trades = 10;
+        REQUIRE_THROWS_AS(bt.getEstimatedAnnualizedTrades(), BackTesterException);
+    }
 }
