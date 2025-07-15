@@ -47,7 +47,8 @@ enum class ValidationMethod
 {
     Masters,
     RomanoWolf,
-    BenjaminiHochberg
+    BenjaminiHochberg,
+    Unadjusted
 };
 
 // ComputationPolicy enum removed - now using dynamic policy selection
@@ -69,6 +70,8 @@ std::string getValidationMethodString(ValidationMethod method)
             return "RomanoWolf";
         case ValidationMethod::BenjaminiHochberg:
             return "BenjaminiHochberg";
+        case ValidationMethod::Unadjusted:
+            return "Unadjusted";
         default:
             throw std::invalid_argument("Unknown validation method");
     }
@@ -150,7 +153,7 @@ Num calculateTheoreticalPALProfitability(std::shared_ptr<PalStrategy<Num>> strat
     return expectedPALProfitability;
 }
 
-// Filter surviving strategies based on BCa bootstrap performance (Filter 1: Statistical Viability)
+// Filter surviving strategies based on BCa bootstrap performance
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerformance(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -159,10 +162,20 @@ std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerfor
     TimeFrame::Duration theTimeFrame)
 {
   std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
+  
+  // --- Define Filtering Parameters ---
+  const Num costBufferMultiplier = Num("1.5"); 
+  const Num riskFreeRate = Num("0.03");
+  const Num riskFreeMultiplier = Num("2.0");
+  const Num riskFreeHurdle = riskFreeRate * riskFreeMultiplier;
     
   std::cout << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance..." << std::endl;
   std::cout << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0" << std::endl;
-    
+  std::cout << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * " << costBufferMultiplier << ")" << std::endl;
+  std::cout << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate * " << riskFreeMultiplier << ")" << std::endl;
+  std::cout << "  - Cost assumptions: $0 commission, 0.01% slippage/spread per side." << std::endl;
+  std::cout << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%." << std::endl;
+
   for (const auto& strategy : survivingStrategies)
     {
       try
@@ -193,24 +206,37 @@ std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerfor
 	  BCaBootStrap<Num> bca(highResReturns, num_resamples, confidence_level);
 
 	  // 5. Annualize the results
-	  // Note: This assumes a standard 6.5 hour trading day for intraday. Adjust if needed.
-	  double annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
-								    baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
+	  double annualizationFactor;
+	  if (theTimeFrame == TimeFrame::INTRADAY)
+	    annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
+							       baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
+	  else
+	    annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
+   
 	  BCaAnnualizer<Num> annualizer(bca, annualizationFactor);
 
 	  Num annualizedLowerBound = annualizer.getAnnualizedLowerBound();
-	  Num annualizedMean = annualizer.getAnnualizedMean();
 
-	  // 6. Apply Filter 1: Statistical Viability
-	  if (annualizedLowerBound > DecimalConstants<Num>::DecimalZero) {
+      // 6. Calculate Hurdles
+      // Cost-based hurdle
+      const Num slippagePerRoundTrip = Num("0.0002");
+      Num annualizedTrades (backtester->getEstimatedAnnualizedTrades());
+      Num annualizedCostHurdle = annualizedTrades * slippagePerRoundTrip;
+      Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
+
+      // The final hurdle is the HIGHER of the cost-based return and the risk-free return
+      Num finalRequiredReturn = std::max(costBasedRequiredReturn, riskFreeHurdle);
+
+	  // 7. Apply Combined Filter
+	  if (annualizedLowerBound > finalRequiredReturn) {
 	    filteredStrategies.push_back(strategy);
 	    std::cout << "✓ Strategy passed: " << strategy->getStrategyName() 
-		      << " (Annualized Mean = " << (annualizedMean * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-		      << "Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
+		      << " (Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "% > "
+              << "Required Return = " << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
 	  } else {
 	    std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
-		      << " (Annualized Mean = " << (annualizedMean * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-		      << "Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
+		      << " (Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "% <= "
+              << "Required Return = " << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
 	  }
         }
       catch (const std::exception& e)
@@ -531,10 +557,6 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
     
     if (validation->getNumSurvivingStrategies() > 0)
     {
-        std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
-        std::ofstream survivingPatternsFile(fn);
-        std::cout << "Writing surviving patterns to file: " << fn << std::endl;
-        
         auto survivingStrategies = validation->getSurvivingStrategies();
         
         // Apply performance-based filtering to surviving strategies
@@ -558,10 +580,16 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
         std::cout << "Performance filtering results: " << filteredStrategies.size() << " passed, "
                   << performanceFilteredStrategies.size() << " filtered out" << std::endl;
         
-        // Write the original surviving patterns (before filtering) to the basic file
-        for (const auto& strategy : survivingStrategies)
-        {
-            LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
+        // Write the performance-filtered surviving patterns to the basic file
+        if (!filteredStrategies.empty()) {
+            std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
+            std::ofstream survivingPatternsFile(fn);
+            std::cout << "Writing surviving patterns to file: " << fn << std::endl;
+            
+            for (const auto& strategy : filteredStrategies)
+            {
+                LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
+            }
         }
 
         // Write detailed report using filtered strategies
@@ -661,6 +689,30 @@ void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Nu
     }
 }
 
+// Orchestrator for Unadjusted Validation
+void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> config,
+                                const ValidationParameters& params,
+                                const std::string& policyName,
+                                bool partitionByFamily = false)
+{
+    std::cout << "\nUsing Unadjusted validation with " << policyName
+              << " and " << params.permutations << " permutations." << std::endl;
+    
+    if (partitionByFamily) {
+        std::cout << "Pattern partitioning: By detailed family (Category, SubType, Direction)" << std::endl;
+    } else {
+        std::cout << "Pattern partitioning: By direction only (Long vs Short)" << std::endl;
+    }
+    
+    try {
+        auto validation = statistics::PolicyFactory::createUnadjustedValidation(policyName, params.permutations);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::Unadjusted, policyName, partitionByFamily);
+    } catch (const std::exception& e) {
+        std::cerr << "Error creating Unadjusted validation with policy '" << policyName << "': " << e.what() << std::endl;
+        throw;
+    }
+}
+
 
 // ---- Main Application Entry Point ----
 
@@ -707,7 +759,8 @@ int main(int argc, char **argv)
     std::cout << "  1. Masters (default)" << std::endl;
     std::cout << "  2. Romano-Wolf" << std::endl;
     std::cout << "  3. Benjamini-Hochberg" << std::endl;
-    std::cout << "Enter choice (1, 2, or 3): ";
+    std::cout << "  4. Unadjusted" << std::endl;
+    std::cout << "Enter choice (1, 2, 3, or 4): ";
     std::getline(std::cin, input);
     
     ValidationMethod validationMethod = ValidationMethod::Masters;
@@ -715,6 +768,8 @@ int main(int argc, char **argv)
         validationMethod = ValidationMethod::RomanoWolf;
     } else if (input == "3") {
         validationMethod = ValidationMethod::BenjaminiHochberg;
+    } else if (input == "4") {
+        validationMethod = ValidationMethod::Unadjusted;
     }
     
     // Conditionally ask for FDR
@@ -816,6 +871,8 @@ int main(int argc, char **argv)
         } else {
             std::cout << "Pattern Partitioning: " << (partitionByFamily ? "By Detailed Family" : "By Direction Only") << std::endl;
         }
+    } else if (validationMethod == ValidationMethod::Unadjusted) {
+        std::cout << "Pattern Partitioning: None (not applicable for Unadjusted)" << std::endl;
     }
     std::cout << "Permutations: " << params.permutations << std::endl;
     std::cout << "P-Value Threshold: " << params.pValueThreshold << std::endl;
@@ -836,6 +893,9 @@ int main(int argc, char **argv)
                 break;
             case ValidationMethod::BenjaminiHochberg:
                 runValidationForBenjaminiHochberg(config, params, selectedPolicy, partitionByFamily);
+                break;
+            case ValidationMethod::Unadjusted:
+                runValidationForUnadjusted(config, params, selectedPolicy, partitionByFamily);
                 break;
         }
     } catch (const std::exception& e) {
