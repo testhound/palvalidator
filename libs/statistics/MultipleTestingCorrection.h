@@ -27,6 +27,7 @@
 #include "PermutationTestResultPolicy.h"
 #include "PalStrategy.h"
 #include "TimeSeriesIndicators.h"
+#include "randutils.hpp"
 
 namespace mkc_timeseries
 {
@@ -455,6 +456,18 @@ namespace mkc_timeseries
       std::string method;
     };
 
+    struct FullBootstrapResult {
+      Decimal m0_median;
+      Decimal ci_lower;
+      Decimal ci_upper;
+      Decimal ci_width;
+    };
+
+    struct BootstrapResult {
+    Decimal m0_avg;
+    Decimal pi0_variance;
+    };
+
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
@@ -585,111 +598,7 @@ namespace mkc_timeseries
     {
       container_.clearForNewTest();
     }
-
   private:
-    // Helper method to process a single family (Long or Short strategies)
-    void processFamily(const std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies,
-                       const Decimal& pValueSignificanceLevel,
-                       const std::string& familyName)
-    {
-      if (familyStrategies.empty()) return;
-      
-      std::cout << "Processing " << familyName << " family with " << familyStrategies.size() << " strategies" << std::endl;
-      
-      // Estimate m0 for this family
-      Decimal m0_estimate;
-      if (m_test_m0_override.has_value()) {
-        m0_estimate = m_test_m0_override.value();
-      } else {
-        const size_t m = familyStrategies.size();
-        
-        // Define a threshold for what constitutes a "high" p-value for our dynamic check.
-        const Decimal high_p_value_threshold = DecimalConstants<Decimal>::createDecimal("0.8");
-        size_t high_p_value_count = std::count_if(familyStrategies.begin(), familyStrategies.end(),
-                                                  [high_p_value_threshold](const auto& pair) {
-                                                    return pair.first > high_p_value_threshold;
-                                                  });
-        
-        // Dynamic Trigger: If the proportion of very high p-values is low (e.g., < 10%),
-        // the spline estimator may be unstable. In this case, we choose the robust tail-based estimator.
-        const bool use_fallback_estimator = (m > 0) && ((static_cast<double>(high_p_value_count) / m) < 0.10);
-
-        if (use_fallback_estimator) {
-          std::cout << "[" << familyName << " Family] P-value distribution has a sparse tail ("
-                    << high_p_value_count << "/" << m << " p-values > " << high_p_value_threshold
-                    << "). Using robust tail-based estimator." << std::endl;
-          m0_estimate = estimateM0TailBasedForFamily(familyStrategies);
-        } else {
-          std::cout << "[" << familyName << " Family] P-value distribution appears stable. Attempting spline-based estimator." << std::endl;
-          try {
-            m0_estimate = estimateM0StoreySmoothedForFamily(familyStrategies);
-            if (m0_estimate <= DecimalConstants<Decimal>::DecimalZero)
-              throw std::runtime_error("Spline-based m0 estimate was zero or negative.");
-          } catch (const std::exception& e) {
-            std::cerr << "[Warning] " << familyName << " Family: Spline estimator failed ('" << e.what()
-                      << "'). Falling back to robust tail-based estimator." << std::endl;
-            m0_estimate = estimateM0TailBasedForFamily(familyStrategies);
-          }
-        }
-      }
-      
-      m0_estimate = std::max(DecimalConstants<Decimal>::DecimalOne, m0_estimate);
-      Decimal m0_estimate_bootstrap = estimateM0_BootstrapAveraged(familyStrategies);
-      
-      // Calculate the dynamic FDR using the provided p-value cutoff.
-      Decimal dynamic_fdr = estimateFDRForPValueForFamily(familyStrategies, pValueSignificanceLevel, m0_estimate);
-      
-      const Decimal fdr_ceiling = DecimalConstants<Decimal>::createDecimal("0.20");
-      Decimal final_fdr = std::min(fdr_ceiling, dynamic_fdr);
-      
-      // Create a sorted container for this family (sorted by p-value in ascending order)
-      auto sortedFamily = familyStrategies;
-      std::sort(sortedFamily.begin(), sortedFamily.end(),
-                [](const auto& a, const auto& b) {
-                  return a.first < b.first;
-                });
-      
-      Decimal rank(static_cast<int>(sortedFamily.size()));
-      bool cutoff_found = false;
-      
-      std::cout << "--- " << familyName << " Family Benjamini-Hochberg Adaptive Procedure ---" << std::endl;
-      std::cout << "Total Tests (m): " << sortedFamily.size()
-                << ", Estimated True Nulls (m0): " << m0_estimate
-		<< ", [Bootstrap True Nulls (m0)]: " << m0_estimate_bootstrap
-                << ", Final Adaptive FDR (q): " << final_fdr
-		<< ", [Estimated FDR]: " << dynamic_fdr << std::endl;
-      std::cout << "-----------------------------------------------" << std::endl;
-      
-      // Iterate through family strategies from highest p-value to lowest
-      for (auto it = sortedFamily.rbegin(); it != sortedFamily.rend(); ++it) {
-        Decimal pValue = it->first;
-        
-        // Calculate the critical value for the current rank
-        Decimal criticalValue = (rank / m0_estimate) * final_fdr;
-        
-        // Print the comparison for this step
-        std::cout << "[" << familyName << "] Checking p-value: " << pValue
-                  << " (rank " << rank << ")"
-                  << " vs. Critical Value: " << criticalValue;
-        
-        // If we haven't found the cutoff yet, check if this p-value meets the criterion.
-        // Once the condition is met, all subsequent (smaller) p-values are also significant.
-        if (!cutoff_found && pValue < criticalValue)
-          cutoff_found = true;
-        
-        if (cutoff_found) {
-          std::cout << "  ==> SIGNIFICANT" << std::endl;
-          container_.addSurvivingStrategy(it->second);
-        } else {
-          std::cout << "  ==> Not Significant" << std::endl;
-        }
-        
-        // Decrement rank for the next (smaller) p-value
-        rank = rank - DecimalConstants<Decimal>::DecimalOne;
-      }
-      
-      std::cout << "--- " << familyName << " Family Procedure Complete ---" << std::endl;
-    }
 
    /**
     * @brief Adaptive Benjamini-Hochberg FDR control using q-values and m0 estimation.
@@ -761,7 +670,7 @@ namespace mkc_timeseries
       else
 	{
 	  // If not, use the default adaptive selection logic.
-	  auto estimatorResult = selectBestM0EstimatorForFamily(sorted);
+	  auto estimatorResult = selectBestM0EstimatorForFamily2(sorted);
 	  m0 = estimatorResult.m0;
 	}
 
@@ -802,8 +711,8 @@ namespace mkc_timeseries
 	  }
       }
     }
-    
-    AdaptiveBenjaminiHochbergYr2000::EstimatorResult selectBestM0EstimatorForFamily(const std::vector<std::pair<Decimal,
+
+    AdaptiveBenjaminiHochbergYr2000::EstimatorResult selectBestM0EstimatorForFamily2(const std::vector<std::pair<Decimal,
 										    std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
       const size_t m = familyStrategies.size();
@@ -819,19 +728,35 @@ namespace mkc_timeseries
 	  return { m0, "Tail" };
 	}
 
-      // --- Rule 2: For larger samples, the Bootstrap method is the primary estimator. ---
-      Decimal m0_bootstrap = estimateM0_BootstrapAveraged(familyStrategies);
-      std::cout << "[Estimator] Primary estimator: Bootstrap result (m0=" << m0_bootstrap << ")" << std::endl;
+      // --- Rule 2: For larger samples, the Full Bootstrap method is the primary estimator. ---
+      auto bootstrap_result = estimateM0_FullBootstrap(familyStrategies);
+      Decimal m0_median = bootstrap_result.m0_median;
+      Decimal ci_width = bootstrap_result.ci_width;
+    
+      std::cout << "[Estimator] Primary estimator: Full Bootstrap result (m0_median=" << m0_median
+		<< ", 95% CI width=" << ci_width << ")" << std::endl;
 
-      // --- Rule 3: Sanity Check ---
-      // If the bootstrap estimate is nonsensically low (e.g., less than 25% of hypotheses are null)
-      // or out of bounds, it suggests an unusual p-value distribution. In this case,
-      // we must fall back to the most conservative and reliable estimator.
+      // --- Rule 3: Enhanced Sanity Check using confidence interval width and floor criteria ---
       const Decimal m_decimal = static_cast<Decimal>(m);
-      if (m0_bootstrap < m_decimal * Decimal("0.25") || m0_bootstrap > m_decimal)
+      // A CI width greater than 40% of the total tests is a strong sign of instability.
+      const Decimal ci_width_threshold = m_decimal * Decimal("0.40");
+      const Decimal absolute_m0_floor = Decimal("10.0");
+      const Decimal relative_m0_floor = m_decimal * Decimal("0.25");
+
+      bool is_unstable = ci_width > ci_width_threshold;
+      bool is_too_low = m0_median < std::max(absolute_m0_floor, relative_m0_floor);
+      bool is_out_of_bounds = m0_median > m_decimal;
+
+      if (is_unstable || is_too_low || is_out_of_bounds)
 	{
-	  std::cout << "[Estimator] Bootstrap estimate is outside of reasonable bounds. "
-		    << "Falling back to the safest estimator." << std::endl;
+	  std::cout << "[Estimator] Full Bootstrap estimate failed sanity check. Falling back to safest estimator." << std::endl;
+	  if(is_unstable)
+	    std::cout << "  - Reason: High uncertainty (CI width " << ci_width << " > " << ci_width_threshold << ")" << std::endl;
+	  if(is_too_low)
+	    std::cout << "  - Reason: Estimate is below floor (" << m0_median << " < " <<
+	      std::max(absolute_m0_floor, relative_m0_floor) << ")" << std::endl;
+	  if(is_out_of_bounds)
+	    std::cout << "  - Reason: Estimate out of bounds (" << m0_median << " > " << m_decimal << ")" << std::endl;
         
 	  Decimal m0_fallback = estimateM0TailBasedForFamily(familyStrategies);
 	  std::cout << "[Estimator] Fallback estimator: Tail-based result (m0=" << m0_fallback << ")" << std::endl;
@@ -839,56 +764,85 @@ namespace mkc_timeseries
 	}
 
       // --- Rule 4: If the bootstrap estimate is reasonable, use it. ---
-      std::cout << "[Estimator] Bootstrap estimate is reasonable. Using result." << std::endl;
-      return { m0_bootstrap, "Bootstrap" };      
+      std::cout << "[Estimator] Full Bootstrap estimate is reasonable. Using median result." << std::endl;
+      return { m0_median, "Full Bootstrap" };
     }
-    
-    Decimal estimateM0_BootstrapAveraged(const std::vector<std::pair<Decimal,
-					 std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
+
+    FullBootstrapResult estimateM0_FullBootstrap(const std::vector<std::pair<Decimal,
+                                               std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
-      const Decimal one = DecimalConstants<Decimal>::DecimalOne;
-      const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+        const size_t m = familyStrategies.size();
+        if (m == 0) {
+            return { Decimal(0), Decimal(0), Decimal(0), Decimal(0) };
+        }
 
-      size_t m = familyStrategies.size();
-      if (m == 0)
-	return zero;
+        // Extract just the p-values for easier sampling
+        std::vector<Decimal> p_values;
+        p_values.reserve(m);
+        for (const auto& pair : familyStrategies) {
+            p_values.push_back(pair.first);
+        }
 
-      std::vector<Decimal> lambdaGrid = {
-        Decimal("0.50"), Decimal("0.55"), Decimal("0.60"), Decimal("0.65"),
-        Decimal("0.70"), Decimal("0.75"), Decimal("0.80"), Decimal("0.85"),
-        Decimal("0.90"), Decimal("0.95")
-      };
+        const int B = 1000; // Number of bootstrap replicates
+        std::vector<Decimal> pi0_estimates;
+        pi0_estimates.reserve(B);
 
-      std::vector<Decimal> pi0Estimates;
+        // Setup random number generation for resampling
+        // For test reproducibility, you might seed this with a fixed value.
+        // For production, random_device is a good source of entropy.
+	thread_local static randutils::mt19937_rng rng;
 
-      for (const Decimal& lambda : lambdaGrid)
-	{
-	  size_t countGreater = 0;
-	  for (const auto& pair : familyStrategies)
-	    {
-	      if (pair.first > lambda)
-                ++countGreater;
-	    }
+        const Decimal one = DecimalConstants<Decimal>::DecimalOne;
+        const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+        const Decimal lambda = Decimal("0.5");
 
-	  Decimal numerator = static_cast<Decimal>(countGreater);
-	  Decimal denominator = (one - lambda) * static_cast<Decimal>(m);
-	  if (denominator == zero) continue;
+        for (int i = 0; i < B; ++i) {
+            // Create a bootstrap sample and count p-values > lambda
+            size_t count_greater = 0;
+            for (size_t j = 0; j < m; ++j) {
+                size_t random_index = rng.uniform(size_t(0), m - 1);
+                if (p_values[random_index] > lambda) {
+                    count_greater++;
+                }
+            }
 
-	  Decimal pi0 = numerator / denominator;
-	  if (pi0 > one) pi0 = one;
+            // Calculate pi0 for this bootstrap sample
+            Decimal numerator = static_cast<Decimal>(count_greater);
+            Decimal denominator = (one - lambda) * static_cast<Decimal>(m);
+            if (denominator > zero) {
+                Decimal pi0 = numerator / denominator;
+                pi0_estimates.push_back(std::min(one, pi0));
+            }
+        }
 
-	  pi0Estimates.push_back(pi0);
-	}
+        if (pi0_estimates.empty()) {
+            // Should not happen if m > 0, but as a safeguard
+            return { static_cast<Decimal>(m), static_cast<Decimal>(m), static_cast<Decimal>(m), zero };
+        }
 
-      if (pi0Estimates.empty()) return static_cast<Decimal>(m);  // fallback if something went wrong
+        // Sort the estimates to find percentiles
+        std::sort(pi0_estimates.begin(), pi0_estimates.end());
 
-      // Compute the average
-      Decimal sum = std::accumulate(pi0Estimates.begin(), pi0Estimates.end(), zero);
-      Decimal avgPi0 = sum / static_cast<Decimal>(pi0Estimates.size());
+        // Calculate median (50th percentile)
+        size_t median_idx = pi0_estimates.size() / 2;
+        Decimal pi0_median = pi0_estimates[median_idx];
 
-      return avgPi0 * static_cast<Decimal>(m);
+        // Calculate 95% confidence interval (2.5th and 97.5th percentiles)
+        size_t lower_idx = static_cast<size_t>(pi0_estimates.size() * 0.025);
+        size_t upper_idx = static_cast<size_t>(pi0_estimates.size() * 0.975);
+        Decimal pi0_ci_lower = pi0_estimates[lower_idx];
+        Decimal pi0_ci_upper = pi0_estimates[upper_idx];
+
+        // Convert proportions to counts (m0)
+        Decimal m_decimal = static_cast<Decimal>(m);
+        return {
+            pi0_median * m_decimal,
+            pi0_ci_lower * m_decimal,
+            pi0_ci_upper * m_decimal,
+            (pi0_ci_upper - pi0_ci_lower) * m_decimal // Return width of m0 CI
+        };
     }
-    
+
     // Helper method to estimate m0 using tail-based method for a specific family
     Decimal estimateM0TailBasedForFamily(const std::vector<std::pair<Decimal,
 					 std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
