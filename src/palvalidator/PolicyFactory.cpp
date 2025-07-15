@@ -18,6 +18,7 @@ namespace statistics {
 std::unordered_map<std::string, PolicyFactory::MastersFactoryFunction> PolicyFactory::mastersFactories_;
 std::unordered_map<std::string, PolicyFactory::RomanoWolfFactoryFunction> PolicyFactory::romanoWolfFactories_;
 std::unordered_map<std::string, PolicyFactory::BenjaminiHochbergFactoryFunction> PolicyFactory::benjaminiHochbergFactories_;
+std::unordered_map<std::string, PolicyFactory::UnadjustedFactoryFunction> PolicyFactory::unadjustedFactories_;
 
 // Masters Validation Wrapper Template
 template<template<typename> class PolicyType>
@@ -130,6 +131,60 @@ private:
 public:
     explicit BenjaminiHochbergValidationWrapper(unsigned long p, const Num& fdr)
         : validation(p, fdr) {}
+    
+    void runPermutationTests(std::shared_ptr<Security<Num>> baseSecurity,
+                           std::shared_ptr<PriceActionLabSystem> patterns,
+                           const DateRange& dateRange,
+                           const Num& pvalThreshold,
+                           bool verbose = false,
+                           bool partitionByFamily = false) override
+    {
+        validation.runPermutationTests(baseSecurity, patterns, dateRange, pvalThreshold, verbose, partitionByFamily);
+    }
+    
+    std::vector<std::shared_ptr<PalStrategy<Num>>> getSurvivingStrategies() const override
+    {
+        std::vector<std::shared_ptr<PalStrategy<Num>>> s;
+        for (auto it = validation.beginSurvivingStrategies(); it != validation.endSurvivingStrategies(); ++it)
+            s.push_back(*it);
+        return s;
+    }
+    
+    int getNumSurvivingStrategies() const override
+    {
+        return validation.getNumSurvivingStrategies();
+    }
+    
+    const PermutationStatisticsCollector<Num>& getStatisticsCollector() const override
+    {
+        return validation.getStatisticsCollector();
+    }
+    
+    std::vector<std::pair<std::shared_ptr<PalStrategy<Num>>, Num>> getAllTestedStrategies() const override
+    {
+        return validation.getAllTestedStrategies();
+    }
+    
+    Num getStrategyPValue(std::shared_ptr<PalStrategy<Num>> s) const override
+    {
+        return validation.getStrategyPValue(s);
+    }
+};
+
+// Unadjusted Validation Wrapper Template
+template<template<typename> class PolicyType>
+class UnadjustedValidationWrapper : public ValidationInterface
+{
+private:
+    using UnadjustedMcpt = MonteCarloPermuteMarketChanges<
+        Num,
+        PolicyType,
+        DefaultPermuteMarketChangesPolicy<Num, PolicyType<Num>>
+    >;
+    PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection> validation;
+    
+public:
+    explicit UnadjustedValidationWrapper(unsigned long p) : validation(p) {}
     
     void runPermutationTests(std::shared_ptr<Security<Num>> baseSecurity,
                            std::shared_ptr<PriceActionLabSystem> patterns,
@@ -540,6 +595,121 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValid
     return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>>(permutations, Num(falseDiscoveryRate));
 }
 
+// Unadjusted specializations for all policies
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::AllHighResLogPFPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::AllHighResLogPFPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::RobustProfitFactorPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::RobustProfitFactorPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::NonGranularProfitFactorPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::NonGranularProfitFactorPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::CumulativeReturnPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::CumulativeReturnPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::NormalizedReturnPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::NormalizedReturnPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::PessimisticReturnRatioPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::PessimisticReturnRatioPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::PalProfitabilityPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::PalProfitabilityPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::GatedPerformanceScaledPalPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::GatedPerformanceScaledPalPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::ConfidenceAdjustedPalPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::ConfidenceAdjustedPalPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::EnhancedBarScorePolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::EnhancedBarScorePolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::HybridEnhancedTradeAwarePolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::HybridEnhancedTradeAwarePolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::AccumulationSwingIndexPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::AccumulationSwingIndexPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::HybridSwingTradePolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::HybridSwingTradePolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::ProfitFactorGatedSwingPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::ProfitFactorGatedSwingPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::BootStrappedProfitFactorPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::BootStrappedProfitFactorPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::BootStrappedLogProfitFactorPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::BootStrappedProfitabilityPFPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>(unsigned long permutations)
+{
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>>(permutations);
+}
+
 // Public factory methods
 std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidation(
     const std::string& policyName,
@@ -573,6 +743,17 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValid
         throw std::invalid_argument("Policy not registered for Benjamini-Hochberg validation: " + policyName);
     }
     return it->second(permutations, falseDiscoveryRate);
+}
+
+std::unique_ptr<ValidationInterface> PolicyFactory::createUnadjustedValidation(
+    const std::string& policyName,
+    unsigned long permutations)
+{
+    auto it = unadjustedFactories_.find(policyName);
+    if (it == unadjustedFactories_.end()) {
+        throw std::invalid_argument("Policy not registered for Unadjusted validation: " + policyName);
+    }
+    return it->second(permutations);
 }
 
 } // namespace statistics

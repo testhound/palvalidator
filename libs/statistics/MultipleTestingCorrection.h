@@ -1135,13 +1135,17 @@ namespace mkc_timeseries
      DecimalConstants<Decimal>::SignificantPValue,
      [[maybe_unused]] bool partitionByFamily = false)
     {
+      std::cout << "In UnadjustedPValueStrategySelection::correctForMultipleTests" << std::endl << std::endl;
       for (auto const& entry : container_.getInternalContainer())
 	{
 	  const auto& pValue = entry.first;
 	  const auto& strategy = entry.second;
 
 	  if (pValue <= pValueSignificanceLevel)
-	    container_.addSurvivingStrategy(strategy);
+	    {
+	      std::cout << "Strategy " << strategy->getStrategyName() << ", p-value = " << pValue << std::endl;
+	      container_.addSurvivingStrategy(strategy);
+	    }
 	}
     }
 

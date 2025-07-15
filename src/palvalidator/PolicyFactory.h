@@ -52,7 +52,7 @@ public:
     
     /**
      * @brief Create a validation object for Benjamini-Hochberg validation
-     * 
+     *
      * @param policyName The name of the policy to use
      * @param permutations Number of permutations for the validation
      * @param falseDiscoveryRate FDR parameter for Benjamini-Hochberg
@@ -63,6 +63,18 @@ public:
         const std::string& policyName,
         unsigned long permutations,
         double falseDiscoveryRate);
+    
+    /**
+     * @brief Create a validation object for Unadjusted validation
+     *
+     * @param policyName The name of the policy to use
+     * @param permutations Number of permutations for the validation
+     * @return Unique pointer to ValidationInterface
+     * @throws std::invalid_argument if policy not found or not registered
+     */
+    static std::unique_ptr<ValidationInterface> createUnadjustedValidation(
+        const std::string& policyName,
+        unsigned long permutations);
     
     /**
      * @brief Register a policy for Masters validation
@@ -104,6 +116,19 @@ public:
     }
     
     /**
+     * @brief Register a policy for Unadjusted validation
+     *
+     * @tparam PolicyType The policy class type
+     * @param policyName The name of the policy
+     */
+    template<template<typename> class PolicyType>
+    static void registerUnadjustedPolicy(const std::string& policyName) {
+        unadjustedFactories_[policyName] = [](unsigned long permutations) -> std::unique_ptr<ValidationInterface> {
+            return createUnadjustedValidationWrapper<PolicyType>(permutations);
+        };
+    }
+    
+    /**
      * @brief Register a policy for all validation methods
      *
      * @tparam PolicyType The policy class type
@@ -114,6 +139,7 @@ public:
         registerMastersPolicy<PolicyType>(policyName);
         registerRomanoWolfPolicy<PolicyType>(policyName);
         registerBenjaminiHochbergPolicy<PolicyType>(policyName);
+        registerUnadjustedPolicy<PolicyType>(policyName);
     }
     
     /**
@@ -138,12 +164,20 @@ public:
     }
     
     /**
+     * @brief Check if a policy is registered for Unadjusted validation
+     */
+    static bool isUnadjustedPolicyRegistered(const std::string& policyName) {
+        return unadjustedFactories_.find(policyName) != unadjustedFactories_.end();
+    }
+    
+    /**
      * @brief Clear all registered policies (mainly for testing)
      */
     static void clear() {
         mastersFactories_.clear();
         romanoWolfFactories_.clear();
         benjaminiHochbergFactories_.clear();
+        unadjustedFactories_.clear();
     }
 
 private:
@@ -151,11 +185,13 @@ private:
     using MastersFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long)>;
     using RomanoWolfFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long)>;
     using BenjaminiHochbergFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long, double)>;
+    using UnadjustedFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long)>;
     
     // Static factory registries for each validation method
     static std::unordered_map<std::string, MastersFactoryFunction> mastersFactories_;
     static std::unordered_map<std::string, RomanoWolfFactoryFunction> romanoWolfFactories_;
     static std::unordered_map<std::string, BenjaminiHochbergFactoryFunction> benjaminiHochbergFactories_;
+    static std::unordered_map<std::string, UnadjustedFactoryFunction> unadjustedFactories_;
     
     // Template wrapper creation functions (to be implemented in .cpp)
     template<template<typename> class PolicyType>
@@ -167,6 +203,9 @@ private:
     template<template<typename> class PolicyType>
     static std::unique_ptr<ValidationInterface> createBenjaminiHochbergValidationWrapper(
         unsigned long permutations, double falseDiscoveryRate);
+    
+    template<template<typename> class PolicyType>
+    static std::unique_ptr<ValidationInterface> createUnadjustedValidationWrapper(unsigned long permutations);
 };
 
 /**

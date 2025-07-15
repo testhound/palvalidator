@@ -297,7 +297,7 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "\t\t\t//  is not Long then enable the stop on the entry bar only" << std::endl;
     *outFile << "\t\t\tIf TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP <= 0 Then  " << std::endl;
     *outFile << "\t\t\t\tSetStopLoss( EntryBarStopLevel * stopPercent * Close);" << std::endl;
-    *outFile << "\t\tEnd;" << std::endl;
+    *outFile << "\t\tEnd" << std::endl;
     *outFile << "\t\tElse If ShortEntryFound and LongEntryFound = False and ( MP > 0 or ( MP <= 0 and ( ExitSet = False ) ) ) Then" << std::endl;
     *outFile << "\t\tBegin" << std::endl;
     *outFile << "\t\t\tCommentary (\"Manual stop = open of next bar + \", stopStr, NewLine);" << std::endl;
