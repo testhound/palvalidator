@@ -226,6 +226,18 @@ void initializePolicyRegistry() {
         {"bootstrap", "log-profitability", "profit-factor", "log-space", "experimental"},
         {"Large dataset", "Statistical computing resources"}
     );
+    
+    registerPolicyWithMetadata<mkc_timeseries::BootStrappedSharpeRatioPolicy>(
+        "BootStrappedSharpeRatioPolicy",
+        "Bootstrap Sharpe Ratio",
+        "Computes a composite score that balances risk-adjusted return (Sharpe Ratio) with statistical confidence (Total Bars in Market). The final score is bootstrapped to generate a p-value.",
+        "recommended",
+        false,
+        "1.0.0",
+        "MKC Associates",
+        {"bootstrap", "sharpe-ratio", "risk-adjusted", "confidence", "recommended"},
+        {"Sufficient sample size", "Bootstrap libraries"}
+    );
 }
 
 } // namespace statistics

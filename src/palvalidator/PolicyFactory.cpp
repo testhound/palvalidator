@@ -285,6 +285,12 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidationWrapp
     return std::make_unique<MastersValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations);
 }
 
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>(unsigned long permutations)
+{
+    return std::make_unique<MastersValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>>(permutations);
+}
+
 // Romano-Wolf specializations for all policies
 template<>
 std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::AllHighResLogPFPolicy>(unsigned long permutations)
@@ -392,6 +398,12 @@ template<>
 std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>(unsigned long permutations)
 {
     return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations);
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>(unsigned long permutations)
+{
+    return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>>(permutations);
 }
 
 // Benjamini-Hochberg specializations for all policies
@@ -519,6 +531,13 @@ std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValid
     unsigned long permutations, double falseDiscoveryRate)
 {
     return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedLogProfitabilityPFPolicy>>(permutations, Num(falseDiscoveryRate));
+}
+
+template<>
+std::unique_ptr<ValidationInterface> PolicyFactory::createBenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>(
+    unsigned long permutations, double falseDiscoveryRate)
+{
+    return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>>(permutations, Num(falseDiscoveryRate));
 }
 
 // Public factory methods

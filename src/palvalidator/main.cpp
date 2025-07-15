@@ -35,6 +35,7 @@
 #include "PolicySelector.h"
 #include "PolicyRegistration.h"
 #include "ValidationInterface.h"
+#include "BiasCorrectedBootstrap.h"
 
 using namespace mkc_timeseries;
 
@@ -149,7 +150,7 @@ Num calculateTheoreticalPALProfitability(std::shared_ptr<PalStrategy<Num>> strat
     return expectedPALProfitability;
 }
 
-// Filter surviving strategies based on backtesting performance criteria
+// Filter surviving strategies based on BCa bootstrap performance (Filter 1: Statistical Viability)
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerformance(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -157,65 +158,73 @@ std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerfor
     const DateRange& backtestingDates,
     TimeFrame::Duration theTimeFrame)
 {
-    std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
+  std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
     
-    std::cout << "Filtering " << survivingStrategies.size() << " surviving strategies by performance criteria..." << std::endl;
-    std::cout << "Criteria: Profit Factor >= 1.75, PAL Profitability >= 85% of theoretical" << std::endl;
+  std::cout << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance..." << std::endl;
+  std::cout << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0" << std::endl;
     
-    for (const auto& strategy : survivingStrategies)
+  for (const auto& strategy : survivingStrategies)
     {
-        try
+      try
         {
-            // Create fresh portfolio and clone strategy for backtesting
-            auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
-            freshPortfolio->addSecurity(baseSecurity);
-            auto clonedStrat = strategy->clone2(freshPortfolio);
+	  // 1. Create fresh portfolio and clone strategy for backtesting
+	  auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
+	  freshPortfolio->addSecurity(baseSecurity);
+	  auto clonedStrat = strategy->clone2(freshPortfolio);
             
-            // Run backtest
-            auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
-                                                                       theTimeFrame,
-                                                                       backtestingDates);
+	  // 2. Run backtest to get the full return series
+	  auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
+								     theTimeFrame,
+								     backtestingDates);
             
-            // Extract performance metrics
-            auto positionHistory = backtester->getClosedPositionHistory();
-            Num profitFactor = positionHistory.getProfitFactor();
-            Num actualPALProfitability = positionHistory.getPALProfitability();
-            
-            // Calculate theoretical PAL profitability
-            Num theoreticalPALProfitability = calculateTheoreticalPALProfitability(strategy);
-            
-            // Apply filtering criteria
-            bool profitFactorMet = profitFactor >= DecimalConstants<Num>::DecimalOnePointSevenFive;
-            bool palProfitabilityMet = false;
-            
-            if (theoreticalPALProfitability > DecimalConstants<Num>::DecimalZero) {
-                Num palRatio = actualPALProfitability / theoreticalPALProfitability;
-                Num eightyFivePercent = DecimalConstants<Num>::createDecimal("0.85");
-                palProfitabilityMet = palRatio >= eightyFivePercent; // 85%
-            }
-            
-            if (profitFactorMet && palProfitabilityMet) {
-                filteredStrategies.push_back(strategy);
-                std::cout << "✓ Strategy passed: PF=" << profitFactor
-                         << ", PAL=" << actualPALProfitability << "% (vs "
-                         << theoreticalPALProfitability << "% theoretical)" << std::endl;
-            } else {
-                std::cout << "✗ Strategy filtered out: PF=" << profitFactor
-                         << " (req: >=1.75), PAL=" << actualPALProfitability << "% vs "
-                         << theoreticalPALProfitability << "% theoretical (req: >=85%)" << std::endl;
-            }
+	  // 3. Get the high-resolution returns
+	  auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
+
+	  // A strategy must have a minimum number of returns to be bootstrapped reliably
+	  if (highResReturns.size() < 20) {
+	    std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName() 
+		      << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20)." << std::endl;
+	    continue;
+	  }
+
+	  // 4. Perform BCa Bootstrap
+	  unsigned int num_resamples = 2000;
+	  double confidence_level = 0.95;
+	  BCaBootStrap<Num> bca(highResReturns, num_resamples, confidence_level);
+
+	  // 5. Annualize the results
+	  // Note: This assumes a standard 6.5 hour trading day for intraday. Adjust if needed.
+	  double annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
+								    baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
+	  BCaAnnualizer<Num> annualizer(bca, annualizationFactor);
+
+	  Num annualizedLowerBound = annualizer.getAnnualizedLowerBound();
+	  Num annualizedMean = annualizer.getAnnualizedMean();
+
+	  // 6. Apply Filter 1: Statistical Viability
+	  if (annualizedLowerBound > DecimalConstants<Num>::DecimalZero) {
+	    filteredStrategies.push_back(strategy);
+	    std::cout << "✓ Strategy passed: " << strategy->getStrategyName() 
+		      << " (Annualized Mean = " << (annualizedMean * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+		      << "Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
+	  } else {
+	    std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
+		      << " (Annualized Mean = " << (annualizedMean * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+		      << "Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
+	  }
         }
-        catch (const std::exception& e)
+      catch (const std::exception& e)
         {
-            std::cout << "Warning: Failed to evaluate strategy performance: " << e.what() << std::endl;
-            std::cout << "Excluding strategy from filtered results." << std::endl;
+	  std::cout << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName() 
+		    << "' performance: " << e.what() << std::endl;
+	  std::cout << "Excluding strategy from filtered results." << std::endl;
         }
     }
     
-    std::cout << "Filtering complete: " << filteredStrategies.size() << "/"
-              << survivingStrategies.size() << " strategies passed criteria." << std::endl;
+  std::cout << "\nBCa Performance Filtering complete: " << filteredStrategies.size() << "/"
+	    << survivingStrategies.size() << " strategies passed criteria." << std::endl;
     
-    return filteredStrategies;
+  return filteredStrategies;
 }
 
 void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecurity,

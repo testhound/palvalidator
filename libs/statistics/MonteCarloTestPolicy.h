@@ -179,6 +179,108 @@ namespace mkc_timeseries
     }
   };
 
+  template <class Decimal>
+  class BootStrappedSharpeRatioPolicy
+  {
+  public:
+    /**
+     * @brief omputes a composite score that balances risk-adjusted return (Sharpe Ratio)
+     * with statistical confidence (Total Bars in Market).
+     *
+     * This policy addresses the challenge of strategies that have high performance but
+     * are based on very few data points. The final score is a product of two components:
+     * 1. Quality Score: The Sharpe Ratio of the high-resolution, per-bar return series.
+     * This measures the smoothness and magnitude of returns.
+     * 2. Confidence Score: The natural logarithm of the total number of bars the
+     * strategy was in the market. This explicitly penalizes strategies with low
+     * activity and rewards those with a more robust sample size.
+     *
+     * The statistic is then bootstrapped to generate a p-value, providing a robust
+     * assessment of strategy viability.
+     */
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    {
+        if (bt->getNumStrategies() != 1) {
+            throw BackTesterException(
+                "BootStrappedSharpeRatioPolicy::getPermutationTestStatistic - "
+                "expected one strategy, got "
+                + std::to_string(bt->getNumStrategies()));
+        }
+
+        const unsigned int minTradesRequired = getMinStrategyTrades();
+        const unsigned int minBarsRequired = getMinBarSeriesSize();
+
+        uint32_t numTrades = bt->getNumTrades();
+        // The most direct measure of bars in market is the size of the high-res return series.
+        std::vector<Decimal> barSeries = bt->getAllHighResReturns((*(bt->beginStrategies())).get());
+        uint32_t numBarsInTrades = barSeries.size();
+
+        if (numTrades < minTradesRequired || numBarsInTrades < minBarsRequired)
+        {
+            return getMinTradeFailureTestStatistic();
+        }
+
+        // The confidence factor is constant for a given backtest run.
+        // It's based on the total number of bars observed while in a trade.
+        Decimal confidenceFactor = Decimal(std::log(1.0 + static_cast<double>(numBarsInTrades)));
+
+        // The lambda passed to the bootstrap captures the confidence factor.
+        // For each resampled series, it calculates the Sharpe Ratio and multiplies it
+        // by the constant confidence factor to get the final composite score.
+        auto computeCompositeScore = [confidenceFactor](const std::vector<Decimal>& series) -> Decimal {
+            Decimal sharpeRatio = computeSharpeRatio(series);
+            return sharpeRatio * confidenceFactor;
+        };
+
+        // We bootstrap the bar returns and apply our composite score function to each sample.
+        return StatUtils<Decimal>::getBootStrappedStatistic(barSeries, computeCompositeScore);
+    }
+
+    /// Minimum number of closed trades required to even attempt this test
+    static unsigned int getMinStrategyTrades() { return 3; }
+
+    // Minimum number of bars in the series to be considered statistically significant
+    static unsigned int getMinBarSeriesSize() { return 10; }
+
+    // Return a test statistic constant if we don't meet the minimum trade criteria
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+        return DecimalConstants<Decimal>::DecimalZero;
+    }
+
+private:
+    /**
+     * @brief Helper to compute the Sharpe Ratio for a series of returns.
+     * @note This is a simplified Sharpe Ratio assuming a risk-free rate of 0.
+     * It is calculated as Mean(returns) / StdDev(returns).
+     */
+    static Decimal computeSharpeRatio(const std::vector<Decimal>& returns)
+    {
+        if (returns.size() < 2) {
+            return DecimalConstants<Decimal>::DecimalZero;
+        }
+
+        Decimal sum = std::accumulate(returns.begin(), returns.end(), DecimalConstants<Decimal>::DecimalZero);
+        Decimal mean = sum / static_cast<Decimal>(returns.size());
+
+        Decimal sq_sum_diff = DecimalConstants<Decimal>::DecimalZero;
+        for(const auto& r : returns) {
+            sq_sum_diff += (r - mean) * (r - mean);
+        }
+
+        // Use sample standard deviation (N-1 in denominator)
+        Decimal stdev = Decimal(std::sqrt(num::to_double(sq_sum_diff / static_cast<Decimal>(returns.size() - 1))));
+
+        if (stdev == DecimalConstants<Decimal>::DecimalZero) {
+            // If there is no volatility, the Sharpe Ratio is technically infinite if mean > 0.
+            // We return a large but finite number for positive mean, and 0 otherwise.
+            return (mean > DecimalConstants<Decimal>::DecimalZero) ? Decimal(100.0) : DecimalConstants<Decimal>::DecimalZero;
+        }
+
+        return mean / stdev;
+    }
+  };
+
   template <class Decimal> class NonGranularProfitFactorPolicy
   {
   public:
