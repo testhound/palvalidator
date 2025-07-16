@@ -289,6 +289,11 @@ namespace mkc_timeseries
 		      boost::gregorian::from_undelimited_string("19851205"));
       addCommonStock (std::string("APP"), std::string("AppLovin"),
 		      boost::gregorian::from_undelimited_string("20010415"));
+
+      addCommonStock (std::string("PLTR"), std::string("Palantir Technologies"),
+		      boost::gregorian::from_undelimited_string("20200930"));
+      addCommonStock (std::string("SMCI"), std::string("Super Micro Computer"),
+		      boost::gregorian::from_undelimited_string("20070329"));
     }
 
     /**
