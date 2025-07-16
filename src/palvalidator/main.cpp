@@ -742,6 +742,31 @@ int main(int argc, char **argv)
         policyConfig = palvalidator::PolicyConfiguration::createDefault();
     }
     
+    // -- Configuration File Reading with existence check --
+    std::string configurationFileName = std::string(argv[1]);
+    std::shared_ptr<ValidatorConfiguration<Num>> config;
+    
+    // Check if configuration file exists before asking for other inputs
+    if (!std::filesystem::exists(configurationFileName)) {
+        std::cout << "Error: Configuration file '" << configurationFileName << "' does not exist." << std::endl;
+        std::cout << "Please enter the correct configuration file path: ";
+        std::getline(std::cin, configurationFileName);
+    }
+    
+    // Try to read the configuration file
+    ValidatorConfigurationFileReader reader(configurationFileName);
+    try {
+        config = reader.readConfigurationFile();
+    }
+    catch (const SecurityAttributesFactoryException& e) {
+        std::cout << "SecurityAttributesFactoryException: Error reading configuration file: " << e.what() << std::endl;
+        return 1;
+    }
+    catch (const ValidatorConfigurationException& e) {
+        std::cout << "ValidatorConfigurationException thrown when reading configuration file: " << e.what() << std::endl;
+        return 1;
+    }
+    
     // -- Get parameters interactively --
     ValidationParameters params;
     std::string input;
@@ -840,20 +865,6 @@ int main(int argc, char **argv)
         }
     } catch (const std::exception& e) {
         std::cout << "Warning: Could not retrieve policy metadata: " << e.what() << std::endl;
-    }
-
-    // -- Configuration File Reading --
-    const auto configurationFileName = std::string(argv[1]);
-    ValidatorConfigurationFileReader reader(configurationFileName);
-    std::shared_ptr<ValidatorConfiguration<Num>> config;
-    try
-    {
-        config = reader.readConfigurationFile();
-    }
-    catch (const SecurityAttributesFactoryException& e)
-    {
-        std::cout << "Error reading configuration file: " << e.what() << std::endl;
-        return 1;
     }
     
     // -- Summary --
