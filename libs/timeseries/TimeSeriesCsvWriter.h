@@ -112,6 +112,100 @@ namespace mkc_timeseries
     }
   };
 
+  /**
+   * @brief Unified CSV writer for OHLC time series data with indicator support.
+   *
+   * This class extends the basic TimeSeriesCsvWriter to support indicator-based output formats
+   * where an indicator value (like IBS) replaces the close price in the output.
+   * It uses synchronized iteration over both OHLC and indicator data.
+   *
+   * @tparam Decimal The numeric type used for price and indicator data (e.g., double, float).
+   */
+  template <class Decimal>
+  class IndicatorTimeSeriesCsvWriter
+  {
+  private:
+    std::ofstream mCsvFile;
+    const OHLCTimeSeries<Decimal>& mTimeSeries;
+    const NumericTimeSeries<Decimal>& mIndicatorSeries;
+    std::unique_ptr<IIndicatorTimeSeriesFormatter<Decimal>> mFormatter;
+
+  public:
+    /**
+     * @brief Constructs an IndicatorTimeSeriesCsvWriter for the specified format.
+     *
+     * @param fileName The output CSV file name.
+     * @param series The OHLC time series data to write.
+     * @param indicatorSeries The indicator time series data (e.g., IBS values).
+     * @param format The output format to use.
+     */
+    IndicatorTimeSeriesCsvWriter(const std::string& fileName,
+                               const OHLCTimeSeries<Decimal>& series,
+                               const NumericTimeSeries<Decimal>& indicatorSeries,
+                               OutputFormat format)
+        : mCsvFile(fileName), mTimeSeries(series), mIndicatorSeries(indicatorSeries)
+    {
+        mFormatter = createIndicatorFormatter(format);
+    }
+
+    // Copy constructor - Note: ofstream is not copyable
+    IndicatorTimeSeriesCsvWriter(const IndicatorTimeSeriesCsvWriter& rhs) = delete;
+
+    // Assignment operator - Note: ofstream is not copyable
+    IndicatorTimeSeriesCsvWriter& operator=(const IndicatorTimeSeriesCsvWriter& rhs) = delete;
+
+    ~IndicatorTimeSeriesCsvWriter() = default;
+
+    /**
+     * @brief Writes the time series data with indicator values to the CSV file.
+     *
+     * This method writes the header (if required by the format) and then
+     * iterates through all entries in both the OHLC and indicator time series,
+     * formatting each according to the specified output format.
+     * Perfect date alignment is assumed between OHLC and indicator data.
+     */
+    void writeFile()
+    {
+        mFormatter->writeHeader(mCsvFile);
+        
+        auto ohlcIt = mTimeSeries.beginSortedAccess();
+        auto indicatorIt = mIndicatorSeries.beginSortedAccess();
+        
+        while (ohlcIt != mTimeSeries.endSortedAccess() &&
+               indicatorIt != mIndicatorSeries.endSortedAccess())
+        {
+            const auto& ohlcEntry = *ohlcIt;
+            const auto& indicatorEntry = indicatorIt->second;
+            
+            // Perfect date alignment assumed - dates should match
+            mFormatter->writeEntry(mCsvFile, ohlcEntry, indicatorEntry->getValue());
+            
+            ++ohlcIt;
+            ++indicatorIt;
+        }
+    }
+
+  private:
+    /**
+     * @brief Factory method to create the appropriate indicator formatter for the given format.
+     *
+     * @param format The output format enum value.
+     * @return A unique pointer to the appropriate indicator formatter implementation.
+     * @throws std::invalid_argument if the format is not supported.
+     */
+    std::unique_ptr<IIndicatorTimeSeriesFormatter<Decimal>> createIndicatorFormatter(OutputFormat format)
+    {
+        switch (format) {
+            case OutputFormat::PAL_INDICATOR_EOD:
+                return std::make_unique<PalIndicatorEodFormatter<Decimal>>();
+            case OutputFormat::PAL_INDICATOR_INTRADAY:
+                return std::make_unique<PalIndicatorIntradayFormatter<Decimal>>();
+            default:
+                throw std::invalid_argument("Unsupported indicator output format");
+        }
+    }
+  };
+
   //
   // Legacy Classes for Backward Compatibility
   //
@@ -291,6 +385,82 @@ namespace mkc_timeseries
     PalIntradayCsvWriter& operator=(const PalIntradayCsvWriter& rhs) = delete;
 
     ~PalIntradayCsvWriter() = default;
+
+    void writeFile()
+    {
+        mWriter->writeFile();
+    }
+  };
+
+  //
+  // New Indicator-Based Writer Classes
+  //
+  // These classes provide convenient APIs for the new indicator output formats
+  // while maintaining consistency with the legacy class naming pattern.
+  //
+
+  /**
+   * @brief PAL EOD format CSV writer with indicator replacing close.
+   *
+   * Writes time series data in PAL's end-of-day format with an indicator value
+   * (such as IBS) replacing the close price: Date,Open,High,Low,Indicator
+   */
+  template <class Decimal>
+  class PalIndicatorEodCsvWriter
+  {
+  private:
+    std::unique_ptr<IndicatorTimeSeriesCsvWriter<Decimal>> mWriter;
+
+  public:
+    PalIndicatorEodCsvWriter(const std::string& fileName,
+                           const OHLCTimeSeries<Decimal>& series,
+                           const NumericTimeSeries<Decimal>& indicatorSeries)
+        : mWriter(std::make_unique<IndicatorTimeSeriesCsvWriter<Decimal>>(fileName, series, indicatorSeries, OutputFormat::PAL_INDICATOR_EOD))
+    {
+    }
+
+    // Copy constructor - Note: IndicatorTimeSeriesCsvWriter is not copyable due to ofstream
+    PalIndicatorEodCsvWriter(const PalIndicatorEodCsvWriter& rhs) = delete;
+
+    // Assignment operator - Note: IndicatorTimeSeriesCsvWriter is not copyable
+    PalIndicatorEodCsvWriter& operator=(const PalIndicatorEodCsvWriter& rhs) = delete;
+
+    ~PalIndicatorEodCsvWriter() = default;
+
+    void writeFile()
+    {
+        mWriter->writeFile();
+    }
+  };
+
+  /**
+   * @brief PAL Intraday format CSV writer with indicator replacing close.
+   *
+   * Writes time series data in PAL's intraday format with an indicator value
+   * (such as IBS) replacing the close price: Sequential# Open High Low Indicator
+   * with sequential numbering starting at 10000001.
+   */
+  template <class Decimal>
+  class PalIndicatorIntradayCsvWriter
+  {
+  private:
+    std::unique_ptr<IndicatorTimeSeriesCsvWriter<Decimal>> mWriter;
+
+  public:
+    PalIndicatorIntradayCsvWriter(const std::string& fileName,
+                                const OHLCTimeSeries<Decimal>& series,
+                                const NumericTimeSeries<Decimal>& indicatorSeries)
+        : mWriter(std::make_unique<IndicatorTimeSeriesCsvWriter<Decimal>>(fileName, series, indicatorSeries, OutputFormat::PAL_INDICATOR_INTRADAY))
+    {
+    }
+
+    // Copy constructor - Note: IndicatorTimeSeriesCsvWriter is not copyable due to ofstream
+    PalIndicatorIntradayCsvWriter(const PalIndicatorIntradayCsvWriter& rhs) = delete;
+
+    // Assignment operator - Note: IndicatorTimeSeriesCsvWriter is not copyable
+    PalIndicatorIntradayCsvWriter& operator=(const PalIndicatorIntradayCsvWriter& rhs) = delete;
+
+    ~PalIndicatorIntradayCsvWriter() = default;
 
     void writeFile()
     {

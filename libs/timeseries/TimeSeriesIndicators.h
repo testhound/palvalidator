@@ -528,6 +528,63 @@ namespace mkc_timeseries
       return Decimal(dn);
     }
   };
+  /**
+   * @brief Calculates the Internal Bar Strength (IBS) for a time series.
+   *
+   * IBS (Internal Bar Strength) is a mean reversion indicator that measures where
+   * the closing price of a security falls within its daily price range.
+   * IBS is calculated as: (Close - Low) / (High - Low).
+   * It ranges from 0 to 1.
+   * A low IBS (close near the low of the day) suggests potential buying opportunities,
+   * while a high IBS (close near the high of the day) suggests potential selling opportunities.
+   *
+   * The resulting series has the same length as the input series.
+   * If the denominator (High - Low) is zero, the resulting value for that date is zero.
+   *
+   * @tparam Decimal The numeric type used in the time series (e.g., double, a custom decimal class).
+   * @param series The input OHLC time series.
+   * @return A new NumericTimeSeries containing the IBS values.
+   * @note Handles division by zero by setting the result to DecimalConstants<Decimal>::DecimalZero.
+   */
+  template <class Decimal>
+  NumericTimeSeries<Decimal> IBS1Series (const OHLCTimeSeries<Decimal>& series)
+  {
+    // if input is empty, just return an empty series
+    if (series.getNumEntries() == 0)
+      return NumericTimeSeries<Decimal>(series.getTimeFrame());
+
+    unsigned long initialEntries = series.getNumEntries();
+    NumericTimeSeries<Decimal> resultSeries(series.getTimeFrame(), initialEntries);
+    
+    // Iterate through all entries in the OHLC series
+    auto entries = series.getEntriesCopy();
+    for (const auto& entry : entries)
+    {
+      Decimal high = entry.getHighValue();
+      Decimal low = entry.getLowValue();
+      Decimal close = entry.getCloseValue();
+      Decimal ibsValue;
+      
+      // Calculate IBS: (Close - Low) / (High - Low)
+      // Handle division by zero case (when High == Low)
+      Decimal denominator = high - low;
+      if (denominator == DecimalConstants<Decimal>::DecimalZero)
+      {
+        ibsValue = DecimalConstants<Decimal>::DecimalZero;
+      }
+      else
+      {
+        ibsValue = (close - low) / denominator;
+      }
+      
+      resultSeries.addEntry(NumericTimeSeriesEntry<Decimal>(entry.getDateTime(),
+                                                           ibsValue,
+                                                           series.getTimeFrame()));
+    }
+
+    return resultSeries;
+  }
+
 }
 
 #endif

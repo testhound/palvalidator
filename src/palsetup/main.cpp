@@ -138,14 +138,28 @@ createTimeSeriesReader(int fileType,
 
 int main(int argc, char** argv)
 {
-  if ((argc == 3) || (argc == 4))
+  // Parse command line arguments for -indicator flag
+  bool indicatorMode = false;
+  std::vector<std::string> args;
+  
+  // Separate flag from positional arguments
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = std::string(argv[i]);
+    if (arg == "-indicator" || arg == "--indicator") {
+      indicatorMode = true;
+    } else {
+      args.push_back(arg);
+    }
+  }
+  
+  if ((args.size() == 2) || (args.size() == 3))
     {
       // Command-line args: datafile, file-type, [securityTick]
-      std::string historicDataFileName = argv[1];
-      int fileType = std::stoi(argv[2]);
+      std::string historicDataFileName = args[0];
+      int fileType = std::stoi(args[1]);
       Num securityTick(DecimalConstants<Num>::EquityTick);
-      if (argc == 4)
-	securityTick = Num(std::stof(argv[3]));
+      if (args.size() == 3)
+	securityTick = Num(std::stof(args[2]));
 
       // 1. Extract default ticker symbol from filename and read ticker symbol
       std::string defaultTicker;
@@ -209,7 +223,27 @@ int main(int argc, char** argv)
         }
       }
 
-      // 3. Read and parse data split percentages with validation
+      // 3. Handle indicator selection if in indicator mode
+      std::string selectedIndicator;
+      if (indicatorMode) {
+        std::cout << "Select indicator ([I]BS - Internal Bar Strength): ";
+        std::string indicatorChoice;
+        std::getline(std::cin, indicatorChoice);
+        if (indicatorChoice.empty()) indicatorChoice = "I";
+        
+        char c = std::toupper(indicatorChoice[0]);
+        switch (c) {
+          case 'I':
+            selectedIndicator = "IBS";
+            std::cout << "Selected: Internal Bar Strength (IBS)" << std::endl;
+            break;
+          default:
+            std::cerr << "Invalid indicator selection. Defaulting to IBS." << std::endl;
+            selectedIndicator = "IBS";
+        }
+      }
+
+      // 4. Read and parse data split percentages with validation
       double insamplePercent, outOfSamplePercent, reservedPercent;
       bool validPercentages = false;
       
@@ -351,7 +385,15 @@ int main(int argc, char** argv)
         }
       auto aTimeSeries = reader->getTimeSeries();
 
-      // 6. Split into insample, out-of-sample, and reserved (last)
+      // 6. Calculate indicator if in indicator mode
+      NumericTimeSeries<Num> indicatorSeries(aTimeSeries->getTimeFrame());
+      if (indicatorMode && selectedIndicator == "IBS") {
+        std::cout << "Calculating Internal Bar Strength (IBS) indicator..." << std::endl;
+        indicatorSeries = IBS1Series(*aTimeSeries);
+        std::cout << "IBS calculation complete. Generated " << indicatorSeries.getNumEntries() << " indicator values." << std::endl;
+      }
+
+      // 7. Split into insample, out-of-sample, and reserved (last)
       size_t totalSize    = aTimeSeries->getNumEntries();
       size_t insampleSize = static_cast<size_t>(totalSize * (insamplePercent / 100.0));
       size_t oosSize      = static_cast<size_t>(totalSize * (outOfSamplePercent / 100.0));
@@ -373,7 +415,14 @@ int main(int argc, char** argv)
 	    reservedSeries.addEntry(entry);
         }
 
-      // 7. Insample stop calculation
+      // Create insample indicator series if in indicator mode
+      NumericTimeSeries<Num> insampleIndicatorSeries(aTimeSeries->getTimeFrame());
+      if (indicatorMode && selectedIndicator == "IBS") {
+        insampleIndicatorSeries = IBS1Series(insampleSeries);
+        std::cout << "Generated " << insampleIndicatorSeries.getNumEntries() << " IBS values for insample data." << std::endl;
+      }
+
+      // 8. Insample stop calculation
       Num stopValue;
       Num medianOfRoc;
       Num robustQn;
@@ -419,18 +468,27 @@ int main(int argc, char** argv)
           tsFile3.close();
 
           // Write data files to current subdirectory
-          if (timeFrameStr == "Intraday")
-            {
+          if (indicatorMode) {
+            // Write indicator-based PAL files
+            if (timeFrameStr == "Intraday") {
+              PalIndicatorIntradayCsvWriter<Num> insampleWriter((currentPalDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries, insampleIndicatorSeries);
+              insampleWriter.writeFile();
+            } else {
+              PalIndicatorEodCsvWriter<Num> insampleWriter((currentPalDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries, insampleIndicatorSeries);
+              insampleWriter.writeFile();
+            }
+          } else {
+            // Write standard OHLC PAL files
+            if (timeFrameStr == "Intraday") {
               // For intraday: insample uses PAL intraday format
               PalIntradayCsvWriter<Num> insampleWriter((currentPalDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries);
               insampleWriter.writeFile();
-            }
-          else
-            {
+            } else {
               // For non-intraday: all files use standard PAL EOD format
               PalTimeSeriesCsvWriter<Num> insampleWriter((currentPalDir / (tickerSymbol + "_IS.txt")).string(), insampleSeries);
               insampleWriter.writeFile();
             }
+          }
         }
 
       // 9. Write validation files with risk-reward segregation
@@ -491,7 +549,8 @@ int main(int argc, char** argv)
     }
   else
     {
-      std::cout << "Usage (beta):: PalSetup datafile file-type (1=CSI,2=CSI Ext,3=TradeStation,4=Pinnacle,5=PAL) [tick]" << std::endl;
+      std::cout << "Usage (beta):: PalSetup [-indicator|--indicator] datafile file-type (1=CSI,2=CSI Ext,3=TradeStation,4=Pinnacle,5=PAL) [tick]" << std::endl;
+      std::cout << "  -indicator|--indicator: Use indicator values (e.g., IBS) instead of close prices in PAL files" << std::endl;
     }
   return 0;
 }

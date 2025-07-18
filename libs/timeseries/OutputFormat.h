@@ -18,10 +18,12 @@ namespace mkc_timeseries
      */
     enum class OutputFormat {
         PAL_EOD,                    ///< Original PalTimeSeriesCsvWriter format: Date,Open,High,Low,Close
-        PAL_VOLUME_FOR_CLOSE,       ///< Original PalVolumeForCloseCsvWriter format: Date,Open,High,Low,Volume  
+        PAL_VOLUME_FOR_CLOSE,       ///< Original PalVolumeForCloseCsvWriter format: Date,Open,High,Low,Volume
         TRADESTATION_EOD,           ///< TradeStation daily format: "Date","Time","Open","High","Low","Close","Vol","OI"
         TRADESTATION_INTRADAY,      ///< TradeStation intraday format: "Date","Time","Open","High","Low","Close","Up","Down"
-        PAL_INTRADAY                ///< PAL intraday format with sequential numbers: 10000001 Open High Low Close
+        PAL_INTRADAY,               ///< PAL intraday format with sequential numbers: 10000001 Open High Low Close
+        PAL_INDICATOR_EOD,          ///< PAL format with indicator replacing close: Date,Open,High,Low,Indicator
+        PAL_INDICATOR_INTRADAY      ///< PAL intraday format with indicator: Sequential# Open High Low Indicator
     };
 }
 

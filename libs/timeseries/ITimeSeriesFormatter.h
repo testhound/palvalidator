@@ -52,6 +52,39 @@ namespace mkc_timeseries
         virtual void writeEntry(std::ofstream& file,
                                const OHLCTimeSeriesEntry<Decimal>& entry) = 0;
     };
+
+    /**
+     * @brief Interface for formatting OHLC time series entries with indicator values to CSV output.
+     *
+     * This interface extends the basic formatter to support indicator-based output formats
+     * where an indicator value (like IBS) replaces the close price in the output.
+     *
+     * @tparam Decimal The numeric type used for price and indicator data (e.g., double, float).
+     */
+    template <class Decimal>
+    class IIndicatorTimeSeriesFormatter
+    {
+    public:
+        virtual ~IIndicatorTimeSeriesFormatter() = default;
+
+        /**
+         * @brief Writes the CSV header to the output file.
+         *
+         * @param file The output file stream to write to.
+         */
+        virtual void writeHeader(std::ofstream& file) = 0;
+
+        /**
+         * @brief Writes a single OHLC entry with indicator value to the output file.
+         *
+         * @param file The output file stream to write to.
+         * @param entry The OHLC time series entry to format and write.
+         * @param indicatorValue The indicator value to use instead of close price.
+         */
+        virtual void writeEntry(std::ofstream& file,
+                               const OHLCTimeSeriesEntry<Decimal>& entry,
+                               const Decimal& indicatorValue) = 0;
+    };
 }
 
 #endif // __ITIMESERIES_FORMATTER_H
