@@ -569,6 +569,122 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
     // offset beyond available history should throw
     REQUIRE_THROWS_AS(ssoSeries.getDateTimeValue(dt3, 5), TimeSeriesOffsetOutOfRangeException);
   }
+  SECTION ("Timeseries IBS1 Indicator test", "[TimeSeries]")
+    {
+      // Test IBS1 calculation with known values
+      NumericTimeSeries<DecimalType> ibsIndicatorSeries (IBS1Series<DecimalType>(spySeries));
+      
+      // Verify the series has the same number of entries as the input
+      REQUIRE (ibsIndicatorSeries.getNumEntries() == spySeries.getNumEntries());
+      
+      // Test specific IBS calculations
+      // For entry6 (20151228): Open=204.86, High=205.26, Low=203.94, Close=205.21
+      // IBS = (205.21 - 203.94) / (205.26 - 203.94) = 1.27 / 1.32 ≈ 0.9621
+      DecimalType expectedIBS6 = (entry6->getCloseValue() - entry6->getLowValue()) /
+                                 (entry6->getHighValue() - entry6->getLowValue());
+      
+      // Get the IBS value for the same date as entry6
+      auto ibsEntry6 = ibsIndicatorSeries.getTimeSeriesEntry(entry6->getDateTime().date());
+      REQUIRE (ibsEntry6->second->getValue() == expectedIBS6);
+      
+      // For entry0 (20160106): Open=198.34, High=200.06, Low=197.60, Close=198.82
+      // IBS = (198.82 - 197.60) / (200.06 - 197.60) = 1.22 / 2.46 ≈ 0.4959
+      DecimalType expectedIBS0 = (entry0->getCloseValue() - entry0->getLowValue()) /
+                                 (entry0->getHighValue() - entry0->getLowValue());
+      
+      auto ibsEntry0 = ibsIndicatorSeries.getTimeSeriesEntry(entry0->getDateTime().date());
+      REQUIRE (ibsEntry0->second->getValue() == expectedIBS0);
+      
+      // Verify all IBS values are between 0 and 1
+      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it = ibsIndicatorSeries.beginSortedAccess();
+      for (; it != ibsIndicatorSeries.endSortedAccess(); it++)
+      {
+        DecimalType ibsValue = it->second->getValue();
+        REQUIRE (ibsValue >= DecimalConstants<DecimalType>::DecimalZero);
+        REQUIRE (ibsValue <= DecimalConstants<DecimalType>::DecimalOne);
+      }
+    }
+
+  SECTION ("Timeseries IBS1 Indicator division by zero test", "[TimeSeries]")
+    {
+      // Create a test series with a bar where High == Low (division by zero case)
+      OHLCTimeSeries<DecimalType> testSeries(TimeFrame::DAILY, TradingVolume::SHARES);
+      
+      // Add a normal entry
+      auto normalEntry = createEquityEntry ("20160101", "100.00", "101.00", "99.00", "100.50", 1000000);
+      testSeries.addEntry (*normalEntry);
+      
+      // Add an entry where High == Low (should result in IBS = 0)
+      auto flatEntry = createEquityEntry ("20160102", "100.00", "100.00", "100.00", "100.00", 1000000);
+      testSeries.addEntry (*flatEntry);
+      
+      // Add another normal entry
+      auto normalEntry2 = createEquityEntry ("20160103", "100.00", "102.00", "98.00", "99.00", 1000000);
+      testSeries.addEntry (*normalEntry2);
+      
+      NumericTimeSeries<DecimalType> ibsIndicatorSeries (IBS1Series<DecimalType>(testSeries));
+      
+      // Verify the series has the same number of entries
+      REQUIRE (ibsIndicatorSeries.getNumEntries() == testSeries.getNumEntries());
+      
+      // Check the flat entry (should have IBS = 0)
+      auto ibsFlatEntry = ibsIndicatorSeries.getTimeSeriesEntry(flatEntry->getDateTime().date());
+      REQUIRE (ibsFlatEntry->second->getValue() == DecimalConstants<DecimalType>::DecimalZero);
+      
+      // Check the normal entries have valid IBS values
+      auto ibsNormalEntry = ibsIndicatorSeries.getTimeSeriesEntry(normalEntry->getDateTime().date());
+      DecimalType expectedIBS = (normalEntry->getCloseValue() - normalEntry->getLowValue()) /
+                               (normalEntry->getHighValue() - normalEntry->getLowValue());
+      REQUIRE (ibsNormalEntry->second->getValue() == expectedIBS);
+      
+      auto ibsNormalEntry2 = ibsIndicatorSeries.getTimeSeriesEntry(normalEntry2->getDateTime().date());
+      DecimalType expectedIBS2 = (normalEntry2->getCloseValue() - normalEntry2->getLowValue()) /
+                                 (normalEntry2->getHighValue() - normalEntry2->getLowValue());
+      REQUIRE (ibsNormalEntry2->second->getValue() == expectedIBS2);
+    }
+
+  SECTION ("Timeseries IBS1 Indicator empty series test", "[TimeSeries]")
+    {
+      // Test with empty series
+      OHLCTimeSeries<DecimalType> emptySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+      NumericTimeSeries<DecimalType> ibsIndicatorSeries (IBS1Series<DecimalType>(emptySeries));
+      
+      REQUIRE (ibsIndicatorSeries.getNumEntries() == 0);
+    }
+
+  SECTION ("Timeseries IBS1 Indicator edge cases test", "[TimeSeries]")
+    {
+      // Test edge cases: close at high, close at low, close in middle
+      OHLCTimeSeries<DecimalType> edgeCaseSeries(TimeFrame::DAILY, TradingVolume::SHARES);
+      
+      // Close at low (IBS should be 0)
+      auto closeAtLow = createEquityEntry ("20160101", "100.00", "102.00", "98.00", "98.00", 1000000);
+      edgeCaseSeries.addEntry (*closeAtLow);
+      
+      // Close at high (IBS should be 1)
+      auto closeAtHigh = createEquityEntry ("20160102", "100.00", "102.00", "98.00", "102.00", 1000000);
+      edgeCaseSeries.addEntry (*closeAtHigh);
+      
+      // Close in middle (IBS should be 0.5)
+      auto closeInMiddle = createEquityEntry ("20160103", "100.00", "102.00", "98.00", "100.00", 1000000);
+      edgeCaseSeries.addEntry (*closeInMiddle);
+      
+      NumericTimeSeries<DecimalType> ibsIndicatorSeries (IBS1Series<DecimalType>(edgeCaseSeries));
+      
+      // Check close at low (IBS = 0)
+      auto ibsCloseAtLow = ibsIndicatorSeries.getTimeSeriesEntry(closeAtLow->getDateTime().date());
+      REQUIRE (ibsCloseAtLow->second->getValue() == DecimalConstants<DecimalType>::DecimalZero);
+      
+      // Check close at high (IBS = 1)
+      auto ibsCloseAtHigh = ibsIndicatorSeries.getTimeSeriesEntry(closeAtHigh->getDateTime().date());
+      REQUIRE (ibsCloseAtHigh->second->getValue() == DecimalConstants<DecimalType>::DecimalOne);
+      
+      // Check close in middle (IBS = 0.5)
+      auto ibsCloseInMiddle = ibsIndicatorSeries.getTimeSeriesEntry(closeInMiddle->getDateTime().date());
+      DecimalType expectedMiddle = DecimalConstants<DecimalType>::DecimalOne / DecimalConstants<DecimalType>::DecimalTwo;
+      REQUIRE (ibsCloseInMiddle->second->getValue() == expectedMiddle);
+    }
+
 }
 
 TEST_CASE ("OHLCTimeSeries with HashedLookupPolicy operations", "[TimeSeries][HashedLookupPolicy]")
