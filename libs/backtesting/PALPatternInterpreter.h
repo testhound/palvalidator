@@ -132,20 +132,6 @@ namespace mkc_timeseries
             }
           };
       }
-      // Add other expression types (OrExpr, NotExpr, etc.) here as needed.
-      // For example:
-      /*
-      else if (auto pOr = dynamic_cast<OrExpr*>(expr))
-      {
-        auto L = compileEvaluator(pOr->getLHS());
-        auto R = compileEvaluator(pOr->getRHS());
-
-        return [L,R](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> bool
-        {
-          return L(s, evalDateTime) || R(s, evalDateTime);
-        };
-      }
-      */
       else 
       {
         throw PalPatternInterpreterException(
@@ -166,7 +152,7 @@ namespace mkc_timeseries
     {
       auto offset = barRef->getBarOffset(); // This is typically unsigned long
       switch (barRef->getReferenceType()) 
-      {
+	{
         case PriceBarReference::OPEN:
           return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
           {
@@ -192,13 +178,32 @@ namespace mkc_timeseries
           {
             return s->getVolumeValue(evalDateTime, offset);
           };
-        // MEANDER, IBS, etc. are not directly handled by compilePriceBar in this version based on PR.
-        // If they were to be used in compiled expressions, compilePriceBar would need cases for them,
-        // potentially calling the refactored legacy static methods.
+
+	case PriceBarReference::IBS1:
+          return [offset](Security<Decimal>* s, const boost::posix_time::ptime& evalDateTime) -> Decimal
+          {
+	    Decimal currentHigh (s->getHighValue (evalDateTime, offset));
+	    Decimal currentLow (s->getLowValue (evalDateTime, offset));
+
+	    Decimal currentClose (s->getCloseValue (evalDateTime, offset));
+
+	    Decimal num(currentClose - currentLow);
+	    Decimal denom(currentHigh - currentLow);
+
+	    if (denom != DecimalConstants<Decimal>::DecimalZero)
+	      {
+		return (num/denom);
+	      }
+	    else
+	      {
+		return DecimalConstants<Decimal>::DecimalZero; // Or some other defined behavior for zero range
+	      }
+	  };
+
         default:
           throw PalPatternInterpreterException(
-            "compilePriceBar: unknown or unsupported PriceBarReference type for compilation");
-      }
+					       "compilePriceBar: unknown or unsupported PriceBarReference type for compilation");
+	}
     }
     
   private:
