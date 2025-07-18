@@ -177,6 +177,73 @@ namespace mkc_timeseries
             ++mSequentialCounter;
         }
     };
+
+    /**
+     * @brief Formatter for PAL EOD format with indicator replacing close: Date,Open,High,Low,Indicator
+     *
+     * This formatter outputs data in PAL's end-of-day format but replaces the close price
+     * with an indicator value (such as IBS). It outputs date in ISO format (YYYYMMDD)
+     * followed by OHLV values (indicator instead of close), with no header.
+     */
+    template <class Decimal>
+    class PalIndicatorEodFormatter : public IIndicatorTimeSeriesFormatter<Decimal>
+    {
+    public:
+        void writeHeader(std::ofstream& file) override
+        {
+            // No header for PAL EOD format
+        }
+        
+        void writeEntry(std::ofstream& file,
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       const Decimal& indicatorValue) override
+        {
+            ptime dateTime = entry.getDateTime();
+            file << boost::gregorian::to_iso_string(dateTime.date()) << ","
+                 << entry.getOpenValue() << ","
+                 << entry.getHighValue() << ","
+                 << entry.getLowValue() << ","
+                 << indicatorValue << std::endl;
+        }
+    };
+
+    /**
+     * @brief Formatter for PAL Intraday format with indicator: Sequential# Open High Low Indicator
+     *
+     * This formatter outputs data in PAL's intraday format but replaces the close price
+     * with an indicator value. It uses:
+     * - No header
+     * - Sequential numbering starting at 10000001 (managed internally)
+     * - Space-separated values
+     * - OHLV data with indicator instead of close
+     *
+     * Each instance of this formatter maintains its own sequential counter,
+     * starting at 10000001 and incrementing with each entry written.
+     */
+    template <class Decimal>
+    class PalIndicatorIntradayFormatter : public IIndicatorTimeSeriesFormatter<Decimal>
+    {
+    private:
+        mutable long mSequentialCounter = 10000001;  ///< Internal sequential counter starting at 10000001
+
+    public:
+        void writeHeader(std::ofstream& file) override
+        {
+            // No header for PAL intraday format
+        }
+        
+        void writeEntry(std::ofstream& file,
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       const Decimal& indicatorValue) override
+        {
+            file << mSequentialCounter << " "
+                 << entry.getOpenValue() << " "
+                 << entry.getHighValue() << " "
+                 << entry.getLowValue() << " "
+                 << indicatorValue << std::endl;
+            ++mSequentialCounter;
+        }
+    };
 }
 
 #endif // __TIMESERIES_FORMATTERS_H
