@@ -11,6 +11,8 @@
 #include <list>
 #include <sstream>
 #include <thread>
+#include <fstream>
+#include <ctime>
 #include <boost/date_time.hpp>
 #include <tuple>
 #include <type_traits>  // for std::is_same
@@ -26,6 +28,7 @@
 #include "PermutationStatisticsCollector.h"
 #include "PermutationTestSubject.h"
 #include "runner.hpp"
+#include "LogPalPattern.h"
 
 namespace mkc_timeseries
 {
@@ -375,8 +378,10 @@ namespace mkc_timeseries
       for (auto it = patterns->allPatternsBegin(); it != patterns->allPatternsEnd(); ++it)
         vecPatterns.push_back(*it);
 
+
       // Run MCPT for all strategies and add to policy
       std::mutex strategyMutex;
+      std::atomic<size_t> completedCount{0};
       Executor executor;
       size_t total = vecPatterns.size();
 
@@ -408,6 +413,15 @@ namespace mkc_timeseries
           }
           
           ResultType res = mcpt.runPermutationTest();
+          
+          // Increment completed count and log progress
+          size_t currentCompleted = ++completedCount;
+          
+          // Log strategy name and progress after permutation test completion
+          if (verbose) {
+            std::cout << "Completed permutation test for strategy: " << name
+                      << " (Strategy " << currentCompleted << " of " << total << ")" << std::endl;
+          }
           
           // Detach observer after test completion (only if supported)
           if constexpr (supports_observer_pattern) {
