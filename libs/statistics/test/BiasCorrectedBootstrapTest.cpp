@@ -179,7 +179,7 @@ public:
     // Constructor that calls the base but avoids the expensive calculation.
     MockBCaBootStrapForAnnualizer()
       // Provide a minimal valid vector to satisfy the base constructor's checks.
-      : BCaBootStrap<Decimal>(std::vector<Decimal>{Decimal("0.0")}, 100)
+      : BCaBootStrap<Decimal>(std::vector<Decimal>{Decimal("0.0"), Decimal("0.0")}, 100)
     {}
 
     // Manually set the results for testing purposes.
@@ -188,11 +188,14 @@ public:
         this->setMean(mean);
         this->setLowerBound(lower);
         this->setUpperBound(upper);
+        // Mark as calculated to prevent base class calculation
+        this->m_is_calculated = true;
     }
 
 protected:
     // Override the calculation method to do nothing, preventing the expensive bootstrap.
     void calculateBCaBounds() override {
+        std::cout << "In MockBCaBootStrapForAnnualizer::calculateBCaBounds" << std::endl;
         // This is intentionally left empty for the mock.
     }
 };
