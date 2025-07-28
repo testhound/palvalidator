@@ -48,7 +48,7 @@ public:
  * @tparam DecimalType The decimal type for financial calculations.
  * @tparam Executor A policy class that defines the execution model.
  */
-template <class DecimalType, typename Executor = concurrency::SingleThreadExecutor>
+template <class DecimalType, typename Executor = concurrency::ThreadPoolExecutor<>>
 class ExhaustivePatternSearchEngine
 {
 public:
