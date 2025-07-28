@@ -848,14 +848,14 @@ namespace mkc_timeseries
     }
 
     // OrderCanceled methods
-    void OrderCanceled (MarketOnOpenLongOrder<Decimal> *order) override {}
-    void OrderCanceled (MarketOnOpenShortOrder<Decimal> *order) override {}
-    void OrderCanceled (MarketOnOpenSellOrder<Decimal> *order) override {}
-    void OrderCanceled (MarketOnOpenCoverOrder<Decimal> *order) override {}
-    void OrderCanceled (SellAtLimitOrder<Decimal> *order) override {}
-    void OrderCanceled (CoverAtLimitOrder<Decimal> *order) override {}
-    void OrderCanceled (CoverAtStopOrder<Decimal> *order) override {}
-    void OrderCanceled (SellAtStopOrder<Decimal> *order) override {}
+    void OrderCanceled (MarketOnOpenLongOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (MarketOnOpenShortOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (MarketOnOpenSellOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (MarketOnOpenCoverOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (SellAtLimitOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (CoverAtLimitOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (CoverAtStopOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (SellAtStopOrder<Decimal> * /* order */) override {}
 
 
     /**

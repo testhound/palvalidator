@@ -380,8 +380,8 @@ namespace mkc_timeseries
      * @param exitOrder Shared pointer to the exit `TradingOrder`.
      * @throws StrategyTransactionException always.
      */
-    void completeTransaction (StrategyTransaction<Decimal> *transaction,
-			      std::shared_ptr<TradingOrder<Decimal>> exitOrder)
+    void completeTransaction (StrategyTransaction<Decimal> * /* transaction */,
+         std::shared_ptr<TradingOrder<Decimal>> /* exitOrder */)
     {
       throw StrategyTransactionException ("StrategyTransactionStateComplete::completeTransaction - transaction already complete");
     }

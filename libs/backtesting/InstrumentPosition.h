@@ -279,7 +279,7 @@ namespace mkc_timeseries
      * @param entryBar The OHLCTimeSeriesEntry.
      * @throw InstrumentPositionException as there are no positions to update in a flat state.
      */
-    void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Decimal>& /* entryBar */)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: addBar - no positions available in flat state");
     }
@@ -289,7 +289,7 @@ namespace mkc_timeseries
      * @param unitNumber The 1-based index.
      * @throw InstrumentPositionException as there are no positions in a flat state.
      */
-    ConstInstrumentPositionIterator getInstrumentPosition (uint32_t unitNumber) const
+    ConstInstrumentPositionIterator getInstrumentPosition (uint32_t /* unitNumber */) const
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: getInstrumentPosition - no positions avaialble in flat state");
     }
@@ -331,10 +331,10 @@ namespace mkc_timeseries
      * @param unitNumber The unit number.
      * @throw InstrumentPositionException as there are no positions to close in a flat state.
      */
-    void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
-			   const boost::gregorian::date exitDate,
-			   const Decimal& exitPrice,
-			   uint32_t unitNumber)
+    void closeUnitPosition(InstrumentPosition<Decimal>* /* iPosition */,
+      const boost::gregorian::date /* exitDate */,
+      const Decimal& /* exitPrice */,
+      uint32_t /* unitNumber */)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeUnitPosition - no positions avaialble in flat state");
     }
@@ -347,10 +347,10 @@ namespace mkc_timeseries
      * @param unitNumber The unit number.
      * @throw InstrumentPositionException as there are no positions to close in a flat state.
      */
-    void closeUnitPosition(InstrumentPosition<Decimal>* iPosition,
-			   const ptime exitDate,
-			   const Decimal& exitPrice,
-			   uint32_t unitNumber)
+    void closeUnitPosition(InstrumentPosition<Decimal>* /* iPosition */,
+      const ptime /* exitDate */,
+      const Decimal& /* exitPrice */,
+      uint32_t /* unitNumber */)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeUnitPosition (ptime) - no positions avaialble in flat state");
     }
@@ -362,9 +362,9 @@ namespace mkc_timeseries
      * @param exitPrice The exit price.
      * @throw InstrumentPositionException as there are no positions to close in a flat state.
      */
-    void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
-			   const boost::gregorian::date exitDate,
-			   const Decimal& exitPrice)
+    void closeAllPositions(InstrumentPosition<Decimal>* /* iPosition */,
+      const boost::gregorian::date /* exitDate */,
+      const Decimal& /* exitPrice */)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeAllPositions - no positions avaialble in flat state");
     }
@@ -376,9 +376,9 @@ namespace mkc_timeseries
      * @param exitPrice The exit price.
      * @throw InstrumentPositionException as there are no positions to close in a flat state.
      */
-    void closeAllPositions(InstrumentPosition<Decimal>* iPosition,
-			   const ptime exitDate,
-			   const Decimal& exitPrice)
+    void closeAllPositions(InstrumentPosition<Decimal>* /* iPosition */,
+      const ptime /* exitDate */,
+      const Decimal& /* exitPrice */)
     {
       throw InstrumentPositionException("FlatInstrumentPositionState: closeAllPositions (ptime) - no positions avaialble in flat state");
     }
@@ -693,13 +693,13 @@ namespace mkc_timeseries
      * @param position The long TradingPosition unit to add.
      * @throw InstrumentPositionException if trying to add a non-long position or a closed position.
      */
-    void addPosition(InstrumentPosition<Decimal>* iPosition,
-		     std::shared_ptr<TradingPosition<Decimal>> position)
+    void addPosition(InstrumentPosition<Decimal>* /* iPosition */,
+       std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isLongPosition())
-	this->addPositionCommon(position);
+ this->addPositionCommon(position);
       else
-	throw InstrumentPositionException ("InstrumentPosition: cannot add short position unit to long position");
+ throw InstrumentPositionException ("InstrumentPosition: cannot add short position unit to long position");
     }
 
     /**
@@ -784,13 +784,13 @@ namespace mkc_timeseries
      * @param position The short TradingPosition unit to add.
      * @throw InstrumentPositionException if trying to add a non-short position or a closed position.
      */
-    void addPosition(InstrumentPosition<Decimal>* iPosition,
-		     std::shared_ptr<TradingPosition<Decimal>> position)
+    void addPosition(InstrumentPosition<Decimal>* /* iPosition */,
+       std::shared_ptr<TradingPosition<Decimal>> position)
     {
       if (position->isShortPosition())
-	this->addPositionCommon(position);
+ this->addPositionCommon(position);
       else
-	throw InstrumentPositionException ("InstrumentPosition: cannot add long position unit to short position");
+ throw InstrumentPositionException ("InstrumentPosition: cannot add long position unit to short position");
     }
 
     /**
