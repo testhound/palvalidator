@@ -227,7 +227,7 @@ std::shared_ptr<const mkc_timeseries::Security<TestDecimalType>> createMinimalSe
         ));
     }
 
-    return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("TEST", "Test Security", series);
+    return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("MSFT", "Microsoft Corporation", series);
 }
 
 std::shared_ptr<const mkc_timeseries::Security<TestDecimalType>> createEmptySecurity()
@@ -237,7 +237,7 @@ std::shared_ptr<const mkc_timeseries::Security<TestDecimalType>> createEmptySecu
         mkc_timeseries::TradingVolume::SHARES
     );
 
-    return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("EMPTY", "Empty Security", series);
+    return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("GOOGL", "Alphabet Inc.", series);
 }
 
 SearchConfiguration<TestDecimalType> createSearchConfigWithCriteria(
@@ -302,7 +302,7 @@ std::shared_ptr<const mkc_timeseries::Security<TestDecimalType>> createPerforman
         basePrice = price;
     }
 
-    return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("PERF", "Performance Test Security", series);
+    return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("AMZN", "Amazon.com Inc.", series);
 }
 
 TEST_CASE("PatternDiscoveryTask exception handling", "[PatternDiscoveryTask][exceptions]")

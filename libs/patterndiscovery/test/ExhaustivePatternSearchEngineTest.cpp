@@ -187,7 +187,7 @@ TEST_CASE("ExhaustivePatternSearchEngine error conditions", "[ExhaustivePatternS
     {
         // Create empty time series
         auto emptyTimeSeries = createEmptyTimeSeries();
-        auto security = std::make_shared<EquitySecurity<Decimal>>("EMPTY", "Empty Security", emptyTimeSeries);
+        auto security = std::make_shared<EquitySecurity<Decimal>>("TSLA", "Tesla Inc.", emptyTimeSeries);
         
         // Create performance criteria
         PerformanceCriteria<Decimal> criteria(
@@ -222,7 +222,7 @@ TEST_CASE("ExhaustivePatternSearchEngine error conditions", "[ExhaustivePatternS
     SECTION("Handles invalid date ranges")
     {
         auto timeSeries = createPredictableTimeSeries();
-        auto security = std::make_shared<EquitySecurity<Decimal>>("TEST", "Test Security", timeSeries);
+        auto security = std::make_shared<EquitySecurity<Decimal>>("INTC", "Intel Corporation", timeSeries);
         
         PerformanceCriteria<Decimal> criteria(
             Decimal("0.0"), 1, 999, Decimal("0.001")
