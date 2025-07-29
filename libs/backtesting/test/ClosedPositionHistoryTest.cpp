@@ -838,4 +838,212 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
       DecimalType expectedReturn2_lose = (exitPriceLose - entryBarLose->getCloseValue()) / entryBarLose->getCloseValue();
       REQUIRE(losing_returns[1] == (expectedReturn2_lose * -1));
   }
+
+ SECTION("ClosedPositionHistory::getNumConsecutiveLosses tests")
+ {
+   ClosedPositionHistory<DecimalType> history;
+   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+   // Initially, consecutive losses should be 0
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+
+   // Create positions manually without relying on CSV data
+   // Test Case 1: Add a winning position - consecutive losses should remain 0
+   TimeSeriesDate entryDate1(2020, Jan, 1);
+   auto entryBar1 = createTimeSeriesEntry(entryDate1, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto winningPos1 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar1, oneContract);
+   winningPos1->ClosePosition(entryDate1, createDecimal("110.00")); // 10% gain
+   
+   history.addClosedPosition(winningPos1);
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+
+   // Test Case 2: Add a losing position - consecutive losses should be 1
+   TimeSeriesDate entryDate2(2020, Jan, 2);
+   auto entryBar2 = createTimeSeriesEntry(entryDate2, createDecimal("110.00"), createDecimal("110.00"), createDecimal("110.00"), createDecimal("110.00"), 100);
+   auto losingPos1 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("110.00"), *entryBar2, oneContract);
+   losingPos1->ClosePosition(entryDate2, createDecimal("100.00")); // 9.09% loss
+   
+   history.addClosedPosition(losingPos1);
+   REQUIRE(history.getNumConsecutiveLosses() == 1);
+
+   // Test Case 3: Add another losing position - consecutive losses should be 2
+   TimeSeriesDate entryDate3(2020, Jan, 3);
+   auto entryBar3 = createTimeSeriesEntry(entryDate3, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto losingPos2 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar3, oneContract);
+   losingPos2->ClosePosition(entryDate3, createDecimal("95.00")); // 5% loss
+   
+   history.addClosedPosition(losingPos2);
+   REQUIRE(history.getNumConsecutiveLosses() == 2);
+
+   // Test Case 4: Add a third consecutive losing position - consecutive losses should be 3
+   TimeSeriesDate entryDate4(2020, Jan, 4);
+   auto entryBar4 = createTimeSeriesEntry(entryDate4, createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), 100);
+   auto losingPos3 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("95.00"), *entryBar4, oneContract);
+   losingPos3->ClosePosition(entryDate4, createDecimal("90.00")); // 5.26% loss
+   
+   history.addClosedPosition(losingPos3);
+   REQUIRE(history.getNumConsecutiveLosses() == 3);
+
+   // Test Case 5: Add a winning position - consecutive losses should reset to 0
+   TimeSeriesDate entryDate5(2020, Jan, 5);
+   auto entryBar5 = createTimeSeriesEntry(entryDate5, createDecimal("90.00"), createDecimal("90.00"), createDecimal("90.00"), createDecimal("90.00"), 100);
+   auto winningPos2 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("90.00"), *entryBar5, oneContract);
+   winningPos2->ClosePosition(entryDate5, createDecimal("100.00")); // 11.11% gain
+   
+   history.addClosedPosition(winningPos2);
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+
+   // Test Case 6: Add another losing position after the win - consecutive losses should be 1
+   TimeSeriesDate entryDate6(2020, Jan, 6);
+   auto entryBar6 = createTimeSeriesEntry(entryDate6, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto losingPos4 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar6, oneContract);
+   losingPos4->ClosePosition(entryDate6, createDecimal("98.00")); // 2% loss
+   
+   history.addClosedPosition(losingPos4);
+   REQUIRE(history.getNumConsecutiveLosses() == 1);
+
+   // Verify overall statistics are correct
+   REQUIRE(history.getNumPositions() == 6);
+   REQUIRE(history.getNumWinningPositions() == 2);
+   REQUIRE(history.getNumLosingPositions() == 4);
+ }
+
+ SECTION("ClosedPositionHistory::getNumConsecutiveLosses with short positions")
+ {
+   ClosedPositionHistory<DecimalType> history;
+   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+   // Test with short positions
+   // Winning short: price goes down
+   TimeSeriesDate entryDate1(2020, Jan, 1);
+   auto entryBar1 = createTimeSeriesEntry(entryDate1, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto winningShort = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar1, oneContract);
+   winningShort->ClosePosition(entryDate1, createDecimal("95.00")); // Price down = profit for short
+   
+   history.addClosedPosition(winningShort);
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+
+   // Losing short: price goes up
+   TimeSeriesDate entryDate2(2020, Jan, 2);
+   auto entryBar2 = createTimeSeriesEntry(entryDate2, createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), 100);
+   auto losingShort1 = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, createDecimal("95.00"), *entryBar2, oneContract);
+   losingShort1->ClosePosition(entryDate2, createDecimal("100.00")); // Price up = loss for short
+   
+   history.addClosedPosition(losingShort1);
+   REQUIRE(history.getNumConsecutiveLosses() == 1);
+
+   // Another losing short
+   TimeSeriesDate entryDate3(2020, Jan, 3);
+   auto entryBar3 = createTimeSeriesEntry(entryDate3, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto losingShort2 = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar3, oneContract);
+   losingShort2->ClosePosition(entryDate3, createDecimal("105.00")); // Price up = loss for short
+   
+   history.addClosedPosition(losingShort2);
+   REQUIRE(history.getNumConsecutiveLosses() == 2);
+
+   // Winning short resets the counter
+   TimeSeriesDate entryDate4(2020, Jan, 4);
+   auto entryBar4 = createTimeSeriesEntry(entryDate4, createDecimal("105.00"), createDecimal("105.00"), createDecimal("105.00"), createDecimal("105.00"), 100);
+   auto winningShort2 = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, createDecimal("105.00"), *entryBar4, oneContract);
+   winningShort2->ClosePosition(entryDate4, createDecimal("98.00")); // Price down = profit for short
+   
+   history.addClosedPosition(winningShort2);
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+
+   // Verify overall statistics
+   REQUIRE(history.getNumPositions() == 4);
+   REQUIRE(history.getNumWinningPositions() == 2);
+   REQUIRE(history.getNumLosingPositions() == 2);
+ }
+
+ SECTION("ClosedPositionHistory::getNumConsecutiveLosses copy constructor and assignment")
+ {
+   ClosedPositionHistory<DecimalType> history1;
+   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+   // Add some positions to create a state with consecutive losses
+   TimeSeriesDate entryDate1(2020, Jan, 1);
+   auto entryBar1 = createTimeSeriesEntry(entryDate1, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto losingPos1 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar1, oneContract);
+   losingPos1->ClosePosition(entryDate1, createDecimal("95.00"));
+   
+   TimeSeriesDate entryDate2(2020, Jan, 2);
+   auto entryBar2 = createTimeSeriesEntry(entryDate2, createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), 100);
+   auto losingPos2 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("95.00"), *entryBar2, oneContract);
+   losingPos2->ClosePosition(entryDate2, createDecimal("90.00"));
+   
+   history1.addClosedPosition(losingPos1);
+   history1.addClosedPosition(losingPos2);
+   REQUIRE(history1.getNumConsecutiveLosses() == 2);
+
+   // Test copy constructor
+   ClosedPositionHistory<DecimalType> history2(history1);
+   REQUIRE(history2.getNumConsecutiveLosses() == 2);
+   REQUIRE(history2.getNumPositions() == 2);
+   REQUIRE(history2.getNumLosingPositions() == 2);
+
+   // Test assignment operator
+   ClosedPositionHistory<DecimalType> history3;
+   history3 = history1;
+   REQUIRE(history3.getNumConsecutiveLosses() == 2);
+   REQUIRE(history3.getNumPositions() == 2);
+   REQUIRE(history3.getNumLosingPositions() == 2);
+
+   // Verify that modifying the original doesn't affect the copies
+   TimeSeriesDate entryDate3(2020, Jan, 3);
+   auto entryBar3 = createTimeSeriesEntry(entryDate3, createDecimal("90.00"), createDecimal("90.00"), createDecimal("90.00"), createDecimal("90.00"), 100);
+   auto winningPos = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("90.00"), *entryBar3, oneContract);
+   winningPos->ClosePosition(entryDate3, createDecimal("100.00"));
+   
+   history1.addClosedPosition(winningPos);
+   REQUIRE(history1.getNumConsecutiveLosses() == 0);
+   REQUIRE(history2.getNumConsecutiveLosses() == 2); // Should remain unchanged
+   REQUIRE(history3.getNumConsecutiveLosses() == 2); // Should remain unchanged
+ }
+
+ SECTION("ClosedPositionHistory::getNumConsecutiveLosses edge cases")
+ {
+   ClosedPositionHistory<DecimalType> history;
+   TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+   // Test with only winning positions
+   TimeSeriesDate entryDate1(2020, Jan, 1);
+   auto entryBar1 = createTimeSeriesEntry(entryDate1, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto winningPos1 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar1, oneContract);
+   winningPos1->ClosePosition(entryDate1, createDecimal("110.00"));
+   
+   TimeSeriesDate entryDate2(2020, Jan, 2);
+   auto entryBar2 = createTimeSeriesEntry(entryDate2, createDecimal("110.00"), createDecimal("110.00"), createDecimal("110.00"), createDecimal("110.00"), 100);
+   auto winningPos2 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("110.00"), *entryBar2, oneContract);
+   winningPos2->ClosePosition(entryDate2, createDecimal("120.00"));
+   
+   history.addClosedPosition(winningPos1);
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+   history.addClosedPosition(winningPos2);
+   REQUIRE(history.getNumConsecutiveLosses() == 0);
+
+   // Test with only losing positions
+   ClosedPositionHistory<DecimalType> history2;
+   TimeSeriesDate entryDate3(2020, Jan, 3);
+   auto entryBar3 = createTimeSeriesEntry(entryDate3, createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), createDecimal("100.00"), 100);
+   auto losingPos1 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("100.00"), *entryBar3, oneContract);
+   losingPos1->ClosePosition(entryDate3, createDecimal("95.00"));
+   
+   TimeSeriesDate entryDate4(2020, Jan, 4);
+   auto entryBar4 = createTimeSeriesEntry(entryDate4, createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), createDecimal("95.00"), 100);
+   auto losingPos2 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("95.00"), *entryBar4, oneContract);
+   losingPos2->ClosePosition(entryDate4, createDecimal("90.00"));
+   
+   TimeSeriesDate entryDate5(2020, Jan, 5);
+   auto entryBar5 = createTimeSeriesEntry(entryDate5, createDecimal("90.00"), createDecimal("90.00"), createDecimal("90.00"), createDecimal("90.00"), 100);
+   auto losingPos3 = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, createDecimal("90.00"), *entryBar5, oneContract);
+   losingPos3->ClosePosition(entryDate5, createDecimal("85.00"));
+   
+   history2.addClosedPosition(losingPos1);
+   REQUIRE(history2.getNumConsecutiveLosses() == 1);
+   history2.addClosedPosition(losingPos2);
+   REQUIRE(history2.getNumConsecutiveLosses() == 2);
+   history2.addClosedPosition(losingPos3);
+   REQUIRE(history2.getNumConsecutiveLosses() == 3);
+ }
 }
