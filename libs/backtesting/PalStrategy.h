@@ -775,7 +775,7 @@ namespace mkc_timeseries
      * @brief Evaluate and submit new long‐entry orders based on the pattern.
      */
     void eventEntryOrders (Security<Decimal>* aSecurity,
-                           const InstrumentPosition<Decimal>& instrPos,
+                           const InstrumentPosition<Decimal>& /* instrPos */,
                            const ptime& processingDateTime) override
     {
       auto sym = aSecurity->getSymbol();
@@ -944,7 +944,7 @@ namespace mkc_timeseries
      * @param processingDateTime	Date of this bar.
      */
     void eventEntryOrders (Security<Decimal>* aSecurity,
-                           const InstrumentPosition<Decimal>& instrPos,
+                           const InstrumentPosition<Decimal>& /* instrPos */,
                            const ptime& processingDateTime) override
     {
       auto sym = aSecurity->getSymbol();
@@ -981,6 +981,37 @@ namespace mkc_timeseries
     {
       return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio, strategyOptions);
     }
+  }
+
+  template<typename Decimal>
+  std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
+                                                        const std::shared_ptr<PriceActionLabPattern>& pattern,
+                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions)
+  {
+    auto newPortfolio = std::make_shared<Portfolio<Decimal>>(name + " Portfolio");
+    return makePalStrategy(name, pattern, newPortfolio, strategyOptions);
+  }
+
+  // NEW OVERLOAD: Four-argument makePalStrategy to create Portfolio and add Security
+  template<typename Decimal>
+  std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
+                                                        const std::shared_ptr<PriceActionLabPattern>& pattern,
+                                                        const std::shared_ptr<const Security<Decimal>>& security, // New argument
+                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions)
+  {
+      auto newPortfolio = std::make_shared<Portfolio<Decimal>>(name + " Portfolio");
+      // Cast const Security to non-const Security for addSecurity method
+      auto nonConstSecurity = std::const_pointer_cast<Security<Decimal>>(security);
+      newPortfolio->addSecurity(nonConstSecurity); // Add the security to the newly created portfolio
+
+      if (pattern->isLongPattern())
+      {
+          return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, newPortfolio, strategyOptions);
+      }
+      else
+      {
+          return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, newPortfolio, strategyOptions);
+      }
   }
 }
 
