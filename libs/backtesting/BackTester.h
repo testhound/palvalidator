@@ -19,6 +19,7 @@
 #include "BacktesterStrategy.h"
 #include "MarketHours.h"
 #include "TimeFrameDiscovery.h"
+#include "StatUtils.h"
 
 
 namespace mkc_timeseries
@@ -455,6 +456,52 @@ virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
         return closedTradeBars + openTradeBars;
     }
 
+    /**
+     * @brief Compute the Profit Factor for the first strategy using high-resolution returns.
+     * @details This method extracts all high-resolution bar returns from the first strategy
+     * and computes the Profit Factor using StatUtils::computeProfitFactor.
+     * @return The Profit Factor as a Decimal.
+     * @throws BackTesterException if no strategies have been added.
+     */
+    Decimal getProfitFactor() const
+    {
+        if (mStrategyList.empty()) {
+            throw BackTesterException("getProfitFactor: No strategies added");
+        }
+        
+        auto strategy = *(beginStrategies());
+        auto returns = getAllHighResReturns(strategy.get());
+        
+        return StatUtils<Decimal>::computeProfitFactor(returns);
+    }
+
+    /**
+     * @brief Compute both the Profit Factor and Profitability for the first strategy.
+     * @details This method extracts all high-resolution bar returns from the first strategy
+     * and computes both the Profit Factor and required Win Rate (Profitability) using
+     * StatUtils::computeProfitability.
+     * @return A std::tuple<Decimal, Decimal> containing:
+     * - get<0>: The Profit Factor
+     * - get<1>: The required Win Rate (Profitability) as a percentage
+     * @throws BackTesterException if no strategies have been added.
+     */
+    std::tuple<Decimal, Decimal> getProfitability() const
+    {
+        if (mStrategyList.empty()) {
+            throw BackTesterException("getProfitability: No strategies added");
+        }
+        
+        auto strategy = *(beginStrategies());
+        auto returns = getAllHighResReturns(strategy.get());
+        
+        return StatUtils<Decimal>::computeProfitability(returns);
+    }
+
+    unsigned int getNumConsecutiveLosses() const
+    {
+      return (this->getClosedPositionHistory().getNumConsecutiveLosses());
+    }
+    
     /**
      * @brief Earliest date used across all backtest ranges.
      * @return Start date of backtest.
