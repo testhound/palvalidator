@@ -81,26 +81,36 @@ public:
      */
     std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>> findPatterns()
     {
+        // 1. Find Exact patterns first, as they are the building blocks
         auto profitableExactPatterns = findExactPatterns();
 
+        // 2. Find Split patterns
+        auto profitableSplitPatterns = findSplitPatterns();
+        
+        // 3. If delay search is enabled, find delayed versions of BOTH exact and split patterns
         if (mConfig.isSearchingForDelayPatterns())
         {
-            auto profitableDelayedPatterns = findDelayedPatterns(profitableExactPatterns);
-            profitableExactPatterns.insert(profitableExactPatterns.end(),
-                                           profitableDelayedPatterns.begin(),
-                                           profitableDelayedPatterns.end());
+            auto profitableDelayedExact = findDelayedPatterns(profitableExactPatterns);
+            auto profitableDelayedSplit = findDelayedPatterns(profitableSplitPatterns);
+            
+            profitableExactPatterns.insert(profitableExactPatterns.end(), profitableDelayedExact.begin(), profitableDelayedExact.end());
+            profitableSplitPatterns.insert(profitableSplitPatterns.end(), profitableDelayedSplit.begin(), profitableDelayedSplit.end());
         }
+        
+        // 4. Combine all results
+        profitableExactPatterns.insert(profitableExactPatterns.end(), profitableSplitPatterns.begin(), profitableSplitPatterns.end());
 
         return profitableExactPatterns;
     }
 
 private:
     std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>> findExactPatterns();
+    std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>> findSplitPatterns();
     std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>> findDelayedPatterns(
         const std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>>& basePatterns);
 
-    std::shared_ptr<PatternExpression> generateExactPatternExpressionForWindow(unsigned int length);
-    PALPatternPtr createPalPattern(std::shared_ptr<PatternExpression> patternExpression, unsigned int length, unsigned int delay);
+    std::shared_ptr<PatternExpression> generateExactPatternExpressionForWindow(unsigned int length, unsigned int offset = 0);
+    PALPatternPtr createPalPattern(std::shared_ptr<PatternExpression> patternExpression, const std::string& nameSuffix, unsigned int length, unsigned int delay);
     std::shared_ptr<mkc_timeseries::BackTester<DecimalType>> runBacktest(PALPatternPtr pattern);
     PALPatternPtr createFinalPattern(PALPatternPtr initialPattern, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>> backtester);
     bool meetsPerformanceCriteria(std::shared_ptr<mkc_timeseries::BackTester<DecimalType>> backtester) const;
@@ -131,12 +141,14 @@ public:
                                     boost::posix_time::ptime windowEndTime,
                                     unsigned int length,
                                     SearchType searchType,
-                                    mkc_palast::AstResourceManager& astResourceManager)
+                                    mkc_palast::AstResourceManager& astResourceManager,
+                                    unsigned int barOffset = 0) // New: Bar offset for sub-patterns
         : mSecurity(security),
           mWindowEndTime(windowEndTime),
           mLength(length),
           mSearchType(searchType),
-          mAstResourceManager(astResourceManager) {}
+          mAstResourceManager(astResourceManager),
+          mBarOffset(barOffset) {}
 
     std::shared_ptr<PatternExpression> generate()
     {
@@ -145,23 +157,22 @@ public:
         {
             try
             {
-                auto entry = mSecurity->getTimeSeries()->getTimeSeriesEntry(mWindowEndTime, static_cast<long>(i));
-                addComponentsForBar(entry, i, components);
+                // The total offset from the window's end is the base offset plus the loop index
+                auto entry = mSecurity->getTimeSeries()->getTimeSeriesEntry(mWindowEndTime, static_cast<long>(mBarOffset + i));
+                addComponentsForBar(entry, mBarOffset + i, components);
             }
             catch (const mkc_timeseries::TimeSeriesException&)
             {
-                return nullptr; // Not enough data for this length
+                return nullptr;
             }
         }
 
         if (components.size() < 2) return nullptr;
 
-        // Sort components by their actual value in descending order
         std::sort(components.begin(), components.end(), [](const PriceComponent& a, const PriceComponent& b) {
             return a.value > b.value;
         });
 
-        // Chain the sorted components into a single AndExpr
         std::shared_ptr<PatternExpression> fullExpression = nullptr;
         for (size_t i = 0; i < components.size() - 1; ++i)
         {
@@ -190,23 +201,13 @@ private:
                              std::vector<PriceComponent>& components)
     {
         bool useOpen = false, useHigh = false, useLow = false, useClose = false;
-
         switch (mSearchType)
         {
-            case SearchType::EXTENDED:
-            case SearchType::DEEP:
-            case SearchType::MIXED:
-                useOpen = useHigh = useLow = useClose = true;
-                break;
-            case SearchType::CLOSE_ONLY:
-                useClose = true;
-                break;
-            case SearchType::HIGH_LOW_ONLY:
-                useHigh = useLow = true;
-                break;
-            case SearchType::OPEN_CLOSE_ONLY:
-                useOpen = useClose = true;
-                break;
+            case SearchType::EXTENDED: case SearchType::DEEP: case SearchType::MIXED:
+                useOpen = useHigh = useLow = useClose = true; break;
+            case SearchType::CLOSE_ONLY: useClose = true; break;
+            case SearchType::HIGH_LOW_ONLY: useHigh = useLow = true; break;
+            case SearchType::OPEN_CLOSE_ONLY: useOpen = useClose = true; break;
         }
 
         if (useOpen) components.push_back({entry.getOpenValue(), "O", offset});
@@ -229,6 +230,7 @@ private:
     unsigned int mLength;
     SearchType mSearchType;
     mkc_palast::AstResourceManager& mAstResourceManager;
+    unsigned int mBarOffset;
 };
 
 
@@ -246,7 +248,7 @@ PatternDiscoveryTask<DecimalType>::findExactPatterns()
         auto patternExpression = generateExactPatternExpressionForWindow(l);
         if (!patternExpression) continue;
 
-        auto candidatePattern = createPalPattern(patternExpression, l, 0);
+        auto candidatePattern = createPalPattern(patternExpression, "_L" + std::to_string(l), l, 0);
         auto backtester = runBacktest(candidatePattern);
 
         if (meetsPerformanceCriteria(backtester))
@@ -260,6 +262,49 @@ PatternDiscoveryTask<DecimalType>::findExactPatterns()
 
 template <class DecimalType>
 std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>>
+PatternDiscoveryTask<DecimalType>::findSplitPatterns()
+{
+    std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>> profitablePatterns;
+    auto lengthRange = mConfig.getPatternLengthRange();
+
+    // Iterate through all possible total lengths for the split pattern
+    for (unsigned int totalLength = lengthRange.first; totalLength <= lengthRange.second; ++totalLength)
+    {
+        // Iterate through all possible split points for the current totalLength
+        for (unsigned int lenPart1 = 1; lenPart1 < totalLength; ++lenPart1)
+        {
+            unsigned int lenPart2 = totalLength - lenPart1;
+            if (lenPart2 < 1) continue;
+
+            // Generate pattern for the first part (offset is lenPart2)
+            auto expr1 = generateExactPatternExpressionForWindow(lenPart1, lenPart2);
+            if (!expr1) continue;
+
+            // Generate pattern for the second part (offset is 0)
+            auto expr2 = generateExactPatternExpressionForWindow(lenPart2, 0);
+            if (!expr2) continue;
+            
+            // Combine them into a single split pattern expression
+            auto splitExpression = std::make_shared<AndExpr>(expr1, expr2);
+
+            // Backtest the combined split pattern
+            std::string nameSuffix = "_S_L" + std::to_string(totalLength) + "_P" + std::to_string(lenPart1);
+            auto candidatePattern = createPalPattern(splitExpression, nameSuffix, totalLength, 0);
+            auto backtester = runBacktest(candidatePattern);
+
+            if (meetsPerformanceCriteria(backtester))
+            {
+                auto finalPattern = createFinalPattern(candidatePattern, backtester);
+                profitablePatterns.push_back({finalPattern, backtester});
+            }
+        }
+    }
+    return profitablePatterns;
+}
+
+
+template <class DecimalType>
+std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>>
 PatternDiscoveryTask<DecimalType>::findDelayedPatterns(
     const std::vector<std::pair<PALPatternPtr, std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>>>& basePatterns)
 {
@@ -269,13 +314,15 @@ PatternDiscoveryTask<DecimalType>::findDelayedPatterns(
     {
         auto basePattern = basePatternPair.first;
         unsigned int baseLength = basePattern->getMaxBarsBack() + 1;
+        std::string baseName = basePattern->getPatternDescription()->getFileName();
 
         for (unsigned int d = mConfig.getMinDelayBars(); d <= mConfig.getMaxDelayBars(); ++d)
         {
             auto delayedExpression = createDelayedExpression(basePattern->getPatternExpression().get(), d);
             if (!delayedExpression) continue;
             
-            auto candidateDelayedPattern = createPalPattern(delayedExpression, baseLength, d);
+            std::string nameSuffix = baseName + "_D" + std::to_string(d);
+            auto candidateDelayedPattern = createPalPattern(delayedExpression, nameSuffix, baseLength, d);
             auto backtester = runBacktest(candidateDelayedPattern);
 
             if (meetsPerformanceCriteria(backtester))
@@ -297,7 +344,8 @@ PatternDiscoveryTask<DecimalType>::createDelayedExpression(PatternExpression* or
     public:
         AstOffsetShifter(unsigned int delay, mkc_palast::AstResourceManager& rm) : mDelay(delay), mResourceManager(rm) {}
 
-        void generateCode() override {} // Not used for this visitor
+        // Required pure virtual method from PalCodeGenVisitor
+        void generateCode() override {}
 
         void visit(PriceBarOpen* open) override { mCurrentRef = mResourceManager.getPriceOpen(open->getBarOffset() + mDelay); }
         void visit(PriceBarHigh* high) override { mCurrentRef = mResourceManager.getPriceHigh(high->getBarOffset() + mDelay); }
@@ -350,27 +398,25 @@ PatternDiscoveryTask<DecimalType>::createDelayedExpression(PatternExpression* or
     return shifter.mCurrentExpr;
 }
 
-
 template <class DecimalType>
 std::shared_ptr<PatternExpression>
-PatternDiscoveryTask<DecimalType>::generateExactPatternExpressionForWindow(unsigned int length)
+PatternDiscoveryTask<DecimalType>::generateExactPatternExpressionForWindow(unsigned int length, unsigned int offset)
 {
     ExactPatternExpressionGenerator<DecimalType> generator(
-        mSecurity,
-        mWindowEndTime,
-        length,
-        mConfig.getSearchType(),
-        mAstResourceManager);
+        mSecurity, mWindowEndTime, length, mConfig.getSearchType(), mAstResourceManager, offset);
     return generator.generate();
 }
 
 template <class DecimalType>
 PALPatternPtr
-PatternDiscoveryTask<DecimalType>::createPalPattern(std::shared_ptr<PatternExpression> patternExpression, unsigned int length, unsigned int delay)
+PatternDiscoveryTask<DecimalType>::createPalPattern(std::shared_ptr<PatternExpression> patternExpression, const std::string& nameSuffix, [[maybe_unused]] unsigned int length, unsigned int delay)
 {
     unsigned int patternIndex = ++mTaskLocalPatternCounter;
     unsigned long indexDate = mWindowEndTime.date().day_number();
-    std::string patternFileName = mSecurity->getSymbol() + "_L" + std::to_string(length) + "_D" + std::to_string(delay);
+    std::string patternFileName = mSecurity->getSymbol() + nameSuffix;
+    
+    // Add delay suffix for all patterns (D0 for exact/split patterns, D1+ for delayed patterns)
+    patternFileName += "_D" + std::to_string(delay);
 
     auto patternDesc = std::make_shared<PatternDescription>(
         patternFileName.c_str(), patternIndex, indexDate,
@@ -388,14 +434,10 @@ std::shared_ptr<mkc_timeseries::BackTester<DecimalType>>
 PatternDiscoveryTask<DecimalType>::runBacktest(PALPatternPtr pattern)
 {
     auto palStrategy = mkc_timeseries::makePalStrategy<DecimalType>(
-        pattern->getPatternDescription()->getFileName(),
-        pattern,
-        mSecurity);
+        pattern->getPatternDescription()->getFileName(), pattern, mSecurity);
 
     return mkc_timeseries::BackTesterFactory<DecimalType>::backTestStrategy(
-        palStrategy,
-        mTimeFrameDuration,
-        mkc_timeseries::DateRange(mBacktestStartTime, mBacktestEndTime));
+        palStrategy, mTimeFrameDuration, mkc_timeseries::DateRange(mBacktestStartTime, mBacktestEndTime));
 }
 
 template <class DecimalType>

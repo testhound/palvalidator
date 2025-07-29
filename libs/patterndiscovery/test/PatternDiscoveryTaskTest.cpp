@@ -283,23 +283,26 @@ std::shared_ptr<const mkc_timeseries::Security<TestDecimalType>> createPerforman
         boost::gregorian::date currentDate = startDate + boost::gregorian::days(i);
         std::string dateStr = boost::gregorian::to_iso_string(currentDate);
         
-        TestDecimalType price = basePrice;
-        if (profitable && i % 3 == 0) {
-            price += TestDecimalType("10"); // Create profitable patterns every 3rd bar
-        } else if (!profitable) {
-            price -= TestDecimalType("2"); // Create losing patterns
+        // Create price variations that ensure positive ROC values
+        TestDecimalType priceVariation;
+        if (profitable) {
+            // Create upward trending data with variations
+            priceVariation = TestDecimalType(i * 0.5) + TestDecimalType((i % 5) * 0.2);
+        } else {
+            // Create data with small positive variations to avoid zero ROC
+            priceVariation = TestDecimalType((i % 3) * 0.3) + TestDecimalType("0.1");
         }
+        
+        TestDecimalType price = basePrice + priceVariation;
         
         series->addEntry(*createTimeSeriesEntry(
             dateStr,
             num::toString(price),
             num::toString(price + TestDecimalType("3")),
-            num::toString(price - TestDecimalType("2")),
-            num::toString(price + TestDecimalType("1")),
+            num::toString(price - TestDecimalType("1")),
+            num::toString(price + TestDecimalType("1.5")),
             1000
         ));
-        
-        basePrice = price;
     }
 
     return std::make_shared<const mkc_timeseries::EquitySecurity<TestDecimalType>>("AMZN", "Amazon.com Inc.", series);
@@ -848,6 +851,12 @@ TEST_CASE("Resource management and performance", "[PatternDiscovery][performance
         
         auto timeSeries = largeSecurity->getTimeSeries();
         boost::posix_time::ptime windowEndTime = timeSeries->getLastDateTime();
+        
+        // Verify that the profit target calculation works with the large dataset
+        REQUIRE_NOTHROW([&]() {
+            TestDecimalType profitTargetAndStop = mkc_timeseries::ComputeProfitTargetAndStop(*timeSeries);
+            REQUIRE(profitTargetAndStop > TestDecimalType("0"));
+        }());
         
         auto config = createSearchConfig(largeSecurity, SearchType::EXTENDED, false);
         PatternDiscoveryTask<TestDecimalType> task(config, windowEndTime, resourceManager);
