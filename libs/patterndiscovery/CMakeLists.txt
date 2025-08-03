@@ -1,7 +1,16 @@
 set(LIB_NAME patterndiscovery)
 
-# Pattern Discovery Library is header-only, so we create an INTERFACE library
-add_library(${LIB_NAME} INTERFACE)
+# Pattern Discovery Library source files
+set(LIB_SOURCES
+    PatternTemplate.cpp
+    BinaryPatternTemplateDeserializer.cpp
+    BinaryPatternTemplateSerializer.cpp
+    PatternUniverseSerializer.cpp
+    PatternUniverseDeserializer.cpp
+)
+
+# Create the library
+add_library(${LIB_NAME} STATIC ${LIB_SOURCES})
 
 # Set target properties
 set_target_properties(${LIB_NAME} PROPERTIES
@@ -11,13 +20,13 @@ set_target_properties(${LIB_NAME} PROPERTIES
 
 # Include directories
 target_include_directories(${LIB_NAME}
-    INTERFACE
+    PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 # Link against required dependencies
 target_link_libraries(${LIB_NAME}
-    INTERFACE
+    PUBLIC
         timeseries
         priceactionlab
         backtesting
@@ -27,7 +36,7 @@ target_link_libraries(${LIB_NAME}
 )
 
 # Compiler-specific options for consumers
-target_compile_options(${LIB_NAME} INTERFACE
+target_compile_options(${LIB_NAME} PUBLIC
     $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>:
         -Wall -Wextra -Wpedantic -O3 -march=native
     >
