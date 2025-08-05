@@ -84,8 +84,8 @@ public:
 
         if (mLoadedTemplates.empty())
         {
-            // Log or handle the case where the universe is empty.
-            return palSystem;
+            throw ExhaustivePatternSearchEngineException(
+                "Pattern universe is empty. No patterns loaded from file: " + mPatternUniverseFilePath);
         }
 
         // 2. Define the work lambda to be executed in parallel for each template.

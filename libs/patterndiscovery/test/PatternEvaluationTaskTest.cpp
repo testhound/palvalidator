@@ -143,3 +143,33 @@ TEST_CASE("PatternEvaluationTask returns no patterns for an unprofitable templat
     // ASSERT
     REQUIRE(profitablePatterns.empty());
 }
+
+TEST_CASE("PatternEvaluationTask throws exception when pattern expression creation fails", "[PatternEvaluationTask]")
+{
+    // ARRANGE
+    auto resourceManager = std::make_unique<mkc_palast::AstResourceManager>();
+    PricePatternFactory<Decimal> patternFactory(*resourceManager);
+    auto mockSecurity = createMockSecurity(SeriesType::ProfitableLong);
+    auto config = createTestConfig(mockSecurity, 5);
+
+    // Create an invalid pattern template that should cause createPatternExpressionFromTemplate to fail
+    // This could be an empty template or one with invalid conditions
+    PatternTemplate invalidTemplate("InvalidTemplate");
+    // Note: An empty template (no conditions) might cause the factory to return null
+    
+    // ACT & ASSERT
+    PatternEvaluationTask<Decimal> task(config, invalidTemplate, patternFactory);
+    
+    // Verify that evaluateAndBacktest throws PatternEvaluationTaskException
+    REQUIRE_THROWS_AS(task.evaluateAndBacktest(), PatternEvaluationTaskException);
+    
+    // Verify the exception message contains the template name
+    try {
+        task.evaluateAndBacktest();
+        FAIL("Expected PatternEvaluationTaskException to be thrown");
+    } catch (const PatternEvaluationTaskException& e) {
+        std::string errorMsg(e.what());
+        REQUIRE(errorMsg.find("InvalidTemplate") != std::string::npos);
+        REQUIRE(errorMsg.find("Failed to create pattern expression") != std::string::npos);
+    }
+}

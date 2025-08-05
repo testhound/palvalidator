@@ -54,13 +54,19 @@ public:
     {
         std::vector<PALPatternPtr> profitablePatterns;
 
-        auto patternExpression = mPatternFactory.createPatternExpressionFromTemplate(mTemplate);
+        std::shared_ptr<PatternExpression> patternExpression;
+        try {
+            patternExpression = mPatternFactory.createPatternExpressionFromTemplate(mTemplate);
+        } catch (const PricePatternFactoryException& e) {
+            throw PatternEvaluationTaskException("Failed to create pattern expression from template: " + mTemplate.getName());
+        }
+        
         if (!patternExpression)
         {
-            return profitablePatterns;
+            throw PatternEvaluationTaskException("Failed to create pattern expression from template: " + mTemplate.getName());
         }
 
- DateRange backTestDates(mConfig.getBacktestStartTime(), mConfig.getBacktestEndTime());
+        DateRange backTestDates(mConfig.getBacktestStartTime(), mConfig.getBacktestEndTime());
  
         // --- Test 1: Long Direction ---
         auto longPattern = mPatternFactory.createLongPalPattern(patternExpression, mConfig, mTemplate.getName());

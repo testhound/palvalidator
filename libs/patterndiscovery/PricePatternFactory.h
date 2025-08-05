@@ -67,7 +67,8 @@ public:
     /**
      * @brief Creates a pattern expression from a pattern template.
      * @param patternTemplate The template containing the pattern conditions.
-     * @return Shared pointer to the created pattern expression, or nullptr if template is empty.
+     * @return Shared pointer to the created pattern expression.
+     * @throws PricePatternFactoryException if the template contains no conditions.
      */
     std::shared_ptr<PatternExpression> createPatternExpressionFromTemplate(
         const PatternTemplate& patternTemplate) const;
@@ -156,7 +157,7 @@ std::shared_ptr<PatternExpression> PricePatternFactory<DecimalType>::createPatte
 {
     const auto& conditions = patternTemplate.getConditions();
     if (conditions.empty())
-        return nullptr;
+        throw PricePatternFactoryException("Cannot create pattern expression from empty template: " + patternTemplate.getName());
 
     std::shared_ptr<PatternExpression> root = nullptr;
 

@@ -142,7 +142,7 @@ TEST_CASE("PricePatternFactory creates pattern expression from complex template"
     REQUIRE(rightExpr != nullptr);
 }
 
-TEST_CASE("PricePatternFactory returns nullptr for empty template", "[PricePatternFactory]")
+TEST_CASE("PricePatternFactory throws exception for empty template", "[PricePatternFactory]")
 {
     // ARRANGE
     auto resourceManager = std::make_unique<mkc_palast::AstResourceManager>();
@@ -151,11 +151,18 @@ TEST_CASE("PricePatternFactory returns nullptr for empty template", "[PricePatte
     PatternTemplate emptyTemplate("EmptyPattern");
     // Don't add any conditions
 
-    // ACT
-    auto expression = factory.createPatternExpressionFromTemplate(emptyTemplate);
-
-    // ASSERT
-    REQUIRE(expression == nullptr);
+    // ACT & ASSERT
+    REQUIRE_THROWS_AS(factory.createPatternExpressionFromTemplate(emptyTemplate), PricePatternFactoryException);
+    
+    // Verify the exception message contains the template name
+    try {
+        factory.createPatternExpressionFromTemplate(emptyTemplate);
+        FAIL("Expected PricePatternFactoryException to be thrown");
+    } catch (const PricePatternFactoryException& e) {
+        std::string errorMsg(e.what());
+        REQUIRE(errorMsg.find("EmptyPattern") != std::string::npos);
+        REQUIRE(errorMsg.find("empty template") != std::string::npos);
+    }
 }
 
 TEST_CASE("PricePatternFactory creates final pattern with performance metrics", "[PricePatternFactory]")
