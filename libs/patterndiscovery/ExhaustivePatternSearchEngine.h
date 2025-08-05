@@ -4,16 +4,17 @@
 
 #include <memory>
 #include <vector>
-#include <stdexcept>
 #include <string>
+#include <stdexcept>
 #include <mutex>
-
+#include <fstream>
 #include "SearchConfiguration.h"
-#include "PatternDiscoveryTask.h"
+#include "PatternEvaluationTask.h"
+#include "PatternTemplate.h"
+#include "PatternUniverseDeserializer.h"
+#include "PricePatternFactory.h"
 #include "AstResourceManager.h"
-#include "PalAst.h"                 // For PriceActionLabSystem
-#include "Security.h"
-#include "TimeSeries.h"
+#include "PalAst.h"
 #include "number.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
@@ -24,41 +25,37 @@
 class ExhaustivePatternSearchEngineException : public std::runtime_error
 {
 public:
-    /**
-     * @brief Constructs an ExhaustivePatternSearchEngineException.
-     * @param msg The error message.
-     */
     explicit ExhaustivePatternSearchEngineException(const std::string& msg)
         : std::runtime_error(msg) {}
 
-    /**
-     * @brief Destroys the ExhaustivePatternSearchEngineException object.
-     */
     ~ExhaustivePatternSearchEngineException() noexcept override = default;
 };
 
 /**
- * @brief Manages pattern discovery using a configurable execution policy.
+ * @brief Manages the high-throughput evaluation of a pre-generated pattern universe.
  *
- * This class orchestrates the search by iterating through time series data,
- * creating, and executing a PatternDiscoveryTask for each window. The execution
- * is handled by the provided Executor policy (e.g., SingleThreadExecutor or
- * ThreadPoolExecutor), allowing for both sequential and parallel processing.
+ * This refactored engine loads a collection of PatternTemplate objects from a
+ * binary file. It then uses a parallel execution policy to distribute the
+ * evaluation of each template, orchestrating the backtesting and collection
+ * of profitable patterns.
  *
  * @tparam DecimalType The decimal type for financial calculations.
- * @tparam Executor A policy class that defines the execution model.
+ * @tparam Executor A policy class that defines the execution model (e.g., ThreadPoolExecutor).
  */
 template <class DecimalType, typename Executor = concurrency::ThreadPoolExecutor<>>
 class ExhaustivePatternSearchEngine
 {
 public:
     /**
-     * @brief Constructs an ExhaustivePatternSearchEngine.
-     * @param config The search configuration that defines all parameters for the run.
+     * @brief Constructs the pattern evaluation engine.
+     * @param config The search configuration defining all backtesting parameters.
+     * @param patternUniverseFilePath The full path to the binary pattern universe file.
      */
     explicit ExhaustivePatternSearchEngine(
-        const SearchConfiguration<DecimalType>& config)
+        const SearchConfiguration<DecimalType>& config,
+        const std::string& patternUniverseFilePath)
     : mConfig(config),
+      mPatternUniverseFilePath(patternUniverseFilePath),
       mAstResourceManager(std::make_unique<mkc_palast::AstResourceManager>())
     {
     }
@@ -69,82 +66,91 @@ public:
     ~ExhaustivePatternSearchEngine() noexcept = default;
 
     /**
-     * @brief Executes the pattern search using the configured Executor policy.
+     * @brief Executes the parallel evaluation of the loaded pattern universe.
      *
-     * Iterates through the time series, submitting a PatternDiscoveryTask for each
-     * time step to the executor. It aggregates all profitable patterns found into
-     * a single system in a thread-safe manner.
+     * This method performs three main steps:
+     * 1. Opens and deserializes the pattern universe file into memory.
+     * 2. Defines a work lambda that creates and runs a PatternEvaluationTask for one template.
+     * 3. Uses the configured Executor policy to run the lambda in parallel for all templates.
      *
-     * @return A shared pointer to a PriceActionLabSystem containing all profitable patterns.
+     * @return A shared pointer to a PriceActionLabSystem containing all profitable patterns found.
      */
     std::shared_ptr<PriceActionLabSystem> run()
     {
-        auto security = mConfig.getSecurity();
-        const auto& timeSeries = security->getTimeSeries();
-        
-        // Correctly instantiate PriceActionLabSystem using its default constructor.
+        // 1. Load the pattern universe from the specified file.
+        loadPatternUniverse();
+
         auto palSystem = std::make_shared<PriceActionLabSystem>();
 
-        // Collect valid window end times to iterate over
-        std::vector<boost::posix_time::ptime> windowEndTimes;
-        auto searchLoopStartTime = mConfig.getBacktestStartTime();
-        auto searchLoopEndTime = mConfig.getBacktestEndTime();
-
-        // Determine the maximum lookback needed based on search type
-        auto patternLengthRange = mConfig.getPatternLengthRange();
-        unsigned int maxLookback = patternLengthRange.second; // Maximum pattern length
-        
-        // Collect all dates first
-        std::vector<boost::posix_time::ptime> allDates;
-        for (auto it = timeSeries->beginSortedAccess(); it != timeSeries->endSortedAccess(); ++it)
+        if (mLoadedTemplates.empty())
         {
-            const auto& dt = it->getDateTime();
-            if (dt >= searchLoopStartTime && dt <= searchLoopEndTime)
-            {
-                allDates.push_back(dt);
-            }
-        }
-        
-        // Skip the first maxLookback dates to ensure patterns have sufficient historical context
-        if (allDates.size() > maxLookback)
-        {
-            windowEndTimes.assign(allDates.begin() + maxLookback, allDates.end());
+            // Log or handle the case where the universe is empty.
+            return palSystem;
         }
 
-        if (windowEndTimes.empty())
-        {
-            return palSystem; // No data in the specified range
-        }
+        // 2. Define the work lambda to be executed in parallel for each template.
+        auto work = [this, &palSystem](uint32_t i) {
+            const auto& currentTemplate = mLoadedTemplates[i];
 
-        // The work lambda to be executed for each time window
-        auto work = [this, &palSystem, &windowEndTimes](uint32_t i) {
-            boost::posix_time::ptime windowEndTime = windowEndTimes[i];
+            // Create a pattern factory for this task
+            PricePatternFactory<DecimalType> patternFactory(*mAstResourceManager);
 
-            // Create and execute the task
-            PatternDiscoveryTask<DecimalType> task(mConfig, windowEndTime, *mAstResourceManager);
-            auto profitablePatternsForWindow = task.findPatterns();
+            // Create and execute the evaluation task for the current template.
+            PatternEvaluationTask<DecimalType> task(mConfig, currentTemplate, patternFactory);
 
-            // Aggregate results in a thread-safe manner
-            if (!profitablePatternsForWindow.empty())
+            // The task now returns a vector of profitable patterns (0, 1, or 2).
+            auto profitablePatterns = task.evaluateAndBacktest();
+
+            // Aggregate any and all profitable results in a thread-safe manner.
+            if (!profitablePatterns.empty())
             {
                 std::lock_guard<std::mutex> guard(mResultsMutex);
-                for (const auto& patternAndBacktesterPair : profitablePatternsForWindow)
+                for (const auto& profitablePattern : profitablePatterns)
                 {
-                    palSystem->addPattern(patternAndBacktesterPair.first);
+                    palSystem->addPattern(profitablePattern);
                 }
             }
         };
 
-        // Execute using the chosen policy
+        // 3. Execute the evaluation in parallel using the chosen policy.
         Executor executor{};
-        concurrency::parallel_for(static_cast<uint32_t>(windowEndTimes.size()), executor, work);
+        concurrency::parallel_for(static_cast<uint32_t>(mLoadedTemplates.size()), executor, work);
 
         return palSystem;
     }
 
 private:
+    /**
+     * @brief Opens and deserializes the binary pattern universe file into the
+     * mLoadedTemplates member variable.
+     */
+    void loadPatternUniverse()
+    {
+        std::ifstream universeFile(mPatternUniverseFilePath, std::ios::binary);
+        if (!universeFile.is_open())
+        {
+            throw ExhaustivePatternSearchEngineException(
+                "Could not open pattern universe file: " + mPatternUniverseFilePath);
+        }
+
+        try
+        {
+            PatternUniverseDeserializer deserializer;
+            mLoadedTemplates = deserializer.deserialize(universeFile);
+        }
+        catch (const std::runtime_error& e)
+        {
+            throw ExhaustivePatternSearchEngineException(
+                "Failed to deserialize pattern universe file: " + std::string(e.what()));
+        }
+    }
+
+private:
     const SearchConfiguration<DecimalType>& mConfig;
+    std::string mPatternUniverseFilePath;
+    std::vector<PatternTemplate> mLoadedTemplates;
     std::unique_ptr<mkc_palast::AstResourceManager> mAstResourceManager;
     std::mutex mResultsMutex;
 };
-#endif
+
+#endif // EXHAUSTIVE_PATTERN_SEARCH_ENGINE_H
