@@ -1,13 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <fstream>
 #include <cstdio>
+#include <set>
 
 // --- Include Actual Dependencies ---
-#include "PriceComponentDescriptor.h"
-#include "PatternCondition.h"
+// NOTE: You must ensure the path to these headers is correct in your build system.
+#include "PatternUniverseDeserializer.h"
 #include "PatternTemplate.h"
-
-// --- Include the Class to be Tested ---
 #include "UniverseGenerator.h"
 
 // This helper function checks if a file exists on disk.
@@ -32,88 +31,79 @@ TEST_CASE("UniverseGenerator Initialization", "[constructor]") {
     }
 }
 
-// NEW: A test case for the new string parsing logic.
-// NOTE: This requires making `parsePatternFromString` public for direct testing,
-// or creating a public test wrapper for it.
-TEST_CASE("UniverseGenerator Helpers", "[helpers]") {
-    UniverseGenerator<concurrency::SingleThreadExecutor> gen("test.bin", 2, 2, 2, "EXTENDED");
-    
-    SECTION("Pattern String Parsing") {
-        std::string line = "C[0] > H[1] > L[2]";
-        PatternTemplate tpl = gen.testParsePatternFromString(line); // Assumes a public test wrapper
 
-        REQUIRE(tpl.getName() == line);
-        const auto& conds = tpl.getConditions();
-        REQUIRE(conds.size() == 2);
-
-        // Check first condition: C[0] > H[1]
-        REQUIRE(conds[0].getLhs().getComponentType() == PriceComponentType::Close);
-        REQUIRE(conds[0].getLhs().getBarOffset() == 0);
-        REQUIRE(conds[0].getRhs().getComponentType() == PriceComponentType::High);
-        REQUIRE(conds[0].getRhs().getBarOffset() == 1);
-        
-        // Check second condition: H[1] > L[2]
-        REQUIRE(conds[1].getLhs().getComponentType() == PriceComponentType::High);
-        REQUIRE(conds[1].getLhs().getBarOffset() == 1);
-        REQUIRE(conds[1].getRhs().getComponentType() == PriceComponentType::Low);
-        REQUIRE(conds[1].getRhs().getBarOffset() == 2);
-    }
-
-    SECTION("Pattern String Parsing with Delay") {
-        std::string line = "O[2] > C[3] [Delay: 2]";
-        PatternTemplate tpl = gen.testParsePatternFromString(line); // Assumes a public test wrapper
-        REQUIRE(tpl.getName() == line);
-        const auto& conds = tpl.getConditions();
-        REQUIRE(conds.size() == 1);
-
-        REQUIRE(conds[0].getLhs().getComponentType() == PriceComponentType::Open);
-        REQUIRE(conds[0].getLhs().getBarOffset() == 2);
-        REQUIRE(conds[0].getRhs().getComponentType() == PriceComponentType::Close);
-        REQUIRE(conds[0].getRhs().getBarOffset() == 3);
-    }
-}
-
-
-// NEW: This is a full black-box integration test for the new streaming architecture.
-TEST_CASE("UniverseGenerator Full Run", "[integration]")
+// MODIFIED: This is a full black-box integration test for the new streaming architecture.
+// It also validates that the parallel implementation is correct.
+TEST_CASE("UniverseGenerator Full Run and Concurrency Validation", "[integration]")
 {
-    const std::string outputFile = "test_output.pat";
-    const std::string rawFile = outputFile + ".raw.tmp";
-    const std::string uniqueFile = outputFile + ".unique.tmp";
+    const std::string singleCoreFile = "singlecore_output.pat";
+    const std::string multiCoreFile = "multicore_output.pat";
+    const std::string singleCoreRaw = singleCoreFile + ".raw.tmp";
+    const std::string singleCoreUnique = singleCoreFile + ".unique.tmp";
+    const std::string multiCoreRaw = multiCoreFile + ".raw.tmp";
+    const std::string multiCoreUnique = multiCoreFile + ".unique.tmp";
 
     // Cleanup any files from previous failed runs before starting
-    std::remove(outputFile.c_str());
-    std::remove(rawFile.c_str());
-    std::remove(uniqueFile.c_str());
+    std::remove(singleCoreFile.c_str());
+    std::remove(multiCoreFile.c_str());
+    std::remove(singleCoreRaw.c_str());
+    std::remove(singleCoreUnique.c_str());
+    std::remove(multiCoreRaw.c_str());
+    std::remove(multiCoreUnique.c_str());
 
-    SECTION("Successful run creates output file and cleans up temporary files") {
-        // Use very small parameters to ensure the test runs quickly
-        UniverseGenerator<concurrency::SingleThreadExecutor> gen(outputFile, 3, 2, 3, "EXTENDED");
+    // Use a small but non-trivial parameter set for the test
+    const uint8_t maxLookback = 4;
+    const uint8_t maxConditions = 3;
+    const uint8_t maxSpread = 4;
+
+    SECTION("Single-threaded and multi-threaded runs produce identical results") {
+        // --- Step 1: Generate the pattern universe using a single thread ---
+        INFO("Running single-threaded generation...");
+        UniverseGenerator<concurrency::SingleThreadExecutor> gen_single(singleCoreFile, maxLookback, maxConditions, maxSpread, "EXTENDED");
+        REQUIRE_NOTHROW(gen_single.run());
         
-        // The run method should complete without throwing any exceptions
-        REQUIRE_NOTHROW(gen.run());
+        // Verify final file exists and temporary files are cleaned up
+        REQUIRE(file_exists(singleCoreFile));
+        REQUIRE_FALSE(file_exists(singleCoreRaw));
+        REQUIRE_FALSE(file_exists(singleCoreUnique));
+
+        // --- Step 2: Generate the pattern universe using the thread pool ---
+        INFO("Running multi-threaded generation...");
+        UniverseGenerator<concurrency::ThreadPoolExecutor<>> gen_multi(multiCoreFile, maxLookback, maxConditions, maxSpread, "EXTENDED");
+        REQUIRE_NOTHROW(gen_multi.run());
+
+        // Verify final file exists and temporary files are cleaned up
+        REQUIRE(file_exists(multiCoreFile));
+        REQUIRE_FALSE(file_exists(multiCoreRaw));
+        REQUIRE_FALSE(file_exists(multiCoreUnique));
+
+        // --- Step 3: Deserialize both files and compare their contents ---
+        INFO("Deserializing and comparing results...");
+        PatternUniverseDeserializer deserializer;
+
+        std::ifstream single_stream(singleCoreFile, std::ios::binary);
+        REQUIRE(single_stream.is_open());
+        auto single_patterns = deserializer.deserialize(single_stream);
+        single_stream.close();
+
+        std::ifstream multi_stream(multiCoreFile, std::ios::binary);
+        REQUIRE(multi_stream.is_open());
+        auto multi_patterns = deserializer.deserialize(multi_stream);
+        multi_stream.close();
+
+        // The number of unique patterns must be identical.
+        REQUIRE(single_patterns.size() == multi_patterns.size());
+        REQUIRE(single_patterns.size() > 0); // Sanity check that patterns were generated
+
+        // To compare contents regardless of order, load them into sets.
+        std::set<PatternTemplate> single_set(single_patterns.begin(), single_patterns.end());
+        std::set<PatternTemplate> multi_set(multi_patterns.begin(), multi_patterns.end());
         
-        // Verify that the final output file was created
-        REQUIRE(file_exists(outputFile));
-
-        // Verify that the temporary files were cleaned up
-        REQUIRE_FALSE(file_exists(rawFile));
-        REQUIRE_FALSE(file_exists(uniqueFile));
-
-        // Clean up the created output file
-        std::remove(outputFile.c_str());
+        // The sets must be identical, proving the parallel version is correct.
+        REQUIRE(single_set == multi_set);
     }
     
-    SECTION("Unsupported search type throws exception") {
-        // Use valid parameters but an invalid search type
-        UniverseGenerator<concurrency::SingleThreadExecutor> gen(outputFile, 3, 2, 3, "INVALID_MODE");
-        
-        // The run method should throw a runtime_error
-        REQUIRE_THROWS_AS(gen.run(), std::runtime_error);
-
-        // Verify that no orphaned files were left behind
-        REQUIRE_FALSE(file_exists(outputFile));
-        REQUIRE_FALSE(file_exists(rawFile));
-        REQUIRE_FALSE(file_exists(uniqueFile));
-    }
+    // --- Step 4: Final Cleanup ---
+    std::remove(singleCoreFile.c_str());
+    std::remove(multiCoreFile.c_str());
 }

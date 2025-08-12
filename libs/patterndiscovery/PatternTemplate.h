@@ -67,6 +67,13 @@ public:
      */
     bool operator!=(const PatternTemplate& other) const;
 
+    /**
+     * @brief Less-than operator for deterministic ordering (required for std::set).
+     * @param other The object to compare against.
+     * @return True if this pattern should be ordered before the other.
+     */
+    bool operator<(const PatternTemplate& other) const;
+
 private:
     /**
      * @brief Recalculates metadata like maxBarOffset after a condition is added.

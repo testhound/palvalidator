@@ -33,4 +33,26 @@ namespace concurrency {
       }
     exec.waitAll(futures);
   }
+
+  template<typename Executor, typename Container, typename Body>
+  void parallel_for_each(Executor& exec, const Container& container, Body body) {
+    if (container.empty()) return;
+
+    const uint32_t total = container.size();
+    const unsigned numTasks = std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : 2;
+    const uint32_t chunkSize = (total + numTasks - 1) / numTasks;
+
+    std::vector<std::future<void>> futures;
+    for (uint32_t start = 0; start < total; start += chunkSize) {
+      uint32_t end = std::min(total, start + chunkSize);
+      futures.emplace_back(
+        exec.submit([&, start, end]() {
+          for (uint32_t p = start; p < end; ++p) {
+            body(container[p]);
+          }
+        })
+      );
+    }
+    exec.waitAll(futures);
+  }
 }

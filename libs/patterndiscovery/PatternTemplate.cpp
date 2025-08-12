@@ -94,9 +94,8 @@ void PatternTemplate::recalculateMetadata()
 }
 
 bool PatternTemplate::operator==(const PatternTemplate& other) const {
-    // For two templates to be logically equal, they must have the same name
-    // and the same set of conditions, regardless of order.
-
+    // For consistency with operator<, we need deterministic comparison
+    // First compare by name
     if (m_name != other.m_name) {
         return false;
     }
@@ -105,14 +104,106 @@ bool PatternTemplate::operator==(const PatternTemplate& other) const {
         return false;
     }
 
-    // Use std::is_permutation for an order-agnostic comparison of the conditions.
-    // This algorithm checks if one collection is a permutation of the other.
-    // It uses the underlying PatternCondition::operator== for comparison.
-    return std::is_permutation(m_conditions.begin(), m_conditions.end(), other.m_conditions.begin());
+    // Create sorted copies for deterministic comparison (same logic as operator<)
+    auto lhsSorted = m_conditions;
+    auto rhsSorted = other.m_conditions;
+    
+    // Sort conditions by their components for deterministic ordering
+    auto conditionComparator = [](const PatternCondition& a, const PatternCondition& b) {
+        // Compare LHS component first
+        if (a.getLhs().getBarOffset() != b.getLhs().getBarOffset()) {
+            return a.getLhs().getBarOffset() < b.getLhs().getBarOffset();
+        }
+        if (a.getLhs().getComponentType() != b.getLhs().getComponentType()) {
+            return a.getLhs().getComponentType() < b.getLhs().getComponentType();
+        }
+        
+        // Then compare RHS component
+        if (a.getRhs().getBarOffset() != b.getRhs().getBarOffset()) {
+            return a.getRhs().getBarOffset() < b.getRhs().getBarOffset();
+        }
+        if (a.getRhs().getComponentType() != b.getRhs().getComponentType()) {
+            return a.getRhs().getComponentType() < b.getRhs().getComponentType();
+        }
+        
+        // Finally compare operator
+        return a.getOperator() < b.getOperator();
+    };
+    
+    std::sort(lhsSorted.begin(), lhsSorted.end(), conditionComparator);
+    std::sort(rhsSorted.begin(), rhsSorted.end(), conditionComparator);
+    
+    // Compare sorted conditions element by element
+    return lhsSorted == rhsSorted;
 }
 
 bool PatternTemplate::operator!=(const PatternTemplate& other) const {
     return !(*this == other);
+}
+
+bool PatternTemplate::operator<(const PatternTemplate& other) const {
+    // First compare by number of conditions
+    if (m_conditions.size() != other.m_conditions.size()) {
+        return m_conditions.size() < other.m_conditions.size();
+    }
+    
+    // Create sorted vectors of conditions for deterministic comparison
+    auto lhsSorted = m_conditions;
+    auto rhsSorted = other.m_conditions;
+    
+    // Sort conditions by their components for deterministic ordering
+    auto conditionComparator = [](const PatternCondition& a, const PatternCondition& b) {
+        // Compare LHS components first
+        if (a.getLhs().getBarOffset() != b.getLhs().getBarOffset()) {
+            return a.getLhs().getBarOffset() < b.getLhs().getBarOffset();
+        }
+        if (a.getLhs().getComponentType() != b.getLhs().getComponentType()) {
+            return a.getLhs().getComponentType() < b.getLhs().getComponentType();
+        }
+        
+        // Then compare RHS components
+        if (a.getRhs().getBarOffset() != b.getRhs().getBarOffset()) {
+            return a.getRhs().getBarOffset() < b.getRhs().getBarOffset();
+        }
+        if (a.getRhs().getComponentType() != b.getRhs().getComponentType()) {
+            return a.getRhs().getComponentType() < b.getRhs().getComponentType();
+        }
+        
+        // Finally compare operators
+        return a.getOperator() < b.getOperator();
+    };
+    
+    std::sort(lhsSorted.begin(), lhsSorted.end(), conditionComparator);
+    std::sort(rhsSorted.begin(), rhsSorted.end(), conditionComparator);
+    
+    // Lexicographic comparison of sorted conditions
+    for (size_t i = 0; i < lhsSorted.size(); ++i) {
+        const auto& lhsCond = lhsSorted[i];
+        const auto& rhsCond = rhsSorted[i];
+        
+        // Compare LHS components
+        if (lhsCond.getLhs().getBarOffset() != rhsCond.getLhs().getBarOffset()) {
+            return lhsCond.getLhs().getBarOffset() < rhsCond.getLhs().getBarOffset();
+        }
+        if (lhsCond.getLhs().getComponentType() != rhsCond.getLhs().getComponentType()) {
+            return lhsCond.getLhs().getComponentType() < rhsCond.getLhs().getComponentType();
+        }
+        
+        // Compare RHS components
+        if (lhsCond.getRhs().getBarOffset() != rhsCond.getRhs().getBarOffset()) {
+            return lhsCond.getRhs().getBarOffset() < rhsCond.getRhs().getBarOffset();
+        }
+        if (lhsCond.getRhs().getComponentType() != rhsCond.getRhs().getComponentType()) {
+            return lhsCond.getRhs().getComponentType() < rhsCond.getRhs().getComponentType();
+        }
+        
+        // Compare operators
+        if (lhsCond.getOperator() != rhsCond.getOperator()) {
+            return lhsCond.getOperator() < rhsCond.getOperator();
+        }
+    }
+    
+    return false; // They are equal
 }
 
 

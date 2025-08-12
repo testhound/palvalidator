@@ -1,0 +1,36 @@
+# Search Algorithm Analysis Report
+Generated: 2025-08-10 11:17:36
+Database: pal_analysis.db
+
+{
+  "algorithmInsights": {
+    "curatedGroups": "PAL uses pre-defined bar combinations, not brute force",
+    "componentConstraints": "Patterns grouped by component types (Close-only, Mixed, Full OHLC)",
+    "searchSpaceReduction": "Length limits, semantic validation, transitive chaining"
+  },
+  "patternStructureAnalysis": {
+    "totalPatterns": 148085,
+    "chainedPatterns": 28717,
+    "chainingPercentage": 19.3922,
+    "barSpreadDistribution": {
+      "1": 3154,
+      "2": 18172,
+      "3": 14658,
+      "4": 17458,
+      "5": 15967,
+      "6": 16559,
+      "7": 24203,
+      "8": 37914
+    },
+    "maxOffsetDistribution": {
+      "1": 3154,
+      "2": 18172,
+      "3": 14658,
+      "4": 17458,
+      "5": 15967,
+      "6": 16559,
+      "7": 24203,
+      "8": 37914
+    }
+  }
+}

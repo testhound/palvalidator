@@ -1,0 +1,61 @@
+# Pattern Structure Analysis Report
+Generated: 2025-08-10 11:17:36
+Database: pal_analysis.db
+
+{
+  "patternStructureAnalysis": {
+    "totalPatterns": 148085,
+    "totalIndices": 525,
+    "complexityDistribution": {
+      "2": 3,
+      "3": 470,
+      "4": 8427,
+      "5": 42797,
+      "6": 27201,
+      "7": 54265,
+      "8": 4499,
+      "9": 10423
+    },
+    "patternLengthDistribution": {
+      "2": 3154,
+      "3": 18172,
+      "4": 14658,
+      "5": 17458,
+      "6": 15967,
+      "7": 16559,
+      "8": 24203,
+      "9": 37914
+    },
+    "componentCombinations": {
+      "CLOSE": 22695,
+      "CLOSE+HIGH": 5244,
+      "CLOSE+HIGH+LOW": 30527,
+      "CLOSE+HIGH+LOW+OPEN": 9826,
+      "CLOSE+LOW": 5247,
+      "CLOSE+OPEN": 27457,
+      "HIGH": 1071,
+      "HIGH+LOW": 44978,
+      "LOW": 1040
+    },
+    "chainingAnalysis": {
+      "chainedPatterns": 28717,
+      "chainingPercentage": 19.3922
+    },
+    "indexGroupAnalysis": {
+      "Deep": {
+        "totalIndices": 414,
+        "indexRange": {
+          "min": 108,
+          "max": 545
+        }
+      },
+      "Extended": {
+        "totalIndices": 111,
+        "indexRange": {
+          "min": 1,
+          "max": 115
+        }
+      }
+    }
+  }
+}

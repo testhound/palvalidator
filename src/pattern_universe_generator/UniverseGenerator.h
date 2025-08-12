@@ -4,6 +4,7 @@
 #include "BinaryPatternTemplateSerializer.h"
 #include "PatternUniverseSerializer.h"
 #include "ParallelExecutors.h"
+#include "ParallelFor.h"
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -19,7 +20,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-// --- Helper Functions and Operators (Unchanged) ---
+// --- Helper Functions and Operators ---
 static std::string componentTypeToString(PriceComponentType type) {
     switch (type) {
         case PriceComponentType::Open:  return "O";
@@ -41,7 +42,7 @@ inline bool operator<(const PriceComponentDescriptor& lhs, const PriceComponentD
     return lhs.getComponentType() < rhs.getComponentType();
 }
 
-// --- Hashing Infrastructure (Unchanged) ---
+// --- Hashing Infrastructure ---
 inline void hash_combine(unsigned long long &seed, unsigned long long value) {
     seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
 }
@@ -83,10 +84,9 @@ namespace std {
     };
 }
 
-
 /**
  * @class UniverseGenerator
- * @brief Orchestrates the generation of the pattern universe using a memory-efficient streaming architecture.
+ * @brief Orchestrates the parallel generation of the pattern universe using a memory-efficient, group-based streaming architecture.
  */
 template <typename Executor = concurrency::ThreadPoolExecutor<>>
 class UniverseGenerator
@@ -102,18 +102,13 @@ public:
 
     void run();
 
-    PatternTemplate testParsePatternFromString(const std::string& line) const {
-        return parsePatternFromString(line);
-    }
-
 private:
     struct GenerationTask;
 
     void generateAndStreamPatterns(const GenerationTask& task, std::ofstream& outStream);
     void generateBarCombinationsRecursive(size_t, size_t, const std::vector<uint8_t>&, std::vector<uint8_t>&, std::vector<std::vector<uint8_t>>&) const;
-    void generateComponentCombinationsRecursive(size_t, size_t, const std::vector<PriceComponentDescriptor>&, std::vector<PriceComponentDescriptor>&, std::vector<std::vector<PriceComponentDescriptor>>&) const;
     bool isValidCombination(const std::vector<PatternCondition>&) const;
-    std::string generatePatternString(const std::vector<PriceComponentDescriptor>& permutation) const;
+    std::string generatePatternString(const std::vector<PriceComponentDescriptor>& permutation, uint8_t delay) const;
     PatternTemplate parsePatternFromString(const std::string& line) const;
 
     std::string m_outputFile;
@@ -121,8 +116,12 @@ private:
     uint8_t m_maxConditions;
     uint8_t m_maxSpread;
     std::string m_searchType;
-    mutable std::mutex m_writeMutex;
+
     BinaryPatternTemplateSerializer m_patternSerializer;
+    std::map<int, std::vector<std::vector<uint8_t>>> m_curatedGroups;
+
+    Executor m_executor;
+    mutable std::mutex m_writeMutex;
 };
 
 // =================================================================================
@@ -133,39 +132,45 @@ template <typename Executor>
 struct UniverseGenerator<Executor>::GenerationTask {
     std::string name;
     std::vector<PriceComponentType> componentTypes;
-    uint8_t minPatternLength;
-    uint8_t maxPatternLength;
+    uint8_t minPatternBars;
+    uint8_t maxPatternBars;
 };
 
 template <typename Executor>
 UniverseGenerator<Executor>::UniverseGenerator(
     const std::string& outputFile, uint8_t maxLookback, uint8_t maxConditions, uint8_t maxSpread, const std::string& searchType
-) : m_outputFile(outputFile), m_maxLookback(maxLookback), m_maxConditions(maxConditions), m_maxSpread(maxSpread), m_searchType(searchType)
+) : m_outputFile(outputFile), m_maxLookback(maxLookback), m_maxConditions(maxConditions), m_maxSpread(maxSpread), m_searchType(searchType), m_executor()
 {
     if (outputFile.empty()) throw std::invalid_argument("Output file path cannot be empty.");
     if (maxLookback == 0 || maxConditions == 0) throw std::invalid_argument("Max lookback and max conditions must be greater than zero.");
+
+    m_curatedGroups[2] = { {0, 1}, {0, 2} };
+    m_curatedGroups[3] = { {0, 1, 2}, {0, 1, 3}, {1, 2, 3}, {0, 2, 4}, {0, 3, 6}, {1, 3, 5}, {2, 4, 6} };
+    m_curatedGroups[4] = { {0, 1, 2, 3}, {2, 3, 4, 5}, {0, 2, 4, 5}, {2, 4, 6, 8}, {0, 2, 3, 5}, {1, 3, 5, 7} };
+    m_curatedGroups[5] = { {0, 1, 2, 3, 4}, {1, 2, 3, 4, 5}, {0, 1, 2, 4, 5}, {0, 1, 3, 4, 5}, {0, 1, 2, 3, 5}, {0, 1, 2, 4, 6}, {0, 2, 4, 5, 6}, {0, 2, 4, 6, 7}, {0, 2, 4, 6, 8}, {1, 3, 5, 6, 7}, {1, 3, 5, 7, 8}, {1, 3, 5, 7, 9}, {2, 4, 6, 8, 9}, {2, 4, 6, 8, 10} };
+    m_curatedGroups[6] = { {0, 1, 2, 3, 4, 5}, {0, 1, 2, 3, 4, 6}, {0, 1, 2, 3, 5, 6}, {0, 1, 2, 4, 5, 6}, {0, 1, 3, 4, 5, 6}, {0, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}, {0, 1, 2, 6, 7, 8}, {0, 1, 3, 6, 7, 9}, {0, 2, 4, 6, 8, 10}, {1, 3, 5, 7, 9, 11}, {2, 4, 6, 8, 10, 12} };
+    m_curatedGroups[7] = { {0, 1, 2, 3, 4, 5, 6}, {0, 1, 2, 3, 4, 5, 7}, {0, 1, 2, 3, 4, 6, 7}, {0, 1, 2, 3, 5, 6, 7}, {0, 1, 2, 4, 5, 6, 7}, {0, 1, 3, 4, 5, 6, 7}, {0, 2, 3, 4, 5, 6, 7}, {1, 2, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 7, 8, 9}, {0, 1, 2, 4, 7, 8, 10}, {0, 1, 3, 6, 7, 9, 10}, {0, 2, 4, 6, 8, 10, 12}, {1, 3, 5, 7, 9, 11, 13} };
+    m_curatedGroups[8] = { {0, 1, 2, 3, 4, 5, 6, 7} };
+    m_curatedGroups[9] = { {0, 1, 2, 3, 4, 5, 6, 7, 8} };
 }
 
 template <typename Executor>
 void UniverseGenerator<Executor>::run()
 {
-    // === PHASE 1: GENERATE RAW PATTERNS TO TEXT FILE ===
     const std::string rawFile = m_outputFile + ".raw.tmp";
     std::cout << "\n--- Phase 1: Generating raw patterns to " << rawFile << " ---" << std::endl;
     
-    std::vector<GenerationTask> tasks;
-    // --- MODIFIED: Restored proper search type validation ---
-    if (m_searchType == "DEEP") {
-        tasks = {{"Close", {PriceComponentType::Close}, 3, 9}, {"Mixed", {PriceComponentType::Open, PriceComponentType::High, PriceComponentType::Low, PriceComponentType::Close}, 2, 9}, {"HighLow", {PriceComponentType::High, PriceComponentType::Low}, 2, 9}, {"OpenClose", {PriceComponentType::Open, PriceComponentType::Close}, 2, 9}};
-    } else if (m_searchType == "EXTENDED") {
-        tasks = {{"Close", {PriceComponentType::Close}, 2, 6}, {"Mixed", {PriceComponentType::Open, PriceComponentType::High, PriceComponentType::Low, PriceComponentType::Close}, 2, 6}, {"HighLow", {PriceComponentType::High, PriceComponentType::Low}, 2, 6}, {"OpenClose", {PriceComponentType::Open, PriceComponentType::Close}, 2, 6}};
-    } else {
-        // This was the missing block that caused the test to fail.
-        throw std::runtime_error("Unsupported search type: " + m_searchType);
-    }
-
     std::ofstream rawStream(rawFile);
     if (!rawStream) throw std::runtime_error("Failed to open temporary raw file for writing.");
+
+    std::vector<GenerationTask> tasks;
+    if (m_searchType == "DEEP") {
+        tasks = { {"Close", {PriceComponentType::Close}, 3, 9}, {"HighLow", {PriceComponentType::High, PriceComponentType::Low}, 2, 5}, {"OpenClose", {PriceComponentType::Open, PriceComponentType::Close}, 2, 5}, {"Mixed", {PriceComponentType::Open, PriceComponentType::High, PriceComponentType::Low, PriceComponentType::Close}, 2, 4} };
+    } else if (m_searchType == "EXTENDED") {
+        tasks = {{"Close", {PriceComponentType::Close}, 2, 6}, {"Mixed", {PriceComponentType::Open, PriceComponentType::High, PriceComponentType::Low, PriceComponentType::Close}, 2, 4}, {"HighLow", {PriceComponentType::High, PriceComponentType::Low}, 2, 3}, {"OpenClose", {PriceComponentType::Open, PriceComponentType::Close}, 2, 3}};
+    } else {
+        throw std::runtime_error("Unsupported search type: " + m_searchType);
+    }
 
     for (const auto& task : tasks) {
         std::cout << "\n--- Starting Generation Task: " << task.name << " ---" << std::endl;
@@ -174,7 +179,6 @@ void UniverseGenerator<Executor>::run()
     rawStream.close();
     std::cout << "\n--- Phase 1 Complete. ---" << std::endl;
 
-    // === PHASE 2: DE-DUPLICATE VIA EXTERNAL SORT ===
     const std::string uniqueFile = m_outputFile + ".unique.tmp";
     std::cout << "\n--- Phase 2: De-duplicating patterns using external sort... ---" << std::endl;
     
@@ -184,7 +188,6 @@ void UniverseGenerator<Executor>::run()
     
     std::cout << "  - De-duplication complete." << std::endl;
 
-    // === PHASE 3: SERIALIZE UNIQUE PATTERNS TO BINARY FILE ===
     std::cout << "\n--- Phase 3: Serializing unique patterns to " << m_outputFile << " ---" << std::endl;
     
     std::ifstream uniqueStream(uniqueFile);
@@ -213,7 +216,6 @@ void UniverseGenerator<Executor>::run()
     binaryOutStream.close();
     std::cout << "  - Serialized " << patternCount << " unique patterns." << std::endl;
 
-    // === PHASE 4: CLEANUP ===
     std::cout << "\n--- Phase 4: Cleaning up temporary files... ---" << std::endl;
     std::remove(rawFile.c_str());
     std::remove(uniqueFile.c_str());
@@ -222,54 +224,44 @@ void UniverseGenerator<Executor>::run()
     std::cout << "\nUniverse Generation Completed Successfully." << std::endl;
 }
 
+// MODIFIED: Implements the final "paired-component" and "subset-of-group" heuristic.
 template <typename Executor>
 void UniverseGenerator<Executor>::generateAndStreamPatterns(const GenerationTask& task, std::ofstream& outStream)
 {
-    std::unordered_set<unsigned long long> seenHashesInTask;
-    std::vector<uint8_t> allBarOffsets;
-    for (uint8_t i = 0; i <= m_maxLookback; ++i) allBarOffsets.push_back(i);
+    uint8_t maxSearchDepth = m_searchType == "DEEP" ? 9 : 6;
 
-    const uint8_t minUniqueBars = 2;
-    const uint8_t maxUniqueBars = 8; 
-
-    for (uint8_t numBars = minUniqueBars; numBars <= maxUniqueBars; ++numBars) {
-        if (numBars > allBarOffsets.size()) break;
-
-        std::cout << "  - Searching patterns with " << static_cast<int>(numBars) << " unique bars..." << std::endl;
+    for (uint8_t numBarsInGroup = 2; numBarsInGroup <= maxSearchDepth; ++numBarsInGroup) {
+        auto it = m_curatedGroups.find(numBarsInGroup);
+        if (it == m_curatedGroups.end() || it->second.empty()) continue;
         
-        std::vector<std::vector<uint8_t>> barCombinations;
-        std::vector<uint8_t> currentBarCombination;
-        generateBarCombinationsRecursive(0, numBars, allBarOffsets, currentBarCombination, barCombinations);
+        const auto& barCombinations = it->second;
+        std::cout << "  - Searching patterns with " << static_cast<int>(numBarsInGroup) << " unique bars using " << barCombinations.size() << " pre-defined groups..." << std::endl;
         
-        std::vector<std::vector<uint8_t>> filteredBarCombinations;
-        for (const auto& combo : barCombinations) {
-            if (combo.empty()) continue;
-            auto minmax = std::minmax_element(combo.begin(), combo.end());
-            if ((*minmax.second - *minmax.first) <= m_maxSpread) filteredBarCombinations.push_back(combo);
-        }
-        
-        std::cout << "    - Processing " << filteredBarCombinations.size() << " valid bar combinations." << std::endl;
+        concurrency::parallel_for_each(m_executor, barCombinations, [&](const auto& barCombo) {
+            std::unordered_set<unsigned long long> seenHashesInThread;
 
-        for(const auto& barCombo : filteredBarCombinations) {
-            std::vector<PriceComponentDescriptor> componentPool;
-            for (uint8_t barOffset : barCombo) {
-                for (const auto& type : task.componentTypes) componentPool.emplace_back(type, barOffset);
-            }
+            for (uint8_t k = task.minPatternBars; k <= task.maxPatternBars && k <= numBarsInGroup; ++k) {
+                std::vector<std::vector<uint8_t>> subBarCombos;
+                std::vector<uint8_t> currentSubCombo;
+                generateBarCombinationsRecursive(0, k, barCombo, currentSubCombo, subBarCombos);
 
-            for (uint8_t k = task.minPatternLength; k <= m_maxConditions && k <= task.maxPatternLength; ++k) {
-                uint8_t numComponentsInPattern = k + 1;
-                if (numComponentsInPattern > componentPool.size()) continue;
+                for (const auto& subBarCombo : subBarCombos) {
+                    uint8_t maxOffsetInGroup = 0;
+                    for(uint8_t offset : subBarCombo) maxOffsetInGroup = std::max(maxOffsetInGroup, offset);
+                    if (maxOffsetInGroup > m_maxLookback) continue;
 
-                std::vector<std::vector<PriceComponentDescriptor>> componentCombinations;
-                std::vector<PriceComponentDescriptor> currentComponentCombination;
-                generateComponentCombinationsRecursive(0, numComponentsInPattern, componentPool, currentComponentCombination, componentCombinations);
+                    std::vector<PriceComponentDescriptor> componentPool;
+                    for (uint8_t barOffset : subBarCombo) {
+                        for (const auto& type : task.componentTypes) componentPool.emplace_back(type, barOffset);
+                    }
+                    
+                    if (componentPool.size() > static_cast<size_t>(m_maxConditions + 1)) continue;
 
-                for (auto& pcdCombo : componentCombinations) {
-                    std::sort(pcdCombo.begin(), pcdCombo.end());
+                    std::sort(componentPool.begin(), componentPool.end());
                     do {
                         std::vector<PatternCondition> conditions;
-                        for (uint8_t j = 0; j < k; ++j) {
-                            conditions.emplace_back(pcdCombo[j], ComparisonOperator::GreaterThan, pcdCombo[j+1]);
+                        for (size_t j = 0; j < componentPool.size() - 1; ++j) {
+                            conditions.emplace_back(componentPool[j], ComparisonOperator::GreaterThan, componentPool[j+1]);
                         }
 
                         if (isValidCombination(conditions)) {
@@ -277,28 +269,25 @@ void UniverseGenerator<Executor>::generateAndStreamPatterns(const GenerationTask
                             for(const auto& cond : conditions) newTemplate.addCondition(cond);
                             auto hash = std::hash<PatternTemplate>{}(newTemplate);
                             
-                            if(seenHashesInTask.find(hash) == seenHashesInTask.end()) {
-                                seenHashesInTask.insert(hash);
+                            if(seenHashesInThread.find(hash) == seenHashesInThread.end()) {
+                                seenHashesInThread.insert(hash);
                                 
                                 std::lock_guard<std::mutex> lock(m_writeMutex);
-                                outStream << generatePatternString(pcdCombo) << "\n";
-
-                                uint8_t maxOffsetInBase = 0;
-                                for(const auto& pcd : pcdCombo) maxOffsetInBase = std::max(maxOffsetInBase, pcd.getBarOffset());
+                                outStream << generatePatternString(componentPool, 0) << "\n";
 
                                 for (uint8_t delay = 1; delay <= 5; ++delay) {
-                                    if (maxOffsetInBase + delay > m_maxLookback) continue;
+                                    if (maxOffsetInGroup + delay > m_maxLookback) continue;
                                     
                                     std::vector<PriceComponentDescriptor> delayedPcds;
-                                    for(const auto& pcd : pcdCombo) delayedPcds.emplace_back(pcd.getComponentType(), pcd.getBarOffset() + delay);
-                                    outStream << generatePatternString(delayedPcds) << " [Delay: " << static_cast<int>(delay) << "]\n";
+                                    for(const auto& pcd : componentPool) delayedPcds.emplace_back(pcd.getComponentType(), pcd.getBarOffset() + delay);
+                                    outStream << generatePatternString(delayedPcds, delay) << "\n";
                                 }
                             }
                         }
-                    } while (std::next_permutation(pcdCombo.begin(), pcdCombo.end()));
+                    } while (std::next_permutation(componentPool.begin(), componentPool.end()));
                 }
             }
-        }
+        });
     }
 }
 
@@ -345,41 +334,74 @@ PatternTemplate UniverseGenerator<Executor>::parsePatternFromString(const std::s
 }
 
 template<typename Executor>
-std::string UniverseGenerator<Executor>::generatePatternString(const std::vector<PriceComponentDescriptor>& permutation) const {
+std::string UniverseGenerator<Executor>::generatePatternString(const std::vector<PriceComponentDescriptor>& sequence, uint8_t delay) const {
     std::stringstream ss;
-    for (size_t i = 0; i < permutation.size(); ++i) {
-        ss << pcdToString(permutation[i]);
-        if (i < permutation.size() - 1) {
+    for (size_t i = 0; i < sequence.size(); ++i) {
+        ss << pcdToString(sequence[i]);
+        if (i < sequence.size() - 1) {
             ss << " > ";
         }
+    }
+     if (delay > 0) {
+        ss << " [Delay: " << static_cast<int>(delay) << "]";
     }
     return ss.str();
 }
 
 template <typename Executor>
-void UniverseGenerator<Executor>::generateBarCombinationsRecursive(size_t offset, size_t k, const std::vector<uint8_t>& allOffsets, std::vector<uint8_t>& currentCombination, std::vector<std::vector<uint8_t>>& results) const {
+void UniverseGenerator<Executor>::generateBarCombinationsRecursive(size_t offset, size_t k, const std::vector<uint8_t>& items, std::vector<uint8_t>& currentCombination, std::vector<std::vector<uint8_t>>& results) const {
     if (k == 0) { results.push_back(currentCombination); return; }
-    for (size_t i = offset; i <= allOffsets.size() - k; ++i) {
-        currentCombination.push_back(allOffsets[i]);
-        generateBarCombinationsRecursive(i + 1, k - 1, allOffsets, currentCombination, results);
+    for (size_t i = offset; i <= items.size() - k; ++i) {
+        currentCombination.push_back(items[i]);
+        generateBarCombinationsRecursive(i + 1, k - 1, items, currentCombination, results);
         currentCombination.pop_back();
     }
 }
-template <typename Executor>
-void UniverseGenerator<Executor>::generateComponentCombinationsRecursive(size_t offset, size_t k, const std::vector<PriceComponentDescriptor>& components, std::vector<PriceComponentDescriptor>& currentCombination, std::vector<std::vector<PriceComponentDescriptor>>& results) const {
-    if (k == 0) { results.push_back(currentCombination); return; }
-    for (size_t i = offset; i <= components.size() - k; ++i) {
-        currentCombination.push_back(components[i]);
-        generateComponentCombinationsRecursive(i + 1, k - 1, components, currentCombination, results);
-        currentCombination.pop_back();
-    }
-}
+
 template <typename Executor>
 bool UniverseGenerator<Executor>::isValidCombination(const std::vector<PatternCondition>& conditions) const {
+    // 1. Original Structural Check: Ensure it's a simple, non-branching chain.
     std::set<PriceComponentDescriptor> components;
     for (const auto& cond : conditions) {
         components.insert(cond.getLhs());
         components.insert(cond.getRhs());
     }
-    return components.size() == conditions.size() + 1;
+    if (components.size() != conditions.size() + 1) {
+        return false;
+    }
+
+    // 2. New Semantic Check: Prevent tautologies and contradictions.
+    std::vector<PriceComponentDescriptor> sequence;
+    sequence.push_back(conditions.front().getLhs());
+    for(const auto& cond : conditions) {
+        sequence.push_back(cond.getRhs());
+    }
+
+    std::unordered_set<uint8_t> seenHighs;
+    std::unordered_set<uint8_t> seenLows;
+
+    for (const auto& pcd : sequence) {
+        uint8_t bar = pcd.getBarOffset();
+        PriceComponentType type = pcd.getComponentType();
+
+        if (type == PriceComponentType::High) {
+            // CONTRADICTION CHECK: If we see a High[x] after already seeing Low[x],
+            // it implies L[x] > H[x], which is impossible.
+            if (seenLows.count(bar)) {
+                return false; 
+            }
+            seenHighs.insert(bar);
+        }
+        else if (type == PriceComponentType::Low) {
+            // TAUTOLOGY CHECK: If we see a Low[x] after already seeing High[x],
+            // it implies H[x] > L[x], which is always true and provides no value.
+            if (seenHighs.count(bar)) {
+                return false;
+            }
+            seenLows.insert(bar);
+        }
+    }
+
+    // If we've passed all checks, the combination is valid.
+    return true;
 }

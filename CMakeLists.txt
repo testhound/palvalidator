@@ -72,6 +72,7 @@ add_subdirectory(src/palvalidator)
 add_subdirectory(src/palsetup)
 add_subdirectory(src/palcodegen)
 add_subdirectory(src/pattern_universe_generator)
+add_subdirectory(src/palanalyzer)
 
 
 file(GLOB SRC_LIST
@@ -120,4 +121,5 @@ install(TARGETS PalValidator DESTINATION bin)
 install(TARGETS palsetup DESTINATION bin)
 install(TARGETS palcodegen DESTINATION bin)
 install(TARGETS pattern_generator DESTINATION bin)
+install(TARGETS palanalyzer DESTINATION bin)
 install(FILES "${CMAKE_SOURCE_DIR}/policies.json" DESTINATION bin)
