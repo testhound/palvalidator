@@ -59,7 +59,7 @@ BarCombinationInfo PatternStructureExtractor::extractBarCombinationInfo(
     std::set<PriceComponentType> componentTypes;
     for (const auto& comp : components) {
         uniqueOffsets.insert(comp.getBarOffset());
-        componentTypes.insert(comp.getType());
+        componentTypes.insert(comp.getComponentType());
     }
     
     std::vector<uint8_t> barOffsets(uniqueOffsets.begin(), uniqueOffsets.end());
@@ -145,44 +145,44 @@ PriceComponentType PatternStructureExtractor::getComponentType(
     
     // Use dynamic casting to determine the specific price reference type
     if (std::dynamic_pointer_cast<PriceBarOpen>(priceRef)) {
-        return PriceComponentType::OPEN;
+        return PriceComponentType::Open;
     }
     if (std::dynamic_pointer_cast<PriceBarHigh>(priceRef)) {
-        return PriceComponentType::HIGH;
+        return PriceComponentType::High;
     }
     if (std::dynamic_pointer_cast<PriceBarLow>(priceRef)) {
-        return PriceComponentType::LOW;
+        return PriceComponentType::Low;
     }
     if (std::dynamic_pointer_cast<PriceBarClose>(priceRef)) {
-        return PriceComponentType::CLOSE;
+        return PriceComponentType::Close;
     }
     if (std::dynamic_pointer_cast<VolumeBarReference>(priceRef)) {
-        return PriceComponentType::VOLUME;
+        return PriceComponentType::Volume;
     }
     if (std::dynamic_pointer_cast<Roc1BarReference>(priceRef)) {
-        return PriceComponentType::ROC1;
+        return PriceComponentType::Roc1;
     }
     if (std::dynamic_pointer_cast<IBS1BarReference>(priceRef)) {
-        return PriceComponentType::IBS1;
+        return PriceComponentType::Ibs1;
     }
     if (std::dynamic_pointer_cast<IBS2BarReference>(priceRef)) {
-        return PriceComponentType::IBS2;
+        return PriceComponentType::Ibs2;
     }
     if (std::dynamic_pointer_cast<IBS3BarReference>(priceRef)) {
-        return PriceComponentType::IBS3;
+        return PriceComponentType::Ibs3;
     }
     if (std::dynamic_pointer_cast<MeanderBarReference>(priceRef)) {
-        return PriceComponentType::MEANDER;
+        return PriceComponentType::Meander;
     }
     if (std::dynamic_pointer_cast<VChartLowBarReference>(priceRef)) {
-        return PriceComponentType::VCHARTLOW;
+        return PriceComponentType::VChartLow;
     }
     if (std::dynamic_pointer_cast<VChartHighBarReference>(priceRef)) {
-        return PriceComponentType::VCHARTHIGH;
+        return PriceComponentType::VChartHigh;
     }
     
     // Default fallback
-    return PriceComponentType::CLOSE;
+    return PriceComponentType::Close;
 }
 
 bool PatternStructureExtractor::analyzeChaining(const std::vector<PriceComponentDescriptor>& components) {

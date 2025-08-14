@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 /**
  * @enum PriceComponentType
@@ -11,7 +12,15 @@ enum class PriceComponentType : uint8_t
     Open,
     High,
     Low,
-    Close
+    Close,
+    Volume,        // Add from palanalyzer
+    Roc1,          // Add from palanalyzer
+    Ibs1,          // Add from palanalyzer
+    Ibs2,          // Add from palanalyzer
+    Ibs3,          // Add from palanalyzer
+    Meander,       // Add from palanalyzer
+    VChartLow,     // Add from palanalyzer
+    VChartHigh     // Add from palanalyzer
 };
 
 /**
@@ -28,10 +37,12 @@ public:
      * @brief Constructs a PriceComponentDescriptor.
      * @param componentType The price component type (e.g., High, Low).
      * @param barOffset The historical offset of the bar (e.g., 0 for the current bar).
+     * @param description Optional description for the component (default empty).
      */
-    PriceComponentDescriptor(PriceComponentType componentType, uint8_t barOffset)
+    PriceComponentDescriptor(PriceComponentType componentType, uint8_t barOffset, const std::string& description = "")
         : m_componentType(componentType)
         , m_barOffset(barOffset)
+        , m_description(description)
     {
     }
 
@@ -54,6 +65,15 @@ public:
     }
 
     /**
+     * @brief Gets the description.
+     * @return The description string.
+     */
+    const std::string& getDescription() const
+    {
+        return m_description;
+    }
+
+    /**
      * @brief Equality operator.
      * @param other The object to compare against.
      * @return True if both objects have the same component type and bar offset.
@@ -71,7 +91,18 @@ public:
         return !(*this == other);
     }
 
+    /**
+     * @brief Less-than operator for sorting (needed by palanalyzer).
+     * @param other The object to compare against.
+     * @return True if this object is less than the other.
+     */
+    bool operator<(const PriceComponentDescriptor& other) const {
+        if (m_componentType != other.m_componentType) return m_componentType < other.m_componentType;
+        return m_barOffset < other.m_barOffset;
+    }
+
 private:
     PriceComponentType m_componentType;
     uint8_t m_barOffset;
+    std::string m_description;  // Add optional description
 };

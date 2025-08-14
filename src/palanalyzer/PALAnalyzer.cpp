@@ -484,7 +484,7 @@ bool PALAnalyzer::generatePatternStructureReport(const std::string& outputPath) 
             // Analyze component combinations
             std::set<std::string> compTypes;
             for (const auto& comp : pattern.getComponents()) {
-                compTypes.insert(componentTypeToString(comp.getType()));
+                compTypes.insert(componentTypeToString(comp.getComponentType()));
             }
             
             std::string combination;
@@ -634,7 +634,7 @@ void PALAnalyzer::processPattern(std::shared_ptr<PriceActionLabPattern> pattern,
     std::vector<uint8_t> barCombination;
     for(const auto& comp : components)
     {
-        componentTypes.insert(comp.getType());
+        componentTypes.insert(comp.getComponentType());
         barCombination.push_back(comp.getBarOffset());
     }
     std::sort(barCombination.begin(), barCombination.end());

@@ -10,6 +10,11 @@
 
 namespace palanalyzer {
 
+// Forward declarations
+class PatternValidationEngine;
+class SimplifiedPatternRegistry;
+class ComponentUsageAnalyzer;
+
 /**
  * @brief Persistent storage and retrieval of PAL pattern analysis data
  * 
@@ -201,12 +206,49 @@ public:
      * @return True if consistent, false if conflict detected
      */
     bool validateIndexConsistency(uint32_t index, const BarCombinationInfo& newInfo);
+
+    /**
+     * @brief Validate a pattern exists and has valid structure using the validation engine
+     *
+     * @param patternHash The pattern hash to validate
+     * @return True if pattern is valid, false otherwise
+     */
+    bool validatePatternWithEngine(unsigned long long patternHash) const;
+
+    /**
+     * @brief Validate multiple patterns in batch using the validation engine
+     *
+     * @param patternHashes Vector of pattern hashes to validate
+     * @return Vector of valid pattern hashes (failed validations are filtered out)
+     */
+    std::vector<unsigned long long> validatePatternBatch(const std::vector<unsigned long long>& patternHashes) const;
     
     /**
      * @brief Get database file path
      * @return Database file path
      */
     const std::string& getDbPath() const { return dbPath; }
+
+    /**
+     * @brief Create a pattern validation engine for this database
+     *
+     * @return Unique pointer to a new PatternValidationEngine instance
+     */
+    std::unique_ptr<PatternValidationEngine> createValidationEngine() const;
+
+    /**
+     * @brief Create a simplified pattern registry for this database
+     *
+     * @return Unique pointer to a new SimplifiedPatternRegistry instance
+     */
+    std::unique_ptr<SimplifiedPatternRegistry> createPatternRegistry() const;
+
+    /**
+     * @brief Create a component usage analyzer for this database
+     *
+     * @return Unique pointer to a new ComponentUsageAnalyzer instance
+     */
+    std::unique_ptr<ComponentUsageAnalyzer> createComponentAnalyzer() const;
 
 private:
     // Database file path

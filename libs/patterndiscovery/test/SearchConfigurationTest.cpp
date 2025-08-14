@@ -102,10 +102,10 @@ TEST_CASE("SearchConfiguration construction and getters", "[SearchConfiguration]
 
         REQUIRE(getRange(SearchType::EXTENDED) == std::make_pair<unsigned int, unsigned int>(2, 6));
         REQUIRE(getRange(SearchType::DEEP) == std::make_pair<unsigned int, unsigned int>(2, 9));
-        REQUIRE(getRange(SearchType::CLOSE_ONLY) == std::make_pair<unsigned int, unsigned int>(3, 9));
+        REQUIRE(getRange(SearchType::CLOSE) == std::make_pair<unsigned int, unsigned int>(3, 9));
         REQUIRE(getRange(SearchType::MIXED) == std::make_pair<unsigned int, unsigned int>(2, 9));
-        REQUIRE(getRange(SearchType::HIGH_LOW_ONLY) == std::make_pair<unsigned int, unsigned int>(3, 9));
-        REQUIRE(getRange(SearchType::OPEN_CLOSE_ONLY) == std::make_pair<unsigned int, unsigned int>(3, 9));
+        REQUIRE(getRange(SearchType::HIGH_LOW) == std::make_pair<unsigned int, unsigned int>(3, 9));
+        REQUIRE(getRange(SearchType::OPEN_CLOSE) == std::make_pair<unsigned int, unsigned int>(3, 9));
     }
 
     SECTION("Invalid construction - null security")

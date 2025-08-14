@@ -8,8 +8,12 @@
  */
 enum class ComparisonOperator : uint8_t
 {
-    GreaterThan
-    // Future operators like LessThan, Equals, etc., can be added here.
+    GreaterThan,
+    LessThan,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+    Equal,
+    NotEqual
 };
 
 /**

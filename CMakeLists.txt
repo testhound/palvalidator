@@ -114,7 +114,7 @@ add_library(Catch INTERFACE)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND}
-    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests priceactionlab_unit_tests patterndiscovery_unit_tests palvalidator_unit_tests pattern_generator_unit_tests
+    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests priceactionlab_unit_tests patterndiscovery_unit_tests palvalidator_unit_tests pattern_generator_unit_tests palanalyzer_unit_tests
 )
 
 install(TARGETS PalValidator DESTINATION bin)

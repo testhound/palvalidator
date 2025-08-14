@@ -10,6 +10,7 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <PatternUtilities.h>
 
 using namespace rapidjson;
 
@@ -117,22 +118,20 @@ bool AnalysisSerializer::importFromJson(AnalysisDatabase& db, const std::string&
 }
 
 Value AnalysisSerializer::serializeBarCombinationInfo(const BarCombinationInfo& info) {
-    // Note: This method should only be called from within exportToJson where allocator is available
-    // For now, create a temporary document to avoid crashes, but this is not ideal
     static thread_local Document tempDoc;
     tempDoc.SetObject();
     Value obj(kObjectType);
     Document::AllocatorType& allocator = tempDoc.GetAllocator();
     
-    // obj.AddMember("barOffsets", serializeUint8Vector(info.getBarOffsets()), allocator);
-    // obj.AddMember("componentTypes", serializeComponentTypeSet(info.getComponentTypes()), allocator);
-    // obj.AddMember("patternCount", info.getPatternCount(), allocator);
-    // obj.AddMember("searchType", Value(info.getSearchType().c_str(), allocator), allocator);
-    // obj.AddMember("minPatternLength", info.getMinPatternLength(), allocator);
-    // obj.AddMember("maxPatternLength", info.getMaxPatternLength(), allocator);
-    // obj.AddMember("firstSeen", Value(timePointToString(info.getFirstSeen()).c_str(), allocator), allocator);
-    // obj.AddMember("lastSeen", Value(timePointToString(info.getLastSeen()).c_str(), allocator), allocator);
-    // obj.AddMember("sourceFiles", serializeStringSet(info.getSourceFiles()), allocator);
+    obj.AddMember("barOffsets", serializeUint8Vector(info.getBarOffsets()), allocator);
+    obj.AddMember("componentTypes", serializeComponentTypeSet(info.getComponentTypes()), allocator);
+    obj.AddMember("patternCount", info.getPatternCount(), allocator);
+    obj.AddMember("searchType", Value(info.getSearchType().c_str(), allocator), allocator);
+    obj.AddMember("minPatternLength", info.getMinPatternLength(), allocator);
+    obj.AddMember("maxPatternLength", info.getMaxPatternLength(), allocator);
+    obj.AddMember("firstSeen", Value(timePointToString(info.getFirstSeen()).c_str(), allocator), allocator);
+    obj.AddMember("lastSeen", Value(timePointToString(info.getLastSeen()).c_str(), allocator), allocator);
+    obj.AddMember("sourceFiles", serializeStringSet(info.getSourceFiles()), allocator);
     
     return obj;
 }
@@ -177,38 +176,8 @@ BarCombinationInfo AnalysisSerializer::deserializeBarCombinationInfo(const Value
         sourceFiles = deserializeStringSet(json["sourceFiles"]);
     }
     
-    BarCombinationInfo info(barOffsets, componentTypes, patternCount, searchType,
-                           minPatternLength, maxPatternLength, firstSeen, lastSeen, sourceFiles);
-    
-    // if (json.HasMember("barOffsets")) {
-    //     info.barOffsets = deserializeUint8Vector(json["barOffsets"]);
-    // }
-    // if (json.HasMember("componentTypes")) {
-    //     info.componentTypes = deserializeComponentTypeSet(json["componentTypes"]);
-    // }
-    // if (json.HasMember("patternCount")) {
-    //     info.patternCount = json["patternCount"].GetUint();
-    // }
-    // if (json.HasMember("searchType")) {
-    //     info.searchType = json["searchType"].GetString();
-    // }
-    // if (json.HasMember("minPatternLength")) {
-    //     info.minPatternLength = json["minPatternLength"].GetUint();
-    // }
-    // if (json.HasMember("maxPatternLength")) {
-    //     info.maxPatternLength = json["maxPatternLength"].GetUint();
-    // }
-    // if (json.HasMember("firstSeen")) {
-    //     info.firstSeen = stringToTimePoint(json["firstSeen"].GetString());
-    // }
-    // if (json.HasMember("lastSeen")) {
-    //     info.lastSeen = stringToTimePoint(json["lastSeen"].GetString());
-    // }
-    // if (json.HasMember("sourceFiles")) {
-    //     info.sourceFiles = deserializeStringSet(json["sourceFiles"]);
-    // }
-    
-    return info;
+    return BarCombinationInfo(barOffsets, componentTypes, patternCount, searchType,
+                             minPatternLength, maxPatternLength, firstSeen, lastSeen, sourceFiles);
 }
 
 Value AnalysisSerializer::serializePatternAnalysis(const PatternAnalysis& pattern) {
@@ -276,26 +245,26 @@ Value AnalysisSerializer::serializeSearchTypeStats(const SearchTypeStats& stats)
     Value obj(kObjectType);
     Document::AllocatorType& allocator = tempDoc.GetAllocator();
     
-    // obj.AddMember("uniqueIndices", serializeUint32Set(stats.getUniqueIndices()), allocator);
-    // obj.AddMember("totalPatterns", stats.getTotalPatterns(), allocator);
-    // obj.AddMember("lastUpdated", Value(timePointToString(stats.getLastUpdated()).c_str(), allocator), allocator);
+    obj.AddMember("uniqueIndices", serializeUint32Set(stats.getUniqueIndices()), allocator);
+    obj.AddMember("totalPatterns", stats.getTotalPatterns(), allocator);
+    obj.AddMember("lastUpdated", Value(timePointToString(stats.getLastUpdated()).c_str(), allocator), allocator);
     
     // Pattern length distribution
     Value lengthDist(kObjectType);
-    // for (const auto& pair : stats.getPatternLengthDistribution()) {
-    //     std::string lengthStr = std::to_string(pair.first);
-    //     Value keyValue(lengthStr.c_str(), allocator);
-    //     lengthDist.AddMember(keyValue, pair.second, allocator);
-    // }
+    for (const auto& pair : stats.getPatternLengthDistribution()) {
+        std::string lengthStr = std::to_string(pair.first);
+        Value keyValue(lengthStr.c_str(), allocator);
+        lengthDist.AddMember(keyValue, pair.second, allocator);
+    }
     obj.AddMember("patternLengthDistribution", lengthDist, allocator);
     
     // Component usage
     Value compUsage(kObjectType);
-    // for (const auto& pair : stats.getComponentUsage()) {
-    //     std::string compStr = componentTypeToString(pair.first);
-    //     Value keyValue(compStr.c_str(), allocator);
-    //     compUsage.AddMember(keyValue, pair.second, allocator);
-    // }
+    for (const auto& pair : stats.getComponentUsage()) {
+        std::string compStr = componentTypeToString(pair.first);
+        Value keyValue(compStr.c_str(), allocator);
+        compUsage.AddMember(keyValue, pair.second, allocator);
+    }
     obj.AddMember("componentUsage", compUsage, allocator);
     
     return obj;
@@ -323,38 +292,6 @@ SearchTypeStats AnalysisSerializer::deserializeSearchTypeStats(const Value& json
         }
     }
     
-    // if (json.HasMember("uniqueIndices")) {
-    //     stats.uniqueIndices = deserializeUint32Set(json["uniqueIndices"]);
-    // }
-    // if (json.HasMember("totalPatterns")) {
-    //     stats.totalPatterns = json["totalPatterns"].GetUint();
-    // }
-    // if (json.HasMember("lastUpdated")) {
-    //     stats.lastUpdated = stringToTimePoint(json["lastUpdated"].GetString());
-    // }
-    
-    // // Pattern length distribution
-    // if (json.HasMember("patternLengthDistribution") && json["patternLengthDistribution"].IsObject()) {
-    //     const Value& lengthDist = json["patternLengthDistribution"];
-    //     for (Value::ConstMemberIterator it = lengthDist.MemberBegin(); 
-    //          it != lengthDist.MemberEnd(); ++it) {
-    //         uint8_t length = std::stoul(it->name.GetString());
-    //         uint32_t count = it->value.GetUint();
-    //         stats.patternLengthDistribution[length] = count;
-    //     }
-    // }
-    
-    // // Component usage
-    // if (json.HasMember("componentUsage") && json["componentUsage"].IsObject()) {
-    //     const Value& compUsage = json["componentUsage"];
-    //     for (Value::ConstMemberIterator it = compUsage.MemberBegin(); 
-    //          it != compUsage.MemberEnd(); ++it) {
-    //         PriceComponentType type = stringToComponentType(it->name.GetString());
-    //         uint32_t count = it->value.GetUint();
-    //         stats.componentUsage[type] = count;
-    //     }
-    // }
-    
     return stats;
 }
 
@@ -364,7 +301,7 @@ Value AnalysisSerializer::serializePriceComponentDescriptor(const PriceComponent
     Value obj(kObjectType);
     Document::AllocatorType& allocator = tempDoc.GetAllocator();
     
-    obj.AddMember("type", Value(componentTypeToString(comp.getType()).c_str(), allocator), allocator);
+    obj.AddMember("type", Value(componentTypeToString(comp.getComponentType()).c_str(), allocator), allocator);
     obj.AddMember("barOffset", comp.getBarOffset(), allocator);
     obj.AddMember("description", Value(comp.getDescription().c_str(), allocator), allocator);
     
@@ -372,7 +309,7 @@ Value AnalysisSerializer::serializePriceComponentDescriptor(const PriceComponent
 }
 
 PriceComponentDescriptor AnalysisSerializer::deserializePriceComponentDescriptor(const Value& json) {
-    PriceComponentType type = PriceComponentType::CLOSE;
+    PriceComponentType type = PriceComponentType::Close;
     uint8_t barOffset = 0;
     std::string description = "";
 
@@ -395,7 +332,7 @@ Value AnalysisSerializer::serializePatternCondition(const PatternCondition& cond
     Value obj(kObjectType);
     Document::AllocatorType& allocator = tempDoc.GetAllocator();
 
-    obj.AddMember("type", Value(cond.getType().c_str(), allocator), allocator);
+    obj.AddMember("type", Value(patterndiscovery::comparisonOperatorToString(cond.getOperator()).c_str(), allocator), allocator);
     obj.AddMember("lhs", serializePriceComponentDescriptor(cond.getLhs()), allocator);
     obj.AddMember("rhs", serializePriceComponentDescriptor(cond.getRhs()), allocator);
 
@@ -403,16 +340,19 @@ Value AnalysisSerializer::serializePatternCondition(const PatternCondition& cond
 }
 
 PatternCondition AnalysisSerializer::deserializePatternCondition(const Value& json) {
-    std::string type = json.HasMember("type") ? json["type"].GetString() : "";
-    PriceComponentDescriptor lhs(PriceComponentType::CLOSE, 0, "");
+    ComparisonOperator op = ComparisonOperator::GreaterThan;
+    if (json.HasMember("type")) {
+        op = patterndiscovery::stringToComparisonOperator(json["type"].GetString());
+    }
+    PriceComponentDescriptor lhs(PriceComponentType::Close, 0, "");
     if (json.HasMember("lhs")) {
         lhs = deserializePriceComponentDescriptor(json["lhs"]);
     }
-    PriceComponentDescriptor rhs(PriceComponentType::CLOSE, 0, "");
+    PriceComponentDescriptor rhs(PriceComponentType::Close, 0, "");
     if (json.HasMember("rhs")) {
         rhs = deserializePriceComponentDescriptor(json["rhs"]);
     }
-    return PatternCondition(type, lhs, rhs);
+    return PatternCondition(lhs, op, rhs);
 }
 
 Value AnalysisSerializer::serializePatternStructure(const PatternStructure& structure) {
@@ -451,10 +391,17 @@ PatternStructure AnalysisSerializer::deserializePatternStructure(const Value& js
 
     int conditionCount = json.HasMember("conditionCount") ? json["conditionCount"].GetInt() : 0;
     
+    // Validate condition count matches actual conditions for data integrity
+    if (conditionCount != 0 && conditionCount != static_cast<int>(conditions.size())) {
+        std::cerr << "Warning: Deserialized conditionCount (" << conditionCount
+                  << ") doesn't match actual conditions size (" << conditions.size()
+                  << ") for pattern " << patternHash << std::endl;
+    }
+    
     std::vector<std::string> componentsUsed = deserializeStringVector(json["componentsUsed"]);
     std::vector<int> barOffsetsUsed = deserializeIntVector(json["barOffsetsUsed"]);
 
-    return PatternStructure(patternHash, groupId, conditions, conditionCount, componentsUsed, barOffsetsUsed);
+    return PatternStructure(patternHash, groupId, conditions, componentsUsed, barOffsetsUsed);
 }
 
 Value AnalysisSerializer::serializeIntVector(const std::vector<int>& vec) {
@@ -730,7 +677,7 @@ Value AnalysisSerializer::serializeUint8VectorFrequencyMap(const std::map<std::v
     Document::AllocatorType& allocator = tempDoc.GetAllocator();
     
     for (const auto& pair : freqMap) {
-        std::string keyStr = vectorToString(pair.first);
+        std::string keyStr = patterndiscovery::vectorToString(pair.first);
         Value keyValue(keyStr.c_str(), allocator);
         obj.AddMember(keyValue, pair.second, allocator);
     }

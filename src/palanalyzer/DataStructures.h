@@ -7,87 +7,32 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <SearchConfiguration.h>
+#include <PriceComponentDescriptor.h>
+#include <PatternCondition.h>
+#include <PatternUtilities.h>
 
 namespace palanalyzer {
 
-// Search type enumeration for pattern analysis
-enum class SearchType {
-    UNKNOWN,
-    BASIC,
-    EXTENDED,
-    DEEP,
-    CLOSE,
-    HIGH_LOW,
-    OPEN_CLOSE,
-    MIXED
-};
-
-// Price component types for pattern analysis
-enum class PriceComponentType {
-    OPEN,
-    HIGH,
-    LOW,
-    CLOSE,
-    VOLUME,
-    ROC1,
-    IBS1,
-    IBS2,
-    IBS3,
-    MEANDER,
-    VCHARTLOW,
-    VCHARTHIGH
-};
-
-// Price component descriptor for detailed analysis
-class PriceComponentDescriptor {
-public:
-    PriceComponentDescriptor(PriceComponentType type, uint8_t barOffset, std::string description)
-        : m_type(type), m_barOffset(barOffset), m_description(std::move(description)) {}
-
-    PriceComponentType getType() const { return m_type; }
-    uint8_t getBarOffset() const { return m_barOffset; }
-    const std::string& getDescription() const { return m_description; }
-
-    bool operator<(const PriceComponentDescriptor& other) const {
-        if (m_type != other.m_type) return m_type < other.m_type;
-        return m_barOffset < other.m_barOffset;
-    }
-
-private:
-    PriceComponentType m_type;
-    uint8_t m_barOffset;
-    std::string m_description;
-};
-
-// Represents a single condition in a pattern (e.g., C[0] > C[1])
-class PatternCondition {
-public:
-    PatternCondition(std::string type, PriceComponentDescriptor lhs, PriceComponentDescriptor rhs)
-        : m_type(std::move(type)), m_lhs(std::move(lhs)), m_rhs(std::move(rhs)) {}
-
-    const std::string& getType() const { return m_type; }
-    const PriceComponentDescriptor& getLhs() const { return m_lhs; }
-    const PriceComponentDescriptor& getRhs() const { return m_rhs; }
-
-private:
-    std::string m_type;
-    PriceComponentDescriptor m_lhs;
-    PriceComponentDescriptor m_rhs;
-};
+// Import types from patterndiscovery library (global namespace)
+using SearchType = ::SearchType;
+using PriceComponentType = ::PriceComponentType;
+using PriceComponentDescriptor = ::PriceComponentDescriptor;
+using PatternCondition = ::PatternCondition;
+using ComparisonOperator = ::ComparisonOperator;
 
 // Represents the structural properties of a unique pattern
 class PatternStructure {
 public:
     PatternStructure(unsigned long long patternHash, int groupId, std::vector<PatternCondition> conditions,
-                     int conditionCount, std::vector<std::string> componentsUsed, std::vector<int> barOffsetsUsed)
+                     std::vector<std::string> componentsUsed, std::vector<int> barOffsetsUsed)
         : m_patternHash(patternHash), m_groupId(groupId), m_conditions(std::move(conditions)),
-          m_conditionCount(conditionCount), m_componentsUsed(std::move(componentsUsed)),
-          m_barOffsetsUsed(std::move(barOffsetsUsed)) {}
+          m_componentsUsed(std::move(componentsUsed)), m_barOffsetsUsed(std::move(barOffsetsUsed)) {}
 
     unsigned long long getPatternHash() const { return m_patternHash; }
     int getGroupId() const { return m_groupId; }
     const std::vector<PatternCondition>& getConditions() const { return m_conditions; }
-    int getConditionCount() const { return m_conditionCount; }
+    int getConditionCount() const { return static_cast<int>(m_conditions.size()); }
     const std::vector<std::string>& getComponentsUsed() const { return m_componentsUsed; }
     const std::vector<int>& getBarOffsetsUsed() const { return m_barOffsetsUsed; }
 
@@ -95,7 +40,6 @@ private:
     unsigned long long m_patternHash;
     int m_groupId;
     std::vector<PatternCondition> m_conditions;
-    int m_conditionCount;
     std::vector<std::string> m_componentsUsed;
     std::vector<int> m_barOffsetsUsed;
 };
@@ -431,13 +375,20 @@ private:
     uint32_t m_uniqueIndices;
 };
 
-// Helper functions for search type conversion
-std::string searchTypeToString(SearchType type);
-SearchType stringToSearchType(const std::string& str);
+// Helper functions for search type conversion (using patterndiscovery functions)
+inline std::string searchTypeToString(SearchType type) {
+    return patterndiscovery::searchTypeToString(type);
+}
+inline SearchType stringToSearchType(const std::string& str) {
+    return patterndiscovery::stringToSearchType(str);
+}
 
-// Helper functions for component type conversion
-std::string componentTypeToString(PriceComponentType type);
-PriceComponentType stringToComponentType(const std::string& str);
-std::string vectorToString(const std::vector<uint8_t>& vec);
+// Helper functions for component type conversion (using patterndiscovery functions)
+inline std::string componentTypeToString(PriceComponentType type) {
+    return patterndiscovery::componentTypeToString(type);
+}
+inline PriceComponentType stringToComponentType(const std::string& str) {
+    return patterndiscovery::stringToComponentType(str);
+}
 
 } // namespace palanalyzer

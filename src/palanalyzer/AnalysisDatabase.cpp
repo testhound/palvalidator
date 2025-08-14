@@ -1,8 +1,12 @@
 #include "AnalysisDatabase.h"
 #include "AnalysisSerializer.h"
+#include "PatternValidationEngine.h"
+#include "SimplifiedPatternRegistry.h"
+#include "ComponentUsageAnalyzer.h"
 #include <iostream>
 #include <algorithm>
 #include <boost/filesystem.hpp>
+#include <PatternUtilities.h>
 
 namespace fs = boost::filesystem;
 
@@ -75,41 +79,54 @@ void AnalysisDatabase::clear() {
 void AnalysisDatabase::addPattern(const PatternAnalysis& pattern) {
     std::lock_guard<std::recursive_mutex> lock(dataMutex);
     
+    // Create validation engine for pattern validation during insertion
+    auto validationEngine = createValidationEngine();
+    
+    // Create pattern structure for validation
+    std::vector<PatternCondition> conditions;
+    const auto& components = pattern.getComponents();
+    for (size_t i = 0; i + 1 < components.size(); ++i) {
+        conditions.emplace_back(components[i], ComparisonOperator::GreaterThan, components[i+1]);
+    }
+
+    std::vector<std::string> componentsUsed;
+    std::vector<int> barOffsetsUsed;
+    std::set<std::string> uniqueComponents;
+    std::set<int> uniqueBarOffsets;
+
+    for(const auto& component : pattern.getComponents()) {
+        if(uniqueComponents.find(componentTypeToString(component.getComponentType())) == uniqueComponents.end()) {
+            uniqueComponents.insert(componentTypeToString(component.getComponentType()));
+            componentsUsed.push_back(componentTypeToString(component.getComponentType()));
+        }
+        if(uniqueBarOffsets.find(component.getBarOffset()) == uniqueBarOffsets.end()) {
+            uniqueBarOffsets.insert(component.getBarOffset());
+            barOffsetsUsed.push_back(component.getBarOffset());
+        }
+    }
+
+    PatternStructure patternStructure(
+        pattern.getPatternHash(),
+        pattern.getIndex(),
+        conditions,
+        componentsUsed,
+        barOffsetsUsed
+    );
+    
+    // Validate pattern structure before adding to database
+    ValidationResult validationResult = validationEngine->validatePatternStructure(patternStructure);
+    if (validationResult != ValidationResult::VALID && validationResult != ValidationResult::VALID_WITH_WARNINGS)
+    {
+        std::cerr << "Warning: Pattern validation failed for hash " << pattern.getPatternHash()
+                  << ": " << PatternValidationEngine::validationResultToString(validationResult) << std::endl;
+        // Continue with insertion but log the validation failure
+    }
+    
     allPatterns.push_back(pattern);
     updateSearchTypeStatsFromPattern(pattern);
 
     auto it = indexGroups.find(pattern.getIndex());
     if (it != indexGroups.end()) {
-        std::vector<PatternCondition> conditions;
-        const auto& components = pattern.getComponents();
-        for (size_t i = 0; i + 1 < components.size(); i += 2) {
-            conditions.emplace_back("GreaterThan", components[i], components[i+1]);
-        }
-
-        std::vector<std::string> componentsUsed;
-        std::vector<int> barOffsetsUsed;
-        std::set<std::string> uniqueComponents;
-        std::set<int> uniqueBarOffsets;
-
-        for(const auto& component : pattern.getComponents()) {
-            if(uniqueComponents.find(componentTypeToString(component.getType())) == uniqueComponents.end()) {
-                uniqueComponents.insert(componentTypeToString(component.getType()));
-                componentsUsed.push_back(componentTypeToString(component.getType()));
-            }
-            if(uniqueBarOffsets.find(component.getBarOffset()) == uniqueBarOffsets.end()) {
-                uniqueBarOffsets.insert(component.getBarOffset());
-                barOffsetsUsed.push_back(component.getBarOffset());
-            }
-        }
-
-        PatternStructure patternStructure(
-            pattern.getPatternHash(),
-            pattern.getIndex(),
-            conditions,
-            pattern.getConditionCount(),
-            componentsUsed,
-            barOffsetsUsed
-        );
         it->second.addPattern(std::to_string(pattern.getPatternHash()), patternStructure);
     }
 
@@ -278,6 +295,35 @@ bool AnalysisDatabase::validateIndexConsistency(uint32_t index, const BarCombina
     return true;
 }
 
+bool AnalysisDatabase::validatePatternWithEngine(unsigned long long patternHash) const
+{
+    std::lock_guard<std::recursive_mutex> lock(dataMutex);
+    
+    auto validationEngine = createValidationEngine();
+    ValidationResult result = validationEngine->validatePatternExistence(patternHash);
+    
+    return (result == ValidationResult::VALID || result == ValidationResult::VALID_WITH_WARNINGS);
+}
+
+std::vector<unsigned long long> AnalysisDatabase::validatePatternBatch(const std::vector<unsigned long long>& patternHashes) const
+{
+    std::lock_guard<std::recursive_mutex> lock(dataMutex);
+    
+    auto validationEngine = createValidationEngine();
+    std::vector<ValidationResult> results = validationEngine->validatePatternBatch(patternHashes);
+    
+    std::vector<unsigned long long> validPatterns;
+    for (size_t i = 0; i < patternHashes.size(); ++i)
+    {
+        if (results[i] == ValidationResult::VALID || results[i] == ValidationResult::VALID_WITH_WARNINGS)
+        {
+            validPatterns.push_back(patternHashes[i]);
+        }
+    }
+    
+    return validPatterns;
+}
+
 void AnalysisDatabase::updateLastModified() {
     lastUpdated = std::chrono::system_clock::now();
     modified = true;
@@ -340,7 +386,7 @@ void AnalysisDatabase::updateSearchTypeStatsFromPattern(const PatternAnalysis& p
         
         // Update component usage
         for (const auto& comp : pattern.getComponents()) {
-            newStats.updateComponentUsage(comp.getType());
+            newStats.updateComponentUsage(comp.getComponentType());
         }
         
         searchTypeAnalysis.emplace(searchType, newStats);
@@ -357,9 +403,24 @@ void AnalysisDatabase::updateSearchTypeStatsFromPattern(const PatternAnalysis& p
         
         // Update component usage
         for (const auto& comp : pattern.getComponents()) {
-            stats.updateComponentUsage(comp.getType());
+            stats.updateComponentUsage(comp.getComponentType());
         }
     }
+}
+
+std::unique_ptr<PatternValidationEngine> AnalysisDatabase::createValidationEngine() const
+{
+    return std::make_unique<PatternValidationEngine>(*this);
+}
+
+std::unique_ptr<SimplifiedPatternRegistry> AnalysisDatabase::createPatternRegistry() const
+{
+    return std::make_unique<SimplifiedPatternRegistry>(*this);
+}
+
+std::unique_ptr<ComponentUsageAnalyzer> AnalysisDatabase::createComponentAnalyzer() const
+{
+    return std::make_unique<ComponentUsageAnalyzer>(*this);
 }
 
 } // namespace palanalyzer

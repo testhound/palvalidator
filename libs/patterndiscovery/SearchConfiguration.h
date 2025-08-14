@@ -34,12 +34,14 @@ public:
  */
 enum class SearchType
 {
-    EXTENDED,     // 2-6 bar patterns, mixture of O,H,L,C
-    DEEP,         // 2-9 bar patterns, mixture of O,H,L,C
-    CLOSE_ONLY,   // 3-9 bar patterns, only Close prices
-    MIXED,        // 2-9 bar patterns, mixture of O,H,L,C
-    HIGH_LOW_ONLY,// 3-9 bar patterns, only High and Low prices
-    OPEN_CLOSE_ONLY // 3-9 bar patterns, only Open and Close prices
+    UNKNOWN,           // Add from palanalyzer
+    BASIC,             // Add from palanalyzer
+    EXTENDED,          // Keep from patterndiscovery
+    DEEP,              // Keep from patterndiscovery
+    CLOSE,             // Rename from CLOSE_ONLY (palanalyzer naming)
+    HIGH_LOW,          // Rename from HIGH_LOW_ONLY (palanalyzer naming)
+    OPEN_CLOSE,        // Rename from OPEN_CLOSE_ONLY (palanalyzer naming)
+    MIXED              // Keep from patterndiscovery
 };
 
 
@@ -121,12 +123,14 @@ public:
     {
         switch (mSearchType)
         {
+            case SearchType::UNKNOWN:         return {2, 9}; // Default range
+            case SearchType::BASIC:           return {2, 4}; // Basic patterns
             case SearchType::EXTENDED:        return {2, 6};
             case SearchType::DEEP:            return {2, 9};
-            case SearchType::CLOSE_ONLY:      return {3, 9};
+            case SearchType::CLOSE:           return {3, 9}; // Renamed from CLOSE_ONLY
             case SearchType::MIXED:           return {2, 9};
-            case SearchType::HIGH_LOW_ONLY:   return {3, 9};
-            case SearchType::OPEN_CLOSE_ONLY: return {3, 9};
+            case SearchType::HIGH_LOW:        return {3, 9}; // Renamed from HIGH_LOW_ONLY
+            case SearchType::OPEN_CLOSE:      return {3, 9}; // Renamed from OPEN_CLOSE_ONLY
         }
         // Should be unreachable
         throw SearchConfigurationException("Unknown SearchType in getPatternLengthRange.");

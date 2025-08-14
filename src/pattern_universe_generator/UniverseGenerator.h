@@ -27,6 +27,14 @@ static std::string componentTypeToString(PriceComponentType type) {
         case PriceComponentType::High:  return "H";
         case PriceComponentType::Low:   return "L";
         case PriceComponentType::Close: return "C";
+        case PriceComponentType::Volume: return "V";
+        case PriceComponentType::Roc1: return "R";
+        case PriceComponentType::Ibs1: return "I1";
+        case PriceComponentType::Ibs2: return "I2";
+        case PriceComponentType::Ibs3: return "I3";
+        case PriceComponentType::Meander: return "M";
+        case PriceComponentType::VChartLow: return "VL";
+        case PriceComponentType::VChartHigh: return "VH";
     }
     return "?";
 }
@@ -35,11 +43,6 @@ static std::string pcdToString(const PriceComponentDescriptor& pcd) {
     ss << componentTypeToString(pcd.getComponentType())
        << "[" << static_cast<int>(pcd.getBarOffset()) << "]";
     return ss.str();
-}
-inline bool operator<(const PriceComponentDescriptor& lhs, const PriceComponentDescriptor& rhs) {
-    if (lhs.getBarOffset() < rhs.getBarOffset()) return true;
-    if (lhs.getBarOffset() > rhs.getBarOffset()) return false;
-    return lhs.getComponentType() < rhs.getComponentType();
 }
 
 // --- Hashing Infrastructure ---

@@ -7,6 +7,7 @@ set(LIB_SOURCES
     BinaryPatternTemplateSerializer.cpp
     PatternUniverseSerializer.cpp
     PatternUniverseDeserializer.cpp
+    PatternUtilities.cpp
 )
 
 # Create the library
