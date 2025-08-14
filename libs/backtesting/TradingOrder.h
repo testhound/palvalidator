@@ -360,7 +360,7 @@ namespace mkc_timeseries
       }
 
       // Market orders are always executed
-      void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const
+      void ValidateOrderExecution(const ptime& /* fillDateTime */, const Decimal& /* fillPrice */) const
       {}
   };
 
@@ -973,7 +973,7 @@ namespace mkc_timeseries
       v.visit(this);
     }
 
-     void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
+     void ValidateOrderExecution(const ptime& /* fillDateTime */, const Decimal& fillPrice) const override
     {
       // Base class TradingOrder::MarkOrderExecuted already checks fillDateTime >= orderDateTime
       if (fillPrice < this->getLimitPrice())
@@ -1054,7 +1054,7 @@ namespace mkc_timeseries
       return *this;
     }
 
-    void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
+    void ValidateOrderExecution(const ptime& /* fillDateTime */, const Decimal& fillPrice) const override
     {
       if (fillPrice > this->getLimitPrice())
         throw TradingOrderNotExecutedException ("CoverAtLimitOrder: fill price cannot be greater than limit price");
@@ -1272,7 +1272,7 @@ StopOrder(const std::string& tradingSymbol,
       v.visit(this);
     }
 
-    void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
+    void ValidateOrderExecution(const ptime& /* fillDateTime */, const Decimal& fillPrice) const override
     {
       if (fillPrice > this->getStopPrice())
         throw TradingOrderNotExecutedException ("SellAtStopOrder: fill price cannot be greater than stop price");
@@ -1355,7 +1355,7 @@ StopOrder(const std::string& tradingSymbol,
       v.visit(this);
     }
 
-    void ValidateOrderExecution(const ptime& fillDateTime, const Decimal& fillPrice) const override
+    void ValidateOrderExecution(const ptime& /* fillDateTime */, const Decimal& fillPrice) const override
     {
       if (fillPrice < this->getStopPrice())
         throw TradingOrderNotExecutedException ("CoverAtStopOrder: fill price cannot be less than stop price");
@@ -1541,21 +1541,21 @@ StopOrder(const std::string& tradingSymbol,
       return mEntryDateTime;
     }
 
-    void MarkOrderExecuted(TradingOrder<Decimal>* order,
-                           const ptime& fillDateTime,
-                           const Decimal& fillPrice) override // Added override
+    void MarkOrderExecuted(TradingOrder<Decimal>* /* order */,
+                           const ptime& /* fillDateTime */,
+                           const Decimal& /* fillPrice */) override // Added override
     {
       throw TradingOrderExecutedException("Trading order has already been executed");
     }
 
-    void MarkOrderExecuted(TradingOrder<Decimal>* order,
-			   const TimeSeriesDate& fillDate, 
-			   const Decimal& fillPrice)
+    void MarkOrderExecuted(TradingOrder<Decimal>* /* order */,
+      const TimeSeriesDate& /* fillDate */,
+      const Decimal& /* fillPrice */)
     {
       throw TradingOrderExecutedException("Trading order has already been executed");
     }
 
-    void MarkOrderCanceled(TradingOrder<Decimal>* order)
+    void MarkOrderCanceled(TradingOrder<Decimal>* /* order */)
     {
       throw TradingOrderExecutedException("Cannot cancel a executed order");
     }
@@ -1609,21 +1609,21 @@ StopOrder(const std::string& tradingSymbol,
       throw TradingOrderNotExecutedException("No fill date/time in canceled state");
     }
 
-    void MarkOrderExecuted(TradingOrder<Decimal>* order,
-			   const TimeSeriesDate& fillDate,
-			   const Decimal& fillPrice)
+    void MarkOrderExecuted(TradingOrder<Decimal>* /* order */,
+      const TimeSeriesDate& /* fillDate */,
+      const Decimal& /* fillPrice */)
     {
       throw TradingOrderNotExecutedException("Cannot execute a cancelled order");
     }
 
-    void MarkOrderExecuted(TradingOrder<Decimal>* order,
-                           const ptime& fillDateTime,
-                           const Decimal& fillPrice) override
+    void MarkOrderExecuted(TradingOrder<Decimal>* /* order */,
+                           const ptime& /* fillDateTime */,
+                           const Decimal& /* fillPrice */) override
     {
       throw TradingOrderNotExecutedException("Cannot execute a cancelled order");
     }
 
-    void MarkOrderCanceled(TradingOrder<Decimal>* order)
+    void MarkOrderCanceled(TradingOrder<Decimal>* /* order */)
     {
       throw TradingOrderExecutedException("Cannot cancel a already canceled order");
     }

@@ -796,17 +796,17 @@ namespace mkc_timeseries
 	return mOpenPosition->getStopLoss();
       }
 
-    void setProfitTarget(const Decimal& profitTarget)
+    void setProfitTarget(const Decimal& /* profitTarget */)
       {
-	throw TradingPositionException (std::string("ClosedPosition::setProfitTarget - Cannot set profit target of closed position"));
+ throw TradingPositionException (std::string("ClosedPosition::setProfitTarget - Cannot set profit target of closed position"));
       }
 
-    void setStopLoss(const Decimal& stopLoss)
+    void setStopLoss(const Decimal& /* stopLoss */)
       {
-	throw TradingPositionException (std::string("OpenPosition::setStopLoss - Cannot set profit target of closed position"));
+ throw TradingPositionException (std::string("OpenPosition::setStopLoss - Cannot set profit target of closed position"));
       }
 
-    void addBar (const OHLCTimeSeriesEntry<Decimal>& entryBar)
+    void addBar (const OHLCTimeSeriesEntry<Decimal>& /* entryBar */)
     {
       throw TradingPositionException ("Cannot add bar to a closed position");
     }
@@ -822,18 +822,18 @@ namespace mkc_timeseries
     }
 
     // Implementations for ClosePosition, which should throw as position is already closed.
-    void ClosePosition (TradingPosition<Decimal>* position,
-                        std::shared_ptr<TradingPositionState<Decimal>> openPositionState,
-                        const boost::gregorian::date exitDate,
-                        const Decimal& exitPriceLocal) override
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+                        std::shared_ptr<TradingPositionState<Decimal>> /* openPositionState */,
+                        const boost::gregorian::date /* exitDate */,
+                        const Decimal& /* exitPriceLocal */) override
     {
       throw TradingPositionException("ClosedPosition: Cannot close an already closed position (date overload)");
     }
 
-    void ClosePosition (TradingPosition<Decimal>* position,
-                        std::shared_ptr<TradingPositionState<Decimal>> openPositionState,
-                        const ptime exitDateTimeLocal,
-                        const Decimal& exitPriceLocal) override
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+                        std::shared_ptr<TradingPositionState<Decimal>> /* openPositionState */,
+                        const ptime /* exitDateTimeLocal */,
+                        const Decimal& /* exitPriceLocal */) override
     {
       throw TradingPositionException("ClosedPosition: Cannot close an already closed position (ptime overload)");
     }
@@ -949,18 +949,18 @@ namespace mkc_timeseries
       return (DecimalConstants<Decimal>::DecimalOne + ClosedLongPosition<Decimal>::getTradeReturn());
     }
 
-    void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const boost::gregorian::date exitDate,
-			const Decimal& exitPrice)
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+   std::shared_ptr<TradingPositionState<Decimal>> /* openPosition */,
+   const boost::gregorian::date /* exitDate */,
+   const Decimal& /* exitPrice */)
     {
       throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
     }
     
-    void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const ptime  exitDate,
-			const Decimal& exitPrice)
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+   std::shared_ptr<TradingPositionState<Decimal>> /* openPosition */,
+   const ptime /* exitDate */,
+   const Decimal& /* exitPrice */)
     {
       throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
     }
@@ -1041,18 +1041,18 @@ namespace mkc_timeseries
       return !isWinningPosition();
     }
 
-    void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const boost::gregorian::date exitDate,
-			const Decimal& exitPrice)
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+   std::shared_ptr<TradingPositionState<Decimal>> /* openPosition */,
+   const boost::gregorian::date /* exitDate */,
+   const Decimal& /* exitPrice */)
     {
       throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
     }
     
-    void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			ptime exitDate,
-			const Decimal& exitPrice)
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+   std::shared_ptr<TradingPositionState<Decimal>> /* openPosition */,
+   ptime /* exitDate */,
+   const Decimal& /* exitPrice */)
     {
       throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
     }

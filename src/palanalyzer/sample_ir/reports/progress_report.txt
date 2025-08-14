@@ -1,0 +1,22 @@
+PAL Analysis Progress Report
+===========================
+Generated: 2025-08-10 11:17:36
+
+Database: pal_analysis.db
+Analysis Period: 2025-08-10 11:17:36 to 2025-08-10 11:17:36
+
+Summary Statistics:
+- Total Patterns Analyzed: 148085
+- Unique Index Numbers: 525
+- Files Analyzed: 0
+- Search Types Covered: Deep, Extended
+
+Search Type Breakdown:
+- Deep: 122494 patterns
+- Extended: 25591 patterns
+
+Index Coverage Progress:
+- Deep Search (Target: 545): 525/545 (96.3%)
+- Extended Search (Target: 120): 111/120 (92.5%)
+
+Recently Analyzed Files:

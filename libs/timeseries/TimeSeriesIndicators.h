@@ -9,7 +9,7 @@
 
 #include <type_traits>
 #include <cmath>
-
+#include <utility>
 #include "TimeSeries.h"
 #include "DecimalConstants.h"
 #include <algorithm>
@@ -585,6 +585,210 @@ namespace mkc_timeseries
     return resultSeries;
   }
 
+  /**
+   * @brief Computes the robust skewness statistic using the Medcouple estimator.
+   *
+   * The Medcouple (MC) is a robust, nonparametric measure of skewness defined as:
+   *
+   *    MC = median { [(x_j - m) - (m - x_i)] / (x_j - x_i) | x_i < m < x_j }
+   *
+   * Where:
+   *   - m is the median of the data,
+   *   - x_i are values below the median,
+   *   - x_j are values above the median,
+   *   - The kernel function is only evaluated where the denominator is non-zero.
+   *
+   * The medcouple takes values in the range [-1, 1]:
+   *   - MC > 0: indicates right (positive) skew.
+   *   - MC < 0: indicates left (negative) skew.
+   *   - MC ≈ 0: indicates symmetric distribution.
+   *
+   * Robust to outliers with a 25% breakdown point, the medcouple is more appropriate than
+   * classical skewness measures for financial data, which is often heavy-tailed and non-Gaussian.
+   *
+   * Reference:
+   *   - Brys, G., Hubert, M., & Struyf, A. (2004). A Robust Measure of Skewness. *Journal of Computational and Graphical Statistics*, 13(4), 996–1017.
+   *     https://doi.org/10.1198/106186004X12632
+   *
+   * @tparam Decimal A numeric type, such as double or a fixed-point Decimal class.
+   * @param series A NumericTimeSeries containing the values to be analyzed.
+   * @return The medcouple statistic, in the range [-1, 1], as a robust estimate of skew.
+   * @throws std::domain_error if the series contains fewer than 3 values.
+   */
+  template <typename Decimal>
+  Decimal RobustSkewMedcouple(const NumericTimeSeries<Decimal>& series) {
+    std::vector<Decimal> data = series.getTimeSeriesAsVector();
+    if (data.size() < 3)
+      throw std::domain_error("RobustSkewMedcouple: Series too small");
+
+    std::sort(data.begin(), data.end());
+    const Decimal med = MedianOfVec(data);
+
+    // Partition into lower and upper halves relative to the median.
+    std::vector<Decimal> lower, upper;
+    for (const auto& val : data) {
+      if (val < med)
+	lower.push_back(val);
+      else if (val > med)
+	upper.push_back(val);
+      // Skip values equal to median — not used in kernel.
+    }
+
+    std::vector<Decimal> kernel;
+    kernel.reserve(lower.size() * upper.size());
+
+    for (size_t i = 0; i < lower.size(); ++i) {
+      for (size_t j = 0; j < upper.size(); ++j) {
+	Decimal denom = upper[j] - lower[i];
+	if (denom == DecimalConstants<Decimal>::DecimalZero)
+	  continue; // Avoid division by zero
+	Decimal h = ((upper[j] - med) - (med - lower[i])) / denom;
+	kernel.push_back(h);
+      }
+    }
+
+    if (kernel.empty())
+      return DecimalConstants<Decimal>::DecimalZero;
+
+    std::sort(kernel.begin(), kernel.end());
+    return MedianOfVec(kernel);
+  }
+
+  /**
+ * @brief Computes asymmetric profit target and stop loss levels using robust statistics.
+ *
+ * This function is the core calculation engine. It applies the provided median,
+ * volatility (qn), and skew to compute raw return levels.
+ *
+ * The formula, corrected for proper stop-loss widening:
+ * - Profit Target = median + (k_qn * Qn) + (k_skew_target * skew)
+ * - Stop Loss     = median - (k_qn * Qn) - (k_skew_stop * skew)
+ *
+ * The negative sign on the stop-loss skew term ensures that a negative skew
+ * (which results in a negative skew adjustment) makes the final stop-loss
+ * value less negative (i.e., widens the stop).
+ *
+ * @tparam Decimal A numeric type (e.g., double, or fixed-point Decimal).
+ * @param median The median of the return series.
+ * @param qn The robust Qₙ scale estimator.
+ * @param skew The medcouple robust skew measure (typically in [-1, 1]).
+ * @param k_qn Multiplier for Qₙ in both profit target and stop (e.g., 1.0).
+ * @param k_skew_target Multiplier for skew in the profit target direction.
+ * @param k_skew_stop Multiplier for skew in the stop loss direction.
+ * @param[out] profitTarget Output variable to store computed profit target raw return.
+ * @param[out] stopLoss Output variable to store computed stop loss raw return.
+ *
+ * @throws std::domain_error if the Qₙ value is negative.
+ */
+template <typename Decimal>
+void ComputeAsymmetricStopAndTarget(
+    const Decimal& median,
+    const Decimal& qn,
+    const Decimal& skew,
+    const Decimal& k_qn,
+    const Decimal& k_skew_target,
+    const Decimal& k_skew_stop,
+    Decimal& profitTarget,
+    Decimal& stopLoss)
+{
+  if (qn < DecimalConstants<Decimal>::DecimalZero)
+    throw std::domain_error("Qn must be non-negative");
+
+  profitTarget = median + (k_qn * qn) + (k_skew_target * skew);
+  // The sign change here is critical. A negative skew now makes the stop wider (less negative).
+  stopLoss     = median - (k_qn * qn) - (k_skew_stop * skew);
+}
+
+/**
+ * @brief Computes profit target and stop loss widths using robust statistics from an OHLC series.
+ *
+ * This is the high-level wrapper function. It derives the required robust statistics
+ * from the input series, calculates the appropriate multipliers, calls the core
+ * computation engine, and then sanitizes the output to ensure the final values are
+ * positive widths suitable for use in a trading strategy.
+ *
+ * It uses default multipliers:
+ * - k_qn = 1.0
+ * - k_skew_target = +0.5 * Qn
+ * - k_skew_stop = +0.5 * Qn
+ *
+ * The function returns a std::pair of positive Decimal values representing the
+ * distance from an entry price for the profit target and stop loss.
+ *
+ * @tparam Decimal A numeric type (e.g., double or fixed-precision Decimal).
+ * @param series An OHLCTimeSeries with at least 3 bars.
+ * @return std::pair<Decimal, Decimal> where first = profit target width, second = stop loss width.
+ *
+ * @throws std::domain_error if the series is too small or Qn is invalid.
+ */
+template <typename Decimal>
+std::pair<Decimal, Decimal> ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series)
+{
+  using namespace mkc_timeseries;
+
+  if (series.getNumEntries() < 3)
+    throw std::domain_error("Input series must contain at least 3 bars");
+
+  // Compute one-bar ROC of closing prices
+  auto rocSeries = RocSeries(series.CloseTimeSeries(), 1);
+  auto rocVec = rocSeries.getTimeSeriesAsVector();
+
+  if (rocVec.size() < 3)
+    throw std::domain_error("ROC series too small for robust estimation");
+
+  Decimal median = MedianOfVec(rocVec);
+  Decimal qn = RobustQn<Decimal>(rocSeries).getRobustQn();
+  Decimal skew = RobustSkewMedcouple(rocSeries);
+
+  // 1. Simplified Multipliers: The sign of the 'skew' variable itself handles the direction.
+  //    Both k-multipliers should be positive values representing sensitivity.
+  Decimal k_qn = DecimalConstants<Decimal>::DecimalOne;
+  Decimal k_skew_target = Decimal("0.5") * qn;
+  Decimal k_skew_stop = Decimal("0.5") * qn;
+
+  // 2. Compute Raw Returns
+  Decimal profitTargetReturn, stopLossReturn;
+  ComputeAsymmetricStopAndTarget(median, qn, skew, k_qn, k_skew_target, k_skew_stop, profitTargetReturn, stopLossReturn);
+
+  // 3. Convert to Positive Widths and Apply Fallback
+  // The final results should be positive distances from an entry price.
+  Decimal finalProfitTarget = profitTargetReturn;
+  Decimal finalStopLoss = -stopLossReturn; // Convert the negative return to a positive width
+
+  // A more robust fallback level is the Qn itself, as it's a guaranteed positive measure of volatility.
+  Decimal symmetricLevel = qn + median;
+
+  if (finalProfitTarget <= DecimalConstants<Decimal>::DecimalZero) {
+      finalProfitTarget = symmetricLevel;
+  }
+  if (finalStopLoss <= DecimalConstants<Decimal>::DecimalZero) {
+      finalStopLoss = symmetricLevel;
+  }
+
+  return std::make_pair(finalProfitTarget, finalStopLoss);
+}
+
+  template <class Decimal>
+  Decimal ComputeProfitTargetAndStop(const OHLCTimeSeries<Decimal>& series)
+  {
+    NumericTimeSeries<Decimal> closingPrices(series.CloseTimeSeries());
+    NumericTimeSeries<Decimal> rocOfClosingPrices(RocSeries(closingPrices, 1));
+    Decimal medianOfRoc(Median(rocOfClosingPrices));
+    Decimal robustQn(RobustQn<Decimal>(rocOfClosingPrices).getRobustQn());
+    Decimal result = (medianOfRoc + robustQn);
+    
+    // Validate that we have a positive result suitable for profit target and stop loss
+    if (result <= DecimalConstants<Decimal>::DecimalZero) {
+      throw std::domain_error("ComputeProfitTargetAndStop: computed value must be positive. " +
+                              std::string("Result: ") + std::to_string(result.getAsDouble()) +
+                              ", MedianOfRoc: " + std::to_string(medianOfRoc.getAsDouble()) +
+                              ", RobustQn: " + std::to_string(robustQn.getAsDouble()) +
+                              ". Check input data quality and ensure sufficient price variation.");
+    }
+    
+    return result;
+  }
+  
 }
 
 #endif

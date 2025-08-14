@@ -93,6 +93,161 @@ const DecimalType ROC_TOL_INDICATORS = fromString<DecimalType>("0.0001");
 TEST_CASE("TimeSeriesIndicators Tests", "[TimeSeriesIndicators]") {
     TimeFrame::Duration daily_tf = TimeFrame::DAILY;
 
+    SECTION("ComputeRobustStopAndTargetFromSeries") {
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // Synthetic OHLC time series with positive skew - oscillating around 100 with occasional large positive moves
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-01"),
+        fromString<DecimalType>("100"), fromString<DecimalType>("100.5"),
+        fromString<DecimalType>("99.5"), fromString<DecimalType>("100"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-02"),
+        fromString<DecimalType>("100"), fromString<DecimalType>("100.8"),
+        fromString<DecimalType>("99.2"), fromString<DecimalType>("99.8"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-03"),
+        fromString<DecimalType>("99.8"), fromString<DecimalType>("101.2"),
+        fromString<DecimalType>("99.5"), fromString<DecimalType>("100.1"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-04"),
+        fromString<DecimalType>("100.1"), fromString<DecimalType>("100.5"),
+        fromString<DecimalType>("99.0"), fromString<DecimalType>("99.5"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-05"),
+        fromString<DecimalType>("99.5"), fromString<DecimalType>("100.2"),
+        fromString<DecimalType>("98.8"), fromString<DecimalType>("100.2"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-06"),
+        fromString<DecimalType>("100.2"), fromString<DecimalType>("103.5"),
+        fromString<DecimalType>("100.0"), fromString<DecimalType>("103.0"), fromString<DecimalType>("100"), TimeFrame::DAILY)); // Large positive move
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-07"),
+        fromString<DecimalType>("103.0"), fromString<DecimalType>("103.5"),
+        fromString<DecimalType>("102.2"), fromString<DecimalType>("102.8"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+
+    auto [profitTarget, stopLoss] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series);
+
+    // We can't predict exact values because skew/Qn are dynamic,
+    // but we can assert expected relationships
+    REQUIRE(profitTarget > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(stopLoss > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(profitTarget > stopLoss);  // positive skew → wider profit, tighter stop
+
+    // Optional: print values for debugging
+    INFO("Profit Target: " << profitTarget);
+    INFO("Stop Loss: " << stopLoss);
+}
+
+SECTION("ComputeRobustStopAndTargetFromSeries - negative skew") {
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // Synthetic OHLC series with negative skew - oscillating around 100 with occasional large negative moves
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-01"),
+        fromString<DecimalType>("100"), fromString<DecimalType>("100.5"),
+        fromString<DecimalType>("99.5"), fromString<DecimalType>("100"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-02"),
+        fromString<DecimalType>("100"), fromString<DecimalType>("100.8"),
+        fromString<DecimalType>("99.2"), fromString<DecimalType>("100.2"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-03"),
+        fromString<DecimalType>("100.2"), fromString<DecimalType>("100.5"),
+        fromString<DecimalType>("99.8"), fromString<DecimalType>("99.9"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-04"),
+        fromString<DecimalType>("99.9"), fromString<DecimalType>("100.5"),
+        fromString<DecimalType>("99.0"), fromString<DecimalType>("100.3"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-05"),
+        fromString<DecimalType>("100.3"), fromString<DecimalType>("100.8"),
+        fromString<DecimalType>("99.5"), fromString<DecimalType>("99.8"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-06"),
+        fromString<DecimalType>("99.8"), fromString<DecimalType>("100.2"),
+        fromString<DecimalType>("96.5"), fromString<DecimalType>("97.0"), fromString<DecimalType>("100"), TimeFrame::DAILY)); // Large negative move
+    series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+        boost::gregorian::from_simple_string("2023-01-07"),
+        fromString<DecimalType>("97.0"), fromString<DecimalType>("97.8"),
+        fromString<DecimalType>("96.8"), fromString<DecimalType>("97.2"), fromString<DecimalType>("100"), TimeFrame::DAILY));
+
+    auto [profitTarget, stopLoss] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series);
+
+    // With negative skew, we expect:
+    // - profit target to shrink
+    // - stop loss to widen
+    REQUIRE(profitTarget > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(stopLoss > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(profitTarget < stopLoss);  // negative skew → tighter target, wider stop
+
+    // Optional: print values for review
+    INFO("Profit Target (neg skew): " << profitTarget);
+    INFO("Stop Loss (neg skew): " << stopLoss);
+}
+
+        SECTION("RobustSkewMedcouple") {
+        using mkc_timeseries::RobustSkewMedcouple;
+
+        SECTION("Symmetric distribution") {
+            auto ts = createNumericTimeSeriesForTest(daily_tf, {
+                {"2023-01-01", "1"},
+                {"2023-01-02", "2"},
+                {"2023-01-03", "3"},
+                {"2023-01-04", "4"},
+                {"2023-01-05", "5"}
+            });
+            auto result = RobustSkewMedcouple(ts);
+            REQUIRE(result == decimalApprox(DecimalConstants<DecimalType>::DecimalZero, TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("Positive skew") {
+            auto ts = createNumericTimeSeriesForTest(daily_tf, {
+                {"2023-01-01", "1"},
+                {"2023-01-02", "2"},
+                {"2023-01-03", "3"},
+                {"2023-01-04", "6"},
+                {"2023-01-05", "12"}
+            });
+            auto result = RobustSkewMedcouple(ts);
+            REQUIRE(result > DecimalConstants<DecimalType>::DecimalZero);
+        }
+
+        SECTION("Negative skew") {
+            auto ts = createNumericTimeSeriesForTest(daily_tf, {
+                {"2023-01-01", "1"},
+                {"2023-01-02", "2"},
+                {"2023-01-03", "3"},
+                {"2023-01-04", "-1"},
+                {"2023-01-05", "-4"}
+            });
+            auto result = RobustSkewMedcouple(ts);
+            REQUIRE(result < DecimalConstants<DecimalType>::DecimalZero);
+        }
+
+        SECTION("Flat series (zero skew)") {
+            auto ts = createNumericTimeSeriesForTest(daily_tf, {
+                {"2023-01-01", "5"},
+                {"2023-01-02", "5"},
+                {"2023-01-03", "5"},
+                {"2023-01-04", "5"},
+                {"2023-01-05", "5"}
+            });
+            auto result = RobustSkewMedcouple(ts);
+            REQUIRE(result == decimalApprox(DecimalConstants<DecimalType>::DecimalZero, TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("Too few values") {
+            auto ts = createNumericTimeSeriesForTest(daily_tf, {
+                {"2023-01-01", "1"},
+                {"2023-01-02", "2"}
+            });
+            REQUIRE_THROWS_AS(RobustSkewMedcouple(ts), std::domain_error);
+        }
+    }
+
     SECTION("DivideSeries") {
         ptime d1(boost::gregorian::date(2023,1,1), getDefaultBarTime());
         ptime d2(boost::gregorian::date(2023,1,2), getDefaultBarTime());

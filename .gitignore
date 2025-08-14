@@ -90,3 +90,4 @@ libs/PALCodeGenLibrary-v2/*.a
 
 .vscode/settings.json
 datetime_test/check_times.py
+src/palanalyzer/sample_ir/pal_analysis.db

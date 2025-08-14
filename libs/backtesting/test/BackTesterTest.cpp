@@ -814,3 +814,732 @@ TEST_CASE("BackTester::getEstimatedAnnualizedTrades", "[BackTester]") {
         REQUIRE_THROWS_AS(bt.getEstimatedAnnualizedTrades(), BackTesterException);
     }
 }
+
+TEST_CASE("BackTester::getProfitFactor", "[BackTester]") {
+    using DT = DecimalType;
+    const std::string sym = "@TEST_PF";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+    auto mkBar = [&](int Y, int M, int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        DT h = std::max(o, c);
+        DT l = std::min(o, c);
+        return createTimeSeriesEntry(dt, o, h, l, c, 1);
+    };
+
+    SECTION("getProfitFactor with no strategies throws exception") {
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 5));
+        
+        REQUIRE_THROWS_AS(bt.getProfitFactor(), BackTesterException);
+    }
+
+    SECTION("getProfitFactor with mixed winning and losing trades") {
+        // Create bars with mixed returns: +10%, -5%, +15%, -8%
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // +10% return
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "104.50"); // -5% return
+        auto b3 = mkBar(2020, Jan, 3, "104.50", "120.18"); // +15% return
+        auto b4 = mkBar(2020, Jan, 4, "120.18", "110.57"); // -8% return
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+        ts->addEntry(*b3);
+        ts->addEntry(*b4);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 4));
+        bt.addStrategy(strat);
+
+        // Inject a closed position that spans all bars
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->addBar(*b3);
+            pos->addBar(*b4);
+            pos->ClosePosition(b4->getDateValue(), b4->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        DT profitFactor = bt.getProfitFactor();
+        
+        // Expected calculation:
+        // Returns: +0.10, -0.05, +0.15, -0.08
+        // Gross wins: 0.10 + 0.15 = 0.25
+        // Gross losses: |-0.05| + |-0.08| = 0.13
+        // Profit Factor: 0.25 / 0.13 ≈ 1.923
+        DT expectedPF = createDecimal("0.25") / createDecimal("0.13");
+        REQUIRE(num::to_double(profitFactor) == Catch::Approx(num::to_double(expectedPF)).epsilon(0.001));
+    }
+
+    SECTION("getProfitFactor with all winning trades") {
+        // Create bars with only positive returns
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "105.00"); // +5% return
+        auto b2 = mkBar(2020, Jan, 2, "105.00", "110.25"); // +5% return
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Inject a closed position with only winning bars
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        DT profitFactor = bt.getProfitFactor();
+        
+        // When there are no losses, StatUtils returns 100.0 as the profit factor
+        REQUIRE(profitFactor == createDecimal("100.0"));
+    }
+
+    SECTION("getProfitFactor with all losing trades") {
+        // Create bars with only negative returns
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "95.00"); // -5% return
+        auto b2 = mkBar(2020, Jan, 2, "95.00", "90.25");  // -5% return
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Inject a closed position with only losing bars
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        DT profitFactor = bt.getProfitFactor();
+        
+        // When there are no wins, profit factor should be 0
+        REQUIRE(profitFactor == DecimalConstants<DT>::DecimalZero);
+    }
+
+    SECTION("getProfitFactor with short positions") {
+        // Test with short positions where returns are inverted
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "95.00");  // Price down = profit for short
+        auto b2 = mkBar(2020, Jan, 2, "95.00", "105.00");  // Price up = loss for short
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createShortPattern1();
+        auto strat = std::make_shared<PalShortStrategy<DT>>("test-short-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Inject a closed short position
+        {
+            auto pos = std::make_shared<TradingPositionShort<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        DT profitFactor = bt.getProfitFactor();
+        
+        // For short positions:
+        // Bar 1: -1 * (95-100)/100 = +0.05 (profit)
+        // Bar 2: -1 * (105-95)/95 = -0.1053 (loss)
+        // Profit Factor = 0.05 / 0.1053 ≈ 0.475
+        DT expectedWin = createDecimal("0.05");
+        DT expectedLoss = createDecimal("105.00") - createDecimal("95.00");
+        expectedLoss = expectedLoss / createDecimal("95.00"); // 0.1053
+        DT expectedPF = expectedWin / expectedLoss;
+        
+        REQUIRE(num::to_double(profitFactor) == Catch::Approx(num::to_double(expectedPF)).epsilon(0.01));
+    }
+}
+
+TEST_CASE("BackTester::getProfitability", "[BackTester]") {
+    using DT = DecimalType;
+    const std::string sym = "@TEST_PROF";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+    auto mkBar = [&](int Y, int M, int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        DT h = std::max(o, c);
+        DT l = std::min(o, c);
+        return createTimeSeriesEntry(dt, o, h, l, c, 1);
+    };
+
+    SECTION("getProfitability with no strategies throws exception") {
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 5));
+        
+        REQUIRE_THROWS_AS(bt.getProfitability(), BackTesterException);
+    }
+
+    SECTION("getProfitability with mixed trades") {
+        // Create a scenario with known profit factor and payoff ratio
+        // 2 winning trades: +20%, +10% (avg win = 15%)
+        // 2 losing trades: -10%, -5% (avg loss = 7.5%)
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "120.00"); // +20% return
+        auto b2 = mkBar(2020, Jan, 2, "120.00", "108.00");  // -10% return
+        auto b3 = mkBar(2020, Jan, 3, "108.00", "118.80");  // +10% return
+        auto b4 = mkBar(2020, Jan, 4, "118.80", "112.86");  // -5% return
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+        ts->addEntry(*b3);
+        ts->addEntry(*b4);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 4));
+        bt.addStrategy(strat);
+
+        // Inject a closed position spanning all bars
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->addBar(*b3);
+            pos->addBar(*b4);
+            pos->ClosePosition(b4->getDateValue(), b4->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        auto [profitFactor, profitability] = bt.getProfitability();
+        
+        // Expected calculation:
+        // Returns: +0.20, -0.10, +0.10, -0.05
+        // Gross wins: 0.20 + 0.10 = 0.30 (2 trades)
+        // Gross losses: 0.10 + 0.05 = 0.15 (2 trades)
+        // Profit Factor: 0.30 / 0.15 = 2.0
+        // Average win: 0.30 / 2 = 0.15
+        // Average loss: 0.15 / 2 = 0.075
+        // Payoff Ratio (Rwl): 0.15 / 0.075 = 2.0
+        // Profitability: 100 * PF / (PF + Rwl) = 100 * 2.0 / (2.0 + 2.0) = 50%
+        
+        DT expectedPF = createDecimal("2.0");
+        DT expectedProf = createDecimal("50.0");
+        
+        REQUIRE(num::to_double(profitFactor) == Catch::Approx(num::to_double(expectedPF)).epsilon(0.001));
+        REQUIRE(num::to_double(profitability) == Catch::Approx(num::to_double(expectedProf)).epsilon(0.001));
+    }
+
+    SECTION("getProfitability with all winning trades") {
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // +10% return
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "121.00"); // +10% return
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        auto [profitFactor, profitability] = bt.getProfitability();
+        
+        // With no losses: PF = 100, Rwl = 0, Profitability = 100 * 100 / (100 + 0) = 100%
+        REQUIRE(profitFactor == createDecimal("100.0"));
+        REQUIRE(profitability == createDecimal("100.0"));
+    }
+
+    SECTION("getProfitability with all losing trades") {
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "90.00");  // -10% return
+        auto b2 = mkBar(2020, Jan, 2, "90.00", "81.00");   // -10% return
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        auto [profitFactor, profitability] = bt.getProfitability();
+        
+        // With no wins: PF = 0, profitability = 0
+        REQUIRE(profitFactor == DecimalConstants<DT>::DecimalZero);
+        REQUIRE(profitability == DecimalConstants<DT>::DecimalZero);
+    }
+
+    SECTION("getProfitability with empty returns") {
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // No positions added - should return zero values
+        auto [profitFactor, profitability] = bt.getProfitability();
+        
+        REQUIRE(profitFactor == DecimalConstants<DT>::DecimalZero);
+        REQUIRE(profitability == DecimalConstants<DT>::DecimalZero);
+    }
+
+    SECTION("getProfitability integration with open positions") {
+        // Test that both closed and open positions are included in the calculation
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // +10% return (closed)
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "99.00");  // -10% return (closed)
+        auto b3 = mkBar(2020, Jan, 3, "200.00", "220.00"); // +10% return (open)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+        ts->addEntry(*b3);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 3));
+        bt.addStrategy(strat);
+
+        // Add closed position
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        // Add open position
+        {
+            auto posO = std::make_shared<TradingPositionLong<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+            auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
+            instrPos.addPosition(posO);
+        }
+
+        auto [profitFactor, profitability] = bt.getProfitability();
+        
+        // Returns: +0.10, -0.10, +0.10
+        // Gross wins: 0.20 (2 trades), Gross losses: 0.10 (1 trade)
+        // PF = 0.20 / 0.10 = 2.0
+        // Avg win = 0.10, Avg loss = 0.10, Rwl = 1.0
+        // Profitability = 100 * 2.0 / (2.0 + 1.0) = 66.67%
+        
+        DT expectedPF = createDecimal("2.0");
+        DT expectedProf = createDecimal("100.0") * createDecimal("2.0") / createDecimal("3.0"); // 66.67
+        
+        REQUIRE(num::to_double(profitFactor) == Catch::Approx(num::to_double(expectedPF)).epsilon(0.001));
+        REQUIRE(num::to_double(profitability) == Catch::Approx(num::to_double(expectedProf)).epsilon(0.01));
+    }
+}
+
+TEST_CASE("BackTester::getNumConsecutiveLosses", "[BackTester]") {
+    using DT = DecimalType;
+    const std::string sym = "@TEST_CONSEC";
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+    auto mkBar = [&](int Y, int M, int D, const std::string& openStr, const std::string& closeStr) {
+        TimeSeriesDate dt(Y, M, D);
+        DT o = createDecimal(openStr);
+        DT c = createDecimal(closeStr);
+        DT h = std::max(o, c);
+        DT l = std::min(o, c);
+        return createTimeSeriesEntry(dt, o, h, l, c, 1);
+    };
+
+    SECTION("getNumConsecutiveLosses with no strategies throws exception") {
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 5));
+        
+        REQUIRE_THROWS_AS(bt.getNumConsecutiveLosses(), BackTesterException);
+    }
+
+    SECTION("getNumConsecutiveLosses with no trades returns 0") {
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // No positions added - should return 0
+        REQUIRE(bt.getNumConsecutiveLosses() == 0);
+    }
+
+    SECTION("getNumConsecutiveLosses with single winning trade") {
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // Entry bar
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "120.00"); // Exit bar (winning)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Create a winning long position
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        REQUIRE(bt.getNumConsecutiveLosses() == 0);
+    }
+
+    SECTION("getNumConsecutiveLosses with single losing trade") {
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // Entry bar
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "90.00");  // Exit bar (losing)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Create a losing long position
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        REQUIRE(bt.getNumConsecutiveLosses() == 1);
+    }
+
+    SECTION("getNumConsecutiveLosses with multiple consecutive losses") {
+        // Create bars for 3 consecutive losing trades
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // Trade 1 entry
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "90.00");  // Trade 1 exit (loss)
+        auto b3 = mkBar(2020, Jan, 3, "200.00", "210.00"); // Trade 2 entry
+        auto b4 = mkBar(2020, Jan, 4, "210.00", "180.00"); // Trade 2 exit (loss)
+        auto b5 = mkBar(2020, Jan, 5, "300.00", "310.00"); // Trade 3 entry
+        auto b6 = mkBar(2020, Jan, 6, "310.00", "280.00"); // Trade 3 exit (loss)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+        ts->addEntry(*b3);
+        ts->addEntry(*b4);
+        ts->addEntry(*b5);
+        ts->addEntry(*b6);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 6));
+        bt.addStrategy(strat);
+
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+
+        // Add first losing trade
+        {
+            auto pos1 = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos1->addBar(*b2);
+            pos1->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            closedHist.addClosedPosition(pos1);
+        }
+
+        // Add second losing trade
+        {
+            auto pos2 = std::make_shared<TradingPositionLong<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+            pos2->addBar(*b4);
+            pos2->ClosePosition(b4->getDateValue(), b4->getCloseValue());
+            closedHist.addClosedPosition(pos2);
+        }
+
+        // Add third losing trade
+        {
+            auto pos3 = std::make_shared<TradingPositionLong<DT>>(sym, b5->getOpenValue(), *b5, oneContract);
+            pos3->addBar(*b6);
+            pos3->ClosePosition(b6->getDateValue(), b6->getCloseValue());
+            closedHist.addClosedPosition(pos3);
+        }
+
+        REQUIRE(bt.getNumConsecutiveLosses() == 3);
+    }
+
+    SECTION("getNumConsecutiveLosses resets after winning trade") {
+        // Create bars for: Loss, Loss, Win sequence
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // Trade 1 entry
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "90.00");  // Trade 1 exit (loss)
+        auto b3 = mkBar(2020, Jan, 3, "200.00", "210.00"); // Trade 2 entry
+        auto b4 = mkBar(2020, Jan, 4, "210.00", "180.00"); // Trade 2 exit (loss)
+        auto b5 = mkBar(2020, Jan, 5, "300.00", "310.00"); // Trade 3 entry
+        auto b6 = mkBar(2020, Jan, 6, "310.00", "350.00"); // Trade 3 exit (win)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+        ts->addEntry(*b3);
+        ts->addEntry(*b4);
+        ts->addEntry(*b5);
+        ts->addEntry(*b6);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 6));
+        bt.addStrategy(strat);
+
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+
+        // Add first losing trade
+        {
+            auto pos1 = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos1->addBar(*b2);
+            pos1->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            closedHist.addClosedPosition(pos1);
+        }
+
+        // Add second losing trade
+        {
+            auto pos2 = std::make_shared<TradingPositionLong<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+            pos2->addBar(*b4);
+            pos2->ClosePosition(b4->getDateValue(), b4->getCloseValue());
+            closedHist.addClosedPosition(pos2);
+        }
+
+        // Add winning trade (should reset counter)
+        {
+            auto pos3 = std::make_shared<TradingPositionLong<DT>>(sym, b5->getOpenValue(), *b5, oneContract);
+            pos3->addBar(*b6);
+            pos3->ClosePosition(b6->getDateValue(), b6->getCloseValue());
+            closedHist.addClosedPosition(pos3);
+        }
+
+        REQUIRE(bt.getNumConsecutiveLosses() == 0);
+    }
+
+    SECTION("getNumConsecutiveLosses with short positions") {
+        // Test with short positions where price movements are inverted
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "95.00");  // Short entry (price down = profit)
+        auto b2 = mkBar(2020, Jan, 2, "95.00", "105.00");  // Short exit (price up = loss)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createShortPattern1();
+        auto strat = std::make_shared<PalShortStrategy<DT>>("test-short-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Create a losing short position (price went up)
+        {
+            auto pos = std::make_shared<TradingPositionShort<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        REQUIRE(bt.getNumConsecutiveLosses() == 1);
+    }
+
+    SECTION("getNumConsecutiveLosses with mixed win/loss pattern") {
+        // Test pattern: Win, Loss, Loss, Win, Loss
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // Trade 1 entry
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "120.00"); // Trade 1 exit (win)
+        auto b3 = mkBar(2020, Jan, 3, "200.00", "210.00"); // Trade 2 entry
+        auto b4 = mkBar(2020, Jan, 4, "210.00", "180.00"); // Trade 2 exit (loss)
+        auto b5 = mkBar(2020, Jan, 5, "300.00", "310.00"); // Trade 3 entry
+        auto b6 = mkBar(2020, Jan, 6, "310.00", "280.00"); // Trade 3 exit (loss)
+        auto b7 = mkBar(2020, Jan, 7, "400.00", "410.00"); // Trade 4 entry
+        auto b8 = mkBar(2020, Jan, 8, "410.00", "450.00"); // Trade 4 exit (win)
+        auto b9 = mkBar(2020, Jan, 9, "500.00", "510.00"); // Trade 5 entry
+        auto b10 = mkBar(2020, Jan, 10, "510.00", "480.00"); // Trade 5 exit (loss)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+        ts->addEntry(*b3);
+        ts->addEntry(*b4);
+        ts->addEntry(*b5);
+        ts->addEntry(*b6);
+        ts->addEntry(*b7);
+        ts->addEntry(*b8);
+        ts->addEntry(*b9);
+        ts->addEntry(*b10);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 10));
+        bt.addStrategy(strat);
+
+        auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+
+        // Add trades in sequence: Win, Loss, Loss, Win, Loss
+        {
+            auto pos1 = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos1->addBar(*b2);
+            pos1->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            closedHist.addClosedPosition(pos1);
+        }
+
+        {
+            auto pos2 = std::make_shared<TradingPositionLong<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+            pos2->addBar(*b4);
+            pos2->ClosePosition(b4->getDateValue(), b4->getCloseValue());
+            closedHist.addClosedPosition(pos2);
+        }
+
+        {
+            auto pos3 = std::make_shared<TradingPositionLong<DT>>(sym, b5->getOpenValue(), *b5, oneContract);
+            pos3->addBar(*b6);
+            pos3->ClosePosition(b6->getDateValue(), b6->getCloseValue());
+            closedHist.addClosedPosition(pos3);
+        }
+
+        {
+            auto pos4 = std::make_shared<TradingPositionLong<DT>>(sym, b7->getOpenValue(), *b7, oneContract);
+            pos4->addBar(*b8);
+            pos4->ClosePosition(b8->getDateValue(), b8->getCloseValue());
+            closedHist.addClosedPosition(pos4);
+        }
+
+        {
+            auto pos5 = std::make_shared<TradingPositionLong<DT>>(sym, b9->getOpenValue(), *b9, oneContract);
+            pos5->addBar(*b10);
+            pos5->ClosePosition(b10->getDateValue(), b10->getCloseValue());
+            closedHist.addClosedPosition(pos5);
+        }
+
+        // After Win, Loss, Loss, Win, Loss sequence, consecutive losses should be 1
+        REQUIRE(bt.getNumConsecutiveLosses() == 1);
+    }
+
+    SECTION("getNumConsecutiveLosses integration with existing methods") {
+        // Test that the method works correctly alongside other BackTester methods
+        auto b1 = mkBar(2020, Jan, 1, "100.00", "110.00"); // Entry
+        auto b2 = mkBar(2020, Jan, 2, "110.00", "90.00");  // Exit (loss)
+
+        auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        ts->addEntry(*b1);
+        ts->addEntry(*b2);
+
+        auto portfolio = std::make_shared<Portfolio<DT>>("test-portfolio");
+        portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+        auto pattern = createLongPattern1();
+        auto strat = std::make_shared<PalLongStrategy<DT>>("test-strategy", pattern, portfolio);
+
+        DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+        bt.addStrategy(strat);
+
+        // Create a losing position
+        {
+            auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+            pos->addBar(*b2);
+            pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+            auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+            closedHist.addClosedPosition(pos);
+        }
+
+        // Verify that all methods work correctly together
+        REQUIRE(bt.getNumConsecutiveLosses() == 1);
+        REQUIRE(bt.getClosedPositionHistory().getNumPositions() == 1);
+        REQUIRE(bt.getClosedPositionHistory().getNumLosingPositions() == 1);
+        REQUIRE(bt.getClosedPositionHistory().getNumWinningPositions() == 0);
+        
+        // Verify that the method delegates correctly to ClosedPositionHistory
+        REQUIRE(bt.getNumConsecutiveLosses() == bt.getClosedPositionHistory().getNumConsecutiveLosses());
+    }
+}

@@ -68,8 +68,8 @@ namespace mkc_timeseries
       : mPositions(),
         mSumWinners(DecimalConstants<Decimal>::DecimalZero),
         mSumLosers(DecimalConstants<Decimal>::DecimalZero),
-	mLogSumWinners(DecimalConstants<Decimal>::DecimalZero),
-	mLogSumLosers(DecimalConstants<Decimal>::DecimalZero),
+ mLogSumWinners(DecimalConstants<Decimal>::DecimalZero),
+ mLogSumLosers(DecimalConstants<Decimal>::DecimalZero),
         mNumWinners(0),
         mNumLosers(0),
         mNumBarsInMarket(0),
@@ -80,7 +80,8 @@ namespace mkc_timeseries
         mLosersVect(),
         mBarsPerPosition(),
         mBarsPerWinningPosition(),
-        mBarsPerLosingPosition()
+        mBarsPerLosingPosition(),
+        mNumConsecutiveLosses(0)
     {}
 
     ClosedPositionHistory(const ClosedPositionHistory<Decimal>& rhs)
@@ -99,7 +100,8 @@ namespace mkc_timeseries
         mLosersVect(rhs.mLosersVect),
         mBarsPerPosition(rhs.mBarsPerPosition),
         mBarsPerWinningPosition(rhs.mBarsPerWinningPosition),
-        mBarsPerLosingPosition(rhs.mBarsPerLosingPosition)
+        mBarsPerLosingPosition(rhs.mBarsPerLosingPosition),
+        mNumConsecutiveLosses(rhs.mNumConsecutiveLosses)
     {}
 
     ClosedPositionHistory<Decimal>&
@@ -124,6 +126,7 @@ namespace mkc_timeseries
       mBarsPerPosition = rhs.mBarsPerPosition;
       mBarsPerWinningPosition = rhs.mBarsPerWinningPosition;
       mBarsPerLosingPosition = rhs.mBarsPerLosingPosition;
+      mNumConsecutiveLosses = rhs.mNumConsecutiveLosses;
 
       return *this;
     }
@@ -154,19 +157,25 @@ namespace mkc_timeseries
         {
           mNumWinners++;
           mSumWinners += position->getPercentReturn();
-	  mLogSumWinners += position->getLogTradeReturn();
+   mLogSumWinners += position->getLogTradeReturn();
           mWinnersStats (num::to_double(position->getPercentReturn()));
           mWinnersVect.push_back(num::to_double(position->getPercentReturn()));
           mBarsPerWinningPosition.push_back (position->getNumBarsInPosition());
+          
+          // Reset consecutive losses counter on winning position
+          mNumConsecutiveLosses = 0;
         }
       else if (position->isLosingPosition())
         {
           mNumLosers++;
           mSumLosers += position->getPercentReturn();
-	  mLogSumLosers += position->getLogTradeReturn();
+   mLogSumLosers += position->getLogTradeReturn();
           mLosersStats (num::to_double(percReturn));
           mLosersVect.push_back(num::to_double(num::abs(percReturn)));
           mBarsPerLosingPosition.push_back (position->getNumBarsInPosition());
+          
+          // Increment consecutive losses counter on losing position
+          mNumConsecutiveLosses++;
         }
       else
         throw std::logic_error(std::string("ClosedPositionHistory:addClosedPosition - position not winner or lsoer"));
@@ -215,6 +224,11 @@ namespace mkc_timeseries
     uint32_t getNumBarsInMarket() const
     {
       return mNumBarsInMarket;
+    }
+
+    uint32_t getNumConsecutiveLosses() const
+    {
+      return mNumConsecutiveLosses;
     }
 
 /**
@@ -725,6 +739,9 @@ namespace mkc_timeseries
     std::vector<unsigned int> mBarsPerPosition;
     std::vector<unsigned int> mBarsPerWinningPosition;
     std::vector<unsigned int> mBarsPerLosingPosition;
+    
+    // Number of consecutive losing trades
+    unsigned int mNumConsecutiveLosses;
   };
 }
 #endif

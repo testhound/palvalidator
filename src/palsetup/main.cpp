@@ -422,31 +422,39 @@ int main(int argc, char** argv)
         std::cout << "Generated " << insampleIndicatorSeries.getNumEntries() << " IBS values for insample data." << std::endl;
       }
 
-      // 8. Insample stop calculation
+      // 8. Insample stop and target calculation using robust asymmetric method
+      Num profitTargetValue;
       Num stopValue;
       Num medianOfRoc;
       Num robustQn;
       Num MAD;
       Num StdDev;
+      Num skew;
         
       try
         {
-	  NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
-	  NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, 1));
-	  medianOfRoc = Median(rocOfClosingPrices);
-	  robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
-	  MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
-	  StdDev = StandardDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
-	  stopValue = medianOfRoc + robustQn;
+   // Compute asymmetric profit target and stop values
+   auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries);
+   profitTargetValue = targetStopPair.first;
+   stopValue = targetStopPair.second;
+   
+   // Still compute traditional statistics for reporting
+   NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
+   NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, 1));
+   medianOfRoc = Median(rocOfClosingPrices);
+   robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
+   MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
+   StdDev = StandardDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
+   skew = RobustSkewMedcouple(rocOfClosingPrices);
         }
       catch (const std::domain_error& e)
         {
-	  std::cerr << "ERROR: Intraday data contains duplicate timestamps preventing stop calculation." << std::endl;
-	  std::cerr << "Details: " << e.what() << std::endl;
-	  std::cerr << "Cause: NumericTimeSeries cannot handle multiple intraday bars with identical timestamps." << std::endl;
-	  std::cerr << "Action: Clean the intraday data to ensure unique timestamps for each bar." << std::endl;
-	  std::cerr << "Note: Pass the above details to your broker's data cleaning team." << std::endl;
-	  return 1;
+   std::cerr << "ERROR: Intraday data contains duplicate timestamps preventing stop calculation." << std::endl;
+   std::cerr << "Details: " << e.what() << std::endl;
+   std::cerr << "Cause: NumericTimeSeries cannot handle multiple intraday bars with identical timestamps." << std::endl;
+   std::cerr << "Action: Clean the intraday data to ensure unique timestamps for each bar." << std::endl;
+   std::cerr << "Note: Pass the above details to your broker's data cleaning team." << std::endl;
+   return 1;
         }
 
       Num half(DecimalConstants<Num>::createDecimal("0.5"));
@@ -454,17 +462,17 @@ int main(int argc, char** argv)
       // 8. Generate target/stop files and data files for each subdirectory
       for (const auto& currentPalDir : palSubDirs)
         {
-          // Generate target/stop files in current subdirectory
+          // Generate target/stop files in current subdirectory using asymmetric values
           std::ofstream tsFile1((currentPalDir / (tickerSymbol + "_0_5_.TRS")).string());
-          tsFile1 << (stopValue * half) << std::endl << stopValue << std::endl;
+          tsFile1 << (profitTargetValue * half) << std::endl << stopValue << std::endl;
           tsFile1.close();
 
           std::ofstream tsFile2((currentPalDir / (tickerSymbol + "_1_0_.TRS")).string());
-          tsFile2 << stopValue << std::endl << stopValue << std::endl;
+          tsFile2 << profitTargetValue << std::endl << stopValue << std::endl;
           tsFile2.close();
 
           std::ofstream tsFile3((currentPalDir / (tickerSymbol + "_2_0_.TRS")).string());
-          tsFile3 << (stopValue * DecimalConstants<Num>::DecimalTwo) << std::endl << stopValue << std::endl;
+          tsFile3 << (profitTargetValue * DecimalConstants<Num>::DecimalTwo) << std::endl << stopValue << std::endl;
           tsFile3.close();
 
           // Write data files to current subdirectory
@@ -542,7 +550,9 @@ int main(int argc, char** argv)
       std::cout << "Qn  = " << robustQn << std::endl;
       std::cout << "MAD = " << MAD << std::endl;
       std::cout << "Std = " << StdDev << std::endl;
+      std::cout << "Profit Target = " << profitTargetValue << std::endl;
       std::cout << "Stop = " << stopValue << std::endl;
+      std::cout << "Skew = " << skew << std::endl;
 
       // Configuration files are now written to each risk-reward subdirectory above
 

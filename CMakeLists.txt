@@ -66,11 +66,13 @@ add_subdirectory(libs/concurrency)
 add_subdirectory(libs/pasearchalgo)
 add_subdirectory(libs/statistics)
 add_subdirectory(libs/priceactionlab)
+add_subdirectory(libs/patterndiscovery)
 add_subdirectory(libraries/Alglib)
 add_subdirectory(src/palvalidator)
 add_subdirectory(src/palsetup)
 add_subdirectory(src/palcodegen)
-add_subdirectory(src/patterndiscovery)
+add_subdirectory(src/pattern_universe_generator)
+add_subdirectory(src/palanalyzer)
 
 
 file(GLOB SRC_LIST
@@ -112,10 +114,12 @@ add_library(Catch INTERFACE)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND}
-    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests priceactionlab_unit_tests palvalidator_unit_tests
+    DEPENDS timeseries_unit_tests backtesting_unit_tests statistics_unit_tests priceactionlab_unit_tests patterndiscovery_unit_tests palvalidator_unit_tests pattern_generator_unit_tests palanalyzer_unit_tests
 )
 
 install(TARGETS PalValidator DESTINATION bin)
 install(TARGETS palsetup DESTINATION bin)
 install(TARGETS palcodegen DESTINATION bin)
+install(TARGETS pattern_generator DESTINATION bin)
+install(TARGETS palanalyzer DESTINATION bin)
 install(FILES "${CMAKE_SOURCE_DIR}/policies.json" DESTINATION bin)

@@ -138,12 +138,12 @@ namespace mkc_timeseries
      * when they are added via `addStrategyTransaction`.
      * Implements the `StrategyTransactionObserver` interface.
      */
-    void TransactionComplete (StrategyTransaction<Decimal> *transaction)
+    void TransactionComplete (StrategyTransaction<Decimal> * /* transaction */)
     {
       mCompletedTransactions++;
 
       if (mOpenTransactions > 0)
-	mOpenTransactions--;
+ mOpenTransactions--;
     }
 
     /**

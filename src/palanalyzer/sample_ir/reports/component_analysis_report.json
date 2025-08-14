@@ -1,0 +1,46 @@
+# Component Analysis Report
+Generated: 2025-08-10 11:17:36
+Database: pal_analysis.db
+
+{
+  "componentAnalysis": {
+    "Deep": {
+      "totalPatterns": 122494,
+      "uniqueIndices": 525,
+      "componentUsage": {
+        "OPEN": 169641,
+        "HIGH": 448824,
+        "LOW": 448575,
+        "CLOSE": 474222
+      },
+      "patternLengthDistribution": {
+        "4": 3,
+        "6": 315,
+        "8": 5678,
+        "10": 36704,
+        "12": 19148,
+        "14": 47031,
+        "16": 3192,
+        "18": 10423
+      }
+    },
+    "Extended": {
+      "totalPatterns": 25591,
+      "uniqueIndices": 111,
+      "componentUsage": {
+        "OPEN": 18252,
+        "HIGH": 91714,
+        "LOW": 90841,
+        "CLOSE": 101869
+      },
+      "patternLengthDistribution": {
+        "6": 155,
+        "8": 2749,
+        "10": 6093,
+        "12": 8053,
+        "14": 7234,
+        "16": 1307
+      }
+    }
+  }
+}

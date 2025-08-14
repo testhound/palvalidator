@@ -1,0 +1,4208 @@
+# Index Mapping Report
+Generated: 2025-08-10 11:17:36
+Database: pal_analysis.db
+
+{
+  "indexMappings": {
+    "1": {
+      "barOffsets": [0, 1, 2],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 735,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 3
+    },
+    "2": {
+      "barOffsets": [0, 1, 2, 3],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 232,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "3": {
+      "barOffsets": [0, 1, 2, 3, 4],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 935,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "4": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 397,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "5": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 622,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 7
+    },
+    "6": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 724,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 8
+    },
+    "7": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 764,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 9
+    },
+    "8": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 826,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 7
+    },
+    "9": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 954,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "10": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 954,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "11": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1001,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "12": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 468,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "13": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 153,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "14": {
+      "barOffsets": [0, 1, 2, 3, 4],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 256,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "15": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 370,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "16": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 495,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "17": {
+      "barOffsets": [0, 1, 2, 4, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 799,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "18": {
+      "barOffsets": [0, 1, 2, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 915,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "19": {
+      "barOffsets": [0, 1, 2, 3, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 741,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "20": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 566,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "21": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 710,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "22": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 517,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "23": {
+      "barOffsets": [0, 1, 2, 3, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 337,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "24": {
+      "barOffsets": [0, 1, 2, 3, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 700,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "25": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 580,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "26": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 339,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "27": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 653,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "28": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 713,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "29": {
+      "barOffsets": [0, 1, 2, 3, 4],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 496,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "30": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1177,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 7
+    },
+    "31": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 996,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "32": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1023,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 7
+    },
+    "33": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1201,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 7
+    },
+    "34": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 971,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 7
+    },
+    "35": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 944,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 6
+    },
+    "36": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1008,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 6
+    },
+    "37": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 969,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 6
+    },
+    "38": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 887,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "39": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 955,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 6
+    },
+    "40": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 735,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "41": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1045,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 8
+    },
+    "42": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1064,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 8
+    },
+    "43": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 787,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 8
+    },
+    "44": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1013,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 8
+    },
+    "45": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 841,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 8
+    },
+    "46": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 759,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 8
+    },
+    "47": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 796,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 8
+    },
+    "48": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 649,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 7
+    },
+    "49": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 716,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 7
+    },
+    "50": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 747,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 7
+    },
+    "51": {
+      "barOffsets": [0, 1, 2, 3, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 443,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 7
+    },
+    "52": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 552,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 7
+    },
+    "53": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 636,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 7
+    },
+    "54": {
+      "barOffsets": [0, 1, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 575,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 6
+    },
+    "55": {
+      "barOffsets": [0, 1, 3, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 457,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 6
+    },
+    "56": {
+      "barOffsets": [0, 1, 2, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 864,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 6
+    },
+    "57": {
+      "barOffsets": [0, 1, 2, 3, 5, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 785,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 6
+    },
+    "58": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 755,
+      "searchType": "Extended",
+      "minPatternLength": 2,
+      "maxPatternLength": 6
+    },
+    "59": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1150,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "60": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1057,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "61": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1064,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "62": {
+      "barOffsets": [0, 1, 2, 3, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 1091,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "63": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 999,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "64": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 874,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "65": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 718,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "66": {
+      "barOffsets": [0, 1, 2, 3, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 681,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "67": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 568,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 6
+    },
+    "68": {
+      "barOffsets": [0, 1, 2, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 148,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "69": {
+      "barOffsets": [0, 1, 2, 3, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 164,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "70": {
+      "barOffsets": [0, 1, 2, 4, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 159,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "71": {
+      "barOffsets": [0, 1, 2, 3, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 465,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "72": {
+      "barOffsets": [0, 1, 2, 3, 4, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 464,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "73": {
+      "barOffsets": [0, 1, 2, 3, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 947,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "74": {
+      "barOffsets": [0, 1, 2, 3, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 985,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "75": {
+      "barOffsets": [0, 1, 2, 3, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 931,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "76": {
+      "barOffsets": [0, 1, 2, 3, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 921,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "77": {
+      "barOffsets": [0, 1, 2, 3, 4, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 932,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "78": {
+      "barOffsets": [0, 1, 2, 3, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 914,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "79": {
+      "barOffsets": [0, 1, 2, 3, 4, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 598,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "80": {
+      "barOffsets": [0, 1, 2, 3, 4, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 389,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "81": {
+      "barOffsets": [0, 1, 2, 4, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 354,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 4
+    },
+    "82": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 533,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "83": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 548,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "84": {
+      "barOffsets": [0, 1, 2, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 526,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "85": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 440,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "86": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 301,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "87": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 325,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "88": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 252,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "89": {
+      "barOffsets": [0, 1, 2, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 283,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "90": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 296,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "91": {
+      "barOffsets": [0, 1, 2, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 302,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "92": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 128,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "93": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 138,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "94": {
+      "barOffsets": [0, 1, 2, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 103,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "95": {
+      "barOffsets": [0, 1, 2, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 600,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "96": {
+      "barOffsets": [0, 1, 2, 3, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 527,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "97": {
+      "barOffsets": [0, 1, 2, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 406,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "98": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 394,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "99": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 438,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "100": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 72,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "101": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 417,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "102": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 384,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "103": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 288,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "104": {
+      "barOffsets": [0, 1, 2, 3, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 338,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "105": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 909,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "106": {
+      "barOffsets": [0, 3, 4, 5, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 599,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "107": {
+      "barOffsets": [0, 1, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 931,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "108": {
+      "barOffsets": [0, 2, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 546,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "109": {
+      "barOffsets": [0, 1, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 527,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "110": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 54,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "111": {
+      "barOffsets": [0, 2, 3, 4, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 421,
+      "searchType": "Extended",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "112": {
+      "barOffsets": [0, 3, 4, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 32,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "113": {
+      "barOffsets": [0, 1, 3, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 41,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "114": {
+      "barOffsets": [0, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 41,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "115": {
+      "barOffsets": [0, 1, 2, 3, 4, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 50,
+      "searchType": "Extended",
+      "minPatternLength": 3,
+      "maxPatternLength": 5
+    },
+    "116": {
+      "barOffsets": [0, 1, 2, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 37,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "117": {
+      "barOffsets": [0, 2, 3, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 35,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "118": {
+      "barOffsets": [0, 1, 3, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 31,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "119": {
+      "barOffsets": [0, 1, 2, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 45,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "120": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 32,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "121": {
+      "barOffsets": [0, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 31,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "122": {
+      "barOffsets": [0, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 36,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "123": {
+      "barOffsets": [0, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 33,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "124": {
+      "barOffsets": [0, 1, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 48,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "125": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 243,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "126": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 236,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "127": {
+      "barOffsets": [0, 1, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 260,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "128": {
+      "barOffsets": [0, 2, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 239,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "129": {
+      "barOffsets": [0, 1, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 236,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "130": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 553,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 6
+    },
+    "131": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 553,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 6
+    },
+    "132": {
+      "barOffsets": [0, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 556,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 6
+    },
+    "133": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 474,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 7
+    },
+    "134": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 430,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 7
+    },
+    "135": {
+      "barOffsets": [0, 1, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 424,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 7
+    },
+    "136": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 192,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 8
+    },
+    "137": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 204,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 8
+    },
+    "138": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 54,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "139": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 35,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "140": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 36,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "141": {
+      "barOffsets": [0, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 44,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "142": {
+      "barOffsets": [0, 1, 3, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 37,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 5
+    },
+    "143": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 251,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "144": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 259,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "145": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 234,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "146": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 219,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "147": {
+      "barOffsets": [0, 1, 3, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 226,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "148": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 571,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 6
+    },
+    "149": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 577,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 6
+    },
+    "150": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 568,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 6
+    },
+    "151": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 442,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 7
+    },
+    "152": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 425,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 7
+    },
+    "153": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "HIGH", "LOW", "CLOSE"],
+      "patternCount": 452,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 7
+    },
+    "154": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["LOW", "CLOSE"],
+      "patternCount": 217,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "155": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["LOW", "CLOSE"],
+      "patternCount": 203,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "161": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 307,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "162": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 150,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "163": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 40,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "164": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 53,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "165": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 47,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "166": {
+      "barOffsets": [0, 1, 3, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 56,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "167": {
+      "barOffsets": [0, 1, 4, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 81,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "168": {
+      "barOffsets": [0, 1, 5, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 82,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "170": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 488,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "171": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 105,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "172": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW", "CLOSE"],
+      "patternCount": 31,
+      "searchType": "Deep",
+      "minPatternLength": 9,
+      "maxPatternLength": 9
+    },
+    "173": {
+      "barOffsets": [0, 1, 2],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 104,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "174": {
+      "barOffsets": [0, 2, 3],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 99,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "175": {
+      "barOffsets": [0, 3, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 110,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "176": {
+      "barOffsets": [0, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 119,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "177": {
+      "barOffsets": [0, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 116,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "178": {
+      "barOffsets": [0, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 104,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "179": {
+      "barOffsets": [0, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 99,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "180": {
+      "barOffsets": [0, 1, 3],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 122,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "181": {
+      "barOffsets": [0, 2, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 117,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "182": {
+      "barOffsets": [0, 3, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 115,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "183": {
+      "barOffsets": [0, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 112,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "184": {
+      "barOffsets": [0, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 112,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "185": {
+      "barOffsets": [0, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 103,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "186": {
+      "barOffsets": [0, 1, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 102,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "187": {
+      "barOffsets": [0, 2, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 136,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "188": {
+      "barOffsets": [0, 3, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 111,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "189": {
+      "barOffsets": [0, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 123,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "190": {
+      "barOffsets": [0, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 100,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "191": {
+      "barOffsets": [0, 1, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 97,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "192": {
+      "barOffsets": [0, 2, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 106,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "193": {
+      "barOffsets": [0, 3, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 107,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "194": {
+      "barOffsets": [0, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 97,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "195": {
+      "barOffsets": [0, 1, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 118,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "196": {
+      "barOffsets": [0, 2, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 98,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "197": {
+      "barOffsets": [0, 3, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 109,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "198": {
+      "barOffsets": [0, 1, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 118,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "199": {
+      "barOffsets": [0, 2, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 122,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "200": {
+      "barOffsets": [0, 1, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 103,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "201": {
+      "barOffsets": [0, 1, 2, 3],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 388,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "202": {
+      "barOffsets": [0, 2, 3, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 405,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "203": {
+      "barOffsets": [0, 3, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 390,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "204": {
+      "barOffsets": [0, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 357,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "205": {
+      "barOffsets": [0, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 355,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "206": {
+      "barOffsets": [0, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 340,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "207": {
+      "barOffsets": [0, 1, 3, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 353,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "208": {
+      "barOffsets": [0, 2, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 352,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "209": {
+      "barOffsets": [0, 3, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 366,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "210": {
+      "barOffsets": [0, 4, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 355,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "211": {
+      "barOffsets": [0, 5, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 356,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "212": {
+      "barOffsets": [0, 1, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 320,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "213": {
+      "barOffsets": [0, 2, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 356,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "214": {
+      "barOffsets": [0, 3, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 367,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "215": {
+      "barOffsets": [0, 4, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 348,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "216": {
+      "barOffsets": [0, 1, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 285,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "217": {
+      "barOffsets": [0, 2, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 310,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "218": {
+      "barOffsets": [0, 3, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 321,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "219": {
+      "barOffsets": [0, 1, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 301,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "220": {
+      "barOffsets": [0, 2, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 273,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "221": {
+      "barOffsets": [0, 1, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 243,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "222": {
+      "barOffsets": [0, 1, 2, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 416,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "223": {
+      "barOffsets": [0, 2, 3, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 397,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "224": {
+      "barOffsets": [0, 3, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 420,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "225": {
+      "barOffsets": [0, 4, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 362,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "226": {
+      "barOffsets": [0, 5, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 372,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "227": {
+      "barOffsets": [0, 1, 3, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 377,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "228": {
+      "barOffsets": [0, 2, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 354,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "229": {
+      "barOffsets": [0, 3, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 389,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "230": {
+      "barOffsets": [0, 4, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 374,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "231": {
+      "barOffsets": [0, 1, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 302,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "232": {
+      "barOffsets": [0, 2, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 332,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "233": {
+      "barOffsets": [0, 3, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 389,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "234": {
+      "barOffsets": [0, 1, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 282,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "235": {
+      "barOffsets": [0, 2, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 330,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "236": {
+      "barOffsets": [0, 1, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 316,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "237": {
+      "barOffsets": [0, 1, 2, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 382,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "238": {
+      "barOffsets": [0, 2, 3, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 372,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "239": {
+      "barOffsets": [0, 3, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 384,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "240": {
+      "barOffsets": [0, 4, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 398,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "241": {
+      "barOffsets": [0, 1, 3, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 376,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "242": {
+      "barOffsets": [0, 2, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 379,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "243": {
+      "barOffsets": [0, 3, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 367,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "244": {
+      "barOffsets": [0, 1, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 332,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "245": {
+      "barOffsets": [0, 2, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 365,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "246": {
+      "barOffsets": [0, 1, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 309,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "247": {
+      "barOffsets": [0, 1, 2, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 349,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "248": {
+      "barOffsets": [0, 2, 3, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 355,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "249": {
+      "barOffsets": [0, 3, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 358,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "250": {
+      "barOffsets": [0, 1, 3, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 362,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "251": {
+      "barOffsets": [0, 2, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 398,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "252": {
+      "barOffsets": [0, 1, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 353,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "253": {
+      "barOffsets": [0, 1, 2, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 351,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "254": {
+      "barOffsets": [0, 2, 3, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 376,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "255": {
+      "barOffsets": [0, 1, 3, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 347,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "256": {
+      "barOffsets": [0, 1, 2, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 350,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "257": {
+      "barOffsets": [0, 1, 2, 3, 4],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 78,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "258": {
+      "barOffsets": [0, 2, 3, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 68,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "259": {
+      "barOffsets": [0, 3, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 64,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "260": {
+      "barOffsets": [0, 4, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 76,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "261": {
+      "barOffsets": [0, 5, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 92,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "262": {
+      "barOffsets": [0, 1, 3, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 108,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "263": {
+      "barOffsets": [0, 2, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 105,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "264": {
+      "barOffsets": [0, 3, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 107,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "265": {
+      "barOffsets": [0, 4, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 99,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "266": {
+      "barOffsets": [0, 1, 4, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 127,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "267": {
+      "barOffsets": [0, 2, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 109,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "268": {
+      "barOffsets": [0, 3, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 114,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "269": {
+      "barOffsets": [0, 1, 5, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 155,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "270": {
+      "barOffsets": [0, 2, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 133,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "271": {
+      "barOffsets": [0, 1, 6, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 164,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "272": {
+      "barOffsets": [0, 1, 2, 4, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 97,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "273": {
+      "barOffsets": [0, 2, 3, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 86,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "274": {
+      "barOffsets": [0, 3, 4, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 88,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "275": {
+      "barOffsets": [0, 4, 5, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 99,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "276": {
+      "barOffsets": [0, 1, 3, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 107,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "277": {
+      "barOffsets": [0, 2, 4, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 85,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "278": {
+      "barOffsets": [0, 3, 5, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 109,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "279": {
+      "barOffsets": [0, 1, 4, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 132,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "280": {
+      "barOffsets": [0, 2, 5, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 105,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "281": {
+      "barOffsets": [0, 1, 5, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 138,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "282": {
+      "barOffsets": [0, 1, 2, 5, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 117,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "283": {
+      "barOffsets": [0, 2, 3, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 106,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "284": {
+      "barOffsets": [0, 3, 4, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 111,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "285": {
+      "barOffsets": [0, 1, 3, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 133,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "286": {
+      "barOffsets": [0, 2, 4, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 107,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "287": {
+      "barOffsets": [0, 1, 4, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 123,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "288": {
+      "barOffsets": [0, 1, 2, 6, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 146,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "289": {
+      "barOffsets": [0, 2, 3, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 131,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "290": {
+      "barOffsets": [0, 1, 3, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 146,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "291": {
+      "barOffsets": [0, 1, 2, 7, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 154,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "292": {
+      "barOffsets": [0, 1, 2, 3, 5],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 69,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "293": {
+      "barOffsets": [0, 2, 3, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 77,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "294": {
+      "barOffsets": [0, 3, 4, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 79,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "295": {
+      "barOffsets": [0, 4, 5, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 81,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "296": {
+      "barOffsets": [0, 1, 3, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 94,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "297": {
+      "barOffsets": [0, 2, 4, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 74,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "298": {
+      "barOffsets": [0, 3, 5, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 64,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "299": {
+      "barOffsets": [0, 1, 4, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 122,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "300": {
+      "barOffsets": [0, 2, 5, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 99,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "301": {
+      "barOffsets": [0, 1, 5, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 141,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "302": {
+      "barOffsets": [0, 1, 2, 4, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 99,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "303": {
+      "barOffsets": [0, 2, 3, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 93,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "304": {
+      "barOffsets": [0, 3, 4, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 91,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "305": {
+      "barOffsets": [0, 1, 3, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 103,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "306": {
+      "barOffsets": [0, 2, 4, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 95,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "307": {
+      "barOffsets": [0, 1, 4, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 100,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "308": {
+      "barOffsets": [0, 1, 2, 5, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 112,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "309": {
+      "barOffsets": [0, 2, 3, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 103,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "310": {
+      "barOffsets": [0, 1, 3, 6, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 117,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "311": {
+      "barOffsets": [0, 1, 2, 3, 6],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 90,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "312": {
+      "barOffsets": [0, 2, 3, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 82,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "313": {
+      "barOffsets": [0, 3, 4, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 81,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "314": {
+      "barOffsets": [0, 1, 3, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 105,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "315": {
+      "barOffsets": [0, 2, 4, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 84,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "316": {
+      "barOffsets": [0, 1, 4, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 116,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "317": {
+      "barOffsets": [0, 1, 2, 4, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 88,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "318": {
+      "barOffsets": [0, 2, 3, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 82,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "319": {
+      "barOffsets": [0, 1, 3, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 109,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "320": {
+      "barOffsets": [0, 1, 2, 5, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 131,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "321": {
+      "barOffsets": [0, 1, 2, 3, 7],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 93,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "322": {
+      "barOffsets": [0, 2, 3, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 79,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "323": {
+      "barOffsets": [0, 1, 3, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 98,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "324": {
+      "barOffsets": [0, 1, 2, 4, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 93,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "325": {
+      "barOffsets": [0, 1, 2, 3, 8],
+      "componentTypes": ["HIGH", "LOW"],
+      "patternCount": 98,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "326": {
+      "barOffsets": [0, 1, 2],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 430,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "327": {
+      "barOffsets": [0, 2, 3],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 370,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "328": {
+      "barOffsets": [0, 3, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 327,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "329": {
+      "barOffsets": [0, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 295,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "330": {
+      "barOffsets": [0, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 313,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "331": {
+      "barOffsets": [0, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 271,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "332": {
+      "barOffsets": [0, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 261,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "333": {
+      "barOffsets": [0, 1, 3],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 379,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "334": {
+      "barOffsets": [0, 2, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 384,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "335": {
+      "barOffsets": [0, 3, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 378,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "336": {
+      "barOffsets": [0, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 355,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "337": {
+      "barOffsets": [0, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 360,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "338": {
+      "barOffsets": [0, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 341,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "339": {
+      "barOffsets": [0, 1, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 345,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "340": {
+      "barOffsets": [0, 2, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 390,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "341": {
+      "barOffsets": [0, 3, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 401,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "342": {
+      "barOffsets": [0, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 350,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "343": {
+      "barOffsets": [0, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 355,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "344": {
+      "barOffsets": [0, 1, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 324,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "345": {
+      "barOffsets": [0, 2, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 393,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "346": {
+      "barOffsets": [0, 3, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 406,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "347": {
+      "barOffsets": [0, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 392,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "348": {
+      "barOffsets": [0, 1, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 304,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "349": {
+      "barOffsets": [0, 2, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 347,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "350": {
+      "barOffsets": [0, 3, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 367,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "351": {
+      "barOffsets": [0, 1, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 302,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "352": {
+      "barOffsets": [0, 2, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 315,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "353": {
+      "barOffsets": [0, 1, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 257,
+      "searchType": "Deep",
+      "minPatternLength": 3,
+      "maxPatternLength": 3
+    },
+    "354": {
+      "barOffsets": [0, 1, 2, 3],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 104,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "355": {
+      "barOffsets": [0, 2, 3, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 132,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "356": {
+      "barOffsets": [0, 3, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 133,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "357": {
+      "barOffsets": [0, 4, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 148,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "358": {
+      "barOffsets": [0, 5, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 143,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "359": {
+      "barOffsets": [0, 6, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 152,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "360": {
+      "barOffsets": [0, 1, 3, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 160,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "361": {
+      "barOffsets": [0, 2, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 146,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "362": {
+      "barOffsets": [0, 3, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 163,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "363": {
+      "barOffsets": [0, 4, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 158,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "364": {
+      "barOffsets": [0, 5, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 160,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "365": {
+      "barOffsets": [0, 1, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 175,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "366": {
+      "barOffsets": [0, 2, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 186,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "367": {
+      "barOffsets": [0, 3, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 171,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "368": {
+      "barOffsets": [0, 4, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 179,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "369": {
+      "barOffsets": [0, 1, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 208,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "370": {
+      "barOffsets": [0, 2, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 212,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "371": {
+      "barOffsets": [0, 3, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 206,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "372": {
+      "barOffsets": [0, 1, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 235,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "373": {
+      "barOffsets": [0, 2, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 239,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "374": {
+      "barOffsets": [0, 1, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 239,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "375": {
+      "barOffsets": [0, 1, 2, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 124,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "376": {
+      "barOffsets": [0, 2, 3, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 140,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "377": {
+      "barOffsets": [0, 3, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 138,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "378": {
+      "barOffsets": [0, 4, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 143,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "379": {
+      "barOffsets": [0, 5, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 157,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "380": {
+      "barOffsets": [0, 1, 3, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 148,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "381": {
+      "barOffsets": [0, 2, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 145,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "382": {
+      "barOffsets": [0, 3, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 146,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "383": {
+      "barOffsets": [0, 4, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 137,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "384": {
+      "barOffsets": [0, 1, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 164,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "385": {
+      "barOffsets": [0, 2, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 156,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "386": {
+      "barOffsets": [0, 3, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 162,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "387": {
+      "barOffsets": [0, 1, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 187,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "388": {
+      "barOffsets": [0, 2, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 174,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "389": {
+      "barOffsets": [0, 1, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 238,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "390": {
+      "barOffsets": [0, 1, 2, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 123,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "391": {
+      "barOffsets": [0, 2, 3, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 139,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "392": {
+      "barOffsets": [0, 3, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 156,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "393": {
+      "barOffsets": [0, 4, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 169,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "394": {
+      "barOffsets": [0, 1, 3, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 162,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "395": {
+      "barOffsets": [0, 2, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 142,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "396": {
+      "barOffsets": [0, 3, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 153,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "397": {
+      "barOffsets": [0, 1, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 169,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "398": {
+      "barOffsets": [0, 2, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 168,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "399": {
+      "barOffsets": [0, 1, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 205,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "400": {
+      "barOffsets": [0, 1, 2, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 136,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "401": {
+      "barOffsets": [0, 2, 3, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 133,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "402": {
+      "barOffsets": [0, 3, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 168,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "403": {
+      "barOffsets": [0, 1, 3, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 162,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "404": {
+      "barOffsets": [0, 2, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 143,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "405": {
+      "barOffsets": [0, 1, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 193,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "406": {
+      "barOffsets": [0, 1, 2, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 145,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "407": {
+      "barOffsets": [0, 2, 3, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 168,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "408": {
+      "barOffsets": [0, 1, 3, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 165,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "409": {
+      "barOffsets": [0, 1, 2, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 150,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "410": {
+      "barOffsets": [0, 1, 2, 3, 4],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 6,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "411": {
+      "barOffsets": [0, 2, 3, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "412": {
+      "barOffsets": [0, 3, 4, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "413": {
+      "barOffsets": [0, 4, 5, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "414": {
+      "barOffsets": [0, 5, 6, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 16,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "415": {
+      "barOffsets": [0, 1, 3, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "416": {
+      "barOffsets": [0, 2, 4, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "417": {
+      "barOffsets": [0, 3, 5, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 12,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "418": {
+      "barOffsets": [0, 4, 6, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 20,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "419": {
+      "barOffsets": [0, 1, 4, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 17,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "420": {
+      "barOffsets": [0, 2, 5, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "421": {
+      "barOffsets": [0, 3, 6, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 14,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "422": {
+      "barOffsets": [0, 1, 5, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 14,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "423": {
+      "barOffsets": [0, 2, 6, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 15,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "424": {
+      "barOffsets": [0, 1, 6, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 7,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "425": {
+      "barOffsets": [0, 1, 2, 4, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 6,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "426": {
+      "barOffsets": [0, 2, 3, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "427": {
+      "barOffsets": [0, 3, 4, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "428": {
+      "barOffsets": [0, 4, 5, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 14,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "429": {
+      "barOffsets": [0, 1, 3, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 14,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "430": {
+      "barOffsets": [0, 2, 4, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "431": {
+      "barOffsets": [0, 3, 5, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "432": {
+      "barOffsets": [0, 1, 4, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 10,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "433": {
+      "barOffsets": [0, 2, 5, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 12,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "434": {
+      "barOffsets": [0, 1, 5, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 16,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "435": {
+      "barOffsets": [0, 1, 2, 5, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "436": {
+      "barOffsets": [0, 2, 3, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "437": {
+      "barOffsets": [0, 3, 4, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 12,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "438": {
+      "barOffsets": [0, 1, 3, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 10,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "439": {
+      "barOffsets": [0, 2, 4, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "440": {
+      "barOffsets": [0, 1, 4, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "441": {
+      "barOffsets": [0, 1, 2, 6, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "442": {
+      "barOffsets": [0, 2, 3, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "443": {
+      "barOffsets": [0, 1, 3, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 17,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "444": {
+      "barOffsets": [0, 1, 2, 7, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "445": {
+      "barOffsets": [0, 1, 2, 3, 5],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "446": {
+      "barOffsets": [0, 2, 3, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "447": {
+      "barOffsets": [0, 3, 4, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 12,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "448": {
+      "barOffsets": [0, 4, 5, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 17,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "449": {
+      "barOffsets": [0, 1, 3, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 16,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "450": {
+      "barOffsets": [0, 2, 4, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 6,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "451": {
+      "barOffsets": [0, 3, 5, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 18,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "452": {
+      "barOffsets": [0, 1, 4, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 14,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "453": {
+      "barOffsets": [0, 2, 5, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 16,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "454": {
+      "barOffsets": [0, 1, 5, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 17,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "455": {
+      "barOffsets": [0, 1, 2, 4, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 10,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "456": {
+      "barOffsets": [0, 2, 3, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "457": {
+      "barOffsets": [0, 3, 4, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "458": {
+      "barOffsets": [0, 1, 3, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 14,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "459": {
+      "barOffsets": [0, 2, 4, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 9,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "460": {
+      "barOffsets": [0, 1, 4, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 9,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "461": {
+      "barOffsets": [0, 1, 2, 5, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 9,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "462": {
+      "barOffsets": [0, 2, 3, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "463": {
+      "barOffsets": [0, 1, 3, 6, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 16,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "464": {
+      "barOffsets": [0, 1, 2, 3, 6],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 12,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "465": {
+      "barOffsets": [0, 2, 3, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 7,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "466": {
+      "barOffsets": [0, 3, 4, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "467": {
+      "barOffsets": [0, 1, 3, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 11,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "468": {
+      "barOffsets": [0, 2, 4, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "469": {
+      "barOffsets": [0, 1, 4, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 17,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "470": {
+      "barOffsets": [0, 1, 2, 4, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 10,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "471": {
+      "barOffsets": [0, 2, 3, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 13,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "472": {
+      "barOffsets": [0, 1, 3, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 9,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "473": {
+      "barOffsets": [0, 1, 2, 5, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 23,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "474": {
+      "barOffsets": [0, 1, 2, 3, 7],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 6,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "475": {
+      "barOffsets": [0, 2, 3, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "476": {
+      "barOffsets": [0, 1, 3, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 12,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "477": {
+      "barOffsets": [0, 1, 2, 4, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 9,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "478": {
+      "barOffsets": [0, 1, 2, 3, 8],
+      "componentTypes": ["OPEN", "CLOSE"],
+      "patternCount": 10,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "480": {
+      "barOffsets": [0, 1, 2, 3],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 6,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "481": {
+      "barOffsets": [0, 1, 2, 3, 4],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 198,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "482": {
+      "barOffsets": [0, 1, 2, 3, 4, 5],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 437,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "483": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 285,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "484": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 136,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "485": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 50,
+      "searchType": "Deep",
+      "minPatternLength": 9,
+      "maxPatternLength": 9
+    },
+    "486": {
+      "barOffsets": [0, 1, 3, 4, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 282,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "489": {
+      "barOffsets": [0, 2, 3, 4],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 7,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "490": {
+      "barOffsets": [0, 1, 3, 4],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 9,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "491": {
+      "barOffsets": [0, 1, 2, 4],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 8,
+      "searchType": "Deep",
+      "minPatternLength": 4,
+      "maxPatternLength": 4
+    },
+    "494": {
+      "barOffsets": [0, 2, 3, 4, 5],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 175,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "496": {
+      "barOffsets": [0, 1, 2, 4, 5],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 194,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "497": {
+      "barOffsets": [0, 1, 2, 3, 5],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 186,
+      "searchType": "Deep",
+      "minPatternLength": 5,
+      "maxPatternLength": 5
+    },
+    "503": {
+      "barOffsets": [0, 2, 3, 4, 5, 6],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 448,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "504": {
+      "barOffsets": [0, 1, 2, 4, 5, 6],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 388,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "505": {
+      "barOffsets": [0, 1, 2, 3, 5, 6],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 453,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "506": {
+      "barOffsets": [0, 1, 2, 3, 4, 6],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 496,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "508": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 304,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "510": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 338,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "511": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 295,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "512": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 270,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "513": {
+      "barOffsets": [0, 3, 4, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 486,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "514": {
+      "barOffsets": [0, 1, 4, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 390,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "515": {
+      "barOffsets": [0, 1, 2, 5, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 357,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "516": {
+      "barOffsets": [0, 1, 2, 3, 6, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 395,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "517": {
+      "barOffsets": [0, 1, 2, 3, 4, 7],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 492,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "519": {
+      "barOffsets": [0, 2, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 117,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "520": {
+      "barOffsets": [0, 1, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 129,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "521": {
+      "barOffsets": [0, 1, 2, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 121,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "522": {
+      "barOffsets": [0, 1, 2, 3, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 128,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "523": {
+      "barOffsets": [0, 1, 2, 3, 4, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 123,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "524": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 126,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "525": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 6, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 127,
+      "searchType": "Deep",
+      "minPatternLength": 8,
+      "maxPatternLength": 8
+    },
+    "526": {
+      "barOffsets": [0, 3, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 293,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "527": {
+      "barOffsets": [0, 1, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 342,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "528": {
+      "barOffsets": [0, 1, 2, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 342,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "529": {
+      "barOffsets": [0, 1, 2, 3, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 363,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "530": {
+      "barOffsets": [0, 1, 2, 3, 4, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 339,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "531": {
+      "barOffsets": [0, 1, 2, 3, 4, 5, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 274,
+      "searchType": "Deep",
+      "minPatternLength": 7,
+      "maxPatternLength": 7
+    },
+    "532": {
+      "barOffsets": [0, 4, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 516,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "533": {
+      "barOffsets": [0, 1, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 380,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "534": {
+      "barOffsets": [0, 1, 2, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 335,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "535": {
+      "barOffsets": [0, 1, 2, 3, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 393,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "536": {
+      "barOffsets": [0, 1, 2, 3, 4, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 490,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "537": {
+      "barOffsets": [0, 2, 4, 5, 6, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 475,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "538": {
+      "barOffsets": [0, 3, 4, 5, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 508,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "539": {
+      "barOffsets": [0, 3, 4, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 472,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "540": {
+      "barOffsets": [0, 3, 5, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 482,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "541": {
+      "barOffsets": [0, 1, 4, 5, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 419,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "542": {
+      "barOffsets": [0, 1, 4, 5, 6, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 435,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "543": {
+      "barOffsets": [0, 1, 4, 6, 7, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 392,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "544": {
+      "barOffsets": [0, 1, 2, 5, 6, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 408,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    },
+    "545": {
+      "barOffsets": [0, 1, 2, 4, 6, 8],
+      "componentTypes": ["CLOSE"],
+      "patternCount": 430,
+      "searchType": "Deep",
+      "minPatternLength": 6,
+      "maxPatternLength": 6
+    }
+  }
+}
