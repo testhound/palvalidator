@@ -12,6 +12,46 @@
 
 namespace mkc_timeseries
 {
+  template <class Decimal>
+  struct GeoMeanStat
+  {
+    // Optional behavior for r <= -1: "throw" or "clip".
+    explicit GeoMeanStat(bool clip_ruin = false, double eps = 1e-12)
+      : clip(clip_ruin),
+	epsilon(eps)
+    {}
+
+    Decimal operator()(const std::vector<Decimal>& v) const
+    {
+      if (v.empty())
+	return Decimal(0);
+
+      long double sum = 0.0L;
+      size_t n = 0;
+
+      for (const auto& d : v)
+	{
+	  double r = d.getAsDouble();
+	  if (r <= -1.0)
+	    {
+	      if (!clip)
+		throw std::domain_error("GeoMeanStat: r <= -1 (log(1+r) undefined)");
+
+	      r = -1.0 + epsilon; // winsorize to avoid -inf; also log it in your pipeline
+            }
+
+	  sum += std::log1p(r);
+	  ++n;
+        }
+
+      return Decimal(std::expm1(sum / static_cast<long double>(n)));
+    }
+
+  private:
+    bool   clip;
+    double epsilon;
+  };
+
   /**
    * @class StatUtils
    * @brief A template class providing static utility functions for statistical analysis of financial time series.
