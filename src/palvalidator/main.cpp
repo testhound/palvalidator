@@ -154,21 +154,23 @@ Num calculateTheoreticalPALProfitability(std::shared_ptr<PalStrategy<Num>> strat
 }
 
 // Filter surviving strategies based on BCa bootstrap performance
+
 template<typename Num>
-std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerformance(
+std::vector<std::shared_ptr<PalStrategy<Num>>>
+filterSurvivingStrategiesByPerformance(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     std::shared_ptr<Security<Num>> baseSecurity,
     const DateRange& backtestingDates,
     TimeFrame::Duration theTimeFrame)
 {
   std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
-  
+
   // --- Define Filtering Parameters ---
-  const Num costBufferMultiplier = Num("1.5"); 
+  const Num costBufferMultiplier = Num("1.5");
   const Num riskFreeRate = Num("0.03");
   const Num riskFreeMultiplier = Num("2.0");
   const Num riskFreeHurdle = riskFreeRate * riskFreeMultiplier;
-    
+
   std::cout << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance..." << std::endl;
   std::cout << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0" << std::endl;
   std::cout << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * " << costBufferMultiplier << ")" << std::endl;
@@ -177,80 +179,234 @@ std::vector<std::shared_ptr<PalStrategy<Num>>> filterSurvivingStrategiesByPerfor
   std::cout << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%." << std::endl;
 
   for (const auto& strategy : survivingStrategies)
+  {
+    try
     {
-      try
-        {
-	  // 1. Create fresh portfolio and clone strategy for backtesting
-	  auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
-	  freshPortfolio->addSecurity(baseSecurity);
-	  auto clonedStrat = strategy->clone2(freshPortfolio);
-            
-	  // 2. Run backtest to get the full return series
-	  auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
-								     theTimeFrame,
-								     backtestingDates);
-            
-	  // 3. Get the high-resolution returns
-	  auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
+      // 1. Create fresh portfolio and clone strategy for backtesting
+      auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
+      freshPortfolio->addSecurity(baseSecurity);
+      auto clonedStrat = strategy->clone2(freshPortfolio);
 
-	  // A strategy must have a minimum number of returns to be bootstrapped reliably
-	  if (highResReturns.size() < 20) {
-	    std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName() 
-		      << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20)." << std::endl;
-	    continue;
-	  }
+      // 2. Run backtest to get the full return series
+      auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat, theTimeFrame, backtestingDates);
 
-	  // 4. Perform BCa Bootstrap
-	  unsigned int num_resamples = 2000;
-	  double confidence_level = 0.95;
-	  BCaBootStrap<Num> bca(highResReturns, num_resamples, confidence_level);
+      // 3. Get the high-resolution returns
+      auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
 
-	  // 5. Annualize the results
-	  double annualizationFactor;
-	  if (theTimeFrame == TimeFrame::INTRADAY)
-	    annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
-							       baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
-	  else
-	    annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
-   
-	  BCaAnnualizer<Num> annualizer(bca, annualizationFactor);
+      // A strategy must have a minimum number of returns to be bootstrapped reliably
+      if (highResReturns.size() < 20)
+      {
+        std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
+                  << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20)." << std::endl;
+        continue;
+      }
 
-	  Num annualizedLowerBound = annualizer.getAnnualizedLowerBound();
+      // 4. Perform BCa Bootstrap (geometric mean)
+      unsigned int num_resamples = 2000;
+      double confidence_level = 0.95;
+      GeoMeanStat<Num> stat; // geometric mean statistic
+
+      BCaBootStrap<Num> bcaGeo(highResReturns, num_resamples, confidence_level, stat);
+
+      // 5. Annualize the results
+      double annualizationFactor;
+      if (theTimeFrame == TimeFrame::INTRADAY)
+        annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
+                                  baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
+      else
+        annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
+
+      BCaAnnualizer<Num> annualizerGeo(bcaGeo, annualizationFactor);
+
+      Num annualizedLowerBoundGeo = annualizerGeo.getAnnualizedLowerBound();
 
       // 6. Calculate Hurdles
       // Cost-based hurdle
-      const Num slippagePerRoundTrip = Num("0.0002");
-      Num annualizedTrades (backtester->getEstimatedAnnualizedTrades());
+
+      const Num slippagePerSide = Num("0.001"); // 0.10% per side
+      const Num slippagePerRoundTrip = slippagePerSide * DecimalConstants<Num>::DecimalTwo; // 0.20% per trade
+      Num annualizedTrades(backtester->getEstimatedAnnualizedTrades());
       Num annualizedCostHurdle = annualizedTrades * slippagePerRoundTrip;
       Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
 
       // The final hurdle is the HIGHER of the cost-based return and the risk-free return
       Num finalRequiredReturn = std::max(costBasedRequiredReturn, riskFreeHurdle);
 
-	  // 7. Apply Combined Filter
-	  if (annualizedLowerBound > finalRequiredReturn) {
-	    filteredStrategies.push_back(strategy);
-	    std::cout << "✓ Strategy passed: " << strategy->getStrategyName() 
-		      << " (Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "% > "
-              << "Required Return = " << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
-	  } else {
-	    std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
-		      << " (Lower Bound = " << (annualizedLowerBound * DecimalConstants<Num>::DecimalOneHundred) << "% <= "
-              << "Required Return = " << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)" << std::endl;
-	  }
-        }
-      catch (const std::exception& e)
-        {
-	  std::cout << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName() 
-		    << "' performance: " << e.what() << std::endl;
-	  std::cout << "Excluding strategy from filtered results." << std::endl;
-        }
+      // 7. Apply Combined Filter
+      if (annualizedLowerBoundGeo > finalRequiredReturn)
+      {
+        filteredStrategies.push_back(strategy);
+
+        // ALSO compute/print arithmetic-mean lower bound for comparison (only when passing)
+        BCaBootStrap<Num> bcaMean(highResReturns, num_resamples, confidence_level); // default statistic: arithmetic mean
+        BCaAnnualizer<Num> annualizerMean(bcaMean, annualizationFactor);
+        Num annualizedLowerBoundMean = annualizerMean.getAnnualizedLowerBound();
+
+        std::cout << "✓ Strategy passed: " << strategy->getStrategyName()
+                  << " (Lower Bound = " << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
+                  << "% > Required Return = " << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+                  << std::endl;
+
+        std::cout << "   ↳ Lower bounds (annualized): "
+                  << "GeoMean = " << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+                  << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%"
+                  << std::endl;
+      }
+      else
+      {
+        std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
+                  << " (Lower Bound = " << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
+                  << "% <= Required Return = " << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+                  << std::endl;
+      }
     }
-    
+    catch (const std::exception& e)
+    {
+      std::cout << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
+                << "' performance: " << e.what() << std::endl;
+      std::cout << "Excluding strategy from filtered results." << std::endl;
+    }
+  }
+
   std::cout << "\nBCa Performance Filtering complete: " << filteredStrategies.size() << "/"
-	    << survivingStrategies.size() << " strategies passed criteria." << std::endl;
-    
+            << survivingStrategies.size() << " strategies passed criteria." << std::endl;
+
   return filteredStrategies;
+}
+
+template<typename Num>
+void filterMetaStrategy(
+    const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+    std::shared_ptr<Security<Num>> baseSecurity,
+    const DateRange& backtestingDates,
+    TimeFrame::Duration theTimeFrame)
+{
+  if (survivingStrategies.empty()) {
+    std::cout << "\n[Meta] No surviving strategies to aggregate.\n";
+    return;
+  }
+
+  std::cout << "\n[Meta] Building equal-weight portfolio from "
+            << survivingStrategies.size() << " survivors...\n";
+
+  // Gather per-strategy high-res returns and annualized trade counts
+  std::vector<std::vector<Num>> survivorReturns;
+  survivorReturns.reserve(survivingStrategies.size());
+  std::vector<Num> survivorAnnualizedTrades;
+  survivorAnnualizedTrades.reserve(survivingStrategies.size());
+
+  size_t T = std::numeric_limits<size_t>::max();
+
+  for (const auto& strat : survivingStrategies) {
+    try {
+      auto freshPortfolio = std::make_shared<Portfolio<Num>>(strat->getStrategyName() + " Portfolio");
+      freshPortfolio->addSecurity(baseSecurity);
+      auto cloned = strat->clone2(freshPortfolio);
+
+      auto bt = BackTesterFactory<Num>::backTestStrategy(cloned, theTimeFrame, backtestingDates);
+      auto r  = bt->getAllHighResReturns(cloned.get());
+
+      if (r.size() < 2) continue; // skip pathological
+
+      T = std::min(T, r.size());
+      survivorReturns.push_back(std::move(r));
+      survivorAnnualizedTrades.push_back(Num(bt->getEstimatedAnnualizedTrades()));
+    }
+    catch (const std::exception& e) {
+      std::cout << "  [Meta] Skipping " << strat->getStrategyName() << " due to error: " << e.what() << "\n";
+    }
+  }
+
+  if (survivorReturns.empty() || T < 2) {
+    std::cout << "[Meta] Not enough aligned data to form portfolio.\n";
+    return;
+  }
+
+  // Equal-weight portfolio series (truncate to shortest length T)
+  const size_t n = survivorReturns.size();
+  const Num w = Num(1) / Num(static_cast<int>(n));
+
+  std::vector<Num> metaReturns(T, DecimalConstants<Num>::DecimalZero);
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t t = 0; t < T; ++t) {
+      metaReturns[t] += w * survivorReturns[i][t];
+    }
+  }
+
+  {
+    const Num am = StatUtils<Num>::computeMean(metaReturns);
+    const Num gm = GeoMeanStat<Num>{}(metaReturns);
+    std::cout << "      Per-period point estimates (pre-annualization): "
+              << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+              << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+  }
+  
+  // Annualization factor (same logic as strategy-level)
+  double annualizationFactor;
+  if (theTimeFrame == TimeFrame::INTRADAY)
+    {
+      auto minutes = baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes();
+      annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
+							 minutes);
+    }
+  else
+    {
+      annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
+    }
+
+  // Bootstrap portfolio series — GeoMean (decision) and arithmetic mean (comparison)
+  unsigned int num_resamples   = 2000;
+  double       confidence_level = 0.95;
+
+  GeoMeanStat<Num> statGeo;
+  BCaBootStrap<Num> metaGeo(metaReturns, num_resamples, confidence_level, statGeo);
+  BCaAnnualizer<Num> metaGeoAnn(metaGeo, annualizationFactor);
+
+  BCaBootStrap<Num> metaMean(metaReturns, num_resamples, confidence_level); // default = arithmetic mean
+  BCaAnnualizer<Num> metaMeanAnn(metaMean, annualizationFactor);
+
+  const Num lbGeoPeriod  = metaGeo.getLowerBound();
+  const Num lbMeanPeriod = metaMean.getLowerBound();
+
+  std::cout << "      Per-period BCa lower bounds (pre-annualization): "
+	    << "Geo="  << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+	    << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+
+  // Portfolio-level cost hurdle (0.10% per side => 0.20% round trip).
+  // With equal-weight capital, scale trade counts by weight.
+  const Num costBufferMultiplier = Num("1.5");
+  const Num riskFreeRate         = Num("0.03");
+  const Num riskFreeMultiplier   = Num("2.0");
+  const Num riskFreeHurdle       = riskFreeRate * riskFreeMultiplier;
+
+  const Num slippagePerSide      = Num("0.001"); // 0.10%
+  const Num slippagePerRoundTrip = slippagePerSide * DecimalConstants<Num>::DecimalTwo; // 0.20%
+
+  Num sumTrades = DecimalConstants<Num>::DecimalZero;
+  for (const auto& tr : survivorAnnualizedTrades) sumTrades += tr;
+  // Equal-weight portfolio: cost scales with weight
+  Num portfolioAnnualizedTrades = w * sumTrades;
+
+  Num annualizedCostHurdle = portfolioAnnualizedTrades * slippagePerRoundTrip;
+  Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
+  Num finalRequiredReturn = std::max(costBasedRequiredReturn, riskFreeHurdle);
+
+  const Num lbGeoAnn  = metaGeoAnn.getAnnualizedLowerBound();
+  const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
+
+  std::cout << "\n[Meta] Portfolio of " << n << " survivors (equal-weight):\n"
+            << "      Annualized Lower Bound (GeoMean): " << (lbGeoAnn  * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+            << "      Annualized Lower Bound (Mean):    " << (lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+            << "      Required Return (max(cost,riskfree)): "
+            << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+
+  if (lbGeoAnn > finalRequiredReturn) {
+    std::cout << "      RESULT: ✓ Metastrategy PASSES\n";
+  } else {
+    std::cout << "      RESULT: ✗ Metastrategy FAILS\n";
+  }
+
+  std::cout << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
 }
 
 void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecurity,
@@ -576,7 +732,15 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
                 performanceFilteredStrategies.push_back(strategy);
             }
         }
-        
+
+	if (!filteredStrategies.empty())
+	  {
+	    filterMetaStrategy<Num>(filteredStrategies,
+				    config->getSecurity(),
+				    config->getOosDateRange(),
+				    timeFrame);
+	  }
+	
         std::cout << "Performance filtering results: " << filteredStrategies.size() << " passed, "
                   << performanceFilteredStrategies.size() << " filtered out" << std::endl;
         
