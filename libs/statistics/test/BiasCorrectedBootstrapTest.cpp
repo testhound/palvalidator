@@ -9,13 +9,16 @@
 #include <catch2/catch_approx.hpp> // For Catch::Approx
 #include <vector>
 #include <numeric> // For std::accumulate
-#include <cmath>   // For std::abs
+#include <cmath>   // For std::abs, std::pow
 
 #include "BiasCorrectedBootstrap.h"
-#include "TestUtils.h" // Assumed to provide DecimalType
+#include "StatUtils.h" // GeoMeanStat + StatUtils
+#include "TestUtils.h" // Assumed to provide DecimalType, createDecimal
 #include "number.h"    // For num::to_double
 
 using namespace mkc_timeseries;
+
+// --------------------------- Existing Tests ---------------------------
 
 // Test suite for the BCaBootStrap class
 TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
@@ -81,12 +84,9 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
         DecimalType upper = bca.getUpperBound();
 
         // For symmetric data, the distance from the mean to each bound should be similar.
-        // The bias-correction factor z0 should be close to zero.
         DecimalType lower_dist = mean - lower;
         DecimalType upper_dist = upper - mean;
 
-        // Allow for some stochastic variation, but they should be in the same ballpark.
-        // We check if the ratio of the distances is close to 1.
         REQUIRE(num::to_double(lower_dist / upper_dist) == Catch::Approx(1.0).margin(0.35));
     }
 
@@ -108,8 +108,6 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
         DecimalType upper = bca.getUpperBound();
 
         // For positively skewed data, the upper tail of the CI should be longer.
-        // The distance from the mean to the upper bound should be greater than
-        // the distance from the mean to the lower bound.
         DecimalType lower_dist = mean - lower;
         DecimalType upper_dist = upper - mean;
 
@@ -137,6 +135,98 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
         REQUIRE(bca.getMean() <= bca.getUpperBound());
     }
 }
+
+// --------------------------- New Tests: BCa + GeoMeanStat ---------------------------
+
+TEST_CASE("BCaBootStrap with GeoMeanStat (geometric mean of returns)", "[BCaBootStrap][GeoMean]") {
+    // Absolute tolerance to accommodate Decimal<->double rounding differences.
+    constexpr double kTol = 5e-8;
+
+    // A convenience helper to compute the geometric mean in double for cross-checks.
+    auto expected_geo = [](const std::vector<double>& rs) -> double {
+        if (rs.empty()) return 0.0;
+        long double s = 0.0L;
+        for (double r : rs) s += std::log1p(r);   // valid for r > -1
+        return std::expm1(s / static_cast<long double>(rs.size()));
+    };
+
+    SECTION("Basic geometric bootstrap: stat equals direct GeoMean and CI contains it") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+            DecimalType("-0.02"), DecimalType("0.00"), DecimalType("0.04")
+        };
+
+        // Build BCA using geometric mean as the statistic
+        GeoMeanStat<DecimalType> stat; // default clip=false
+        BCaBootStrap<DecimalType> bca(returns, /*num_resamples*/2000, /*CL*/0.95, stat);
+
+        // Direct geometric mean using the same stat functor (exactly what BCA uses)
+        DecimalType direct = stat(returns);
+
+        // Cross-check against a pure double implementation (sanity only)
+        double expd = expected_geo({0.10, -0.05, 0.20, -0.02, 0.00, 0.04});
+
+        // Properties
+        REQUIRE(num::to_double(bca.getStatistic()) == Catch::Approx(num::to_double(direct)).margin(kTol));
+        REQUIRE(num::to_double(bca.getStatistic()) == Catch::Approx(expd).margin(kTol));
+
+        // Ordering and inclusion
+        REQUIRE(bca.getLowerBound() <= bca.getUpperBound());
+        REQUIRE(bca.getStatistic()  >= bca.getLowerBound());
+        REQUIRE(bca.getStatistic()  <= bca.getUpperBound());
+    }
+
+    SECTION("GeoMeanStat: r <= -1 throws by default inside BCA") {
+        std::vector<DecimalType> returns = { DecimalType("0.02"), DecimalType("-1.0"), DecimalType("0.03") };
+
+        // With clip = false, evaluating the statistic should throw
+        GeoMeanStat<DecimalType> stat(/*clip_ruin=*/false);
+        BCaBootStrap<DecimalType> bca(returns, 200, 0.95, stat);
+
+        // The exception surfaces when the statistic is first computed
+        REQUIRE_THROWS_AS((void)bca.getStatistic(), std::domain_error);
+    }
+
+    SECTION("GeoMeanStat: clipping mode handles r <= -1 and BCA completes") {
+        std::vector<DecimalType> returns = { DecimalType("0.02"), DecimalType("-1.0"), DecimalType("0.03") };
+
+        // In clipping mode, the statistic becomes finite (winsorize -1 to -1+eps)
+        GeoMeanStat<DecimalType> stat(/*clip_ruin=*/true, /*eps=*/1e-6);
+        BCaBootStrap<DecimalType> bca(returns, 200, 0.95, stat);
+
+        // Should not throw and should produce ordered bounds
+        DecimalType theta = bca.getStatistic();
+        REQUIRE(theta > DecimalType("-1.0"));
+
+        REQUIRE(bca.getLowerBound() <= bca.getUpperBound());
+        REQUIRE(theta >= bca.getLowerBound());
+        REQUIRE(theta <= bca.getUpperBound());
+    }
+
+    SECTION("Annualization with GeoMean-based per-period returns") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.01"), DecimalType("-0.02"), DecimalType("0.03"),
+            DecimalType("0.007"), DecimalType("-0.004"), DecimalType("0.015")
+        };
+
+        GeoMeanStat<DecimalType> stat;
+        BCaBootStrap<DecimalType> bca(returns, 1500, 0.95, stat);
+
+        // Annualize via the BCaAnnualizer (geometric compounding)
+        double k = 252.0;
+        BCaAnnualizer<DecimalType> annualizer(bca, k);
+
+        // Expected: (1 + g)^{k} - 1
+        const DecimalType one = DecimalConstants<DecimalType>::DecimalOne;
+        double mean_d = (one + bca.getStatistic()).getAsDouble();
+        DecimalType expected_annual = DecimalType(std::pow(mean_d, k)) - one;
+
+        REQUIRE(num::to_double(annualizer.getAnnualizedMean()) == Catch::Approx(num::to_double(expected_annual)).margin(1e-10));
+        REQUIRE(annualizer.getAnnualizedLowerBound() <= annualizer.getAnnualizedUpperBound());
+    }
+}
+
+// --------------------------- Annualization Tests (Existing + Keep) ---------------------------
 
 TEST_CASE("calculateAnnualizationFactor functionality", "[BCaAnnualizer]") {
 
@@ -195,8 +285,7 @@ public:
 protected:
     // Override the calculation method to do nothing, preventing the expensive bootstrap.
     void calculateBCaBounds() override {
-        std::cout << "In MockBCaBootStrapForAnnualizer::calculateBCaBounds" << std::endl;
-        // This is intentionally left empty for the mock.
+        // Intentionally no-op in the mock.
     }
 };
 

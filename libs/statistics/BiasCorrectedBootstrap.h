@@ -15,11 +15,14 @@
 #include <cmath>
 #include <stdexcept>
 #include <iostream>
+#include <functional>
+#include <limits>
+
 #include "DecimalConstants.h"
 #include "number.h"
-#include "randutils.hpp" // For high-quality random number generation
+#include "randutils.hpp"
 #include "TimeFrame.h"
-
+#include "StatUtils.h"
 namespace mkc_timeseries
 {
   /**
@@ -64,13 +67,14 @@ namespace mkc_timeseries
   template <class Decimal>
   class BCaBootStrap {
   public:
+    using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
     /**
-     * @brief Constructs the BCaBootStrap calculator.
+     * @brief Constructs a BCaBootStrap that uses the arithmetic mean as the statistic (backward compatible).
      *
-     * @param returns The original sample of returns.
-     * @param num_resamples The number of bootstrap samples to generate (e.g., 2000 or more).
-     * @param confidence_level The desired confidence level (e.g., 0.95 for a 95% CI).
-     * @throws std::invalid_argument if returns are empty, resamples are too few, or confidence is invalid.
+     * @param returns            Original sample.
+     * @param num_resamples      Number of bootstrap samples to generate (e.g., 2000).
+     * @param confidence_level   Desired confidence level (e.g., 0.95).
      */
     BCaBootStrap(const std::vector<Decimal>& returns,
                  unsigned int num_resamples,
@@ -78,50 +82,71 @@ namespace mkc_timeseries
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
+        m_statistic(&mkc_timeseries::StatUtils<Decimal>::computeMean),
         m_is_calculated(false)
     {
-        if (m_returns.empty()) {
-            throw std::invalid_argument("Input returns vector cannot be empty.");
-        }
-
-        if (m_num_resamples < 100) { // A reasonable minimum
-            throw std::invalid_argument("Number of resamples should be at least 100.");
-        }
-        
-        if (m_confidence_level <= 0.0 || m_confidence_level >= 1.0) {
-            throw std::invalid_argument("Confidence level must be between 0.0 and 1.0.");
-        }
-        
-        // Don't call virtual function from constructor - use lazy initialization instead
+        validateConstructorArgs();
     }
-    
+
+    /**
+     * @brief Constructs a BCaBootStrap with a custom statistic function.
+     *
+     * @param returns            Original sample.
+     * @param num_resamples      Number of bootstrap samples to generate (e.g., 2000).
+     * @param confidence_level   Desired confidence level (e.g., 0.95).
+     * @param statistic          A callable mapping vector<Decimal> -> Decimal.
+     */
+    BCaBootStrap(const std::vector<Decimal>& returns,
+                 unsigned int num_resamples,
+                 double confidence_level,
+                 StatFn statistic)
+      : m_returns(returns),
+        m_num_resamples(num_resamples),
+        m_confidence_level(confidence_level),
+        m_statistic(std::move(statistic)),
+        m_is_calculated(false)
+    {
+        if (!m_statistic)
+	  throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
+
+        validateConstructorArgs();
+    }
+
     virtual ~BCaBootStrap() = default;
 
     /**
-     * @brief Gets the mean of the original sample of returns.
-     * @return The calculated mean.
+     * @brief Gets the statistic computed on the original sample (θ̂). Kept as 'getMean' for backward compatibility.
      */
-    Decimal getMean() const {
-        ensureCalculated();
-        return m_mean;
+    Decimal getMean() const
+    {
+      ensureCalculated();
+      return m_theta_hat;
     }
 
     /**
-     * @brief Gets the lower bound of the BCaBootStrap confidence interval.
-     * @return The lower confidence bound.
+     * @brief Alias for getMean() for semantic clarity with generic statistic.
      */
-    Decimal getLowerBound() const {
-        ensureCalculated();
-        return m_lower_bound;
+    Decimal getStatistic() const
+    {
+      return getMean();
     }
 
     /**
-     * @brief Gets the upper bound of the BCaBootStrap confidence interval.
-     * @return The upper confidence bound.
+     * @brief Gets the lower bound of the BCa confidence interval (in statistic units).
      */
-    Decimal getUpperBound() const {
-        ensureCalculated();
-        return m_upper_bound;
+    Decimal getLowerBound() const
+    {
+      ensureCalculated();
+      return m_lower_bound;
+    }
+
+    /**
+     * @brief Gets the upper bound of the BCa confidence interval (in statistic units).
+     */
+    Decimal getUpperBound() const
+    {
+      ensureCalculated();
+      return m_upper_bound;
     }
 
   protected:
@@ -129,239 +154,239 @@ namespace mkc_timeseries
     const std::vector<Decimal>& m_returns;
     unsigned int m_num_resamples;
     double m_confidence_level;
+    StatFn m_statistic;
     bool m_is_calculated;
 
     // Storage for results
-    Decimal m_mean;
-    Decimal m_lower_bound;
-    Decimal m_upper_bound;
+    Decimal m_theta_hat;     // θ̂ on original sample
+    Decimal m_lower_bound;   // lower BCa bound of θ
+    Decimal m_upper_bound;   // upper BCa bound of θ
 
     // Setters for mock class usage in testing
-    void setMean(const Decimal& mean) { m_mean = mean; }
+    void setStatistic(const Decimal& theta) { m_theta_hat = theta; }
+    void setMean(const Decimal& theta)      { m_theta_hat = theta; } // backward-compat setter
     void setLowerBound(const Decimal& lower) { m_lower_bound = lower; }
     void setUpperBound(const Decimal& upper) { m_upper_bound = upper; }
+
+    void validateConstructorArgs() const
+    {
+      if (m_returns.empty())
+	throw std::invalid_argument("BCaBootStrap: input returns vector cannot be empty.");
+
+      if (m_num_resamples < 100)
+            throw std::invalid_argument("BCaBootStrap: number of resamples should be at least 100.");
+
+      if (m_confidence_level <= 0.0 || m_confidence_level >= 1.0)
+	throw std::invalid_argument("BCaBootStrap: confidence level must be between 0 and 1.");
+    }
 
     /**
      * @brief Ensures calculations are performed if not already done (lazy initialization).
      */
-    void ensureCalculated() const {
-        if (!m_is_calculated) {
-            // Cast away const to allow lazy initialization
-            const_cast<BCaBootStrap*>(this)->calculateBCaBounds();
-        }
+    void ensureCalculated() const
+    {
+      if (!m_is_calculated)
+	// Cast away const to allow lazy initialization
+	const_cast<BCaBootStrap*>(this)->calculateBCaBounds();
     }
 
-    
     /**
- * @brief Performs the full Bias-Corrected and Accelerated (BCa) bootstrap procedure.
- *
- * This method is the core of the BCa algorithm. It:
- * 1. Computes the mean of the original data sample.
- * 2. Generates bootstrap replicates of the mean using resampling with replacement.
- * 3. Sorts the bootstrap replicates and computes the bias correction factor z0.
- * 4. Computes the acceleration factor a using jackknife resampling.
- * 5. Applies the BCa adjusted percentile transformation to determine the adjusted alpha levels.
- * 6. Selects the lower and upper confidence bounds using the Type 6 quantile estimator:
- *        index = floor(alpha * (B + 1)) - 1
- *    where alpha is the adjusted percentile and B is the number of bootstrap samples.
- *
- * The use of (B + 1) instead of B is based on the unbiased quantile estimator recommended by
- * Efron & Tibshirani (1993) and Hyndman & Fan (1996). This adjustment provides better
- * performance for small to moderate bootstrap sample sizes, particularly in the tails.
- *
- * Results are lazily computed and cached. This function is called on-demand by public getters.
- *
- * @throws std::invalid_argument if the sample size is less than 2.
- */
+     * @brief Core BCa algorithm with generic statistic.
+     *
+     * Steps:
+     *  1) θ̂ = statistic(returns)
+     *  2) Bootstrap replicates θ̂*
+     *  3) z0 from proportion of θ̂* < θ̂
+     *  4) a from jackknife leave-one-out recomputation of statistic
+     *  5) Adjusted percentiles → indices → bounds
+     */
     virtual void calculateBCaBounds() {
         if (m_is_calculated) return;
 
         const size_t n = m_returns.size();
-
-        // Add a guardrail: BCa is undefined for n < 2
         if (n < 2) {
             throw std::invalid_argument("BCa bootstrap requires at least 2 data points.");
         }
 
-        m_mean = calculateMean(m_returns);
+        // 1) Original statistic
+        m_theta_hat = m_statistic(m_returns);
 
-        // --- 1. Generate Bootstrap Replicates of the Mean ---
-        std::vector<Decimal> bootstrap_means;
-        bootstrap_means.reserve(m_num_resamples);
-        
+        // 2) Bootstrap replicates of the statistic
+        std::vector<Decimal> boot_stats;
+        boot_stats.reserve(m_num_resamples);
+
         thread_local static randutils::mt19937_rng rng;
-
-        for (unsigned int i = 0; i < m_num_resamples; ++i) {
+        for (unsigned int b = 0; b < m_num_resamples; ++b) {
             std::vector<Decimal> resample;
             resample.reserve(n);
             for (size_t j = 0; j < n; ++j) {
-                size_t index = rng.uniform(size_t(0), n - 1);
-                resample.push_back(m_returns[index]);
+                size_t idx = rng.uniform(size_t(0), n - 1);
+                resample.push_back(m_returns[idx]);
             }
-            bootstrap_means.push_back(calculateMean(resample));
+            boot_stats.push_back(m_statistic(resample));
         }
-        std::sort(bootstrap_means.begin(), bootstrap_means.end());
+        std::sort(boot_stats.begin(), boot_stats.end());
 
-        // --- 2. Calculate Bias-Correction Factor (z0) ---
-        // This measures the median bias of the bootstrap distribution. It is calculated as the
-        // inverse normal CDF of the proportion of bootstrap means that are less than the original sample mean.
-        // A value of zero indicates no median bias.
-        long count_less = std::count_if(bootstrap_means.begin(), bootstrap_means.end(), 
-                                      [this](const Decimal& val) { return val < this->m_mean; });
-        
-        double proportion_less = static_cast<double>(count_less) / m_num_resamples;
-        double z0 = inverseNormalCdf(proportion_less);
+        // 3) Bias-correction z0
+        const auto count_less = std::count_if(
+            boot_stats.begin(), boot_stats.end(),
+            [this](const Decimal& v){ return v < this->m_theta_hat; });
+        const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
+        const double z0 = inverseNormalCdf(prop_less);
 
-        // --- 3. Calculate Acceleration Factor (a) using Jackknife ---
-        // This measures the skewness of the bootstrap distribution by calculating how the
-        // sample mean changes as each individual data point is omitted (jackknife resampling).
-        std::vector<Decimal> jackknife_means;
-        jackknife_means.reserve(n);
-        Decimal jackknife_sum(0);
+        // 4) Acceleration a via jackknife (recompute statistic on leave-one-out)
+        std::vector<Decimal> jk_stats;
+        jk_stats.reserve(n);
+        Decimal jk_sum(DecimalConstants<Decimal>::DecimalZero);
+
+        // Pre-allocate and reuse a buffer to avoid O(n^2) allocations (still O(n^2) computes)
+        std::vector<Decimal> loov;
+        loov.reserve(n - 1);
 
         for (size_t i = 0; i < n; ++i) {
-            Decimal current_sum = m_mean * Decimal(n);
-            Decimal jack_mean = (current_sum - m_returns[i]) / Decimal(n - 1);
-            jackknife_means.push_back(jack_mean);
-            jackknife_sum += jack_mean;
+            loov.clear();
+            loov.insert(loov.end(), m_returns.begin(), m_returns.begin() + i);
+            loov.insert(loov.end(), m_returns.begin() + i + 1, m_returns.end());
+            const Decimal th = m_statistic(loov);
+            jk_stats.push_back(th);
+            jk_sum += th;
         }
-        Decimal jackknife_mean_avg = jackknife_sum / Decimal(n);
 
-        Decimal numerator(0), denominator(0);
-        for (const auto& j_mean : jackknife_means) {
-            Decimal diff = jackknife_mean_avg - j_mean;
-            numerator += (diff * diff * diff);
-            denominator += (diff * diff);
+        const Decimal jk_avg = jk_sum / Decimal(n);
+        Decimal num(DecimalConstants<Decimal>::DecimalZero);
+        Decimal den(DecimalConstants<Decimal>::DecimalZero);
+        for (const auto& th : jk_stats) {
+            const Decimal d = jk_avg - th;
+            num += d * d * d;
+            den += d * d;
         }
-        
-        Decimal a(0);
-        if (denominator > Decimal(0)) {
-            Decimal denom_pow = Decimal(std::pow(denominator.getAsDouble(), 1.5));
-            if (denom_pow > Decimal(0)) {
-                a = numerator / (Decimal(6) * denom_pow);
+
+        Decimal a(DecimalConstants<Decimal>::DecimalZero);
+        if (den > DecimalConstants<Decimal>::DecimalZero) {
+            const double den15 = std::pow(num::to_double(den), 1.5);
+            if (den15 > 0.0) {
+                a = num / (Decimal(6) * Decimal(den15));
             }
         }
-        
-        // --- 4. Calculate Adjusted Alpha Levels ---
-        // Using the bias (z0) and acceleration (a) factors, we adjust the standard normal
-        // quantiles (e.g., -1.96 and +1.96 for a 95% CI) to find the corrected
-        // percentile points (alpha1 and alpha2) in our bootstrap distribution.
-        double alpha = (1.0 - m_confidence_level) / 2.0;
-        double z_alpha1 = inverseNormalCdf(alpha);
-        double z_alpha2 = inverseNormalCdf(1.0 - alpha);
 
-        double term1 = z0 + z_alpha1;
-        double alpha1_numerator = z0 + term1 / (1.0 - a.getAsDouble() * term1);
-        double alpha1 = standardNormalCdf(alpha1_numerator);
-        
-        double term2 = z0 + z_alpha2;
-        double alpha2_numerator = z0 + term2 / (1.0 - a.getAsDouble() * term2);
-        double alpha2 = standardNormalCdf(alpha2_numerator);
-        
-        // --- 5. Determine Confidence Interval from Bootstrap Distribution ---
-        // The final bounds are the values from the sorted list of bootstrap means
-        // located at the adjusted percentiles (quantiles) alpha1 and alpha2.
-        // The formula used here, p * (N+1), is a standard and well-regarded method
-        // for calculating sample quantiles from a finite number of samples (N).
-        // It provides better statistical properties than simpler methods like p*N.
-        //
-        // The calculation is as follows:
-        //  - p: The adjusted percentile, e.g., alpha1.
-        //  - N: The number of resamples, m_num_resamples.
-        //  - index = floor(p * (N+1)) - 1
-        // The subtraction of 1 adjusts the result to a 0-based array index.
-        int lower_idx = static_cast<int>(std::floor(alpha1 * (m_num_resamples + 1))) - 1;
-        int upper_idx = static_cast<int>(std::floor(alpha2 * (m_num_resamples + 1))) - 1;
+        // 5) Adjusted alpha levels and bounds
+        const double alpha = (1.0 - m_confidence_level) / 2.0;
+        const double z_alpha_lo = inverseNormalCdf(alpha);
+        const double z_alpha_hi = inverseNormalCdf(1.0 - alpha);
 
-        // Boundary checks
-        lower_idx = std::max(0, lower_idx);
-        upper_idx = std::min(static_cast<int>(m_num_resamples - 1), std::max(0, upper_idx));
+        // BCa transform: alpha* = Phi( z0 + (z + z0) / (1 - a (z + z0)) )
+        const double a_d = a.getAsDouble();
 
-        m_lower_bound = bootstrap_means[lower_idx];
-        m_upper_bound = bootstrap_means[upper_idx];
-        
+        const double t1 = z0 + z_alpha_lo;
+        const double alpha1 = standardNormalCdf(z0 + t1 / (1.0 - a_d * t1));
+
+        const double t2 = z0 + z_alpha_hi;
+        const double alpha2 = standardNormalCdf(z0 + t2 / (1.0 - a_d * t2));
+
+        // Unbiased order-statistic index: floor(p * (B + 1)) - 1, clipped to [0, B-1]
+        const int lower_idx = unbiasedIndex(alpha1, m_num_resamples);
+        const int upper_idx = unbiasedIndex(alpha2, m_num_resamples);
+
+        m_lower_bound = boot_stats[lower_idx];
+        m_upper_bound = boot_stats[upper_idx];
+
         m_is_calculated = true;
-    }
-    
-    /**
-     * @brief Helper to calculate the mean of a vector of Decimals.
-     */
-    Decimal calculateMean(const std::vector<Decimal>& vec) const {
-        if (vec.empty()) return Decimal(0);
-        Decimal sum = std::accumulate(vec.begin(), vec.end(), Decimal(0));
-        return sum / Decimal(vec.size());
     }
 
     /**
      * @brief Standard Normal Cumulative Distribution Function (CDF).
      */
-    double standardNormalCdf(double x) const {
-        return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
+    double standardNormalCdf(double x) const
+    {
+      return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
     }
 
     /**
      * @brief Inverse of the Standard Normal CDF (Quantile function).
      */
-    double inverseNormalCdf(double p) const {
-        if (p <= 0.0) return -std::numeric_limits<double>::infinity();
-        if (p >= 1.0) return std::numeric_limits<double>::infinity();
+    double inverseNormalCdf(double p) const
+    {
+      if (p <= 0.0)
+	return -std::numeric_limits<double>::infinity();
+      if (p >= 1.0)
+	return  std::numeric_limits<double>::infinity();
 
-        if (p < 0.5) {
-            return -inverseNormalCdfHelper(p);
-        } else {
-            return inverseNormalCdfHelper(1.0 - p);
-        }
+      // use a helper on (0, 0.5], then reflect
+      return (p < 0.5) ? -inverseNormalCdfHelper(p) : inverseNormalCdfHelper(1.0 - p);
     }
 
-    double inverseNormalCdfHelper(double p) const {
-        // Abramowitz and Stegun formula 26.2.23
-        double c[] = {2.515517, 0.802853, 0.010328};
-        double d[] = {1.432788, 0.189269, 0.001308};
-        double t = sqrt(log(1.0 / (p * p)));
-        double numerator = c[0] + c[1] * t + c[2] * t * t;
-        double denominator = 1.0 + d[0] * t + d[1] * t * t + d[2] * t * t * t;
-        return t - numerator / denominator;
+    double inverseNormalCdfHelper(double p) const
+    {
+      // Abramowitz and Stegun formula 26.2.23 (approximation)
+      static const double c[] = {2.515517, 0.802853, 0.010328};
+      static const double d[] = {1.432788, 0.189269, 0.001308};
+
+      const double t = std::sqrt(-2.0 * std::log(p));
+      const double num = (c[0] + c[1] * t + c[2] * t * t);
+      const double den = (1.0 + d[0] * t + d[1] * t * t + d[2] * t * t * t);
+      return t - num / den;
+    }
+
+    static int unbiasedIndex(double p, unsigned int B)
+    {
+      // floor(p * (B + 1)) - 1, then clip to [0, B-1]
+      int idx = static_cast<int>(std::floor(p * (static_cast<double>(B) + 1.0))) - 1;
+      if (idx < 0)
+	idx = 0;
+
+      const int maxIdx = static_cast<int>(B) - 1;
+      if (idx > maxIdx)
+	idx = maxIdx;
+
+      return idx;
     }
   };
 
   /**
    * @brief Calculates the number of bars in a year for a given time frame.
    */
-  inline double calculateAnnualizationFactor(
-      TimeFrame::Duration timeFrame,
-      unsigned int intraday_minutes_per_bar = 0,
-      double trading_days_per_year = 252.0,
-      double trading_hours_per_day = 6.5)
+  inline double calculateAnnualizationFactor(TimeFrame::Duration timeFrame,
+					     unsigned int intraday_minutes_per_bar = 0,
+					     double trading_days_per_year = 252.0,
+					     double trading_hours_per_day = 6.5)
   {
-      switch (timeFrame)
+    switch (timeFrame)
       {
-          case TimeFrame::DAILY:
-              return trading_days_per_year;
-          case TimeFrame::WEEKLY:
-              return 52.0;
-          case TimeFrame::MONTHLY:
-              return 12.0;
-          case TimeFrame::INTRADAY:
-          {
-              if (intraday_minutes_per_bar == 0) {
-                  throw std::invalid_argument("For INTRADAY timeframe, intraday_minutes_per_bar must be specified.");
-              }
-              double bars_per_hour = 60.0 / intraday_minutes_per_bar;
-              return trading_hours_per_day * bars_per_hour * trading_days_per_year;
-          }
-          case TimeFrame::QUARTERLY:
-              return 4.0;
-          case TimeFrame::YEARLY:
-              return 1.0;
-          default:
-              throw std::invalid_argument("Unsupported time frame for annualization.");
+      case TimeFrame::DAILY:
+	return trading_days_per_year;
+
+      case TimeFrame::WEEKLY:
+	return 52.0;
+
+      case TimeFrame::MONTHLY:
+	return 12.0;
+
+      case TimeFrame::INTRADAY:
+	{
+	  if (intraday_minutes_per_bar == 0) {
+	    throw std::invalid_argument("For INTRADAY timeframe, intraday_minutes_per_bar must be specified.");
+	  }
+	  double bars_per_hour = 60.0 / intraday_minutes_per_bar;
+	  return trading_hours_per_day * bars_per_hour * trading_days_per_year;
+	}
+
+      case TimeFrame::QUARTERLY:
+	return 4.0;
+
+      case TimeFrame::YEARLY:
+	return 1.0;
+
+      default:
+	throw std::invalid_argument("Unsupported time frame for annualization.");
       }
   }
 
-
   /**
    * @class BCaAnnualizer
-   * @brief Takes BCa bootstrap results and annualizes them.
+   * @brief Takes BCa bootstrap results and annualizes them by geometric compounding.
+   *
+   * Note: This assumes the statistic is a per-period return compatible with compounding:
+   * Annualized = (1 + θ)^{k} - 1, where k is the annualization factor.
    */
   template <class Decimal>
   class BCaAnnualizer
@@ -369,25 +394,40 @@ namespace mkc_timeseries
   public:
     BCaAnnualizer(const BCaBootStrap<Decimal>& bca_results, double annualization_factor)
     {
-        if (annualization_factor <= 0) {
-            throw std::invalid_argument("Annualization factor must be positive.");
-        }
+      if (annualization_factor <= 0.0)
+	throw std::invalid_argument("Annualization factor must be positive.");
 
-        // Correctly convert Decimal to double for std::pow, then convert result back to Decimal
-        m_annualized_mean = Decimal(std::pow((Decimal("1.0") + bca_results.getMean()).getAsDouble(), annualization_factor)) - Decimal("1.0");
-        m_annualized_lower_bound = Decimal(std::pow((Decimal("1.0") + bca_results.getLowerBound()).getAsDouble(), annualization_factor)) - Decimal("1.0");
-        m_annualized_upper_bound = Decimal(std::pow((Decimal("1.0") + bca_results.getUpperBound()).getAsDouble(), annualization_factor)) - Decimal("1.0");
+      const Decimal one = DecimalConstants<Decimal>::DecimalOne;
+      const double mean_d   = (one + bca_results.getMean()).getAsDouble();
+      const double lower_d  = (one + bca_results.getLowerBound() ).getAsDouble();
+      const double upper_d  = (one + bca_results.getUpperBound() ).getAsDouble();
+      
+      m_annualized_mean        = Decimal(std::pow(mean_d,  annualization_factor)) - one;
+      m_annualized_lower_bound = Decimal(std::pow(lower_d, annualization_factor)) - one;
+      m_annualized_upper_bound = Decimal(std::pow(upper_d, annualization_factor)) - one;
     }
 
-    Decimal getAnnualizedMean() const { return m_annualized_mean; }
-    Decimal getAnnualizedLowerBound() const { return m_annualized_lower_bound; }
-    Decimal getAnnualizedUpperBound() const { return m_annualized_upper_bound; }
+    Decimal getAnnualizedMean() const
+    {
+      return m_annualized_mean;
+    }
+    
+    Decimal getAnnualizedLowerBound() const
+    {
+      return m_annualized_lower_bound;
+    }
+
+    Decimal getAnnualizedUpperBound() const
+    {
+      return m_annualized_upper_bound;
+    }
 
   private:
     Decimal m_annualized_mean;
     Decimal m_annualized_lower_bound;
     Decimal m_annualized_upper_bound;
   };
+  
 } // namespace mkc_timeseries
 
 #endif // __BCA_BOOTSTRAP_H
