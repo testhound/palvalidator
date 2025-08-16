@@ -19,6 +19,7 @@
 #include "TradingPosition.h"
 #include "TimeSeriesEntry.h"
 #include "StatUtils.h"
+#include "TimeSeriesIndicators.h"
 
 namespace mkc_timeseries
 {
@@ -142,7 +143,8 @@ namespace mkc_timeseries
       // Changed to use ptime and getEntryDateTime() for the map key
       ptime dt = position->getEntryDateTime(); //
 
-      mBarsPerPosition.push_back (position->getNumBarsInPosition());
+      unsigned int holdingPeriod = position->getNumBarsSinceEntry();
+      mBarsPerPosition.push_back (holdingPeriod);
       mNumBarsInMarket += position->getNumBarsInPosition();
 
       if (position->RMultipleStopSet())
@@ -226,12 +228,34 @@ namespace mkc_timeseries
       return mNumBarsInMarket;
     }
 
+    ////
+    unsigned int getMedianHoldingPeriod() const
+    {
+      if (mBarsPerPosition.empty())
+        return 0;
+
+      // Convert to double vector to avoid integer division truncation
+      std::vector<double> doubleValues;
+      doubleValues.reserve(mBarsPerPosition.size());
+      for (unsigned int val : mBarsPerPosition) {
+        doubleValues.push_back(static_cast<double>(val));
+      }
+      
+      // Use the Median function from TimeSeriesIndicators.h with double precision
+      double medianValue = Median(doubleValues);
+      
+      // Round to nearest integer (same behavior as original llround)
+      return static_cast<unsigned int>(std::llround(medianValue));
+    }
+
+
+    ////
     uint32_t getNumConsecutiveLosses() const
     {
       return mNumConsecutiveLosses;
     }
-
-/**
+    
+    /**
      * @brief Extract high-resolution bar-by-bar returns from all closed trades.
      *
      * @details
