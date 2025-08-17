@@ -331,10 +331,10 @@ inline double calculateAnnualizationFactor(TimeFrame::Duration timeFrame,
   }
 }
 
-template <class Decimal>
+template <class Decimal, class Sampler = IIDResampler<Decimal>>
 class BCaAnnualizer {
 public:
-  BCaAnnualizer(const BCaBootStrap<Decimal>& bca_results, double annualization_factor) {
+  BCaAnnualizer(const BCaBootStrap<Decimal, Sampler>& bca_results, double annualization_factor) {
     if (annualization_factor <= 0.0)
       throw std::invalid_argument("Annualization factor must be positive.");
     const Decimal one = DecimalConstants<Decimal>::DecimalOne;
