@@ -303,11 +303,13 @@ void filterMetaStrategy(
   std::cout << "\n[Meta] Building equal-weight portfolio from "
             << survivingStrategies.size() << " survivors...\n";
 
-  // Gather per-strategy high-res returns and annualized trade counts
+  // Gather per-strategy high-res returns, annualized trade counts, and median holds (inclusive bars)
   std::vector<std::vector<Num>> survivorReturns;
   survivorReturns.reserve(survivingStrategies.size());
   std::vector<Num> survivorAnnualizedTrades;
   survivorAnnualizedTrades.reserve(survivingStrategies.size());
+  std::vector<unsigned int> survivorMedianHolds;
+  survivorMedianHolds.reserve(survivingStrategies.size());
 
   size_t T = std::numeric_limits<size_t>::max();
 
@@ -320,14 +322,22 @@ void filterMetaStrategy(
       auto bt = BackTesterFactory<Num>::backTestStrategy(cloned, theTimeFrame, backtestingDates);
       auto r  = bt->getAllHighResReturns(cloned.get());
 
-      if (r.size() < 2) continue; // skip pathological
+      if (r.size() < 2) {
+        std::cout << "  [Meta] Skipping " << strat->getStrategyName()
+                  << " (insufficient returns: " << r.size() << ")\n";
+        continue;
+      }
+
+      const unsigned int medHold = bt->getClosedPositionHistory().getMedianHoldingPeriod(); // inclusive bars (min 2)
+      survivorMedianHolds.push_back(medHold);
 
       T = std::min(T, r.size());
       survivorReturns.push_back(std::move(r));
       survivorAnnualizedTrades.push_back(Num(bt->getEstimatedAnnualizedTrades()));
     }
     catch (const std::exception& e) {
-      std::cout << "  [Meta] Skipping " << strat->getStrategyName() << " due to error: " << e.what() << "\n";
+      std::cout << "  [Meta] Skipping " << strat->getStrategyName()
+                << " due to error: " << e.what() << "\n";
     }
   }
 
@@ -347,6 +357,7 @@ void filterMetaStrategy(
     }
   }
 
+  // Per-period point estimates (pre-annualization)
   {
     const Num am = StatUtils<Num>::computeMean(metaReturns);
     const Num gm = GeoMeanStat<Num>{}(metaReturns);
@@ -354,40 +365,62 @@ void filterMetaStrategy(
               << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
               << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
   }
-  
+
   // Annualization factor (same logic as strategy-level)
   double annualizationFactor;
-  if (theTimeFrame == TimeFrame::INTRADAY)
-    {
-      auto minutes = baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes();
-      annualizationFactor = calculateAnnualizationFactor(theTimeFrame,
-							 minutes);
-    }
-  else
-    {
-      annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
-    }
+  if (theTimeFrame == TimeFrame::INTRADAY) {
+    auto minutes = baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes();
+    annualizationFactor = calculateAnnualizationFactor(theTimeFrame, minutes);
+  } else {
+    annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
+  }
 
-  // Bootstrap portfolio series — GeoMean (decision) and arithmetic mean (comparison)
-  unsigned int num_resamples   = 2000;
-  double       confidence_level = 0.95;
+  // -------- Block length for meta bootstrap: median of survivors' median holds (round-half-up), clamp to >=2
+  auto computeMedianUH = [](std::vector<unsigned int> v) -> size_t {
+    if (v.empty()) return 2;
+    const size_t m = v.size();
+    const size_t mid = m / 2;
+    std::nth_element(v.begin(), v.begin() + mid, v.end());
+    if (m & 1U) {
+      return std::max<size_t>(2, v[mid]);
+    } else {
+      // round-half-up average of the two middles
+      auto hi = v[mid];
+      std::nth_element(v.begin(), v.begin() + (mid - 1), v.begin() + mid);
+      auto lo = v[mid - 1];
+      return std::max<size_t>(2, (static_cast<size_t>(lo) + static_cast<size_t>(hi) + 1ULL) / 2ULL);
+    }
+  };
+
+  const size_t Lmeta = computeMedianUH(survivorMedianHolds);
+  StationaryBlockResampler<Num> metaSampler(Lmeta);
+  using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
+
+  // Bootstrap portfolio series — GeoMean (decision) and Arithmetic mean (comparison) with blocks
+  const unsigned int num_resamples   = 2000;
+  const double       confidence_level = 0.95;
 
   GeoMeanStat<Num> statGeo;
-  BCaBootStrap<Num> metaGeo(metaReturns, num_resamples, confidence_level, statGeo);
-  BCaAnnualizer<Num> metaGeoAnn(metaGeo, annualizationFactor);
-
-  BCaBootStrap<Num> metaMean(metaReturns, num_resamples, confidence_level); // default = arithmetic mean
-  BCaAnnualizer<Num> metaMeanAnn(metaMean, annualizationFactor);
+  BlockBCA metaGeo(metaReturns, num_resamples, confidence_level, statGeo, metaSampler);
+  BlockBCA metaMean(metaReturns, num_resamples, confidence_level,
+                    &mkc_timeseries::StatUtils<Num>::computeMean, metaSampler);
 
   const Num lbGeoPeriod  = metaGeo.getLowerBound();
   const Num lbMeanPeriod = metaMean.getLowerBound();
 
   std::cout << "      Per-period BCa lower bounds (pre-annualization): "
-	    << "Geo="  << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-	    << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+            << "Geo="  << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+            << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+  std::cout << "      (Meta uses block resampling with L=" << Lmeta << ")\n";
 
-  // Portfolio-level cost hurdle (0.10% per side => 0.20% round trip).
-  // With equal-weight capital, scale trade counts by weight.
+  // Annualize portfolio BCa results
+  BCaAnnualizer<Num, StationaryBlockResampler<Num>> metaGeoAnn(metaGeo, annualizationFactor);
+  BCaAnnualizer<Num, StationaryBlockResampler<Num>> metaMeanAnn(metaMean, annualizationFactor);
+
+  const Num lbGeoAnn  = metaGeoAnn.getAnnualizedLowerBound();
+  const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
+
+  // Portfolio-level cost hurdle (0.10% per side => 0.20% round trip), equal-weight scaling
   const Num costBufferMultiplier = Num("1.5");
   const Num riskFreeRate         = Num("0.03");
   const Num riskFreeMultiplier   = Num("2.0");
@@ -398,15 +431,11 @@ void filterMetaStrategy(
 
   Num sumTrades = DecimalConstants<Num>::DecimalZero;
   for (const auto& tr : survivorAnnualizedTrades) sumTrades += tr;
-  // Equal-weight portfolio: cost scales with weight
-  Num portfolioAnnualizedTrades = w * sumTrades;
+  Num portfolioAnnualizedTrades = w * sumTrades; // equal-weight portfolio: scale trades by weight
 
-  Num annualizedCostHurdle = portfolioAnnualizedTrades * slippagePerRoundTrip;
-  Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
-  Num finalRequiredReturn = std::max(costBasedRequiredReturn, riskFreeHurdle);
-
-  const Num lbGeoAnn  = metaGeoAnn.getAnnualizedLowerBound();
-  const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
+  Num annualizedCostHurdle      = portfolioAnnualizedTrades * slippagePerRoundTrip;
+  Num costBasedRequiredReturn   = annualizedCostHurdle * costBufferMultiplier;
+  Num finalRequiredReturn       = std::max(costBasedRequiredReturn, riskFreeHurdle);
 
   std::cout << "\n[Meta] Portfolio of " << n << " survivors (equal-weight):\n"
             << "      Annualized Lower Bound (GeoMean): " << (lbGeoAnn  * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
