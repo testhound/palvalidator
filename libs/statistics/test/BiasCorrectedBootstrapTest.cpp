@@ -222,7 +222,101 @@ TEST_CASE("BCaBootStrap works with StationaryBlockResampler", "[BCaBootStrap][St
     REQUIRE(num::to_double(wid_blk) >= 0.50 * num::to_double(wid_iid));
 }
 
-// --------------------------- Annualizer tests (existing) ---------------------------
+TEST_CASE("Policy jackknife: IID delete-one", "[Resampler][Jackknife][IID]") {
+    using D = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    // x = [0,1,2,3,4]
+    std::vector<D> x;
+    for (int i = 0; i < 5; ++i) x.push_back(D(i));
+
+    Policy pol;
+    // Statistic = arithmetic mean
+    typename Policy::StatFn stat = &StatUtils<D>::computeMean;
+
+    auto jk = pol.jackknife(x, stat);
+
+    // Size: n replicates
+    REQUIRE(jk.size() == x.size());
+
+    // Expected delete-one means: (sum - xi) / (n-1)
+    const double sum = 0 + 1 + 2 + 3 + 4; // 10
+    const double n1 = 4.0;
+    std::vector<double> expected = {
+        (sum - 0) / n1, // 2.5
+        (sum - 1) / n1, // 2.25
+        (sum - 2) / n1, // 2.0
+        (sum - 3) / n1, // 1.75
+        (sum - 4) / n1  // 1.5
+    };
+
+    for (size_t i = 0; i < jk.size(); ++i) {
+        REQUIRE(num::to_double(jk[i]) == Catch::Approx(expected[i]).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("Policy jackknife: Stationary delete-one-block (L=2)", "[Resampler][Jackknife][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // x = [0,1,2,3,4]
+    std::vector<D> x;
+    for (int i = 0; i < 5; ++i) x.push_back(D(i));
+
+    Policy pol(2); // L = 2, L_eff = 2
+    typename Policy::StatFn stat = &StatUtils<D>::computeMean;
+
+    auto jk = pol.jackknife(x, stat);
+
+    // We should get n replicates (overlapping, circular delete-2 blocks)
+    REQUIRE(jk.size() == x.size());
+
+    // Build expected means using the same Decimal statistic to match rounding:
+    // start=0: keep [2,3,4]
+    // start=1: keep [0,3,4]
+    // start=2: keep [0,1,4]
+    // start=3: keep [0,1,2]
+    // start=4: keep [1,2,3]
+    const int idx[][3] = {{2,3,4},{0,3,4},{0,1,4},{0,1,2},{1,2,3}};
+    for (size_t i = 0; i < jk.size(); ++i) {
+        std::vector<D> kept; kept.reserve(3);
+        kept.push_back(x[idx[i][0]]);
+        kept.push_back(x[idx[i][1]]);
+        kept.push_back(x[idx[i][2]]);
+        D expected = StatUtils<D>::computeMean(kept);
+        REQUIRE(num::to_double(jk[i]) == Catch::Approx(num::to_double(expected)).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("Policy jackknife: Stationary clamps L to n-1", "[Resampler][Jackknife][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // x = [0,1,2,3,4], n=5
+    std::vector<D> x;
+    for (int i = 0; i < 5; ++i) x.push_back(D(i));
+
+    Policy pol(10); // L = 10 -> L_eff = min(10, n-1) = 4
+    typename Policy::StatFn stat = &StatUtils<D>::computeMean;
+
+    auto jk = pol.jackknife(x, stat);
+
+    // n replicates; each replicate removes 4 elements, leaving 1 element -> mean equals the remaining element
+    REQUIRE(jk.size() == x.size());
+
+    // Expected remaining (circular delete-4):
+    // start=0: delete [0,4) -> keep [4] -> mean 4
+    // start=1: delete [1,0) -> keep [0] -> mean 0
+    // start=2: keep [1] -> 1
+    // start=3: keep [2] -> 2
+    // start=4: keep [3] -> 3
+    const double expected[] = {4.0, 0.0, 1.0, 2.0, 3.0};
+    for (size_t i = 0; i < jk.size(); ++i) {
+        REQUIRE(num::to_double(jk[i]) == Catch::Approx(expected[i]).epsilon(1e-12));
+    }
+}
+
+// --------------------------- Annualizer tests ---------------------------
 
 template<class Decimal>
 class MockBCaBootStrapForAnnualizer : public BCaBootStrap<Decimal>

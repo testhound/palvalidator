@@ -4,7 +4,7 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 // BCa (Bias-Corrected and Accelerated) Bootstrap Implementation
-// with pluggable resampling policies
+// with pluggable resampling policies + policy-specific jackknife
 //
 // Default policy: IIDResampler (classic i.i.d. bootstrap)
 // Alternative policy: StationaryBlockResampler (mean block length L)
@@ -36,9 +36,7 @@ namespace mkc_timeseries
 // --------------------------- Resampling Policies -----------------------------
 
 // IID resampler: classic i.i.d. bootstrap (draw n items with replacement)
-// IIID stands for independent and identically distributed. In statistics and
-// probability, it refers to a sequence of random variables where each variable
-//  is both independent of the others and follows the same probability distribution
+// IID stands for independent and identically distributed.
 template <class Decimal>
 struct IIDResampler {
   std::vector<Decimal>
@@ -50,6 +48,23 @@ struct IIDResampler {
       y.push_back(x[idx]);
     }
     return y;
+  }
+
+  // Jackknife for BCa 'a': classic delete-1 observation (n replicates)
+  using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+  std::vector<Decimal>
+  jackknife(const std::vector<Decimal>& x, const StatFn& stat) const {
+    const size_t n = x.size();
+    if (n < 2) throw std::invalid_argument("IIDResampler::jackknife requires n>=2.");
+    std::vector<Decimal> jk;  jk.reserve(n);
+    std::vector<Decimal> tmp; tmp.reserve(n - 1);
+    for (size_t i = 0; i < n; ++i) {
+      tmp.clear();
+      tmp.insert(tmp.end(), x.begin(), x.begin() + i);
+      tmp.insert(tmp.end(), x.begin() + i + 1, x.end());
+      jk.push_back(stat(tmp));
+    }
+    return jk;
   }
 };
 
@@ -79,6 +94,39 @@ struct StationaryBlockResampler {
       }
     }
     return y;
+  }
+
+  // Jackknife for BCa 'a': delete-one-block (overlapping, circular), length L_eff
+  using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+  std::vector<Decimal>
+  jackknife(const std::vector<Decimal>& x, const StatFn& stat) const {
+    const size_t n = x.size();
+    if (n < 2) throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
+    const size_t L_eff = std::min(m_L, n - 1); // ensure remainder non-empty
+
+    std::vector<Decimal> jk; jk.reserve(n);
+    std::vector<Decimal> y;  y.reserve(n - L_eff);
+
+    for (size_t start = 0; start < n; ++start) {
+      const size_t end = (start + L_eff) % n; // element after the deleted block
+      y.clear();
+
+      if (start < end) {
+        // delete [start, end): keep [0, start) and [end, n)
+        y.insert(y.end(), x.begin(), x.begin() + static_cast<std::ptrdiff_t>(start));
+        y.insert(y.end(), x.begin() + static_cast<std::ptrdiff_t>(end), x.end());
+      } else {
+        // wrapped deletion: delete [start, n) ∪ [0, end); keep [end, start)
+        y.insert(y.end(),
+                 x.begin() + static_cast<std::ptrdiff_t>(end),
+                 x.begin() + static_cast<std::ptrdiff_t>(start));
+      }
+
+      // y has size n - L_eff >= 1
+      jk.push_back(stat(y));
+    }
+
+    return jk;
   }
 
   size_t meanBlockLen() const { return m_L; }
@@ -225,22 +273,14 @@ protected:
     const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
     const double z0 = inverseNormalCdf(prop_less);
 
-    // 4) Acceleration a via jackknife (delete-1). For dependent data,
-    // you may later switch to a block jackknife (delete-1-block).
-    std::vector<Decimal> jk_stats; jk_stats.reserve(n);
+    // 4) Acceleration a via jackknife, delegated to the sampler
+    const std::vector<Decimal> jk_stats = m_sampler.jackknife(m_returns, m_statistic);
+    const size_t n_jk = jk_stats.size();
+
     Decimal jk_sum(DecimalConstants<Decimal>::DecimalZero);
-    std::vector<Decimal> loov; loov.reserve(n - 1);
+    for (const auto& th : jk_stats) jk_sum += th;
+    const Decimal jk_avg = jk_sum / Decimal(n_jk);
 
-    for (size_t i = 0; i < n; ++i) {
-      loov.clear();
-      loov.insert(loov.end(), m_returns.begin(), m_returns.begin() + i);
-      loov.insert(loov.end(), m_returns.begin() + i + 1, m_returns.end());
-      const Decimal th = m_statistic(loov);
-      jk_stats.push_back(th);
-      jk_sum += th;
-    }
-
-    const Decimal jk_avg = jk_sum / Decimal(n);
     Decimal num(DecimalConstants<Decimal>::DecimalZero);
     Decimal den(DecimalConstants<Decimal>::DecimalZero);
     for (const auto& th : jk_stats) {
@@ -331,9 +371,11 @@ inline double calculateAnnualizationFactor(TimeFrame::Duration timeFrame,
   }
 }
 
-template <class Decimal, class Sampler = IIDResampler<Decimal>>
+template <class Decimal>
 class BCaAnnualizer {
 public:
+  // Accept ANY sampler specialization of BCaBootStrap<Decimal, Sampler>
+  template <class Sampler>
   BCaAnnualizer(const BCaBootStrap<Decimal, Sampler>& bca_results, double annualization_factor) {
     if (annualization_factor <= 0.0)
       throw std::invalid_argument("Annualization factor must be positive.");
