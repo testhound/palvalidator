@@ -143,7 +143,7 @@ namespace mkc_timeseries
       // Changed to use ptime and getEntryDateTime() for the map key
       ptime dt = position->getEntryDateTime(); //
 
-      unsigned int holdingPeriod = position->getNumBarsSinceEntry();
+      unsigned int holdingPeriod = position->getNumBarsInPosition();
       mBarsPerPosition.push_back (holdingPeriod);
       mNumBarsInMarket += position->getNumBarsInPosition();
 
