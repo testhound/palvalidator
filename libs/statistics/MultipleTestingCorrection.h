@@ -937,36 +937,6 @@ namespace mkc_timeseries
       
       return m0_hat;
     }
-    
-    // Helper method to estimate FDR for a specific family
-    Decimal estimateFDRForPValueForFamily(const std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies,
-                                          const Decimal& pValueCutoff,
-                                          const Decimal& m0_estimate) const
-    {
-      if (familyStrategies.empty())
-        return Decimal(0);
-      
-      Decimal pi0_estimate = m0_estimate / familyStrategies.size();
-      
-      // Count the number of rejected hypotheses for the given cutoff.
-      Decimal num_rejections(DecimalConstants<Decimal>::DecimalZero);
-      for (const auto& entry : familyStrategies) {
-        if (entry.first <= pValueCutoff) {
-          num_rejections += DecimalConstants<Decimal>::DecimalOne;
-        }
-      }
-      
-      if (num_rejections == DecimalConstants<Decimal>::DecimalZero) {
-        return DecimalConstants<Decimal>::DecimalZero;
-      }
-      
-      // Apply the formula to estimate the FDR.
-      Decimal m = static_cast<Decimal>(familyStrategies.size());
-      Decimal estimated_fdr = (pi0_estimate * pValueCutoff * m) / num_rejections;
-      
-      return std::min(Decimal(1.0), estimated_fdr); // FDR cannot be > 1
-    }
-
 
   /**
    * @brief Finds the optimal smoothing parameter ('lambdans') for spline fitting using k-fold cross-validation.
@@ -1070,24 +1040,6 @@ namespace mkc_timeseries
   }
 
   public:
-    Decimal estimateFDRForPValue(const Decimal& pValueCutoff)
-    {
-      // Collect unified family like lines 528-535
-      const auto& allStrategies = container_.getInternalContainer();
-      std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> unifiedFamily;
-      
-      // Convert container format to family format
-      for (const auto& entry : allStrategies) {
-        unifiedFamily.emplace_back(entry.first, entry.second);
-      }
-      
-      // Estimate m0 for the unified family using the family-based method
-      Decimal m0_estimate = estimateM0StoreySmoothedForFamily(unifiedFamily);
-      
-      // Call the family-based method
-      return estimateFDRForPValueForFamily(unifiedFamily, pValueCutoff, m0_estimate);
-    }
-
     /**
      * @brief [For Unit Testing Only] Sets a fixed m0 value, bypassing the spline estimator.
      */
