@@ -154,6 +154,399 @@ Num calculateTheoreticalPALProfitability(std::shared_ptr<PalStrategy<Num>> strat
 }
 
 template<typename Num>
+struct RobustnessChecksConfig {
+  unsigned int B = 1200;
+  double cl = 0.95;
+
+  // L-sensitivity
+  double relVarTol = 0.25;        // keep 0.25
+  size_t minL = 2;
+
+  // Split-sample eligibility
+  size_t minTotalForSplit = 40;
+  size_t minHalfForSplit  = 20;
+
+  // Tail risk
+  double tailAlpha = 0.05;
+  Num    tailMultiple = Num("3.0");
+  Num    borderlineAnnualMargin = Num("0.02");
+
+  // NEW: only fail on variability if we're close to the hurdle
+  Num    varOnlyMarginAbs = Num("0.02");  // within +2% annual of hurdle
+  double varOnlyMarginRel = 0.25;         // or within +25% relative to hurdle
+};
+
+enum class RobustnessVerdict { ThumbsUp, ThumbsDown };
+
+// ---------------- Flagged-strategy robustness checks (UPDATED) ----------------
+template<typename Num>
+static inline Num annualizeLB_(const Num& perPeriodLB, double k) {
+  const Num one = DecimalConstants<Num>::DecimalOne;
+  return Num(std::pow((one + perPeriodLB).getAsDouble(), k)) - one;
+}
+
+template<typename Num>
+static inline Num absNum_(const Num& x) {
+  return (x < DecimalConstants<Num>::DecimalZero) ? -x : x;
+}
+
+enum class RobustnessFailReason {
+  None = 0,
+  LSensitivityBound,        // a bound at {L-1,L,L+1} ≤ 0 or ≤ hurdle
+  LSensitivityVarNearHurdle,// variability too high AND base near hurdle
+  SplitSample,              // a half ≤ 0 or ≤ hurdle
+  TailRisk                  // severe tails + borderline base
+};
+
+struct RobustnessResult {
+  RobustnessVerdict verdict;
+  RobustnessFailReason reason;
+  double relVar; // for logging/diagnostics
+};
+
+/**
+ * @brief Run GM-only robustness checks for strategies flagged by AM–GM divergence.
+ *
+ * This routine is **diagnostic**. We ultimately accept/reject by the
+ * GEOMETRIC-mean (GM) BCa lower bound vs the hurdle. However, when the caller
+ * detects a large AM–GM divergence, this function probes whether the GM result
+ * itself is stable under small, realistic perturbations of the resampling
+ * scheme and the sample window.
+ *
+ * What it does (all GM-based):
+ *  1) Baseline LB (per-period and annualized): compute BCa LB using the
+ *     current block policy (e.g., StationaryBlockResampler) with block length
+ *     L and the caller’s annualization factor. This mirrors the production
+ *     filter settings.
+ *
+ *  2) L-sensitivity (block-length wiggle): recompute the GM LB at L-1, L,
+ *     and L+1 (clamped to ≥2). This catches dependence on the precise block
+ *     size.
+ *        - Immediate FAIL if any tested LB ≤ 0 or ≤ hurdleAnn.
+ *        - Otherwise compute relative variability:
+ *              relVar = (max_annLB - min_annLB) / max_annLB
+ *          If relVar > cfg.relVarTol (default ~0.25), we _only_ FAIL when the
+ *          baseline annualized LB is “near the hurdle”:
+ *              near = (abs(LB_ann - hurdleAnn) ≤ cfg.nearHurdleAbs)
+ *                     OR (abs(LB_ann - hurdleAnn)/hurdleAnn ≤ cfg.nearHurdleRel)
+ *          If baseline is comfortably above the hurdle, we PASS despite high
+ *          relVar (we still log that variability).
+ *
+ *  3) Split-sample stability (optional, size-gated):
+ *        - Skip entirely if returns.size() < cfg.minTotalForSplit (e.g., 40),
+ *          or if either half would be < cfg.minHalfForSplit (e.g., 20).
+ *        - Otherwise split the series into first/second halves and compute
+ *          GM BCa LBs with the same policy and L.
+ *        - FAIL if either half’s annualized LB ≤ 0 or ≤ hurdleAnn.
+ *
+ *  4) Tail-risk sanity (advisory):
+ *        - Compute empirical lower α-quantile (qα, α=cfg.tailAlpha, e.g., 5%)
+ *          and expected shortfall ESα on **per-period** raw returns.
+ *        - Mark “severe” if |qα| > cfg.tailMultiple × (baseline per-period GM LB).
+ *          This is for logging; it does not, by itself, cause FAIL unless you
+ *          choose to treat “severe && near-hurdle” as a policy failure.
+ *
+ * Inputs
+ *  @param name                 Strategy name (used for logging).
+ *  @param returns              Per-period net returns (after costs/slippage).
+ *                              These are the same units used in your BCa filter.
+ *  @param L                    Block length for the block sampler (e.g., median
+ *                              holding period, clamped ≥ 2).
+ *  @param annualizationFactor  Multiplier to annualize per-period LBs (e.g.,
+ *                              252 for daily, ~52 for weekly, etc.).
+ *  @param hurdleAnn            Annualized hurdle used in the main filter (max of
+ *                              cost and risk-free, or any policy you apply).
+ *  @param cfg                  Thresholds and toggles for the checks:
+ *                                - relVarTol        : tolerance for L-sensitivity
+ *                                                     variability (default ~0.25)
+ *                                - nearHurdleAbs    : absolute “near hurdle” band
+ *                                - nearHurdleRel    : relative “near hurdle” band
+ *                                - minTotalForSplit : minimum n to attempt split
+ *                                - minHalfForSplit  : minimum n per half
+ *                                - tailAlpha        : tail quantile (e.g., 0.05)
+ *                                - tailMultiple     : multiple for “severe” flag
+ *  @param os                   Stream for human-readable diagnostics (defaults
+ *                              to std::cout). Nothing is thrown on logging.
+ *
+ * Output
+ *  @return RobustnessVerdict   A small enum/struct indicating:
+ *                                - ThumbsUp (all checks passed or skipped)
+ *                                - Fail_Lbound      (LB ≤ 0 or ≤ hurdle at some L)
+ *                                - Fail_LvariabilityNearHurdle (relVar too high
+ *                                  AND baseline LB near hurdle)
+ *                                - Fail_SplitSample (a half fails LB > hurdle)
+ *                                - Fail_TailRisk    (only if you choose to enforce)
+ *                                - Skip_SmallSample (split skipped; not a failure)
+ *
+ * Notes & intent
+ *  - This function **does not replace** your primary selection rule (GM LB vs
+ *    hurdle). It is invoked only for “flagged” cases (e.g., large AM–GM LB gap)
+ *    and aims to catch fragile strategies whose GM LB is sensitive to block
+ *    length or sub-sample choice.
+ *  - All computations are GM-centric; AM is not used here for any decision.
+ *  - Tail-risk is advisory by default; it helps you decide between exclusion
+ *    vs down-weighting.
+ *  - Determinism: it uses the same bootstrap/jackknife policies as production.
+ *    If you seed your RNG upstream, the results are reproducible.
+ *
+ * Complexity
+ *  - Roughly O(B · n · (#L-tests + #splits)), where B is the bootstrap size,
+ *    n is sample length. Size-gating avoids expensive splits on small n.
+ *
+ * Example
+ *  RobustnessChecksConfig<Num> cfg{};
+ *  cfg.relVarTol = Num("0.25");
+ *  cfg.minTotalForSplit = 40;
+ *  auto verdict = runFlaggedStrategyRobustness<Num>(
+ *      strategyName, returns, L, 252.0, finalRequiredReturn, cfg, std::cout
+ *  );
+ *  if (verdict.isFail()
+ *   {// Exclude or down-weith the strategy}
+ */
+
+template<typename Num>
+RobustnessResult runFlaggedStrategyRobustness(
+    const std::string& label,
+    const std::vector<Num>& returns,    // per-period returns after slippage, etc.
+    size_t L_in,                        // median holding bars (inclusive) -> block length to use
+    double annualizationFactor,         // k
+    const Num& finalRequiredReturn,     // hurdle (annual)
+    const RobustnessChecksConfig<Num>& cfg /* has varOnlyMarginAbs/varOnlyMarginRel */,
+    std::ostream& os)
+{
+  using Sampler  = StationaryBlockResampler<Num>;
+  using BlockBCA = BCaBootStrap<Num, Sampler>;
+  GeoMeanStat<Num> statGeo;
+
+  const size_t n = returns.size();
+  const size_t L = std::max(cfg.minL, L_in);
+
+  if (n == 0) {
+    os << "   [ROBUST] " << label << ": empty return series. ThumbsDown.\n";
+    return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, 0.0};
+  }
+
+  if (n < cfg.minTotalForSplit) {
+    os << "   [ROBUST] " << label << ": small sample (" << n
+       << "). Will SKIP split-sample; running L-sensitivity and tail-risk only.\n";
+  }
+
+  // Baseline
+  Sampler pol_base(L);
+  BlockBCA bca_base(returns, cfg.B, cfg.cl, statGeo, pol_base);
+  const Num lbPeriod_base = bca_base.getLowerBound();
+  const Num lbAnnual_base = annualizeLB_<Num>(lbPeriod_base, annualizationFactor);
+
+  os << "   [ROBUST] " << label << " baseline (L=" << L << "): "
+     << "per-period Geo LB=" << (lbPeriod_base * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+     << "annualized Geo LB=" << (lbAnnual_base * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+
+  // 1) L-sensitivity
+  std::vector<size_t> Ls;
+  if (L > cfg.minL) Ls.push_back(L - 1);
+  Ls.push_back(L);
+  Ls.push_back(L + 1);
+
+  Num ann_min = lbAnnual_base;
+  Num ann_max = lbAnnual_base;
+  bool ls_fail = false;
+
+  os << "   [ROBUST] L-sensitivity:";
+  for (size_t Ltry : Ls) {
+    Sampler pol(Ltry);
+    BlockBCA b(returns, cfg.B, cfg.cl, statGeo, pol);
+    const Num lbP = b.getLowerBound();
+    const Num lbA = annualizeLB_<Num>(lbP, annualizationFactor);
+
+    ann_min = (lbA < ann_min) ? lbA : ann_min;
+    ann_max = (lbA > ann_max) ? lbA : ann_max;
+
+    // Hard fail if any LB ≤ 0 or ≤ hurdle
+    if (lbA <= DecimalConstants<Num>::DecimalZero || lbA <= finalRequiredReturn) {
+      ls_fail = true;
+    }
+
+    os << "  L=" << Ltry
+       << " → per=" << (lbP * DecimalConstants<Num>::DecimalOneHundred) << "%,"
+       << " ann=" << (lbA * DecimalConstants<Num>::DecimalOneHundred) << "%;";
+  }
+  os << "\n";
+
+  // Relative variability = (max - min) / max
+  double relVar = 0.0;
+  if (ann_max > DecimalConstants<Num>::DecimalZero) {
+    relVar = (ann_max.getAsDouble() - ann_min.getAsDouble()) / ann_max.getAsDouble();
+  }
+  const bool ls_var_fail_raw = (relVar > cfg.relVarTol);
+
+  // Near-hurdle test: absolute or relative band
+  const double baseA = lbAnnual_base.getAsDouble();
+  const double hurA  = finalRequiredReturn.getAsDouble();
+  const bool nearHurdle =
+      (lbAnnual_base <= (finalRequiredReturn + cfg.varOnlyMarginAbs)) ||
+      (baseA <= hurA * (1.0 + cfg.varOnlyMarginRel));
+
+  // Verdict for L-sensitivity
+  if (ls_fail) {
+    os << "   [ROBUST] L-sensitivity FAIL: LB below hurdle/zero at some L.\n";
+    return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, relVar};
+  }
+  if (ls_var_fail_raw) {
+    if (nearHurdle) {
+      os << "   [ROBUST] L-sensitivity FAIL: relVar=" << relVar
+         << " > " << cfg.relVarTol << " and base LB near hurdle.\n";
+      return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityVarNearHurdle, relVar};
+    } else {
+      os << "   [ROBUST] L-sensitivity PASS (high variability relVar=" << relVar
+         << " > " << cfg.relVarTol << " but base LB comfortably above hurdle).\n";
+    }
+  } else {
+    os << "   [ROBUST] L-sensitivity PASS (relVar=" << relVar << ")\n";
+  }
+
+  // 2) Split-sample (only if sample is large enough)
+  if (n >= cfg.minTotalForSplit) {
+    const size_t mid = n / 2;
+    const size_t n1 = mid;
+    const size_t n2 = n - mid;
+
+    bool canSplit = (n1 >= cfg.minHalfForSplit) && (n2 >= cfg.minHalfForSplit);
+    if (!canSplit) {
+      os << "   [ROBUST] Split-sample SKIP (insufficient per-half data: "
+         << n1 << " & " << n2 << ")\n";
+    } else {
+      std::vector<Num> r1(returns.begin(), returns.begin() + mid);
+      std::vector<Num> r2(returns.begin() + mid, returns.end());
+
+      BlockBCA b1(r1, cfg.B, cfg.cl, statGeo, pol_base);
+      BlockBCA b2(r2, cfg.B, cfg.cl, statGeo, pol_base);
+
+      const Num lb1P = b1.getLowerBound();
+      const Num lb2P = b2.getLowerBound();
+      const Num lb1A = annualizeLB_<Num>(lb1P, annualizationFactor);
+      const Num lb2A = annualizeLB_<Num>(lb2P, annualizationFactor);
+
+      os << "   [ROBUST] Split-sample: "
+         << "H1 per=" << (lb1P * DecimalConstants<Num>::DecimalOneHundred) << "% (ann="
+         << (lb1A * DecimalConstants<Num>::DecimalOneHundred) << "%), "
+         << "H2 per=" << (lb2P * DecimalConstants<Num>::DecimalOneHundred) << "% (ann="
+         << (lb2A * DecimalConstants<Num>::DecimalOneHundred) << "%)\n";
+
+      if (lb1A <= DecimalConstants<Num>::DecimalZero || lb2A <= DecimalConstants<Num>::DecimalZero
+          || lb1A <= finalRequiredReturn || lb2A <= finalRequiredReturn) {
+        os << "   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.\n";
+        return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::SplitSample, relVar};
+      } else {
+        os << "   [ROBUST] Split-sample PASS\n";
+      }
+    }
+  } else {
+    os << "   [ROBUST] Split-sample SKIP (n=" << n << " < " << cfg.minTotalForSplit << ")\n";
+  }
+
+  // 3) Tail risk sanity
+  std::vector<Num> sorted = returns;
+  std::sort(sorted.begin(), sorted.end(),
+            [](const Num& a, const Num& b){ return a < b; });
+
+  size_t k = static_cast<size_t>(std::floor(cfg.tailAlpha * static_cast<double>(n)));
+  if (k >= n) k = n - 1;
+  const Num q05 = sorted[k];
+
+  Num sumTail = DecimalConstants<Num>::DecimalZero;
+  size_t cntTail = 0;
+  for (size_t i = 0; i <= k; ++i) { sumTail += sorted[i]; ++cntTail; }
+  const Num es05 = (cntTail > 0) ? (sumTail / Num(static_cast<int>(cntTail)))
+                                 : q05;
+
+  const bool severe_tails =
+      (q05 < DecimalConstants<Num>::DecimalZero) &&
+      (absNum_(q05) > cfg.tailMultiple * lbPeriod_base);
+
+  const bool borderline =
+      (lbAnnual_base <= (finalRequiredReturn + cfg.borderlineAnnualMargin));
+
+  os << "   [ROBUST] Tail risk: q05=" << (q05 * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+     << "ES05=" << (es05 * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+     << "severe=" << (severe_tails ? "yes" : "no") << ", "
+     << "borderline=" << (borderline ? "yes" : "no") << "\n";
+
+  if (severe_tails && borderline) {
+    os << "   [ROBUST] Tail risk FAIL (severe tails and borderline LB) → ThumbsDown.\n";
+    return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::TailRisk, relVar};
+  }
+
+  os << "   [ROBUST] All checks PASS → ThumbsUp.\n";
+  return {RobustnessVerdict::ThumbsUp, RobustnessFailReason::None, relVar};
+}
+
+enum class DivergencePrintRel { Defined, NotDefined };
+
+template<typename Num>
+struct DivergenceResult {
+  bool flagged;
+  double absDiff;       // absolute annualized difference (as a fraction, not %)
+  double relDiff;       // relative annualized difference (abs/max), undefined if max<=0
+  DivergencePrintRel relState;
+};
+
+/**
+ * Diagnostic sentinel: AM vs GM lower-bound divergence
+ *
+ * We make decisions using the GEOMETRIC mean (GM) because it matches compounding.
+ * However, we also compare the BCa *annualized* lower bounds of the ARITHMETIC mean (AM)
+ * and GM as a cheap, informative warning signal. This function computes:
+ *
+ *   abs_gap = | LB_ann(GM) - LB_ann(AM) |
+ *   rel_gap = abs_gap / max(LB_ann(GM), LB_ann(AM))   // guarded against 0
+ *
+ * and returns them so the caller can decide whether to flag the strategy and run
+ * deeper robustness checks (L-sensitivity, split-sample when n>=40, tail-risk).
+ *
+ * Why keep AM if we filter on GM?
+ *  - Volatility drag proxy: for small returns, GM ≈ AM − ½·Var(r). A large AM–GM gap
+ *    is a red flag that variance and/or skew/fat tails are hurting true compounding.
+ *  - Different influence functions: AM (linear) and GM (log-domain) react differently
+ *    to outliers, zeros, and serial dependence; disagreement is a useful “smoke detector”
+ *    for shape/resampling sensitivity or data/plumbing mistakes.
+ *  - Sanity & transparency: printing AM alongside GM helps diagnose unexpected shifts
+ *    (e.g., slippage handling, transform errors) without changing the pass/fail rule.
+ *
+ * Important:
+ *  - This divergence is **diagnostic only**—it does NOT accept or reject a strategy.
+ *    It merely gates the robustness suite. Final acceptance remains GM-LB vs hurdle.
+ *  - Thresholds for abs/rel gaps are heuristics; tune per risk tolerance and sample size.
+ *    Near-hurdle strategies deserve extra scrutiny even for modest gaps.
+ *  - Divergences can occur legitimately (finite samples, BCa asymmetry, block resampling),
+ *    so never drop solely on AM–GM gap—always confirm with the robustness checks.
+ */
+template<typename Num>
+DivergenceResult<Num>
+assessAMDivergence(const Num& gmAnn, const Num& amAnn,
+                   double absThresh, double relThresh)
+{
+  const double g = gmAnn.getAsDouble();
+  const double a = amAnn.getAsDouble();
+  const double absd = std::fabs(g - a);
+
+  const double denom = std::max(g, a);
+  DivergenceResult<Num> out{};
+  out.absDiff = absd;
+
+  if (denom > 0.0) {
+    out.relDiff = absd / denom;
+    out.relState = DivergencePrintRel::Defined;
+    out.flagged = (absd > absThresh) || (out.relDiff > relThresh);
+  } else {
+    out.relDiff = 0.0; // meaningless; we'll print "n/a"
+    out.relState = DivergencePrintRel::NotDefined;
+    // Still allow flagging by absolute gap even if relative is undefined.
+    out.flagged = (absd > absThresh);
+  }
+  return out;
+}
+
+template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -163,83 +556,77 @@ filterSurvivingStrategiesByPerformance(
 {
   std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
 
-  // --- Filtering Parameters ---
+  // Filtering parameters
   const Num costBufferMultiplier = Num("1.5");
   const Num riskFreeRate         = Num("0.03");
   const Num riskFreeMultiplier   = Num("2.0");
   const Num riskFreeHurdle       = riskFreeRate * riskFreeMultiplier;
 
-  std::cout << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance..." << std::endl;
-  std::cout << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0" << std::endl;
-  std::cout << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * " << costBufferMultiplier << ")" << std::endl;
-  std::cout << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate * " << riskFreeMultiplier << ")" << std::endl;
-  std::cout << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side." << std::endl;
-  std::cout << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%." << std::endl;
+  const RobustnessChecksConfig<Num> cfg{};
+
+  // Summary counters
+  size_t cnt_insufficient = 0;
+  size_t cnt_flagged = 0, cnt_flag_pass = 0;
+  size_t cnt_fail_Lbound = 0, cnt_fail_Lvar = 0, cnt_fail_split = 0, cnt_fail_tail = 0;
+
+  std::cout << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
+  std::cout << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
+  std::cout << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * " << costBufferMultiplier << ")\n";
+  std::cout << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate * " << riskFreeMultiplier << ")\n";
+  std::cout << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side.\n";
+  std::cout << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
 
   for (const auto& strategy : survivingStrategies)
   {
     try
     {
-      // 1) Fresh portfolio & cloned strategy for a clean backtest
       auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
       freshPortfolio->addSecurity(baseSecurity);
       auto clonedStrat = strategy->clone2(freshPortfolio);
 
-      // 2) Backtest & get high-res returns
-      auto backtester   = BackTesterFactory<Num>::backTestStrategy(clonedStrat, theTimeFrame, backtestingDates);
+      auto backtester     = BackTesterFactory<Num>::backTestStrategy(clonedStrat, theTimeFrame, backtestingDates);
       auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
 
-      if (highResReturns.size() < 20)
-      {
+      if (highResReturns.size() < 20) {
         std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
-                  << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20)." << std::endl;
+                  << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20).\n";
+        ++cnt_insufficient;
         continue;
       }
 
-      // 3) Median holding period → block length L (min 2)
       const unsigned int medianHoldBars = backtester->getClosedPositionHistory().getMedianHoldingPeriod();
-      std::cout << "Strategy Median holding period = " << medianHoldBars << std::endl;
+      std::cout << "Strategy Median holding period = " << medianHoldBars << "\n";
       const std::size_t  L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHoldBars));
       StationaryBlockResampler<Num> sampler(L);
 
-      // 4) BCa Bootstrap (GeoMean for decision, Mean for comparison) with block sampling
-      const unsigned int num_resamples   = 2000;
+      const unsigned int num_resamples    = 2000;
       const double       confidence_level = 0.95;
 
       GeoMeanStat<Num> statGeo;
       using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
-
-      BlockBCA bcaGeo(highResReturns, num_resamples, confidence_level, statGeo, sampler);
+      BlockBCA bcaGeo (highResReturns, num_resamples, confidence_level, statGeo, sampler);
       BlockBCA bcaMean(highResReturns, num_resamples, confidence_level,
                        &mkc_timeseries::StatUtils<Num>::computeMean, sampler);
 
-        const Num lbGeoPeriod  = bcaGeo.getLowerBound();
-        const Num lbMeanPeriod = bcaMean.getLowerBound();
-        const Num diff = (lbGeoPeriod > lbMeanPeriod) ? (lbGeoPeriod - lbMeanPeriod)
-                                              : (lbMeanPeriod - lbGeoPeriod);
-        if (diff > Num("0.0002")) { // > 2 bps per bar
-            std::cout << "   ↳ Per-period BCa LBs: Geo=" << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred)
-            << "%, Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-        }
+      const Num lbGeoPeriod  = bcaGeo.getLowerBound();
+      const Num lbMeanPeriod = bcaMean.getLowerBound();
 
-      // 5) Annualize
       double annualizationFactor;
       if (theTimeFrame == TimeFrame::INTRADAY) {
         annualizationFactor = calculateAnnualizationFactor(
             theTimeFrame,
             baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
-      } 
-      else {
+      } else {
         annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
       }
 
-      BCaAnnualizer<Num, StationaryBlockResampler<Num>> annualizerGeo(bcaGeo,  annualizationFactor);
-      BCaAnnualizer<Num, StationaryBlockResampler<Num>> annualizerMean(bcaMean, annualizationFactor);
+      BCaAnnualizer<Num> annualizerGeo (bcaGeo,  annualizationFactor);
+      BCaAnnualizer<Num> annualizerMean(bcaMean, annualizationFactor);
 
       const Num annualizedLowerBoundGeo  = annualizerGeo.getAnnualizedLowerBound();
       const Num annualizedLowerBoundMean = annualizerMean.getAnnualizedLowerBound();
 
-      // 6) Hurdles: cost & risk-free
+      // Hurdles: cost & risk-free
       const Num slippagePerSide      = Num("0.001"); // 0.10% per side
       const Num slippagePerRoundTrip = slippagePerSide * DecimalConstants<Num>::DecimalTwo; // 0.20% per trade
       const Num annualizedTrades(backtester->getEstimatedAnnualizedTrades());
@@ -247,9 +634,48 @@ filterSurvivingStrategiesByPerformance(
       const Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
       const Num finalRequiredReturn     = std::max(costBasedRequiredReturn, riskFreeHurdle);
 
-      // 7) Decision + logging
-      if (annualizedLowerBoundGeo > finalRequiredReturn)
-      {
+      // Check annualized AM vs GM divergence and run robustness if flagged
+      const auto divergence = assessAMDivergence<Num>(annualizedLowerBoundGeo, annualizedLowerBoundMean,
+                                                      /*absThresh=*/0.05, /*relThresh=*/0.30);
+      if (divergence.flagged) {
+        ++cnt_flagged;
+        std::cout << "   [FLAG] Large AM vs GM divergence (abs="
+                  << (Num(divergence.absDiff) * DecimalConstants<Num>::DecimalOneHundred) << "%, rel=";
+        if (divergence.relState == DivergencePrintRel::Defined) {
+          std::cout << divergence.relDiff;
+        } else {
+          std::cout << "n/a";
+        }
+        std::cout << "); running robustness checks...\n";
+
+        const auto rob = runFlaggedStrategyRobustness<Num>(
+            strategy->getStrategyName(),
+            highResReturns,
+            L,
+            annualizationFactor,
+            finalRequiredReturn,
+            cfg,
+            std::cout
+        );
+
+        if (rob.verdict == RobustnessVerdict::ThumbsDown) {
+          switch (rob.reason) {
+            case RobustnessFailReason::LSensitivityBound:        ++cnt_fail_Lbound; break;
+            case RobustnessFailReason::LSensitivityVarNearHurdle:++cnt_fail_Lvar;   break;
+            case RobustnessFailReason::SplitSample:              ++cnt_fail_split;  break;
+            case RobustnessFailReason::TailRisk:                 ++cnt_fail_tail;   break;
+            default: break;
+          }
+          std::cout << "   [FLAG] Robustness checks FAILED → excluding strategy.\n\n";
+          continue;
+        } else {
+          ++cnt_flag_pass;
+          std::cout << "   [FLAG] Robustness checks PASSED.\n";
+        }
+      }
+
+      // Final decision based on Geo LB vs hurdle
+      if (annualizedLowerBoundGeo > finalRequiredReturn) {
         filteredStrategies.push_back(strategy);
 
         std::cout << "✓ Strategy passed: " << strategy->getStrategyName()
@@ -262,9 +688,7 @@ filterSurvivingStrategiesByPerformance(
         std::cout << "   ↳ Lower bounds (annualized): "
                   << "GeoMean = " << (annualizedLowerBoundGeo  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
                   << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-      }
-      else
-      {
+      } else {
         std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
                   << " (Lower Bound = "
                   << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
@@ -272,18 +696,29 @@ filterSurvivingStrategiesByPerformance(
                   << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
                   << "  [Block L=" << L << "]\n";
       }
-      std::cout << std::endl;
+
+      std::cout << "\n";
     }
     catch (const std::exception& e)
     {
       std::cout << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
-                << "' performance: " << e.what() << std::endl;
-      std::cout << "Excluding strategy from filtered results." << std::endl;
+                << "' performance: " << e.what() << "\n";
+      std::cout << "Excluding strategy from filtered results.\n";
     }
   }
 
-  std::cout << "\nBCa Performance Filtering complete: " << filteredStrategies.size() << "/"
-            << survivingStrategies.size() << " strategies passed criteria." << std::endl;
+  // Summary
+  std::cout << "BCa Performance Filtering complete: " << filteredStrategies.size()
+            << "/" << survivingStrategies.size() << " strategies passed criteria.\n\n";
+  std::cout << "[Summary] Flagged for divergence: " << cnt_flagged
+            << " (passed robustness: " << cnt_flag_pass << ", failed: "
+            << (cnt_flagged >= cnt_flag_pass ? (cnt_flagged - cnt_flag_pass) : 0) << ")\n";
+  std::cout << "          Fail reasons → "
+            << "L-bound/hurdle: " << cnt_fail_Lbound
+            << ", L-variability near hurdle: " << cnt_fail_Lvar
+            << ", split-sample: " << cnt_fail_split
+            << ", tail-risk: " << cnt_fail_tail << "\n";
+  std::cout << "          Insufficient sample (pre-filter): " << cnt_insufficient << "\n";
 
   return filteredStrategies;
 }
@@ -414,8 +849,8 @@ void filterMetaStrategy(
   std::cout << "      (Meta uses block resampling with L=" << Lmeta << ")\n";
 
   // Annualize portfolio BCa results
-  BCaAnnualizer<Num, StationaryBlockResampler<Num>> metaGeoAnn(metaGeo, annualizationFactor);
-  BCaAnnualizer<Num, StationaryBlockResampler<Num>> metaMeanAnn(metaMean, annualizationFactor);
+  BCaAnnualizer<Num> metaGeoAnn(metaGeo, annualizationFactor);
+  BCaAnnualizer<Num> metaMeanAnn(metaMean, annualizationFactor);
 
   const Num lbGeoAnn  = metaGeoAnn.getAnnualizedLowerBound();
   const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
