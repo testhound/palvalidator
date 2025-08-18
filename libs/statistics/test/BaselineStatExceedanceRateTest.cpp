@@ -82,7 +82,7 @@ namespace {
         return portfolio;
     }
 
-    StrategyContext<DecimalType> makeStrategyContext(std::shared_ptr<PalStrategy<DecimalType>> strat, DecimalType baseline) {
+    [[maybe_unused]] StrategyContext<DecimalType> makeStrategyContext(std::shared_ptr<PalStrategy<DecimalType>> strat, DecimalType baseline) {
         StrategyContext<DecimalType> ctx;
         ctx.strategy = strat;
         ctx.baselineStat = baseline;

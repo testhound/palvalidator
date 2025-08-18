@@ -41,13 +41,32 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Coverage")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -g -pg")
 endif()
 
-find_package( Threads )
+find_package(Threads REQUIRED)
 find_package(Boost REQUIRED CONFIG COMPONENTS filesystem date_time chrono system program_options regex thread container)
+
+# Find CURL
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CURL REQUIRED libcurl)
+
+# Find RapidJSON - try different methods
+find_path(RAPIDJSON_INCLUDE_DIR
+    NAMES rapidjson/rapidjson.h
+    PATHS ${RAPIDJSON_DIR}
+          /usr/include
+          /usr/local/include
+          /opt/homebrew/include
+    PATH_SUFFIXES rapidjson
+)
+
+if(NOT RAPIDJSON_INCLUDE_DIR)
+    message(FATAL_ERROR "RapidJSON not found. Please install rapidjson-dev or set RAPIDJSON_DIR")
+endif()
+
 include_directories(${CMAKE_SOURCE_DIR}
   ${Boost_INCLUDE_DIR}
   ${BLOOMBERG_DECIMAL_INCLUDES}
-  ${RAPIDJSON_DIR}
-  ${CURL_DIR}
+  ${RAPIDJSON_INCLUDE_DIR}
+  ${CURL_INCLUDE_DIRS}
   ${FLEX_INCLUDE_DIR}
   )
 
@@ -92,7 +111,7 @@ target_link_libraries(${BIN_NAME}
     backtesting
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
-    curl
+    ${CURL_LIBRARIES}
     )
 
     #list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
