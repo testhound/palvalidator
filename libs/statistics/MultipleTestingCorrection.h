@@ -21,7 +21,6 @@
 #include <iomanip>
 #include <optional>
 #include <boost/thread/mutex.hpp>
-#include "libalglib/interpolation.h"
 #include "number.h"
 #include "DecimalConstants.h"
 #include "PermutationTestResultPolicy.h"

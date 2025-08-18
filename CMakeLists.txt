@@ -67,7 +67,6 @@ add_subdirectory(libs/pasearchalgo)
 add_subdirectory(libs/statistics)
 add_subdirectory(libs/priceactionlab)
 add_subdirectory(libs/patterndiscovery)
-add_subdirectory(libraries/Alglib)
 add_subdirectory(src/palvalidator)
 add_subdirectory(src/palsetup)
 add_subdirectory(src/palcodegen)
@@ -91,7 +90,6 @@ target_link_libraries(${BIN_NAME}
     concurrency
     timeseries
     backtesting
-    Alglib
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     curl
