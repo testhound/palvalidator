@@ -98,13 +98,6 @@ target_link_libraries(${BIN_NAME}
     #list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
 
 #add_subdirectory(tests)
-include(FetchContent)
-FetchContent_Declare(
-  cpptrace
-  GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-  GIT_TAG        v0.8.3 # <HASH or TAG>
-)
-FetchContent_MakeAvailable(cpptrace)
 
 find_package(Catch2 CONFIG REQUIRED)
 

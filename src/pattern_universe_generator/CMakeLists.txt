@@ -76,7 +76,6 @@ target_link_libraries(pattern_generator_unit_tests PRIVATE concurrency)
 target_link_libraries(pattern_generator_unit_tests PRIVATE patterndiscovery)
 target_link_libraries(pattern_generator_unit_tests PRIVATE testinfra)
 target_link_libraries(pattern_generator_unit_tests PRIVATE Catch2::Catch2WithMain)
-target_link_libraries(pattern_generator_unit_tests PRIVATE cpptrace::cpptrace)
 target_link_libraries(pattern_generator_unit_tests PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(pattern_generator_unit_tests PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
