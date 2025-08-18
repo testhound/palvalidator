@@ -70,7 +70,6 @@ if(TEST_LIST)
     target_link_libraries(${LIB_NAME}_unit_tests PRIVATE
         ${LIB_NAME}  # Link to our static library
         Catch2::Catch2WithMain
-        cpptrace::cpptrace
         testinfra
     )
     

@@ -10,14 +10,12 @@ file(GLOB SRC_LIST
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
 
 target_include_directories(${LIB_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_include_directories(${LIB_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/libraries/Alglib)
 include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
 SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${LIB_NAME} INTERFACE priceactionlab ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(${LIB_NAME} INTERFACE concurrency)
 target_link_libraries(${LIB_NAME} INTERFACE timeseries)
-target_link_libraries(${LIB_NAME} INTERFACE Alglib)
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
@@ -32,7 +30,6 @@ find_package(Catch2 CONFIG REQUIRED)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE backtesting)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE statistics)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE Catch2::Catch2WithMain)
-target_link_libraries(${LIB_NAME}_unit_tests PRIVATE cpptrace::cpptrace)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE "-lcurl")
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE concurrency)

@@ -61,7 +61,6 @@ target_link_libraries(${LIB_NAME}_unit_tests PRIVATE priceactionlab)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE concurrency)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE testinfra)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE Catch2::Catch2WithMain)
-target_link_libraries(${LIB_NAME}_unit_tests PRIVATE cpptrace::cpptrace)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE ${Boost_LIBRARIES})
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 

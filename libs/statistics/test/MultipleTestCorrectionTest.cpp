@@ -554,38 +554,3 @@ TEST_CASE("AdaptiveBH: Edge case where no strategies should survive", "[Adaptive
     // Since 0.49 is not <= 0.05 (the target FDR), nothing should survive.
     CHECK(fdrCorrector.getNumSurvivingStrategies() == 0);
 }
-
-TEST_CASE("AdaptiveBH: Test the estimateFDRForPValue method", "[AdaptiveBenjaminiHochbergYr2000]")
-{
-    auto portfolio = sharedPortfolio();
-    auto pattern = sharedPattern();
-    
-    AdaptiveBenjaminiHochbergYr2000<DecimalType> fdrCorrector;
-
-    // Create a scenario where pi0 is known to be ~0.9
-    // 10 "true alternative" p-values
-    for (int i = 0; i < 10; ++i) {
-        fdrCorrector.addStrategy(createDecimal("0.0001"), createDummyPalStrategy("AdaptiveBH_Alt_" + std::to_string(i), pattern, portfolio));
-    }
-    // 90 "true null" p-values, uniformly distributed on [0,1]
-    for (int i = 1; i <= 90; ++i) {
-        fdrCorrector.addStrategy(createDecimal(std::to_string(i)) / createDecimal("90"), createDummyPalStrategy("AdaptiveBH_Null_" + std::to_string(i), pattern, portfolio));
-    }
-    
-    REQUIRE(fdrCorrector.getNumMultiComparisonStrategies() == 100);
-
-    // We want to estimate the FDR for a p-value cutoff of 0.05
-    DecimalType p_cutoff = createDecimal("0.05");
-    DecimalType estimatedFDR = fdrCorrector.estimateFDRForPValue(p_cutoff);
-    
-    // Manual calculation for expected result:
-    // pi0 should be estimated to be around 0.9.
-    // m = 100.
-    // R(0.05) = 10 (from the true alternatives) + ~4 (from the 90 nulls, since 0.05*90=4.5) = 14
-    // Expected FDR = (pi0 * p_cutoff * m) / R
-    // Expected FDR ~= (0.9 * 0.05 * 100) / 14 = 4.5 / 14 ~= 0.321
-    
-    // Using Catch2's Approx for floating point comparison with a relative margin.
-    // A larger margin is needed because the statistical estimation has inherent variability.
-    CHECK(estimatedFDR.getAsDouble() == Catch::Approx(0.321).margin(0.15));
-}

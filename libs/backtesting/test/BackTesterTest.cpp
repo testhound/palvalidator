@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include <cpptrace/from_current.hpp>
 #include "TimeSeriesCsvReader.h"
 #include "PalStrategy.h"
 #include "BoostDateHelper.h"
@@ -275,14 +274,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (palLongBacktester1.getStartDate() == backTesterDate);
     REQUIRE (palLongBacktester1.getEndDate() == backtestEndDate);
 
-    CPPTRACE_TRY
-      {
-	palLongBacktester1.backtest();
-      }
-    CPPTRACE_CATCH(const std::exception& e) {
-        std::cerr<<"Exception: "<<e.what()<<std::endl;
-        cpptrace::from_current_exception().print();
-    }
+    palLongBacktester1.backtest();
 
     BackTester<DecimalType>::StrategyIterator it = palLongBacktester1.beginStrategies();
 

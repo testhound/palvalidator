@@ -1,7 +1,6 @@
 // StrategyDataPreparerTest.cpp
 
 #include <catch2/catch_test_macros.hpp>
-#include <cpptrace/from_current.hpp>
 #include "StrategyDataPreparer.h"
 #include "Security.h"
 #include "TestUtils.h"
@@ -126,19 +125,13 @@ TEST_CASE("StrategyDataPreparer::prepare returns strategies for valid inputs") {
   patterns->addPattern(createDummyPattern(true));
   patterns->addPattern(createDummyPattern(false));
 
-  CPPTRACE_TRY {
-    auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-        bt, sec, patterns);
-    REQUIRE(results.size() == 2);
-    for (const auto& ctx : results) {
-      REQUIRE(ctx.strategy);
-      REQUIRE(ctx.baselineStat == DecimalType("0.42"));
-      REQUIRE(ctx.count >= 0); // Count should be the number of trades from backtest
-    }
-  }
-  CPPTRACE_CATCH(const std::exception& e) {
-    std::cerr << "Exception: " << e.what() << std::endl;
-    cpptrace::from_current_exception().print();
+  auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
+      bt, sec, patterns);
+  REQUIRE(results.size() == 2);
+  for (const auto& ctx : results) {
+    REQUIRE(ctx.strategy);
+    REQUIRE(ctx.baselineStat == DecimalType("0.42"));
+    REQUIRE(ctx.count >= 0); // Count should be the number of trades from backtest
   }
 }
 
@@ -229,14 +222,9 @@ TEST_CASE("StrategyDataPreparer::prepare with random price series") {
   patterns->addPattern(createDummyPattern(true));
   patterns->addPattern(createDummyPattern(false));
 
-  CPPTRACE_TRY {
-    auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-        bt, sec, patterns);
-    REQUIRE(results.size() == 2);
-  }
-  CPPTRACE_CATCH(...) {
-    FAIL("Backtest on random series should not throw");
-  }
+  auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
+      bt, sec, patterns);
+  REQUIRE(results.size() == 2);
 }
 
 
@@ -246,17 +234,12 @@ TEST_CASE("StrategyDataPreparer::prepare with random price patterns") {
   auto patterns = getRandomPricePatterns();
   REQUIRE(patterns->getNumPatterns() > 0);
 
-  CPPTRACE_TRY {
-    auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
-        bt, sec, patterns);
-    REQUIRE(results.size() == patterns->getNumPatterns());
-    for (const auto& ctx : results) {
-      REQUIRE(ctx.strategy);
-      REQUIRE(ctx.baselineStat == DecimalType("0.42"));
-      REQUIRE(ctx.count >= 0); // Count should be the number of trades from backtest
-    }
-  }
-  CPPTRACE_CATCH(...) {
-    FAIL("Backtest on random patterns should not throw");
+  auto results = StrategyDataPreparer<DecimalType, DummyStatPolicy>::prepare(
+      bt, sec, patterns);
+  REQUIRE(results.size() == patterns->getNumPatterns());
+  for (const auto& ctx : results) {
+    REQUIRE(ctx.strategy);
+    REQUIRE(ctx.baselineStat == DecimalType("0.42"));
+    REQUIRE(ctx.count >= 0); // Count should be the number of trades from backtest
   }
 }
