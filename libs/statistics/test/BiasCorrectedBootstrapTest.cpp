@@ -1,44 +1,39 @@
 // BCaBootStrapTest.cpp
 //
-// Unit tests for the BCaBootStrap class.
-// This file uses the Catch2 testing framework to validate the correctness
-// and statistical properties of the Bias-Corrected and Accelerated (BCa)
-// bootstrap implementation.
+// Unit tests for the BCaBootStrap class and resampling policies.
+// Uses Catch2.
+//
+// New in this version:
+//  - Tests for StationaryBlockResampler (policy-only & via BCaBootStrap)
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/catch_approx.hpp> // For Catch::Approx
+#include <catch2/catch_approx.hpp>
 #include <vector>
-#include <numeric> // For std::accumulate
-#include <cmath>   // For std::abs
+#include <numeric>
+#include <cmath>
+#include <algorithm>
 
-#include "BiasCorrectedBootstrap.h"
-#include "TestUtils.h" // Assumed to provide DecimalType
-#include "number.h"    // For num::to_double
+#include "BiasCorrectedBootstrap.h" // Includes policy classes
+#include "TestUtils.h"              // DecimalType, createDecimal
+#include "number.h"                 // num::to_double
+#include "randutils.hpp"            // for seeded rng in policy tests
 
 using namespace mkc_timeseries;
 
-// Test suite for the BCaBootStrap class
+// --------------------------- Existing BCa tests ---------------------------
+
 TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
 
-    // SECTION 1: Test constructor with invalid arguments
     SECTION("Constructor validation") {
         std::vector<DecimalType> valid_returns = {DecimalType("0.1")};
 
-        // Test with empty returns vector
         std::vector<DecimalType> empty_returns;
         REQUIRE_THROWS_AS(BCaBootStrap<DecimalType>(empty_returns, 1000), std::invalid_argument);
-
-        // Test with too few resamples
         REQUIRE_THROWS_AS(BCaBootStrap<DecimalType>(valid_returns, 50), std::invalid_argument);
-
-        // Test with invalid confidence level (<= 0)
         REQUIRE_THROWS_AS(BCaBootStrap<DecimalType>(valid_returns, 1000, 0.0), std::invalid_argument);
-
-        // Test with invalid confidence level (>= 1)
         REQUIRE_THROWS_AS(BCaBootStrap<DecimalType>(valid_returns, 1000, 1.0), std::invalid_argument);
     }
 
-    // SECTION 2: Basic functionality and sanity checks
     SECTION("Basic functionality with a simple dataset") {
         std::vector<DecimalType> returns = {
             DecimalType("0.01"), DecimalType("-0.02"), DecimalType("0.03"),
@@ -46,27 +41,22 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
             DecimalType("0.01"), DecimalType("0.00"), DecimalType("-0.01"),
             DecimalType("0.02")
         };
-        
+
         unsigned int num_resamples = 2000;
         double confidence_level = 0.95;
 
         BCaBootStrap<DecimalType> bca(returns, num_resamples, confidence_level);
-        
-        // Check if the calculated mean is correct
-        DecimalType expected_mean = std::accumulate(returns.begin(), returns.end(), DecimalType(0)) / DecimalType(returns.size());
+
+        DecimalType expected_mean =
+            std::accumulate(returns.begin(), returns.end(), DecimalType(0)) / DecimalType(returns.size());
         REQUIRE(num::to_double(bca.getMean()) == Catch::Approx(num::to_double(expected_mean)));
 
-        // Sanity check: lower bound should be less than or equal to upper bound
         REQUIRE(bca.getLowerBound() <= bca.getUpperBound());
-
-        // Sanity check: the original sample mean should fall within the confidence interval
         REQUIRE(bca.getMean() >= bca.getLowerBound());
         REQUIRE(bca.getMean() <= bca.getUpperBound());
     }
 
-    // SECTION 3: Test with symmetric (normally distributed) data
     SECTION("Symmetric data should produce a roughly symmetric interval") {
-        // Data sampled from a normal distribution with mean ~0.05
         std::vector<DecimalType> symmetric_returns = {
             DecimalType("0.055"), DecimalType("0.047"), DecimalType("0.062"),
             DecimalType("0.051"), DecimalType("0.038"), DecimalType("0.069"),
@@ -75,30 +65,24 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
         };
 
         BCaBootStrap<DecimalType> bca(symmetric_returns, 2000, 0.95);
-        
+
         DecimalType mean = bca.getMean();
         DecimalType lower = bca.getLowerBound();
         DecimalType upper = bca.getUpperBound();
 
-        // For symmetric data, the distance from the mean to each bound should be similar.
-        // The bias-correction factor z0 should be close to zero.
         DecimalType lower_dist = mean - lower;
         DecimalType upper_dist = upper - mean;
 
-        // Allow for some stochastic variation, but they should be in the same ballpark.
-        // We check if the ratio of the distances is close to 1.
         REQUIRE(num::to_double(lower_dist / upper_dist) == Catch::Approx(1.0).margin(0.35));
     }
 
-    // SECTION 4: Test with skewed data
     SECTION("Skewed data should produce an asymmetric interval") {
-        // Data with a positive skew (long tail of positive returns)
         std::vector<DecimalType> skewed_returns = {
             DecimalType("0.01"), DecimalType("0.02"), DecimalType("0.015"),
             DecimalType("-0.05"), DecimalType("0.03"), DecimalType("-0.04"),
-            DecimalType("0.025"), DecimalType("0.15"), // outlier
+            DecimalType("0.025"), DecimalType("0.15"),
             DecimalType("0.01"), DecimalType("0.02"), DecimalType("-0.03"),
-            DecimalType("0.18") // outlier
+            DecimalType("0.18")
         };
 
         BCaBootStrap<DecimalType> bca(skewed_returns, 3000, 0.95);
@@ -107,20 +91,15 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
         DecimalType lower = bca.getLowerBound();
         DecimalType upper = bca.getUpperBound();
 
-        // For positively skewed data, the upper tail of the CI should be longer.
-        // The distance from the mean to the upper bound should be greater than
-        // the distance from the mean to the lower bound.
         DecimalType lower_dist = mean - lower;
         DecimalType upper_dist = upper - mean;
 
         REQUIRE(upper_dist > lower_dist);
     }
-    
-    // SECTION 5: Test with a larger, more realistic dataset
+
     SECTION("Larger dataset behavior") {
         std::vector<DecimalType> returns;
-        // Generate a slightly more realistic set of returns
-        for(int i = 0; i < 100; ++i) {
+        for (int i = 0; i < 100; ++i) {
             if (i % 5 == 0)
                 returns.push_back(DecimalType("-0.03") + DecimalType(i) / DecimalType(2000));
             else
@@ -129,14 +108,236 @@ TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
 
         BCaBootStrap<DecimalType> bca(returns, 5000, 0.99);
 
-        // Perform the same sanity checks as the basic case
-        DecimalType expected_mean = std::accumulate(returns.begin(), returns.end(), DecimalType(0)) / DecimalType(returns.size());
+        DecimalType expected_mean =
+            std::accumulate(returns.begin(), returns.end(), DecimalType(0)) / DecimalType(returns.size());
         REQUIRE(num::to_double(bca.getMean()) == Catch::Approx(num::to_double(expected_mean)));
         REQUIRE(bca.getLowerBound() <= bca.getUpperBound());
         REQUIRE(bca.getMean() >= bca.getLowerBound());
         REQUIRE(bca.getMean() <= bca.getUpperBound());
     }
 }
+
+// --------------------------- New: Policy tests ---------------------------
+
+TEST_CASE("StationaryBlockResampler basic behavior", "[Resampler][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // Build a simple monotone sequence so we can infer indices from values
+    const size_t n = 200;
+    std::vector<D> x; x.reserve(n);
+    for (size_t i = 0; i < n; ++i) x.push_back(D(static_cast<int>(i))); // values 0..n-1
+
+    // Fixed-seed RNG for determinism in this policy-only test
+    randutils::seed_seq_fe128 seed{12345u, 67890u, 13579u, 24680u};
+    randutils::mt19937_rng rng(seed);
+
+    SECTION("Throws on empty input") {
+        Policy pol(4);
+        std::vector<D> empty;
+        REQUIRE_THROWS_AS(pol(empty, 10, rng), std::invalid_argument);
+    }
+
+    SECTION("Output size and domain are correct; contiguity is substantial") {
+        const size_t L = 4;
+        Policy pol(L);
+
+        std::vector<D> y = pol(x, n, rng);
+
+        // size
+        REQUIRE(y.size() == n);
+
+        // all values are from the domain 0..n-1
+        for (const auto& v : y) {
+            const double vd = num::to_double(v);
+            REQUIRE(vd >= 0.0);
+            REQUIRE(vd < static_cast<double>(n));
+        }
+
+        // contiguity: fraction of (y[t+1] == (y[t]+1) mod n) should be high (~ 1 - 1/L)
+        // With L=4, expectation is ~0.75. Allow a safe lower bound.
+        size_t adjacent = 0;
+        for (size_t t = 0; t + 1 < y.size(); ++t) {
+            int cur = static_cast<int>(num::to_double(y[t]));
+            int nxt = static_cast<int>(num::to_double(y[t + 1]));
+            if (nxt == (cur + 1) % static_cast<int>(n)) adjacent++;
+        }
+        const double frac_adjacent = static_cast<double>(adjacent) / static_cast<double>(y.size() - 1);
+        REQUIRE(frac_adjacent > 0.60); // conservative threshold
+    }
+
+    SECTION("Mean block length is coerced to >= 2") {
+        Policy pol1(1);  // should coerce to 2
+        Policy pol2(2);  // stays 2
+        Policy pol5(5);  // stays 5
+        REQUIRE(pol1.meanBlockLen() == 2);
+        REQUIRE(pol2.meanBlockLen() == 2);
+        REQUIRE(pol5.meanBlockLen() == 5);
+    }
+}
+
+TEST_CASE("BCaBootStrap works with StationaryBlockResampler", "[BCaBootStrap][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // Build a small, autocorrelated-ish series: clusters of positives and negatives
+    std::vector<D> returns;
+    for (int k = 0; k < 30; ++k) {        // 180 points total
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+    }
+
+    // Geometric mean statistic to exercise the path with a custom stat as well
+    GeoMeanStat<D> gstat;
+    const unsigned int B = 1500;
+    const double cl = 0.95;
+
+    // IID baseline (default policy)
+    BCaBootStrap<D> bca_iid(returns, B, cl, gstat);
+    REQUIRE(bca_iid.getLowerBound() <= bca_iid.getUpperBound());
+    REQUIRE(bca_iid.getStatistic()  >= bca_iid.getLowerBound());
+    REQUIRE(bca_iid.getStatistic()  <= bca_iid.getUpperBound());
+
+    // Stationary blocks with mean L = 3 (close to the run length we used)
+    Policy pol(3);
+    BCaBootStrap<D, Policy> bca_blk(returns, B, cl, gstat, pol);
+    REQUIRE(bca_blk.getLowerBound() <= bca_blk.getUpperBound());
+    REQUIRE(bca_blk.getStatistic()  >= bca_blk.getLowerBound());
+    REQUIRE(bca_blk.getStatistic()  <= bca_blk.getUpperBound());
+
+    // It's common (not guaranteed) that block bootstrap yields a wider CI than IID when dependence exists.
+    // We assert a weak property: both intervals are non-degenerate and the block interval is
+    // at least not smaller by a *large* margin. This avoids flakiness while still exercising the path.
+    const D wid_iid = bca_iid.getUpperBound() - bca_iid.getLowerBound();
+    const D wid_blk = bca_blk.getUpperBound() - bca_blk.getLowerBound();
+
+    REQUIRE(num::to_double(wid_iid) > 0.0);
+    REQUIRE(num::to_double(wid_blk) > 0.0);
+
+    // Soft check: block width should not be dramatically smaller than IID width.
+    REQUIRE(num::to_double(wid_blk) >= 0.50 * num::to_double(wid_iid));
+}
+
+TEST_CASE("Policy jackknife: IID delete-one", "[Resampler][Jackknife][IID]") {
+    using D = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    // x = [0,1,2,3,4]
+    std::vector<D> x;
+    for (int i = 0; i < 5; ++i) x.push_back(D(i));
+
+    Policy pol;
+    // Statistic = arithmetic mean
+    typename Policy::StatFn stat = &StatUtils<D>::computeMean;
+
+    auto jk = pol.jackknife(x, stat);
+
+    // Size: n replicates
+    REQUIRE(jk.size() == x.size());
+
+    // Expected delete-one means: (sum - xi) / (n-1)
+    const double sum = 0 + 1 + 2 + 3 + 4; // 10
+    const double n1 = 4.0;
+    std::vector<double> expected = {
+        (sum - 0) / n1, // 2.5
+        (sum - 1) / n1, // 2.25
+        (sum - 2) / n1, // 2.0
+        (sum - 3) / n1, // 1.75
+        (sum - 4) / n1  // 1.5
+    };
+
+    for (size_t i = 0; i < jk.size(); ++i) {
+        REQUIRE(num::to_double(jk[i]) == Catch::Approx(expected[i]).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("Policy jackknife: Stationary delete-one-block (L=2)", "[Resampler][Jackknife][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // x = [0,1,2,3,4]
+    std::vector<D> x;
+    for (int i = 0; i < 5; ++i) x.push_back(D(i));
+
+    Policy pol(2); // L = 2, L_eff = 2
+    typename Policy::StatFn stat = &StatUtils<D>::computeMean;
+
+    auto jk = pol.jackknife(x, stat);
+
+    // We should get n replicates (overlapping, circular delete-2 blocks)
+    REQUIRE(jk.size() == x.size());
+
+    // Build expected means using the same Decimal statistic to match rounding:
+    // start=0: keep [2,3,4]
+    // start=1: keep [0,3,4]
+    // start=2: keep [0,1,4]
+    // start=3: keep [0,1,2]
+    // start=4: keep [1,2,3]
+    const int idx[][3] = {{2,3,4},{0,3,4},{0,1,4},{0,1,2},{1,2,3}};
+    for (size_t i = 0; i < jk.size(); ++i) {
+        std::vector<D> kept; kept.reserve(3);
+        kept.push_back(x[idx[i][0]]);
+        kept.push_back(x[idx[i][1]]);
+        kept.push_back(x[idx[i][2]]);
+        D expected = StatUtils<D>::computeMean(kept);
+        REQUIRE(num::to_double(jk[i]) == Catch::Approx(num::to_double(expected)).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("Policy jackknife: Stationary clamps L to n-1", "[Resampler][Jackknife][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // x = [0,1,2,3,4], n=5
+    std::vector<D> x;
+    for (int i = 0; i < 5; ++i) x.push_back(D(i));
+
+    Policy pol(10); // L = 10 -> L_eff = min(10, n-1) = 4
+    typename Policy::StatFn stat = &StatUtils<D>::computeMean;
+
+    auto jk = pol.jackknife(x, stat);
+
+    // n replicates; each replicate removes 4 elements, leaving 1 element -> mean equals the remaining element
+    REQUIRE(jk.size() == x.size());
+
+    // Expected remaining (circular delete-4):
+    // start=0: delete [0,4) -> keep [4] -> mean 4
+    // start=1: delete [1,0) -> keep [0] -> mean 0
+    // start=2: keep [1] -> 1
+    // start=3: keep [2] -> 2
+    // start=4: keep [3] -> 3
+    const double expected[] = {4.0, 0.0, 1.0, 2.0, 3.0};
+    for (size_t i = 0; i < jk.size(); ++i) {
+        REQUIRE(num::to_double(jk[i]) == Catch::Approx(expected[i]).epsilon(1e-12));
+    }
+}
+
+// --------------------------- Annualizer tests ---------------------------
+
+template<class Decimal>
+class MockBCaBootStrapForAnnualizer : public BCaBootStrap<Decimal>
+{
+public:
+    MockBCaBootStrapForAnnualizer()
+      : BCaBootStrap<Decimal>(std::vector<Decimal>{Decimal("0.0"), Decimal("0.0")}, 100) {}
+
+    void setTestResults(const Decimal& mean, const Decimal& lower, const Decimal& upper)
+    {
+        this->setMean(mean);
+        this->setLowerBound(lower);
+        this->setUpperBound(upper);
+        this->m_is_calculated = true;
+    }
+
+protected:
+    void calculateBCaBounds() override {
+        // no-op for mock
+    }
+};
 
 TEST_CASE("calculateAnnualizationFactor functionality", "[BCaAnnualizer]") {
 
@@ -149,7 +350,6 @@ TEST_CASE("calculateAnnualizationFactor functionality", "[BCaAnnualizer]") {
     }
 
     SECTION("Intraday time frames with standard US stock market hours") {
-        // 6.5 hours/day, 252 days/year
         REQUIRE(calculateAnnualizationFactor(TimeFrame::INTRADAY, 1) == Catch::Approx(6.5 * 60.0 * 252.0));
         REQUIRE(calculateAnnualizationFactor(TimeFrame::INTRADAY, 15) == Catch::Approx(6.5 * 4.0 * 252.0));
         REQUIRE(calculateAnnualizationFactor(TimeFrame::INTRADAY, 60) == Catch::Approx(6.5 * 1.0 * 252.0));
@@ -165,87 +365,51 @@ TEST_CASE("calculateAnnualizationFactor functionality", "[BCaAnnualizer]") {
 
     SECTION("Invalid arguments throw exceptions") {
         REQUIRE_THROWS_AS(calculateAnnualizationFactor(TimeFrame::INTRADAY, 0), std::invalid_argument);
-        // Assuming TimeFrame::UNKNOWN exists and is not a valid choice for annualization
-        // If it doesn't exist, this test can be adapted or removed.
-        // REQUIRE_THROWS_AS(calculateAnnualizationFactor(TimeFrame::UNKNOWN), std::invalid_argument);
     }
 }
 
-// Mock BCaBootStrap class to provide deterministic results for testing the annualizer.
-template<class Decimal>
-class MockBCaBootStrapForAnnualizer : public BCaBootStrap<Decimal>
-{
-public:
-    // Constructor that calls the base but avoids the expensive calculation.
-    MockBCaBootStrapForAnnualizer()
-      // Provide a minimal valid vector to satisfy the base constructor's checks.
-      : BCaBootStrap<Decimal>(std::vector<Decimal>{Decimal("0.0"), Decimal("0.0")}, 100)
-    {}
-
-    // Manually set the results for testing purposes.
-    void setTestResults(const Decimal& mean, const Decimal& lower, const Decimal& upper)
-    {
-        this->setMean(mean);
-        this->setLowerBound(lower);
-        this->setUpperBound(upper);
-        // Mark as calculated to prevent base class calculation
-        this->m_is_calculated = true;
-    }
-
-protected:
-    // Override the calculation method to do nothing, preventing the expensive bootstrap.
-    void calculateBCaBounds() override {
-        std::cout << "In MockBCaBootStrapForAnnualizer::calculateBCaBounds" << std::endl;
-        // This is intentionally left empty for the mock.
-    }
-};
-
-
 TEST_CASE("BCaAnnualizer functionality", "[BCaAnnualizer]") {
 
-    // Create a mock BCaBootStrap object
     MockBCaBootStrapForAnnualizer<DecimalType> mock_bca;
 
     SECTION("Annualizing positive returns") {
-        DecimalType per_bar_mean = createDecimal("0.001");
+        DecimalType per_bar_mean  = createDecimal("0.001");
         DecimalType per_bar_lower = createDecimal("0.0005");
         DecimalType per_bar_upper = createDecimal("0.0015");
         mock_bca.setTestResults(per_bar_mean, per_bar_lower, per_bar_upper);
 
-        double annualization_factor = 252.0;
-        BCaAnnualizer<DecimalType> annualizer(mock_bca, annualization_factor);
+        double k = 252.0;
+        BCaAnnualizer<DecimalType> annualizer(mock_bca, k);
 
-        // Expected results from geometric compounding: (1+r)^N - 1
-        DecimalType expected_mean = DecimalType(pow((DecimalType("1.0") + per_bar_mean).getAsDouble(), annualization_factor)) - DecimalType("1.0");
-        DecimalType expected_lower = DecimalType(pow((DecimalType("1.0") + per_bar_lower).getAsDouble(), annualization_factor)) - DecimalType("1.0");
-        DecimalType expected_upper = DecimalType(pow((DecimalType("1.0") + per_bar_upper).getAsDouble(), annualization_factor)) - DecimalType("1.0");
+        DecimalType expected_mean  = DecimalType(pow((DecimalType("1.0") + per_bar_mean ).getAsDouble(), k)) - DecimalType("1.0");
+        DecimalType expected_lower = DecimalType(pow((DecimalType("1.0") + per_bar_lower).getAsDouble(), k)) - DecimalType("1.0");
+        DecimalType expected_upper = DecimalType(pow((DecimalType("1.0") + per_bar_upper).getAsDouble(), k)) - DecimalType("1.0");
 
-        REQUIRE(num::to_double(annualizer.getAnnualizedMean()) == Catch::Approx(num::to_double(expected_mean)));
+        REQUIRE(num::to_double(annualizer.getAnnualizedMean())       == Catch::Approx(num::to_double(expected_mean)));
         REQUIRE(num::to_double(annualizer.getAnnualizedLowerBound()) == Catch::Approx(num::to_double(expected_lower)));
         REQUIRE(num::to_double(annualizer.getAnnualizedUpperBound()) == Catch::Approx(num::to_double(expected_upper)));
     }
 
     SECTION("Annualizing negative returns") {
-        DecimalType per_bar_mean = createDecimal("-0.0005");
+        DecimalType per_bar_mean  = createDecimal("-0.0005");
         DecimalType per_bar_lower = createDecimal("-0.001");
         DecimalType per_bar_upper = createDecimal("-0.0002");
         mock_bca.setTestResults(per_bar_mean, per_bar_lower, per_bar_upper);
 
-        double annualization_factor = 252.0;
-        BCaAnnualizer<DecimalType> annualizer(mock_bca, annualization_factor);
+        double k = 252.0;
+        BCaAnnualizer<DecimalType> annualizer(mock_bca, k);
 
-        DecimalType expected_mean = DecimalType(pow((DecimalType("1.0") + per_bar_mean).getAsDouble(), annualization_factor)) - DecimalType("1.0");
-        DecimalType expected_lower = DecimalType(pow((DecimalType("1.0") + per_bar_lower).getAsDouble(), annualization_factor)) - DecimalType("1.0");
-        DecimalType expected_upper = DecimalType(pow((DecimalType("1.0") + per_bar_upper).getAsDouble(), annualization_factor)) - DecimalType("1.0");
+        DecimalType expected_mean  = DecimalType(pow((DecimalType("1.0") + per_bar_mean ).getAsDouble(), k)) - DecimalType("1.0");
+        DecimalType expected_lower = DecimalType(pow((DecimalType("1.0") + per_bar_lower).getAsDouble(), k)) - DecimalType("1.0");
+        DecimalType expected_upper = DecimalType(pow((DecimalType("1.0") + per_bar_upper).getAsDouble(), k)) - DecimalType("1.0");
 
-        REQUIRE(num::to_double(annualizer.getAnnualizedMean()) == Catch::Approx(num::to_double(expected_mean)));
+        REQUIRE(num::to_double(annualizer.getAnnualizedMean())       == Catch::Approx(num::to_double(expected_mean)));
         REQUIRE(num::to_double(annualizer.getAnnualizedLowerBound()) == Catch::Approx(num::to_double(expected_lower)));
         REQUIRE(num::to_double(annualizer.getAnnualizedUpperBound()) == Catch::Approx(num::to_double(expected_upper)));
     }
 
     SECTION("Invalid annualization factor throws exception") {
         mock_bca.setTestResults(createDecimal("0.01"), createDecimal("0.0"), createDecimal("0.02"));
-        
         REQUIRE_THROWS_AS(BCaAnnualizer<DecimalType>(mock_bca, 0.0), std::invalid_argument);
         REQUIRE_THROWS_AS(BCaAnnualizer<DecimalType>(mock_bca, -252.0), std::invalid_argument);
     }

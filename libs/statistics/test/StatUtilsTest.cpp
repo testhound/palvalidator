@@ -394,3 +394,110 @@ TEST_CASE("StatUtils non-seeded bootstrap methods are statistically sound", "[St
         REQUIRE(num::to_double(true_single_pf) == Catch::Approx(num::to_double(mean_pf)).margin(num::to_double(stddev_pf * DecimalType(3.0))));
     }
 }
+
+// --------------------------- New Tests: GeoMeanStat ---------------------------
+
+TEST_CASE("GeoMeanStat basic correctness and edge cases", "[StatUtils][GeoMean]") {
+    // Absolute tolerance to accommodate Decimal<->double rounding differences.
+    constexpr double kGeoTol = 5e-8;
+
+    // Convenience lambda to compute expected geometric mean in double
+    auto expected_geo = [](const std::vector<double>& rs) -> double {
+        if (rs.empty()) return 0.0;
+        long double s = 0.0L;
+        for (double r : rs) {
+            // assume r > -1 for validity
+            s += std::log1p(r);
+        }
+        return std::expm1(s / static_cast<long double>(rs.size()));
+    };
+
+    SECTION("Positive returns only") {
+        std::vector<DecimalType> v = { DecimalType("0.10"), DecimalType("0.20"), DecimalType("0.05") };
+        GeoMeanStat<DecimalType> stat; // default: clip=false
+        DecimalType got = stat(v);
+
+        double expd = expected_geo({0.10, 0.20, 0.05});
+        REQUIRE(num::to_double(got) == Catch::Approx(expd).margin(kGeoTol));
+    }
+
+    SECTION("Mixed positive, negative, and zero returns") {
+        std::vector<DecimalType> v = { DecimalType("0.0"), DecimalType("0.10"), DecimalType("-0.05") };
+        GeoMeanStat<DecimalType> stat;
+        DecimalType got = stat(v);
+
+        double expd = expected_geo({0.0, 0.10, -0.05});
+        REQUIRE(num::to_double(got) == Catch::Approx(expd).margin(kGeoTol));
+    }
+
+    SECTION("Constant returns: geometric mean equals the constant return") {
+        std::vector<DecimalType> v = { DecimalType("0.05"), DecimalType("0.05"), DecimalType("0.05"), DecimalType("0.05") };
+        GeoMeanStat<DecimalType> stat;
+        DecimalType got = stat(v);
+
+        REQUIRE(num::to_double(got) == Catch::Approx(0.05).margin(kGeoTol));
+    }
+
+    SECTION("Empty vector returns 0") {
+        std::vector<DecimalType> v;
+        GeoMeanStat<DecimalType> stat;
+        DecimalType got = stat(v);
+
+        REQUIRE(got == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Return <= -1 throws by default") {
+        std::vector<DecimalType> v = { DecimalType("0.02"), DecimalType("-1.0") };
+        GeoMeanStat<DecimalType> stat; // clip=false
+        REQUIRE_THROWS_AS(stat(v), std::domain_error);
+    }
+
+    SECTION("Clipping mode: r <= -1 is winsorized and does not throw") {
+        std::vector<DecimalType> v = { DecimalType("0.02"), DecimalType("-1.0") };
+        const double eps = 1e-6;
+        GeoMeanStat<DecimalType> stat(/*clip_ruin=*/true, /*eps=*/eps);
+
+        // Should not throw
+        DecimalType got = stat(v);
+
+        // Expected with r clipped to (-1 + eps)
+        double expd = expected_geo({0.02, -1.0 + eps});
+        REQUIRE(num::to_double(got) == Catch::Approx(expd).margin(kGeoTol));
+
+        // And the result must be strictly greater than -1
+        REQUIRE(got > DecimalType("-1.0"));
+    }
+}
+
+TEST_CASE("GeoMeanStat works as a statistic in getBootStrappedStatistic", "[StatUtils][GeoMean][Bootstrap]") {
+    using Stat = StatUtils<DecimalType>;
+    GeoMeanStat<DecimalType> stat; // default: clip=false
+
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+        DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+        DecimalType("0.25")
+    };
+
+    // "True" geometric mean for the original sample
+    DecimalType true_geo = stat(returns);
+
+    // Run multiple bootstrap medians to form a distribution of estimates
+    constexpr int num_runs = 100;
+    std::vector<DecimalType> boot_medians;
+    boot_medians.reserve(num_runs);
+
+    for (int i = 0; i < num_runs; ++i) {
+        boot_medians.push_back(Stat::getBootStrappedStatistic(
+            returns,
+            stat,          // std::function will bind to GeoMeanStat::operator()
+            100));         // bootstraps per run
+    }
+
+    DecimalType mean_est = Stat::computeMean(boot_medians);
+    DecimalType std_est  = Stat::computeStdDev(boot_medians, mean_est);
+
+    // The true geometric mean should be within ~3 std dev of the bootstrap distribution mean.
+    REQUIRE(num::to_double(true_geo) == Catch::Approx(num::to_double(mean_est)).margin(num::to_double(std_est * DecimalType(3.0))));
+}
