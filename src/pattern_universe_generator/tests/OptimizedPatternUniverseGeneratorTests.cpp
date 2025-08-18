@@ -148,9 +148,7 @@ namespace
             return false;
         }
         
-        // Get file size
-        auto fileSize = std::filesystem::file_size(filePath);
-        // JSON file size check
+        // JSON file validation
         
         std::ifstream file(filePath);
         std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());

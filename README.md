@@ -84,6 +84,41 @@ This foundational library provides robust mechanisms for handling time series da
   
 - **`example/`**: Contains example configuration files and invocation scripts that illustrate how to use different components and set up specific backtesting or validation scenarios.
 
+## Dependencies
+
+PalValidator requires the following dependencies to be installed on your system:
+
+### Required Dependencies
+- **C++17 compatible compiler** (GCC 7+ or Clang 5+)
+- **CMake 3.1+**
+- **Boost Libraries** (filesystem, date_time, chrono, system, program_options, regex, thread, container)
+- **RapidJSON** - High-performance JSON parsing library
+- **libcurl** - HTTP client library for network operations
+- **Doxygen** - For generating documentation
+- **Bison** - Parser generator (for PAL pattern parsing)
+- **Flex** - Lexical analyzer generator
+
+### Installing Dependencies
+
+#### Ubuntu/Debian:
+```bash
+sudo apt-get update
+sudo apt-get install build-essential cmake libboost-all-dev rapidjson-dev libcurl4-openssl-dev doxygen bison flex
+```
+
+#### macOS (using Homebrew):
+```bash
+brew install cmake boost rapidjson curl doxygen bison flex
+```
+
+#### Setting Environment Variables
+If dependencies are installed in non-standard locations, set these environment variables:
+```bash
+export RAPIDJSON_DIR=/path/to/rapidjson/include
+export CURL_DIR=/path/to/curl/include
+export BLOOMBERG_DECIMAL_INCLUDES=/path/to/bloomberg/decimal/include
+```
+
 ## How to build executables
 
 For production, use:
@@ -91,13 +126,15 @@ For production, use:
 mkdir build
 cd build
 cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+make
 ```
 
 For debug & profiling puposes, use the following instead:
 ```
 mkdir build-debug
-cd build
+cd build-debug
 cmake -DCMAKE_BUILD_TYPE=Debug ..
+make
 ```
 
 ## How to build & view the doc
