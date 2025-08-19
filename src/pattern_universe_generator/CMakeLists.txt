@@ -1,5 +1,5 @@
 # Pattern Universe Generator Library
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 
 # Define the library
 add_library(pattern_universe_generator
