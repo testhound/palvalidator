@@ -13,6 +13,7 @@
 #include <chrono>
 #include <sstream>
 #include <filesystem>
+#include <iomanip>
 #include "ValidatorConfiguration.h"
 #include "SecurityAttributesFactory.h"
 #include "PALMastersMonteCarloValidation.h"
@@ -178,7 +179,6 @@ struct RobustnessChecksConfig {
 
 enum class RobustnessVerdict { ThumbsUp, ThumbsDown };
 
-// ---------------- Flagged-strategy robustness checks (UPDATED) ----------------
 template<typename Num>
 static inline Num annualizeLB_(const Num& perPeriodLB, double k) {
   const Num one = DecimalConstants<Num>::DecimalOne;
@@ -203,6 +203,48 @@ struct RobustnessResult {
   RobustnessFailReason reason;
   double relVar; // for logging/diagnostics
 };
+
+/// Prints a human-readable explanation of tail risk metrics (q05, ES05)
+/// relative to the conservative per-period edge (GM BCa lower bound).
+///
+/// q05: 5% worst-case one-period loss threshold ("bad-day cutoff").
+/// ES05: average loss within the worst 5% of periods ("how bad are bad days, on average").
+///
+/// We scale both by |perPeriodGMLB| to communicate how many times larger a bad day is
+/// than the conservative edge you’re compounding at.
+///
+/// Example line emitted:
+///   "• Tail-risk context: a 5% bad day (q05) is about 9.12× your conservative per-period edge;
+///    average of bad days (ES05) ≈ 12.80×. (Flag 'severe' when q05 > 3× edge.)"
+// ---- Tail-risk explanation helper ----
+template <class Num>
+void logTailRiskExplanation(std::ostream& os,
+                            const Num& perPeriodGMLB,
+                            const Num& q05,
+                            const Num& es05,
+                            double severeMultiple /* e.g., cfg.tailMultiple */)
+{
+    const double edge = std::abs(perPeriodGMLB.getAsDouble());
+    const double q    = std::abs(q05.getAsDouble());
+    const double es   = std::abs(es05.getAsDouble());
+
+    double multQ  = std::numeric_limits<double>::infinity();
+    double multES = std::numeric_limits<double>::infinity();
+    if (edge > 0.0) {
+        multQ  = q  / edge;
+        multES = es / edge;
+    }
+
+    std::ostream::fmtflags f(os.flags());
+    os << "      \u2022 Tail-risk context: a 5% bad day (q05) is about "
+       << std::fixed << std::setprecision(2) << multQ
+       << "\u00D7 your conservative per-period edge; average of bad days (ES05) \u2248 "
+       << multES << "\u00D7.\n"
+       << "        (Heuristic: flag 'severe' when q05 exceeds "
+       << std::setprecision(2) << severeMultiple
+       << "\u00D7 the per-period GM lower bound.)\n";
+    os.flags(f);
+}
 
 /**
  * @brief Run GM-only robustness checks for strategies flagged by AM–GM divergence.
@@ -543,6 +585,20 @@ RobustnessResult runFlaggedStrategyRobustness(
   std::sort(sorted.begin(), sorted.end(),
             [](const Num& a, const Num& b){ return a < b; });
 
+ /**
+ * Tail risk metrics (per-period, on raw returns):
+ *  - q05  = empirical 5% quantile of returns (a “bad-day cutoff”).
+ *  - ES05 = average return conditional on being in the worst 5% (how bad
+ *           those bad days are, on average).
+ *
+ * We don’t use these to accept/reject by themselves. Instead, we compare them
+ * to the conservative per-period GM LB to convey scale:
+ *   |q05| / |LB_per(GM)|  and  |ES05| / |LB_per(GM)|.
+ *
+ * If |q05| is more than tailMultiple × LB_per(GM), we mark “severe”.
+ * Policy: “severe” is advisory unless the strategy is also near the hurdle.
+ */
+
   size_t k = static_cast<size_t>(std::floor(cfg.tailAlpha * static_cast<double>(n)));
   if (k >= n) k = n - 1;
   const Num q05 = sorted[k];
@@ -564,6 +620,8 @@ RobustnessResult runFlaggedStrategyRobustness(
      << "ES05=" << (es05 * DecimalConstants<Num>::DecimalOneHundred) << "%, "
      << "severe=" << (severe_tails ? "yes" : "no") << ", "
      << "borderline=" << (borderline ? "yes" : "no") << "\n";
+
+     logTailRiskExplanation(os, lbPeriod_base, q05, es05, cfg.tailMultiple.getAsDouble());
 
   if (severe_tails && borderline) {
     os << "   [ROBUST] Tail risk FAIL (severe tails and borderline LB) → ThumbsDown.\n";
@@ -731,7 +789,18 @@ filterSurvivingStrategiesByPerformance(
       const Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
       const Num finalRequiredReturn     = std::max(costBasedRequiredReturn, riskFreeHurdle);
 
-      // Check annualized AM vs GM divergence and run robustness if flagged
+      // ---- Early decision on the only thing we care about: GM LB vs hurdle ----
+      if (annualizedLowerBoundGeo <= finalRequiredReturn) {
+        std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
+                  << " (Lower Bound = "
+                  << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
+                  << "% <= Required Return = "
+                  << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+                  << "  [Block L=" << L << "]\n\n";
+        continue; // Skip divergence/robustness for obvious fails
+      }
+
+      // If we reach here, GM LB passes the hurdle → optionally run diagnostic divergence & robustness
       const auto divergence = assessAMDivergence<Num>(annualizedLowerBoundGeo, annualizedLowerBoundMean,
                                                       /*absThresh=*/0.05, /*relThresh=*/0.30);
       if (divergence.flagged) {
@@ -771,30 +840,19 @@ filterSurvivingStrategiesByPerformance(
         }
       }
 
-      // Final decision based on Geo LB vs hurdle
-      if (annualizedLowerBoundGeo > finalRequiredReturn) {
-        filteredStrategies.push_back(strategy);
+      // Passed GM hurdle (and any flagged robustness) → keep
+      filteredStrategies.push_back(strategy);
 
-        std::cout << "✓ Strategy passed: " << strategy->getStrategyName()
-                  << " (Lower Bound = "
-                  << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-                  << "% > Required Return = "
-                  << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-                  << "  [Block L=" << L << "]\n";
+      std::cout << "✓ Strategy passed: " << strategy->getStrategyName()
+                << " (Lower Bound = "
+                << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
+                << "% > Required Return = "
+                << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+                << "  [Block L=" << L << "]\n";
 
-        std::cout << "   ↳ Lower bounds (annualized): "
-                  << "GeoMean = " << (annualizedLowerBoundGeo  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-                  << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-      } else {
-        std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
-                  << " (Lower Bound = "
-                  << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-                  << "% <= Required Return = "
-                  << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-                  << "  [Block L=" << L << "]\n";
-      }
-
-      std::cout << "\n";
+      std::cout << "   ↳ Lower bounds (annualized): "
+                << "GeoMean = " << (annualizedLowerBoundGeo  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+                << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%\n\n";
     }
     catch (const std::exception& e)
     {
@@ -802,6 +860,14 @@ filterSurvivingStrategiesByPerformance(
                 << "' performance: " << e.what() << "\n";
       std::cout << "Excluding strategy from filtered results.\n";
     }
+  }
+
+  // Directional survivor counts (based on strategy name containing "Long"/"Short")
+  size_t survivorsLong = 0, survivorsShort = 0;
+  for (const auto& s : filteredStrategies) {
+    const auto& nm = s->getStrategyName();
+    if (nm.find("Long")  != std::string::npos) ++survivorsLong;
+    if (nm.find("Short") != std::string::npos) ++survivorsShort;
   }
 
   // Summary
@@ -816,9 +882,12 @@ filterSurvivingStrategiesByPerformance(
             << ", split-sample: " << cnt_fail_split
             << ", tail-risk: " << cnt_fail_tail << "\n";
   std::cout << "          Insufficient sample (pre-filter): " << cnt_insufficient << "\n";
+  std::cout << "          Survivors by direction → Long: " << survivorsLong
+            << ", Short: " << survivorsShort << "\n";
 
   return filteredStrategies;
 }
+
 
 template<typename Num>
 void filterMetaStrategy(
