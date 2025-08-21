@@ -722,73 +722,58 @@ void ComputeAsymmetricStopAndTarget(
  * @throws std::domain_error if the series is too small or Qn is invalid.
  */
 template <typename Decimal>
-std::pair<Decimal, Decimal> ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series)
+std::pair<Decimal, Decimal> ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series, uint32_t period = 1)
 {
   using namespace mkc_timeseries;
 
   if (series.getNumEntries() < 3)
     throw std::domain_error("Input series must contain at least 3 bars");
 
-  // Compute one-bar ROC of closing prices
-  auto rocSeries = RocSeries(series.CloseTimeSeries(), 1);
+  // Step 1: Compute 1-bar (or N-bar) ROC of closing prices
+  auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
   auto rocVec = rocSeries.getTimeSeriesAsVector();
 
   if (rocVec.size() < 3)
     throw std::domain_error("ROC series too small for robust estimation");
 
+  // Step 2: Compute robust statistics
   Decimal median = MedianOfVec(rocVec);
   Decimal qn = RobustQn<Decimal>(rocSeries).getRobustQn();
   Decimal skew = RobustSkewMedcouple(rocSeries);
 
-  // 1. Simplified Multipliers: The sign of the 'skew' variable itself handles the direction.
-  //    Both k-multipliers should be positive values representing sensitivity.
+  // Step 3: Set multipliers
   Decimal k_qn = DecimalConstants<Decimal>::DecimalOne;
-  Decimal k_skew_target = Decimal("0.5") * qn;
-  Decimal k_skew_stop = Decimal("0.5") * qn;
 
-  // 2. Compute Raw Returns
+  // Skew-based scale: adaptively weight skew contribution, capped at 0.5
+  Decimal maxSkewWeight = Decimal("0.5");
+  Decimal skewWeight = std::min(skew.abs(), maxSkewWeight);
+
+  Decimal k_skew_target = skewWeight * qn;
+  Decimal k_skew_stop   = skewWeight * qn;
+
+  // Step 4: Compute raw profit target and stop-loss levels
   Decimal profitTargetReturn, stopLossReturn;
-  ComputeAsymmetricStopAndTarget(median, qn, skew, k_qn, k_skew_target, k_skew_stop, profitTargetReturn, stopLossReturn);
+  ComputeAsymmetricStopAndTarget(
+      median, qn, skew,
+      k_qn, k_skew_target, k_skew_stop,
+      profitTargetReturn, stopLossReturn);
 
-  // 3. Convert to Positive Widths and Apply Fallback
-  // The final results should be positive distances from an entry price.
+  // Step 5: Convert to positive distances
   Decimal finalProfitTarget = profitTargetReturn;
-  Decimal finalStopLoss = -stopLossReturn; // Convert the negative return to a positive width
+  Decimal finalStopLoss     = -stopLossReturn; // Convert negative return to positive width
 
-  // A more robust fallback level is the Qn itself, as it's a guaranteed positive measure of volatility.
+  // Step 6: Apply fallbacks if needed (use Qn + median as a symmetric default)
   Decimal symmetricLevel = qn + median;
 
-  if (finalProfitTarget <= DecimalConstants<Decimal>::DecimalZero) {
-      finalProfitTarget = symmetricLevel;
-  }
-  if (finalStopLoss <= DecimalConstants<Decimal>::DecimalZero) {
-      finalStopLoss = symmetricLevel;
-  }
+  if (finalProfitTarget <= DecimalConstants<Decimal>::DecimalZero)
+    finalProfitTarget = symmetricLevel;
+
+  if (finalStopLoss <= DecimalConstants<Decimal>::DecimalZero)
+    finalStopLoss = symmetricLevel;
 
   return std::make_pair(finalProfitTarget, finalStopLoss);
 }
 
-  template <class Decimal>
-  Decimal ComputeProfitTargetAndStop(const OHLCTimeSeries<Decimal>& series)
-  {
-    NumericTimeSeries<Decimal> closingPrices(series.CloseTimeSeries());
-    NumericTimeSeries<Decimal> rocOfClosingPrices(RocSeries(closingPrices, 1));
-    Decimal medianOfRoc(Median(rocOfClosingPrices));
-    Decimal robustQn(RobustQn<Decimal>(rocOfClosingPrices).getRobustQn());
-    Decimal result = (medianOfRoc + robustQn);
-    
-    // Validate that we have a positive result suitable for profit target and stop loss
-    if (result <= DecimalConstants<Decimal>::DecimalZero) {
-      throw std::domain_error("ComputeProfitTargetAndStop: computed value must be positive. " +
-                              std::string("Result: ") + std::to_string(result.getAsDouble()) +
-                              ", MedianOfRoc: " + std::to_string(medianOfRoc.getAsDouble()) +
-                              ", RobustQn: " + std::to_string(robustQn.getAsDouble()) +
-                              ". Check input data quality and ensure sufficient price variation.");
-    }
-    
-    return result;
-  }
-  
 }
 
 #endif
