@@ -320,15 +320,31 @@ int main(int argc, char** argv)
         }
 
       // 4. Prepare output directories with timeframe differentiation
+      // Holding period input
+      int holdingPeriod = 1;
+      std::cout << "Enter holding period (integer, default 1): ";
+      std::string holdingPeriodStr;
+      std::getline(std::cin, holdingPeriodStr);
+      if (!holdingPeriodStr.empty()) {
+          try {
+              holdingPeriod = std::stoi(holdingPeriodStr);
+              holdingPeriod = std::max(1, holdingPeriod);
+          } catch (...) {
+              std::cerr << "Invalid input for holding period. Using default 1." << std::endl;
+              holdingPeriod = 1;
+          }
+      }
+  
       fs::path baseDir = tickerSymbol + "_Validation";
-      if (fs::exists(baseDir))
- fs::remove_all(baseDir);
+      // Preserve existing directories and files; do not remove baseDir if it already exists
       
       // Create timeframe-specific subdirectory
       std::string timeFrameDirName = createTimeFrameDirectoryName(timeFrameStr, intradayMinutes);
       fs::path timeFrameDir = baseDir / timeFrameDirName;
-      fs::path palDir = timeFrameDir / "PAL_Files";
-      fs::path valDir = timeFrameDir / "Validation_Files";
+      // Create Roc<holdingPeriod> subdirectory
+      fs::path rocDir = timeFrameDir / ("Roc" + std::to_string(holdingPeriod));
+      fs::path palDir = rocDir / "PAL_Files";
+      fs::path valDir = rocDir / "Validation_Files";
       fs::create_directories(palDir);
       fs::create_directories(valDir);
 
@@ -430,17 +446,18 @@ int main(int argc, char** argv)
       Num MAD;
       Num StdDev;
       Num skew;
+
         
       try
         {
    // Compute asymmetric profit target and stop values
-   auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries);
+   auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries, holdingPeriod);
    profitTargetValue = targetStopPair.first;
    stopValue = targetStopPair.second;
    
    // Still compute traditional statistics for reporting
    NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
-   NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, 1));
+   NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, holdingPeriod));
    medianOfRoc = Median(rocOfClosingPrices);
    robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
    MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
