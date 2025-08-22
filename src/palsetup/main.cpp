@@ -450,28 +450,31 @@ int main(int argc, char** argv)
         
       try
         {
-   // Compute asymmetric profit target and stop values
-   auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries, holdingPeriod);
-   profitTargetValue = targetStopPair.first;
-   stopValue = targetStopPair.second;
-   
-   // Still compute traditional statistics for reporting
-   NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
-   NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, holdingPeriod));
-   medianOfRoc = Median(rocOfClosingPrices);
-   robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
-   MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
-   StdDev = StandardDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
-   skew = RobustSkewMedcouple(rocOfClosingPrices);
+	  // Compute asymmetric profit target and stop values
+	  auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries, holdingPeriod);
+	  profitTargetValue = targetStopPair.first;
+	  stopValue = targetStopPair.second;
+
+	  // Still compute traditional statistics for reporting
+	  NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
+	  NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, holdingPeriod));
+	  medianOfRoc = Median(rocOfClosingPrices);
+	  robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
+	  MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
+	  StdDev = StandardDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
+	  skew = RobustSkewMedcouple(rocOfClosingPrices);
+
+	  if ((robustQn * DecimalConstants<Num>::DecimalTwo) < StdDev)
+	    std::cout << "***** Warning Standard Devition is > (2 * Qn) *****" << std::endl;
         }
       catch (const std::domain_error& e)
         {
-   std::cerr << "ERROR: Intraday data contains duplicate timestamps preventing stop calculation." << std::endl;
-   std::cerr << "Details: " << e.what() << std::endl;
-   std::cerr << "Cause: NumericTimeSeries cannot handle multiple intraday bars with identical timestamps." << std::endl;
-   std::cerr << "Action: Clean the intraday data to ensure unique timestamps for each bar." << std::endl;
-   std::cerr << "Note: Pass the above details to your broker's data cleaning team." << std::endl;
-   return 1;
+	  std::cerr << "ERROR: Intraday data contains duplicate timestamps preventing stop calculation." << std::endl;
+	  std::cerr << "Details: " << e.what() << std::endl;
+	  std::cerr << "Cause: NumericTimeSeries cannot handle multiple intraday bars with identical timestamps." << std::endl;
+	  std::cerr << "Action: Clean the intraday data to ensure unique timestamps for each bar." << std::endl;
+	  std::cerr << "Note: Pass the above details to your broker's data cleaning team." << std::endl;
+	  return 1;
         }
 
       Num half(DecimalConstants<Num>::createDecimal("0.5"));
