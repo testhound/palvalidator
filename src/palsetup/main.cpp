@@ -2,12 +2,12 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
-#include <fstream>        // for ofstream
-#include <filesystem>     // for directory operations
-#include <limits>         // for numeric_limits
-#include <cctype>         // for std::toupper
-#include <boost/date_time/gregorian/gregorian.hpp>  // for to_iso_string
-#include <boost/date_time/posix_time/posix_time.hpp>  // for ptime formatting
+#include <fstream>
+#include <filesystem>
+#include <limits>
+#include <cctype>
+#include <boost/date_time/gregorian/gregorian.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp> 
 
 #include "TimeSeriesCsvReader.h"
 #include "TimeSeriesCsvWriter.h"
@@ -250,8 +250,8 @@ int main(int argc, char** argv)
       while (!validPercentages)
         {
           // Get in-sample percentage (default 80%)
-          insamplePercent = 80.0;
-          std::cout << "Enter percent of data for in-sample (0-100, default 80): ";
+          insamplePercent = 60.0;
+          std::cout << "Enter percent of data for in-sample (0-100, default 60%): ";
           std::string insamplePercentStr;
           std::getline(std::cin, insamplePercentStr);
           if (!insamplePercentStr.empty())
@@ -269,8 +269,8 @@ int main(int argc, char** argv)
           insamplePercent = std::clamp(insamplePercent, 0.0, 100.0);
 
           // Get out-of-sample percentage
-          outOfSamplePercent = 0.0;
-          std::cout << "Enter percent of data for out-of-sample (0-100): ";
+          outOfSamplePercent = 40.0;
+          std::cout << "Enter percent of data for out-of-sample (0-100, default 40%): ";
           std::string outOfSamplePercentStr;
           std::getline(std::cin, outOfSamplePercentStr);
           if (!outOfSamplePercentStr.empty())
@@ -287,9 +287,9 @@ int main(int argc, char** argv)
             }
           outOfSamplePercent = std::clamp(outOfSamplePercent, 0.0, 100.0);
 
-          // Get reserved percentage (default 5%)
-          reservedPercent = 5.0;
-          std::cout << "Enter percent of data to reserve (0-100, default 5): ";
+          // Get reserved percentage (default 0%)
+          reservedPercent = 0.0;
+          std::cout << "Enter percent of data to reserve (0-100, default 0%): ";
           std::string reservedPercentStr;
           std::getline(std::cin, reservedPercentStr);
           if (!reservedPercentStr.empty())
@@ -450,28 +450,31 @@ int main(int argc, char** argv)
         
       try
         {
-   // Compute asymmetric profit target and stop values
-   auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries, holdingPeriod);
-   profitTargetValue = targetStopPair.first;
-   stopValue = targetStopPair.second;
-   
-   // Still compute traditional statistics for reporting
-   NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
-   NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, holdingPeriod));
-   medianOfRoc = Median(rocOfClosingPrices);
-   robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
-   MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
-   StdDev = StandardDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
-   skew = RobustSkewMedcouple(rocOfClosingPrices);
+	  // Compute asymmetric profit target and stop values
+	  auto targetStopPair = ComputeRobustStopAndTargetFromSeries(insampleSeries, holdingPeriod);
+	  profitTargetValue = targetStopPair.first;
+	  stopValue = targetStopPair.second;
+
+	  // Still compute traditional statistics for reporting
+	  NumericTimeSeries<Num> closingPrices(insampleSeries.CloseTimeSeries());
+	  NumericTimeSeries<Num> rocOfClosingPrices(RocSeries(closingPrices, holdingPeriod));
+	  medianOfRoc = Median(rocOfClosingPrices);
+	  robustQn = RobustQn<Num>(rocOfClosingPrices).getRobustQn();
+	  MAD = MedianAbsoluteDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
+	  StdDev = StandardDeviation<Num>(rocOfClosingPrices.getTimeSeriesAsVector());
+	  skew = RobustSkewMedcouple(rocOfClosingPrices);
+
+	  if ((robustQn * DecimalConstants<Num>::DecimalTwo) < StdDev)
+	    std::cout << "***** Warning Standard Devition is > (2 * Qn) *****" << std::endl;
         }
       catch (const std::domain_error& e)
         {
-   std::cerr << "ERROR: Intraday data contains duplicate timestamps preventing stop calculation." << std::endl;
-   std::cerr << "Details: " << e.what() << std::endl;
-   std::cerr << "Cause: NumericTimeSeries cannot handle multiple intraday bars with identical timestamps." << std::endl;
-   std::cerr << "Action: Clean the intraday data to ensure unique timestamps for each bar." << std::endl;
-   std::cerr << "Note: Pass the above details to your broker's data cleaning team." << std::endl;
-   return 1;
+	  std::cerr << "ERROR: Intraday data contains duplicate timestamps preventing stop calculation." << std::endl;
+	  std::cerr << "Details: " << e.what() << std::endl;
+	  std::cerr << "Cause: NumericTimeSeries cannot handle multiple intraday bars with identical timestamps." << std::endl;
+	  std::cerr << "Action: Clean the intraday data to ensure unique timestamps for each bar." << std::endl;
+	  std::cerr << "Note: Pass the above details to your broker's data cleaning team." << std::endl;
+	  return 1;
         }
 
       Num half(DecimalConstants<Num>::createDecimal("0.5"));
@@ -571,8 +574,26 @@ int main(int argc, char** argv)
       std::cout << "Stop = " << stopValue << std::endl;
       std::cout << "Skew = " << skew << std::endl;
 
-      // Configuration files are now written to each risk-reward subdirectory above
-
+      fs::path detailsFilePath = valDir / (tickerSymbol + "_Palsetup_Details.txt");
+      std::ofstream detailsFile(detailsFilePath);
+      if (!detailsFile.is_open())
+	{
+	  std::cerr << "Error: Unable to open details file " << detailsFilePath << std::endl;
+	}
+      else
+	{
+	  detailsFile << "In-sample% = " << insamplePercent << "%\n";
+	  detailsFile << "Out-of-sample% = " << outOfSamplePercent << "%\n";
+	  detailsFile << "Reserved% = " << reservedPercent << "%\n";
+	  detailsFile << "Median = " << medianOfRoc << std::endl;
+	  detailsFile << "Qn  = " << robustQn << std::endl;
+	  detailsFile << "MAD = " << MAD << std::endl;
+	  detailsFile << "Std = " << StdDev << std::endl;
+	  detailsFile << "Profit Target = " << profitTargetValue << std::endl;
+	  detailsFile << "Stop = " << stopValue << std::endl;
+	  detailsFile << "Skew = " << skew << std::endl;
+	  detailsFile.close();
+	}
     }
   else
     {
