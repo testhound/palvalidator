@@ -14,6 +14,7 @@
 #include <sstream>
 #include <filesystem>
 #include <iomanip>
+#include <streambuf>
 #include "ValidatorConfiguration.h"
 #include "SecurityAttributesFactory.h"
 #include "PALMastersMonteCarloValidation.h"
@@ -61,6 +62,47 @@ struct ValidationParameters
     Num falseDiscoveryRate; // For Benjamini-Hochberg
 };
 
+// Streambuf that mirrors output to two underlying buffers.
+class TeeBuf : public std::streambuf
+{
+public:
+  TeeBuf(std::streambuf* sb1, std::streambuf* sb2) : s1(sb1), s2(sb2) {}
+
+protected:
+  int overflow(int c) override
+  {
+    if (c == EOF) return !EOF;
+    const int r1 = s1->sputc(static_cast<char>(c));
+    const int r2 = s2->sputc(static_cast<char>(c));
+    return (r1 == EOF || r2 == EOF) ? EOF : c;
+  }
+
+  int sync() override
+  {
+    const int r1 = s1->pubsync();
+    const int r2 = s2->pubsync();
+    return (r1 == 0 && r2 == 0) ? 0 : -1;
+  }
+
+private:
+  std::streambuf* s1;
+  std::streambuf* s2;
+};
+
+// ostream that writes to two streams.
+class TeeStream : public std::ostream {
+public:
+  TeeStream(std::ostream& a, std::ostream& b)
+    : std::ostream(nullptr),
+      buf(a.rdbuf(), b.rdbuf())
+  {
+    this->rdbuf(&buf);
+  }
+
+private:
+    TeeBuf buf;
+};
+
 std::string getValidationMethodString(ValidationMethod method)
 {
     switch (method)
@@ -88,6 +130,16 @@ static std::string getCurrentTimestamp()
     std::stringstream ss;
     ss << std::put_time(std::localtime(&time_t), "%b_%d_%Y_%H%M");
     return ss.str();
+}
+
+// Create a per-run bootstrap results file alongside other method-specific outputs.
+static std::string createBootstrapFileName(const std::string& securitySymbol,
+                                           ValidationMethod method)
+{
+  std::string methodDir = getValidationMethodString(method);
+  std::filesystem::create_directories(methodDir);
+  return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    + "_Bootstrap_Results_" + getCurrentTimestamp() + ".txt";
 }
 
 static std::string createSurvivingPatternsFileName (const std::string& securitySymbol, ValidationMethod method)
@@ -707,7 +759,8 @@ filterSurvivingStrategiesByPerformance(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     std::shared_ptr<Security<Num>> baseSecurity,
     const DateRange& backtestingDates,
-    TimeFrame::Duration theTimeFrame)
+    TimeFrame::Duration theTimeFrame,
+    std::ostream& os)                     // NEW: tee stream (cout + file)
 {
   std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
 
@@ -724,12 +777,14 @@ filterSurvivingStrategiesByPerformance(
   size_t cnt_flagged = 0, cnt_flag_pass = 0;
   size_t cnt_fail_Lbound = 0, cnt_fail_Lvar = 0, cnt_fail_split = 0, cnt_fail_tail = 0;
 
-  std::cout << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
-  std::cout << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
-  std::cout << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * " << costBufferMultiplier << ")\n";
-  std::cout << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate * " << riskFreeMultiplier << ")\n";
-  std::cout << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side.\n";
-  std::cout << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
+  os << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
+  os << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
+  os << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * "
+     << costBufferMultiplier << ")\n";
+  os << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate * "
+     << riskFreeMultiplier << ")\n";
+  os << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side.\n";
+  os << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
 
   for (const auto& strategy : survivingStrategies)
   {
@@ -743,14 +798,14 @@ filterSurvivingStrategiesByPerformance(
       auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
 
       if (highResReturns.size() < 20) {
-        std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
-                  << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20).\n";
+        os << "✗ Strategy filtered out: " << strategy->getStrategyName()
+           << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20).\n";
         ++cnt_insufficient;
         continue;
       }
 
       const unsigned int medianHoldBars = backtester->getClosedPositionHistory().getMedianHoldingPeriod();
-      std::cout << "Strategy Median holding period = " << medianHoldBars << "\n";
+      os << "Strategy Median holding period = " << medianHoldBars << "\n";
       const std::size_t  L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHoldBars));
       StationaryBlockResampler<Num> sampler(L);
 
@@ -789,30 +844,30 @@ filterSurvivingStrategiesByPerformance(
       const Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
       const Num finalRequiredReturn     = std::max(costBasedRequiredReturn, riskFreeHurdle);
 
-      // ---- Early decision on the only thing we care about: GM LB vs hurdle ----
+      // ---- Early decision on GM LB vs hurdle ----
       if (annualizedLowerBoundGeo <= finalRequiredReturn) {
-        std::cout << "✗ Strategy filtered out: " << strategy->getStrategyName()
-                  << " (Lower Bound = "
-                  << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-                  << "% <= Required Return = "
-                  << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-                  << "  [Block L=" << L << "]\n\n";
+        os << "✗ Strategy filtered out: " << strategy->getStrategyName()
+           << " (Lower Bound = "
+           << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
+           << "% <= Required Return = "
+           << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+           << "  [Block L=" << L << "]\n\n";
         continue; // Skip divergence/robustness for obvious fails
       }
 
-      // If we reach here, GM LB passes the hurdle → optionally run diagnostic divergence & robustness
+      // Diagnostic AM–GM divergence → optional robustness
       const auto divergence = assessAMDivergence<Num>(annualizedLowerBoundGeo, annualizedLowerBoundMean,
                                                       /*absThresh=*/0.05, /*relThresh=*/0.30);
       if (divergence.flagged) {
         ++cnt_flagged;
-        std::cout << "   [FLAG] Large AM vs GM divergence (abs="
-                  << (Num(divergence.absDiff) * DecimalConstants<Num>::DecimalOneHundred) << "%, rel=";
+        os << "   [FLAG] Large AM vs GM divergence (abs="
+           << (Num(divergence.absDiff) * DecimalConstants<Num>::DecimalOneHundred) << "%, rel=";
         if (divergence.relState == DivergencePrintRel::Defined) {
-          std::cout << divergence.relDiff;
+          os << divergence.relDiff;
         } else {
-          std::cout << "n/a";
+          os << "n/a";
         }
-        std::cout << "); running robustness checks...\n";
+        os << "); running robustness checks...\n";
 
         const auto rob = runFlaggedStrategyRobustness<Num>(
             strategy->getStrategyName(),
@@ -821,7 +876,7 @@ filterSurvivingStrategiesByPerformance(
             annualizationFactor,
             finalRequiredReturn,
             cfg,
-            std::cout
+            os
         );
 
         if (rob.verdict == RobustnessVerdict::ThumbsDown) {
@@ -832,33 +887,33 @@ filterSurvivingStrategiesByPerformance(
             case RobustnessFailReason::TailRisk:                 ++cnt_fail_tail;   break;
             default: break;
           }
-          std::cout << "   [FLAG] Robustness checks FAILED → excluding strategy.\n\n";
+          os << "   [FLAG] Robustness checks FAILED → excluding strategy.\n\n";
           continue;
         } else {
           ++cnt_flag_pass;
-          std::cout << "   [FLAG] Robustness checks PASSED.\n";
+          os << "   [FLAG] Robustness checks PASSED.\n";
         }
       }
 
       // Passed GM hurdle (and any flagged robustness) → keep
       filteredStrategies.push_back(strategy);
 
-      std::cout << "✓ Strategy passed: " << strategy->getStrategyName()
-                << " (Lower Bound = "
-                << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-                << "% > Required Return = "
-                << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-                << "  [Block L=" << L << "]\n";
+      os << "✓ Strategy passed: " << strategy->getStrategyName()
+         << " (Lower Bound = "
+         << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
+         << "% > Required Return = "
+         << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+         << "  [Block L=" << L << "]\n";
 
-      std::cout << "   ↳ Lower bounds (annualized): "
-                << "GeoMean = " << (annualizedLowerBoundGeo  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-                << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%\n\n";
+      os << "   ↳ Lower bounds (annualized): "
+         << "GeoMean = " << (annualizedLowerBoundGeo  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+         << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%\n\n";
     }
     catch (const std::exception& e)
     {
-      std::cout << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
-                << "' performance: " << e.what() << "\n";
-      std::cout << "Excluding strategy from filtered results.\n";
+      os << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
+         << "' performance: " << e.what() << "\n";
+      os << "Excluding strategy from filtered results.\n";
     }
   }
 
@@ -871,19 +926,19 @@ filterSurvivingStrategiesByPerformance(
   }
 
   // Summary
-  std::cout << "BCa Performance Filtering complete: " << filteredStrategies.size()
-            << "/" << survivingStrategies.size() << " strategies passed criteria.\n\n";
-  std::cout << "[Summary] Flagged for divergence: " << cnt_flagged
-            << " (passed robustness: " << cnt_flag_pass << ", failed: "
-            << (cnt_flagged >= cnt_flag_pass ? (cnt_flagged - cnt_flag_pass) : 0) << ")\n";
-  std::cout << "          Fail reasons → "
-            << "L-bound/hurdle: " << cnt_fail_Lbound
-            << ", L-variability near hurdle: " << cnt_fail_Lvar
-            << ", split-sample: " << cnt_fail_split
-            << ", tail-risk: " << cnt_fail_tail << "\n";
-  std::cout << "          Insufficient sample (pre-filter): " << cnt_insufficient << "\n";
-  std::cout << "          Survivors by direction → Long: " << survivorsLong
-            << ", Short: " << survivorsShort << "\n";
+  os << "BCa Performance Filtering complete: " << filteredStrategies.size()
+     << "/" << survivingStrategies.size() << " strategies passed criteria.\n\n";
+  os << "[Summary] Flagged for divergence: " << cnt_flagged
+     << " (passed robustness: " << cnt_flag_pass << ", failed: "
+     << (cnt_flagged >= cnt_flag_pass ? (cnt_flagged - cnt_flag_pass) : 0) << ")\n";
+  os << "          Fail reasons → "
+     << "L-bound/hurdle: " << cnt_fail_Lbound
+     << ", L-variability near hurdle: " << cnt_fail_Lvar
+     << ", split-sample: " << cnt_fail_split
+     << ", tail-risk: " << cnt_fail_tail << "\n";
+  os << "          Insufficient sample (pre-filter): " << cnt_insufficient << "\n";
+  os << "          Survivors by direction → Long: " << survivorsLong
+     << ", Short: " << survivorsShort << "\n";
 
   return filteredStrategies;
 }
@@ -894,15 +949,16 @@ void filterMetaStrategy(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     std::shared_ptr<Security<Num>> baseSecurity,
     const DateRange& backtestingDates,
-    TimeFrame::Duration theTimeFrame)
+    TimeFrame::Duration theTimeFrame,
+    std::ostream& os)  // NEW: tee stream (cout + file)
 {
   if (survivingStrategies.empty()) {
-    std::cout << "\n[Meta] No surviving strategies to aggregate.\n";
+    os << "\n[Meta] No surviving strategies to aggregate.\n";
     return;
   }
 
-  std::cout << "\n[Meta] Building equal-weight portfolio from "
-            << survivingStrategies.size() << " survivors...\n";
+  os << "\n[Meta] Building equal-weight portfolio from "
+     << survivingStrategies.size() << " survivors...\n";
 
   // Gather per-strategy high-res returns, annualized trade counts, and median holds (inclusive bars)
   std::vector<std::vector<Num>> survivorReturns;
@@ -924,8 +980,8 @@ void filterMetaStrategy(
       auto r  = bt->getAllHighResReturns(cloned.get());
 
       if (r.size() < 2) {
-        std::cout << "  [Meta] Skipping " << strat->getStrategyName()
-                  << " (insufficient returns: " << r.size() << ")\n";
+        os << "  [Meta] Skipping " << strat->getStrategyName()
+           << " (insufficient returns: " << r.size() << ")\n";
         continue;
       }
 
@@ -937,13 +993,13 @@ void filterMetaStrategy(
       survivorAnnualizedTrades.push_back(Num(bt->getEstimatedAnnualizedTrades()));
     }
     catch (const std::exception& e) {
-      std::cout << "  [Meta] Skipping " << strat->getStrategyName()
-                << " due to error: " << e.what() << "\n";
+      os << "  [Meta] Skipping " << strat->getStrategyName()
+         << " due to error: " << e.what() << "\n";
     }
   }
 
   if (survivorReturns.empty() || T < 2) {
-    std::cout << "[Meta] Not enough aligned data to form portfolio.\n";
+    os << "[Meta] Not enough aligned data to form portfolio.\n";
     return;
   }
 
@@ -962,9 +1018,9 @@ void filterMetaStrategy(
   {
     const Num am = StatUtils<Num>::computeMean(metaReturns);
     const Num gm = GeoMeanStat<Num>{}(metaReturns);
-    std::cout << "      Per-period point estimates (pre-annualization): "
-              << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-              << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+    os << "      Per-period point estimates (pre-annualization): "
+       << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+       << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
   }
 
   // Annualization factor (same logic as strategy-level)
@@ -976,7 +1032,7 @@ void filterMetaStrategy(
     annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
   }
 
-  // -------- Block length for meta bootstrap: median of survivors' median holds (round-half-up), clamp to >=2
+  // Block length for meta bootstrap: median of survivors' median holds (round-half-up), clamp to >=2
   auto computeMedianUH = [](std::vector<unsigned int> v) -> size_t {
     if (v.empty()) return 2;
     const size_t m = v.size();
@@ -985,7 +1041,6 @@ void filterMetaStrategy(
     if (m & 1U) {
       return std::max<size_t>(2, v[mid]);
     } else {
-      // round-half-up average of the two middles
       auto hi = v[mid];
       std::nth_element(v.begin(), v.begin() + (mid - 1), v.begin() + mid);
       auto lo = v[mid - 1];
@@ -1009,10 +1064,10 @@ void filterMetaStrategy(
   const Num lbGeoPeriod  = metaGeo.getLowerBound();
   const Num lbMeanPeriod = metaMean.getLowerBound();
 
-  std::cout << "      Per-period BCa lower bounds (pre-annualization): "
-            << "Geo="  << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-            << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-  std::cout << "      (Meta uses block resampling with L=" << Lmeta << ")\n";
+  os << "      Per-period BCa lower bounds (pre-annualization): "
+     << "Geo="  << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+     << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+  os << "      (Meta uses block resampling with L=" << Lmeta << ")\n";
 
   // Annualize portfolio BCa results
   BCaAnnualizer<Num> metaGeoAnn(metaGeo, annualizationFactor);
@@ -1021,7 +1076,7 @@ void filterMetaStrategy(
   const Num lbGeoAnn  = metaGeoAnn.getAnnualizedLowerBound();
   const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
 
-  // Portfolio-level cost hurdle (0.10% per side => 0.20% round trip), equal-weight scaling
+  // Portfolio-level cost hurdle
   const Num costBufferMultiplier = Num("1.5");
   const Num riskFreeRate         = Num("0.03");
   const Num riskFreeMultiplier   = Num("2.0");
@@ -1038,20 +1093,21 @@ void filterMetaStrategy(
   Num costBasedRequiredReturn   = annualizedCostHurdle * costBufferMultiplier;
   Num finalRequiredReturn       = std::max(costBasedRequiredReturn, riskFreeHurdle);
 
-  std::cout << "\n[Meta] Portfolio of " << n << " survivors (equal-weight):\n"
-            << "      Annualized Lower Bound (GeoMean): " << (lbGeoAnn  * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-            << "      Annualized Lower Bound (Mean):    " << (lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-            << "      Required Return (max(cost,riskfree)): "
-            << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+  os << "\n[Meta] Portfolio of " << n << " survivors (equal-weight):\n"
+     << "      Annualized Lower Bound (GeoMean): " << (lbGeoAnn  * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+     << "      Annualized Lower Bound (Mean):    " << (lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+     << "      Required Return (max(cost,riskfree)): "
+     << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
 
   if (lbGeoAnn > finalRequiredReturn) {
-    std::cout << "      RESULT: ✓ Metastrategy PASSES\n";
+    os << "      RESULT: ✓ Metastrategy PASSES\n";
   } else {
-    std::cout << "      RESULT: ✗ Metastrategy FAILS\n";
+    os << "      RESULT: ✗ Metastrategy FAILS\n";
   }
 
-  std::cout << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
+  os << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
 }
+
 
 void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecurity,
                                         ValidationMethod method,
@@ -1358,15 +1414,24 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
     if (validation->getNumSurvivingStrategies() > 0)
     {
         auto survivingStrategies = validation->getSurvivingStrategies();
-        
+
+	// Create bootstrap log file and tee to both cout and file
+	const std::string bootstrapPath =
+	  createBootstrapFileName(config->getSecurity()->getSymbol(), validationMethod);
+	std::ofstream bootstrapFile(bootstrapPath);
+	TeeStream bootlog(std::cout, bootstrapFile);
+
+	bootlog << "\nApplying performance-based filtering to surviving strategies..." << std::endl;
+
         // Apply performance-based filtering to surviving strategies
-        std::cout << "\nApplying performance-based filtering to surviving strategies..." << std::endl;
+
         auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
         auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
             survivingStrategies,
             config->getSecurity(),
             config->getOosDateRange(),
-            timeFrame
+            timeFrame,
+	    bootlog
         );
         
         // Identify strategies that were filtered out due to performance criteria
@@ -1382,11 +1447,13 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
 	    filterMetaStrategy<Num>(filteredStrategies,
 				    config->getSecurity(),
 				    config->getOosDateRange(),
-				    timeFrame);
+				    timeFrame,
+				    bootlog);
 	  }
 	
-        std::cout << "Performance filtering results: " << filteredStrategies.size() << " passed, "
+        bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
                   << performanceFilteredStrategies.size() << " filtered out" << std::endl;
+	bootlog << "Bootstrap details written to: " << bootstrapPath << std::endl;
         
         // Write the performance-filtered surviving patterns to the basic file
         if (!filteredStrategies.empty()) {
