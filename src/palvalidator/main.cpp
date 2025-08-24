@@ -753,6 +753,111 @@ assessAMDivergence(const Num& gmAnn, const Num& amAnn,
   return out;
 }
 
+// --- Fragile edge advisory policy/decision ---------------------------------
+enum class FragileEdgeAction { Keep, Downweight, Drop };
+
+template<typename Num>
+struct FragileDecision {
+  FragileEdgeAction action;
+  double weightMultiplier;        // 1.0 for Keep; <1.0 for Downweight; 0 for Drop
+  std::string rationale;
+};
+
+// Tuning knobs for when/how to down-weight/drop fragile edges.
+// Defaults are conservative: rarely DROP unless borderline & severe tails.
+struct FragileEdgePolicy {
+  double relVarDown    = 0.35;    // if L-sensitivity relVar > this → consider downweight
+  double relVarDrop    = 0.60;    // if relVar is huge and near hurdle → consider drop
+  double tailMultiple  = 3.0;     // “severe tail” if |q05| > tailMultiple × per-period GM LB
+  double nearAbs       = 0.02;    // “near hurdle” if |LB_ann - hurdle| ≤ nearAbs (2pp)
+  double nearRel       = 0.10;    // …or within 10% of hurdle
+  size_t minNDown      = 30;      // small n → consider downweight (never drop on size alone)
+};
+
+// Advises what to do with an otherwise-PASSing strategy that looks “fragile”.
+// Inputs are the GM-centric numbers you already have in scope.
+template<typename Num>
+FragileDecision<Num> decideFragileEdgeAction(
+    const Num& lbPer_GM,            // baseline per-period GM BCa lower bound
+    const Num& lbAnn_GM,            // baseline annualized GM BCa LB
+    const Num& hurdleAnn,           // annualized hurdle used in your main filter
+    double relVarL,                 // L-sensitivity variability (0..1)
+    const Num& q05,                 // per-period 5% quantile (raw returns)
+    const Num& es05,                // per-period ES05
+    size_t n,                       // sample size
+    const FragileEdgePolicy& pol)   // thresholds
+{
+  const double edge  = lbPer_GM.getAsDouble();
+  const double q     = q05.getAsDouble();
+  (void)es05; // ES05 is logged elsewhere; not used in the simple rule below.
+
+  const double lbAnn = lbAnn_GM.getAsDouble();
+  const double hdAnn = hurdleAnn.getAsDouble();
+
+  const double absGap = std::fabs(lbAnn - hdAnn);
+  const bool nearHurdle = (absGap <= pol.nearAbs)
+                       || ((hdAnn > 0.0) && (absGap / hdAnn <= pol.nearRel));
+
+  const bool severeTail = (q < 0.0) && (edge > 0.0) && (std::fabs(q) > pol.tailMultiple * edge);
+
+  // --- Heuristic tree (advisory) ---
+  // 1) Severe tails + near hurdle → DROP (too fragile to rely on)
+  if (severeTail && nearHurdle) {
+    return {FragileEdgeAction::Drop, 0.0,
+            "Severe downside tails and LB near hurdle → drop"};
+  }
+
+  // 2) Very large L-variability and near hurdle → DROP
+  if (relVarL > pol.relVarDrop && nearHurdle) {
+    return {FragileEdgeAction::Drop, 0.0,
+            "High L-sensitivity and LB near hurdle → drop"};
+  }
+
+  // 3) Otherwise “soft” reasons to reduce exposure
+  if (severeTail || relVarL > pol.relVarDown || n < pol.minNDown)
+    {
+      std::string why;
+      if (severeTail)
+	why += "severe tails; ";
+
+      if (relVarL > pol.relVarDown)
+	why += "high L-variability; ";
+
+      if (n < pol.minNDown)
+	why += "small sample; ";
+      return {FragileEdgeAction::Downweight, 0.50,
+	      "Advisory downweight: " + (why.empty() ? std::string("weak signal") : why)};
+    }
+
+  // 4) Default keep
+  return {FragileEdgeAction::Keep, 1.0, "Robust enough to keep at full weight"};
+}
+
+template<typename Num>
+static std::pair<Num, Num> computeQ05_ES05(const std::vector<Num>& returns, double alpha = 0.05)
+{
+  if (returns.empty())
+    return {DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero};
+
+  std::vector<Num> sorted = returns;
+  std::sort(sorted.begin(), sorted.end(), [](const Num& a, const Num& b){ return a < b; });
+
+  const size_t n = sorted.size();
+  size_t k = static_cast<size_t>(std::floor(alpha * static_cast<double>(n)));
+  if (k >= n)
+    k = n - 1;
+
+  const Num q05 = sorted[k];
+
+  Num sumTail = DecimalConstants<Num>::DecimalZero;
+  for (size_t i = 0; i <= k; ++i)
+    sumTail += sorted[i];
+
+  const Num es05 = (k + 1 > 0) ? (sumTail / Num(static_cast<int>(k + 1))) : q05;
+
+  return {q05, es05};
+}
+
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
@@ -760,7 +865,7 @@ filterSurvivingStrategiesByPerformance(
     std::shared_ptr<Security<Num>> baseSecurity,
     const DateRange& backtestingDates,
     TimeFrame::Duration theTimeFrame,
-    std::ostream& os)                     // NEW: tee stream (cout + file)
+    std::ostream& os)                     // tee (cout + file)
 {
   std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
 
@@ -771,6 +876,19 @@ filterSurvivingStrategiesByPerformance(
   const Num riskFreeHurdle       = riskFreeRate * riskFreeMultiplier;
 
   const RobustnessChecksConfig<Num> cfg{};
+
+  // Fragile-edge advisory policy (advisory only)
+  const FragileEdgePolicy fragilePol{};
+  const bool applyFragileAdvice = false; // ← default OFF (advisory logging only)
+
+  auto fragileActionToText = [](FragileEdgeAction a) {
+    switch (a) {
+      case FragileEdgeAction::Keep:       return "Keep";
+      case FragileEdgeAction::Downweight: return "Downweight";
+      case FragileEdgeAction::Drop:       return "Drop";
+      default:                            return "Keep";
+    }
+  };
 
   // Summary counters
   size_t cnt_insufficient = 0;
@@ -858,6 +976,8 @@ filterSurvivingStrategiesByPerformance(
       // Diagnostic AM–GM divergence → optional robustness
       const auto divergence = assessAMDivergence<Num>(annualizedLowerBoundGeo, annualizedLowerBoundMean,
                                                       /*absThresh=*/0.05, /*relThresh=*/0.30);
+      double lSensitivityRelVar = 0.0; // default for unflagged advisory
+
       if (divergence.flagged) {
         ++cnt_flagged;
         os << "   [FLAG] Large AM vs GM divergence (abs="
@@ -879,23 +999,67 @@ filterSurvivingStrategiesByPerformance(
             os
         );
 
-        if (rob.verdict == RobustnessVerdict::ThumbsDown) {
-          switch (rob.reason) {
-            case RobustnessFailReason::LSensitivityBound:        ++cnt_fail_Lbound; break;
-            case RobustnessFailReason::LSensitivityVarNearHurdle:++cnt_fail_Lvar;   break;
-            case RobustnessFailReason::SplitSample:              ++cnt_fail_split;  break;
-            case RobustnessFailReason::TailRisk:                 ++cnt_fail_tail;   break;
-            default: break;
-          }
-          os << "   [FLAG] Robustness checks FAILED → excluding strategy.\n\n";
+        if (rob.verdict == RobustnessVerdict::ThumbsDown)
+	  {
+	    switch (rob.reason)
+	      {
+	      case RobustnessFailReason::LSensitivityBound:
+		++cnt_fail_Lbound;
+		break;
+
+	      case RobustnessFailReason::LSensitivityVarNearHurdle:
+		++cnt_fail_Lvar;
+		break;
+
+	      case RobustnessFailReason::SplitSample:
+		++cnt_fail_split;
+		break;
+
+	      case RobustnessFailReason::TailRisk:
+		++cnt_fail_tail;
+		break;
+	      default: break;
+	      }
+	    os << "   [FLAG] Robustness checks FAILED → excluding strategy.\n\n";
+	    continue;
+	  }
+	else
+	  {
+	    ++cnt_flag_pass;
+	    lSensitivityRelVar = rob.relVar; // carry variability into fragile-edge advisory
+	    os << "   [FLAG] Robustness checks PASSED.\n";
+	  }
+      }
+
+      // Passed GM hurdle (and any flagged robustness) → fragile-edge advisory (GM-only)
+      const auto [q05, es05] = computeQ05_ES05<Num>(highResReturns, /*alpha=*/0.05);
+      const auto advice = decideFragileEdgeAction<Num>(
+          lbGeoPeriod,                  // per-period GM LB
+          annualizedLowerBoundGeo,      // annualized GM LB
+          finalRequiredReturn,          // hurdle (annual)
+          lSensitivityRelVar,           // relVar from robustness; 0.0 if unflagged
+          q05,                          // tail quantile
+          es05,                         // ES05 (logged elsewhere)
+          highResReturns.size(),        // n
+          fragilePol                    // thresholds
+      );
+
+      os << "   [ADVISORY] Fragile edge assessment: action="
+         << fragileActionToText(advice.action)
+         << ", weight×=" << advice.weightMultiplier
+         << " — " << advice.rationale << "\n";
+
+      if (applyFragileAdvice) {
+        if (advice.action == FragileEdgeAction::Drop) {
+          os << "   [ADVISORY] Apply=ON → dropping strategy per fragile-edge policy.\n\n";
           continue;
-        } else {
-          ++cnt_flag_pass;
-          os << "   [FLAG] Robustness checks PASSED.\n";
+        }
+        if (advice.action == FragileEdgeAction::Downweight) {
+          os << "   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.\n";
         }
       }
 
-      // Passed GM hurdle (and any flagged robustness) → keep
+      // Keep strategy
       filteredStrategies.push_back(strategy);
 
       os << "✓ Strategy passed: " << strategy->getStrategyName()
@@ -919,11 +1083,15 @@ filterSurvivingStrategiesByPerformance(
 
   // Directional survivor counts (based on strategy name containing "Long"/"Short")
   size_t survivorsLong = 0, survivorsShort = 0;
-  for (const auto& s : filteredStrategies) {
-    const auto& nm = s->getStrategyName();
-    if (nm.find("Long")  != std::string::npos) ++survivorsLong;
-    if (nm.find("Short") != std::string::npos) ++survivorsShort;
-  }
+  for (const auto& s : filteredStrategies)
+    {
+      const auto& nm = s->getStrategyName();
+      if (nm.find("Long")  != std::string::npos)
+	++survivorsLong;
+
+      if (nm.find("Short") != std::string::npos)
+	++survivorsShort;
+    }
 
   // Summary
   os << "BCa Performance Filtering complete: " << filteredStrategies.size()
@@ -942,6 +1110,7 @@ filterSurvivingStrategiesByPerformance(
 
   return filteredStrategies;
 }
+
 
 
 template<typename Num>
