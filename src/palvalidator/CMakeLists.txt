@@ -11,10 +11,19 @@ file(GLOB_RECURSE SRC_LIST
 list(FILTER SRC_LIST EXCLUDE REGEX ".*/test/.*")
 
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
-target_include_directories(${LIB_NAME} INTERFACE
+target_include_directories(${LIB_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/analysis
+    ${CMAKE_CURRENT_SOURCE_DIR}/filtering
+    ${CMAKE_CURRENT_SOURCE_DIR}/reporting
+)
+target_include_directories(${LIB_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/analysis
+    ${CMAKE_CURRENT_SOURCE_DIR}/filtering
+    ${CMAKE_CURRENT_SOURCE_DIR}/reporting
 )
 target_link_libraries(${LIB_NAME} PRIVATE priceactionlab)
 target_link_libraries(${LIB_NAME} PRIVATE backtesting)
