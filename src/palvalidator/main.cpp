@@ -62,6 +62,16 @@ struct ValidationParameters
     Num falseDiscoveryRate; // For Benjamini-Hochberg
 };
 
+// Structure to hold risk parameters
+struct RiskParameters
+{
+    Num riskFreeRate;
+    Num riskPremium;
+};
+
+// Global risk parameters (set once from user input)
+static RiskParameters g_riskParameters;
+
 // Streambuf that mirrors output to two underlying buffers.
 class TeeBuf : public std::streambuf
 {
@@ -460,7 +470,8 @@ RobustnessResult runFlaggedStrategyRobustness(
   
   // 1) L-sensitivity
   std::vector<size_t> Ls;
-  if (L > cfg.minL) Ls.push_back(L - 1);
+  if (L > cfg.minL)
+    Ls.push_back(L - 1);
   Ls.push_back(L);
   Ls.push_back(L + 1);
 
@@ -512,11 +523,12 @@ RobustnessResult runFlaggedStrategyRobustness(
 
   if (ls_var_fail_raw)
     {
-      if (nearHurdle) {
-	os << "   [ROBUST] L-sensitivity FAIL: relVar=" << relVar
-	   << " > " << cfg.relVarTol << " and base LB near hurdle.\n";
-	return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityVarNearHurdle, relVar};
-      }
+      if (nearHurdle)
+	{
+	  os << "   [ROBUST] L-sensitivity FAIL: relVar=" << relVar
+	     << " > " << cfg.relVarTol << " and base LB near hurdle.\n";
+	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityVarNearHurdle, relVar};
+	}
       else
 	{
 	  os << "   [ROBUST] L-sensitivity PASS (high variability relVar=" << relVar
@@ -858,6 +870,46 @@ static std::pair<Num, Num> computeQ05_ES05(const std::vector<Num>& returns, doub
   return {q05, es05};
 }
 
+// Function to get risk parameters from user input
+RiskParameters getRiskParametersFromUser()
+{
+    RiskParameters params;
+    std::string input;
+
+    std::cout << "\nEnter risk-free rate of return in % (default: 3): ";
+    std::getline(std::cin, input);
+    if (input.empty())
+      {
+        params.riskFreeRate = Num("0.03"); // 3% default
+      }
+    else
+      {
+        double userValue = std::stod(input);
+        params.riskFreeRate = Num(userValue / 100.0); // Convert percentage to decimal
+      }
+
+    std::cout << "Enter risk premium in % (default: 5): ";
+    std::getline(std::cin, input);
+
+    if (input.empty())
+      {
+        params.riskPremium = Num("0.05"); // 5% default
+      }
+    else
+      {
+        double userValue = std::stod(input);
+        params.riskPremium = Num(userValue / 100.0); // Convert percentage to decimal
+      }
+
+    return params;
+}
+
+// Centralized function to get risk parameters
+const RiskParameters& getRiskParameters()
+{
+    return g_riskParameters;
+}
+
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
@@ -871,15 +923,20 @@ filterSurvivingStrategiesByPerformance(
 
   // Filtering parameters
   const Num costBufferMultiplier = Num("1.5");
-  const Num riskFreeRate         = Num("0.03");
-  const Num riskFreeMultiplier   = Num("2.0");
-  const Num riskFreeHurdle       = riskFreeRate * riskFreeMultiplier;
+  const RiskParameters& riskParams = getRiskParameters();
+  const Num riskFreeRate         = riskParams.riskFreeRate;
+
+  // Stock investors expect an excess return over the risk-free rate,
+  // known as the risk premium, which compensates for the increased
+  // risk of investing in stocks. Historically, the average risk premium has been around 5%
+  const Num riskPremium     = riskParams.riskPremium;
+  const Num riskFreeHurdle  = riskFreeRate + riskPremium;
 
   const RobustnessChecksConfig<Num> cfg{};
 
   // Fragile-edge advisory policy (advisory only)
   const FragileEdgePolicy fragilePol{};
-  const bool applyFragileAdvice = false; // ← default OFF (advisory logging only)
+  const bool applyFragileAdvice = true; // advisory logging only
 
   auto fragileActionToText = [](FragileEdgeAction a) {
     switch (a) {
@@ -899,8 +956,8 @@ filterSurvivingStrategiesByPerformance(
   os << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
   os << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * "
      << costBufferMultiplier << ")\n";
-  os << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate * "
-     << riskFreeMultiplier << ")\n";
+  os << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate + Risk Premium ( "
+     << riskPremium << ") )\n";
   os << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side.\n";
   os << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
 
@@ -973,71 +1030,90 @@ filterSurvivingStrategiesByPerformance(
         continue; // Skip divergence/robustness for obvious fails
       }
 
-      // Diagnostic AM–GM divergence → optional robustness
+      // Diagnostic AM–GM divergence
       const auto divergence = assessAMDivergence<Num>(annualizedLowerBoundGeo, annualizedLowerBoundMean,
                                                       /*absThresh=*/0.05, /*relThresh=*/0.30);
-      double lSensitivityRelVar = 0.0; // default for unflagged advisory
 
-      if (divergence.flagged) {
-        ++cnt_flagged;
-        os << "   [FLAG] Large AM vs GM divergence (abs="
-           << (Num(divergence.absDiff) * DecimalConstants<Num>::DecimalOneHundred) << "%, rel=";
-        if (divergence.relState == DivergencePrintRel::Defined) {
-          os << divergence.relDiff;
-        } else {
-          os << "n/a";
-        }
-        os << "); running robustness checks...\n";
+      // --- NEW: widened robustness gate ---
+      double lSensitivityRelVar = 0.0; // default for advisory when robustness not run
+      const bool nearHurdle = (annualizedLowerBoundGeo <= (finalRequiredReturn + cfg.borderlineAnnualMargin));
+      const bool smallN     = (highResReturns.size() < cfg.minTotalForSplit);
+      const bool mustRobust = divergence.flagged || nearHurdle || smallN;
 
-        const auto rob = runFlaggedStrategyRobustness<Num>(
-            strategy->getStrategyName(),
-            highResReturns,
-            L,
-            annualizationFactor,
-            finalRequiredReturn,
-            cfg,
-            os
-        );
+      if (mustRobust)
+	{
+	  if (divergence.flagged)
+	    {
+	      ++cnt_flagged;
+	      os << "   [FLAG] Large AM vs GM divergence (abs="
+		 << (Num(divergence.absDiff) * DecimalConstants<Num>::DecimalOneHundred) << "%, rel=";
+	      if (divergence.relState == DivergencePrintRel::Defined)
+		os << divergence.relDiff;
+	      else
+		os << "n/a";
+	      os << "); running robustness checks";
 
-        if (rob.verdict == RobustnessVerdict::ThumbsDown)
-	  {
-	    switch (rob.reason)
-	      {
-	      case RobustnessFailReason::LSensitivityBound:
-		++cnt_fail_Lbound;
-		break;
+	      if (nearHurdle || smallN)
+		{
+		  os << " (also triggered by ";
+		  if (nearHurdle)
+		    os << "near-hurdle";
+		  if (nearHurdle && smallN)
+		    os << " & ";
+		  if (smallN)
+		    os << "small-sample";
+		  os << ")";
+		}
+	      os << "...\n";
+	    }
+	  else
+	    {
+	      os << "   [CHECK] Running robustness checks due to "
+		 << (nearHurdle ? "near-hurdle" : "")
+		 << ((nearHurdle && smallN) ? " & " : "")
+		 << (smallN ? "small-sample" : "")
+		 << " condition(s)...\n";
+	    }
 
-	      case RobustnessFailReason::LSensitivityVarNearHurdle:
-		++cnt_fail_Lvar;
-		break;
+	  const auto rob = runFlaggedStrategyRobustness<Num>(
+							     strategy->getStrategyName(),
+							     highResReturns,
+							     L,
+							     annualizationFactor,
+							     finalRequiredReturn,
+							     cfg,
+							     os);
 
-	      case RobustnessFailReason::SplitSample:
-		++cnt_fail_split;
-		break;
+	  if (rob.verdict == RobustnessVerdict::ThumbsDown)
+	    {
+	      switch (rob.reason)
+		{
+		case RobustnessFailReason::LSensitivityBound:        ++cnt_fail_Lbound; break;
+		case RobustnessFailReason::LSensitivityVarNearHurdle:++cnt_fail_Lvar;   break;
+		case RobustnessFailReason::SplitSample:              ++cnt_fail_split;  break;
+		case RobustnessFailReason::TailRisk:                 ++cnt_fail_tail;   break;
+		default: break;
+		}
+	      os << "   " << (divergence.flagged ? "[FLAG]" : "[CHECK]") << " Robustness checks FAILED → excluding strategy.\n\n";
+	      continue;
+	    }
+	  else
+	    {
+	      if (divergence.flagged)
+		++cnt_flag_pass; // only count as 'passed robustness' for divergence-triggered runs
 
-	      case RobustnessFailReason::TailRisk:
-		++cnt_fail_tail;
-		break;
-	      default: break;
-	      }
-	    os << "   [FLAG] Robustness checks FAILED → excluding strategy.\n\n";
-	    continue;
-	  }
-	else
-	  {
-	    ++cnt_flag_pass;
-	    lSensitivityRelVar = rob.relVar; // carry variability into fragile-edge advisory
-	    os << "   [FLAG] Robustness checks PASSED.\n";
-	  }
-      }
+	      lSensitivityRelVar = rob.relVar;         // carry variability into fragile-edge advisory
+	      os << "   " << (divergence.flagged ? "[FLAG]" : "[CHECK]") << " Robustness checks PASSED.\n";
+	    }
+	}
 
-      // Passed GM hurdle (and any flagged robustness) → fragile-edge advisory (GM-only)
+      // Passed GM hurdle (and any robustness) → fragile-edge advisory
       const auto [q05, es05] = computeQ05_ES05<Num>(highResReturns, /*alpha=*/0.05);
       const auto advice = decideFragileEdgeAction<Num>(
           lbGeoPeriod,                  // per-period GM LB
           annualizedLowerBoundGeo,      // annualized GM LB
           finalRequiredReturn,          // hurdle (annual)
-          lSensitivityRelVar,           // relVar from robustness; 0.0 if unflagged
+          lSensitivityRelVar,           // relVar from robustness; 0.0 if unrun
           q05,                          // tail quantile
           es05,                         // ES05 (logged elsewhere)
           highResReturns.size(),        // n
@@ -1084,14 +1160,11 @@ filterSurvivingStrategiesByPerformance(
   // Directional survivor counts (based on strategy name containing "Long"/"Short")
   size_t survivorsLong = 0, survivorsShort = 0;
   for (const auto& s : filteredStrategies)
-    {
-      const auto& nm = s->getStrategyName();
-      if (nm.find("Long")  != std::string::npos)
-	++survivorsLong;
-
-      if (nm.find("Short") != std::string::npos)
-	++survivorsShort;
-    }
+  {
+    const auto& nm = s->getStrategyName();
+    if (nm.find("Long")  != std::string::npos)  ++survivorsLong;
+    if (nm.find("Short") != std::string::npos) ++survivorsShort;
+  }
 
   // Summary
   os << "BCa Performance Filtering complete: " << filteredStrategies.size()
@@ -1110,8 +1183,6 @@ filterSurvivingStrategiesByPerformance(
 
   return filteredStrategies;
 }
-
-
 
 template<typename Num>
 void filterMetaStrategy(
@@ -1247,9 +1318,10 @@ void filterMetaStrategy(
 
   // Portfolio-level cost hurdle
   const Num costBufferMultiplier = Num("1.5");
-  const Num riskFreeRate         = Num("0.03");
-  const Num riskFreeMultiplier   = Num("2.0");
-  const Num riskFreeHurdle       = riskFreeRate * riskFreeMultiplier;
+  const RiskParameters& riskParams = getRiskParameters();
+  const Num riskFreeRate         = riskParams.riskFreeRate;
+  const Num riskPremium   = riskParams.riskPremium;
+  const Num riskFreeHurdle       = riskFreeRate + riskPremium;
 
   const Num slippagePerSide      = Num("0.001"); // 0.10%
   const Num slippagePerRoundTrip = slippagePerSide * DecimalConstants<Num>::DecimalTwo; // 0.20%
@@ -1881,6 +1953,9 @@ int main(int argc, char **argv)
         }
     }
     
+    // Get risk parameters from user and store globally
+    g_riskParameters = getRiskParametersFromUser();
+
     // Interactive policy selection using the new system
     std::cout << "\n=== Policy Selection ===" << std::endl;
     auto availablePolicies = palvalidator::PolicyRegistry::getAvailablePolicies();
@@ -1934,6 +2009,8 @@ int main(int argc, char **argv)
     if (validationMethod == ValidationMethod::BenjaminiHochberg) {
         std::cout << "False Discovery Rate: " << params.falseDiscoveryRate << std::endl;
     }
+    std::cout << "Risk-Free Rate: " << (g_riskParameters.riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+    std::cout << "Risk Premium: " << (g_riskParameters.riskPremium * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "=============================" << std::endl;
 
     // -- Top-level dispatch based on the VALIDATION METHOD --
