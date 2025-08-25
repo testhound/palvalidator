@@ -27,6 +27,8 @@
 #include "MonteCarloTestPolicy.h"
 #include "PermutationStatisticsCollector.h"
 #include "LogPalPattern.h"
+#include "PalParseDriver.h"
+#include "PalAst.h"
 #include "number.h"
 #include <cstdlib>
 
@@ -39,159 +41,42 @@
 #include "ValidationInterface.h"
 #include "BiasCorrectedBootstrap.h"
 
+// Utility modules
+#include "utils/ValidationTypes.h"
+#include "utils/TimeUtils.h"
+#include "utils/OutputUtils.h"
+
+// Analysis modules
+#include "analysis/StatisticalTypes.h"
+#include "analysis/RobustnessAnalyzer.h"
+#include "analysis/DivergenceAnalyzer.h"
+#include "analysis/FragileEdgeAnalyzer.h"
+
+// Filtering modules
+#include "filtering/FilteringTypes.h"
+#include "filtering/PerformanceFilter.h"
+#include "filtering/MetaStrategyAnalyzer.h"
+#include "filtering/TradingHurdleCalculator.h"
+
+// Reporting modules
+#include "reporting/PerformanceReporter.h"
+#include "reporting/PatternReporter.h"
+
 using namespace mkc_timeseries;
+using namespace palvalidator::utils;
+using namespace palvalidator::analysis;
+using namespace palvalidator::filtering;
+using namespace palvalidator::reporting;
 
 using Num = num::DefaultNumber;
-
-// ---- Enums, Structs, and Helper Functions ----
-
-enum class ValidationMethod
-{
-    Masters,
-    RomanoWolf,
-    BenjaminiHochberg,
-    Unadjusted
-};
-
-// ComputationPolicy enum removed - now using dynamic policy selection
-
-struct ValidationParameters
-{
-    unsigned long permutations;
-    Num pValueThreshold;
-    Num falseDiscoveryRate; // For Benjamini-Hochberg
-};
-
-// Structure to hold risk parameters
-struct RiskParameters
-{
-    Num riskFreeRate;
-    Num riskPremium;
-};
 
 // Global risk parameters (set once from user input)
 static RiskParameters g_riskParameters;
 
-// Streambuf that mirrors output to two underlying buffers.
-class TeeBuf : public std::streambuf
-{
-public:
-  TeeBuf(std::streambuf* sb1, std::streambuf* sb2) : s1(sb1), s2(sb2) {}
-
-protected:
-  int overflow(int c) override
-  {
-    if (c == EOF) return !EOF;
-    const int r1 = s1->sputc(static_cast<char>(c));
-    const int r2 = s2->sputc(static_cast<char>(c));
-    return (r1 == EOF || r2 == EOF) ? EOF : c;
-  }
-
-  int sync() override
-  {
-    const int r1 = s1->pubsync();
-    const int r2 = s2->pubsync();
-    return (r1 == 0 && r2 == 0) ? 0 : -1;
-  }
-
-private:
-  std::streambuf* s1;
-  std::streambuf* s2;
-};
-
-// ostream that writes to two streams.
-class TeeStream : public std::ostream {
-public:
-  TeeStream(std::ostream& a, std::ostream& b)
-    : std::ostream(nullptr),
-      buf(a.rdbuf(), b.rdbuf())
-  {
-    this->rdbuf(&buf);
-  }
-
-private:
-    TeeBuf buf;
-};
-
-std::string getValidationMethodString(ValidationMethod method)
-{
-    switch (method)
-    {
-        case ValidationMethod::Masters:
-            return "Masters";
-        case ValidationMethod::RomanoWolf:
-            return "RomanoWolf";
-        case ValidationMethod::BenjaminiHochberg:
-            return "BenjaminiHochberg";
-        case ValidationMethod::Unadjusted:
-            return "Unadjusted";
-        default:
-            throw std::invalid_argument("Unknown validation method");
-    }
-}
-
-// getComputationPolicyString function removed - now using dynamic policy names
-
-static std::string getCurrentTimestamp()
-{
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%b_%d_%Y_%H%M");
-    return ss.str();
-}
-
-// Create a per-run bootstrap results file alongside other method-specific outputs.
-static std::string createBootstrapFileName(const std::string& securitySymbol,
-                                           ValidationMethod method)
-{
-  std::string methodDir = getValidationMethodString(method);
-  std::filesystem::create_directories(methodDir);
-  return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
-    + "_Bootstrap_Results_" + getCurrentTimestamp() + ".txt";
-}
-
-static std::string createSurvivingPatternsFileName (const std::string& securitySymbol, ValidationMethod method)
-{
-    std::string methodDir = getValidationMethodString(method);
-    std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method) + "_SurvivingPatterns_" + getCurrentTimestamp() + ".txt";
-}
-
-static std::string createDetailedSurvivingPatternsFileName (const std::string& securitySymbol,
-                                                            ValidationMethod method)
-{
-    std::string methodDir = getValidationMethodString(method);
-    std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method) + "_Detailed_SurvivingPatterns_" + getCurrentTimestamp() + ".txt";
-}
-
-static std::string createDetailedRejectedPatternsFileName(const std::string& securitySymbol,
-                                                          ValidationMethod method)
-{
-    std::string methodDir = getValidationMethodString(method);
-    std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method) + "_Detailed_RejectedPatterns_" + getCurrentTimestamp() + ".txt";
-}
-
+// Legacy function - now delegated to PerformanceReporter
 void writeBacktestPerformanceReport(std::ofstream& file, std::shared_ptr<BackTester<Num>> backtester)
 {
-    auto positionHistory = backtester->getClosedPositionHistory();
-    
-    // Write performance metrics to file
-    file << "=== Backtest Performance Report ===" << std::endl;
-    file << "Total Closed Positions: " << positionHistory.getNumPositions() << std::endl;
-    file << "Number of Winning Trades: " << positionHistory.getNumWinningPositions() << std::endl;
-    file << "Number of Losing Trades: " << positionHistory.getNumLosingPositions() << std::endl;
-    file << "Total Bars in Market: " << positionHistory.getNumBarsInMarket() << std::endl;
-    file << "Percent Winners: " << positionHistory.getPercentWinners() << "%" << std::endl;
-    file << "Percent Losers: " << positionHistory.getPercentLosers() << "%" << std::endl;
-    file << "Profit Factor: " << positionHistory.getProfitFactor() << std::endl;
-    file << "High Resolution Profit Factor: " << positionHistory.getHighResProfitFactor() << std::endl;
-    file << "PAL Profitability: " << positionHistory.getPALProfitability() << "%" << std::endl;
-    file << "High Resolution Profitability: " << positionHistory.getHighResProfitability() << std::endl;
-    file << "===================================" << std::endl << std::endl;
+    PerformanceReporter::writeBacktestReport(file, backtester);
 }
 
 // Calculate theoretical PAL profitability based on strategy's risk/reward parameters
@@ -216,659 +101,9 @@ Num calculateTheoreticalPALProfitability(std::shared_ptr<PalStrategy<Num>> strat
     return expectedPALProfitability;
 }
 
-template<typename Num>
-struct RobustnessChecksConfig {
-  unsigned int B = 1200;
-  double cl = 0.95;
 
-  // L-sensitivity
-  double relVarTol = 0.25;        // keep 0.25
-  size_t minL = 2;
 
-  // Split-sample eligibility
-  size_t minTotalForSplit = 40;
-  size_t minHalfForSplit  = 20;
 
-  // Tail risk
-  double tailAlpha = 0.05;
-  Num    tailMultiple = Num("3.0");
-  Num    borderlineAnnualMargin = Num("0.02");
-
-  // NEW: only fail on variability if we're close to the hurdle
-  Num    varOnlyMarginAbs = Num("0.02");  // within +2% annual of hurdle
-  double varOnlyMarginRel = 0.25;         // or within +25% relative to hurdle
-};
-
-enum class RobustnessVerdict { ThumbsUp, ThumbsDown };
-
-template<typename Num>
-static inline Num annualizeLB_(const Num& perPeriodLB, double k) {
-  const Num one = DecimalConstants<Num>::DecimalOne;
-  return Num(std::pow((one + perPeriodLB).getAsDouble(), k)) - one;
-}
-
-template<typename Num>
-static inline Num absNum_(const Num& x) {
-  return (x < DecimalConstants<Num>::DecimalZero) ? -x : x;
-}
-
-enum class RobustnessFailReason {
-  None = 0,
-  LSensitivityBound,        // a bound at {L-1,L,L+1} ≤ 0 or ≤ hurdle
-  LSensitivityVarNearHurdle,// variability too high AND base near hurdle
-  SplitSample,              // a half ≤ 0 or ≤ hurdle
-  TailRisk                  // severe tails + borderline base
-};
-
-struct RobustnessResult {
-  RobustnessVerdict verdict;
-  RobustnessFailReason reason;
-  double relVar; // for logging/diagnostics
-};
-
-/// Prints a human-readable explanation of tail risk metrics (q05, ES05)
-/// relative to the conservative per-period edge (GM BCa lower bound).
-///
-/// q05: 5% worst-case one-period loss threshold ("bad-day cutoff").
-/// ES05: average loss within the worst 5% of periods ("how bad are bad days, on average").
-///
-/// We scale both by |perPeriodGMLB| to communicate how many times larger a bad day is
-/// than the conservative edge you’re compounding at.
-///
-/// Example line emitted:
-///   "• Tail-risk context: a 5% bad day (q05) is about 9.12× your conservative per-period edge;
-///    average of bad days (ES05) ≈ 12.80×. (Flag 'severe' when q05 > 3× edge.)"
-// ---- Tail-risk explanation helper ----
-template <class Num>
-void logTailRiskExplanation(std::ostream& os,
-                            const Num& perPeriodGMLB,
-                            const Num& q05,
-                            const Num& es05,
-                            double severeMultiple /* e.g., cfg.tailMultiple */)
-{
-    const double edge = std::abs(perPeriodGMLB.getAsDouble());
-    const double q    = std::abs(q05.getAsDouble());
-    const double es   = std::abs(es05.getAsDouble());
-
-    double multQ  = std::numeric_limits<double>::infinity();
-    double multES = std::numeric_limits<double>::infinity();
-    if (edge > 0.0) {
-        multQ  = q  / edge;
-        multES = es / edge;
-    }
-
-    std::ostream::fmtflags f(os.flags());
-    os << "      \u2022 Tail-risk context: a 5% bad day (q05) is about "
-       << std::fixed << std::setprecision(2) << multQ
-       << "\u00D7 your conservative per-period edge; average of bad days (ES05) \u2248 "
-       << multES << "\u00D7.\n"
-       << "        (Heuristic: flag 'severe' when q05 exceeds "
-       << std::setprecision(2) << severeMultiple
-       << "\u00D7 the per-period GM lower bound.)\n";
-    os.flags(f);
-}
-
-/**
- * @brief Run GM-only robustness checks for strategies flagged by AM–GM divergence.
- *
- * This routine is **diagnostic**. We ultimately accept/reject by the
- * GEOMETRIC-mean (GM) BCa lower bound vs the hurdle. However, when the caller
- * detects a large AM–GM divergence, this function probes whether the GM result
- * itself is stable under small, realistic perturbations of the resampling
- * scheme and the sample window.
- *
- * What it does (all GM-based):
- *  1) Baseline LB (per-period and annualized): compute BCa LB using the
- *     current block policy (e.g., StationaryBlockResampler) with block length
- *     L and the caller’s annualization factor. This mirrors the production
- *     filter settings.
- *
- *  2) L-sensitivity (block-length wiggle): recompute the GM LB at L-1, L,
- *     and L+1 (clamped to ≥2). This catches dependence on the precise block
- *     size.
- *        - Immediate FAIL if any tested LB ≤ 0 or ≤ hurdleAnn.
- *        - Otherwise compute relative variability:
- *              relVar = (max_annLB - min_annLB) / max_annLB
- *          If relVar > cfg.relVarTol (default ~0.25), we _only_ FAIL when the
- *          baseline annualized LB is “near the hurdle”:
- *              near = (abs(LB_ann - hurdleAnn) ≤ cfg.nearHurdleAbs)
- *                     OR (abs(LB_ann - hurdleAnn)/hurdleAnn ≤ cfg.nearHurdleRel)
- *          If baseline is comfortably above the hurdle, we PASS despite high
- *          relVar (we still log that variability).
- *
- *  3) Split-sample stability (optional, size-gated):
- *        - Skip entirely if returns.size() < cfg.minTotalForSplit (e.g., 40),
- *          or if either half would be < cfg.minHalfForSplit (e.g., 20).
- *        - Otherwise split the series into first/second halves and compute
- *          GM BCa LBs with the same policy and L.
- *        - FAIL if either half’s annualized LB ≤ 0 or ≤ hurdleAnn.
- *
- *  4) Tail-risk sanity (advisory):
- *        - Compute empirical lower α-quantile (qα, α=cfg.tailAlpha, e.g., 5%)
- *          and expected shortfall ESα on **per-period** raw returns.
- *        - Mark “severe” if |qα| > cfg.tailMultiple × (baseline per-period GM LB).
- *          This is for logging; it does not, by itself, cause FAIL unless you
- *          choose to treat “severe && near-hurdle” as a policy failure.
- *
- * Inputs
- *  @param name                 Strategy name (used for logging).
- *  @param returns              Per-period net returns (after costs/slippage).
- *                              These are the same units used in your BCa filter.
- *  @param L                    Block length for the block sampler (e.g., median
- *                              holding period, clamped ≥ 2).
- *  @param annualizationFactor  Multiplier to annualize per-period LBs (e.g.,
- *                              252 for daily, ~52 for weekly, etc.).
- *  @param hurdleAnn            Annualized hurdle used in the main filter (max of
- *                              cost and risk-free, or any policy you apply).
- *  @param cfg                  Thresholds and toggles for the checks:
- *                                - relVarTol        : tolerance for L-sensitivity
- *                                                     variability (default ~0.25)
- *                                - nearHurdleAbs    : absolute “near hurdle” band
- *                                - nearHurdleRel    : relative “near hurdle” band
- *                                - minTotalForSplit : minimum n to attempt split
- *                                - minHalfForSplit  : minimum n per half
- *                                - tailAlpha        : tail quantile (e.g., 0.05)
- *                                - tailMultiple     : multiple for “severe” flag
- *  @param os                   Stream for human-readable diagnostics (defaults
- *                              to std::cout). Nothing is thrown on logging.
- *
- * Output
- *  @return RobustnessVerdict   A small enum/struct indicating:
- *                                - ThumbsUp (all checks passed or skipped)
- *                                - Fail_Lbound      (LB ≤ 0 or ≤ hurdle at some L)
- *                                - Fail_LvariabilityNearHurdle (relVar too high
- *                                  AND baseline LB near hurdle)
- *                                - Fail_SplitSample (a half fails LB > hurdle)
- *                                - Fail_TailRisk    (only if you choose to enforce)
- *                                - Skip_SmallSample (split skipped; not a failure)
- *
- * Notes & intent
- *  - This function **does not replace** your primary selection rule (GM LB vs
- *    hurdle). It is invoked only for “flagged” cases (e.g., large AM–GM LB gap)
- *    and aims to catch fragile strategies whose GM LB is sensitive to block
- *    length or sub-sample choice.
- *  - All computations are GM-centric; AM is not used here for any decision.
- *  - Tail-risk is advisory by default; it helps you decide between exclusion
- *    vs down-weighting.
- *  - Determinism: it uses the same bootstrap/jackknife policies as production.
- *    If you seed your RNG upstream, the results are reproducible.
- *
- * Complexity
- *  - Roughly O(B · n · (#L-tests + #splits)), where B is the bootstrap size,
- *    n is sample length. Size-gating avoids expensive splits on small n.
- *
- * Example
- *  RobustnessChecksConfig<Num> cfg{};
- *  cfg.relVarTol = Num("0.25");
- *  cfg.minTotalForSplit = 40;
- *  auto verdict = runFlaggedStrategyRobustness<Num>(
- *      strategyName, returns, L, 252.0, finalRequiredReturn, cfg, std::cout
- *  );
- *  if (verdict.isFail()
- *   {// Exclude or down-weith the strategy}
- */
-
-template<typename Num>
-RobustnessResult runFlaggedStrategyRobustness(
-    const std::string& label,
-    const std::vector<Num>& returns,    // per-period returns after slippage, etc.
-    size_t L_in,                        // median holding bars (inclusive) -> block length to use
-    double annualizationFactor,         // k
-    const Num& finalRequiredReturn,     // hurdle (annual)
-    const RobustnessChecksConfig<Num>& cfg /* has varOnlyMarginAbs/varOnlyMarginRel */,
-    std::ostream& os)
-{
-  using Sampler  = StationaryBlockResampler<Num>;
-  using BlockBCA = BCaBootStrap<Num, Sampler>;
-  GeoMeanStat<Num> statGeo;
-
-  const size_t n = returns.size();
-  const size_t L = std::max(cfg.minL, L_in);
-
-  if (n == 0)
-    {
-      os << "   [ROBUST] " << label << ": empty return series. ThumbsDown.\n";
-      return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, 0.0};
-    }
-
-  if (n < cfg.minTotalForSplit)
-    {
-      os << "   [ROBUST] " << label << ": small sample (" << n
-	 << "). Will SKIP split-sample; running L-sensitivity and tail-risk only.\n";
-    }
-
-  // Baseline
-  Sampler pol_base(L);
-  BlockBCA bca_base(returns, cfg.B, cfg.cl, statGeo, pol_base);
-  const Num lbPeriod_base = bca_base.getLowerBound();
-  const Num lbAnnual_base = annualizeLB_<Num>(lbPeriod_base, annualizationFactor);
-
-  os << "   [ROBUST] " << label << " baseline (L=" << L << "): "
-     << "per-period Geo LB=" << (lbPeriod_base * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-     << "annualized Geo LB=" << (lbAnnual_base * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-
-  /*The L-sensitivity test directly addresses a known challenge with block bootstrap methods:
-   * the optimal choice of the block length, L. A block length that is too small fails to
-   * capture the serial correlation in the data, while a block length that is too large over-smooths
-   * the data and can lead to inaccurate variance estimates. Since there is no universally "correct"
-   * way to determine the optimal L, using a rule-of-thumb like the median holding period is a practical
-   * heuristic. However, relying on a single value for L can be dangerous.
-   *
-   * By wiggling the block size (L−1,L,L+1), runFlaggedStrategyRobustness effectively checks
-   * if the strategy's success is dependent on a specific, perhaps fortuitous, choice of L.
-   *
-   *If the strategy is genuinely robust, its performance metrics should be relatively stable
-   * regardless of minor variations in the block size.
-   *
-   * If the strategy is fragile or overfitted, a small change in L could cause the performance
-   * metric to collapse below the required hurdle, indicating that the original successful
-   * result was an artifact of that specific block size choice.
-   *
-   * This check provides crucial information about the sensitivity of the bootstrap results
-   * to the underlying assumptions of the resampling method.
-   */
-  
-  // 1) L-sensitivity
-  std::vector<size_t> Ls;
-  if (L > cfg.minL)
-    Ls.push_back(L - 1);
-  Ls.push_back(L);
-  Ls.push_back(L + 1);
-
-  Num ann_min = lbAnnual_base;
-  Num ann_max = lbAnnual_base;
-  bool ls_fail = false;
-
-  os << "   [ROBUST] L-sensitivity:";
-  for (size_t Ltry : Ls)
-    {
-      Sampler pol(Ltry);
-      BlockBCA b(returns, cfg.B, cfg.cl, statGeo, pol);
-      const Num lbP = b.getLowerBound();
-      const Num lbA = annualizeLB_<Num>(lbP, annualizationFactor);
-
-      ann_min = (lbA < ann_min) ? lbA : ann_min;
-      ann_max = (lbA > ann_max) ? lbA : ann_max;
-
-      // Hard fail if any LB ≤ 0 or ≤ hurdle
-      if (lbA <= DecimalConstants<Num>::DecimalZero || lbA <= finalRequiredReturn)
-	ls_fail = true;
-
-      os << "  L=" << Ltry
-	 << " → per=" << (lbP * DecimalConstants<Num>::DecimalOneHundred) << "%,"
-	 << " ann=" << (lbA * DecimalConstants<Num>::DecimalOneHundred) << "%;";
-    }
-  os << "\n";
-
-  // Relative variability = (max - min) / max
-  double relVar = 0.0;
-  if (ann_max > DecimalConstants<Num>::DecimalZero)
-    relVar = (ann_max.getAsDouble() - ann_min.getAsDouble()) / ann_max.getAsDouble();
-
-  const bool ls_var_fail_raw = (relVar > cfg.relVarTol);
-
-  // Near-hurdle test: absolute or relative band
-  const double baseA = lbAnnual_base.getAsDouble();
-  const double hurA  = finalRequiredReturn.getAsDouble();
-  const bool nearHurdle =
-      (lbAnnual_base <= (finalRequiredReturn + cfg.varOnlyMarginAbs)) ||
-      (baseA <= hurA * (1.0 + cfg.varOnlyMarginRel));
-
-  // Verdict for L-sensitivity
-  if (ls_fail)
-    {
-      os << "   [ROBUST] L-sensitivity FAIL: LB below hurdle/zero at some L.\n";
-      return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, relVar};
-    }
-
-  if (ls_var_fail_raw)
-    {
-      if (nearHurdle)
-	{
-	  os << "   [ROBUST] L-sensitivity FAIL: relVar=" << relVar
-	     << " > " << cfg.relVarTol << " and base LB near hurdle.\n";
-	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityVarNearHurdle, relVar};
-	}
-      else
-	{
-	  os << "   [ROBUST] L-sensitivity PASS (high variability relVar=" << relVar
-	     << " > " << cfg.relVarTol << " but base LB comfortably above hurdle).\n";
-	}
-    }
-  else
-    {
-      os << "   [ROBUST] L-sensitivity PASS (relVar=" << relVar << ")\n";
-    }
-
-  /*
-   * Splitting the Returns (Split-sample stability)
-   * The split-sample stability test is a powerful method for detecting non-stationarity
-   * or lucky sub-periods in the historical data.
-   *
-   * Non-stationarity: If the statistical properties of the returns (e.g., mean, variance, or correlation)
-   * change over time, a strategy that performed well in one regime might fail in another. By splitting
-   * the sample into two halves (e.g., the first 5 years and the last 5 years), this test checks
-   * for a significant change in performance.
-   *
-   * Overfitting to a specific period: A strategy might be overfitted to a bull market or a particularly
-   * favorable market regime in the first half of the data. The performance in the second half of the
-   * data might then be significantly worse. A failure on this test indicates that the strategy's
-   * historical success  might not be generalizable to future market conditions.
-   * This check is a form of walk-forward validation in miniature and helps to prevent the selection
-   * of strategies that are only profitable during a single, fortunate period of the backtest.
-   */
-
-  // 2) Split-sample (only if sample is large enough)
-  if (n >= cfg.minTotalForSplit)
-    {
-      const size_t mid = n / 2;
-      const size_t n1 = mid;
-      const size_t n2 = n - mid;
-
-      bool canSplit = (n1 >= cfg.minHalfForSplit) && (n2 >= cfg.minHalfForSplit);
-      if (!canSplit)
-	{
-	  os << "   [ROBUST] Split-sample SKIP (insufficient per-half data: "
-	     << n1 << " & " << n2 << ")\n";
-	}
-      else
-	{
-	  std::vector<Num> r1(returns.begin(), returns.begin() + mid);
-	  std::vector<Num> r2(returns.begin() + mid, returns.end());
-
-	  BlockBCA b1(r1, cfg.B, cfg.cl, statGeo, pol_base);
-	  BlockBCA b2(r2, cfg.B, cfg.cl, statGeo, pol_base);
-
-	  const Num lb1P = b1.getLowerBound();
-	  const Num lb2P = b2.getLowerBound();
-	  const Num lb1A = annualizeLB_<Num>(lb1P, annualizationFactor);
-	  const Num lb2A = annualizeLB_<Num>(lb2P, annualizationFactor);
-	  
-	  os << "   [ROBUST] Split-sample: "
-	     << "H1 per=" << (lb1P * DecimalConstants<Num>::DecimalOneHundred) << "% (ann="
-	     << (lb1A * DecimalConstants<Num>::DecimalOneHundred) << "%), "
-	     << "H2 per=" << (lb2P * DecimalConstants<Num>::DecimalOneHundred) << "% (ann="
-	     << (lb2A * DecimalConstants<Num>::DecimalOneHundred) << "%)\n";
-
-	  if (lb1A <= DecimalConstants<Num>::DecimalZero || lb2A <= DecimalConstants<Num>::DecimalZero
-	      || lb1A <= finalRequiredReturn || lb2A <= finalRequiredReturn)
-	    {
-	      os << "   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.\n";
-	      return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::SplitSample, relVar};
-	    }
-	  else
-	    {
-	      os << "   [ROBUST] Split-sample PASS\n";
-	    }
-	}
-    }
-  else
-    {
-      os << "   [ROBUST] Split-sample SKIP (n=" << n << " < " << cfg.minTotalForSplit << ")\n";
-    }
-
-  /* The "tail risk sanity" check assesses the potential for a strategy's
-   * returns to be negatively impacted by severe losses in the tails of its
-   * return distribution. This check is advisory and does not, by itself,
-   * cause a strategy to be rejected unless its BCa lower bound is already
-   *borderline (close to the hurdle).
-   *
-   *Here’s a step-by-step breakdown of the process:
-   *
-   * Sort the Returns: The function takes a vector of per-period returns and sorts
-   * them in ascending order. This makes it easy to find the values at specific percentiles.
-   *
-   * Calculate the 5% Quantile (q05): It computes the empirical lower 5% quantile, denoted as q05
-   *
-   * This value represents the point below which 5% of the worst returns fall.
-   *
-   * Calculate the Expected Shortfall (ES): The expected shortfall (ES) is calculated as the
-   * average of all returns that fall at or below the 5% quantile (q05). This provides a
-   * measure of the average magnitude of losses in the worst-case scenarios, giving a more
-   * complete picture of tail risk than the quantile alone.
-   *
-   * Check for "Severe" Tails: The function determines if the tail is "severe".
-   * A tail is considered severe if the absolute value of the 5% quantile (∣q05∣) is greater
-   * than a configured multiple (e.g., 3.0) of the baseline per-period geometric mean (GM)
-   * BCa lower bound. This comparison highlights cases where the strategy's worst losses
-   * are disproportionately large relative to its expected long-term return.
-   *
-   * Determine the Verdict:
-   *
-   * PASS: If the tail is not severe, the check passes.
-   *
-   *CONDITIONAL FAIL: If the tail is severe AND the strategy's annualized GM BCa lower bound
-   * is "borderline" (i.e., within a small margin of the required return hurdle),
-   * the check results in a ThumbsDown verdict and the strategy is rejected.
-   * This prevents the selection of strategies that barely meet the performance criteria
-   * but have a high risk of catastrophic losses.
-   */
-  
-  // 3) Tail risk sanity
-  std::vector<Num> sorted = returns;
-  std::sort(sorted.begin(), sorted.end(),
-            [](const Num& a, const Num& b){ return a < b; });
-
- /**
- * Tail risk metrics (per-period, on raw returns):
- *  - q05  = empirical 5% quantile of returns (a “bad-day cutoff”).
- *  - ES05 = average return conditional on being in the worst 5% (how bad
- *           those bad days are, on average).
- *
- * We don’t use these to accept/reject by themselves. Instead, we compare them
- * to the conservative per-period GM LB to convey scale:
- *   |q05| / |LB_per(GM)|  and  |ES05| / |LB_per(GM)|.
- *
- * If |q05| is more than tailMultiple × LB_per(GM), we mark “severe”.
- * Policy: “severe” is advisory unless the strategy is also near the hurdle.
- */
-
-  size_t k = static_cast<size_t>(std::floor(cfg.tailAlpha * static_cast<double>(n)));
-  if (k >= n) k = n - 1;
-  const Num q05 = sorted[k];
-
-  Num sumTail = DecimalConstants<Num>::DecimalZero;
-  size_t cntTail = 0;
-  for (size_t i = 0; i <= k; ++i) { sumTail += sorted[i]; ++cntTail; }
-  const Num es05 = (cntTail > 0) ? (sumTail / Num(static_cast<int>(cntTail)))
-                                 : q05;
-
-  const bool severe_tails =
-      (q05 < DecimalConstants<Num>::DecimalZero) &&
-      (absNum_(q05) > cfg.tailMultiple * lbPeriod_base);
-
-  const bool borderline =
-      (lbAnnual_base <= (finalRequiredReturn + cfg.borderlineAnnualMargin));
-
-  os << "   [ROBUST] Tail risk: q05=" << (q05 * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-     << "ES05=" << (es05 * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-     << "severe=" << (severe_tails ? "yes" : "no") << ", "
-     << "borderline=" << (borderline ? "yes" : "no") << "\n";
-
-     logTailRiskExplanation(os, lbPeriod_base, q05, es05, cfg.tailMultiple.getAsDouble());
-
-  if (severe_tails && borderline) {
-    os << "   [ROBUST] Tail risk FAIL (severe tails and borderline LB) → ThumbsDown.\n";
-    return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::TailRisk, relVar};
-  }
-
-  os << "   [ROBUST] All checks PASS → ThumbsUp.\n";
-  return {RobustnessVerdict::ThumbsUp, RobustnessFailReason::None, relVar};
-}
-
-enum class DivergencePrintRel { Defined, NotDefined };
-
-template<typename Num>
-struct DivergenceResult {
-  bool flagged;
-  double absDiff;       // absolute annualized difference (as a fraction, not %)
-  double relDiff;       // relative annualized difference (abs/max), undefined if max<=0
-  DivergencePrintRel relState;
-};
-
-/**
- * Diagnostic sentinel: AM vs GM lower-bound divergence
- *
- * We make decisions using the GEOMETRIC mean (GM) because it matches compounding.
- * However, we also compare the BCa *annualized* lower bounds of the ARITHMETIC mean (AM)
- * and GM as a cheap, informative warning signal. This function computes:
- *
- *   abs_gap = | LB_ann(GM) - LB_ann(AM) |
- *   rel_gap = abs_gap / max(LB_ann(GM), LB_ann(AM))   // guarded against 0
- *
- * and returns them so the caller can decide whether to flag the strategy and run
- * deeper robustness checks (L-sensitivity, split-sample when n>=40, tail-risk).
- *
- * Why keep AM if we filter on GM?
- *  - Volatility drag proxy: for small returns, GM ≈ AM − ½·Var(r). A large AM–GM gap
- *    is a red flag that variance and/or skew/fat tails are hurting true compounding.
- *  - Different influence functions: AM (linear) and GM (log-domain) react differently
- *    to outliers, zeros, and serial dependence; disagreement is a useful “smoke detector”
- *    for shape/resampling sensitivity or data/plumbing mistakes.
- *  - Sanity & transparency: printing AM alongside GM helps diagnose unexpected shifts
- *    (e.g., slippage handling, transform errors) without changing the pass/fail rule.
- *
- * Important:
- *  - This divergence is **diagnostic only**—it does NOT accept or reject a strategy.
- *    It merely gates the robustness suite. Final acceptance remains GM-LB vs hurdle.
- *  - Thresholds for abs/rel gaps are heuristics; tune per risk tolerance and sample size.
- *    Near-hurdle strategies deserve extra scrutiny even for modest gaps.
- *  - Divergences can occur legitimately (finite samples, BCa asymmetry, block resampling),
- *    so never drop solely on AM–GM gap—always confirm with the robustness checks.
- */
-template<typename Num>
-DivergenceResult<Num>
-assessAMDivergence(const Num& gmAnn, const Num& amAnn,
-                   double absThresh, double relThresh)
-{
-  const double g = gmAnn.getAsDouble();
-  const double a = amAnn.getAsDouble();
-  const double absd = std::fabs(g - a);
-
-  const double denom = std::max(g, a);
-  DivergenceResult<Num> out{};
-  out.absDiff = absd;
-
-  if (denom > 0.0)
-    {
-      out.relDiff = absd / denom;
-      out.relState = DivergencePrintRel::Defined;
-      out.flagged = (absd > absThresh) || (out.relDiff > relThresh);
-    }
-  else
-    {
-      out.relDiff = 0.0; // meaningless; we'll print "n/a"
-      out.relState = DivergencePrintRel::NotDefined;
-      // Still allow flagging by absolute gap even if relative is undefined.
-      out.flagged = (absd > absThresh);
-    }
-  return out;
-}
-
-// --- Fragile edge advisory policy/decision ---------------------------------
-enum class FragileEdgeAction { Keep, Downweight, Drop };
-
-template<typename Num>
-struct FragileDecision {
-  FragileEdgeAction action;
-  double weightMultiplier;        // 1.0 for Keep; <1.0 for Downweight; 0 for Drop
-  std::string rationale;
-};
-
-// Tuning knobs for when/how to down-weight/drop fragile edges.
-// Defaults are conservative: rarely DROP unless borderline & severe tails.
-struct FragileEdgePolicy {
-  double relVarDown    = 0.35;    // if L-sensitivity relVar > this → consider downweight
-  double relVarDrop    = 0.60;    // if relVar is huge and near hurdle → consider drop
-  double tailMultiple  = 3.0;     // “severe tail” if |q05| > tailMultiple × per-period GM LB
-  double nearAbs       = 0.02;    // “near hurdle” if |LB_ann - hurdle| ≤ nearAbs (2pp)
-  double nearRel       = 0.10;    // …or within 10% of hurdle
-  size_t minNDown      = 30;      // small n → consider downweight (never drop on size alone)
-};
-
-// Advises what to do with an otherwise-PASSing strategy that looks “fragile”.
-// Inputs are the GM-centric numbers you already have in scope.
-template<typename Num>
-FragileDecision<Num> decideFragileEdgeAction(
-    const Num& lbPer_GM,            // baseline per-period GM BCa lower bound
-    const Num& lbAnn_GM,            // baseline annualized GM BCa LB
-    const Num& hurdleAnn,           // annualized hurdle used in your main filter
-    double relVarL,                 // L-sensitivity variability (0..1)
-    const Num& q05,                 // per-period 5% quantile (raw returns)
-    const Num& es05,                // per-period ES05
-    size_t n,                       // sample size
-    const FragileEdgePolicy& pol)   // thresholds
-{
-  const double edge  = lbPer_GM.getAsDouble();
-  const double q     = q05.getAsDouble();
-  (void)es05; // ES05 is logged elsewhere; not used in the simple rule below.
-
-  const double lbAnn = lbAnn_GM.getAsDouble();
-  const double hdAnn = hurdleAnn.getAsDouble();
-
-  const double absGap = std::fabs(lbAnn - hdAnn);
-  const bool nearHurdle = (absGap <= pol.nearAbs)
-                       || ((hdAnn > 0.0) && (absGap / hdAnn <= pol.nearRel));
-
-  const bool severeTail = (q < 0.0) && (edge > 0.0) && (std::fabs(q) > pol.tailMultiple * edge);
-
-  // --- Heuristic tree (advisory) ---
-  // 1) Severe tails + near hurdle → DROP (too fragile to rely on)
-  if (severeTail && nearHurdle) {
-    return {FragileEdgeAction::Drop, 0.0,
-            "Severe downside tails and LB near hurdle → drop"};
-  }
-
-  // 2) Very large L-variability and near hurdle → DROP
-  if (relVarL > pol.relVarDrop && nearHurdle) {
-    return {FragileEdgeAction::Drop, 0.0,
-            "High L-sensitivity and LB near hurdle → drop"};
-  }
-
-  // 3) Otherwise “soft” reasons to reduce exposure
-  if (severeTail || relVarL > pol.relVarDown || n < pol.minNDown)
-    {
-      std::string why;
-      if (severeTail)
-	why += "severe tails; ";
-
-      if (relVarL > pol.relVarDown)
-	why += "high L-variability; ";
-
-      if (n < pol.minNDown)
-	why += "small sample; ";
-      return {FragileEdgeAction::Downweight, 0.50,
-	      "Advisory downweight: " + (why.empty() ? std::string("weak signal") : why)};
-    }
-
-  // 4) Default keep
-  return {FragileEdgeAction::Keep, 1.0, "Robust enough to keep at full weight"};
-}
-
-template<typename Num>
-static std::pair<Num, Num> computeQ05_ES05(const std::vector<Num>& returns, double alpha = 0.05)
-{
-  if (returns.empty())
-    return {DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero};
-
-  std::vector<Num> sorted = returns;
-  std::sort(sorted.begin(), sorted.end(), [](const Num& a, const Num& b){ return a < b; });
-
-  const size_t n = sorted.size();
-  size_t k = static_cast<size_t>(std::floor(alpha * static_cast<double>(n)));
-  if (k >= n)
-    k = n - 1;
-
-  const Num q05 = sorted[k];
-
-  Num sumTail = DecimalConstants<Num>::DecimalZero;
-  for (size_t i = 0; i <= k; ++i)
-    sumTail += sorted[i];
-
-  const Num es05 = (k + 1 > 0) ? (sumTail / Num(static_cast<int>(k + 1))) : q05;
-
-  return {q05, es05};
-}
 
 // Function to get risk parameters from user input
 RiskParameters getRiskParametersFromUser()
@@ -910,6 +145,7 @@ const RiskParameters& getRiskParameters()
     return g_riskParameters;
 }
 
+// Legacy function - now delegated to PerformanceFilter
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
@@ -917,479 +153,46 @@ filterSurvivingStrategiesByPerformance(
     std::shared_ptr<Security<Num>> baseSecurity,
     const DateRange& backtestingDates,
     TimeFrame::Duration theTimeFrame,
-    std::ostream& os)                     // tee (cout + file)
+    std::ostream& os,
+    unsigned int numResamples)
 {
-  std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
-
-  // Filtering parameters
-  const Num costBufferMultiplier = Num("1.5");
-  const RiskParameters& riskParams = getRiskParameters();
-  const Num riskFreeRate         = riskParams.riskFreeRate;
-
-  // Stock investors expect an excess return over the risk-free rate,
-  // known as the risk premium, which compensates for the increased
-  // risk of investing in stocks. Historically, the average risk premium has been around 5%
-  const Num riskPremium     = riskParams.riskPremium;
-  const Num riskFreeHurdle  = riskFreeRate + riskPremium;
-
-  const RobustnessChecksConfig<Num> cfg{};
-
-  // Fragile-edge advisory policy (advisory only)
-  const FragileEdgePolicy fragilePol{};
-  const bool applyFragileAdvice = true; // advisory logging only
-
-  auto fragileActionToText = [](FragileEdgeAction a) {
-    switch (a) {
-      case FragileEdgeAction::Keep:       return "Keep";
-      case FragileEdgeAction::Downweight: return "Downweight";
-      case FragileEdgeAction::Drop:       return "Drop";
-      default:                            return "Keep";
-    }
-  };
-
-  // Summary counters
-  size_t cnt_insufficient = 0;
-  size_t cnt_flagged = 0, cnt_flag_pass = 0;
-  size_t cnt_fail_Lbound = 0, cnt_fail_Lvar = 0, cnt_fail_split = 0, cnt_fail_tail = 0;
-
-  os << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
-  os << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
-  os << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * "
-     << costBufferMultiplier << ")\n";
-  os << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate + Risk Premium ( "
-     << riskPremium << ") )\n";
-  os << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side.\n";
-  os << "  - Risk-Free Rate assumption: " << (riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
-
-  for (const auto& strategy : survivingStrategies)
-  {
-    try
-    {
-      auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
-      freshPortfolio->addSecurity(baseSecurity);
-      auto clonedStrat = strategy->clone2(freshPortfolio);
-
-      auto backtester     = BackTesterFactory<Num>::backTestStrategy(clonedStrat, theTimeFrame, backtestingDates);
-      auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
-
-      if (highResReturns.size() < 20) {
-        os << "✗ Strategy filtered out: " << strategy->getStrategyName()
-           << " - Insufficient returns for bootstrap (" << highResReturns.size() << " < 20).\n";
-        ++cnt_insufficient;
-        continue;
-      }
-
-      const unsigned int medianHoldBars = backtester->getClosedPositionHistory().getMedianHoldingPeriod();
-      os << "Strategy Median holding period = " << medianHoldBars << "\n";
-      const std::size_t  L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHoldBars));
-      StationaryBlockResampler<Num> sampler(L);
-
-      const unsigned int num_resamples    = 2000;
-      const double       confidence_level = 0.95;
-
-      GeoMeanStat<Num> statGeo;
-      using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
-      BlockBCA bcaGeo (highResReturns, num_resamples, confidence_level, statGeo, sampler);
-      BlockBCA bcaMean(highResReturns, num_resamples, confidence_level,
-                       &mkc_timeseries::StatUtils<Num>::computeMean, sampler);
-
-      const Num lbGeoPeriod  = bcaGeo.getLowerBound();
-      const Num lbMeanPeriod = bcaMean.getLowerBound();
-
-      double annualizationFactor;
-      if (theTimeFrame == TimeFrame::INTRADAY) {
-        annualizationFactor = calculateAnnualizationFactor(
-            theTimeFrame,
-            baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes());
-      } else {
-        annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
-      }
-
-      BCaAnnualizer<Num> annualizerGeo (bcaGeo,  annualizationFactor);
-      BCaAnnualizer<Num> annualizerMean(bcaMean, annualizationFactor);
-
-      const Num annualizedLowerBoundGeo  = annualizerGeo.getAnnualizedLowerBound();
-      const Num annualizedLowerBoundMean = annualizerMean.getAnnualizedLowerBound();
-
-      // Hurdles: cost & risk-free
-      const Num slippagePerSide      = Num("0.001"); // 0.10% per side
-      const Num slippagePerRoundTrip = slippagePerSide * DecimalConstants<Num>::DecimalTwo; // 0.20% per trade
-      const Num annualizedTrades(backtester->getEstimatedAnnualizedTrades());
-      const Num annualizedCostHurdle = annualizedTrades * slippagePerRoundTrip;
-      const Num costBasedRequiredReturn = annualizedCostHurdle * costBufferMultiplier;
-      const Num finalRequiredReturn     = std::max(costBasedRequiredReturn, riskFreeHurdle);
-
-      // ---- Early decision on GM LB vs hurdle ----
-      if (annualizedLowerBoundGeo <= finalRequiredReturn) {
-        os << "✗ Strategy filtered out: " << strategy->getStrategyName()
-           << " (Lower Bound = "
-           << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-           << "% <= Required Return = "
-           << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-           << "  [Block L=" << L << "]\n\n";
-        continue; // Skip divergence/robustness for obvious fails
-      }
-
-      // Diagnostic AM–GM divergence
-      const auto divergence = assessAMDivergence<Num>(annualizedLowerBoundGeo, annualizedLowerBoundMean,
-                                                      /*absThresh=*/0.05, /*relThresh=*/0.30);
-
-      // --- NEW: widened robustness gate ---
-      double lSensitivityRelVar = 0.0; // default for advisory when robustness not run
-      const bool nearHurdle = (annualizedLowerBoundGeo <= (finalRequiredReturn + cfg.borderlineAnnualMargin));
-      const bool smallN     = (highResReturns.size() < cfg.minTotalForSplit);
-      const bool mustRobust = divergence.flagged || nearHurdle || smallN;
-
-      if (mustRobust)
-	{
-	  if (divergence.flagged)
-	    {
-	      ++cnt_flagged;
-	      os << "   [FLAG] Large AM vs GM divergence (abs="
-		 << (Num(divergence.absDiff) * DecimalConstants<Num>::DecimalOneHundred) << "%, rel=";
-	      if (divergence.relState == DivergencePrintRel::Defined)
-		os << divergence.relDiff;
-	      else
-		os << "n/a";
-	      os << "); running robustness checks";
-
-	      if (nearHurdle || smallN)
-		{
-		  os << " (also triggered by ";
-		  if (nearHurdle)
-		    os << "near-hurdle";
-		  if (nearHurdle && smallN)
-		    os << " & ";
-		  if (smallN)
-		    os << "small-sample";
-		  os << ")";
-		}
-	      os << "...\n";
-	    }
-	  else
-	    {
-	      os << "   [CHECK] Running robustness checks due to "
-		 << (nearHurdle ? "near-hurdle" : "")
-		 << ((nearHurdle && smallN) ? " & " : "")
-		 << (smallN ? "small-sample" : "")
-		 << " condition(s)...\n";
-	    }
-
-	  const auto rob = runFlaggedStrategyRobustness<Num>(
-							     strategy->getStrategyName(),
-							     highResReturns,
-							     L,
-							     annualizationFactor,
-							     finalRequiredReturn,
-							     cfg,
-							     os);
-
-	  if (rob.verdict == RobustnessVerdict::ThumbsDown)
-	    {
-	      switch (rob.reason)
-		{
-		case RobustnessFailReason::LSensitivityBound:        ++cnt_fail_Lbound; break;
-		case RobustnessFailReason::LSensitivityVarNearHurdle:++cnt_fail_Lvar;   break;
-		case RobustnessFailReason::SplitSample:              ++cnt_fail_split;  break;
-		case RobustnessFailReason::TailRisk:                 ++cnt_fail_tail;   break;
-		default: break;
-		}
-	      os << "   " << (divergence.flagged ? "[FLAG]" : "[CHECK]") << " Robustness checks FAILED → excluding strategy.\n\n";
-	      continue;
-	    }
-	  else
-	    {
-	      if (divergence.flagged)
-		++cnt_flag_pass; // only count as 'passed robustness' for divergence-triggered runs
-
-	      lSensitivityRelVar = rob.relVar;         // carry variability into fragile-edge advisory
-	      os << "   " << (divergence.flagged ? "[FLAG]" : "[CHECK]") << " Robustness checks PASSED.\n";
-	    }
-	}
-
-      // Passed GM hurdle (and any robustness) → fragile-edge advisory
-      const auto [q05, es05] = computeQ05_ES05<Num>(highResReturns, /*alpha=*/0.05);
-      const auto advice = decideFragileEdgeAction<Num>(
-          lbGeoPeriod,                  // per-period GM LB
-          annualizedLowerBoundGeo,      // annualized GM LB
-          finalRequiredReturn,          // hurdle (annual)
-          lSensitivityRelVar,           // relVar from robustness; 0.0 if unrun
-          q05,                          // tail quantile
-          es05,                         // ES05 (logged elsewhere)
-          highResReturns.size(),        // n
-          fragilePol                    // thresholds
-      );
-
-      os << "   [ADVISORY] Fragile edge assessment: action="
-         << fragileActionToText(advice.action)
-         << ", weight×=" << advice.weightMultiplier
-         << " — " << advice.rationale << "\n";
-
-      if (applyFragileAdvice) {
-        if (advice.action == FragileEdgeAction::Drop) {
-          os << "   [ADVISORY] Apply=ON → dropping strategy per fragile-edge policy.\n\n";
-          continue;
-        }
-        if (advice.action == FragileEdgeAction::Downweight) {
-          os << "   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.\n";
-        }
-      }
-
-      // Keep strategy
-      filteredStrategies.push_back(strategy);
-
-      os << "✓ Strategy passed: " << strategy->getStrategyName()
-         << " (Lower Bound = "
-         << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-         << "% > Required Return = "
-         << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-         << "  [Block L=" << L << "]\n";
-
-      os << "   ↳ Lower bounds (annualized): "
-         << "GeoMean = " << (annualizedLowerBoundGeo  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-         << "Mean = "    << (annualizedLowerBoundMean * DecimalConstants<Num>::DecimalOneHundred) << "%\n\n";
-    }
-    catch (const std::exception& e)
-    {
-      os << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
-         << "' performance: " << e.what() << "\n";
-      os << "Excluding strategy from filtered results.\n";
-    }
-  }
-
-  // Directional survivor counts (based on strategy name containing "Long"/"Short")
-  size_t survivorsLong = 0, survivorsShort = 0;
-  for (const auto& s : filteredStrategies)
-  {
-    const auto& nm = s->getStrategyName();
-    if (nm.find("Long")  != std::string::npos)  ++survivorsLong;
-    if (nm.find("Short") != std::string::npos) ++survivorsShort;
-  }
-
-  // Summary
-  os << "BCa Performance Filtering complete: " << filteredStrategies.size()
-     << "/" << survivingStrategies.size() << " strategies passed criteria.\n\n";
-  os << "[Summary] Flagged for divergence: " << cnt_flagged
-     << " (passed robustness: " << cnt_flag_pass << ", failed: "
-     << (cnt_flagged >= cnt_flag_pass ? (cnt_flagged - cnt_flag_pass) : 0) << ")\n";
-  os << "          Fail reasons → "
-     << "L-bound/hurdle: " << cnt_fail_Lbound
-     << ", L-variability near hurdle: " << cnt_fail_Lvar
-     << ", split-sample: " << cnt_fail_split
-     << ", tail-risk: " << cnt_fail_tail << "\n";
-  os << "          Insufficient sample (pre-filter): " << cnt_insufficient << "\n";
-  os << "          Survivors by direction → Long: " << survivorsLong
-     << ", Short: " << survivorsShort << "\n";
-
-  return filteredStrategies;
+    const RiskParameters& riskParams = getRiskParameters();
+    const Num confidenceLevel = Num("0.95");
+    
+    PerformanceFilter filter(riskParams, confidenceLevel, numResamples);
+    return filter.filterByPerformance(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os);
 }
 
+// Legacy function - now delegated to MetaStrategyAnalyzer
 template<typename Num>
 void filterMetaStrategy(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     std::shared_ptr<Security<Num>> baseSecurity,
     const DateRange& backtestingDates,
     TimeFrame::Duration theTimeFrame,
-    std::ostream& os)  // NEW: tee stream (cout + file)
+    std::ostream& os,
+    unsigned int numResamples)
 {
-  if (survivingStrategies.empty()) {
-    os << "\n[Meta] No surviving strategies to aggregate.\n";
-    return;
-  }
-
-  os << "\n[Meta] Building equal-weight portfolio from "
-     << survivingStrategies.size() << " survivors...\n";
-
-  // Gather per-strategy high-res returns, annualized trade counts, and median holds (inclusive bars)
-  std::vector<std::vector<Num>> survivorReturns;
-  survivorReturns.reserve(survivingStrategies.size());
-  std::vector<Num> survivorAnnualizedTrades;
-  survivorAnnualizedTrades.reserve(survivingStrategies.size());
-  std::vector<unsigned int> survivorMedianHolds;
-  survivorMedianHolds.reserve(survivingStrategies.size());
-
-  size_t T = std::numeric_limits<size_t>::max();
-
-  for (const auto& strat : survivingStrategies) {
-    try {
-      auto freshPortfolio = std::make_shared<Portfolio<Num>>(strat->getStrategyName() + " Portfolio");
-      freshPortfolio->addSecurity(baseSecurity);
-      auto cloned = strat->clone2(freshPortfolio);
-
-      auto bt = BackTesterFactory<Num>::backTestStrategy(cloned, theTimeFrame, backtestingDates);
-      auto r  = bt->getAllHighResReturns(cloned.get());
-
-      if (r.size() < 2) {
-        os << "  [Meta] Skipping " << strat->getStrategyName()
-           << " (insufficient returns: " << r.size() << ")\n";
-        continue;
-      }
-
-      const unsigned int medHold = bt->getClosedPositionHistory().getMedianHoldingPeriod(); // inclusive bars (min 2)
-      survivorMedianHolds.push_back(medHold);
-
-      T = std::min(T, r.size());
-      survivorReturns.push_back(std::move(r));
-      survivorAnnualizedTrades.push_back(Num(bt->getEstimatedAnnualizedTrades()));
-    }
-    catch (const std::exception& e) {
-      os << "  [Meta] Skipping " << strat->getStrategyName()
-         << " due to error: " << e.what() << "\n";
-    }
-  }
-
-  if (survivorReturns.empty() || T < 2) {
-    os << "[Meta] Not enough aligned data to form portfolio.\n";
-    return;
-  }
-
-  // Equal-weight portfolio series (truncate to shortest length T)
-  const size_t n = survivorReturns.size();
-  const Num w = Num(1) / Num(static_cast<int>(n));
-
-  std::vector<Num> metaReturns(T, DecimalConstants<Num>::DecimalZero);
-  for (size_t i = 0; i < n; ++i) {
-    for (size_t t = 0; t < T; ++t) {
-      metaReturns[t] += w * survivorReturns[i][t];
-    }
-  }
-
-  // Per-period point estimates (pre-annualization)
-  {
-    const Num am = StatUtils<Num>::computeMean(metaReturns);
-    const Num gm = GeoMeanStat<Num>{}(metaReturns);
-    os << "      Per-period point estimates (pre-annualization): "
-       << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-       << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-  }
-
-  // Annualization factor (same logic as strategy-level)
-  double annualizationFactor;
-  if (theTimeFrame == TimeFrame::INTRADAY) {
-    auto minutes = baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes();
-    annualizationFactor = calculateAnnualizationFactor(theTimeFrame, minutes);
-  } else {
-    annualizationFactor = calculateAnnualizationFactor(theTimeFrame);
-  }
-
-  // Block length for meta bootstrap: median of survivors' median holds (round-half-up), clamp to >=2
-  auto computeMedianUH = [](std::vector<unsigned int> v) -> size_t {
-    if (v.empty()) return 2;
-    const size_t m = v.size();
-    const size_t mid = m / 2;
-    std::nth_element(v.begin(), v.begin() + mid, v.end());
-    if (m & 1U) {
-      return std::max<size_t>(2, v[mid]);
-    } else {
-      auto hi = v[mid];
-      std::nth_element(v.begin(), v.begin() + (mid - 1), v.begin() + mid);
-      auto lo = v[mid - 1];
-      return std::max<size_t>(2, (static_cast<size_t>(lo) + static_cast<size_t>(hi) + 1ULL) / 2ULL);
-    }
-  };
-
-  const size_t Lmeta = computeMedianUH(survivorMedianHolds);
-  StationaryBlockResampler<Num> metaSampler(Lmeta);
-  using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
-
-  // Bootstrap portfolio series — GeoMean (decision) and Arithmetic mean (comparison) with blocks
-  const unsigned int num_resamples   = 2000;
-  const double       confidence_level = 0.95;
-
-  GeoMeanStat<Num> statGeo;
-  BlockBCA metaGeo(metaReturns, num_resamples, confidence_level, statGeo, metaSampler);
-  BlockBCA metaMean(metaReturns, num_resamples, confidence_level,
-                    &mkc_timeseries::StatUtils<Num>::computeMean, metaSampler);
-
-  const Num lbGeoPeriod  = metaGeo.getLowerBound();
-  const Num lbMeanPeriod = metaMean.getLowerBound();
-
-  os << "      Per-period BCa lower bounds (pre-annualization): "
-     << "Geo="  << (lbGeoPeriod  * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-     << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-  os << "      (Meta uses block resampling with L=" << Lmeta << ")\n";
-
-  // Annualize portfolio BCa results
-  BCaAnnualizer<Num> metaGeoAnn(metaGeo, annualizationFactor);
-  BCaAnnualizer<Num> metaMeanAnn(metaMean, annualizationFactor);
-
-  const Num lbGeoAnn  = metaGeoAnn.getAnnualizedLowerBound();
-  const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
-
-  // Portfolio-level cost hurdle
-  const Num costBufferMultiplier = Num("1.5");
-  const RiskParameters& riskParams = getRiskParameters();
-  const Num riskFreeRate         = riskParams.riskFreeRate;
-  const Num riskPremium   = riskParams.riskPremium;
-  const Num riskFreeHurdle       = riskFreeRate + riskPremium;
-
-  const Num slippagePerSide      = Num("0.001"); // 0.10%
-  const Num slippagePerRoundTrip = slippagePerSide * DecimalConstants<Num>::DecimalTwo; // 0.20%
-
-  Num sumTrades = DecimalConstants<Num>::DecimalZero;
-  for (const auto& tr : survivorAnnualizedTrades) sumTrades += tr;
-  Num portfolioAnnualizedTrades = w * sumTrades; // equal-weight portfolio: scale trades by weight
-
-  Num annualizedCostHurdle      = portfolioAnnualizedTrades * slippagePerRoundTrip;
-  Num costBasedRequiredReturn   = annualizedCostHurdle * costBufferMultiplier;
-  Num finalRequiredReturn       = std::max(costBasedRequiredReturn, riskFreeHurdle);
-
-  os << "\n[Meta] Portfolio of " << n << " survivors (equal-weight):\n"
-     << "      Annualized Lower Bound (GeoMean): " << (lbGeoAnn  * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Annualized Lower Bound (Mean):    " << (lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Required Return (max(cost,riskfree)): "
-     << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-
-  if (lbGeoAnn > finalRequiredReturn) {
-    os << "      RESULT: ✓ Metastrategy PASSES\n";
-  } else {
-    os << "      RESULT: ✗ Metastrategy FAILS\n";
-  }
-
-  os << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
+    const RiskParameters& riskParams = getRiskParameters();
+    const Num confidenceLevel = Num("0.95");
+    
+    MetaStrategyAnalyzer analyzer(riskParams, confidenceLevel, numResamples);
+    analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os);
 }
 
 
+// Legacy function - now delegated to PatternReporter
 void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecurity,
                                         ValidationMethod method,
                                         ValidationInterface* validation,
                                         const DateRange& backtestingDates,
                                         TimeFrame::Duration theTimeFrame)
 {
-    std::string detailedPatternsFileName(createDetailedSurvivingPatternsFileName(baseSecurity->getSymbol(),
-                                                                                 method));
-    std::ofstream survivingPatternsFile(detailedPatternsFileName);
-    
     auto survivingStrategies = validation->getSurvivingStrategies();
-    for (const auto& strategy : survivingStrategies)
-    {
-        try
-        {
-            auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
-            freshPortfolio->addSecurity(baseSecurity);
-            auto clonedStrat = strategy->clone2(freshPortfolio);
-            auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
-                                                                       theTimeFrame,
-                                                                       backtestingDates);
-            // Note: monteCarloStats not used for surviving patterns in this implementation
-            // auto& monteCarloStats = validation->getStatisticsCollector();
-            survivingPatternsFile << "Surviving Pattern:" << std::endl << std::endl;
-            LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
-            survivingPatternsFile << std::endl;
-            writeBacktestPerformanceReport(survivingPatternsFile, backtester);
-            survivingPatternsFile << std::endl << std::endl;
-            //BacktestingStatPolicy<Num>::printDetailedScoreBreakdown(backtester, survivingPatternsFile);
-            //writeMonteCarloPermutationStats(monteCarloStats, survivingPatternsFile, clonedStrat);
-        }
-        catch (const std::exception& e)
-        {
-            std::cout << "Exception " << e.what() << std::endl;
-            break;
-        }
-    }
+    PatternReporter::writeSurvivingPatterns(survivingStrategies, baseSecurity->getSymbol(), method);
 }
 
-// Overloaded version that takes a filtered strategies list directly with validation summary
+// Legacy function - now delegated to PatternReporter (overloaded version)
 void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecurity,
                                          ValidationMethod method,
                                          const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
@@ -1398,53 +201,11 @@ void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecur
                                          const std::string& policyName,
                                          const ValidationParameters& params)
 {
-    std::string detailedPatternsFileName(createDetailedSurvivingPatternsFileName(baseSecurity->getSymbol(),
-                                                                                 method));
-    std::ofstream survivingPatternsFile(detailedPatternsFileName);
-    
-    // Write validation summary header
-    survivingPatternsFile << "=== VALIDATION SUMMARY ===" << std::endl;
-    survivingPatternsFile << "Security Ticker: " << baseSecurity->getSymbol() << std::endl;
-    survivingPatternsFile << "Validation Method: " << getValidationMethodString(method) << std::endl;
-    survivingPatternsFile << "Computation Policy: " << policyName << std::endl;
-    survivingPatternsFile << "Out-of-Sample Range: " << backtestingDates.getFirstDateTime()
-                          << " to " << backtestingDates.getLastDateTime() << std::endl;
-    survivingPatternsFile << "Number of Permutations: " << params.permutations << std::endl;
-    survivingPatternsFile << "P-Value Threshold: " << params.pValueThreshold << std::endl;
-    if (method == ValidationMethod::BenjaminiHochberg) {
-        survivingPatternsFile << "False Discovery Rate: " << params.falseDiscoveryRate << std::endl;
-    }
-    survivingPatternsFile << "Total Surviving Strategies (Performance Filtered): " << strategies.size() << std::endl;
-    survivingPatternsFile << "===========================" << std::endl << std::endl;
-    
-    for (const auto& strategy : strategies)
-    {
-        try
-        {
-            auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
-            freshPortfolio->addSecurity(baseSecurity);
-            auto clonedStrat = strategy->clone2(freshPortfolio);
-            auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
-                                                                       theTimeFrame,
-                                                                       backtestingDates);
-            // Note: monteCarloStats not used for surviving patterns in this implementation
-            // auto& monteCarloStats = validation->getStatisticsCollector();
-            survivingPatternsFile << "Surviving Pattern:" << std::endl << std::endl;
-            LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
-            survivingPatternsFile << std::endl;
-            writeBacktestPerformanceReport(survivingPatternsFile, backtester);
-            survivingPatternsFile << std::endl << std::endl;
-            //BacktestingStatPolicy<Num>::printDetailedScoreBreakdown(backtester, survivingPatternsFile);
-            //writeMonteCarloPermutationStats(monteCarloStats, survivingPatternsFile, clonedStrat);
-        }
-        catch (const std::exception& e)
-        {
-            std::cout << "Exception " << e.what() << std::endl;
-            break;
-        }
-    }
+    PatternReporter reporter;
+    reporter.writeDetailedSurvivingPatterns(baseSecurity, method, strategies, backtestingDates, theTimeFrame, policyName, params);
 }
 
+// Legacy function - now delegated to PatternReporter
 void writeDetailedRejectedPatternsFile(const std::string& securitySymbol,
                                        ValidationMethod method,
                                        ValidationInterface* validation,
@@ -1454,179 +215,108 @@ void writeDetailedRejectedPatternsFile(const std::string& securitySymbol,
                                        std::shared_ptr<Security<Num>> baseSecurity,
                                        const std::vector<std::shared_ptr<PalStrategy<Num>>>& performanceFilteredStrategies = {})
 {
-    std::string detailedPatternsFileName = createDetailedRejectedPatternsFileName(securitySymbol, method);
-    std::ofstream rejectedPatternsFile(detailedPatternsFileName);
-    
-    // Get all strategies and identify rejected ones with their p-values
-    auto allStrategies = validation->getAllTestedStrategies();
-    std::set<std::shared_ptr<PalStrategy<Num>>> survivingSet;
-    auto survivingStrategies = validation->getSurvivingStrategies();
-    for (const auto& strategy : survivingStrategies)
-    {
-        survivingSet.insert(strategy);
-    }
-    
-    std::vector<std::pair<std::shared_ptr<PalStrategy<Num>>, Num>> rejectedStrategiesWithPValues;
-    for (const auto& [strategy, pValue] : allStrategies)
-    {
-        if (survivingSet.find(strategy) == survivingSet.end())
-        {
-            rejectedStrategiesWithPValues.emplace_back(strategy, pValue);
-        }
-    }
-    
-    // Write header
-    rejectedPatternsFile << "=== REJECTED PATTERNS REPORT ===" << std::endl;
-    rejectedPatternsFile << "Total Rejected Patterns: " << rejectedStrategiesWithPValues.size() << std::endl;
-    rejectedPatternsFile << "P-Value Threshold: " << pValueThreshold << std::endl;
-    rejectedPatternsFile << "Validation Method: " <<
-        (method == ValidationMethod::Masters ? "Masters" : "Romano-Wolf") << std::endl;
-    rejectedPatternsFile << "=================================" << std::endl << std::endl;
-    
-    if (rejectedStrategiesWithPValues.empty())
-    {
-        rejectedPatternsFile << "No rejected patterns found." << std::endl;
-        rejectedPatternsFile << std::endl;
-        rejectedPatternsFile << "All " << validation->getNumSurvivingStrategies()
-                            << " tested patterns survived the validation process." << std::endl;
-        rejectedPatternsFile << "This indicates very strong patterns or a lenient p-value threshold." << std::endl;
-        
-        // Write basic summary statistics even when no rejected patterns are found
-        struct RejectionReasonStats {
-            int totalPatterns = 0;
-            int survivingPatterns = 0;
-            int rejectedPatterns = 0;
-            double rejectionRate = 0.0;
-        };
-        
-        RejectionReasonStats basicStats = {};
-        basicStats.totalPatterns = static_cast<int>(allStrategies.size());
-        basicStats.survivingPatterns = validation->getNumSurvivingStrategies();
-        basicStats.rejectedPatterns = basicStats.totalPatterns - basicStats.survivingPatterns;
-        basicStats.rejectionRate = basicStats.totalPatterns > 0 ?
-            (double)basicStats.rejectedPatterns / basicStats.totalPatterns * 100.0 : 0.0;
-        
-        rejectedPatternsFile << std::endl;
-        rejectedPatternsFile << "=== Summary Statistics ===" << std::endl;
-        rejectedPatternsFile << "Total Patterns Tested: " << basicStats.totalPatterns << std::endl;
-        rejectedPatternsFile << "Surviving Patterns: " << basicStats.survivingPatterns << std::endl;
-        rejectedPatternsFile << "Rejected Patterns: " << basicStats.rejectedPatterns << std::endl;
-        rejectedPatternsFile << "Rejection Rate: " << std::fixed << std::setprecision(2)
-                            << basicStats.rejectionRate << "%" << std::endl;
-        
-        return;
-    }
-    
-    // Sort rejected strategies by p-value (ascending)
-    std::sort(rejectedStrategiesWithPValues.begin(), rejectedStrategiesWithPValues.end(),
-              [](const auto& a, const auto& b) { return a.second < b.second; });
-    
-    // Write detailed information for each rejected strategy
-    for (const auto& [strategy, pValue] : rejectedStrategiesWithPValues)
-    {
-        // Write rejected pattern details inline since function is not defined
-        rejectedPatternsFile << "Rejected Pattern (p-value: " << pValue << "):" << std::endl;
-        LogPalPattern::LogPattern(strategy->getPalPattern(), rejectedPatternsFile);
-        rejectedPatternsFile << "P-Value: " << pValue << std::endl;
-        rejectedPatternsFile << "Threshold: " << pValueThreshold << std::endl;
-        rejectedPatternsFile << "Reason: P-value exceeds threshold" << std::endl;
-        rejectedPatternsFile << std::endl << "---" << std::endl << std::endl;
-    }
-    
-    // Calculate and write summary statistics
-    // Write summary statistics inline since functions are not defined
-    rejectedPatternsFile << std::endl << "=== Summary Statistics ===" << std::endl;
-    rejectedPatternsFile << "Total Rejected Patterns: " << rejectedStrategiesWithPValues.size() << std::endl;
-    rejectedPatternsFile << "Validation Method: " << getValidationMethodString(method) << std::endl;
-    rejectedPatternsFile << "P-Value Threshold: " << pValueThreshold << std::endl;
-    
-    if (!rejectedStrategiesWithPValues.empty()) {
-        auto minPValue = std::min_element(rejectedStrategiesWithPValues.begin(), rejectedStrategiesWithPValues.end(),
-                                         [](const auto& a, const auto& b) { return a.second < b.second; })->second;
-        auto maxPValue = std::max_element(rejectedStrategiesWithPValues.begin(), rejectedStrategiesWithPValues.end(),
-                                         [](const auto& a, const auto& b) { return a.second < b.second; })->second;
-        rejectedPatternsFile << "Min P-Value: " << minPValue << std::endl;
-        rejectedPatternsFile << "Max P-Value: " << maxPValue << std::endl;
-    }
-    
-    // Add performance-filtered strategies section
-    if (!performanceFilteredStrategies.empty()) {
-        rejectedPatternsFile << std::endl << std::endl;
-        rejectedPatternsFile << "=== PERFORMANCE-FILTERED PATTERNS ===" << std::endl;
-        rejectedPatternsFile << "These patterns survived Monte Carlo validation but were filtered out due to insufficient backtesting performance." << std::endl;
-        rejectedPatternsFile << "Total Performance-Filtered Patterns: " << performanceFilteredStrategies.size() << std::endl;
-        rejectedPatternsFile << "Filtering Criteria: Profit Factor >= 1.75 AND PAL Profitability >= 85% of theoretical" << std::endl;
-        rejectedPatternsFile << "=======================================" << std::endl << std::endl;
-        
-        for (const auto& strategy : performanceFilteredStrategies) {
-            try {
-                // Create fresh portfolio and clone strategy for backtesting
-                auto freshPortfolio = std::make_shared<Portfolio<Num>>(strategy->getStrategyName() + " Portfolio");
-                freshPortfolio->addSecurity(baseSecurity);
-                auto clonedStrat = strategy->clone2(freshPortfolio);
-                
-                // Run backtest to get performance metrics for reporting
-                auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat,
-                                                                           theTimeFrame,
-                                                                           backtestingDates);
-                
-                // Extract performance metrics
-                auto positionHistory = backtester->getClosedPositionHistory();
-                Num profitFactor = positionHistory.getProfitFactor();
-                Num actualPALProfitability = positionHistory.getPALProfitability();
-                
-                // Calculate theoretical PAL profitability
-                Num theoreticalPALProfitability = calculateTheoreticalPALProfitability(strategy);
-                
-                // Write pattern details
-                rejectedPatternsFile << "Performance-Filtered Pattern:" << std::endl;
-                LogPalPattern::LogPattern(strategy->getPalPattern(), rejectedPatternsFile);
-                rejectedPatternsFile << std::endl;
-                
-                // Write performance metrics that caused rejection
-                rejectedPatternsFile << "=== Performance Metrics ===" << std::endl;
-                rejectedPatternsFile << "Profit Factor: " << profitFactor << " (Required: >= 1.75)" << std::endl;
-                rejectedPatternsFile << "PAL Profitability: " << actualPALProfitability << "%" << std::endl;
-                rejectedPatternsFile << "Theoretical PAL Profitability: " << theoreticalPALProfitability << "%" << std::endl;
-                
-                if (theoreticalPALProfitability > DecimalConstants<Num>::DecimalZero) {
-                    Num palRatio = actualPALProfitability / theoreticalPALProfitability;
-                    rejectedPatternsFile << "PAL Ratio: " << (palRatio * DecimalConstants<Num>::DecimalOneHundred) << "% (Required: >= 85%)" << std::endl;
-                }
-                
-                rejectedPatternsFile << "Reason: ";
-                bool profitFactorFailed = profitFactor < DecimalConstants<Num>::DecimalOnePointSevenFive;
-                bool palProfitabilityFailed = false;
-                
-                if (theoreticalPALProfitability > DecimalConstants<Num>::DecimalZero) {
-                    Num palRatio = actualPALProfitability / theoreticalPALProfitability;
-                    Num eightyFivePercent = DecimalConstants<Num>::createDecimal("0.85");
-                    palProfitabilityFailed = palRatio < eightyFivePercent;
-                }
-                
-                if (profitFactorFailed && palProfitabilityFailed) {
-                    rejectedPatternsFile << "Both Profit Factor and PAL Profitability criteria failed";
-                } else if (profitFactorFailed) {
-                    rejectedPatternsFile << "Profit Factor below threshold";
-                } else if (palProfitabilityFailed) {
-                    rejectedPatternsFile << "PAL Profitability below 85% of theoretical";
-                }
-                
-                rejectedPatternsFile << std::endl << std::endl << "---" << std::endl << std::endl;
-                
-            } catch (const std::exception& e) {
-                rejectedPatternsFile << "Performance-Filtered Pattern (Error in analysis):" << std::endl;
-                LogPalPattern::LogPattern(strategy->getPalPattern(), rejectedPatternsFile);
-                rejectedPatternsFile << "Error: " << e.what() << std::endl;
-                rejectedPatternsFile << std::endl << "---" << std::endl << std::endl;
-            }
-        }
-    }
+    PatternReporter::writeRejectedPatterns(securitySymbol, method, validation, backtestingDates,
+                                         theTimeFrame, pValueThreshold, baseSecurity, performanceFilteredStrategies);
 }
 
 
 
 // ---- Core Logic ----
+
+// Helper function for bootstrap analysis
+template<typename Num>
+void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+                         std::shared_ptr<ValidatorConfiguration<Num>> config,
+                         ValidationMethod validationMethod,
+                         const std::string& policyName,
+                         const ValidationParameters& params,
+                         unsigned int numBootstrapSamples,
+                         ValidationInterface* validation)
+{
+    // Create bootstrap log file and tee to both cout and file
+    const std::string bootstrapPath = createBootstrapFileName(
+        config->getSecurity()->getSymbol(), validationMethod);
+    std::ofstream bootstrapFile(bootstrapPath);
+    TeeStream bootlog(std::cout, bootstrapFile);
+
+    bootlog << "\nApplying performance-based filtering to Monte Carlo surviving strategies..." << std::endl;
+
+    // Apply performance-based filtering to Monte Carlo surviving strategies
+    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
+    auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
+        survivingStrategies,
+        config->getSecurity(),
+        config->getOosDateRange(),
+        timeFrame,
+        bootlog,
+        numBootstrapSamples
+    );
+    
+    // Identify strategies that were filtered out due to performance criteria
+    std::vector<std::shared_ptr<PalStrategy<Num>>> performanceFilteredStrategies;
+    std::set<std::shared_ptr<PalStrategy<Num>>> filteredSet(filteredStrategies.begin(), filteredStrategies.end());
+    for (const auto& strategy : survivingStrategies) {
+        if (filteredSet.find(strategy) == filteredSet.end()) {
+            performanceFilteredStrategies.push_back(strategy);
+        }
+    }
+
+    if (!filteredStrategies.empty())
+    {
+        filterMetaStrategy<Num>(filteredStrategies,
+            config->getSecurity(),
+            config->getOosDateRange(),
+            timeFrame,
+            bootlog,
+            numBootstrapSamples);
+    }
+    
+    bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
+              << performanceFilteredStrategies.size() << " filtered out" << std::endl;
+    bootlog << "Bootstrap details written to: " << bootstrapPath << std::endl;
+    
+    // Write the performance-filtered surviving patterns to the basic file
+    if (!filteredStrategies.empty()) {
+        std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
+        std::ofstream survivingPatternsFile(fn);
+        std::cout << "Writing surviving patterns to file: " << fn << std::endl;
+        
+        for (const auto& strategy : filteredStrategies)
+        {
+            LogPalPattern::LogPattern(strategy->getPalPattern(), survivingPatternsFile);
+        }
+    }
+
+    // Write detailed report using filtered strategies
+    if (!filteredStrategies.empty()) {
+        std::cout << "Writing detailed surviving patterns report for " << filteredStrategies.size()
+                  << " performance-filtered strategies..." << std::endl;
+        writeDetailedSurvivingPatternsFile(config->getSecurity(), validationMethod, filteredStrategies,
+                                           config->getOosDateRange(), timeFrame, policyName, params);
+    } else {
+        std::cout << "No strategies passed performance filtering criteria. Skipping detailed report." << std::endl;
+    }
+}
+
+// Helper function for generating reports
+void generateReports(const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
+                    ValidationInterface* validation,
+                    std::shared_ptr<ValidatorConfiguration<Num>> config,
+                    ValidationMethod validationMethod,
+                    const ValidationParameters& params)
+{
+    std::cout << "Writing detailed rejected patterns report..." << std::endl;
+    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
+    
+    // For bootstrap-only mode, we don't have validation object with rejected patterns
+    if (params.pipelineMode != PipelineMode::BootstrapOnly && validation != nullptr) {
+        writeDetailedRejectedPatternsFile(config->getSecurity()->getSymbol(), validationMethod, validation,
+                                          config->getOosDateRange(), timeFrame, params.pValueThreshold,
+                                          config->getSecurity());
+    } else {
+        std::cout << "Skipping rejected patterns report (not available in bootstrap-only mode)." << std::endl;
+    }
+}
 
 // This is the common worker function that runs the validation and prints results.
 // It is called by the higher-level functions AFTER the validation object has been created.
@@ -1635,95 +325,80 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
                          const ValidationParameters& params,
                          ValidationMethod validationMethod,
                          const std::string& policyName,
+                         unsigned int numBootstrapSamples,
                          bool partitionByFamily = false)
 {
-    std::cout << "Starting Monte Carlo validation...\n" << std::endl;
-
-    validation->runPermutationTests(config->getSecurity(),
-        config->getPricePatterns(),
-        config->getOosDateRange(),
-        params.pValueThreshold,
-        true, // Enable verbose logging by default
-        partitionByFamily); // Pass the partitioning preference
-
-    std::cout << "\nMonte Carlo validation completed." << std::endl;
-    std::cout << "Number of surviving strategies = " << validation->getNumSurvivingStrategies() << std::endl;
-
-    // -- Output --
-    std::vector<std::shared_ptr<PalStrategy<Num>>> performanceFilteredStrategies;
+    std::vector<std::shared_ptr<PalStrategy<Num>>> survivingStrategies;
+    std::string survivorFileName;
     
-    if (validation->getNumSurvivingStrategies() > 0)
+    // Phase 1: Permutation Testing (if required)
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::PermutationOnly)
     {
-        auto survivingStrategies = validation->getSurvivingStrategies();
-
-	// Create bootstrap log file and tee to both cout and file
-	const std::string bootstrapPath =
-	  createBootstrapFileName(config->getSecurity()->getSymbol(), validationMethod);
-	std::ofstream bootstrapFile(bootstrapPath);
-	TeeStream bootlog(std::cout, bootstrapFile);
-
-	bootlog << "\nApplying performance-based filtering to surviving strategies..." << std::endl;
-
-        // Apply performance-based filtering to surviving strategies
-
-        auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
-        auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
-            survivingStrategies,
-            config->getSecurity(),
+        std::cout << "Starting Monte Carlo validation...\n" << std::endl;
+        
+        validation->runPermutationTests(config->getSecurity(),
+            config->getPricePatterns(),
             config->getOosDateRange(),
-            timeFrame,
-	    bootlog
-        );
-        
-        // Identify strategies that were filtered out due to performance criteria
-        std::set<std::shared_ptr<PalStrategy<Num>>> filteredSet(filteredStrategies.begin(), filteredStrategies.end());
-        for (const auto& strategy : survivingStrategies) {
-            if (filteredSet.find(strategy) == filteredSet.end()) {
-                performanceFilteredStrategies.push_back(strategy);
-            }
-        }
-
-	if (!filteredStrategies.empty())
-	  {
-	    filterMetaStrategy<Num>(filteredStrategies,
-				    config->getSecurity(),
-				    config->getOosDateRange(),
-				    timeFrame,
-				    bootlog);
-	  }
-	
-        bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
-                  << performanceFilteredStrategies.size() << " filtered out" << std::endl;
-	bootlog << "Bootstrap details written to: " << bootstrapPath << std::endl;
-        
-        // Write the performance-filtered surviving patterns to the basic file
-        if (!filteredStrategies.empty()) {
-            std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
-            std::ofstream survivingPatternsFile(fn);
-            std::cout << "Writing surviving patterns to file: " << fn << std::endl;
+            params.pValueThreshold,
+            true, // Enable verbose logging by default
+            partitionByFamily);
             
-            for (const auto& strategy : filteredStrategies)
-            {
-                LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
-            }
+        std::cout << "\nMonte Carlo validation completed." << std::endl;
+        std::cout << "Number of surviving strategies = " << validation->getNumSurvivingStrategies() << std::endl;
+        
+        if (validation->getNumSurvivingStrategies() > 0)
+        {
+            survivingStrategies = validation->getSurvivingStrategies();
+            
+            // Write Monte Carlo permutation survivors to file for potential future use
+            survivorFileName = createPermutationTestSurvivorsFileName(
+                config->getSecurity()->getSymbol(), validationMethod);
+            writePermutationTestSurvivors(survivingStrategies, survivorFileName);
+            std::cout << "Monte Carlo permutation survivors written to: " << survivorFileName << std::endl;
+            std::cout << "These can be used later for bootstrap-only analysis." << std::endl;
         }
-
-        // Write detailed report using filtered strategies
-        if (!filteredStrategies.empty()) {
-            std::cout << "Writing detailed surviving patterns report for " << filteredStrategies.size()
-                      << " performance-filtered strategies..." << std::endl;
-            writeDetailedSurvivingPatternsFile(config->getSecurity(), validationMethod, filteredStrategies,
-                                               config->getOosDateRange(), timeFrame, policyName, params);
-        } else {
-            std::cout << "No strategies passed performance filtering criteria. Skipping detailed report." << std::endl;
+        else
+        {
+            std::cout << "No strategies survived Monte Carlo permutation testing." << std::endl;
         }
     }
-
-    std::cout << "Writing detailed rejected patterns report..." << std::endl;
-    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
-    writeDetailedRejectedPatternsFile(config->getSecurity()->getSymbol(), validationMethod, validation.get(),
-                                      config->getOosDateRange(), timeFrame, params.pValueThreshold,
-                                      config->getSecurity(), performanceFilteredStrategies);
+    
+    // Phase 2: Load survivors (if bootstrap-only mode)
+    else if (params.pipelineMode == PipelineMode::BootstrapOnly)
+    {
+        if (params.survivorInputFile.empty())
+        {
+            throw std::invalid_argument("Bootstrap-only mode requires survivor input file");
+        }
+        
+        if (!validateSurvivorFile(params.survivorInputFile))
+        {
+            throw std::invalid_argument("Invalid or missing survivor file: " + params.survivorInputFile);
+        }
+        
+        std::cout << "Loading Monte Carlo permutation survivors from: " << params.survivorInputFile << std::endl;
+        survivingStrategies = loadPermutationTestSurvivors<Num>(params.survivorInputFile, config->getSecurity());
+        std::cout << "Loaded " << survivingStrategies.size() << " Monte Carlo surviving strategies" << std::endl;
+    }
+    
+    // Phase 3: Bootstrap Analysis (if required)
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::BootstrapOnly)
+    {
+        if (!survivingStrategies.empty())
+        {
+            runBootstrapAnalysis(survivingStrategies, config, validationMethod,
+                               policyName, params, numBootstrapSamples, validation.get());
+        }
+        else
+        {
+            std::cout << "No Monte Carlo surviving strategies available for bootstrap analysis." << std::endl;
+        }
+    }
+    
+    // Generate reports based on available data
+    generateReports(survivingStrategies, validation.get(), config, validationMethod, params);
     
     std::cout << "Validation run finished." << std::endl;
 }
@@ -1734,6 +409,7 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
 void runValidationForMasters(std::shared_ptr<ValidatorConfiguration<Num>> config,
                              const ValidationParameters& params,
                              const std::string& policyName,
+                             unsigned int numBootstrapSamples,
                              bool partitionByFamily = false)
 {
     std::cout << "\nUsing Masters validation with " << policyName
@@ -1747,7 +423,7 @@ void runValidationForMasters(std::shared_ptr<ValidatorConfiguration<Num>> config
     
     try {
         auto validation = statistics::PolicyFactory::createMastersValidation(policyName, params.permutations);
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::Masters, policyName, partitionByFamily);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::Masters, policyName, numBootstrapSamples, partitionByFamily);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Masters validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -1758,6 +434,7 @@ void runValidationForMasters(std::shared_ptr<ValidatorConfiguration<Num>> config
 void runValidationForRomanoWolf(std::shared_ptr<ValidatorConfiguration<Num>> config,
                                 const ValidationParameters& params,
                                 const std::string& policyName,
+                                unsigned int numBootstrapSamples,
                                 bool partitionByFamily = false)
 {
     std::cout << "\nUsing Romano-Wolf validation with " << policyName
@@ -1771,7 +448,7 @@ void runValidationForRomanoWolf(std::shared_ptr<ValidatorConfiguration<Num>> con
 
     try {
         auto validation = statistics::PolicyFactory::createRomanoWolfValidation(policyName, params.permutations);
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::RomanoWolf, policyName, partitionByFamily);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::RomanoWolf, policyName, numBootstrapSamples, partitionByFamily);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Romano-Wolf validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -1782,6 +459,7 @@ void runValidationForRomanoWolf(std::shared_ptr<ValidatorConfiguration<Num>> con
 void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Num>> config,
                                        const ValidationParameters& params,
                                        const std::string& policyName,
+                                       unsigned int numBootstrapSamples,
                                        bool partitionByFamily = false)
 {
     std::cout << "\nUsing Benjamini-Hochberg validation with " << policyName
@@ -1798,7 +476,7 @@ void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Nu
     try {
         auto validation = statistics::PolicyFactory::createBenjaminiHochbergValidation(
             policyName, params.permutations, params.falseDiscoveryRate.getAsDouble());
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::BenjaminiHochberg, policyName, partitionByFamily);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::BenjaminiHochberg, policyName, numBootstrapSamples, partitionByFamily);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Benjamini-Hochberg validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -1809,6 +487,7 @@ void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Nu
 void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> config,
                                 const ValidationParameters& params,
                                 const std::string& policyName,
+                                unsigned int numBootstrapSamples,
                                 bool partitionByFamily = false)
 {
     std::cout << "\nUsing Unadjusted validation with " << policyName
@@ -1822,7 +501,7 @@ void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> con
     
     try {
         auto validation = statistics::PolicyFactory::createUnadjustedValidation(policyName, params.permutations);
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::Unadjusted, policyName, partitionByFamily);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::Unadjusted, policyName, numBootstrapSamples, partitionByFamily);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Unadjusted validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -1885,112 +564,179 @@ int main(int argc, char **argv)
     
     // -- Get parameters interactively --
     ValidationParameters params;
+    // Initialize new fields with defaults
+    params.pipelineMode = PipelineMode::PermutationAndBootstrap;
+    params.survivorInputFile = "";
     std::string input;
 
-    std::cout << "\nEnter number of permutations (default: 5000): ";
+    // Pipeline mode selection - ASK THIS FIRST
+    std::cout << "\nChoose pipeline execution mode:" << std::endl;
+    std::cout << "  1. Full Pipeline (Permutation + Bootstrap) - Default" << std::endl;
+    std::cout << "  2. Permutation Testing Only" << std::endl;
+    std::cout << "  3. Bootstrap Analysis Only" << std::endl;
+    std::cout << "Enter choice (1, 2, or 3): ";
     std::getline(std::cin, input);
-    params.permutations = input.empty() ? 5000 : std::stoul(input);
 
-    std::cout << "Enter p-value threshold (default: 0.05): ";
-    std::getline(std::cin, input);
-    params.pValueThreshold = input.empty() ? Num(0.05) : Num(std::stod(input));
-    
-    // Ask for Validation Method
-    std::cout << "\nChoose validation method:" << std::endl;
-    std::cout << "  1. Masters (default)" << std::endl;
-    std::cout << "  2. Romano-Wolf" << std::endl;
-    std::cout << "  3. Benjamini-Hochberg" << std::endl;
-    std::cout << "  4. Unadjusted" << std::endl;
-    std::cout << "Enter choice (1, 2, 3, or 4): ";
-    std::getline(std::cin, input);
-    
-    ValidationMethod validationMethod = ValidationMethod::Masters;
+    PipelineMode pipelineMode = PipelineMode::PermutationAndBootstrap;
     if (input == "2") {
-        validationMethod = ValidationMethod::RomanoWolf;
+        pipelineMode = PipelineMode::PermutationOnly;
     } else if (input == "3") {
-        validationMethod = ValidationMethod::BenjaminiHochberg;
-    } else if (input == "4") {
-        validationMethod = ValidationMethod::Unadjusted;
+        pipelineMode = PipelineMode::BootstrapOnly;
     }
-    
-    // Conditionally ask for FDR
-    params.falseDiscoveryRate = Num(0.10); // Set default
-    if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-        std::cout << "Enter False Discovery Rate (FDR) for Benjamini-Hochberg (default: 0.10): ";
+
+    params.pipelineMode = pipelineMode;
+
+    // If bootstrap-only mode, ask for Monte Carlo survivor file
+    if (pipelineMode == PipelineMode::BootstrapOnly) {
+        std::cout << "Enter path to Monte Carlo survivor strategies file: ";
+        std::getline(std::cin, params.survivorInputFile);
+        
+        if (!validateSurvivorFile(params.survivorInputFile)) {
+            std::cout << "Error: Invalid or missing Monte Carlo survivor file: " << params.survivorInputFile << std::endl;
+            return 1;
+        }
+    }
+
+    // Only ask for permutation parameters if permutation testing will be performed
+    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        pipelineMode == PipelineMode::PermutationOnly) {
+        
+        std::cout << "\nEnter number of permutations (default: 5000): ";
         std::getline(std::cin, input);
-        if (!input.empty()) {
-            params.falseDiscoveryRate = Num(std::stod(input));
-        }
+        params.permutations = input.empty() ? 5000 : std::stoul(input);
+
+        std::cout << "Enter p-value threshold (default: 0.05): ";
+        std::getline(std::cin, input);
+        params.pValueThreshold = input.empty() ? Num(0.05) : Num(std::stod(input));
+    } else {
+        // Set default values for bootstrap-only mode (won't be used)
+        params.permutations = 5000;
+        params.pValueThreshold = Num(0.05);
     }
     
-    // Ask about pattern partitioning for Masters, Romano-Wolf, and Benjamini-Hochberg methods
+    // Only ask for bootstrap samples if bootstrap analysis will be performed
+    unsigned int numBootstrapSamples;
+    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        pipelineMode == PipelineMode::BootstrapOnly) {
+        
+        std::cout << "\nEnter number of bootstrap samples (default: 10000): ";
+        std::getline(std::cin, input);
+        numBootstrapSamples = input.empty() ? 10000 : std::stoul(input);
+    } else {
+        // Set default value for permutation-only mode (won't be used)
+        numBootstrapSamples = 10000;
+    }
+    
+    // Only ask for validation method and policy if permutation testing will be performed
+    ValidationMethod validationMethod = ValidationMethod::Masters;
     bool partitionByFamily = false;
-    if (validationMethod == ValidationMethod::Masters ||
-        validationMethod == ValidationMethod::RomanoWolf ||
-        validationMethod == ValidationMethod::BenjaminiHochberg) {
-        std::cout << "\nPattern Partitioning Options:" << std::endl;
+    std::string selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Default for bootstrap-only
+    
+    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        pipelineMode == PipelineMode::PermutationOnly) {
         
-        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-            std::cout << "  1. No Partitioning (all patterns tested together) - Default" << std::endl;
-            std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
-        } else {
-            std::cout << "  1. By Direction Only (Long vs Short) - Default" << std::endl;
-            std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
-        }
-        
-        std::cout << "Choose partitioning method (1 or 2): ";
+        // Ask for Validation Method
+        std::cout << "\nChoose validation method:" << std::endl;
+        std::cout << "  1. Masters (default)" << std::endl;
+        std::cout << "  2. Romano-Wolf" << std::endl;
+        std::cout << "  3. Benjamini-Hochberg" << std::endl;
+        std::cout << "  4. Unadjusted" << std::endl;
+        std::cout << "Enter choice (1, 2, 3, or 4): ";
         std::getline(std::cin, input);
         
         if (input == "2") {
-            partitionByFamily = true;
-            std::cout << "Selected: Detailed family partitioning" << std::endl;
-        } else {
-            if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-                std::cout << "Selected: No partitioning (default)" << std::endl;
-            } else {
-                std::cout << "Selected: Direction-only partitioning (default)" << std::endl;
+            validationMethod = ValidationMethod::RomanoWolf;
+        } else if (input == "3") {
+            validationMethod = ValidationMethod::BenjaminiHochberg;
+        } else if (input == "4") {
+            validationMethod = ValidationMethod::Unadjusted;
+        }
+        
+        // Conditionally ask for FDR
+        params.falseDiscoveryRate = Num(0.10); // Set default
+        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "Enter False Discovery Rate (FDR) for Benjamini-Hochberg (default: 0.10): ";
+            std::getline(std::cin, input);
+            if (!input.empty()) {
+                params.falseDiscoveryRate = Num(std::stod(input));
             }
         }
+        
+        // Ask about pattern partitioning for Masters, Romano-Wolf, and Benjamini-Hochberg methods
+        if (validationMethod == ValidationMethod::Masters ||
+            validationMethod == ValidationMethod::RomanoWolf ||
+            validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "\nPattern Partitioning Options:" << std::endl;
+            
+            if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+                std::cout << "  1. No Partitioning (all patterns tested together) - Default" << std::endl;
+                std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+            } else {
+                std::cout << "  1. By Direction Only (Long vs Short) - Default" << std::endl;
+                std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+            }
+            
+            std::cout << "Choose partitioning method (1 or 2): ";
+            std::getline(std::cin, input);
+            
+            if (input == "2") {
+                partitionByFamily = true;
+                std::cout << "Selected: Detailed family partitioning" << std::endl;
+            } else {
+                if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+                    std::cout << "Selected: No partitioning (default)" << std::endl;
+                } else {
+                    std::cout << "Selected: Direction-only partitioning (default)" << std::endl;
+                }
+            }
+        }
+
+        // Interactive policy selection using the new system
+        std::cout << "\n=== Policy Selection ===" << std::endl;
+        auto availablePolicies = palvalidator::PolicyRegistry::getAvailablePolicies();
+        std::cout << "Available policies: " << availablePolicies.size() << std::endl;
+        
+        if (policyConfig.getPolicySettings().interactiveMode) {
+            selectedPolicy = statistics::PolicySelector::selectPolicy(availablePolicies, &policyConfig);
+        } else {
+            // Use default policy from configuration
+            selectedPolicy = policyConfig.getDefaultPolicy();
+            if (selectedPolicy.empty() || !palvalidator::PolicyRegistry::isPolicyAvailable(selectedPolicy)) {
+                selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Fallback default
+            }
+            std::cout << "Using configured default policy: " << selectedPolicy << std::endl;
+        }
+
+        // Display selected policy information
+        try {
+            auto metadata = palvalidator::PolicyRegistry::getPolicyMetadata(selectedPolicy);
+            std::cout << "\nSelected Policy: " << metadata.displayName << std::endl;
+            std::cout << "Description: " << metadata.description << std::endl;
+            std::cout << "Category: " << metadata.category << std::endl;
+            if (metadata.isExperimental) {
+                std::cout << "⚠️  WARNING: This is an experimental policy!" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cout << "Warning: Could not retrieve policy metadata: " << e.what() << std::endl;
+        }
+    } else {
+        // Bootstrap-only mode: set defaults for unused parameters
+        params.falseDiscoveryRate = Num(0.10);
+        std::cout << "\nBootstrap-only mode: Using default validation method (Masters) and policy (GatedPerformanceScaledPalPolicy)" << std::endl;
     }
     
     // Get risk parameters from user and store globally
     g_riskParameters = getRiskParametersFromUser();
-
-    // Interactive policy selection using the new system
-    std::cout << "\n=== Policy Selection ===" << std::endl;
-    auto availablePolicies = palvalidator::PolicyRegistry::getAvailablePolicies();
-    std::cout << "Available policies: " << availablePolicies.size() << std::endl;
-    
-    std::string selectedPolicy;
-    if (policyConfig.getPolicySettings().interactiveMode) {
-        selectedPolicy = statistics::PolicySelector::selectPolicy(availablePolicies, &policyConfig);
-    } else {
-        // Use default policy from configuration
-        selectedPolicy = policyConfig.getDefaultPolicy();
-        if (selectedPolicy.empty() || !palvalidator::PolicyRegistry::isPolicyAvailable(selectedPolicy)) {
-            selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Fallback default
-        }
-        std::cout << "Using configured default policy: " << selectedPolicy << std::endl;
-    }
-
-    // Display selected policy information
-    try {
-        auto metadata = palvalidator::PolicyRegistry::getPolicyMetadata(selectedPolicy);
-        std::cout << "\nSelected Policy: " << metadata.displayName << std::endl;
-        std::cout << "Description: " << metadata.description << std::endl;
-        std::cout << "Category: " << metadata.category << std::endl;
-        if (metadata.isExperimental) {
-            std::cout << "⚠️  WARNING: This is an experimental policy!" << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cout << "Warning: Could not retrieve policy metadata: " << e.what() << std::endl;
-    }
     
     // -- Summary --
     std::cout << "\n=== Configuration Summary ===" << std::endl;
     std::cout << "Security Ticker: " << config->getSecurity()->getSymbol() << std::endl;
     std::cout << "In-Sample Range: " << config->getInsampleDateRange().getFirstDateTime()
               << " to " << config->getInsampleDateRange().getLastDateTime() << std::endl;
+    std::cout << "Pipeline Mode: " << getPipelineModeString(params.pipelineMode) << std::endl;
+    if (params.pipelineMode == PipelineMode::BootstrapOnly) {
+        std::cout << "Monte Carlo Survivor Input File: " << params.survivorInputFile << std::endl;
+    }
     std::cout << "Validation Method: " << getValidationMethodString(validationMethod) << std::endl;
     std::cout << "Computation Policy: " << selectedPolicy << std::endl;
     if (validationMethod == ValidationMethod::Masters ||
@@ -2004,11 +750,23 @@ int main(int argc, char **argv)
     } else if (validationMethod == ValidationMethod::Unadjusted) {
         std::cout << "Pattern Partitioning: None (not applicable for Unadjusted)" << std::endl;
     }
-    std::cout << "Permutations: " << params.permutations << std::endl;
-    std::cout << "P-Value Threshold: " << params.pValueThreshold << std::endl;
-    if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-        std::cout << "False Discovery Rate: " << params.falseDiscoveryRate << std::endl;
+    
+    // Only show permutation parameters if permutation testing will be performed
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::PermutationOnly) {
+        std::cout << "Permutations: " << params.permutations << std::endl;
+        std::cout << "P-Value Threshold: " << params.pValueThreshold << std::endl;
+        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "False Discovery Rate: " << params.falseDiscoveryRate << std::endl;
+        }
     }
+    
+    // Only show bootstrap samples if bootstrap analysis will be performed
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::BootstrapOnly) {
+        std::cout << "Bootstrap Samples: " << numBootstrapSamples << std::endl;
+    }
+    
     std::cout << "Risk-Free Rate: " << (g_riskParameters.riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "Risk Premium: " << (g_riskParameters.riskPremium * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "=============================" << std::endl;
@@ -2018,16 +776,16 @@ int main(int argc, char **argv)
         switch (validationMethod)
         {
             case ValidationMethod::Masters:
-                runValidationForMasters(config, params, selectedPolicy, partitionByFamily);
+                runValidationForMasters(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily);
                 break;
             case ValidationMethod::RomanoWolf:
-                runValidationForRomanoWolf(config, params, selectedPolicy, partitionByFamily);
+                runValidationForRomanoWolf(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily);
                 break;
             case ValidationMethod::BenjaminiHochberg:
-                runValidationForBenjaminiHochberg(config, params, selectedPolicy, partitionByFamily);
+                runValidationForBenjaminiHochberg(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily);
                 break;
             case ValidationMethod::Unadjusted:
-                runValidationForUnadjusted(config, params, selectedPolicy, partitionByFamily);
+                runValidationForUnadjusted(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily);
                 break;
         }
     } catch (const std::exception& e) {
