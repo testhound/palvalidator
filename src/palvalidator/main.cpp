@@ -27,6 +27,8 @@
 #include "MonteCarloTestPolicy.h"
 #include "PermutationStatisticsCollector.h"
 #include "LogPalPattern.h"
+#include "PalParseDriver.h"
+#include "PalAst.h"
 #include "number.h"
 #include <cstdlib>
 
@@ -221,6 +223,101 @@ void writeDetailedRejectedPatternsFile(const std::string& securitySymbol,
 
 // ---- Core Logic ----
 
+// Helper function for bootstrap analysis
+template<typename Num>
+void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+                         std::shared_ptr<ValidatorConfiguration<Num>> config,
+                         ValidationMethod validationMethod,
+                         const std::string& policyName,
+                         const ValidationParameters& params,
+                         unsigned int numBootstrapSamples,
+                         ValidationInterface* validation)
+{
+    // Create bootstrap log file and tee to both cout and file
+    const std::string bootstrapPath = createBootstrapFileName(
+        config->getSecurity()->getSymbol(), validationMethod);
+    std::ofstream bootstrapFile(bootstrapPath);
+    TeeStream bootlog(std::cout, bootstrapFile);
+
+    bootlog << "\nApplying performance-based filtering to Monte Carlo surviving strategies..." << std::endl;
+
+    // Apply performance-based filtering to Monte Carlo surviving strategies
+    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
+    auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
+        survivingStrategies,
+        config->getSecurity(),
+        config->getOosDateRange(),
+        timeFrame,
+        bootlog,
+        numBootstrapSamples
+    );
+    
+    // Identify strategies that were filtered out due to performance criteria
+    std::vector<std::shared_ptr<PalStrategy<Num>>> performanceFilteredStrategies;
+    std::set<std::shared_ptr<PalStrategy<Num>>> filteredSet(filteredStrategies.begin(), filteredStrategies.end());
+    for (const auto& strategy : survivingStrategies) {
+        if (filteredSet.find(strategy) == filteredSet.end()) {
+            performanceFilteredStrategies.push_back(strategy);
+        }
+    }
+
+    if (!filteredStrategies.empty())
+    {
+        filterMetaStrategy<Num>(filteredStrategies,
+            config->getSecurity(),
+            config->getOosDateRange(),
+            timeFrame,
+            bootlog,
+            numBootstrapSamples);
+    }
+    
+    bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
+              << performanceFilteredStrategies.size() << " filtered out" << std::endl;
+    bootlog << "Bootstrap details written to: " << bootstrapPath << std::endl;
+    
+    // Write the performance-filtered surviving patterns to the basic file
+    if (!filteredStrategies.empty()) {
+        std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
+        std::ofstream survivingPatternsFile(fn);
+        std::cout << "Writing surviving patterns to file: " << fn << std::endl;
+        
+        for (const auto& strategy : filteredStrategies)
+        {
+            LogPalPattern::LogPattern(strategy->getPalPattern(), survivingPatternsFile);
+        }
+    }
+
+    // Write detailed report using filtered strategies
+    if (!filteredStrategies.empty()) {
+        std::cout << "Writing detailed surviving patterns report for " << filteredStrategies.size()
+                  << " performance-filtered strategies..." << std::endl;
+        writeDetailedSurvivingPatternsFile(config->getSecurity(), validationMethod, filteredStrategies,
+                                           config->getOosDateRange(), timeFrame, policyName, params);
+    } else {
+        std::cout << "No strategies passed performance filtering criteria. Skipping detailed report." << std::endl;
+    }
+}
+
+// Helper function for generating reports
+void generateReports(const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
+                    ValidationInterface* validation,
+                    std::shared_ptr<ValidatorConfiguration<Num>> config,
+                    ValidationMethod validationMethod,
+                    const ValidationParameters& params)
+{
+    std::cout << "Writing detailed rejected patterns report..." << std::endl;
+    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
+    
+    // For bootstrap-only mode, we don't have validation object with rejected patterns
+    if (params.pipelineMode != PipelineMode::BootstrapOnly && validation != nullptr) {
+        writeDetailedRejectedPatternsFile(config->getSecurity()->getSymbol(), validationMethod, validation,
+                                          config->getOosDateRange(), timeFrame, params.pValueThreshold,
+                                          config->getSecurity());
+    } else {
+        std::cout << "Skipping rejected patterns report (not available in bootstrap-only mode)." << std::endl;
+    }
+}
+
 // This is the common worker function that runs the validation and prints results.
 // It is called by the higher-level functions AFTER the validation object has been created.
 void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
@@ -231,95 +328,77 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
                          unsigned int numBootstrapSamples,
                          bool partitionByFamily = false)
 {
-    std::cout << "Starting Monte Carlo validation...\n" << std::endl;
-
-    validation->runPermutationTests(config->getSecurity(),
-        config->getPricePatterns(),
-        config->getOosDateRange(),
-        params.pValueThreshold,
-        true, // Enable verbose logging by default
-        partitionByFamily); // Pass the partitioning preference
-
-    std::cout << "\nMonte Carlo validation completed." << std::endl;
-    std::cout << "Number of surviving strategies = " << validation->getNumSurvivingStrategies() << std::endl;
-
-    // -- Output --
-    std::vector<std::shared_ptr<PalStrategy<Num>>> performanceFilteredStrategies;
+    std::vector<std::shared_ptr<PalStrategy<Num>>> survivingStrategies;
+    std::string survivorFileName;
     
-    if (validation->getNumSurvivingStrategies() > 0)
+    // Phase 1: Permutation Testing (if required)
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::PermutationOnly)
     {
-        auto survivingStrategies = validation->getSurvivingStrategies();
-
-	// Create bootstrap log file and tee to both cout and file
-	const std::string bootstrapPath =
-	  createBootstrapFileName(config->getSecurity()->getSymbol(), validationMethod);
-	std::ofstream bootstrapFile(bootstrapPath);
-	TeeStream bootlog(std::cout, bootstrapFile);
-
-	bootlog << "\nApplying performance-based filtering to surviving strategies..." << std::endl;
-
-        // Apply performance-based filtering to surviving strategies
-
-        auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
-        auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
-            survivingStrategies,
-            config->getSecurity(),
+        std::cout << "Starting Monte Carlo validation...\n" << std::endl;
+        
+        validation->runPermutationTests(config->getSecurity(),
+            config->getPricePatterns(),
             config->getOosDateRange(),
-            timeFrame,
-     bootlog,
-     numBootstrapSamples
-        );
-        
-        // Identify strategies that were filtered out due to performance criteria
-        std::set<std::shared_ptr<PalStrategy<Num>>> filteredSet(filteredStrategies.begin(), filteredStrategies.end());
-        for (const auto& strategy : survivingStrategies) {
-            if (filteredSet.find(strategy) == filteredSet.end()) {
-                performanceFilteredStrategies.push_back(strategy);
-            }
-        }
-
-	if (!filteredStrategies.empty())
-	  {
-	    filterMetaStrategy<Num>(filteredStrategies,
-	       config->getSecurity(),
-	       config->getOosDateRange(),
-	       timeFrame,
-	       bootlog,
-	       numBootstrapSamples);
-	  }
-	
-        bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
-                  << performanceFilteredStrategies.size() << " filtered out" << std::endl;
-	bootlog << "Bootstrap details written to: " << bootstrapPath << std::endl;
-        
-        // Write the performance-filtered surviving patterns to the basic file
-        if (!filteredStrategies.empty()) {
-            std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
-            std::ofstream survivingPatternsFile(fn);
-            std::cout << "Writing surviving patterns to file: " << fn << std::endl;
+            params.pValueThreshold,
+            true, // Enable verbose logging by default
+            partitionByFamily);
             
-            for (const auto& strategy : filteredStrategies)
-            {
-                LogPalPattern::LogPattern (strategy->getPalPattern(), survivingPatternsFile);
-            }
+        std::cout << "\nMonte Carlo validation completed." << std::endl;
+        std::cout << "Number of surviving strategies = " << validation->getNumSurvivingStrategies() << std::endl;
+        
+        if (validation->getNumSurvivingStrategies() > 0)
+        {
+            survivingStrategies = validation->getSurvivingStrategies();
+            
+            // Write Monte Carlo permutation survivors to file for potential future use
+            survivorFileName = createPermutationTestSurvivorsFileName(
+                config->getSecurity()->getSymbol(), validationMethod);
+            writePermutationTestSurvivors(survivingStrategies, survivorFileName);
+            std::cout << "Monte Carlo permutation survivors written to: " << survivorFileName << std::endl;
+            std::cout << "These can be used later for bootstrap-only analysis." << std::endl;
         }
-
-        // Write detailed report using filtered strategies
-        if (!filteredStrategies.empty()) {
-            std::cout << "Writing detailed surviving patterns report for " << filteredStrategies.size()
-                      << " performance-filtered strategies..." << std::endl;
-            writeDetailedSurvivingPatternsFile(config->getSecurity(), validationMethod, filteredStrategies,
-                                               config->getOosDateRange(), timeFrame, policyName, params);
-        } else {
-            std::cout << "No strategies passed performance filtering criteria. Skipping detailed report." << std::endl;
+        else
+        {
+            std::cout << "No strategies survived Monte Carlo permutation testing." << std::endl;
         }
     }
-
-    std::cout << "Writing detailed rejected patterns report..." << std::endl;
-    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
-    writeDetailedRejectedPatternsFile(config->getSecurity()->getSymbol(), validationMethod, validation.get(),
-                                      config->getOosDateRange(), timeFrame, params.pValueThreshold,
-                                      config->getSecurity(), performanceFilteredStrategies);
+    
+    // Phase 2: Load survivors (if bootstrap-only mode)
+    else if (params.pipelineMode == PipelineMode::BootstrapOnly)
+    {
+        if (params.survivorInputFile.empty())
+        {
+            throw std::invalid_argument("Bootstrap-only mode requires survivor input file");
+        }
+        
+        if (!validateSurvivorFile(params.survivorInputFile))
+        {
+            throw std::invalid_argument("Invalid or missing survivor file: " + params.survivorInputFile);
+        }
+        
+        std::cout << "Loading Monte Carlo permutation survivors from: " << params.survivorInputFile << std::endl;
+        survivingStrategies = loadPermutationTestSurvivors<Num>(params.survivorInputFile, config->getSecurity());
+        std::cout << "Loaded " << survivingStrategies.size() << " Monte Carlo surviving strategies" << std::endl;
+    }
+    
+    // Phase 3: Bootstrap Analysis (if required)
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::BootstrapOnly)
+    {
+        if (!survivingStrategies.empty())
+        {
+            runBootstrapAnalysis(survivingStrategies, config, validationMethod,
+                               policyName, params, numBootstrapSamples, validation.get());
+        }
+        else
+        {
+            std::cout << "No Monte Carlo surviving strategies available for bootstrap analysis." << std::endl;
+        }
+    }
+    
+    // Generate reports based on available data
+    generateReports(survivingStrategies, validation.get(), config, validationMethod, params);
     
     std::cout << "Validation run finished." << std::endl;
 }
@@ -485,116 +564,179 @@ int main(int argc, char **argv)
     
     // -- Get parameters interactively --
     ValidationParameters params;
+    // Initialize new fields with defaults
+    params.pipelineMode = PipelineMode::PermutationAndBootstrap;
+    params.survivorInputFile = "";
     std::string input;
 
-    std::cout << "\nEnter number of permutations (default: 5000): ";
+    // Pipeline mode selection - ASK THIS FIRST
+    std::cout << "\nChoose pipeline execution mode:" << std::endl;
+    std::cout << "  1. Full Pipeline (Permutation + Bootstrap) - Default" << std::endl;
+    std::cout << "  2. Permutation Testing Only" << std::endl;
+    std::cout << "  3. Bootstrap Analysis Only" << std::endl;
+    std::cout << "Enter choice (1, 2, or 3): ";
     std::getline(std::cin, input);
-    params.permutations = input.empty() ? 5000 : std::stoul(input);
 
-    std::cout << "Enter p-value threshold (default: 0.05): ";
-    std::getline(std::cin, input);
-    params.pValueThreshold = input.empty() ? Num(0.05) : Num(std::stod(input));
-    
-    std::cout << "Enter number of bootstrap samples (default: 10000): ";
-    std::getline(std::cin, input);
-    unsigned int numBootstrapSamples = input.empty() ? 10000 : std::stoul(input);
-    
-    // Ask for Validation Method
-    std::cout << "\nChoose validation method:" << std::endl;
-    std::cout << "  1. Masters (default)" << std::endl;
-    std::cout << "  2. Romano-Wolf" << std::endl;
-    std::cout << "  3. Benjamini-Hochberg" << std::endl;
-    std::cout << "  4. Unadjusted" << std::endl;
-    std::cout << "Enter choice (1, 2, 3, or 4): ";
-    std::getline(std::cin, input);
-    
-    ValidationMethod validationMethod = ValidationMethod::Masters;
+    PipelineMode pipelineMode = PipelineMode::PermutationAndBootstrap;
     if (input == "2") {
-        validationMethod = ValidationMethod::RomanoWolf;
+        pipelineMode = PipelineMode::PermutationOnly;
     } else if (input == "3") {
-        validationMethod = ValidationMethod::BenjaminiHochberg;
-    } else if (input == "4") {
-        validationMethod = ValidationMethod::Unadjusted;
+        pipelineMode = PipelineMode::BootstrapOnly;
     }
-    
-    // Conditionally ask for FDR
-    params.falseDiscoveryRate = Num(0.10); // Set default
-    if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-        std::cout << "Enter False Discovery Rate (FDR) for Benjamini-Hochberg (default: 0.10): ";
+
+    params.pipelineMode = pipelineMode;
+
+    // If bootstrap-only mode, ask for Monte Carlo survivor file
+    if (pipelineMode == PipelineMode::BootstrapOnly) {
+        std::cout << "Enter path to Monte Carlo survivor strategies file: ";
+        std::getline(std::cin, params.survivorInputFile);
+        
+        if (!validateSurvivorFile(params.survivorInputFile)) {
+            std::cout << "Error: Invalid or missing Monte Carlo survivor file: " << params.survivorInputFile << std::endl;
+            return 1;
+        }
+    }
+
+    // Only ask for permutation parameters if permutation testing will be performed
+    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        pipelineMode == PipelineMode::PermutationOnly) {
+        
+        std::cout << "\nEnter number of permutations (default: 5000): ";
         std::getline(std::cin, input);
-        if (!input.empty()) {
-            params.falseDiscoveryRate = Num(std::stod(input));
-        }
+        params.permutations = input.empty() ? 5000 : std::stoul(input);
+
+        std::cout << "Enter p-value threshold (default: 0.05): ";
+        std::getline(std::cin, input);
+        params.pValueThreshold = input.empty() ? Num(0.05) : Num(std::stod(input));
+    } else {
+        // Set default values for bootstrap-only mode (won't be used)
+        params.permutations = 5000;
+        params.pValueThreshold = Num(0.05);
     }
     
-    // Ask about pattern partitioning for Masters, Romano-Wolf, and Benjamini-Hochberg methods
+    // Only ask for bootstrap samples if bootstrap analysis will be performed
+    unsigned int numBootstrapSamples;
+    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        pipelineMode == PipelineMode::BootstrapOnly) {
+        
+        std::cout << "\nEnter number of bootstrap samples (default: 10000): ";
+        std::getline(std::cin, input);
+        numBootstrapSamples = input.empty() ? 10000 : std::stoul(input);
+    } else {
+        // Set default value for permutation-only mode (won't be used)
+        numBootstrapSamples = 10000;
+    }
+    
+    // Only ask for validation method and policy if permutation testing will be performed
+    ValidationMethod validationMethod = ValidationMethod::Masters;
     bool partitionByFamily = false;
-    if (validationMethod == ValidationMethod::Masters ||
-        validationMethod == ValidationMethod::RomanoWolf ||
-        validationMethod == ValidationMethod::BenjaminiHochberg) {
-        std::cout << "\nPattern Partitioning Options:" << std::endl;
+    std::string selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Default for bootstrap-only
+    
+    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        pipelineMode == PipelineMode::PermutationOnly) {
         
-        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-            std::cout << "  1. No Partitioning (all patterns tested together) - Default" << std::endl;
-            std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
-        } else {
-            std::cout << "  1. By Direction Only (Long vs Short) - Default" << std::endl;
-            std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
-        }
-        
-        std::cout << "Choose partitioning method (1 or 2): ";
+        // Ask for Validation Method
+        std::cout << "\nChoose validation method:" << std::endl;
+        std::cout << "  1. Masters (default)" << std::endl;
+        std::cout << "  2. Romano-Wolf" << std::endl;
+        std::cout << "  3. Benjamini-Hochberg" << std::endl;
+        std::cout << "  4. Unadjusted" << std::endl;
+        std::cout << "Enter choice (1, 2, 3, or 4): ";
         std::getline(std::cin, input);
         
         if (input == "2") {
-            partitionByFamily = true;
-            std::cout << "Selected: Detailed family partitioning" << std::endl;
-        } else {
-            if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-                std::cout << "Selected: No partitioning (default)" << std::endl;
-            } else {
-                std::cout << "Selected: Direction-only partitioning (default)" << std::endl;
+            validationMethod = ValidationMethod::RomanoWolf;
+        } else if (input == "3") {
+            validationMethod = ValidationMethod::BenjaminiHochberg;
+        } else if (input == "4") {
+            validationMethod = ValidationMethod::Unadjusted;
+        }
+        
+        // Conditionally ask for FDR
+        params.falseDiscoveryRate = Num(0.10); // Set default
+        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "Enter False Discovery Rate (FDR) for Benjamini-Hochberg (default: 0.10): ";
+            std::getline(std::cin, input);
+            if (!input.empty()) {
+                params.falseDiscoveryRate = Num(std::stod(input));
             }
         }
+        
+        // Ask about pattern partitioning for Masters, Romano-Wolf, and Benjamini-Hochberg methods
+        if (validationMethod == ValidationMethod::Masters ||
+            validationMethod == ValidationMethod::RomanoWolf ||
+            validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "\nPattern Partitioning Options:" << std::endl;
+            
+            if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+                std::cout << "  1. No Partitioning (all patterns tested together) - Default" << std::endl;
+                std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+            } else {
+                std::cout << "  1. By Direction Only (Long vs Short) - Default" << std::endl;
+                std::cout << "  2. By Detailed Family (Category, SubType, Direction)" << std::endl;
+            }
+            
+            std::cout << "Choose partitioning method (1 or 2): ";
+            std::getline(std::cin, input);
+            
+            if (input == "2") {
+                partitionByFamily = true;
+                std::cout << "Selected: Detailed family partitioning" << std::endl;
+            } else {
+                if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+                    std::cout << "Selected: No partitioning (default)" << std::endl;
+                } else {
+                    std::cout << "Selected: Direction-only partitioning (default)" << std::endl;
+                }
+            }
+        }
+
+        // Interactive policy selection using the new system
+        std::cout << "\n=== Policy Selection ===" << std::endl;
+        auto availablePolicies = palvalidator::PolicyRegistry::getAvailablePolicies();
+        std::cout << "Available policies: " << availablePolicies.size() << std::endl;
+        
+        if (policyConfig.getPolicySettings().interactiveMode) {
+            selectedPolicy = statistics::PolicySelector::selectPolicy(availablePolicies, &policyConfig);
+        } else {
+            // Use default policy from configuration
+            selectedPolicy = policyConfig.getDefaultPolicy();
+            if (selectedPolicy.empty() || !palvalidator::PolicyRegistry::isPolicyAvailable(selectedPolicy)) {
+                selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Fallback default
+            }
+            std::cout << "Using configured default policy: " << selectedPolicy << std::endl;
+        }
+
+        // Display selected policy information
+        try {
+            auto metadata = palvalidator::PolicyRegistry::getPolicyMetadata(selectedPolicy);
+            std::cout << "\nSelected Policy: " << metadata.displayName << std::endl;
+            std::cout << "Description: " << metadata.description << std::endl;
+            std::cout << "Category: " << metadata.category << std::endl;
+            if (metadata.isExperimental) {
+                std::cout << "⚠️  WARNING: This is an experimental policy!" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cout << "Warning: Could not retrieve policy metadata: " << e.what() << std::endl;
+        }
+    } else {
+        // Bootstrap-only mode: set defaults for unused parameters
+        params.falseDiscoveryRate = Num(0.10);
+        std::cout << "\nBootstrap-only mode: Using default validation method (Masters) and policy (GatedPerformanceScaledPalPolicy)" << std::endl;
     }
     
     // Get risk parameters from user and store globally
     g_riskParameters = getRiskParametersFromUser();
-
-    // Interactive policy selection using the new system
-    std::cout << "\n=== Policy Selection ===" << std::endl;
-    auto availablePolicies = palvalidator::PolicyRegistry::getAvailablePolicies();
-    std::cout << "Available policies: " << availablePolicies.size() << std::endl;
-    
-    std::string selectedPolicy;
-    if (policyConfig.getPolicySettings().interactiveMode) {
-        selectedPolicy = statistics::PolicySelector::selectPolicy(availablePolicies, &policyConfig);
-    } else {
-        // Use default policy from configuration
-        selectedPolicy = policyConfig.getDefaultPolicy();
-        if (selectedPolicy.empty() || !palvalidator::PolicyRegistry::isPolicyAvailable(selectedPolicy)) {
-            selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Fallback default
-        }
-        std::cout << "Using configured default policy: " << selectedPolicy << std::endl;
-    }
-
-    // Display selected policy information
-    try {
-        auto metadata = palvalidator::PolicyRegistry::getPolicyMetadata(selectedPolicy);
-        std::cout << "\nSelected Policy: " << metadata.displayName << std::endl;
-        std::cout << "Description: " << metadata.description << std::endl;
-        std::cout << "Category: " << metadata.category << std::endl;
-        if (metadata.isExperimental) {
-            std::cout << "⚠️  WARNING: This is an experimental policy!" << std::endl;
-        }
-    } catch (const std::exception& e) {
-        std::cout << "Warning: Could not retrieve policy metadata: " << e.what() << std::endl;
-    }
     
     // -- Summary --
     std::cout << "\n=== Configuration Summary ===" << std::endl;
     std::cout << "Security Ticker: " << config->getSecurity()->getSymbol() << std::endl;
     std::cout << "In-Sample Range: " << config->getInsampleDateRange().getFirstDateTime()
               << " to " << config->getInsampleDateRange().getLastDateTime() << std::endl;
+    std::cout << "Pipeline Mode: " << getPipelineModeString(params.pipelineMode) << std::endl;
+    if (params.pipelineMode == PipelineMode::BootstrapOnly) {
+        std::cout << "Monte Carlo Survivor Input File: " << params.survivorInputFile << std::endl;
+    }
     std::cout << "Validation Method: " << getValidationMethodString(validationMethod) << std::endl;
     std::cout << "Computation Policy: " << selectedPolicy << std::endl;
     if (validationMethod == ValidationMethod::Masters ||
@@ -608,11 +750,23 @@ int main(int argc, char **argv)
     } else if (validationMethod == ValidationMethod::Unadjusted) {
         std::cout << "Pattern Partitioning: None (not applicable for Unadjusted)" << std::endl;
     }
-    std::cout << "Permutations: " << params.permutations << std::endl;
-    std::cout << "P-Value Threshold: " << params.pValueThreshold << std::endl;
-    if (validationMethod == ValidationMethod::BenjaminiHochberg) {
-        std::cout << "False Discovery Rate: " << params.falseDiscoveryRate << std::endl;
+    
+    // Only show permutation parameters if permutation testing will be performed
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::PermutationOnly) {
+        std::cout << "Permutations: " << params.permutations << std::endl;
+        std::cout << "P-Value Threshold: " << params.pValueThreshold << std::endl;
+        if (validationMethod == ValidationMethod::BenjaminiHochberg) {
+            std::cout << "False Discovery Rate: " << params.falseDiscoveryRate << std::endl;
+        }
     }
+    
+    // Only show bootstrap samples if bootstrap analysis will be performed
+    if (params.pipelineMode == PipelineMode::PermutationAndBootstrap ||
+        params.pipelineMode == PipelineMode::BootstrapOnly) {
+        std::cout << "Bootstrap Samples: " << numBootstrapSamples << std::endl;
+    }
+    
     std::cout << "Risk-Free Rate: " << (g_riskParameters.riskFreeRate * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "Risk Premium: " << (g_riskParameters.riskPremium * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "=============================" << std::endl;

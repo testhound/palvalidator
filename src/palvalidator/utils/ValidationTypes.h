@@ -19,6 +19,16 @@ enum class ValidationMethod
 };
 
 /**
+ * @brief Enumeration of pipeline execution modes
+ */
+enum class PipelineMode
+{
+    PermutationAndBootstrap,  ///< Full pipeline: permutation + bootstrap + write survivors
+    PermutationOnly,          ///< Permutation testing only + write survivors
+    BootstrapOnly            ///< Bootstrap only using survivors from previous run
+};
+
+/**
  * @brief Parameters for validation configuration
  */
 struct ValidationParameters
@@ -26,6 +36,8 @@ struct ValidationParameters
     unsigned long permutations;                  ///< Number of Monte Carlo permutations
     num::DefaultNumber pValueThreshold;          ///< P-value threshold for significance
     num::DefaultNumber falseDiscoveryRate;       ///< False Discovery Rate for Benjamini-Hochberg
+    PipelineMode pipelineMode;                   ///< Pipeline execution mode
+    std::string survivorInputFile;               ///< Input file for bootstrap-only mode
 };
 
 /**
@@ -44,6 +56,14 @@ struct RiskParameters
  * @throws std::invalid_argument if method is unknown
  */
 std::string getValidationMethodString(ValidationMethod method);
+
+/**
+ * @brief Convert PipelineMode enum to string representation
+ * @param mode The pipeline mode to convert
+ * @return String representation of the pipeline mode
+ * @throws std::invalid_argument if mode is unknown
+ */
+std::string getPipelineModeString(PipelineMode mode);
 
 } // namespace utils
 } // namespace palvalidator

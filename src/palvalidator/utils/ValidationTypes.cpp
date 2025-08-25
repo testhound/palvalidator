@@ -23,5 +23,20 @@ std::string getValidationMethodString(ValidationMethod method)
     }
 }
 
+std::string getPipelineModeString(PipelineMode mode)
+{
+    switch (mode)
+    {
+        case PipelineMode::PermutationAndBootstrap:
+            return "PermutationAndBootstrap";
+        case PipelineMode::PermutationOnly:
+            return "PermutationOnly";
+        case PipelineMode::BootstrapOnly:
+            return "BootstrapOnly";
+        default:
+            throw std::invalid_argument("Unknown pipeline mode");
+    }
+}
+
 } // namespace utils
 } // namespace palvalidator
