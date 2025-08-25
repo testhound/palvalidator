@@ -93,26 +93,7 @@ add_subdirectory(src/pattern_universe_generator)
 add_subdirectory(src/palanalyzer)
 
 
-file(GLOB SRC_LIST
-   src/palvalidator/*.h
-   src/palvalidator/*.hpp
-   src/palvalidator/*.cpp
-   src/palvalidator/*.txt
-)
-
-add_executable(${PROJECT_NAME} ${SRC_LIST})
-
-set_target_properties(${BIN_NAME} PROPERTIES LINKER_LANGUAGE CXX)
-target_link_libraries(${BIN_NAME}
-    priceactionlab
-    statistics
-    concurrency
-    timeseries
-    backtesting
-    ${Boost_LIBRARIES}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${CURL_LIBRARIES}
-    )
+# Note: PalValidator executable is now created in src/palvalidator/CMakeLists.txt
 
     #list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules")
 

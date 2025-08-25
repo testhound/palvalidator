@@ -1,18 +1,37 @@
 set(LIB_NAME palvalidator)
 
-file(GLOB SRC_LIST
+file(GLOB_RECURSE SRC_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/*.txt
 )
 
+# Exclude test files from the main library
+list(FILTER SRC_LIST EXCLUDE REGEX ".*/test/.*")
+
 add_library(${LIB_NAME} STATIC ${SRC_LIST})
-target_include_directories(${LIB_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${LIB_NAME} INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/analysis
+)
 target_link_libraries(${LIB_NAME} PRIVATE priceactionlab)
 target_link_libraries(${LIB_NAME} PRIVATE backtesting)
 target_link_libraries(${LIB_NAME} PRIVATE statistics)
 
+add_executable(PalValidator main.cpp)
+target_link_libraries(PalValidator PRIVATE
+    ${LIB_NAME}
+    priceactionlab
+    backtesting
+    statistics
+    concurrency
+    timeseries
+    ${Boost_LIBRARIES}
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${CURL_LIBRARIES}
+)
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
