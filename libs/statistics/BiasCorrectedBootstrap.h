@@ -76,9 +76,26 @@ namespace mkc_timeseries
     /**
      * @brief Performs a classic jackknife (delete-one observation).
      *
-     * This method computes n jackknife replicates. Each replicate is the statistic
-     * calculated on the original data set with one observation removed.
-     * This is used to compute the acceleration factor 'a' for the BCa bootstrap.
+     * @details
+     * The jackknife procedure is essential for computing the acceleration factor 'a'
+     * in the BCa bootstrap, which corrects for skewness in the bootstrap distribution.
+     *
+     * ### How it Works:
+     * The "delete-one" jackknife systematically measures the influence of each
+     * individual data point on the overall statistic. For a dataset of size `n`,
+     * it works as follows:
+     * 1. It creates `n` new datasets, called jackknife replicates.
+     * 2. The first replicate is the original dataset with the 1st observation removed.
+     * 3. The second replicate is the original dataset with the 2nd observation removed.
+     * 4. This continues until `n` replicates of size `n-1` have been created.
+     * 5. The statistic (e.g., mean) is calculated for each of these `n` replicates.
+     *
+     * The resulting collection of `n` jackknife statistics reveals how sensitive the
+     * main statistic is to each observation. The skewness of this collection of
+     * values is then used to calculate the acceleration factor 'a'.
+     *
+     * Reference: Efron, B. (1987). Better Bootstrap Confidence Intervals.
+     * Journal of the American Statistical Association, 82(397), 171–185.
      *
      * @tparam StatFn The type of the function object that computes the statistic.
      * @param x The original data vector.
@@ -87,6 +104,7 @@ namespace mkc_timeseries
      * @throws std::invalid_argument If the input vector x has fewer than 2 elements.
      */
     using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
     std::vector<Decimal>
     jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
     {
@@ -114,9 +132,19 @@ namespace mkc_timeseries
    * @struct StationaryBlockResampler
    * @brief Stationary Block Bootstrap resampler (Politis & Romano, 1994).
    *
+   * @details
    * This policy is designed for time series data with serial correlation. It
    * resamples blocks of data rather than individual observations. The blocks
-   * have a variable length with a specified mean block length `L`.
+   * have a variable length drawn from a geometric distribution, with a specified
+   * mean block length `L`.
+   *
+   * The resampling process treats the time series as circular. If a block
+   * continues past the end of the series, it simply "wraps around" to the
+   * beginning. This ensures that the process never fails due to running out
+   * of elements and that all data points have an equal chance of being selected.
+   *
+   * Reference: Politis, D. N., & Romano, J. P. (1994). The stationary bootstrap.
+   * Journal of the American Statistical Association, 89(428), 1303-1313.
    *
    * @tparam Decimal The numeric type used for the data (e.g., double, number).
    */
@@ -174,10 +202,29 @@ namespace mkc_timeseries
     /**
      * @brief Performs a block jackknife for the acceleration factor.
      *
-     * This method computes n jackknife replicates by deleting a block of data
-     * (with length `L_eff`) from a circular representation of the original data.
-     * This is a block-based analog to the delete-one jackknife and is used to
-     * compute the acceleration factor 'a' for the BCa bootstrap.
+     * @details
+     * The jackknife procedure is essential for computing the acceleration factor 'a'
+     * in the BCa bootstrap. For time series data, the standard "delete-one"
+     * jackknife is invalid as it breaks the dependence structure. This "delete-block"
+     * jackknife is the correct analog.
+     *
+     * ### How it Works:
+     * The "delete-block" jackknife measures the influence of contiguous segments
+     * of the time series. For a dataset of size `n` and a block length `L`:
+     * 1. It creates `n` new datasets, called jackknife replicates.
+     * 2. The first replicate is the original dataset with the block from index 0 to `L-1` removed.
+     * 3. The second replicate is the original dataset with the block from index 1 to `L` removed.
+     * 4. This continues for all `n` possible starting positions, treating the data
+     * as circular (a block removed from the end wraps around to the beginning).
+     * 5. The statistic (e.g., mean) is calculated for each of these `n` replicates.
+     *
+     * This method correctly assesses the sensitivity of the statistic to different
+     * segments of the time series while preserving the data's autocorrelation,
+     * which is crucial for dependent data. The skewness of the resulting `n`
+     * jackknife statistics is then used to calculate the acceleration factor 'a'.
+     *
+     * Reference: Künsch, H. R. (1989). The Jackknife and the Bootstrap for
+     * General Stationary Observations. The Annals of Statistics, 17(3), 1217–1241.
      *
      * @tparam StatFn The type of the function object that computes the statistic.
      * @param x The original time series data vector.
@@ -186,6 +233,7 @@ namespace mkc_timeseries
      * @throws std::invalid_argument If the input vector x has fewer than 2 elements.
      */
     using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
     std::vector<Decimal>
     jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
     {
@@ -453,57 +501,51 @@ namespace mkc_timeseries
      * @brief The core algorithm for computing the BCa confidence bounds.
      *
      * @details
-     * The method follows a five-step process to compute the Bias-Corrected and
-     * Accelerated (BCa) confidence interval.
+     * This method calculates the Bias-Corrected and Accelerated (BCa) confidence
+     * interval. It's more accurate than a simple percentile interval because it
+     * adjusts for both bias and skewness in the bootstrap distribution. The
+     * algorithm can be understood as a five-step journey where each step
+     * builds upon the last.
      *
-     * ### Algorithm:
-     * 1.  **Calculate the original statistic (θ̂):**
-     * - Compute the statistic of interest (e.g., mean) on the original `m_returns` data set.
-     * - This value, `m_theta_hat`, serves as the point estimate.
+     * ### Step 1: Calculate the Original Statistic (Our Anchor Point)
+     * We start by calculating the statistic (e.g., the mean) on the original,
+     * untouched data. This gives us our single best estimate, `m_theta_hat`,
+     * which serves as the central point of our analysis.
      *
-     * 2.  **Generate Bootstrap Replicates:**
-     * - Create `m_num_resamples` new data sets by calling the `m_sampler` policy's `operator()`.
-     * - For `IIDResampler`, this involves drawing `n` elements with replacement.
-     * - For `StationaryBlockResampler`, this involves creating a new time series of length `n`
-     * by resampling blocks.
-     * - For each resampled data set, calculate the statistic using `m_statistic`.
-     * - Store these `m_num_resamples` statistic values in `boot_stats`.
-     * - Sort `boot_stats` in ascending order.
+     * ### Step 2: Generate the Bootstrap Distribution (Create a "Bootstrap World")
+     * Next, we create thousands of new datasets by resampling from the original
+     * data (using the chosen `Sampler` policy). For each of these resamples, we
+     * calculate the same statistic. This collection of statistics forms the
+     * "bootstrap distribution." It shows us how our statistic might vary if we
+     * could sample from the true underlying population. At the end of this step,
+     * we sort this distribution from smallest to largest.
      *
-     * 3.  **Compute the Bias-Correction Factor (z0):**
-     * - Find the proportion of bootstrap replicates (`boot_stats`) that are less than the
-     * original statistic (`m_theta_hat`).
-     * - `prop_less = (number of bootstrap stats < θ̂) / m_num_resamples`.
-     * - `z0` is the `prop_less`-th percentile of the standard normal distribution,
-     * calculated using `inverseNormalCdf(prop_less)`.
-     * - `z0` measures the bias in the bootstrap distribution of the statistic. A non-zero
-     * `z0` indicates that the bootstrap distribution is not centered on the original statistic.
+     * ### Step 3: Compute the Bias-Correction Factor, `z₀` (Is Our Anchor Centered?)
+     * Now, we check if our original statistic (`m_theta_hat`) is in the center
+     * of the bootstrap world we just created. We do this by finding the proportion
+     * of our bootstrap statistics that are less than `m_theta_hat`. If this
+     * proportion is not 50%, our bootstrap distribution is "biased." The `z₀`
+     * value is simply the standard normal score (Z-score) of this proportion,
+     * quantifying this bias. A `z₀` of 0 means no bias.
      *
-     * 4.  **Compute the Acceleration Factor (a):**
-     * - The acceleration factor `a` corrects for skewness in the bootstrap distribution.
-     * - This is computed using a jackknife procedure, which is delegated to the `m_sampler` policy.
-     * - For `IIDResampler`, this is a classic delete-one jackknife.
-     * - For `StationaryBlockResampler`, this is a delete-one-block jackknife.
-     * - Let `jk_stats` be the vector of jackknife statistic values.
-     * - Compute `jk_avg`, the mean of the jackknife statistics.
-     * - `a` is calculated based on the third- and second-order centered moments of the jackknife
-     * replicates:
-     * `a = (sum((jk_avg - jk_stats_i)^3)) / (6 * (sum((jk_avg - jk_stats_i)^2))^1.5)`.
-     * - This formula relates the acceleration to the skewness of the jackknife distribution.
+     * ### Step 4: Compute the Acceleration Factor, `a` (Is Our World Skewed?)
+     * This step measures the skewness of our statistic's distribution. It answers
+     * the question: "Does the standard error of our statistic change as the
+     * data changes?" We use the jackknife procedure for this. By systematically
+     * removing parts of the original data and recalculating the statistic each
+     * time, we see how much our statistic's value is influenced by different
+     * parts of the data. The skewness of these "influence" values gives us the
+     * acceleration factor `a`. A non-zero `a` indicates that the bootstrap
+     * distribution is lopsided (skewed).
      *
-     * 5.  **Calculate the Adjusted Percentiles and Bounds:**
-     * - Determine the percentile indices for a standard percentile confidence interval
-     * (`alpha1`, `alpha2`).
-     * - `alpha = (1.0 - m_confidence_level) / 2.0`.
-     * - The standard normal percentiles are `z_alpha_lo = inverseNormalCdf(alpha)` and
-     * `z_alpha_hi = inverseNormalCdf(1.0 - alpha)`.
-     * - Apply the bias-correction (`z0`) and acceleration (`a`) factors to these percentiles
-     * to get the adjusted percentiles:
-     * - `alpha_lower_adj = standardNormalCdf(z0 + (z0 + z_alpha_lo) / (1 - a * (z0 + z_alpha_lo)))`
-     * - `alpha_upper_adj = standardNormalCdf(z0 + (z0 + z_alpha_hi) / (1 - a * (z0 + z_alpha_hi)))`
-     * - Find the corresponding indices in the sorted `boot_stats` vector using these adjusted
-     * percentiles (`unbiasedIndex`).
-     * - The `m_lower_bound` and `m_upper_bound` are the values at these indices.
+     * ### Step 5: Calculate the Adjusted Percentiles (Find the New Endpoints)
+     * This is the final step where everything comes together. We start with the
+     * standard percentiles for our confidence level (e.g., for 95% confidence),
+     * We then plug our bias factor (`z₀`) and acceleration factor (`a`) into
+     * the BCa formula. This formula "warps" the standard percentiles to account
+     * for the bias and skew we found. The output is a new pair of adjusted percentiles.
+     * We use these new percentiles to find the corresponding values in our sorted bootstrap
+     * distribution from Step 2. These values are our final, more accurate, BCa confidence bounds.
      *
      * @throws std::invalid_argument If the original data vector has fewer than 2 data points.
      */
@@ -531,7 +573,7 @@ namespace mkc_timeseries
 
       for (unsigned int b = 0; b < m_num_resamples; ++b)
 	{
-	  // *** The only place resampling occurs: policy call ***
+	  // Resample using policy class
 	  std::vector<Decimal> resample = m_sampler(m_returns, n, rng);
 	  boot_stats.push_back(m_statistic(resample));
 	}
@@ -600,8 +642,30 @@ namespace mkc_timeseries
 
     /**
      * @brief Computes the Standard Normal Cumulative Distribution Function (CDF).
-     * @param x The value at which to evaluate the CDF.
-     * @return The probability `P(Z <= x)` where Z is a standard normal random variable.
+     *
+     * @details
+     * ### What it Does (In Simple Terms)
+     * Imagine a perfect bell curve (a "standard normal distribution") where the
+     * total area underneath it is 1.0 (representing 100% probability). This
+     * function takes a point on the horizontal axis (a Z-score `x`) and returns
+     * the total area under the curve to the left of that point.
+     *
+     * In essence, it **converts a Z-score into a percentile**. For example:
+     * - `standardNormalCdf(0.0)` would return `0.5`, because the point 0.0 is exactly
+     * at the center of the bell curve, with 50% of the area to its left.
+     * - `standardNormalCdf(1.96)` would return approximately `0.975`, meaning that
+     * 97.5% of all values are less than or equal to 1.96.
+     *
+     * ### Its Role in the BCa Algorithm
+     * This function is used in **Step 5** of the `calculateBCaBounds` method.
+     * After we have calculated the final, adjusted Z-scores for our confidence
+     * bounds (which account for bias `z₀` and skewness `a`), we need to turn
+     * them back into percentiles. This function performs that final conversion,
+     * giving us the exact percentile points (e.g., 3.1% and 98.2%) we need to
+     * look up in our sorted list of bootstrap results.
+     *
+     * @param x The value (Z-score) at which to evaluate the CDF.
+     * @return The probability `P(Z <= x)`, a value between 0.0 and 1.0.
      */
     double standardNormalCdf(double x) const
     {
@@ -610,8 +674,29 @@ namespace mkc_timeseries
 
     /**
      * @brief Computes the inverse of the Standard Normal CDF (quantile function).
-     * @param p The probability (a value between 0 and 1).
-     * @return The value `x` such that `P(Z <= x) = p`.
+     *
+     * @details
+     * ### What it Does (In Simple Terms)
+     * This function does the **exact opposite** of `standardNormalCdf`. You give
+     * it a percentile (a probability `p` between 0.0 and 1.0), and it tells you
+     * the corresponding Z-score on the horizontal axis of the bell curve.
+     *
+     * It's like using a Z-table in reverse. For example:
+     * - `inverseNormalCdf(0.5)` would return `0.0`, the center of the distribution.
+     * - `inverseNormalCdf(0.975)` would return approximately `1.96`.
+     *
+     * ### Its Role in the BCa Algorithm
+     * This function is critical in two steps of `calculateBCaBounds`:
+     * 1.  **Step 3 (Bias `z₀`):** We calculate the proportion of bootstrap results
+     * less than our original statistic. This proportion is a percentile. We
+     * feed it into this function to get our bias-correction factor, `z₀`.
+     * 2.  **Step 5 (Adjusted Percentiles):** We need to know the starting Z-scores
+     * for our desired confidence level (e.g., 95%). We call this function
+     * with `0.025` and `0.975` to get the initial Z-scores (`z_alpha_lo`
+     * and `z_alpha_hi`) before we adjust them for bias and skew.
+     *
+     * @param p The probability or percentile (a value between 0 and 1).
+     * @return The Z-score `x` such that `P(Z <= x) = p`.
      */
     double inverseNormalCdf(double p) const
     {
@@ -627,10 +712,37 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief A helper function for `inverseNormalCdf` using an approximation.
+     * @brief A helper function for `inverseNormalCdf` using a mathematical approximation.
      *
-     * Implements the rational approximation from Abramowitz & Stegun, 26.2.23.
-     * It's accurate enough for typical confidence interval calculations.
+     * @details
+     * ### What it Does (In Simple Terms)
+     * Calculating the inverse normal CDF exactly is extremely complex. There's no
+     * simple formula for it. This function uses a well-known and highly accurate
+     * mathematical "shortcut" (a rational approximation) to compute the result.
+     * It's the computational engine that does the heavy lifting for the main
+     * `inverseNormalCdf` function.
+     *
+     * For a maintainer, this function can be treated as a "black box." Its internal
+     * constants and formula are a standard, proven method for getting the job done
+     * with sufficient precision for confidence interval calculations.
+     *
+     * ### Its Role in the BCa Algorithm
+     * This function does not have a direct role in the BCa algorithm itself; it
+     * is purely an implementation detail. It is called by `inverseNormalCdf` to
+     * perform the actual calculation.
+     *
+     * Implements the rational approximation from Approximation from Abramowitz & Stegun,
+     * "Handbook of Mathematical Functions", Eq. 26.2.23.
+     *
+     * Citation details:
+     *
+     * Chapter 26: "Probability Functions"
+     *
+     * Section 2: "Normal or Gaussian Probability Function"
+     *
+     * Formula 23: This is the specific equation number within that section.
+     * It provides a highly accurate rational approximation for the inverse normal
+     * CDF, which is what the inverseNormalCdfHelper function implements.
      *
      * @param p The probability, assumed to be in the range (0, 0.5].
      * @return The inverse normal CDF value.
