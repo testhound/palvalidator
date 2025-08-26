@@ -587,6 +587,28 @@ namespace mkc_timeseries
       const double z0 = inverseNormalCdf(prop_less);
 
       // 4) Acceleration a via jackknife, delegated to the sampler
+
+      /**
+       * @details
+       * ### Why is the Skew Correction Called "Accelerated"?
+       *
+       * The term "accelerated" refers to the acceleration constant `a`, which
+       * measures how rapidly the standard error of our statistic changes on a
+       * normalized scale. It's called an "acceleration" because, in statistical
+       * theory, it relates to the rate of change (or "acceleration") of the
+       * statistic's variance as the underlying data distribution changes.
+       *
+       * A simple way to think about it is:
+       * - If our statistic's standard error is very stable and doesn't change
+       * much when we subtly alter the data, the acceleration is low.
+       * - If the standard error is very sensitive and changes quickly, the
+       * acceleration is high. This indicates a more skewed or unstable
+       * distribution that requires a larger correction.
+       *
+       * The jackknife procedure is the mechanism we use to estimate this value.
+       * By removing parts of the data and observing how much the statistic
+       * "wobbles," we get a practical measure of this theoretical acceleration.
+       */
       const std::vector<Decimal> jk_stats = m_sampler.jackknife(m_returns, m_statistic);
       const size_t n_jk = jk_stats.size();
 
@@ -617,6 +639,33 @@ namespace mkc_timeseries
 	}
 
       // 5) Adjusted percentiles → bounds
+      /**
+       * @details
+       * ### Step 5: Combining and Adjusting to Find the Final Bounds
+       *
+       * This is the final step where all our calculated components come together.
+       * The goal is to "warp" the standard confidence percentiles (e.g., 2.5%
+       * and 97.5%) using the bias and skewness we discovered in the data.
+       *
+       * #### The Process:
+       * 1.  **Get Standard Endpoints:** We first find the standard Z-scores that
+       * correspond to our desired confidence level (e.g., -1.96 and +1.96 for
+       * 95% confidence). These are our uncorrected, "textbook" endpoints.
+       *
+       * 2.  **Apply the BCa Formula:** We plug these Z-scores, along with our
+       * bias-correction factor (`z₀`) and our acceleration factor (`a`), into
+       * the BCa adjustment formula. This is where the result of the jackknife
+       * (`a`) is finally used. It modifies the interval to account for skew:
+       * - The **bias factor `z₀`** shifts the center of the confidence interval.
+       * - The **acceleration factor `a`** expands or contracts the interval
+       * asymmetrically to better fit the lopsided shape of a skewed distribution.
+       *
+       * 3.  **Find the Final Bounds:** The BCa formula outputs two new, adjusted
+       * percentiles (`alpha1` and `alpha2`). The very last step is to take
+       * these final percentiles and find the values at those positions in our
+       * sorted bootstrap distribution (from Step 2). These values are the
+       * final, robust, BCa confidence interval bounds.
+       */
       const double alpha = (1.0 - m_confidence_level) / 2.0;
       const double z_alpha_lo = inverseNormalCdf(alpha);
       const double z_alpha_hi = inverseNormalCdf(1.0 - alpha);
