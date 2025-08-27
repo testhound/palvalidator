@@ -16,10 +16,10 @@
 namespace num
 {
   /**
-   * @brief Default decimal type with 7 decimal places using the default rounding policy.
+   * @brief Default decimal type with 8 decimal places using the default rounding policy.
    * @see dec::decimal
    */
-  using DefaultNumber  = dec::decimal<7>;
+  using DefaultNumber  = dec::decimal<8>;
 
   /**
    * @brief Converts a DefaultNumber to its string representation.

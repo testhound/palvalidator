@@ -42,7 +42,7 @@ auto decimalApprox(const Decimal& expected, const Decimal& tolerance) {
     return DecimalApprox<Decimal>(expected, tolerance);
 }
 
-// Tolerance for decimal comparisons (e.g. 0.00001 in decimal<7>)
+// Tolerance for decimal comparisons (e.g. 0.00001 in decimal<8>)
 static const DecimalType DEC_TOL = createDecimal("0.00001");
 
 TEST_CASE("PALFormatCsvReader reads QQQ end-of-day file with known anchors", "[csv][PAL]") {
@@ -138,11 +138,11 @@ TEST_CASE("TradeStationFormatCsvReader throws on too‐few‐columns", "[csv][er
         out << "04/01/2021,15:00,100.0,101.0,99.0\n";
     }
 
-    TradeStationFormatCsvReader<dec::decimal<7>> reader(
+    TradeStationFormatCsvReader<DecimalType> reader(
         badPath,
         TimeFrame::INTRADAY,
         TradingVolume::SHARES,
-        DecimalConstants<dec::decimal<7>>::EquityTick
+        DecimalConstants<DecimalType>::EquityTick
     );
 
     // 3) assert that the CSV library's "too few columns" error bubbles up
@@ -177,11 +177,11 @@ TEST_CASE("TradeStationFormatCsvReader throws if INTRADAY but file is daily form
     }
 
     // 2) Construct reader asking for INTRADAY
-    TradeStationFormatCsvReader<dec::decimal<7>> reader(
+    TradeStationFormatCsvReader<DecimalType> reader(
         path,
         TimeFrame::INTRADAY,
         TradingVolume::SHARES,
-        DecimalConstants<dec::decimal<7>>::EquityTick
+        DecimalConstants<DecimalType>::EquityTick
     );
 
     // 3) Expect the CSV-library to complain about missing "Up"/"Down" columns
@@ -225,23 +225,23 @@ TEST_CASE("WealthLabCsvReader reads Wealth-Lab daily CSV", "[csv][WealthLab][Dai
     REQUIRE(series.getFirstDateTime() == ptime(date(2000, 5, 30), getDefaultBarTime()));
     REQUIRE(series.getLastDateTime()  == ptime(date(2000, 6, 12), getDefaultBarTime()));
 
-    // First bar (rounded to equity tick)
+    // First bar (raw values from CSV, no rounding)
     {
         auto first = *series.beginSortedAccess();
-        REQUIRE(first.getOpenValue()   == decimalApprox(createDecimal("0.23"), DEC_TOL));
-        REQUIRE(first.getHighValue()   == decimalApprox(createDecimal("0.23"), DEC_TOL));
-        REQUIRE(first.getLowValue()    == decimalApprox(createDecimal("0.22"), DEC_TOL));
-        REQUIRE(first.getCloseValue()  == decimalApprox(createDecimal("0.23"), DEC_TOL));
+        REQUIRE(first.getOpenValue()   == decimalApprox(createDecimal("0.22578125"), DEC_TOL));
+        REQUIRE(first.getHighValue()   == decimalApprox(createDecimal("0.23463542"), DEC_TOL));
+        REQUIRE(first.getLowValue()    == decimalApprox(createDecimal("0.22473957"), DEC_TOL));
+        REQUIRE(first.getCloseValue()  == decimalApprox(createDecimal("0.22890625"), DEC_TOL));
         REQUIRE(first.getVolumeValue() == decimalApprox(createDecimal("306210240"), DEC_TOL));
     }
 
-    // Last bar (rounded to equity tick)
+    // Last bar (raw values from CSV, no rounding)
     {
         auto last = *std::prev(series.endSortedAccess());
-        REQUIRE(last.getOpenValue()   == decimalApprox(createDecimal("0.26"), DEC_TOL));
-        REQUIRE(last.getHighValue()   == decimalApprox(createDecimal("0.27"), DEC_TOL));
-        REQUIRE(last.getLowValue()    == decimalApprox(createDecimal("0.25"), DEC_TOL));
-        REQUIRE(last.getCloseValue()  == decimalApprox(createDecimal("0.26"), DEC_TOL));
+        REQUIRE(last.getOpenValue()   == decimalApprox(createDecimal("0.2645825"), DEC_TOL));
+        REQUIRE(last.getHighValue()   == decimalApprox(createDecimal("0.2667975"), DEC_TOL));
+        REQUIRE(last.getLowValue()    == decimalApprox(createDecimal("0.25052"), DEC_TOL));
+        REQUIRE(last.getCloseValue()  == decimalApprox(createDecimal("0.25638"), DEC_TOL));
         REQUIRE(last.getVolumeValue() == decimalApprox(createDecimal("382571040"), DEC_TOL));
     }
 

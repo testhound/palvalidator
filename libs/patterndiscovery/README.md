@@ -58,7 +58,7 @@ SearchLine<Decimal> searchLine(1, tradeParams, perfCriteria, "Extended Search");
 
 ### Decimal Type Integration
 - Seamless integration with `dec::decimal<Prec>` system
-- Uses `num::DefaultNumber` (`dec::decimal<7>`) by default
+- Uses `num::DefaultNumber` (`dec::decimal<8>`) by default
 - Template design supports any decimal precision
 
 ### Delay Pattern Support
@@ -161,7 +161,7 @@ SearchLine<Decimal> deepSearch(100, tradeParams, perfCriteria, "Deep Search with
 
 ### Time Series Library
 - Uses `dec::decimal<Prec>` for all financial calculations
-- Compatible with `num::DefaultNumber` (`dec::decimal<7>`)
+- Compatible with `num::DefaultNumber` (`dec::decimal<8>`)
 - Integrates with `OHLCTimeSeries` data structures
 
 ## Testing

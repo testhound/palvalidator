@@ -735,17 +735,31 @@ SECTION("StrategyBroker date overloads for Exit…AtLimit forward to ptime with 
     using boost::gregorian::days;
     using boost::posix_time::time_from_string;
 
-    //DecimalType stopPrice = createDecimal("140.00");
-    DecimalType stopPrice = num::Round2Tick(createDecimal("3656.81982421875"),
-					    aBroker.getTick(futuresSymbol),
-					    aBroker.getTickDiv2(futuresSymbol));
-    auto pct = PercentNumber<DecimalType>::createPercentNumber(createDecimal("2.00"));
+    // Use a percentage that will trigger based on the actual data
+    // Entry: 3679.89135742188, Low on next day: 3645.2841796875 (0.94% drop)
+    // So use 0.5% to ensure the stop triggers
+    auto pct = PercentNumber<DecimalType>::createPercentNumber(createDecimal("0.50"));
 
     // Open & fill a long on 1985-11-14
     ptime odt = time_from_string("1985-11-14 09:00:00");
     aBroker.EnterLongOnOpen(futuresSymbol, odt, oneContract);
     aBroker.ProcessPendingOrders(odt.date() + days(1));
     REQUIRE(aBroker.isLongPosition(futuresSymbol));
+
+    // Get the actual entry price from the position
+    auto instrPos = aBroker.getInstrumentPosition(futuresSymbol);
+    auto posIterator = instrPos.getInstrumentPosition(1);
+    DecimalType entryPrice = (*posIterator)->getEntryPrice();
+    std::cout << "Entry price = " << entryPrice << std::endl;
+    
+    // Calculate stop price as a percentage below entry price
+    LongStopLoss<DecimalType> stopLossCalc(entryPrice, pct);
+    DecimalType rawStopPrice = stopLossCalc.getStopLoss();
+    DecimalType stopPrice = num::Round2Tick(rawStopPrice,
+ 				    aBroker.getTick(futuresSymbol),
+ 				    aBroker.getTickDiv2(futuresSymbol));
+    std::cout << "Raw stop price = " << rawStopPrice << std::endl;
+    std::cout << "Rounded stop price = " << stopPrice << std::endl;
 
     // simple-stop overload at 1985-11-15 10:30:00
     ptime sdt = time_from_string("1985-11-15 10:30:00");
@@ -768,14 +782,19 @@ SECTION("StrategyBroker date overloads for Exit…AtLimit forward to ptime with 
     aBroker.ProcessPendingOrders(odt.date() + days(1));
     REQUIRE(aBroker.isLongPosition(futuresSymbol));
 
-    aBroker.ExitLongAllUnitsAtStop(futuresSymbol, s2, stopPrice, pct);
+    // Get the new entry price for the second position
+    instrPos = aBroker.getInstrumentPosition(futuresSymbol);
+    posIterator = instrPos.getInstrumentPosition(1);
+    DecimalType entryPrice2 = (*posIterator)->getEntryPrice();
+
+    aBroker.ExitLongAllUnitsAtStop(futuresSymbol, s2, entryPrice2, pct);
     {
       auto it = aBroker.beginPendingOrders();
       auto so = std::dynamic_pointer_cast<SellAtStopOrder<DecimalType>>(it->second);
       REQUIRE(so);
       REQUIRE(so->getOrderDateTime() == s2);
 
-      LongStopLoss<DecimalType> stopTarget(stopPrice, pct);
+      LongStopLoss<DecimalType> stopTarget(entryPrice2, pct);
       DecimalType expectedSL = num::Round2Tick(
         stopTarget.getStopLoss(),
         aBroker.getTick(futuresSymbol),

@@ -8,6 +8,7 @@
 #define __STRATEGY_BROKER_H 1
 
 #include <exception>
+#include <algorithm>  // std::max
 #include "Portfolio.h"
 #include "TradingOrderManager.h"
 #include "InstrumentPositionManager.h"
@@ -19,7 +20,6 @@
 #include "SecurityAttributesFactory.h"
 // Ensure ptime and getDefaultBarTime are available
 #include "TimeSeriesEntry.h" // For OHLCTimeSeriesEntry, ptime, getDefaultBarTime
-
 
 namespace mkc_timeseries
 {
@@ -34,12 +34,121 @@ namespace mkc_timeseries
   class StrategyBrokerException : public std::runtime_error
   {
   public:
-  StrategyBrokerException(const std::string msg) 
-    : std::runtime_error(msg)
+    StrategyBrokerException(const std::string msg)
+      : std::runtime_error(msg)
       {}
 
-    ~StrategyBrokerException()
-      {}
+    ~StrategyBrokerException() {}
+  };
+
+  // ---------------------------------------------------------------------------
+  // Policy types for execution tick adjustment (header-only, zero runtime cost)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * @brief No-op fractional policy (default).
+   * Leaves the tick unchanged.
+   */
+  template <class Decimal>
+  struct NoFractions {
+    static Decimal apply(const boost::gregorian::date&,
+                         const std::shared_ptr<SecurityAttributes<Decimal>>&,
+                         Decimal tickIn) {
+      return tickIn;
+    }
+  };
+
+  /**
+   * @brief NYSE-style pre-2001 fractional grid.
+   * - < 1997-06-01 : 1/8
+   * - < 2001-04-09 : 1/16
+   * - >= 2001-04-09: decimal ticks
+   * Applies only to equities.
+   */
+  template <class Decimal>
+  struct NysePre2001Fractions {
+    static Decimal apply(const boost::gregorian::date& d,
+                         const std::shared_ptr<SecurityAttributes<Decimal>>& attrs,
+                         Decimal tickIn)
+    {
+      if (!attrs || !attrs->isEquitySecurity())
+	return tickIn;
+
+      using boost::gregorian::date;
+
+      const date cut_1_8  (1997, 6, 1);
+      const date cut_1_16 (2001, 4, 9);
+      const Decimal eighth    = num::fromString<Decimal>("0.125");
+      const Decimal sixteenth = num::fromString<Decimal>("0.0625");
+
+      if (d < cut_1_8)
+	return std::max(tickIn, eighth);
+
+      if (d < cut_1_16)
+	return std::max(tickIn, sixteenth);
+
+      return tickIn;
+    }
+  };
+
+  /**
+   * @brief SEC Rule 612 sub-penny policy.
+   *
+   * If PricesAreSplitAdjusted==true (typical for adjusted historical series),
+   * sub-pennies for < $1 are DISABLED (to avoid spurious sub-$1 from split adjustments).
+   * If PricesAreSplitAdjusted==false (unadjusted quotes), allows $0.0001 when refPrice < $1.
+   * Always enforces a minimum of $0.01 for refPrice >= $1 for equities.
+   * 
+   * You not want Rule612SubPenny to modify the tick if prices are split adjusted because with
+   * split-adjusted histories the number you see on a given day is not the price traders actually
+   * quoted that day. A $50 stock in 2000 may appear as $0.25 after later splits. If we blindly
+   * apply Rule 612 (“< $1 may quote in $0.0001”) to that adjusted $0.25, we’d allow sub-penny
+   * orders that were impossible in the real market, biasing fills and P&L.
+   *
+   * Why sub-pennies + split-adjusted prices is risky
+   *
+   * False <$1 triggers. Split adjustment can push historic prices below $1 even when the contemporaneous price
+   * was $10, $50, etc. Treating those as sub-$1 will:
+   *
+   * let you place tighter stops/targets,
+   *
+   * round to a finer grid ($0.0001) than the market allowed,
+   *
+   * create optimistic, non-realistic fills.
+   *
+   * Historical rules mismatch. Before 2001 you had fractions (1/8, 1/16 …), later cents,
+   * and only much later (Rule 612) sub-pennies for true <$1 quotes. Split-adjusted levels
+   * blur those regime boundaries.
+   *
+   * Conservative vs optimistic bias. Using coarser ticks than reality (e.g., always $0.01)
+   * is conservative (harder to fill); using finer ticks than reality (allowing $0.0001 due
+   * to artificial < $1) is optimistic (easier to fill). For backtests, we’d rather avoid the
+   * ptimistic error.
+   */
+  template <class Decimal, bool PricesAreSplitAdjusted = true>
+  struct Rule612SubPenny {
+    static Decimal apply(const Decimal& refPrice,
+                         const std::shared_ptr<SecurityAttributes<Decimal>>& attrs,
+                         Decimal tickIn) {
+      if (!attrs || !attrs->isEquitySecurity())
+	return tickIn;
+
+      const Decimal one   = DecimalConstants<Decimal>::DecimalOne;
+      const Decimal cent  = DecimalConstants<Decimal>::EquityTick;        // 0.01
+      const Decimal subp  = num::fromString<Decimal>("0.0001");
+
+      // ≥ $1: at least a cent
+      Decimal tick = std::max(tickIn, cent);
+
+      // < $1: only enable sub-pennies if NOT split-adjusted
+      if constexpr (!PricesAreSplitAdjusted)
+	{
+	  if (refPrice < one)
+	    tick = std::min(tick, subp);
+	}
+
+      return tick;
+    }
   };
 
   /**
@@ -48,6 +157,9 @@ namespace mkc_timeseries
    * serving as a crucial component within a backtesting environment.
    *
    * @tparam Decimal The decimal type used for financial calculations.
+   * @tparam FractionPolicy Policy to simulate historical fractional tick sizes (e.g., 1/8ths, 1/16ths). Defaults to NoFractions.
+   * @tparam SubPennyPolicy Policy to enforce SEC Rule 612 regarding sub-penny pricing. Defaults to Rule612SubPenny.
+   * @tparam PricesAreSplitAdjusted Informs policies if price data is split-adjusted, affecting rules for sub-penny pricing. Defaults to true.
    *
    * @details
    * The StrategyBroker is central to simulating trading activities. It acts as the intermediary between a
@@ -73,7 +185,7 @@ namespace mkc_timeseries
    *
    * - Trade Lifecycle Management: Manages the lifecycle of a trade from order submission to position closing.
    * This includes creating `StrategyTransaction` objects that link entry orders, positions, and eventual exit orders.
-   ( These transactions are stored in the `StrategyTransactionManager`.
+   * These transactions are stored in the `StrategyTransactionManager`.
    *
    * - Observer Role: Implements `TradingOrderObserver` and `TradingPositionObserver` to react to events like
    * order executions and position closures. For instance, when a position is closed, the `PositionClosed` method is
@@ -113,20 +225,24 @@ namespace mkc_timeseries
    * for each instrument.
    *
    * - `StrategyTransactionManager` (`mStrategyTrades`): Records and manages `StrategyTransaction` objects,
-   ( each representing the full lifecycle of a trade (entry order, position, exit order).
+   * each representing the full lifecycle of a trade (entry order, position, exit order).
    * - `ClosedPositionHistory`: Stores a history of all closed trading positions (derived from completed
    * `StrategyTransaction`s).
    *
    * - `Portfolio`: Provides access to security information, such as tick size and historical price data,
    * necessary for order processing and position valuation.
    */
-  template <class Decimal> class StrategyBroker : 
-    public TradingOrderObserver<Decimal>, 
+  template <class Decimal,
+            template<class> class FractionPolicy   = NoFractions,
+            template<class, bool> class SubPennyPolicy = Rule612SubPenny,
+            bool PricesAreSplitAdjusted = true>
+  class StrategyBroker :
+    public TradingOrderObserver<Decimal>,
     public TradingPositionObserver<Decimal>
   {
   public:
     typedef typename TradingOrderManager<Decimal>::PendingOrderIterator PendingOrderIterator;
-    typedef typename StrategyTransactionManager<Decimal>::SortedStrategyTransactionIterator 
+    typedef typename StrategyTransactionManager<Decimal>::SortedStrategyTransactionIterator
       StrategyTransactionIterator;
     typedef typename ClosedPositionHistory<Decimal>::ConstPositionIterator ClosedPositionIterator;
 
@@ -138,38 +254,37 @@ namespace mkc_timeseries
      */
     StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio)
       : TradingOrderObserver<Decimal>(),
-	TradingPositionObserver<Decimal>(),
-	mOrderManager(portfolio),
-	mInstrumentPositionManager(),
-	mStrategyTrades(),
-	mClosedTradeHistory(),
-	mPortfolio(portfolio)
+        TradingPositionObserver<Decimal>(),
+        mOrderManager(portfolio),
+        mInstrumentPositionManager(),
+        mStrategyTrades(),
+        mClosedTradeHistory(),
+        mPortfolio(portfolio)
     {
       mOrderManager.addObserver (*this);
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->beginPortfolio();
 
       for (; symbolIterator != mPortfolio->endPortfolio(); symbolIterator++)
-	  mInstrumentPositionManager.addInstrument(symbolIterator->second->getSymbol());
+        mInstrumentPositionManager.addInstrument(symbolIterator->second->getSymbol());
     }
 
-    ~StrategyBroker()
-    {}
+    ~StrategyBroker() {}
 
-    StrategyBroker(const StrategyBroker<Decimal> &rhs)
+    StrategyBroker(const StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted> &rhs)
       : TradingOrderObserver<Decimal>(rhs),
-	TradingPositionObserver<Decimal>(rhs),
-	mOrderManager(rhs.mOrderManager),
-	mInstrumentPositionManager(rhs.mInstrumentPositionManager),
-	mStrategyTrades(rhs.mStrategyTrades),
-	mClosedTradeHistory(rhs.mClosedTradeHistory),
-	mPortfolio(rhs.mPortfolio)
+        TradingPositionObserver<Decimal>(rhs),
+        mOrderManager(rhs.mOrderManager),
+        mInstrumentPositionManager(rhs.mInstrumentPositionManager),
+        mStrategyTrades(rhs.mStrategyTrades),
+        mClosedTradeHistory(rhs.mClosedTradeHistory),
+        mPortfolio(rhs.mPortfolio)
     {}
 
-    StrategyBroker<Decimal>& 
-    operator=(const StrategyBroker<Decimal> &rhs)
+    StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted>&
+    operator=(const StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted> &rhs)
     {
       if (this == &rhs)
-	return *this;
+        return *this;
 
       TradingOrderObserver<Decimal>::operator=(rhs);
       TradingPositionObserver<Decimal>::operator=(rhs);
@@ -255,161 +370,98 @@ namespace mkc_timeseries
      * This count is derived from the `StrategyTransactionManager`.
      * @return The total number of trades.
      */
-    uint32_t getTotalTrades() const
-    {
-      return  mStrategyTrades.getTotalTrades();
-    }
-
+    uint32_t getTotalTrades() const { return  mStrategyTrades.getTotalTrades(); }
+    
     /**
      * @brief Gets the number of currently open trades (strategy transactions that have an entry but no exit yet).
      * This count is derived from the `StrategyTransactionManager`.
      * @return The number of open trades.
      */
-    uint32_t getOpenTrades() const
-    {
-      return  mStrategyTrades.getOpenTrades();
-    }
+    uint32_t getOpenTrades()  const { return  mStrategyTrades.getOpenTrades(); }
 
     /**
      * @brief Gets the number of closed trades (strategy transactions that have both an entry and an exit).
      * This count is derived from the `StrategyTransactionManager`.
      * @return The number of closed trades.
      */
-    uint32_t getClosedTrades() const
-    {
-      return  mStrategyTrades.getClosedTrades();
-    }
+    uint32_t getClosedTrades()const { return  mStrategyTrades.getClosedTrades(); }
 
     /**
      * @brief Checks if there is an open long position for the specified trading symbol.
-     * @param tradingSymbol The symbol of the instrument.
+     * @param s The symbol of the instrument.
      * @return True if a long position exists, false otherwise.
      */
-    bool isLongPosition(const std::string& tradingSymbol) const
-    {
-      return mInstrumentPositionManager.isLongPosition (tradingSymbol);
-    }
-
+    bool isLongPosition (const std::string& s) const { return mInstrumentPositionManager.isLongPosition (s); }
+    
     /**
      * @brief Checks if there is an open short position for the specified trading symbol.
-     * @param tradingSymbol The symbol of the instrument.
+     * @param s The symbol of the instrument.
      * @return True if a short position exists, false otherwise.
      */
-    bool isShortPosition(const std::string& tradingSymbol) const
-    {
-      return mInstrumentPositionManager.isShortPosition (tradingSymbol);
-    }
+    bool isShortPosition(const std::string& s) const { return mInstrumentPositionManager.isShortPosition(s); }
 
     /**
      * @brief Checks if there is no open position (flat) for the specified trading symbol.
-     * @param tradingSymbol The symbol of the instrument.
+     * @param s The symbol of the instrument.
      * @return True if the position is flat, false otherwise.
      */
-    bool isFlatPosition(const std::string& tradingSymbol) const
-    {
-      return mInstrumentPositionManager.isFlatPosition (tradingSymbol);
-    }
+    bool isFlatPosition (const std::string& s) const { return mInstrumentPositionManager.isFlatPosition (s); }
 
-    // Date based versions
-    void EnterLongOnOpen(const std::string& tradingSymbol, 	
-			 const date& orderDate,
-			 const TradingVolume& unitsInOrder,
-			 const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			 const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
-    {
-        EnterLongOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), unitsInOrder, stopLoss, profitTarget);
-    }
+    // ---------------------------
+    // Date-based convenience APIs
+    // ---------------------------
+    void EnterLongOnOpen (const std::string& s, const date& d, const TradingVolume& u,
+                          const Decimal& sl = DecimalConstants<Decimal>::DecimalZero,
+                          const Decimal& pt = DecimalConstants<Decimal>::DecimalZero)
+    { EnterLongOnOpen(s, ptime(d, getDefaultBarTime()), u, sl, pt); }
 
-    void EnterShortOnOpen(const std::string& tradingSymbol,	
-			  const date& orderDate,
-			  const TradingVolume& unitsInOrder,
-			  const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			  const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
-    {
-        EnterShortOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), unitsInOrder, stopLoss, profitTarget);
-    }
+    void EnterShortOnOpen(const std::string& s, const date& d, const TradingVolume& u,
+                          const Decimal& sl = DecimalConstants<Decimal>::DecimalZero,
+                          const Decimal& pt = DecimalConstants<Decimal>::DecimalZero)
+    { EnterShortOnOpen(s, ptime(d, getDefaultBarTime()), u, sl, pt); }
 
-    void ExitLongAllUnitsOnOpen(const std::string& tradingSymbol,
-				const date& orderDate,
-				const TradingVolume& unitsInOrder)
-    {
-        ExitLongAllUnitsOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), unitsInOrder);
-    }
+    void ExitLongAllUnitsOnOpen (const std::string& s, const date& d, const TradingVolume& u)
+    { ExitLongAllUnitsOnOpen(s, ptime(d, getDefaultBarTime()), u); }
 
-    void ExitLongAllUnitsOnOpen(const std::string& tradingSymbol,
-				const date& orderDate)
-    {
-        ExitLongAllUnitsOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()));
-    }
+    void ExitLongAllUnitsOnOpen (const std::string& s, const date& d)
+    { ExitLongAllUnitsOnOpen(s, ptime(d, getDefaultBarTime())); }
 
-    void ExitShortAllUnitsOnOpen(const std::string& tradingSymbol,
-				 const date& orderDate)
-    {
-        ExitShortAllUnitsOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()));
-    }
+    void ExitShortAllUnitsOnOpen(const std::string& s, const date& d)
+    { ExitShortAllUnitsOnOpen(s, ptime(d, getDefaultBarTime())); }
 
-    void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& limitPrice)
-    {
-        ExitLongAllUnitsAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitPrice);
-    }
-
-    void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& limitBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
-    {
-        ExitLongAllUnitsAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitBasePrice, percentNum);
-    }
-
-    void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
-				  const date& orderDate,
-				  const Decimal& limitPrice)
-    {
-        ExitShortAllUnitsAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitPrice);
-    }
-
-    void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& limitBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
-    {
-        ExitShortAllUnitsAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitBasePrice, percentNum);
-    }
-
-    void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
-				const date& orderDate,
-				const Decimal& stopPrice)
-    {
-        ExitLongAllUnitsAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopPrice);
-    }
-
-    void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
-				const date& orderDate,
-				const Decimal& stopBasePrice,
-				const PercentNumber<Decimal>& percentNum)
-    {
-        ExitLongAllUnitsAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopBasePrice, percentNum);
-    }
-
-    void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& stopPrice)
-    {
-        ExitShortAllUnitsAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopPrice);
-    }
-
-    void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
-				 const date& orderDate,
-				 const Decimal& stopBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
-    {
-        ExitShortAllUnitsAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopBasePrice, percentNum);
-    }
+    void ExitLongAllUnitsAtLimit (const std::string& s, const date& d, const Decimal& px)
+    { ExitLongAllUnitsAtLimit(s, ptime(d, getDefaultBarTime()), px); }
 
 
-    // Ptime based versions
+
+    void ExitLongAllUnitsAtLimit (const std::string& s, const date& d,
+                                  const Decimal& base, const PercentNumber<Decimal>& pct)
+    { ExitLongAllUnitsAtLimit(s, ptime(d, getDefaultBarTime()), base, pct); }
+
+    void ExitShortAllUnitsAtLimit(const std::string& s, const date& d, const Decimal& px)
+    { ExitShortAllUnitsAtLimit(s, ptime(d, getDefaultBarTime()), px); }
+
+    void ExitShortAllUnitsAtLimit(const std::string& s, const date& d,
+                                  const Decimal& base, const PercentNumber<Decimal>& pct)
+    { ExitShortAllUnitsAtLimit(s, ptime(d, getDefaultBarTime()), base, pct); }
+
+    void ExitLongAllUnitsAtStop  (const std::string& s, const date& d, const Decimal& px)
+    { ExitLongAllUnitsAtStop(s, ptime(d, getDefaultBarTime()), px); }
+
+    void ExitLongAllUnitsAtStop  (const std::string& s, const date& d,
+                                  const Decimal& base, const PercentNumber<Decimal>& pct)
+    { ExitLongAllUnitsAtStop(s, ptime(d, getDefaultBarTime()), base, pct); }
+
+    void ExitShortAllUnitsAtStop (const std::string& s, const date& d, const Decimal& px)
+    { ExitShortAllUnitsAtStop(s, ptime(d, getDefaultBarTime()), px); }
+
+    void ExitShortAllUnitsAtStop (const std::string& s, const date& d,
+                                  const Decimal& base, const PercentNumber<Decimal>& pct)
+    { ExitShortAllUnitsAtStop(s, ptime(d, getDefaultBarTime()), base, pct); }
+
+    // -------------------------
+    // Ptime-based order entries
+    // -------------------------
     /**
      * @brief Submit a market-on-open long order using ptime.
      *
@@ -419,18 +471,17 @@ namespace mkc_timeseries
      * @param stopLoss Optional stop-loss price.
      * @param profitTarget Optional profit-target price.
      */
-    void EnterLongOnOpen(const std::string& tradingSymbol, 	
-			 const ptime& orderDateTime,
-			 const TradingVolume& unitsInOrder,
-			 const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			 const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+    void EnterLongOnOpen(const std::string& tradingSymbol,
+                         const ptime& orderDateTime,
+                         const TradingVolume& unitsInOrder,
+                         const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                         const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
       auto order = std::make_shared<MarketOnOpenLongOrder<Decimal>>(tradingSymbol,
-								    unitsInOrder,
-								    orderDateTime, // Use ptime
-								    stopLoss,
-								    profitTarget);
-      
+                                                                    unitsInOrder,
+                                                                    orderDateTime, // Use ptime
+                                                                    stopLoss,
+                                                                    profitTarget);
       mOrderManager.addTradingOrder (order);
     }
 
@@ -443,18 +494,17 @@ namespace mkc_timeseries
      * @param stopLoss Optional stop-loss price.
      * @param profitTarget Optional profit-target price.
      */
-    void EnterShortOnOpen(const std::string& tradingSymbol,	
-			  const ptime& orderDateTime,
-			  const TradingVolume& unitsInOrder,
-			  const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			  const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+    void EnterShortOnOpen(const std::string& tradingSymbol,
+                          const ptime& orderDateTime,
+                          const TradingVolume& unitsInOrder,
+                          const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                          const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
       auto order = std::make_shared<MarketOnOpenShortOrder<Decimal>>(tradingSymbol,
-								     unitsInOrder,
-								     orderDateTime, // Use ptime
-								     stopLoss,
-								     profitTarget);
-      
+                                                                     unitsInOrder,
+                                                                     orderDateTime, // Use ptime
+                                                                     stopLoss,
+                                                                     profitTarget);
       mOrderManager.addTradingOrder (order);
     }
 
@@ -462,26 +512,24 @@ namespace mkc_timeseries
      * @brief Exit all long units at market-open using ptime.
      * @param tradingSymbol Ticker symbol to exit.
      * @param orderDateTime Exact date and time of the exit order.
+     * @param unitsInOrder Number of units to exit.
      */
     void ExitLongAllUnitsOnOpen(const std::string& tradingSymbol,
-				const ptime& orderDateTime,
-				const TradingVolume& unitsInOrder)
+                                const ptime& orderDateTime,
+                                const TradingVolume& unitsInOrder)
     {
-     if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
-	{
-	  auto order = std::make_shared<MarketOnOpenSellOrder<Decimal>>(tradingSymbol,
-								     unitsInOrder,
-								     orderDateTime); // Use ptime
-
-	  mOrderManager.addTradingOrder (order);
-	}
-      else
-	{
-	  throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtOpen - no long position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isLongPosition (tradingSymbol)) {
+        auto order = std::make_shared<MarketOnOpenSellOrder<Decimal>>(tradingSymbol,
+                                                                      unitsInOrder,
+                                                                      orderDateTime); // Use ptime
+        mOrderManager.addTradingOrder (order);
+      } else {
+        throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtOpen - no long position for " + tradingSymbol +
+                                      " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
-     /**
+    /**
       * @brief Submits a market-on-open order to exit all units of an existing long position using ptime.
       * The volume is determined automatically from the current position.
       * @param tradingSymbol The symbol of the instrument.
@@ -489,17 +537,15 @@ namespace mkc_timeseries
       * @throws StrategyBrokerException if no long position exists for the symbol.
       */
     void ExitLongAllUnitsOnOpen(const std::string& tradingSymbol,
-				const ptime& orderDateTime)
+                                const ptime& orderDateTime)
     {
-     if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
-	{
-	  ExitLongAllUnitsOnOpen(tradingSymbol, orderDateTime, 
-				 mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol));
-	}
-           else
-	{
-	  throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtOpen - no long position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isLongPosition (tradingSymbol)) {
+        ExitLongAllUnitsOnOpen(tradingSymbol, orderDateTime,
+                               mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol));
+      } else {
+        throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtOpen - no long position for " + tradingSymbol +
+                                      " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
     /**
@@ -508,20 +554,17 @@ namespace mkc_timeseries
      * @param orderDateTime Exact date and time of the exit order.
      */
     void ExitShortAllUnitsOnOpen(const std::string& tradingSymbol,
-				 const ptime& orderDateTime)
+                                 const ptime& orderDateTime)
     {
-      if (mInstrumentPositionManager.isShortPosition (tradingSymbol))
-	{
-	  auto order = std::make_shared<MarketOnOpenCoverOrder<Decimal>>(tradingSymbol,
-								       mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
-								      orderDateTime); // Use ptime
-
-	  mOrderManager.addTradingOrder (order);
-	}
-      else
-	{
-	  StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtOpen - no short position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isShortPosition (tradingSymbol)) {
+        auto order = std::make_shared<MarketOnOpenCoverOrder<Decimal>>(tradingSymbol,
+                                                                       mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
+                                                                       orderDateTime); // Use ptime
+        mOrderManager.addTradingOrder (order);
+      } else {
+        StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtOpen - no short position for " + tradingSymbol +
+                                " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
     /**
@@ -532,22 +575,19 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no long position exists for the symbol.
      */
     void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const ptime& orderDateTime,
-				 const Decimal& limitPrice)
+                                 const ptime& orderDateTime,
+                                 const Decimal& limitPrice)
     {
-      if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
-	{
-	  auto order = std::make_shared<SellAtLimitOrder<Decimal>>(tradingSymbol,
-								mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
-								orderDateTime, // Use ptime
-								limitPrice);
-
-	  mOrderManager.addTradingOrder (order);
-	}
-      else
-	{
-	  throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtLimit - no long position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isLongPosition (tradingSymbol)) {
+        auto order = std::make_shared<SellAtLimitOrder<Decimal>>(tradingSymbol,
+                                                                 mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
+                                                                 orderDateTime, // Use ptime
+                                                                 limitPrice);
+        mOrderManager.addTradingOrder (order);
+      } else {
+        throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtLimit - no long position for " + tradingSymbol +
+                                      " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
     /**
@@ -560,13 +600,14 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no long position exists for the symbol or if tick data is unavailable.
      */
     void ExitLongAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const ptime& orderDateTime,
-				 const Decimal& limitBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
+                                 const ptime& orderDateTime,
+                                 const Decimal& limitBasePrice,
+                                 const PercentNumber<Decimal>& percentNum)
     {
       LongProfitTarget<Decimal> profitTarget(limitBasePrice, percentNum);
-      Decimal orderPrice = num::Round2Tick (profitTarget.getProfitTarget(), this->getTick (tradingSymbol),
-					    this->getTickDiv2(tradingSymbol));
+      const Decimal target = profitTarget.getProfitTarget();
+
+      const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, limitBasePrice, target);
       this->ExitLongAllUnitsAtLimit (tradingSymbol, orderDateTime, orderPrice); // Calls ptime version
     }
 
@@ -578,22 +619,19 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no short position exists for the symbol.
      */
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
-				  const ptime& orderDateTime,
-				  const Decimal& limitPrice)
+                                  const ptime& orderDateTime,
+                                  const Decimal& limitPrice)
     {
-      if (mInstrumentPositionManager.isShortPosition (tradingSymbol))
-	{
-	  auto order = std::make_shared<CoverAtLimitOrder<Decimal>>(tradingSymbol,
-								 mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
-								 orderDateTime, // Use ptime
-								 limitPrice);
-
-	  mOrderManager.addTradingOrder (order);
-	}
-      else
-	{
-	  throw StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtLimit - no short position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isShortPosition (tradingSymbol)) {
+        auto order = std::make_shared<CoverAtLimitOrder<Decimal>>(tradingSymbol,
+                                                                  mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
+                                                                  orderDateTime, // Use ptime
+                                                                  limitPrice);
+        mOrderManager.addTradingOrder (order);
+      } else {
+        throw StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtLimit - no short position for " + tradingSymbol +
+                                      " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
     /**
@@ -606,13 +644,14 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no short position exists for the symbol or if tick data is unavailable.
      */
     void ExitShortAllUnitsAtLimit(const std::string& tradingSymbol,
-				 const ptime& orderDateTime,
-				 const Decimal& limitBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
+                                  const ptime& orderDateTime,
+                                  const Decimal& limitBasePrice,
+                                  const PercentNumber<Decimal>& percentNum)
     {
       ShortProfitTarget<Decimal> percentTarget(limitBasePrice, percentNum);
-      Decimal profitTarget(percentTarget.getProfitTarget());
-      Decimal orderPrice = num::Round2Tick (profitTarget, this->getTick (tradingSymbol), this->getTickDiv2(tradingSymbol));
+      const Decimal target = Decimal(percentTarget.getProfitTarget());
+
+      const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, limitBasePrice, target);
       this->ExitShortAllUnitsAtLimit (tradingSymbol, orderDateTime, orderPrice); // Calls ptime version
     }
 
@@ -624,22 +663,19 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no long position exists for the symbol.
      */
     void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
-				const ptime& orderDateTime,
-				const Decimal& stopPrice)
+                                const ptime& orderDateTime,
+                                const Decimal& stopPrice)
     {
-      if (mInstrumentPositionManager.isLongPosition (tradingSymbol))
-	{
-	  auto order = std::make_shared<SellAtStopOrder<Decimal>>(tradingSymbol,
-							       mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
-							       orderDateTime, // Use ptime
-							       stopPrice);
-
-	  mOrderManager.addTradingOrder (order);
-	}
-      else
-	{
-	  throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtStop - no long position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isLongPosition (tradingSymbol)) {
+        auto order = std::make_shared<SellAtStopOrder<Decimal>>(tradingSymbol,
+                                                                mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
+                                                                orderDateTime, // Use ptime
+                                                                stopPrice);
+        mOrderManager.addTradingOrder (order);
+      } else {
+        throw StrategyBrokerException("StrategyBroker::ExitLongAllUnitsAtStop - no long position for " + tradingSymbol +
+                                      " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
     /**
@@ -653,13 +689,14 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no long position exists for the symbol or if tick data is unavailable.
      */
     void ExitLongAllUnitsAtStop(const std::string& tradingSymbol,
-				const ptime& orderDateTime,
-				const Decimal& stopBasePrice,
-				const PercentNumber<Decimal>& percentNum)
+                                const ptime& orderDateTime,
+                                const Decimal& stopBasePrice,
+                                const PercentNumber<Decimal>& percentNum)
     {
       LongStopLoss<Decimal> percentStop(stopBasePrice, percentNum);
-      Decimal stopLoss(percentStop.getStopLoss());
-      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol), this->getTickDiv2(tradingSymbol));
+      const Decimal stopPx = Decimal(percentStop.getStopLoss());
+
+      const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, stopBasePrice, stopPx);
       this->ExitLongAllUnitsAtStop(tradingSymbol, orderDateTime, orderPrice); // Calls ptime version
     }
 
@@ -671,22 +708,19 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no short position exists for the symbol.
      */
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
-				 const ptime& orderDateTime,
-				 const Decimal& stopPrice)
+                                 const ptime& orderDateTime,
+                                 const Decimal& stopPrice)
     {
-      if (mInstrumentPositionManager.isShortPosition (tradingSymbol))
-	{
-	  auto order = std::make_shared<CoverAtStopOrder<Decimal>>(tradingSymbol,
-							       	mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
-							       orderDateTime, // Use ptime
-							       stopPrice);
-
-	  mOrderManager.addTradingOrder (order);
-	}
-      else
-	{
-	  throw StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtStop - no short position for " +tradingSymbol +" with order datetime: " +boost::posix_time::to_simple_string (orderDateTime));
-	}
+      if (mInstrumentPositionManager.isShortPosition (tradingSymbol)) {
+        auto order = std::make_shared<CoverAtStopOrder<Decimal>>(tradingSymbol,
+                                                                 mInstrumentPositionManager.getVolumeInAllUnits(tradingSymbol),
+                                                                 orderDateTime, // Use ptime
+                                                                 stopPrice);
+        mOrderManager.addTradingOrder (order);
+      } else {
+        throw StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtStop - no short position for " + tradingSymbol +
+                                      " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
     }
 
     /**
@@ -699,74 +733,66 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if no short position exists for the symbol or if tick data is unavailable.
      */
     void ExitShortAllUnitsAtStop(const std::string& tradingSymbol,
-				 const ptime& orderDateTime,
-				 const Decimal& stopBasePrice,
-				 const PercentNumber<Decimal>& percentNum)
+                                 const ptime& orderDateTime,
+                                 const Decimal& stopBasePrice,
+                                 const PercentNumber<Decimal>& percentNum)
     {
       ShortStopLoss<Decimal> aPercentStop(stopBasePrice, percentNum);
-      Decimal stopLoss(aPercentStop.getStopLoss());
-      Decimal orderPrice = num::Round2Tick (stopLoss, this->getTick (tradingSymbol), this->getTickDiv2(tradingSymbol));
+      const Decimal stopPx = Decimal(aPercentStop.getStopLoss());
+
+      const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, stopBasePrice, stopPx);
       this->ExitShortAllUnitsAtStop(tradingSymbol, orderDateTime, orderPrice); // Calls ptime version
     }
 
+    // -----------------------
+    // Order manager plumbing
+    // -----------------------
     /**
      * @brief Returns a constant iterator to the beginning of pending orders in the `TradingOrderManager`.
      * @return A PendingOrderIterator pointing to the first pending order.
      */
-    PendingOrderIterator beginPendingOrders() const
-    {
-      return mOrderManager.beginPendingOrders();
-    }
-
+    PendingOrderIterator beginPendingOrders() const { return mOrderManager.beginPendingOrders(); }
+    
     /**
      * @brief Returns a constant iterator to the end of pending orders in the `TradingOrderManager`.
      * @return A PendingOrderIterator pointing past the last pending order.
      */
-    PendingOrderIterator endPendingOrders() const
-    {
-      return mOrderManager.endPendingOrders();
-    }
+    PendingOrderIterator endPendingOrders()   const { return mOrderManager.endPendingOrders();   }
 
     /**
      * @brief Processes all pending orders for a given date (using default bar time).
      * This method is critical in a backtesting loop. It first updates the open positions with the current day's bar data
      * and then instructs the TradingOrderManager to attempt to fill any pending orders based on this new data.
-     * @param orderProcessingDate The date for which orders are to be processed.
+     * @param d The date for which orders are to be processed.
      */
-    void ProcessPendingOrders(const date& orderProcessingDate)
-    {
-        this->ProcessPendingOrders(ptime(orderProcessingDate, getDefaultBarTime()));
-    }
+    void ProcessPendingOrders(const date& d)
+    { this->ProcessPendingOrders(ptime(d, getDefaultBarTime())); }
 
     /**
      * @brief Processes all pending orders for a given datetime.
      * This method is critical in a backtesting loop. It first updates the open positions with the current datetime's bar data
      * and then instructs the TradingOrderManager to attempt to fill any pending orders based on this new data.
-     * @param orderProcessingDateTime The datetime for which orders are to be processed.
+     * @param dt The datetime for which orders are to be processed.
      */
-    void ProcessPendingOrders(const ptime& orderProcessingDateTime)
+    void ProcessPendingOrders(const ptime& dt)
     {
-      // Add historical bar for this datetime before possibly closing any open
-      // positions
-      mInstrumentPositionManager.addBarForOpenPosition (orderProcessingDateTime, // Use ptime version
-							mPortfolio.get());
-      mOrderManager.processPendingOrders (orderProcessingDateTime, // Use ptime version
-					  mInstrumentPositionManager);
+      // Add historical bar for this datetime before possibly closing any open positions
+      mInstrumentPositionManager.addBarForOpenPosition (dt, mPortfolio.get());
+      mOrderManager.processPendingOrders (dt, mInstrumentPositionManager);
     }
 
-
+    // ----------------------------
+    // Order/position event handlers
+    // ----------------------------
     /**
      * @brief Callback invoked when a MarketOnOpenLongOrder is executed.
      * Creates a new long trading position and records the transaction.
      * @param order Pointer to the executed MarketOnOpenLongOrder.
      */
-    void OrderExecuted (MarketOnOpenLongOrder<Decimal> *order) override
+    void OrderExecuted (MarketOnOpenLongOrder <Decimal> *order) override
     {
-      auto position = createLongTradingPosition (order,
-						 order->getStopLoss(),
-						 order->getProfitTarget());
+      auto position = createLongTradingPosition (order, order->getStopLoss(), order->getProfitTarget());
       auto pOrder = std::make_shared<MarketOnOpenLongOrder<Decimal>>(*order);
-
       mInstrumentPositionManager.addPosition (position);
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
     }
@@ -778,11 +804,8 @@ namespace mkc_timeseries
      */
     void OrderExecuted (MarketOnOpenShortOrder<Decimal> *order) override
     {
-      auto position = createShortTradingPosition (order,
-						  order->getStopLoss(),
-						  order->getProfitTarget());
+      auto position = createShortTradingPosition (order, order->getStopLoss(), order->getProfitTarget());
       auto pOrder = std::make_shared<MarketOnOpenShortOrder<Decimal>>(*order);
-
       mInstrumentPositionManager.addPosition (position);
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
     }
@@ -792,78 +815,61 @@ namespace mkc_timeseries
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed MarketOnOpenSellOrder.
      */
-    void OrderExecuted (MarketOnOpenSellOrder<Decimal> *order) override
-    {
-      ExitOrderExecutedCommon<MarketOnOpenSellOrder<Decimal>>(order);
-    }
-
+    void OrderExecuted (MarketOnOpenSellOrder <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    
     /**
      * @brief Callback invoked when a MarketOnOpenCoverOrder is executed (exit short).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed MarketOnOpenCoverOrder.
      */
-    void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order) override
-    {
-      ExitOrderExecutedCommon<MarketOnOpenCoverOrder<Decimal>>(order);
-    }
-
+    void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    
     /**
      * @brief Callback invoked when a SellAtLimitOrder is executed (exit long).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed SellAtLimitOrder.
      */
-    void OrderExecuted (SellAtLimitOrder<Decimal> *order) override
-    {
-      ExitOrderExecutedCommon<SellAtLimitOrder<Decimal>>(order);
-    }
-
+    void OrderExecuted (SellAtLimitOrder       <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    
     /**
      * @brief Callback invoked when a CoverAtLimitOrder is executed (exit short).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed CoverAtLimitOrder.
      */
-    void OrderExecuted (CoverAtLimitOrder<Decimal> *order) override
-    {
-      ExitOrderExecutedCommon<CoverAtLimitOrder<Decimal>>(order);
-    }
-
+    void OrderExecuted (CoverAtLimitOrder      <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    
     /**
      * @brief Callback invoked when a CoverAtStopOrder is executed (exit short).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed CoverAtStopOrder.
      */
-    void OrderExecuted (CoverAtStopOrder<Decimal> *order) override
-    {
-      ExitOrderExecutedCommon<CoverAtStopOrder<Decimal>>(order);
-    }
-
+    void OrderExecuted (CoverAtStopOrder       <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    
     /**
      * @brief Callback invoked when a SellAtStopOrder is executed (exit long).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed SellAtStopOrder.
      */
-    void OrderExecuted (SellAtStopOrder<Decimal> *order) override
-    {
-      ExitOrderExecutedCommon<SellAtStopOrder<Decimal>>(order);
-    }
+    void OrderExecuted (SellAtStopOrder        <Decimal> *order) override { ExitOrderExecutedCommon(order); }
 
-    // OrderCanceled methods
-    void OrderCanceled (MarketOnOpenLongOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (MarketOnOpenShortOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (MarketOnOpenSellOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (MarketOnOpenCoverOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (SellAtLimitOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (CoverAtLimitOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (CoverAtStopOrder<Decimal> * /* order */) override {}
-    void OrderCanceled (SellAtStopOrder<Decimal> * /* order */) override {}
+    void OrderCanceled (MarketOnOpenLongOrder <Decimal> * ) override {}
+    void OrderCanceled (MarketOnOpenShortOrder<Decimal> * ) override {}
+    void OrderCanceled (MarketOnOpenSellOrder <Decimal> * ) override {}
+    void OrderCanceled (MarketOnOpenCoverOrder<Decimal> * ) override {}
+    void OrderCanceled (SellAtLimitOrder      <Decimal> * ) override {}
+    void OrderCanceled (CoverAtLimitOrder     <Decimal> * ) override {}
+    void OrderCanceled (CoverAtStopOrder      <Decimal> * ) override {}
+    void OrderCanceled (SellAtStopOrder       <Decimal> * ) override {}
 
-
+    // -----------------------
+    // Positions / transactions
+    // -----------------------
     /**
      * @brief Retrieves the current instrument position for a given trading symbol from the `InstrumentPositionManager`.
      * @param tradingSymbol The symbol of the instrument.
      * @return A constant reference to the InstrumentPosition object.
      */
-    const InstrumentPosition<Decimal>& 
+    const InstrumentPosition<Decimal>&
     getInstrumentPosition(const std::string& tradingSymbol) const
     {
       return mInstrumentPositionManager.getInstrumentPosition (tradingSymbol);
@@ -879,48 +885,47 @@ namespace mkc_timeseries
     void PositionClosed (TradingPosition<Decimal> *aPosition) override
     {
       typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator it =
-	mStrategyTrades.findStrategyTransaction (aPosition->getPositionID());
+        mStrategyTrades.findStrategyTransaction (aPosition->getPositionID());
 
-      if (it != mStrategyTrades.endStrategyTransaction())
-	{
-	  mClosedTradeHistory.addClosedPosition (it->second->getTradingPositionPtr());
-	}
-      else
-	throw StrategyBrokerException("Unable to find strategy transaction for position id " +std::to_string(aPosition->getPositionID()));
+      if (it != mStrategyTrades.endStrategyTransaction()) {
+        mClosedTradeHistory.addClosedPosition (it->second->getTradingPositionPtr());
+      } else {
+        throw StrategyBrokerException("Unable to find strategy transaction for position id " +
+                                      std::to_string(aPosition->getPositionID()));
+      }
     }
 
   public:
+    // -----------------
+    // Baseline tick API
+    // -----------------
     const Decimal getTick(const std::string& symbol) const
     {
       auto& factory = SecurityAttributesFactory<Decimal>::instance();
       auto it = factory.getSecurityAttributes (symbol);
 
       if (it != factory.endSecurityAttributes())
-	return it->second->getTick();
+        return it->second->getTick();
       else
-	throw StrategyBrokerException("Strategybroker::getTick - ticker symbol " +symbol +" is unkown");
-
+        throw StrategyBrokerException("Strategybroker::getTick - ticker symbol " + symbol + " is unknown");
     }
 
     const Decimal getTickDiv2(const std::string& symbol) const
     {
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (symbol);
-      if (symbolIterator != mPortfolio->endPortfolio())
-	{
-	  return symbolIterator->second->getTickDiv2();
-	}
-      else
-	throw StrategyBrokerException("Strategybroker::getTickDiv2 - ticker symbol " +symbol +" is unkown");
-
+      if (symbolIterator != mPortfolio->endPortfolio()) {
+        return symbolIterator->second->getTickDiv2();
+      } else {
+        throw StrategyBrokerException("Strategybroker::getTickDiv2 - ticker symbol " + symbol + " is unknown");
+      }
     }
 
   private:
-    // Date based getEntryBar
-    OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
-							const date& d)
-    {
-        return getEntryBar(tradingSymbol, ptime(d, getDefaultBarTime()));
-    }
+    // -------------------
+    // Entry bar retrieval
+    // -------------------
+    OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol, const date& d)
+    { return getEntryBar(tradingSymbol, ptime(d, getDefaultBarTime())); }
 
     /**
      * @brief Retrieves the OHLC time series entry (bar data) for a given symbol and ptime from the `Portfolio`.
@@ -930,27 +935,25 @@ namespace mkc_timeseries
      * @return The OHLCTimeSeriesEntry for the specified symbol and ptime.
      * @throws StrategyBrokerException if the symbol is not found in the portfolio or if data for the datetime is missing.
      */
-    OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol,
-    			const ptime& dt)
+    OHLCTimeSeriesEntry<Decimal> getEntryBar (const std::string& tradingSymbol, const ptime& dt)
     {
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->findSecurity (tradingSymbol);
-      if (symbolIterator != mPortfolio->endPortfolio())
- {
-        try
-        {
+      if (symbolIterator != mPortfolio->endPortfolio()) {
+        try {
           return symbolIterator->second->getTimeSeriesEntry(dt);
+        } catch (const mkc_timeseries::TimeSeriesDataNotFoundException& e) {
+          throw StrategyBrokerException ("StrategyBroker::getEntryBar - Bar data not found for " + tradingSymbol +
+                                         " at " + boost::posix_time::to_simple_string(dt) + ": " + e.what());
         }
-        catch (const mkc_timeseries::TimeSeriesDataNotFoundException& e)
-        {
-          throw StrategyBrokerException ("StrategyBroker::getEntryBar - Bar data not found for " + tradingSymbol + " at " + boost::posix_time::to_simple_string(dt) + ": " + e.what());
-        }
- }
-      else
- throw StrategyBrokerException ("StrategyBroker::getEntryBar - Cannot find " +tradingSymbol +" in portfolio");
+      } else {
+        throw StrategyBrokerException ("StrategyBroker::getEntryBar - Cannot find " + tradingSymbol + " in portfolio");
+      }
     }
 
-
-     /**
+    // ---------------------------
+    // Position / transaction make
+    // ---------------------------
+    /**
      * @brief Creates a new `TradingPositionLong` instance based on an executed order.
      * The new position observes this `StrategyBroker` instance for closure events.
      * @param order Pointer to the executed `TradingOrder` that opened the position.
@@ -959,16 +962,15 @@ namespace mkc_timeseries
      * @return A shared pointer to the newly created `TradingPositionLong`.
      */
     std::shared_ptr<TradingPositionLong<Decimal>>
-    createLongTradingPosition (TradingOrder<Decimal> *order, 
-			       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-			       const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+    createLongTradingPosition (TradingOrder<Decimal> *order,
+                               const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                               const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
-      auto position = std::make_shared<TradingPositionLong<Decimal>> (order->getTradingSymbol(), 
-								      order->getFillPrice(),
-								      // Use ptime version of getEntryBar
-								      getEntryBar (order->getTradingSymbol(), 
-										   order->getFillDateTime()),
-								      order->getUnitsInOrder());
+      auto position = std::make_shared<TradingPositionLong<Decimal>>(order->getTradingSymbol(),
+                                                                     order->getFillPrice(),
+                                                                     getEntryBar(order->getTradingSymbol(),
+                                                                                 order->getFillDateTime()),
+                                                                     order->getUnitsInOrder());
       position->setStopLoss(stopLoss);
       position->setProfitTarget(profitTarget);
       position->addObserver (*this);
@@ -985,24 +987,21 @@ namespace mkc_timeseries
      */
     std::shared_ptr<TradingPositionShort<Decimal>>
     createShortTradingPosition (TradingOrder<Decimal> *order,
-				const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
-				const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+                                const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
-      auto position = 
-	std::make_shared<TradingPositionShort<Decimal>> (order->getTradingSymbol(), 
-						      order->getFillPrice(),
-						      // Use ptime version of getEntryBar
-						      getEntryBar (order->getTradingSymbol(), 
-								   order->getFillDateTime()),
-						      order->getUnitsInOrder());
-
+      auto position =
+        std::make_shared<TradingPositionShort<Decimal>>(order->getTradingSymbol(),
+                                                        order->getFillPrice(),
+                                                        getEntryBar(order->getTradingSymbol(),
+                                                                    order->getFillDateTime()),
+                                                        order->getUnitsInOrder());
       position->setStopLoss(stopLoss);
       position->setProfitTarget(profitTarget);
-
       position->addObserver (*this);
       return position;
     }
-
+    
     /**
      * @brief Creates a new `StrategyTransaction` linking an entry order with its resulting trading position.
      * This transaction represents the start of a trade's lifecycle.
@@ -1017,7 +1016,8 @@ namespace mkc_timeseries
       return std::make_shared<StrategyTransaction<Decimal>>(order, position);
     }
 
-     /**
+
+    /**
      * @brief Common logic to handle the execution of an exit order (e.g., sell, cover).
      * This template method finds all `TradingPosition` units for the given symbol managed by `InstrumentPositionManager`,
      * marks their corresponding `StrategyTransaction` in `mStrategyTrades` as complete with the provided exit order,
@@ -1030,44 +1030,86 @@ namespace mkc_timeseries
     void ExitOrderExecutedCommon (T *order)
     {
       InstrumentPosition<Decimal> instrumentPosition =
-	mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
-      typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator = 
-	instrumentPosition.beginInstrumentPosition();
+        mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
+      typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
+        instrumentPosition.beginInstrumentPosition();
       typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
-      shared_ptr<StrategyTransaction<Decimal>> aTransaction;
+      std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
       std::shared_ptr<TradingPosition<Decimal>> pos;
       auto exitOrder = std::make_shared<T>(*order);
 
-      for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++)
-	{
-	  pos = *positionIterator;
-	  transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
-	  if (transactionIterator != mStrategyTrades.endStrategyTransaction())
-	    {
-	      aTransaction = transactionIterator->second;
-	      aTransaction->completeTransaction (exitOrder);
-	    }
-	  else
-	    {
-	      throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " +order->getTradingSymbol());
-	    }
-	}
+      for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++) {
+        pos = *positionIterator;
+        transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
+        if (transactionIterator != mStrategyTrades.endStrategyTransaction()) {
+          aTransaction = transactionIterator->second;
+          aTransaction->completeTransaction (exitOrder);
+        } else {
+          throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
+        }
+      }
 
-      // Use ptime version for closing positions
       mInstrumentPositionManager.closeAllPositions (order->getTradingSymbol(),
-						    order->getFillDateTime(), // Use ptime
-						    order->getFillPrice()); 
-      
+                                                    order->getFillDateTime(), // Use ptime
+                                                    order->getFillPrice());
+    }
+
+    // ---------------------------
+    // Execution tick computation
+    // ---------------------------
+    struct TickPair { Decimal tick; Decimal tickDiv2; };
+
+    // Lookup SecurityAttributes via singleton factory
+    std::shared_ptr<SecurityAttributes<Decimal>>
+    lookupAttrs(const std::string& symbol) const
+    {
+      auto& fac = SecurityAttributesFactory<Decimal>::instance();
+      auto it   = fac.getSecurityAttributes(symbol);
+      if (it == fac.endSecurityAttributes())
+        throw StrategyBrokerException("No SecurityAttributes for symbol: " + symbol);
+      return it->second;
+    }
+
+    // Compute per-order execution tick using:
+    //  - baseline tick from SecurityAttributes
+    //  - fractional pre-2001 policy (if enabled by template)
+    //  - Rule 612 policy (cent >= $1, optional $0.0001 < $1 if not split-adjusted)
+    TickPair computeExecutionTick(const std::string& symbol,
+                                  const ptime& when,
+                                  const Decimal& refPrice) const
+    {
+      const auto attrs = lookupAttrs(symbol);
+      Decimal execTick = attrs->getTick(); // baseline (usually 0.01 for equities)
+
+      // Apply fractional regime (equities only)
+      execTick = FractionPolicy<Decimal>::apply(when.date(), attrs, execTick);
+
+      // Apply Rule 612 (equities only); template bool selects split-adjusted semantics
+      execTick = SubPennyPolicy<Decimal, PricesAreSplitAdjusted>::apply(refPrice, attrs, execTick);
+
+      TickPair out;
+      out.tick     = execTick;
+      out.tickDiv2 = execTick / DecimalConstants<Decimal>::DecimalTwo;
+      return out;
+    }
+
+    // Helper to round a target/stop using the dynamic execution tick
+    Decimal roundToExecutionTick(const std::string& symbol,
+                                 const ptime& when,
+                                 const Decimal& refPrice,
+                                 const Decimal& rawPrice) const
+    {
+      const auto tp = computeExecutionTick(symbol, when, refPrice);
+      return num::Round2Tick(rawPrice, tp.tick, tp.tickDiv2);
     }
 
   private:
-    TradingOrderManager<Decimal> mOrderManager;
+    TradingOrderManager<Decimal>       mOrderManager;
     InstrumentPositionManager<Decimal> mInstrumentPositionManager;
     StrategyTransactionManager<Decimal> mStrategyTrades;
-    ClosedPositionHistory<Decimal> mClosedTradeHistory;
+    ClosedPositionHistory<Decimal>     mClosedTradeHistory;
     std::shared_ptr<Portfolio<Decimal>> mPortfolio;
   };
 
-
-}
+} // namespace mkc_timeseries
 #endif

@@ -27,7 +27,7 @@ namespace mkc_timeseries
      * (user-defined) to a shared pointer of the new OHLCTimeSeries.
      * You can then write each synthetic series out to CSV.
      * 
-     * @tparam Decimal  Numeric type for price values (e.g., dec::decimal<7>, double).
+     * @tparam Decimal  Numeric type for price values (e.g., num::DefaultNumber, double).
      */
     template <class Decimal>
     class SyntheticTimeSeriesCreator

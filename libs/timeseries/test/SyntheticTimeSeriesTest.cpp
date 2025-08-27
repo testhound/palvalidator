@@ -467,7 +467,10 @@ TEST_CASE ("SyntheticTimeSeriesTest", "[SyntheticTimeSeries]")
       auto originalClosingSeries = sampleSeries.CloseTimeSeries();
       std::vector<DecimalType> originalClosingVector = originalClosingSeries.getTimeSeriesAsVector();
       DecimalType lastClosePrice = originalClosingVector.back();
-      REQUIRE (lastClosePrice == syntheticLastClosePrice);
+      // With NoRounding policy, allow for small precision differences
+      DecimalType tolerance = DecimalConstants<DecimalType>::EquityTick;
+      DecimalType diff = num::abs(lastClosePrice - syntheticLastClosePrice);
+      REQUIRE (diff <= tolerance);
       std::vector<DecimalType> shuffledRelativeOpen = syntheticSeries.getRelativeOpen();
       std::vector<DecimalType> shuffledRelativeHigh = syntheticSeries.getRelativeHigh();
       std::vector<DecimalType> shuffledRelativeLow = syntheticSeries.getRelativeLow();

@@ -66,21 +66,21 @@ TEST_CASE ("OpenPosition operations", "[OpenPosition]")
 
   SECTION ("OpenPosition getPercentReturn()")
   {
-    REQUIRE (longPosition1.getPercentReturn() == DecimalType (dec::fromString<DecimalType>("-2.6584700")));
+    REQUIRE (longPosition1.getPercentReturn() == DecimalType (dec::fromString<DecimalType>("-2.65846700")));
     REQUIRE_FALSE (longPosition1.isWinningPosition());
     REQUIRE (longPosition1.isLosingPosition());
-    REQUIRE (shortPosition1.getPercentReturn() == DecimalType (dec::fromString<DecimalType>("2.6584700")));
+    REQUIRE (shortPosition1.getPercentReturn() == DecimalType (dec::fromString<DecimalType>("2.65846700")));
     REQUIRE (shortPosition1.isWinningPosition());
     REQUIRE_FALSE (shortPosition1.isLosingPosition());
   }
 
   SECTION ("OpenPosition getTradeReturn()")
   {
-    DecimalType longReturn(dec::fromString<DecimalType>("-2.6584700")/DecimalConstants<DecimalType>::DecimalOneHundred);
+    DecimalType longReturn(dec::fromString<DecimalType>("-2.65846700")/DecimalConstants<DecimalType>::DecimalOneHundred);
 
       REQUIRE (longPosition1.getTradeReturn() == longReturn);
 
-      DecimalType shortReturn(dec::fromString<DecimalType>("2.6584700")/DecimalConstants<DecimalType>::DecimalOneHundred);
+      DecimalType shortReturn(dec::fromString<DecimalType>("2.65846700")/DecimalConstants<DecimalType>::DecimalOneHundred);
       REQUIRE (shortPosition1.getTradeReturn() == shortReturn);
   }
 

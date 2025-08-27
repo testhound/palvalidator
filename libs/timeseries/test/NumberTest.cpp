@@ -24,7 +24,7 @@ TEST_CASE("operator% returns correct remainder for positive and negative values"
 
 TEST_CASE("toString produces the expected string representation", "[number]") {
     DefaultNumber d = createDecimal("12.345");
-    REQUIRE(num::toString(d) == std::string("12.3450000"));
+    REQUIRE(num::toString(d) == std::string("12.34500000"));
 }
 
 TEST_CASE("abs returns the absolute value of a decimal", "[number]") {

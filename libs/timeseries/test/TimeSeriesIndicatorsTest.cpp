@@ -18,7 +18,7 @@
 
 // Using directives
 using namespace mkc_timeseries;
-// DecimalType is defined in TestUtils.h as typedef dec::decimal<7> DecimalType;
+// DecimalType is defined in TestUtils.h as typedef num::DefaultNumber DecimalType;
 using num::fromString; // bring fromString<DecimalType> into scope
 using namespace Catch;
 
