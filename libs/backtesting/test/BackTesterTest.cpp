@@ -281,7 +281,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
     REQUIRE (it != palLongBacktester1.endStrategies());
     std::shared_ptr<BacktesterStrategy<DecimalType>> aStrategy1 = (*it);
 
-    StrategyBroker<DecimalType> aBroker = aStrategy1->getStrategyBroker();
+    auto aBroker = aStrategy1->getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 24);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 24);
@@ -316,7 +316,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
     REQUIRE (it != palLongBacktester2.endStrategies());
     std::shared_ptr<BacktesterStrategy<DecimalType>> aStrategy2 = (*it);
 
-    StrategyBroker<DecimalType> aBroker2 = aStrategy2->getStrategyBroker();
+    auto aBroker2 = aStrategy2->getStrategyBroker();
     REQUIRE (aBroker2.getTotalTrades() == 46);
     REQUIRE (aBroker2.getOpenTrades() == 0);
     REQUIRE (aBroker2.getClosedTrades() == 46);

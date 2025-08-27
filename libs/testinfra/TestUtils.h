@@ -7,7 +7,7 @@
 #include "TimeSeriesEntry.h"
 #include "TradingVolume.h"
 
-typedef dec::decimal<7> DecimalType;
+typedef num::DefaultNumber DecimalType;
 
 typedef mkc_timeseries::OHLCTimeSeriesEntry<DecimalType> EntryType;
 

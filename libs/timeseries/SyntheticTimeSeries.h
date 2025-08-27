@@ -20,15 +20,25 @@
 #include "ShuffleUtils.h"
 #include "DecimalConstants.h"
 #include "number.h"
+#include "RoundingPolicies.h"
 
 namespace mkc_timeseries
 {
 
 // Forward declaration of the Pimpl interface and concrete implementations
 // Pimpl interface and classes are now templated on LookupPolicy, with a default
-template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>> class ISyntheticTimeSeriesImpl;
-template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>> class EodSyntheticTimeSeriesImpl;
-template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>> class IntradaySyntheticTimeSeriesImpl;
+
+  template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>,
+	    template<class> class RoundingPolicy = NoRounding>
+  class ISyntheticTimeSeriesImpl;
+
+  template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>,
+	    template<class> class RoundingPolicy = NoRounding>
+  class EodSyntheticTimeSeriesImpl;
+
+  template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>,
+	    template<class> class RoundingPolicy = NoRounding>
+  class IntradaySyntheticTimeSeriesImpl;
 
 /**
  * @interface ISyntheticTimeSeriesImpl
@@ -37,9 +47,9 @@ template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<D
  * @tparam Decimal The numeric type for price and factor data.
  * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
  */
-template <class Decimal, class LookupPolicy> // Default removed from definition
-class ISyntheticTimeSeriesImpl {
-public:
+  template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
+  class ISyntheticTimeSeriesImpl {
+  public:
     virtual ~ISyntheticTimeSeriesImpl() = default;
     virtual void shuffleFactors(RandomMersenne& randGenerator) = 0;
     virtual std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> buildSeries() = 0;
@@ -52,8 +62,8 @@ public:
 #ifdef SYNTHETIC_VOLUME
     virtual std::vector<Decimal> getRelativeVolumeFactors() const = 0;
 #endif
-    virtual std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy>> clone() const = 0;
-};
+    virtual std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> clone() const = 0;
+  };
 
 
 /**
@@ -62,10 +72,10 @@ public:
  * @tparam Decimal The numeric type for price and factor data.
  * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
  */
-template <class Decimal, class LookupPolicy> // Default removed from definition
-class EodSyntheticTimeSeriesImpl : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy> {
+  template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
+  class EodSyntheticTimeSeriesImpl : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> {
 public:
-    EodSyntheticTimeSeriesImpl(const OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>>& sourceSeries, 
+    EodSyntheticTimeSeriesImpl(const OHLCTimeSeries<Decimal, LookupPolicy>& sourceSeries, 
                                const Decimal& minimumTick,
                                const Decimal& minimumTickDiv2)
       : mSourceTimeSeries(sourceSeries),
@@ -101,13 +111,13 @@ public:
     std::vector<Decimal> getRelativeVolumeFactors() const override { return mRelativeVolume; }
 #endif
 
-    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy>> clone() const override {
-        return std::make_unique<EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy>>(*this);
+    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> clone() const override {
+        return std::make_unique<EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(*this);
     }
 
 private:
     void initEodDataInternal() {
-        using SourceSeriesType = OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>>;
+        using SourceSeriesType = OHLCTimeSeries<Decimal, LookupPolicy>;
         using Iter = typename SourceSeriesType::ConstRandomAccessIterator;
         if (mSourceTimeSeries.getNumEntries() == 0) {
             mFirstOpen = DecimalConstants<Decimal>::DecimalZero;
@@ -226,13 +236,13 @@ private:
             Decimal preciseOpenOfDay = (i == 0) ? preciseChainPrice : preciseChainPrice * mRelativeOpen[i];
             Decimal preciseCloseOfDay = preciseOpenOfDay * mRelativeClose[i];
             
-            Decimal open  = num::Round2Tick(preciseOpenOfDay, mMinimumTick, mMinimumTickDiv2);
-            Decimal high  = num::Round2Tick(preciseOpenOfDay * mRelativeHigh[i], mMinimumTick, mMinimumTickDiv2);
-            Decimal low   = num::Round2Tick(preciseOpenOfDay * mRelativeLow[i],  mMinimumTick, mMinimumTickDiv2);
-            Decimal close = num::Round2Tick(preciseCloseOfDay, mMinimumTick, mMinimumTickDiv2);
+	    Decimal open  = RoundingPolicy<Decimal>::round(preciseOpenOfDay, mMinimumTick, mMinimumTickDiv2);
+	    Decimal high  = RoundingPolicy<Decimal>::round(preciseOpenOfDay * mRelativeHigh[i], mMinimumTick, mMinimumTickDiv2);
+	    Decimal low   = RoundingPolicy<Decimal>::round(preciseOpenOfDay * mRelativeLow[i],  mMinimumTick, mMinimumTickDiv2);
+	    Decimal close = RoundingPolicy<Decimal>::round(preciseCloseOfDay, mMinimumTick, mMinimumTickDiv2);
 
-	        high = std::max({high, open, close});
-	        low  = std::min({low, open, close}); 
+	    high = std::max({high, open, close});
+	    low  = std::min({low, open, close}); 
 
             preciseChainPrice = preciseCloseOfDay;
 
@@ -264,7 +274,7 @@ private:
     }
 
 private:
-    OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>> mSourceTimeSeries;
+    OHLCTimeSeries<Decimal, LookupPolicy> mSourceTimeSeries;
     Decimal mMinimumTick;
     Decimal mMinimumTickDiv2;
     VectorDate mDateSeries;
@@ -284,10 +294,10 @@ private:
  * @tparam Decimal The numeric type for price and factor data.
  * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
  */
-template <class Decimal, class LookupPolicy> // Default removed from definition
-class IntradaySyntheticTimeSeriesImpl : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy> {
+  template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
+  class IntradaySyntheticTimeSeriesImpl : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> {
 public:
-    IntradaySyntheticTimeSeriesImpl(const OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>>& sourceSeries, 
+    IntradaySyntheticTimeSeriesImpl(const OHLCTimeSeries<Decimal, LookupPolicy>& sourceSeries, 
                                     const Decimal& minimumTick,
                                     const Decimal& minimumTickDiv2)
       : mSourceTimeSeries(sourceSeries),
@@ -322,8 +332,8 @@ public:
     std::vector<Decimal> getRelativeVolumeFactors() const override { return {}; }
 #endif
 
-    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy>> clone() const override {
-        return std::make_unique<IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy>>(*this);
+    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> clone() const override {
+        return std::make_unique<IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(*this);
     }
 
 private:
@@ -437,10 +447,30 @@ private:
         }
         constructedBars.reserve(totalReserve);
 
-        for (const auto& bar : mBasisDayBars) { 
-            constructedBars.push_back(bar);
-        }
+        //for (const auto& bar : mBasisDayBars) { 
+        //    constructedBars.push_back(bar);
+        //}
 
+	// Apply rounding policy to basis-day bars and enforce OHLC invariants
+	for (const auto& bar : mBasisDayBars)
+	  {
+	    Decimal o = RoundingPolicy<Decimal>::round(bar.getOpenValue(),  mMinimumTick, mMinimumTickDiv2);
+	    Decimal h = RoundingPolicy<Decimal>::round(bar.getHighValue(),  mMinimumTick, mMinimumTickDiv2);
+	    Decimal l = RoundingPolicy<Decimal>::round(bar.getLowValue(),   mMinimumTick, mMinimumTickDiv2);
+	    Decimal c = RoundingPolicy<Decimal>::round(bar.getCloseValue(), mMinimumTick, mMinimumTickDiv2);
+	    
+	    // Ensure rounded OHLC satisfy invariants expected by OHLCTimeSeriesEntry
+	    h = std::max({h, o, c});
+	    l = std::min({l, o, c});
+
+	    constructedBars.emplace_back(
+					 bar.getDateTime(),
+					 o, h, l, c,
+					 bar.getVolumeValue(),                       // keep existing volume for basis bars
+					 mSourceTimeSeries.getTimeFrame()
+					 );
+	  }
+	
         if (mDayIndices.empty() || mBasisDayBars.empty()) { 
              return std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(
                 mSourceTimeSeries.getTimeFrame(), mSourceTimeSeries.getVolumeUnits(), constructedBars.begin(), constructedBars.end());
@@ -480,10 +510,13 @@ private:
                 Decimal actualLow   = preciseDayOpenAnchor * normalizedBar.getLowValue();
                 Decimal actualClose = preciseDayOpenAnchor * normalizedBar.getCloseValue();
 
-                Decimal open  = num::Round2Tick(actualOpen,  mMinimumTick, mMinimumTickDiv2);
-                Decimal high  = num::Round2Tick(actualHigh,  mMinimumTick, mMinimumTickDiv2);
-                Decimal low   = num::Round2Tick(actualLow,   mMinimumTick, mMinimumTickDiv2);
-                Decimal close = num::Round2Tick(actualClose, mMinimumTick, mMinimumTickDiv2);
+		Decimal open  = RoundingPolicy<Decimal>::round(actualOpen,  mMinimumTick, mMinimumTickDiv2);
+		Decimal high  = RoundingPolicy<Decimal>::round(actualHigh,  mMinimumTick, mMinimumTickDiv2);
+		Decimal low   = RoundingPolicy<Decimal>::round(actualLow,   mMinimumTick, mMinimumTickDiv2);
+		Decimal close = RoundingPolicy<Decimal>::round(actualClose, mMinimumTick, mMinimumTickDiv2);
+
+		high = std::max({high, open, close});
+		low  = std::min({low,  open, close});
 
                 lastUnroundedCloseForThisDay = actualClose;
                 
@@ -503,7 +536,7 @@ private:
     }
 
 private:
-    OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>> mSourceTimeSeries;
+    OHLCTimeSeries<Decimal, LookupPolicy> mSourceTimeSeries;
     Decimal mMinimumTick;
     Decimal mMinimumTickDiv2;
     Decimal mFirstOpen;
@@ -521,11 +554,13 @@ private:
  * @tparam Decimal The numeric type for price and factor data.
  * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated by this instance.
  */
-template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>>
+  template <class Decimal,
+	    class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>,
+	    template<class> class RoundingPolicy = NoRounding>
 class SyntheticTimeSeries
 {
 public:
-    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>>& aTimeSeries, 
+    explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal, LookupPolicy>& aTimeSeries, 
                                  const Decimal& minimumTick,
                                  const Decimal& minimumTickDiv2)
       : mSourceTimeSeriesCopy(aTimeSeries),
@@ -534,18 +569,25 @@ public:
         mRandGenerator()
     {
         bool isIntraday = (aTimeSeries.getTimeFrame() == TimeFrame::Duration::INTRADAY);
-        if (!isIntraday) {
-            mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy>>(
-                mSourceTimeSeriesCopy, mMinimumTick, mMinimumTickDiv2);
-        } else {
-            mPimpl = std::make_unique<IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy>>(
-                mSourceTimeSeriesCopy, mMinimumTick, mMinimumTickDiv2);
-        }
+
+	if (!isIntraday)
+	  {
+	    mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(
+												       mSourceTimeSeriesCopy,
+												       mMinimumTick, mMinimumTickDiv2);
+	  }
+	else
+	  {
+	    mPimpl = std::make_unique<IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(
+													    mSourceTimeSeriesCopy,
+													    mMinimumTick,
+													    mMinimumTickDiv2);
+	  }
     }
 
     ~SyntheticTimeSeries() = default;
 
-    SyntheticTimeSeries(const SyntheticTimeSeries<Decimal, LookupPolicy>& rhs)
+  SyntheticTimeSeries(const SyntheticTimeSeries<Decimal, LookupPolicy, RoundingPolicy>& rhs)
       : mSourceTimeSeriesCopy(rhs.mSourceTimeSeriesCopy),
         mMinimumTick(rhs.mMinimumTick),
         mMinimumTickDiv2(rhs.mMinimumTickDiv2),
@@ -557,7 +599,7 @@ public:
         }
     }
 
-    SyntheticTimeSeries& operator=(const SyntheticTimeSeries<Decimal, LookupPolicy>& rhs)
+    SyntheticTimeSeries& operator=(const SyntheticTimeSeries<Decimal, LookupPolicy, RoundingPolicy>& rhs)
     {
         if (this != &rhs) {
             boost::mutex::scoped_lock current_lock(mMutex);
@@ -658,11 +700,11 @@ public:
 #endif
 
 private:
-    OHLCTimeSeries<Decimal, LogNLookupPolicy<Decimal>> mSourceTimeSeriesCopy;
+    OHLCTimeSeries<Decimal, LookupPolicy> mSourceTimeSeriesCopy;
     Decimal                           mMinimumTick;
     Decimal                           mMinimumTickDiv2;
     RandomMersenne                    mRandGenerator;
-    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy>> mPimpl;
+    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> mPimpl;
     std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> mSyntheticTimeSeries;
     mutable boost::mutex              mMutex;
 };

@@ -13,14 +13,16 @@
 #include <boost/date_time.hpp>
 #include "DecimalConstants.h"
 #include "csv.h"
+#include "RoundingPolicies.h"
 
 namespace mkc_timeseries
 {
   using boost::posix_time::ptime;
   using boost::posix_time::time_duration;
   using boost::posix_time::duration_from_string;
-
-  template <class Decimal>
+  
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
   class TimeSeriesCsvReader
   {
   public:
@@ -93,8 +95,8 @@ namespace mkc_timeseries
   protected:
     Decimal DecimalRound (const Decimal& price)
     {
-      //return price;
-      return num::Round2Tick (price, getTick(), mMinimumTickDiv2);
+      // Policy decides what to do; default is no rounding.
+      return RoundingPolicy<Decimal>::round(price, getTick(), mMinimumTickDiv2);
     }
     
     bool checkForErrors (boost::gregorian::date entryDate,
@@ -145,8 +147,9 @@ namespace mkc_timeseries
 
   // Reader for Price Action Lab CSV Formatted Files
 
-  template <class Decimal>
-  class PALFormatCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class PALFormatCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     PALFormatCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame = TimeFrame::DAILY, 
@@ -218,8 +221,9 @@ namespace mkc_timeseries
   // Date, Open, High, Low, Close, Volume, Open Interest, Rollover date, Unadjusted Close
   //
 
-  template <class Decimal>
-  class CSIExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class CSIExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     CSIExtendedFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
@@ -291,8 +295,9 @@ namespace mkc_timeseries
   // Date, Open, High, Low, Close, Volume, Open Interest, Rollover date, Unadjusted Close
   //
 
-  template <class Decimal>
-  class CSIErrorCheckingExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class CSIErrorCheckingExtendedFuturesCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     CSIErrorCheckingExtendedFuturesCsvReader (const std::string& fileName,
@@ -368,8 +373,9 @@ namespace mkc_timeseries
   // Date, Open, High, Low, Close, Volume, Open Interest
   //
 
-  template <class Decimal>
-  class CSIFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class CSIFuturesCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     CSIFuturesCsvReader (const std::string& fileName, TimeFrame::Duration timeFrame, 
@@ -439,8 +445,9 @@ namespace mkc_timeseries
   // Date, Open, High, Low, Close, Volume, Open Interest
   //
 
-  template <class Decimal>
-  class CSIErrorCheckingFuturesCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class CSIErrorCheckingFuturesCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     CSIErrorCheckingFuturesCsvReader (const std::string& fileName,
@@ -513,8 +520,9 @@ namespace mkc_timeseries
   //
 
 
-  template <class Decimal>
-  class TradeStationFormatCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class TradeStationFormatCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     TradeStationFormatCsvReader (const std::string& fileName,
@@ -601,8 +609,9 @@ namespace mkc_timeseries
 
   ///////
 
-  template <class Decimal>
-  class TradeStationErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class TradeStationErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     TradeStationErrorCheckingFormatCsvReader (const std::string& fileName,
@@ -692,8 +701,9 @@ namespace mkc_timeseries
   //
 
 
-  template <class Decimal>
-  class TradeStationIndicator1CsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class TradeStationIndicator1CsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     TradeStationIndicator1CsvReader (const std::string& fileName,
@@ -788,8 +798,9 @@ namespace mkc_timeseries
   //   the reader uses the date-only constructor (00:00) like other readers.
   // - For intraday (if enabled by caller) and when a time is present, we parse it.
 
-  template <class Decimal>
-  class WealthLabCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class WealthLabCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     WealthLabCsvReader(const std::string& fileName,
@@ -870,8 +881,9 @@ namespace mkc_timeseries
   ////
 ///////
 
-  template <class Decimal>
-  class PinnacleErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal>
+  template <class Decimal,
+	    template<class> class RoundingPolicy = NoRounding>
+  class PinnacleErrorCheckingFormatCsvReader : public TimeSeriesCsvReader<Decimal, RoundingPolicy>
   {
   public:
     PinnacleErrorCheckingFormatCsvReader (const std::string& fileName,

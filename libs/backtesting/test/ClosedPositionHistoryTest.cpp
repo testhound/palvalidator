@@ -370,12 +370,12 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
   REQUIRE (longCumReturn == closedLongPositions.getCumulativeReturn());
   REQUIRE (closedLongPositions.getNumPositions() == 24);
   REQUIRE (closedLongPositions.getProfitFactor() >= createDecimal("2.99"));
-  REQUIRE (closedLongPositions.getPercentWinners() == createDecimal("58.3333300"));
+  REQUIRE (closedLongPositions.getPercentWinners() == createDecimal("58.33333300"));
   REQUIRE (closedLongPositions.getPercentLosers() == (createDecimal ("100.00") - closedLongPositions.getPercentWinners()));
   REQUIRE (closedLongPositions.getNumWinningPositions() == 14);
   REQUIRE (closedLongPositions.getNumLosingPositions() == 10);
-  REQUIRE (closedLongPositions.getPayoffRatio() == createDecimal("2.1407415"));
-  REQUIRE (closedLongPositions.getPALProfitability() == createDecimal("58.3333300"));
+  REQUIRE (closedLongPositions.getPayoffRatio() == createDecimal("2.14074081"));
+  REQUIRE (closedLongPositions.getPALProfitability() == createDecimal("58.33333300"));
 
 
   auto shortEntryDate1 = TimeSeriesDate (1986, May, 28);

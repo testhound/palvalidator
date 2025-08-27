@@ -7,13 +7,14 @@
 #include "Security.h"
 #include "MonteCarloTestPolicy.h"
 #include "TradingVolume.h"
+#include "number.h"
 #include <memory>
 #include <vector>
 #include <algorithm>
 #include <random>
 
 using namespace mkc_timeseries;
-using DecimalType = dec::decimal<7>;
+using DecimalType = num::DefaultNumber;
 using StatPolicy = AllHighResLogPFPolicy<DecimalType>;
 
 // Create a test policy with no minimum trade requirement for debugging

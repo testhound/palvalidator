@@ -337,7 +337,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
     longStrategy1.eventProcessPendingOrders(orderDate);
     REQUIRE ( longStrategy1.isLongPosition (futuresSymbol));
 
-    StrategyBroker<DecimalType> aBroker = longStrategy1.getStrategyBroker();
+    auto aBroker = longStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 1);
     REQUIRE (aBroker.getClosedTrades() == 0);
@@ -372,7 +372,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
     orderDate = boost_next_weekday(orderDate);
     shortStrategy1.eventProcessPendingOrders(orderDate);
     REQUIRE ( shortStrategy1.isShortPosition (futuresSymbol));
-    StrategyBroker<DecimalType> aBroker = shortStrategy1.getStrategyBroker();
+    auto aBroker = shortStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 1);
     REQUIRE (aBroker.getClosedTrades() == 0);
@@ -424,13 +424,12 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	  }
       }
 
-    StrategyBroker<DecimalType> aBroker = longStrategy1.getStrategyBroker();
+    auto aBroker = longStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 1);
 
-    StrategyBroker<DecimalType>::StrategyTransactionIterator it = 
-      aBroker.beginStrategyTransactions();
+    auto it = aBroker.beginStrategyTransactions();
 
     REQUIRE (it !=aBroker.endStrategyTransactions()); 
     auto trans = it->second;
@@ -492,13 +491,12 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
 	  }
       }
 
-    StrategyBroker<DecimalType> aBroker = shortStrategy1.getStrategyBroker();
+    auto aBroker = shortStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 1);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 1);
 
-    StrategyBroker<DecimalType>::StrategyTransactionIterator it = 
-      aBroker.beginStrategyTransactions();
+    auto it = aBroker.beginStrategyTransactions();
 
     REQUIRE (it !=aBroker.endStrategyTransactions()); 
     auto trans = it->second;
@@ -538,7 +536,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 1")
 	longStrategy1.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<DecimalType> aBroker = longStrategy1.getStrategyBroker();
+    auto aBroker = longStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 24);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 24); 
@@ -575,7 +573,7 @@ SECTION ("PalStrategy testing for all long trades - MetaStrategy1 1")
 	metaStrategy1.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<DecimalType> aBroker = metaStrategy1.getStrategyBroker();
+    auto aBroker = metaStrategy1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 24);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 24); 
@@ -612,7 +610,7 @@ SECTION ("PalStrategy testing for all long trades with pyramiding - pattern 1")
 	longStrategyPyramid1.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<DecimalType> aBroker = longStrategyPyramid1.getStrategyBroker();
+    auto aBroker = longStrategyPyramid1.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() > 546);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() > 546); 
@@ -651,7 +649,7 @@ SECTION ("PalStrategy testing for all long trades - pattern 2")
 	longStrategy2.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<DecimalType> aBroker = longStrategy2.getStrategyBroker();
+    auto aBroker = longStrategy2.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 46);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 46); 
@@ -692,7 +690,7 @@ SECTION ("PalStrategy testing for all short trades")
       }
 
     //std::cout << "Backtester end date = " << backTesterDate << std::endl; 
-    StrategyBroker<DecimalType> aBroker2 = shortStrategy1.getStrategyBroker();
+    auto aBroker2 = shortStrategy1.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
     //std::cout << "Calling printPositionHistory for short strategy" << std::endl << std::endl;
     //printPositionHistory (history2);
@@ -732,7 +730,7 @@ SECTION ("PalStrategy testing for all short trades - MetaStrategy2")
 	metaStrategy2.eventProcessPendingOrders (backTesterDate);
       }
 
-    StrategyBroker<DecimalType> aBroker = metaStrategy2.getStrategyBroker();
+    auto aBroker = metaStrategy2.getStrategyBroker();
     REQUIRE (aBroker.getTotalTrades() == 21);
     REQUIRE (aBroker.getOpenTrades() == 0);
     REQUIRE (aBroker.getClosedTrades() == 21); 
@@ -752,7 +750,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
 
     backTestLoop (corn, metaStrategy3, backTestStartDate, backTestEndDate);
 
-    StrategyBroker<DecimalType> aBroker = metaStrategy3.getStrategyBroker();
+    auto aBroker = metaStrategy3.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     //printPositionHistory (history);
 
@@ -776,7 +774,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
  
     backTestLoop (corn, metaStrategy4, backTestStartDate, backTestEndDate);
  
-    StrategyBroker<DecimalType> aBroker2 = metaStrategy4.getStrategyBroker();
+    auto aBroker2 = metaStrategy4.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history2 = aBroker2.getClosedPositionHistory();
     //printPositionHistory (history2);
 
@@ -791,7 +789,7 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
     metaStrategy5.addPricePattern(createShortPattern1());
 
     backTestLoop (corn, metaStrategy5, backTestStartDate, backTestEndDate);
-    StrategyBroker<DecimalType> aBroker3 = metaStrategy5.getStrategyBroker();
+    auto aBroker3 = metaStrategy5.getStrategyBroker();
     ClosedPositionHistory<DecimalType> history3 = aBroker3.getClosedPositionHistory();
     //printPositionHistory (history3);
 

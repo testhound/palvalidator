@@ -82,6 +82,11 @@ namespace mkc_timeseries
       static boost::uuids::random_generator sUuidGenerator;
       
     public:
+      using Broker = StrategyBroker<Decimal,
+                                    NysePre2001Fractions,                // simulate 1/8 → 1/16 → decimals
+                                    Rule612SubPenny,                     // type name…
+                                    /*PricesAreSplitAdjusted=*/true>;    // …but sub-penny under $1 is OFF
+
       typedef typename Portfolio<Decimal>::ConstPortfolioIterator PortfolioIterator;
 
       /**
@@ -752,7 +757,7 @@ namespace mkc_timeseries
  return aSecurity.isDateFound(processingDateTime);
       }
 
-      const StrategyBroker<Decimal>& getStrategyBroker() const
+      const Broker& getStrategyBroker() const
       {
 	return mBroker;
       }
@@ -795,7 +800,7 @@ namespace mkc_timeseries
 
     private:
       std::string mStrategyName;
-      StrategyBroker<Decimal> mBroker;
+      Broker mBroker;
       std::shared_ptr<Portfolio<Decimal>> mPortfolio;
       SecurityBacktestPropertiesManager mSecuritiesProperties;
       StrategyOptions mStrategyOptions;

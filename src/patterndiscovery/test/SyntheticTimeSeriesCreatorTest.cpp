@@ -4,9 +4,10 @@
 #include "SyntheticTimeSeriesCreator.h"
 #include "DecimalConstants.h"
 #include "TimeFrameDiscovery.h"
+#include "number.h"
 #include <map>
 
-typedef dec::decimal<7> DecimalType;
+typedef num::DefaultNumber DecimalType;
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
