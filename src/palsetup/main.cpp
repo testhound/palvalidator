@@ -508,9 +508,14 @@ createTimeSeriesReader(int fileType,
 									 tick);
     case 5:
       return std::make_shared<PALFormatCsvReader<Num>>(fileName,
-						       timeFrame,
-						       TradingVolume::SHARES,
-						       tick);
+    		       timeFrame,
+    		       TradingVolume::SHARES,
+    		       tick);
+    case 6:
+      return std::make_shared<WealthLabCsvReader<Num>>(fileName,
+    		       timeFrame,
+    		       TradingVolume::SHARES,
+    		       tick);
     default:
       throw std::out_of_range("Invalid file type");
     }
@@ -748,11 +753,11 @@ int main(int argc, char** argv){
 
       // 5. Create and read time series
       shared_ptr<TimeSeriesCsvReader<Num>> reader;
-      if (fileType >= 1 && fileType <= 5){
-	  reader = createTimeSeriesReader(fileType,
-					  historicDataFileName,
-					  securityTick,
-					  timeFrame);
+      if (fileType >= 1 && fileType <= 6){
+   reader = createTimeSeriesReader(fileType,
+       historicDataFileName,
+       securityTick,
+       timeFrame);
         }
       else
         {
@@ -1033,7 +1038,7 @@ int main(int argc, char** argv){
     }
   else
     {
-      std::cout << "Usage (beta):: PalSetup [-indicator|--indicator] datafile file-type (1=CSI,2=CSI Ext,3=TradeStation,4=Pinnacle,5=PAL) [tick]" << std::endl;
+      std::cout << "Usage (beta):: PalSetup [-indicator|--indicator] datafile file-type (1=CSI,2=CSI Ext,3=TradeStation,4=Pinnacle,5=PAL,6=WealthLab) [tick]" << std::endl;
       std::cout << "  -indicator|--indicator: Use indicator values (e.g., IBS) instead of close prices in PAL files" << std::endl;
     }
   return 0;

@@ -187,3 +187,170 @@ TEST_CASE("TradeStationFormatCsvReader throws if INTRADAY but file is daily form
     // 3) Expect the CSV-library to complain about missing "Up"/"Down" columns
     REQUIRE_THROWS_AS(reader.readFile(), io::error::missing_column_in_header);
 }
+
+// --- WealthLabCsvReader (non-intraday) --------------------------------------------------
+
+TEST_CASE("WealthLabCsvReader reads Wealth-Lab daily CSV", "[csv][WealthLab][Daily]") {
+    // Write a tiny Wealth-Lab style daily file
+    const std::string path = "wealthlab_daily.csv";
+    {
+        std::ofstream out(path);
+        out << "Date/Time,Open,High,Low,Close,Volume\n";
+        out << "5/30/2000,0.22578125,0.23463542,0.22473957,0.22890625,306210240\n";
+        out << "5/31/2000,0.228125,0.24166667,0.228125,0.23776042,472905600\n";
+        out << "6/1/2000,0.24479167,0.2470052,0.23828125,0.24440105,422478240\n";
+        out << "6/2/2000,0.24947917,0.2770825,0.24947917,0.2740875,596280000\n";
+        out << "6/5/2000,0.2736975,0.29375,0.26276,0.2799475,495115200\n";
+        out << "6/6/2000,0.28125,0.291405,0.2645825,0.266015,378134400\n";
+        out << "6/7/2000,0.2640625,0.266275,0.25026,0.2541675,334973280\n";
+        out << "6/8/2000,0.2606775,0.2609375,0.24583332,0.25612,462656640\n";
+        out << "6/9/2000,0.2609375,0.275,0.25703,0.2634125,471522240\n";
+        out << "6/12/2000,0.2645825,0.2667975,0.25052,0.25638,382571040\n";
+    }
+
+    // Note: constructor defaults (DAILY, SHARES, EquityTick) are fine here.
+    WealthLabCsvReader<DecimalType> reader(
+        path, TimeFrame::DAILY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick
+    );
+
+    REQUIRE(reader.getFileName() == path);
+    REQUIRE(reader.getTimeFrame() == TimeFrame::DAILY);
+    REQUIRE_NOTHROW(reader.readFile());
+
+    auto ts_ptr = reader.getTimeSeries();
+    auto& series = *ts_ptr;
+
+    // Daily bars use the default bar time (00:00) for date-only rows
+    REQUIRE(series.getNumEntries() == 10);
+    REQUIRE(series.getFirstDateTime() == ptime(date(2000, 5, 30), getDefaultBarTime()));
+    REQUIRE(series.getLastDateTime()  == ptime(date(2000, 6, 12), getDefaultBarTime()));
+
+    // First bar (rounded to equity tick)
+    {
+        auto first = *series.beginSortedAccess();
+        REQUIRE(first.getOpenValue()   == decimalApprox(createDecimal("0.23"), DEC_TOL));
+        REQUIRE(first.getHighValue()   == decimalApprox(createDecimal("0.23"), DEC_TOL));
+        REQUIRE(first.getLowValue()    == decimalApprox(createDecimal("0.22"), DEC_TOL));
+        REQUIRE(first.getCloseValue()  == decimalApprox(createDecimal("0.23"), DEC_TOL));
+        REQUIRE(first.getVolumeValue() == decimalApprox(createDecimal("306210240"), DEC_TOL));
+    }
+
+    // Last bar (rounded to equity tick)
+    {
+        auto last = *std::prev(series.endSortedAccess());
+        REQUIRE(last.getOpenValue()   == decimalApprox(createDecimal("0.26"), DEC_TOL));
+        REQUIRE(last.getHighValue()   == decimalApprox(createDecimal("0.27"), DEC_TOL));
+        REQUIRE(last.getLowValue()    == decimalApprox(createDecimal("0.25"), DEC_TOL));
+        REQUIRE(last.getCloseValue()  == decimalApprox(createDecimal("0.26"), DEC_TOL));
+        REQUIRE(last.getVolumeValue() == decimalApprox(createDecimal("382571040"), DEC_TOL));
+    }
+
+    std::remove(path.c_str());
+}
+
+TEST_CASE("WealthLabCsvReader reads Wealth-Lab weekly CSV", "[csv][WealthLab][Weekly]") {
+    // Minimal weekly file (one row per week)
+    const std::string path = "wealthlab_weekly.csv";
+    {
+        std::ofstream out(path);
+        out << "Date/Time,Open,High,Low,Close,Volume\n";
+        out << "1/7/2022,10.10,10.60,9.80,10.20,1000\n";
+        out << "1/14/2022,10.30,10.80,10.00,10.50,1500\n";
+        out << "1/21/2022,10.70,11.00,10.40,10.90,2000\n";
+    }
+
+    WealthLabCsvReader<DecimalType> reader(
+        path, TimeFrame::WEEKLY, TradingVolume::SHARES, DecimalConstants<DecimalType>::EquityTick
+    );
+
+    REQUIRE(reader.getFileName() == path);
+    REQUIRE(reader.getTimeFrame() == TimeFrame::WEEKLY);
+    REQUIRE_NOTHROW(reader.readFile());
+
+    auto& series = *reader.getTimeSeries();
+    REQUIRE(series.getNumEntries() == 3);
+    REQUIRE(series.getFirstDateTime() == ptime(date(2022, 1, 7), getDefaultBarTime()));
+    REQUIRE(series.getLastDateTime()  == ptime(date(2022, 1, 21), getDefaultBarTime()));
+
+    auto first = *series.beginSortedAccess();
+    REQUIRE(first.getOpenValue()   == decimalApprox(createDecimal("10.10"), DEC_TOL));
+    REQUIRE(first.getHighValue()   == decimalApprox(createDecimal("10.60"), DEC_TOL));
+    REQUIRE(first.getLowValue()    == decimalApprox(createDecimal("9.80"),  DEC_TOL));
+    REQUIRE(first.getCloseValue()  == decimalApprox(createDecimal("10.20"), DEC_TOL));
+    REQUIRE(first.getVolumeValue() == decimalApprox(createDecimal("1000"),  DEC_TOL));
+
+    auto last = *std::prev(series.endSortedAccess());
+    REQUIRE(last.getOpenValue()   == decimalApprox(createDecimal("10.70"), DEC_TOL));
+    REQUIRE(last.getHighValue()   == decimalApprox(createDecimal("11.00"), DEC_TOL));
+    REQUIRE(last.getLowValue()    == decimalApprox(createDecimal("10.40"), DEC_TOL));
+    REQUIRE(last.getCloseValue()  == decimalApprox(createDecimal("10.90"), DEC_TOL));
+    REQUIRE(last.getVolumeValue() == decimalApprox(createDecimal("2000"),  DEC_TOL));
+
+    std::remove(path.c_str());
+}
+
+// --- WealthLabCsvReader negative cases (non-intraday) ------------------------
+
+TEST_CASE("WealthLabCsvReader rejects malformed input", "[csv][WealthLab][Negative]") {
+
+    SECTION("throws on wrong header name (expects 'Date/Time')") {
+        const std::string path = "wealthlab_bad_header.csv";
+        {
+            std::ofstream out(path);
+            // Wrong first header: "Date" instead of "Date/Time"
+            out << "Date,Open,High,Low,Close,Volume\n";
+            out << "5/30/2000,0.22,0.23,0.22,0.23,1000\n";
+        }
+
+        WealthLabCsvReader<DecimalType> reader(
+            path, TimeFrame::DAILY, TradingVolume::SHARES,
+            DecimalConstants<DecimalType>::EquityTick
+        );
+
+        REQUIRE(reader.getTimeFrame() == TimeFrame::DAILY);
+        REQUIRE_THROWS(reader.readFile());
+
+        std::remove(path.c_str());
+    }
+
+    SECTION("throws when a required column is missing (Volume omitted)") {
+        const std::string path = "wealthlab_missing_column.csv";
+        {
+            std::ofstream out(path);
+            // Missing the 'Volume' column entirely
+            out << "Date/Time,Open,High,Low,Close\n";
+            out << "5/30/2000,0.22,0.23,0.22,0.23\n";
+        }
+
+        WealthLabCsvReader<DecimalType> reader(
+            path, TimeFrame::DAILY, TradingVolume::SHARES,
+            DecimalConstants<DecimalType>::EquityTick
+        );
+
+        REQUIRE(reader.getTimeFrame() == TimeFrame::DAILY);
+        REQUIRE_THROWS(reader.readFile());
+
+        std::remove(path.c_str());
+    }
+
+    SECTION("throws on malformed US date") {
+        const std::string path = "wealthlab_bad_date.csv";
+        {
+            std::ofstream out(path);
+            out << "Date/Time,Open,High,Low,Close,Volume\n";
+            // Impossible month/day: from_us_string should throw
+            out << "13/40/2020,10,10.5,9.5,10.1,12345\n";
+        }
+
+        WealthLabCsvReader<DecimalType> reader(
+            path, TimeFrame::DAILY, TradingVolume::SHARES,
+            DecimalConstants<DecimalType>::EquityTick
+        );
+
+        REQUIRE(reader.getTimeFrame() == TimeFrame::DAILY);
+        REQUIRE_THROWS(reader.readFile());
+
+        std::remove(path.c_str());
+    }
+}
+
