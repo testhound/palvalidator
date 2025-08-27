@@ -774,7 +774,99 @@ namespace mkc_timeseries
     io::CSVReader<9, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
     boost::date_time::format_date_parser<boost::gregorian::date, char> mDateParser;
   };
-  
+
+
+  // --- Wealth-Lab CSV reader ----------------------------------------------------
+  //
+  // Format (header + rows):
+  // Date/Time,Open,High,Low,Close,Volume
+  // 5/30/2000,0.22578125,0.23463542,0.22473957,0.22890625,306210240
+  //
+  // Notes:
+  // - Date is US-style M/D/YYYY or MM/DD/YYYY (no zero-padding required).
+  // - Time is optional in the "Date/Time" column. For non-intraday timeframes,
+  //   the reader uses the date-only constructor (00:00) like other readers.
+  // - For intraday (if enabled by caller) and when a time is present, we parse it.
+
+  template <class Decimal>
+  class WealthLabCsvReader : public TimeSeriesCsvReader<Decimal>
+  {
+  public:
+    WealthLabCsvReader(const std::string& fileName,
+		       TimeFrame::Duration timeFrame = TimeFrame::DAILY,
+		       TradingVolume::VolumeUnit unitsOfVolume = TradingVolume::SHARES,
+		       const Decimal& minimumTick = DecimalConstants<Decimal>::EquityTick)
+      : TimeSeriesCsvReader<Decimal>(fileName, timeFrame, unitsOfVolume, minimumTick),
+	mCsvFile(fileName.c_str())
+    {}
+
+    WealthLabCsvReader(const WealthLabCsvReader& rhs)
+      : TimeSeriesCsvReader<Decimal>(rhs),
+	mCsvFile(rhs.mCsvFile)
+    {}
+
+    WealthLabCsvReader& operator=(const WealthLabCsvReader& rhs)
+    {
+      if (this == &rhs) return *this;
+      TimeSeriesCsvReader<Decimal>::operator=(rhs);
+      mCsvFile = rhs.mCsvFile;
+      return *this;
+    }
+
+    ~WealthLabCsvReader() {}
+
+    void readFile()
+    {
+      // Wealth-Lab files include a header row
+      mCsvFile.read_header(io::ignore_extra_column,
+			   "Date/Time", "Open", "High", "Low", "Close", "Volume");
+
+      std::string dateTimeField;
+      std::string openStr, highStr, lowStr, closeStr, volStr;
+
+      while (mCsvFile.read_row(dateTimeField, openStr, highStr, lowStr, closeStr, volStr))
+	{
+	  // Prices rounded to tick using the base helper
+	  const Decimal open  = this->DecimalRound(num::fromString<Decimal>(openStr.c_str()));
+	  const Decimal high  = this->DecimalRound(num::fromString<Decimal>(highStr.c_str()));
+	  const Decimal low   = this->DecimalRound(num::fromString<Decimal>(lowStr.c_str()));
+	  const Decimal close = this->DecimalRound(num::fromString<Decimal>(closeStr.c_str()));
+	  const Decimal vol   = num::fromString<Decimal>(volStr.c_str());
+
+	  // Split "Date/Time" into date and (optional) time
+	  std::string datePart = dateTimeField;
+	  std::string timePart;
+	  if (auto sp = dateTimeField.find(' '); sp != std::string::npos) {
+	    datePart = dateTimeField.substr(0, sp);
+	    timePart = dateTimeField.substr(sp + 1);
+	  }
+
+	  // Parse US-style date (accepts M/D/YYYY and MM/DD/YYYY).
+	  const boost::gregorian::date d = boost::gregorian::from_us_string(datePart);
+
+	  if (this->getTimeFrame() == TimeFrame::INTRADAY && !timePart.empty()) {
+	    // Parse HH:MM or HH:MM:SS for intraday rows
+	    const boost::posix_time::time_duration td =
+	      boost::posix_time::duration_from_string(timePart);
+	    TimeSeriesCsvReader<Decimal>::addEntry(
+						   OHLCTimeSeriesEntry<Decimal>(boost::posix_time::ptime(d, td),
+										open, high, low, close, vol,
+										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	  } else {
+	    // Non-intraday (daily/weekly/etc.) or no time present
+	    TimeSeriesCsvReader<Decimal>::addEntry(
+						   OHLCTimeSeriesEntry<Decimal>(d,
+										open, high, low, close, vol,
+										TimeSeriesCsvReader<Decimal>::getTimeFrame()));
+	  }
+	}
+    }
+
+  private:
+    // Match other readers’ CSV policies (trim spaces; allow quoted fields).
+    // Examples of the same pattern appear in your other readers. :contentReference[oaicite:2]{index=2}
+    io::CSVReader<6, io::trim_chars<' '>, io::double_quote_escape<',','\"'>> mCsvFile;
+  };  
   ////
 ///////
 
