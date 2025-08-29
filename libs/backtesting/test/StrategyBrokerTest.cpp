@@ -805,3 +805,100 @@ SECTION("StrategyBroker date overloads for Exit…AtLimit forward to ptime with 
  }
 }
 
+TEST_CASE("Execution Tick Policies", "[StrategyBroker][TickPolicies]")
+{
+    // Common setup for all policy tests
+    auto& factory = SecurityAttributesFactory<DecimalType>::instance();
+
+    // Note: The factory is a singleton and already contains pre-initialized securities
+    // We'll use existing securities from the factory instead of trying to add new ones
+    
+    // Use existing equity security (AAPL is already in the factory)
+    std::string equitySymbol("AAPL");
+    auto equityIt = factory.getSecurityAttributes(equitySymbol);
+    REQUIRE(equityIt != factory.endSecurityAttributes());
+    auto equityAttrs = equityIt->second;
+
+    // Use existing futures security (@ES is already in the factory)
+    std::string futuresSymbol("@ES");
+    auto futuresIt = factory.getSecurityAttributes(futuresSymbol);
+    REQUIRE(futuresIt != factory.endSecurityAttributes());
+    auto futuresAttrs = futuresIt->second;
+
+    DecimalType baseTickEquity = createDecimal("0.01");
+    DecimalType baseTickFutures = createDecimal("0.25");
+
+    SECTION("NoFractions Policy")
+    {
+        date d(2023, 1, 1);
+        DecimalType resultEquity = NoFractions<DecimalType>::apply(d, equityAttrs, baseTickEquity);
+        REQUIRE(resultEquity == baseTickEquity);
+
+        DecimalType resultFutures = NoFractions<DecimalType>::apply(d, futuresAttrs, baseTickFutures);
+        REQUIRE(resultFutures == baseTickFutures);
+    }
+
+    SECTION("NysePre2001Fractions Policy")
+    {
+        const DecimalType eighth = createDecimal("0.125");
+        const DecimalType sixteenth = createDecimal("0.0625");
+
+        // 1. Before 1997-06-01: Should be 1/8th
+        date d_pre_1997(1997, 5, 31);
+        DecimalType result_pre_1997 = NysePre2001Fractions<DecimalType>::apply(d_pre_1997, equityAttrs, baseTickEquity);
+        REQUIRE(result_pre_1997 == eighth);
+
+        // 2. Between 1997-06-01 and 2001-04-09: Should be 1/16th
+        date d_mid_2000(2000, 1, 1);
+        DecimalType result_mid_2000 = NysePre2001Fractions<DecimalType>::apply(d_mid_2000, equityAttrs, baseTickEquity);
+        REQUIRE(result_mid_2000 == sixteenth);
+
+        // 3. On or after 2001-04-09: Should be decimal (0.01)
+        date d_post_2001(2001, 4, 9);
+        DecimalType result_post_2001 = NysePre2001Fractions<DecimalType>::apply(d_post_2001, equityAttrs, baseTickEquity);
+        REQUIRE(result_post_2001 == baseTickEquity);
+
+        // 4. Should not affect non-equity securities
+        DecimalType result_futures = NysePre2001Fractions<DecimalType>::apply(d_mid_2000, futuresAttrs, baseTickFutures);
+        REQUIRE(result_futures == baseTickFutures);
+    }
+
+    SECTION("Rule612SubPenny Policy (Split-Adjusted)")
+    {
+        const DecimalType cent = createDecimal("0.01");
+        const DecimalType price_under_1 = createDecimal("0.50");
+        const DecimalType price_over_1 = createDecimal("1.50");
+
+        // For prices >= $1, tick must be at least 0.01
+        DecimalType result_over_1 = Rule612SubPenny<DecimalType, true>::apply(price_over_1, equityAttrs, baseTickEquity);
+        REQUIRE(result_over_1 == cent);
+
+        // For prices < $1 (split-adjusted), sub-pennies are DISABLED. Tick remains 0.01.
+        DecimalType result_under_1 = Rule612SubPenny<DecimalType, true>::apply(price_under_1, equityAttrs, baseTickEquity);
+        REQUIRE(result_under_1 == cent);
+
+        // Should not affect non-equity securities
+        DecimalType result_futures = Rule612SubPenny<DecimalType, true>::apply(price_over_1, futuresAttrs, baseTickFutures);
+        REQUIRE(result_futures == baseTickFutures);
+    }
+
+    SECTION("Rule612SubPenny Policy (Not Split-Adjusted)")
+    {
+        const DecimalType cent = createDecimal("0.01");
+        const DecimalType sub_penny = createDecimal("0.0001");
+        const DecimalType price_under_1 = createDecimal("0.50");
+        const DecimalType price_over_1 = createDecimal("1.50");
+
+        // For prices >= $1, tick must be at least 0.01
+        DecimalType result_over_1 = Rule612SubPenny<DecimalType, false>::apply(price_over_1, equityAttrs, baseTickEquity);
+        REQUIRE(result_over_1 == cent);
+
+        // For prices < $1 (not split-adjusted), sub-pennies are ENABLED. Tick becomes 0.0001.
+        DecimalType result_under_1 = Rule612SubPenny<DecimalType, false>::apply(price_under_1, equityAttrs, baseTickEquity);
+        REQUIRE(result_under_1 == sub_penny);
+
+        // Should not affect non-equity securities
+        DecimalType result_futures = Rule612SubPenny<DecimalType, false>::apply(price_over_1, futuresAttrs, baseTickFutures);
+        REQUIRE(result_futures == baseTickFutures);
+    }
+}

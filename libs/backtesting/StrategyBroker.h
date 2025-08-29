@@ -1059,7 +1059,17 @@ namespace mkc_timeseries
     // ---------------------------
     struct TickPair { Decimal tick; Decimal tickDiv2; };
 
-    // Lookup SecurityAttributes via singleton factory
+    /**
+     * @brief Retrieves the security attributes for a given symbol.
+     *
+     * This is a helper function that looks up the `SecurityAttributes` for a specified
+     * trading symbol using the singleton `SecurityAttributesFactory`. This is the
+     * central point for accessing static instrument data like base tick size.
+     *
+     * @param symbol The trading symbol (e.g., "AAPL", "@ES") to look up.
+     * @return A shared pointer to the `SecurityAttributes` for the symbol.
+     * @throws StrategyBrokerException if the symbol is not found in the factory.
+     */
     std::shared_ptr<SecurityAttributes<Decimal>>
     lookupAttrs(const std::string& symbol) const
     {
@@ -1070,30 +1080,74 @@ namespace mkc_timeseries
       return it->second;
     }
 
-    // Compute per-order execution tick using:
-    //  - baseline tick from SecurityAttributes
-    //  - fractional pre-2001 policy (if enabled by template)
-    //  - Rule 612 policy (cent >= $1, optional $0.0001 < $1 if not split-adjusted)
+    /**
+     * @brief Computes the dynamic execution tick size for a given order context.
+     *
+     * This method determines the correct minimum price increment (tick) for a trade
+     * at a specific point in time and at a specific reference price. It starts with the
+     * security's baseline tick and then, only for equities, applies historical
+     * fractional pricing rules (`FractionPolicy`) and sub-penny pricing rules
+     * (`SubPennyPolicy`). This ensures that backtests use tick sizes that were
+     * historically accurate, which is crucial for realistic fill simulation.
+     *
+     * @param symbol The trading symbol of the instrument.
+     * @param when The `ptime` (timestamp) of the order, used by policies to determine
+     * the correct historical pricing regime.
+     * @param refPrice The reference price for the calculation, used by the sub-penny
+     * policy to decide if the price is below $1.00.
+     * @return A `TickPair` struct containing the final, context-aware `tick` and `tickDiv2` values
+     * to be used for rounding order prices.
+     */
     TickPair computeExecutionTick(const std::string& symbol,
                                   const ptime& when,
                                   const Decimal& refPrice) const
     {
       const auto attrs = lookupAttrs(symbol);
-      Decimal execTick = attrs->getTick(); // baseline (usually 0.01 for equities)
+      const Decimal baseTick = attrs->getTick();
+      Decimal execTick = baseTick;
 
-      // Apply fractional regime (equities only)
-      execTick = FractionPolicy<Decimal>::apply(when.date(), attrs, execTick);
+      // Policies for fractional pricing and sub-pennies only apply to equities.
+      if (attrs->isEquitySecurity())
+      {
+        // Apply fractional regime (equities only)
+        execTick = FractionPolicy<Decimal>::apply(when.date(), attrs, execTick);
 
-      // Apply Rule 612 (equities only); template bool selects split-adjusted semantics
-      execTick = SubPennyPolicy<Decimal, PricesAreSplitAdjusted>::apply(refPrice, attrs, execTick);
+        // Apply Rule 612 (equities only); template bool selects split-adjusted semantics
+        execTick = SubPennyPolicy<Decimal, PricesAreSplitAdjusted>::apply(refPrice, attrs, execTick);
+      }
 
       TickPair out;
-      out.tick     = execTick;
-      out.tickDiv2 = execTick / DecimalConstants<Decimal>::DecimalTwo;
+      out.tick = execTick;
+
+      // Optimization: if the tick was not modified by policies, use the pre-calculated value.
+      // Otherwise, compute it dynamically.
+      if (execTick == baseTick)
+      {
+          out.tickDiv2 = attrs->getTickDiv2();
+      }
+      else
+      {
+          out.tickDiv2 = execTick / DecimalConstants<Decimal>::DecimalTwo;
+      }
+
       return out;
     }
 
-    // Helper to round a target/stop using the dynamic execution tick
+ /**
+     * @brief Rounds a raw price to the nearest valid execution tick.
+     *
+     * This helper function takes a calculated price (e.g., a percentage-based stop-loss)
+     * and rounds it to a price that can actually be executed in the market. It does this
+     * by first calling `computeExecutionTick` to get the correct dynamic tick for the
+     * given context (symbol, time, price) and then uses a numerical utility to perform
+     * the rounding.
+     *
+     * @param symbol The trading symbol.
+     * @param when The `ptime` of the order.
+     * @param refPrice The reference price for the tick calculation.
+     * @param rawPrice The unrounded, calculated price to be adjusted.
+     * @return The `rawPrice` rounded to the nearest valid tick.
+     */
     Decimal roundToExecutionTick(const std::string& symbol,
                                  const ptime& when,
                                  const Decimal& refPrice,
