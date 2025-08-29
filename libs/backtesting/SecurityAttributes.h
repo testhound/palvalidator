@@ -165,26 +165,28 @@ namespace mkc_timeseries
      * @param inceptionDate The date the security was first listed or introduced.
      */
     SecurityAttributes (const string& securitySymbol, const string& securityName,
-			const Decimal& bigPointValue, const Decimal& securityTick,
-			const boost::gregorian::date& inceptionDate)
-      :mSecuritySymbol(securitySymbol),
-       mSecurityName(securityName),
-       mBigPointValue(bigPointValue),
-       mTick(securityTick),
-       mInceptionDate (inceptionDate)
-    {}
+  const Decimal& bigPointValue, const Decimal& securityTick,
+  const boost::gregorian::date& inceptionDate)
+     :mSecuritySymbol(securitySymbol),
+      mSecurityName(securityName),
+      mBigPointValue(bigPointValue),
+      mTick(securityTick),
+      mTickDiv2(securityTick / DecimalConstants<Decimal>::DecimalTwo),
+      mInceptionDate (inceptionDate)
+   {}
 
     /**
      * @brief Copy constructor for SecurityAttributes.
      * @param rhs The SecurityAttributes object to copy.
      */
     SecurityAttributes (const SecurityAttributes<Decimal> &rhs)
-      : mSecuritySymbol(rhs.mSecuritySymbol),
-	mSecurityName(rhs.mSecurityName),
-	mBigPointValue(rhs.mBigPointValue),
-	mTick(rhs.mTick),
-	mInceptionDate(rhs.mInceptionDate)
-    {}
+     : mSecuritySymbol(rhs.mSecuritySymbol),
+mSecurityName(rhs.mSecurityName),
+mBigPointValue(rhs.mBigPointValue),
+mTick(rhs.mTick),
+mTickDiv2(rhs.mTickDiv2),
+mInceptionDate(rhs.mInceptionDate)
+   {}
 
     /**
      * @brief Assignment operator for SecurityAttributes.
@@ -201,6 +203,7 @@ namespace mkc_timeseries
       mSecurityName = rhs.mSecurityName;
       mBigPointValue = rhs.mBigPointValue;
       mTick = rhs.mTick;
+      mTickDiv2 = rhs.mTickDiv2;
       mInceptionDate = rhs.mInceptionDate;
       return *this;
     }
@@ -248,6 +251,15 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Gets the tick size divided by 2 of the security.
+     * @return Const reference to the tick size divided by 2.
+     */
+    const Decimal& getTickDiv2() const
+    {
+      return mTickDiv2;
+    }
+
+    /**
      * @brief Gets the inception date of the security.
      * @return Const reference to the inception date.
      */
@@ -291,6 +303,7 @@ namespace mkc_timeseries
     std::string mSecurityName;
     Decimal mBigPointValue;
     Decimal mTick;
+    Decimal mTickDiv2;
     boost::gregorian::date mInceptionDate;
   };
 

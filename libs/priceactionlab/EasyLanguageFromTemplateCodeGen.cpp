@@ -114,7 +114,6 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "       	Int TurnOnEntryBarStop( 0  { 0:OFF  <>0:ON } )," << std::endl;
     *outFile << "        Double EntryBarStopLevel( 0 { <= 0:OFF  > 0: ON } )," << std::endl;
     *outFile << "        PrintDebug( False );" << std::endl;
-    *outFile << "// Added by D Cohn on 7/19/2019" << std::endl << std::endl;
     *outFile << "vars: shortStop (0), longStop (0), stopPercent (0);" << std::endl;
     *outFile << "vars: LongEntryFound (false), ShortEntryFound (false), noNextDayOrders(false);" << std::endl;
     *outFile << "vars: oscVChartLow(0.0), oscVChartHigh(0.0);" << std::endl;
@@ -134,22 +133,21 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "Vars:	myBarsSinceEntry(0)," << std::endl;
     *outFile << "                myEntryPrice(0)," << std::endl;
     *outFile << "                AllowEntry(false);" << std::endl;
-    *outFile << "Variables:  // Section of code Added by D Cohn on 7/19/2019" << std::endl;
+    *outFile << "Variables:" << std::endl;
     *outFile << "        Double NumEntries( 0 )," << std::endl;
     *outFile << "        Double MP( 0 )," << std::endl;
     *outFile << "        Double TT( 0 )," << std::endl;
     *outFile << "        Double CS( 0 )," << std::endl;
     *outFile << "        Double AEP( 0 )," << std::endl;
     *outFile << "        Bool ExitSet( False );" << std::endl;
-    *outFile << "Once ( BarStatus(1) = 2 ) Begin // Modified by D Cohn on 7/22/2019" << std::endl;
+    *outFile << "Once ( BarStatus(1) = 2 ) Begin" << std::endl;
     *outFile << "	SetStopContract;" << std::endl;
-    *outFile << "// Added 4/24/2020 by Emerald:  Set all built-in TS stops to be on a per contract basis" << std::endl << std::endl;
-    *outFile << "        If PrintDebug Then   // Added by D Cohn on 7/19/2019" << std::endl;
+    *outFile << "        If PrintDebug Then" << std::endl;
     *outFile << "                ClearPrintLog;" << std::endl;
     *outFile << "End;" << std::endl << std::endl << std::endl;
     *outFile << "\tMP = MarketPosition;" << std::endl;
     *outFile << "\tTT = TotalTrades;" << std::endl;
-    *outFile << "\tCS = CurrentShares;    // Added by D Cohn on 7/19/2019" << std::endl;
+    *outFile << "\tCS = CurrentShares;" << std::endl;
     *outFile << "\tAEP = AvgEntryPrice;" << std::endl;
     *outFile << "\toscVChartLow  = VChartLow( 5, 0.2 );" << std::endl;
     *outFile << "\toscVChartHigh = VChartHigh( 5, 0.2 );" << std::endl;
@@ -169,7 +167,7 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "\t\tPrint( BarDateTime.ToString(), \":NEW , \", MyBarsSinceEntry:0:0, \" , \", MyEntryPrice:0:2, \" , \", ExitPrice(1):0:2, \" , \", MP:0:0, \" , \", NetProfit:0:2 );" << std::endl;
     *outFile << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
     *outFile << "//////" << std::endl;
-    *outFile << "////// LONG ENTRY SETUPS: CODE Simplified and streamlined By D Cohn on 7/22/2019" << std::endl;
+    *outFile << "////// LONG ENTRY SETUPS:" << std::endl;
     *outFile << "//////" << std::endl;
     *outFile << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 
@@ -180,7 +178,7 @@ void EasyLanguageCodeGenVisitor::generateCode()
     // --- Resuming Static Template ---
     *outFile << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
     *outFile << "//////" << std::endl;
-    *outFile << "////// SHORT ENTRY SETUPS: CODE Simplified and streamlined By D Cohn on 7/22/2019" << std::endl;
+    *outFile << "////// SHORT ENTRY SETUPS:" << std::endl;
     *outFile << "//////" << std::endl;
     *outFile << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 
@@ -293,7 +291,7 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "\t\t\tCommentary (\"Manual stop = open of next bar - \", stopStr, NewLine);" << std::endl;
     *outFile << "\t\t\tCommentary (\"Manual profit target = open of next bar + \", targetStr, NewLine);" << std::endl;
     *outFile << "\t\t\tBuy (\"LE1\") at next bar at Market;" << std::endl << std::endl;
-    *outFile << "\t\t\t// Added 4/24/2020 by Emerald: If the Entry Bar Stop enabled and the MP" << std::endl;
+    *outFile << "\t\t\t// If the Entry Bar Stop enabled and the MP" << std::endl;
     *outFile << "\t\t\t//  is not Long then enable the stop on the entry bar only" << std::endl;
     *outFile << "\t\t\tIf TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP <= 0 Then  " << std::endl;
     *outFile << "\t\t\t\tSetStopLoss( EntryBarStopLevel * stopPercent * Close);" << std::endl;
@@ -303,7 +301,7 @@ void EasyLanguageCodeGenVisitor::generateCode()
     *outFile << "\t\t\tCommentary (\"Manual stop = open of next bar + \", stopStr, NewLine);" << std::endl;
     *outFile << "\t\t\tCommentary (\"Manual profit target = open of next bar - \", targetStr, NewLine);" << std::endl;
     *outFile << "\t\t\tSell short (\"SE1\") at next bar at Market;" << std::endl << std::endl;
-    *outFile << "\t\t\t// Added 4/24/2020 by Emerald: If the Entry Bar Stop enabled and the MP is not" << std::endl;
+    *outFile << "\t\t\t// If the Entry Bar Stop enabled and the MP is not" << std::endl;
     *outFile << "\t\t\t//  Long then enable the stop on the entry bar only" << std::endl;
     *outFile << "\t\t\tIf TurnOnEntryBarStop <> 0 and EntryBarStopLevel > 0.0 and MP >= 0 Then " << std::endl;
     *outFile << "\t\t\t\tSetStopLoss( EntryBarStopLevel * stopPercent * Close);" << std::endl;
