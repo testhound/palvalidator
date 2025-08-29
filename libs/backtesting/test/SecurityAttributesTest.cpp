@@ -164,3 +164,36 @@ TEST_CASE("FuturesSecurityAttributes-CommonChecks", "[FuturesSecurityAttributes]
     // Volume units
     REQUIRE(fut.getVolumeUnits() == TradingVolume::CONTRACTS);
 }
+
+//-----------------------------------------------------------------------------
+// Test getTickDiv2() method for SecurityAttributes
+TEST_CASE("SecurityAttributes-getTickDiv2", "[SecurityAttributes]") {
+    // Test with ETF (equity tick = 0.01)
+    LeverageAttributes<DecimalType> leverage(createDecimal("1.0"));
+    date inception(createDate("20200101"));
+    FundAttributes<DecimalType> fundAttribs(createDecimal("0.15"), leverage);
+    ETFSecurityAttributes<DecimalType> etf(
+        "SPY", "SPDR S&P 500 ETF", fundAttribs, inception);
+    
+    // ETF uses EquityTick (0.01), so TickDiv2 should be 0.01 / 2 = 0.005
+    DecimalType expectedTickDiv2 = DecimalConstants<DecimalType>::EquityTick / DecimalConstants<DecimalType>::DecimalTwo;
+    REQUIRE(etf.getTickDiv2() == expectedTickDiv2);
+    REQUIRE(etf.getTickDiv2() == createDecimal("0.005"));
+    
+    // Test with Futures (custom tick value)
+    DecimalType customTick = createDecimal("0.25");
+    FuturesSecurityAttributes<DecimalType> futures(
+        "ES", "E-mini S&P 500", createDecimal("50.0"), customTick, inception);
+    
+    // Custom tick 0.25, so TickDiv2 should be 0.25 / 2 = 0.125
+    DecimalType expectedFuturesTickDiv2 = customTick / DecimalConstants<DecimalType>::DecimalTwo;
+    REQUIRE(futures.getTickDiv2() == expectedFuturesTickDiv2);
+    REQUIRE(futures.getTickDiv2() == createDecimal("0.125"));
+    
+    // Test with Common Stock (also uses equity tick)
+    CommonStockSecurityAttributes<DecimalType> stock(
+        "AAPL", "Apple Inc.", inception);
+    
+    REQUIRE(stock.getTickDiv2() == expectedTickDiv2);
+    REQUIRE(stock.getTickDiv2() == createDecimal("0.005"));
+}
