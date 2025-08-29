@@ -49,6 +49,187 @@ inline int computeIntradayBarsPerDay(int minutesPerBar)
   return std::max(1, static_cast<int>(std::round(390.0 / minutesPerBar)));
 }
 
+namespace
+{
+  namespace _detail
+  {
+
+    /**
+     * @brief Estimates the effective price tick from a range of price data.
+     *
+     * This is the core implementation for tick estimation. It finds the smallest
+     * power-of-ten scaling factor that makes most prices in the range look like
+     * integers, then computes the GCD of the differences between unique integer levels.
+     * This reveals the underlying price grid quantization.
+     *
+     * @param begin Iterator to the beginning of the price range.
+     * @param end Iterator to the end of the price range.
+     * @param maxDecimals Maximum decimal scaling exponent to try (e.g., 6 for 10^-6).
+     * @param integralThreshold Fraction of points that must be near-integral to accept a scale.
+     * @return The estimated effective tick size in price units.
+     */
+    double estimateTickFromRange(std::vector<double>::const_iterator begin,
+				 std::vector<double>::const_iterator end,
+				 int maxDecimals = 8,
+				 double integralThreshold = 0.95)
+    {
+      std::vector<double> prices;
+      for (auto it = begin; it != end; ++it)
+	{
+	  if (std::isfinite(*it))
+	    prices.push_back(*it);
+	}
+
+      if (prices.size() < 2)
+	return 1e-2; // Fallback for insufficient data
+
+      // Helper to check if a value is very close to an integer
+      auto looks_integral = [](double y) {
+	double tol = std::max(1e-8, std::fabs(y) * 1e-12);
+	return std::fabs(y - std::llround(y)) < tol;
+      };
+
+      // 1) Find smallest 10^k scale where most points look integral
+      int bestK = 2; // Pragmatic fallback (pennies)
+      for (int k = 0; k <= maxDecimals; ++k)
+	{
+	  const double scale = std::pow(10.0, k);
+	  int ok_count = 0;
+	  for (double x : prices)
+	    {
+	      if (looks_integral(x * scale))
+		++ok_count;
+	    }
+	  if (static_cast<double>(ok_count) >= integralThreshold * static_cast<double>(prices.size()))
+	    {
+	      bestK = k;
+	      break;
+	    }
+	}
+
+      const double scale = std::pow(10.0, bestK);
+      const double fallbackTick = std::pow(10.0, -bestK);
+
+      // 2) Quantize to integers and get unique sorted levels
+      std::vector<long long> levels;
+      levels.reserve(prices.size());
+      for (double x : prices)
+	levels.push_back(std::llround(x * scale));
+
+      if (levels.size() < 2) return fallbackTick;
+
+      std::sort(levels.begin(), levels.end());
+      levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
+  
+      if (levels.size() < 2) return fallbackTick;
+
+      // 3) Compute GCD of positive adjacent differences
+      long long g = 0;
+      for (size_t i = 1; i < levels.size(); ++i)
+	{
+	  const long long diff = levels[i] - levels[i - 1];
+	  if (diff > 0)
+	    g = (g == 0) ? diff : std::gcd(g, diff);
+	}
+      if (g <= 0) g = 1; // Should not happen with >1 unique levels, but as a safeguard
+
+      // 4) Convert GCD back to price units
+      return static_cast<double>(g) / scale;
+    }
+
+
+    /**
+     * @brief Calculates the relative tick size for a window of prices.
+     *
+     * It computes the median of the prices and then returns the ratio of the
+     * tick to the median price. A high value indicates significant quantization.
+     *
+     * @param window_prices Vector of prices in the current window.
+     * @param tick The effective tick size to use for the calculation.
+     * @return The relative tick size (tick / median). Returns infinity if median is zero.
+     */
+    double calculateRelativeTick(std::vector<double>& window_prices, double tick)
+    {
+      if (window_prices.empty() || tick <= 0.0)
+        return std::numeric_limits<double>::infinity();
+
+      // In-place median calculation
+      size_t m = window_prices.size() / 2;
+      std::nth_element(window_prices.begin(), window_prices.begin() + m, window_prices.end());
+      double med = window_prices[m];
+
+      // For even-sized vectors, average the two middle elements
+      if ((window_prices.size() % 2) == 0) {
+	double prev_max = *std::max_element(window_prices.begin(), window_prices.begin() + m);
+	med = 0.5 * (med + prev_max);
+      }
+    
+      return (med > 0.0 && std::isfinite(med)) ? (tick / med) : std::numeric_limits<double>::infinity();
+    }
+
+
+    /**
+     * @brief Counts the number of unique price levels on a specified tick grid.
+     *
+     * This metric helps ensure there is enough price variation in the window for
+     * meaningful analysis. Low unique levels suggest a "stuck" or heavily quantized market.
+     *
+     * @param window_prices Vector of prices in the current window.
+     * @param tick The effective tick size to define the price grid.
+     * @return The count of unique quantized price levels.
+     */
+    size_t countUniquePriceLevels(const std::vector<double>& window_prices, double tick)
+    {
+      if (tick <= 0.0) return 0;
+    
+      const double invTick = 1.0 / tick;
+      std::unordered_set<long long> unique_levels;
+      unique_levels.reserve(window_prices.size());
+
+      for(double price : window_prices) {
+        if (std::isfinite(price)) {
+	  unique_levels.insert(std::llround(price * invTick));
+        }
+      }
+      return unique_levels.size();
+    }
+
+    /**
+     * @brief Calculates the fraction of "zero returns" in a window.
+     *
+     * A zero return is a price change smaller than or equal to one effective tick.
+     * A high fraction indicates that the price is frequently not moving enough to
+     * overcome the quantization grid, which can distort volatility and other statistics.
+     *
+     * @param window_prices Vector of prices in the current window.
+     * @param tick The effective tick size to define a "zero" move.
+     * @return The fraction of returns that are effectively zero.
+     */
+    double calculateZeroReturnFraction(const std::vector<double>& window_prices, double tick)
+    {
+      if (window_prices.size() < 2) return 1.0;
+
+      int zero_moves = 0;
+      int total_moves = 0;
+
+      for (size_t i = 1; i < window_prices.size(); ++i) {
+        const double p_prev = window_prices[i-1];
+        const double p_curr = window_prices[i];
+
+        if (std::isfinite(p_prev) && std::isfinite(p_curr)) {
+	  if (std::fabs(p_curr - p_prev) <= tick) {
+	    ++zero_moves;
+	  }
+	  ++total_moves;
+        }
+      }
+      return (total_moves > 0) ? (static_cast<double>(zero_moves) / total_moves) : 1.0;
+    }
+
+  } // namespace _detail
+} // anonymous namespace
+
+
 /**
  * @brief Estimate the *effective* price tick from the data (not the exchange rule).
  *
@@ -58,43 +239,18 @@ inline int computeIntradayBarsPerDay(int minutesPerBar)
  * reflects the quantization actually present in the series, which is what affects
  * zero-returns and rounding artifacts in your statistics.
  *
- * Method (robust, data-driven):
- *  1) Auto-detect a decimal scaling factor 10^k (k in [0..maxDecimals]) such that
- *     most closes become integers when multiplied by 10^k. We choose the *smallest*
- *     k where ≥ integralThreshold of points are (close to) integers.
- *  2) At that scale, round closes to integers, gather unique levels, and compute
- *     the GCD of the positive adjacent differences between sorted unique levels.
- *  3) Return tick = GCD / 10^k (back to price units).
- *
- * Notes:
- *  - This does not need to match the exchange’s minimum tick. It captures how your
- *    vendor/file is quantized, which is the right signal for the clean-start detector.
- *  - If you *know* the true tick (e.g., via SecurityAttributesFactory), prefer that
- *    and use this only as a fallback.
- *
- * Complexity:
- *  - O(N log N) due to sorting unique levels once; the scale search is O(N * maxDecimals).
- *
- * Edge cases:
- *  - If the series is empty or has <2 unique levels, returns 10^{-k} as a conservative
- *    fallback at the chosen k.
- *  - Non-finite values are skipped.
- *
- * @tparam Decimal             Numeric wrapper used by your time-series (e.g., mkc::Num).
- * @param  series              Input OHLC time series.
- * @param  maxDecimals         Maximum scale exponent to try (default 6 → micro precision).
- * @param  integralThreshold   Fraction of points that must look integral at a scale
- *                             to accept it (default 0.98).
- * @return double              Estimated effective tick size (price units).
+ * @tparam Decimal Numeric wrapper used by your time-series (e.g., mkc::Num).
+ * @param  series Input OHLC time series.
+ * @param  maxDecimals Maximum scale exponent to try (default 6 → micro precision).
+ * @param  integralThreshold Fraction of points that must look integral at a scale.
+ * @return double Estimated effective tick size (price units).
  */
 template <typename Decimal>
 double estimateEffectiveTick(const mkc_timeseries::OHLCTimeSeries<Decimal>& series,
                              int maxDecimals = 6,
                              double integralThreshold = 0.98)
 {
-  using mkc_timeseries::OHLCTimeSeries;
-
-  // 0) Extract closes
+  // Extract all valid close prices into a vector of doubles
   const auto& entries = series.getEntriesCopy();
   std::vector<double> closes;
   closes.reserve(entries.size());
@@ -105,70 +261,16 @@ double estimateEffectiveTick(const mkc_timeseries::OHLCTimeSeries<Decimal>& seri
   }
 
   if (closes.size() < 2)
-    return 1e-2;
+    return 1e-2; // Fallback for tiny series
 
-  // 1) Find smallest 10^k where most points look integral
-  auto looks_integral = [](double y)
-  {
-    return std::fabs(y - std::llround(y)) < 1e-8;
-  };
-
-  int bestK = 2;  // keep pennies as pragmatic fallback
-  for (int k = 0; k <= maxDecimals; ++k)
-  {
-    const double scale = std::pow(10.0, k);
-    int ok = 0, tot = 0;
-    for (double x : closes)
-    {
-      const double y = x * scale;
-      if (!std::isfinite(y))
-	continue;
-      
-      ++tot;
-      
-      if (looks_integral(y))
-	++ok;
-    }
-    if (tot > 0 && static_cast<double>(ok) >= integralThreshold * static_cast<double>(tot))
-    {
-      bestK = k;    // choose the smallest sufficient k
-      break;
-    }
-  }
-
-  const double scale = std::pow(10.0, bestK);
-
-  // 2) Quantize and compute GCD step
-  std::vector<long long> levels;
-  levels.reserve(closes.size());
-  for (double x : closes)
-  {
-    const double y = x * scale;
-    if (std::isfinite(y))
-      levels.push_back(std::llround(y));
-  }
-
-  if (levels.size() < 2)
-    return std::pow(10.0, -bestK);
-
-  std::sort(levels.begin(), levels.end());
-  levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
-  if (levels.size() < 2)
-    return std::pow(10.0, -bestK);
-
-  long long g = 0;
-  for (std::size_t i = 1; i < levels.size(); ++i)
-  {
-    const long long d = levels[i] - levels[i - 1];
-    if (d > 0) g = (g == 0) ? d : std::gcd(g, d);
-  }
-
-  if (g <= 0)
-    g = 1;
-
-  // 3) Convert back to price units
-  return static_cast<double>(g) / scale;
+  // Delegate to the core range-based implementation
+  return _detail::estimateTickFromRange(closes.cbegin(), closes.cend(), maxDecimals, integralThreshold);
 }
+
+struct WindowParameters {
+  int windowBars;
+  int stabilityBufferBars;
+};
 
 struct CleanStartResult {
   size_t startIndex = 0;
@@ -179,61 +281,71 @@ struct CleanStartResult {
 };
 
 /**
+ * @brief Determines the appropriate window and buffer sizes based on time frame.
+ * @param timeFrame The time frame of the series (Daily, Weekly, etc.).
+ * @param seriesTotalBars The total number of bars in the series (for intraday scaling).
+ * @param intradayMinutes The bar cadence for intraday time frames.
+ * @return A WindowParameters struct containing the calculated sizes.
+ */
+WindowParameters determineWindowParameters(TimeFrame::Duration timeFrame, size_t seriesTotalBars, int intradayMinutes)
+{
+  switch (timeFrame)
+    {
+    case TimeFrame::DAILY:
+      return {252, 60};
+
+    case TimeFrame::WEEKLY:
+      return {260, 12};
+      
+    case TimeFrame::MONTHLY:
+      return {60, 3};
+
+    case TimeFrame::INTRADAY:
+    default:
+      {
+	const int barsPerDay = computeIntradayBarsPerDay(intradayMinutes);
+	int desiredDays = 252;
+	// Gracefully shrink window for shorter intraday series
+	while (barsPerDay * desiredDays >= static_cast<int>(seriesTotalBars) && desiredDays > 21)
+	  desiredDays /= 2;
+	
+	int window = std::max(3, barsPerDay * desiredDays);
+	int buffer = std::max(60, barsPerDay * 10);
+	return {window, buffer};
+      }
+    }
+}
+
+/**
  * @brief Finds a suitable starting index for a time series to mitigate data quantization issues.
  *
- * This function finds the first index in an OHLC time series where price quantization
- * (e.g., 2-decimal rounding after split-adjustment) no longer dominates the signal.
+ * **The Problem**: After many stock splits, a security's price can become very low.
+ * When this happens, the minimum price increment (the "tick", e.g., $0.01) becomes
+ * large relative to the price. Think of it like a photograph that is so "zoomed in"
+ * that it becomes pixelated. A price of $0.04 can only move in huge 25% jumps
+ * ($0.01 / $0.04), which distorts statistical analysis.
  *
- * This function addresses the problem of price quantization, which occurs when a security's
- * price becomes very low after stock splits, leading to a large effective tick size
- * relative to the price. For example, a $0.04 price with a $0.01 tick results in a 25% price step,
- * which can distort statistical measures like median and Qn.
+ * **The Solution**: This function acts like an "auto-focus" for your data. It scans
+ * the time series using a sliding window to find the first point where the data is
+ * "sharp" enough for analysis—that is, where the price is high enough that the tick
+ * size is no longer causing significant distortion.
  *
- * The algorithm performs a data-driven cutoff to find the first "clean" window of data that
- * meets specific criteria for price stability and tick-related noise. It iterates through
- * the time series in a sliding window and checks if the data within the window is suitable for analysis.
+ * The algorithm finds the first window of data that meets three criteria:
+ * 1.  **Low Relative Tick**: The tick size, relative to the median price, is small.
+ * 2.  **Low Zero-Return Fraction**: The price is moving more than one tick on most bars.
+ * 3.  **Sufficient Price Variation**: There are many unique price levels in the window.
  *
- * The criteria for a "clean" window are:
- * 1.  **Relative Tick Size**: The estimated effective tick, relative to the median price in the window,
- * is below a configured maximum threshold (`maxRelTick`).
- * 2.  **Zero-Return Fraction**: The fraction of effectively zero returns (moves smaller than one tick)
- * is below a configured maximum threshold (`maxZeroFrac`). This helps filter out periods
- * where prices are highly quantized.
- * 3.  **Unique Price Levels**: The number of unique price levels within the window is above a
- * configured minimum threshold (`minUniqueLevels`). This helps ensure there is enough
- * price variation to perform meaningful statistical analysis.
- *
- * Tick handling:
- *   - If @p knownTick is provided (e.g., from SecurityAttributesFactory), it is used.
- *   - Otherwise, the function falls back to estimating an effective tick from the data
- *     (e.g., by detecting the price grid via integer GCD on scaled closes).
- *
- * Window sizing:
- *   - DAILY: ~252 bars; WEEKLY: ~104; MONTHLY: ~60.
- *   - INTRADAY: scaled to ≈ one trading year using @p cfg.intradayMinutesPerBar and
- *     an equity regular session of 390 minutes/day. Bars/day ≈ round(390 / minutesPerBar),
- *     so windowBars ≈ barsPerDay * 252. For short files, the window shrinks gracefully
- *     (down to ≈ one month, ~21 trading days equivalent) so it always fits the data.
- *   - A stability buffer (e.g., ~10 trading days worth of bars) is added after the
- *     first qualifying window start before returning the final @c startIndex.
- *
- * Complexity:
- *   - Per window the code computes a median, unique-level count, and zero-return rate,
- *     each O(W) where W = cfg.windowBars, yielding O(N * W) total in the worst case.
- *     (Good defaults keep W moderate; rolling optimizations are possible if needed.)
- *
- * Edge cases and safety:
- *   - Empty or too-short series returns {found=false}.
- *   - The window size is clamped so it never exceeds the number of bars available.
- *   - Non-finite prices are skipped in return calculations.
+ * **Stability Buffer**: Once a "clean" window is found starting at index `L`, we don't
+ * immediately return `L`. Instead, we add a `stabilityBufferBars` safety margin.
+ * This ensures the clean period isn't a brief anomaly and that our analysis starts
+ * well within the stable regime.
  *
  * @tparam Decimal The numeric type used for the time series data (e.g., Num, Decimal).
  * @param series The input OHLCTimeSeries to analyze.
- * @param cfg The configuration struct (`CleanStartConfig`) defining the parameters for the search.
- * @param knownTick An optional known tick size. If provided, it will be used instead of
- * estimating the tick from the data.
- * @return A `CleanStartResult` struct containing the found starting index, estimated tick
- * properties, and a boolean indicating if a clean start was found.
+ * @param cfg The configuration struct (`CleanStartConfig`) defining the parameters.
+ * @param knownTick An optional known tick size. If provided, it's used as an upper
+ * bound for the window-inferred tick.
+ * @return A `CleanStartResult` struct with the found index and related metrics.
  */
 template <typename Decimal>
 CleanStartResult findCleanStartIndex(const mkc_timeseries::OHLCTimeSeries<Decimal>& series,
@@ -245,144 +357,71 @@ CleanStartResult findCleanStartIndex(const mkc_timeseries::OHLCTimeSeries<Decima
   const auto entries = series.getEntriesCopy();
   const size_t n = entries.size();
 
-  // Window sizing (same as before)
-  switch (series.getTimeFrame()){
-    case TimeFrame::DAILY:   cfg.windowBars = 252; cfg.stabilityBufferBars = 60; break;
-    case TimeFrame::WEEKLY:  cfg.windowBars = 260; cfg.stabilityBufferBars = 12; break;
-    case TimeFrame::MONTHLY: cfg.windowBars = 60;  cfg.stabilityBufferBars = 3;  break;
-    case TimeFrame::INTRADAY:
-    default: {
-      const int barsPerDay = computeIntradayBarsPerDay(cfg.intradayMinutesPerBar);
-      int desiredDays = 252;
-      while (barsPerDay * desiredDays >= static_cast<int>(n) && desiredDays > 21)
-        desiredDays /= 2;
-      cfg.windowBars = std::max(3, barsPerDay * desiredDays);
-      cfg.stabilityBufferBars = std::max(60, barsPerDay * 10);
-      break;
-    }
-  }
-
+  auto params = determineWindowParameters(series.getTimeFrame(), n, cfg.intradayMinutesPerBar);
+  cfg.windowBars = params.windowBars;
+  cfg.stabilityBufferBars = params.stabilityBufferBars;
+      
   CleanStartResult res;
-  if (n == 0) return res;
-  if (n < static_cast<size_t>(std::max(3, cfg.windowBars))) return res;
-
-  // Extract closes as doubles
-  std::vector<double> close(n);
-  for (size_t i = 0; i < n; ++i)
-    close[i] = entries[i].getCloseValue().getAsDouble();
-
-  // Helper: robust median over [L,R]
-  auto medianSpan = [&](size_t L, size_t R){
-    std::vector<double> tmp; tmp.reserve(R - L + 1);
-    for (size_t i = L; i <= R; ++i) tmp.push_back(close[i]);
-    size_t m = tmp.size() / 2;
-    std::nth_element(tmp.begin(), tmp.begin() + m, tmp.end());
-    double med = tmp[m];
-    if ((tmp.size() & 1) == 0) {
-      const double a = med;
-      const double b = *std::max_element(tmp.begin(), tmp.begin() + m);
-      med = 0.5 * (a + b);
-    }
-    return med;
-  };
-
-  // Helper: infer tick over [L,R] (window-local), up to 8 decimals
-  auto inferTickOver = [&](size_t L, size_t R)->double {
-    const int maxDecimals = 8;
-    const double integralThreshold = 0.95;   // slightly looser than 0.98 to handle FP noise
-    auto looks_integral = [](double y){
-      // Abs tolerance scaled a bit by magnitude to be safe
-      double tol = std::max(1e-8, std::fabs(y) * 1e-12);
-      return std::fabs(y - std::llround(y)) < tol;
-    };
-
-    // 1) choose smallest k with ≥ integralThreshold points integral at 10^k
-    int bestK = 2; // pragmatic fallback
-    for (int k = 0; k <= maxDecimals; ++k){
-      const double scale = std::pow(10.0, k);
-      int ok=0, tot=0;
-      for (size_t i=L; i<=R; ++i){
-        const double y = close[i] * scale;
-        if (!std::isfinite(y)) continue;
-        ++tot;
-        if (looks_integral(y)) ++ok;
-      }
-      if (tot > 0 && static_cast<double>(ok) >= integralThreshold * static_cast<double>(tot)){
-        bestK = k;
-        break;
-      }
-    }
-    const double scale = std::pow(10.0, bestK);
-
-    // 2) integerize and compute GCD of adjacent diffs
-    std::vector<long long> levels; levels.reserve(R-L+1);
-    for (size_t i=L; i<=R; ++i){
-      const double y = close[i] * scale;
-      if (std::isfinite(y)) levels.push_back(std::llround(y));
-    }
-    if (levels.size() < 2) return std::pow(10.0, -bestK);
-    std::sort(levels.begin(), levels.end());
-    levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
-    if (levels.size() < 2) return std::pow(10.0, -bestK);
-
-    long long g = 0;
-    for (size_t i=1; i<levels.size(); ++i){
-      const long long d = levels[i] - levels[i-1];
-      if (d > 0) g = (g==0) ? d : std::gcd(g, d);
-    }
-    if (g <= 0) g = 1;
-
-    return static_cast<double>(g) / scale;
-  };
-
-  const size_t W = static_cast<size_t>(std::max(3, cfg.windowBars));
-
-  // Slide windows; infer a tick for each window and test it
-  for (size_t L=0, R=W-1; R < n; ++L, ++R)
-  {
-    // Window-local effective tick (prefer finer of inferred vs known)
-    double winTick = inferTickOver(L, R);
-    if (knownTick && *knownTick > 0.0)
-      winTick = std::min(winTick, *knownTick);
-
-    // Median and relTick
-    const double med = medianSpan(L, R);
-    const double relTick = (med > 0.0 && std::isfinite(med)) ? (winTick / med)
-                                                             : std::numeric_limits<double>::infinity();
-
-    // Distinct levels on the window tick grid
-    const double invTick = (winTick > 0.0) ? (1.0 / winTick) : 100.0;
-    std::unordered_set<long long> uniq;
-    uniq.reserve((R - L + 1) / 2 + 8);
-    for (size_t i=L; i<=R; ++i)
-      uniq.insert(std::llround(close[i] * invTick));
-
-    // Zero moves: |Δprice| ≤ tick
-    int zeros=0, denom=0;
-    for (size_t i=std::max(L+1, static_cast<size_t>(1)); i<=R; ++i){
-      const double a = close[i-1], b = close[i];
-      if (!std::isfinite(a) || !std::isfinite(b)) continue;
-      if (std::fabs(b - a) <= winTick) ++zeros;
-      ++denom;
-    }
-    const double zeroFrac = (denom > 0) ? (static_cast<double>(zeros)/denom) : 1.0;
-
-    const bool ok = (relTick <= cfg.maxRelTick) &&
-                    (zeroFrac <= cfg.maxZeroFrac) &&
-                    (static_cast<int>(uniq.size()) >= cfg.minUniqueLevels);
-
-    if (ok){
-      const size_t bufferedStart = L + static_cast<size_t>(std::max(0, cfg.stabilityBufferBars));
-      res.startIndex = std::min(n - 1, bufferedStart);
-      res.tick    = winTick;   // <- report the tick that made this window pass
-      res.relTick = relTick;
-      res.zeroFrac = zeroFrac;
-      res.found = true;
+  if (n < static_cast<size_t>(cfg.windowBars))
+    {
+      res.found = false;
+      res.startIndex = 0;
       return res;
     }
+  
+  // Extract all close prices into a single vector for efficient slicing
+  std::vector<double> all_closes;
+  all_closes.reserve(n);
+  for (const auto& entry : entries) {
+      all_closes.push_back(entry.getCloseValue().getAsDouble());
   }
 
-  // No qualifying window found—disable trimming.
+  const size_t W = static_cast<size_t>(cfg.windowBars);
+
+  // --- Slide a window across the data and test each for "cleanliness" ---
+  for (size_t L = 0, R = W - 1; R < n; ++L, ++R)
+  {
+    auto first = all_closes.cbegin() + L;
+    auto last = all_closes.cbegin() + R + 1;
+    
+    // 1. Determine the effective tick for this specific window
+    double winTick = _detail::estimateTickFromRange(first, last);
+
+    if (knownTick && *knownTick > 0.0)
+      {
+	// Use the finer of the known tick vs. the locally-inferred one.
+	// The inferred one can be larger due to post-split rounding.
+
+	winTick = std::min(winTick, *knownTick);
+      }
+    
+    // Create a temporary vector for the window's data to pass to helpers
+    std::vector<double> window_prices(first, last);
+
+    // 2. Calculate the three quality metrics using dedicated helpers
+    const double relTick = _detail::calculateRelativeTick(window_prices, winTick);
+    const double zeroFrac = _detail::calculateZeroReturnFraction(window_prices, winTick);
+    const size_t uniqueLevels = _detail::countUniquePriceLevels(window_prices, winTick);
+    
+    // 3. Check if the window meets all quality criteria
+    const bool is_clean = (relTick <= cfg.maxRelTick) &&
+                          (zeroFrac <= cfg.maxZeroFrac) &&
+                          (static_cast<int>(uniqueLevels) >= cfg.minUniqueLevels);
+
+    if (is_clean)
+      {
+	const size_t bufferedStart = L + static_cast<size_t>(std::max(0, cfg.stabilityBufferBars));
+      
+	res.startIndex = std::min(n - 1, bufferedStart);
+	res.tick       = winTick;
+	res.relTick    = relTick;
+	res.zeroFrac   = zeroFrac;
+	res.found      = true;
+	return res;
+      }
+  }
+
+  // No qualifying window was found
   res.found = false;
   res.startIndex = 0;
   return res;
