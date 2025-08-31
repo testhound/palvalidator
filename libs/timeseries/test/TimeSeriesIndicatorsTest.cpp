@@ -1,3 +1,4 @@
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <vector>
@@ -247,6 +248,173 @@ SECTION("ComputeRobustStopAndTargetFromSeries - negative skew") {
             REQUIRE_THROWS_AS(RobustSkewMedcouple(ts), std::domain_error);
         }
     }
+
+    SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — anchors cap/floor widths (pos skew)")
+{
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // Build 25 bars with mild drift and two large positive spikes → positive skew
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    double close = 100.0;
+    for (int i = 1; i <= 25; ++i) {
+        double r = 0.001;                // +0.1% typical
+        if (i == 10 || i == 20) r = 0.05; // +5% spikes
+        double open = close;
+        double newClose = close * (1.0 + r);
+        double high = std::max(open, newClose) * 1.002;
+        double low  = std::min(open, newClose) * 0.998;
+
+        std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+        auto e = createEquityEntry("202301" + day,
+                                   std::to_string(open),
+                                   std::to_string(high),
+                                   std::to_string(low),
+                                   std::to_string(newClose),
+                                   1000);
+        series.addEntry(*e);
+        close = newClose;
+    }
+
+    // period=1 so rocVec.size() = 24 ≥ kMinSample(20) → anchors path is eligible
+    auto [pt_no, sl_no] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, false);
+    auto [pt_an, sl_an] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, true);
+
+    // Basic sanity
+    REQUIRE(pt_no > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(sl_no > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(pt_an > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(sl_an > DecimalConstants<DecimalType>::DecimalZero);
+
+    // With positive skew, anchors should CAP target and FLOOR stop
+    REQUIRE(pt_an <= pt_no);
+    REQUIRE(sl_an >= sl_no);
+}
+
+SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — anchors cap/floor widths (neg skew)")
+{
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // Build 25 bars with two large negative moves → negative skew
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    double close = 100.0;
+    for (int i = 1; i <= 25; ++i) {
+        double r = 0.001;                 // +0.1% typical
+        if (i == 12 || i == 22) r = -0.05; // -5% shocks
+        double open = close;
+        double newClose = close * (1.0 + r);
+        double high = std::max(open, newClose) * 1.002;
+        double low  = std::min(open, newClose) * 0.998;
+
+        std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+        auto e = createEquityEntry("202302" + day,
+                                   std::to_string(open),
+                                   std::to_string(high),
+                                   std::to_string(low),
+                                   std::to_string(newClose),
+                                   1000);
+        series.addEntry(*e);
+        close = newClose;
+    }
+
+    auto [pt_no, sl_no] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, false);
+    auto [pt_an, sl_an] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, true);
+
+    // Anchors should still CAP target and FLOOR stop
+    REQUIRE(pt_an <= pt_no);
+    REQUIRE(sl_an >= sl_no);
+}
+
+SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — period parameter matters")
+{
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // Reuse a medium-size series (above)
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    double close = 100.0;
+    for (int i = 1; i <= 25; ++i) {
+        double r = (i % 5 == 0 ? 0.02 : 0.001);
+        double open = close;
+        double newClose = close * (1.0 + r);
+        double high = std::max(open, newClose) * 1.001;
+        double low  = std::min(open, newClose) * 0.999;
+
+        std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+        auto e = createEquityEntry("202303" + day,
+                                   std::to_string(open),
+                                   std::to_string(high),
+                                   std::to_string(low),
+                                   std::to_string(newClose),
+                                   1000);
+        series.addEntry(*e);
+        close = newClose;
+    }
+
+    auto [pt_p1, sl_p1] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, false);
+    auto [pt_p3, sl_p3] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 3, false);
+
+    // Expect a change when period changes
+    REQUIRE( ((pt_p1 - pt_p3).abs() > TEST_DEC_TOL_INDICATORS
+          || (sl_p1 - sl_p3).abs() > TEST_DEC_TOL_INDICATORS) );
+}
+
+SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — anchors disabled under small sample")
+{
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // Only 15 bars → rocVec.size() = 14 < kMinSample(20), so anchors path is skipped
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    double close = 50.0;
+    for (int i = 1; i <= 15; ++i) {
+        double r = (i % 7 == 0 ? 0.03 : 0.002);
+        double open = close;
+        double newClose = close * (1.0 + r);
+        double high = std::max(open, newClose) * 1.001;
+        double low  = std::min(open, newClose) * 0.999;
+
+        std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+        auto e = createEquityEntry("202304" + day,
+                                   std::to_string(open),
+                                   std::to_string(high),
+                                   std::to_string(low),
+                                   std::to_string(newClose),
+                                   1000);
+        series.addEntry(*e);
+        close = newClose;
+    }
+
+    auto [pt_no, sl_no] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, false);
+    auto [pt_an, sl_an] = ComputeRobustStopAndTargetFromSeries<DecimalType>(series, 1, true);
+
+    // Should be effectively identical because anchors are not applied
+    REQUIRE(pt_an == decimalApprox(pt_no, TEST_DEC_TOL_INDICATORS));
+    REQUIRE(sl_an == decimalApprox(sl_no, TEST_DEC_TOL_INDICATORS));
+}
+
+SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — error conditions")
+{
+    using mkc_timeseries::ComputeRobustStopAndTargetFromSeries;
+
+    // < 3 bars → throws
+    {
+        OHLCTimeSeries<DecimalType> s(TimeFrame::DAILY, TradingVolume::SHARES);
+        auto e1 = createEquityEntry("20230501","100","101","99","100",1000);
+        auto e2 = createEquityEntry("20230502","100","101","99","101",1000);
+        s.addEntry(*e1);
+        s.addEntry(*e2);
+        REQUIRE_THROWS_AS(ComputeRobustStopAndTargetFromSeries<DecimalType>(s, 1, false), std::domain_error);
+    }
+
+    // ROC series too small (e.g., 4 bars, period = 3) → throws
+    {
+        OHLCTimeSeries<DecimalType> s(TimeFrame::DAILY, TradingVolume::SHARES);
+        auto e1 = createEquityEntry("20230601","100","101","99","100",1000);
+        auto e2 = createEquityEntry("20230602","100","101","99","101",1000);
+        auto e3 = createEquityEntry("20230603","101","102","100","102",1000);
+        auto e4 = createEquityEntry("20230604","102","103","101","103",1000);
+        s.addEntry(*e1); s.addEntry(*e2); s.addEntry(*e3); s.addEntry(*e4);
+        REQUIRE_THROWS_AS(ComputeRobustStopAndTargetFromSeries<DecimalType>(s, 3, false), std::domain_error);
+    }
+}
 
     SECTION("DivideSeries") {
         ptime d1(boost::gregorian::date(2023,1,1), getDefaultBarTime());
@@ -585,6 +753,341 @@ SECTION("ComputeRobustStopAndTargetFromSeries - negative skew") {
             });
             RobustQn<DecimalType> from_ts(ts);
             REQUIRE(from_ts.getRobustQn() == decimalApprox(fromString<DecimalType>("1.988"), ROBUST_QN_TOL_INDICATORS));
+        }
+    }
+
+    SECTION("SampleQuantile") {
+        using mkc_timeseries::SampleQuantile;
+
+        SECTION("Basic quantile calculations") {
+            std::vector<DecimalType> vec = {
+                fromString<DecimalType>("1"),
+                fromString<DecimalType>("2"),
+                fromString<DecimalType>("3"),
+                fromString<DecimalType>("4"),
+                fromString<DecimalType>("5")
+            };
+            
+            // Test median (0.5 quantile)
+            auto vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, 0.5) == decimalApprox(fromString<DecimalType>("3"), TEST_DEC_TOL_INDICATORS));
+            
+            // Test first quartile (0.25 quantile)
+            vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, 0.25) == decimalApprox(fromString<DecimalType>("2"), TEST_DEC_TOL_INDICATORS));
+            
+            // Test third quartile (0.75 quantile)
+            vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, 0.75) == decimalApprox(fromString<DecimalType>("4"), TEST_DEC_TOL_INDICATORS));
+            
+            // Test minimum (0.0 quantile)
+            vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, 0.0) == decimalApprox(fromString<DecimalType>("1"), TEST_DEC_TOL_INDICATORS));
+            
+            // Test maximum (1.0 quantile)
+            vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, 1.0) == decimalApprox(fromString<DecimalType>("5"), TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("Edge cases") {
+            // Empty vector
+            std::vector<DecimalType> empty_vec;
+            REQUIRE(SampleQuantile(empty_vec, 0.5) == decimalApprox(DecimalConstants<DecimalType>::DecimalZero, TEST_DEC_TOL_INDICATORS));
+            
+            // Single element
+            std::vector<DecimalType> single = {fromString<DecimalType>("42")};
+            REQUIRE(SampleQuantile(single, 0.5) == decimalApprox(fromString<DecimalType>("42"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(SampleQuantile(single, 0.0) == decimalApprox(fromString<DecimalType>("42"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(SampleQuantile(single, 1.0) == decimalApprox(fromString<DecimalType>("42"), TEST_DEC_TOL_INDICATORS));
+            
+            // Two elements
+            std::vector<DecimalType> two = {
+                fromString<DecimalType>("10"),
+                fromString<DecimalType>("20")
+            };
+            auto two_copy = two;
+            REQUIRE(SampleQuantile(two_copy, 0.5) == decimalApprox(fromString<DecimalType>("10"), TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("Out of range quantile values") {
+            std::vector<DecimalType> vec = {
+                fromString<DecimalType>("1"),
+                fromString<DecimalType>("2"),
+                fromString<DecimalType>("3")
+            };
+            
+            // Values outside [0,1] should be clamped
+            auto vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, -0.5) == decimalApprox(fromString<DecimalType>("1"), TEST_DEC_TOL_INDICATORS));
+            
+            vec_copy = vec;
+            REQUIRE(SampleQuantile(vec_copy, 1.5) == decimalApprox(fromString<DecimalType>("3"), TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("Unsorted input") {
+            std::vector<DecimalType> unsorted = {
+                fromString<DecimalType>("5"),
+                fromString<DecimalType>("1"),
+                fromString<DecimalType>("3"),
+                fromString<DecimalType>("2"),
+                fromString<DecimalType>("4")
+            };
+            
+            // Should work correctly even with unsorted input
+            REQUIRE(SampleQuantile(unsorted, 0.5) == decimalApprox(fromString<DecimalType>("3"), TEST_DEC_TOL_INDICATORS));
+        }
+    }
+
+    SECTION("WinsorizeInPlace") {
+        using mkc_timeseries::WinsorizeInPlace;
+
+        SECTION("Basic winsorization") {
+            std::vector<DecimalType> vec = {
+                fromString<DecimalType>("1"),
+                fromString<DecimalType>("2"),
+                fromString<DecimalType>("3"),
+                fromString<DecimalType>("4"),
+                fromString<DecimalType>("5"),
+                fromString<DecimalType>("6"),
+                fromString<DecimalType>("7"),
+                fromString<DecimalType>("8"),
+                fromString<DecimalType>("9"),
+                fromString<DecimalType>("10")
+            };
+            
+            auto original = vec;
+            
+            // Winsorize at 10% (should cap at 10th and 90th percentiles)
+            WinsorizeInPlace(vec, 0.1);
+            
+            // With 10 elements and tau=0.1, the 10th percentile is at index 1 (value 2)
+            // and 90th percentile is at index 8 (value 9)
+            // So values below 2 should be set to 2, and values above 9 should be set to 9
+            REQUIRE(vec[0] == decimalApprox(fromString<DecimalType>("2"), TEST_DEC_TOL_INDICATORS)); // 1 -> 2
+            REQUIRE(vec[9] == decimalApprox(fromString<DecimalType>("9"), TEST_DEC_TOL_INDICATORS)); // 10 -> 9
+            
+            // Middle values should be unchanged
+            for (size_t i = 1; i < 9; ++i) {
+                REQUIRE(vec[i] == decimalApprox(original[i], TEST_DEC_TOL_INDICATORS));
+            }
+        }
+
+        SECTION("Edge cases") {
+            // Empty vector
+            std::vector<DecimalType> empty_vec;
+            WinsorizeInPlace(empty_vec, 0.1);
+            REQUIRE(empty_vec.empty());
+            
+            // Single element
+            std::vector<DecimalType> single = {fromString<DecimalType>("42")};
+            auto single_orig = single;
+            WinsorizeInPlace(single, 0.1);
+            REQUIRE(single[0] == decimalApprox(fromString<DecimalType>("42"), TEST_DEC_TOL_INDICATORS));
+            
+            // Two elements - with tau=0.1, both quantiles will be the same values
+            std::vector<DecimalType> two = {
+                fromString<DecimalType>("10"),
+                fromString<DecimalType>("20")
+            };
+            auto two_orig = two;
+            WinsorizeInPlace(two, 0.1);
+            // With only 2 elements, the 10th and 90th percentiles are the same as the min and max
+            // So no winsorization should occur
+            REQUIRE(two[0] == decimalApprox(two_orig[0], TEST_DEC_TOL_INDICATORS));
+            REQUIRE(two[1] == decimalApprox(two_orig[1], TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("Tau parameter validation") {
+            std::vector<DecimalType> vec = {
+                fromString<DecimalType>("1"),
+                fromString<DecimalType>("2"),
+                fromString<DecimalType>("3"),
+                fromString<DecimalType>("4"),
+                fromString<DecimalType>("5")
+            };
+            auto original = vec;
+            
+            // tau = 0 should do nothing
+            WinsorizeInPlace(vec, 0.0);
+            REQUIRE(vec == original);
+            
+            // Negative tau should be clamped to 0
+            vec = original;
+            WinsorizeInPlace(vec, -0.1);
+            REQUIRE(vec == original);
+            
+            // tau > 0.25 should be clamped to 0.25
+            vec = original;
+            WinsorizeInPlace(vec, 0.5);
+            // Should behave as if tau = 0.25
+            // With 5 elements and tau=0.25, should cap at 25th and 75th percentiles
+        }
+
+        SECTION("Extreme outliers") {
+            std::vector<DecimalType> vec = {
+                fromString<DecimalType>("-1000"),
+                fromString<DecimalType>("1"),
+                fromString<DecimalType>("2"),
+                fromString<DecimalType>("3"),
+                fromString<DecimalType>("4"),
+                fromString<DecimalType>("5"),
+                fromString<DecimalType>("1000")
+            };
+            
+            WinsorizeInPlace(vec, 0.1);
+            
+            // With 7 elements and tau=0.1, the 10th percentile should be around the 1st element (1)
+            // and 90th percentile should be around the 5th element (5)
+            // So -1000 should be capped to 1, and 1000 should be capped to 5
+            REQUIRE(vec[0] == decimalApprox(fromString<DecimalType>("1"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(vec[6] == decimalApprox(fromString<DecimalType>("5"), TEST_DEC_TOL_INDICATORS));
+            
+            // Middle values should remain unchanged
+            REQUIRE(vec[1] == decimalApprox(fromString<DecimalType>("1"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(vec[2] == decimalApprox(fromString<DecimalType>("2"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(vec[3] == decimalApprox(fromString<DecimalType>("3"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(vec[4] == decimalApprox(fromString<DecimalType>("4"), TEST_DEC_TOL_INDICATORS));
+            REQUIRE(vec[5] == decimalApprox(fromString<DecimalType>("5"), TEST_DEC_TOL_INDICATORS));
+        }
+    }
+
+    SECTION("ComputeQuantileStopAndTargetFromSeries") {
+        using mkc_timeseries::ComputeQuantileStopAndTargetFromSeries;
+
+        SECTION("Basic functionality") {
+            // Create a synthetic OHLC series with some volatility using helper functions
+            OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+            
+            // Add entries with varying price movements using createEquityEntry
+            auto entry1 = createEquityEntry("20230101", "100", "102", "99", "101", 1000);
+            auto entry2 = createEquityEntry("20230102", "101", "103", "100", "102", 1000);
+            auto entry3 = createEquityEntry("20230103", "102", "104", "101", "103", 1000);
+            auto entry4 = createEquityEntry("20230104", "103", "105", "102", "104", 1000);
+            auto entry5 = createEquityEntry("20230105", "104", "106", "103", "105", 1000);
+            
+            series.addEntry(*entry1);
+            series.addEntry(*entry2);
+            series.addEntry(*entry3);
+            series.addEntry(*entry4);
+            series.addEntry(*entry5);
+            
+            // Add more entries to get above minimum sample size
+            for (int i = 6; i <= 25; ++i) {
+                std::string dateStr = std::string("202301") + (i < 10 ? "0" : "") + std::to_string(i);
+                std::string base = std::to_string(100 + i - 1);
+                std::string high = std::to_string(100 + i - 1 + 2);
+                std::string low = std::to_string(100 + i - 1 - 1);
+                std::string close = std::to_string(100 + i - 1 + 1);
+                
+                auto entry = createEquityEntry(dateStr, base, high, low, close, 1000);
+                series.addEntry(*entry);
+            }
+            
+            auto [profitWidth, stopWidth] = ComputeQuantileStopAndTargetFromSeries(series);
+            
+            // Basic sanity checks
+            REQUIRE(profitWidth >= DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(stopWidth >= DecimalConstants<DecimalType>::DecimalZero);
+            
+            // Should have reasonable values for this synthetic data
+            REQUIRE(profitWidth > DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(stopWidth > DecimalConstants<DecimalType>::DecimalZero);
+            
+            INFO("Profit Width: " << profitWidth);
+            INFO("Stop Width: " << stopWidth);
+        }
+
+        SECTION("Different periods") {
+            // Create a longer series for multi-period testing
+            OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+            
+            for (int i = 1; i <= 30; ++i) {
+                std::string dateStr = std::string("202301") + (i < 10 ? "0" : "") + std::to_string(i);
+                double baseVal = 100 + i * 0.5;
+                std::string base = std::to_string(baseVal);
+                std::string high = std::to_string(baseVal + 1);
+                std::string low = std::to_string(baseVal - 1);
+                std::string close = std::to_string(baseVal + 0.5);
+                
+                auto entry = createEquityEntry(dateStr, base, high, low, close, 1000);
+                series.addEntry(*entry);
+            }
+            
+            // Test different periods
+            auto [profit1, stop1] = ComputeQuantileStopAndTargetFromSeries(series, 1);
+            auto [profit2, stop2] = ComputeQuantileStopAndTargetFromSeries(series, 2);
+            
+            REQUIRE(profit1 >= DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(stop1 >= DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(profit2 >= DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(stop2 >= DecimalConstants<DecimalType>::DecimalZero);
+            
+            INFO("Period 1 - Profit: " << profit1 << ", Stop: " << stop1);
+            INFO("Period 2 - Profit: " << profit2 << ", Stop: " << stop2);
+        }
+
+        SECTION("Error conditions") {
+            // Too few entries
+            OHLCTimeSeries<DecimalType> small_series(TimeFrame::DAILY, TradingVolume::SHARES);
+            auto entry1 = createEquityEntry("20230101", "100", "101", "99", "100", 1000);
+            auto entry2 = createEquityEntry("20230102", "100", "101", "99", "100", 1000);
+            
+            small_series.addEntry(*entry1);
+            small_series.addEntry(*entry2);
+            
+            REQUIRE_THROWS_AS(ComputeQuantileStopAndTargetFromSeries(small_series), std::domain_error);
+            
+            // Empty series
+            OHLCTimeSeries<DecimalType> empty_series(TimeFrame::DAILY, TradingVolume::SHARES);
+            REQUIRE_THROWS_AS(ComputeQuantileStopAndTargetFromSeries(empty_series), std::domain_error);
+        }
+
+        SECTION("Degenerate case handling") {
+            // Create a series with constant prices (no volatility)
+            OHLCTimeSeries<DecimalType> flat_series(TimeFrame::DAILY, TradingVolume::SHARES);
+            
+            for (int i = 1; i <= 25; ++i) {
+                std::string dateStr = std::string("202301") + (i < 10 ? "0" : "") + std::to_string(i);
+                auto entry = createEquityEntry(dateStr, "100", "100", "100", "100", 1000);
+                flat_series.addEntry(*entry);
+            }
+            
+            auto [profitWidth, stopWidth] = ComputeQuantileStopAndTargetFromSeries(flat_series);
+            
+            // Should handle degenerate case with fallback values
+            REQUIRE(profitWidth > DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(stopWidth > DecimalConstants<DecimalType>::DecimalZero);
+            
+            // Should use the epsilon fallback
+            DecimalType eps = DecimalConstants<DecimalType>::createDecimal("1e-6");
+            REQUIRE(profitWidth == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
+            REQUIRE(stopWidth == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
+        }
+
+        SECTION("High volatility scenario") {
+            // Create a series with high volatility
+            OHLCTimeSeries<DecimalType> volatile_series(TimeFrame::DAILY, TradingVolume::SHARES);
+            
+            for (int i = 1; i <= 25; ++i) {
+                std::string dateStr = std::string("202301") + (i < 10 ? "0" : "") + std::to_string(i);
+                std::string base = "100";
+                int volatility = (i % 2 == 0) ? 10 : -10;
+                int closeVal = 100 + volatility;
+                std::string close = std::to_string(closeVal);
+                std::string high = std::to_string(std::max(100, closeVal));
+                std::string low = std::to_string(std::min(100, closeVal));
+                
+                auto entry = createEquityEntry(dateStr, base, high, low, close, 1000);
+                volatile_series.addEntry(*entry);
+            }
+            
+            auto [profitWidth, stopWidth] = ComputeQuantileStopAndTargetFromSeries(volatile_series);
+            
+            // High volatility should result in wider bands
+            REQUIRE(profitWidth > fromString<DecimalType>("5"));
+            REQUIRE(stopWidth > fromString<DecimalType>("5"));
+            
+            INFO("High volatility - Profit: " << profitWidth << ", Stop: " << stopWidth);
         }
     }
 }
