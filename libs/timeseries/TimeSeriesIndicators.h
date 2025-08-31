@@ -702,80 +702,442 @@ void ComputeAsymmetricStopAndTarget(
   stopLoss     = median - (k_qn * qn) + (k_skew_stop   * qn * skew);
 }
 
-// ================================================================
-// Wrapper: build ROC series, robust stats, clamp skew, sanitize
-// ================================================================
+// ============================================
+// Helper functions for quantile-based analysis
+// ============================================
+
 /**
- * @brief Computes positive widths (profit target, stop) from an OHLC series.
+ * @brief Computes a sample quantile from a vector of values.
  *
- * Pipeline:
- *  1) Build ROC% series over `period`.
- *  2) median, Qn, medcouple skew.
- *  3) Clamp skew to [-0.5, +0.5] to avoid outlier-driven asymmetry.
- *  4) Apply core formula with k_qn = 1 and unit skew multipliers.
- *  5) Convert raw levels to positive widths (stop width = -rawStop),
- *     and fall back to symmetric (median + Qn) if any width is non-positive.
+ * Uses the nth_element algorithm to find the quantile without fully sorting the vector.
+ * The input vector is modified during computation.
  *
- * @tparam Decimal Numeric type.
- * @param series  OHLCTimeSeries with at least 3 bars.
- * @param period  ROC lookback (e.g., 1 for 1-bar ROC).
- * @return pair<profitTargetWidth, stopWidth>
+ * @tparam Decimal Numeric type for calculations.
+ * @param values Vector of values (will be modified during computation).
+ * @param p Quantile probability in [0, 1].
+ * @return The computed quantile value.
+ */
+template <typename Decimal>
+Decimal SampleQuantile(std::vector<Decimal> values, double p)
+{
+  if (values.empty()) return DecimalConstants<Decimal>::DecimalZero;
+  p = std::clamp(p, 0.0, 1.0);
+  const size_t n = values.size();
+  const size_t k = static_cast<size_t>(std::floor(p * (n - 1)));
+  std::nth_element(values.begin(), values.begin() + k, values.end());
+  return values[k];
+}
+
+/**
+ * @brief Winsorizes a vector in-place by capping extreme values at specified quantiles.
  *
- * @throws std::domain_error if inputs/stats are invalid.
+ * Replaces values below the tau-quantile with the tau-quantile value,
+ * and values above the (1-tau)-quantile with the (1-tau)-quantile value.
+ *
+ * @tparam Decimal Numeric type for calculations.
+ * @param values Vector to winsorize (modified in-place).
+ * @param tau Tail probability for winsorization (e.g., 0.01 for 1% per tail).
+ */
+
+ template <typename Decimal>
+void WinsorizeInPlace(std::vector<Decimal>& values, double tau)
+{
+  if (values.empty()) return;
+
+  
+  if (tau < 0.0) tau = 0.0;
+  if (tau > 0.25) tau = 0.25;
+  if (tau == 0.0) return;
+
+  const size_t n = values.size();
+
+  // Nearest-rank on (n-1)*p to pick tail cutpoints.
+  auto kth_value = [&](double p) -> Decimal {
+    if (p <= 0.0) {
+      return *std::min_element(values.begin(), values.end());
+    }
+    if (p >= 1.0) {
+      return *std::max_element(values.begin(), values.end());
+    }
+    const double r = p * static_cast<double>(n - 1);
+    size_t k = static_cast<size_t>(std::llround(r));
+    if (k >= n) k = n - 1;
+
+    std::vector<Decimal> tmp(values);
+    std::nth_element(tmp.begin(), tmp.begin() + static_cast<std::ptrdiff_t>(k), tmp.end());
+    return tmp[k];
+  };
+
+  const Decimal lo = kth_value(tau);
+  const Decimal hi = kth_value(1.0 - tau);
+
+  for (auto& x : values) {
+    if (x < lo) x = lo;
+    else if (x > hi) x = hi;
+  }
+}
+
+/**
+ * @brief Computes stop and target levels using winsorized quantiles method.
+ *
+ * This method uses empirical quantiles from winsorized return data to determine
+ * typical upside and downside movements. It provides a "typical day" approach
+ * based on historical return distribution.
+ *
+ * @tparam Decimal Numeric type for calculations.
+ * @param series The OHLC time series to analyze.
+ * @param period The lookback period for ROC calculation (default: 1).
+ * @return A pair of {profitWidth, stopWidth} representing positive distances
+ *         from the median for target and stop levels respectively.
+ * @throws std::domain_error if series has fewer than 3 bars or ROC series is too small.
  */
 template <typename Decimal>
 std::pair<Decimal, Decimal>
-ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-                                     uint32_t period = 1)
+ComputeQuantileStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+                                       uint32_t period = 1)
 {
   using namespace mkc_timeseries;
+
+  // Fixed, minimal knobs (no curve fitting)
+  constexpr double kWinsorTail       = 0.01;  // 1% per tail
+  constexpr double kAlphaLower       = 0.10;  // lower quantile  (stop)
+  constexpr double kAlphaUpper       = 0.10;  // upper quantile  (target)
+  constexpr size_t kMinSample        = 20;    // min size for stable tails
 
   if (series.getNumEntries() < 3)
     throw std::domain_error("Input series must contain at least 3 bars");
 
-  // 1) ROC% series
+  // Build ROC% series from in-sample closes
   auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
   auto rocVec    = rocSeries.getTimeSeriesAsVector();
   if (rocVec.size() < 3)
-    throw std::domain_error("ROC series too small for robust estimation");
+    throw std::domain_error("ROC series too small for estimation");
 
-  // 2) Robust stats
-  Decimal median = MedianOfVec(rocVec);
-  Decimal qn     = RobustQn<Decimal>(rocSeries).getRobustQn();
-  Decimal skew   = RobustSkewMedcouple(rocSeries);
+  const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
 
-  // 3) Clamp skew once; keep sign
-  const Decimal cap = DecimalConstants<Decimal>::createDecimal("0.5");
-  Decimal skewAdj = skew;
-  if (skewAdj >  cap) skewAdj = cap;
-  if (skewAdj < -cap) skewAdj = -cap;
+  // 1) Center: median of raw ROC%
+  const Decimal median = MedianOfVec(rocVec);
 
-  // 4) Multipliers: symmetric base (k_qn=1), unit weight for skew (scaled by Qn in core)
+  // 2) Winsorize a copy lightly
+  std::vector<Decimal> wv = rocVec;
+  if (wv.size() >= kMinSample)
+    WinsorizeInPlace(wv, kWinsorTail);
+
+  // 3) One-sided quantiles around the median
+  const Decimal q_lo = (wv.size() >= kMinSample) ? SampleQuantile(wv, kAlphaLower)
+                                                 : median;
+  const Decimal q_hi = (wv.size() >= kMinSample) ? SampleQuantile(wv, 1.0 - kAlphaUpper)
+                                                 : median;
+
+  // 4) Positive widths (typical downside/upside)
+  Decimal profitWidth = q_hi - median;
+  Decimal stopWidth   = median - q_lo;
+
+  if (profitWidth < zero) profitWidth = zero;
+  if (stopWidth   < zero) stopWidth   = zero;
+
+  // Degenerate fallback
+  if (profitWidth == zero && stopWidth == zero) {
+    const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
+    return {eps, eps};
+  }
+
+  return {profitWidth, stopWidth};
+}
+
+/**
+ * @brief Computes stop and target levels using robust Qn + Medcouple skew method.
+ *
+ * This method uses robust statistical measures (Qn scale estimator and Medcouple skew)
+ * to determine asymmetric stop and target levels that account for return distribution
+ * characteristics.
+ *
+ * @tparam Decimal Numeric type for calculations.
+ * @param series The OHLC time series to analyze.
+ * @param period The lookback period for ROC calculation.
+ * @param useAnchors Whether to cap/floor the computed widths by empirical tails.
+ * @return A pair of {profitWidth, stopWidth} representing positive distances
+ *         from the median for target and stop levels respectively.
+ * @throws std::domain_error if series has fewer than 3 bars or ROC series is too small.
+ */
+template <typename Decimal>
+std::pair<Decimal, Decimal>
+ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+                                     uint32_t period,
+                                     bool useAnchors)
+{
+  using namespace mkc_timeseries;
+
+  // Fixed, minimal knobs (no curve fitting)
+  constexpr double kWinsorTail       = 0.01;  // 1% per tail
+  constexpr double kAlphaLower       = 0.10;  // lower quantile  (stop)
+  constexpr double kAlphaUpper       = 0.10;  // upper quantile  (target)
+  constexpr size_t kMinSample        = 20;    // min size for stable tails
+
+  if (series.getNumEntries() < 3)
+    throw std::domain_error("Input series must contain at least 3 bars");
+
+  // Build ROC% series from in-sample closes
+  auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+  auto rocVec    = rocSeries.getTimeSeriesAsVector();
+  if (rocVec.size() < 3)
+    throw std::domain_error("ROC series too small for estimation");
+
+  // Helper for finite value checking
+  auto is_finite = [](const Decimal& x) {
+    return std::isfinite(x.getAsDouble());
+  };
+
+  const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+
+  // 1) Robust stats
+  const Decimal median = MedianOfVec(rocVec);
+  const Decimal qn     = RobustQn<Decimal>(rocSeries).getRobustQn();
+  Decimal skew         = RobustSkewMedcouple(rocSeries);
+
+  // 2) Clamp skew mildly
+  const Decimal half = DecimalConstants<Decimal>::createDecimal("0.5");
+  if (skew >  half) skew = half;
+  if (skew < -half) skew = -half;
+
+  // 3) Multipliers (symmetric base, unit skew weights)
   const Decimal k_qn          = DecimalConstants<Decimal>::DecimalOne;
   const Decimal k_skew_target = DecimalConstants<Decimal>::DecimalOne;
   const Decimal k_skew_stop   = DecimalConstants<Decimal>::DecimalOne;
 
-  // 5) Core computation → raw returns
+  // 4) Core compute (raw levels)
   Decimal rawTarget, rawStop;
   ComputeAsymmetricStopAndTarget(
-      median, qn, skewAdj,
+      median, qn, skew,
       k_qn, k_skew_target, k_skew_stop,
       rawTarget, rawStop);
 
-  // 6) Convert to positive widths; robust fallbacks
-  Decimal profitWidth = rawTarget;
-  Decimal stopWidth   = -rawStop; // expect rawStop <= 0 for longs
+  // 5) Convert to positive widths + symmetric fallbacks
+  Decimal profitWidth = rawTarget;   // expect ≥ 0
+  Decimal stopWidth   = -rawStop;    // expect ≥ 0
 
-  const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-  if (profitWidth <= zero)
-    profitWidth = median + qn;     // symmetric fallback
-  if (stopWidth   <= zero)
-    stopWidth   = median + qn;     // symmetric fallback
+  if (profitWidth <= zero || !is_finite(profitWidth))
+    profitWidth = median + qn;
+  if (stopWidth   <= zero || !is_finite(stopWidth))
+    stopWidth   = median + qn;
 
-  return std::make_pair(profitWidth, stopWidth);
+  // 6) Optional empirical anchors (cap target, floor stop by tails)
+  if (useAnchors && rocVec.size() >= kMinSample)
+  {
+    std::vector<Decimal> wv = rocVec;
+    WinsorizeInPlace(wv, kWinsorTail);
+
+    const Decimal q_lo = SampleQuantile(wv, kAlphaLower);
+    const Decimal q_hi = SampleQuantile(wv, 1.0 - kAlphaUpper);
+
+    Decimal targetCap = q_hi - median;   // cap overly optimistic targets
+    Decimal stopFloor = median - q_lo;   // floor overly tight stops
+
+    if (targetCap < zero) targetCap = zero;
+    if (stopFloor < zero) stopFloor = zero;
+
+    if (targetCap > zero && profitWidth > targetCap)
+      profitWidth = targetCap;
+    if (stopWidth < stopFloor)
+      stopWidth = stopFloor;
+  }
+
+  return {profitWidth, stopWidth};
+}
+
+template <typename Decimal>
+inline std::pair<Decimal, Decimal>
+ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+                                     uint32_t period = 1)
+{
+  constexpr bool kDefaultUseAnchors        = false; // ignored in quantile mode
+
+  return ComputeRobustStopAndTargetFromSeries<Decimal>(
+      series, period, kDefaultUseAnchors);
+}
+
+/**
+ * @brief Computes asymmetric stop and target for a LONG position.
+ *
+ * This method implements a hybrid approach based on partitioned return distributions.
+ * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
+ * 2.  The PROFIT TARGET is calculated from the POSITIVE returns distribution using
+ * robust statistics (Median + Qn) to identify a "typical" profitable move.
+ * 3.  The STOP LOSS is calculated from the NEGATIVE returns distribution using an
+ * empirical quantile (e.g., 15th percentile) to identify a "typical worst-case" loss.
+ *
+ * This approach respects the inherent asymmetry of financial returns, modeling gains and
+ * losses as distinct processes.
+ *
+ * @tparam Decimal Numeric type for calculations.
+ * @param series The OHLC time series to analyze.
+ * @param period The lookback period for ROC calculation (should match median hold time).
+ * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
+ * @throws std::domain_error if the series has too few entries for meaningful analysis.
+ */
+template <typename Decimal>
+std::pair<Decimal, Decimal>
+ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+                                     uint32_t period = 1)
+{
+    using namespace mkc_timeseries;
+
+    // --- Configuration Constants ---
+    constexpr size_t kMinTotalSamples = 25;     // Minimum total ROC values needed.
+    constexpr size_t kMinPartitionSamples = 10; // Minimum values in pos/neg partitions.
+    constexpr double kStopQuantile = 0.15;      // e.g., 15th percentile of losses for the stop.
+
+    if (series.getNumEntries() < kMinTotalSamples)
+        throw std::domain_error("ComputeLongStopAndTargetFromSeries: Input series too small for robust analysis.");
+
+    // --- Data Preparation ---
+    auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+    auto rocVec = rocSeries.getTimeSeriesAsVector();
+
+    if (rocVec.size() < kMinTotalSamples)
+        throw std::domain_error("ComputeLongStopAndTargetFromSeries: ROC series too small after calculation.");
+
+    const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+    const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
+    
+    std::vector<Decimal> positive_rocs, negative_rocs;
+    for (const auto& roc : rocVec) {
+        if (roc > zero)
+            positive_rocs.push_back(roc);
+        else if (roc < zero)
+            negative_rocs.push_back(roc);
+    }
+
+    Decimal profitWidth = zero;
+    Decimal stopWidth = zero;
+
+    // --- Profit Target Calculation (from Positive ROCs) ---
+    if (positive_rocs.size() >= kMinPartitionSamples)
+    {
+        RobustQn<Decimal> qn_estimator;
+        Decimal median_pos = MedianOfVec(positive_rocs);
+        Decimal qn_pos = qn_estimator.getRobustQn(positive_rocs);
+        profitWidth = median_pos + qn_pos;
+    }
+    else
+    {
+        // Fallback: use a simple quantile of the entire distribution if not enough positive samples.
+        profitWidth = SampleQuantile(rocVec, 0.75);
+    }
+    
+    // --- Stop Loss Calculation (from Negative ROCs) ---
+    if (negative_rocs.size() >= kMinPartitionSamples)
+    {
+        // SampleQuantile needs a copy as it modifies the vector.
+        Decimal stop_level = SampleQuantile(std::vector<Decimal>(negative_rocs), kStopQuantile);
+        stopWidth = -stop_level; // stop_level is negative, so this makes it positive.
+    }
+    else
+    {
+        // Fallback: use a simple quantile of the entire distribution.
+        Decimal stop_level = SampleQuantile(rocVec, kStopQuantile);
+        stopWidth = -stop_level;
+    }
+    
+    // --- Sanity Checks and Finalization ---
+    if (profitWidth <= zero)
+        profitWidth = eps;
+    if (stopWidth <= zero)
+        stopWidth = eps;
+
+    return {profitWidth, stopWidth};
 }
 
 
+/**
+ * @brief Computes asymmetric stop and target for a SHORT position.
+ *
+ * This method mirrors the logic of the long-side calculation but for short selling.
+ * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
+ * 2.  The PROFIT TARGET is calculated from the NEGATIVE returns distribution using
+ * robust statistics (Median - Qn) to identify a "typical" profitable drop.
+ * 3.  The STOP LOSS is calculated from the POSITIVE returns distribution using an
+ * empirical quantile (e.g., 85th percentile) to identify an "unusually strong" rally.
+ *
+ * This approach respects the inherent asymmetry of financial returns, modeling gains and
+ * losses as distinct processes.
+ *
+ * @tparam Decimal Numeric type for calculations.
+ * @param series The OHLC time series to analyze.
+ * @param period The lookback period for ROC calculation (should match median hold time).
+ * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
+ * @throws std::domain_error if the series has too few entries for meaningful analysis.
+ */
+template <typename Decimal>
+std::pair<Decimal, Decimal>
+ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+                                      uint32_t period = 1)
+{
+    using namespace mkc_timeseries;
+
+    // --- Configuration Constants ---
+    constexpr size_t kMinTotalSamples = 25;
+    constexpr size_t kMinPartitionSamples = 10;
+    constexpr double kStopQuantile = 0.85; // e.g., 85th percentile of gains for the stop.
+
+    if (series.getNumEntries() < kMinTotalSamples)
+        throw std::domain_error("ComputeShortStopAndTargetFromSeries: Input series too small for robust analysis.");
+
+    // --- Data Preparation ---
+    auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+    auto rocVec = rocSeries.getTimeSeriesAsVector();
+
+    if (rocVec.size() < kMinTotalSamples)
+        throw std::domain_error("ComputeShortStopAndTargetFromSeries: ROC series too small after calculation.");
+    
+    const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+    const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
+
+    std::vector<Decimal> positive_rocs, negative_rocs;
+    for (const auto& roc : rocVec) {
+        if (roc > zero)
+            positive_rocs.push_back(roc);
+        else if (roc < zero)
+            negative_rocs.push_back(roc);
+    }
+    
+    Decimal profitWidth = zero;
+    Decimal stopWidth = zero;
+    
+    // --- Profit Target Calculation (from Negative ROCs) ---
+    if (negative_rocs.size() >= kMinPartitionSamples)
+    {
+        RobustQn<Decimal> qn_estimator;
+        Decimal median_neg = MedianOfVec(negative_rocs);
+        Decimal qn_neg = qn_estimator.getRobustQn(negative_rocs);
+        profitWidth = -(median_neg - qn_neg); // Result should be positive width.
+    }
+    else
+    {
+        // Fallback: use a simple quantile of the entire distribution.
+        profitWidth = -(SampleQuantile(rocVec, 0.25));
+    }
+    
+    // --- Stop Loss Calculation (from Positive ROCs) ---
+    if (positive_rocs.size() >= kMinPartitionSamples)
+    {
+        // SampleQuantile needs a copy as it modifies the vector.
+        stopWidth = SampleQuantile(std::vector<Decimal>(positive_rocs), kStopQuantile);
+    }
+    else
+    {
+        // Fallback: use a simple quantile of the entire distribution.
+        stopWidth = SampleQuantile(rocVec, kStopQuantile);
+    }
+
+    // --- Sanity Checks and Finalization ---
+    if (profitWidth <= zero)
+        profitWidth = eps;
+    if (stopWidth <= zero)
+        stopWidth = eps;
+
+    return {profitWidth, stopWidth};
+}
 
 }
 
