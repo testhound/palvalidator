@@ -41,6 +41,7 @@ namespace mkc_timeseries
     std::ofstream mCsvFile;
     const OHLCTimeSeries<Decimal>& mTimeSeries;
     std::unique_ptr<ITimeSeriesFormatter<Decimal>> mFormatter;
+    bool mUseWindowsLineEndings;
 
   public:
     /**
@@ -52,8 +53,11 @@ namespace mkc_timeseries
      */
     TimeSeriesCsvWriter(const std::string& fileName,
                        const OHLCTimeSeries<Decimal>& series,
-                       OutputFormat format)
-        : mCsvFile(fileName), mTimeSeries(series)
+                       OutputFormat format,
+                       bool useWindowsLineEndings = false)
+      : mCsvFile(fileName, std::ios::binary),
+	mTimeSeries(series),
+	mUseWindowsLineEndings(useWindowsLineEndings)
     {
         mFormatter = createFormatter(format);
     }
@@ -76,13 +80,16 @@ namespace mkc_timeseries
      */
     void writeFile()
     {
-        mFormatter->writeHeader(mCsvFile);
+        mFormatter->writeHeader(mCsvFile, mUseWindowsLineEndings);
         
         for (auto it = mTimeSeries.beginSortedAccess();
              it != mTimeSeries.endSortedAccess(); ++it)
         {
-            mFormatter->writeEntry(mCsvFile, *it);
+            mFormatter->writeEntry(mCsvFile, *it, mUseWindowsLineEndings);
         }
+        
+        // Explicitly flush the file to ensure all data is written
+        mCsvFile.flush();
     }
 
   private:
@@ -129,6 +136,7 @@ namespace mkc_timeseries
     const OHLCTimeSeries<Decimal>& mTimeSeries;
     const NumericTimeSeries<Decimal>& mIndicatorSeries;
     std::unique_ptr<IIndicatorTimeSeriesFormatter<Decimal>> mFormatter;
+    bool mUseWindowsLineEndings;
 
   public:
     /**
@@ -142,8 +150,12 @@ namespace mkc_timeseries
     IndicatorTimeSeriesCsvWriter(const std::string& fileName,
                                const OHLCTimeSeries<Decimal>& series,
                                const NumericTimeSeries<Decimal>& indicatorSeries,
-                               OutputFormat format)
-        : mCsvFile(fileName), mTimeSeries(series), mIndicatorSeries(indicatorSeries)
+                               OutputFormat format,
+                               bool useWindowsLineEndings = false)
+        : mCsvFile(fileName, std::ios::binary),
+	  mTimeSeries(series),
+	  mIndicatorSeries(indicatorSeries),
+	  mUseWindowsLineEndings(useWindowsLineEndings)
     {
         mFormatter = createIndicatorFormatter(format);
     }
@@ -166,7 +178,7 @@ namespace mkc_timeseries
      */
     void writeFile()
     {
-        mFormatter->writeHeader(mCsvFile);
+        mFormatter->writeHeader(mCsvFile, mUseWindowsLineEndings);
         
         auto ohlcIt = mTimeSeries.beginSortedAccess();
         auto indicatorIt = mIndicatorSeries.beginSortedAccess();
@@ -178,11 +190,14 @@ namespace mkc_timeseries
             const auto& indicatorEntry = indicatorIt->second;
             
             // Perfect date alignment assumed - dates should match
-            mFormatter->writeEntry(mCsvFile, ohlcEntry, indicatorEntry->getValue());
+            mFormatter->writeEntry(mCsvFile, ohlcEntry, indicatorEntry->getValue(), mUseWindowsLineEndings);
             
             ++ohlcIt;
             ++indicatorIt;
         }
+        
+        // Explicitly flush the file to ensure all data is written
+        mCsvFile.flush();
     }
 
   private:
@@ -228,8 +243,9 @@ namespace mkc_timeseries
 
   public:
     PalTimeSeriesCsvWriter(const std::string& fileName,
-                          const OHLCTimeSeries<Decimal>& series)
-        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::PAL_EOD))
+                          const OHLCTimeSeries<Decimal>& series,
+                          bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::PAL_EOD, useWindowsLineEndings))
     {
     }
 
@@ -261,8 +277,9 @@ namespace mkc_timeseries
 
   public:
     PalVolumeForCloseCsvWriter(const std::string& fileName,
-                              const OHLCTimeSeries<Decimal>& series)
-        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::PAL_VOLUME_FOR_CLOSE))
+                              const OHLCTimeSeries<Decimal>& series,
+                              bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::PAL_VOLUME_FOR_CLOSE, useWindowsLineEndings))
     {
     }
 
@@ -305,8 +322,9 @@ namespace mkc_timeseries
 
   public:
     TradeStationEodCsvWriter(const std::string& fileName,
-                            const OHLCTimeSeries<Decimal>& series)
-        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::TRADESTATION_EOD))
+                            const OHLCTimeSeries<Decimal>& series,
+                            bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::TRADESTATION_EOD, useWindowsLineEndings))
     {
     }
 
@@ -339,8 +357,9 @@ namespace mkc_timeseries
 
   public:
     TradeStationIntradayCsvWriter(const std::string& fileName,
-                                 const OHLCTimeSeries<Decimal>& series)
-        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::TRADESTATION_INTRADAY))
+                                 const OHLCTimeSeries<Decimal>& series,
+                                 bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::TRADESTATION_INTRADAY, useWindowsLineEndings))
     {
     }
 
@@ -373,8 +392,9 @@ namespace mkc_timeseries
 
   public:
     PalIntradayCsvWriter(const std::string& fileName,
-                        const OHLCTimeSeries<Decimal>& series)
-        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::PAL_INTRADAY))
+                        const OHLCTimeSeries<Decimal>& series,
+                        bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<TimeSeriesCsvWriter<Decimal>>(fileName, series, OutputFormat::PAL_INTRADAY, useWindowsLineEndings))
     {
     }
 
@@ -414,8 +434,9 @@ namespace mkc_timeseries
   public:
     PalIndicatorEodCsvWriter(const std::string& fileName,
                            const OHLCTimeSeries<Decimal>& series,
-                           const NumericTimeSeries<Decimal>& indicatorSeries)
-        : mWriter(std::make_unique<IndicatorTimeSeriesCsvWriter<Decimal>>(fileName, series, indicatorSeries, OutputFormat::PAL_INDICATOR_EOD))
+                           const NumericTimeSeries<Decimal>& indicatorSeries,
+                           bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<IndicatorTimeSeriesCsvWriter<Decimal>>(fileName, series, indicatorSeries, OutputFormat::PAL_INDICATOR_EOD, useWindowsLineEndings))
     {
     }
 
@@ -449,8 +470,9 @@ namespace mkc_timeseries
   public:
     PalIndicatorIntradayCsvWriter(const std::string& fileName,
                                 const OHLCTimeSeries<Decimal>& series,
-                                const NumericTimeSeries<Decimal>& indicatorSeries)
-        : mWriter(std::make_unique<IndicatorTimeSeriesCsvWriter<Decimal>>(fileName, series, indicatorSeries, OutputFormat::PAL_INDICATOR_INTRADAY))
+                                const NumericTimeSeries<Decimal>& indicatorSeries,
+                                bool useWindowsLineEndings = false)
+        : mWriter(std::make_unique<IndicatorTimeSeriesCsvWriter<Decimal>>(fileName, series, indicatorSeries, OutputFormat::PAL_INDICATOR_INTRADAY, useWindowsLineEndings))
     {
     }
 

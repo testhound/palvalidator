@@ -37,20 +37,22 @@ namespace mkc_timeseries
          * 
          * @param file The output file stream to write to.
          */
-        virtual void writeHeader(std::ofstream& file) = 0;
+        virtual void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) = 0;
 
-        /**
-         * @brief Writes a single OHLC entry to the output file.
-         *
-         * Formats the given entry according to the specific format requirements
-         * and writes it to the file. Each formatter manages its own internal
-         * state as needed (e.g., sequential counters for PAL Intraday format).
-         *
-         * @param file The output file stream to write to.
-         * @param entry The OHLC time series entry to format and write.
-         */
-        virtual void writeEntry(std::ofstream& file,
-                               const OHLCTimeSeriesEntry<Decimal>& entry) = 0;
+       /**
+        * @brief Writes a single OHLC entry to the output file.
+        *
+        * Formats the given entry according to the specific format requirements
+        * and writes it to the file. Each formatter manages its own internal
+        * state as needed (e.g., sequential counters for PAL Intraday format).
+        *
+        * @param file The output file stream to write to.
+        * @param entry The OHLC time series entry to format and write.
+        * @param useWindowsLineEndings If true, uses \r\n; if false, uses \n.
+        */
+       virtual void writeEntry(std::ofstream& file,
+                              const OHLCTimeSeriesEntry<Decimal>& entry,
+                              bool useWindowsLineEndings = false) = 0;
     };
 
     /**
@@ -72,18 +74,20 @@ namespace mkc_timeseries
          *
          * @param file The output file stream to write to.
          */
-        virtual void writeHeader(std::ofstream& file) = 0;
+        virtual void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) = 0;
 
-        /**
-         * @brief Writes a single OHLC entry with indicator value to the output file.
-         *
-         * @param file The output file stream to write to.
-         * @param entry The OHLC time series entry to format and write.
-         * @param indicatorValue The indicator value to use instead of close price.
-         */
-        virtual void writeEntry(std::ofstream& file,
-                               const OHLCTimeSeriesEntry<Decimal>& entry,
-                               const Decimal& indicatorValue) = 0;
+       /**
+        * @brief Writes a single OHLC entry with indicator value to the output file.
+        *
+        * @param file The output file stream to write to.
+        * @param entry The OHLC time series entry to format and write.
+        * @param indicatorValue The indicator value to use instead of close price.
+        * @param useWindowsLineEndings If true, uses \r\n; if false, uses \n.
+        */
+       virtual void writeEntry(std::ofstream& file,
+                              const OHLCTimeSeriesEntry<Decimal>& entry,
+                              const Decimal& indicatorValue,
+                              bool useWindowsLineEndings = false) = 0;
     };
 }
 

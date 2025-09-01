@@ -16,6 +16,20 @@ namespace mkc_timeseries
     using boost::posix_time::ptime;
 
     /**
+     * @brief Helper function to write appropriate line ending based on format requirement.
+     *
+     * @param file The output file stream to write to.
+     * @param useWindowsLineEndings If true, writes \r\n; if false, writes \n.
+     */
+    inline void writeLineEnding(std::ofstream& file, bool useWindowsLineEndings) {
+        if (useWindowsLineEndings) {
+            file << "\r\n";
+        } else {
+            file << "\n";
+        }
+    }
+
+    /**
      * @brief Formatter for PAL EOD format: Date,Open,High,Low,Close
      * 
      * This formatter maintains backward compatibility with the original
@@ -26,20 +40,22 @@ namespace mkc_timeseries
     class PalEodFormatter : public ITimeSeriesFormatter<Decimal>
     {
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
             // No header for PAL EOD format
         }
         
         void writeEntry(std::ofstream& file,
-                       const OHLCTimeSeriesEntry<Decimal>& entry) override
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       bool useWindowsLineEndings = false) override
         {
             ptime dateTime = entry.getDateTime();
             file << boost::gregorian::to_iso_string(dateTime.date()) << ","
                  << entry.getOpenValue() << ","
                  << entry.getHighValue() << ","
                  << entry.getLowValue() << ","
-                 << entry.getCloseValue() << std::endl;
+                 << entry.getCloseValue();
+            writeLineEnding(file, useWindowsLineEndings);
         }
     };
 
@@ -54,20 +70,22 @@ namespace mkc_timeseries
     class PalVolumeForCloseFormatter : public ITimeSeriesFormatter<Decimal>
     {
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
             // No header for PAL Volume format
         }
         
         void writeEntry(std::ofstream& file,
-                       const OHLCTimeSeriesEntry<Decimal>& entry) override
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       bool useWindowsLineEndings = false) override
         {
             ptime dateTime = entry.getDateTime();
             file << boost::gregorian::to_iso_string(dateTime.date()) << ","
                  << entry.getOpenValue() << ","
                  << entry.getHighValue() << ","
                  << entry.getLowValue() << ","
-                 << entry.getVolumeValue() << std::endl;
+                 << entry.getVolumeValue();
+            writeLineEnding(file, useWindowsLineEndings);
         }
     };
 
@@ -84,13 +102,15 @@ namespace mkc_timeseries
     class TradeStationEodFormatter : public ITimeSeriesFormatter<Decimal>
     {
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
-            file << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Vol\",\"OI\"" << std::endl;
+            file << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Vol\",\"OI\"";
+            writeLineEnding(file, useWindowsLineEndings);
         }
         
         void writeEntry(std::ofstream& file,
-                       const OHLCTimeSeriesEntry<Decimal>& entry) override
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       bool useWindowsLineEndings = false) override
         {
             ptime dateTime = entry.getDateTime();
             auto date = dateTime.date();
@@ -101,7 +121,8 @@ namespace mkc_timeseries
                  << entry.getHighValue() << ","
                  << entry.getLowValue() << ","
                  << entry.getCloseValue() << ","
-                 << entry.getVolumeValue() << ",0" << std::endl;
+                 << entry.getVolumeValue() << ",0";
+            writeLineEnding(file, useWindowsLineEndings);
         }
     };
 
@@ -118,13 +139,15 @@ namespace mkc_timeseries
     class TradeStationIntradayFormatter : public ITimeSeriesFormatter<Decimal>
     {
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
-            file << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Up\",\"Down\"" << std::endl;
+            file << "\"Date\",\"Time\",\"Open\",\"High\",\"Low\",\"Close\",\"Up\",\"Down\"";
+            writeLineEnding(file, useWindowsLineEndings);
         }
         
         void writeEntry(std::ofstream& file,
-                       const OHLCTimeSeriesEntry<Decimal>& entry) override
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       bool useWindowsLineEndings = false) override
         {
             ptime dateTime = entry.getDateTime();
             auto date = dateTime.date();
@@ -138,7 +161,8 @@ namespace mkc_timeseries
                  << entry.getOpenValue() << ","
                  << entry.getHighValue() << ","
                  << entry.getLowValue() << ","
-                 << entry.getCloseValue() << ",0,0" << std::endl;
+                 << entry.getCloseValue() << ",0,0";
+            writeLineEnding(file, useWindowsLineEndings);
         }
     };
 
@@ -161,19 +185,21 @@ namespace mkc_timeseries
         mutable long mSequentialCounter = 10000001;  ///< Internal sequential counter starting at 10000001
 
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
             // No header for PAL intraday format
         }
         
         void writeEntry(std::ofstream& file,
-                       const OHLCTimeSeriesEntry<Decimal>& entry) override
+                       const OHLCTimeSeriesEntry<Decimal>& entry,
+                       bool useWindowsLineEndings = false) override
         {
             file << mSequentialCounter << " "
                  << entry.getOpenValue() << " "
                  << entry.getHighValue() << " "
                  << entry.getLowValue() << " "
-                 << entry.getCloseValue() << std::endl;
+                 << entry.getCloseValue();
+            writeLineEnding(file, useWindowsLineEndings);
             ++mSequentialCounter;
         }
     };
@@ -189,21 +215,23 @@ namespace mkc_timeseries
     class PalIndicatorEodFormatter : public IIndicatorTimeSeriesFormatter<Decimal>
     {
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
             // No header for PAL EOD format
         }
         
         void writeEntry(std::ofstream& file,
                        const OHLCTimeSeriesEntry<Decimal>& entry,
-                       const Decimal& indicatorValue) override
+                       const Decimal& indicatorValue,
+                       bool useWindowsLineEndings = false) override
         {
             ptime dateTime = entry.getDateTime();
             file << boost::gregorian::to_iso_string(dateTime.date()) << ","
                  << entry.getOpenValue() << ","
                  << entry.getHighValue() << ","
                  << entry.getLowValue() << ","
-                 << indicatorValue << std::endl;
+                 << indicatorValue;
+            writeLineEnding(file, useWindowsLineEndings);
         }
     };
 
@@ -227,20 +255,22 @@ namespace mkc_timeseries
         mutable long mSequentialCounter = 10000001;  ///< Internal sequential counter starting at 10000001
 
     public:
-        void writeHeader(std::ofstream& file) override
+        void writeHeader(std::ofstream& file, bool useWindowsLineEndings = false) override
         {
             // No header for PAL intraday format
         }
         
         void writeEntry(std::ofstream& file,
                        const OHLCTimeSeriesEntry<Decimal>& entry,
-                       const Decimal& indicatorValue) override
+                       const Decimal& indicatorValue,
+                       bool useWindowsLineEndings = false) override
         {
             file << mSequentialCounter << " "
                  << entry.getOpenValue() << " "
                  << entry.getHighValue() << " "
                  << entry.getLowValue() << " "
-                 << indicatorValue << std::endl;
+                 << indicatorValue;
+            writeLineEnding(file, useWindowsLineEndings);
             ++mSequentialCounter;
         }
     };
