@@ -569,3 +569,298 @@ TEST_CASE("Empty series produces empty file", "[PalTimeSeriesCsvWriter][Empty]")
     REQUIRE(in.peek() == std::ifstream::traits_type::eof());
     std::remove(fileName.c_str());
 }
+
+//
+// Tests for Windows Line Ending Support
+//
+
+// Helper function to read file in binary mode and check line endings
+static std::string readFileBinary(const std::string& fileName) {
+    std::ifstream file(fileName, std::ios::binary);
+    if (!file.is_open()) return "";
+    
+    std::string content;
+    file.seekg(0, std::ios::end);
+    content.reserve(file.tellg());
+    file.seekg(0, std::ios::beg);
+    
+    content.assign((std::istreambuf_iterator<char>(file)),
+                   std::istreambuf_iterator<char>());
+    return content;
+}
+
+// Helper function to count occurrences of a substring
+static size_t countSubstring(const std::string& str, const std::string& sub) {
+    size_t count = 0;
+    size_t pos = 0;
+    while ((pos = str.find(sub, pos)) != std::string::npos) {
+        ++count;
+        pos += sub.length();
+    }
+    return count;
+}
+
+TEST_CASE("PalTimeSeriesCsvWriter with Windows line endings", "[PalTimeSeriesCsvWriter][WindowsLineEndings]") {
+    auto entry1 = createEquityEntry("20200102", "2.0", "3.0", "1.0", "2.5", 0);
+    auto entry0 = createEquityEntry("20200101", "1.0", "2.0", "0.5", "1.5", 0);
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(*entry1);
+    series.addEntry(*entry0);
+
+    // Test Unix line endings (default)
+    char tmpl1[] = "/tmp/pal-unix-XXXXXX";
+    int fd1 = mkstemp(tmpl1);
+    REQUIRE(fd1 >= 0);
+    ::close(fd1);
+    std::string fileName1(tmpl1);
+
+    PalTimeSeriesCsvWriter<DecimalType> unixWriter(fileName1, series, false);
+    unixWriter.writeFile();
+
+    std::string unixContent = readFileBinary(fileName1);
+    REQUIRE(countSubstring(unixContent, "\r\n") == 0);  // No Windows line endings
+    REQUIRE(countSubstring(unixContent, "\n") == 2);    // Two Unix line endings
+
+    // Test Windows line endings
+    char tmpl2[] = "/tmp/pal-windows-XXXXXX";
+    int fd2 = mkstemp(tmpl2);
+    REQUIRE(fd2 >= 0);
+    ::close(fd2);
+    std::string fileName2(tmpl2);
+
+    PalTimeSeriesCsvWriter<DecimalType> windowsWriter(fileName2, series, true);
+    windowsWriter.writeFile();
+
+    std::string windowsContent = readFileBinary(fileName2);
+    REQUIRE(countSubstring(windowsContent, "\r\n") == 2);  // Two Windows line endings
+    REQUIRE(countSubstring(windowsContent, "\n") == 2);    // \n is part of \r\n
+
+    std::remove(fileName1.c_str());
+    std::remove(fileName2.c_str());
+}
+
+TEST_CASE("PalIntradayCsvWriter with Windows line endings", "[PalIntradayCsvWriter][WindowsLineEndings]") {
+    auto entry1 = createTimeSeriesEntry("20200102", "10:30:00", "2.0", "3.0", "1.0", "2.5", "100");
+    auto entry0 = createTimeSeriesEntry("20200101", "09:30:00", "1.0", "2.0", "0.5", "1.5", "50");
+    OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    series.addEntry(*entry1);
+    series.addEntry(*entry0);
+
+    // Test Unix line endings (default)
+    char tmpl1[] = "/tmp/pal-intraday-unix-XXXXXX";
+    int fd1 = mkstemp(tmpl1);
+    REQUIRE(fd1 >= 0);
+    ::close(fd1);
+    std::string fileName1(tmpl1);
+
+    PalIntradayCsvWriter<DecimalType> unixWriter(fileName1, series, false);
+    unixWriter.writeFile();
+
+    std::string unixContent = readFileBinary(fileName1);
+    REQUIRE(countSubstring(unixContent, "\r\n") == 0);  // No Windows line endings
+    REQUIRE(countSubstring(unixContent, "\n") == 2);    // Two Unix line endings
+
+    // Test Windows line endings
+    char tmpl2[] = "/tmp/pal-intraday-windows-XXXXXX";
+    int fd2 = mkstemp(tmpl2);
+    REQUIRE(fd2 >= 0);
+    ::close(fd2);
+    std::string fileName2(tmpl2);
+
+    PalIntradayCsvWriter<DecimalType> windowsWriter(fileName2, series, true);
+    windowsWriter.writeFile();
+
+    std::string windowsContent = readFileBinary(fileName2);
+    REQUIRE(countSubstring(windowsContent, "\r\n") == 2);  // Two Windows line endings
+    REQUIRE(countSubstring(windowsContent, "\n") == 2);    // \n is part of \r\n
+
+    std::remove(fileName1.c_str());
+    std::remove(fileName2.c_str());
+}
+
+TEST_CASE("TradeStationEodCsvWriter with Windows line endings", "[TradeStationEodCsvWriter][WindowsLineEndings]") {
+    auto entry = createEquityEntry("20200101", "1.0", "2.0", "0.5", "1.5", 50);
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(*entry);
+
+    // Test Unix line endings (default)
+    char tmpl1[] = "/tmp/ts-eod-unix-XXXXXX";
+    int fd1 = mkstemp(tmpl1);
+    REQUIRE(fd1 >= 0);
+    ::close(fd1);
+    std::string fileName1(tmpl1);
+
+    TradeStationEodCsvWriter<DecimalType> unixWriter(fileName1, series, false);
+    unixWriter.writeFile();
+
+    std::string unixContent = readFileBinary(fileName1);
+    REQUIRE(countSubstring(unixContent, "\r\n") == 0);  // No Windows line endings
+    REQUIRE(countSubstring(unixContent, "\n") == 2);    // Header + 1 data row = 2 Unix line endings
+
+    // Test Windows line endings
+    char tmpl2[] = "/tmp/ts-eod-windows-XXXXXX";
+    int fd2 = mkstemp(tmpl2);
+    REQUIRE(fd2 >= 0);
+    ::close(fd2);
+    std::string fileName2(tmpl2);
+
+    TradeStationEodCsvWriter<DecimalType> windowsWriter(fileName2, series, true);
+    windowsWriter.writeFile();
+
+    std::string windowsContent = readFileBinary(fileName2);
+    REQUIRE(countSubstring(windowsContent, "\r\n") == 2);  // Header + 1 data row = 2 Windows line endings
+    REQUIRE(countSubstring(windowsContent, "\n") == 2);    // \n is part of \r\n
+
+    std::remove(fileName1.c_str());
+    std::remove(fileName2.c_str());
+}
+
+TEST_CASE("TradeStationIntradayCsvWriter with Windows line endings", "[TradeStationIntradayCsvWriter][WindowsLineEndings]") {
+    using namespace boost::posix_time;
+    using namespace boost::gregorian;
+    
+    ptime dt(date(2020, 1, 1), time_duration(14, 30, 0));  // 2:30 PM
+    auto entry = std::make_shared<OHLCTimeSeriesEntry<DecimalType>>(
+        dt, DecimalType("1.0"), DecimalType("2.0"), DecimalType("0.5"), DecimalType("1.5"), DecimalType("50"), TimeFrame::INTRADAY);
+    
+    OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+    series.addEntry(*entry);
+
+    // Test Unix line endings (default)
+    char tmpl1[] = "/tmp/ts-intraday-unix-XXXXXX";
+    int fd1 = mkstemp(tmpl1);
+    REQUIRE(fd1 >= 0);
+    ::close(fd1);
+    std::string fileName1(tmpl1);
+
+    TradeStationIntradayCsvWriter<DecimalType> unixWriter(fileName1, series, false);
+    unixWriter.writeFile();
+
+    std::string unixContent = readFileBinary(fileName1);
+    REQUIRE(countSubstring(unixContent, "\r\n") == 0);  // No Windows line endings
+    REQUIRE(countSubstring(unixContent, "\n") == 2);    // Header + 1 data row = 2 Unix line endings
+
+    // Test Windows line endings
+    char tmpl2[] = "/tmp/ts-intraday-windows-XXXXXX";
+    int fd2 = mkstemp(tmpl2);
+    REQUIRE(fd2 >= 0);
+    ::close(fd2);
+    std::string fileName2(tmpl2);
+
+    TradeStationIntradayCsvWriter<DecimalType> windowsWriter(fileName2, series, true);
+    windowsWriter.writeFile();
+
+    std::string windowsContent = readFileBinary(fileName2);
+    REQUIRE(countSubstring(windowsContent, "\r\n") == 2);  // Header + 1 data row = 2 Windows line endings
+    REQUIRE(countSubstring(windowsContent, "\n") == 2);    // \n is part of \r\n
+
+    std::remove(fileName1.c_str());
+    std::remove(fileName2.c_str());
+}
+
+TEST_CASE("TimeSeriesCsvWriter with Windows line endings for all formats", "[TimeSeriesCsvWriter][WindowsLineEndings]") {
+    auto entry = createEquityEntry("20200101", "1.0", "2.0", "0.5", "1.5", 50);
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(*entry);
+
+    // Test PAL_EOD format with Windows line endings
+    char tmpl1[] = "/tmp/unified-pal-eod-windows-XXXXXX";
+    int fd1 = mkstemp(tmpl1);
+    REQUIRE(fd1 >= 0);
+    ::close(fd1);
+    std::string fileName1(tmpl1);
+
+    TimeSeriesCsvWriter<DecimalType> palEodWriter(fileName1, series, OutputFormat::PAL_EOD, true);
+    palEodWriter.writeFile();
+
+    std::string palEodContent = readFileBinary(fileName1);
+    REQUIRE(countSubstring(palEodContent, "\r\n") == 1);  // 1 data row = 1 Windows line ending
+    REQUIRE(countSubstring(palEodContent, "\n") == 1);    // \n is part of \r\n
+
+    // Test TRADESTATION_EOD format with Windows line endings
+    char tmpl2[] = "/tmp/unified-ts-eod-windows-XXXXXX";
+    int fd2 = mkstemp(tmpl2);
+    REQUIRE(fd2 >= 0);
+    ::close(fd2);
+    std::string fileName2(tmpl2);
+
+    TimeSeriesCsvWriter<DecimalType> tsEodWriter(fileName2, series, OutputFormat::TRADESTATION_EOD, true);
+    tsEodWriter.writeFile();
+
+    std::string tsEodContent = readFileBinary(fileName2);
+    REQUIRE(countSubstring(tsEodContent, "\r\n") == 2);  // Header + 1 data row = 2 Windows line endings
+    REQUIRE(countSubstring(tsEodContent, "\n") == 2);    // \n is part of \r\n
+
+    std::remove(fileName1.c_str());
+    std::remove(fileName2.c_str());
+}
+
+TEST_CASE("Backward compatibility - default behavior unchanged", "[BackwardCompatibility][LineEndings]") {
+    auto entry = createEquityEntry("20200101", "1.0", "2.0", "0.5", "1.5", 50);
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(*entry);
+
+    // Test that default behavior (no Windows line ending parameter) produces Unix line endings
+    char tmpl[] = "/tmp/backward-compat-XXXXXX";
+    int fd = mkstemp(tmpl);
+    REQUIRE(fd >= 0);
+    ::close(fd);
+    std::string fileName(tmpl);
+
+    // Use legacy constructor without line ending parameter
+    PalTimeSeriesCsvWriter<DecimalType> writer(fileName, series);
+    writer.writeFile();
+
+    std::string content = readFileBinary(fileName);
+    REQUIRE(countSubstring(content, "\r\n") == 0);  // No Windows line endings by default
+    REQUIRE(countSubstring(content, "\n") == 1);    // One Unix line ending
+
+    std::remove(fileName.c_str());
+}
+
+TEST_CASE("Indicator-based writers with Windows line endings", "[IndicatorWriters][WindowsLineEndings]") {
+    // Create OHLC series
+    auto entry = createEquityEntry("20200101", "1.0", "2.0", "0.5", "1.5", 50);
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    series.addEntry(*entry);
+
+    // Create indicator series
+    NumericTimeSeries<DecimalType> indicator(TimeFrame::DAILY);
+    using namespace boost::posix_time;
+    using namespace boost::gregorian;
+    ptime dt(date(2020, 1, 1), time_duration(0, 0, 0));
+    NumericTimeSeriesEntry<DecimalType> indicatorEntry(dt, DecimalType("0.75"), TimeFrame::DAILY);
+    indicator.addEntry(indicatorEntry);
+
+    // Test PalIndicatorEodCsvWriter with Windows line endings
+    char tmpl1[] = "/tmp/pal-indicator-eod-windows-XXXXXX";
+    int fd1 = mkstemp(tmpl1);
+    REQUIRE(fd1 >= 0);
+    ::close(fd1);
+    std::string fileName1(tmpl1);
+
+    PalIndicatorEodCsvWriter<DecimalType> eodWriter(fileName1, series, indicator, true);
+    eodWriter.writeFile();
+
+    std::string eodContent = readFileBinary(fileName1);
+    REQUIRE(countSubstring(eodContent, "\r\n") == 1);  // 1 data row = 1 Windows line ending
+    REQUIRE(countSubstring(eodContent, "\n") == 1);    // \n is part of \r\n
+
+    // Test PalIndicatorIntradayCsvWriter with Windows line endings
+    char tmpl2[] = "/tmp/pal-indicator-intraday-windows-XXXXXX";
+    int fd2 = mkstemp(tmpl2);
+    REQUIRE(fd2 >= 0);
+    ::close(fd2);
+    std::string fileName2(tmpl2);
+
+    PalIndicatorIntradayCsvWriter<DecimalType> intradayWriter(fileName2, series, indicator, true);
+    intradayWriter.writeFile();
+
+    std::string intradayContent = readFileBinary(fileName2);
+    REQUIRE(countSubstring(intradayContent, "\r\n") == 1);  // 1 data row = 1 Windows line ending
+    REQUIRE(countSubstring(intradayContent, "\n") == 1);    // \n is part of \r\n
+
+    std::remove(fileName1.c_str());
+    std::remove(fileName2.c_str());
+}
+

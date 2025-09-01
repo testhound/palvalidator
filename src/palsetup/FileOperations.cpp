@@ -147,15 +147,18 @@ void FileOperations::writeDetailsFile(const fs::path& outputPath,
     detailsFile.close();
 }
 
-void FileOperations::writeTargetStopFile(const fs::path& filePath, const Num& target, const Num& stop) {
-    std::ofstream tsFile(filePath.string());
-    if (!tsFile.is_open()) {
-        std::cerr << "Error: Unable to open target/stop file " << filePath << std::endl;
-        return;
-    }
+void FileOperations::writeTargetStopFile(const fs::path& filePath, const Num& target, const Num& stop)
+{
+  // Open the file in binary mode
+  std::ofstream tsFile(filePath.string(), std::ios::binary);
+  if (!tsFile.is_open()) {
+    std::cerr << "Error: Unable to open target/stop file " << filePath << std::endl;
+    return;
+  }
     
-    tsFile << target << std::endl << stop << std::endl;
-    tsFile.close();
+  // Explicitly write Windows-style line endings
+  tsFile << target << "\r\n" << stop << "\r\n";
+  tsFile.close();
 }
 
 void FileOperations::writePalDataFile(const fs::path& filePath, 
@@ -164,21 +167,21 @@ void FileOperations::writePalDataFile(const fs::path& filePath,
                                      const NumericTimeSeries<Num>* indicator) {
     
     if (config.isIndicatorMode() && indicator) {
-        // Write indicator-based PAL files
+        // Write indicator-based PAL files with Windows line endings
         if (config.getTimeFrameStr() == "Intraday") {
-            PalIndicatorIntradayCsvWriter<Num> writer(filePath.string(), series, *indicator);
+            PalIndicatorIntradayCsvWriter<Num> writer(filePath.string(), series, *indicator, true);
             writer.writeFile();
         } else {
-            PalIndicatorEodCsvWriter<Num> writer(filePath.string(), series, *indicator);
+            PalIndicatorEodCsvWriter<Num> writer(filePath.string(), series, *indicator, true);
             writer.writeFile();
         }
     } else {
-        // Write standard OHLC PAL files
+        // Write standard OHLC PAL files with Windows line endings
         if (config.getTimeFrameStr() == "Intraday") {
-            PalIntradayCsvWriter<Num> writer(filePath.string(), series);
+            PalIntradayCsvWriter<Num> writer(filePath.string(), series, true);
             writer.writeFile();
         } else {
-            PalTimeSeriesCsvWriter<Num> writer(filePath.string(), series);
+            PalTimeSeriesCsvWriter<Num> writer(filePath.string(), series, true);
             writer.writeFile();
         }
     }
@@ -189,10 +192,10 @@ void FileOperations::writeValidationDataFile(const fs::path& filePath,
                                             const SetupConfiguration& config) {
     
     if (config.getTimeFrameStr() == "Intraday") {
-        TradeStationIntradayCsvWriter<Num> writer(filePath.string(), series);
+        TradeStationIntradayCsvWriter<Num> writer(filePath.string(), series, false);
         writer.writeFile();
     } else {
-        PalTimeSeriesCsvWriter<Num> writer(filePath.string(), series);
+        PalTimeSeriesCsvWriter<Num> writer(filePath.string(), series, false);
         writer.writeFile();
     }
 }
