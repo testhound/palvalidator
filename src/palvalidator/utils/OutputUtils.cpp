@@ -93,6 +93,15 @@ std::string createPermutationTestSurvivorsFileName(const std::string& securitySy
         + "_PermutationTestSurvivors_" + getCurrentTimestamp() + ".txt";
 }
 
+std::string createUnifiedMetaStrategyPerformanceFileName(const std::string& securitySymbol,
+                                                        ValidationMethod method)
+{
+    std::string methodDir = getValidationMethodString(method);
+    std::filesystem::create_directories(methodDir);
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+        + "_UnifiedMetaStrategy_Performance_" + getCurrentTimestamp() + ".txt";
+}
+
 template<typename Num>
 void writePermutationTestSurvivors(const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
                                  const std::string& filename)
