@@ -158,6 +158,7 @@ namespace mkc_timeseries
     bool canEnterMarket(BacktesterStrategy<Decimal> *strategy,
                         Security<Decimal>* aSecurity) const override
     {
+       // When in a short position, only allow pyramiding if enabled
        return (strategy->strategyCanPyramid(aSecurity->getSymbol()));
     }
 
@@ -190,6 +191,7 @@ namespace mkc_timeseries
       strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
     }
   };
+
 
   // A PalMetaStrategy is composed of individual Pal strategies (patterns): long and/or short
   template <class Decimal> class PalMetaStrategy : public BacktesterStrategy<Decimal>
@@ -335,10 +337,12 @@ namespace mkc_timeseries
       }
       else if (this->isLongPosition (aSecurity->getSymbol()))
       {
+        // When in a long position, use existing conditions that only allow long patterns
         entryOrdersCommon(aSecurity, instrPos, processingDateTime, LongEntryOrderConditions<Decimal>());
       }
       else if (this->isShortPosition (aSecurity->getSymbol()))
       {
+        // When in a short position, use existing conditions that only allow short patterns
         entryOrdersCommon(aSecurity, instrPos, processingDateTime, ShortEntryOrderConditions<Decimal>());
       }
       else
