@@ -46,7 +46,6 @@ void FileOperations::writeConfigFile(const std::string& outputDir,
                << timeFrame << std::endl;
 
     configFile.close();
-    std::cout << "Configuration file written: " << configFileName << std::endl;
 }
 
 void FileOperations::writeTargetStopFiles(const std::vector<fs::path>& palSubDirs,

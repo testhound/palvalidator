@@ -33,6 +33,12 @@ public:
     void displaySetupSummary(const SetupConfiguration& config);
     
     /**
+     * @brief Display setup configuration summary with data split date ranges
+     */
+    void displaySetupSummary(const SetupConfiguration& config,
+                            const mkc_timeseries::OHLCTimeSeries<Num>& timeSeries);
+    
+    /**
      * @brief Display statistics only without writing files
      */
     void displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<Num>& inSampleSeries,

@@ -33,7 +33,6 @@ int main(int argc, char** argv) {
         
         // 2. Parse command line and collect user input to build configuration
         auto config = ui.parseCommandLineArgs(argc, argv);
-        ui.displaySetupSummary(config);
         
         // 3. Create directory structure (only if not in stats-only mode)
         DirectoryPaths paths(fs::path(), fs::path(), fs::path(), fs::path(), fs::path(), {}, {});
@@ -48,6 +47,9 @@ int main(int argc, char** argv) {
             config.getSecurityTick(), 
             config.getTimeFrame());
         auto timeSeries = tsProcessor.loadTimeSeries(reader);
+        
+        // Display setup summary with date ranges
+        ui.displaySetupSummary(config, *timeSeries);
         
         // 5. Determine known tick (from CLI or SecurityAttributes)
         std::optional<double> knownTick;

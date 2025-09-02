@@ -2,6 +2,7 @@
 #include "TimeFrameUtility.h"
 #include "DecimalConstants.h"
 #include "TimeSeriesIndicators.h"
+#include "TimeSeriesProcessor.h"
 #include <iostream>
 #include <filesystem>
 #include <cctype>
@@ -44,6 +45,32 @@ SetupConfiguration UserInterface::parseCommandLineArgs(int argc, char** argv) {
     
     // Extract default ticker symbol from filename
     std::string defaultTicker = extractDefaultTicker(historicDataFileName);
+    
+    // Display data file date range before asking for user input
+    try {
+        TimeSeriesProcessor tsProcessor;
+        auto reader = tsProcessor.createTimeSeriesReader(
+            fileType,
+            historicDataFileName,
+            securityTick,
+            mkc_timeseries::TimeFrame::DAILY); // Use default timeframe for preview
+        auto timeSeries = tsProcessor.loadTimeSeries(reader);
+        
+        if (timeSeries->getNumEntries() > 0) {
+            auto firstDate = timeSeries->getFirstDate();
+            auto lastDate = timeSeries->getLastDate();
+            std::cout << "[Data Range] " << historicDataFileName
+                      << " contains " << timeSeries->getNumEntries() << " entries"
+                      << " from " << boost::gregorian::to_iso_extended_string(firstDate)
+                      << " to " << boost::gregorian::to_iso_extended_string(lastDate) << std::endl;
+        } else {
+            std::cout << "[Data Range] " << historicDataFileName
+                      << " contains no data entries" << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cout << "[Data Range] Could not read " << historicDataFileName
+                  << " - " << e.what() << std::endl;
+    }
     
     // Collect user input interactively
     std::string tickerSymbol = getTickerSymbol(defaultTicker);
@@ -96,9 +123,81 @@ void UserInterface::displaySetupSummary(const SetupConfiguration& config) {
     std::cout << std::endl;
     std::cout << "File Type: " << config.getFileType() << std::endl;
     std::cout << "Indicator Mode: " << (config.isIndicatorMode() ? "Yes (" + config.getSelectedIndicator() + ")" : "No") << std::endl;
-    std::cout << "Data Split: " << config.getInsamplePercent() << "% / " 
-              << config.getOutOfSamplePercent() << "% / " 
+    std::cout << "Data Split: " << config.getInsamplePercent() << "% / "
+              << config.getOutOfSamplePercent() << "% / "
               << config.getReservedPercent() << "%" << std::endl;
+    std::cout << "Holding Period: " << config.getHoldingPeriod() << std::endl;
+    std::cout << "=========================" << std::endl;
+}
+
+void UserInterface::displaySetupSummary(const SetupConfiguration& config,
+                                       const mkc_timeseries::OHLCTimeSeries<Num>& timeSeries) {
+    std::cout << "\n=== Setup Configuration ===" << std::endl;
+    std::cout << "Ticker: " << config.getTickerSymbol() << std::endl;
+    std::cout << "Time Frame: " << config.getTimeFrameStr();
+    if (config.getTimeFrameStr() == "Intraday") {
+        std::cout << " (" << config.getIntradayMinutes() << " minutes)";
+    }
+    std::cout << std::endl;
+    std::cout << "File Type: " << config.getFileType() << std::endl;
+    std::cout << "Indicator Mode: " << (config.isIndicatorMode() ? "Yes (" + config.getSelectedIndicator() + ")" : "No") << std::endl;
+    
+    // Calculate date ranges for data splits
+    if (timeSeries.getNumEntries() > 0) {
+        auto entries = timeSeries.getEntriesCopy();
+        size_t totalEntries = entries.size();
+        
+        // Calculate split sizes (same logic as in TimeSeriesProcessor::splitTimeSeries)
+        size_t inSampleSize = static_cast<size_t>((config.getInsamplePercent() / 100.0) * totalEntries);
+        size_t outOfSampleSize = static_cast<size_t>((config.getOutOfSamplePercent() / 100.0) * totalEntries);
+        size_t reservedSize = static_cast<size_t>((config.getReservedPercent() / 100.0) * totalEntries);
+        
+        // Ensure we don't exceed total entries
+        if (inSampleSize + outOfSampleSize + reservedSize > totalEntries) {
+            size_t excess = (inSampleSize + outOfSampleSize + reservedSize) - totalEntries;
+            if (reservedSize >= excess) {
+                reservedSize -= excess;
+            } else if (outOfSampleSize >= excess) {
+                outOfSampleSize -= excess;
+            } else {
+                inSampleSize -= excess;
+            }
+        }
+        
+        std::cout << "Data Split: " << config.getInsamplePercent() << "% / "
+                  << config.getOutOfSamplePercent() << "% / "
+                  << config.getReservedPercent() << "%" << std::endl;
+        
+        // Display date ranges for each split
+        if (inSampleSize > 0) {
+            auto inSampleStart = entries[0].getDateTime().date();
+            auto inSampleEnd = entries[inSampleSize - 1].getDateTime().date();
+            std::cout << "  In-Sample:     " << boost::gregorian::to_iso_extended_string(inSampleStart)
+                      << " to " << boost::gregorian::to_iso_extended_string(inSampleEnd)
+                      << " (" << inSampleSize << " entries)" << std::endl;
+        }
+        
+        if (outOfSampleSize > 0) {
+            auto outOfSampleStart = entries[inSampleSize].getDateTime().date();
+            auto outOfSampleEnd = entries[inSampleSize + outOfSampleSize - 1].getDateTime().date();
+            std::cout << "  Out-of-Sample: " << boost::gregorian::to_iso_extended_string(outOfSampleStart)
+                      << " to " << boost::gregorian::to_iso_extended_string(outOfSampleEnd)
+                      << " (" << outOfSampleSize << " entries)" << std::endl;
+        }
+        
+        if (reservedSize > 0) {
+            auto reservedStart = entries[inSampleSize + outOfSampleSize].getDateTime().date();
+            auto reservedEnd = entries[inSampleSize + outOfSampleSize + reservedSize - 1].getDateTime().date();
+            std::cout << "  Reserved:      " << boost::gregorian::to_iso_extended_string(reservedStart)
+                      << " to " << boost::gregorian::to_iso_extended_string(reservedEnd)
+                      << " (" << reservedSize << " entries)" << std::endl;
+        }
+    } else {
+        std::cout << "Data Split: " << config.getInsamplePercent() << "% / "
+                  << config.getOutOfSamplePercent() << "% / "
+                  << config.getReservedPercent() << "% (no data available)" << std::endl;
+    }
+    
     std::cout << "Holding Period: " << config.getHoldingPeriod() << std::endl;
     std::cout << "=========================" << std::endl;
 }
@@ -106,11 +205,20 @@ void UserInterface::displaySetupSummary(const SetupConfiguration& config) {
 std::string UserInterface::extractDefaultTicker(const std::string& filename) {
     fs::path filePath(filename);
     std::string baseName = filePath.stem().string(); // Gets filename without extension
-    size_t dotPos = baseName.find('.');
-    if (dotPos != std::string::npos) {
-        return baseName.substr(0, dotPos);
+    
+    // Extract only alphabetic characters from the beginning until first non-alphabetic character
+    std::string ticker;
+    for (char c : baseName) {
+        if (std::isalpha(c)) {
+            ticker += c;
+        } else {
+            // Stop at first non-alphabetic character
+            break;
+        }
     }
-    return baseName;
+    
+    // If we found alphabetic characters, return them; otherwise return the whole base name
+    return ticker.empty() ? baseName : ticker;
 }
 
 std::string UserInterface::getTickerSymbol(const std::string& defaultTicker) {
