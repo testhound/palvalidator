@@ -763,13 +763,19 @@ int main(int argc, char **argv)
         numBootstrapSamples = 10000;
     }
     
-    // Only ask for validation method and policy if permutation testing will be performed
-    ValidationMethod validationMethod = ValidationMethod::Masters;
+    // Set validation method based on pipeline mode
+    ValidationMethod validationMethod;
     bool partitionByFamily = false;
     std::string selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Default for bootstrap-only
     
-    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
-        pipelineMode == PipelineMode::PermutationOnly) {
+    if (pipelineMode == PipelineMode::BootstrapOnly) {
+        // Bootstrap-only mode: no multiple testing correction applied
+        validationMethod = ValidationMethod::Unadjusted;
+        std::cout << "\nBootstrap-only mode: Using Unadjusted validation method (no multiple testing correction)" << std::endl;
+    } else if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+               pipelineMode == PipelineMode::PermutationOnly) {
+        // Permutation testing modes: ask user for validation method
+        validationMethod = ValidationMethod::Masters; // Default for permutation modes
         
         // Ask for Validation Method
         std::cout << "\nChoose validation method:" << std::endl;
@@ -858,7 +864,7 @@ int main(int argc, char **argv)
     } else {
         // Bootstrap-only mode: set defaults for unused parameters
         params.falseDiscoveryRate = Num(0.10);
-        std::cout << "\nBootstrap-only mode: Using default validation method (Masters) and policy (GatedPerformanceScaledPalPolicy)" << std::endl;
+        // No policy needed for bootstrap-only mode
     }
     
     // Get risk parameters from user and store globally
