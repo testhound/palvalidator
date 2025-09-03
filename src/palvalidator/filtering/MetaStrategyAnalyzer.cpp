@@ -31,18 +31,18 @@ namespace palvalidator
     }
 
     void MetaStrategyAnalyzer::analyzeMetaStrategy(
-    		   const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-    		   std::shared_ptr<Security<Num>> baseSecurity,
-    		   const DateRange& backtestingDates,
-    		   TimeFrame::Duration timeFrame,
-    		   std::ostream& outputStream,
-    		   ValidationMethod validationMethod)
+						   const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+						   std::shared_ptr<Security<Num>> baseSecurity,
+						   const DateRange& backtestingDates,
+						   TimeFrame::Duration timeFrame,
+						   std::ostream& outputStream,
+						   ValidationMethod validationMethod)
     {
       if (mUsePalMetaStrategy)
- {
-   analyzeMetaStrategyUnified(survivingStrategies, baseSecurity,
-         backtestingDates, timeFrame, outputStream, validationMethod);
- }
+	{
+	  analyzeMetaStrategyUnified(survivingStrategies, baseSecurity,
+				     backtestingDates, timeFrame, outputStream, validationMethod);
+	}
       else
 	{
 	  // Existing implementation
@@ -76,8 +76,8 @@ namespace palvalidator
 
 	  // Perform statistical analysis
 	  performStatisticalAnalysis(metaReturns, baseSecurity, timeFrame, Lmeta,
-	  	     portfolioAnnualizedTrades, survivorReturns.size(),
-	  	     "equal-weight", outputStream);
+				     portfolioAnnualizedTrades, survivorReturns.size(),
+				     "equal-weight", outputStream);
 	}
     }
 
@@ -180,22 +180,22 @@ namespace palvalidator
 								 const std::vector<Num>& survivorAnnualizedTrades,
 								 size_t numStrategies)
     {
-      const Num w = Num(1) / Num(static_cast<int>(numStrategies));
-
+      // Fixed: Do not divide by numStrategies - we pay transaction costs for ALL trades
+      // from ALL strategies when running them in parallel
       Num sumTrades = DecimalConstants<Num>::DecimalZero;
       for (const auto& tr : survivorAnnualizedTrades)
         sumTrades += tr;
 
-      return w * sumTrades;
+      return sumTrades;  // Return total trades, not averaged trades
     }
 
     void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(
-    			  const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-    			  std::shared_ptr<Security<Num>> baseSecurity,
-    			  const DateRange& backtestingDates,
-    			  TimeFrame::Duration timeFrame,
-    			  std::ostream& outputStream,
-    			  ValidationMethod validationMethod)
+							  const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+							  std::shared_ptr<Security<Num>> baseSecurity,
+							  const DateRange& backtestingDates,
+							  TimeFrame::Duration timeFrame,
+							  std::ostream& outputStream,
+							  ValidationMethod validationMethod)
     {
       if (survivingStrategies.empty())
 	{
@@ -243,7 +243,7 @@ namespace palvalidator
 
 	  // Write detailed backtester results to file using proper naming convention
 	  std::string performanceFileName = palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
-	      baseSecurity->getSymbol(), validationMethod);
+													      baseSecurity->getSymbol(), validationMethod);
 	  std::ofstream performanceFile(performanceFileName);
 	  if (performanceFile.is_open())
 	    {
@@ -258,8 +258,8 @@ namespace palvalidator
 
 	  // Perform statistical analysis
 	  performStatisticalAnalysis(metaReturns, baseSecurity, timeFrame, Lmeta,
-	  	     metaAnnualizedTrades, survivingStrategies.size(),
-	  	     "unified PalMetaStrategy", outputStream);
+				     metaAnnualizedTrades, survivingStrategies.size(),
+				     "unified PalMetaStrategy", outputStream);
 	}
       catch (const std::exception& e)
 	{
@@ -269,35 +269,35 @@ namespace palvalidator
     }
 
     void MetaStrategyAnalyzer::performStatisticalAnalysis(
-    	  const std::vector<Num>& metaReturns,
-    	  std::shared_ptr<Security<Num>> baseSecurity,
-    	  TimeFrame::Duration timeFrame,
-    	  size_t blockLength,
-    	  const Num& annualizedTrades,
-    	  size_t strategyCount,
-    	  const std::string& strategyType,
-    	  std::ostream& outputStream)
+							  const std::vector<Num>& metaReturns,
+							  std::shared_ptr<Security<Num>> baseSecurity,
+							  TimeFrame::Duration timeFrame,
+							  size_t blockLength,
+							  const Num& annualizedTrades,
+							  size_t strategyCount,
+							  const std::string& strategyType,
+							  std::ostream& outputStream)
     {
       // Per-period point estimates (pre-annualization)
       {
- const Num am = StatUtils<Num>::computeMean(metaReturns);
- const Num gm = GeoMeanStat<Num>{}(metaReturns);
- outputStream << "      Per-period point estimates (pre-annualization): "
-       << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-       << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+	const Num am = StatUtils<Num>::computeMean(metaReturns);
+	const Num gm = GeoMeanStat<Num>{}(metaReturns);
+	outputStream << "      Per-period point estimates (pre-annualization): "
+		     << "Arithmetic mean =" << (am * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+		     << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
       }
 
       // Annualization factor
       double annualizationFactor;
       if (timeFrame == TimeFrame::INTRADAY)
- {
-   auto minutes = baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes();
-   annualizationFactor = calculateAnnualizationFactor(timeFrame, minutes);
- }
+	{
+	  auto minutes = baseSecurity->getTimeSeries()->getIntradayTimeFrameDurationInMinutes();
+	  annualizationFactor = calculateAnnualizationFactor(timeFrame, minutes);
+	}
       else
- {
-   annualizationFactor = calculateAnnualizationFactor(timeFrame);
- }
+	{
+	  annualizationFactor = calculateAnnualizationFactor(timeFrame);
+	}
 
       // Block length for meta bootstrap
       StationaryBlockResampler<Num> metaSampler(blockLength);
@@ -307,14 +307,14 @@ namespace palvalidator
       GeoMeanStat<Num> statGeo;
       BlockBCA metaGeo(metaReturns, mNumResamples, mConfidenceLevel.getAsDouble(), statGeo, metaSampler);
       BlockBCA metaMean(metaReturns, mNumResamples, mConfidenceLevel.getAsDouble(),
-   &mkc_timeseries::StatUtils<Num>::computeMean, metaSampler);
+			&mkc_timeseries::StatUtils<Num>::computeMean, metaSampler);
 
       const Num lbGeoPeriod = metaGeo.getLowerBound();
       const Num lbMeanPeriod = metaMean.getLowerBound();
 
       outputStream << "      Per-period BCa lower bounds (pre-annualization): "
-     << "Geo=" << (lbGeoPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-     << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+		   << "Geo=" << (lbGeoPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+		   << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
       outputStream << "      (Meta uses block resampling with L=" << blockLength << ")\n";
 
       // Annualize portfolio BCa results
@@ -324,8 +324,20 @@ namespace palvalidator
       const Num lbGeoAnn = metaGeoAnn.getAnnualizedLowerBound();
       const Num lbMeanAnn = metaMeanAnn.getAnnualizedLowerBound();
 
-      // Portfolio-level cost hurdle
+      // Portfolio-level cost hurdle - show detailed calculation
+      const Num riskFreeHurdle = mHurdleCalculator.calculateRiskFreeHurdle();
+      const Num costBasedRequiredReturn = mHurdleCalculator.calculateCostBasedRequiredReturn(annualizedTrades);
       const Num finalRequiredReturn = mHurdleCalculator.calculateFinalRequiredReturn(annualizedTrades);
+      
+      // Show detailed cost hurdle breakdown
+      outputStream << "      Cost Hurdle Analysis:" << std::endl;
+      outputStream << "        Annualized Trades: " << annualizedTrades << " trades/year" << std::endl;
+      outputStream << "        Round-trip Cost: " << (mHurdleCalculator.getSlippagePerSide() * mkc_timeseries::DecimalConstants<Num>::DecimalTwo * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "% per trade" << std::endl;
+      outputStream << "        Raw Cost Hurdle: " << annualizedTrades << " × " << (mHurdleCalculator.getSlippagePerSide() * mkc_timeseries::DecimalConstants<Num>::DecimalTwo * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "% = " << (annualizedTrades * mHurdleCalculator.getSlippagePerSide() * mkc_timeseries::DecimalConstants<Num>::DecimalTwo * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+      outputStream << "        Safety Buffer: " << mHurdleCalculator.getCostBufferMultiplier() << "× multiplier" << std::endl;
+      outputStream << "        Cost-Based Required Return: " << (costBasedRequiredReturn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+      outputStream << "        Risk-Free Hurdle: " << (riskFreeHurdle * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+      outputStream << "        Final Required Return: max(" << (costBasedRequiredReturn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%, " << (riskFreeHurdle * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%) = " << (finalRequiredReturn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
 
       // Store results
       mAnnualizedLowerBound = lbGeoAnn;
@@ -334,41 +346,41 @@ namespace palvalidator
 
       // Output results with appropriate strategy type description
       if (strategyType == "equal-weight")
- {
-   outputStream << "\n[Meta] Portfolio of " << strategyCount << " survivors (" << strategyType << "):\n";
- }
+	{
+	  outputStream << "\n[Meta] Portfolio of " << strategyCount << " survivors (" << strategyType << "):\n";
+	}
       else
- {
-   outputStream << "\n[Meta] " << strategyType << " with " << strategyCount << " patterns:\n";
- }
+	{
+	  outputStream << "\n[Meta] " << strategyType << " with " << strategyCount << " patterns:\n";
+	}
 
       outputStream << "      Annualized Lower Bound (GeoMean): " << (lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Annualized Lower Bound (Mean):    " << (lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Required Return (max(cost,riskfree)): "
-     << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+		   << "      Annualized Lower Bound (Mean):    " << (lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+		   << "      Required Return (max(cost,riskfree)): "
+		   << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
 
       if (mMetaStrategyPassed)
- {
-   if (strategyType == "equal-weight")
-     {
-       outputStream << "      RESULT: ✓ Metastrategy PASSES\n";
-     }
-   else
-     {
-       outputStream << "      RESULT: ✓ Unified Metastrategy PASSES\n";
-     }
- }
+	{
+	  if (strategyType == "equal-weight")
+	    {
+	      outputStream << "      RESULT: ✓ Metastrategy PASSES\n";
+	    }
+	  else
+	    {
+	      outputStream << "      RESULT: ✓ Unified Metastrategy PASSES\n";
+	    }
+	}
       else
- {
-   if (strategyType == "equal-weight")
-     {
-       outputStream << "      RESULT: ✗ Metastrategy FAILS\n";
-     }
-   else
-     {
-       outputStream << "      RESULT: ✗ Unified Metastrategy FAILS\n";
-     }
- }
+	{
+	  if (strategyType == "equal-weight")
+	    {
+	      outputStream << "      RESULT: ✗ Metastrategy FAILS\n";
+	    }
+	  else
+	    {
+	      outputStream << "      RESULT: ✗ Unified Metastrategy FAILS\n";
+	    }
+	}
 
       outputStream << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
     }
