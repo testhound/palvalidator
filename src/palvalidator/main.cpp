@@ -913,6 +913,10 @@ int main(int argc, char **argv)
     std::cout << "Risk Premium: " << (g_riskParameters.riskPremium * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "=============================" << std::endl;
 
+    // Record start time for validation pipeline
+    auto validationStartTime = std::chrono::steady_clock::now();
+    std::cout << "\nStarting validation pipeline..." << std::endl;
+
     // -- Top-level dispatch based on the VALIDATION METHOD --
     try {
         switch (validationMethod)
@@ -934,6 +938,22 @@ int main(int argc, char **argv)
         std::cerr << "Validation failed: " << e.what() << std::endl;
         return 1;
     }
+    
+    // Record end time and calculate elapsed time
+    auto validationEndTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(validationEndTime - validationStartTime);
+    
+    // Convert to hours, minutes, seconds
+    auto hours = std::chrono::duration_cast<std::chrono::hours>(elapsedTime);
+    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(elapsedTime - hours);
+    auto seconds = elapsedTime - hours - minutes;
+    
+    // Display elapsed time in HH:MM:SS format
+    std::cout << "\nValidation pipeline completed." << std::endl;
+    std::cout << "Total elapsed time: "
+              << std::setfill('0') << std::setw(2) << hours.count() << ":"
+              << std::setfill('0') << std::setw(2) << minutes.count() << ":"
+              << std::setfill('0') << std::setw(2) << seconds.count() << std::endl;
     
     return 0;
 }
