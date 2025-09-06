@@ -30,6 +30,8 @@
 #include "PalParseDriver.h"
 #include "PalAst.h"
 #include "number.h"
+#include "BidAskSpread.h"
+#include "StatUtils.h"
 #include <cstdlib>
 
 // New policy architecture includes
@@ -223,6 +225,74 @@ void writeDetailedRejectedPatternsFile(const std::string& securitySymbol,
 
 // ---- Core Logic ----
 
+// Helper function for bid/ask spread analysis
+template<typename Num>
+std::tuple<Num, Num> computeBidAskSpreadAnalysis(std::shared_ptr<ValidatorConfiguration<Num>> config,
+                                                 unsigned int numBootstrapSamples,
+                                                 std::ostream& logStream)
+{
+    logStream << "\n=== Bid/Ask Spread Analysis ===" << std::endl;
+    
+    try {
+        // Extract out-of-sample time series
+        auto timeSeries = config->getSecurity()->getTimeSeries();
+        auto oosTimeSeries = FilterTimeSeries(*timeSeries, config->getOosDateRange());
+        
+        logStream << "Out-of-sample period: " << config->getOosDateRange().getFirstDateTime()
+                  << " to " << config->getOosDateRange().getLastDateTime() << std::endl;
+        logStream << "Out-of-sample entries: " << oosTimeSeries.getNumEntries() << std::endl;
+        
+        // Check if we have sufficient data for spread calculation
+        if (oosTimeSeries.getNumEntries() < 2) {
+            logStream << "Warning: Insufficient data for bid/ask spread calculation (need at least 2 entries)" << std::endl;
+            return std::make_tuple(DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero);
+        }
+        
+        // Calculate bid/ask spreads using Corwin-Schultz method
+        using SpreadCalc = mkc_timeseries::CorwinSchultzSpreadCalculator<Num>;
+        auto spreads = SpreadCalc::calculateProportionalSpreadsVector(oosTimeSeries);
+        
+        logStream << "Calculated " << spreads.size() << " bid/ask spread measurements" << std::endl;
+        
+        if (spreads.empty()) {
+            logStream << "Warning: No valid spread calculations could be performed" << std::endl;
+            return std::make_tuple(DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero);
+        }
+        
+        // Calculate basic statistics
+        auto actualMean = mkc_timeseries::StatUtils<Num>::computeMean(spreads);
+        auto stdDev = mkc_timeseries::StatUtils<Num>::computeStdDev(spreads, actualMean);
+        
+        logStream << "Raw spread statistics:" << std::endl;
+        logStream << "  Mean: " << actualMean << std::endl;
+        logStream << "  Standard Deviation: " << stdDev << std::endl;
+        
+        // Apply bootstrap analysis to get robust mean estimate
+        auto bootstrappedMean = mkc_timeseries::StatUtils<Num>::getBootStrappedStatistic(
+            spreads, mkc_timeseries::StatUtils<Num>::computeMean, numBootstrapSamples);
+        
+        logStream << "Bootstrap analysis (" << numBootstrapSamples << " samples):" << std::endl;
+        logStream << "  Bootstrapped Mean: " << bootstrappedMean << std::endl;
+        
+        // Convert to percentage terms for easier interpretation (multiply by 100)
+        auto meanPercent = bootstrappedMean * DecimalConstants<Num>::DecimalOneHundred;
+        auto stdDevPercent = stdDev * DecimalConstants<Num>::DecimalOneHundred;
+        
+        logStream << "Results in percentage terms:" << std::endl;
+        logStream << "  Bootstrapped Mean: " << meanPercent << "%" << std::endl;
+        logStream << "  Standard Deviation: " << stdDevPercent << "%" << std::endl;
+        logStream << "  (Current slippage estimate assumption: 0.10%)" << std::endl;
+        
+        logStream << "=== End Bid/Ask Spread Analysis ===" << std::endl;
+        
+        return std::make_tuple(bootstrappedMean, stdDev);
+        
+    } catch (const std::exception& e) {
+        logStream << "Error in bid/ask spread analysis: " << e.what() << std::endl;
+        return std::make_tuple(DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero);
+    }
+}
+
 // Helper function for bootstrap analysis
 template<typename Num>
 void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -241,6 +311,9 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
 
     bootlog << "\nApplying performance-based filtering to Monte Carlo surviving strategies..." << std::endl;
 
+    // Perform bid/ask spread analysis on out-of-sample data
+    [[maybe_unused]] auto [spreadMean, spreadStdDev] = computeBidAskSpreadAnalysis<Num>(config, numBootstrapSamples, bootlog);
+    
     // Apply performance-based filtering to Monte Carlo surviving strategies
     auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
     auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
