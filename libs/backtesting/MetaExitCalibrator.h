@@ -54,6 +54,10 @@ namespace mkc_timeseries
     // From bar N onward, add a breakeven stop at entry + dir*(epsilonR * rTarget). (epsilonR can be 0)
     PolicyResult evaluateBreakevenAfterBars(int N, const Decimal& epsilonR) const;
 
+    PolicyResult evaluateCombinedPolicy(int K, int N,
+					const Decimal& thresholdR,
+					const Decimal& epsilonR,
+					FailureExitFill fill = FailureExitFill::OpenOfKPlus1) const;
   private:
     class PathArrays
     {
@@ -101,8 +105,14 @@ namespace mkc_timeseries
 						     const Decimal& thresholdR,
 						     FailureExitFill fill) const;
 
-    std::pair<int, Decimal> simulateBreakeven(
-					      const PathArrays& p, int N, const Decimal& epsilonR) const;
+    std::pair<int, Decimal> simulateBreakeven(const PathArrays& p,
+					      int N,
+					      const Decimal& epsilonR) const;
+
+    std::pair<int, Decimal> simulateCombined(const PathArrays& p, int K, int N,
+					     const Decimal& thresholdR,
+					     const Decimal& epsilonR,
+					     FailureExitFill fill) const;
 
     PolicyResult summarize(const std::vector<std::pair<int, Decimal>>& exits,
 			   const std::vector<PathArrays>& paths) const;
@@ -226,6 +236,66 @@ namespace mkc_timeseries
     return { last, p.close()[last] };
   }
 
+  template<class Decimal>
+  std::pair<int, Decimal>
+  MetaExitCalibrator<Decimal>::simulateCombined(const PathArrays& p,
+						int K, int N,
+						const Decimal& thresholdR,
+						const Decimal& epsilonR,
+						FailureExitFill fill) const
+  {
+    const int last = p.barsHeld() - 1;
+    if (p.barsHeld() <= 0)
+      return { -1, DecimalConstants<Decimal>::DecimalZero }; // should be skipped by caller
+
+    // Individual overlays
+    const auto f2p = simulateFailureToPerform(p, K, thresholdR, fill);
+    const auto be  = simulateBreakeven(p, N, epsilonR);
+
+    // Earliest-exit-wins by bar index
+    if (be.first < 0 && f2p.first < 0)
+      {
+	// Shouldn't happen; fallback to last
+	return { last, p.close()[last] };
+      }
+
+    if (be.first == f2p.first)
+      {
+	// Same bar: prefer BE if it actually triggered (i.e., not just "last/no-op")
+	if (be.first >= 0 && be.first < last) 
+	  return be;                // stop-first precedence within the bar
+	else 
+	  return f2p;               // both are "last" → either is fine, use f2p
+      }
+
+    return (be.first < f2p.first) ? be : f2p;
+  }
+
+  template<class Decimal>
+  PolicyResult
+  MetaExitCalibrator<Decimal>::evaluateCombinedPolicy(int K, int N,
+						      const Decimal& thresholdR,
+						      const Decimal& epsilonR,
+						      FailureExitFill fill) const
+  {
+    std::vector<PathArrays> paths;
+    paths.reserve(128);
+    for (auto it = mClosedPositionHistory.beginTradingPositions(); it != mClosedPositionHistory.endTradingPositions(); ++it)
+      {
+	auto p = buildArrays(it->second);
+	if (p.barsHeld() == 0) continue;      // skip zero-length paths
+	paths.push_back(std::move(p));
+      }
+
+    std::vector<std::pair<int, Decimal>> exits;
+    exits.reserve(paths.size());
+    for (const auto& p : paths) {
+      exits.push_back(simulateCombined(p, K, N, thresholdR, epsilonR, fill));
+    }
+
+    return summarize(exits, paths);
+  }
+  
   template<class Decimal>
   PolicyResult MetaExitCalibrator<Decimal>::summarize(const std::vector<std::pair<int, Decimal>>& exits,
 						      const std::vector<PathArrays>& paths) const
