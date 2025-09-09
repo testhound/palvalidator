@@ -264,7 +264,12 @@ namespace mkc_timeseries
     };
 
     /**
-     * @brief Scan one closed TradingPosition into compact arrays and first-touch metadata.
+     * @brief Scans a single TradingPosition to extract its price path and key events.
+     *
+     * NOTE: This function relies on PathStats to determine the first-touch indices
+     * for stops and targets. PathStats enforces stop-first precedence for same-bar
+     * events, meaning if a bar touches both the stop and target, it is considered a
+     * stop-out. This behavior is implicitly inherited by all analytics calculated from these indices.
      *
      * Algorithm:
      *  1) Use PathStats to obtain firstTargetIdx/firstStopIdx with conservative, stop-first
