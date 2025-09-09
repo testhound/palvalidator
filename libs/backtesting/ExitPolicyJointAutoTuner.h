@@ -17,21 +17,22 @@ namespace mkc_timeseries
 {
 
   /**
-   * @brief Immutable report for the joint tuner (failure-to-perform + breakeven).
+   * @brief Immutable report for the joint (2-D) auto-tuner.
    *
-   * This collects the selected pair of bar-ages:
-   *  - failureToPerformBars: bar index K at which the failure-to-perform test is evaluated
-   *                          (t=0 is the first bar after entry).
-   *  - breakevenActivationBars: bar index N from which breakeven becomes active (inclusive).
+   * This class holds the result of a joint optimization for a failure-to-perform
+   * rule (at bar K) and a breakeven rule (from bar N). The key takeaway is that
+   * the performance metrics (`mTrainCombined`, `mTestCombined`) reflect the
+   * **interactive effect** of applying both rules simultaneously to a set of trades,
+   * with the earliest exit taking precedence.
+   *
+   * It collects the selected pair of parameters:
+   * - failureToPerformBars: The bar index K for the performance check.
+   * - breakevenActivationBars: The bar index N from which the breakeven stop is armed.
    *
    * It also includes:
-   *  - Train/Test metrics for the combined policy at (K, N), measured via MetaExitCalibrator
-   *    with earliest-exit-wins and (by default) “next bar’s open” fills for failure-to-perform.
-   *  - The candidate grids examined for each dimension (useful for diagnostics).
+   * - Train/Test metrics for the combined (K, N) policy.
+   * - The candidate grids that were searched for each parameter.
    *
-   * Design:
-   *  - Ctor-only, no default constructor, no setters.
-   *  - Getters expose the chosen bars, grids, and the aggregated PolicyResult metrics.
    */
   class JointExitTuningReportBase
   {
@@ -125,7 +126,16 @@ namespace mkc_timeseries
   };
 
   /**
-   * @brief Joint auto tuner that selects (failure-to-perform K, breakeven N) together.
+   * @brief Joint auto tuner that selects an optimal (K, N) pair for a combined exit policy.
+   *
+   * This tuner performs a 2-dimensional grid search to find the best combination of a
+   * failure-to-perform bar (K) and a breakeven activation bar (N).
+   *
+   * **Key Distinction:** Unlike a 1-D tuner that optimizes K and N independently, this
+   * class evaluates each (K, N) pair as a single, combined policy. This is crucial
+   * because the two parameters can interact; for example, an early breakeven stop (low N)
+   * might make a later failure-to-perform check (high K) more effective, or vice-versa.
+   * This joint search is designed to capture these interaction effects.
    *
    * Responsibilities:
    *  1) Compute bar-age aggregates using MetaExitAnalytics::summarizeByBarAge(maxBarsToAnalyze).
@@ -187,11 +197,14 @@ namespace mkc_timeseries
     /**
      * @brief Run the end-to-end joint tuning pipeline, returning an immutable report.
      *
-     * Steps:
-     *  1) Summarize bar-age behavior to seed grids.
-     *  2) Split train/test deterministically with optional embargo.
-     *  3) Jointly select (K, N) by grid search on the fit set using the configured objective.
-     *  4) Recompute test metrics on held-out data (or reuse train if no test).
+     * This is the main entry point for the joint tuning process. It executes the following steps:
+     * 1) Analyzes the entire trade history to generate bar-age statistics.
+     * 2) Uses heuristics to propose candidate grids for K and N based on the statistics.
+     * 3) Splits the historical data into training and testing sets, with an optional embargo period.
+     * 4) Performs an exhaustive grid search on the training set, evaluating every (K, N) pair
+     * to find the combination that maximizes the scoring objective.
+     * 5) Evaluates the single best (K, N) pair on the test set to measure out-of-sample performance.
+     * 6) Returns a report containing the selected parameters and all performance metrics.
      */
     JointExitTuningReport<Decimal> tuneJoint();
 
@@ -216,23 +229,24 @@ namespace mkc_timeseries
     /**
      * @brief Build the failure-to-perform grid (candidate K values) from bar-age aggregates.
      *
-     * Heuristic:
-     *  - Choose a seed t where:
-     *      fracNonPositive >= fracNonPosHigh AND
-     *      probTargetNextBar <= targetHazardLow
-     *    then add ±neighborSpan around the seed.
-     *  - If empty and useFullGridIfEmpty is true, fall back to [0..T-1].
+     * Heuristic Rationale:
+     * This heuristic seeks an ideal time to check for "failure-to-perform". It looks for a
+     * bar 't' where a significant portion of trades have stalled (high `fracNonPositive`)
+     * but the immediate chance of hitting the profit target has diminished (low `probTargetNextBar`).
+     * The first bar satisfying these conditions is used as a seed for the grid search.
+     * ...
      */
     std::vector<int> proposeFailureToPerformGrid(const std::vector<BarAgeAggregate>& aggs) const;
 
     /**
      * @brief Build the breakeven grid (candidate N values) from bar-age aggregates.
      *
-     * Heuristic:
-     *  - Choose the earliest t where:
-     *      medianMfeRSoFar >= alphaMfeR
-     *    then add ±neighborSpan around the seed.
-     *  - If empty and useFullGridIfEmpty is true, fall back to {0,1,2}∩[0..T-1].
+     * Heuristic Rationale:
+     * This heuristic seeks to activate a breakeven stop only after a trade has shown
+     * meaningful progress. It identifies the earliest bar 't' where the median trade
+     * has achieved a significant favorable move (`medianMfeRSoFar >= alphaMfeR`).
+     * Arming the stop around this point aims to protect gains without being premature.
+     * ...
      */
     std::vector<int> proposeBreakevenGrid(const std::vector<BarAgeAggregate>& aggs) const;
 
