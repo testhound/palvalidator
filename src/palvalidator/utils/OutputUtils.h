@@ -118,7 +118,16 @@ std::string createDetailedRejectedPatternsFileName(const std::string& securitySy
  * @return Formatted filename with timestamp for permutation test survivors
  */
 std::string createPermutationTestSurvivorsFileName(const std::string& securitySymbol,
-                                                 ValidationMethod method);
+                                                  ValidationMethod method);
+
+/**
+ * @brief Create a unified meta-strategy performance filename for the given security and method
+ * @param securitySymbol Symbol of the security being validated
+ * @param method Validation method being used
+ * @return Formatted filename with timestamp for unified meta-strategy performance report
+ */
+std::string createUnifiedMetaStrategyPerformanceFileName(const std::string& securitySymbol,
+                                                        ValidationMethod method);
 
 /**
  * @brief Write Monte Carlo permutation test survivors to file using LogPalPattern

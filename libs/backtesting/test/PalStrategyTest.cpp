@@ -169,6 +169,122 @@ createLongPattern3()
                                                   stop);
 }
 
+// A short pattern designed to trigger while a long position is open
+// to test state-dependent entry rejection.
+std::shared_ptr<PriceActionLabPattern>
+createShortPattern_Inside_Long_Window()
+{
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("20.00"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("80.00"));
+  auto desc = std::make_shared<PatternDescription>("SHORT_REJECT.txt", 1, 19851120,
+                                                   percentLong, percentShort, 2, 1);
+
+  // Use the exact same pattern as the long pattern but with different bars
+  // This ensures it won't trigger until much later in the data
+  auto open7 = std::make_shared<PriceBarOpen>(7);
+  auto close7 = std::make_shared<PriceBarClose>(7);
+  auto gt1 = std::make_shared<GreaterThanExpr>(open7, close7);
+
+  auto close8 = std::make_shared<PriceBarClose>(8);
+  auto gt2 = std::make_shared<GreaterThanExpr>(close7, close8);
+
+  auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+
+  auto open8 = std::make_shared<PriceBarOpen>(8);
+  auto gt3 = std::make_shared<GreaterThanExpr>(close8, open8);
+
+  auto close10 = std::make_shared<PriceBarClose>(10);
+  auto gt4 = std::make_shared<GreaterThanExpr>(open8, close10);
+
+  auto and2 = std::make_shared<AndExpr>(gt3, gt4);
+
+  auto open10 = std::make_shared<PriceBarOpen>(10);
+  auto gt5 = std::make_shared<GreaterThanExpr>(close10, open10);
+
+  auto and3 = std::make_shared<AndExpr>(and2, gt5);
+  auto shortPattern = std::make_shared<AndExpr>(and1, and3);
+
+  auto entry = createShortOnOpen();
+  auto target = createShortProfitTarget("50.00");  // Very wide target to avoid exit
+  auto stop = createShortStopLoss("50.00");        // Very wide stop to avoid exit
+
+  return std::make_shared<PriceActionLabPattern>(desc, shortPattern,
+                                                 entry,
+                                                 target,
+                                                 stop);
+}
+
+// Create a long pattern with very wide profit target and stop loss to prevent early exits
+std::shared_ptr<PriceActionLabPattern>
+createLongPattern1_WideTargets()
+{
+  // Create description using shared_ptr
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("90.00"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+  auto desc = std::make_shared<PatternDescription>("C2_122AR.txt", 39, 20131217,
+                                                   percentLong, percentShort, 21, 2);
+
+  auto open5 = std::make_shared<PriceBarOpen>(5);
+  auto close5 = std::make_shared<PriceBarClose>(5);
+  auto gt1 = std::make_shared<GreaterThanExpr>(open5, close5);
+
+  auto close6 = std::make_shared<PriceBarClose>(6);
+  auto gt2 = std::make_shared<GreaterThanExpr>(close5, close6);
+
+  auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+
+  auto open6 = std::make_shared<PriceBarOpen>(6);
+  auto gt3 = std::make_shared<GreaterThanExpr>(close6, open6);
+
+  auto close8 = std::make_shared<PriceBarClose>(8);
+  auto gt4 = std::make_shared<GreaterThanExpr>(open6, close8);
+
+  auto and2 = std::make_shared<AndExpr>(gt3, gt4);
+
+  auto open8 = std::make_shared<PriceBarOpen>(8);
+  auto gt5 = std::make_shared<GreaterThanExpr>(close8, open8);
+
+  auto and3 = std::make_shared<AndExpr>(and2, gt5);
+  auto longPattern1 = std::make_shared<AndExpr>(and1, and3);
+  auto entry = createLongOnOpen();
+  auto target = createLongProfitTarget("50.00");  // Very wide target
+  auto stop = createLongStopLoss("50.00");        // Very wide stop
+
+  return std::make_shared<PriceActionLabPattern>(desc, longPattern1,
+                                                 entry,
+                                                 target,
+                                                 stop);
+}
+
+// Create a long pattern 3 with very wide profit target and stop loss to prevent early exits
+std::shared_ptr<PriceActionLabPattern>
+createLongPattern3_WideTargets()
+{
+  // Create description using shared_ptr
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("53.33"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("46.67"));
+  auto desc = std::make_shared<PatternDescription>("C2_122AR.txt", 106, 20110106,
+                                                   percentLong, percentShort, 45, 3);
+
+  auto low0 = std::make_shared<PriceBarLow>(0);
+  auto low1 = std::make_shared<PriceBarLow>(1);
+  auto close1 = std::make_shared<PriceBarClose>(1);
+  auto close0 = std::make_shared<PriceBarClose>(0);
+
+  auto gt1 = std::make_shared<GreaterThanExpr>(close0, close1);
+  auto gt2 = std::make_shared<GreaterThanExpr>(low0, low1);
+
+  auto longPattern1 = std::make_shared<AndExpr>(gt1, gt2);
+
+  auto entry = createLongOnOpen();
+  auto target = createLongProfitTarget("50.00");  // Very wide target
+  auto stop = createLongStopLoss("50.00");        // Very wide stop
+  
+  return std::make_shared<PriceActionLabPattern>(desc, longPattern1,
+                                                 entry,
+                                                 target,
+                                                 stop);
+}
 
 void printPositionHistory(const ClosedPositionHistory<DecimalType>& history);
 
@@ -795,6 +911,72 @@ SECTION ("PalStrategy testing for all trades - MetaStrategy3")
 
     REQUIRE (aBroker3.getTotalTrades() > threePatternTotalTrades);
   }
+
+  SECTION ("PalMetaStrategy verifies 'First Match Wins' logic on single bar")
+{
+    std::string metaStrategyName("PAL Meta Strategy First Match");
+    StrategyOptions noMaxHold(false, 0, 0);  // No max holding period
+    PalMetaStrategy<DecimalType> metaStrategy(metaStrategyName, aPortfolio, noMaxHold);
+
+    // Add two long patterns with wide targets/stops to prevent early exits
+    metaStrategy.addPricePattern(createLongPattern1_WideTargets());
+    metaStrategy.addPricePattern(createLongPattern3_WideTargets());
+
+    // Loop until just after the first trigger's fill date
+    TimeSeriesDate backTestStartDate(TimeSeriesDate (1985, Mar, 19));
+    TimeSeriesDate firstTriggerFillDate(TimeSeriesDate (1985, Nov, 18));
+
+    backTestLoop(corn, metaStrategy, backTestStartDate, firstTriggerFillDate);
+
+    auto aBroker = metaStrategy.getStrategyBroker();
+
+    // After the trigger date, we should be in a long position
+    REQUIRE (metaStrategy.isLongPosition(futuresSymbol));
+
+    // CRITICAL: We must only have ONE total trade. This proves the second pattern
+    // was ignored because the loop broke after the first match.
+    REQUIRE (aBroker.getTotalTrades() == 1);
+    REQUIRE (aBroker.getOpenTrades() == 1);
+}
+
+SECTION ("PalMetaStrategy verifies state-dependent entry rejection")
+{
+  std::string metaStrategyName("PAL Meta Strategy Rejection Test");
+  StrategyOptions noMaxHold(false, 0, 0);  // No max holding period
+  PalMetaStrategy<DecimalType> metaStrategy(metaStrategyName, aPortfolio, noMaxHold);
+
+  // This strategy contains a long pattern and a short pattern designed to
+  // trigger while the long position is active.
+  metaStrategy.addPricePattern(createLongPattern1_WideTargets());
+  metaStrategy.addPricePattern(createShortPattern_Inside_Long_Window());
+
+  // Backtest up to a date after both signals would have occurred.
+  // Long signal: 1985-11-15, filled 1985-11-18.
+  // Short signal: 1985-11-20, would fill 1985-11-21.
+  TimeSeriesDate backTestStartDate(TimeSeriesDate (1985, Mar, 19));
+  TimeSeriesDate testEndDate(TimeSeriesDate (1985, Nov, 22));
+
+  backTestLoop(corn, metaStrategy, backTestStartDate, testEndDate);
+
+  auto aBroker = metaStrategy.getStrategyBroker();
+
+  // Debug: Check what trades we actually have
+  std::cout << "Total trades: " << aBroker.getTotalTrades() << std::endl;
+  std::cout << "Open trades: " << aBroker.getOpenTrades() << std::endl;
+  std::cout << "Closed trades: " << aBroker.getClosedTrades() << std::endl;
+  std::cout << "Is long position: " << metaStrategy.isLongPosition(futuresSymbol) << std::endl;
+  std::cout << "Is short position: " << metaStrategy.isShortPosition(futuresSymbol) << std::endl;
+  std::cout << "Is flat position: " << metaStrategy.isFlatPosition(futuresSymbol) << std::endl;
+
+  // On the test end date, the strategy should still be long from the
+  // first trade, and the short signal should have been rejected.
+  REQUIRE(metaStrategy.isLongPosition(futuresSymbol));
+  REQUIRE_FALSE(metaStrategy.isShortPosition(futuresSymbol));
+
+  // We should only have the initial long trade registered.
+  REQUIRE(aBroker.getTotalTrades() == 1);
+  REQUIRE(aBroker.getOpenTrades() == 1);
+}
 
 }
 

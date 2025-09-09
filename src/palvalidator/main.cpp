@@ -166,6 +166,7 @@ filterSurvivingStrategiesByPerformance(
 }
 
 // Legacy function - now delegated to MetaStrategyAnalyzer
+// Modified to run both approaches for comparison
 template<typename Num>
 void filterMetaStrategy(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -173,13 +174,74 @@ void filterMetaStrategy(
     const DateRange& backtestingDates,
     TimeFrame::Duration theTimeFrame,
     std::ostream& os,
-    unsigned int numResamples)
+    unsigned int numResamples,
+    ValidationMethod validationMethod = ValidationMethod::Unadjusted)
 {
     const RiskParameters& riskParams = getRiskParameters();
     const Num confidenceLevel = Num("0.95");
     
-    MetaStrategyAnalyzer analyzer(riskParams, confidenceLevel, numResamples);
-    analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os);
+    os << "\n" << std::string(80, '=') << std::endl;
+    os << "COMPARISON: Running both MetaStrategy approaches" << std::endl;
+    os << std::string(80, '=') << std::endl;
+    
+    // Run traditional equal-weight aggregation approach
+    os << "\n" << std::string(60, '-') << std::endl;
+    os << "APPROACH 1: Traditional Equal-Weight Aggregation" << std::endl;
+    os << std::string(60, '-') << std::endl;
+    
+    MetaStrategyAnalyzer analyzer1(riskParams, confidenceLevel, numResamples, false);
+    analyzer1.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os, validationMethod);
+    
+    // Store results from first approach
+    bool approach1Passed = analyzer1.didMetaStrategyPass();
+    Num approach1LowerBound = analyzer1.getAnnualizedLowerBound();
+    Num approach1RequiredReturn = analyzer1.getRequiredReturn();
+    
+    // Run unified PalMetaStrategy approach
+    os << "\n" << std::string(60, '-') << std::endl;
+    os << "APPROACH 2: Unified PalMetaStrategy" << std::endl;
+    os << std::string(60, '-') << std::endl;
+    
+    MetaStrategyAnalyzer analyzer2(riskParams, confidenceLevel, numResamples, true);
+    analyzer2.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os, validationMethod);
+    
+    // Store results from second approach
+    bool approach2Passed = analyzer2.didMetaStrategyPass();
+    Num approach2LowerBound = analyzer2.getAnnualizedLowerBound();
+    Num approach2RequiredReturn = analyzer2.getRequiredReturn();
+    
+    // Display comparison summary
+    os << "\n" << std::string(80, '=') << std::endl;
+    os << "COMPARISON SUMMARY" << std::endl;
+    os << std::string(80, '=') << std::endl;
+    
+    os << std::fixed << std::setprecision(2);
+    os << "Approach 1 (Equal-Weight Aggregation):" << std::endl;
+    os << "  Annualized Lower Bound: " << (approach1LowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+    os << "  Required Return:        " << (approach1RequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+    os << "  Result:                 " << (approach1Passed ? "✓ PASS" : "✗ FAIL") << std::endl;
+    
+    os << std::endl;
+    os << "Approach 2 (Unified PalMetaStrategy):" << std::endl;
+    os << "  Annualized Lower Bound: " << (approach2LowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+    os << "  Required Return:        " << (approach2RequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+    os << "  Result:                 " << (approach2Passed ? "✓ PASS" : "✗ FAIL") << std::endl;
+    
+    os << std::endl;
+    os << "Differences:" << std::endl;
+    Num lowerBoundDiff = approach2LowerBound - approach1LowerBound;
+    Num requiredReturnDiff = approach2RequiredReturn - approach1RequiredReturn;
+    os << "  Lower Bound Difference: " << std::showpos << (lowerBoundDiff * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::noshowpos << std::endl;
+    os << "  Required Return Difference: " << std::showpos << (requiredReturnDiff * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::noshowpos << std::endl;
+    
+    if (approach1Passed != approach2Passed) {
+        os << "  ⚠️  WARNING: Different conclusions! Approach 1 " << (approach1Passed ? "passed" : "failed")
+           << " while Approach 2 " << (approach2Passed ? "passed" : "failed") << std::endl;
+    } else {
+        os << "  ✓ Both approaches reached the same conclusion" << std::endl;
+    }
+    
+    os << std::string(80, '=') << std::endl;
 }
 
 
@@ -341,7 +403,8 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
             config->getOosDateRange(),
             timeFrame,
             bootlog,
-            numBootstrapSamples);
+            numBootstrapSamples,
+            validationMethod);
     }
     
     bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
@@ -700,13 +763,19 @@ int main(int argc, char **argv)
         numBootstrapSamples = 10000;
     }
     
-    // Only ask for validation method and policy if permutation testing will be performed
-    ValidationMethod validationMethod = ValidationMethod::Masters;
+    // Set validation method based on pipeline mode
+    ValidationMethod validationMethod;
     bool partitionByFamily = false;
     std::string selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Default for bootstrap-only
     
-    if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
-        pipelineMode == PipelineMode::PermutationOnly) {
+    if (pipelineMode == PipelineMode::BootstrapOnly) {
+        // Bootstrap-only mode: no multiple testing correction applied
+        validationMethod = ValidationMethod::Unadjusted;
+        std::cout << "\nBootstrap-only mode: Using Unadjusted validation method (no multiple testing correction)" << std::endl;
+    } else if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
+               pipelineMode == PipelineMode::PermutationOnly) {
+        // Permutation testing modes: ask user for validation method
+        validationMethod = ValidationMethod::Masters; // Default for permutation modes
         
         // Ask for Validation Method
         std::cout << "\nChoose validation method:" << std::endl;
@@ -795,7 +864,7 @@ int main(int argc, char **argv)
     } else {
         // Bootstrap-only mode: set defaults for unused parameters
         params.falseDiscoveryRate = Num(0.10);
-        std::cout << "\nBootstrap-only mode: Using default validation method (Masters) and policy (GatedPerformanceScaledPalPolicy)" << std::endl;
+        // No policy needed for bootstrap-only mode
     }
     
     // Get risk parameters from user and store globally
@@ -844,6 +913,10 @@ int main(int argc, char **argv)
     std::cout << "Risk Premium: " << (g_riskParameters.riskPremium * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
     std::cout << "=============================" << std::endl;
 
+    // Record start time for validation pipeline
+    auto validationStartTime = std::chrono::steady_clock::now();
+    std::cout << "\nStarting validation pipeline..." << std::endl;
+
     // -- Top-level dispatch based on the VALIDATION METHOD --
     try {
         switch (validationMethod)
@@ -865,6 +938,22 @@ int main(int argc, char **argv)
         std::cerr << "Validation failed: " << e.what() << std::endl;
         return 1;
     }
+    
+    // Record end time and calculate elapsed time
+    auto validationEndTime = std::chrono::steady_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(validationEndTime - validationStartTime);
+    
+    // Convert to hours, minutes, seconds
+    auto hours = std::chrono::duration_cast<std::chrono::hours>(elapsedTime);
+    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(elapsedTime - hours);
+    auto seconds = elapsedTime - hours - minutes;
+    
+    // Display elapsed time in HH:MM:SS format
+    std::cout << "\nValidation pipeline completed." << std::endl;
+    std::cout << "Total elapsed time: "
+              << std::setfill('0') << std::setw(2) << hours.count() << ":"
+              << std::setfill('0') << std::setw(2) << minutes.count() << ":"
+              << std::setfill('0') << std::setw(2) << seconds.count() << std::endl;
     
     return 0;
 }

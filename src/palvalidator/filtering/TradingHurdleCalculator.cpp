@@ -1,6 +1,7 @@
 #include "TradingHurdleCalculator.h"
 #include "DecimalConstants.h"
 #include <algorithm>
+#include <iostream>
 
 namespace palvalidator
 {
