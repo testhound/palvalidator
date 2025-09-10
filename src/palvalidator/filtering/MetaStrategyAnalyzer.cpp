@@ -10,6 +10,7 @@
 #include "utils/TimeUtils.h"
 #include "reporting/PerformanceReporter.h"
 #include "utils/OutputUtils.h"
+#include "ExitPolicyJointAutoTuner.h"
 #include <fstream>
 
 namespace palvalidator
@@ -248,6 +249,47 @@ namespace palvalidator
 	  if (performanceFile.is_open())
 	    {
 	      palvalidator::reporting::PerformanceReporter::writeBacktestReport(performanceFile, bt);
+	      
+	      // Perform exit policy joint auto-tuning analysis
+	      const auto& closedPositionHistory = bt->getClosedPositionHistory();
+	      if (closedPositionHistory.getNumPositions() > 0)
+	 {
+	   try
+	     {
+	       // Create ExitPolicyJointAutoTuner with reasonable defaults
+	       // Using 20 bars as max analysis period (can be made configurable later)
+	       mkc_timeseries::ExitPolicyJointAutoTuner<Num> exitTuner(closedPositionHistory, 8);
+	       
+	       // Run the exit policy tuning
+	       auto tuningReport = exitTuner.tuneExitPolicy();
+	       
+	       // Write exit bar analysis results to the performance file
+	       performanceFile << std::endl;
+	       performanceFile << "=== Exit Bar Analysis ===" << std::endl;
+	       performanceFile << "Failure to perform exit bar: " << tuningReport.getFailureToPerformBars() << std::endl;
+	       performanceFile << "Breakeven bar: " << tuningReport.getBreakevenActivationBars() << std::endl;
+	       performanceFile << "===========================" << std::endl;
+	       
+	       outputStream << "      Exit bar analysis completed and written to performance file." << std::endl;
+	     }
+	   catch (const std::exception& e)
+	     {
+	       outputStream << "      Warning: Exit bar analysis failed: " << e.what() << std::endl;
+	       performanceFile << std::endl;
+	       performanceFile << "=== Exit Bar Analysis ===" << std::endl;
+	       performanceFile << "Exit bar analysis failed: " << e.what() << std::endl;
+	       performanceFile << "===========================" << std::endl;
+	     }
+	 }
+	      else
+	 {
+	   outputStream << "      Skipping exit bar analysis: No closed positions available." << std::endl;
+	   performanceFile << std::endl;
+	   performanceFile << "=== Exit Bar Analysis ===" << std::endl;
+	   performanceFile << "Exit bar analysis skipped: No closed positions available." << std::endl;
+	   performanceFile << "===========================" << std::endl;
+	 }
+	      
 	      performanceFile.close();
 	      outputStream << "\n      Unified PalMetaStrategy detailed performance written to: " << performanceFileName << std::endl;
 	    }
