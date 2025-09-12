@@ -7,6 +7,7 @@
 #include "PalParseDriver.h"
 #include "PalAst.h"
 #include "PalCodeGenVisitor.h"
+#include "WealthLab8CodeGenerator.h"
 
 using namespace std;
 using namespace mkc_palast;
@@ -142,7 +143,7 @@ void displayUsage(const string& programName) {
     cout << "  OUTPUT_FILE  Path for the generated output file" << endl;
     cout << endl;
     cout << "Options:" << endl;
-    cout << "  -p, --platform PLATFORM  Trading platform (default: TradeStation)" << endl;
+    cout << "  -p, --platform PLATFORM  Trading platform: TradeStation, WealthLab8, WL8 (default: WealthLab8)" << endl;
     cout << "  -h, --help               Show this help message" << endl;
     cout << endl;
     cout << "If INPUT_FILE and OUTPUT_FILE are not provided, the program will" << endl;
@@ -158,7 +159,7 @@ int main(int argc, char* argv[]) {
     
     string irFilePathStr;
     string outputFileName;
-    string platform = "TradeStation";
+    string platform = "WealthLab8";
     bool showHelp = false;
     
     // Parse command line arguments
@@ -217,13 +218,28 @@ int main(int argc, char* argv[]) {
         
         // Get trading platform (from command line, user input, or default)
         if (platform.empty()) {
-            platform = getUserInput("Select trading platform", "TradeStation");
+            platform = getUserInput("Select trading platform (TradeStation, WealthLab8, WL8)", "WealthLab8");
         }
         
-        // Currently only TradeStation is supported
-        if (platform != "TradeStation") {
-            cerr << "Error: Currently only TradeStation platform is supported" << endl;
+        // Normalize platform names
+        if (platform == "WL8") {
+            platform = "WealthLab8";
+        }
+        
+        // Validate supported platforms
+        if (platform != "TradeStation" && platform != "WealthLab8") {
+            cerr << "Error: Supported platforms are: TradeStation, WealthLab8, WL8" << endl;
             return INVALID_INPUT_ERROR;
+        }
+        
+        // Get class name for WealthLab8
+        string className;
+        if (platform == "WealthLab8") {
+            className = getUserInput("Enter WealthLab8 strategy class name", "GeneratedStrategy");
+            if (className.empty()) {
+                cerr << "Error: Class name cannot be empty for WealthLab8" << endl;
+                return INVALID_INPUT_ERROR;
+            }
         }
         
         // Get output file name (from command line or user input)
@@ -261,16 +277,22 @@ int main(int argc, char* argv[]) {
             return PARSING_ERROR;
         }
         
-         cout << "Generating " << platform << " EasyLanguage code..." << endl;
+        cout << "Generating " << platform << " code..." << endl;
         
-        // Create the code generator
+        // Create the appropriate code generator based on platform
         try {
-             EasyLanguageRADCodeGenVisitor codeGen(system, outputFileName);
-             
-            // Generate the code
-            codeGen.generateCode();
+            if (platform == "TradeStation") {
+                EasyLanguageRADCodeGenVisitor codeGen(system, outputFileName);
+                codeGen.generateCode();
+            } else if (platform == "WealthLab8") {
+                WealthLab8CodeGenVisitor codeGen(system, outputFileName, className);
+                codeGen.generateCode();
+            }
             
-         } catch (const exception& e) {
+            cout << "Code generation completed successfully!" << endl;
+            cout << "Output file: " << outputFileName << endl;
+            
+        } catch (const exception& e) {
             cerr << "Error: Code generation failed: " << e.what() << endl;
             return CODE_GENERATION_ERROR;
         }
