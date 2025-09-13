@@ -364,6 +364,22 @@ namespace mkc_timeseries
       auto it = instrPos.getInstrumentPosition(numUnits);
       auto pos = *it;
 
+      // NEW: Check for max holding period exit rule first (takes priority)
+      unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
+      if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
+      {
+        if (this->isLongPosition (aSecurity->getSymbol()))
+        {
+          this->ExitLongAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
+        }
+        else if (this->isShortPosition (aSecurity->getSymbol()))
+        {
+          this->ExitShortAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
+        }
+        return; // Don't place other exit orders
+      }
+
+      // EXISTING: Profit target and stop loss logic
       Decimal target = pos->getProfitTarget();
       PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
       Decimal stop = pos->getStopLoss();

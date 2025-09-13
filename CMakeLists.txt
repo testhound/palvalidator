@@ -91,6 +91,7 @@ add_subdirectory(src/palsetup)
 add_subdirectory(src/palcodegen)
 add_subdirectory(src/pattern_universe_generator)
 add_subdirectory(src/palanalyzer)
+add_subdirectory(src/paltradehistory)
 
 
 # Note: PalValidator executable is now created in src/palvalidator/CMakeLists.txt
@@ -113,4 +114,5 @@ install(TARGETS palsetup DESTINATION bin)
 install(TARGETS palcodegen DESTINATION bin)
 install(TARGETS pattern_generator DESTINATION bin)
 install(TARGETS palanalyzer DESTINATION bin)
+install(TARGETS paltradehistory DESTINATION bin)
 install(FILES "${CMAKE_SOURCE_DIR}/policies.json" DESTINATION bin)
