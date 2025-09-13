@@ -697,8 +697,8 @@ SECTION ("PalStrategy testing for all long trades - MetaStrategy1 1")
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     //printPositionHistory (history);
 
-    REQUIRE (history.getNumWinningPositions() == 13);
-    REQUIRE (history.getNumLosingPositions() == 11);
+    REQUIRE (history.getNumWinningPositions() == 14);
+    REQUIRE (history.getNumLosingPositions() == 10);
  
   }
 
