@@ -9,6 +9,7 @@
 
 #include <exception>
 #include <algorithm>  // std::max
+#include <unordered_map>  // For tracking individual unit orders
 #include "Portfolio.h"
 #include "TradingOrderManager.h"
 #include "InstrumentPositionManager.h"
@@ -744,6 +745,463 @@ namespace mkc_timeseries
       this->ExitShortAllUnitsAtStop(tradingSymbol, orderDateTime, orderPrice); // Calls ptime version
     }
 
+    // -------------------------
+    // Individual unit exit methods for pyramiding support
+    // -------------------------
+
+    /**
+     * @brief Exit a specific long position unit at market-open using ptime.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no long position exists, unit number is invalid, or position data is unavailable.
+     */
+    void ExitLongUnitOnOpen(const std::string& tradingSymbol,
+                            const ptime& orderDateTime,
+                            uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitLongUnitOnOpen - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	    }
+
+	  // Get specific unit's volume
+	  auto unitIt = instrPos.getInstrumentPosition(unitNumber);
+	  TradingVolume unitVolume = (*unitIt)->getTradingUnits();
+	  uint32_t positionId = (*unitIt)->getPositionID();
+
+	  // Create order for this specific unit
+	  auto order = std::make_shared<MarketOnOpenSellOrder<Decimal>>(tradingSymbol,
+									unitVolume,
+									orderDateTime);
+	  // Track this order as an individual unit exit
+	  mUnitExitOrders[order->getOrderID()] = positionId;
+	  mOrderManager.addTradingOrder(order);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitLongUnitOnOpen - no long position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific short position unit at market-open using ptime.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no short position exists, unit number is invalid, or position data is unavailable.
+     */
+    void ExitShortUnitOnOpen(const std::string& tradingSymbol,
+                             const ptime& orderDateTime,
+                             uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isShortPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitShortUnitOnOpen - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	    }
+
+	  // Get specific unit's volume
+	  auto unitIt = instrPos.getInstrumentPosition(unitNumber);
+	  TradingVolume unitVolume = (*unitIt)->getTradingUnits();
+	  uint32_t positionId = (*unitIt)->getPositionID();
+
+	  // Create order for this specific unit
+	  auto order = std::make_shared<MarketOnOpenCoverOrder<Decimal>>(tradingSymbol,
+									 unitVolume,
+									 orderDateTime);
+        // Track this order as an individual unit exit
+        mUnitExitOrders[order->getOrderID()] = positionId;
+        mOrderManager.addTradingOrder(order);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitShortUnitOnOpen - no short position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific long position unit at a limit price using ptime.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param limitPrice The limit price at which to sell.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no long position exists, unit number is invalid, or position data is unavailable.
+     */
+    void ExitLongUnitAtLimit(const std::string& tradingSymbol,
+                             const ptime& orderDateTime,
+                             const Decimal& limitPrice,
+                             uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitLongUnitAtLimit - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	    }
+
+	  // Get specific unit's volume
+	  auto unitIt = instrPos.getInstrumentPosition(unitNumber);
+	  TradingVolume unitVolume = (*unitIt)->getTradingUnits();
+	  uint32_t positionId = (*unitIt)->getPositionID();
+
+	  // Create order for this specific unit
+	  auto order = std::make_shared<SellAtLimitOrder<Decimal>>(tradingSymbol,
+								   unitVolume,
+								   orderDateTime,
+							   limitPrice);
+	  // Track this order as an individual unit exit
+	  mUnitExitOrders[order->getOrderID()] = positionId;
+	  mOrderManager.addTradingOrder(order);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitLongUnitAtLimit - no long position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific long position unit at a limit price calculated as a percentage above the unit's entry price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param limitBasePrice The base price for calculating the limit price (typically the unit's entry price).
+     * @param percentNum The percentage above the base price to set the limit.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no long position exists, unit number is invalid, or tick data is unavailable.
+     */
+    void ExitLongUnitAtLimit(const std::string& tradingSymbol,
+                             const ptime& orderDateTime,
+                             const Decimal& limitBasePrice,
+                             const PercentNumber<Decimal>& percentNum,
+                             uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+        // Validate unit number
+        if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	  {
+	    throw StrategyBrokerException("ExitLongUnitAtLimit - Invalid unit number " +
+					  std::to_string(unitNumber) + " for " + tradingSymbol +
+					  " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	  }
+
+        // Calculate limit price based on the provided base price (should be unit's entry price)
+        LongProfitTarget<Decimal> profitTarget(limitBasePrice, percentNum);
+        const Decimal target = profitTarget.getProfitTarget();
+        const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, limitBasePrice, target);
+
+        // Call the fixed-price version
+        this->ExitLongUnitAtLimit(tradingSymbol, orderDateTime, orderPrice, unitNumber);
+      }
+      else
+	{
+	  throw StrategyBrokerException("ExitLongUnitAtLimit - no long position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific short position unit at a limit price using ptime.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param limitPrice The limit price at which to cover.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no short position exists, unit number is invalid, or position data is unavailable.
+     */
+    void ExitShortUnitAtLimit(const std::string& tradingSymbol,
+                              const ptime& orderDateTime,
+                              const Decimal& limitPrice,
+                              uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isShortPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitShortUnitAtLimit - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	    }
+
+	  // Get specific unit's volume
+	  auto unitIt = instrPos.getInstrumentPosition(unitNumber);
+	  TradingVolume unitVolume = (*unitIt)->getTradingUnits();
+	  uint32_t positionId = (*unitIt)->getPositionID();
+
+	  // Create order for this specific unit
+	  auto order = std::make_shared<CoverAtLimitOrder<Decimal>>(tradingSymbol,
+								    unitVolume,
+								    orderDateTime,
+								    limitPrice);
+	  // Track this order as an individual unit exit
+	  mUnitExitOrders[order->getOrderID()] = positionId;
+	  mOrderManager.addTradingOrder(order);
+      }
+      else
+	{
+	  throw StrategyBrokerException("ExitShortUnitAtLimit - no short position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific short position unit at a limit price calculated as a percentage below the unit's entry price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param limitBasePrice The base price for calculating the limit price (typically the unit's entry price).
+     * @param percentNum The percentage below the base price to set the limit.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no short position exists, unit number is invalid, or tick data is unavailable.
+     */
+    void ExitShortUnitAtLimit(const std::string& tradingSymbol,
+                              const ptime& orderDateTime,
+                              const Decimal& limitBasePrice,
+                              const PercentNumber<Decimal>& percentNum,
+                              uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isShortPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+        // Validate unit number
+        if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	  {
+	    throw StrategyBrokerException("ExitShortUnitAtLimit - Invalid unit number " +
+					  std::to_string(unitNumber) + " for " + tradingSymbol +
+					  " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	  }
+
+        // Calculate limit price based on the provided base price (should be unit's entry price)
+        ShortProfitTarget<Decimal> profitTarget(limitBasePrice, percentNum);
+        const Decimal target = profitTarget.getProfitTarget();
+        const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, limitBasePrice, target);
+
+        // Call the fixed-price version
+        this->ExitShortUnitAtLimit(tradingSymbol, orderDateTime, orderPrice, unitNumber);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitShortUnitAtLimit - no short position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific long position unit at a stop price using ptime.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param stopPrice The stop price at which to sell.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no long position exists, unit number is invalid, or position data is unavailable.
+     */
+    void ExitLongUnitAtStop(const std::string& tradingSymbol,
+                            const ptime& orderDateTime,
+                            const Decimal& stopPrice,
+                            uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitLongUnitAtStop - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	    }
+
+	  // Get specific unit's volume
+	  auto unitIt = instrPos.getInstrumentPosition(unitNumber);
+	  TradingVolume unitVolume = (*unitIt)->getTradingUnits();
+	  uint32_t positionId = (*unitIt)->getPositionID();
+
+	  // Create order for this specific unit
+	  auto order = std::make_shared<SellAtStopOrder<Decimal>>(tradingSymbol,
+								  unitVolume,
+								  orderDateTime,
+								  stopPrice);
+	  // Track this order as an individual unit exit
+	  mUnitExitOrders[order->getOrderID()] = positionId;
+	  mOrderManager.addTradingOrder(order);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitLongUnitAtStop - no long position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific long position unit at a stop price calculated as a percentage below the unit's entry price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param stopBasePrice The base price for calculating the stop price (typically the unit's entry price).
+     * @param percentNum The percentage below the base price to set the stop.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no long position exists, unit number is invalid, or tick data is unavailable.
+     */
+    void ExitLongUnitAtStop(const std::string& tradingSymbol,
+                            const ptime& orderDateTime,
+                            const Decimal& stopBasePrice,
+                            const PercentNumber<Decimal>& percentNum,
+                            uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+ 
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitLongUnitAtStop - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	  }
+
+	  // Calculate stop price based on the provided base price (should be unit's entry price)
+	  LongStopLoss<Decimal> stopLoss(stopBasePrice, percentNum);
+	  const Decimal stopPx = stopLoss.getStopLoss();
+	  const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, stopBasePrice, stopPx);
+
+        // Call the fixed-price version
+        this->ExitLongUnitAtStop(tradingSymbol, orderDateTime, orderPrice, unitNumber);
+      }
+      else
+	{
+	  throw StrategyBrokerException("ExitLongUnitAtStop - no long position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific short position unit at a stop price using ptime.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param stopPrice The stop price at which to cover.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no short position exists, unit number is invalid, or position data is unavailable.
+     */
+    void ExitShortUnitAtStop(const std::string& tradingSymbol,
+                             const ptime& orderDateTime,
+                             const Decimal& stopPrice,
+                             uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isShortPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0) {
+	    throw StrategyBrokerException("ExitShortUnitAtStop - Invalid unit number " +
+					  std::to_string(unitNumber) + " for " + tradingSymbol +
+					  " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	  }
+
+	  // Get specific unit's volume
+	  auto unitIt = instrPos.getInstrumentPosition(unitNumber);
+	  TradingVolume unitVolume = (*unitIt)->getTradingUnits();
+	  uint32_t positionId = (*unitIt)->getPositionID();
+        
+	  // Create order for this specific unit
+	  auto order = std::make_shared<CoverAtStopOrder<Decimal>>(tradingSymbol,
+								   unitVolume,
+								   orderDateTime,
+								   stopPrice);
+	  // Track this order as an individual unit exit
+	  mUnitExitOrders[order->getOrderID()] = positionId;
+	  mOrderManager.addTradingOrder(order);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitShortUnitAtStop - no short position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
+    }
+
+    /**
+     * @brief Exit a specific short position unit at a stop price calculated as a percentage above the unit's entry price.
+     * @param tradingSymbol The symbol of the instrument.
+     * @param orderDateTime The exact date and time of the exit order.
+     * @param stopBasePrice The base price for calculating the stop price (typically the unit's entry price).
+     * @param percentNum The percentage above the base price to set the stop.
+     * @param unitNumber The 1-based index of the unit to exit.
+     * @throws StrategyBrokerException if no short position exists, unit number is invalid, or tick data is unavailable.
+     */
+    void ExitShortUnitAtStop(const std::string& tradingSymbol,
+                             const ptime& orderDateTime,
+                             const Decimal& stopBasePrice,
+                             const PercentNumber<Decimal>& percentNum,
+                             uint32_t unitNumber)
+    {
+      if (mInstrumentPositionManager.isShortPosition(tradingSymbol)) {
+        // Get the specific unit
+        const InstrumentPosition<Decimal>& instrPos =
+          mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+        
+        // Validate unit number
+        if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0) {
+          throw StrategyBrokerException("ExitShortUnitAtStop - Invalid unit number " +
+                                      std::to_string(unitNumber) + " for " + tradingSymbol +
+                                      " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+        }
+        
+        // Calculate stop price based on the provided base price (should be unit's entry price)
+        ShortStopLoss<Decimal> stopLoss(stopBasePrice, percentNum);
+        const Decimal stopPx = stopLoss.getStopLoss();
+        const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, stopBasePrice, stopPx);
+        
+        // Call the fixed-price version
+        this->ExitShortUnitAtStop(tradingSymbol, orderDateTime, orderPrice, unitNumber);
+      } else {
+        throw StrategyBrokerException("ExitShortUnitAtStop - no short position for " + tradingSymbol +
+                                    " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+      }
+    }
+
     // -----------------------
     // Order manager plumbing
     // -----------------------
@@ -1018,10 +1476,61 @@ namespace mkc_timeseries
 
 
     /**
+     * @brief Common logic to handle the execution of an exit order for a specific unit.
+     * This method finds the specific `TradingPosition` unit, marks its corresponding
+     * `StrategyTransaction` as complete, and closes only that specific unit.
+     * @tparam T The type of the executed exit order.
+     * @param order Pointer to the executed exit order.
+     * @param positionId The ID of the position unit to close.
+     * @throws StrategyBrokerException if the strategy transaction for the closing position cannot be found.
+     */
+    template <typename T>
+    void ExitUnitOrderExecutedCommon (T *order, uint32_t positionId)
+    {
+      const InstrumentPosition<Decimal>& instrumentPosition =
+        mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
+
+      uint32_t unitNumber = 0;
+      uint32_t currentUnit = 1;
+      std::shared_ptr<const TradingPosition<Decimal>> pos = nullptr;
+
+      for (auto it = instrumentPosition.beginInstrumentPosition(); it != instrumentPosition.endInstrumentPosition(); ++it, ++currentUnit) {
+          if ((*it)->getPositionID() == positionId) {
+              unitNumber = currentUnit;
+              pos = *it;
+              break;
+          }
+      }
+
+      if (pos == nullptr) {
+          throw StrategyBrokerException("ExitUnitOrderExecutedCommon - Unable to find position with ID " +
+                                      std::to_string(positionId) + " for symbol: " + order->getTradingSymbol());
+      }
+      
+      // Find and complete the strategy transaction for this specific unit
+      typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator =
+        mStrategyTrades.findStrategyTransaction (pos->getPositionID());
+      
+      if (transactionIterator != mStrategyTrades.endStrategyTransaction()) {
+        auto aTransaction = transactionIterator->second;
+        auto exitOrder = std::make_shared<T>(*order);
+        aTransaction->completeTransaction (exitOrder);
+      } else {
+        throw StrategyBrokerException("ExitUnitOrderExecutedCommon - Unable to find StrategyTransaction for position ID " +
+                                    std::to_string(positionId) + " of symbol: " + order->getTradingSymbol());
+      }
+
+      // Close only the specific unit
+      mInstrumentPositionManager.closeUnitPosition (order->getTradingSymbol(),
+                                                   order->getFillDateTime(),
+                                                   order->getFillPrice(),
+                                                   unitNumber);
+    }
+
+    /**
      * @brief Common logic to handle the execution of an exit order (e.g., sell, cover).
-     * This template method finds all `TradingPosition` units for the given symbol managed by `InstrumentPositionManager`,
-     * marks their corresponding `StrategyTransaction` in `mStrategyTrades` as complete with the provided exit order,
-     * and then instructs the `InstrumentPositionManager` to close out all positions for the symbol at the fill price and datetime.
+     * This template method checks if the order is tracked as an individual unit exit order.
+     * If so, it routes to ExitUnitOrderExecutedCommon. Otherwise, it closes all positions.
      * @tparam T The type of the executed exit order (e.g., MarketOnOpenSellOrder, CoverAtLimitOrder).
      * @param order Pointer to the executed exit order.
      * @throws StrategyBrokerException if the strategy transaction for a closing position cannot be found.
@@ -1029,29 +1538,39 @@ namespace mkc_timeseries
     template <typename T>
     void ExitOrderExecutedCommon (T *order)
     {
-      InstrumentPosition<Decimal> instrumentPosition =
-        mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
-      typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
-        instrumentPosition.beginInstrumentPosition();
-      typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
-      std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
-      std::shared_ptr<TradingPosition<Decimal>> pos;
-      auto exitOrder = std::make_shared<T>(*order);
+      // Check if this order is tracked as an individual unit exit
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        // This is an individual unit exit order
+        uint32_t positionId = it->second;
+        mUnitExitOrders.erase(it); // Remove from tracking map
+        ExitUnitOrderExecutedCommon(order, positionId);
+      } else {
+        // This is a full exit order - close all positions (original behavior)
+        InstrumentPosition<Decimal> instrumentPosition =
+          mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
+        typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
+          instrumentPosition.beginInstrumentPosition();
+        typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
+        std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
+        std::shared_ptr<TradingPosition<Decimal>> pos;
+        auto exitOrder = std::make_shared<T>(*order);
 
-      for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++) {
-        pos = *positionIterator;
-        transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
-        if (transactionIterator != mStrategyTrades.endStrategyTransaction()) {
-          aTransaction = transactionIterator->second;
-          aTransaction->completeTransaction (exitOrder);
-        } else {
-          throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
+        for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++) {
+          pos = *positionIterator;
+          transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
+          if (transactionIterator != mStrategyTrades.endStrategyTransaction()) {
+            aTransaction = transactionIterator->second;
+            aTransaction->completeTransaction (exitOrder);
+          } else {
+            throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
+          }
         }
-      }
 
-      mInstrumentPositionManager.closeAllPositions (order->getTradingSymbol(),
-                                                    order->getFillDateTime(), // Use ptime
-                                                    order->getFillPrice());
+        mInstrumentPositionManager.closeAllPositions (order->getTradingSymbol(),
+                                                      order->getFillDateTime(), // Use ptime
+                                                      order->getFillPrice());
+      }
     }
 
     // ---------------------------
@@ -1163,6 +1682,9 @@ namespace mkc_timeseries
     StrategyTransactionManager<Decimal> mStrategyTrades;
     ClosedPositionHistory<Decimal>     mClosedTradeHistory;
     std::shared_ptr<Portfolio<Decimal>> mPortfolio;
+    
+    // Map to track individual unit exit orders: OrderID -> UnitNumber
+    std::unordered_map<uint32_t, uint32_t> mUnitExitOrders;
   };
 
 } // namespace mkc_timeseries
