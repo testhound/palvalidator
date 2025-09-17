@@ -672,11 +672,321 @@ namespace mkc_timeseries
 					 stopBasePrice, percentNum);
       }
 
+      // Individual Unit Exit Methods for Pyramiding Support
+
+      /**
+       * @brief Exit a specific long unit at the open of orderDate.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       * @param unitNumber     Unit number to exit (1-based).
+       */
+      void ExitLongUnitOnOpen(const std::string& tradingSymbol,
+                              const date& orderDate,
+                              uint32_t unitNumber)
+      {
+        ExitLongUnitOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at the open of orderDateTime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitLongUnitOnOpen(const std::string& tradingSymbol,
+                              const ptime& orderDateTime,
+                              uint32_t unitNumber)
+      {
+        mBroker.ExitLongUnitOnOpen(tradingSymbol, orderDateTime, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a hard limit price.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       * @param limitPrice     Absolute price to exit at.
+       * @param unitNumber     Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtLimit(const std::string& tradingSymbol,
+                               const date& orderDate,
+                               const Decimal& limitPrice,
+                               uint32_t unitNumber)
+      {
+        ExitLongUnitAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a percent-based limit price.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDate        Date when the exit is placed.
+       * @param limitBasePrice   Base price for percent‐based exit.
+       * @param percentNum       PercentNumber to compute the limit from base.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtLimit(const std::string& tradingSymbol,
+                               const date& orderDate,
+                               const Decimal& limitBasePrice,
+                               const PercentNumber<Decimal>& percentNum,
+                               uint32_t unitNumber)
+      {
+        ExitLongUnitAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a hard limit price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param limitPrice       Absolute price to exit at.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtLimit(const std::string& tradingSymbol,
+                               const ptime& orderDateTime,
+                               const Decimal& limitPrice,
+                               uint32_t unitNumber)
+      {
+        mBroker.ExitLongUnitAtLimit(tradingSymbol, orderDateTime, limitPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a percent-based limit price using ptime.
+       * @param tradingSymbol      Ticker to exit.
+       * @param orderDateTime      DateTime when the exit is placed.
+       * @param limitBasePrice     Base price for percent‐based exit.
+       * @param percentNum         PercentNumber to compute the limit from base.
+       * @param unitNumber         Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtLimit(const std::string& tradingSymbol,
+                               const ptime& orderDateTime,
+                               const Decimal& limitBasePrice,
+                               const PercentNumber<Decimal>& percentNum,
+                               uint32_t unitNumber)
+      {
+        mBroker.ExitLongUnitAtLimit(tradingSymbol, orderDateTime, limitBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a hard stop price.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       * @param stopPrice      Absolute stop price.
+       * @param unitNumber     Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtStop(const std::string& tradingSymbol,
+                              const date& orderDate,
+                              const Decimal& stopPrice,
+                              uint32_t unitNumber)
+      {
+        ExitLongUnitAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a percent-based stop price.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDate        Date when the exit is placed.
+       * @param stopBasePrice    Base price for percent‐based stop.
+       * @param percentNum       PercentNumber to compute the stop from base.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtStop(const std::string& tradingSymbol,
+                              const date& orderDate,
+                              const Decimal& stopBasePrice,
+                              const PercentNumber<Decimal>& percentNum,
+                              uint32_t unitNumber)
+      {
+        ExitLongUnitAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a hard stop price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopPrice        Absolute stop price.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtStop(const std::string& tradingSymbol,
+                              const ptime& orderDateTime,
+                              const Decimal& stopPrice,
+                              uint32_t unitNumber)
+      {
+        mBroker.ExitLongUnitAtStop(tradingSymbol, orderDateTime, stopPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific long unit at a percent-based stop price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopBasePrice    Base price for percent‐based stop.
+       * @param percentNum       PercentNumber to compute the stop from base.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitLongUnitAtStop(const std::string& tradingSymbol,
+                              const ptime& orderDateTime,
+                              const Decimal& stopBasePrice,
+                              const PercentNumber<Decimal>& percentNum,
+                              uint32_t unitNumber)
+      {
+        mBroker.ExitLongUnitAtStop(tradingSymbol, orderDateTime, stopBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at the open of orderDate.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       * @param unitNumber     Unit number to exit (1-based).
+       */
+      void ExitShortUnitOnOpen(const std::string& tradingSymbol,
+                               const date& orderDate,
+                               uint32_t unitNumber)
+      {
+        ExitShortUnitOnOpen(tradingSymbol, ptime(orderDate, getDefaultBarTime()), unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at the open of orderDateTime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitShortUnitOnOpen(const std::string& tradingSymbol,
+                               const ptime& orderDateTime,
+                               uint32_t unitNumber)
+      {
+        mBroker.ExitShortUnitOnOpen(tradingSymbol, orderDateTime, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a hard limit price.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       * @param limitPrice     Absolute price to exit at.
+       * @param unitNumber     Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtLimit(const std::string& tradingSymbol,
+                                const date& orderDate,
+                                const Decimal& limitPrice,
+                                uint32_t unitNumber)
+      {
+        ExitShortUnitAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a percent-based limit price.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDate        Date when the exit is placed.
+       * @param limitBasePrice   Base price for percent‐based exit.
+       * @param percentNum       PercentNumber to compute the limit from base.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtLimit(const std::string& tradingSymbol,
+                                const date& orderDate,
+                                const Decimal& limitBasePrice,
+                                const PercentNumber<Decimal>& percentNum,
+                                uint32_t unitNumber)
+      {
+        ExitShortUnitAtLimit(tradingSymbol, ptime(orderDate, getDefaultBarTime()), limitBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a hard limit price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param limitPrice       Absolute price to exit at.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtLimit(const std::string& tradingSymbol,
+                                const ptime& orderDateTime,
+                                const Decimal& limitPrice,
+                                uint32_t unitNumber)
+      {
+        mBroker.ExitShortUnitAtLimit(tradingSymbol, orderDateTime, limitPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a percent-based limit price using ptime.
+       * @param tradingSymbol      Ticker to exit.
+       * @param orderDateTime      DateTime when the exit is placed.
+       * @param limitBasePrice     Base price for percent‐based exit.
+       * @param percentNum         PercentNumber to compute the limit from base.
+       * @param unitNumber         Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtLimit(const std::string& tradingSymbol,
+                                const ptime& orderDateTime,
+                                const Decimal& limitBasePrice,
+                                const PercentNumber<Decimal>& percentNum,
+                                uint32_t unitNumber)
+      {
+        mBroker.ExitShortUnitAtLimit(tradingSymbol, orderDateTime, limitBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a hard stop price.
+       * @param tradingSymbol  Ticker to exit.
+       * @param orderDate      Date when the exit is placed.
+       * @param stopPrice      Absolute stop price.
+       * @param unitNumber     Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtStop(const std::string& tradingSymbol,
+                               const date& orderDate,
+                               const Decimal& stopPrice,
+                               uint32_t unitNumber)
+      {
+        ExitShortUnitAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a percent-based stop price.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDate        Date when the exit is placed.
+       * @param stopBasePrice    Base price for percent‐based stop.
+       * @param percentNum       PercentNumber to compute the stop from base.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtStop(const std::string& tradingSymbol,
+                               const date& orderDate,
+                               const Decimal& stopBasePrice,
+                               const PercentNumber<Decimal>& percentNum,
+                               uint32_t unitNumber)
+      {
+        ExitShortUnitAtStop(tradingSymbol, ptime(orderDate, getDefaultBarTime()), stopBasePrice, percentNum, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a hard stop price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopPrice        Absolute stop price.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtStop(const std::string& tradingSymbol,
+                               const ptime& orderDateTime,
+                               const Decimal& stopPrice,
+                               uint32_t unitNumber)
+      {
+        mBroker.ExitShortUnitAtStop(tradingSymbol, orderDateTime, stopPrice, unitNumber);
+      }
+
+      /**
+       * @brief Exit a specific short unit at a percent-based stop price using ptime.
+       * @param tradingSymbol    Ticker to exit.
+       * @param orderDateTime    DateTime when the exit is placed.
+       * @param stopBasePrice    Base price for percent‐based stop.
+       * @param percentNum       PercentNumber to compute the stop from base.
+       * @param unitNumber       Unit number to exit (1-based).
+       */
+      void ExitShortUnitAtStop(const std::string& tradingSymbol,
+                               const ptime& orderDateTime,
+                               const Decimal& stopBasePrice,
+                               const PercentNumber<Decimal>& percentNum,
+                               uint32_t unitNumber)
+      {
+        mBroker.ExitShortUnitAtStop(tradingSymbol, orderDateTime, stopBasePrice, percentNum, unitNumber);
+      }
+
        /**
-	* @brief Drive the broker’s mark‐to‐market and fill logic for this bar.
-	* @param processingDate  Current bar date.
-	* @see StrategyBroker::ProcessPendingOrders
-	*/
+ * @brief Drive the broker's mark‐to‐market and fill logic for this bar.
+ * @param processingDate  Current bar date.
+ * @see StrategyBroker::ProcessPendingOrders
+ */
       void eventProcessPendingOrders(const date& processingDate)
       {
 	eventProcessPendingOrders(ptime(processingDate, getDefaultBarTime()));
