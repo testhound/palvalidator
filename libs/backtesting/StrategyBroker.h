@@ -1177,29 +1177,33 @@ namespace mkc_timeseries
                              const PercentNumber<Decimal>& percentNum,
                              uint32_t unitNumber)
     {
-      if (mInstrumentPositionManager.isShortPosition(tradingSymbol)) {
-        // Get the specific unit
-        const InstrumentPosition<Decimal>& instrPos =
-          mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+      if (mInstrumentPositionManager.isShortPosition(tradingSymbol))
+	{
+	  // Get the specific unit
+	  const InstrumentPosition<Decimal>& instrPos =
+	    mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
+
+	  // Validate unit number
+	  if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
+	    {
+	      throw StrategyBrokerException("ExitShortUnitAtStop - Invalid unit number " +
+					    std::to_string(unitNumber) + " for " + tradingSymbol +
+					    " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
+	    }
         
-        // Validate unit number
-        if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0) {
-          throw StrategyBrokerException("ExitShortUnitAtStop - Invalid unit number " +
-                                      std::to_string(unitNumber) + " for " + tradingSymbol +
-                                      " (valid range: 1-" + std::to_string(instrPos.getNumPositionUnits()) + ")");
-        }
+	  // Calculate stop price based on the provided base price (should be unit's entry price)
+	  ShortStopLoss<Decimal> stopLoss(stopBasePrice, percentNum);
+	  const Decimal stopPx = stopLoss.getStopLoss();
+	  const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, stopBasePrice, stopPx);
         
-        // Calculate stop price based on the provided base price (should be unit's entry price)
-        ShortStopLoss<Decimal> stopLoss(stopBasePrice, percentNum);
-        const Decimal stopPx = stopLoss.getStopLoss();
-        const Decimal orderPrice = roundToExecutionTick(tradingSymbol, orderDateTime, stopBasePrice, stopPx);
-        
-        // Call the fixed-price version
-        this->ExitShortUnitAtStop(tradingSymbol, orderDateTime, orderPrice, unitNumber);
-      } else {
-        throw StrategyBrokerException("ExitShortUnitAtStop - no short position for " + tradingSymbol +
-                                    " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
-      }
+	  // Call the fixed-price version
+	  this->ExitShortUnitAtStop(tradingSymbol, orderDateTime, orderPrice, unitNumber);
+	}
+      else
+	{
+	  throw StrategyBrokerException("ExitShortUnitAtStop - no short position for " + tradingSymbol +
+					" with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+	}
     }
 
     // -----------------------
