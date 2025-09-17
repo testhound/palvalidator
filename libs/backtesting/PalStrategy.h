@@ -361,42 +361,60 @@ namespace mkc_timeseries
           return;
       }
 
-      auto it = instrPos.getInstrumentPosition(numUnits);
-      auto pos = *it;
+      // Process each position unit individually for proper pyramiding support
+      // IMPORTANT: Iterate in reverse order to avoid iterator invalidation issues
+      // When a unit is closed, it's removed from the vector, which would invalidate
+      // higher unit numbers if we iterated forward.
+      for (uint32_t unitNum = numUnits; unitNum >= 1; --unitNum) {
+        auto it = instrPos.getInstrumentPosition(unitNum);
+        auto pos = *it;
 
-      // NEW: Check for max holding period exit rule first (takes priority)
-      unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
-      if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
-      {
-        if (this->isLongPosition (aSecurity->getSymbol()))
-        {
-          this->ExitLongAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
+        // Check time-based exit for THIS specific unit
+        unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
+        if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold) {
+          if (this->isLongPosition(aSecurity->getSymbol())) {
+            this->ExitLongUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
+          } else if (this->isShortPosition(aSecurity->getSymbol())) {
+            this->ExitShortUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
+          }
+          continue; // Skip other exits for this unit
         }
-        else if (this->isShortPosition (aSecurity->getSymbol()))
-        {
-          this->ExitShortAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
-        }
-        return; // Don't place other exit orders
-      }
 
-      // EXISTING: Profit target and stop loss logic
-      Decimal target = pos->getProfitTarget();
-      PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-      Decimal stop = pos->getStopLoss();
-      PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
-      Decimal fillPrice = instrPos.getFillPrice(numUnits);
+        // Check profit target and stop loss for THIS specific unit
+        Decimal target = pos->getProfitTarget();
+        Decimal stop = pos->getStopLoss();
+        Decimal fillPrice = pos->getEntryPrice(); // THIS unit's entry price
 
-      if (this->isLongPosition (aSecurity->getSymbol()))
-      {
-        eventExitLongOrders (aSecurity, instrPos, processingDateTime, fillPrice, stopAsPercent, targetAsPercent);
-      }
-      else if (this->isShortPosition (aSecurity->getSymbol()))
-      {
-        eventExitShortOrders (aSecurity, instrPos, processingDateTime, fillPrice, stopAsPercent, targetAsPercent);
-      }
-      else
-      {
-        throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state"));
+        if (this->isLongPosition(aSecurity->getSymbol()))
+	  {
+	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber(target);
+	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber(stop);
+
+	    this->ExitLongUnitAtLimit(aSecurity->getSymbol(), processingDateTime,
+				      fillPrice, targetAsPercent, unitNum);
+	    this->ExitLongUnitAtStop(aSecurity->getSymbol(), processingDateTime,
+				     fillPrice, stopAsPercent, unitNum);
+
+	    // Set R-multiple stop for this specific unit
+	    instrPos.setRMultipleStop(LongStopLoss<Decimal>(fillPrice, stopAsPercent).getStopLoss(), unitNum);
+	  }
+	else if (this->isShortPosition(aSecurity->getSymbol()))
+	  {
+	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber(target);
+	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber(stop);
+
+	    this->ExitShortUnitAtLimit(aSecurity->getSymbol(), processingDateTime,
+				       fillPrice, targetAsPercent, unitNum);
+	    this->ExitShortUnitAtStop(aSecurity->getSymbol(), processingDateTime,
+				      fillPrice, stopAsPercent, unitNum);
+
+	    // Set R-multiple stop for this specific unit
+	    instrPos.setRMultipleStop(ShortStopLoss<Decimal>(fillPrice, stopAsPercent).getStopLoss(), unitNum);
+	  }
+	else
+	  {
+	    throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state"));
+	  }
       }
     }
 
@@ -434,35 +452,8 @@ namespace mkc_timeseries
       }
     }
 
-    void eventExitLongOrders (Security<Decimal>* aSecurity,
-                              const InstrumentPosition<Decimal>& instrPos,
-                              const ptime& processingDateTime, // ptime from b1cb953
-                              const Decimal& positionEntryPrice,
-                              const PercentNumber<Decimal>& stopAsPercent,
-                              const PercentNumber<Decimal>& targetAsPercent)
-    {
-      this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
-                                    positionEntryPrice, targetAsPercent);
-      this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
-                                   positionEntryPrice, stopAsPercent);
-      
-      instrPos.setRMultipleStop (LongStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
-    }
-
-    void eventExitShortOrders (Security<Decimal>* aSecurity,
-                               const InstrumentPosition<Decimal>& instrPos,
-                               const ptime& processingDateTime, // ptime from b1cb953
-                               const Decimal& positionEntryPrice,
-                               const PercentNumber<Decimal>& stopAsPercent,
-                               const PercentNumber<Decimal>& targetAsPercent)
-    {
-      this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
-                                     positionEntryPrice, targetAsPercent);
-      this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
-                                    positionEntryPrice, stopAsPercent);
-
-      instrPos.setRMultipleStop (ShortStopLoss<Decimal> (positionEntryPrice, stopAsPercent).getStopLoss());
-    }
+    // NOTE: eventExitLongOrders and eventExitShortOrders helper methods removed
+    // All exit logic is now handled directly in eventExitOrders with individual unit processing
 
     [[deprecated("Use of this addLongPositionBar no longer supported")]]
     void addLongPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/, // Parameter unused
