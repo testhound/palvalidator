@@ -12,6 +12,12 @@
 #include "filtering/TradingHurdleCalculator.h"
 #include "utils/ValidationTypes.h"
 
+// Forward declarations
+namespace mkc_timeseries {
+  template<typename Decimal> class BackTester;
+  template<typename Decimal> class ClosedPositionHistory;
+}
+
 namespace palvalidator
 {
   namespace filtering
@@ -21,12 +27,12 @@ namespace palvalidator
     using ValidationMethod = palvalidator::utils::ValidationMethod;
 
     /**
-     * @brief Analyzer for meta-strategy (portfolio) performance using equal-weight combination
-     * 
+     * @brief Analyzer for meta-strategy performance using unified PalMetaStrategy approach
+     *
      * This class implements meta-strategy analysis that:
-     * - Combines multiple surviving strategies into an equal-weight portfolio
-     * - Performs BCa bootstrap analysis on the portfolio returns
-     * - Calculates portfolio-level cost hurdles and risk-adjusted returns
+     * - Combines multiple surviving strategies into a unified PalMetaStrategy
+     * - Performs BCa bootstrap analysis on the unified strategy returns
+     * - Calculates strategy-level cost hurdles and risk-adjusted returns
      * - Determines if the meta-strategy passes performance criteria
      */
     class MetaStrategyAnalyzer
@@ -38,15 +44,16 @@ namespace palvalidator
        * @param confidenceLevel Confidence level for BCa bootstrap analysis (e.g., 0.95)
        * @param numResamples Number of bootstrap resamples (e.g., 2000)
        */
-      MetaStrategyAnalyzer(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples, bool usePalMetaStrategy = false);
+      MetaStrategyAnalyzer(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples);
 
       /**
-       * @brief Analyze meta-strategy performance using equal-weight portfolio
+       * @brief Analyze meta-strategy performance using unified PalMetaStrategy approach
        * @param survivingStrategies Vector of strategies that survived individual filtering
        * @param baseSecurity Security to test strategies against
        * @param backtestingDates Date range for backtesting
        * @param timeFrame Time frame for analysis
        * @param outputStream Output stream for logging (typically a TeeStream)
+       * @param validationMethod Validation method for reporting purposes
        */
       void analyzeMetaStrategy(
 			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -85,53 +92,6 @@ namespace palvalidator
       }
 
     private:
-      /**
-       * @brief Gather per-strategy returns and trade statistics
-       * @param strategies Vector of strategies to analyze
-       * @param baseSecurity Security to test against
-       * @param backtestingDates Date range for backtesting
-       * @param timeFrame Time frame for analysis
-       * @param outputStream Output stream for logging
-       * @return Tuple of (returns vectors, annualized trades, median holds, min length)
-       */
-      std::tuple<std::vector<std::vector<Num>>, std::vector<Num>, std::vector<unsigned int>, size_t>
-      gatherStrategyData(
-			 const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
-			 std::shared_ptr<Security<Num>> baseSecurity,
-			 const DateRange& backtestingDates,
-			 TimeFrame::Duration timeFrame,
-			 std::ostream& outputStream
-			 );
-
-      /**
-       * @brief Create equal-weight portfolio returns from individual strategy returns
-       * @param survivorReturns Vector of return vectors for each strategy
-       * @param minLength Minimum length to truncate all series to
-       * @return Vector of portfolio returns
-       */
-      std::vector<Num> createEqualWeightPortfolio(
-						  const std::vector<std::vector<Num>>& survivorReturns,
-						  size_t minLength
-						  );
-
-      /**
-       * @brief Calculate median of median holding periods with round-half-up
-       * @param survivorMedianHolds Vector of median holding periods
-       * @return Median of medians, clamped to >= 2
-       */
-      size_t calculateMetaBlockLength(const std::vector<unsigned int>& survivorMedianHolds);
-
-      /**
-       * @brief Calculate portfolio-level annualized trades
-       * @param survivorAnnualizedTrades Vector of annualized trades per strategy
-       * @param numStrategies Number of strategies in portfolio (unused - kept for API compatibility)
-       * @return Total portfolio annualized trades (sum of all strategy trades)
-       * @note Fixed: Returns sum of all trades, not average. Transaction costs apply to ALL trades.
-       */
-      Num calculatePortfolioAnnualizedTrades(
-					     const std::vector<Num>& survivorAnnualizedTrades,
-					     size_t numStrategies
-					     );
 
       /**
        * @brief Analyze meta-strategy using unified PalMetaStrategy approach
@@ -158,19 +118,85 @@ namespace palvalidator
        * @param blockLength Block length for bootstrap resampling
        * @param annualizedTrades Annualized trades for cost hurdle calculation
        * @param strategyCount Number of strategies (for reporting)
-       * @param strategyType Description of strategy type (for reporting)
-       * @param outputStream Output stream for logging
+       * @param outputStream Output stream for logging (may be TeeStream for dual output)
+       * @param numTrades Number of trades for drawdown analysis
        */
       void performStatisticalAnalysis(
-				      const std::vector<Num>& metaReturns,
-				      std::shared_ptr<Security<Num>> baseSecurity,
-				      TimeFrame::Duration timeFrame,
-				      size_t blockLength,
-				      const Num& annualizedTrades,
-				      size_t strategyCount,
-				      const std::string& strategyType,
-				      std::ostream& outputStream
-				      );
+          const std::vector<Num>& metaReturns,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          TimeFrame::Duration timeFrame,
+          size_t blockLength,
+          const Num& annualizedTrades,
+          size_t strategyCount,
+          std::ostream& outputStream,
+          uint32_t numTrades
+          );
+
+    private:
+      // Helper methods for analyzeMetaStrategyUnified
+      std::shared_ptr<PalMetaStrategy<Num>> createMetaStrategy(
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity) const;
+      
+      std::shared_ptr<BackTester<Num>> executeBacktesting(
+          std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
+          TimeFrame::Duration timeFrame,
+          const DateRange& backtestingDates) const;
+      
+      void performExitBarTuning(
+          const ClosedPositionHistory<Num>& closedPositionHistory,
+          std::ostream& outputStream,
+          std::ofstream& performanceFile) const;
+      
+      void writePerformanceReport(
+          std::shared_ptr<BackTester<Num>> bt,
+          const std::string& performanceFileName,
+          std::ostream& outputStream) const;
+
+      // Helper methods for performStatisticalAnalysis
+      void calculatePerPeriodEstimates(
+          const std::vector<Num>& metaReturns,
+          std::ostream& outputStream) const;
+      
+      double calculateAnnualizationFactor(
+          TimeFrame::Duration timeFrame,
+          std::shared_ptr<Security<Num>> baseSecurity) const;
+      
+      struct BootstrapResults {
+          Num lbGeoPeriod;
+          Num lbMeanPeriod;
+          Num lbGeoAnn;
+          Num lbMeanAnn;
+          size_t blockLength;
+      };
+      
+      BootstrapResults performBootstrapAnalysis(
+          const std::vector<Num>& metaReturns,
+          double annualizationFactor,
+          size_t blockLength,
+          std::ostream& outputStream) const;
+      
+      struct CostHurdleResults {
+          Num riskFreeHurdle;
+          Num costBasedRequiredReturn;
+          Num finalRequiredReturn;
+      };
+      
+      CostHurdleResults calculateCostHurdles(
+          const Num& annualizedTrades,
+          std::ostream& outputStream) const;
+      
+      void performDrawdownAnalysis(
+          const std::vector<Num>& metaReturns,
+          uint32_t numTrades,
+          size_t blockLength,
+          std::ostream& outputStream) const;
+      
+      void reportFinalResults(
+          const BootstrapResults& bootstrapResults,
+          const CostHurdleResults& costResults,
+          size_t strategyCount,
+          std::ostream& outputStream);
 
     private:
       TradingHurdleCalculator mHurdleCalculator; ///< Calculator for trading hurdles
@@ -179,7 +205,6 @@ namespace palvalidator
       bool mMetaStrategyPassed;                  ///< Result of last meta-strategy analysis
       Num mAnnualizedLowerBound;                 ///< Last calculated annualized lower bound
       Num mRequiredReturn;                       ///< Last calculated required return
-      bool mUsePalMetaStrategy;                  ///< Flag to use PalMetaStrategy approach
     };
 
   } // namespace filtering
