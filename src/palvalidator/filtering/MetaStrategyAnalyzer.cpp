@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <limits>
 #include <numeric>
+#include <iomanip>
 #include "BackTester.h"
 #include "Portfolio.h"
 #include "DecimalConstants.h"
@@ -13,6 +14,8 @@
 #include "reporting/PerformanceReporter.h"
 #include "utils/OutputUtils.h"
 #include "ExitPolicyJointAutoTuner.h"
+#include "BacktesterStrategy.h"
+#include "PalStrategy.h"
 #include <fstream>
 
 namespace palvalidator
@@ -53,83 +56,66 @@ namespace palvalidator
     }
 
     void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(
-    			  const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-    			  std::shared_ptr<Security<Num>> baseSecurity,
-    			  const DateRange& backtestingDates,
-    			  TimeFrame::Duration timeFrame,
-    			  std::ostream& outputStream,
-    			  ValidationMethod validationMethod)
+     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+     std::shared_ptr<Security<Num>> baseSecurity,
+     const DateRange& backtestingDates,
+     TimeFrame::Duration timeFrame,
+     std::ostream& outputStream,
+     ValidationMethod validationMethod)
     {
       if (survivingStrategies.empty())
-	{
-	  outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
-	  mMetaStrategyPassed = false;
-	  return;
-	}
+ {
+   outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
+   mMetaStrategyPassed = false;
+   return;
+ }
 
       outputStream << "\n[Meta] Building unified PalMetaStrategy from "
-		   << survivingStrategies.size() << " survivors...\n";
+     << survivingStrategies.size() << " survivors...\n";
 
       try
-	{
-	  // Create unified meta-strategy
-	  auto metaStrategy = createMetaStrategy(survivingStrategies, baseSecurity);
-	  
-	  // Execute backtesting
-	  auto bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
-	  auto metaReturns = bt->getAllHighResReturns(metaStrategy.get());
-
-	  if (metaReturns.size() < 2)
-	    {
-	      outputStream << "[Meta] Not enough data from unified meta-strategy.\n";
-	      mMetaStrategyPassed = false;
-	      return;
-	    }
-
-	  // Get number of trades from closed position history (needed for drawdown analysis)
-	  const uint32_t numTrades = bt->getClosedPositionHistory().getNumPositions();
-	  
-	  // Block length for meta bootstrap (use meta-strategy's median hold)
-	  const unsigned int metaMedianHold = bt->getClosedPositionHistory().getMedianHoldingPeriod();
-	  const size_t Lmeta = std::max<size_t>(2, metaMedianHold);
+ {
+   // Create pyramid configurations
+   std::vector<PyramidConfiguration> pyramidConfigs = createPyramidConfigurations();
    
-	  // Portfolio-level cost hurdle (use meta-strategy's annualized trades)
-	  const Num metaAnnualizedTrades = Num(bt->getEstimatedAnnualizedTrades());
-	  
-	  // Write detailed backtester results to file using proper naming convention
-	  std::string performanceFileName = palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
-													      baseSecurity->getSymbol(), validationMethod);
+   // Storage for all pyramid results
+   std::vector<PyramidResults> allResults;
    
-	  // Write performance report with exit bar tuning
-	  writePerformanceReport(bt, performanceFileName, outputStream);
-	  
-	  // Create TeeStream to write drawdown analysis to both console and performance file
-	  std::ofstream performanceFile(performanceFileName, std::ios::app); // Append mode
-	  if (performanceFile.is_open())
-	    {
-	      palvalidator::utils::TeeStream teeStream(outputStream, performanceFile);
-	      
-	      // Perform statistical analysis (including drawdown analysis)
-	      // The TeeStream will write to both console and performance file simultaneously
-	      performStatisticalAnalysis(metaReturns, baseSecurity, timeFrame, Lmeta,
-					 metaAnnualizedTrades, survivingStrategies.size(),
-					 teeStream, numTrades);
-	      
-	      performanceFile.close();
-	    }
-	  else
-	    {
-	      // Perform statistical analysis without performance file
-	      performStatisticalAnalysis(metaReturns, baseSecurity, timeFrame, Lmeta,
-					 metaAnnualizedTrades, survivingStrategies.size(),
-					 outputStream, numTrades);
-	    }
-	}
+   // Run analysis for each pyramid level
+   for (const auto& config : pyramidConfigs)
+     {
+       auto result = analyzeSinglePyramidLevel(config, survivingStrategies, baseSecurity,
+    		      backtestingDates, timeFrame, outputStream);
+       allResults.push_back(result);
+     }
+   
+   // Write comprehensive performance file with all pyramid results
+   std::string performanceFileName = palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
+    									      baseSecurity->getSymbol(), validationMethod);
+   writeComprehensivePerformanceReport(allResults, performanceFileName, outputStream);
+   
+   // Output pyramid comparison summary
+   outputPyramidComparison(allResults, outputStream);
+   
+   // Set overall meta-strategy result based on best performing pyramid level
+   mMetaStrategyPassed = false;
+   for (const auto& result : allResults)
+     {
+       if (result.getPassed())
+  {
+    mMetaStrategyPassed = true;
+    // Store the best result for backward compatibility
+    mAnnualizedLowerBound = result.getAnnualizedLowerBound();
+    mRequiredReturn = result.getRequiredReturn();
+    break;
+  }
+     }
+ }
       catch (const std::exception& e)
-	{
-	  outputStream << "[Meta] Error in unified meta-strategy backtesting: " << e.what() << "\n";
-	  mMetaStrategyPassed = false;
-	}
+ {
+   outputStream << "[Meta] Error in unified meta-strategy backtesting: " << e.what() << "\n";
+   mMetaStrategyPassed = false;
+ }
     }
 
     void MetaStrategyAnalyzer::performStatisticalAnalysis(
@@ -181,6 +167,137 @@ namespace palvalidator
         }
 
       return metaStrategy;
+    }
+
+    std::shared_ptr<PalMetaStrategy<Num>>
+    MetaStrategyAnalyzer::createMetaStrategy(
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          const StrategyOptions& strategyOptions) const
+    {
+      // Create PalMetaStrategy with custom StrategyOptions
+      auto metaPortfolio = std::make_shared<Portfolio<Num>>("Meta Portfolio");
+      metaPortfolio->addSecurity(baseSecurity);
+      
+      auto metaStrategy = std::make_shared<PalMetaStrategy<Num>>(
+          "Unified Meta Strategy", metaPortfolio, strategyOptions);
+
+      // Add all patterns from surviving strategies
+      for (const auto& strategy : survivingStrategies)
+        {
+          auto pattern = strategy->getPalPattern();
+          metaStrategy->addPricePattern(pattern);
+        }
+
+      return metaStrategy;
+    }
+
+    std::vector<MetaStrategyAnalyzer::PyramidConfiguration>
+    MetaStrategyAnalyzer::createPyramidConfigurations() const
+    {
+      std::vector<PyramidConfiguration> configs;
+      
+      // Pyramid Level 0: No pyramiding (current behavior)
+      configs.emplace_back(0, "No Pyramiding", StrategyOptions(false, 0, 8));
+      
+      // Pyramid Level 1: 1 additional position
+      configs.emplace_back(1, "1 Additional Position", StrategyOptions(true, 1, 8));
+      
+      // Pyramid Level 2: 2 additional positions
+      configs.emplace_back(2, "2 Additional Positions", StrategyOptions(true, 2, 8));
+      
+      // Pyramid Level 3: 3 additional positions
+      configs.emplace_back(3, "3 Additional Positions", StrategyOptions(true, 3, 8));
+      
+      return configs;
+    }
+
+    MetaStrategyAnalyzer::PyramidResults
+    MetaStrategyAnalyzer::analyzeSinglePyramidLevel(
+        const PyramidConfiguration& config,
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        std::shared_ptr<Security<Num>> baseSecurity,
+        const DateRange& backtestingDates,
+        TimeFrame::Duration timeFrame,
+        std::ostream& outputStream) const
+    {
+      outputStream << "\n[Meta] Pyramid Level " << config.getPyramidLevel()
+                   << " (" << config.getDescription() << "):\n";
+
+      // Create meta-strategy with specific pyramid configuration
+      auto metaStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+      
+      // Execute backtesting
+      auto bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+      auto metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+
+      if (metaReturns.size() < 2)
+        {
+          outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
+          DrawdownResults emptyDrawdown;
+          return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+                              DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+                              false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown);
+        }
+
+      // Get number of trades and other metrics
+      const uint32_t numTrades = bt->getClosedPositionHistory().getNumPositions();
+      const unsigned int metaMedianHold = bt->getClosedPositionHistory().getMedianHoldingPeriod();
+      const size_t Lmeta = std::max<size_t>(2, metaMedianHold);
+      const Num metaAnnualizedTrades = Num(bt->getEstimatedAnnualizedTrades());
+
+      // Perform statistical analysis for this pyramid level
+      calculatePerPeriodEstimates(metaReturns, outputStream);
+      double annualizationFactor = calculateAnnualizationFactor(timeFrame, baseSecurity);
+      auto bootstrapResults = performBootstrapAnalysis(metaReturns, annualizationFactor, Lmeta, outputStream);
+      auto costResults = calculateCostHurdles(metaAnnualizedTrades, outputStream);
+
+      // Determine if this pyramid level passes
+      bool pyramidPassed = (bootstrapResults.lbGeoAnn > costResults.finalRequiredReturn);
+      
+      // Output results for this pyramid level
+      outputStream << std::endl;
+      outputStream << "      Annualized Lower Bound (GeoMean, compounded): "
+                   << (bootstrapResults.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+                   << "      Annualized Lower Bound (Mean, compounded):    "
+                   << (bootstrapResults.lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+                   << "      Required Return (max(cost,riskfree)): "
+                   << (costResults.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n\n";
+
+      if (pyramidPassed)
+          outputStream << "      RESULT: ✓ Pyramid Level " << config.getPyramidLevel() << " PASSES\n";
+      else
+          outputStream << "      RESULT: ✗ Pyramid Level " << config.getPyramidLevel() << " FAILS\n";
+
+      // Perform drawdown analysis for this pyramid level and store results
+      auto drawdownResults = performDrawdownAnalysisForPyramid(metaReturns, numTrades, Lmeta);
+      
+      // Output drawdown results to console
+      if (drawdownResults.hasResults())
+        {
+          const Num qPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+          const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+          
+          outputStream << "      Drawdown Analysis (BCa on q=" << qPct
+                       << "% percentile of max drawdown over " << numTrades << " trades):\n";
+          outputStream << "        Point estimate (q=" << qPct << "%ile): "
+                       << (drawdownResults.getPointEstimate() * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+          outputStream << "        Two-sided " << ciPct << "% CI for that percentile: ["
+                       << (drawdownResults.getLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+                       << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred) << "%]\n";
+          outputStream << "        " << ciPct << "% one-sided upper bound: "
+                       << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
+                       << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
+                       << "%ile drawdown does not exceed this value)\n";
+        }
+      else
+        {
+          outputStream << "      Drawdown Analysis: " << drawdownResults.getErrorMessage() << "\n";
+        }
+
+      return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+                          bootstrapResults.lbGeoAnn, costResults.finalRequiredReturn,
+                          pyramidPassed, metaAnnualizedTrades, numTrades, bt, drawdownResults);
     }
 
     std::shared_ptr<BackTester<Num>> MetaStrategyAnalyzer::executeBacktesting(
@@ -327,6 +444,7 @@ namespace palvalidator
       const Num finalRequiredReturn = mHurdleCalculator.calculateFinalRequiredReturn(annualizedTrades);
       
       // Show detailed cost hurdle breakdown
+      outputStream << std::endl;
       outputStream << "      Cost Hurdle Analysis:" << std::endl;
       outputStream << "        Annualized Trades: " << annualizedTrades << " trades/year" << std::endl;
       outputStream << "        Round-trip Cost: " << (mHurdleCalculator.getSlippagePerSide() * mkc_timeseries::DecimalConstants<Num>::DecimalTwo * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "% per trade" << std::endl;
@@ -370,6 +488,7 @@ namespace palvalidator
               const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the dd percentile you targeted
               const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the CI level
 
+	      outputStream << std::endl;
               outputStream << "      Drawdown Analysis (BCa on q=" << qPct
                            << "% percentile of max drawdown over " << numTrades << " trades):\n";
               outputStream << "        Point estimate (q=" << qPct << "%ile): "
@@ -420,5 +539,236 @@ namespace palvalidator
       outputStream << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
     }
 
+    MetaStrategyAnalyzer::DrawdownResults MetaStrategyAnalyzer::performDrawdownAnalysisForPyramid(
+        const std::vector<Num>& metaReturns,
+        uint32_t numTrades,
+        size_t blockLength) const
+    {
+      if (numTrades == 0)
+        {
+          return DrawdownResults(false, DecimalConstants<Num>::DecimalZero,
+                               DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+                               "Skipped (no trades available)");
+        }
+
+      try
+        {
+          using BoundedDrawdowns = mkc_timeseries::BoundedDrawdowns<Num, concurrency::ThreadPoolExecutor<>>;
+          concurrency::ThreadPoolExecutor<> executor;
+          
+          auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(
+              metaReturns,
+              mNumResamples,
+              mConfidenceLevel.getAsDouble(),
+              static_cast<int>(numTrades),
+              5000,
+              mConfidenceLevel.getAsDouble(),
+              blockLength,
+              executor
+              );
+
+          return DrawdownResults(true, drawdownResult.statistic, drawdownResult.lowerBound, drawdownResult.upperBound);
+        }
+      catch (const std::exception& e)
+        {
+          return DrawdownResults(false, DecimalConstants<Num>::DecimalZero,
+                               DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+                               std::string("Failed - ") + e.what());
+        }
+    }
+
+    void MetaStrategyAnalyzer::writeComprehensivePerformanceReport(
+        const std::vector<PyramidResults>& allResults,
+        const std::string& performanceFileName,
+        std::ostream& outputStream) const
+    {
+      std::ofstream performanceFile(performanceFileName);
+      if (!performanceFile.is_open())
+        {
+          outputStream << "\n      Warning: Could not write comprehensive performance file: " << performanceFileName << std::endl;
+          return;
+        }
+
+      // Write header
+      performanceFile << "=== Unified Meta-Strategy Pyramiding Analysis ===" << std::endl;
+      performanceFile << "Generated: " << palvalidator::utils::getCurrentTimestamp() << std::endl;
+      if (!allResults.empty())
+        {
+          performanceFile << "Patterns: " << allResults.size() << " pyramid levels analyzed" << std::endl;
+        }
+      performanceFile << std::endl;
+
+      // Write detailed results for each pyramid level
+      for (const auto& result : allResults)
+        {
+          performanceFile << "=== Pyramid Level " << result.getPyramidLevel()
+                         << " (" << result.getDescription() << ") ===" << std::endl;
+          
+          // Write backtesting report for this pyramid level
+          palvalidator::reporting::PerformanceReporter::writeBacktestReport(performanceFile, result.getBackTester());
+          
+          // Write statistical summary for this pyramid level
+          performanceFile << std::endl;
+          performanceFile << "--- Statistical Analysis Summary ---" << std::endl;
+          performanceFile << "Annualized Lower Bound (GeoMean): "
+                         << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+          performanceFile << "Required Return: "
+                         << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+          performanceFile << "Annualized Trades: " << result.getAnnualizedTrades() << std::endl;
+          performanceFile << "Total Trades: " << result.getNumTrades() << std::endl;
+          performanceFile << "Result: " << (result.getPassed() ? "PASS" : "FAIL") << std::endl;
+          
+          // Write drawdown analysis for this pyramid level
+          performanceFile << std::endl;
+          performanceFile << "--- Drawdown Analysis ---" << std::endl;
+          const auto& drawdownResults = result.getDrawdownResults();
+          if (drawdownResults.hasResults())
+            {
+              const Num qPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+              const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+              
+              performanceFile << "Drawdown Analysis (BCa on q=" << qPct
+                             << "% percentile of max drawdown over " << result.getNumTrades() << " trades):" << std::endl;
+              performanceFile << "  Point estimate (q=" << qPct << "%ile): "
+                             << (drawdownResults.getPointEstimate() * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
+              performanceFile << "  Two-sided " << ciPct << "% CI for that percentile: ["
+                             << (drawdownResults.getLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+                             << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred) << "%]" << std::endl;
+              performanceFile << "  " << ciPct << "% one-sided upper bound: "
+                             << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
+                             << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
+                             << "%ile drawdown does not exceed this value)" << std::endl;
+            }
+          else
+            {
+              performanceFile << "Drawdown Analysis: " << drawdownResults.getErrorMessage() << std::endl;
+            }
+          
+          // Perform exit bar tuning ONLY for pyramid level 0
+          if (result.getPyramidLevel() == 0)
+            {
+              const auto& closedPositionHistory = result.getBackTester()->getClosedPositionHistory();
+              performExitBarTuning(closedPositionHistory, outputStream, performanceFile);
+            }
+          
+          performanceFile << std::endl;
+        }
+
+      // Write comparison summary
+      performanceFile << "=== Pyramid Comparison Summary ===" << std::endl;
+      performanceFile << "Level | Description              | Ann. Lower Bound | Required Return | Pass/Fail | Trades/Year" << std::endl;
+      performanceFile << "------|--------------------------|------------------|-----------------|-----------|------------" << std::endl;
+      
+      for (const auto& result : allResults)
+        {
+          performanceFile << std::setw(5) << result.getPyramidLevel() << " | "
+                         << std::setw(24) << result.getDescription() << " | "
+                         << std::setw(15) << std::fixed << std::setprecision(1)
+                         << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "% | "
+                         << std::setw(14) << std::fixed << std::setprecision(1)
+                         << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred) << "% | "
+                         << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
+                         << std::setw(10) << std::fixed << std::setprecision(1) << result.getAnnualizedTrades() << std::endl;
+        }
+
+      // Find and report best performance
+      auto bestResult = std::max_element(allResults.begin(), allResults.end(),
+          [](const PyramidResults& a, const PyramidResults& b) {
+              return a.getAnnualizedLowerBound() < b.getAnnualizedLowerBound();
+          });
+      
+      if (bestResult != allResults.end())
+        {
+          performanceFile << std::endl;
+          performanceFile << "Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
+                         << " (" << (bestResult->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred)
+                         << "% annualized lower bound)" << std::endl;
+          performanceFile << "Recommended Configuration: " << bestResult->getDescription() << std::endl;
+        }
+
+      performanceFile.close();
+      outputStream << "\n      Comprehensive pyramiding analysis written to: " << performanceFileName << std::endl;
+    }
+
+    void MetaStrategyAnalyzer::outputPyramidComparison(
+						       const std::vector<PyramidResults>& allResults,
+						       std::ostream& outputStream) const
+    {
+      outputStream << "\n[Meta] Pyramid Analysis Summary:\n";
+      outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Drawdown UB | Required Return | Pass/Fail\n";
+      outputStream << "      ------|--------------------------|----------|------------------|-------------|-----------------|----------\n";
+
+      // Save original stream state to restore it later
+      std::ios_base::fmtflags original_flags = outputStream.flags();
+      char original_fill = outputStream.fill();
+      std::streamsize original_precision = outputStream.precision();
+
+      // Set formatting for the entire table. It will now be respected.
+      outputStream << std::setfill(' ') << std::fixed << std::setprecision(2);
+
+      for (const auto& result : allResults)
+	{
+	  const auto& drawdownResults = result.getDrawdownResults();
+	  const Num drawdownUB = drawdownResults.getUpperBound();
+
+	  outputStream << "      "
+		       << std::right << std::setw(5) << result.getPyramidLevel() << " | "
+		       << std::left << std::setw(24) << result.getDescription() << " | ";
+
+	  // MAR Ratio
+	  if (drawdownResults.hasResults() && drawdownUB > DecimalConstants<Num>::DecimalZero)
+	    {
+	      const Num marRatio = result.getAnnualizedLowerBound() / drawdownUB;
+	      outputStream << std::right << std::setw(8) << marRatio.getAsDouble();
+	    }
+	  else
+	    {
+	      outputStream << std::right << std::setw(8) << "N/A";
+	    }
+	  outputStream << " | ";
+
+	  // Ann. Lower Bound
+	  outputStream << std::right << std::setw(15)
+		       << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | ";
+
+	  // Drawdown UB
+	  if (drawdownResults.hasResults())
+	    {
+	      outputStream << std::right << std::setw(10) << (drawdownUB * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | ";
+	    }
+	  else
+	    {
+	      outputStream << std::right << std::setw(10) << "N/A" << "% | ";
+	    }
+      
+	  // Required Return
+	  outputStream << std::right << std::setw(14)
+		       << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | ";
+
+	  // Pass/Fail
+	  outputStream << std::left << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << "\n";
+	}
+
+      // Restore the original stream formatting
+      outputStream.flags(original_flags);
+      outputStream.fill(original_fill);
+      outputStream.precision(original_precision);
+
+      // Find and report best performance
+      auto bestResult = std::max_element(allResults.begin(), allResults.end(),
+					 [](const PyramidResults& a, const PyramidResults& b) {
+					   return a.getAnnualizedLowerBound() < b.getAnnualizedLowerBound();
+					 });
+
+      if (bestResult != allResults.end())
+	{
+	  outputStream << "\n      Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
+		       << " (" << std::fixed << std::setprecision(2) << (bestResult->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble()
+		       << "% annualized lower bound)\n";
+	  outputStream << "      Recommended Configuration: " << bestResult->getDescription() << "\n";
+	}
+
+      outputStream << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
+    }
   } // namespace filtering
 } // namespace palvalidator

@@ -133,10 +133,94 @@ namespace palvalidator
           );
 
     private:
+      // Pyramiding configuration class
+      class PyramidConfiguration {
+      public:
+          PyramidConfiguration(unsigned int level, const std::string& desc, const StrategyOptions& options)
+              : mPyramidLevel(level), mDescription(desc), mStrategyOptions(options) {}
+          
+          unsigned int getPyramidLevel() const { return mPyramidLevel; }
+          const std::string& getDescription() const { return mDescription; }
+          const StrategyOptions& getStrategyOptions() const { return mStrategyOptions; }
+          
+      private:
+          unsigned int mPyramidLevel;
+          std::string mDescription;
+          StrategyOptions mStrategyOptions;
+      };
+
+      // Drawdown analysis results class
+      class DrawdownResults {
+      public:
+          DrawdownResults(bool hasResults, const Num& pointEstimate, const Num& lowerBound,
+                         const Num& upperBound, const std::string& errorMessage = "")
+              : mHasResults(hasResults), mPointEstimate(pointEstimate), mLowerBound(lowerBound),
+                mUpperBound(upperBound), mErrorMessage(errorMessage) {}
+          
+          // Default constructor for failed analysis
+          DrawdownResults() : mHasResults(false), mPointEstimate(DecimalConstants<Num>::DecimalZero),
+                             mLowerBound(DecimalConstants<Num>::DecimalZero),
+                             mUpperBound(DecimalConstants<Num>::DecimalZero), mErrorMessage("No analysis performed") {}
+          
+          // Getters
+          bool hasResults() const { return mHasResults; }
+          const Num& getPointEstimate() const { return mPointEstimate; }
+          const Num& getLowerBound() const { return mLowerBound; }
+          const Num& getUpperBound() const { return mUpperBound; }
+          const std::string& getErrorMessage() const { return mErrorMessage; }
+          
+      private:
+          bool mHasResults;
+          Num mPointEstimate;
+          Num mLowerBound;
+          Num mUpperBound;
+          std::string mErrorMessage;
+      };
+
+      // Pyramiding analysis results class
+      class PyramidResults {
+      public:
+          PyramidResults(unsigned int pyramidLevel, const std::string& description,
+                        const Num& annualizedLowerBound, const Num& requiredReturn,
+                        bool passed, const Num& annualizedTrades, uint32_t numTrades,
+                        std::shared_ptr<BackTester<Num>> backTester, const DrawdownResults& drawdownResults)
+              : mPyramidLevel(pyramidLevel), mDescription(description),
+                mAnnualizedLowerBound(annualizedLowerBound), mRequiredReturn(requiredReturn),
+                mPassed(passed), mAnnualizedTrades(annualizedTrades), mNumTrades(numTrades),
+                mBackTester(backTester), mDrawdownResults(drawdownResults) {}
+          
+          // Getters
+          unsigned int getPyramidLevel() const { return mPyramidLevel; }
+          const std::string& getDescription() const { return mDescription; }
+          const Num& getAnnualizedLowerBound() const { return mAnnualizedLowerBound; }
+          const Num& getRequiredReturn() const { return mRequiredReturn; }
+          bool getPassed() const { return mPassed; }
+          const Num& getAnnualizedTrades() const { return mAnnualizedTrades; }
+          uint32_t getNumTrades() const { return mNumTrades; }
+          std::shared_ptr<BackTester<Num>> getBackTester() const { return mBackTester; }
+          const DrawdownResults& getDrawdownResults() const { return mDrawdownResults; }
+          
+      private:
+          unsigned int mPyramidLevel;
+          std::string mDescription;
+          Num mAnnualizedLowerBound;
+          Num mRequiredReturn;
+          bool mPassed;
+          Num mAnnualizedTrades;
+          uint32_t mNumTrades;
+          std::shared_ptr<BackTester<Num>> mBackTester;
+          DrawdownResults mDrawdownResults;
+      };
+
       // Helper methods for analyzeMetaStrategyUnified
       std::shared_ptr<PalMetaStrategy<Num>> createMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity) const;
+
+      std::shared_ptr<PalMetaStrategy<Num>> createMetaStrategy(
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          const StrategyOptions& strategyOptions) const;
       
       std::shared_ptr<BackTester<Num>> executeBacktesting(
           std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
@@ -152,6 +236,31 @@ namespace palvalidator
           std::shared_ptr<BackTester<Num>> bt,
           const std::string& performanceFileName,
           std::ostream& outputStream) const;
+
+      // Pyramiding-specific helper methods
+      std::vector<PyramidConfiguration> createPyramidConfigurations() const;
+      
+      PyramidResults analyzeSinglePyramidLevel(
+          const PyramidConfiguration& config,
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          const DateRange& backtestingDates,
+          TimeFrame::Duration timeFrame,
+          std::ostream& outputStream) const;
+      
+      void writeComprehensivePerformanceReport(
+          const std::vector<PyramidResults>& allResults,
+          const std::string& performanceFileName,
+          std::ostream& outputStream) const;
+      
+      void outputPyramidComparison(
+          const std::vector<PyramidResults>& allResults,
+          std::ostream& outputStream) const;
+      
+      DrawdownResults performDrawdownAnalysisForPyramid(
+          const std::vector<Num>& metaReturns,
+          uint32_t numTrades,
+          size_t blockLength) const;
 
       // Helper methods for performStatisticalAnalysis
       void calculatePerPeriodEstimates(
