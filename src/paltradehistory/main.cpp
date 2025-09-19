@@ -14,6 +14,9 @@
 #include "BackTester.h"
 #include "Portfolio.h"
 #include "number.h"
+#include "BacktesterStrategy.h"
+#include <algorithm>
+#include <limits>
 
 // Include comparison functionality headers
 #include "ExternalTrade.h"
@@ -196,6 +199,65 @@ void performComparison(const std::string& externalFile,
     }
 }
 
+// Function to get user input for pyramiding configuration
+StrategyOptions getPyramidingOptions()
+{
+    std::string response;
+    
+    // Ask if user wants pyramiding
+    std::cout << "\nPyramiding Configuration:" << std::endl;
+    std::cout << "=========================" << std::endl;
+    std::cout << "Do you want to enable pyramiding (multiple simultaneous positions)? (y/n): ";
+    std::getline(std::cin, response);
+    
+    // Convert to lowercase for easier comparison
+    std::transform(response.begin(), response.end(), response.begin(), ::tolower);
+    
+    if (response == "y" || response == "yes") {
+        unsigned int maxPyramidPositions = 0;
+        unsigned int maxHoldingPeriod = 0;
+        
+        // Ask for number of additional positions
+        std::cout << "How many additional positions should be allowed? (e.g., 2 means 3 total positions): ";
+        std::cin >> maxPyramidPositions;
+        
+        // Validate input
+        if (std::cin.fail() || maxPyramidPositions == 0) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Using default of 2 additional positions." << std::endl;
+            maxPyramidPositions = 2;
+        }
+        
+        // Ask for maximum holding period
+        std::cout << "What is the maximum holding period in bars? (0 = no limit): ";
+        std::cin >> maxHoldingPeriod;
+        
+        // Validate input
+        if (std::cin.fail()) {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "Invalid input. Using default of 8 bars maximum holding period." << std::endl;
+            maxHoldingPeriod = 8;
+        }
+        
+        // Clear the input buffer
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        
+        std::cout << "Pyramiding enabled with " << maxPyramidPositions << " additional positions";
+        if (maxHoldingPeriod > 0) {
+            std::cout << " and " << maxHoldingPeriod << " bars maximum holding period." << std::endl;
+        } else {
+            std::cout << " and no maximum holding period limit." << std::endl;
+        }
+        
+        return StrategyOptions(true, maxPyramidPositions, maxHoldingPeriod);
+    } else {
+        std::cout << "Pyramiding disabled. Using single position mode." << std::endl;
+        return defaultStrategyOptions;
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -262,8 +324,11 @@ int main(int argc, char **argv)
         auto metaPortfolio = std::make_shared<Portfolio<Num>>("Trade History Portfolio");
         metaPortfolio->addSecurity(config->getSecurity());
         
-        // Create PalMetaStrategy
-        auto metaStrategy = std::make_shared<PalMetaStrategy<Num>>("Trade History Strategy", metaPortfolio);
+        // Get pyramiding configuration from user
+        StrategyOptions strategyOptions = getPyramidingOptions();
+        
+        // Create PalMetaStrategy with strategy options
+        auto metaStrategy = std::make_shared<PalMetaStrategy<Num>>("Trade History Strategy", metaPortfolio, strategyOptions);
         
         // Add all patterns from configuration
         auto patterns = config->getPricePatterns();

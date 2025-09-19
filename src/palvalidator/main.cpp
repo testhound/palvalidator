@@ -165,8 +165,7 @@ filterSurvivingStrategiesByPerformance(
     return filter.filterByPerformance(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os);
 }
 
-// Legacy function - now delegated to MetaStrategyAnalyzer
-// Modified to run both approaches for comparison
+// Analyze meta-strategy performance using unified PalMetaStrategy approach
 template<typename Num>
 void filterMetaStrategy(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -181,65 +180,11 @@ void filterMetaStrategy(
     const Num confidenceLevel = Num("0.95");
     
     os << "\n" << std::string(80, '=') << std::endl;
-    os << "COMPARISON: Running both MetaStrategy approaches" << std::endl;
+    os << "META-STRATEGY ANALYSIS" << std::endl;
     os << std::string(80, '=') << std::endl;
     
-    // Run traditional equal-weight aggregation approach
-    os << "\n" << std::string(60, '-') << std::endl;
-    os << "APPROACH 1: Traditional Equal-Weight Aggregation" << std::endl;
-    os << std::string(60, '-') << std::endl;
-    
-    MetaStrategyAnalyzer analyzer1(riskParams, confidenceLevel, numResamples, false);
-    analyzer1.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os, validationMethod);
-    
-    // Store results from first approach
-    bool approach1Passed = analyzer1.didMetaStrategyPass();
-    Num approach1LowerBound = analyzer1.getAnnualizedLowerBound();
-    Num approach1RequiredReturn = analyzer1.getRequiredReturn();
-    
-    // Run unified PalMetaStrategy approach
-    os << "\n" << std::string(60, '-') << std::endl;
-    os << "APPROACH 2: Unified PalMetaStrategy" << std::endl;
-    os << std::string(60, '-') << std::endl;
-    
-    MetaStrategyAnalyzer analyzer2(riskParams, confidenceLevel, numResamples, true);
-    analyzer2.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os, validationMethod);
-    
-    // Store results from second approach
-    bool approach2Passed = analyzer2.didMetaStrategyPass();
-    Num approach2LowerBound = analyzer2.getAnnualizedLowerBound();
-    Num approach2RequiredReturn = analyzer2.getRequiredReturn();
-    
-    // Display comparison summary
-    os << "\n" << std::string(80, '=') << std::endl;
-    os << "COMPARISON SUMMARY" << std::endl;
-    os << std::string(80, '=') << std::endl;
-    
-    os << std::fixed << std::setprecision(2);
-    os << "Approach 1 (Equal-Weight Aggregation):" << std::endl;
-    os << "  Annualized Lower Bound: " << (approach1LowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
-    os << "  Required Return:        " << (approach1RequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
-    os << "  Result:                 " << (approach1Passed ? "✓ PASS" : "✗ FAIL") << std::endl;
-    
-    os << std::endl;
-    os << "Approach 2 (Unified PalMetaStrategy):" << std::endl;
-    os << "  Annualized Lower Bound: " << (approach2LowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
-    os << "  Required Return:        " << (approach2RequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
-    os << "  Result:                 " << (approach2Passed ? "✓ PASS" : "✗ FAIL") << std::endl;
-    
-    os << std::endl;
-    os << "Differences:" << std::endl;
-    Num lowerBoundDiff = approach2LowerBound - approach1LowerBound;
-    Num requiredReturnDiff = approach2RequiredReturn - approach1RequiredReturn;
-    os << "  Lower Bound Difference: " << std::showpos << (lowerBoundDiff * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::noshowpos << std::endl;
-    os << "  Required Return Difference: " << std::showpos << (requiredReturnDiff * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::noshowpos << std::endl;
-    
-    if (approach1Passed != approach2Passed) {
-        os << "  ⚠️  WARNING: Different conclusions! Approach 1 " << (approach1Passed ? "passed" : "failed")
-           << " while Approach 2 " << (approach2Passed ? "passed" : "failed") << std::endl;
-    } else {
-        os << "  ✓ Both approaches reached the same conclusion" << std::endl;
-    }
+    MetaStrategyAnalyzer analyzer(riskParams, confidenceLevel, numResamples);
+    analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os, validationMethod);
     
     os << std::string(80, '=') << std::endl;
 }
