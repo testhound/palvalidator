@@ -761,17 +761,11 @@ namespace mkc_timeseries
                             const ptime& orderDateTime,
                             uint32_t unitNumber)
     {
-      std::cout << "[StrategyBroker::ExitLongUnitOnOpen] Symbol: " << tradingSymbol
-                << ", UnitNumber: " << unitNumber
-                << ", DateTime: " << boost::posix_time::to_simple_string(orderDateTime) << std::endl;
-                
       if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
  {
    // Get the specific unit
    const InstrumentPosition<Decimal>& instrPos =
      mInstrumentPositionManager.getInstrumentPosition(tradingSymbol);
-
-   std::cout << "[StrategyBroker::ExitLongUnitOnOpen] Total units available: " << instrPos.getNumPositionUnits() << std::endl;
 
    // Validate unit number
    if (unitNumber > instrPos.getNumPositionUnits() || unitNumber == 0)
@@ -786,10 +780,6 @@ namespace mkc_timeseries
    TradingVolume unitVolume = (*unitIt)->getTradingUnits();
    uint32_t positionId = (*unitIt)->getPositionID();
 
-   std::cout << "[StrategyBroker::ExitLongUnitOnOpen] Unit " << unitNumber
-             << " - PositionID: " << positionId
-             << ", Volume: " << unitVolume.getTradingVolume() << std::endl;
-
    // Create order for this specific unit
    auto order = std::make_shared<MarketOnOpenSellOrder<Decimal>>(tradingSymbol,
     					unitVolume,
@@ -797,8 +787,6 @@ namespace mkc_timeseries
    // Track this order as an individual unit exit
    mUnitExitOrders[order->getOrderID()] = positionId;
    mPositionToOrders[positionId].insert(order->getOrderID());
-   std::cout << "[StrategyBroker::ExitLongUnitOnOpen] Created order ID: " << order->getOrderID()
-             << " for PositionID: " << positionId << std::endl;
    mOrderManager.addTradingOrder(order);
  }
       else
@@ -867,10 +855,6 @@ namespace mkc_timeseries
                              const Decimal& limitPrice,
                              uint32_t unitNumber)
     {
-      std::cout << "[StrategyBroker::ExitLongUnitAtLimit] Symbol: " << tradingSymbol
-                << ", UnitNumber: " << unitNumber
-                << ", LimitPrice: " << limitPrice << std::endl;
-                
       if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
  {
    // Get the specific unit
@@ -890,9 +874,6 @@ namespace mkc_timeseries
    TradingVolume unitVolume = (*unitIt)->getTradingUnits();
    uint32_t positionId = (*unitIt)->getPositionID();
 
-   std::cout << "[StrategyBroker::ExitLongUnitAtLimit] Unit " << unitNumber
-             << " - PositionID: " << positionId << std::endl;
-
    // Create order for this specific unit
    auto order = std::make_shared<SellAtLimitOrder<Decimal>>(tradingSymbol,
     				   unitVolume,
@@ -901,8 +882,6 @@ namespace mkc_timeseries
    // Track this order as an individual unit exit
    mUnitExitOrders[order->getOrderID()] = positionId;
    mPositionToOrders[positionId].insert(order->getOrderID());
-   std::cout << "[StrategyBroker::ExitLongUnitAtLimit] Created order ID: " << order->getOrderID()
-             << " for PositionID: " << positionId << std::endl;
    mOrderManager.addTradingOrder(order);
  }
       else
@@ -1062,10 +1041,6 @@ namespace mkc_timeseries
                             const Decimal& stopPrice,
                             uint32_t unitNumber)
     {
-      std::cout << "[StrategyBroker::ExitLongUnitAtStop] Symbol: " << tradingSymbol
-                << ", UnitNumber: " << unitNumber
-                << ", StopPrice: " << stopPrice << std::endl;
-                
       if (mInstrumentPositionManager.isLongPosition(tradingSymbol))
  {
    // Get the specific unit
@@ -1085,9 +1060,6 @@ namespace mkc_timeseries
    TradingVolume unitVolume = (*unitIt)->getTradingUnits();
    uint32_t positionId = (*unitIt)->getPositionID();
 
-   std::cout << "[StrategyBroker::ExitLongUnitAtStop] Unit " << unitNumber
-             << " - PositionID: " << positionId << std::endl;
-
    // Create order for this specific unit
    auto order = std::make_shared<SellAtStopOrder<Decimal>>(tradingSymbol,
     				  unitVolume,
@@ -1096,8 +1068,6 @@ namespace mkc_timeseries
    // Track this order as an individual unit exit
    mUnitExitOrders[order->getOrderID()] = positionId;
    mPositionToOrders[positionId].insert(order->getOrderID());
-   std::cout << "[StrategyBroker::ExitLongUnitAtStop] Created order ID: " << order->getOrderID()
-             << " for PositionID: " << positionId << std::endl;
    mOrderManager.addTradingOrder(order);
  }
       else
@@ -1314,42 +1284,96 @@ namespace mkc_timeseries
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed MarketOnOpenSellOrder.
      */
-    void OrderExecuted (MarketOnOpenSellOrder <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    void OrderExecuted (MarketOnOpenSellOrder <Decimal> *order) override
+    {
+      // Check if this is a unit exit and cancel complementary orders IMMEDIATELY
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        uint32_t positionId = it->second;
+        cancelComplementaryOrdersForPosition(positionId, order->getOrderID());
+      }
+      ExitOrderExecutedCommon(order);
+    }
     
     /**
      * @brief Callback invoked when a MarketOnOpenCoverOrder is executed (exit short).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed MarketOnOpenCoverOrder.
      */
-    void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    void OrderExecuted (MarketOnOpenCoverOrder<Decimal> *order) override
+    {
+      // Check if this is a unit exit and cancel complementary orders IMMEDIATELY
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        uint32_t positionId = it->second;
+        cancelComplementaryOrdersForPosition(positionId, order->getOrderID());
+      }
+      ExitOrderExecutedCommon(order);
+    }
     
     /**
      * @brief Callback invoked when a SellAtLimitOrder is executed (exit long).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed SellAtLimitOrder.
      */
-    void OrderExecuted (SellAtLimitOrder       <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    void OrderExecuted (SellAtLimitOrder       <Decimal> *order) override
+    {
+      // Check if this is a unit exit and cancel complementary orders IMMEDIATELY
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        uint32_t positionId = it->second;
+        cancelComplementaryOrdersForPosition(positionId, order->getOrderID());
+      }
+      ExitOrderExecutedCommon(order);
+    }
     
     /**
      * @brief Callback invoked when a CoverAtLimitOrder is executed (exit short).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed CoverAtLimitOrder.
      */
-    void OrderExecuted (CoverAtLimitOrder      <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    void OrderExecuted (CoverAtLimitOrder      <Decimal> *order) override
+    {
+      // Check if this is a unit exit and cancel complementary orders IMMEDIATELY
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        uint32_t positionId = it->second;
+        cancelComplementaryOrdersForPosition(positionId, order->getOrderID());
+      }
+      ExitOrderExecutedCommon(order);
+    }
     
     /**
      * @brief Callback invoked when a CoverAtStopOrder is executed (exit short).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed CoverAtStopOrder.
      */
-    void OrderExecuted (CoverAtStopOrder       <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    void OrderExecuted (CoverAtStopOrder       <Decimal> *order) override
+    {
+      // Check if this is a unit exit and cancel complementary orders IMMEDIATELY
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        uint32_t positionId = it->second;
+        cancelComplementaryOrdersForPosition(positionId, order->getOrderID());
+      }
+      ExitOrderExecutedCommon(order);
+    }
     
     /**
      * @brief Callback invoked when a SellAtStopOrder is executed (exit long).
      * Handles common logic for exit order execution.
      * @param order Pointer to the executed SellAtStopOrder.
      */
-    void OrderExecuted (SellAtStopOrder        <Decimal> *order) override { ExitOrderExecutedCommon(order); }
+    void OrderExecuted (SellAtStopOrder        <Decimal> *order) override
+    {
+      // Check if this is a unit exit and cancel complementary orders IMMEDIATELY
+      auto it = mUnitExitOrders.find(order->getOrderID());
+      if (it != mUnitExitOrders.end()) {
+        uint32_t positionId = it->second;
+        cancelComplementaryOrdersForPosition(positionId, order->getOrderID());
+      }
+      ExitOrderExecutedCommon(order);
+    }
 
     void OrderCanceled (MarketOnOpenLongOrder <Decimal> * ) override {}
     void OrderCanceled (MarketOnOpenShortOrder<Decimal> * ) override {}
@@ -1528,40 +1552,22 @@ namespace mkc_timeseries
     template <typename T>
     void ExitUnitOrderExecutedCommon (T *order, uint32_t positionId)
     {
-      std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] OrderID: " << order->getOrderID()
-                << ", Symbol: " << order->getTradingSymbol()
-                << ", PositionID: " << positionId << std::endl;
-                
       const InstrumentPosition<Decimal>& instrumentPosition =
         mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
-
-      std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Total units in position: "
-                << instrumentPosition.getNumPositionUnits() << std::endl;
 
       uint32_t unitNumber = 0;
       uint32_t currentUnit = 1;
       std::shared_ptr<const TradingPosition<Decimal>> pos = nullptr;
 
-      // Debug: List all position IDs
-      std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Available position IDs: ";
-      for (auto it = instrumentPosition.beginInstrumentPosition(); it != instrumentPosition.endInstrumentPosition(); ++it) {
-          std::cout << (*it)->getPositionID() << " ";
-      }
-      std::cout << std::endl;
-
       for (auto it = instrumentPosition.beginInstrumentPosition(); it != instrumentPosition.endInstrumentPosition(); ++it, ++currentUnit) {
           if ((*it)->getPositionID() == positionId) {
               unitNumber = currentUnit;
               pos = *it;
-              std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Found matching position at unit "
-                        << currentUnit << " with ID " << positionId << std::endl;
               break;
           }
       }
 
       if (pos == nullptr) {
-          std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] ERROR: Position ID " << positionId
-                    << " not found in current positions!" << std::endl;
           throw StrategyBrokerException("ExitUnitOrderExecutedCommon - Unable to find position with ID " +
                                       std::to_string(positionId) + " for symbol: " + order->getTradingSymbol());
       }
@@ -1574,25 +1580,14 @@ namespace mkc_timeseries
         auto aTransaction = transactionIterator->second;
         auto exitOrder = std::make_shared<T>(*order);
         aTransaction->completeTransaction (exitOrder);
-        std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Transaction completed for position ID "
-                  << positionId << std::endl;
         
-        // Cancel all other pending orders for this position ID to prevent race conditions
+        // Clean up tracking for this position - complementary orders were already canceled
+        // in the OrderExecuted callback before this method was called
         auto positionOrdersIt = mPositionToOrders.find(positionId);
         if (positionOrdersIt != mPositionToOrders.end()) {
-          std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Canceling "
-                    << positionOrdersIt->second.size() << " pending orders for position ID "
-                    << positionId << std::endl;
-          
-          for (uint32_t orderIdToCancel : positionOrdersIt->second) {
-            if (orderIdToCancel != order->getOrderID()) { // Don't cancel the order that just executed
-              std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Canceling order ID: "
-                        << orderIdToCancel << std::endl;
-              
-              // Find and cancel the order by searching through pending orders
-              this->cancelOrderById(orderIdToCancel);
-              mUnitExitOrders.erase(orderIdToCancel); // Remove from unit exit tracking
-            }
+          // Remove all order IDs for this position from unit exit tracking
+          for (uint32_t orderIdToCleanup : positionOrdersIt->second) {
+            mUnitExitOrders.erase(orderIdToCleanup);
           }
           
           // Clean up the position-to-orders mapping
@@ -1604,8 +1599,6 @@ namespace mkc_timeseries
       }
 
       // Close only the specific unit
-      std::cout << "[StrategyBroker::ExitUnitOrderExecutedCommon] Closing unit " << unitNumber
-                << " for symbol " << order->getTradingSymbol() << std::endl;
       mInstrumentPositionManager.closeUnitPosition (order->getTradingSymbol(),
                                                    order->getFillDateTime(),
                                                    order->getFillPrice(),
@@ -1623,46 +1616,47 @@ namespace mkc_timeseries
     template <typename T>
     void ExitOrderExecutedCommon (T *order)
     {
-      std::cout << "[StrategyBroker::ExitOrderExecutedCommon] OrderID: " << order->getOrderID()
-                << ", Symbol: " << order->getTradingSymbol() << std::endl;
-                
       // Check if this order is tracked as an individual unit exit
       auto it = mUnitExitOrders.find(order->getOrderID());
-      if (it != mUnitExitOrders.end()) {
-        // This is an individual unit exit order
-        uint32_t positionId = it->second;
-        std::cout << "[StrategyBroker::ExitOrderExecutedCommon] Individual unit exit - PositionID: "
-                  << positionId << std::endl;
-        mUnitExitOrders.erase(it); // Remove from tracking map
-        ExitUnitOrderExecutedCommon(order, positionId);
-      } else {
-        // This is a full exit order - close all positions (original behavior)
-        std::cout << "[StrategyBroker::ExitOrderExecutedCommon] Full position exit for "
-                  << order->getTradingSymbol() << std::endl;
-        InstrumentPosition<Decimal> instrumentPosition =
-          mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
-        typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
-          instrumentPosition.beginInstrumentPosition();
-        typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
-        std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
-        std::shared_ptr<TradingPosition<Decimal>> pos;
-        auto exitOrder = std::make_shared<T>(*order);
+      if (it != mUnitExitOrders.end())
+	{
+	  // This is an individual unit exit order
+	  uint32_t positionId = it->second;
 
-        for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++) {
-          pos = *positionIterator;
-          transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
-          if (transactionIterator != mStrategyTrades.endStrategyTransaction()) {
-            aTransaction = transactionIterator->second;
-            aTransaction->completeTransaction (exitOrder);
-          } else {
-            throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
-          }
-        }
+	  mUnitExitOrders.erase(it); // Remove from tracking map
+	  ExitUnitOrderExecutedCommon(order, positionId);
+	}
+      else
+	{
+	  // This is a full exit order - close all positions (original behavior)
+	  InstrumentPosition<Decimal> instrumentPosition =
+	    mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
+	  typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
+	    instrumentPosition.beginInstrumentPosition();
+	  typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
+	  std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
+	  std::shared_ptr<TradingPosition<Decimal>> pos;
+	  auto exitOrder = std::make_shared<T>(*order);
+
+        for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++)
+	  {
+	    pos = *positionIterator;
+	    transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
+	    if (transactionIterator != mStrategyTrades.endStrategyTransaction())
+	      {
+		aTransaction = transactionIterator->second;
+		aTransaction->completeTransaction (exitOrder);
+	      }
+	    else
+	      {
+		throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
+	      }
+	  }
 
         mInstrumentPositionManager.closeAllPositions (order->getTradingSymbol(),
                                                       order->getFillDateTime(), // Use ptime
                                                       order->getFillPrice());
-      }
+	}
     }
 
     // ---------------------------
@@ -1770,12 +1764,32 @@ namespace mkc_timeseries
 
   private:
     /**
+     * @brief Immediately cancels all pending orders for a specific position except the executing order.
+     * This prevents dual execution of complementary orders (e.g., limit + stop for same position).
+     * @param positionId The position ID whose complementary orders should be canceled.
+     * @param executingOrderId The order ID that is currently executing (don't cancel this one).
+     */
+    void cancelComplementaryOrdersForPosition(uint32_t positionId, uint32_t executingOrderId)
+    {
+      auto positionOrdersIt = mPositionToOrders.find(positionId);
+      if (positionOrdersIt != mPositionToOrders.end()) {
+        for (uint32_t orderIdToCancel : positionOrdersIt->second) {
+          if (orderIdToCancel != executingOrderId) { // Don't cancel the order that's executing
+            // Find and cancel the order by searching through pending orders
+            (void) this->cancelOrderById(orderIdToCancel);
+          }
+        }
+      }
+    }
+
+    /**
      * @brief Helper method to find and cancel an order by its ID.
      * Searches through all pending order collections to find the order with the specified ID
      * and calls MarkOrderCanceled() on it.
      * @param orderIdToCancel The ID of the order to cancel.
+     * @return true if the order was found and canceled, false otherwise.
      */
-    void cancelOrderById(uint32_t orderIdToCancel)
+    bool cancelOrderById(uint32_t orderIdToCancel)
     {
       // Search through all order types to find the order with this ID
       
@@ -1783,32 +1797,28 @@ namespace mkc_timeseries
       auto sellIt = mOrderManager.beginMarketSellOrders();
       for (; sellIt != mOrderManager.endMarketSellOrders(); ++sellIt) {
         if ((*sellIt)->getOrderID() == orderIdToCancel && (*sellIt)->isOrderPending()) {
-          std::cout << "[StrategyBroker::cancelOrderById] Found and canceling MarketSellOrder ID: "
-                    << orderIdToCancel << std::endl;
           (*sellIt)->MarkOrderCanceled();
-          return;
+          return true;
         }
       }
       
       // Check market cover orders
       auto coverIt = mOrderManager.beginMarketCoverOrders();
-      for (; coverIt != mOrderManager.endMarketCoverOrders(); ++coverIt) {
-        if ((*coverIt)->getOrderID() == orderIdToCancel && (*coverIt)->isOrderPending()) {
-          std::cout << "[StrategyBroker::cancelOrderById] Found and canceling MarketCoverOrder ID: "
-                    << orderIdToCancel << std::endl;
-          (*coverIt)->MarkOrderCanceled();
-          return;
-        }
-      }
+      for (; coverIt != mOrderManager.endMarketCoverOrders(); ++coverIt)
+	{
+	  if ((*coverIt)->getOrderID() == orderIdToCancel && (*coverIt)->isOrderPending())
+	    {
+	      (*coverIt)->MarkOrderCanceled();
+	      return true;
+	    }
+	}
       
       // Check limit sell orders
       auto limitSellIt = mOrderManager.beginLimitSellOrders();
       for (; limitSellIt != mOrderManager.endLimitSellOrders(); ++limitSellIt) {
         if ((*limitSellIt)->getOrderID() == orderIdToCancel && (*limitSellIt)->isOrderPending()) {
-          std::cout << "[StrategyBroker::cancelOrderById] Found and canceling LimitSellOrder ID: "
-                    << orderIdToCancel << std::endl;
           (*limitSellIt)->MarkOrderCanceled();
-          return;
+          return true;
         }
       }
       
@@ -1816,10 +1826,8 @@ namespace mkc_timeseries
       auto limitCoverIt = mOrderManager.beginLimitCoverOrders();
       for (; limitCoverIt != mOrderManager.endLimitCoverOrders(); ++limitCoverIt) {
         if ((*limitCoverIt)->getOrderID() == orderIdToCancel && (*limitCoverIt)->isOrderPending()) {
-          std::cout << "[StrategyBroker::cancelOrderById] Found and canceling LimitCoverOrder ID: "
-                    << orderIdToCancel << std::endl;
           (*limitCoverIt)->MarkOrderCanceled();
-          return;
+          return true;
         }
       }
       
@@ -1827,10 +1835,8 @@ namespace mkc_timeseries
       auto stopSellIt = mOrderManager.beginStopSellOrders();
       for (; stopSellIt != mOrderManager.endStopSellOrders(); ++stopSellIt) {
         if ((*stopSellIt)->getOrderID() == orderIdToCancel && (*stopSellIt)->isOrderPending()) {
-          std::cout << "[StrategyBroker::cancelOrderById] Found and canceling StopSellOrder ID: "
-                    << orderIdToCancel << std::endl;
           (*stopSellIt)->MarkOrderCanceled();
-          return;
+          return true;
         }
       }
       
@@ -1838,15 +1844,13 @@ namespace mkc_timeseries
       auto stopCoverIt = mOrderManager.beginStopCoverOrders();
       for (; stopCoverIt != mOrderManager.endStopCoverOrders(); ++stopCoverIt) {
         if ((*stopCoverIt)->getOrderID() == orderIdToCancel && (*stopCoverIt)->isOrderPending()) {
-          std::cout << "[StrategyBroker::cancelOrderById] Found and canceling StopCoverOrder ID: "
-                    << orderIdToCancel << std::endl;
           (*stopCoverIt)->MarkOrderCanceled();
-          return;
+          return true;
         }
       }
       
-      std::cout << "[StrategyBroker::cancelOrderById] Warning: Could not find pending order with ID: "
-                << orderIdToCancel << std::endl;
+      // Order not found - it was likely already processed
+      return false;
     }
 
     TradingOrderManager<Decimal>       mOrderManager;
