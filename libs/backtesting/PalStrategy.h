@@ -332,23 +332,23 @@ namespace mkc_timeseries
                            const ptime& processingDateTime) override
     {
       if (this->isFlatPosition (aSecurity->getSymbol()))
-      {
-        entryOrdersCommon(aSecurity, instrPos, processingDateTime, FlatEntryOrderConditions<Decimal>());
-      }
+	{
+	  entryOrdersCommon(aSecurity, instrPos, processingDateTime, FlatEntryOrderConditions<Decimal>());
+	}
       else if (this->isLongPosition (aSecurity->getSymbol()))
-      {
-        // When in a long position, use existing conditions that only allow long patterns
-        entryOrdersCommon(aSecurity, instrPos, processingDateTime, LongEntryOrderConditions<Decimal>());
-      }
+	{
+	  // When in a long position, use existing conditions that only allow long patterns
+	  entryOrdersCommon(aSecurity, instrPos, processingDateTime, LongEntryOrderConditions<Decimal>());
+	}
       else if (this->isShortPosition (aSecurity->getSymbol()))
-      {
-        // When in a short position, use existing conditions that only allow short patterns
-        entryOrdersCommon(aSecurity, instrPos, processingDateTime, ShortEntryOrderConditions<Decimal>());
-      }
+	{
+	  // When in a short position, use existing conditions that only allow short patterns
+	  entryOrdersCommon(aSecurity, instrPos, processingDateTime, ShortEntryOrderConditions<Decimal>());
+	}
       else
-      {
-        throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknown position state"));
-      }
+	{
+	  throw PalStrategyException(std::string("PalMetaStrategy::eventEntryOrders - Unknown position state"));
+	}
     }
 
     void eventExitOrders (Security<Decimal>* aSecurity,
@@ -356,10 +356,11 @@ namespace mkc_timeseries
                           const ptime& processingDateTime) override
     {
       uint32_t numUnits = instrPos.getNumPositionUnits();
+
       if (numUnits == 0)
-      {
+	{
           return;
-      }
+	}
 
       // Process each position unit individually for proper pyramiding support
       // IMPORTANT: Iterate in reverse order to avoid iterator invalidation issues
@@ -428,28 +429,28 @@ namespace mkc_timeseries
       // No iterator needed for PatternEvaluator based on PALPatternInterpreter.h
 
       if (entryConditions.canEnterMarket(this, aSecurity))
-      {
-        auto patIt  = mPalPatterns.begin();
-        auto evalIt = mPatternEvaluators.begin();
-        for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
-             ++patIt, ++evalIt)
-        {
-          std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
+	{
+	  auto patIt  = mPalPatterns.begin();
+	  auto evalIt = mPatternEvaluators.begin();
+	  for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
+	       ++patIt, ++evalIt)
+	    {
+	      std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
 
-          if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
-          {
-            continue;
-          }
+	      if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
+		{
+		  continue;
+		}
 
-          // PatternEvaluator now takes ptime. Orders are placed using ptime.
-          if ((*evalIt)(aSecurity, processingDateTime))
-          {
-            // entryConditions will use processingDateTime for actual order placement
-            entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
-            break; // Assuming one pattern match per bar is sufficient for meta strategy
-          }
-        }
-      }
+	      // PatternEvaluator now takes ptime. Orders are placed using ptime.
+	      if ((*evalIt)(aSecurity, processingDateTime))
+		{
+		  // entryConditions will use processingDateTime for actual order placement
+		  entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
+		  break; // Assuming one pattern match per bar is sufficient for meta strategy
+		}
+	    }
+	}
     }
 
     // NOTE: eventExitLongOrders and eventExitShortOrders helper methods removed
