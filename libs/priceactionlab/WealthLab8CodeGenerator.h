@@ -57,13 +57,13 @@ public:
         if (!mOut.is_open())
             throw std::runtime_error("Cannot open output file: " + mOutputFileName);
 
-        // Pre-scan to compute max lookback (StartIndex)
-        mGlobalMaxOffset = 0;
+        // Pre-scan to compute max lookback (StartIndex) using getMaxBarsBack()
+        int maxBarsBack = 0;
         for (auto it = mSystem->patternLongsBegin(); it != mSystem->patternLongsEnd(); ++it)
-            scanMaxOffset(it->second->getPatternExpression().get());
+            maxBarsBack = std::max(maxBarsBack, static_cast<int>(it->second->getMaxBarsBack()));
         for (auto it = mSystem->patternShortsBegin(); it != mSystem->patternShortsEnd(); ++it)
-            scanMaxOffset(it->second->getPatternExpression().get());
-        const int startIndex = std::max(15, mGlobalMaxOffset);
+            maxBarsBack = std::max(maxBarsBack, static_cast<int>(it->second->getMaxBarsBack()));
+        const int startIndex = maxBarsBack;
 
         writeFilePreamble();
         writeClassPreamble();

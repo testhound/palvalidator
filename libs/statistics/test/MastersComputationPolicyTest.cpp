@@ -501,12 +501,15 @@ TEST_CASE("FastMastersPermutationPolicy with randomized statistics produces reas
   auto portfolio = createDummyPortfolio();
 
   FastMastersPermutationPolicy<DecimalType, RandomStatPolicy>::LocalStrategyDataContainer strategyData;
-
-  for (int i = 0; i < 3; ++i) {
-    auto strategy = getRandomPalStrategy();
-    strategyData.push_back(makeStrategyContext(strategy, DecimalType("0.35")));
-  }
-
+  std::set<unsigned long long> used;
+  while (strategyData.size() < 3)
+    {
+      auto s = getRandomPalStrategy();
+      auto h = s->getPatternHash();
+      if (used.insert(h).second)
+	strategyData.push_back(makeStrategyContext(s, DecimalType("0.35")));
+    }
+  
   uint numPerms = 100;
   
   // Create instance instead of using static method
