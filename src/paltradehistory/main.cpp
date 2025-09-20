@@ -7,6 +7,9 @@
 #include <iomanip>
 #include <filesystem>
 #include <sstream>
+#include <ctime>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/date_time/gregorian/gregorian.hpp>
 
 #include "ValidatorConfiguration.h"
 #include "SecurityAttributesFactory.h"
@@ -33,7 +36,7 @@ void usage()
 {
     printf("Usage: paltradehistory <config file> [options]\n");
     printf("  Generates a CSV file with detailed trade history from PAL patterns.\n");
-    printf("  Output file will be named: <security_symbol>_trade_history.csv\n\n");
+    printf("  Output file will be named: <security_symbol>_<pyramid_info>_<Month_Day_Year_HHMM>.csv\n\n");
     printf("Options:\n");
     printf("  --compare <external_file>    Compare generated trades with external backtesting results\n");
     printf("  --tolerance-strict           Use strict comparison tolerances (default)\n");
@@ -47,9 +50,36 @@ void usage()
     printf("  paltradehistory config.json --compare external.csv --report-format csv --report-file comparison.csv\n");
 }
 
-std::string createTradeHistoryFileName(const std::string& securitySymbol)
+std::string createTradeHistoryFileName(const std::string& securitySymbol, const StrategyOptions& strategyOptions)
 {
-    return securitySymbol + "_trade_history.csv";
+    // Get current date and time
+    boost::posix_time::ptime now = boost::posix_time::second_clock::local_time();
+    boost::gregorian::date currentDate = now.date();
+    boost::posix_time::time_duration currentTime = now.time_of_day();
+
+    // Format date as "September_19_2020"
+    std::ostringstream dateStream;
+    dateStream << currentDate.month().as_long_string() << "_"
+               << currentDate.day() << "_"
+               << currentDate.year();
+
+    // Format time as "1935" (HHMM)
+    std::ostringstream timeStream;
+    timeStream << std::setfill('0') << std::setw(2) << currentTime.hours()
+               << std::setfill('0') << std::setw(2) << currentTime.minutes();
+
+    // Build pyramiding info
+    std::string pyramidInfo;
+    if (strategyOptions.isPyramidingEnabled()) {
+        // Total positions = 1 (base) + additional positions
+        unsigned int totalPositions = 1 + strategyOptions.getMaxPyramidPositions();
+        pyramidInfo = "_pyramid_" + std::to_string(totalPositions);
+    } else {
+        pyramidInfo = "_no_pyramid";
+    }
+
+    // Combine all parts: symbol + pyramiding + date + time + extension
+    return securitySymbol + pyramidInfo + "_" + dateStream.str() + "_" + timeStream.str() + ".csv";
 }
 
 void writeTradeHistoryCSV(const std::string& filename,
@@ -362,7 +392,7 @@ int main(int argc, char **argv)
         }
 
         // Generate CSV file
-        std::string csvFileName = createTradeHistoryFileName(config->getSecurity()->getSymbol());
+        std::string csvFileName = createTradeHistoryFileName(config->getSecurity()->getSymbol(), strategyOptions);
         std::cout << "Writing trade history to: " << csvFileName << std::endl;
         
         writeTradeHistoryCSV(csvFileName, config->getSecurity()->getSymbol(), closedHistory);
