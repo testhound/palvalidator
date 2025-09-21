@@ -22,7 +22,7 @@ namespace mkc_timeseries
 {
   using namespace boost::accumulators;
 
-    /**
+  /**
    * @brief Divides each element of series1 by its corresponding element in series2.
    *
    * Creates a new time series where each entry is the result of dividing the
@@ -53,7 +53,7 @@ namespace mkc_timeseries
 
     // strict: only equal-length series are allowed
     if (series1.getNumEntries() != series2.getNumEntries())
-        throw std::domain_error("DivideSeries:: series lengths must be the same");
+      throw std::domain_error("DivideSeries:: series lengths must be the same");
 
     if (series1.getLastDate() != series2.getLastDate())
       throw std::domain_error (std::string ("DivideSeries:: end date of two series must be the same"));
@@ -231,7 +231,7 @@ namespace mkc_timeseries
     }
   }
 
-   /**
+  /**
    * @brief Calculates the population standard deviation for a vector of arithmetic types.
    *
    * This overload is enabled only for standard arithmetic types (int, float, double, etc.).
@@ -409,7 +409,7 @@ namespace mkc_timeseries
   class RobustQn
   {
   public:
-     /**
+    /**
      * @brief Construct a Q_n estimator from a time series.
      *
      * Copies all values from the given NumericTimeSeries into an internal
@@ -436,7 +436,7 @@ namespace mkc_timeseries
       return computeQn(mData);
     }
 
-     /**
+    /**
      * @brief Compute Q_n for an arbitrary vector of values.
      *
      * Does not modify the input vector.
@@ -523,8 +523,8 @@ namespace mkc_timeseries
       // otherwise use the asymptotic formula
       static constexpr double asymp = 2.2219;
       double dn = (n % 2 == 1)
-                  ? (static_cast<double>(n) / (n + 1.4)) * asymp
-                  : (static_cast<double>(n) / (n + 3.8)) * asymp;
+	? (static_cast<double>(n) / (n + 1.4)) * asymp
+	: (static_cast<double>(n) / (n + 3.8)) * asymp;
       return Decimal(dn);
     }
   };
@@ -559,28 +559,28 @@ namespace mkc_timeseries
     // Iterate through all entries in the OHLC series
     auto entries = series.getEntriesCopy();
     for (const auto& entry : entries)
-    {
-      Decimal high = entry.getHighValue();
-      Decimal low = entry.getLowValue();
-      Decimal close = entry.getCloseValue();
-      Decimal ibsValue;
-      
-      // Calculate IBS: (Close - Low) / (High - Low)
-      // Handle division by zero case (when High == Low)
-      Decimal denominator = high - low;
-      if (denominator == DecimalConstants<Decimal>::DecimalZero)
       {
-        ibsValue = DecimalConstants<Decimal>::DecimalZero;
-      }
-      else
-      {
-        ibsValue = (close - low) / denominator;
-      }
+	Decimal high = entry.getHighValue();
+	Decimal low = entry.getLowValue();
+	Decimal close = entry.getCloseValue();
+	Decimal ibsValue;
       
-      resultSeries.addEntry(NumericTimeSeriesEntry<Decimal>(entry.getDateTime(),
-                                                           ibsValue,
-                                                           series.getTimeFrame()));
-    }
+	// Calculate IBS: (Close - Low) / (High - Low)
+	// Handle division by zero case (when High == Low)
+	Decimal denominator = high - low;
+	if (denominator == DecimalConstants<Decimal>::DecimalZero)
+	  {
+	    ibsValue = DecimalConstants<Decimal>::DecimalZero;
+	  }
+	else
+	  {
+	    ibsValue = (close - low) / denominator;
+	  }
+      
+	resultSeries.addEntry(NumericTimeSeriesEntry<Decimal>(entry.getDateTime(),
+							      ibsValue,
+							      series.getTimeFrame()));
+      }
 
     return resultSeries;
   }
@@ -655,331 +655,334 @@ namespace mkc_timeseries
   }
 
   // ============================================
-// Core: compute asymmetric raw return levels
-// ============================================
-/**
- * @brief Computes asymmetric profit target and stop loss levels using robust statistics.
- *
- * Skew is applied exactly once and scaled by Qn so its effect is in the same units
- * as the base dispersion. The stop-side sign is chosen so that a negative skew
- * (fatter left tail) widens the stop (i.e., makes the raw stop return more negative).
- *
- * Formulas:
- *   Profit Target = median + (k_qn * Qn) + (k_skew_target * Qn * skew)
- *   Stop Loss     = median - (k_qn * Qn) + (k_skew_stop   * Qn * skew)
- *
- * @tparam Decimal Numeric type.
- * @param median Median of the return series.
- * @param qn     Robust Qₙ scale estimator (non-negative).
- * @param skew   Robust medcouple skew in [-1,1].
- * @param k_qn   Multiplier for Qₙ (e.g., 1.0).
- * @param k_skew_target Multiplier for the skew term on the target side.
- * @param k_skew_stop   Multiplier for the skew term on the stop side.
- * @param[out] profitTarget Raw profit-target return (can be positive/negative).
- * @param[out] stopLoss     Raw stop-loss return (typically negative for longs).
- *
- * @throws std::domain_error if Qn is negative.
- */
-template <typename Decimal>
-void ComputeAsymmetricStopAndTarget(
-    const Decimal& median,
-    const Decimal& qn,
-    const Decimal& skew,
-    const Decimal& k_qn,
-    const Decimal& k_skew_target,
-    const Decimal& k_skew_stop,
-    Decimal& profitTarget,
-    Decimal& stopLoss)
-{
-  if (qn < DecimalConstants<Decimal>::DecimalZero)
-    throw std::domain_error("Qn must be non-negative");
+  // Core: compute asymmetric raw return levels
+  // ============================================
+  /**
+   * @brief Computes asymmetric profit target and stop loss levels using robust statistics.
+   *
+   * Skew is applied exactly once and scaled by Qn so its effect is in the same units
+   * as the base dispersion. The stop-side sign is chosen so that a negative skew
+   * (fatter left tail) widens the stop (i.e., makes the raw stop return more negative).
+   *
+   * Formulas:
+   *   Profit Target = median + (k_qn * Qn) + (k_skew_target * Qn * skew)
+   *   Stop Loss     = median - (k_qn * Qn) + (k_skew_stop   * Qn * skew)
+   *
+   * @tparam Decimal Numeric type.
+   * @param median Median of the return series.
+   * @param qn     Robust Qₙ scale estimator (non-negative).
+   * @param skew   Robust medcouple skew in [-1,1].
+   * @param k_qn   Multiplier for Qₙ (e.g., 1.0).
+   * @param k_skew_target Multiplier for the skew term on the target side.
+   * @param k_skew_stop   Multiplier for the skew term on the stop side.
+   * @param[out] profitTarget Raw profit-target return (can be positive/negative).
+   * @param[out] stopLoss     Raw stop-loss return (typically negative for longs).
+   *
+   * @throws std::domain_error if Qn is negative.
+   */
+  template <typename Decimal>
+  void ComputeAsymmetricStopAndTarget(
+				      const Decimal& median,
+				      const Decimal& qn,
+				      const Decimal& skew,
+				      const Decimal& k_qn,
+				      const Decimal& k_skew_target,
+				      const Decimal& k_skew_stop,
+				      Decimal& profitTarget,
+				      Decimal& stopLoss)
+  {
+    if (qn < DecimalConstants<Decimal>::DecimalZero)
+      throw std::domain_error("Qn must be non-negative");
 
-  // Profit side: push outward with dispersion and (signed) skew adjustment
-  profitTarget = median + (k_qn * qn) + (k_skew_target * qn * skew);
+    // Profit side: push outward with dispersion and (signed) skew adjustment
+    profitTarget = median + (k_qn * qn) + (k_skew_target * qn * skew);
 
-  // Stop side: negative skew (left tail) should WIDEN the stop (more negative)
-  // so its contribution must be + (const * qn * skew), which is negative when skew<0.
-  stopLoss     = median - (k_qn * qn) + (k_skew_stop   * qn * skew);
-}
+    // Stop side: negative skew (left tail) should WIDEN the stop (more negative)
+    // so its contribution must be + (const * qn * skew), which is negative when skew<0.
+    stopLoss     = median - (k_qn * qn) + (k_skew_stop   * qn * skew);
+  }
 
-// ============================================
-// Helper functions for quantile-based analysis
-// ============================================
+  // ============================================
+  // Helper functions for quantile-based analysis
+  // ============================================
 
-/**
- * @brief Computes a sample quantile from a vector of values.
- *
- * Uses the nth_element algorithm to find the quantile without fully sorting the vector.
- * The input vector is modified during computation.
- *
- * @tparam Decimal Numeric type for calculations.
- * @param values Vector of values (will be modified during computation).
- * @param p Quantile probability in [0, 1].
- * @return The computed quantile value.
- */
-template <typename Decimal>
-Decimal SampleQuantile(std::vector<Decimal> values, double p)
-{
-  if (values.empty()) return DecimalConstants<Decimal>::DecimalZero;
-  p = std::clamp(p, 0.0, 1.0);
-  const size_t n = values.size();
-  const size_t k = static_cast<size_t>(std::floor(p * (n - 1)));
-  std::nth_element(values.begin(), values.begin() + k, values.end());
-  return values[k];
-}
+  /**
+   * @brief Computes a sample quantile from a vector of values.
+   *
+   * Uses the nth_element algorithm to find the quantile without fully sorting the vector.
+   * The input vector is modified during computation.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   * @param values Vector of values (will be modified during computation).
+   * @param p Quantile probability in [0, 1].
+   * @return The computed quantile value.
+   */
+  template <typename Decimal>
+  Decimal SampleQuantile(std::vector<Decimal> values, double p)
+  {
+    if (values.empty())
+      return DecimalConstants<Decimal>::DecimalZero;
+    
+    p = std::clamp(p, 0.0, 1.0);
+    const size_t n = values.size();
+    const size_t k = static_cast<size_t>(std::floor(p * (n - 1)));
+    std::nth_element(values.begin(), values.begin() + k, values.end());
 
-/**
- * @brief Winsorizes a vector in-place by capping extreme values at specified quantiles.
- *
- * Replaces values below the tau-quantile with the tau-quantile value,
- * and values above the (1-tau)-quantile with the (1-tau)-quantile value.
- *
- * @tparam Decimal Numeric type for calculations.
- * @param values Vector to winsorize (modified in-place).
- * @param tau Tail probability for winsorization (e.g., 0.01 for 1% per tail).
- */
+    return values[k];
+  }
 
- template <typename Decimal>
-void WinsorizeInPlace(std::vector<Decimal>& values, double tau)
-{
-  if (values.empty()) return;
+  /**
+   * @brief Winsorizes a vector in-place by capping extreme values at specified quantiles.
+   *
+   * Replaces values below the tau-quantile with the tau-quantile value,
+   * and values above the (1-tau)-quantile with the (1-tau)-quantile value.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   * @param values Vector to winsorize (modified in-place).
+   * @param tau Tail probability for winsorization (e.g., 0.01 for 1% per tail).
+   */
+
+  template <typename Decimal>
+  void WinsorizeInPlace(std::vector<Decimal>& values, double tau)
+  {
+    if (values.empty()) return;
 
   
-  if (tau < 0.0) tau = 0.0;
-  if (tau > 0.25) tau = 0.25;
-  if (tau == 0.0) return;
+    if (tau < 0.0) tau = 0.0;
+    if (tau > 0.25) tau = 0.25;
+    if (tau == 0.0) return;
 
-  const size_t n = values.size();
+    const size_t n = values.size();
 
-  // Nearest-rank on (n-1)*p to pick tail cutpoints.
-  auto kth_value = [&](double p) -> Decimal {
-    if (p <= 0.0) {
-      return *std::min_element(values.begin(), values.end());
+    // Nearest-rank on (n-1)*p to pick tail cutpoints.
+    auto kth_value = [&](double p) -> Decimal {
+      if (p <= 0.0) {
+	return *std::min_element(values.begin(), values.end());
+      }
+      if (p >= 1.0) {
+	return *std::max_element(values.begin(), values.end());
+      }
+      const double r = p * static_cast<double>(n - 1);
+      size_t k = static_cast<size_t>(std::llround(r));
+      if (k >= n) k = n - 1;
+
+      std::vector<Decimal> tmp(values);
+      std::nth_element(tmp.begin(), tmp.begin() + static_cast<std::ptrdiff_t>(k), tmp.end());
+      return tmp[k];
+    };
+
+    const Decimal lo = kth_value(tau);
+    const Decimal hi = kth_value(1.0 - tau);
+
+    for (auto& x : values) {
+      if (x < lo) x = lo;
+      else if (x > hi) x = hi;
     }
-    if (p >= 1.0) {
-      return *std::max_element(values.begin(), values.end());
-    }
-    const double r = p * static_cast<double>(n - 1);
-    size_t k = static_cast<size_t>(std::llround(r));
-    if (k >= n) k = n - 1;
-
-    std::vector<Decimal> tmp(values);
-    std::nth_element(tmp.begin(), tmp.begin() + static_cast<std::ptrdiff_t>(k), tmp.end());
-    return tmp[k];
-  };
-
-  const Decimal lo = kth_value(tau);
-  const Decimal hi = kth_value(1.0 - tau);
-
-  for (auto& x : values) {
-    if (x < lo) x = lo;
-    else if (x > hi) x = hi;
-  }
-}
-
-/**
- * @brief Computes stop and target levels using winsorized quantiles method.
- *
- * This method uses empirical quantiles from winsorized return data to determine
- * typical upside and downside movements. It provides a "typical day" approach
- * based on historical return distribution.
- *
- * @tparam Decimal Numeric type for calculations.
- * @param series The OHLC time series to analyze.
- * @param period The lookback period for ROC calculation (default: 1).
- * @return A pair of {profitWidth, stopWidth} representing positive distances
- *         from the median for target and stop levels respectively.
- * @throws std::domain_error if series has fewer than 3 bars or ROC series is too small.
- */
-template <typename Decimal>
-std::pair<Decimal, Decimal>
-ComputeQuantileStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-                                       uint32_t period = 1)
-{
-  using namespace mkc_timeseries;
-
-  // Fixed, minimal knobs (no curve fitting)
-  constexpr double kWinsorTail       = 0.01;  // 1% per tail
-  constexpr double kAlphaLower       = 0.10;  // lower quantile  (stop)
-  constexpr double kAlphaUpper       = 0.10;  // upper quantile  (target)
-  constexpr size_t kMinSample        = 20;    // min size for stable tails
-
-  if (series.getNumEntries() < 3)
-    throw std::domain_error("Input series must contain at least 3 bars");
-
-  // Build ROC% series from in-sample closes
-  auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
-  auto rocVec    = rocSeries.getTimeSeriesAsVector();
-  if (rocVec.size() < 3)
-    throw std::domain_error("ROC series too small for estimation");
-
-  const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-
-  // 1) Center: median of raw ROC%
-  const Decimal median = MedianOfVec(rocVec);
-
-  // 2) Winsorize a copy lightly
-  std::vector<Decimal> wv = rocVec;
-  if (wv.size() >= kMinSample)
-    WinsorizeInPlace(wv, kWinsorTail);
-
-  // 3) One-sided quantiles around the median
-  const Decimal q_lo = (wv.size() >= kMinSample) ? SampleQuantile(wv, kAlphaLower)
-                                                 : median;
-  const Decimal q_hi = (wv.size() >= kMinSample) ? SampleQuantile(wv, 1.0 - kAlphaUpper)
-                                                 : median;
-
-  // 4) Positive widths (typical downside/upside)
-  Decimal profitWidth = q_hi - median;
-  Decimal stopWidth   = median - q_lo;
-
-  if (profitWidth < zero) profitWidth = zero;
-  if (stopWidth   < zero) stopWidth   = zero;
-
-  // Degenerate fallback
-  if (profitWidth == zero && stopWidth == zero) {
-    const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
-    return {eps, eps};
   }
 
-  return {profitWidth, stopWidth};
-}
-
-/**
- * @brief Computes stop and target levels using robust Qn + Medcouple skew method.
- *
- * This method uses robust statistical measures (Qn scale estimator and Medcouple skew)
- * to determine asymmetric stop and target levels that account for return distribution
- * characteristics.
- *
- * @tparam Decimal Numeric type for calculations.
- * @param series The OHLC time series to analyze.
- * @param period The lookback period for ROC calculation.
- * @param useAnchors Whether to cap/floor the computed widths by empirical tails.
- * @return A pair of {profitWidth, stopWidth} representing positive distances
- *         from the median for target and stop levels respectively.
- * @throws std::domain_error if series has fewer than 3 bars or ROC series is too small.
- */
-template <typename Decimal>
-std::pair<Decimal, Decimal>
-ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-                                     uint32_t period,
-                                     bool useAnchors)
-{
-  using namespace mkc_timeseries;
-
-  // Fixed, minimal knobs (no curve fitting)
-  constexpr double kWinsorTail       = 0.01;  // 1% per tail
-  constexpr double kAlphaLower       = 0.10;  // lower quantile  (stop)
-  constexpr double kAlphaUpper       = 0.10;  // upper quantile  (target)
-  constexpr size_t kMinSample        = 20;    // min size for stable tails
-
-  if (series.getNumEntries() < 3)
-    throw std::domain_error("Input series must contain at least 3 bars");
-
-  // Build ROC% series from in-sample closes
-  auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
-  auto rocVec    = rocSeries.getTimeSeriesAsVector();
-  if (rocVec.size() < 3)
-    throw std::domain_error("ROC series too small for estimation");
-
-  // Helper for finite value checking
-  auto is_finite = [](const Decimal& x) {
-    return std::isfinite(x.getAsDouble());
-  };
-
-  const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-
-  // 1) Robust stats
-  const Decimal median = MedianOfVec(rocVec);
-  const Decimal qn     = RobustQn<Decimal>(rocSeries).getRobustQn();
-  Decimal skew         = RobustSkewMedcouple(rocSeries);
-
-  // 2) Clamp skew mildly
-  const Decimal half = DecimalConstants<Decimal>::createDecimal("0.5");
-  if (skew >  half) skew = half;
-  if (skew < -half) skew = -half;
-
-  // 3) Multipliers (symmetric base, unit skew weights)
-  const Decimal k_qn          = DecimalConstants<Decimal>::DecimalOne;
-  const Decimal k_skew_target = DecimalConstants<Decimal>::DecimalOne;
-  const Decimal k_skew_stop   = DecimalConstants<Decimal>::DecimalOne;
-
-  // 4) Core compute (raw levels)
-  Decimal rawTarget, rawStop;
-  ComputeAsymmetricStopAndTarget(
-      median, qn, skew,
-      k_qn, k_skew_target, k_skew_stop,
-      rawTarget, rawStop);
-
-  // 5) Convert to positive widths + symmetric fallbacks
-  Decimal profitWidth = rawTarget;   // expect ≥ 0
-  Decimal stopWidth   = -rawStop;    // expect ≥ 0
-
-  if (profitWidth <= zero || !is_finite(profitWidth))
-    profitWidth = median + qn;
-  if (stopWidth   <= zero || !is_finite(stopWidth))
-    stopWidth   = median + qn;
-
-  // 6) Optional empirical anchors (cap target, floor stop by tails)
-  if (useAnchors && rocVec.size() >= kMinSample)
+  /**
+   * @brief Computes stop and target levels using winsorized quantiles method.
+   *
+   * This method uses empirical quantiles from winsorized return data to determine
+   * typical upside and downside movements. It provides a "typical day" approach
+   * based on historical return distribution.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   * @param series The OHLC time series to analyze.
+   * @param period The lookback period for ROC calculation (default: 1).
+   * @return A pair of {profitWidth, stopWidth} representing positive distances
+   *         from the median for target and stop levels respectively.
+   * @throws std::domain_error if series has fewer than 3 bars or ROC series is too small.
+   */
+  template <typename Decimal>
+  std::pair<Decimal, Decimal>
+  ComputeQuantileStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+					 uint32_t period = 1)
   {
+    using namespace mkc_timeseries;
+
+    // Fixed, minimal knobs (no curve fitting)
+    constexpr double kWinsorTail       = 0.01;  // 1% per tail
+    constexpr double kAlphaLower       = 0.10;  // lower quantile  (stop)
+    constexpr double kAlphaUpper       = 0.10;  // upper quantile  (target)
+    constexpr size_t kMinSample        = 20;    // min size for stable tails
+
+    if (series.getNumEntries() < 3)
+      throw std::domain_error("Input series must contain at least 3 bars");
+
+    // Build ROC% series from in-sample closes
+    auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+    auto rocVec    = rocSeries.getTimeSeriesAsVector();
+    if (rocVec.size() < 3)
+      throw std::domain_error("ROC series too small for estimation");
+
+    const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+
+    // 1) Center: median of raw ROC%
+    const Decimal median = MedianOfVec(rocVec);
+
+    // 2) Winsorize a copy lightly
     std::vector<Decimal> wv = rocVec;
-    WinsorizeInPlace(wv, kWinsorTail);
+    if (wv.size() >= kMinSample)
+      WinsorizeInPlace(wv, kWinsorTail);
 
-    const Decimal q_lo = SampleQuantile(wv, kAlphaLower);
-    const Decimal q_hi = SampleQuantile(wv, 1.0 - kAlphaUpper);
+    // 3) One-sided quantiles around the median
+    const Decimal q_lo = (wv.size() >= kMinSample) ? SampleQuantile(wv, kAlphaLower)
+      : median;
+    const Decimal q_hi = (wv.size() >= kMinSample) ? SampleQuantile(wv, 1.0 - kAlphaUpper)
+      : median;
 
-    Decimal targetCap = q_hi - median;   // cap overly optimistic targets
-    Decimal stopFloor = median - q_lo;   // floor overly tight stops
+    // 4) Positive widths (typical downside/upside)
+    Decimal profitWidth = q_hi - median;
+    Decimal stopWidth   = median - q_lo;
 
-    if (targetCap < zero) targetCap = zero;
-    if (stopFloor < zero) stopFloor = zero;
+    if (profitWidth < zero) profitWidth = zero;
+    if (stopWidth   < zero) stopWidth   = zero;
 
-    if (targetCap > zero && profitWidth > targetCap)
-      profitWidth = targetCap;
-    if (stopWidth < stopFloor)
-      stopWidth = stopFloor;
+    // Degenerate fallback
+    if (profitWidth == zero && stopWidth == zero) {
+      const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
+      return {eps, eps};
+    }
+
+    return {profitWidth, stopWidth};
   }
 
-  return {profitWidth, stopWidth};
-}
+  /**
+   * @brief Computes stop and target levels using robust Qn + Medcouple skew method.
+   *
+   * This method uses robust statistical measures (Qn scale estimator and Medcouple skew)
+   * to determine asymmetric stop and target levels that account for return distribution
+   * characteristics.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   * @param series The OHLC time series to analyze.
+   * @param period The lookback period for ROC calculation.
+   * @param useAnchors Whether to cap/floor the computed widths by empirical tails.
+   * @return A pair of {profitWidth, stopWidth} representing positive distances
+   *         from the median for target and stop levels respectively.
+   * @throws std::domain_error if series has fewer than 3 bars or ROC series is too small.
+   */
+  template <typename Decimal>
+  std::pair<Decimal, Decimal>
+  ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+				       uint32_t period,
+				       bool useAnchors)
+  {
+    using namespace mkc_timeseries;
 
-template <typename Decimal>
-inline std::pair<Decimal, Decimal>
-ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+    // Fixed, minimal knobs (no curve fitting)
+    constexpr double kWinsorTail       = 0.01;  // 1% per tail
+    constexpr double kAlphaLower       = 0.10;  // lower quantile  (stop)
+    constexpr double kAlphaUpper       = 0.10;  // upper quantile  (target)
+    constexpr size_t kMinSample        = 20;    // min size for stable tails
+
+    if (series.getNumEntries() < 3)
+      throw std::domain_error("Input series must contain at least 3 bars");
+
+    // Build ROC% series from in-sample closes
+    auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+    auto rocVec    = rocSeries.getTimeSeriesAsVector();
+    if (rocVec.size() < 3)
+      throw std::domain_error("ROC series too small for estimation");
+
+    // Helper for finite value checking
+    auto is_finite = [](const Decimal& x) {
+      return std::isfinite(x.getAsDouble());
+    };
+
+    const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+
+    // 1) Robust stats
+    const Decimal median = MedianOfVec(rocVec);
+    const Decimal qn     = RobustQn<Decimal>(rocSeries).getRobustQn();
+    Decimal skew         = RobustSkewMedcouple(rocSeries);
+
+    // 2) Clamp skew mildly
+    const Decimal half = DecimalConstants<Decimal>::createDecimal("0.5");
+    if (skew >  half) skew = half;
+    if (skew < -half) skew = -half;
+
+    // 3) Multipliers (symmetric base, unit skew weights)
+    const Decimal k_qn          = DecimalConstants<Decimal>::DecimalOne;
+    const Decimal k_skew_target = DecimalConstants<Decimal>::DecimalOne;
+    const Decimal k_skew_stop   = DecimalConstants<Decimal>::DecimalOne;
+
+    // 4) Core compute (raw levels)
+    Decimal rawTarget, rawStop;
+    ComputeAsymmetricStopAndTarget(
+				   median, qn, skew,
+				   k_qn, k_skew_target, k_skew_stop,
+				   rawTarget, rawStop);
+
+    // 5) Convert to positive widths + symmetric fallbacks
+    Decimal profitWidth = rawTarget;   // expect ≥ 0
+    Decimal stopWidth   = -rawStop;    // expect ≥ 0
+
+    if (profitWidth <= zero || !is_finite(profitWidth))
+      profitWidth = median + qn;
+    if (stopWidth   <= zero || !is_finite(stopWidth))
+      stopWidth   = median + qn;
+
+    // 6) Optional empirical anchors (cap target, floor stop by tails)
+    if (useAnchors && rocVec.size() >= kMinSample)
+      {
+	std::vector<Decimal> wv = rocVec;
+	WinsorizeInPlace(wv, kWinsorTail);
+
+	const Decimal q_lo = SampleQuantile(wv, kAlphaLower);
+	const Decimal q_hi = SampleQuantile(wv, 1.0 - kAlphaUpper);
+
+	Decimal targetCap = q_hi - median;   // cap overly optimistic targets
+	Decimal stopFloor = median - q_lo;   // floor overly tight stops
+
+	if (targetCap < zero) targetCap = zero;
+	if (stopFloor < zero) stopFloor = zero;
+
+	if (targetCap > zero && profitWidth > targetCap)
+	  profitWidth = targetCap;
+	if (stopWidth < stopFloor)
+	  stopWidth = stopFloor;
+      }
+
+    return {profitWidth, stopWidth};
+  }
+
+  template <typename Decimal>
+  inline std::pair<Decimal, Decimal>
+  ComputeRobustStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+				       uint32_t period = 1)
+  {
+    constexpr bool kDefaultUseAnchors        = false; // ignored in quantile mode
+
+    return ComputeRobustStopAndTargetFromSeries<Decimal>(
+							 series, period, kDefaultUseAnchors);
+  }
+
+  /**
+   * @brief Computes asymmetric stop and target for a LONG position.
+   *
+   * This method implements a hybrid approach based on partitioned return distributions.
+   * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
+   * 2.  The PROFIT TARGET is calculated from the POSITIVE returns distribution using
+   * robust statistics (Median + Qn) to identify a "typical" profitable move.
+   * 3.  The STOP LOSS is calculated from the NEGATIVE returns distribution using an
+   * empirical quantile (e.g., 15th percentile) to identify a "typical worst-case" loss.
+   *
+   * This approach respects the inherent asymmetry of financial returns, modeling gains and
+   * losses as distinct processes.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   * @param series The OHLC time series to analyze.
+   * @param period The lookback period for ROC calculation (should match median hold time).
+   * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
+   * @throws std::domain_error if the series has too few entries for meaningful analysis.
+   */
+  template <typename Decimal>
+  std::pair<Decimal, Decimal>
+  ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
                                      uint32_t period = 1)
-{
-  constexpr bool kDefaultUseAnchors        = false; // ignored in quantile mode
-
-  return ComputeRobustStopAndTargetFromSeries<Decimal>(
-      series, period, kDefaultUseAnchors);
-}
-
-/**
- * @brief Computes asymmetric stop and target for a LONG position.
- *
- * This method implements a hybrid approach based on partitioned return distributions.
- * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
- * 2.  The PROFIT TARGET is calculated from the POSITIVE returns distribution using
- * robust statistics (Median + Qn) to identify a "typical" profitable move.
- * 3.  The STOP LOSS is calculated from the NEGATIVE returns distribution using an
- * empirical quantile (e.g., 15th percentile) to identify a "typical worst-case" loss.
- *
- * This approach respects the inherent asymmetry of financial returns, modeling gains and
- * losses as distinct processes.
- *
- * @tparam Decimal Numeric type for calculations.
- * @param series The OHLC time series to analyze.
- * @param period The lookback period for ROC calculation (should match median hold time).
- * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
- * @throws std::domain_error if the series has too few entries for meaningful analysis.
- */
-template <typename Decimal>
-std::pair<Decimal, Decimal>
-ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-                                     uint32_t period = 1)
-{
+  {
     using namespace mkc_timeseries;
 
     // --- Configuration Constants ---
@@ -988,24 +991,24 @@ ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
     constexpr double kStopQuantile = 0.15;      // e.g., 15th percentile of losses for the stop.
 
     if (series.getNumEntries() < kMinTotalSamples)
-        throw std::domain_error("ComputeLongStopAndTargetFromSeries: Input series too small for robust analysis.");
+      throw std::domain_error("ComputeLongStopAndTargetFromSeries: Input series too small for robust analysis.");
 
     // --- Data Preparation ---
     auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
     auto rocVec = rocSeries.getTimeSeriesAsVector();
 
     if (rocVec.size() < kMinTotalSamples)
-        throw std::domain_error("ComputeLongStopAndTargetFromSeries: ROC series too small after calculation.");
+      throw std::domain_error("ComputeLongStopAndTargetFromSeries: ROC series too small after calculation.");
 
     const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
     const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
     
     std::vector<Decimal> positive_rocs, negative_rocs;
     for (const auto& roc : rocVec) {
-        if (roc > zero)
-            positive_rocs.push_back(roc);
-        else if (roc < zero)
-            negative_rocs.push_back(roc);
+      if (roc > zero)
+	positive_rocs.push_back(roc);
+      else if (roc < zero)
+	negative_rocs.push_back(roc);
     }
 
     Decimal profitWidth = zero;
@@ -1013,66 +1016,66 @@ ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
 
     // --- Profit Target Calculation (from Positive ROCs) ---
     if (positive_rocs.size() >= kMinPartitionSamples)
-    {
+      {
         RobustQn<Decimal> qn_estimator;
         Decimal median_pos = MedianOfVec(positive_rocs);
         Decimal qn_pos = qn_estimator.getRobustQn(positive_rocs);
         profitWidth = median_pos + qn_pos;
-    }
+      }
     else
-    {
+      {
         // Fallback: use a simple quantile of the entire distribution if not enough positive samples.
         profitWidth = SampleQuantile(rocVec, 0.75);
-    }
+      }
     
     // --- Stop Loss Calculation (from Negative ROCs) ---
     if (negative_rocs.size() >= kMinPartitionSamples)
-    {
+      {
         // SampleQuantile needs a copy as it modifies the vector.
         Decimal stop_level = SampleQuantile(std::vector<Decimal>(negative_rocs), kStopQuantile);
         stopWidth = -stop_level; // stop_level is negative, so this makes it positive.
-    }
+      }
     else
-    {
+      {
         // Fallback: use a simple quantile of the entire distribution.
         Decimal stop_level = SampleQuantile(rocVec, kStopQuantile);
         stopWidth = -stop_level;
-    }
+      }
     
     // --- Sanity Checks and Finalization ---
     if (profitWidth <= zero)
-        profitWidth = eps;
+      profitWidth = eps;
     if (stopWidth <= zero)
-        stopWidth = eps;
+      stopWidth = eps;
 
     return {profitWidth, stopWidth};
-}
+  }
 
 
-/**
- * @brief Computes asymmetric stop and target for a SHORT position.
- *
- * This method mirrors the logic of the long-side calculation but for short selling.
- * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
- * 2.  The PROFIT TARGET is calculated from the NEGATIVE returns distribution using
- * robust statistics (Median - Qn) to identify a "typical" profitable drop.
- * 3.  The STOP LOSS is calculated from the POSITIVE returns distribution using an
- * empirical quantile (e.g., 85th percentile) to identify an "unusually strong" rally.
- *
- * This approach respects the inherent asymmetry of financial returns, modeling gains and
- * losses as distinct processes.
- *
- * @tparam Decimal Numeric type for calculations.
- * @param series The OHLC time series to analyze.
- * @param period The lookback period for ROC calculation (should match median hold time).
- * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
- * @throws std::domain_error if the series has too few entries for meaningful analysis.
- */
-template <typename Decimal>
-std::pair<Decimal, Decimal>
-ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
+  /**
+   * @brief Computes asymmetric stop and target for a SHORT position.
+   *
+   * This method mirrors the logic of the long-side calculation but for short selling.
+   * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
+   * 2.  The PROFIT TARGET is calculated from the NEGATIVE returns distribution using
+   * robust statistics (Median - Qn) to identify a "typical" profitable drop.
+   * 3.  The STOP LOSS is calculated from the POSITIVE returns distribution using an
+   * empirical quantile (e.g., 85th percentile) to identify an "unusually strong" rally.
+   *
+   * This approach respects the inherent asymmetry of financial returns, modeling gains and
+   * losses as distinct processes.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   * @param series The OHLC time series to analyze.
+   * @param period The lookback period for ROC calculation (should match median hold time).
+   * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
+   * @throws std::domain_error if the series has too few entries for meaningful analysis.
+   */
+  template <typename Decimal>
+  std::pair<Decimal, Decimal>
+  ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
                                       uint32_t period = 1)
-{
+  {
     using namespace mkc_timeseries;
 
     // --- Configuration Constants ---
@@ -1081,24 +1084,24 @@ ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
     constexpr double kStopQuantile = 0.85; // e.g., 85th percentile of gains for the stop.
 
     if (series.getNumEntries() < kMinTotalSamples)
-        throw std::domain_error("ComputeShortStopAndTargetFromSeries: Input series too small for robust analysis.");
+      throw std::domain_error("ComputeShortStopAndTargetFromSeries: Input series too small for robust analysis.");
 
     // --- Data Preparation ---
     auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
     auto rocVec = rocSeries.getTimeSeriesAsVector();
 
     if (rocVec.size() < kMinTotalSamples)
-        throw std::domain_error("ComputeShortStopAndTargetFromSeries: ROC series too small after calculation.");
+      throw std::domain_error("ComputeShortStopAndTargetFromSeries: ROC series too small after calculation.");
     
     const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
     const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
 
     std::vector<Decimal> positive_rocs, negative_rocs;
     for (const auto& roc : rocVec) {
-        if (roc > zero)
-            positive_rocs.push_back(roc);
-        else if (roc < zero)
-            negative_rocs.push_back(roc);
+      if (roc > zero)
+	positive_rocs.push_back(roc);
+      else if (roc < zero)
+	negative_rocs.push_back(roc);
     }
     
     Decimal profitWidth = zero;
@@ -1106,39 +1109,318 @@ ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
     
     // --- Profit Target Calculation (from Negative ROCs) ---
     if (negative_rocs.size() >= kMinPartitionSamples)
-    {
+      {
         RobustQn<Decimal> qn_estimator;
         Decimal median_neg = MedianOfVec(negative_rocs);
         Decimal qn_neg = qn_estimator.getRobustQn(negative_rocs);
         profitWidth = -(median_neg - qn_neg); // Result should be positive width.
-    }
+      }
     else
-    {
+      {
         // Fallback: use a simple quantile of the entire distribution.
         profitWidth = -(SampleQuantile(rocVec, 0.25));
-    }
+      }
     
     // --- Stop Loss Calculation (from Positive ROCs) ---
     if (positive_rocs.size() >= kMinPartitionSamples)
-    {
+      {
         // SampleQuantile needs a copy as it modifies the vector.
         stopWidth = SampleQuantile(std::vector<Decimal>(positive_rocs), kStopQuantile);
-    }
+      }
     else
-    {
+      {
         // Fallback: use a simple quantile of the entire distribution.
         stopWidth = SampleQuantile(rocVec, kStopQuantile);
-    }
+      }
 
     // --- Sanity Checks and Finalization ---
     if (profitWidth <= zero)
-        profitWidth = eps;
+      profitWidth = eps;
     if (stopWidth <= zero)
-        stopWidth = eps;
+      stopWidth = eps;
 
     return {profitWidth, stopWidth};
-}
+  }
 
+  /**
+   * @brief Calculates the rolling R-squared (coefficient of determination) of a time series
+   * against a time index.
+   *
+   * This function computes the R-squared value for a rolling window of the input time series.
+   * For each window, it performs a linear regression of the series values (Y) against a
+   * simple time index (X = 1, 2, 3, ..., lookback). The R-squared value measures how well
+   * the time series values are explained by a linear trend within that window.
+   *
+   * A value of 1.0 indicates a perfect linear trend, while a value of 0.0 indicates no
+   * linear relationship. The implementation uses an efficient rolling sum algorithm to
+   * update calculations for each new window.
+   *
+   * @tparam Decimal The numeric type used in the time series.
+   * @param ySeries The input numeric time series (e.g., a series of closing prices).
+   * @param lookback The size of the rolling window for the calculation. Must be 2 or greater.
+   * @return A new NumericTimeSeries containing the rolling R-squared values, ranging from 0.0 to 1.0.
+   * @throws std::domain_error if the lookback period is less than 2.
+   */
+  template <class Decimal>
+  NumericTimeSeries<Decimal>
+  RollingRSquaredSeries(const NumericTimeSeries<Decimal>& ySeries,
+			uint32_t lookback /* e.g., 20 */)
+  {
+    if (lookback < 2)
+      throw std::domain_error("RollingRSquaredSeries: lookback must be >= 2");
+
+    const size_t n = static_cast<size_t>(ySeries.getNumEntries());
+    NumericTimeSeries<Decimal> out(ySeries.getTimeFrame(),
+				   (n >= lookback) ? static_cast<unsigned long>(n - lookback + 1) : 0UL);
+    if (n < lookback) return out;
+
+    // Pull values and timestamps once for fast indexed access
+    std::vector<double> y; y.reserve(n);
+    std::vector<boost::posix_time::ptime> ts; ts.reserve(n);
+    for (auto it = ySeries.beginRandomAccess(); it != ySeries.endRandomAccess(); ++it) {
+      y.push_back((*it)->getValue().getAsDouble());
+      ts.push_back((*it)->getDateTime());
+    }
+
+    // Precompute constants for x=1..L
+    const size_t L = lookback;
+    const double Ld   = static_cast<double>(L);
+    const double sumx = Ld * (Ld + 1.0) / 2.0;
+    const double sumx2= Ld * (Ld + 1.0) * (2.0 * Ld + 1.0) / 6.0;
+    const double denx = Ld * sumx2 - sumx * sumx; // >0 for L>=2
+
+    // Seed rolling sums for window [0..L-1]
+    double sumy=0.0, sumy2=0.0, sumxy=0.0;
+    for (size_t k=0; k<L; ++k) {
+      sumy  += y[k];
+      sumy2 += y[k]*y[k];
+      sumxy += (static_cast<double>(k)+1.0) * y[k];
+    }
+
+    auto r2_of_window = [&](double s_y, double s_y2, double s_xy) -> double {
+      const double deny = Ld * s_y2 - s_y * s_y;
+      if (denx <= 0.0 || deny <= 0.0) return 0.0;
+      const double num  = (Ld * s_xy - sumx * s_y);
+      const double corr = num / std::sqrt(denx * deny);
+      double r2 = corr * corr;
+      if (r2 < 0.0) r2 = 0.0;
+      if (r2 > 1.0) r2 = 1.0;
+      return r2;
+    };
+
+    for (size_t i=L-1; i<n; ++i) {
+      const double r2 = r2_of_window(sumy, sumy2, sumxy);
+      out.addEntry(NumericTimeSeriesEntry<Decimal>(ts[i], Decimal(r2), ySeries.getTimeFrame()));
+
+      // Slide to window ending at i+1
+      if (i+1 < n) {
+	const double y_old = y[i-(L-1)];
+	const double y_new = y[i+1];
+	const double prev_sumy = sumy;
+	sumy  = sumy  - y_old + y_new;
+	sumy2 = sumy2 - y_old*y_old + y_new*y_new;
+	sumxy = (sumxy - prev_sumy) + Ld * y_new; // relabel x:1..L
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * @brief Computes the rolling percent rank of each value in a time series.
+   *
+   * For each entry in the time series, this function calculates its rank within the
+   * preceding window of a specified size. The rank is expressed as a percentage,
+   * representing the proportion of values in the window that are less than or equal to
+   * the current value.
+   *
+   * A value of 1.0 means the current entry is the highest in its window, while a small
+   * value indicates it is among the lowest.
+   *
+   * @tparam Decimal The numeric type used in the time series.
+   * @param series The input numeric time series.
+   * @param window The size of the rolling window for the rank calculation. Must be 2 or greater.
+   * @return A new NumericTimeSeries containing the rolling percent rank values, ranging from 0.0 to 1.0.
+   * @throws std::domain_error if the window size is less than 2.
+   */
+  template <class Decimal>
+  NumericTimeSeries<Decimal>
+  PercentRankSeries(const NumericTimeSeries<Decimal>& series, uint32_t window)
+  {
+    if (window < 2)
+      throw std::domain_error("PercentRankSeries: window must be >= 2");
+
+    const size_t n = static_cast<size_t>(series.getNumEntries());
+    NumericTimeSeries<Decimal> out(series.getTimeFrame(),
+				   (n >= window) ? static_cast<unsigned long>(n - window + 1) : 0UL);
+    if (n < window) return out;
+
+    std::vector<Decimal> buf(window);
+    size_t bsize=0, head=0;
+
+    for (auto it = series.beginRandomAccess(); it != series.endRandomAccess(); ++it) {
+      const auto& p = *it;
+      const Decimal val = p->getValue();
+
+      if (bsize < window) { buf[head]=val; ++bsize; head=(head+1)%window; }
+      else                 { buf[head]=val;            head=(head+1)%window; }
+
+      if (bsize == window) {
+	size_t le=0;
+	for (size_t k=0;k<window;++k) if (buf[k] <= val) ++le;
+	const Decimal rank = Decimal(static_cast<double>(le)/static_cast<double>(window));
+	out.addEntry(NumericTimeSeriesEntry<Decimal>(p->getDateTime(), rank, series.getTimeFrame()));
+      }
+    }
+
+    return out;
+  }
+
+  /**
+   * @brief Calculates an annualized adaptive volatility based on trend strength.
+   *
+   * This function implements an adaptive volatility estimator where the smoothing factor of an
+   * exponential moving average (EMA) is dynamically adjusted based on the strength of the recent
+   * price trend. Trend strength is measured by the R-squared of the closing prices over a
+   * rolling window.
+   *
+   * The core logic is as follows:
+   * 1.  A high R-squared (strong trend) leads to a smaller alpha (slower EMA), making the
+   * volatility estimate less sensitive to recent changes.
+   *
+   * 2.  A low R-squared (choppy, non-trending market) leads to a larger alpha (faster EMA),
+   * making the volatility estimate more responsive.
+   *
+   * The volatility is calculated from an EMA of squared returns and then annualized.
+   *
+   * @tparam Decimal The numeric type used in the time series.
+   * @param series The input OHLC time series. The calculation uses the closing prices.
+   * @param rSquaredPeriod The lookback period used to calculate the R-squared for trend detection.
+   * @param annualizationFactor The factor to scale the volatility to an annual figure
+   * (e.g., 252 for daily data).
+   * @return A new NumericTimeSeries containing the annualized adaptive volatility values.
+   * @throws std::domain_error if rSquaredPeriod is less than 2 or if a division by zero
+   * occurs during return calculation.
+   * @see This method is based on the concept of "Adaptive Volatility" by David Varadi.
+   * @see https://cssanalytics.wordpress.com/2017/11/15/adaptive-volatility/
+   */
+  template <class Decimal>
+  NumericTimeSeries<Decimal>
+  AdaptiveVolatilityAnnualizedSeries(const OHLCTimeSeries<Decimal>& series,
+				     uint32_t rSquaredPeriod = 20,
+				     double annualizationFactor = 252.0)
+  {
+    if (rSquaredPeriod < 2)
+      throw std::domain_error("AdaptiveVolatilityAnnualizedSeries: rSquaredPeriod must be >= 2");
+
+    const auto entries = series.getEntriesCopy(); // for returns & timestamps
+    const size_t n = entries.size();
+    if (n < rSquaredPeriod)
+      return NumericTimeSeries<Decimal>(series.getTimeFrame());
+
+    // Step 1: Calculate the rolling R-squared of price with respect to time to measure trend strength.
+    // A high R-squared indicates a strong linear trend, while a low value suggests a rangebound market.
+
+    auto closesTS = series.CloseTimeSeries();
+    auto r2TS     = RollingRSquaredSeries(closesTS, rSquaredPeriod);
+    const auto r2Vec = r2TS.getTimeSeriesAsVector();
+
+    NumericTimeSeries<Decimal> out(series.getTimeFrame(),
+				   static_cast<unsigned long>(r2Vec.size()));
+
+    const size_t base = rSquaredPeriod - 1;
+    Decimal v_prev = DecimalConstants<Decimal>::DecimalZero;
+
+    for (size_t j=0; j<r2Vec.size(); ++j) {
+      const size_t i = base + j;
+
+      // Step 2: Compute the adaptive smoothing constant (alpha) for the EMA from the R-squared value.
+      // The exponential function translates trend strength into the alpha.
+      //
+      // - A low R-squared (e.g., 0.1, mean-reverting) results in a very small
+      // alpha (long lookback, stable vol).
+      // - A high R-squared (e.g., 0.9, trending) results in a large alpha (short lookback, responsive vol).
+      double r2 = r2Vec[j].getAsDouble();
+      if (r2 < 0.0)
+	r2 = 0.0;
+
+      if (r2 > 1.0)
+	r2 = 1.0;
+
+      double alpha = std::exp(-10.0 * (1.0 - r2));
+
+      // The alpha is capped at 0.5, which limits the minimum effective lookback period to ~3 days.
+      if (alpha > 0.5)
+	alpha = 0.5;
+
+      // Step 3: Calculate the squared simple close-to-close return.
+      // The adaptive EMA is applied to the series of squared returns.
+      const Decimal c  = entries[i].getCloseValue();
+      const Decimal c1 = entries[i-1].getCloseValue();
+
+      if (c1 == DecimalConstants<Decimal>::DecimalZero)
+	throw std::domain_error("AdaptiveVolatilityAnnualizedSeries: division by zero in return");
+
+      const Decimal ret  = (c / c1) - DecimalConstants<Decimal>::DecimalOne;
+      const Decimal ret2 = ret * ret;
+
+      // Step 4: Update the Exponential Moving Average of squared returns using the adaptive alpha.
+      if (j == 0)
+	{
+	  // Seed the initial EMA value with the first squared return.
+	  v_prev = ret2;
+	}
+      else
+	{
+	  const Decimal a = Decimal(alpha);
+	  const Decimal one_minus_a = DecimalConstants<Decimal>::DecimalOne - a;
+	  v_prev = (a * ret2) + (one_minus_a * v_prev);
+	}
+
+      // Step 5: Annualize the volatility.
+      // This is done by taking the square root of the EMA value (which represents variance)
+      // and multiplying by the square root of the annualization factor.
+      const double volAnn = std::sqrt(v_prev.getAsDouble() * annualizationFactor);
+      out.addEntry(NumericTimeSeriesEntry<Decimal>(entries[i].getDateTime(),
+						   Decimal(volAnn),
+						   series.getTimeFrame()));
+    }
+
+    return out;
+  }
+
+  /**
+   * @brief Calculates the percent rank of the adaptive annualized volatility.
+   *
+   * This is a convenience function that first computes the adaptive annualized volatility
+   * using `AdaptiveVolatilityAnnualizedSeries` and then calculates the rolling percent rank
+   * of the resulting volatility series using `PercentRankSeries`.
+   *
+   * The final output indicates how the current adaptive volatility level compares to its
+   * recent history, providing a normalized measure of whether volatility is currently
+   * high or low.
+   *
+   * @tparam Decimal The numeric type used in the time series.
+   * @param series The input OHLC time series.
+   * @param rSquaredPeriod The lookback period for the R-squared calculation in the adaptive volatility.
+   * @param percentRankPeriod The rolling window size for calculating the percent rank of the volatility.
+   * @param annualizationFactor The factor to scale the volatility to an annual figure.
+   * @return A new NumericTimeSeries containing the percent-ranked adaptive volatility values.
+   * @throws std::domain_error if `percentRankPeriod` is less than 2.
+   */
+  template <class Decimal>
+  NumericTimeSeries<Decimal>
+  AdaptiveVolatilityPercentRankAnnualizedSeries(const OHLCTimeSeries<Decimal>& series,
+						uint32_t rSquaredPeriod,
+						uint32_t percentRankPeriod,
+						double annualizationFactor = 252.0)
+  {
+    if (percentRankPeriod < 2)
+      throw std::domain_error("AdaptiveVolatilityPercentRankAnnualizedSeries: percentRankPeriod must be >= 2");
+
+    auto vol = AdaptiveVolatilityAnnualizedSeries(series, rSquaredPeriod, annualizationFactor);
+    return PercentRankSeries(vol, percentRankPeriod);
+  }
 }
 
 #endif
