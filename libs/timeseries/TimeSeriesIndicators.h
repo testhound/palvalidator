@@ -64,21 +64,21 @@ namespace mkc_timeseries
     NumericTimeSeries<Decimal> resultSeries(series1.getTimeFrame(), initialEntries);
     TimeFrame::Duration resultTimeFrame = series1.getTimeFrame();
 
-    typename NumericTimeSeries<Decimal>::ConstReverseTimeSeriesIterator it1 = series1.beginReverseSortedAccess();
-    typename NumericTimeSeries<Decimal>::ConstReverseTimeSeriesIterator it2 = series2.beginReverseSortedAccess();
+    auto it1 = series1.beginSortedAccess();
+    auto it2 = series2.beginSortedAccess();
     Decimal temp;
 
-    for (; ((it1 != series1.endReverseSortedAccess()) && (it2 != series2.endReverseSortedAccess())); it1++, it2++)
+    for (; ((it1 != series1.endSortedAccess()) && (it2 != series2.endSortedAccess())); it1++, it2++)
       {
-	throw_assert (it1->first == it2->first, "DivideSeries - date1: " +boost::posix_time::to_simple_string (it1->first) +" and date2: " +boost::posix_time::to_simple_string(it2->first) +" are not equal");
-	if (it2->second->getValue() == DecimalConstants<Decimal>::DecimalZero)
-	  temp = DecimalConstants<Decimal>::DecimalZero;
-	else
-	  temp = it1->second->getValue() / it2->second->getValue();
+ throw_assert (it1->getDateTime() == it2->getDateTime(), "DivideSeries - date1: " +boost::posix_time::to_simple_string (it1->getDateTime()) +" and date2: " +boost::posix_time::to_simple_string(it2->getDateTime()) +" are not equal");
+ if (it2->getValue() == DecimalConstants<Decimal>::DecimalZero)
+   temp = DecimalConstants<Decimal>::DecimalZero;
+ else
+   temp = it1->getValue() / it2->getValue();
 
-	resultSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it1->first,
-								temp,
-								resultTimeFrame));
+ resultSeries.addEntry (NumericTimeSeriesEntry<Decimal> (it1->getDateTime(),
+    				temp,
+    				resultTimeFrame));
       }
 
     return resultSeries;
@@ -115,22 +115,19 @@ namespace mkc_timeseries
 
     it = it + period;
     Decimal currentValue, prevValue, rocValue;
-    std::shared_ptr<NumericTimeSeriesEntry<Decimal>> p;
-
     for (; it != series.endRandomAccess(); it++)
       {
-	p = series.getTimeSeriesEntry (it, 0);
-	currentValue = p->getValue();
+ currentValue = it->getValue();
 
-	prevValue = series.getValue(it, period);
-	if (prevValue == DecimalConstants<Decimal>::DecimalZero)
-	  throw std::domain_error("RocSeries: division by zero in look-back value");
+ prevValue = series.getValue(it->getDateTime(), period);
+ if (prevValue == DecimalConstants<Decimal>::DecimalZero)
+   throw std::domain_error("RocSeries: division by zero in look-back value");
 
-	rocValue = ((currentValue / prevValue) - DecimalConstants<Decimal>::DecimalOne) *
-	  DecimalConstants<Decimal>::DecimalOneHundred;
-	resultSeries.addEntry(NumericTimeSeriesEntry<Decimal> (p->getDateTime(),
-							       rocValue,
-							       series.getTimeFrame()));
+ rocValue = ((currentValue / prevValue) - DecimalConstants<Decimal>::DecimalOne) *
+   DecimalConstants<Decimal>::DecimalOneHundred;
+ resultSeries.addEntry(NumericTimeSeriesEntry<Decimal> (it->getDateTime(),
+    			       rocValue,
+    			       series.getTimeFrame()));
       }
 
     return resultSeries;
@@ -1178,8 +1175,8 @@ namespace mkc_timeseries
     std::vector<double> y; y.reserve(n);
     std::vector<boost::posix_time::ptime> ts; ts.reserve(n);
     for (auto it = ySeries.beginRandomAccess(); it != ySeries.endRandomAccess(); ++it) {
-      y.push_back((*it)->getValue().getAsDouble());
-      ts.push_back((*it)->getDateTime());
+      y.push_back(it->getValue().getAsDouble());
+      ts.push_back(it->getDateTime());
     }
 
     // Precompute constants for x=1..L
@@ -1259,17 +1256,16 @@ namespace mkc_timeseries
     size_t bsize=0, head=0;
 
     for (auto it = series.beginRandomAccess(); it != series.endRandomAccess(); ++it) {
-      const auto& p = *it;
-      const Decimal val = p->getValue();
+      const Decimal val = it->getValue();
 
       if (bsize < window) { buf[head]=val; ++bsize; head=(head+1)%window; }
       else                 { buf[head]=val;            head=(head+1)%window; }
 
       if (bsize == window) {
-	size_t le=0;
-	for (size_t k=0;k<window;++k) if (buf[k] <= val) ++le;
-	const Decimal rank = Decimal(static_cast<double>(le)/static_cast<double>(window));
-	out.addEntry(NumericTimeSeriesEntry<Decimal>(p->getDateTime(), rank, series.getTimeFrame()));
+ size_t le=0;
+ for (size_t k=0;k<window;++k) if (buf[k] <= val) ++le;
+ const Decimal rank = Decimal(static_cast<double>(le)/static_cast<double>(window));
+ out.addEntry(NumericTimeSeriesEntry<Decimal>(it->getDateTime(), rank, series.getTimeFrame()));
       }
     }
 

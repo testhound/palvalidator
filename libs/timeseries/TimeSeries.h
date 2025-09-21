@@ -58,477 +58,652 @@ namespace mkc_timeseries
   using boost::posix_time::time_duration;
   using boost::gregorian::date;
 
-  // TimeSeriesOffset and ArrayTimeSeriesIndex remain unchanged from original TimeSeries.h
-  class TimeSeriesOffset
+  /**
+   * @brief Implements O(log n) lookup and sorted insertion for NumericTimeSeries.
+   * @tparam Decimal The numeric type used in the time series entries.
+   *
+   * This policy uses `std::lower_bound` to find the correct insertion point,
+   * maintaining a sorted data vector. It is a stateless policy.
+   */
+  template <class Decimal>
+  class NumericLogNLookupPolicy
   {
   public:
-    unsigned long asIntegral() const
+    using Entry = NumericTimeSeriesEntry<Decimal>;
+    using VectorConstIterator = typename std::vector<Entry>::const_iterator;
+
+    /**
+     * @brief Default constructor.
+     */
+    NumericLogNLookupPolicy() = default;
+
+    /**
+     * @brief Adds an entry to the data vector while maintaining sorted order.
+     * @param data The underlying data vector of the NumericTimeSeries.
+     * @param seriesTimeFrame The time frame of the target series.
+     * @param entry The NumericTimeSeriesEntry to add (passed by value, potentially moved).
+     * @throws TimeSeriesException If the entry's time frame doesn't match the series' time frame,
+     * or if an entry with a duplicate timestamp already exists.
+     */
+    void addEntry(std::vector<Entry>& data,
+		  TimeFrame::Duration seriesTimeFrame,
+		  Entry entry) const
     {
-      return mOffset;
-    }
-
-  private:
-    TimeSeriesOffset (unsigned long offset) : mOffset(offset)
-    {}
-
-  private:
-    typedef std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>>::iterator CacheIterator;
-
-  public:
-    static std::shared_ptr<TimeSeriesOffset> createOffset (unsigned long offset)
-    {
-      boost::mutex::scoped_lock lock(mOffsetCacheMutex);
-
-      CacheIterator pos = mOffsetCache.find (offset);
-      if (pos != mOffsetCache.end())
-      {
-	return pos->second;
-      }
-      else
+      if (entry.getTimeFrame() != seriesTimeFrame)
 	{
-	  std::shared_ptr<TimeSeriesOffset> p (new TimeSeriesOffset (offset));
-	  mOffsetCache.insert(std::make_pair(offset, p));
-	  return p;
-	}
-    }
-
-  private:
-    unsigned long mOffset;
-    static boost::mutex  mOffsetCacheMutex;
-    static std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> mOffsetCache;
-  };
-  // Static member definition (would be in a .cpp file)
-  // boost::mutex TimeSeriesOffset::mOffsetCacheMutex;
-  // std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> TimeSeriesOffset::mOffsetCache;
-
-
-  inline bool operator< (const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs)
-  {
-    return lhs.asIntegral() < rhs.asIntegral();
-  }
-
-  inline bool operator> (const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs){ return rhs < lhs; }
-  inline bool operator<=(const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs){ return !(lhs > rhs); }
-  inline bool operator>=(const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs){ return !(lhs < rhs); }
-
-  inline bool operator==(const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs)
-  {
-    return (lhs.asIntegral() == rhs.asIntegral());
-  }
-
-  inline bool operator!=(const TimeSeriesOffset& lhs, const TimeSeriesOffset& rhs){ return !(lhs == rhs); }
-
-  class ArrayTimeSeriesIndex
-  {
-  private:
-    typedef std::map<unsigned long, std::shared_ptr<ArrayTimeSeriesIndex>>::iterator CacheIterator;
-
-  public:
-    ArrayTimeSeriesIndex fromOffset (const std::shared_ptr<TimeSeriesOffset>& offset)
-    {
-      if (mArrayIndex >= offset->asIntegral())
-	{
-	  unsigned long newIndex = mArrayIndex - offset->asIntegral();
-
-	  return ArrayTimeSeriesIndex(newIndex);
-	}
-      else
-      {
-	throw std::out_of_range("ArrayTimeSeriesIndex: offset cannot be larger than array index");
-      }
-    }
-
-    unsigned long asIntegral() const
-    {
-      return mArrayIndex;
-    }
-
-    ArrayTimeSeriesIndex (unsigned long arrayIndex) : mArrayIndex(arrayIndex)
-    {}
-
-    ArrayTimeSeriesIndex()
-      : mArrayIndex(0) {}
-
-  private:
-    unsigned long mArrayIndex;
-  };
-
-
-  inline bool operator< (const ArrayTimeSeriesIndex& lhs, const ArrayTimeSeriesIndex& rhs)
-  {
-    return lhs.asIntegral() < rhs.asIntegral();
-  }
-
-  inline bool operator> (const ArrayTimeSeriesIndex& lhs, const ArrayTimeSeriesIndex& rhs){ return rhs < lhs; }
-  inline bool operator<=(const ArrayTimeSeriesIndex& lhs, const ArrayTimeSeriesIndex& rhs){ return !(lhs > rhs); }
-  inline bool operator>=(const ArrayTimeSeriesIndex& lhs, const ArrayTimeSeriesIndex& rhs){ return !(lhs < rhs); }
-
-  inline bool operator==(const ArrayTimeSeriesIndex& lhs, const ArrayTimeSeriesIndex& rhs)
-  {
-    return (lhs.asIntegral() == rhs.asIntegral());
-  }
-
-  inline bool operator!=(const ArrayTimeSeriesIndex& lhs, const ArrayTimeSeriesIndex& rhs){ return !(lhs == rhs); }
-
-
-  //
-  //  class NumericTimeSeries - UNMODIFIED as per focus on OHLCTimeSeries
-  //
-  template <class Decimal> class NumericTimeSeries
-  {
-    using Map = boost::container::flat_map<ptime, std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>;
-
-  public:
-    typedef typename Map::const_iterator ConstTimeSeriesIterator;
-    typedef typename Map::const_reverse_iterator ConstReverseTimeSeriesIterator;
-    typedef typename std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>>::const_iterator ConstRandomAccessIterator;
-
-    NumericTimeSeries (TimeFrame::Duration timeFrame) :
-      mSortedTimeSeries(),
-      mDateToSequentialIndex(),
-      mSequentialTimeSeries(),
-      mTimeFrame (timeFrame),
-      mMapAndArrayInSync (true),
-      mMutex()
-    {}
-
-    NumericTimeSeries (TimeFrame::Duration timeFrame,  unsigned long numElements) :
-      mSortedTimeSeries(),
-      mDateToSequentialIndex(),
-      mSequentialTimeSeries(),
-      mTimeFrame (timeFrame),
-      mMapAndArrayInSync (true),
-      mMutex()
-    {
-      mSequentialTimeSeries.reserve(numElements);
-    }
-
-    NumericTimeSeries(const NumericTimeSeries<Decimal>& rhs)
-      : mSortedTimeSeries(),
-	mDateToSequentialIndex(),
-	mSequentialTimeSeries(),
-	mTimeFrame(rhs.mTimeFrame),
-	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
-	mMutex()
-    {
-      boost::mutex::scoped_lock lock(rhs.mMutex);
-      mSortedTimeSeries = rhs.mSortedTimeSeries;
-      mDateToSequentialIndex = rhs.mDateToSequentialIndex;
-      mSequentialTimeSeries = rhs.mSequentialTimeSeries;
-    }
-
-    NumericTimeSeries(NumericTimeSeries<Decimal>&& rhs) noexcept
-      : mSortedTimeSeries(),
-	mDateToSequentialIndex(),
-	mSequentialTimeSeries(),
-	mTimeFrame(rhs.mTimeFrame),
-	mMapAndArrayInSync(rhs.mMapAndArrayInSync),
-	mMutex()
-    {
-      boost::mutex::scoped_lock lock(rhs.mMutex);
-      mSortedTimeSeries = std::move(rhs.mSortedTimeSeries);
-      mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
-      mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
-    }
-
-    NumericTimeSeries<Decimal>& operator=(const NumericTimeSeries<Decimal>& rhs)
-    {
-      if (this == &rhs)
-      {
-	return *this;
-      }
-
-      boost::mutex::scoped_lock lock(mMutex);
-      boost::mutex::scoped_lock rhsLock(rhs.mMutex);
-
-      mSortedTimeSeries = rhs.mSortedTimeSeries;
-      mDateToSequentialIndex = rhs.mDateToSequentialIndex;
-      mSequentialTimeSeries = rhs.mSequentialTimeSeries;
-      mTimeFrame = rhs.mTimeFrame;
-      mMapAndArrayInSync = rhs.mMapAndArrayInSync;
-
-      return *this;
-    }
-
-    // Move assignment
-    NumericTimeSeries<Decimal>& operator=(NumericTimeSeries<Decimal>&& rhs) noexcept
-    {
-      if (this != &rhs)
-	{
-	  boost::mutex::scoped_lock lock(mMutex);
-	  boost::mutex::scoped_lock rhsLock(rhs.mMutex);
-
-	  mSortedTimeSeries = std::move(rhs.mSortedTimeSeries);
-	  mDateToSequentialIndex = std::move(rhs.mDateToSequentialIndex);
-	  mSequentialTimeSeries = std::move(rhs.mSequentialTimeSeries);
-	  mTimeFrame = rhs.mTimeFrame;
-	  mMapAndArrayInSync = rhs.mMapAndArrayInSync;
+	  throw TimeSeriesException(
+				    "NumericLogNLookupPolicy::addEntry: time frame mismatch for entry " +
+				    boost::posix_time::to_simple_string(entry.getDateTime()));
 	}
 
-      return *this;
-    }
 
-    void addEntry (std::shared_ptr<NumericTimeSeriesEntry<Decimal>> entry)
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      if (entry->getTimeFrame() != getTimeFrame())
-      {
- throw std::domain_error(std::string("NumericTimeSeries:addEntry " +boost::posix_time::to_simple_string(entry->getDateTime()) + std::string(" time frames do not match")));
-      }
+      auto it = std::lower_bound(
+				 data.begin(), data.end(), entry,
+				 [](const Entry& a, const Entry& b)
+				 {
+				   return a.getDateTime() < b.getDateTime();
+				 });
 
-      auto result = mSortedTimeSeries.emplace(entry->getDateTime(), entry);
-      if (!result.second)
-      {
-	throw std::domain_error("NumericTimeSeries:addEntry: entry for time already exists: " + boost::posix_time::to_simple_string(entry->getDateTime()));
-      }
 
-      mMapAndArrayInSync = false;
-
-      // Invalidate cached duration when data changes
-      mCachedIntradayDuration.reset();
-    }
-
-    void addEntry (const NumericTimeSeriesEntry<Decimal>& entry)
-    {
-      addEntry (std::make_shared<NumericTimeSeriesEntry<Decimal>> (entry));
-    }
-
-    NumericTimeSeries::ConstTimeSeriesIterator getTimeSeriesEntry (const boost::gregorian::date& timeSeriesDate) const
-    {
-      ptime dateTime(timeSeriesDate, mkc_timeseries::getDefaultBarTime()); // Use extern function
-      boost::mutex::scoped_lock lock(mMutex);
-
-      return mSortedTimeSeries.find(dateTime);
-    }
-
-    std::vector<Decimal> getTimeSeriesAsVector() const
-    {
-      std::vector<Decimal> series;
-      boost::mutex::scoped_lock lock(mMutex);
-
-      series.reserve(mSortedTimeSeries.size());
-      for (const auto& kv : mSortedTimeSeries)
+      if (it != data.end() && it->getDateTime() == entry.getDateTime())
 	{
-	  series.push_back(kv.second->getValue());
+	  throw TimeSeriesException(
+				    "NumericLogNLookupPolicy::addEntry: duplicate timestamp " +
+				    boost::posix_time::to_simple_string(entry.getDateTime()));
 	}
 
-      return series;
-    }
 
-    TimeFrame::Duration getTimeFrame() const
-    {
-      return mTimeFrame;
+      data.insert(it, std::move(entry));
     }
 
     /**
-     * @brief Gets the intraday time frame duration for this numeric time series.
-     * @return boost::posix_time::time_duration representing the most common interval between entries
-     * @throws TimeSeriesException if the time frame is not INTRADAY or insufficient data
-     * @details Analyzes time differences between consecutive entries to determine the predominant interval.
-     * This method uses caching for performance optimization.
+     * @brief Gets an iterator to the entry for a specific ptime.
+     * @param data The underlying data vector.
+     * @param dt The ptime to search for.
+     * @return A const_iterator to the found entry, or data.end() if not found.
+     */
+    VectorConstIterator
+    getInternalIterator(const std::vector<Entry>& data,
+			const boost::posix_time::ptime& dt) const
+    {
+      auto it = std::lower_bound(
+				 data.begin(), data.end(), dt,
+				 [](const Entry& e, const boost::posix_time::ptime& tval)
+				 {
+				   return e.getDateTime() < tval;
+				 });
+      return (it != data.end() && it->getDateTime() == dt) ? it : data.end();
+    }
+
+    /**
+     * @brief Deletes entries from the data vector that match a specific ptime.
+     * @param data The underlying data vector.
+     * @param d The ptime of the entries to delete.
+     */
+    void deleteEntryByDate(std::vector<Entry>& data, const boost::posix_time::ptime& d) const
+    {
+      data.erase(
+		 std::remove_if(data.begin(), data.end(),
+				[&](const Entry& e) { return e.getDateTime() == d; }),
+		 data.end());
+    }
+
+    /**
+     * @brief A hook called by the NumericTimeSeries constructor when built from a range.
+     * This is a no-op for this policy as the constructor sorts the data.
+     * @param data The newly constructed (and sorted) data vector.
+     */
+    void on_construct_from_range(const std::vector<Entry>& /*data*/) const
+    {
+      // No-op: constructor ensures mData is sorted
+    }
+
+    /**
+     * @brief Returns a copy of the entire data vector.
+     * @param data The underlying data vector.
+     * @return A std::vector<Entry> containing a copy of all entries.
+     */
+    std::vector<Entry> getEntriesCopy(const std::vector<Entry>& data) const
+    {
+      return data; // value copy
+    }
+  };
+
+/**
+   * @brief Represents a time series of single numeric values.
+   * @tparam Decimal The numeric type used for the value data (e.g., double, float).
+   * @tparam LookupPolicy Policy class to determine lookup strategy. Defaults to NumericLogNLookupPolicy.
+   *
+   * This class stores a time-ordered sequence of `NumericTimeSeriesEntry` objects.
+   * It is thread-safe for concurrent read/write operations.
+   */
+  template <class Decimal, class LookupPolicy = mkc_timeseries::NumericLogNLookupPolicy<Decimal>>
+  class NumericTimeSeries
+  {
+  public:
+    using Entry = NumericTimeSeriesEntry<Decimal>;
+    using ConstSortedIterator = typename std::vector<Entry>::const_iterator;
+    /**
+     * @brief Legacy iterator type for backward compatibility.
+     * Functionally equivalent to ConstSortedIterator.
+     * @warning Invalidated by any modification to the series.
+     */
+    using ConstRandomAccessIterator = typename std::vector<Entry>::const_iterator; // legacy alias
+
+    /** @name Constructors & Assignment */
+    ///@{
+
+    /**
+     * @brief Constructs an empty NumericTimeSeries.
+     * @param tf The time frame duration for entries in this series (e.g., Daily, Weekly).
+     */
+    explicit NumericTimeSeries(TimeFrame::Duration tf)
+      : mData(),
+	mTimeFrame(tf),
+	m_lookup_policy(),
+	mMutex(),
+	mCachedIntradayDuration()
+    {}
+
+    /**
+     * @brief Constructs an empty NumericTimeSeries, reserving space for elements.
+     * @param tf The time frame duration for entries in this series.
+     * @param reserveCount The initial capacity to reserve in the internal vector.
+     */
+    NumericTimeSeries(TimeFrame::Duration tf, unsigned long reserveCount)
+      : mData(),
+	mTimeFrame(tf),
+	m_lookup_policy(),
+	mMutex(),
+	mCachedIntradayDuration()
+    {
+      mData.reserve(reserveCount);
+    }
+
+    /**
+     * @brief Constructs a NumericTimeSeries from a range of entries.
+     * @tparam InputIt The type of the input iterator. Must dereference to NumericTimeSeriesEntry<Decimal>.
+     * @param tf The time frame duration for entries in this series.
+     * @param first Iterator pointing to the beginning of the range.
+     * @param last Iterator pointing past the end of the range.
+     * @throws TimeSeriesException If any entry in the input range has a time frame different from `tf`.
+     */
+    template<
+      class InputIt,
+      class = typename std::enable_if<
+        std::is_same<typename std::iterator_traits<InputIt>::value_type,
+                     NumericTimeSeriesEntry<Decimal>>::value>::type>
+    NumericTimeSeries(TimeFrame::Duration tf, InputIt first, InputIt last)
+      : mData(first, last),
+	mTimeFrame(tf),
+	m_lookup_policy(),
+	mMutex(),
+	mCachedIntradayDuration()
+    {
+      for (auto& e : mData)
+	{
+	  if (e.getTimeFrame() != tf)
+	    throw TimeSeriesException("NumericTimeSeries ctor: time frame mismatch for provided entries.");
+	}
+
+      std::sort(mData.begin(), mData.end(),
+                [](auto const& a, auto const& b)
+                { return a.getDateTime() < b.getDateTime(); });
+      m_lookup_policy.on_construct_from_range(mData);
+    }
+
+    /** @brief Copy constructor. */
+    NumericTimeSeries(const NumericTimeSeries& rhs)
+      : mData(rhs.mData), mTimeFrame(rhs.mTimeFrame), m_lookup_policy(rhs.m_lookup_policy), mMutex(), mCachedIntradayDuration(rhs.mCachedIntradayDuration)
+    {}
+
+    /** @brief Copy assignment operator. */
+    NumericTimeSeries& operator=(const NumericTimeSeries& rhs)
+    {
+      if (this == &rhs) return *this;
+      boost::mutex::scoped_lock lock_this(mMutex, boost::defer_lock);
+      boost::mutex::scoped_lock lock_rhs(rhs.mMutex, boost::defer_lock);
+      std::lock(lock_this, lock_rhs);
+      mData = rhs.mData;
+      mTimeFrame = rhs.mTimeFrame;
+      m_lookup_policy = rhs.m_lookup_policy;
+      mCachedIntradayDuration = rhs.mCachedIntradayDuration;
+      return *this;
+    }
+
+    /** @brief Move constructor. */
+    NumericTimeSeries(NumericTimeSeries&& rhs) noexcept
+      : mData(std::move(rhs.mData)),
+	mTimeFrame(rhs.mTimeFrame),
+	m_lookup_policy(std::move(rhs.m_lookup_policy)),
+	mMutex(), mCachedIntradayDuration(std::move(rhs.mCachedIntradayDuration))
+    {}
+
+    /** @brief Move assignment operator. */
+    NumericTimeSeries& operator=(NumericTimeSeries&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+
+      boost::mutex::scoped_lock lock_this(mMutex, boost::defer_lock);
+      boost::mutex::scoped_lock lock_rhs(rhs.mMutex, boost::defer_lock);
+
+      std::lock(lock_this, lock_rhs);
+      mData = std::move(rhs.mData);
+      mTimeFrame = rhs.mTimeFrame;
+      m_lookup_policy = std::move(rhs.m_lookup_policy);
+      mCachedIntradayDuration = std::move(rhs.mCachedIntradayDuration);
+      return *this;
+    }
+    ///@}
+
+    /** @name Properties */
+    ///@{
+
+    /**
+     * @brief Gets the time frame of this series.
+     * @return The TimeFrame::Duration of the series.
+     */
+    TimeFrame::Duration getTimeFrame() const { return mTimeFrame; }
+
+    /**
+     * @brief Gets the number of entries in the series.
+     * @return The total number of entries.
+     */
+    unsigned long getNumEntries() const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      return static_cast<unsigned long>(mData.size());
+    }
+
+    /**
+     * @brief Gets the intraday time frame duration for this time series.
+     * @return boost::posix_time::time_duration representing the most common interval between entries.
+     * @throws TimeSeriesException if the time frame is not INTRADAY or if there are fewer than 2 entries.
+     * @details Analyzes time differences between consecutive entries to determine the predominant interval (mode).
+     * This method caches the result for performance; the cache is invalidated upon modification of the series.
      */
     boost::posix_time::time_duration getIntradayTimeFrameDuration() const
     {
-        if (mTimeFrame != TimeFrame::INTRADAY)
-        {
-            throw TimeSeriesException("getIntradayTimeFrameDuration: Method only valid for INTRADAY time frame");
-        }
+      if (mTimeFrame != TimeFrame::INTRADAY)
+        throw TimeSeriesException("getIntradayTimeFrameDuration: only valid for INTRADAY time frame");
 
-        boost::mutex::scoped_lock lock(mMutex);
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mData.size() < 2)
+        throw TimeSeriesException("getIntradayTimeFrameDuration: insufficient data (need >= 2 entries)");
 
-        if (mSortedTimeSeries.size() < 2)
-        {
-            throw TimeSeriesException("getIntradayTimeFrameDuration: Insufficient data - need at least 2 entries");
-        }
+      if (mCachedIntradayDuration)
+        return *mCachedIntradayDuration;
 
-        // Check cache first
-        if (mCachedIntradayDuration)
-        {
-            return *mCachedIntradayDuration;
-        }
+      // Compute predominant interval (mode of diffs)
+      std::map<boost::posix_time::time_duration, std::size_t> counts;
+      for (std::size_t i = 1; i < mData.size(); ++i)
+	{
+	  auto diff = mData[i].getDateTime() - mData[i-1].getDateTime();
+	  ++counts[diff];
+	}
+      auto best = std::max_element(
+				   counts.begin(), counts.end(),
+				   [](auto const& a, auto const& b){ return a.second < b.second; });
 
-        // Calculate and cache the result
-        auto duration = IntradayIntervalCalculator::calculateFromSortedMap(mSortedTimeSeries);
-        mCachedIntradayDuration = duration;
-        return duration;
+      mCachedIntradayDuration = best->first;
+      return *mCachedIntradayDuration;
     }
 
     /**
      * @brief Gets the intraday time frame duration in minutes.
-     * @return long representing the most common interval between entries in minutes
-     * @throws TimeSeriesException if the time frame is not INTRADAY or insufficient data
-     * @details This is a convenience method that calls getIntradayTimeFrameDuration()
-     * and extracts the total minutes. Leverages the same caching mechanism.
+     * @return A long representing the duration in minutes.
+     * @throws TimeSeriesException if the time frame is not INTRADAY or if there are fewer than 2 entries.
+     * @details This is a convenience method that calls getIntradayTimeFrameDuration().
      */
     long getIntradayTimeFrameDurationInMinutes() const
     {
-        auto duration = getIntradayTimeFrameDuration();
-        return duration.total_seconds() / 60;
+      auto d = getIntradayTimeFrameDuration();
+      return d.total_seconds() / 60;
     }
+    ///@}
 
-    unsigned long getNumEntries() const
+    /** @name Mutators */
+    ///@{
+
+    /**
+     * @brief Inserts a new entry into the time series, maintaining sorted order.
+     * @param entry The NumericTimeSeriesEntry to add.
+     * @throws TimeSeriesException If an entry with the same timestamp already exists.
+     */
+    void addEntry(Entry entry)
     {
       boost::mutex::scoped_lock lock(mMutex);
-      return mSortedTimeSeries.size();
+      m_lookup_policy.addEntry(mData, mTimeFrame, std::move(entry));
+      mCachedIntradayDuration.reset();
     }
 
-    NumericTimeSeries::ConstRandomAccessIterator
-    getRandomAccessIterator(const boost::gregorian::date& d) const
+    /**
+     * @brief Deletes entries that match a specific ptime.
+     * @param d The ptime of the entries to delete.
+     */
+    void deleteEntryByDate(const boost::posix_time::ptime& d)
     {
-      ptime dateTime(d, mkc_timeseries::getDefaultBarTime()); // Use extern function
-      ensureSynchronized();
+      boost::mutex::scoped_lock lock(mMutex);
+      m_lookup_policy.deleteEntryByDate(mData, d);
+      mCachedIntradayDuration.reset();
+    }
 
-      auto pos = mDateToSequentialIndex.find(dateTime);
-      if (pos != mDateToSequentialIndex.end())
+    /**
+     * @brief Deletes entries that match a specific date.
+     * @details Converts the date to a ptime using the default bar time.
+     * @param d The date of the entries to delete.
+     */
+    void deleteEntryByDate(const boost::gregorian::date& d)
+    {
+      deleteEntryByDate(boost::posix_time::ptime(d, mkc_timeseries::getDefaultBarTime()));
+    }
+    ///@}
+
+    /** @name Lookups & Accessors */
+    ///@{
+
+    /**
+     * @brief Retrieves the time series entry for a specific ptime.
+     * @param dt The ptime to search for.
+     * @return A copy of the NumericTimeSeriesEntry for the specified ptime.
+     * @throws TimeSeriesDataNotFoundException if no entry exists for the specified ptime.
+     */
+    Entry getTimeSeriesEntry(const boost::posix_time::ptime& dt) const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      auto it = m_lookup_policy.getInternalIterator(mData, dt);
+      if (it == mData.end())
+        throw TimeSeriesDataNotFoundException("NumericTimeSeries::getTimeSeriesEntry(ptime): not found for " +
+                                              boost::posix_time::to_simple_string(dt));
+      return *it; // return by value
+    }
+
+    /**
+     * @brief Retrieves the time series entry for a specific date.
+     * @details Converts the date to a ptime using the default bar time.
+     * @param d The date to search for.
+     * @return A copy of the NumericTimeSeriesEntry for the specified date.
+     * @throws TimeSeriesDataNotFoundException if no entry exists for the specified date.
+     */
+    Entry getTimeSeriesEntry(const boost::gregorian::date& d) const
+    {
+      return getTimeSeriesEntry(boost::posix_time::ptime(d, mkc_timeseries::getDefaultBarTime()));
+    }
+
+    /**
+     * @brief Retrieves a time series entry relative to a base ptime by an offset.
+     * @param base_dt The base ptime from which to offset.
+     * @param offset_bars_ago The number of bars to offset.
+     * - 0: The entry for `base_dt` itself.
+     * - Positive values: Bars prior to `base_dt` (earlier in time).
+     * - Negative values: Bars after `base_dt` (later in time).
+     * @return A copy of the target NumericTimeSeriesEntry.
+     * @throws TimeSeriesDataNotFoundException if the base_dt is not found.
+     * @throws TimeSeriesOffsetOutOfRangeException if the offset leads to an out-of-bounds access.
+     */
+    Entry getTimeSeriesEntry(const boost::posix_time::ptime& base_dt, long offset_bars_ago) const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      auto base_it = m_lookup_policy.getInternalIterator(mData, base_dt);
+      if (base_it == mData.end())
+        throw TimeSeriesDataNotFoundException(
+					      "NumericTimeSeries::getTimeSeriesEntry(ptime,offset): base not found for " +
+					      boost::posix_time::to_simple_string(base_dt) +
+					      " with offset " + std::to_string(offset_bars_ago));
+
+      typename std::vector<Entry>::const_iterator target_it;
+      if (offset_bars_ago >= 0)
 	{
-	  return mSequentialTimeSeries.begin() + pos->second.asIntegral();
+	  if (static_cast<std::size_t>(std::distance(mData.begin(), base_it)) < static_cast<std::size_t>(offset_bars_ago))
+	    throw TimeSeriesOffsetOutOfRangeException("Offset before series start");
+	  target_it = base_it - offset_bars_ago;
 	}
-      return mSequentialTimeSeries.end();
+      else
+	{
+	  long forward = -offset_bars_ago;
+	  if (static_cast<std::size_t>(std::distance(base_it, mData.end()) - 1) < static_cast<std::size_t>(forward))
+	    throw TimeSeriesOffsetOutOfRangeException("Offset after series end");
+	  target_it = base_it + forward;
+	}
+
+      if (target_it < mData.begin() || target_it >= mData.end())
+        throw TimeSeriesOffsetOutOfRangeException("Calculated target iterator out of bounds");
+
+      return *target_it;
     }
 
-    ConstRandomAccessIterator beginRandomAccess() const
+    /**
+     * @brief Retrieves a time series entry relative to a base date by an offset.
+     * @details Converts the date to a ptime using the default bar time.
+     * @param base_d The base date from which to offset.
+     * @param offset_bars_ago The number of bars to offset. See ptime overload for details.
+     * @return A copy of the target NumericTimeSeriesEntry.
+     * @throws TimeSeriesDataNotFoundException if the base_d is not found.
+     * @throws TimeSeriesOffsetOutOfRangeException if the offset leads to an out-of-bounds access.
+     */
+    Entry getTimeSeriesEntry(const boost::gregorian::date& base_d, long offset_bars_ago) const
     {
-      ensureSynchronized();
-      return mSequentialTimeSeries.begin();
+      return getTimeSeriesEntry(boost::posix_time::ptime(base_d, mkc_timeseries::getDefaultBarTime()), offset_bars_ago);
     }
 
-    ConstRandomAccessIterator endRandomAccess() const
+    /**
+     * @brief Gets the numeric value of an entry relative to a base ptime.
+     * @param base_dt The base ptime from which to offset.
+     * @param offset_bars_ago The number of bars prior to the base ptime (0 for the base itself).
+     * @return The Decimal value of the target entry.
+     */
+    Decimal getValue(const boost::posix_time::ptime& base_dt, unsigned long offset_bars_ago) const
     {
-      ensureSynchronized();
-      return mSequentialTimeSeries.end();
+      return getTimeSeriesEntry(base_dt, static_cast<long>(offset_bars_ago)).getValue();
     }
 
-    NumericTimeSeries::ConstTimeSeriesIterator beginSortedAccess() const
+    /**
+     * @brief Gets the numeric value of an entry relative to a base date.
+     * @param base_d The base date from which to offset.
+     * @param offset_bars_ago The number of bars prior to the base date (0 for the base itself).
+     * @return The Decimal value of the target entry.
+     */
+    Decimal getValue(const boost::gregorian::date& base_d, unsigned long offset_bars_ago) const
     {
-      return mSortedTimeSeries.begin();
-
+      return getValue(boost::posix_time::ptime(base_d, mkc_timeseries::getDefaultBarTime()), offset_bars_ago);
     }
 
-    NumericTimeSeries::ConstReverseTimeSeriesIterator beginReverseSortedAccess() const
+    /**
+     * @brief Gets the date part of an entry's timestamp relative to a base ptime.
+     * @param base_dt The base ptime from which to offset.
+     * @param offset_bars_ago The number of bars prior to the base ptime (0 for the base itself).
+     * @return The boost::gregorian::date of the target entry.
+     */
+    boost::gregorian::date getDateValue(const boost::posix_time::ptime& base_dt, unsigned long offset_bars_ago) const
     {
-      return mSortedTimeSeries.rbegin();
+      return getTimeSeriesEntry(base_dt, static_cast<long>(offset_bars_ago)).getDate();
     }
 
-    NumericTimeSeries::ConstTimeSeriesIterator endSortedAccess() const
+    /**
+     * @brief Gets the date part of an entry's timestamp relative to a base date.
+     * @param base_d The base date from which to offset.
+     * @param offset_bars_ago The number of bars prior to the base date (0 for the base itself).
+     * @return The boost::gregorian::date of the target entry.
+     */
+    boost::gregorian::date getDateValue(const boost::gregorian::date& base_d, unsigned long offset_bars_ago) const
     {
-      return mSortedTimeSeries.end();
+      return getDateValue(boost::posix_time::ptime(base_d, mkc_timeseries::getDefaultBarTime()), offset_bars_ago);
     }
 
-    NumericTimeSeries::ConstReverseTimeSeriesIterator endReverseSortedAccess() const
+    /**
+     * @brief Gets the full timestamp of an entry relative to a base ptime.
+     * @param base_dt The base ptime from which to offset.
+     * @param offset_bars_ago The number of bars prior to the base ptime (0 for the base itself).
+     * @return The boost::posix_time::ptime of the target entry.
+     */
+    boost::posix_time::ptime getDateTimeValue(const boost::posix_time::ptime& base_dt, unsigned long offset_bars_ago) const
     {
-      return mSortedTimeSeries.rend();
+      return getTimeSeriesEntry(base_dt, static_cast<long>(offset_bars_ago)).getDateTime();
     }
 
-    const boost::gregorian::date getFirstDate() const
+    /**
+     * @brief Gets the full timestamp of an entry relative to a base date.
+     * @param base_d The base date from which to offset.
+     * @param offset_bars_ago The number of bars prior to the base date (0 for the base itself).
+     * @return The boost::posix_time::ptime of the target entry.
+     */
+    boost::posix_time::ptime getDateTimeValue(const boost::gregorian::date& base_d, unsigned long offset_bars_ago) const
+    {
+      return getDateTimeValue(boost::posix_time::ptime(base_d, mkc_timeseries::getDefaultBarTime()), offset_bars_ago);
+    }
+    ///@}
+
+    /** @name Iteration */
+    ///@{
+
+    /**
+     * @brief Returns a const iterator to the beginning of the time series.
+     * @warning The iterator is invalidated by any modification to the series.
+     * @return A ConstSortedIterator.
+     */
+    ConstSortedIterator beginSortedAccess() const
     {
       boost::mutex::scoped_lock lock(mMutex);
-
-      if (mSortedTimeSeries.empty())
-      {
-	throw std::domain_error("NumericTimeSeries:getFirstDate: no entries in time series");
-      }
-
-      return mSortedTimeSeries.begin()->first.date();
+      return mData.begin();
     }
 
-    const boost::gregorian::date getLastDate() const
+    /**
+     * @brief Returns a const iterator to the end of the time series.
+     * @warning The iterator is invalidated by any modification to the series.
+     * @return A ConstSortedIterator.
+     */
+    ConstSortedIterator endSortedAccess() const
     {
       boost::mutex::scoped_lock lock(mMutex);
-
-      if (mSortedTimeSeries.empty())
-      {
-	throw std::domain_error("NumericTimeSeries:getLastDate: no entries in time series");
-      }
-
-      return mSortedTimeSeries.rbegin()->first.date();
+      return mData.end();
     }
 
-    const std::shared_ptr<NumericTimeSeriesEntry<Decimal>>& getTimeSeriesEntry (const ConstRandomAccessIterator& it,
-										unsigned long offset) const
+    /**
+     * @brief Legacy: Returns a const iterator to the beginning of the time series.
+     * @return A ConstRandomAccessIterator.
+     */
+    ConstRandomAccessIterator beginRandomAccess() const { return beginSortedAccess(); }
+
+    /**
+     * @brief Legacy: Returns a const iterator to the end of the time series.
+     * @return A ConstRandomAccessIterator.
+     */
+    ConstRandomAccessIterator endRandomAccess() const { return endSortedAccess(); }
+    ///@}
+
+    /** @name Boundary Access */
+    ///@{
+
+    /**
+     * @brief Gets the date of the first entry in the series.
+     * @return The boost::gregorian::date of the first entry.
+     * @throws TimeSeriesDataNotFoundException if the series is empty.
+     */
+    boost::gregorian::date getFirstDate() const
     {
-      ValidateVectorOffset(it, offset);
-      NumericTimeSeries::ConstRandomAccessIterator new_it = it - offset;
-      return *new_it;
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mData.empty())
+        throw TimeSeriesDataNotFoundException("NumericTimeSeries::getFirstDate: empty series");
+      return mData.front().getDateTime().date();
     }
 
-    const std::shared_ptr<boost::gregorian::date>&
-    getDate (const ConstRandomAccessIterator& it, unsigned long offset) const
+    /**
+     * @brief Gets the full timestamp of the first entry in the series.
+     * @return The boost::posix_time::ptime of the first entry.
+     * @throws TimeSeriesDataNotFoundException if the series is empty.
+     */
+    boost::posix_time::ptime getFirstDateTime() const
     {
-      return (getTimeSeriesEntry (it, offset)->getDate());
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mData.empty())
+        throw TimeSeriesDataNotFoundException("NumericTimeSeries::getFirstDateTime: empty series");
+      return mData.front().getDateTime();
     }
 
-    boost::gregorian::date
-    getDateValue (const ConstRandomAccessIterator& it, unsigned long offset) const
+    /**
+     * @brief Gets the date of the last entry in the series.
+     * @return The boost::gregorian::date of the last entry.
+     * @throws TimeSeriesDataNotFoundException if the series is empty.
+     */
+    boost::gregorian::date getLastDate() const
     {
-      ValidateVectorOffset(it, offset);
-      return (*getDate(it, offset));
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mData.empty())
+        throw TimeSeriesDataNotFoundException("NumericTimeSeries::getLastDate: empty series");
+      return mData.back().getDateTime().date();
     }
 
-    const Decimal& getValue (const ConstRandomAccessIterator& it,
-			     unsigned long offset) const
+    /**
+     * @brief Gets the full timestamp of the last entry in the series.
+     * @return The boost::posix_time::ptime of the last entry.
+     * @throws TimeSeriesDataNotFoundException if the series is empty.
+     */
+    boost::posix_time::ptime getLastDateTime() const
     {
-      ValidateVectorOffset(it, offset);
-      return (getTimeSeriesEntry (it, offset)->getValue());
+      boost::mutex::scoped_lock lock(mMutex);
+      if (mData.empty())
+        throw TimeSeriesDataNotFoundException("NumericTimeSeries::getLastDateTime: empty series");
+      return mData.back().getDateTime();
     }
+    ///@}
+
+    /** @name Utilities */
+    ///@{
+
+    /**
+     * @brief Extracts the numeric values from the series into a vector.
+     * @return A std::vector<Decimal> containing all values in chronological order.
+     */
+    std::vector<Decimal> getTimeSeriesAsVector() const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      std::vector<Decimal> out;
+      out.reserve(mData.size());
+      for (const auto& e : mData) out.push_back(e.getValue());
+      return out;
+    }
+
+    /**
+     * @brief Returns a copy of all entries in the series.
+     * @return A std::vector<Entry> containing a copy of all entries.
+     */
+    std::vector<Entry> getEntriesCopy() const
+    {
+      boost::mutex::scoped_lock lock(mMutex);
+      return m_lookup_policy.getEntriesCopy(mData);
+    }
+    ///@}
+
+    /** @name Comparison */
+    ///@{
+
+    /**
+     * @brief Compares this time series with another for equality.
+     * @param rhs The other NumericTimeSeries to compare against.
+     * @return True if the time frames and all entries are identical, false otherwise.
+     */
+    bool operator==(const NumericTimeSeries& rhs) const
+    {
+      if (this == &rhs) return true;
+      boost::mutex::scoped_lock lock_this(mMutex, boost::defer_lock);
+      boost::mutex::scoped_lock lock_rhs(rhs.mMutex, boost::defer_lock);
+      std::lock(lock_this, lock_rhs);
+      return (mTimeFrame == rhs.mTimeFrame) && (mData == rhs.mData);
+    }
+
+    /**
+     * @brief Compares this time series with another for inequality.
+     * @param rhs The other NumericTimeSeries to compare against.
+     * @return True if the time series are not identical, false otherwise.
+     */
+    bool operator!=(const NumericTimeSeries& rhs) const { return !(*this == rhs); }
+    ///@}
 
   private:
-    void ensureSynchronized() const
-    {
-      boost::mutex::scoped_lock lock(mMutex);
-      if (!mMapAndArrayInSync)
-      {
-	synchronize_unlocked();
-      }
-    }
-
-    void synchronize_unlocked() const
-    {
-      mSequentialTimeSeries.clear();
-      mDateToSequentialIndex.clear();
-
-      unsigned long index = 0;
-      for (const auto& kv : mSortedTimeSeries)
-	{
-	  mDateToSequentialIndex[kv.first] = ArrayTimeSeriesIndex(index);
-	  mSequentialTimeSeries.push_back(kv.second);
-	  ++index;
-	}
-      mMapAndArrayInSync = true;
-    }
-
-    void ValidateVectorOffset(const ConstRandomAccessIterator& it, unsigned long offset) const
-    {
-      ensureSynchronized();
-      if (it == mSequentialTimeSeries.end())
-      {
-	throw TimeSeriesException("Iterator is at end of time series");
-      }
-      if ((it - offset) < mSequentialTimeSeries.begin())
-      {
-	throw TimeSeriesException("Offset " + std::to_string(offset) + " outside bounds of time series");
-      }
-    }
-
-    void ValidateVectorOffset(unsigned long offset) const
-    {
-      ensureSynchronized();
-      if (offset > mSequentialTimeSeries.size())
-      {
-	throw TimeSeriesException("Offset " + std::to_string(offset) + " exceeds size of time series");
-      }
-    }
-
-    bool isSynchronized() const
-    {
-      return (mMapAndArrayInSync);
-    }
-
-  private:
-    Map mSortedTimeSeries;
-    mutable boost::container::flat_map<ptime, ArrayTimeSeriesIndex> mDateToSequentialIndex;
-    mutable std::vector<std::shared_ptr<NumericTimeSeriesEntry<Decimal>>> mSequentialTimeSeries;
-    TimeFrame::Duration mTimeFrame;
-    mutable bool mMapAndArrayInSync;
+    std::vector<Entry>   mData;
+    TimeFrame::Duration  mTimeFrame;
+    LookupPolicy         m_lookup_policy;
     mutable boost::mutex mMutex;
     mutable boost::optional<boost::posix_time::time_duration> mCachedIntradayDuration;
   };

@@ -435,11 +435,11 @@ SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — error conditi
         SECTION("Basic division") {
             auto result = DivideSeries(s1_ds, s2_ds);
             REQUIRE(result.getNumEntries() == 3);
-            REQUIRE(result.getTimeSeriesEntry(d1.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d1.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("5.0"), TEST_DEC_TOL_INDICATORS));
-            REQUIRE(result.getTimeSeriesEntry(d2.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d2.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("5.0"), TEST_DEC_TOL_INDICATORS));
-            REQUIRE(result.getTimeSeriesEntry(d3.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d3.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("6.0"), TEST_DEC_TOL_INDICATORS));
         }
 
@@ -474,7 +474,7 @@ SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — error conditi
                 {d3, fromString<DecimalType>("5")}
             });
             auto result = DivideSeries(s1_ds, s2_zero);
-            REQUIRE(result.getTimeSeriesEntry(d2.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d2.date()).getValue()
                 == decimalApprox(DecimalConstants<DecimalType>::DecimalZero, TEST_DEC_TOL_INDICATORS));
         }
 
@@ -516,11 +516,11 @@ SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — error conditi
             });
             auto result = RocSeries(s, 1);
             REQUIRE(result.getNumEntries() == 3);
-            REQUIRE(result.getTimeSeriesEntry(d2.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d2.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("2.0"), ROC_TOL_INDICATORS));
-            REQUIRE(result.getTimeSeriesEntry(d3.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d3.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("2.941176"), ROC_TOL_INDICATORS));
-            REQUIRE(result.getTimeSeriesEntry(d4.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d4.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("-1.904762"), ROC_TOL_INDICATORS));
         }
 
@@ -531,7 +531,7 @@ SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — error conditi
             });
             auto result = RocSeries(s, 0);
             REQUIRE(result.getNumEntries() == 2);
-            REQUIRE(result.getTimeSeriesEntry(d1.date())->second->getValue()
+            REQUIRE(result.getTimeSeriesEntry(d1.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("0.0"), ROC_TOL_INDICATORS));
         }
 
@@ -544,9 +544,9 @@ SECTION("ComputeRobustStopAndTargetFromSeries (3-arg overload) — error conditi
             });
             auto r = RocSeries(s, 2);
             REQUIRE(r.getNumEntries() == 2);
-            REQUIRE(r.getTimeSeriesEntry(d3.date())->second->getValue()
+            REQUIRE(r.getTimeSeriesEntry(d3.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("21.0"), ROC_TOL_INDICATORS));
-            REQUIRE(r.getTimeSeriesEntry(d4.date())->second->getValue()
+            REQUIRE(r.getTimeSeriesEntry(d4.date()).getValue()
                 == decimalApprox(fromString<DecimalType>("21.0"), ROC_TOL_INDICATORS));
         }
 

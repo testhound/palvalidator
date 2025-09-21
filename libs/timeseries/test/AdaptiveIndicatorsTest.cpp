@@ -114,7 +114,7 @@ TEST_CASE("Adaptive Volatility – New Indicator Functions", "[AdaptiveVolatilit
         auto r2 = RollingRSquaredSeries(yts, /*lookback=*/5);
         REQUIRE(r2.getNumEntries() == 6);
         for (auto it = r2.beginRandomAccess(); it != r2.endRandomAccess(); ++it) {
-            auto v = (*it)->getValue();
+            auto v = it->getValue();
             REQUIRE(v == decimalApprox(fromString<DecimalType>("1.0"), TOL_SMALL));
         }
 
@@ -125,7 +125,7 @@ TEST_CASE("Adaptive Volatility – New Indicator Functions", "[AdaptiveVolatilit
         auto r2c = RollingRSquaredSeries(constTs, 4);
         REQUIRE(r2c.getNumEntries() == 2);
         for (auto it = r2c.beginRandomAccess(); it != r2c.endRandomAccess(); ++it) {
-            REQUIRE((*it)->getValue() == decimalApprox(DecimalConstants<DecimalType>::DecimalZero, TOL_SMALL));
+            REQUIRE(it->getValue() == decimalApprox(DecimalConstants<DecimalType>::DecimalZero, TOL_SMALL));
         }
 
         // Not enough data → empty
@@ -153,9 +153,9 @@ TEST_CASE("Adaptive Volatility – New Indicator Functions", "[AdaptiveVolatilit
         // i=3 -> [20,15,30], current=30 => rank = 3/3
         // i=4 -> [15,30,25], current=25 => rank = 2/3
         auto it = pr.beginRandomAccess();
-        REQUIRE((*it)->getValue() == decimalApprox(fromString<DecimalType>("0.6666667"), TOL_MED)); ++it;
-        REQUIRE((*it)->getValue() == decimalApprox(fromString<DecimalType>("1.0"),        TOL_SMALL)); ++it;
-        REQUIRE((*it)->getValue() == decimalApprox(fromString<DecimalType>("0.6666667"), TOL_MED));
+        REQUIRE(it->getValue() == decimalApprox(fromString<DecimalType>("0.6666667"), TOL_MED)); ++it;
+        REQUIRE(it->getValue() == decimalApprox(fromString<DecimalType>("1.0"),        TOL_SMALL)); ++it;
+        REQUIRE(it->getValue() == decimalApprox(fromString<DecimalType>("0.6666667"), TOL_MED));
 
         // window < 2 → throws
         REQUIRE_THROWS_AS(PercentRankSeries(s, 1), std::domain_error);
@@ -203,7 +203,7 @@ TEST_CASE("Adaptive Volatility – New Indicator Functions", "[AdaptiveVolatilit
         // sqrt(252) ≈ 15.874507, so r=0.01 → ≈ 0.15874507
         const DecimalType expected = fromString<DecimalType>("0.1587451");
         for (auto it2 = vol.beginRandomAccess(); it2 != vol.endRandomAccess(); ++it2) {
-            REQUIRE((*it2)->getValue() == decimalApprox(expected, TOL_MED));
+            REQUIRE(it2->getValue() == decimalApprox(expected, TOL_MED));
         }
 
         // r2Period < 2 → throws
@@ -269,7 +269,7 @@ TEST_CASE("Adaptive Volatility – New Indicator Functions", "[AdaptiveVolatilit
 
         // Bounds: all ranks in [0,1]
         for (auto it = pr.beginRandomAccess(); it != pr.endRandomAccess(); ++it) {
-            const auto v = (*it)->getValue();
+            const auto v = it->getValue();
             REQUIRE(v >= DecimalConstants<DecimalType>::DecimalZero);
             REQUIRE(v <= fromString<DecimalType>("1.0"));
         }

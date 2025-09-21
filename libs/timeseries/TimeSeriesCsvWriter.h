@@ -187,10 +187,10 @@ namespace mkc_timeseries
                indicatorIt != mIndicatorSeries.endSortedAccess())
         {
             const auto& ohlcEntry = *ohlcIt;
-            const auto& indicatorEntry = indicatorIt->second;
+            const auto& indicatorEntry = *indicatorIt;
             
             // Perfect date alignment assumed - dates should match
-            mFormatter->writeEntry(mCsvFile, ohlcEntry, indicatorEntry->getValue(), mUseWindowsLineEndings);
+            mFormatter->writeEntry(mCsvFile, ohlcEntry, indicatorEntry.getValue(), mUseWindowsLineEndings);
             
             ++ohlcIt;
             ++indicatorIt;

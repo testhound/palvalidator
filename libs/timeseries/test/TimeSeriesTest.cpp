@@ -169,18 +169,18 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
     {
       NumericTimeSeries<DecimalType> divideIndicatorSeries (DivideSeries<DecimalType> (closeSeries, openSeries));
 
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it = divideIndicatorSeries.beginSortedAccess();
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator closeSeriesIterator = closeSeries.beginSortedAccess();
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator openSeriesIterator = openSeries.beginSortedAccess();
+      NumericTimeSeries<DecimalType>::ConstSortedIterator it = divideIndicatorSeries.beginSortedAccess();
+      NumericTimeSeries<DecimalType>::ConstSortedIterator closeSeriesIterator = closeSeries.beginSortedAccess();
+      NumericTimeSeries<DecimalType>::ConstSortedIterator openSeriesIterator = openSeries.beginSortedAccess();
       DecimalType temp;
 
 
       for (; ((closeSeriesIterator != closeSeries.endSortedAccess()) &&
-	      (openSeriesIterator != openSeries.endSortedAccess())); closeSeriesIterator++, openSeriesIterator++, it++)
-	{
-	  temp = closeSeriesIterator->second->getValue() / openSeriesIterator->second->getValue();
-	  REQUIRE (it->second->getValue() == temp);
-	}
+       (openSeriesIterator != openSeries.endSortedAccess())); closeSeriesIterator++, openSeriesIterator++, it++)
+ {
+   temp = closeSeriesIterator->getValue() / openSeriesIterator->getValue();
+   REQUIRE (it->getValue() == temp);
+ }
 
 
     }
@@ -192,21 +192,21 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
       NumericTimeSeries<DecimalType>::ConstRandomAccessIterator closeSeriesIt = closeSeries.beginRandomAccess();
       closeSeriesIt++;
 
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it = rocIndicatorSeries.beginSortedAccess();
-      rocVal = it->second->getValue();
+      NumericTimeSeries<DecimalType>::ConstSortedIterator it = rocIndicatorSeries.beginSortedAccess();
+      rocVal = it->getValue();
 
-      currVal = closeSeries.getValue (closeSeriesIt, 0);
-      prevVal = closeSeries.getValue (closeSeriesIt, 1);
+      currVal = closeSeries.getValue (closeSeriesIt->getDateTime(), 0);
+      prevVal = closeSeries.getValue (closeSeriesIt->getDateTime(), 1);
       calcVal = ((currVal / prevVal) - DecimalConstants<DecimalType>::DecimalOne) * DecimalConstants<DecimalType>::DecimalOneHundred;
       REQUIRE (rocVal == calcVal);
 
       closeSeriesIt++;
       it++;
 
-      rocVal = it->second->getValue();
+      rocVal = it->getValue();
 
-      currVal = closeSeries.getValue (closeSeriesIt, 0);
-      prevVal = closeSeries.getValue (closeSeriesIt, 1);
+      currVal = closeSeries.getValue (closeSeriesIt->getDateTime(), 0);
+      prevVal = closeSeries.getValue (closeSeriesIt->getDateTime(), 1);
       calcVal = ((currVal / prevVal) - DecimalConstants<DecimalType>::DecimalOne) * DecimalConstants<DecimalType>::DecimalOneHundred;
       REQUIRE (rocVal == calcVal);
 
@@ -217,21 +217,17 @@ TEST_CASE ("TimeSeries operations", "[TimeSeries]")
       auto entry = spySeries.getTimeSeriesEntry(date (2015, Dec, 30));
       REQUIRE (entry == *entry4);
 
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it2 = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
-      REQUIRE  (it2 != closeSeries.endSortedAccess());
-      REQUIRE (it2->second->getValue() == entry4->getCloseValue());
+      auto closeEntry = closeSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      REQUIRE (closeEntry.getValue() == entry4->getCloseValue());
 
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it3 = openSeries.getTimeSeriesEntry(date (2015, Dec, 30));
-      REQUIRE  (it3 != openSeries.endSortedAccess());
-      REQUIRE (it3->second->getValue() == entry4->getOpenValue());
+      auto openEntry = openSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      REQUIRE (openEntry.getValue() == entry4->getOpenValue());
 
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it4 = highSeries.getTimeSeriesEntry(date (2015, Dec, 30));
-      REQUIRE  (it4 != highSeries.endSortedAccess());
-      REQUIRE (it4->second->getValue() == entry4->getHighValue());
+      auto highEntry = highSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      REQUIRE (highEntry.getValue() == entry4->getHighValue());
 
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it5 = lowSeries.getTimeSeriesEntry(date (2015, Dec, 30));
-      REQUIRE  (it5 != lowSeries.endSortedAccess());
-      REQUIRE (it5->second->getValue() == entry4->getLowValue());
+      auto lowEntry = lowSeries.getTimeSeriesEntry(date (2015, Dec, 30));
+      REQUIRE (lowEntry.getValue() == entry4->getLowValue());
     }
 
   SECTION ("TimeSeries getTimeSeriesEntry by date const", "TimeSeries]")
@@ -585,7 +581,7 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
       
       // Get the IBS value for the same date as entry6
       auto ibsEntry6 = ibsIndicatorSeries.getTimeSeriesEntry(entry6->getDateTime().date());
-      REQUIRE (ibsEntry6->second->getValue() == expectedIBS6);
+      REQUIRE (ibsEntry6.getValue() == expectedIBS6);
       
       // For entry0 (20160106): Open=198.34, High=200.06, Low=197.60, Close=198.82
       // IBS = (198.82 - 197.60) / (200.06 - 197.60) = 1.22 / 2.46 ≈ 0.4959
@@ -593,13 +589,13 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
                                  (entry0->getHighValue() - entry0->getLowValue());
       
       auto ibsEntry0 = ibsIndicatorSeries.getTimeSeriesEntry(entry0->getDateTime().date());
-      REQUIRE (ibsEntry0->second->getValue() == expectedIBS0);
+      REQUIRE (ibsEntry0.getValue() == expectedIBS0);
       
       // Verify all IBS values are between 0 and 1
-      NumericTimeSeries<DecimalType>::ConstTimeSeriesIterator it = ibsIndicatorSeries.beginSortedAccess();
+      NumericTimeSeries<DecimalType>::ConstSortedIterator it = ibsIndicatorSeries.beginSortedAccess();
       for (; it != ibsIndicatorSeries.endSortedAccess(); it++)
       {
-        DecimalType ibsValue = it->second->getValue();
+        DecimalType ibsValue = it->getValue();
         REQUIRE (ibsValue >= DecimalConstants<DecimalType>::DecimalZero);
         REQUIRE (ibsValue <= DecimalConstants<DecimalType>::DecimalOne);
       }
@@ -629,18 +625,18 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
       
       // Check the flat entry (should have IBS = 0)
       auto ibsFlatEntry = ibsIndicatorSeries.getTimeSeriesEntry(flatEntry->getDateTime().date());
-      REQUIRE (ibsFlatEntry->second->getValue() == DecimalConstants<DecimalType>::DecimalZero);
+      REQUIRE (ibsFlatEntry.getValue() == DecimalConstants<DecimalType>::DecimalZero);
       
       // Check the normal entries have valid IBS values
       auto ibsNormalEntry = ibsIndicatorSeries.getTimeSeriesEntry(normalEntry->getDateTime().date());
       DecimalType expectedIBS = (normalEntry->getCloseValue() - normalEntry->getLowValue()) /
                                (normalEntry->getHighValue() - normalEntry->getLowValue());
-      REQUIRE (ibsNormalEntry->second->getValue() == expectedIBS);
+      REQUIRE (ibsNormalEntry.getValue() == expectedIBS);
       
       auto ibsNormalEntry2 = ibsIndicatorSeries.getTimeSeriesEntry(normalEntry2->getDateTime().date());
       DecimalType expectedIBS2 = (normalEntry2->getCloseValue() - normalEntry2->getLowValue()) /
                                  (normalEntry2->getHighValue() - normalEntry2->getLowValue());
-      REQUIRE (ibsNormalEntry2->second->getValue() == expectedIBS2);
+      REQUIRE (ibsNormalEntry2.getValue() == expectedIBS2);
     }
 
   SECTION ("Timeseries IBS1 Indicator empty series test", "[TimeSeries]")
@@ -673,16 +669,16 @@ SECTION("TimeSeries inequality", "[TimeSeries]")
       
       // Check close at low (IBS = 0)
       auto ibsCloseAtLow = ibsIndicatorSeries.getTimeSeriesEntry(closeAtLow->getDateTime().date());
-      REQUIRE (ibsCloseAtLow->second->getValue() == DecimalConstants<DecimalType>::DecimalZero);
+      REQUIRE (ibsCloseAtLow.getValue() == DecimalConstants<DecimalType>::DecimalZero);
       
       // Check close at high (IBS = 1)
       auto ibsCloseAtHigh = ibsIndicatorSeries.getTimeSeriesEntry(closeAtHigh->getDateTime().date());
-      REQUIRE (ibsCloseAtHigh->second->getValue() == DecimalConstants<DecimalType>::DecimalOne);
+      REQUIRE (ibsCloseAtHigh.getValue() == DecimalConstants<DecimalType>::DecimalOne);
       
       // Check close in middle (IBS = 0.5)
       auto ibsCloseInMiddle = ibsIndicatorSeries.getTimeSeriesEntry(closeInMiddle->getDateTime().date());
       DecimalType expectedMiddle = DecimalConstants<DecimalType>::DecimalOne / DecimalConstants<DecimalType>::DecimalTwo;
-      REQUIRE (ibsCloseInMiddle->second->getValue() == expectedMiddle);
+      REQUIRE (ibsCloseInMiddle.getValue() == expectedMiddle);
     }
 
 }
@@ -1374,9 +1370,9 @@ TEST_CASE("Intraday Time Frame Duration Tests", "[TimeSeries][IntradayDuration]"
       ptime dt2(date(2021, Apr, 5), hours(10));
       ptime dt3(date(2021, Apr, 5), hours(11));
 
-      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt1, DecimalType("100.0"), TimeFrame::INTRADAY));
-      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt2, DecimalType("101.0"), TimeFrame::INTRADAY));
-      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+      series.addEntry(*std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+      series.addEntry(*std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+      series.addEntry(*std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt3, DecimalType("102.0"), TimeFrame::INTRADAY));
 
       auto duration = series.getIntradayTimeFrameDuration();
       REQUIRE(duration == hours(1));
@@ -1586,9 +1582,9 @@ TEST_CASE("Intraday Time Frame Duration In Minutes Tests", "[TimeSeries][Intrada
       ptime dt2(date(2021, Apr, 5), hours(10));
       ptime dt3(date(2021, Apr, 5), hours(11));
 
-      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt1, DecimalType("100.0"), TimeFrame::INTRADAY));
-      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt2, DecimalType("101.0"), TimeFrame::INTRADAY));
-      series.addEntry(std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+      series.addEntry(*std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+      series.addEntry(*std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+      series.addEntry(*std::make_shared<NumericTimeSeriesEntry<DecimalType>>(dt3, DecimalType("102.0"), TimeFrame::INTRADAY));
 
       auto durationMinutes = series.getIntradayTimeFrameDurationInMinutes();
       REQUIRE(durationMinutes == 60);

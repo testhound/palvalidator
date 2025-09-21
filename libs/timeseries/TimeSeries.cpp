@@ -8,6 +8,4 @@
 
 namespace mkc_timeseries
 {
-  boost::mutex TimeSeriesOffset::mOffsetCacheMutex;
-  std::map<unsigned long, std::shared_ptr<TimeSeriesOffset>> TimeSeriesOffset::mOffsetCache;
 }
