@@ -1250,7 +1250,8 @@ namespace mkc_timeseries
     const size_t n = static_cast<size_t>(series.getNumEntries());
     NumericTimeSeries<Decimal> out(series.getTimeFrame(),
 				   (n >= window) ? static_cast<unsigned long>(n - window + 1) : 0UL);
-    if (n < window) return out;
+    if (n < window)
+      return out;
 
     std::vector<Decimal> buf(window);
     size_t bsize=0, head=0;
@@ -1258,153 +1259,204 @@ namespace mkc_timeseries
     for (auto it = series.beginRandomAccess(); it != series.endRandomAccess(); ++it) {
       const Decimal val = it->getValue();
 
-      if (bsize < window) { buf[head]=val; ++bsize; head=(head+1)%window; }
-      else                 { buf[head]=val;            head=(head+1)%window; }
+      if (bsize < window)
+	{
+	  buf[head]=val;
+	  ++bsize;
+	  head=(head+1)%window;
+	}
+      else
+	{
+	  buf[head]=val;
+	  head=(head+1) % window;
+	}
 
-      if (bsize == window) {
- size_t le=0;
- for (size_t k=0;k<window;++k) if (buf[k] <= val) ++le;
- const Decimal rank = Decimal(static_cast<double>(le)/static_cast<double>(window));
- out.addEntry(NumericTimeSeriesEntry<Decimal>(it->getDateTime(), rank, series.getTimeFrame()));
-      }
+      if (bsize == window)
+	{
+	  size_t le=0;
+	  for (size_t k=0;k<window;++k)
+	    if (buf[k] <= val)
+	      ++le;
+	  
+	  const Decimal rank = Decimal(static_cast<double>(le)/static_cast<double>(window));
+	  out.addEntry(NumericTimeSeriesEntry<Decimal>(it->getDateTime(), rank, series.getTimeFrame()));
+	}
     }
 
     return out;
   }
 
+  // -----------------------------------------------------------------------------
+  // Volatility Policy Classes
+  // -----------------------------------------------------------------------------
+  // Each policy exposes a static template method:
+  // template <class Decimal>
+  // static Decimal ComputeDailyVariance(const OHLCTimeSeriesEntry<Decimal>& today,
+  // const Decimal& previousClose);
+  // returning the per-day *variance* contribution (not sigma), which will be EMA'd
+  // and then annualized via sqrt(variance * annualizationFactor).
+
+
+  struct CloseToCloseVolatilityPolicy {
+    template <class Decimal>
+    static Decimal ComputeDailyVariance(const OHLCTimeSeriesEntry<Decimal>& today,
+  			const Decimal& previousClose)
+    {
+      const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+      if (previousClose == zero)
+        throw std::domain_error("CloseToCloseVolatilityPolicy: division by zero in previousClose");
+      
+      const Decimal one = DecimalConstants<Decimal>::DecimalOne;
+      const Decimal simpleReturn = (today.getCloseValue() / previousClose) - one;
+      return simpleReturn * simpleReturn; // simple close-to-close variance
+    }
+  };
+
+
+  struct SimonsHLCVolatilityPolicy {
+    // Garman–Klass style using prior close as the anchor instead of the open.
+    // v_t = 0.5 * [ln(max(H_t, C_{t-1})/min(L_t, C_{t-1}))]^2
+    // - (2 ln 2 - 1) * [ln(C_t/C_{t-1})]^2
+    // NOTE: No clamping here. The expression is theoretically nonnegative when inputs are clean
+    // (with this anchoring, rRange >= |rClose|, and 0.5 > 2ln2-1). Any negative values typically
+    // indicate floating-point jitter or bad quotes (e.g., H<L, unadjusted splits). We leave them
+    // as-is so callers can decide how to handle.
+    template <class Decimal>
+    static Decimal ComputeDailyVariance(const OHLCTimeSeriesEntry<Decimal>& today,
+					const Decimal& previousClose)
+    {
+      using DC = DecimalConstants<Decimal>;
+
+      const Decimal& Cprev = previousClose;
+      const Decimal H = today.getHighValue();
+      const Decimal L = today.getLowValue();
+      const Decimal C = today.getCloseValue();
+
+      const Decimal zero = DC::DecimalZero;
+      const Decimal one = DC::DecimalOne;
+
+      if (!(Cprev > zero && H > zero && L > zero && C > zero))
+	return zero;
+
+      // Choose up/down in Decimal space
+      const Decimal up = (H > Cprev ? H : Cprev);
+      const Decimal down = (L < Cprev ? L : Cprev);
+
+
+      // Ratios in Decimal (postive by construction)
+      const Decimal rangeRatio = up / down;
+      const Decimal closeRatio = C / Cprev;
+
+      
+      // Convert to double only for natural logs
+      const Decimal rRangeD = Decimal(std::log(rangeRatio.getAsDouble()));
+      const Decimal rCloseD = Decimal(std::log(closeRatio.getAsDouble()));
+
+      const Decimal rRange2 = rRangeD * rRangeD;
+      const Decimal rClose2 = rCloseD * rCloseD;
+
+      // Coefficients as Decimals; compute once per Decimal instantiation
+      static const Decimal kRange = DC::DecimalOne / DC::DecimalTwo; // 1/2 exactly in Decimal
+      static const Decimal kClose = (DC::DecimalTwo * Decimal(std::log(2.0))) - DC::DecimalOne; // 2*ln(2) - 1
+
+      return (kRange * rRange2) - (kClose * rClose2);
+    }
+  };
+
+
+  using SimonsVolatilityPolicy = SimonsHLCVolatilityPolicy;
+
+
+  // Helper trait to improve error messages if a policy is missing the API
+  namespace detail {
+    template <class Policy, class Decimal>
+    using PolicyCheck_t = decltype(Policy::template ComputeDailyVariance<Decimal>(
+										  std::declval<OHLCTimeSeriesEntry<Decimal>>(), std::declval<Decimal>()));
+  }
+
   /**
-   * @brief Calculates an annualized adaptive volatility based on trend strength.
+   * @brief Calculates an annualized adaptive volatility series based on rolling R^2 trend strength.
+   *        The variance stream is supplied by a Volatility Policy class (template param).
    *
-   * This function implements an adaptive volatility estimator where the smoothing factor of an
-   * exponential moving average (EMA) is dynamically adjusted based on the strength of the recent
-   * price trend. Trend strength is measured by the R-squared of the closing prices over a
-   * rolling window.
+   * @tparam Decimal Numeric type used by time series
+   * @tparam VolPolicy Volatility policy class (default CloseToCloseVolatilityPolicy)
    *
-   * The core logic is as follows:
-   * 1.  A high R-squared (strong trend) leads to a smaller alpha (slower EMA), making the
-   * volatility estimate less sensitive to recent changes.
+   * @param series OHLC input series
+   * @param rSquaredPeriod Lookback used for RollingRSquaredSeries (>=2)
+   * @param annualizationFactor e.g., 252.0 or 260.0
    *
-   * 2.  A low R-squared (choppy, non-trending market) leads to a larger alpha (faster EMA),
-   * making the volatility estimate more responsive.
-   *
-   * The volatility is calculated from an EMA of squared returns and then annualized.
-   *
-   * @tparam Decimal The numeric type used in the time series.
-   * @param series The input OHLC time series. The calculation uses the closing prices.
-   * @param rSquaredPeriod The lookback period used to calculate the R-squared for trend detection.
-   * @param annualizationFactor The factor to scale the volatility to an annual figure
-   * (e.g., 252 for daily data).
-   * @return A new NumericTimeSeries containing the annualized adaptive volatility values.
-   * @throws std::domain_error if rSquaredPeriod is less than 2 or if a division by zero
-   * occurs during return calculation.
-   * @see This method is based on the concept of "Adaptive Volatility" by David Varadi.
-   * @see https://cssanalytics.wordpress.com/2017/11/15/adaptive-volatility/
+   * @returns NumericTimeSeries<Decimal> with annualized sigma values
    */
-  template <class Decimal>
+  template <class Decimal, class VolPolicy = CloseToCloseVolatilityPolicy>
   NumericTimeSeries<Decimal>
   AdaptiveVolatilityAnnualizedSeries(const OHLCTimeSeries<Decimal>& series,
 				     uint32_t rSquaredPeriod = 20,
 				     double annualizationFactor = 252.0)
   {
+    // Compile-time policy conformance check
+    static_assert(std::is_same<detail::PolicyCheck_t<VolPolicy, Decimal>, Decimal>::value,
+		  "VolPolicy must expose: template<class D> static D ComputeDailyVariance(const OHLCTimeSeriesEntry<D>&, const D&) returning D");
+
     if (rSquaredPeriod < 2)
       throw std::domain_error("AdaptiveVolatilityAnnualizedSeries: rSquaredPeriod must be >= 2");
 
-    const auto entries = series.getEntriesCopy(); // for returns & timestamps
-    const size_t n = entries.size();
-    if (n < rSquaredPeriod)
+    const auto entries = series.getEntriesCopy();
+    const size_t totalEntries = entries.size();
+    if (totalEntries < rSquaredPeriod)
       return NumericTimeSeries<Decimal>(series.getTimeFrame());
 
-    // Step 1: Calculate the rolling R-squared of price with respect to time to measure trend strength.
-    // A high R-squared indicates a strong linear trend, while a low value suggests a rangebound market.
+    // Trend strength via rolling R^2 of closes (existing helper)
+    auto closeOnly = series.CloseTimeSeries();
+    auto rSquaredSeries = RollingRSquaredSeries(closeOnly, rSquaredPeriod);
+    const auto rSquaredValues = rSquaredSeries.getTimeSeriesAsVector();
 
-    auto closesTS = series.CloseTimeSeries();
-    auto r2TS     = RollingRSquaredSeries(closesTS, rSquaredPeriod);
-    const auto r2Vec = r2TS.getTimeSeriesAsVector();
+    NumericTimeSeries<Decimal> output(series.getTimeFrame(),
+				      static_cast<unsigned long>(rSquaredValues.size()));
 
-    NumericTimeSeries<Decimal> out(series.getTimeFrame(),
-				   static_cast<unsigned long>(r2Vec.size()));
+    const size_t baseIndex = static_cast<size_t>(rSquaredPeriod - 1);
+    Decimal exponentiallyAveragedVariance = DecimalConstants<Decimal>::DecimalZero;
 
-    const size_t base = rSquaredPeriod - 1;
-    Decimal v_prev = DecimalConstants<Decimal>::DecimalZero;
+    for (size_t j = 0; j < rSquaredValues.size(); ++j) {
+      const size_t i = baseIndex + j; // align with entries
 
-    for (size_t j=0; j<r2Vec.size(); ++j) {
-      const size_t i = base + j;
+      double r2 = rSquaredValues[j].getAsDouble();
+      if (r2 < 0.0) r2 = 0.0;
+      if (r2 > 1.0) r2 = 1.0;
 
-      // Step 2: Compute the adaptive smoothing constant (alpha) for the EMA from the R-squared value.
-      // The exponential function translates trend strength into the alpha.
-      //
-      // - A low R-squared (e.g., 0.1, mean-reverting) results in a very small
-      // alpha (long lookback, stable vol).
-      // - A high R-squared (e.g., 0.9, trending) results in a large alpha (short lookback, responsive vol).
-      double r2 = r2Vec[j].getAsDouble();
-      if (r2 < 0.0)
-	r2 = 0.0;
+      // Adaptive alpha based on trend strength (unchanged logic)
+      double alphaDouble = std::exp(-10.0 * (1.0 - r2));
+      if (alphaDouble > 0.5) alphaDouble = 0.5;
+      const Decimal alpha = Decimal(alphaDouble);
+      const Decimal oneMinusAlpha = DecimalConstants<Decimal>::DecimalOne - alpha;
 
-      if (r2 > 1.0)
-	r2 = 1.0;
+      // Policy-driven daily variance contribution
+      const Decimal varianceToday = VolPolicy::template ComputeDailyVariance<Decimal>(
+										      entries[i], entries[i - 1].getCloseValue());
 
-      double alpha = std::exp(-10.0 * (1.0 - r2));
+      if (j == 0) {
+	exponentiallyAveragedVariance = varianceToday; // seed
+      } else {
+	exponentiallyAveragedVariance = (alpha * varianceToday) + (oneMinusAlpha * exponentiallyAveragedVariance);
+      }
 
-      // The alpha is capped at 0.5, which limits the minimum effective lookback period to ~3 days.
-      if (alpha > 0.5)
-	alpha = 0.5;
-
-      // Step 3: Calculate the squared simple close-to-close return.
-      // The adaptive EMA is applied to the series of squared returns.
-      const Decimal c  = entries[i].getCloseValue();
-      const Decimal c1 = entries[i-1].getCloseValue();
-
-      if (c1 == DecimalConstants<Decimal>::DecimalZero)
-	throw std::domain_error("AdaptiveVolatilityAnnualizedSeries: division by zero in return");
-
-      const Decimal ret  = (c / c1) - DecimalConstants<Decimal>::DecimalOne;
-      const Decimal ret2 = ret * ret;
-
-      // Step 4: Update the Exponential Moving Average of squared returns using the adaptive alpha.
-      if (j == 0)
-	{
-	  // Seed the initial EMA value with the first squared return.
-	  v_prev = ret2;
-	}
-      else
-	{
-	  const Decimal a = Decimal(alpha);
-	  const Decimal one_minus_a = DecimalConstants<Decimal>::DecimalOne - a;
-	  v_prev = (a * ret2) + (one_minus_a * v_prev);
-	}
-
-      // Step 5: Annualize the volatility.
-      // This is done by taking the square root of the EMA value (which represents variance)
-      // and multiplying by the square root of the annualization factor.
-      const double volAnn = std::sqrt(v_prev.getAsDouble() * annualizationFactor);
-      out.addEntry(NumericTimeSeriesEntry<Decimal>(entries[i].getDateTime(),
-						   Decimal(volAnn),
-						   series.getTimeFrame()));
+      const double ev = exponentiallyAveragedVariance.getAsDouble();
+      const double annualizedSigma = std::sqrt(std::max(0.0, ev) * annualizationFactor);
+      output.addEntry(NumericTimeSeriesEntry<Decimal>(entries[i].getDateTime(),
+						      Decimal(annualizedSigma),
+						      series.getTimeFrame()));
     }
 
-    return out;
+    return output;
   }
 
+  // -----------------------------------------------------------------------------
+  // AdaptiveVolatilityPercentRankAnnualizedSeries (policy-based)
+  // -----------------------------------------------------------------------------
+
   /**
-   * @brief Calculates the percent rank of the adaptive annualized volatility.
-   *
-   * This is a convenience function that first computes the adaptive annualized volatility
-   * using `AdaptiveVolatilityAnnualizedSeries` and then calculates the rolling percent rank
-   * of the resulting volatility series using `PercentRankSeries`.
-   *
-   * The final output indicates how the current adaptive volatility level compares to its
-   * recent history, providing a normalized measure of whether volatility is currently
-   * high or low.
-   *
-   * @tparam Decimal The numeric type used in the time series.
-   * @param series The input OHLC time series.
-   * @param rSquaredPeriod The lookback period for the R-squared calculation in the adaptive volatility.
-   * @param percentRankPeriod The rolling window size for calculating the percent rank of the volatility.
-   * @param annualizationFactor The factor to scale the volatility to an annual figure.
-   * @return A new NumericTimeSeries containing the percent-ranked adaptive volatility values.
-   * @throws std::domain_error if `percentRankPeriod` is less than 2.
+   * @brief Percent rank of the adaptive annualized volatility under a chosen policy.
    */
-  template <class Decimal>
+  template <class Decimal, class VolPolicy = CloseToCloseVolatilityPolicy>
   NumericTimeSeries<Decimal>
   AdaptiveVolatilityPercentRankAnnualizedSeries(const OHLCTimeSeries<Decimal>& series,
 						uint32_t rSquaredPeriod,
@@ -1414,8 +1466,10 @@ namespace mkc_timeseries
     if (percentRankPeriod < 2)
       throw std::domain_error("AdaptiveVolatilityPercentRankAnnualizedSeries: percentRankPeriod must be >= 2");
 
-    auto vol = AdaptiveVolatilityAnnualizedSeries(series, rSquaredPeriod, annualizationFactor);
-    return PercentRankSeries(vol, percentRankPeriod);
+    auto volSeries = AdaptiveVolatilityAnnualizedSeries<Decimal, VolPolicy>(series,
+									    rSquaredPeriod,
+									    annualizationFactor);
+    return PercentRankSeries(volSeries, percentRankPeriod);
   }
 }
 
