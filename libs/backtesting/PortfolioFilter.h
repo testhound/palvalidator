@@ -22,24 +22,30 @@ namespace mkc_timeseries
   class AdaptiveVolatilityPortfolioFilter : public PortfolioFilter<Decimal>
   {
   public:
-    // ctor: rsquaredPeriod fixed at 20 per spec; prPeriod provided by caller
+    AdaptiveVolatilityPortfolioFilter(const OHLCTimeSeries<Decimal>& ohlc)
+      : AdaptiveVolatilityPortfolioFilter(ohlc, StandardPercentRankPeriod(ohlc.getTimeFrame()))
+    {}
+
     AdaptiveVolatilityPortfolioFilter(const OHLCTimeSeries<Decimal>& ohlc,
 				      uint32_t percentRankPeriod)
-      : m_filterSeries(buildFilterSeries(ohlc, percentRankPeriod)) {}
+      : m_filterSeries(buildFilterSeries(ohlc, percentRankPeriod))
+    {}
 
     ~AdaptiveVolatilityPortfolioFilter() override = default;
 
     bool areEntriesAllowed(const boost::posix_time::ptime& dt) const override
     {
-      // Look up the value at dt (fall back to date-normalized key)
-      try {
-        auto entry = m_filterSeries.getTimeSeriesEntry(dt.date());  // get entry by date
-        const Decimal& v = entry.getValue();                        // entry value at dt
-        return v.getAsDouble() < 0.75;                              // allow if < 75th pct
-      } catch (const TimeSeriesDataNotFoundException&) {
-        // If not found, disallow by default (no signal yet)
-        return false;
-      }
+      try
+	{
+	  auto entry = m_filterSeries.getTimeSeriesEntry(dt.date());  // get entry by date
+	  const Decimal& v = entry.getValue();                        // entry value at dt
+	  return v.getAsDouble() < 0.75;                              // allow if < 75th pct
+	}
+      catch (const TimeSeriesDataNotFoundException&)
+	{
+	  // If not found, disallow by default (no signal yet)
+	  return false;
+	}
     }
 
   private:
@@ -74,8 +80,8 @@ namespace mkc_timeseries
   class NoPortfolioFilter : public PortfolioFilter<Decimal>
   {
   public:
-    // Constructor takes no arguments and has empty body
-    NoPortfolioFilter() {}
+    // Constructor takes OHLC series argument (unused) for polymorphic compatibility
+    NoPortfolioFilter(const OHLCTimeSeries<Decimal>& ohlc) { (void)ohlc; }
 
     ~NoPortfolioFilter() override = default;
 
