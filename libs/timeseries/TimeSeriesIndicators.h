@@ -1223,6 +1223,27 @@ namespace mkc_timeseries
     return out;
   }
 
+  inline uint32_t StandardPercentRankPeriod(TimeFrame::Duration timeFrame)
+  {
+    switch (timeFrame)
+      {
+      case TimeFrame::DAILY:
+      case TimeFrame::INTRADAY:
+	return 252;
+
+      case TimeFrame::WEEKLY:
+	return 52.0;
+
+      case TimeFrame::MONTHLY:
+      case TimeFrame::QUARTERLY:
+      case TimeFrame::YEARLY:
+	return 36;
+
+      default:
+	throw std::invalid_argument("Unsupported time frame for annualization.");
+      }
+  }
+
   /**
    * @brief Computes the rolling percent rank of each value in a time series.
    *
@@ -1425,7 +1446,13 @@ namespace mkc_timeseries
 
       // Adaptive alpha based on trend strength (unchanged logic)
       double alphaDouble = std::exp(-10.0 * (1.0 - r2));
-      if (alphaDouble > 0.5) alphaDouble = 0.5;
+
+      // Ensure reasonable adaptation even in low-R² regimes
+      if (alphaDouble < 0.05)
+	alphaDouble = 0.05;
+      else if (alphaDouble > 0.5)
+	alphaDouble = 0.5;
+
       const Decimal alpha = Decimal(alphaDouble);
       const Decimal oneMinusAlpha = DecimalConstants<Decimal>::DecimalOne - alpha;
 

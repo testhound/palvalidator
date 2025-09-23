@@ -18,6 +18,7 @@
 #include "BacktesterStrategy.h"
 #include "PALPatternInterpreter.h" // Includes new PatternEvaluator signature
 #include "TimeSeriesEntry.h" // For getDefaultBarTime, ptime, date
+#include "PortfolioFilter.h" // For portfolio filtering functionality
 
 namespace mkc_timeseries
 {
@@ -194,7 +195,7 @@ namespace mkc_timeseries
 
 
   // A PalMetaStrategy is composed of individual Pal strategies (patterns): long and/or short
-  template <class Decimal> class PalMetaStrategy : public BacktesterStrategy<Decimal>
+  template <class Decimal, class Filter = NoPortfolioFilter<Decimal>> class PalMetaStrategy : public BacktesterStrategy<Decimal>
   {
   public:
     typedef typename std::list<std::shared_ptr<PriceActionLabPattern>> PalPatterns;
@@ -209,19 +210,21 @@ namespace mkc_timeseries
         mPalPatterns(),
         mPatternEvaluators(),
         mMCPTAttributes(),
-        mStrategyMaxBarsBack(0)
+        mStrategyMaxBarsBack(0),
+        mPortfolioFilter(createPortfolioFilter(portfolio))
     {}
 
-    PalMetaStrategy(const PalMetaStrategy<Decimal>& rhs)
+    PalMetaStrategy(const PalMetaStrategy<Decimal, Filter>& rhs)
       : BacktesterStrategy<Decimal>(rhs),
         mPalPatterns(rhs.mPalPatterns),
         mPatternEvaluators(rhs.mPatternEvaluators),
         mMCPTAttributes(rhs.mMCPTAttributes),
-        mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack)
+        mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack),
+        mPortfolioFilter(rhs.mPortfolioFilter)
     {}
 
-    PalMetaStrategy<Decimal>&
-    operator=(const PalMetaStrategy<Decimal>& rhs)
+    PalMetaStrategy<Decimal, Filter>&
+    operator=(const PalMetaStrategy<Decimal, Filter>& rhs)
     {
       if (this == &rhs)
       {
@@ -233,6 +236,7 @@ namespace mkc_timeseries
       mPatternEvaluators = rhs.mPatternEvaluators; // Consider if deep copy or re-compilation is needed for stateful evaluators
       mMCPTAttributes = rhs.mMCPTAttributes;
       mStrategyMaxBarsBack = rhs.mStrategyMaxBarsBack;
+      mPortfolioFilter = rhs.mPortfolioFilter;
       return *this;
     }
 
@@ -240,8 +244,11 @@ namespace mkc_timeseries
 
     void addPricePattern(std::shared_ptr<PriceActionLabPattern> pattern)
     {
-      if (pattern->getMaxBarsBack() > mStrategyMaxBarsBack)
-        mStrategyMaxBarsBack = pattern->getMaxBarsBack();
+      // Strategy needs the lookback bars to be present on the current bar,
+      // so store "required bars" = maxBarsBack + 1
+      const unsigned int requiredBars = pattern->getMaxBarsBack() + 1;
+      if (requiredBars > mStrategyMaxBarsBack)
+	mStrategyMaxBarsBack = requiredBars;
 
       mPalPatterns.push_back(pattern);
 
@@ -302,17 +309,25 @@ namespace mkc_timeseries
     clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
     {
       // Using HEAD's more detailed clone logic that handles options
-      return std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
-                                                        portfolio,
-                                                        this->getStrategyOptions());
+      auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
+                                                                       portfolio,
+                                                                       this->getStrategyOptions());
+      // Manually copy patterns and compiled evaluators
+      for (const auto& pattern : mPalPatterns)
+      {
+          cloned->addPricePattern(pattern);
+      }
+      cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
+
+      return cloned;
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>>
     cloneForBackTesting () const override
     {
-      auto cloned = std::make_shared<PalMetaStrategy<Decimal>>(this->getStrategyName(),
-                                                               this->getPortfolio(),
-                                                               this->getStrategyOptions());
+      auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
+                                                                       this->getPortfolio(),
+                                                                       this->getStrategyOptions());
       // Manually copy patterns and compiled evaluators
       for (const auto& pattern : mPalPatterns)
       {
@@ -420,37 +435,58 @@ namespace mkc_timeseries
     }
 
   private:
+    // Helper method to create portfolio filter from portfolio's first security
+    std::shared_ptr<Filter> createPortfolioFilter(std::shared_ptr<Portfolio<Decimal>> portfolio)
+    {
+      if (portfolio->getNumSecurities() == 0)
+      {
+        throw PalStrategyException("PalMetaStrategy: Portfolio must contain at least one security for filter initialization");
+      }
+      
+      // Get the first security from the portfolio
+      auto firstSecurity = portfolio->beginPortfolio()->second;
+      auto ohlcTimeSeries = firstSecurity->getTimeSeries();
+      
+      // Create filter with OHLC data
+      return std::make_shared<Filter>(*ohlcTimeSeries);
+    }
+
     // Takes ptime for intraday order timing, but uses date for PatternEvaluator
     void entryOrdersCommon (Security<Decimal>* aSecurity,
                             const InstrumentPosition<Decimal>& instrPos, // Parameter not used in logic from
                             const ptime& processingDateTime,
                             const EntryOrderConditions<Decimal>& entryConditions)
     {
+      // NEW: Check portfolio filter first
+      if (!mPortfolioFilter->areEntriesAllowed(processingDateTime))
+      {
+        return; // Exit early if entries not allowed
+      }
+
       // No iterator needed for PatternEvaluator based on PALPatternInterpreter.h
-
       if (entryConditions.canEnterMarket(this, aSecurity))
-	{
-	  auto patIt  = mPalPatterns.begin();
-	  auto evalIt = mPatternEvaluators.begin();
-	  for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
-	       ++patIt, ++evalIt)
-	    {
-	      std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
+ {
+   auto patIt  = mPalPatterns.begin();
+   auto evalIt = mPatternEvaluators.begin();
+   for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
+        ++patIt, ++evalIt)
+     {
+       std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
 
-	      if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
-		{
-		  continue;
-		}
+       if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
+  {
+    continue;
+  }
 
-	      // PatternEvaluator now takes ptime. Orders are placed using ptime.
-	      if ((*evalIt)(aSecurity, processingDateTime))
-		{
-		  // entryConditions will use processingDateTime for actual order placement
-		  entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
-		  break; // Assuming one pattern match per bar is sufficient for meta strategy
-		}
-	    }
-	}
+       // PatternEvaluator now takes ptime. Orders are placed using ptime.
+       if ((*evalIt)(aSecurity, processingDateTime))
+  {
+    // entryConditions will use processingDateTime for actual order placement
+    entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
+    break; // Assuming one pattern match per bar is sufficient for meta strategy
+  }
+     }
+ }
     }
 
     // NOTE: eventExitLongOrders and eventExitShortOrders helper methods removed
@@ -482,6 +518,7 @@ namespace mkc_timeseries
     std::vector<PatternEvaluator> mPatternEvaluators;
     MCPTStrategyAttributes<Decimal> mMCPTAttributes;
     unsigned int mStrategyMaxBarsBack;
+    std::shared_ptr<Filter> mPortfolioFilter;
   };
 
   /**
