@@ -682,9 +682,6 @@ TEST_CASE("PalMetaStrategy / Filter effectiveness verification", "[PalMetaStrate
     auto pattern = createAlwaysMatchPattern();
     
     SECTION("AdaptiveVolatilityPortfolioFilter reduces trades compared to NoPortfolioFilter") {
-        // Use a shorter percent rank period for testing to reduce warmup time
-        const uint32_t testPercentRankPeriod = 50; // Much shorter than default 252
-        
         // Create portfolios for each strategy (need separate instances)
         auto noFilterPortfolio = createHighVolatilityTestPortfolio();
         auto filteredPortfolio = createHighVolatilityTestPortfolio();
