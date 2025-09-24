@@ -16,6 +16,7 @@
 #include "ExitPolicyJointAutoTuner.h"
 #include "BacktesterStrategy.h"
 #include "PalStrategy.h"
+#include "TimeSeriesIndicators.h"
 #include <fstream>
 
 namespace palvalidator
@@ -64,58 +65,58 @@ namespace palvalidator
      ValidationMethod validationMethod)
     {
       if (survivingStrategies.empty())
- {
-   outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
-   mMetaStrategyPassed = false;
-   return;
- }
+	{
+	  outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
+	  mMetaStrategyPassed = false;
+	  return;
+	}
 
       outputStream << "\n[Meta] Building unified PalMetaStrategy from "
-     << survivingStrategies.size() << " survivors...\n";
-
+		   << survivingStrategies.size() << " survivors...\n";
+      
       try
- {
-   // Create pyramid configurations
-   std::vector<PyramidConfiguration> pyramidConfigs = createPyramidConfigurations();
+	{
+	  // Create pyramid configurations
+	  std::vector<PyramidConfiguration> pyramidConfigs = createPyramidConfigurations();
+	  
+	  // Storage for all pyramid results
+	  std::vector<PyramidResults> allResults;
    
-   // Storage for all pyramid results
-   std::vector<PyramidResults> allResults;
+	  // Run analysis for each pyramid level
+	  for (const auto& config : pyramidConfigs)
+	    {
+	      auto result = analyzeSinglePyramidLevel(config, survivingStrategies, baseSecurity,
+						      backtestingDates, timeFrame, outputStream);
+	      allResults.push_back(result);
+	    }
    
-   // Run analysis for each pyramid level
-   for (const auto& config : pyramidConfigs)
-     {
-       auto result = analyzeSinglePyramidLevel(config, survivingStrategies, baseSecurity,
-    		      backtestingDates, timeFrame, outputStream);
-       allResults.push_back(result);
-     }
-   
-   // Write comprehensive performance file with all pyramid results
-   std::string performanceFileName = palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
+	  // Write comprehensive performance file with all pyramid results
+	  std::string performanceFileName = palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
     									      baseSecurity->getSymbol(), validationMethod);
-   writeComprehensivePerformanceReport(allResults, performanceFileName, outputStream);
+	  writeComprehensivePerformanceReport(allResults, performanceFileName, outputStream);
+	  
+	  // Output pyramid comparison summary
+	  outputPyramidComparison(allResults, outputStream);
    
-   // Output pyramid comparison summary
-   outputPyramidComparison(allResults, outputStream);
-   
-   // Set overall meta-strategy result based on best performing pyramid level
-   mMetaStrategyPassed = false;
-   for (const auto& result : allResults)
-     {
-       if (result.getPassed())
-  {
-    mMetaStrategyPassed = true;
-    // Store the best result for backward compatibility
-    mAnnualizedLowerBound = result.getAnnualizedLowerBound();
-    mRequiredReturn = result.getRequiredReturn();
-    break;
-  }
-     }
- }
+	  // Set overall meta-strategy result based on best performing pyramid level
+	  mMetaStrategyPassed = false;
+	  for (const auto& result : allResults)
+	    {
+	      if (result.getPassed())
+		{
+		  mMetaStrategyPassed = true;
+		  // Store the best result for backward compatibility
+		  mAnnualizedLowerBound = result.getAnnualizedLowerBound();
+		  mRequiredReturn = result.getRequiredReturn();
+		  break;
+		}
+	    }
+	}
       catch (const std::exception& e)
- {
-   outputStream << "[Meta] Error in unified meta-strategy backtesting: " << e.what() << "\n";
-   mMetaStrategyPassed = false;
- }
+	{
+	  outputStream << "[Meta] Error in unified meta-strategy backtesting: " << e.what() << "\n";
+	  mMetaStrategyPassed = false;
+	}
     }
 
     void MetaStrategyAnalyzer::performStatisticalAnalysis(
@@ -192,6 +193,29 @@ namespace palvalidator
       return metaStrategy;
     }
 
+    std::shared_ptr<PalMetaStrategy<Num, AdaptiveVolatilityPortfolioFilter<Num, mkc_timeseries::SimonsHLCVolatilityPolicy>>>
+    MetaStrategyAnalyzer::createMetaStrategyWithAdaptiveFilter(
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        std::shared_ptr<Security<Num>> baseSecurity,
+        const StrategyOptions& strategyOptions) const
+    {
+      // Create PalMetaStrategy with AdaptiveVolatilityPortfolioFilter
+      auto metaPortfolio = std::make_shared<Portfolio<Num>>("Meta Portfolio with Adaptive Filter");
+      metaPortfolio->addSecurity(baseSecurity);
+      
+      auto metaStrategy = std::make_shared<PalMetaStrategy<Num, AdaptiveVolatilityPortfolioFilter<Num, mkc_timeseries::SimonsHLCVolatilityPolicy>>>(
+          "Unified Meta Strategy with Adaptive Filter", metaPortfolio, strategyOptions);
+
+      // Add all patterns from surviving strategies
+      for (const auto& strategy : survivingStrategies)
+        {
+          auto pattern = strategy->getPalPattern();
+          metaStrategy->addPricePattern(pattern);
+        }
+
+      return metaStrategy;
+    }
+
     std::vector<MetaStrategyAnalyzer::PyramidConfiguration>
     MetaStrategyAnalyzer::createPyramidConfigurations() const
     {
@@ -209,6 +233,11 @@ namespace palvalidator
       // Pyramid Level 3: 3 additional positions
       configs.emplace_back(3, "3 Additional Positions", StrategyOptions(true, 3, 8));
       
+      // Pyramid Level 4: Adaptive Volatility Filter (no pyramiding)
+      configs.emplace_back(4, "Volatility Filter",
+                          StrategyOptions(false, 0, 8),
+                          PyramidConfiguration::ADAPTIVE_VOLATILITY_FILTER);
+      
       return configs;
     }
 
@@ -224,12 +253,25 @@ namespace palvalidator
       outputStream << "\n[Meta] Pyramid Level " << config.getPyramidLevel()
                    << " (" << config.getDescription() << "):\n";
 
-      // Create meta-strategy with specific pyramid configuration
-      auto metaStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+      // Create meta-strategy and execute backtesting based on filter type
+      std::shared_ptr<BackTester<Num>> bt;
+      std::vector<Num> metaReturns;
       
-      // Execute backtesting
-      auto bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
-      auto metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+      if (config.getFilterType() == PyramidConfiguration::ADAPTIVE_VOLATILITY_FILTER)
+        {
+          // Create strategy with AdaptiveVolatilityPortfolioFilter
+          auto filteredStrategy = createMetaStrategyWithAdaptiveFilter(
+              survivingStrategies, baseSecurity, config.getStrategyOptions());
+          bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, backtestingDates);
+          metaReturns = bt->getAllHighResReturns(filteredStrategy.get());
+        }
+      else
+        {
+          // Create standard strategy (existing code path)
+          auto metaStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+          bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+          metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+        }
 
       if (metaReturns.size() < 2)
         {
