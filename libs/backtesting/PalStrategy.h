@@ -211,7 +211,9 @@ namespace mkc_timeseries
         mPatternEvaluators(),
         mMCPTAttributes(),
         mStrategyMaxBarsBack(0),
-        mPortfolioFilter(createPortfolioFilter(portfolio))
+        mPortfolioFilter(createPortfolioFilter(portfolio)),
+	mBreakevenEnabled(false),
+	mBreakevenActivationBars(0)
     {}
 
     PalMetaStrategy(const PalMetaStrategy<Decimal, Filter>& rhs)
@@ -220,7 +222,9 @@ namespace mkc_timeseries
         mPatternEvaluators(rhs.mPatternEvaluators),
         mMCPTAttributes(rhs.mMCPTAttributes),
         mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack),
-        mPortfolioFilter(rhs.mPortfolioFilter)
+        mPortfolioFilter(rhs.mPortfolioFilter),
+	mBreakevenEnabled(rhs.mBreakevenEnabled),
+	mBreakevenActivationBars(rhs.mBreakevenActivationBars)
     {}
 
     PalMetaStrategy<Decimal, Filter>&
@@ -237,6 +241,9 @@ namespace mkc_timeseries
       mMCPTAttributes = rhs.mMCPTAttributes;
       mStrategyMaxBarsBack = rhs.mStrategyMaxBarsBack;
       mPortfolioFilter = rhs.mPortfolioFilter;
+      mBreakevenEnabled = rhs.mBreakevenEnabled;
+      mBreakevenActivationBars = rhs.mBreakevenActivationBars;
+
       return *this;
     }
 
@@ -338,6 +345,30 @@ namespace mkc_timeseries
       return cloned;
     }
 
+    /**
+     * @brief Enable a breakeven stop that becomes active starting at bar N
+     *        (t = N, where t=0 is the first bar after entry).
+     * 
+     * Semantics:
+     * - For each unit, once barsSinceEntry >= N, we arm a stop at the unit's entry price.
+     * - The breakeven stop is only placed if the trade is currently profitable
+     *   on the last completed bar (Close > Entry for longs; Close < Entry for shorts).
+     * - Once armed, the breakeven stop replaces the original percent stop
+     *   (target orders are still placed).
+     */
+    void addBreakEvenStop(unsigned int activationBars)
+    {
+      mBreakevenEnabled = true;
+      mBreakevenActivationBars = activationBars;
+    }
+
+    /** Disable the breakeven stop behavior. */
+    void disableBreakEvenStop()
+    {
+      mBreakevenEnabled = false;
+      mBreakevenActivationBars = 0;
+    }
+
     // Bring base class date-based methods into scope if BacktesterStrategy defines them.
     using BacktesterStrategy<Decimal>::eventEntryOrders;
     using BacktesterStrategy<Decimal>::eventExitOrders;
@@ -366,72 +397,117 @@ namespace mkc_timeseries
 	}
     }
 
-    void eventExitOrders (Security<Decimal>* aSecurity,
-                          const InstrumentPosition<Decimal>& instrPos,
-                          const ptime& processingDateTime) override
+    void eventExitOrders(Security<Decimal>* aSecurity,
+			 const InstrumentPosition<Decimal>& instrPos,
+			 const ptime& processingDateTime) override
     {
       uint32_t numUnits = instrPos.getNumPositionUnits();
-
       if (numUnits == 0)
 	{
-          return;
+	  return;
 	}
 
-      // Process each position unit individually for proper pyramiding support
-      // IMPORTANT: Iterate in reverse order to avoid iterator invalidation issues
-      // When a unit is closed, it's removed from the vector, which would invalidate
-      // higher unit numbers if we iterated forward.
-      for (uint32_t unitNum = numUnits; unitNum >= 1; --unitNum) {
-        auto it = instrPos.getInstrumentPosition(unitNum);
-        auto pos = *it;
+      // Iterate newest-to-oldest to avoid invalidation when units close intraloop
+      for (uint32_t unitNum = numUnits; unitNum >= 1; --unitNum)
+	{
+	  auto it  = instrPos.getInstrumentPosition(unitNum);
+	  auto pos = *it;
 
-        // Check time-based exit for THIS specific unit
-        unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
-        if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold) {
-          if (this->isLongPosition(aSecurity->getSymbol())) {
-            this->ExitLongUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
-          } else if (this->isShortPosition(aSecurity->getSymbol())) {
-            this->ExitShortUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
-          }
-          continue; // Skip other exits for this unit
-        }
+	  // 1) Max holding period (if any) — unconditional time exit
+	  unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
+	  if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
+	    {
+	      if (this->isLongPosition(aSecurity->getSymbol()))
+		{
+		  this->ExitLongUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
+		}
+	      else if (this->isShortPosition(aSecurity->getSymbol()))
+		{
+		  this->ExitShortUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
+		}
+	      continue; // Skip other exits for this unit
+	    }
 
-        // Check profit target and stop loss for THIS specific unit
-        Decimal target = pos->getProfitTarget();
-        Decimal stop = pos->getStopLoss();
-        Decimal fillPrice = pos->getEntryPrice(); // THIS unit's entry price
+	  // 2) Profit target / stop inputs for THIS unit (pattern-defined)
+	  const Decimal target    = pos->getProfitTarget();   // percent (e.g., +X%)
+	  const Decimal stop      = pos->getStopLoss();       // percent (e.g., -Y%)
+	  const Decimal entryPx   = pos->getEntryPrice();
+	  const Decimal lastClose = pos->getLastClose();      // last completed bar
 
-        if (this->isLongPosition(aSecurity->getSymbol()))
-	  {
-	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber(target);
-	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber(stop);
+	  // Percent-based orders (original behavior)
+	  PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber(target);
+	  PercentNumber<Decimal> stopAsPercent   = PercentNumber<Decimal>::createPercentNumber(stop);
 
-	    this->ExitLongUnitAtLimit(aSecurity->getSymbol(), processingDateTime,
-				      fillPrice, targetAsPercent, unitNum);
-	    this->ExitLongUnitAtStop(aSecurity->getSymbol(), processingDateTime,
-				     fillPrice, stopAsPercent, unitNum);
+	  // 3) Breakeven logic (active starting at t = N and only if currently profitable)
+	  const bool beEligible = mBreakevenEnabled &&
+	    (pos->getNumBarsSinceEntry() >= mBreakevenActivationBars);
 
-	    // Set R-multiple stop for this specific unit
-	    instrPos.setRMultipleStop(LongStopLoss<Decimal>(fillPrice, stopAsPercent).getStopLoss(), unitNum);
-	  }
-	else if (this->isShortPosition(aSecurity->getSymbol()))
-	  {
-	    PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber(target);
-	    PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber(stop);
+	  if (this->isLongPosition(aSecurity->getSymbol()))
+	    {
+	      // Always place the profit target
+	      this->ExitLongUnitAtLimit(aSecurity->getSymbol(),
+					processingDateTime,
+					entryPx,            // base for percent target
+					targetAsPercent,
+					unitNum);
 
-	    this->ExitShortUnitAtLimit(aSecurity->getSymbol(), processingDateTime,
-				       fillPrice, targetAsPercent, unitNum);
-	    this->ExitShortUnitAtStop(aSecurity->getSymbol(), processingDateTime,
-				      fillPrice, stopAsPercent, unitNum);
+	      if (beEligible && lastClose > entryPx)
+		{
+		  // Arm breakeven: stop at the entry price (tighter than percent stop)
+		  // Uses broker's absolute per-unit stop overload.
+		  this->ExitLongUnitAtStop(aSecurity->getSymbol(),
+					   processingDateTime,
+					   entryPx,           // breakeven stop level
+					   unitNum);          // per-unit
+		}
+	      else
+		{
+		  // Original percent stop (below entry for longs)
+		  this->ExitLongUnitAtStop(aSecurity->getSymbol(),
+					   processingDateTime,
+					   entryPx,
+					   stopAsPercent,
+					   unitNum);
+		}
 
-	    // Set R-multiple stop for this specific unit
-	    instrPos.setRMultipleStop(ShortStopLoss<Decimal>(fillPrice, stopAsPercent).getStopLoss(), unitNum);
-	  }
-	else
-	  {
-	    throw PalStrategyException(std::string("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state"));
-	  }
-      }
+	      // Maintain R-multiple bookkeeping as before
+	      instrPos.setRMultipleStop(LongStopLoss<Decimal>(entryPx, stopAsPercent).getStopLoss(), unitNum);
+	    }
+	  else if (this->isShortPosition(aSecurity->getSymbol()))
+	    {
+	      // Always place the profit target
+	      this->ExitShortUnitAtLimit(aSecurity->getSymbol(),
+					 processingDateTime,
+					 entryPx,            // base for percent target
+					 targetAsPercent,
+					 unitNum);
+
+	      if (beEligible && lastClose < entryPx)
+		{
+		  // Arm breakeven for shorts: stop at the entry price (tighter than percent stop)
+		  this->ExitShortUnitAtStop(aSecurity->getSymbol(),
+					    processingDateTime,
+					    entryPx,           // breakeven stop level
+					    unitNum);          // per-unit
+		}
+	      else
+		{
+		  // Original percent stop (above entry for shorts)
+		  this->ExitShortUnitAtStop(aSecurity->getSymbol(),
+					    processingDateTime,
+					    entryPx,
+					    stopAsPercent,
+					    unitNum);
+		}
+
+	      // Maintain R-multiple bookkeeping as before
+	      instrPos.setRMultipleStop(ShortStopLoss<Decimal>(entryPx, stopAsPercent).getStopLoss(), unitNum);
+	    }
+	  else
+	    {
+	      throw PalStrategyException("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state");
+	    }
+	}
     }
 
   private:
@@ -519,6 +595,8 @@ namespace mkc_timeseries
     MCPTStrategyAttributes<Decimal> mMCPTAttributes;
     unsigned int mStrategyMaxBarsBack;
     std::shared_ptr<Filter> mPortfolioFilter;
+    bool mBreakevenEnabled;
+    unsigned int mBreakevenActivationBars; 
   };
 
   /**
