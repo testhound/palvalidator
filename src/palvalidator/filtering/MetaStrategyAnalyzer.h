@@ -7,6 +7,8 @@
 #include "Security.h"
 #include "DateRange.h"
 #include "PalStrategy.h"
+#include "PortfolioFilter.h"
+#include "BackTester.h"
 #include "TimeFrame.h"
 #include "filtering/FilteringTypes.h"
 #include "filtering/TradingHurdleCalculator.h"
@@ -136,17 +138,21 @@ namespace palvalidator
       // Pyramiding configuration class
       class PyramidConfiguration {
       public:
-          PyramidConfiguration(unsigned int level, const std::string& desc, const StrategyOptions& options)
-              : mPyramidLevel(level), mDescription(desc), mStrategyOptions(options) {}
+          enum FilterType { NO_FILTER, ADAPTIVE_VOLATILITY_FILTER };
+          
+          PyramidConfiguration(unsigned int level, const std::string& desc, const StrategyOptions& options, FilterType filterType = NO_FILTER)
+              : mPyramidLevel(level), mDescription(desc), mStrategyOptions(options), mFilterType(filterType) {}
           
           unsigned int getPyramidLevel() const { return mPyramidLevel; }
           const std::string& getDescription() const { return mDescription; }
           const StrategyOptions& getStrategyOptions() const { return mStrategyOptions; }
+          FilterType getFilterType() const { return mFilterType; }
           
       private:
           unsigned int mPyramidLevel;
           std::string mDescription;
           StrategyOptions mStrategyOptions;
+          FilterType mFilterType;
       };
 
       // Drawdown analysis results class
@@ -222,10 +228,25 @@ namespace palvalidator
           std::shared_ptr<Security<Num>> baseSecurity,
           const StrategyOptions& strategyOptions) const;
       
+      std::shared_ptr<PalMetaStrategy<Num, AdaptiveVolatilityPortfolioFilter<Num, mkc_timeseries::SimonsHLCVolatilityPolicy>>>
+      createMetaStrategyWithAdaptiveFilter(
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          const StrategyOptions& strategyOptions) const;
+      
       std::shared_ptr<BackTester<Num>> executeBacktesting(
           std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
           TimeFrame::Duration timeFrame,
           const DateRange& backtestingDates) const;
+      
+      template<typename FilterType>
+      std::shared_ptr<BackTester<Num>> executeBacktestingWithFilter(
+          std::shared_ptr<PalMetaStrategy<Num, FilterType>> metaStrategy,
+          TimeFrame::Duration timeFrame,
+          const DateRange& backtestingDates) const
+      {
+        return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, backtestingDates);
+      }
       
       void performExitBarTuning(
           const ClosedPositionHistory<Num>& closedPositionHistory,
