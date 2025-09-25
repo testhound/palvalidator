@@ -25,7 +25,8 @@ namespace mkc_timeseries
   enum class TuningObjective
     {
       AvgPnL_R,
-      HitRate
+      HitRate,
+      PnLPerBar,
     };
 
   /**
@@ -59,7 +60,7 @@ namespace mkc_timeseries
   public:
     ExitTunerOptions(int    maxBarsToAnalyze,
 		     double trainFraction         = 0.70,
-		     int    embargoTrades         = 0,
+		     int    embargoTrades         = 5,
 		     const Decimal& thresholdR    = DecimalConstants<Decimal>::DecimalZero,
 		     const Decimal& epsilonR      = DecimalConstants<Decimal>::DecimalZero,
 		     double fracNonPosHigh        = 0.65,
@@ -82,6 +83,20 @@ namespace mkc_timeseries
     {
     }
 
+    // Return a copy with a different objective
+    ExitTunerOptions withObjective(TuningObjective obj) const
+    {
+      ExitTunerOptions copy(*this);
+      copy.mObjective = obj;
+      return copy;
+    }
+
+    // Convenience you requested: set objective to PnLPerBar (returns a copy)
+    ExitTunerOptions usePnLPerBar() const
+    {
+      return withObjective(TuningObjective::PnLPerBar);
+    }
+    
     /** @return number of bar ages to analyze (t in [0, maxBarsToAnalyze-1]) */
     int getMaxBarsToAnalyze() const
     {

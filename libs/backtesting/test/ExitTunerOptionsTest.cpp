@@ -21,7 +21,7 @@ TEST_CASE("ExitTunerOptions: defaulted-parameter constructor yields expected def
   // Defaults we agreed on
   REQUIRE(opts.getMaxBarsToAnalyze() == maxBars);
   REQUIRE(opts.getTrainFraction()    == Approx(0.70).epsilon(1e-12));
-  REQUIRE(opts.getEmbargoTrades()    == 0);
+  REQUIRE(opts.getEmbargoTrades()    == 5);
   REQUIRE(opts.getThresholdR()       == Z);
   REQUIRE(opts.getEpsilonR()         == Z);
   REQUIRE(opts.getFracNonPosHigh()   == Approx(0.65).epsilon(1e-12));

@@ -123,47 +123,72 @@ replicateSplit(const ClosedPositionHistory<Decimal>& cph,
   return {train, test};
 }
 
-// Arg-max over (failureToPerformBars, breakevenActivationBars) with same tie-breakers
+// Arg-max over (K, N, H) with same tie-breakers as tuner; supports all objectives
 template <class Decimal>
-static std::pair<int,int> argmaxFB(const ClosedPositionHistory<Decimal>& cph,
-                                   const std::vector<int>& failureToPerformGrid,
-                                   const std::vector<int>& breakevenGrid,
-                                   TuningObjective obj,
-                                   const Decimal& thresholdR,
-                                   const Decimal& epsilonR,
-                                   PolicyResult& bestOut)
+static std::tuple<int,int,int,PolicyResult>
+argmaxFNH(const ClosedPositionHistory<Decimal>& cph,
+          const std::vector<int>& failureToPerformGrid,
+          const std::vector<int>& breakevenGrid,
+          const std::vector<int>& maxHoldGrid,
+          TuningObjective obj,
+          const Decimal& thresholdR,
+          const Decimal& epsilonR)
 {
   MetaExitCalibrator<Decimal> cal(cph);
+
+  auto score = [&](const PolicyResult& r) -> double
+  {
+    switch (obj)
+    {
+      case TuningObjective::HitRate:
+        return r.getHitRate();
+
+      case TuningObjective::PnLPerBar:
+      {
+        const double denom = std::max(r.getAvgBarsHeld(), 1e-9);
+        return r.getAvgPnL_R() / denom;
+      }
+
+      case TuningObjective::AvgPnL_R:
+      default:
+        return r.getAvgPnL_R();
+    }
+  };
 
   double bestScore = -1e99;
   int bestF = failureToPerformGrid.empty() ? 0 : failureToPerformGrid.front();
   int bestB = breakevenGrid.empty() ? 0 : breakevenGrid.front();
-  bestOut = PolicyResult(0.0, 0.0, 0.0, 0);
+  int bestH = maxHoldGrid.empty() ? 0 : maxHoldGrid.front();
+  PolicyResult bestRes(0.0,0.0,0.0,0);
 
   for (int F : failureToPerformGrid)
   {
     for (int B : breakevenGrid)
     {
-      auto res = cal.evaluateCombinedPolicy(F, B, thresholdR, epsilonR, FailureExitFill::OpenOfKPlus1);
-      double s = (obj == TuningObjective::HitRate) ? res.getHitRate() : res.getAvgPnL_R();
-
-      const int sumFB = F + B;
-      const int sumBest = bestF + bestB;
-
-      if (s > bestScore ||
-          (s == bestScore && sumFB < sumBest) ||
-          (s == bestScore && sumFB == sumBest && res.getHitRate() > bestOut.getHitRate()) ||
-          (s == bestScore && sumFB == sumBest && res.getHitRate() == bestOut.getHitRate() && F < bestF))
+      for (int H : maxHoldGrid)
       {
-        bestScore = s;
-        bestF = F;
-        bestB = B;
-        bestOut = res;
+        auto res = cal.evaluateCombinedPolicy(F, B, H, thresholdR, epsilonR, FailureExitFill::OpenOfKPlus1);
+        const double s = score(res);
+
+        const int sumFBH   = F + B + H;
+        const int sumBest  = bestF + bestB + bestH;
+
+        if (s > bestScore ||
+            (s == bestScore && H < bestH) ||
+            (s == bestScore && H == bestH && sumFBH < sumBest) ||
+            (s == bestScore && H == bestH && sumFBH == sumBest && res.getHitRate() > bestRes.getHitRate()) ||
+            (s == bestScore && H == bestH && sumFBH == sumBest && res.getHitRate() == bestRes.getHitRate() && F < bestF) ||
+            (s == bestScore && H == bestH && sumFBH == sumBest && res.getHitRate() == bestRes.getHitRate() && F == bestF && B < bestB))
+        {
+          bestScore = s;
+          bestF = F; bestB = B; bestH = H;
+          bestRes = res;
+        }
       }
     }
   }
 
-  return {bestF, bestB};
+  return {bestF, bestB, bestH, bestRes};
 }
 
 // -----------------------------------------------------------------------------
@@ -194,42 +219,49 @@ TEST_CASE("ExitPolicyJointAutoTuner: end-to-end joint tuning with full data (tra
   ExitPolicyJointAutoTuner<DT> jtuner(cph, opts);
   auto jreport = jtuner.tuneJoint();
 
-  // Grid sanity
+  // Grid sanity incl. H
   REQUIRE(!jreport.getFailureToPerformGrid().empty());
   REQUIRE(!jreport.getBreakevenGrid().empty());
-  REQUIRE(jreport.getFailureToPerformBars() >= 0);
+  REQUIRE(!jreport.getMaxHoldGrid().empty());
+
+  REQUIRE(jreport.getFailureToPerformBars()    >= 0);
   REQUIRE(jreport.getBreakevenActivationBars() >= 0);
+  REQUIRE(jreport.getMaxHoldBars()             >= 0);
 
-  // Independent arg-max over the SAME grids & objective
-  PolicyResult bestTrain(0.0, 0.0, 0.0, 0);
-  const auto [expF, expB] =
-      argmaxFB(cph,
-               jreport.getFailureToPerformGrid(),
-               jreport.getBreakevenGrid(),
-               opts.getObjective(),
-               opts.getThresholdR(),
-               opts.getEpsilonR(),
-               bestTrain);
+  // Ensure chosen H is one of the candidates searched
+  const auto& Hgrid = jreport.getMaxHoldGrid();
+  REQUIRE(std::find(Hgrid.begin(), Hgrid.end(), jreport.getMaxHoldBars()) != Hgrid.end());
 
-  REQUIRE(jreport.getFailureToPerformBars()   == expF);
+  // Independent arg-max under SAME grids & objective (K,N,H)
+  auto [expF, expB, expH, bestTrain] =
+      argmaxFNH<DT>(cph,
+                    jreport.getFailureToPerformGrid(),
+                    jreport.getBreakevenGrid(),
+                    jreport.getMaxHoldGrid(),
+                    opts.getObjective(),
+                    opts.getThresholdR(),
+                    opts.getEpsilonR());
+
+  REQUIRE(jreport.getFailureToPerformBars()    == expF);
   REQUIRE(jreport.getBreakevenActivationBars() == expB);
+  REQUIRE(jreport.getMaxHoldBars()             == expH);
 
   // Train/Test metrics should match calibrator on full history (train==test here)
   MetaExitCalibrator<DT> calAll(cph);
   const auto combinedAll =
-      calAll.evaluateCombinedPolicy(expF, expB, opts.getThresholdR(), opts.getEpsilonR(),
+      calAll.evaluateCombinedPolicy(expF, expB, expH, opts.getThresholdR(), opts.getEpsilonR(),
                                     FailureExitFill::OpenOfKPlus1);
 
-  REQUIRE(jreport.getTrainCombined().getAvgPnL_R() == Approx(combinedAll.getAvgPnL_R()).margin(kAbsTol));
-  REQUIRE(jreport.getTrainCombined().getHitRate()  == Approx(combinedAll.getHitRate()).epsilon(1e-12));
+  REQUIRE(jreport.getTrainCombined().getAvgPnL_R()    == Approx(combinedAll.getAvgPnL_R()).margin(kAbsTol));
+  REQUIRE(jreport.getTrainCombined().getHitRate()     == Approx(combinedAll.getHitRate()).epsilon(1e-12));
   REQUIRE(jreport.getTrainCombined().getAvgBarsHeld() == Approx(combinedAll.getAvgBarsHeld()).epsilon(1e-12));
 
-  REQUIRE(jreport.getTestCombined().getAvgPnL_R() == Approx(combinedAll.getAvgPnL_R()).margin(kAbsTol));
-  REQUIRE(jreport.getTestCombined().getHitRate()  == Approx(combinedAll.getHitRate()).epsilon(1e-12));
-  REQUIRE(jreport.getTestCombined().getAvgBarsHeld() == Approx(combinedAll.getAvgBarsHeld()).epsilon(1e-12));
+  REQUIRE(jreport.getTestCombined().getAvgPnL_R()     == Approx(combinedAll.getAvgPnL_R()).margin(kAbsTol));
+  REQUIRE(jreport.getTestCombined().getHitRate()      == Approx(combinedAll.getHitRate()).epsilon(1e-12));
+  REQUIRE(jreport.getTestCombined().getAvgBarsHeld()  == Approx(combinedAll.getAvgBarsHeld()).epsilon(1e-12));
 }
 
-TEST_CASE("ExitPolicyJointAutoTuner: train/test split with embargo (exact verification)",
+TEST_CASE("ExitPolicyJointAutoTuner: train/test split with embargo (exact verification, K/N/H)",
           "[ExitPolicyJointAutoTuner][split]")
 {
   using DT = DecimalType;
@@ -254,24 +286,25 @@ TEST_CASE("ExitPolicyJointAutoTuner: train/test split with embargo (exact verifi
   ExitPolicyJointAutoTuner<DT> jtuner(cph, opts);
   auto jreport = jtuner.tuneJoint();
 
-  // Recreate exact split and recompute test-side metrics
+  // Recreate exact split and recompute test-side metrics with (K,N,H)
   auto [train, test] = replicateSplit(cph, opts.getTrainFraction(), opts.getEmbargoTrades());
   MetaExitCalibrator<DT> calTest(test);
 
   const int F = jreport.getFailureToPerformBars();
   const int B = jreport.getBreakevenActivationBars();
+  const int H = jreport.getMaxHoldBars();
 
   const auto combinedTest =
-      calTest.evaluateCombinedPolicy(F, B, opts.getThresholdR(), opts.getEpsilonR(),
+      calTest.evaluateCombinedPolicy(F, B, H, opts.getThresholdR(), opts.getEpsilonR(),
                                      FailureExitFill::OpenOfKPlus1);
 
-  REQUIRE(jreport.getTestCombined().getAvgPnL_R()    == Approx(combinedTest.getAvgPnL_R()).margin(kAbsTol));
-  REQUIRE(jreport.getTestCombined().getHitRate()     == Approx(combinedTest.getHitRate()).epsilon(1e-12));
-  REQUIRE(jreport.getTestCombined().getAvgBarsHeld() == Approx(combinedTest.getAvgBarsHeld()).epsilon(1e-12));
-  REQUIRE(jreport.getTestCombined().getTrades()      == combinedTest.getTrades());
+  REQUIRE(jreport.getTestCombined().getAvgPnL_R()     == Approx(combinedTest.getAvgPnL_R()).margin(kAbsTol));
+  REQUIRE(jreport.getTestCombined().getHitRate()      == Approx(combinedTest.getHitRate()).epsilon(1e-12));
+  REQUIRE(jreport.getTestCombined().getAvgBarsHeld()  == Approx(combinedTest.getAvgBarsHeld()).epsilon(1e-12));
+  REQUIRE(jreport.getTestCombined().getTrades()       == combinedTest.getTrades());
 }
 
-TEST_CASE("ExitPolicyJointAutoTuner: objective controls selection (AvgPnL_R vs HitRate)",
+TEST_CASE("ExitPolicyJointAutoTuner: objective controls selection with H (AvgPnL_R vs HitRate)",
           "[ExitPolicyJointAutoTuner][objective]")
 {
   using DT = DecimalType;
@@ -297,36 +330,36 @@ TEST_CASE("ExitPolicyJointAutoTuner: objective controls selection (AvgPnL_R vs H
   ExitPolicyJointAutoTuner<DT> jtAvg(cph, optsAvg);
   auto repAvg = jtAvg.tuneJoint();
 
-  // Independent arg-max under AvgPnL_R on the SAME grids
-  PolicyResult tmp(0.0, 0.0, 0.0, 0);
-  const auto [expF_A, expB_A] =
-      argmaxFB(cph,
-               repAvg.getFailureToPerformGrid(),
-               repAvg.getBreakevenGrid(),
-               TuningObjective::AvgPnL_R,
-               optsAvg.getThresholdR(),
-               optsAvg.getEpsilonR(),
-               tmp);
+  // Independent 3-D arg-max under AvgPnL_R on the SAME grids
+  auto [expF_A, expB_A, expH_A, bestTrain_A] =
+      argmaxFNH<DT>(cph,
+                    repAvg.getFailureToPerformGrid(),
+                    repAvg.getBreakevenGrid(),
+                    repAvg.getMaxHoldGrid(),
+                    TuningObjective::AvgPnL_R,
+                    optsAvg.getThresholdR(),
+                    optsAvg.getEpsilonR());
 
   REQUIRE(repAvg.getFailureToPerformBars()    == expF_A);
   REQUIRE(repAvg.getBreakevenActivationBars() == expB_A);
+  REQUIRE(repAvg.getMaxHoldBars()             == expH_A);
 
   // Calibrator recomputation on full data should match report train/test
   {
     MetaExitCalibrator<DT> calAll(cph);
     const auto combAll =
-        calAll.evaluateCombinedPolicy(expF_A, expB_A,
+        calAll.evaluateCombinedPolicy(expF_A, expB_A, expH_A,
                                       optsAvg.getThresholdR(),
                                       optsAvg.getEpsilonR(),
                                       FailureExitFill::OpenOfKPlus1);
 
-    REQUIRE(repAvg.getTrainCombined().getAvgPnL_R()    == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
-    REQUIRE(repAvg.getTrainCombined().getHitRate()     == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
-    REQUIRE(repAvg.getTrainCombined().getAvgBarsHeld() == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
+    REQUIRE(repAvg.getTrainCombined().getAvgPnL_R()     == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
+    REQUIRE(repAvg.getTrainCombined().getHitRate()      == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
+    REQUIRE(repAvg.getTrainCombined().getAvgBarsHeld()  == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
 
-    REQUIRE(repAvg.getTestCombined().getAvgPnL_R()    == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
-    REQUIRE(repAvg.getTestCombined().getHitRate()     == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
-    REQUIRE(repAvg.getTestCombined().getAvgBarsHeld() == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
+    REQUIRE(repAvg.getTestCombined().getAvgPnL_R()      == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
+    REQUIRE(repAvg.getTestCombined().getHitRate()       == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
+    REQUIRE(repAvg.getTestCombined().getAvgBarsHeld()   == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
   }
 
   // --- Optimize HitRate ---
@@ -347,35 +380,138 @@ TEST_CASE("ExitPolicyJointAutoTuner: objective controls selection (AvgPnL_R vs H
   ExitPolicyJointAutoTuner<DT> jtHit(cph, optsHit);
   auto repHit = jtHit.tuneJoint();
 
-  // Independent arg-max under HitRate on the SAME grids
-  const auto [expF_H, expB_H] =
-      argmaxFB(cph,
-               repHit.getFailureToPerformGrid(),
-               repHit.getBreakevenGrid(),
-               TuningObjective::HitRate,
-               optsHit.getThresholdR(),
-               optsHit.getEpsilonR(),
-               tmp);
+  // Independent 3-D arg-max under HitRate on the SAME grids
+  auto [expF_H, expB_H, expH_H, bestTrain_H] =
+      argmaxFNH<DT>(cph,
+                    repHit.getFailureToPerformGrid(),
+                    repHit.getBreakevenGrid(),
+                    repHit.getMaxHoldGrid(),
+                    TuningObjective::HitRate,
+                    optsHit.getThresholdR(),
+                    optsHit.getEpsilonR());
 
   REQUIRE(repHit.getFailureToPerformBars()    == expF_H);
   REQUIRE(repHit.getBreakevenActivationBars() == expB_H);
+  REQUIRE(repHit.getMaxHoldBars()             == expH_H);
 
   // Calibrator recomputation on full data should match report train/test
   {
     MetaExitCalibrator<DT> calAll(cph);
     const auto combAll =
-        calAll.evaluateCombinedPolicy(expF_H, expB_H,
+        calAll.evaluateCombinedPolicy(expF_H, expB_H, expH_H,
                                       optsHit.getThresholdR(),
                                       optsHit.getEpsilonR(),
                                       FailureExitFill::OpenOfKPlus1);
 
-    REQUIRE(repHit.getTrainCombined().getAvgPnL_R()    == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
-    REQUIRE(repHit.getTrainCombined().getHitRate()     == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
-    REQUIRE(repHit.getTrainCombined().getAvgBarsHeld() == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
+    REQUIRE(repHit.getTrainCombined().getAvgPnL_R()     == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
+    REQUIRE(repHit.getTrainCombined().getHitRate()      == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
+    REQUIRE(repHit.getTrainCombined().getAvgBarsHeld()  == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
 
-    REQUIRE(repHit.getTestCombined().getAvgPnL_R()    == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
-    REQUIRE(repHit.getTestCombined().getHitRate()     == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
-    REQUIRE(repHit.getTestCombined().getAvgBarsHeld() == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
+    REQUIRE(repHit.getTestCombined().getAvgPnL_R()      == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
+    REQUIRE(repHit.getTestCombined().getHitRate()       == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
+    REQUIRE(repHit.getTestCombined().getAvgBarsHeld()   == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
   }
 }
 
+TEST_CASE("ExitPolicyJointAutoTuner: PnLPerBar objective chooses (K,N,H) consistent with throughput",
+          "[ExitPolicyJointAutoTuner][objective][PnLPerBar]")
+{
+  using DT = DecimalType;
+  const auto Z = DecimalConstants<DT>::DecimalZero;
+
+  auto cph = makeSyntheticCPH<DT>();
+
+  // Optimize using the new PnLPerBar objective
+  ExitTunerOptions<DT> optsPPB(
+    /*maxBarsToAnalyze*/ 3,
+    /*trainFraction*/    1.0,   // train == test on report
+    /*embargoTrades*/    0,
+    /*thresholdR*/       Z,
+    /*epsilonR*/         Z,
+    /*fracNonPosHigh*/   0.65,
+    /*targetHazardLow*/  0.20,
+    /*alphaMfeR*/        0.33,
+    /*neighborSpan*/     1,
+    /*useFullGridIfEmpty*/ true,
+    /*objective*/        TuningObjective::PnLPerBar
+  );
+
+  ExitPolicyJointAutoTuner<DT> jtPPB(cph, optsPPB);
+  auto repPPB = jtPPB.tuneJoint();
+
+  // Independent 3-D arg-max under PnLPerBar on the SAME grids
+  auto [expF_P, expB_P, expH_P, bestTrain_P] =
+      argmaxFNH<DT>(cph,
+                    repPPB.getFailureToPerformGrid(),
+                    repPPB.getBreakevenGrid(),
+                    repPPB.getMaxHoldGrid(),
+                    TuningObjective::PnLPerBar,
+                    optsPPB.getThresholdR(),
+                    optsPPB.getEpsilonR());
+
+  // The chosen triple must match the independent arg-max
+  REQUIRE(repPPB.getFailureToPerformBars()    == expF_P);
+  REQUIRE(repPPB.getBreakevenActivationBars() == expB_P);
+  REQUIRE(repPPB.getMaxHoldBars()             == expH_P);
+
+  // Verify report metrics match calibrator on full data (train==test here)
+  {
+    MetaExitCalibrator<DT> calAll(cph);
+    const auto combAll =
+        calAll.evaluateCombinedPolicy(expF_P, expB_P, expH_P,
+                                      optsPPB.getThresholdR(),
+                                      optsPPB.getEpsilonR(),
+                                      FailureExitFill::OpenOfKPlus1);
+
+    REQUIRE(repPPB.getTrainCombined().getAvgPnL_R()     == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
+    REQUIRE(repPPB.getTrainCombined().getHitRate()      == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
+    REQUIRE(repPPB.getTrainCombined().getAvgBarsHeld()  == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
+
+    REQUIRE(repPPB.getTestCombined().getAvgPnL_R()      == Catch::Approx(combAll.getAvgPnL_R()).margin(kAbsTol));
+    REQUIRE(repPPB.getTestCombined().getHitRate()       == Catch::Approx(combAll.getHitRate()).epsilon(1e-12));
+    REQUIRE(repPPB.getTestCombined().getAvgBarsHeld()   == Catch::Approx(combAll.getAvgBarsHeld()).epsilon(1e-12));
+  }
+
+  // Sanity: H is from the H-grid and within plausible bounds
+  const auto& Hgrid = repPPB.getMaxHoldGrid();
+  REQUIRE(!Hgrid.empty());
+  REQUIRE(std::find(Hgrid.begin(), Hgrid.end(), repPPB.getMaxHoldBars()) != Hgrid.end());
+  REQUIRE(repPPB.getMaxHoldBars() >= 0);
+  REQUIRE(repPPB.getMaxHoldBars() <= 2); // our synthetic paths have 2 post-entry bars
+}
+
+TEST_CASE("ExitPolicyJointAutoTuner: MaxHold H is valid and within grid",
+          "[ExitPolicyJointAutoTuner][H-basic]")
+{
+  using DT = DecimalType;
+  const auto Z = DecimalConstants<DT>::DecimalZero;
+
+  auto cph = makeSyntheticCPH<DT>();
+
+  ExitTunerOptions<DT> opts(
+    /*maxBarsToAnalyze*/ 3,
+    /*trainFraction*/    1.0,
+    /*embargoTrades*/    0,
+    /*thresholdR*/       Z,
+    /*epsilonR*/         Z,
+    /*fracNonPosHigh*/   0.65,
+    /*targetHazardLow*/  0.20,
+    /*alphaMfeR*/        0.33,
+    /*neighborSpan*/     1,
+    /*useFullGridIfEmpty*/ true,
+    /*objective*/        TuningObjective::AvgPnL_R
+  );
+
+  ExitPolicyJointAutoTuner<DT> jt(cph, opts);
+  auto rep = jt.tuneJoint();
+
+  const auto& Hgrid = rep.getMaxHoldGrid();
+
+  REQUIRE(!Hgrid.empty());
+  REQUIRE(std::find(Hgrid.begin(), Hgrid.end(), rep.getMaxHoldBars()) != Hgrid.end());
+
+  // With maxBarsToAnalyze=3 and our synthetic paths having 2 post-entry bars,
+  // the valid bar-age indices are 0..2. Ensure H is within that range.
+  REQUIRE(rep.getMaxHoldBars() >= 0);
+  REQUIRE(rep.getMaxHoldBars() <= 2);
+}
