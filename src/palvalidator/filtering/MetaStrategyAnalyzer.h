@@ -138,7 +138,7 @@ namespace palvalidator
       // Pyramiding configuration class
       class PyramidConfiguration {
       public:
-          enum FilterType { NO_FILTER, ADAPTIVE_VOLATILITY_FILTER };
+          enum FilterType { NO_FILTER, ADAPTIVE_VOLATILITY_FILTER, BREAKEVEN_STOP };
           
           PyramidConfiguration(unsigned int level, const std::string& desc, const StrategyOptions& options, FilterType filterType = NO_FILTER)
               : mPyramidLevel(level), mDescription(desc), mStrategyOptions(options), mFilterType(filterType) {}
