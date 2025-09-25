@@ -238,6 +238,11 @@ namespace palvalidator
                           StrategyOptions(false, 0, 8),
                           PyramidConfiguration::ADAPTIVE_VOLATILITY_FILTER);
       
+      // Pyramid Level 5: Breakeven Stop (no pyramiding)
+      configs.emplace_back(5, "Breakeven Stop",
+                          StrategyOptions(false, 0, 8),
+                          PyramidConfiguration::BREAKEVEN_STOP);
+      
       return configs;
     }
 
@@ -264,6 +269,59 @@ namespace palvalidator
               survivingStrategies, baseSecurity, config.getStrategyOptions());
           bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, backtestingDates);
           metaReturns = bt->getAllHighResReturns(filteredStrategy.get());
+        }
+      else if (config.getFilterType() == PyramidConfiguration::BREAKEVEN_STOP)
+        {
+          // Create standard strategy first to get initial backtesting results for tuning
+          auto initialStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+          auto initialBt = executeBacktesting(initialStrategy, timeFrame, backtestingDates);
+          
+          // Run exit policy tuning to determine breakeven activation bars
+          const auto& closedPositionHistory = initialBt->getClosedPositionHistory();
+          if (closedPositionHistory.getNumPositions() > 0)
+            {
+              try
+                {
+                  // Create ExitPolicyJointAutoTuner with reasonable defaults
+                  mkc_timeseries::ExitPolicyJointAutoTuner<Num> exitTuner(closedPositionHistory, 8);
+                  
+                  // Run the exit policy tuning
+                  auto tuningReport = exitTuner.tuneExitPolicy();
+                  
+                  // Get the breakeven activation bars from the tuning report
+                  unsigned int breakevenActivationBars = static_cast<unsigned int>(tuningReport.getBreakevenActivationBars());
+                  
+                  outputStream << "      Exit policy tuning completed. Breakeven activation bars: "
+                               << breakevenActivationBars << std::endl;
+                  
+                  // Create new strategy with breakeven stop enabled
+                  auto breakevenStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+                  breakevenStrategy->addBreakEvenStop(breakevenActivationBars);
+                  
+                  // Execute backtesting with breakeven-enabled strategy
+                  bt = executeBacktesting(breakevenStrategy, timeFrame, backtestingDates);
+                  metaReturns = bt->getAllHighResReturns(breakevenStrategy.get());
+                }
+              catch (const std::exception& e)
+                {
+                  outputStream << "      Warning: Exit policy tuning failed: " << e.what()
+                               << ". Using standard strategy without breakeven stop." << std::endl;
+                  
+                  // Fall back to standard strategy
+                  auto metaStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+                  bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+                  metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+                }
+            }
+          else
+            {
+              outputStream << "      No closed positions available for exit policy tuning. Using standard strategy." << std::endl;
+              
+              // Fall back to standard strategy
+              auto metaStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+              bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+              metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+            }
         }
       else
         {
