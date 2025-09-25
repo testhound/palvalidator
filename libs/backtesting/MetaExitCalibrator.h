@@ -42,33 +42,21 @@ namespace mkc_timeseries
     {
     }
 
-    /**
-     * @return Average PnL in R units (or scaled currency).
-     */
     double getAvgPnL_R() const
     {
       return mAvgPnL_R;
     }
 
-    /**
-     * @return Fraction of trades with PnL_R > 0.0.
-     */
     double getHitRate() const
     {
       return mHitRate;
     }
 
-    /**
-     * @return Average bars held using the t=0 convention.
-     */
     double getAvgBarsHeld() const
     {
       return mAvgBarsHeld;
     }
 
-    /**
-     * @return Number of trades aggregated.
-     */
     int getTrades() const
     {
       return mTrades;
@@ -89,16 +77,17 @@ namespace mkc_timeseries
    *  - OpenOfKPlus1: Exit at the next bar’s open (default; realistic “market-on-open” execution).
    */
   enum class FailureExitFill
-    {
-      CloseOfK,
-      OpenOfKPlus1
-    };
+  {
+    CloseOfK,
+    OpenOfKPlus1
+  };
 
   /**
    * @brief Scenario simulator for “exit overlays” on existing closed trades.
    *
-   * This class applies exit policies (failure-to-perform at a chosen bar, breakeven from a chosen bar)
-   * to paths derived from previously closed trades, and summarizes the resulting performance.
+   * This class applies exit policies (failure-to-perform at a chosen bar, breakeven from a chosen bar,
+   * and time-exit at a chosen bar) to paths derived from previously closed trades, and summarizes the
+   * resulting performance.
    *
    * Core conventions and algorithms:
    *  - Time indexing:
@@ -125,9 +114,14 @@ namespace mkc_timeseries
    *        On hit, exit at the stop level on that bar.
    *        If the trade has no valid rTarget, BE is a no-op.
    *
-   *  - Combined policy (F2P + BE):
-   *      * Simulate F2P and BE separately on the path, then pick the earliest exit by bar index.
-   *        If both would exit on the same bar, prefer the BE exit (consistent with stop-first precedence).
+   *  - Time Exit (Max Hold):
+   *      * If the trade is still open after the close of bar H, exit at Open[H+1] (if available);
+   *        if H+1 is not available, fall back to the last close.
+   *
+   *  - Combined policy (F2P + BE + Time Exit):
+   *      * Simulate each overlay independently on the path, then pick the earliest exit by bar index.
+   *        If two overlays exit on the same bar, prefer the BE exit (consistent with stop-first precedence),
+   *        then F2P, then Time Exit.
    *
    *  - Aggregation:
    *      * Results are summarized into PolicyResult over all simulated paths.
@@ -135,159 +129,154 @@ namespace mkc_timeseries
    *        (when available) is used as a fallback scale to normalize currency PnL.
    *
    * @tparam Decimal Fixed-point or decimal type used for prices and arithmetic.
+   *
+   * @note This header is a direct extension of your existing version, adding time-exit support
+   *       and a 3-argument combined evaluator. (Original reference: file you shared.) :contentReference[oaicite:0]{index=0}
    */
   template<class Decimal>
   class MetaExitCalibrator
   {
   public:
-    /**
-     * @param positionHistory The closed positions to which exit overlays will be applied.
-     */
     explicit MetaExitCalibrator(const ClosedPositionHistory<Decimal>& positionHistory)
       : mClosedPositionHistory(positionHistory)
     {
     }
 
-    /**
-     * @brief Evaluate the failure-to-perform overlay at bar K.
-     *
-     * Algorithm:
-     *  1) For each trade, build a path where t=0 is the first bar after entry.
-     *  2) If K is out of range for a path, keep its recorded exit (fallback).
-     *  3) At Close[K], compute pnlCurrency (signed favorably).
-     *     If rTarget > 0, compute pnlR = pnlCurrency / rTarget and check (pnlR <= thresholdR).
-     *     Else check (pnlCurrency <= 0).
-     *  4) On failure: fill at Close[K] or Open[K+1] depending on @p fill.
-     *  5) Summarize all exits to PolicyResult.
-     *
-     * @param K           Bar index to evaluate (0 = first bar after entry).
-     * @param thresholdR  Threshold in R units (commonly 0). When no rTarget, falls back to currency <= 0.
-     * @param fill        Fill policy for failed trades; default is OpenOfKPlus1.
-     * @return            Aggregated PolicyResult for the overlay across all trades.
-     */
+    // ---------------------------
+    // Individual overlay evaluators
+    // ---------------------------
+
     PolicyResult evaluateFailureToPerformBars(
-					      int K,
-					      const Decimal& thresholdR,
-					      FailureExitFill fill = FailureExitFill::OpenOfKPlus1) const;
+      int K,
+      const Decimal& thresholdR,
+      FailureExitFill fill = FailureExitFill::OpenOfKPlus1) const;
 
-    /**
-     * @brief Evaluate the breakeven overlay armed from bar N onward.
-     *
-     * Algorithm:
-     *  1) For each trade with rTarget > 0, define stop = Entry ± epsilonR * rTarget (sign by side).
-     *  2) For t = N..last, if (Long and Open[t] <= stop or Low[t] <= stop) OR
-     *                       (Short and Open[t] >= stop or High[t] >= stop), exit at stop on bar t.
-     *  3) If no rTarget is available, do nothing and keep recorded exit.
-     *  4) Summarize to PolicyResult.
-     *
-     * @param N          Bar index from which breakeven becomes active (0 = first bar after entry).
-     * @param epsilonR   Offset in R units (0.0 means exact entry price).
-     * @return           Aggregated PolicyResult for the overlay across all trades.
-     */
     PolicyResult evaluateBreakevenAfterBars(
-					    int N,
-					    const Decimal& epsilonR) const;
+      int N,
+      const Decimal& epsilonR) const;
 
     /**
-     * @brief Evaluate the combined overlay (failure-to-perform at K and breakeven from N).
+     * @brief Evaluate a pure time-exit policy at bar H.
      *
-     * Algorithm:
-     *  1) Simulate failure-to-perform and breakeven independently on the same path.
-     *  2) Choose the earliest exit by bar index.
-     *  3) If both occur on the same bar, prefer the breakeven exit (stop-first precedence).
-     *  4) Summarize to PolicyResult.
+     * Semantics:
+     *  - If the path has at least H+1 bars, exit at Open[H+1] (i.e., after the close of H).
+     *  - If the path has exactly H+0 bars (no next bar), fall back to the last close (recorded exit).
+     *  - H < 0 disables time exit and returns the recorded last close.
+     */
+    PolicyResult evaluateTimeExitAtBars(
+      int H) const;
+
+    // ---------------------------
+    // Combined evaluators
+    // ---------------------------
+
+    /**
+     * @brief Evaluate the combined overlay (F2P at K and BE from N).
+     * Backward-compatible overload; internally calls the 3-argument version with H = -1 (disabled).
+     */
+    PolicyResult evaluateCombinedPolicy(
+      int K,
+      int N,
+      const Decimal& thresholdR,
+      const Decimal& epsilonR,
+      FailureExitFill fill = FailureExitFill::OpenOfKPlus1) const
+    {
+      return evaluateCombinedPolicy(K, N, /*H*/ -1, thresholdR, epsilonR, fill);
+    }
+
+    /**
+     * @brief Evaluate the combined overlay (F2P at K, BE from N, and Time Exit at H).
+     *
+     * Precedence on the same bar: BE (stop-first) > F2P > Time Exit.
+     * Earliest-by-bar-index wins otherwise.
      *
      * @param K           Failure-to-perform evaluation bar.
      * @param N           Breakeven activation bar.
+     * @param H           Time-exit bar (max hold). Use H < 0 to disable time-exit.
      * @param thresholdR  Threshold in R units for failure-to-perform.
      * @param epsilonR    Offset in R units for breakeven.
-     * @param fill        Failure-to-perform fill policy (Close[K] vs Open[K+1]); default OpenOfKPlus1.
+     * @param fill        F2P fill policy (Close[K] vs Open[K+1]); default OpenOfKPlus1.
      * @return            Aggregated PolicyResult for the combined overlay.
      */
     PolicyResult evaluateCombinedPolicy(
-					int K,
-					int N,
-					const Decimal& thresholdR,
-					const Decimal& epsilonR,
-					FailureExitFill fill = FailureExitFill::OpenOfKPlus1) const;
+      int K,
+      int N,
+      int H,
+      const Decimal& thresholdR,
+      const Decimal& epsilonR,
+      FailureExitFill fill = FailureExitFill::OpenOfKPlus1) const;
 
   private:
-    /**
-     * @brief Lightweight per-trade, post-entry bar arrays (t=0 is first bar after entry).
-     *
-     * Invariants:
-     *  - mRTarget is the absolute favorable excursion distance to target:
-     *      Long:  target - entry
-     *      Short: entry  - target
-     *    and is > 0 when hasTargetR is true.
-     *  - barsHeld() == mClose.size()
-     */
+    // ---------------------------
+    // Path representation
+    // ---------------------------
+
     class PathArrays
     {
     public:
       PathArrays(
-		 bool isLong,
-		 const Decimal& entry,
-		 bool hasTargetR,
-		 const Decimal& rTarget,
-		 std::vector<Decimal> open,
-		 std::vector<Decimal> high,
-		 std::vector<Decimal> low,
-		 std::vector<Decimal> close)
-	: mIsLong(isLong)
-	, mEntry(entry)
-	, mHasTargetR(hasTargetR)
-	, mRTarget(rTarget)
-	, mOpen(std::move(open))
-	, mHigh(std::move(high))
-	, mLow(std::move(low))
-	, mClose(std::move(close))
+        bool isLong,
+        const Decimal& entry,
+        bool hasTargetR,
+        const Decimal& rTarget,
+        std::vector<Decimal> open,
+        std::vector<Decimal> high,
+        std::vector<Decimal> low,
+        std::vector<Decimal> close)
+        : mIsLong(isLong)
+        , mEntry(entry)
+        , mHasTargetR(hasTargetR)
+        , mRTarget(rTarget)
+        , mOpen(std::move(open))
+        , mHigh(std::move(high))
+        , mLow(std::move(low))
+        , mClose(std::move(close))
       {
       }
 
       bool isLong() const
       {
-	return mIsLong;
+        return mIsLong;
       }
 
       const Decimal& entry() const
       {
-	return mEntry;
+        return mEntry;
       }
 
       bool hasTargetR() const
       {
-	return mHasTargetR;
+        return mHasTargetR;
       }
 
       const Decimal& rTarget() const
       {
-	return mRTarget;
+        return mRTarget;
       }
 
       const std::vector<Decimal>& open() const
       {
-	return mOpen;
+        return mOpen;
       }
 
       const std::vector<Decimal>& high() const
       {
-	return mHigh;
+        return mHigh;
       }
 
       const std::vector<Decimal>& low() const
       {
-	return mLow;
+        return mLow;
       }
 
       const std::vector<Decimal>& close() const
       {
-	return mClose;
+        return mClose;
       }
 
       int barsHeld() const
       {
-	return static_cast<int>(mClose.size());
+        return static_cast<int>(mClose.size());
       }
 
     private:
@@ -298,77 +287,55 @@ namespace mkc_timeseries
       std::vector<Decimal> mOpen, mHigh, mLow, mClose; // t = 0..T-1; t=0 is first bar after entry
     };
 
-    /**
-     * @brief Convert a closed TradingPosition into PathArrays with t=0 = first bar after entry.
-     *
-     * @param pos  The closed trading position to convert.
-     * @return     PathArrays with OHLC vectors and R target metadata.
-     */
+    // ---------------------------
+    // Builders & simulators
+    // ---------------------------
+
     PathArrays buildArrays(
-			   const std::shared_ptr<TradingPosition<Decimal>>& pos) const;
+      const std::shared_ptr<TradingPosition<Decimal>>& pos) const;
 
-    /**
-     * @brief Simulate failure-to-perform on a single path.
-     *
-     * @param p           Path arrays (t=0 is first bar after entry).
-     * @param K           Evaluation bar index.
-     * @param thresholdR  Threshold in R units (or currency <= 0 if no target).
-     * @param fill        Fill policy for failing trades.
-     * @return            (exitBarIdx, exitPrice) for this overlay on this path.
-     */
     std::pair<int, Decimal> simulateFailureToPerform(
-						     const PathArrays& p,
-						     int K,
-						     const Decimal& thresholdR,
-						     FailureExitFill fill) const;
+      const PathArrays& p,
+      int K,
+      const Decimal& thresholdR,
+      FailureExitFill fill) const;
 
-    /**
-     * @brief Simulate breakeven on a single path with stop-first semantics.
-     *
-     * @param p         Path arrays (t=0 is first bar after entry).
-     * @param N         Breakeven activation bar (inclusive).
-     * @param epsilonR  Offset in R units.
-     * @return          (exitBarIdx, exitPrice) for this overlay on this path.
-     */
     std::pair<int, Decimal> simulateBreakeven(
-					      const PathArrays& p,
-					      int N,
-					      const Decimal& epsilonR) const;
+      const PathArrays& p,
+      int N,
+      const Decimal& epsilonR) const;
 
     /**
-     * @brief Simulate combined policy (earliest-exit-wins; BE preferred on same bar).
+     * @brief Simulate time-exit (max hold) on a single path.
      *
-     * @param p           Path arrays (t=0 is first bar after entry).
-     * @param K           Failure-to-perform evaluation bar.
-     * @param N           Breakeven activation bar.
-     * @param thresholdR  Threshold in R units for failure-to-perform.
-     * @param epsilonR    Offset in R units for breakeven.
-     * @param fill        Failure-to-perform fill policy.
-     * @return            (exitBarIdx, exitPrice) chosen by the combined policy.
+     * If H < 0: disabled → return (last, Close[last]).
+     * If H >= barsHeld:   no Open[H+1] available → return (last, Close[last]).
+     * Else:               return (H+1, Open[H+1]).
+     */
+    std::pair<int, Decimal> simulateTimeExit(
+      const PathArrays& p,
+      int H) const;
+
+    /**
+     * @brief Simulate combined policy; earliest exit wins.
+     * Same-bar precedence: BE > F2P > Time Exit.
      */
     std::pair<int, Decimal> simulateCombined(
-					     const PathArrays& p,
-					     int K,
-					     int N,
-					     const Decimal& thresholdR,
-					     const Decimal& epsilonR,
-					     FailureExitFill fill) const;
+      const PathArrays& p,
+      int K,
+      int N,
+      int H,
+      const Decimal& thresholdR,
+      const Decimal& epsilonR,
+      FailureExitFill fill) const;
 
-    /**
-     * @brief Aggregate per-trade exits into PolicyResult over all paths.
-     *
-     * Scaling:
-     *  - If a trade has rTarget > 0, compute PnL_R via Decimal division (pnlCur / rTarget) then convert to double.
-     *  - Otherwise, normalize currency PnL by the median rTarget across trades that have a valid rTarget
-     *    (if none exist in the cohort, scaleFallback remains 1.0 and PnL_R becomes currency units).
-     *
-     * @param exits  For each path, the chosen (exitBarIdx, exitPrice).
-     * @param paths  The corresponding PathArrays.
-     * @return       PolicyResult with averages and hit-rate.
-     */
+    // ---------------------------
+    // Aggregation
+    // ---------------------------
+
     PolicyResult summarize(
-			   const std::vector<std::pair<int, Decimal>>& exits,
-			   const std::vector<PathArrays>& paths) const;
+      const std::vector<std::pair<int, Decimal>>& exits,
+      const std::vector<PathArrays>& paths) const;
 
   private:
     const ClosedPositionHistory<Decimal>& mClosedPositionHistory;
@@ -379,7 +346,7 @@ namespace mkc_timeseries
   template<class Decimal>
   typename MetaExitCalibrator<Decimal>::PathArrays
   MetaExitCalibrator<Decimal>::buildArrays(
-					   const std::shared_ptr<TradingPosition<Decimal>>& pos) const
+    const std::shared_ptr<TradingPosition<Decimal>>& pos) const
   {
     const bool    isLong = pos->isLongPosition();
     const Decimal entry  = pos->getEntryPrice();
@@ -390,52 +357,52 @@ namespace mkc_timeseries
     const   Decimal target = pos->getProfitTarget();
 
     if (target > DecimalConstants<Decimal>::DecimalZero)
-      {
-	hasTargetR = true;
-	rTarget    = isLong ? (target - entry) : (entry - target);
-      }
+    {
+      hasTargetR = true;
+      rTarget    = isLong ? (target - entry) : (entry - target);
+    }
 
     // Skip the entry bar; t=0 is the first bar after entry
     std::vector<Decimal> open, high, low, close;
     auto it = pos->beginPositionBarHistory();
     if (it != pos->endPositionBarHistory())
-      {
-	++it;
-      }
+    {
+      ++it;
+    }
 
     for (; it != pos->endPositionBarHistory(); ++it)
-      {
-	const auto& b = it->second;
-	open.push_back(b.getOpenValue());
-	high.push_back(b.getHighValue());
-	low.push_back(b.getLowValue());
-	close.push_back(b.getCloseValue());
-      }
+    {
+      const auto& b = it->second;
+      open.push_back(b.getOpenValue());
+      high.push_back(b.getHighValue());
+      low.push_back(b.getLowValue());
+      close.push_back(b.getCloseValue());
+    }
 
     return PathArrays(
-		      isLong,
-		      entry,
-		      hasTargetR,
-		      rTarget,
-		      std::move(open),
-		      std::move(high),
-		      std::move(low),
-		      std::move(close));
+      isLong,
+      entry,
+      hasTargetR,
+      rTarget,
+      std::move(open),
+      std::move(high),
+      std::move(low),
+      std::move(close));
   }
 
   template<class Decimal>
   std::pair<int, Decimal>
   MetaExitCalibrator<Decimal>::simulateFailureToPerform(
-							const PathArrays& p,
-							int K,
-							const Decimal& thresholdR,
-							FailureExitFill fill) const
+    const PathArrays& p,
+    int K,
+    const Decimal& thresholdR,
+    FailureExitFill fill) const
   {
     if (K < 0 || K >= p.barsHeld())
-      {
-	const int last = p.barsHeld() - 1;
-	return { last, p.close()[last] };
-      }
+    {
+      const int last = p.barsHeld() - 1;
+      return { last, p.close()[last] };
+    }
 
     // Evaluate rule at CLOSE[K]
     const Decimal pnlCur = p.isLong()
@@ -445,67 +412,57 @@ namespace mkc_timeseries
     bool fail = false;
 
     if (p.hasTargetR() && p.rTarget() > DecimalConstants<Decimal>::DecimalZero)
-      {
-	const Decimal pnlR = pnlCur / p.rTarget();
-	fail = (pnlR <= thresholdR);
-      }
+    {
+      const Decimal pnlR = pnlCur / p.rTarget();
+      fail = (pnlR <= thresholdR);
+    }
     else
-      {
-	fail = (pnlCur <= DecimalConstants<Decimal>::DecimalZero);
-      }
+    {
+      fail = (pnlCur <= DecimalConstants<Decimal>::DecimalZero);
+    }
 
     if (!fail)
-      {
-	const int last = p.barsHeld() - 1;
-	return { last, p.close()[last] };
-      }
+    {
+      const int last = p.barsHeld() - 1;
+      return { last, p.close()[last] };
+    }
 
     // Exit fill:
     if (fill == FailureExitFill::CloseOfK)
-      {
-	return { K, p.close()[K] };
-      }
+    {
+      return { K, p.close()[K] };
+    }
     else
-      {
-	// OpenOfKPlus1
-	const int next = K + 1;
+    {
+      // OpenOfKPlus1
+      const int next = K + 1;
 
-	if (next < p.barsHeld())
-	  {
-	    return { next, p.open()[next] };
-	  }
-	else
-	  {
-	    // No next bar available; conservatively keep recorded last close
-	    const int last = p.barsHeld() - 1;
-	    return { last, p.close()[last] };
-	  }
+      if (next < p.barsHeld())
+      {
+        return { next, p.open()[next] };
       }
+      else
+      {
+        // No next bar available; conservatively keep recorded last close
+        const int last = p.barsHeld() - 1;
+        return { last, p.close()[last] };
+      }
+    }
   }
 
-  /**
-   * @brief Simulate breakeven on a single path with stop-first semantics.
-   *
-   * Stop-first semantics means that for each bar, we check if the stop level was
-   * touched by the open or low/high before assuming the bar completed without an exit.
-   * For a long trade, an exit is triggered if `Open[t] <= stop` or `Low[t] <= stop`.
-   * The exit price is the stop level itself, not the bar's close.
-   *
-   * ...
-   */
   template<class Decimal>
   std::pair<int, Decimal>
   MetaExitCalibrator<Decimal>::simulateBreakeven(
-						 const PathArrays& p,
-						 int N,
-						 const Decimal& epsilonR) const
+    const PathArrays& p,
+    int N,
+    const Decimal& epsilonR) const
   {
     const int last = p.barsHeld() - 1;
 
     if (N < 0 || N >= p.barsHeld() || !p.hasTargetR() || p.rTarget() <= DecimalConstants<Decimal>::DecimalZero)
-      {
-	return { last, p.close()[last] };
-      }
+    {
+      return { last, p.close()[last] };
+    }
 
     const Decimal breakEven = p.isLong()
       ? (p.entry() + epsilonR * p.rTarget())
@@ -513,94 +470,134 @@ namespace mkc_timeseries
 
     // Stop-first breach scanning from N onward
     for (int t = N; t <= last; ++t)
-      {
-	const bool hitStop = p.isLong()
-	  ? (p.open()[t] <= breakEven || p.low()[t]  <= breakEven)
-	  : (p.open()[t] >= breakEven || p.high()[t] >= breakEven);
+    {
+      const bool hitStop = p.isLong()
+        ? (p.open()[t] <= breakEven || p.low()[t]  <= breakEven)
+        : (p.open()[t] >= breakEven || p.high()[t] >= breakEven);
 
-	if (hitStop)
-	  {
-	    return { t, breakEven };
-	  }
+      if (hitStop)
+      {
+        return { t, breakEven };
       }
+    }
 
     return { last, p.close()[last] };
   }
 
   template<class Decimal>
   std::pair<int, Decimal>
-  MetaExitCalibrator<Decimal>::simulateCombined(const PathArrays& p,
-						int K,
-						int N,
-						const Decimal& thresholdR,
-						const Decimal& epsilonR,
-						FailureExitFill fill) const
+  MetaExitCalibrator<Decimal>::simulateTimeExit(
+    const PathArrays& p,
+    int H) const
   {
     const int last = p.barsHeld() - 1;
 
-    if (p.barsHeld() <= 0)
-      {
-	// Should be skipped by caller; keep safe return
-	return { -1, DecimalConstants<Decimal>::DecimalZero };
-      }
+    if (H < 0)
+    {
+      return { last, p.close()[last] };
+    }
 
-    // Individual overlays
+    // We need Open[H+1] to exit at the next session’s open
+    const int next = H + 1;
+    if (next < p.barsHeld())
+    {
+      return { next, p.open()[next] };
+    }
+    else
+    {
+      // No next bar available -> keep the recorded last close
+      return { last, p.close()[last] };
+    }
+  }
+
+  template<class Decimal>
+  std::pair<int, Decimal>
+  MetaExitCalibrator<Decimal>::simulateCombined(
+    const PathArrays& p,
+    int K,
+    int N,
+    int H,
+    const Decimal& thresholdR,
+    const Decimal& epsilonR,
+    FailureExitFill fill) const
+  {
+    if (p.barsHeld() <= 0)
+    {
+      return { -1, DecimalConstants<Decimal>::DecimalZero };
+    }
+
     const auto f2p = simulateFailureToPerform(p, K, thresholdR, fill);
     const auto be  = simulateBreakeven(p, N, epsilonR);
+    const auto tx  = simulateTimeExit(p, H);
 
-    // Earliest-exit-wins by bar index
-    if (be.first < 0 && f2p.first < 0)
-      {
-	// Shouldn't happen; fallback to last
-	return { last, p.close()[last] };
-      }
+    // Earliest-exit-wins by bar index; tie-break: BE > F2P > Time Exit
+    // Normalize invalids to "last" for comparisons (all our simulators already do)
+    const int beIdx  = be.first;
+    const int f2Idx  = f2p.first;
+    const int txIdx  = tx.first;
 
-    if (be.first == f2p.first)
-      {
-	// Same bar: prefer BE if it actually triggered (i.e., not just "last/no-op")
-	if (be.first >= 0 && be.first < last)
-	  {
-	    return be;  // stop-first precedence within the bar
-	  }
-	else
-	  {
-	    return f2p; // both are "last" → either is fine, use f2p
-	  }
-      }
+    int earliest = beIdx;
+    // Compare F2P vs BE
+    if (f2Idx < earliest)
+    {
+      earliest = f2Idx;
+    }
+    // Compare TimeExit vs current earliest
+    if (txIdx < earliest)
+    {
+      earliest = txIdx;
+    }
 
-    return (be.first < f2p.first) ? be : f2p;
+    // Same-bar precedence handling
+    const bool beEarliest  = (beIdx == earliest);
+    const bool f2Earliest  = (f2Idx == earliest);
+
+    if (beEarliest)
+    {
+      return be;
+    }
+    else if (f2Earliest)
+    {
+      return f2p;
+    }
+    else
+    {
+      return tx;
+    }
   }
 
   template<class Decimal>
   PolicyResult
-  MetaExitCalibrator<Decimal>::evaluateCombinedPolicy(int K,
-						      int N,
-						      const Decimal& thresholdR,
-						      const Decimal& epsilonR,
-						      FailureExitFill fill) const
+  MetaExitCalibrator<Decimal>::evaluateCombinedPolicy(
+    int K,
+    int N,
+    int H,
+    const Decimal& thresholdR,
+    const Decimal& epsilonR,
+    FailureExitFill fill) const
   {
     std::vector<PathArrays> paths;
     paths.reserve(128);
 
     for (auto it = mClosedPositionHistory.beginTradingPositions();
-	 it != mClosedPositionHistory.endTradingPositions();
-	 ++it)
+         it != mClosedPositionHistory.endTradingPositions();
+         ++it)
+    {
+      auto p = buildArrays(it->second);
+      if (p.barsHeld() == 0)
       {
-	auto p = buildArrays(it->second);
-	if (p.barsHeld() == 0)
-	  {
-	    continue;  // skip zero-length paths (no bars after entry)
-	  }
-	paths.push_back(std::move(p));
+        continue;  // skip zero-length paths (no bars after entry)
       }
+      paths.push_back(std::move(p));
+    }
 
     std::vector<std::pair<int, Decimal>> exits;
     exits.reserve(paths.size());
 
     for (const auto& p : paths)
-      {
-	exits.push_back(simulateCombined(p, K, N, thresholdR, epsilonR, fill));
-      }
+    {
+      exits.push_back(simulateCombined(p, K, N, H, thresholdR, epsilonR, fill));
+    }
 
     return summarize(exits, paths);
   }
@@ -608,14 +605,14 @@ namespace mkc_timeseries
   template<class Decimal>
   PolicyResult
   MetaExitCalibrator<Decimal>::summarize(const std::vector<std::pair<int, Decimal>>& exits,
-					 const std::vector<PathArrays>& paths) const
+                                         const std::vector<PathArrays>& paths) const
   {
     const size_t n = exits.size();
 
     if (n == 0)
-      {
-	return PolicyResult(0.0, 0.0, 0.0, 0);
-      }
+    {
+      return PolicyResult(0.0, 0.0, 0.0, 0);
+    }
 
     double sumPnL_R = 0.0;
     double sumBars  = 0.0;
@@ -626,93 +623,89 @@ namespace mkc_timeseries
     rts.reserve(paths.size());
 
     for (const auto& p : paths)
+    {
+      if (p.hasTargetR() && p.rTarget() > DecimalConstants<Decimal>::DecimalZero)
       {
-	if (p.hasTargetR() && p.rTarget() > DecimalConstants<Decimal>::DecimalZero)
-	  {
-	    rts.push_back(p.rTarget().getAsDouble());
-	  }
+        rts.push_back(p.rTarget().getAsDouble());
       }
+    }
 
     double scaleFallback = 1.0;
 
     if (!rts.empty())
-      {
-	size_t mid = rts.size() / 2;
-	std::nth_element(rts.begin(), rts.begin() + mid, rts.end());
-	scaleFallback = rts[mid];
-      }
+    {
+      size_t mid = rts.size() / 2;
+      std::nth_element(rts.begin(), rts.begin() + mid, rts.end());
+      scaleFallback = rts[mid];
+    }
 
     for (size_t i = 0; i < n; ++i)
+    {
+      const auto& p      = paths[i];
+      const int   idx    = exits[i].first;
+      const auto  exitPx = exits[i].second;
+
+      const double barsHeld = static_cast<double>(idx + 1); // t=0 is first day after entry
+      sumBars += barsHeld;
+
+      const Decimal pnlCur = p.isLong()
+        ? (exitPx - p.entry())
+        : (p.entry() - exitPx);
+
+      double pnlR_d = 0.0;
+
+      if (p.hasTargetR() && p.rTarget() > DecimalConstants<Decimal>::DecimalZero)
       {
-	const auto& p      = paths[i];
-	const int   idx    = exits[i].first;
-	const auto  exitPx = exits[i].second;
-
-	const double barsHeld = static_cast<double>(idx + 1); // t=0 is first day after entry
-	sumBars += barsHeld;
-
-	const Decimal pnlCur = p.isLong()
-	  ? (exitPx - p.entry())
-	  : (p.entry() - exitPx);
-
-	double pnlR_d = 0.0;
-
-	if (p.hasTargetR() && p.rTarget() > DecimalConstants<Decimal>::DecimalZero)
-	  {
-	    // Do the division in decimal space for precision; convert once to double.
-	    const Decimal pnlR_decimal = pnlCur / p.rTarget();
-	    pnlR_d = pnlR_decimal.getAsDouble();
-	  }
-	else
-	  {
-	    pnlR_d = static_cast<double>(pnlCur.getAsDouble()) / scaleFallback;
-	  }
-
-	sumPnL_R += pnlR_d;
-
-	if (pnlR_d > 0.0)
-	  {
-	    ++wins;
-	  }
+        // Do the division in decimal space for precision; convert once to double.
+        const Decimal pnlR_decimal = pnlCur / p.rTarget();
+        pnlR_d = pnlR_decimal.getAsDouble();
+      }
+      else
+      {
+        pnlR_d = static_cast<double>(pnlCur.getAsDouble()) / scaleFallback;
       }
 
+      sumPnL_R += pnlR_d;
+
+      if (pnlR_d > 0.0)
+      {
+        ++wins;
+      }
+    }
+
     return PolicyResult(
-			/*avgPnL_R*/    sumPnL_R / static_cast<double>(n),
-			/*hitRate*/     static_cast<double>(wins) / static_cast<double>(n),
-			/*avgBarsHeld*/ sumBars / static_cast<double>(n),
-			/*trades*/      static_cast<int>(n));
+      /*avgPnL_R*/    sumPnL_R / static_cast<double>(n),
+      /*hitRate*/     static_cast<double>(wins) / static_cast<double>(n),
+      /*avgBarsHeld*/ sumBars / static_cast<double>(n),
+      /*trades*/      static_cast<int>(n));
   }
 
-  /**
-   * @brief Evaluate the failure-to-perform overlay at bar K.
-   * ...
-   * @param K Bar index to evaluate (0 = first bar after entry).
-   * Example: K=4 means the performance check is done using the close price
-   * of the 5th bar after the entry bar.
-   * ...
-   */
+  // ---------------------------
+  // Standalone overlay evaluators (kept as in your original, with BE/F2P)
+  // ---------------------------
+
   template<class Decimal>
   PolicyResult
   MetaExitCalibrator<Decimal>::evaluateFailureToPerformBars(int K,
-							    const Decimal& thresholdR,
-							    FailureExitFill fill) const
+                                                            const Decimal& thresholdR,
+                                                            FailureExitFill fill) const
   {
     std::vector<PathArrays> paths;
 
     for (auto it = mClosedPositionHistory.beginTradingPositions();
-	 it != mClosedPositionHistory.endTradingPositions();
-	 ++it)
-      {
-	paths.push_back(buildArrays(it->second));
-      }
+         it != mClosedPositionHistory.endTradingPositions();
+         ++it)
+    {
+      paths.push_back(buildArrays(it->second));
+    }
 
     std::vector<std::pair<int, Decimal>> exits;
     exits.reserve(paths.size());
 
     for (const auto& p : paths)
-      {
-	exits.push_back(simulateFailureToPerform(p, K, thresholdR, fill));
-      }
+    {
+      exits.push_back(simulateFailureToPerform(p, K, thresholdR, fill));
+    }
 
     return summarize(exits, paths);
   }
@@ -720,25 +713,50 @@ namespace mkc_timeseries
   template<class Decimal>
   PolicyResult
   MetaExitCalibrator<Decimal>::evaluateBreakevenAfterBars(int N,
-							  const Decimal& epsilonR) const
+                                                          const Decimal& epsilonR) const
   {
     std::vector<PathArrays> paths;
 
     for (auto it = mClosedPositionHistory.beginTradingPositions();
-	 it != mClosedPositionHistory.endTradingPositions();
-	 ++it)
-      {
-	paths.push_back(buildArrays(it->second));
-      }
+         it != mClosedPositionHistory.endTradingPositions();
+         ++it)
+    {
+      paths.push_back(buildArrays(it->second));
+    }
 
     std::vector<std::pair<int, Decimal>> exits;
     exits.reserve(paths.size());
 
     for (const auto& p : paths)
-      {
-	exits.push_back(simulateBreakeven(p, N, epsilonR));
-      }
+    {
+      exits.push_back(simulateBreakeven(p, N, epsilonR));
+    }
 
     return summarize(exits, paths);
   }
+
+  template<class Decimal>
+  PolicyResult
+  MetaExitCalibrator<Decimal>::evaluateTimeExitAtBars(int H) const
+  {
+    std::vector<PathArrays> paths;
+
+    for (auto it = mClosedPositionHistory.beginTradingPositions();
+         it != mClosedPositionHistory.endTradingPositions();
+         ++it)
+    {
+      paths.push_back(buildArrays(it->second));
+    }
+
+    std::vector<std::pair<int, Decimal>> exits;
+    exits.reserve(paths.size());
+
+    for (const auto& p : paths)
+    {
+      exits.push_back(simulateTimeExit(p, H));
+    }
+
+    return summarize(exits, paths);
+  }
+
 } // namespace mkc_timeseries

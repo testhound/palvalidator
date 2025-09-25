@@ -17,38 +17,35 @@ namespace mkc_timeseries
 {
 
   /**
-   * @brief Immutable report for the joint (2-D) auto-tuner.
+   * @brief Immutable report for the joint (K, N, H) auto-tuner.
    *
-   * This class holds the result of a joint optimization for a failure-to-perform
-   * rule (at bar K) and a breakeven rule (from bar N). The key takeaway is that
-   * the performance metrics (`mTrainCombined`, `mTestCombined`) reflect the
-   * **interactive effect** of applying both rules simultaneously to a set of trades,
-   * with the earliest exit taking precedence.
+   * Captures the selected parameters for the combined policy:
+   *  - failureToPerformBars (K): performance check bar (t=K).
+   *  - breakevenActivationBars (N): breakeven armed from t>=N.
+   *  - maxHoldBars (H): time-exit check at t=H with exit fill at Open[H+1].
    *
-   * It collects the selected pair of parameters:
-   * - failureToPerformBars: The bar index K for the performance check.
-   * - breakevenActivationBars: The bar index N from which the breakeven stop is armed.
-   *
-   * It also includes:
-   * - Train/Test metrics for the combined (K, N) policy.
-   * - The candidate grids that were searched for each parameter.
-   *
+   * Also includes the train/test metrics for the combined policy,
+   * and the candidate grids examined for each dimension.
    */
   class JointExitTuningReportBase
   {
   public:
     JointExitTuningReportBase(int failureToPerformBars,
-			      int breakevenActivationBars,
-			      const PolicyResult& trainCombined,
-			      const PolicyResult& testCombined,
-			      std::vector<int> failureToPerformGrid,
-			      std::vector<int> breakevenGrid)
+                              int breakevenActivationBars,
+                              int maxHoldBars,
+                              const PolicyResult& trainCombined,
+                              const PolicyResult& testCombined,
+                              std::vector<int> failureToPerformGrid,
+                              std::vector<int> breakevenGrid,
+                              std::vector<int> maxHoldGrid)
       : mFailureToPerformBars(failureToPerformBars)
       , mBreakevenActivationBars(breakevenActivationBars)
+      , mMaxHoldBars(maxHoldBars)
       , mTrainCombined(trainCombined)
       , mTestCombined(testCombined)
       , mFailureToPerformGrid(std::move(failureToPerformGrid))
       , mBreakevenGrid(std::move(breakevenGrid))
+      , mMaxHoldGrid(std::move(maxHoldGrid))
     {
     }
 
@@ -64,13 +61,19 @@ namespace mkc_timeseries
       return mBreakevenActivationBars;
     }
 
-    /** @return Train-set PolicyResult for the combined policy at (K, N). */
+    /** @return Selected H (time-exit bar). */
+    int getMaxHoldBars() const
+    {
+      return mMaxHoldBars;
+    }
+
+    /** @return Train-set PolicyResult for the combined policy at (K, N, H). */
     const PolicyResult& getTrainCombined() const
     {
       return mTrainCombined;
     }
 
-    /** @return Test-set PolicyResult for the combined policy at (K, N). */
+    /** @return Test-set PolicyResult for the combined policy at (K, N, H). */
     const PolicyResult& getTestCombined() const
     {
       return mTestCombined;
@@ -88,123 +91,101 @@ namespace mkc_timeseries
       return mBreakevenGrid;
     }
 
+    /** @return Candidate grid examined for time-exit H. */
+    const std::vector<int>& getMaxHoldGrid() const
+    {
+      return mMaxHoldGrid;
+    }
+
   private:
     int mFailureToPerformBars;
     int mBreakevenActivationBars;
+    int mMaxHoldBars;
 
     PolicyResult mTrainCombined;
     PolicyResult mTestCombined;
 
     std::vector<int> mFailureToPerformGrid;
     std::vector<int> mBreakevenGrid;
+    std::vector<int> mMaxHoldGrid;
   };
 
   /**
    * @brief Typed (templated) wrapper for JointExitTuningReportBase.
    *
-   * This preserves your templated API pattern while the payload itself
-   * (PolicyResult and integer grids) is not dependent on Decimal at the type level.
+   * Matches your templated API pattern while the payload itself is not Decimal-typed.
    */
   template<class Decimal>
   class JointExitTuningReport : public JointExitTuningReportBase
   {
   public:
     JointExitTuningReport(int failureToPerformBars,
-			  int breakevenActivationBars,
-			  const PolicyResult& trainCombined,
-			  const PolicyResult& testCombined,
-			  std::vector<int> failureToPerformGrid,
-			  std::vector<int> breakevenGrid)
+                          int breakevenActivationBars,
+                          int maxHoldBars,
+                          const PolicyResult& trainCombined,
+                          const PolicyResult& testCombined,
+                          std::vector<int> failureToPerformGrid,
+                          std::vector<int> breakevenGrid,
+                          std::vector<int> maxHoldGrid)
       : JointExitTuningReportBase(failureToPerformBars,
-				  breakevenActivationBars,
-				  trainCombined,
-				  testCombined,
-				  std::move(failureToPerformGrid),
-				  std::move(breakevenGrid))
+                                  breakevenActivationBars,
+                                  maxHoldBars,
+                                  trainCombined,
+                                  testCombined,
+                                  std::move(failureToPerformGrid),
+                                  std::move(breakevenGrid),
+                                  std::move(maxHoldGrid))
     {
     }
   };
 
   /**
-   * @brief Joint auto tuner that selects an optimal (K, N) pair for a combined exit policy.
-   *
-   * This tuner performs a 2-dimensional grid search to find the best combination of a
-   * failure-to-perform bar (K) and a breakeven activation bar (N).
-   *
-   * **Key Distinction:** Unlike a 1-D tuner that optimizes K and N independently, this
-   * class evaluates each (K, N) pair as a single, combined policy. This is crucial
-   * because the two parameters can interact; for example, an early breakeven stop (low N)
-   * might make a later failure-to-perform check (high K) more effective, or vice-versa.
-   * This joint search is designed to capture these interaction effects.
+   * @brief Joint auto tuner that selects an optimal (K, N, H) triple for a combined exit policy.
    *
    * Responsibilities:
-   *  1) Compute bar-age aggregates using MetaExitAnalytics::summarizeByBarAge(maxBarsToAnalyze).
+   *  1) Compute bar-age aggregates with MetaExitAnalytics::summarizeByBarAge(maxBarsToAnalyze).
    *  2) Propose candidate grids:
-   *     - Failure-to-perform grid (K):
-   *         Heuristic seed: first t where fracNonPositive >= fracNonPosHigh AND
-   *         probTargetNextBar <= targetHazardLow; then add ±neighborSpan around it.
-   *         If empty and useFullGridIfEmpty, fall back to [0..T-1].
-   *     - Breakeven grid (N):
-   *         Heuristic seed: earliest t where medianMfeRSoFar >= alphaMfeR; then add ±neighborSpan.
-   *         If empty and useFullGridIfEmpty, fall back to {0,1,2}∩[0..T-1].
-   *  3) Deterministic train/test split:
-   *         Let n be number of trades in time order; cut = floor(n * trainFraction).
-   *         Train = [0, cut); embargo = [cut, cut+embargoTrades); Test = [cut+embargo, n).
-   *  4) Joint grid search on the fit set (train if non-empty, else full):
-   *         Evaluate MetaExitCalibrator::evaluateCombinedPolicy(K, N, thresholdR, epsilonR, OpenOfKPlus1).
-   *         Score by objective (AvgPnL_R or HitRate).
-   *         Tie-breakers: higher score, then smaller (K+N), then higher hit-rate, then smaller K.
-   *  5) Test metrics:
-   *         Re-evaluate the chosen (K, N) on the held-out test set; if no test set, test==train.
+   *     - K (failure-to-perform grid): seed where fracNonPositive is high and probTargetNextBar is low.
+   *     - N (breakeven grid): seed where medianMfeRSoFar >= alphaMfeR.
+   *     - H (max-hold / time-exit grid): seed where probTargetNextBar is low and fracNonPositive is high,
+   *       and also include small values near early resolution (e.g., 2–4), then ±neighborSpan.
+   *       If empty and useFullGridIfEmpty, fall back to a compact default set clipped to [0..T-1].
+   *  3) Deterministic train/test split with optional embargo (by entry-time order).
+   *  4) 3-D grid search on the fit set (train if available, else full):
+   *       Evaluate MetaExitCalibrator::evaluateCombinedPolicy(K, N, H, thresholdR, epsilonR, OpenOfKPlus1).
+   *       Score by objective (AvgPnL_R or HitRate).
+   *       Tie-breakers prefer earlier resolution consistent with your anomaly behavior.
+   *  5) Evaluate the chosen (K, N, H) on the held-out test set; if no test set, test == train.
    *
    * Conventions:
-   *  - Time indexing: t=0 is the first bar AFTER the entry bar.
-   *  - Failure-to-perform:
-   *      Evaluated at Close[K]; default fill is Open[K+1] (OpenOfKPlus1).
-   *      If K is exhausted for a path, overlay is a no-op (keeps recorded exit).
-   *  - Breakeven:
-   *      Armed from N onward; stop-first semantics inside each bar.
-   *      If the path has no valid rTarget, breakeven is a no-op.
+   *  - t=0 is the first bar AFTER entry.
+   *  - Failure-to-perform checks Close[K], exits at Open[K+1] by default.
+   *  - Breakeven is stop-first from t>=N.
+   *  - Time exit checks “still open” at t=H and exits at Open[H+1].
    */
   template<class Decimal>
   class ExitPolicyJointAutoTuner
   {
   public:
-    /**
-     * @brief Construct with explicit options.
-     *
-     * @param cph   ClosedPositionHistory over which to tune.
-     * @param opts  ExitTunerOptions (immutable); only maxBarsToAnalyze is required by type,
-     *              the rest have reasonable defaults.
-     */
     ExitPolicyJointAutoTuner(const ClosedPositionHistory<Decimal>& cph,
-			     const ExitTunerOptions<Decimal>& opts)
-      : mCph(cph),
-      mOpts(opts)
+                             const ExitTunerOptions<Decimal>& opts)
+      : mCph(cph)
+      , mOpts(opts)
     {
     }
 
     /**
-     * @brief Convenience constructor: only maxBarsToAnalyze is required; defaults for the rest.
+     * @brief Convenience ctor: only maxBarsToAnalyze is required; defaults for the rest.
      */
     ExitPolicyJointAutoTuner(const ClosedPositionHistory<Decimal>& cph,
-			     int maxBarsToAnalyze)
-      : mCph(cph),
-      mOpts(ExitTunerOptions<Decimal>(maxBarsToAnalyze))
+                             int maxBarsToAnalyze)
+      : mCph(cph)
+      , mOpts(ExitTunerOptions<Decimal>(maxBarsToAnalyze))
     {
     }
 
     /**
-     * @brief Run the end-to-end joint tuning pipeline, returning an immutable report.
-     *
-     * This is the main entry point for the joint tuning process. It executes the following steps:
-     * 1) Analyzes the entire trade history to generate bar-age statistics.
-     * 2) Uses heuristics to propose candidate grids for K and N based on the statistics.
-     * 3) Splits the historical data into training and testing sets, with an optional embargo period.
-     * 4) Performs an exhaustive grid search on the training set, evaluating every (K, N) pair
-     * to find the combination that maximizes the scoring objective.
-     * 5) Evaluates the single best (K, N) pair on the test set to measure out-of-sample performance.
-     * 6) Returns a report containing the selected parameters and all performance metrics.
+     * @brief Run the end-to-end joint tuning pipeline, returning an immutable (K, N, H) report.
      */
     JointExitTuningReport<Decimal> tuneJoint();
 
@@ -217,44 +198,27 @@ namespace mkc_timeseries
     }
 
   private:
-    /**
-     * @brief Deterministic train/test split by entry-time order with optional embargo.
-     *
-     * @param train Output train container.
-     * @param test  Output test container.
-     */
     void splitTrainTest(ClosedPositionHistory<Decimal>& train,
-			ClosedPositionHistory<Decimal>& test) const;
+                        ClosedPositionHistory<Decimal>& test) const;
 
-    /**
-     * @brief Build the failure-to-perform grid (candidate K values) from bar-age aggregates.
-     *
-     * Heuristic Rationale:
-     * This heuristic seeks an ideal time to check for "failure-to-perform". It looks for a
-     * bar 't' where a significant portion of trades have stalled (high `fracNonPositive`)
-     * but the immediate chance of hitting the profit target has diminished (low `probTargetNextBar`).
-     * The first bar satisfying these conditions is used as a seed for the grid search.
-     * ...
-     */
     std::vector<int> proposeFailureToPerformGrid(const std::vector<BarAgeAggregate>& aggs) const;
 
-    /**
-     * @brief Build the breakeven grid (candidate N values) from bar-age aggregates.
-     *
-     * Heuristic Rationale:
-     * This heuristic seeks to activate a breakeven stop only after a trade has shown
-     * meaningful progress. It identifies the earliest bar 't' where the median trade
-     * has achieved a significant favorable move (`medianMfeRSoFar >= alphaMfeR`).
-     * Arming the stop around this point aims to protect gains without being premature.
-     * ...
-     */
     std::vector<int> proposeBreakevenGrid(const std::vector<BarAgeAggregate>& aggs) const;
 
     /**
-     * @brief Convert PolicyResult to scalar score according to the chosen objective.
+     * @brief Build the max-hold (time-exit) grid (candidate H values) from bar-age aggregates.
      *
-     * @param r PolicyResult to score.
-     * @return  r.getAvgPnL_R() when objective==AvgPnL_R; otherwise r.getHitRate().
+     * Heuristic:
+     *  - Prefer small H consistent with your fast resolution (winners at t=0–1), so seed {2,3,4}.
+     *  - If analytics show a “decay zone” (fracNonPositive >= fracNonPosHigh AND
+     *    probTargetNextBar <= targetHazardLow), include that t as a seed.
+     *  - Expand each seed by ±neighborSpan, clamp to [0..T-1].
+     *  - If still empty and useFullGridIfEmpty, fall back to a compact default {2,3,4,5,6,8}∩[0..T-1].
+     */
+    std::vector<int> proposeMaxHoldGrid(const std::vector<BarAgeAggregate>& aggs) const;
+
+    /**
+     * @brief Convert PolicyResult to scalar score according to the chosen objective.
      */
     double score(const PolicyResult& r) const;
 
@@ -267,48 +231,38 @@ namespace mkc_timeseries
 
   template<class Decimal>
   void ExitPolicyJointAutoTuner<Decimal>::splitTrainTest(ClosedPositionHistory<Decimal>& train,
-							 ClosedPositionHistory<Decimal>& test) const
+                                                         ClosedPositionHistory<Decimal>& test) const
   {
     std::vector<std::shared_ptr<TradingPosition<Decimal>>> all;
 
     for (auto it = mCph.beginTradingPositions();
-	 it != mCph.endTradingPositions();
-	 ++it)
-      {
-	all.push_back(it->second);
-      }
+         it != mCph.endTradingPositions();
+         ++it)
+    {
+      all.push_back(it->second);
+    }
 
     const int n = static_cast<int>(all.size());
 
     if (n == 0)
-      {
-	return;
-      }
+    {
+      return;
+    }
 
     const int cut     = std::max(0, std::min(n, static_cast<int>(std::floor(n * mOpts.getTrainFraction()))));
     const int embargo = std::max(0, std::min(mOpts.getEmbargoTrades(), n));
 
     for (int i = 0; i < cut; ++i)
-      {
-	train.addClosedPosition(all[i]);
-      }
+    {
+      train.addClosedPosition(all[i]);
+    }
 
     for (int i = cut + embargo; i < n; ++i)
-      {
-	test.addClosedPosition(all[i]);
-      }
+    {
+      test.addClosedPosition(all[i]);
+    }
   }
-  
-  /**
-   * @brief Build the failure-to-perform grid (candidate K values) from bar-age aggregates.
-   *
-   * Heuristic:
-   *  - Choose a seed t where:
-   *      fracNonPositive >= fracNonPosHigh AND
-   *      probTargetNextBar <= targetHazardLow
-   *    then add ±neighborSpan around the seed.
-   *  - If empty and useFullGridIfEmpty is true, fall back to [0..T-1].
-   */
+
   template<class Decimal>
   std::vector<int>
   ExitPolicyJointAutoTuner<Decimal>::proposeFailureToPerformGrid(const std::vector<BarAgeAggregate>& aggs) const
@@ -316,74 +270,56 @@ namespace mkc_timeseries
     const int T = static_cast<int>(aggs.size());
 
     if (T == 0)
-      {
-	return {};
-      }
+    {
+      return {};
+    }
 
-    int    tPick     = -1;
-    double bestScore = -1e9;
+    int tPick = -1;
 
     for (int t = 0; t < T; ++t)
+    {
+      const double fracNonPos     = aggs[t].getFracNonPositive();
+      const double probTargetNext = aggs[t].getProbTargetNextBar();
+
+      if (fracNonPos >= mOpts.getFracNonPosHigh() &&
+          probTargetNext <= mOpts.getTargetHazardLow())
       {
-	const double fracNonPos       = aggs[t].getFracNonPositive();
-	const double probTargetNext   = aggs[t].getProbTargetNextBar();
-
-	if (tPick < 0 &&
-	    fracNonPos     >= mOpts.getFracNonPosHigh() &&
-	    probTargetNext <= mOpts.getTargetHazardLow())
-	  {
-	    tPick = t;
-	  }
-
-	// Secondary signal used to break ties in seeding when no first-pass pick found
-	const double s = fracNonPos - probTargetNext;
-
-	if (s > bestScore)
-	  {
-	    bestScore = s;
-	  }
+        tPick = t;
+        break;
       }
+    }
 
     std::vector<int> grid;
 
     auto pushNeighbor = [&](int t)
     {
       for (int d = -mOpts.getNeighborSpan(); d <= mOpts.getNeighborSpan(); ++d)
-	{
-	  const int x = t + d;
+      {
+        const int x = t + d;
 
-	  if (0 <= x && x < T)
-	    {
-	      grid.push_back(x);
-	    }
-	}
+        if (0 <= x && x < T)
+        {
+          grid.push_back(x);
+        }
+      }
     };
 
     if (tPick >= 0)
-      {
-	pushNeighbor(tPick);
-      }
+    {
+      pushNeighbor(tPick);
+    }
 
     if (grid.empty() && mOpts.getUseFullGridIfEmpty())
-      {
-	grid.resize(T);
-	std::iota(grid.begin(), grid.end(), 0);
-      }
+    {
+      grid.resize(T);
+      std::iota(grid.begin(), grid.end(), 0);
+    }
 
     std::sort(grid.begin(), grid.end());
     grid.erase(std::unique(grid.begin(), grid.end()), grid.end());
     return grid;
   }
 
-  /**
-   * @brief Build the breakeven grid (candidate N values) from bar-age aggregates.
-   *
-   * Heuristic:
-   *  - Choose the earliest t where:
-   *      medianMfeRSoFar >= alphaMfeR
-   *    then add ±neighborSpan around the seed.
-   *  - If empty and useFullGridIfEmpty is true, fall back to {0,1,2}∩[0..T-1].
-   */
   template<class Decimal>
   std::vector<int>
   ExitPolicyJointAutoTuner<Decimal>::proposeBreakevenGrid(const std::vector<BarAgeAggregate>& aggs) const
@@ -391,53 +327,126 @@ namespace mkc_timeseries
     const int T = static_cast<int>(aggs.size());
 
     if (T == 0)
-      {
-	return {};
-      }
+    {
+      return {};
+    }
 
     int tPick = -1;
 
     for (int t = 0; t < T; ++t)
-      {
-	const double medMfeR = aggs[t].getMedianMfeRSoFar();
+    {
+      const double medMfeR = aggs[t].getMedianMfeRSoFar();
 
-	if (!std::isnan(medMfeR) && medMfeR >= mOpts.getAlphaMfeR())
-	  {
-	    tPick = t;
-	    break;
-	  }
+      if (!std::isnan(medMfeR) && medMfeR >= mOpts.getAlphaMfeR())
+      {
+        tPick = t;
+        break;
       }
+    }
 
     std::vector<int> grid;
 
     auto pushNeighbor = [&](int t)
     {
       for (int d = -mOpts.getNeighborSpan(); d <= mOpts.getNeighborSpan(); ++d)
-	{
-	  const int x = t + d;
+      {
+        const int x = t + d;
 
-	  if (0 <= x && x < T)
-	    {
-	      grid.push_back(x);
-	    }
-	}
+        if (0 <= x && x < T)
+        {
+          grid.push_back(x);
+        }
+      }
     };
 
     if (tPick >= 0)
-      {
-	pushNeighbor(tPick);
-      }
+    {
+      pushNeighbor(tPick);
+    }
 
     if (grid.empty() && mOpts.getUseFullGridIfEmpty())
+    {
+      for (int x : {0, 1, 2})
       {
-	for (int x : {0, 1, 2})
-	  {
-	    if (x < T)
-	      {
-		grid.push_back(x);
-	      }
-	  }
+        if (x < T)
+        {
+          grid.push_back(x);
+        }
       }
+    }
+
+    std::sort(grid.begin(), grid.end());
+    grid.erase(std::unique(grid.begin(), grid.end()), grid.end());
+    return grid;
+  }
+
+  template<class Decimal>
+  std::vector<int>
+  ExitPolicyJointAutoTuner<Decimal>::proposeMaxHoldGrid(const std::vector<BarAgeAggregate>& aggs) const
+  {
+    const int T = static_cast<int>(aggs.size());
+
+    if (T == 0)
+    {
+      return {};
+    }
+
+    std::vector<int> seeds;
+
+    // 1) Small, fast-resolution candidates (your winners cluster at t=0–1)
+    for (int x : {2, 3, 4})
+    {
+      if (x < T)
+      {
+        seeds.push_back(x);
+      }
+    }
+
+    // 2) Decay-aware seed where target hazard is low and non-positive fraction is high
+    for (int t = 0; t < T; ++t)
+    {
+      const double fracNonPos     = aggs[t].getFracNonPositive();
+      const double probTargetNext = aggs[t].getProbTargetNextBar();
+
+      if (fracNonPos >= mOpts.getFracNonPosHigh() &&
+          probTargetNext <= mOpts.getTargetHazardLow())
+      {
+        seeds.push_back(t);
+        break; // first such t
+      }
+    }
+
+    std::vector<int> grid;
+
+    auto pushNeighbor = [&](int t)
+    {
+      for (int d = -mOpts.getNeighborSpan(); d <= mOpts.getNeighborSpan(); ++d)
+      {
+        const int x = t + d;
+
+        if (0 <= x && x < T)
+        {
+          grid.push_back(x);
+        }
+      }
+    };
+
+    for (int s : seeds)
+    {
+      pushNeighbor(s);
+    }
+
+    if (grid.empty() && mOpts.getUseFullGridIfEmpty())
+    {
+      // Compact fallback emphasizing short holds; add a slightly longer probe
+      for (int x : {2, 3, 4, 5, 6, 8})
+      {
+        if (x < T)
+        {
+          grid.push_back(x);
+        }
+      }
+    }
 
     std::sort(grid.begin(), grid.end());
     grid.erase(std::unique(grid.begin(), grid.end()), grid.end());
@@ -448,26 +457,33 @@ namespace mkc_timeseries
   double ExitPolicyJointAutoTuner<Decimal>::score(const PolicyResult& r) const
   {
     switch (mOpts.getObjective())
-      {
+    {
       case TuningObjective::HitRate:
-	{
-	  return r.getHitRate();
-	}
+      {
+        return r.getHitRate();
+      }
+
+    case TuningObjective::PnLPerBar:
+      {
+	const double denom = std::max(r.getAvgBarsHeld(), 1e-9);
+	return r.getAvgPnL_R() / denom;
+      }
+
       case TuningObjective::AvgPnL_R:
       default:
-	{
-	  return r.getAvgPnL_R();
-	}
+      {
+        return r.getAvgPnL_R();
       }
+    }
   }
 
   /**
-   * @brief Run the end-to-end joint tuning pipeline, returning an immutable report.
+   * @brief Run the end-to-end joint tuning pipeline, returning an immutable (K, N, H) report.
    *
    * Steps:
    *  1) Summarize bar-age behavior to seed grids.
    *  2) Split train/test deterministically with optional embargo.
-   *  3) Jointly select (K, N) by grid search on the fit set using the configured objective.
+   *  3) Jointly select (K, N, H) by grid search on the fit set using the configured objective.
    *  4) Recompute test metrics on held-out data (or reuse train if no test).
    */
   template<class Decimal>
@@ -479,6 +495,7 @@ namespace mkc_timeseries
 
     const auto failureToPerformGrid = proposeFailureToPerformGrid(aggs);
     const auto breakevenGrid        = proposeBreakevenGrid(aggs);
+    const auto maxHoldGrid          = proposeMaxHoldGrid(aggs);
 
     // 2) Train/Test split
     ClosedPositionHistory<Decimal> train;
@@ -488,75 +505,88 @@ namespace mkc_timeseries
     const bool useFull = (test.beginTradingPositions() == test.endTradingPositions());
     const ClosedPositionHistory<Decimal>& fitCph = useFull ? mCph : train;
 
-    // 3) Joint grid search over (failureToPerformBars, breakevenActivationBars)
+    // 3) Joint grid search over (K, N, H)
     MetaExitCalibrator<Decimal> calFit(fitCph);
 
     double bestScore = -1e99;
 
-    int bestFailureToPerformBars  = failureToPerformGrid.empty() ? 0 : failureToPerformGrid.front();
-    int bestBreakevenActivationBars = breakevenGrid.empty()      ? 0 : breakevenGrid.front();
+    int bestK = failureToPerformGrid.empty() ? 0 : failureToPerformGrid.front();
+    int bestN = breakevenGrid.empty()        ? 0 : breakevenGrid.front();
+    int bestH = maxHoldGrid.empty()          ? std::min(8, (int)aggs.size()-1) : maxHoldGrid.front();
 
     PolicyResult bestTrainCombined(0.0, 0.0, 0.0, 0);
 
-    for (int failureToPerformBars : failureToPerformGrid)
+    for (int K : failureToPerformGrid)
+    {
+      for (int N : breakevenGrid)
       {
-	for (int breakevenActivationBars : breakevenGrid)
-	  {
-	    auto res = calFit.evaluateCombinedPolicy(
-						     /*K*/ failureToPerformBars,
-						     /*N*/ breakevenActivationBars,
-						     mOpts.getThresholdR(),
-						     mOpts.getEpsilonR(),
-						     FailureExitFill::OpenOfKPlus1);
+        for (int H : maxHoldGrid)
+        {
+          auto res = calFit.evaluateCombinedPolicy(
+            /*K*/ K,
+            /*N*/ N,
+            /*H*/ H,
+            mOpts.getThresholdR(),
+            mOpts.getEpsilonR(),
+            FailureExitFill::OpenOfKPlus1);
 
-	    const double s   = score(res);
-	    const int    sum = failureToPerformBars + breakevenActivationBars;
-	    const int    bestSum = bestFailureToPerformBars + bestBreakevenActivationBars;
+          const double s     = score(res);
+          const int    sumKNH = K + N + H;
+          const int    sumBest = bestK + bestN + bestH;
 
-	    // Tie-breakers:
-	    //  1) higher score
-	    //  2) smaller (K + N)
-	    //  3) higher hit-rate
-	    //  4) smaller K (failureToPerformBars)
-	    if (s > bestScore ||
-		(s == bestScore && sum < bestSum) ||
-		(s == bestScore && sum == bestSum && res.getHitRate() > bestTrainCombined.getHitRate()) ||
-		(s == bestScore && sum == bestSum && res.getHitRate() == bestTrainCombined.getHitRate() &&
-		 failureToPerformBars < bestFailureToPerformBars))
-	      {
-		bestScore = s;
-		bestFailureToPerformBars  = failureToPerformBars;
-		bestBreakevenActivationBars = breakevenActivationBars;
-		bestTrainCombined = res;
-	      }
-	  }
+          // Tie-breakers favor earlier resolution and your anomaly profile:
+          //  1) higher score
+          //  2) smaller H (free capital sooner)
+          //  3) smaller (K + N + H)
+          //  4) higher hit-rate
+          //  5) smaller K
+          //  6) smaller N
+          if (s > bestScore ||
+              (s == bestScore && H < bestH) ||
+              (s == bestScore && H == bestH && sumKNH < sumBest) ||
+              (s == bestScore && H == bestH && sumKNH == sumBest && res.getHitRate() > bestTrainCombined.getHitRate()) ||
+              (s == bestScore && H == bestH && sumKNH == sumBest && res.getHitRate() == bestTrainCombined.getHitRate() && K < bestK) ||
+              (s == bestScore && H == bestH && sumKNH == sumBest && res.getHitRate() == bestTrainCombined.getHitRate() && K == bestK && N < bestN))
+          {
+            bestScore = s;
+            bestK = K;
+            bestN = N;
+            bestH = H;
+            bestTrainCombined = res;
+          }
+        }
       }
+    }
 
     // 4) Test metrics on held-out data (or reuse train metrics if no test split)
     PolicyResult testCombined(0.0, 0.0, 0.0, 0);
 
     if (useFull)
-      {
-	testCombined = bestTrainCombined;
-      }
+    {
+      testCombined = bestTrainCombined;
+    }
     else
-      {
-	MetaExitCalibrator<Decimal> calTest(test);
-	testCombined = calTest.evaluateCombinedPolicy(
-						      bestFailureToPerformBars,
-						      bestBreakevenActivationBars,
-						      mOpts.getThresholdR(),
-						      mOpts.getEpsilonR(),
-						      FailureExitFill::OpenOfKPlus1);
-      }
+    {
+      MetaExitCalibrator<Decimal> calTest(test);
+      testCombined = calTest.evaluateCombinedPolicy(
+        bestK,
+        bestN,
+        bestH,
+        mOpts.getThresholdR(),
+        mOpts.getEpsilonR(),
+        FailureExitFill::OpenOfKPlus1);
+    }
 
     // 5) Immutable report
     return JointExitTuningReport<Decimal>(
-					  bestFailureToPerformBars,
-					  bestBreakevenActivationBars,
-					  bestTrainCombined,
-					  testCombined,
-					  failureToPerformGrid,
-					  breakevenGrid);
+      bestK,
+      bestN,
+      bestH,
+      bestTrainCombined,
+      testCombined,
+      failureToPerformGrid,
+      breakevenGrid,
+      maxHoldGrid);
   }
+
 } // namespace mkc_timeseries

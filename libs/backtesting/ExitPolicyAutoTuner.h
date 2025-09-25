@@ -25,7 +25,8 @@ namespace mkc_timeseries
   enum class TuningObjective
     {
       AvgPnL_R,
-      HitRate
+      HitRate,
+      PnLPerBar,
     };
 
   /**
