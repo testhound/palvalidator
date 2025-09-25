@@ -103,7 +103,7 @@ PalValidator requires the following dependencies to be installed on your system:
 #### Ubuntu/Debian:
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential cmake libboost-all-dev rapidjson-dev libcurl4-openssl-dev doxygen bison flex
+sudo apt-get install build-essential cmake libboost-all-dev rapidjson-dev libcurl4-openssl-dev doxygen bison flex pkg-config catch2 graphviz
 ```
 
 #### macOS (using Homebrew):
@@ -116,7 +116,6 @@ If dependencies are installed in non-standard locations, set these environment v
 ```bash
 export RAPIDJSON_DIR=/path/to/rapidjson/include
 export CURL_DIR=/path/to/curl/include
-export BLOOMBERG_DECIMAL_INCLUDES=/path/to/bloomberg/decimal/include
 ```
 
 ## How to build executables
