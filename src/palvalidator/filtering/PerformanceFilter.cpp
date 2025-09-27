@@ -8,6 +8,8 @@
 #include "BiasCorrectedBootstrap.h"
 #include "StatUtils.h"
 #include "utils/TimeUtils.h"
+#include "RegimeLabeler.h"
+#include "RegimeMixStressRunner.h"
 #include <limits>
 
 namespace palvalidator
@@ -195,6 +197,18 @@ namespace palvalidator
 		    }
 		}
 
+	      // === Regime-mix stress =======================================================
+	      {
+		const bool regimeOk =
+		  runRegimeMixStress(highResReturns, L, annualizationFactor, finalRequiredReturn, outputStream);
+		
+		if (!regimeOk)
+		  {
+		    mFilteringSummary.incrementFailRegimeMixCount();
+		    continue;                                          // Fail fast (reject strategy)
+		  }
+	      }
+	      
 	      // ============================================================================
 
 	      // Fragile edge advisory (may use lSensitivityRelVar)
@@ -239,6 +253,7 @@ namespace palvalidator
       outputStream << "          Fail reasons → "
 		   << "L-bound/hurdle: " << mFilteringSummary.getFailLBoundCount()
 		   << ", L-variability near hurdle: " << mFilteringSummary.getFailLVarCount()
+		   << ", regime-mix: " << mFilteringSummary.getFailRegimeMixCount()     // NEW
 		   << ", split-sample: " << mFilteringSummary.getFailSplitCount()
 		   << ", tail-risk: " << mFilteringSummary.getFailTailCount() << "\n";
       outputStream << "          Insufficient sample (pre-filter): " << mFilteringSummary.getInsufficientCount() << "\n";
@@ -555,6 +570,113 @@ namespace palvalidator
 	 << ", min LB = " << (R.minLbAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
 
       return R;
+    }
+
+    bool PerformanceFilter::runRegimeMixStress(const std::vector<Num> &highResReturns,
+					       std::size_t L,
+					       double annualizationFactor,
+					       const Num &finalRequiredReturn,
+					       std::ostream &outputStream) const
+    {
+      using palvalidator::analysis::VolTercileLabeler;
+      using palvalidator::analysis::RegimeMix;
+      using palvalidator::analysis::RegimeMixConfig;
+      using palvalidator::analysis::RegimeMixStressRunner;
+
+      try
+	{
+	  // 1) Label regimes (short window suits 2–3 bar holds)
+	  const std::size_t volWindow = 20;
+	  VolTercileLabeler<Num> labeler(volWindow);
+	  const std::vector<int> labels = labeler.computeLabels(highResReturns);
+
+	  // 2) Target mixes
+	  const std::vector<RegimeMix> mixes =
+	    {
+	      RegimeMix("Equal(1/3,1/3,1/3)", { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 }),
+	      RegimeMix("DownFav(0.3,0.4,0.3)", { 0.30, 0.40, 0.30 })
+	      // Optional: add "LongRun(...)" once you compute baseline weights
+	    };
+
+	  // 3) Config:
+	  //    - Require at least half the mixes to pass (with 2 mixes → ≥1 must pass)
+	  //    - Also enforce Equal-mix must pass (below)
+	  const double minPassFraction = 0.50;
+	  const std::size_t minBarsPerRegime = static_cast<std::size_t>(L + 5);
+
+	  RegimeMixConfig mixCfg(mixes, minPassFraction, minBarsPerRegime);
+
+	  // 4) Runner (uses your BCa settings & annualization)
+	  RegimeMixStressRunner<Num> runner(mixCfg,
+					    L,
+					    mNumResamples,
+					    mConfidenceLevel.getAsDouble(),
+					    annualizationFactor,
+					    finalRequiredReturn);
+
+	  const auto res = runner.run(highResReturns, labels, outputStream);
+
+	  // 5) Extra policy checks beyond passFraction:
+	  //    (a) Equal mix must pass
+	  //    (b) Catastrophic fail if any mix LB < (hurdle - epsilon)
+	  const Num catastrophicEps = Num(0.0025); // 25 bps = 0.25%
+
+	  bool equalFound = false;
+	  bool equalPassed = false;
+	  bool catastrophic = false;
+
+	  for (const auto &mx : res.perMix())
+	    {
+	      const bool isEqual =
+                (mx.mixName() == std::string("Equal(1/3,1/3,1/3)")) ||
+                (mx.mixName() == std::string("Equal"));
+
+	      if (isEqual)
+		{
+		  equalFound = true;
+		  equalPassed = mx.pass();
+		}
+
+	      if (mx.annualizedLowerBound() < (finalRequiredReturn - catastrophicEps))
+		{
+		  catastrophic = true;
+		}
+	    }
+
+	  if (!equalFound)
+	    {
+	      outputStream << "      [RegimeMix] Warning: 'Equal' mix not present; "
+			   << "skipping 'Equal must pass' policy.\n";
+	    }
+
+	  if (catastrophic)
+	    {
+	      outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity: "
+			   << "a mix produced an annualized LB more than 25 bps below the hurdle.\n\n";
+	      return false;
+	    }
+
+	  if (equalFound && !equalPassed)
+	    {
+	      outputStream << "   ✗ Strategy filtered out: 'Equal(1/3,1/3,1/3)' mix failed the hurdle.\n\n";
+	      return false;
+	    }
+
+	  if (!res.overallPass())
+	    {
+	      outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity: "
+			   << "insufficient robustness across target mixes (minPassFraction = 0.50).\n\n";
+	      return false;
+	    }
+
+	  return true;
+	}
+      catch (const std::exception &e)
+	{
+	  // Conservative: skip regime-mix gate on operational error, but do not fail the strategy.
+	  outputStream << "      [RegimeMix] Skipped (" << e.what() << ").\n";
+	  return true;
+	}
     }
   } // namespace filtering
 } // namespace palvalidator
