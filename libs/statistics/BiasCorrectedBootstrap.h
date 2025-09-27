@@ -45,7 +45,7 @@ namespace mkc_timeseries
    *
    * @tparam Decimal The numeric type used for the data (e.g., double, number).
    */
-  template <class Decimal>
+  template <class Decimal, class Rng = randutils::mt19937_rng>
   struct IIDResampler
   {
     /**
@@ -57,7 +57,7 @@ namespace mkc_timeseries
      * @throws std::invalid_argument If the input vector x is empty.
      */
     std::vector<Decimal>
-    operator()(const std::vector<Decimal>& x, size_t n, randutils::mt19937_rng& rng) const
+    operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
     {
       if (x.empty())
 	{
@@ -148,7 +148,7 @@ namespace mkc_timeseries
    *
    * @tparam Decimal The numeric type used for the data (e.g., double, number).
    */
-  template <class Decimal>
+  template <class Decimal, class Rng = randutils::mt19937_rng>
   struct StationaryBlockResampler
   {
     /**
@@ -172,7 +172,7 @@ namespace mkc_timeseries
      * @throws std::invalid_argument If the input vector x is empty.
      */
     std::vector<Decimal>
-    operator()(const std::vector<Decimal>& x, size_t n, randutils::mt19937_rng& rng) const
+    operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
     {
       if (x.empty())
 	{
@@ -309,7 +309,7 @@ namespace mkc_timeseries
    * @tparam Sampler The resampling policy class (e.g., `IIDResampler`, `StationaryBlockResampler`).
    * Defaults to `IIDResampler<Decimal>`.
    */
-  template <class Decimal, class Sampler = IIDResampler<Decimal>>
+  template <class Decimal, class Sampler = IIDResampler<Decimal>, class Rng = randutils::mt19937_rng>
   class BCaBootStrap
   {
   public:
@@ -569,7 +569,7 @@ namespace mkc_timeseries
       std::vector<Decimal> boot_stats;
       boot_stats.reserve(m_num_resamples);
 
-      thread_local static randutils::mt19937_rng rng;
+      thread_local static Rng rng;
 
       for (unsigned int b = 0; b < m_num_resamples; ++b)
 	{
@@ -904,8 +904,8 @@ namespace mkc_timeseries
      * @param annualization_factor The factor to use for annualization.
      * @throws std::invalid_argument If the annualization factor is not positive.
      */
-    template <class Sampler>
-    BCaAnnualizer(const BCaBootStrap<Decimal, Sampler>& bca_results, double annualization_factor)
+    template <class Sampler, class Rng = randutils::mt19937_rng>
+    BCaAnnualizer(const BCaBootStrap<Decimal, Sampler, Rng>& bca_results, double annualization_factor)
     {
       if (annualization_factor <= 0.0)
 	{
