@@ -31,7 +31,8 @@ namespace palvalidator
     std::vector<std::shared_ptr<PalStrategy<Num>>> PerformanceFilter::filterByPerformance(
 											  const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 											  std::shared_ptr<Security<Num>> baseSecurity,
-											  const DateRange& backtestingDates,
+											  const DateRange& inSampleBacktestingDates,
+											  const DateRange& oosBacktestingDates,
 											  TimeFrame::Duration timeFrame,
 											  std::ostream& outputStream)
     {
@@ -61,7 +62,7 @@ namespace palvalidator
 	      auto clonedStrat = strategy->clone2(freshPortfolio);
 
 	      // Backtest and get high-resolution per-bar returns
-	      auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat, timeFrame, backtestingDates);
+	      auto backtester = BackTesterFactory<Num>::backTestStrategy(clonedStrat, timeFrame, oosBacktestingDates);
 	      auto highResReturns = backtester->getAllHighResReturns(clonedStrat.get());
 
 	      if (highResReturns.size() < 20)
@@ -199,8 +200,12 @@ namespace palvalidator
 
 	      // === Regime-mix stress =======================================================
 	      {
+		auto inSampleTimeSeries = FilterTimeSeries (*baseSecurity->getTimeSeries(), inSampleBacktestingDates);
+		auto insampleRocSeries = RocSeries(inSampleTimeSeries.CloseTimeSeries(), 1);
+		auto insampleRocVector = insampleRocSeries.getTimeSeriesAsVector();
+		
 		const bool regimeOk =
-		  runRegimeMixStress(highResReturns, L, annualizationFactor, finalRequiredReturn, outputStream);
+		  runRegimeMixStress(highResReturns, L, annualizationFactor, finalRequiredReturn, outputStream, insampleRocVector);
 		
 		if (!regimeOk)
 		  {
@@ -572,11 +577,52 @@ namespace palvalidator
       return R;
     }
 
-    bool PerformanceFilter::runRegimeMixStress(const std::vector<Num> &highResReturns,
+    // --- Long-run mix weight builder --------------------------------------------
+    static std::vector<double>
+    computeLongRunMixWeights(const std::vector<Num> &baselineReturns,
+			     std::size_t volWindow,
+			     double shrinkToEqual /* e.g., 0.25 */)
+    {
+      using palvalidator::analysis::VolTercileLabeler;
+
+      if (baselineReturns.size() < volWindow + 2)
+	{
+	  // Fallback: equal weights if baseline is too short
+	  return { 1.0/3.0, 1.0/3.0, 1.0/3.0 };
+	}
+
+      VolTercileLabeler<Num> labeler(volWindow);
+      const std::vector<int> z = labeler.computeLabels(baselineReturns);
+
+      std::array<double,3> cnt{0.0,0.0,0.0};
+      for (int zi : z)
+	{
+	  if (zi >= 0 && zi <= 2) cnt[static_cast<std::size_t>(zi)] += 1.0;
+	}
+      const double n = std::max(1.0, cnt[0] + cnt[1] + cnt[2]);
+      std::array<double,3> p{ cnt[0]/n, cnt[1]/n, cnt[2]/n };
+
+      // Shrink toward equal to avoid over-committing to the baseline idiosyncrasies
+      const double lam = std::clamp(shrinkToEqual, 0.0, 1.0);
+      std::array<double,3> w{
+        (1.0 - lam) * p[0] + lam * (1.0/3.0),
+        (1.0 - lam) * p[1] + lam * (1.0/3.0),
+        (1.0 - lam) * p[2] + lam * (1.0/3.0)
+      };
+
+      // Clip tiny buckets and renormalize
+      const double eps = 0.02; // min 2% mass per bucket
+      for (double &v : w) v = std::max(v, eps);
+      const double s = w[0] + w[1] + w[2];
+      return { w[0]/s, w[1]/s, w[2]/s };
+    }
+
+    bool PerformanceFilter::runRegimeMixStress(const std::vector<Num>& oosStrategyReturns,
 					       std::size_t L,
 					       double annualizationFactor,
-					       const Num &finalRequiredReturn,
-					       std::ostream &outputStream) const
+					       const Num& finalRequiredReturn,
+					       std::ostream& outputStream,
+					       const std::vector<Num>& inSampleInstrumentReturns) const
     {
       using palvalidator::analysis::VolTercileLabeler;
       using palvalidator::analysis::RegimeMix;
@@ -585,28 +631,35 @@ namespace palvalidator
 
       try
 	{
-	  // 1) Label regimes (short window suits 2–3 bar holds)
+	  // 1) Label OOS strategy returns into volatility terciles (short window matches your 2–3 bar holds)
 	  const std::size_t volWindow = 20;
 	  VolTercileLabeler<Num> labeler(volWindow);
-	  const std::vector<int> labels = labeler.computeLabels(highResReturns);
+	  const std::vector<int> labels = labeler.computeLabels(oosStrategyReturns);
 
-	  // 2) Target mixes
-	  const std::vector<RegimeMix> mixes =
+	  // 2) Start with the two policy mixes you already had
+	  std::vector<RegimeMix> mixes =
 	    {
-	      RegimeMix("Equal(1/3,1/3,1/3)", { 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 }),
+	      RegimeMix("Equal(1/3,1/3,1/3)", { 1.0/3.0, 1.0/3.0, 1.0/3.0 }),
 	      RegimeMix("DownFav(0.3,0.4,0.3)", { 0.30, 0.40, 0.30 })
-	      // Optional: add "LongRun(...)" once you compute baseline weights
 	    };
 
-	  // 3) Config:
-	  //    - Require at least half the mixes to pass (with 2 mixes → ≥1 must pass)
-	  //    - Also enforce Equal-mix must pass (below)
-	  const double minPassFraction = 0.50;
-	  const std::size_t minBarsPerRegime = static_cast<std::size_t>(L + 5);
+	  // 3) Add LongRun mix if a baseline is provided (in-sample instrument returns).
+	  //    We compute terciles on the baseline, take their long-run frequencies,
+	  //    and shrink 25% toward equal weights for stability.
+	  if (!inSampleInstrumentReturns.empty())
+	    {
+	      const double shrinkToEqual = 0.25;
+	      const auto w = computeLongRunMixWeights(inSampleInstrumentReturns, volWindow, shrinkToEqual);
+	      mixes.emplace_back("LongRun(" + std::to_string(w[0]) + "," + std::to_string(w[1]) + "," + std::to_string(w[2]) + ")", w);
+	    }
 
+	  // 4) Config: at least half the mixes must pass (with 2 mixes → ≥1 must pass; with 3 mixes → ≥2 must pass)
+	  //    Also require a minimum supply of bars per regime so the blocks are meaningful.
+	  const double minPassFraction = 0.50;                    // your chosen policy
+	  const std::size_t minBarsPerRegime = static_cast<std::size_t>(L + 5); // keep as discussed
 	  RegimeMixConfig mixCfg(mixes, minPassFraction, minBarsPerRegime);
 
-	  // 4) Runner (uses your BCa settings & annualization)
+	  // 5) Runner (reuses your BCa settings & annualization)
 	  RegimeMixStressRunner<Num> runner(mixCfg,
 					    L,
 					    mNumResamples,
@@ -614,18 +667,17 @@ namespace palvalidator
 					    annualizationFactor,
 					    finalRequiredReturn);
 
-	  const auto res = runner.run(highResReturns, labels, outputStream);
+	  const auto res = runner.run(oosStrategyReturns, labels, outputStream);
 
-	  // 5) Extra policy checks beyond passFraction:
-	  //    (a) Equal mix must pass
-	  //    (b) Catastrophic fail if any mix LB < (hurdle - epsilon)
-	  const Num catastrophicEps = Num(0.0025); // 25 bps = 0.25%
+	  // 6) Extra policy checks (same as your newer helper variant):
+	  //    (a) Equal mix must pass; (b) catastrophic fail if any mix’s LB is well below the hurdle
+	  const Num catastrophicEps = Num(0.0025); // 25 bps
 
 	  bool equalFound = false;
 	  bool equalPassed = false;
 	  bool catastrophic = false;
 
-	  for (const auto &mx : res.perMix())
+	  for (const auto& mx : res.perMix())
 	    {
 	      const bool isEqual =
                 (mx.mixName() == std::string("Equal(1/3,1/3,1/3)")) ||
@@ -649,31 +701,21 @@ namespace palvalidator
 			   << "skipping 'Equal must pass' policy.\n";
 	    }
 
-	  if (catastrophic)
-	    {
-	      outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity: "
-			   << "a mix produced an annualized LB more than 25 bps below the hurdle.\n\n";
-	      return false;
-	    }
+	  const bool overall = res.overallPass() &&
+	    (!equalFound || (equalFound && equalPassed)) &&
+	    !catastrophic;
 
-	  if (equalFound && !equalPassed)
+	  if (!overall)
 	    {
-	      outputStream << "   ✗ Strategy filtered out: 'Equal(1/3,1/3,1/3)' mix failed the hurdle.\n\n";
-	      return false;
-	    }
-
-	  if (!res.overallPass())
-	    {
-	      outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity: "
-			   << "insufficient robustness across target mixes (minPassFraction = 0.50).\n\n";
+	      outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity.\n\n";
 	      return false;
 	    }
 
 	  return true;
 	}
-      catch (const std::exception &e)
+      catch (const std::exception& e)
 	{
-	  // Conservative: skip regime-mix gate on operational error, but do not fail the strategy.
+	  // Conservative behavior: don’t brick the whole filter if regime stress can’t run.
 	  outputStream << "      [RegimeMix] Skipped (" << e.what() << ").\n";
 	  return true;
 	}

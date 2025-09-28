@@ -81,7 +81,8 @@ namespace palvalidator
       std::vector<std::shared_ptr<PalStrategy<Num>>> filterByPerformance(
 									 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 									 std::shared_ptr<Security<Num>> baseSecurity,
-									 const DateRange& backtestingDates,
+									 const DateRange& inSampleBacktestingDates,
+									 const DateRange& oosBacktestingDates,
 									 TimeFrame::Duration timeFrame,
 									 std::ostream& outputStream
 									 );
@@ -194,10 +195,11 @@ namespace palvalidator
 							  ) const;
 
       bool runRegimeMixStress(const std::vector<Num> &highResReturns,
-                        std::size_t L,
-                        double annualizationFactor,
-                        const Num &finalRequiredReturn,
-                        std::ostream &outputStream) const;
+			      std::size_t L,
+			      double annualizationFactor,
+			      const Num &finalRequiredReturn,
+			      std::ostream &outputStream,
+			      const std::vector<Num>& inSampleInstrumentReturns) const;
     private:
       TradingHurdleCalculator mHurdleCalculator;     ///< Calculator for trading hurdles
       Num mConfidenceLevel;                          ///< Confidence level for BCa bootstrap
