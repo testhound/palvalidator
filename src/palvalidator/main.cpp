@@ -153,7 +153,8 @@ std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     std::shared_ptr<Security<Num>> baseSecurity,
-    const DateRange& backtestingDates,
+    const DateRange& inSampleBacktestingDates,
+    const DateRange& oosBacktestingDates,
     TimeFrame::Duration theTimeFrame,
     std::ostream& os,
     unsigned int numResamples)
@@ -162,7 +163,8 @@ filterSurvivingStrategiesByPerformance(
     const Num confidenceLevel = Num("0.95");
     
     PerformanceFilter filter(riskParams, confidenceLevel, numResamples);
-    return filter.filterByPerformance(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os);
+    return filter.filterByPerformance(survivingStrategies, baseSecurity, inSampleBacktestingDates,
+				      oosBacktestingDates, theTimeFrame, os);
 }
 
 // Analyze meta-strategy performance using unified PalMetaStrategy approach
@@ -326,6 +328,7 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     auto filteredStrategies = filterSurvivingStrategiesByPerformance<Num>(
         survivingStrategies,
         config->getSecurity(),
+	config->getInsampleDateRange(),
         config->getOosDateRange(),
         timeFrame,
         bootlog,
