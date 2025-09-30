@@ -27,6 +27,9 @@ add_executable(${LIB_NAME}_unit_tests
 
 find_package(Catch2 CONFIG REQUIRED)
 
+# Add backtesting test directory to include path for test helpers
+target_include_directories(${LIB_NAME}_unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/libs/backtesting/test)
+
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE backtesting)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE statistics)
 target_link_libraries(${LIB_NAME}_unit_tests PRIVATE Catch2::Catch2WithMain)
