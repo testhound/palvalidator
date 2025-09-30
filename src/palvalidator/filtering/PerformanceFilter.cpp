@@ -10,6 +10,7 @@
 #include "utils/TimeUtils.h"
 #include "RegimeLabeler.h"
 #include "RegimeMixStressRunner.h"
+#include "BarAlignedSeries.h"
 #include <limits>
 
 namespace palvalidator
@@ -17,6 +18,8 @@ namespace palvalidator
   namespace filtering
   {
 
+    constexpr std::size_t kRegimeVolWindow = 20;
+    
     PerformanceFilter::PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples)
       : mHurdleCalculator(riskParams),
 	mConfidenceLevel(confidenceLevel),
@@ -200,17 +203,20 @@ namespace palvalidator
 
 	      // === Regime-mix stress =======================================================
 	      {
-		auto inSampleTimeSeries = FilterTimeSeries (*baseSecurity->getTimeSeries(), inSampleBacktestingDates);
-		auto insampleRocSeries = RocSeries(inSampleTimeSeries.CloseTimeSeries(), 1);
-		auto insampleRocVector = insampleRocSeries.getTimeSeriesAsVector();
-		
-		const bool regimeOk =
-		  runRegimeMixStress(highResReturns, L, annualizationFactor, finalRequiredReturn, outputStream, insampleRocVector);
+		const bool regimeOk = applyRegimeMixGate(baseSecurity.get(),
+							 backtester.get(),
+							 inSampleBacktestingDates,
+							 oosBacktestingDates,
+							 highResReturns,
+							 L,
+							 annualizationFactor,
+							 finalRequiredReturn,
+							 outputStream);
 		
 		if (!regimeOk)
 		  {
 		    mFilteringSummary.incrementFailRegimeMixCount();
-		    continue;                                          // Fail fast (reject strategy)
+		    continue;  // Fail fast (reject strategy)
 		  }
 	      }
 	      
@@ -617,108 +623,206 @@ namespace palvalidator
       return { w[0]/s, w[1]/s, w[2]/s };
     }
 
-    bool PerformanceFilter::runRegimeMixStress(const std::vector<Num>& oosStrategyReturns,
-					       std::size_t L,
-					       double annualizationFactor,
-					       const Num& finalRequiredReturn,
-					       std::ostream& outputStream,
-					       const std::vector<Num>& inSampleInstrumentReturns) const
+    // Prints a one-line summary of mixes that failed, e.g.:
+    // [RegimeMix] failed mixes: DownFav(0.3,0.4,0.3) (LB=1.12%), LongRun(0.28,0.36,0.36) (LB=0.97%)
+    template <class Num, class MixResultT>
+    void LogFailedRegimeMixes(const std::vector<MixResultT> &perMix, std::ostream &os)
     {
-      using palvalidator::analysis::VolTercileLabeler;
+      std::vector<std::string> failed;
+      std::ostringstream ss;
+      ss.setf(std::ios::fixed);
+      ss << std::setprecision(2);
+      
+      for (const auto &mx : perMix)
+	{
+	  if (!mx.pass())
+	    {
+	      ss.str(std::string());
+	      ss.clear();
+	      ss << (mx.annualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%";
+	      failed.emplace_back(mx.mixName() + " (LB=" + ss.str() + ")");
+	    }
+	}
+      
+      if (!failed.empty())
+	{
+	  os << "      [RegimeMix] failed mixes: ";
+	  for (std::size_t i = 0; i < failed.size(); ++i)
+	    {
+	      if (i) os << ", ";
+	      os << failed[i];
+	    }
+	  os << "\n";
+	}
+    }
+
+    bool PerformanceFilter::applyRegimeMixGate(const mkc_timeseries::Security<Num>* baseSecurity,
+					       const mkc_timeseries::BackTester<Num>* backtester,
+					       const mkc_timeseries::DateRange&      inSampleBacktestingDates,
+					       const mkc_timeseries::DateRange&      oosBacktestingDates,
+					       const std::vector<Num>&               highResReturns,
+					       std::size_t                           L,
+					       double                                annualizationFactor,
+					       const Num&                            finalRequiredReturn,
+					       std::ostream&                         outputStream) const
+    {
+      using mkc_timeseries::FilterTimeSeries;
+      using mkc_timeseries::RocSeries;
+      using palvalidator::analysis::BarAlignedSeries;
+
+      // Defensive checks (should not happen in normal flow)
+      if (baseSecurity == nullptr || backtester == nullptr)
+	{
+	  outputStream << "   [RegimeMix] Skipped (null baseSecurity/backtester).\n";
+	  return true;
+	}
+
+      // 1) Build OOS close series (dense) for labeling
+      auto oosInstrumentTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), oosBacktestingDates);
+      const auto& oosClose = oosInstrumentTS.CloseTimeSeries();
+
+      // 2) Collect OOS ClosedPositionHistory (sparse trade-sequence timestamps)
+      const auto& closed = backtester->getClosedPositionHistory();
+
+      // 3) Build trade-aligned regime labels from dense OOS closes
+      std::vector<int> tradeLabels;
+      try
+	{
+	  BarAlignedSeries<Num> aligner(kRegimeVolWindow);
+	  tradeLabels = aligner.buildTradeAlignedLabels(oosClose, closed);
+	}
+      catch (const std::exception& e)
+	{
+	  // Operational/alignment issue → do not fail strategy; just skip this gate.
+	  outputStream << "   [RegimeMix] Skipped (label alignment failed: " << e.what() << ").\n";
+	  return true;
+	}
+
+      if (tradeLabels.size() != highResReturns.size())
+	{
+	  // Labels must align 1:1 with the sparse trade-sequence returns
+	  outputStream << "   [RegimeMix] Skipped (labels length "
+		       << tradeLabels.size() << " != returns length "
+		       << highResReturns.size() << ").\n";
+	  return true;
+	}
+
+      // 4) Build LongRun baseline: 1-bar ROC on in-sample close series
+      auto inSampleTS   = FilterTimeSeries(*baseSecurity->getTimeSeries(), inSampleBacktestingDates);
+      auto insampleROC  = RocSeries(inSampleTS.CloseTimeSeries(), /*period=*/1);
+      auto baselineRoc  = insampleROC.getTimeSeriesAsVector();
+
+      if (baselineRoc.size() < 3)
+	{
+	  // Too short for a meaningful LongRun mix (labeler needs window+2).
+	  // We still proceed; runRegimeMixStressWithLabels can operate with Equal+DownFav only.
+	  outputStream << "   [RegimeMix] Note: in-sample ROC short ("
+		       << baselineRoc.size() << " bars). LongRun may be skipped.\n";
+	}
+
+      // 5) Execute regime-mix stress with precomputed labels and LongRun baseline
+      const bool regimeOk = runRegimeMixStressWithLabels(
+							 highResReturns,
+							 tradeLabels,
+							 L,
+							 annualizationFactor,
+							 finalRequiredReturn,
+							 outputStream,
+							 baselineRoc
+							 );
+
+      if (!regimeOk)
+	{
+	  outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity.\n\n";
+	  return false;
+	}
+
+      return true;
+    }
+
+    bool PerformanceFilter::runRegimeMixStressWithLabels(const std::vector<Num>& highResReturns,
+							 const std::vector<int>& tradeLabels,
+							 size_t L,
+							 double annualizationFactor,
+							 const Num& finalRequiredReturn,
+							 std::ostream& os,
+							 const std::vector<Num>& longRunBaselineRoc) const
+    {
       using palvalidator::analysis::RegimeMix;
       using palvalidator::analysis::RegimeMixConfig;
       using palvalidator::analysis::RegimeMixStressRunner;
 
-      try
+      if (tradeLabels.size() != highResReturns.size())
 	{
-	  // 1) Label OOS strategy returns into volatility terciles (short window matches your 2–3 bar holds)
-	  const std::size_t volWindow = 20;
-	  VolTercileLabeler<Num> labeler(volWindow);
-	  const std::vector<int> labels = labeler.computeLabels(oosStrategyReturns);
+	  os << "   [RegimeMix] Skipped (labels length " << tradeLabels.size()
+	     << " != returns length " << highResReturns.size() << ").\n";
+	  // Non-fatal infra mismatch: don’t reject the strategy.
+	  return true;
+	}
 
-	  // 2) Start with the two policy mixes you already had
-	  std::vector<RegimeMix> mixes =
-	    {
-	      RegimeMix("Equal(1/3,1/3,1/3)", { 1.0/3.0, 1.0/3.0, 1.0/3.0 }),
-	      RegimeMix("DownFav(0.3,0.4,0.3)", { 0.30, 0.40, 0.30 })
-	    };
+      // Target mixes: Equal + DownFav; optionally LongRun when baseline ROC is provided
+      std::vector<RegimeMix> mixes;
+      mixes.emplace_back("Equal(1/3,1/3,1/3)", std::vector<double>{ 1.0/3.0, 1.0/3.0, 1.0/3.0 });
+      mixes.emplace_back("DownFav(0.3,0.4,0.3)", std::vector<double>{ 0.30, 0.40, 0.30 });
 
-	  // 3) Add LongRun mix if a baseline is provided (in-sample instrument returns).
-	  //    We compute terciles on the baseline, take their long-run frequencies,
-	  //    and shrink 25% toward equal weights for stability.
-	  if (!inSampleInstrumentReturns.empty())
+      if (!longRunBaselineRoc.empty())
+	{
+	  // Use centralized helper to derive long-run regime weights from IS ROC
+	  // kRegimeVolWindow is the same window used for labeling elsewhere.
+	  // shrinkToEqual = 0.0 for now (tuneable later).
+	  const std::vector<double> w =
+            computeLongRunMixWeights(longRunBaselineRoc, kRegimeVolWindow, /*shrinkToEqual=*/0.0);
+
+	  if (!w.empty())
 	    {
-	      const double shrinkToEqual = 0.25;
-	      const auto w = computeLongRunMixWeights(inSampleInstrumentReturns, volWindow, shrinkToEqual);
-	      mixes.emplace_back("LongRun(" + std::to_string(w[0]) + "," + std::to_string(w[1]) + "," + std::to_string(w[2]) + ")", w);
+	      mixes.emplace_back("LongRun", w);
+
+	      os << "   [RegimeMix] LongRun weights = ("
+		 << std::fixed << std::setprecision(2)
+		 << w[0] << ", " << w[1] << ", " << w[2] << ")\n";
 	    }
+	  else
+	    {
+	      os << "   [RegimeMix] LongRun baseline too short; skipping.\n";
+	    }
+	}
 
-	  // 4) Config: at least half the mixes must pass (with 2 mixes → ≥1 must pass; with 3 mixes → ≥2 must pass)
-	  //    Also require a minimum supply of bars per regime so the blocks are meaningful.
-	  const double minPassFraction = 0.50;                    // your chosen policy
-	  const std::size_t minBarsPerRegime = static_cast<std::size_t>(L + 5); // keep as discussed
-	  RegimeMixConfig mixCfg(mixes, minPassFraction, minBarsPerRegime);
+      // Policy: require ≥ 50% of mixes to pass; min bars per regime ≈ L + 5
+      const double       mixPassFrac      = 0.50;
+      const std::size_t  minBarsPerRegime = static_cast<std::size_t>(std::max<std::size_t>(2, L + 5));
+      RegimeMixConfig    cfg(mixes, mixPassFrac, minBarsPerRegime);
 
-	  // 5) Runner (reuses your BCa settings & annualization)
-	  RegimeMixStressRunner<Num> runner(mixCfg,
-					    L,
-					    mNumResamples,
-					    mConfidenceLevel.getAsDouble(),
-					    annualizationFactor,
-					    finalRequiredReturn);
+      // Runner
+      palvalidator::analysis::RegimeMixStressRunner<Num> runner(
+								cfg, L, mNumResamples, mConfidenceLevel.getAsDouble(), annualizationFactor, finalRequiredReturn);
 
-	  const auto res = runner.run(oosStrategyReturns, labels, outputStream);
+      const auto res = runner.run(highResReturns, tradeLabels, os);
 
-	  // 6) Extra policy checks (same as your newer helper variant):
-	  //    (a) Equal mix must pass; (b) catastrophic fail if any mix’s LB is well below the hurdle
-	  const Num catastrophicEps = Num(0.0025); // 25 bps
+      if (!res.overallPass())
+	{
+	  os << "   ✗ Regime-mix sensitivity FAIL: insufficient robustness across mixes.\n";
 
-	  bool equalFound = false;
-	  bool equalPassed = false;
-	  bool catastrophic = false;
-
+	  // Print which mixes failed (name only)
+	  std::vector<std::string> failed;
 	  for (const auto& mx : res.perMix())
 	    {
-	      const bool isEqual =
-                (mx.mixName() == std::string("Equal(1/3,1/3,1/3)")) ||
-                (mx.mixName() == std::string("Equal"));
-
-	      if (isEqual)
+	      if (!mx.pass())
 		{
-		  equalFound = true;
-		  equalPassed = mx.pass();
-		}
-
-	      if (mx.annualizedLowerBound() < (finalRequiredReturn - catastrophicEps))
-		{
-		  catastrophic = true;
+		  failed.push_back(mx.mixName());
 		}
 	    }
-
-	  if (!equalFound)
+	  if (!failed.empty())
 	    {
-	      outputStream << "      [RegimeMix] Warning: 'Equal' mix not present; "
-			   << "skipping 'Equal must pass' policy.\n";
+	      os << "     Failing mixes: ";
+	      for (std::size_t i = 0; i < failed.size(); ++i)
+		{
+		  os << (i ? ", " : "") << failed[i];
+		}
+	      os << "\n";
 	    }
-
-	  const bool overall = res.overallPass() &&
-	    (!equalFound || (equalFound && equalPassed)) &&
-	    !catastrophic;
-
-	  if (!overall)
-	    {
-	      outputStream << "   ✗ Strategy filtered out due to Regime-mix sensitivity.\n\n";
-	      return false;
-	    }
-
-	  return true;
 	}
-      catch (const std::exception& e)
-	{
-	  // Conservative behavior: don’t brick the whole filter if regime stress can’t run.
-	  outputStream << "      [RegimeMix] Skipped (" << e.what() << ").\n";
-	  return true;
-	}
+
+      return res.overallPass();
     }
   } // namespace filtering
 } // namespace palvalidator

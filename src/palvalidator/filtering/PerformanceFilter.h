@@ -4,6 +4,7 @@
 #include <memory>
 #include <iostream>
 #include "number.h"
+#include "BackTester.h"
 #include "Security.h"
 #include "DateRange.h"
 #include "PalStrategy.h"
@@ -194,12 +195,24 @@ namespace palvalidator
 							  const std::vector<std::shared_ptr<PalStrategy<Num>>>& filteredStrategies
 							  ) const;
 
-      bool runRegimeMixStress(const std::vector<Num> &highResReturns,
-			      std::size_t L,
-			      double annualizationFactor,
-			      const Num &finalRequiredReturn,
-			      std::ostream &outputStream,
-			      const std::vector<Num>& inSampleInstrumentReturns) const;
+      bool applyRegimeMixGate(const mkc_timeseries::Security<Num>*              baseSecurity,
+			      const mkc_timeseries::BackTester<Num>*            backtester,
+			      const mkc_timeseries::DateRange&                  inSampleBacktestingDates,
+			      const mkc_timeseries::DateRange&                  oosBacktestingDates,
+			      const std::vector<Num>&                           highResReturns,
+			      std::size_t                                       L,
+			      double                                            annualizationFactor,
+			      const Num&                                        finalRequiredReturn,
+			      std::ostream&                                     outputStream) const;
+      
+      
+      bool runRegimeMixStressWithLabels(const std::vector<Num>& highResReturns,
+					const std::vector<int>& tradeLabels,
+					size_t L,
+					double annualizationFactor,
+					const Num& finalRequiredReturn,
+					std::ostream& os,
+					const std::vector<Num>& longRunBaselineRoc) const;
     private:
       TradingHurdleCalculator mHurdleCalculator;     ///< Calculator for trading hurdles
       Num mConfidenceLevel;                          ///< Confidence level for BCa bootstrap
