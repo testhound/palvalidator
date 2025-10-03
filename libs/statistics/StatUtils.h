@@ -5,6 +5,8 @@
 #include <random>
 #include <functional> 
 #include <numeric> // Required for std::accumulate
+#include <algorithm>
+#include <cstddef>
 #include "DecimalConstants.h"
 #include "number.h"
 #include "TimeSeriesIndicators.h"
@@ -337,6 +339,86 @@ namespace mkc_timeseries
                   return acc + (val - mean) * (val - mean);
               });
           return Decimal(std::sqrt(num::to_double(sq_sum / Decimal(data.size() - 1))));
+      }
+
+      /**
+       * @brief Computes a quantile from a vector of values using linear interpolation.
+       *
+       * This method treats the dataset as a sample from a continuous distribution. It
+       * calculates a fractional index based on the quantile `q`. If the index is an
+       * integer, the value at that index is returned. If the index is fractional,
+       * the function linearly interpolates between the values at the two surrounding
+       * integer indices. This function operates on a copy of the input vector.
+       *
+       * @tparam Decimal The floating-point or custom decimal type of the data.
+       * @param v A std::vector<Decimal> containing the data. The vector is passed
+       * by value (copied) so the original vector is not modified.
+       * @param q The desired quantile, which must be between 0.0 and 1.0 (inclusive).
+       * Values outside this range will be clamped.
+       * @return The computed quantile value as type Decimal. Returns Decimal(0) if
+       * the input vector is empty.
+       */
+
+     static Decimal
+     quantile(std::vector<Decimal> v, double q)
+      {
+	// --- Pre-conditions and Setup ---
+
+	// If the vector is empty, there is no quantile to compute. Return a default value.
+	if (v.empty())
+	  {
+	    return Decimal(0);
+	  }
+
+	// Clamp the quantile q to the valid range [0.0, 1.0] to prevent out-of-bounds access.
+	q = std::min(std::max(q, 0.0), 1.0);
+
+	// --- Index Calculation ---
+
+	// Calculate the continuous, zero-based index for the quantile.
+	// The formula q * (N-1) is a common definition for sample quantiles.
+	// For a vector of size N, indices range from 0 to N-1.
+	const double idx = q * (static_cast<double>(v.size()) - 1.0);
+
+	// Find the integer indices that surround the continuous index `idx`.
+	// `lo` is the index of the data point at or just below `idx`.
+	// `hi` is the index of the data point at or just above `idx`.
+	const auto lo = static_cast<std::size_t>(std::floor(idx));
+	const auto hi = static_cast<std::size_t>(std::ceil(idx));
+
+	// --- Value Extraction ---
+
+	// Find the value at the lower-bound index `lo`.
+	// std::nth_element is an efficient O(N) algorithm that rearranges the vector
+	// such that the element at the n-th position is the one that *would be*
+	// in that position in a fully sorted vector. All elements before it are
+	// less than or equal to it. We don't need a full sort.
+	std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(lo), v.end());
+	const Decimal vlo = v[lo];
+
+	// If `lo` and `hi` are the same, `idx` was an exact integer.
+	// The quantile is simply the value at that index, so no interpolation is needed.
+	if (hi == lo)
+	  {
+	    return vlo;
+	  }
+
+	// If interpolation is needed, find the value at the upper-bound index `hi`.
+	// We call nth_element again. While this might seem inefficient, it's often
+	// faster than a full sort, especially if `lo` and `hi` are close. The elements
+	// are already partially sorted from the first call.
+	std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(hi), v.end());
+	const Decimal vhi = v[hi];
+
+	// --- Linear Interpolation ---
+
+	// Calculate the interpolation weight `w`. This is the fractional part of `idx`,
+	// representing how far `idx` is from `lo` on the way to `hi`.
+	const Decimal w = Decimal(idx - std::floor(idx));
+
+	// The final result is the lower value plus a fraction of the difference
+	// between the high and low values.
+	return vlo + (vhi - vlo) * w;
       }
 
     private:
