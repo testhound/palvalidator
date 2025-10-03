@@ -23,6 +23,8 @@
 #include <iostream>
 #include <functional>
 #include <limits>
+#include <utility>
+#include <cstddef>
 
 #include "DecimalConstants.h"
 #include "number.h"
@@ -32,7 +34,89 @@
 
 namespace mkc_timeseries
 {
+  /**
+   * @brief Calculates the start and end indices to divide a vector
+   * into K nearly equal, contiguous slices.
+   *
+   * This function does not copy any data from the input vector. Instead, it computes
+   * the boundaries of K contiguous, non-overlapping chunks and returns them as a
+   * vector of index pairs. The slices are made as equal in size as possible. If the
+   * total number of elements `n` is not perfectly divisible by `K`, the first `n % K`
+   * slices will be one element larger than the rest.
+   *
+   * The returned indices follow the standard C++ half-open interval convention, `[start, end)`,
+   * where `start` is inclusive and `end` is exclusive.
+   *
+   * @tparam Decimal The type of elements in the input vector. This type is part of
+   * the signature but not used in the function's logic.
+   * @param x A constant reference to the input vector to be sliced.
+   * @param K The desired number of slices.
+   * @param minLen The minimum allowable length for any single slice. If it's not
+   * possible to create K slices each of at least this length, the function will fail.
+   * @return A std::vector of std::pair<std::size_t, std::size_t>, where each pair
+   * represents a slice `[start, end)`. Returns an empty vector if the input
+   * cannot be sliced according to the given constraints.
+   */
+  template <class Decimal>
+  std::vector<std::pair<std::size_t, std::size_t>>
+  createSliceIndicesForBootstrap(const std::vector<Decimal>& x,
+				 std::size_t K,
+				 std::size_t minLen)
+  {
+    std::vector<std::pair<std::size_t, std::size_t>> out;
+    const std::size_t n = x.size();
 
+    // --- Pre-condition Checks ---
+    // First, perform sanity checks to ensure the slicing is possible and makes sense.
+    // If any check fails, return an empty vector immediately to signal failure.
+    if (K < 2 || n < 2 || n < K * minLen)
+      {
+        return out; // empty => caller should skip processing
+      }
+
+    // --- Core Division Algorithm ---
+    // The strategy is to distribute the `n` elements as evenly as possible among `K` slices.
+    // This is achieved using integer division and the remainder.
+
+    // `base`: The minimum number of elements every slice will receive.
+    // This is the result of integer division `n / K`.
+    const std::size_t base = n / K;
+
+    // `rem`: The number of "leftover" elements after the base distribution (`n % K`).
+    // These `rem` elements will be distributed one-by-one to the first `rem` slices,
+    // making them one element larger than the others.
+    const std::size_t rem  = n % K;
+
+    // --- Slice Generation Loop ---
+    // `start` will track the beginning index of the current slice.
+    std::size_t start = 0;
+    for (std::size_t k = 0; k < K; ++k)
+      {
+        // Calculate the length of the current slice `k`.
+        // Every slice gets `base` elements. If `k` is one of the first `rem` slices,
+        // it gets one extra element. The ternary operator `(k < rem ? 1 : 0)`
+        // elegantly handles this distribution.
+        std::size_t len = base + (k < rem ? 1 : 0);
+
+        // A final safety check inside the loop. Although the initial check `n < K * minLen`
+        // covers most cases, this ensures that the calculated non-uniform length
+        // of any individual slice does not fall below the minimum. This is a robust
+        // safeguard, though unlikely to be triggered if the first check passes.
+        if (len < minLen)
+	  {
+            return {}; // abort if any slice falls below minimum
+	  }
+
+        // Store the calculated slice boundaries. The pair {start, start + len} represents
+        // the half-open interval `[start, end)`.
+        out.emplace_back(start, start + len);
+
+        // Update the start position for the *next* slice to be the end of the current one.
+        // This guarantees the slices are contiguous and non-overlapping.
+        start += len;
+      }
+    return out;
+  }
   // --------------------------- Resampling Policies -----------------------------
 
   /**

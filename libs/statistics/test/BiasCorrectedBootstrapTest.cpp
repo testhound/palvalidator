@@ -20,6 +20,124 @@
 
 using namespace mkc_timeseries;
 
+TEST_CASE("createSliceIndicesForBootstrap Tests", "[Slicer]")
+{
+    using D = DecimalType;
+    using SliceVector = std::vector<std::pair<std::size_t, std::size_t>>;
+
+    SECTION("Failure modes return an empty vector")
+    {
+        // K < 2 is invalid
+        std::vector<D> v10(10);
+        REQUIRE(createSliceIndicesForBootstrap(v10, 1, 2).empty());
+
+        // n < 2 is invalid
+        std::vector<D> v1(1);
+        REQUIRE(createSliceIndicesForBootstrap(v1, 2, 1).empty());
+
+        // n < K * minLen is invalid
+        std::vector<D> v19(19);
+        REQUIRE(createSliceIndicesForBootstrap(v19, 10, 2).empty()); // 19 < 10*2
+
+        // Empty vector
+        std::vector<D> v0;
+        REQUIRE(createSliceIndicesForBootstrap(v0, 2, 1).empty());
+    }
+
+    SECTION("Perfectly divisible input")
+    {
+        std::vector<D> v(100);
+        std::size_t K = 5;
+        std::size_t minLen = 10;
+        auto slices = createSliceIndicesForBootstrap(v, K, minLen);
+
+        REQUIRE(slices.size() == K);
+
+        SliceVector expected = {{0, 20}, {20, 40}, {40, 60}, {60, 80}, {80, 100}};
+        REQUIRE(slices == expected);
+
+        // Check total coverage
+        REQUIRE(slices.front().first == 0);
+        REQUIRE(slices.back().second == v.size());
+    }
+
+    SECTION("Unevenly divisible input (remainder case)")
+    {
+        // n=10, K=3. base=3, rem=1.
+        // First slice gets base+1=4, rest get base=3.
+        std::vector<D> v(10);
+        std::size_t K = 3;
+        std::size_t minLen = 2;
+        auto slices = createSliceIndicesForBootstrap(v, K, minLen);
+
+        REQUIRE(slices.size() == K);
+
+        SliceVector expected = {{0, 4}, {4, 7}, {7, 10}};
+        REQUIRE(slices == expected);
+
+        // Check slice lengths
+        REQUIRE((slices[0].second - slices[0].first) == 4);
+        REQUIRE((slices[1].second - slices[1].first) == 3);
+        REQUIRE((slices[2].second - slices[2].first) == 3);
+
+        // Check total coverage
+        REQUIRE(slices.front().first == 0);
+        REQUIRE(slices.back().second == v.size());
+    }
+
+    SECTION("Another unevenly divisible input")
+    {
+        // n=53, K=5. base=10, rem=3.
+        // First 3 slices get 11, last 2 get 10.
+        std::vector<D> v(53);
+        std::size_t K = 5;
+        std::size_t minLen = 10;
+        auto slices = createSliceIndicesForBootstrap(v, K, minLen);
+
+        REQUIRE(slices.size() == K);
+
+        SliceVector expected = {{0, 11}, {11, 22}, {22, 33}, {33, 43}, {43, 53}};
+        REQUIRE(slices == expected);
+
+        // Check slice lengths
+        REQUIRE((slices[0].second - slices[0].first) == 11);
+        REQUIRE((slices[1].second - slices[1].first) == 11);
+        REQUIRE((slices[2].second - slices[2].first) == 11);
+        REQUIRE((slices[3].second - slices[3].first) == 10);
+        REQUIRE((slices[4].second - slices[4].first) == 10);
+
+        // Check total coverage
+        REQUIRE(slices.front().first == 0);
+        REQUIRE(slices.back().second == v.size());
+    }
+
+    SECTION("Minimum length check is respected")
+    {
+        // n=20, K=5 -> slice length is 4. minLen=5 should fail.
+        std::vector<D> v(20);
+        REQUIRE(createSliceIndicesForBootstrap(v, 5, 5).empty());
+        // minLen=4 should pass.
+        REQUIRE_FALSE(createSliceIndicesForBootstrap(v, 5, 4).empty());
+    }
+
+    SECTION("Slices are contiguous and non-overlapping")
+    {
+        std::vector<D> v(123);
+        std::size_t K = 7;
+        auto slices = createSliceIndicesForBootstrap(v, K, 1);
+
+        REQUIRE_FALSE(slices.empty());
+        REQUIRE(slices.size() == K);
+
+        for (size_t i = 0; i < slices.size() - 1; ++i)
+        {
+            // The end of the current slice must be the start of the next slice
+            REQUIRE(slices[i].second == slices[i+1].first);
+        }
+    }
+}
+
+
 // --------------------------- Existing BCa tests ---------------------------
 
 TEST_CASE("BCaBootStrap Tests", "[BCaBootStrap]") {
