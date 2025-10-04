@@ -501,3 +501,73 @@ TEST_CASE("GeoMeanStat works as a statistic in getBootStrappedStatistic", "[Stat
     // The true geometric mean should be within ~3 std dev of the bootstrap distribution mean.
     REQUIRE(num::to_double(true_geo) == Catch::Approx(num::to_double(mean_est)).margin(num::to_double(std_est * DecimalType(3.0))));
 }
+
+TEST_CASE("Quantile function with linear interpolation", "[Quantile]") {
+
+    SECTION("Empty vector returns zero") {
+        std::vector<DecimalType> empty_vec;
+        DecimalType result = StatUtils<DecimalType>::quantile(empty_vec, 0.5);
+        REQUIRE(num::to_double(result) == Catch::Approx(0.0));
+    }
+
+    SECTION("Quantile is clamped to [0.0, 1.0]") {
+        std::vector<DecimalType> v = {createDecimal("10"), createDecimal("20")};
+        // q < 0.0 should be treated as q = 0.0
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, -1.0)) == Catch::Approx(10.0));
+        // q > 1.0 should be treated as q = 1.0
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 2.0)) == Catch::Approx(20.0));
+    }
+
+    SECTION("Even number of elements") {
+        // Sorted: {10, 20, 30, 40}. n=4.
+        std::vector<DecimalType> v = {createDecimal("40"), createDecimal("10"), createDecimal("30"), createDecimal("20")};
+
+        // Median (q=0.5): idx = 0.5 * (4-1) = 1.5. Interpolate between v[1] (20) and v[2] (30).
+        // 20 + 0.5 * (30 - 20) = 25
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.5)) == Catch::Approx(25.0));
+
+        // 25th percentile (q=0.25): idx = 0.25 * 3 = 0.75. Interpolate between v[0] (10) and v[1] (20).
+        // 10 + 0.75 * (20 - 10) = 17.5
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.25)) == Catch::Approx(17.5));
+
+        // 75th percentile (q=0.75): idx = 0.75 * 3 = 2.25. Interpolate between v[2] (30) and v[3] (40).
+        // 30 + 0.25 * (40 - 30) = 32.5
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.75)) == Catch::Approx(32.5));
+    }
+
+    SECTION("Odd number of elements") {
+        // Sorted: {10, 20, 30, 40, 50}. n=5.
+        std::vector<DecimalType> v = {createDecimal("50"), createDecimal("20"), createDecimal("40"), createDecimal("10"), createDecimal("30")};
+
+        // Median (q=0.5): idx = 0.5 * (5-1) = 2.0. Exact index, no interpolation.
+        // Result should be v[2], which is 30.
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.5)) == Catch::Approx(30.0));
+
+        // 90th percentile (q=0.9): idx = 0.9 * 4 = 3.6. Interpolate between v[3] (40) and v[4] (50).
+        // 40 + 0.6 * (50 - 40) = 46.0
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.9)) == Catch::Approx(46.0));
+    }
+
+    SECTION("Minimum (0th percentile) and Maximum (100th percentile)") {
+        std::vector<DecimalType> v = {createDecimal("15"), createDecimal("-5"), createDecimal("100"), createDecimal("30")};
+        // Sorted: {-5, 15, 30, 100}
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.0)) == Catch::Approx(-5.0));
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 1.0)) == Catch::Approx(100.0));
+    }
+
+    SECTION("Single element vector") {
+        std::vector<DecimalType> v = {createDecimal("42")};
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.0)) == Catch::Approx(42.0));
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.5)) == Catch::Approx(42.0));
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 1.0)) == Catch::Approx(42.0));
+    }
+
+    SECTION("Vector with duplicate values") {
+        // Sorted: {10, 20, 20, 30}. n=4
+        std::vector<DecimalType> v = {createDecimal("30"), createDecimal("20"), createDecimal("10"), createDecimal("20")};
+
+        // Median (q=0.5): idx = 0.5 * 3 = 1.5. Interpolate between v[1] (20) and v[2] (20).
+        // 20 + 0.5 * (20 - 20) = 20
+        REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.5)) == Catch::Approx(20.0));
+    }
+}

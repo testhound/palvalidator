@@ -1,4 +1,5 @@
 #include "PerformanceFilter.h"
+#include <array>
 #include <algorithm>
 #include <set>
 #include <iomanip>
@@ -9,14 +10,18 @@
 #include "StatUtils.h"
 #include "utils/TimeUtils.h"
 #include "RegimeLabeler.h"
+#include "RegimeMixStress.h"
 #include "RegimeMixStressRunner.h"
 #include "BarAlignedSeries.h"
+#include "CostStressUtils.h"
 #include <limits>
 
 namespace palvalidator
 {
   namespace filtering
   {
+
+    using palvalidator::filtering::makeCostStressHurdles;
 
     constexpr std::size_t kRegimeVolWindow = 20;
     
@@ -37,14 +42,13 @@ namespace palvalidator
 											  const DateRange& inSampleBacktestingDates,
 											  const DateRange& oosBacktestingDates,
 											  TimeFrame::Duration timeFrame,
-											  std::ostream& outputStream)
+											  std::ostream& outputStream,
+											  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
     {
       std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
 
       // Reset summary for new filtering run
       mFilteringSummary = FilteringSummary();
-
-      const Num riskFreeHurdle = mHurdleCalculator.calculateRiskFreeHurdle();
 
       outputStream << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
       outputStream << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
@@ -52,7 +56,8 @@ namespace palvalidator
 		   << mHurdleCalculator.getCostBufferMultiplier() << ")\n";
       outputStream << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate + Risk Premium ( "
 		   << mHurdleCalculator.getRiskPremium() << ") )\n";
-      outputStream << "  - Cost assumptions: $0 commission, 0.10% slippage/spread per side.\n";
+      outputStream << "  - Cost assumptions: $0 commission; slippage/spread per side uses configured floor"
+             << " and may be calibrated by OOS spreads when available.\n";
       outputStream << "  - Risk-Free Rate assumption: " << (mHurdleCalculator.getRiskFreeRate() * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
 
       for (const auto& strategy : survivingStrategies)
@@ -112,21 +117,44 @@ namespace palvalidator
 	      const Num annualizedLowerBoundGeo  = annualizerGeo.getAnnualizedLowerBound();
 	      const Num annualizedLowerBoundMean = annualizerMean.getAnnualizedLowerBound();
 
-	      // Hurdles (cost- and risk-based)
-	      const Num annualizedTrades    = Num(backtester->getEstimatedAnnualizedTrades());
-	      const Num finalRequiredReturn = mHurdleCalculator.calculateFinalRequiredReturn(annualizedTrades);
+	      //
+	      // Hurdles (cost- and risk-based), calibrated & stressed if OOS spread stats are present
+	      const Num annualizedTrades = Num(backtester->getEstimatedAnnualizedTrades());
 
-	      // Early decision on GM LB vs hurdle
-	      if (!passesHurdleRequirements(annualizedLowerBoundGeo, finalRequiredReturn))
+	      // If you have a configured per-side getter, pass it here; else leave std::nullopt
+	      std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide(); // or std::nullopt
+
+	      const auto H = palvalidator::filtering::makeCostStressHurdles<Num>(
+										 mHurdleCalculator,
+										 oosSpreadStats,          // std::optional<OOSSpreadStats>
+										 annualizedTrades,
+										 configuredPerSide        // lets base = max(configured, mean/2) when stats are present
+										 );
+
+	      // Pretty, explicit log for costs and hurdles
+	      printCostStressConcise<Num>(outputStream,
+					  H,
+					  annualizedLowerBoundGeo,
+					  "Strategy",
+					  oosSpreadStats,    // prints mean & Qn when available
+					  false,
+					  mHurdleCalculator.calculateRiskFreeHurdle());
+
+	      const Num finalRequiredReturn = H.baseHurdle;
+
+	      // Early decision: require LB > calibrated baseline AND LB > +1·Qn stress
+	      const bool passBase = (annualizedLowerBoundGeo > H.baseHurdle);
+	      const bool pass1Qn  = (annualizedLowerBoundGeo > H.h_1q);
+
+	      if (!(passBase && pass1Qn))
 		{
-		  outputStream << "✗ Strategy filtered out: " << strategy->getStrategyName()
-			       << " (Lower Bound = "
-			       << (annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred)
-			       << "% <= Required Return = "
-			       << (finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
-			       << "  [Block L=" << L << "]\n\n";
+		  mFilteringSummary.incrementFailLBoundCount();
+		  // You can keep the one-liner, or rely solely on the verbose block above.
+		  outputStream << "      → Gate: FAIL vs cost-stressed hurdles.\n\n";
 		  continue;
 		}
+
+	      outputStream << "      → Gate: PASS vs cost-stressed hurdles.\n";
 
 	      // AM–GM divergence diagnostic
 	      const auto divergence =
@@ -787,16 +815,30 @@ namespace palvalidator
 	    }
 	}
 
+      // Adapt mixes & labels to the regimes actually present
+      std::vector<int> compactLabels;
+      std::vector<palvalidator::analysis::RegimeMix> adaptedMixes;
+
+      if (!adaptMixesToPresentRegimes(tradeLabels, mixes, compactLabels, adaptedMixes, os))
+	{
+	  // Uninformative or alignment issue → skip (non-gating)
+	  return true;
+	}
+
       // Policy: require ≥ 50% of mixes to pass; min bars per regime ≈ L + 5
       const double       mixPassFrac      = 0.50;
       const std::size_t  minBarsPerRegime = static_cast<std::size_t>(std::max<std::size_t>(2, L + 5));
-      RegimeMixConfig    cfg(mixes, mixPassFrac, minBarsPerRegime);
+      RegimeMixConfig    cfg(adaptedMixes, mixPassFrac, minBarsPerRegime);
 
       // Runner
-      palvalidator::analysis::RegimeMixStressRunner<Num> runner(
-								cfg, L, mNumResamples, mConfidenceLevel.getAsDouble(), annualizationFactor, finalRequiredReturn);
+      palvalidator::analysis::RegimeMixStressRunner<Num> runner(cfg,
+								L,
+								mNumResamples,
+								mConfidenceLevel.getAsDouble(),
+								annualizationFactor,
+								finalRequiredReturn);
 
-      const auto res = runner.run(highResReturns, tradeLabels, os);
+      const auto res = runner.run(highResReturns, compactLabels, os);
 
       if (!res.overallPass())
 	{
@@ -823,6 +865,105 @@ namespace palvalidator
 	}
 
       return res.overallPass();
+    }
+
+    bool PerformanceFilter::adaptMixesToPresentRegimes(
+						       const std::vector<int> &tradeLabels,
+						       const std::vector<palvalidator::analysis::RegimeMix> &mixesIn,
+						       std::vector<int> &labelsOut,
+						       std::vector<palvalidator::analysis::RegimeMix> &mixesOut,
+						       std::ostream &os
+						       ) const
+    {
+      using palvalidator::analysis::RegimeMix;
+
+      // 1) Detect which of {0,1,2} appear and build old→new id map
+      std::array<int, 3> present {0,0,0};
+      for (int z : tradeLabels)
+	{
+	  if (0 <= z && z <= 2)
+	    {
+	      present[static_cast<std::size_t>(z)] = 1;
+	    }
+	}
+
+      std::array<int, 3> old2new { -1, -1, -1 };
+      int next = 0;
+      for (int s = 0; s < 3; ++s)
+	{
+	  if (present[static_cast<std::size_t>(s)] == 1)
+	    {
+	      old2new[static_cast<std::size_t>(s)] = next++;
+	    }
+	}
+      const int Sobs = next;
+
+      // If fewer than 2 regimes present, the stress is uninformative → skip (non-gating)
+      if (Sobs < 2)
+	{
+	  os << "   [RegimeMix] Skipped (only " << Sobs
+	     << " regime present in OOS trades; mix stress uninformative).\n";
+	  return false;
+	}
+
+      // 2) Remap labels to compact 0..Sobs-1
+      labelsOut.clear();
+      labelsOut.reserve(tradeLabels.size());
+      for (int z : tradeLabels)
+	{
+	  if (!(0 <= z && z <= 2))
+	    {
+	      os << "   [RegimeMix] Skipped (unexpected label " << z << ").\n";
+	      return false;
+	    }
+	  const int m = old2new[static_cast<std::size_t>(z)];
+	  if (m < 0)
+	    {
+	      os << "   [RegimeMix] Skipped (label remap failed).\n";
+	      return false;
+	    }
+	  labelsOut.push_back(m);
+	}
+
+      // 3) Adapt each mix's 3 weights to observed regimes and renormalize
+      mixesOut.clear();
+      mixesOut.reserve(mixesIn.size());
+
+      for (const auto &mx : mixesIn)
+	{
+	  // Adjust accessors if your RegimeMix API differs
+	  const std::string &nm = mx.name();
+	  const std::vector<double> &w3 = mx.weights();
+
+	  std::vector<double> wS(static_cast<std::size_t>(Sobs), 0.0);
+	  double sum = 0.0;
+
+	  for (int old = 0; old < 3; ++old)
+	    {
+	      const int nw = old2new[static_cast<std::size_t>(old)];
+	      if (nw >= 0)
+		{
+		  const double w = (old < static_cast<int>(w3.size())) ? w3[static_cast<std::size_t>(old)] : 0.0;
+		  wS[static_cast<std::size_t>(nw)] += w;
+		  sum += w;
+		}
+	    }
+
+	  if (sum <= 0.0)
+	    {
+	      // Fallback to equal within observed regimes
+	      const double eq = 1.0 / static_cast<double>(Sobs);
+	      std::fill(wS.begin(), wS.end(), eq);
+	    }
+	  else
+	    {
+	      for (double &v : wS) v /= sum;
+	    }
+
+	  mixesOut.emplace_back(nm, wS);
+	}
+
+      return true;
     }
   } // namespace filtering
 } // namespace palvalidator
