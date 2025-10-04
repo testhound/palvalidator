@@ -34,9 +34,10 @@ namespace palvalidator
 	  inline void printCostStressConcise(std::ostream& os,
 					     const CostStressHurdlesT<NumT>& H,
 					     const NumT& lbAnn,                                  // annualized LB
-					     const char* context,                                 // "Strategy" | "Meta" | "Slices"
+					     const char* context,                                // "Strategy" | "Meta" | "Slices"
 					     std::optional<OOSSpreadStatsT<NumT>> oosStatsOpt = std::nullopt,
-					     bool showExtraHurdles = false)                       // set true to also show +2·Qn/+3·Qn
+					     bool showExtraHurdles = false,
+					     std::optional<NumT> riskFreeHurdle = std::nullopt)  // <-- NEW
 	  {
 	    using mkc_timeseries::DecimalConstants;
 
@@ -69,6 +70,15 @@ namespace palvalidator
 		    ? "PASS (LB > Base and > +1·Qn)"
 		    : "FAIL (LB ≤ Base or ≤ +1·Qn)" )
 	       << "\n";
+
+	    // Driver line (only if caller supplies the RF hurdle)
+	    if (riskFreeHurdle.has_value())
+	      {
+		const bool rfDominates = (*riskFreeHurdle >= H.baseHurdle);
+		os << "         Driver:     "
+		   << (rfDominates ? "Risk-free (RF dominates)" : "Costs (cost-based dominates)")
+		   << "  [RF=" << pct(*riskFreeHurdle) << "%]\n";
+	      }
 	  }
 
 	// Pretty printer for cost-stress context and decision
