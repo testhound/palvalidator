@@ -137,8 +137,8 @@ namespace palvalidator
 					  annualizedLowerBoundGeo,
 					  "Strategy",
 					  oosSpreadStats,    // prints mean & Qn when available
-					  false              // set true if you also want +2·Qn/+3·Qn shown
-					  );
+					  false,
+					  mHurdleCalculator.calculateRiskFreeHurdle());
 
 	      const Num finalRequiredReturn = H.baseHurdle;
 

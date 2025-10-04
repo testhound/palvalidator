@@ -368,9 +368,6 @@ namespace palvalidator
       // --- Regular (whole-sample) BCa gate -------------------------------------
       calculatePerPeriodEstimates(metaReturns, outputStream);
       const auto bootstrapResults = performBootstrapAnalysis(metaReturns, annualizationFactor, Lmeta, outputStream);
-      //const auto costResults      = calculateCostHurdles(metaAnnualizedTrades, outputStream);
-
-      //const bool regularBootstrapPass = (bootstrapResults.lbGeoAnn > costResults.finalRequiredReturn);
 
       // Build calibrated + Qn-stressed cost hurdles (uses OOS spread stats if present)
       const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
@@ -379,13 +376,16 @@ namespace palvalidator
 						metaAnnualizedTrades,
 						configuredPerSide
 						);
+      outputStream << "         Estimated annualized trades: "
+		   << metaAnnualizedTrades << " /yr\n";
 
       printCostStressConcise<Num>(outputStream,
 				  H,
 				  bootstrapResults.lbGeoAnn,
 				  "Meta",
 				  oosSpreadStats,
-				  false);
+				  false,
+				  mHurdleCalculator.calculateRiskFreeHurdle());
 
       // Policy: require LB > base AND LB > +1·Qn
       const bool passBase = (bootstrapResults.lbGeoAnn > H.baseHurdle);
@@ -729,7 +729,10 @@ namespace palvalidator
 						oosSpreadStats,
 						annualizedTrades,
 						configuredPerSide);
-      
+
+      os << "         Estimated annualized trades: "
+	 << annualizedTrades << " /yr\n";
+
       os << "      [Slices] LBs (ann, %): ";
       for (std::size_t i = 0; i < lbs.size(); ++i)
 	{
@@ -742,7 +745,8 @@ namespace palvalidator
 				  r.medianLB,
 				  "Slices",
 				  oosSpreadStats,
-				  false);
+				  false,
+				  mHurdleCalculator.calculateRiskFreeHurdle());
 
       // Gate on median vs base & +1·Qn
       const bool passBase = (r.medianLB > H.baseHurdle);
