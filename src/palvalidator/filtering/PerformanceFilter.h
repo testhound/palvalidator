@@ -14,6 +14,7 @@
 #include "analysis/RobustnessAnalyzer.h"
 #include "analysis/DivergenceAnalyzer.h"
 #include "analysis/FragileEdgeAnalyzer.h"
+#include "RegimeMixStress.h"
 
 namespace palvalidator
 {
@@ -85,7 +86,8 @@ namespace palvalidator
 									 const DateRange& inSampleBacktestingDates,
 									 const DateRange& oosBacktestingDates,
 									 TimeFrame::Duration timeFrame,
-									 std::ostream& outputStream
+									 std::ostream& outputStream,
+									 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt
 									 );
 
       /**
@@ -213,6 +215,22 @@ namespace palvalidator
 					const Num& finalRequiredReturn,
 					std::ostream& os,
 					const std::vector<Num>& longRunBaselineRoc) const;
+
+      // Adapt mixes and labels to the set of regimes actually present in tradeLabels.
+      // - Compresses labels from {0,1,2} → {0..S'-1} for regimes observed.
+      // - Drops missing-regime weights from each mix and renormalizes.
+      // - If fewer than 2 regimes are present, logs and returns false (uninformative).
+      //
+      // Outputs:
+      //   labelsOut : remapped labels (size == tradeLabels.size())
+      //   mixesOut  : mixes with adapted weight vectors (size == mixesIn.size())
+
+      bool adaptMixesToPresentRegimes(const std::vector<int> &tradeLabels,
+				      const std::vector<palvalidator::analysis::RegimeMix> &mixesIn,
+				      std::vector<int> &labelsOut,
+				      std::vector<palvalidator::analysis::RegimeMix> &mixesOut,
+				      std::ostream &os) const;
+
     private:
       TradingHurdleCalculator mHurdleCalculator;     ///< Calculator for trading hurdles
       Num mConfidenceLevel;                          ///< Confidence level for BCa bootstrap

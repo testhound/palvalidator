@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <iostream>
+#include <optional>
 #include "number.h"
 #include "Security.h"
 #include "DateRange.h"
@@ -63,8 +64,8 @@ namespace palvalidator
 			       const DateRange& backtestingDates,
 			       TimeFrame::Duration timeFrame,
 			       std::ostream& outputStream,
-			       ValidationMethod validationMethod = ValidationMethod::Unadjusted
-			       );
+			       ValidationMethod validationMethod = ValidationMethod::Unadjusted,
+			       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt);
 
       /**
        * @brief Check if the last analyzed meta-strategy passed performance criteria
@@ -109,8 +110,8 @@ namespace palvalidator
 				      const DateRange& backtestingDates,
 				      TimeFrame::Duration timeFrame,
 				      std::ostream& outputStream,
-				      ValidationMethod validationMethod
-				      );
+				      ValidationMethod validationMethod,
+				      std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt);
 
       /**
        * @brief Perform statistical analysis on meta-strategy returns
@@ -183,6 +184,27 @@ namespace palvalidator
           std::string mErrorMessage;
       };
 
+      struct MultiSplitResult
+      {
+        bool                 applied;     // true if slices were created (K valid)
+        bool                 pass;        // true if median slice LB > hurdle
+        Num                  medianLB;    // annualized
+        Num                  minLB;       // annualized
+        std::vector<Num>     sliceLBs;    // annualized LBs per slice, size == K when applied
+      };
+
+      // Multi-split OOS gate: bootstrap per-slice LBs and compare median against hurdle.
+      // Uses bootstrapReturnSlices(...) (already a member) and your existing hurdle calculator.
+      MultiSplitResult runMultiSplitGate(const std::vector<Num>              &metaReturns,
+					 std::size_t                          K,
+					 std::size_t                          Lmeta,
+					 double                               annualizationFactor,
+					 const mkc_timeseries::Security<Num> *baseSecurity,
+					 mkc_timeseries::TimeFrame::Duration  timeFrame,
+					 const mkc_timeseries::BackTester<Num>* bt,
+					 std::ostream                        &os,
+					 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const;
+      
       // Pyramiding analysis results class
       class PyramidResults {
       public:
@@ -260,14 +282,33 @@ namespace palvalidator
 
       // Pyramiding-specific helper methods
       std::vector<PyramidConfiguration> createPyramidConfigurations() const;
-      
+
+      // Choose an initial number of slices K for multi-split OOS gating.
+      // Policy:
+      //  - minLen = max(20, Lmeta)
+      //  - Kmax   = floor(n / minLen)
+      //  - Ktarget = 4 if n >= 160 else 3
+      //  - K = clamp(Ktarget, 2, min(4, Kmax))
+      //
+      // Note: runMultiSplitGate(...) will further reduce K if needed (or skip when infeasible).
+      std::size_t chooseInitialSliceCount(std::size_t n, std::size_t Lmeta) const;
+
+      std::vector<Num>
+      bootstrapReturnSlices(const std::vector<Num>& returns,
+			  std::size_t K,
+			  std::size_t blockLength,
+			  unsigned int numResamples,
+			  double confidenceLevel,
+			    double annualizationFactor) const;
+    
       PyramidResults analyzeSinglePyramidLevel(
           const PyramidConfiguration& config,
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
           const DateRange& backtestingDates,
           TimeFrame::Duration timeFrame,
-          std::ostream& outputStream) const;
+          std::ostream& outputStream,
+	  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt) const;
       
       void writeComprehensivePerformanceReport(
           const std::vector<PyramidResults>& allResults,

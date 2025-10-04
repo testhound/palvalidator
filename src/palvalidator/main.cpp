@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <streambuf>
+#include <optional>
 #include "ValidatorConfiguration.h"
 #include "SecurityAttributesFactory.h"
 #include "PALMastersMonteCarloValidation.h"
@@ -32,6 +33,7 @@
 #include "number.h"
 #include "BidAskSpread.h"
 #include "StatUtils.h"
+#include "TimeSeriesIndicators.h"
 #include <cstdlib>
 
 // New policy architecture includes
@@ -151,20 +153,21 @@ const RiskParameters& getRiskParameters()
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
-    const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-    std::shared_ptr<Security<Num>> baseSecurity,
-    const DateRange& inSampleBacktestingDates,
-    const DateRange& oosBacktestingDates,
-    TimeFrame::Duration theTimeFrame,
-    std::ostream& os,
-    unsigned int numResamples)
+				       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+				       std::shared_ptr<Security<Num>> baseSecurity,
+				       const DateRange& inSampleBacktestingDates,
+				       const DateRange& oosBacktestingDates,
+				       TimeFrame::Duration theTimeFrame,
+				       std::ostream& os,
+				       unsigned int numResamples,
+				       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
 {
     const RiskParameters& riskParams = getRiskParameters();
     const Num confidenceLevel = Num("0.95");
     
     PerformanceFilter filter(riskParams, confidenceLevel, numResamples);
     return filter.filterByPerformance(survivingStrategies, baseSecurity, inSampleBacktestingDates,
-				      oosBacktestingDates, theTimeFrame, os);
+				      oosBacktestingDates, theTimeFrame, os, oosSpreadStats);
 }
 
 // Analyze meta-strategy performance using unified PalMetaStrategy approach
@@ -176,7 +179,8 @@ void filterMetaStrategy(
     TimeFrame::Duration theTimeFrame,
     std::ostream& os,
     unsigned int numResamples,
-    ValidationMethod validationMethod = ValidationMethod::Unadjusted)
+    ValidationMethod validationMethod = ValidationMethod::Unadjusted,
+    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
 {
     const RiskParameters& riskParams = getRiskParameters();
     const Num confidenceLevel = Num("0.95");
@@ -186,7 +190,10 @@ void filterMetaStrategy(
     os << std::string(80, '=') << std::endl;
     
     MetaStrategyAnalyzer analyzer(riskParams, confidenceLevel, numResamples);
-    analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity, backtestingDates, theTimeFrame, os, validationMethod);
+    analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity,
+				 backtestingDates, theTimeFrame,
+				 os, validationMethod,
+				 oosSpreadStats);
     
     os << std::string(80, '=') << std::endl;
 }
@@ -270,31 +277,26 @@ std::tuple<Num, Num> computeBidAskSpreadAnalysis(std::shared_ptr<ValidatorConfig
         
         // Calculate basic statistics
         auto actualMean = mkc_timeseries::StatUtils<Num>::computeMean(spreads);
-        auto stdDev = mkc_timeseries::StatUtils<Num>::computeStdDev(spreads, actualMean);
+	mkc_timeseries::RobustQn<Num> qnCalc;
+	const Num spreadQn = qnCalc.getRobustQn(spreads);
         
         logStream << "Raw spread statistics:" << std::endl;
         logStream << "  Mean: " << actualMean << std::endl;
-        logStream << "  Standard Deviation: " << stdDev << std::endl;
+        logStream << "  Robust Qn: " << spreadQn << std::endl;
         
-        // Apply bootstrap analysis to get robust mean estimate
-        auto bootstrappedMean = mkc_timeseries::StatUtils<Num>::getBootStrappedStatistic(
-            spreads, mkc_timeseries::StatUtils<Num>::computeMean, numBootstrapSamples);
-        
-        logStream << "Bootstrap analysis (" << numBootstrapSamples << " samples):" << std::endl;
-        logStream << "  Bootstrapped Mean: " << bootstrappedMean << std::endl;
         
         // Convert to percentage terms for easier interpretation (multiply by 100)
-        auto meanPercent = bootstrappedMean * DecimalConstants<Num>::DecimalOneHundred;
-        auto stdDevPercent = stdDev * DecimalConstants<Num>::DecimalOneHundred;
+        auto meanPercent = actualMean * DecimalConstants<Num>::DecimalOneHundred;
+        auto spreadQnPercent = spreadQn * DecimalConstants<Num>::DecimalOneHundred;
         
         logStream << "Results in percentage terms:" << std::endl;
-        logStream << "  Bootstrapped Mean: " << meanPercent << "%" << std::endl;
-        logStream << "  Standard Deviation: " << stdDevPercent << "%" << std::endl;
+        logStream << "  Mean: " << meanPercent << "%" << std::endl;
+        logStream << "  Robust Qn: " << spreadQnPercent << "%" << std::endl;
         logStream << "  (Current slippage estimate assumption: 0.10%)" << std::endl;
         
         logStream << "=== End Bid/Ask Spread Analysis ===" << std::endl;
         
-        return std::make_tuple(bootstrappedMean, stdDev);
+        return std::make_tuple(actualMean, spreadQn);
         
     } catch (const std::exception& e) {
         logStream << "Error in bid/ask spread analysis: " << e.what() << std::endl;
@@ -321,7 +323,11 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     bootlog << "\nApplying performance-based filtering to Monte Carlo surviving strategies..." << std::endl;
 
     // Perform bid/ask spread analysis on out-of-sample data
-    [[maybe_unused]] auto [spreadMean, spreadStdDev] = computeBidAskSpreadAnalysis<Num>(config, numBootstrapSamples, bootlog);
+    [[maybe_unused]] auto [spreadMean, spreadQn] = computeBidAskSpreadAnalysis<Num>(config, numBootstrapSamples, bootlog);
+
+    // Bundle as optional stats to pass down the pipeline
+    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats;
+    oosSpreadStats.emplace(palvalidator::filtering::OOSSpreadStats{ spreadMean, spreadQn });
     
     // Apply performance-based filtering to Monte Carlo surviving strategies
     auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
@@ -332,7 +338,8 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
         config->getOosDateRange(),
         timeFrame,
         bootlog,
-        numBootstrapSamples
+        numBootstrapSamples,
+	oosSpreadStats
     );
     
     // Identify strategies that were filtered out due to performance criteria
@@ -347,12 +354,13 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     if (!filteredStrategies.empty())
     {
         filterMetaStrategy<Num>(filteredStrategies,
-            config->getSecurity(),
-            config->getOosDateRange(),
-            timeFrame,
-            bootlog,
-            numBootstrapSamples,
-            validationMethod);
+				config->getSecurity(),
+				config->getOosDateRange(),
+				timeFrame,
+				bootlog,
+				numBootstrapSamples,
+				validationMethod,
+				oosSpreadStats);
     }
     
     bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "

@@ -14,6 +14,16 @@ namespace palvalidator
     using RobustnessChecksConfig = palvalidator::analysis::RobustnessChecksConfig<Num>;
     using FragileEdgePolicy = palvalidator::analysis::FragileEdgePolicy;
 
+    template <typename NumT>
+    struct OOSSpreadStatsT
+    {
+      NumT mean;  // proportional, e.g. 0.008 = 0.8%
+      NumT qn;    // robust Qn scale in same units
+    };
+
+    // Project-wide alias for your Num
+    using OOSSpreadStats = OOSSpreadStatsT<Num>;
+
     /**
      * @brief Summary statistics for performance filtering results
      */
