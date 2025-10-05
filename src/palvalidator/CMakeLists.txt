@@ -44,6 +44,7 @@ target_link_libraries(PalValidator PRIVATE
 
 file(GLOB TEST_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/filtering/test/*.cpp
 )
 
 add_executable(${LIB_NAME}_unit_tests ${TEST_LIST})
