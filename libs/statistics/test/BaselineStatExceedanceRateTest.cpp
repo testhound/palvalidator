@@ -223,7 +223,17 @@ SECTION("Multiple strategies with different baselines") {
         // Create strategies with different baseline stats
         auto strategy1 = getRandomPalStrategy(); // Weaker
         auto strategy2 = getRandomPalStrategy(); // Stronger
-        
+
+	// Ensure distinct hashes to avoid counter conflation
+	int tries = 0;
+	while (strategy2->getPatternHash() == strategy1->getPatternHash() && tries < 16) {
+	  strategy2 = getRandomPalStrategy();
+	  ++tries;
+	}
+
+	// Optional: make the failure explicit if uniqueness couldn’t be achieved
+	REQUIRE(strategy2->getPatternHash() != strategy1->getPatternHash());
+
         StrategyContext<DecimalType> ctx1;
         ctx1.strategy = strategy1;
         ctx1.baselineStat = DecimalType("0.3"); // Below DummyStatPolicy's 0.5
