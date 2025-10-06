@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
             fileOps.writeSeparateTargetStopFiles(paths.getPalSubDirs(), config.getTickerSymbol(), combinedStats);
             fileOps.writeDataFiles(paths.getPalSubDirs(), splitData, config);
             fileOps.writeValidationFiles(paths, splitData, config, *timeSeries);
-            fileOps.writeSeparateDetailsFile(paths.getValDir(), config, combinedStats, cleanStart);
+            fileOps.writeSeparateDetailsFile(paths.getValDir(), config, combinedStats, cleanStart, splitData);
             
             // 11. Display final results
             std::cout << "In-sample% = " << config.getInsamplePercent() << "%\n";
