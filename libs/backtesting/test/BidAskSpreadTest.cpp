@@ -225,3 +225,120 @@ TEST_CASE("CorwinSchultzSpreadCalculator operations", "[BidAskSpread]")
         }
     }
 }
+
+using EdgeCalc = mkc_timeseries::EdgeSpreadCalculator<DecimalType>;
+
+TEST_CASE("EdgeSpreadCalculator::calculateProportionalSpreadsVector", "[BidAskSpread][EDGE]")
+{
+    // Setup a compact series used across multiple sections
+    OHLCSeries series(TimeFrame::DAILY, TradingVolume::SHARES);
+
+    // Day t0, t1, t2, t3
+    auto entry1 = createEquityEntry("20230102", "101.0", "104.0", "100.0", "101.0", 10000); // t0
+    auto entry2 = createEquityEntry("20230103", "101.0", "105.0", "101.0", "104.0", 12000); // t1
+    auto entry3 = createEquityEntry("20230104", "106.0", "108.0", "106.0", "107.0", 11000); // t2
+    // no-trade day for t3 (H==L==C_{t2})
+    auto entry4 = createEquityEntry("20230105", "107.0", "107.0", "107.0", "107.0", 15000); // t3
+
+    series.addEntry(*entry1);
+    series.addEntry(*entry2);
+    series.addEntry(*entry3);
+    series.addEntry(*entry4);
+
+    SECTION("Default 30-day window: emits one value per day once at least one valid pair exists")
+    {
+        // With default window_len=30, there are 3 possible (t-1,t) days.
+        // The last pair (t2,t3) is invalid (H==L==C_{t-1}), but earlier valid pairs
+        // remain in the window, so we still emit a value for day t3.
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(series);
+        REQUIRE(spreads.size() == 3);
+        for (const auto& s : spreads) {
+            REQUIRE(s >= DecimalType(0.0)); // S = sqrt(S^2) is non-negative by construction
+        }
+    }
+
+    SECTION("Window size = 1: skips days where the current pair is invalid")
+    {
+        // With window_len=1, the third day (t3) has an invalid pair (no-trade),
+        // and no earlier pairs are retained. Expect only the two earlier outputs.
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(series, /*window_len=*/1);
+        REQUIRE(spreads.size() == 2);
+        for (const auto& s : spreads) {
+            REQUIRE(s >= DecimalType(0.0));
+        }
+    }
+
+    SECTION("Series with less than 2 entries returns empty vector")
+    {
+        OHLCSeries shortSeries(TimeFrame::DAILY, TradingVolume::SHARES);
+        shortSeries.addEntry(*entry1);
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(shortSeries);
+        REQUIRE(spreads.empty());
+    }
+
+    SECTION("Constant-price two-day series (no-trade) yields empty vector")
+    {
+        OHLCSeries flat(TimeFrame::DAILY, TradingVolume::SHARES);
+        flat.addEntry(*createEquityEntry("20240102", "100", "100", "100", "100", 1000));
+        flat.addEntry(*createEquityEntry("20240103", "100", "100", "100", "100", 1000));
+        // Pair (t-1,t) has H_t == L_t == C_{t-1} → filtered out; window stays empty.
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(flat); 
+        REQUIRE(spreads.empty());
+    }
+
+    SECTION("Minimal viable two-day series produces one non-negative spread")
+    {
+        OHLCSeries two(TimeFrame::DAILY, TradingVolume::SHARES);
+        two.addEntry(*createEquityEntry("20240102", "100", "103", "99", "101", 1000));
+        two.addEntry(*createEquityEntry("20240103", "101", "104", "100", "103", 1000));
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(two);
+        REQUIRE(spreads.size() == 1);
+        REQUIRE(spreads[0] >= DecimalType(0.0));
+    }
+
+    SECTION("Larger, realistic month-long series (default window)")
+    {
+        OHLCSeries monthSeries(TimeFrame::DAILY, TradingVolume::SHARES);
+        monthSeries.addEntry(*createEquityEntry("20230301", "150.1", "152.3", "149.8", "152.1", 1.2e6));
+        monthSeries.addEntry(*createEquityEntry("20230302", "152.0", "153.1", "151.5", "152.9", 1.1e6));
+        monthSeries.addEntry(*createEquityEntry("20230303", "152.8", "155.0", "152.5", "154.8", 1.5e6));
+        monthSeries.addEntry(*createEquityEntry("20230306", "154.9", "155.2", "153.0", "153.5", 1.3e6));
+        monthSeries.addEntry(*createEquityEntry("20230307", "153.6", "153.8", "151.9", "152.2", 1.6e6));
+        monthSeries.addEntry(*createEquityEntry("20230308", "152.1", "153.4", "151.1", "153.0", 1.4e6));
+        monthSeries.addEntry(*createEquityEntry("20230309", "153.2", "154.8", "152.8", "154.5", 1.2e6));
+        monthSeries.addEntry(*createEquityEntry("20230310", "154.6", "156.2", "154.3", "156.0", 1.7e6));
+        monthSeries.addEntry(*createEquityEntry("20230313", "155.8", "157.0", "155.5", "156.5", 1.5e6));
+        monthSeries.addEntry(*createEquityEntry("20230314", "156.5", "156.6", "155.0", "155.2", 1.8e6));
+        monthSeries.addEntry(*createEquityEntry("20230315", "155.1", "155.5", "152.0", "152.5", 2.2e6));
+        monthSeries.addEntry(*createEquityEntry("20230316", "152.8", "155.0", "152.6", "154.9", 1.9e6));
+        monthSeries.addEntry(*createEquityEntry("20230317", "155.0", "158.0", "154.8", "157.8", 2.5e6));
+        monthSeries.addEntry(*createEquityEntry("20230320", "157.5", "157.6", "156.0", "156.2", 1.6e6));
+        monthSeries.addEntry(*createEquityEntry("20230321", "156.3", "157.2", "155.8", "157.0", 1.4e6));
+        monthSeries.addEntry(*createEquityEntry("20230322", "157.1", "158.5", "156.9", "158.2", 1.3e6));
+        monthSeries.addEntry(*createEquityEntry("20230323", "158.3", "160.1", "158.1", "160.0", 2.0e6));
+        monthSeries.addEntry(*createEquityEntry("20230324", "160.0", "160.2", "158.5", "158.8", 1.8e6));
+        monthSeries.addEntry(*createEquityEntry("20230327", "158.9", "159.5", "158.0", "159.2", 1.5e6));
+        monthSeries.addEntry(*createEquityEntry("20230328", "159.1", "159.3", "157.5", "157.9", 1.7e6));
+        monthSeries.addEntry(*createEquityEntry("20230329", "158.0", "161.0", "157.8", "160.8", 2.1e6));
+        monthSeries.addEntry(*createEquityEntry("20230330", "160.9", "162.5", "160.5", "162.2", 1.9e6));
+
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(monthSeries); // default window 30
+        REQUIRE(spreads.size() == 21); // 22 entries → up to 21 outputs when pairs are valid
+
+        bool hasPositive = false;
+        for (const auto& s : spreads) {
+            REQUIRE(s >= DecimalType(0.0));
+            if (s > DecimalType(0.0)) hasPositive = true;
+        }
+        REQUIRE(hasPositive); // Expect at least some positive spreads
+    }
+
+    SECTION("Window-size sensitivity: smaller window (5) still emits non-negative values")
+    {
+        auto spreads5 = EdgeCalc::calculateProportionalSpreadsVector(series, /*window_len=*/5);
+        REQUIRE(spreads5.size() >= 2); // at least for first two valid pairs
+        for (const auto& s : spreads5) {
+            REQUIRE(s >= DecimalType(0.0));
+        }
+    }
+}
