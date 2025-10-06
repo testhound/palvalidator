@@ -254,7 +254,8 @@ void FileOperations::writeSeparateTargetStopFiles(const std::vector<fs::path>& p
 void FileOperations::writeSeparateDetailsFile(const fs::path& outputPath,
                                              const SetupConfiguration& config,
                                              const CombinedStatisticsResults& stats,
-                                             const CleanStartResult& cleanStart) {
+                                             const CleanStartResult& cleanStart,
+                                             const SplitTimeSeriesData& splitData) {
     
     fs::path detailsFilePath = outputPath / (config.getTickerSymbol() + "_Palsetup_Details.txt");
     std::ofstream detailsFile(detailsFilePath);
@@ -267,8 +268,28 @@ void FileOperations::writeSeparateDetailsFile(const fs::path& outputPath,
     detailsFile << "Out-of-sample% = " << config.getOutOfSamplePercent() << "%\n";
     detailsFile << "Reserved% = " << config.getReservedPercent() << "%\n";
     
+    // Date ranges
+    detailsFile << "\n=== Date Ranges ===" << std::endl;
+    bool isIntraday = (config.getTimeFrameStr() == "Intraday");
+    detailsFile << "In-sample: " << formatDateForConfig(splitData.getInSample().getFirstDateTime(), isIntraday)
+                << " to " << formatDateForConfig(splitData.getInSample().getLastDateTime(), isIntraday) << std::endl;
+    detailsFile << "Out-of-sample: " << formatDateForConfig(splitData.getOutOfSample().getFirstDateTime(), isIntraday)
+                << " to " << formatDateForConfig(splitData.getOutOfSample().getLastDateTime(), isIntraday) << std::endl;
+    if (splitData.getReserved().getNumEntries() > 0) {
+        detailsFile << "Reserved: " << formatDateForConfig(splitData.getReserved().getFirstDateTime(), isIntraday)
+                    << " to " << formatDateForConfig(splitData.getReserved().getLastDateTime(), isIntraday) << std::endl;
+    }
+    
     // Long position statistics
     detailsFile << "\n=== Long Position Statistics ===" << std::endl;
+    
+    // Calculate and display long profitability
+    // Profitability = 100 × PF / (PF + R), where PF = 2.0 and R = ProfitTarget/Stop
+    Num longPF = DecimalConstants<Num>::DecimalTwo;
+    Num longR = stats.getLongResults().getProfitTargetValue() / stats.getLongResults().getStopValue();
+    Num longProfitability = DecimalConstants<Num>::DecimalOneHundred * longPF / (longPF + longR);
+    detailsFile << "Long Profitability = " << longProfitability << "%" << std::endl;
+    
     detailsFile << "Long Profit Target = " << stats.getLongResults().getProfitTargetValue() << std::endl;
     detailsFile << "Long Stop = " << stats.getLongResults().getStopValue() << std::endl;
     detailsFile << "Long Pos Median = " << stats.getLongResults().getPosMedian() << std::endl;
@@ -281,6 +302,14 @@ void FileOperations::writeSeparateDetailsFile(const fs::path& outputPath,
     
     // Short position statistics
     detailsFile << "\n=== Short Position Statistics ===" << std::endl;
+    
+    // Calculate and display short profitability
+    // Profitability = 100 × PF / (PF + R), where PF = 2.0 and R = ProfitTarget/Stop
+    Num shortPF = DecimalConstants<Num>::DecimalTwo;
+    Num shortR = stats.getShortResults().getProfitTargetValue() / stats.getShortResults().getStopValue();
+    Num shortProfitability = DecimalConstants<Num>::DecimalOneHundred * shortPF / (shortPF + shortR);
+    detailsFile << "Short Profitability = " << shortProfitability << "%" << std::endl;
+    
     detailsFile << "Short Profit Target = " << stats.getShortResults().getProfitTargetValue() << std::endl;
     detailsFile << "Short Stop = " << stats.getShortResults().getStopValue() << std::endl;
     detailsFile << "Short Neg Median = " << stats.getShortResults().getNegMedian() << std::endl;

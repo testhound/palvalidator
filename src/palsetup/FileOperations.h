@@ -67,7 +67,8 @@ public:
     void writeSeparateDetailsFile(const fs::path& outputPath,
                                  const SetupConfiguration& config,
                                  const CombinedStatisticsResults& stats,
-                                 const CleanStartResult& cleanStart);
+                                 const CleanStartResult& cleanStart,
+                                 const SplitTimeSeriesData& splitData);
 
 private:
     /**
