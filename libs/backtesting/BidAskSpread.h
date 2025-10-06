@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <numeric>
 #include <vector>
+#include <deque>
 #include "TimeSeries.h"
 #include "decimal_math.h"
 #include "DecimalConstants.h"
@@ -316,6 +317,245 @@ namespace mkc_timeseries
     const Decimal CorwinSchultzSpreadCalculator<Decimal, LookupPolicy>::ALPHA_DENOMINATOR =
         DecimalConstants<Decimal>::DecimalThree - DecimalConstants<Decimal>::DecimalTwo * DecimalSqrtConstants<Decimal>::getSqrt(2);
 
+  /**
+   * @class EdgeSpreadCalculator
+   * @brief Implements the Ardia, Guidotti, and Kroencke (2022) EDGE bid-ask spread estimator.
+   *
+   * @details
+   * This class provides a static method to calculate a time series of the estimated
+   * bid-ask spread using all four Open, High, Low, and Close (OHLC) prices. The
+   * implementation is based on the research paper:
+   *
+   * **"Efficient Estimation of Bid-Ask Spreads from Open, High, Low, and Close Prices"**
+   * by David Ardia, Emanuele Guidotti, and Tim A. Kroencke.
+   *
+   * **Core Idea of the Algorithm:**
+   *
+   * The EDGE (Efficient Discrete Generalized Estimator) model is a sophisticated and
+   * statistically efficient estimator based on the Generalized Method of Moments (GMM).
+   *
+   * It improves upon prior methods like Corwin-Schultz by:
+   * 1.  Using all available OHLC price information, not just High and Low.
+   * 2.  Constructing multiple "moment estimators" from the data.
+   * 3.  Optimally weighting these estimators to produce a final estimate with minimum variance.
+   *
+   * This specific implementation computes the EDGE spread over a **rolling window**,
+   * providing a time-varying estimate of liquidity rather than a single static value.
+   * The spread for day `t` is estimated using data from the `window_len` preceding trading days.
+   *
+   * @tparam Decimal The numeric type for price data (e.g., double, float).
+   * @tparam LookupPolicy The lookup policy used by the OHLCTimeSeries, required for template matching.
+   */
+  template <class Decimal, class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>>
+  class EdgeSpreadCalculator
+  {
+  public:
+    /**
+     * @brief Calculates a vector of rolling proportional bid-ask spreads using the EDGE method.
+     *
+     * @details
+     * For each trading day `t` in the series (starting from the second day), this method
+     * estimates the proportional spread `S` by looking at a window of the preceding `window_len`
+     * valid trading day pairs. The result is a time series of spread estimates.
+     *
+     * @param series The OHLC time series to analyze.
+     * @param window_len The number of trading days in the rolling window used for estimation.
+     * @param eps A small tolerance value for floating-point comparisons (e.g., checking if Open == High).
+     * @return A std::vector<Decimal> containing the proportional spread for each period. The vector
+     * will be shorter than the input series, as the first estimate is produced at t=2.
+     */
+    static std::vector<Decimal>
+    calculateProportionalSpreadsVector(const OHLCTimeSeries<Decimal, LookupPolicy>& series,
+                                       unsigned window_len = 30,
+                                       const Decimal& eps = DecimalConstants<Decimal>::DecimalZero)
+    {
+        std::vector<Decimal> out;
+        const std::size_t n = series.getNumEntries();
+        if (n < 2 || window_len == 0) return out;
+
+        out.reserve(n - 1);
+
+        
+        // --- ALGORITHM SETUP ---
+        // Initialize iterators to traverse adjacent (t-1, t) pairs of days.
+        auto it = series.beginSortedAccess();
+        auto prev_it = it; ++it;
+
+        // The deque `win` will store the records for all valid pairs within the current rolling window.
+        // It allows for efficient addition of new pairs (push_back) and removal of old pairs (pop_front).
+        struct PairRec {
+            Decimal X1, X2;
+            bool oeqh, oeql, ceqh, ceql;  // day-t extremes
+            std::size_t t_idx;            // 1-based index of day t in the full series
+        };
+        std::deque<PairRec> win;
+
+        // Running sums are maintained for O(1) updates as the window slides. This is far more
+        // efficient than recalculating sums over the whole window at each step.
+        Decimal sumX1 = DecimalConstants<Decimal>::DecimalZero;
+        Decimal sumX2 = DecimalConstants<Decimal>::DecimalZero;
+        Decimal sumSqX1 = DecimalConstants<Decimal>::DecimalZero;
+        Decimal sumSqX2 = DecimalConstants<Decimal>::DecimalZero;
+        std::size_t cnt_oh = 0, cnt_ol = 0, cnt_ch = 0, cnt_cl = 0;
+
+        const auto zero = DecimalConstants<Decimal>::DecimalZero;
+        const auto one  = DecimalConstants<Decimal>::DecimalOne;
+        const auto two  = DecimalConstants<Decimal>::DecimalTwo;
+        const auto four = two + two;
+        const Decimal half = one / two;
+
+        auto leqAbs = [&](const Decimal& d){ return d.abs() <= eps; };
+
+        // 1-based day index for the "t" side of each pair
+        std::size_t t_index = 1;
+
+        for (; it != series.endSortedAccess(); ++it, ++prev_it, ++t_index) {
+            const auto& e_tm1 = *prev_it;
+            const auto& e_t   = *it;
+
+            const Decimal O_tm1 = e_tm1.getOpenValue();
+            const Decimal H_tm1 = e_tm1.getHighValue();
+            const Decimal L_tm1 = e_tm1.getLowValue();
+            const Decimal C_tm1 = e_tm1.getCloseValue();
+
+            const Decimal O_t = e_t.getOpenValue();
+            const Decimal H_t = e_t.getHighValue();
+            const Decimal L_t = e_t.getLowValue();
+            const Decimal C_t = e_t.getCloseValue();
+
+            // --- Step 1: Filter out invalid pairs ---
+            // The model requires log-prices, so all prices must be positive.
+            bool valid_pair = (O_tm1 > zero && H_tm1 > zero && L_tm1 > zero && C_tm1 > zero &&
+                               O_t   > zero && H_t   > zero && L_t   > zero && C_t   > zero);
+
+            // "No-trade" heuristic: H_t == L_t == C_{t-1} → skip pair if true.
+            if (valid_pair && leqAbs(H_t - L_t) && leqAbs(H_t - C_tm1)) {
+                valid_pair = false;
+            }
+
+	    // --- Step 2: Calculate moment estimators for the current valid pair ---
+            if (valid_pair) {
+                const Decimal o_tm1 = DEC_NAMESPACE::log(O_tm1);
+                const Decimal h_tm1 = DEC_NAMESPACE::log(H_tm1);
+                const Decimal l_tm1 = DEC_NAMESPACE::log(L_tm1);
+                const Decimal c_tm1 = DEC_NAMESPACE::log(C_tm1);
+
+                const Decimal o_t = DEC_NAMESPACE::log(O_t);
+                const Decimal h_t = DEC_NAMESPACE::log(H_t);
+                const Decimal l_t = DEC_NAMESPACE::log(L_t);
+                const Decimal c_t = DEC_NAMESPACE::log(C_t);
+
+		// eta (η) is the log of the geometric mean of High and Low, i.e., log(sqrt(H*L)),
+                // which simplifies to (log(H) + log(L)) / 2. It represents the log-midprice.
+                const Decimal eta_tm1 = (h_tm1 + l_tm1) * half;
+                const Decimal eta_t   = (h_t   + l_t)   * half;
+
+                // These are the core moment estimators from the EDGE paper (small-mean approximation).
+                // They are constructed such that their expected value is a function of the squared spread S^2.
+                // E[X1] ≈ -S^2/2, E[X2] ≈ -S^2/2
+                const Decimal ot_minus_ctm1 = (o_t - c_tm1);
+                const Decimal X1 = (eta_t - o_t) * ot_minus_ctm1
+                                 +  ot_minus_ctm1 * (c_tm1 - eta_tm1);
+
+                // X2_t = (η_t - o_t)(o_t - η_{t-1}) + (η_t - c_{t-1})(c_{t-1} - η_{t-1})
+                const Decimal X2 = (eta_t - o_t)   * (o_t   - eta_tm1)
+                                 + (eta_t - c_tm1) * (c_tm1 - eta_tm1);
+
+		// Determine if the open or close price was the extreme price of the day.
+                // This is used to calculate the `nu` correction factor later.
+                const bool oeqh = leqAbs(O_t - H_t);
+                const bool oeql = leqAbs(O_t - L_t);
+                const bool ceqh = leqAbs(C_t - H_t);
+                const bool ceql = leqAbs(C_t - L_t);
+
+                // --- Step 3: Update the rolling window with the new pair ---
+                // Add the new pair's data to the back of the deque and update running sums.
+                win.push_back({X1, X2, oeqh, oeql, ceqh, ceql, t_index});
+                sumX1 += X1;      sumSqX1 += X1 * X1;
+                sumX2 += X2;      sumSqX2 += X2 * X2;
+                if (oeqh)
+		  ++cnt_oh;
+
+		if (oeql)
+		  ++cnt_ol;
+
+                if (ceqh)
+		  ++cnt_ch;
+
+		if (ceql)
+		  ++cnt_cl;
+            }
+
+            // --- Step 4: Eject old pairs that have fallen out of the window ---
+            // Determine the leftmost index that should be included in the window for day `t`.
+            const std::size_t left = (t_index >= window_len) ? (t_index - window_len + 1) : 1;
+            while (!win.empty() && win.front().t_idx < left) {
+                const auto& r = win.front();
+                sumX1 -= r.X1;   sumSqX1 -= r.X1 * r.X1;
+                sumX2 -= r.X2;   sumSqX2 -= r.X2 * r.X2;
+		
+                if (r.oeqh)
+		  --cnt_oh;
+		if (r.oeql)
+		  --cnt_ol;
+                if (r.ceqh)
+		  --cnt_ch;
+		if (r.ceql)
+		  --cnt_cl;
+
+                win.pop_front();
+            }
+
+            // --- Step 5: Compute the EDGE spread for day `t` using the current window's data ---
+            const std::size_t Npairs = win.size();
+            if (Npairs == 0) {
+                continue; // nothing to emit for this t
+            }
+
+            const Decimal N = Decimal(Npairs);
+            const Decimal EX1 = sumX1 / N;
+            const Decimal EX2 = sumX2 / N;
+
+            // Sample variances (guard Npairs==1)
+            Decimal VX1 = zero, VX2 = zero;
+            if (Npairs >= 2) {
+                VX1 = (sumSqX1 - (sumX1 * sumX1) / N) / Decimal(Npairs - 1);
+                VX2 = (sumSqX2 - (sumX2 * sumX2) / N) / Decimal(Npairs - 1);
+            }
+
+            // Calculate the diagonal-optimal weights to minimize the variance of the final estimator.
+            // This is the "Efficient" part of the EDGE model.
+            const Decimal denomV = VX1 + VX2;
+            const Decimal w1 = (denomV > zero) ? (VX2 / denomV) : half;
+            const Decimal w2 = (denomV > zero) ? (VX1 / denomV) : half;
+
+            // Calculate `nu` (ν), the frequency of the open/close being an extreme price.
+            // This term corrects for the fact that trades at the open or close can influence the range.
+            const Decimal nu_oh = Decimal(cnt_oh) / N;
+            const Decimal nu_ol = Decimal(cnt_ol) / N;
+            const Decimal nu_ch = Decimal(cnt_ch) / N;
+            const Decimal nu_cl = Decimal(cnt_cl) / N;
+
+            const Decimal nu_open  = (nu_oh + nu_ol) * half;
+            const Decimal nu_close = (nu_ch + nu_cl) * half;
+            const Decimal nu_avg   = (nu_open + nu_close) * half;
+
+            // The final EDGE estimator for the squared spread (S^2).
+            // Formula: S^2 = max(0, -2*(w1*E[X1]+w2*E[X2]) / (1 - 4*w1*w2*nu_avg))
+            const Decimal k = four * w1 * w2;
+            const Decimal denom = one - k * nu_avg;
+            Decimal S2 = (denom > zero)
+                       ? (-DecimalConstants<Decimal>::DecimalTwo * (w1 * EX1 + w2 * EX2) / denom)
+                       : zero;
+            if (S2 < zero) S2 = zero;
+
+            out.push_back(DEC_NAMESPACE::sqrt(S2));
+        }
+
+        return out;
+    }
+  };
+  
 } // namespace mkc_timeseries
 
 #endif // __BID_ASK_SPREAD_H
