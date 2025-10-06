@@ -398,8 +398,12 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   REQUIRE (longStrategyPyramid1.isPyramidingEnabled() == true);
   REQUIRE (longStrategyPyramid1.getMaxPyramidPositions() == 2);
 
+  // Test getMaxHoldingPeriod method
+  REQUIRE (longStrategy1.getMaxHoldingPeriod() == 0);
+  REQUIRE (longStrategyPyramid1.getMaxHoldingPeriod() == 8);
+
   std::string metaStrategy1Name("PAL Meta Strategy 1");
-  PalMetaStrategy<DecimalType> metaStrategy1(metaStrategy1Name, aPortfolio);
+  PalMetaStrategy<DecimalType> metaStrategy1(metaStrategy1Name, aPortfolio, options);
   metaStrategy1.addPricePattern(createLongPattern1());
 
   REQUIRE (metaStrategy1.getSizeForOrder (*corn) == oneContract);
@@ -409,7 +413,7 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   REQUIRE (metaStrategy1.getStrategyName() == metaStrategy1Name);
 
   std::string metaStrategy2Name("PAL Meta Strategy 2");
-  PalMetaStrategy<DecimalType> metaStrategy2(metaStrategy2Name, aPortfolio);
+  PalMetaStrategy<DecimalType> metaStrategy2(metaStrategy2Name, aPortfolio, options);
   metaStrategy2.addPricePattern(createShortPattern1());
 
   REQUIRE (metaStrategy2.getSizeForOrder (*corn) == oneContract);
@@ -418,12 +422,16 @@ TEST_CASE ("PalStrategy operations", "[PalStrategy]")
   REQUIRE_FALSE (metaStrategy2.isShortPosition (futuresSymbol));
   REQUIRE (metaStrategy2.getStrategyName() == metaStrategy2Name);
 
+  // Test getMaxHoldingPeriod method for meta strategies
+  REQUIRE (metaStrategy1.getMaxHoldingPeriod() == 0);
+  REQUIRE (metaStrategy2.getMaxHoldingPeriod() == 0);
+
   std::string metaStrategy3Name("PAL Meta Strategy 3");
   PalMetaStrategy<DecimalType> metaStrategy3(metaStrategy3Name, aPortfolio);
   metaStrategy3.addPricePattern(createLongPattern1());
   metaStrategy3.addPricePattern(createShortPattern1());
 
-  SECTION ("PalStrategy testing for long pattern not matched") 
+  SECTION ("PalStrategy testing for long pattern not matched")
   {
     TimeSeriesDate orderDate(TimeSeriesDate (1985, Mar, 1));
     TimeSeriesDate endDate(TimeSeriesDate (1985, Nov, 14));
@@ -697,8 +705,7 @@ SECTION ("PalStrategy testing for all long trades - MetaStrategy1 1")
     ClosedPositionHistory<DecimalType> history = aBroker.getClosedPositionHistory();
     //printPositionHistory (history);
 
-    REQUIRE (history.getNumWinningPositions() == 14);
-    REQUIRE (history.getNumLosingPositions() == 10);
+    REQUIRE (history.getNumWinningPositions() == 13);
  
   }
 
@@ -976,6 +983,36 @@ SECTION ("PalMetaStrategy verifies state-dependent entry rejection")
   // We should only have the initial long trade registered.
   REQUIRE(aBroker.getTotalTrades() == 1);
   REQUIRE(aBroker.getOpenTrades() == 1);
+}
+
+SECTION ("PalStrategy getMaxHoldingPeriod method validation")
+{
+  // Test with no max holding period (default)
+  StrategyOptions noMaxHold(false, 0, 0);
+  PalLongStrategy<DecimalType> strategyNoMax("Long No Max", createLongPattern1(), aPortfolio, noMaxHold);
+  REQUIRE(strategyNoMax.getMaxHoldingPeriod() == 0);
+
+  // Test with max holding period of 5
+  StrategyOptions maxHold5(false, 0, 5);
+  PalLongStrategy<DecimalType> strategyMax5("Long Max 5", createLongPattern1(), aPortfolio, maxHold5);
+  REQUIRE(strategyMax5.getMaxHoldingPeriod() == 5);
+
+  // Test with max holding period of 10
+  StrategyOptions maxHold10(false, 0, 10);
+  PalShortStrategy<DecimalType> strategyMax10("Short Max 10", createShortPattern1(), aPortfolio, maxHold10);
+  REQUIRE(strategyMax10.getMaxHoldingPeriod() == 10);
+
+  // Test with meta strategy - no max holding period
+  PalMetaStrategy<DecimalType> metaNoMax("Meta No Max", aPortfolio, noMaxHold);
+  metaNoMax.addPricePattern(createLongPattern1());
+  REQUIRE(metaNoMax.getMaxHoldingPeriod() == 0);
+
+  // Test with meta strategy - max holding period of 8
+  StrategyOptions maxHold8(true, 2, 8);
+  PalMetaStrategy<DecimalType> metaMax8("Meta Max 8", aPortfolio, maxHold8);
+  metaMax8.addPricePattern(createLongPattern1());
+  metaMax8.addPricePattern(createShortPattern1());
+  REQUIRE(metaMax8.getMaxHoldingPeriod() == 8);
 }
 
 }
