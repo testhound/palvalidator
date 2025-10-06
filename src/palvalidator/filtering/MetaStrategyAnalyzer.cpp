@@ -990,17 +990,30 @@ namespace palvalidator
       performanceFile << "Level | Description              | Ann. Lower Bound | Required Return | Pass/Fail | Trades/Year" << std::endl;
       performanceFile << "------|--------------------------|------------------|-----------------|-----------|------------" << std::endl;
       
+      // Save original stream state to restore it later
+      std::ios_base::fmtflags original_flags = performanceFile.flags();
+      char original_fill = performanceFile.fill();
+      std::streamsize original_precision = performanceFile.precision();
+
+      // Set formatting for the table
+      performanceFile << std::setfill(' ') << std::fixed << std::setprecision(2);
+
       for (const auto& result : allResults)
         {
-          performanceFile << std::setw(5) << result.getPyramidLevel() << " | "
-                         << std::setw(24) << result.getDescription() << " | "
-                         << std::setw(15) << std::fixed << std::setprecision(1)
-                         << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "% | "
-                         << std::setw(14) << std::fixed << std::setprecision(1)
-                         << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred) << "% | "
-                         << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
-                         << std::setw(10) << std::fixed << std::setprecision(1) << result.getAnnualizedTrades() << std::endl;
+          performanceFile << std::right << std::setw(5) << result.getPyramidLevel() << " | "
+                         << std::left << std::setw(24) << result.getDescription() << " | "
+                         << std::right << std::setw(15)
+                         << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
+                         << std::right << std::setw(14)
+                         << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
+                         << std::right << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
+                         << std::right << std::setw(10) << result.getAnnualizedTrades().getAsDouble() << std::endl;
         }
+
+      // Restore the original stream formatting
+      performanceFile.flags(original_flags);
+      performanceFile.fill(original_fill);
+      performanceFile.precision(original_precision);
 
       // Find and report best performance
       auto bestResult = std::max_element(allResults.begin(), allResults.end(),
