@@ -60,7 +60,8 @@ namespace palvalidator::filtering::stages
       }
       catch (const std::exception& e)
       {
-        os << "Warning: BootstrapAnalysisStage failed to initialize backtester: " << e.what() << "\n";
+        R.failureReason = std::string("Failed to initialize backtester: ") + e.what();
+        os << "Warning: BootstrapAnalysisStage " << R.failureReason << "\n";
         return R;
       }
     }
@@ -68,7 +69,8 @@ namespace palvalidator::filtering::stages
     // Ensure we have enough returns - caller/BacktestingStage should have checked, but be defensive.
     if (ctx.highResReturns.size() < 2)
     {
-      os << "   [Bootstrap] Skipped (insufficient returns)\n";
+      R.failureReason = "Insufficient returns (need at least 2, have " + std::to_string(ctx.highResReturns.size()) + ")";
+      os << "   [Bootstrap] Skipped (" << R.failureReason << ")\n";
       return R;
     }
 
@@ -103,11 +105,22 @@ namespace palvalidator::filtering::stages
       R.annualizedLowerBoundGeo = annualizerGeo.getAnnualizedLowerBound();
       R.annualizedLowerBoundMean = annualizerMean.getAnnualizedLowerBound();
 
+      // Mark computation as successful
+      R.computationSucceeded = true;
+
+      // Log bootstrap results for diagnostics
+      os << "   [Bootstrap] Per-period bounds: GeoMean LB=" << R.lbGeoPeriod
+         << ", Mean LB=" << R.lbMeanPeriod << "\n";
+      os << "   [Bootstrap] Annualization factor=" << annFactor << "\n";
+      os << "   [Bootstrap] Annualized bounds: GeoMean LB=" << R.annualizedLowerBoundGeo
+         << ", Mean LB=" << R.annualizedLowerBoundMean << "\n";
+
       return R;
     }
     catch (const std::exception& e)
     {
-      os << "Warning: BootstrapAnalysisStage failed: " << e.what() << "\n";
+      R.failureReason = std::string("BCa bootstrap computation failed: ") + e.what();
+      os << "Warning: BootstrapAnalysisStage " << R.failureReason << "\n";
       return R;
     }
   }
