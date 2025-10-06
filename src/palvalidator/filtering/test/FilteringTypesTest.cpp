@@ -30,6 +30,7 @@ TEST_CASE("BootstrapAnalysisResult: validity check", "[FilteringTypes]")
   REQUIRE_FALSE(r.isValid());
 
   r.annualizedLowerBoundGeo = Num("0.01");
+  r.computationSucceeded = true;
   REQUIRE(r.isValid());
 }
 
