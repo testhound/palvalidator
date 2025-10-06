@@ -156,7 +156,9 @@ loadPermutationTestSurvivors(const std::string& filename,
         for (auto it = system->patternLongsBegin(); it != system->patternLongsEnd(); ++it) {
             // The iterator returns a pair<key, shared_ptr<PriceActionLabPattern>>
             auto pattern = it->second;
-            std::string strategyName = "LoadedLongStrategy_" + std::to_string(it->first);
+            std::string strategyName = "PalLongStrategy_" + security->getSymbol() + "_" +
+                                      std::to_string(pattern->getpatternIndex()) + "_" +
+                                      std::to_string(pattern->getIndexDate());
             
             // Use the global makePalStrategy function with security parameter
             auto strategy = makePalStrategy<Num>(strategyName, pattern, security);
@@ -167,7 +169,9 @@ loadPermutationTestSurvivors(const std::string& filename,
         for (auto it = system->patternShortsBegin(); it != system->patternShortsEnd(); ++it) {
             // The iterator returns a pair<key, shared_ptr<PriceActionLabPattern>>
             auto pattern = it->second;
-            std::string strategyName = "LoadedShortStrategy_" + std::to_string(it->first);
+            std::string strategyName = "PalShortStrategy_" + security->getSymbol() + "_" +
+                                      std::to_string(pattern->getpatternIndex()) + "_" +
+                                      std::to_string(pattern->getIndexDate());
             
             // Use the global makePalStrategy function with security parameter
             auto strategy = makePalStrategy<Num>(strategyName, pattern, security);
