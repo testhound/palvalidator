@@ -51,6 +51,7 @@ namespace mkc_timeseries
         
     public:
         // SECTION: Proportional (Percentage) Spread Calculation
+      enum class NegativePolicy { ClampToZero, Skip };
 
         /**
          * @brief Calculates the proportional (percentage) bid-ask spread for a single two-day period.
@@ -188,43 +189,59 @@ namespace mkc_timeseries
             return sum / spreads.size();
         }
 
-        /**
-         * @brief Calculates a vector of proportional bid-ask spreads for all overlapping periods.
-         *
-         * Iterates through all overlapping two-day periods and returns a vector of the
-         * resulting proportional spreads. Negative spreads are floored at zero.
-         *
-         * @param series The OHLC time series to analyze.
-         * @return A std::vector<Decimal> containing the proportional spread for each period.
-         */
-        static std::vector<Decimal> calculateProportionalSpreadsVector(const OHLCTimeSeries<Decimal, LookupPolicy>& series)
-        {
-            std::vector<Decimal> spreads;
-            if (series.getNumEntries() < 2)
-            {
-                return spreads;
-            }
-            spreads.reserve(series.getNumEntries() - 1);
+      /**
+       * @brief Calculates a vector of proportional bid-ask spreads for all overlapping periods.
+       *
+       * Iterates through all adjacent (t-1, t) pairs and returns a vector of proportional spreads.
+       * By default, negative per-pair estimates are clamped to zero (legacy behavior). If you want
+       * robust summaries like median/Qn that are not driven to zero by a pile of clamped values,
+       * pass NegativePolicy::Skip to exclude negative pairs from the output vector.
+       *
+       * @param series    The OHLC time series to analyze.
+       * @param negPolicy How to treat negative per-pair estimates (default: ClampToZero).
+       * @return vector<Decimal> of spreads (length <= series.getNumEntries()-1).
+       */
+      static std::vector<Decimal>
+      calculateProportionalSpreadsVector(
+					 const OHLCTimeSeries<Decimal, LookupPolicy>& series,
+					 NegativePolicy negPolicy = NegativePolicy::ClampToZero)
+      {
+        std::vector<Decimal> spreads;
 
-            auto it = series.beginSortedAccess();
-            auto prev_it = it;
-            it++;
+        if (series.getNumEntries() < 2) {
+	  return spreads;
+        }
+        spreads.reserve(series.getNumEntries() - 1);
 
-            for (; it != series.endSortedAccess(); ++it, ++prev_it)
-            {
-                try
-                {
-                    Decimal spread = calculateProportionalSpread(*prev_it, *it);
-                    spreads.push_back(std::max(DecimalConstants<Decimal>::DecimalZero, spread));
-                }
-                catch (const std::domain_error& e)
-                {
-                     std::cerr << "Warning: Skipping a period in vector calculation due to math error: " << e.what() << std::endl;
-                }
-            }
-            return spreads;
+        const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+
+        auto it = series.beginSortedAccess();
+        auto prev_it = it;
+        ++it;
+
+        for (; it != series.endSortedAccess(); ++it, ++prev_it) {
+	  try {
+	    Decimal s = calculateProportionalSpread(*prev_it, *it); // may be negative
+
+	    if (s < zero) {
+	      if (negPolicy == NegativePolicy::Skip) {
+		continue; // drop this pair
+	      } else {      // NegativePolicy::ClampToZero (default)
+		spreads.push_back(zero);
+	      }
+	    } else {
+	      spreads.push_back(s);
+	    }
+	  } catch (const std::domain_error& e) {
+	    // Preserve your current behavior—skip the bad pair, warn on stderr.
+	    std::cerr << "Warning: Skipping a period in vector calculation due to math error: "
+		      << e.what() << std::endl;
+	  }
         }
 
+        return spreads;
+      }
+      
         // SECTION: Dollar Spread Calculation
 
         /**
@@ -350,6 +367,8 @@ namespace mkc_timeseries
   class EdgeSpreadCalculator
   {
   public:
+    enum class NegativePolicy { ClampToZero, Skip };
+
     /**
      * @brief Calculates a vector of rolling proportional bid-ask spreads using the EDGE method.
      *
@@ -366,7 +385,8 @@ namespace mkc_timeseries
      */
     static std::vector<Decimal>
     calculateProportionalSpreadsVector(const OHLCTimeSeries<Decimal, LookupPolicy>& series,
-                                       unsigned window_len = 30,
+				       unsigned window_len = 30,
+				       NegativePolicy negPolicy = NegativePolicy::ClampToZero,
                                        const Decimal& eps = DecimalConstants<Decimal>::DecimalZero)
     {
         std::vector<Decimal> out;
@@ -375,23 +395,17 @@ namespace mkc_timeseries
 
         out.reserve(n - 1);
 
-        
-        // --- ALGORITHM SETUP ---
-        // Initialize iterators to traverse adjacent (t-1, t) pairs of days.
         auto it = series.beginSortedAccess();
-        auto prev_it = it; ++it;
+        auto prev_it = it; ++it; // iterate (t-1, t) pairs in time order
 
-        // The deque `win` will store the records for all valid pairs within the current rolling window.
-        // It allows for efficient addition of new pairs (push_back) and removal of old pairs (pop_front).
         struct PairRec {
             Decimal X1, X2;
-            bool oeqh, oeql, ceqh, ceql;  // day-t extremes
-            std::size_t t_idx;            // 1-based index of day t in the full series
+            bool oeqh, oeql, ceqh, ceql;  // extremes on day t
+            std::size_t t_idx;            // 1-based index of day t
         };
         std::deque<PairRec> win;
 
-        // Running sums are maintained for O(1) updates as the window slides. This is far more
-        // efficient than recalculating sums over the whole window at each step.
+        // Running sums within the window (O(1) updates)
         Decimal sumX1 = DecimalConstants<Decimal>::DecimalZero;
         Decimal sumX2 = DecimalConstants<Decimal>::DecimalZero;
         Decimal sumSqX1 = DecimalConstants<Decimal>::DecimalZero;
@@ -406,7 +420,7 @@ namespace mkc_timeseries
 
         auto leqAbs = [&](const Decimal& d){ return d.abs() <= eps; };
 
-        // 1-based day index for the "t" side of each pair
+        // 1-based index for the "t" side of each pair
         std::size_t t_index = 1;
 
         for (; it != series.endSortedAccess(); ++it, ++prev_it, ++t_index) {
@@ -423,18 +437,17 @@ namespace mkc_timeseries
             const Decimal L_t = e_t.getLowValue();
             const Decimal C_t = e_t.getCloseValue();
 
-            // --- Step 1: Filter out invalid pairs ---
-            // The model requires log-prices, so all prices must be positive.
+            // Must be positive to take logs
             bool valid_pair = (O_tm1 > zero && H_tm1 > zero && L_tm1 > zero && C_tm1 > zero &&
                                O_t   > zero && H_t   > zero && L_t   > zero && C_t   > zero);
 
-            // "No-trade" heuristic: H_t == L_t == C_{t-1} → skip pair if true.
+            // "No-trade" heuristic: H_t == L_t == C_{t-1}
             if (valid_pair && leqAbs(H_t - L_t) && leqAbs(H_t - C_tm1)) {
                 valid_pair = false;
             }
 
-	    // --- Step 2: Calculate moment estimators for the current valid pair ---
             if (valid_pair) {
+                // Logs via your decimal math wrappers
                 const Decimal o_tm1 = DEC_NAMESPACE::log(O_tm1);
                 const Decimal h_tm1 = DEC_NAMESPACE::log(H_tm1);
                 const Decimal l_tm1 = DEC_NAMESPACE::log(L_tm1);
@@ -445,14 +458,11 @@ namespace mkc_timeseries
                 const Decimal l_t = DEC_NAMESPACE::log(L_t);
                 const Decimal c_t = DEC_NAMESPACE::log(C_t);
 
-		// eta (η) is the log of the geometric mean of High and Low, i.e., log(sqrt(H*L)),
-                // which simplifies to (log(H) + log(L)) / 2. It represents the log-midprice.
                 const Decimal eta_tm1 = (h_tm1 + l_tm1) * half;
                 const Decimal eta_t   = (h_t   + l_t)   * half;
 
-                // These are the core moment estimators from the EDGE paper (small-mean approximation).
-                // They are constructed such that their expected value is a function of the squared spread S^2.
-                // E[X1] ≈ -S^2/2, E[X2] ≈ -S^2/2
+                // EDGE small-mean moments
+                // X1_t = (η_t - o_t)(o_t - c_{t-1}) + (o_t - c_{t-1})(c_{t-1} - η_{t-1})
                 const Decimal ot_minus_ctm1 = (o_t - c_tm1);
                 const Decimal X1 = (eta_t - o_t) * ot_minus_ctm1
                                  +  ot_minus_ctm1 * (c_tm1 - eta_tm1);
@@ -461,15 +471,12 @@ namespace mkc_timeseries
                 const Decimal X2 = (eta_t - o_t)   * (o_t   - eta_tm1)
                                  + (eta_t - c_tm1) * (c_tm1 - eta_tm1);
 
-		// Determine if the open or close price was the extreme price of the day.
-                // This is used to calculate the `nu` correction factor later.
                 const bool oeqh = leqAbs(O_t - H_t);
                 const bool oeql = leqAbs(O_t - L_t);
                 const bool ceqh = leqAbs(C_t - H_t);
                 const bool ceql = leqAbs(C_t - L_t);
 
-                // --- Step 3: Update the rolling window with the new pair ---
-                // Add the new pair's data to the back of the deque and update running sums.
+                // Push into window and update sums/counters
                 win.push_back({X1, X2, oeqh, oeql, ceqh, ceql, t_index});
                 sumX1 += X1;      sumSqX1 += X1 * X1;
                 sumX2 += X2;      sumSqX2 += X2 * X2;
@@ -486,68 +493,76 @@ namespace mkc_timeseries
 		  ++cnt_cl;
             }
 
-            // --- Step 4: Eject old pairs that have fallen out of the window ---
-            // Determine the leftmost index that should be included in the window for day `t`.
+            // Eject pairs whose t_idx fell out of the rolling window
             const std::size_t left = (t_index >= window_len) ? (t_index - window_len + 1) : 1;
             while (!win.empty() && win.front().t_idx < left) {
                 const auto& r = win.front();
                 sumX1 -= r.X1;   sumSqX1 -= r.X1 * r.X1;
                 sumX2 -= r.X2;   sumSqX2 -= r.X2 * r.X2;
-		
                 if (r.oeqh)
 		  --cnt_oh;
+
 		if (r.oeql)
 		  --cnt_ol;
+
                 if (r.ceqh)
 		  --cnt_ch;
+
 		if (r.ceql)
 		  --cnt_cl;
-
                 win.pop_front();
             }
 
-            // --- Step 5: Compute the EDGE spread for day `t` using the current window's data ---
+            // Emit a spread for this t if the window is non-empty
             const std::size_t Npairs = win.size();
-            if (Npairs == 0) {
-                continue; // nothing to emit for this t
-            }
+            if (Npairs == 0) continue;
 
-            const Decimal N = Decimal(Npairs);
+            const Decimal N = Decimal(static_cast<long>(Npairs));
             const Decimal EX1 = sumX1 / N;
             const Decimal EX2 = sumX2 / N;
 
             // Sample variances (guard Npairs==1)
             Decimal VX1 = zero, VX2 = zero;
             if (Npairs >= 2) {
-                VX1 = (sumSqX1 - (sumX1 * sumX1) / N) / Decimal(Npairs - 1);
-                VX2 = (sumSqX2 - (sumX2 * sumX2) / N) / Decimal(Npairs - 1);
+                VX1 = (sumSqX1 - (sumX1 * sumX1) / N) / Decimal(static_cast<long>(Npairs - 1));
+                VX2 = (sumSqX2 - (sumX2 * sumX2) / N) / Decimal(static_cast<long>(Npairs - 1));
             }
 
-            // Calculate the diagonal-optimal weights to minimize the variance of the final estimator.
-            // This is the "Efficient" part of the EDGE model.
+            // Diagonal-optimal weights; fallback to 0.5/0.5 if degenerate
             const Decimal denomV = VX1 + VX2;
             const Decimal w1 = (denomV > zero) ? (VX2 / denomV) : half;
             const Decimal w2 = (denomV > zero) ? (VX1 / denomV) : half;
 
-            // Calculate `nu` (ν), the frequency of the open/close being an extreme price.
-            // This term corrects for the fact that trades at the open or close can influence the range.
-            const Decimal nu_oh = Decimal(cnt_oh) / N;
-            const Decimal nu_ol = Decimal(cnt_ol) / N;
-            const Decimal nu_ch = Decimal(cnt_ch) / N;
-            const Decimal nu_cl = Decimal(cnt_cl) / N;
+            // ν averages over the window (frequencies of extremes at open/close)
+            const Decimal nu_oh = Decimal(static_cast<long>(cnt_oh)) / N;
+            const Decimal nu_ol = Decimal(static_cast<long>(cnt_ol)) / N;
+            const Decimal nu_ch = Decimal(static_cast<long>(cnt_ch)) / N;
+            const Decimal nu_cl = Decimal(static_cast<long>(cnt_cl)) / N;
 
             const Decimal nu_open  = (nu_oh + nu_ol) * half;
             const Decimal nu_close = (nu_ch + nu_cl) * half;
             const Decimal nu_avg   = (nu_open + nu_close) * half;
 
-            // The final EDGE estimator for the squared spread (S^2).
-            // Formula: S^2 = max(0, -2*(w1*E[X1]+w2*E[X2]) / (1 - 4*w1*w2*nu_avg))
+            // S^2 = -2*(w1*E[X1]+w2*E[X2]) / (1 - 4*w1*w2*nu_avg)
             const Decimal k = four * w1 * w2;
             const Decimal denom = one - k * nu_avg;
-            Decimal S2 = (denom > zero)
-                       ? (-DecimalConstants<Decimal>::DecimalTwo * (w1 * EX1 + w2 * EX2) / denom)
-                       : zero;
-            if (S2 < zero) S2 = zero;
+
+            // Negative/invalid handling
+            if (denom <= zero)
+	      {
+                if (negPolicy == NegativePolicy::ClampToZero)
+		  out.push_back(zero);
+                // Skip means "emit nothing" for this t
+                continue;
+	      }
+
+            Decimal S2 = -DecimalConstants<Decimal>::DecimalTwo * (w1 * EX1 + w2 * EX2) / denom;
+            if (S2 < zero)
+	      {
+                if (negPolicy == NegativePolicy::ClampToZero)
+		  out.push_back(zero);
+                continue; // Skip: drop this observation
+	      }
 
             out.push_back(DEC_NAMESPACE::sqrt(S2));
         }
