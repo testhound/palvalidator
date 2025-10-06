@@ -397,17 +397,8 @@ void generateReports(const std::vector<std::shared_ptr<PalStrategy<Num>>>& strat
                     ValidationMethod validationMethod,
                     const ValidationParameters& params)
 {
-    std::cout << "Writing detailed rejected patterns report..." << std::endl;
-    auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
-    
-    // For bootstrap-only mode, we don't have validation object with rejected patterns
-    if (params.pipelineMode != PipelineMode::BootstrapOnly && validation != nullptr) {
-        writeDetailedRejectedPatternsFile(config->getSecurity()->getSymbol(), validationMethod, validation,
-                                          config->getOosDateRange(), timeFrame, params.pValueThreshold,
-                                          config->getSecurity());
-    } else {
-        std::cout << "Skipping rejected patterns report (not available in bootstrap-only mode)." << std::endl;
-    }
+    // Rejected patterns file writing has been disabled per user request
+    // The function is kept for potential future reporting functionality
 }
 
 // This is the common worker function that runs the validation and prints results.

@@ -231,10 +231,10 @@ namespace mkc_timeseries
 	*/
       virtual const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const = 0;
 
-      virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
+      virtual std::shared_ptr<BacktesterStrategy<Decimal>>
       clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const = 0;
 
-      virtual std::shared_ptr<BacktesterStrategy<Decimal>> 
+      virtual std::shared_ptr<BacktesterStrategy<Decimal>>
       cloneForBackTesting () const = 0;
 
       virtual std::vector<int> getPositionDirectionVector() const = 0;
@@ -242,6 +242,15 @@ namespace mkc_timeseries
       virtual std::vector<Decimal> getPositionReturnsVector() const = 0;
 
       virtual unsigned long numTradingOpportunities() const = 0;
+
+      /**
+       * @brief Get the maximum holding period for this strategy.
+       * @return Maximum number of bars a position can be held, or 0 if unlimited.
+       */
+      unsigned int getMaxHoldingPeriod() const
+      {
+        return mStrategyOptions.getMaxHoldingPeriod();
+      }
 
       /**
        * @brief Whether this strategy allows pyramiding (multiple units) by configuration.

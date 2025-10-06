@@ -990,17 +990,30 @@ namespace palvalidator
       performanceFile << "Level | Description              | Ann. Lower Bound | Required Return | Pass/Fail | Trades/Year" << std::endl;
       performanceFile << "------|--------------------------|------------------|-----------------|-----------|------------" << std::endl;
       
+      // Save original stream state to restore it later
+      std::ios_base::fmtflags original_flags = performanceFile.flags();
+      char original_fill = performanceFile.fill();
+      std::streamsize original_precision = performanceFile.precision();
+
+      // Set formatting for the table
+      performanceFile << std::setfill(' ') << std::fixed << std::setprecision(2);
+
       for (const auto& result : allResults)
         {
-          performanceFile << std::setw(5) << result.getPyramidLevel() << " | "
-                         << std::setw(24) << result.getDescription() << " | "
-                         << std::setw(15) << std::fixed << std::setprecision(1)
-                         << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "% | "
-                         << std::setw(14) << std::fixed << std::setprecision(1)
-                         << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred) << "% | "
-                         << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
-                         << std::setw(10) << std::fixed << std::setprecision(1) << result.getAnnualizedTrades() << std::endl;
+          performanceFile << std::right << std::setw(5) << result.getPyramidLevel() << " | "
+                         << std::left << std::setw(24) << result.getDescription() << " | "
+                         << std::right << std::setw(15)
+                         << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
+                         << std::right << std::setw(14)
+                         << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
+                         << std::right << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
+                         << std::right << std::setw(10) << result.getAnnualizedTrades().getAsDouble() << std::endl;
         }
+
+      // Restore the original stream formatting
+      performanceFile.flags(original_flags);
+      performanceFile.fill(original_fill);
+      performanceFile.precision(original_precision);
 
       // Find and report best performance
       auto bestResult = std::max_element(allResults.begin(), allResults.end(),
@@ -1085,17 +1098,40 @@ namespace palvalidator
       outputStream.fill(original_fill);
       outputStream.precision(original_precision);
 
-      // Find and report best performance
+      // Find and report best performance based on MAR ratio
       auto bestResult = std::max_element(allResults.begin(), allResults.end(),
-					 [](const PyramidResults& a, const PyramidResults& b) {
-					   return a.getAnnualizedLowerBound() < b.getAnnualizedLowerBound();
-					 });
+      [](const PyramidResults& a, const PyramidResults& b) {
+        // Compute MAR ratios for both
+        const auto& drawdownA = a.getDrawdownResults();
+        const auto& drawdownB = b.getDrawdownResults();
+        
+        // If either doesn't have valid drawdown results, deprioritize it
+        if (!drawdownA.hasResults() || drawdownA.getUpperBound() <= DecimalConstants<Num>::DecimalZero)
+          return true;  // a is worse
+        if (!drawdownB.hasResults() || drawdownB.getUpperBound() <= DecimalConstants<Num>::DecimalZero)
+          return false; // b is worse
+        
+        // Both have valid drawdowns, compare MAR ratios
+        const Num marA = a.getAnnualizedLowerBound() / drawdownA.getUpperBound();
+        const Num marB = b.getAnnualizedLowerBound() / drawdownB.getUpperBound();
+        return marA < marB;
+      });
 
       if (bestResult != allResults.end())
 	{
-	  outputStream << "\n      Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
-		       << " (" << std::fixed << std::setprecision(2) << (bestResult->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble()
-		       << "% annualized lower bound)\n";
+	  const auto& bestDrawdown = bestResult->getDrawdownResults();
+	  if (bestDrawdown.hasResults() && bestDrawdown.getUpperBound() > DecimalConstants<Num>::DecimalZero)
+	    {
+	      const Num bestMAR = bestResult->getAnnualizedLowerBound() / bestDrawdown.getUpperBound();
+	      outputStream << "\n      Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
+			   << " (MAR ratio: " << std::fixed << std::setprecision(2) << bestMAR.getAsDouble() << ")\n";
+	    }
+	  else
+	    {
+	      outputStream << "\n      Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
+			   << " (" << std::fixed << std::setprecision(2) << (bestResult->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble()
+			   << "% annualized lower bound)\n";
+	    }
 	  outputStream << "      Recommended Configuration: " << bestResult->getDescription() << "\n";
 	}
 
