@@ -45,9 +45,11 @@ namespace palvalidator::filtering
     auto bootstrap = mBootstrapStage.execute(ctx, os);
     if (!bootstrap.isValid())
     {
-      os << "✗ Strategy filtered out: Bootstrap analysis failed\n";
-      return FilterDecision::Fail(FilterDecisionType::FailInsufficientData,
-                                  "Bootstrap analysis produced invalid results");
+      std::string reason = bootstrap.failureReason.empty()
+        ? "Bootstrap analysis produced invalid results (unknown reason)"
+        : bootstrap.failureReason;
+      os << "✗ Strategy filtered out: Bootstrap analysis failed - " << reason << "\n";
+      return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
     }
 
     // Store computed values in context for later stages
@@ -141,11 +143,25 @@ namespace palvalidator::filtering
       return FilterDecision::Pass();
     }
 
-    // Derive cap (legacy lines 191-199)
     size_t L_cap = mLSensitivityConfig.maxL;
     if (mLSensitivityConfig.capByMaxHold)
     {
-      unsigned int maxHoldBars = 8; // Default if not available
+      unsigned int maxHoldBars = 0;
+      if (ctx.strategy)
+        maxHoldBars = ctx.strategy->getMaxHoldingPeriod();
+
+      if (maxHoldBars == 0 && ctx.clonedStrategy)
+        maxHoldBars = ctx.clonedStrategy->getMaxHoldingPeriod();
+
+      // Fallbacks: bootstrap block length (median-hold proxy), then legacy default of 8 bars.
+      if (maxHoldBars == 0)
+	{
+	  if (ctx.blockLength > 0)
+	    maxHoldBars = static_cast<unsigned int>(ctx.blockLength);
+	  else
+	    maxHoldBars = 8;
+	}
+
       const size_t byHold = static_cast<size_t>(std::max<unsigned int>(2, maxHoldBars + mLSensitivityConfig.capBuffer));
       L_cap = std::min(mLSensitivityConfig.maxL, byHold);
     }
