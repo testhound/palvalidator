@@ -264,10 +264,14 @@ namespace palvalidator
       Num annualizedLowerBoundMean;    // annualized arithmetic mean lower bound
       unsigned int medianHoldBars{0};
       size_t blockLength{0};
+      std::string failureReason;       // reason if bootstrap failed
+      bool computationSucceeded{false}; // true if bootstrap computation completed
 
       bool isValid() const
       {
-        return (annualizedLowerBoundGeo > Num(0)) || (annualizedLowerBoundMean > Num(0));
+        // Valid means the computation ran successfully, regardless of whether bounds are positive or negative
+        // Negative bounds are valid - they just indicate the strategy loses money
+        return computationSucceeded && failureReason.empty();
       }
     };
 
