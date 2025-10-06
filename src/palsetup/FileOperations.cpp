@@ -1,6 +1,9 @@
 #include "FileOperations.h"
 #include "TimeSeriesCsvWriter.h"
 #include "DecimalConstants.h"
+#include "BidAskSpread.h"
+#include "StatUtils.h"
+#include "TimeSeriesIndicators.h"
 #include <fstream>
 #include <iostream>
 #include <boost/date_time/gregorian/gregorian.hpp>
@@ -329,6 +332,76 @@ void FileOperations::writeSeparateDetailsFile(const fs::path& outputPath,
         detailsFile << "RelTick        = " << cleanStart.getRelTick() << "\n";
         detailsFile << "ZeroFrac       = " << cleanStart.getZeroFrac() << "\n";
         detailsFile << "TickSource     = " << (config.getSecurityTick().getAsDouble() > 0 ? "SecurityAttributes_or_CLI" : "Inferred") << "\n";
+    }
+    
+    // Bid/Ask Spread Analysis
+    detailsFile << "\n=== Bid/Ask Spread Analysis (Out-of-Sample) ===" << std::endl;
+    
+    try {
+        const auto& oosSeries = splitData.getOutOfSample();
+        
+        detailsFile << "Out-of-sample entries: " << oosSeries.getNumEntries() << std::endl;
+        
+        // Check if we have sufficient data for spread calculation
+        if (oosSeries.getNumEntries() < 2) {
+            detailsFile << "Warning: Insufficient data for bid/ask spread calculation (need at least 2 entries)" << std::endl;
+        } else {
+            // Calculate spreads using Corwin-Schultz method
+            using CorwinSchultzCalc = mkc_timeseries::CorwinSchultzSpreadCalculator<Num>;
+            auto corwinSchultzSpreads = CorwinSchultzCalc::calculateProportionalSpreadsVector(oosSeries,
+											      CorwinSchultzCalc::NegativePolicy::Skip);
+            
+            if (!corwinSchultzSpreads.empty()) {
+                auto csMean = mkc_timeseries::StatUtils<Num>::computeMean(corwinSchultzSpreads);
+                auto csMedian = mkc_timeseries::MedianOfVec(corwinSchultzSpreads);
+                mkc_timeseries::RobustQn<Num> qnCalc;
+                const Num csQn = qnCalc.getRobustQn(corwinSchultzSpreads);
+                
+                // Convert to percentage terms
+                auto csMeanPercent = csMean * DecimalConstants<Num>::DecimalOneHundred;
+                auto csMedianPercent = csMedian * DecimalConstants<Num>::DecimalOneHundred;
+                auto csQnPercent = csQn * DecimalConstants<Num>::DecimalOneHundred;
+                
+                detailsFile << "\nCorwin-Schultz Spread Estimator:" << std::endl;
+                detailsFile << "  Calculated " << corwinSchultzSpreads.size() << " spread measurements" << std::endl;
+                detailsFile << "  Mean: " << csMeanPercent << "%" << std::endl;
+                detailsFile << "  Median: " << csMedianPercent << "%" << std::endl;
+                detailsFile << "  Robust Qn: " << csQnPercent << "%" << std::endl;
+            } else {
+                detailsFile << "\nCorwin-Schultz: No valid spread calculations could be performed" << std::endl;
+            }
+            
+            // Calculate spreads using Edge method
+            using EdgeCalc = mkc_timeseries::EdgeSpreadCalculator<Num>;
+            auto edgeSpreads = EdgeCalc::calculateProportionalSpreadsVector(oosSeries, 30, EdgeCalc::NegativePolicy::Skip);
+            
+            if (!edgeSpreads.empty()) {
+                auto edgeMean = mkc_timeseries::StatUtils<Num>::computeMean(edgeSpreads);
+                auto edgeMedian = mkc_timeseries::MedianOfVec(edgeSpreads);
+                mkc_timeseries::RobustQn<Num> qnCalc;
+                const Num edgeQn = qnCalc.getRobustQn(edgeSpreads);
+                
+                // Convert to percentage terms
+                auto edgeMeanPercent = edgeMean * DecimalConstants<Num>::DecimalOneHundred;
+                auto edgeMedianPercent = edgeMedian * DecimalConstants<Num>::DecimalOneHundred;
+                auto edgeQnPercent = edgeQn * DecimalConstants<Num>::DecimalOneHundred;
+                
+                detailsFile << "\nEdge Spread Estimator (30-day window):" << std::endl;
+                detailsFile << "  Calculated " << edgeSpreads.size() << " spread measurements" << std::endl;
+                detailsFile << "  Mean: " << edgeMeanPercent << "%" << std::endl;
+                detailsFile << "  Median: " << edgeMedianPercent << "%" << std::endl;
+                detailsFile << "  Robust Qn: " << edgeQnPercent << "%" << std::endl;
+            } else {
+                detailsFile << "\nEdge: No valid spread calculations could be performed" << std::endl;
+            }
+            
+            detailsFile << "\n(Note: Current slippage estimate assumption: 0.10%)" << std::endl;
+        }
+        
+        detailsFile << "=== End Bid/Ask Spread Analysis ===" << std::endl;
+        
+    } catch (const std::exception& e) {
+        detailsFile << "Error in bid/ask spread analysis: " << e.what() << std::endl;
     }
 
     detailsFile.close();
