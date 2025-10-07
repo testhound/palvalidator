@@ -68,7 +68,8 @@ public:
                                  const SetupConfiguration& config,
                                  const CombinedStatisticsResults& stats,
                                  const CleanStartResult& cleanStart,
-                                 const SplitTimeSeriesData& splitData);
+                                 const SplitTimeSeriesData& splitData,
+                                 const BidAskSpreadAnalysis& spreadAnalysis);
 
 private:
     /**

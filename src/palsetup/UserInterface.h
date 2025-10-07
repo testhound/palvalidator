@@ -25,7 +25,9 @@ public:
     /**
      * @brief Display separate long and short results
      */
-    void displaySeparateResults(const CombinedStatisticsResults& stats, const CleanStartResult& cleanStart);
+    void displaySeparateResults(const CombinedStatisticsResults& stats,
+                               const CleanStartResult& cleanStart,
+                               const BidAskSpreadAnalysis& spreadAnalysis);
     
     /**
      * @brief Display setup configuration summary
@@ -42,6 +44,7 @@ public:
      * @brief Display statistics only without writing files
      */
     void displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<Num>& inSampleSeries,
+                              const mkc_timeseries::OHLCTimeSeries<Num>& outOfSampleSeries,
                               const SetupConfiguration& config);
 
 private:

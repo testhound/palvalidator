@@ -10,6 +10,7 @@ set(SRC_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/DirectoryManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/StatisticsCalculator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/FileOperations.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/BidAskAnalyzer.cpp
 )
 
 # Collect header files
