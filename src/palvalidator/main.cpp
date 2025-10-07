@@ -265,8 +265,11 @@ std::tuple<Num, Num> computeBidAskSpreadAnalysis(std::shared_ptr<ValidatorConfig
         }
         
         // Calculate bid/ask spreads using Corwin-Schultz method
-        using SpreadCalc = mkc_timeseries::CorwinSchultzSpreadCalculator<Num>;
-        auto spreads = SpreadCalc::calculateProportionalSpreadsVector(oosTimeSeries);
+	using EdgeCalc = mkc_timeseries::EdgeSpreadCalculator<Num>;
+        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(oosTimeSeries,
+								    30,
+								    config->getSecurity()->getTick(),
+								    EdgeCalc::NegativePolicy::Epsilon);
         
         logStream << "Calculated " << spreads.size() << " bid/ask spread measurements" << std::endl;
         
@@ -277,26 +280,30 @@ std::tuple<Num, Num> computeBidAskSpreadAnalysis(std::shared_ptr<ValidatorConfig
         
         // Calculate basic statistics
         auto actualMean = mkc_timeseries::StatUtils<Num>::computeMean(spreads);
+	auto actualMedian = mkc_timeseries::MedianOfVec(spreads);
 	mkc_timeseries::RobustQn<Num> qnCalc;
 	const Num spreadQn = qnCalc.getRobustQn(spreads);
         
         logStream << "Raw spread statistics:" << std::endl;
         logStream << "  Mean: " << actualMean << std::endl;
+	logStream << "  Median: " << actualMedian << std::endl;
         logStream << "  Robust Qn: " << spreadQn << std::endl;
         
         
         // Convert to percentage terms for easier interpretation (multiply by 100)
         auto meanPercent = actualMean * DecimalConstants<Num>::DecimalOneHundred;
+	auto medianPercent = actualMedian * DecimalConstants<Num>::DecimalOneHundred;
         auto spreadQnPercent = spreadQn * DecimalConstants<Num>::DecimalOneHundred;
         
         logStream << "Results in percentage terms:" << std::endl;
         logStream << "  Mean: " << meanPercent << "%" << std::endl;
+	logStream << "  Median: " << medianPercent << "%" << std::endl;
         logStream << "  Robust Qn: " << spreadQnPercent << "%" << std::endl;
         logStream << "  (Current slippage estimate assumption: 0.10%)" << std::endl;
         
         logStream << "=== End Bid/Ask Spread Analysis ===" << std::endl;
         
-        return std::make_tuple(actualMean, spreadQn);
+        return std::make_tuple(actualMedian, spreadQn);
         
     } catch (const std::exception& e) {
         logStream << "Error in bid/ask spread analysis: " << e.what() << std::endl;
@@ -323,11 +330,11 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     bootlog << "\nApplying performance-based filtering to Monte Carlo surviving strategies..." << std::endl;
 
     // Perform bid/ask spread analysis on out-of-sample data
-    [[maybe_unused]] auto [spreadMean, spreadQn] = computeBidAskSpreadAnalysis<Num>(config, numBootstrapSamples, bootlog);
+    [[maybe_unused]] auto [spreadMedian, spreadQn] = computeBidAskSpreadAnalysis<Num>(config, numBootstrapSamples, bootlog);
 
     // Bundle as optional stats to pass down the pipeline
     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats;
-    oosSpreadStats.emplace(palvalidator::filtering::OOSSpreadStats{ spreadMean, spreadQn });
+    oosSpreadStats.emplace(palvalidator::filtering::OOSSpreadStats{ spreadMedian, spreadQn });
     
     // Apply performance-based filtering to Monte Carlo surviving strategies
     auto timeFrame = config->getSecurity()->getTimeSeries()->getTimeFrame();
