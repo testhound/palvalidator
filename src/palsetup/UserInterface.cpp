@@ -3,6 +3,8 @@
 #include "DecimalConstants.h"
 #include "TimeSeriesIndicators.h"
 #include "TimeSeriesProcessor.h"
+#include "BidAskAnalyzer.h"
+#include "SecurityAttributesFactory.h"
 #include <iostream>
 #include <filesystem>
 #include <cctype>
@@ -41,10 +43,25 @@ SetupConfiguration UserInterface::parseCommandLineArgs(int argc, char** argv) {
     // Extract basic parameters from command line
     std::string historicDataFileName = positionalArgs_[0];
     int fileType = std::stoi(positionalArgs_[1]);
-    Num securityTick(mkc_timeseries::DecimalConstants<Num>::EquityTick);
     
     // Extract default ticker symbol from filename
     std::string defaultTicker = extractDefaultTicker(historicDataFileName);
+    
+    // Look up security tick from SecurityAttributesFactory
+    Num securityTick(mkc_timeseries::DecimalConstants<Num>::EquityTick);
+    auto& factory = mkc_timeseries::SecurityAttributesFactory<Num>::instance();
+    auto it = factory.getSecurityAttributes(defaultTicker);
+    
+    if (it != factory.endSecurityAttributes())
+    {
+      securityTick = it->second->getTick();
+    }
+    else
+    {
+      std::cout << "[Warning] Security '" << defaultTicker
+                << "' not found in SecurityAttributes. Using default EquityTick: "
+                << securityTick << std::endl;
+    }
     
     // Display data file date range before asking for user input
     try {
@@ -431,6 +448,7 @@ void UserInterface::displayCleanStartInfo(const CleanStartResult& cleanStart,
 }
 
 void UserInterface::displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<Num>& inSampleSeries,
+                                         const mkc_timeseries::OHLCTimeSeries<Num>& outOfSampleSeries,
                                          const SetupConfiguration& config) {
     using namespace mkc_timeseries;
     
@@ -549,12 +567,22 @@ void UserInterface::displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<N
         std::cerr << "\nError calculating statistics: " << e.what() << std::endl;
     }
     
+    // Display bid/ask spread analysis
+    std::cout << "\n=== Transaction Cost Analysis ===" << std::endl;
+    BidAskAnalyzer analyzer;
+    auto spreadAnalysis = analyzer.analyzeSpreads(
+        outOfSampleSeries,
+        config.getSecurityTick());
+    BidAskAnalyzer::displayAnalysisToConsole(spreadAnalysis);
+    
     std::cout << "\n=================================" << std::endl;
     std::cout << "Note: All values are percentage widths from median/center point." << std::endl;
     std::cout << "No files were written in statistics-only mode." << std::endl;
 }
 
-void UserInterface::displaySeparateResults(const CombinedStatisticsResults& stats, const CleanStartResult& cleanStart) {
+void UserInterface::displaySeparateResults(const CombinedStatisticsResults& stats,
+                                          const CleanStartResult& cleanStart,
+                                          const BidAskSpreadAnalysis& spreadAnalysis) {
     const auto& longResults = stats.getLongResults();
     const auto& shortResults = stats.getShortResults();
     
@@ -589,6 +617,12 @@ void UserInterface::displaySeparateResults(const CombinedStatisticsResults& stat
     std::cout << std::setprecision(1);
     std::cout << "Positive ROC count:       " << longResults.getPosCount() << " (" << (100.0 * longResults.getPosCount() / totalObs) << "%)" << std::endl;
     std::cout << "Negative ROC count:       " << longResults.getNegCount() << " (" << (100.0 * longResults.getNegCount() / totalObs) << "%)" << std::endl;
+    
+    // Display bid/ask spread analysis
+    if (spreadAnalysis.isValid)
+    {
+        BidAskAnalyzer::displayAnalysisToConsole(spreadAnalysis);
+    }
     
     std::cout << "\n=================================" << std::endl;
     std::cout << "Note: All values are percentage widths from median/center point." << std::endl;

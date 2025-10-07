@@ -389,3 +389,61 @@ private:
     LongStatisticsResults longResults_;
     ShortStatisticsResults shortResults_;
 };
+
+/**
+ * @brief Results from a single bid/ask spread estimation method
+ */
+struct SpreadEstimationResults
+{
+  std::string methodName;           // e.g., "Corwin-Schultz", "Edge"
+  size_t measurementCount;          // Number of valid spread calculations
+  Num meanSpread;                   // Mean spread (as proportion)
+  Num medianSpread;                 // Median spread (as proportion)
+  Num robustQnSpread;              // Robust Qn estimator (as proportion)
+  bool hasResults;                  // True if valid results were computed
+  
+  SpreadEstimationResults()
+    : methodName("")
+    , measurementCount(0)
+    , meanSpread(mkc_timeseries::DecimalConstants<Num>::DecimalZero)
+    , medianSpread(mkc_timeseries::DecimalConstants<Num>::DecimalZero)
+    , robustQnSpread(mkc_timeseries::DecimalConstants<Num>::DecimalZero)
+    , hasResults(false)
+  {
+  }
+  
+  // Convert spreads to percentage terms
+  Num getMeanPercent() const
+  {
+    return meanSpread * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred;
+  }
+  
+  Num getMedianPercent() const
+  {
+    return medianSpread * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred;
+  }
+  
+  Num getRobustQnPercent() const
+  {
+    return robustQnSpread * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred;
+  }
+};
+
+/**
+ * @brief Complete bid/ask spread analysis results
+ */
+struct BidAskSpreadAnalysis
+{
+  size_t totalEntries;                      // Total entries in analyzed series
+  SpreadEstimationResults corwinSchultz;    // Corwin-Schultz method results
+  SpreadEstimationResults edge;             // Edge method results
+  std::string errorMessage;                 // Error message if analysis failed
+  bool isValid;                            // True if analysis completed successfully
+  
+  BidAskSpreadAnalysis()
+    : totalEntries(0)
+    , errorMessage("")
+    , isValid(false)
+  {
+  }
+};
