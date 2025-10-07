@@ -349,7 +349,8 @@ void FileOperations::writeSeparateDetailsFile(const fs::path& outputPath,
             // Calculate spreads using Corwin-Schultz method
             using CorwinSchultzCalc = mkc_timeseries::CorwinSchultzSpreadCalculator<Num>;
             auto corwinSchultzSpreads = CorwinSchultzCalc::calculateProportionalSpreadsVector(oosSeries,
-											      CorwinSchultzCalc::NegativePolicy::Skip);
+                 config.getSecurityTick(),
+                 CorwinSchultzCalc::NegativePolicy::Epsilon);
             
             if (!corwinSchultzSpreads.empty()) {
                 auto csMean = mkc_timeseries::StatUtils<Num>::computeMean(corwinSchultzSpreads);
@@ -373,7 +374,10 @@ void FileOperations::writeSeparateDetailsFile(const fs::path& outputPath,
             
             // Calculate spreads using Edge method
             using EdgeCalc = mkc_timeseries::EdgeSpreadCalculator<Num>;
-            auto edgeSpreads = EdgeCalc::calculateProportionalSpreadsVector(oosSeries, 30, EdgeCalc::NegativePolicy::Skip);
+            auto edgeSpreads = EdgeCalc::calculateProportionalSpreadsVector(oosSeries,
+              30,
+              config.getSecurityTick(),
+              EdgeCalc::NegativePolicy::Epsilon);
             
             if (!edgeSpreads.empty()) {
                 auto edgeMean = mkc_timeseries::StatUtils<Num>::computeMean(edgeSpreads);
