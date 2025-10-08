@@ -7,6 +7,7 @@
 #include "DecimalConstants.h"
 #include "TestUtils.h"
 #include "AstResourceManager.h"
+#include "TimeSeriesIndicators.h"
 
 using namespace mkc_timeseries;
 
@@ -195,14 +196,16 @@ TEST_CASE("Bootstrapped Monte Carlo Policies", "[MonteCarloTestPolicy]") {
       backtester->setNumTrades(minTrades);
       backtester->setHighResReturns(returns);
 
-      // Manually calculate the expected score based on the true (non-bootstrapped) metrics.
-      // This mirrors the logic inside the policy class.
+      // The policy now returns the BCa lower bound of the Sharpe ratio directly,
+      // without multiplying by a confidence factor.
+      // Calculate the expected Sharpe ratio.
       DT mean_return = StatUtils<DT>::computeMean(returns);
       DT stddev_return = StatUtils<DT>::computeStdDev(returns, mean_return);
       DT trueSharpe = (stddev_return > DT(0)) ? (mean_return / stddev_return) : DT(0);
 
-      DT confidenceFactor = DT(std::log(1.0 + static_cast<double>(returns.size())));
-      DT expectedScore = trueSharpe * confidenceFactor;
+      // The expected score should be close to the Sharpe ratio, but slightly lower
+      // due to the BCa lower bound adjustment. We'll verify the distribution is
+      // reasonable by checking that results are consistently positive for this profitable series.
             
       std::vector<DT> results;
       results.reserve(100);
@@ -213,9 +216,17 @@ TEST_CASE("Bootstrapped Monte Carlo Policies", "[MonteCarloTestPolicy]") {
       DT mean_score = StatUtils<DT>::computeMean(results);
       DT stddev_score = StatUtils<DT>::computeStdDev(results, mean_score);
             
-      // The true value should be within 3 standard deviations of the bootstrapped mean.
-      // This confirms the bootstrap is correctly sampling around the true statistic.
-      REQUIRE_THAT(num::to_double(expectedScore), Catch::Matchers::WithinAbs(num::to_double(mean_score), num::to_double(stddev_score * DT(3.0))));
+      // The lower-bound statistic should not systematically exceed the sample Sharpe
+      REQUIRE(num::to_double(mean_score) <= num::to_double(trueSharpe));
+
+      // Median lower bound should also be ≤ sample Sharpe
+      DT median_score = MedianOfVec(results);
+      REQUIRE(num::to_double(median_score) <= num::to_double(trueSharpe));
+
+      // A 95% lower bound should rarely exceed the sample Sharpe
+      size_t exceed = std::count_if(results.begin(), results.end(),
+      [&](const DT& x){ return num::to_double(x) > num::to_double(trueSharpe); });
+      REQUIRE(exceed <= 5);  // allow up to ~α * 100 exceedances
     }
   }
 

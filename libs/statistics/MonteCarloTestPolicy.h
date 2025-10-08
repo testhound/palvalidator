@@ -13,6 +13,7 @@
 #include "DecimalConstants.h"
 #include "BackTester.h"
 #include "StatUtils.h"
+#include "BiasCorrectedBootstrap.h" 
 
 namespace mkc_timeseries
 {
@@ -198,42 +199,72 @@ namespace mkc_timeseries
      * The statistic is then bootstrapped to generate a p-value, providing a robust
      * assessment of strategy viability.
      */
-    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    static Decimal
+    getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
-        if (bt->getNumStrategies() != 1) {
-            throw BackTesterException(
-                "BootStrappedSharpeRatioPolicy::getPermutationTestStatistic - "
-                "expected one strategy, got "
-                + std::to_string(bt->getNumStrategies()));
-        }
+      if (bt->getNumStrategies() != 1) {
+	throw BackTesterException(
+				  "BootStrappedSharpeRatioPolicy::getPermutationTestStatistic - expected one strategy, got "
+				  + std::to_string(bt->getNumStrategies()));
+      }
 
-        const unsigned int minTradesRequired = getMinStrategyTrades();
-        const unsigned int minBarsRequired = getMinBarSeriesSize();
+      // ---- Basic sanity thresholds (same spirit as existing policies)
+      const unsigned int minTradesRequired = getMinStrategyTrades();
+      const unsigned int minBarsRequired   = getMinBarSeriesSize();
 
-        uint32_t numTrades = bt->getNumTrades();
-        // The most direct measure of bars in market is the size of the high-res return series.
-        std::vector<Decimal> barSeries = bt->getAllHighResReturns((*(bt->beginStrategies())).get());
-        uint32_t numBarsInTrades = barSeries.size();
+      const uint32_t numTrades = bt->getNumTrades();
+      auto strat = *(bt->beginStrategies());
 
-        if (numTrades < minTradesRequired || numBarsInTrades < minBarsRequired)
-        {
-            return getMinTradeFailureTestStatistic();
-        }
+      // Pull every bar-by-bar return (entry→exit and any still-open)
+      std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+      const uint32_t nBars = static_cast<uint32_t>(barSeries.size());
 
-        // The confidence factor is constant for a given backtest run.
-        // It's based on the total number of bars observed while in a trade.
-        Decimal confidenceFactor = Decimal(std::log(1.0 + static_cast<double>(numBarsInTrades)));
+      if (numTrades < minTradesRequired || nBars < minBarsRequired) {
+	return getMinTradeFailureTestStatistic();
+      }
 
-        // The lambda passed to the bootstrap captures the confidence factor.
-        // For each resampled series, it calculates the Sharpe Ratio and multiplies it
-        // by the constant confidence factor to get the final composite score.
-        auto computeCompositeScore = [confidenceFactor](const std::vector<Decimal>& series) -> Decimal {
-            Decimal sharpeRatio = computeSharpeRatio(series);
-            return sharpeRatio * confidenceFactor;
-        };
+      // ---- Tunables (lift to your header/config if desired)
+      const unsigned B     = 1000;   // BCa replicates
+      const double   alpha = 0.05;   // 95% CI
+      const double   eps   = 1e-8;   // ε-floor for Sharpe denominator
 
-        // We bootstrap the bar returns and apply our composite score function to each sample.
-        return StatUtils<Decimal>::getBootStrappedStatistic(barSeries, computeCompositeScore);
+      auto computeSharpeScore = [&](const std::vector<Decimal>& r) -> Decimal
+      {
+	const Decimal meanDec = StatUtils<Decimal>::computeMean(r);
+	const Decimal stdDevDec = StatUtils<Decimal>::computeStdDev(r, meanDec); // sample stddev with N-1
+	double mean = num::to_double(meanDec);
+	double sd_temp = num::to_double(stdDevDec);
+	double var = sd_temp * sd_temp;  // variance = stddev^2
+	var = std::max(0.0, var);  // ensure non-negative
+
+	const double sd = std::sqrt(var + eps);        // ε-ridge for stability
+	const double sr = (sd > 0.0) ? (mean / sd) : 0.0;
+
+	return Decimal(sr);
+      };
+
+      // ---- Stationary-block resampler with L = median holding period (min 2)
+      size_t L = 2;
+      {
+	auto& cph = strat->getStrategyBroker().getClosedPositionHistory();
+	const unsigned medHold = cph.getMedianHoldingPeriod();
+	L = std::max<size_t>(2, static_cast<size_t>(medHold));
+      }
+
+      // BCa over stationary blocks
+      mkc_timeseries::StationaryBlockResampler<Decimal> sampler(L);
+
+      struct CompositeScoreFn {
+	decltype(computeSharpeScore)& f;
+	Decimal operator()(const std::vector<Decimal>& v) const { return f(v); }
+      } score{computeSharpeScore};
+
+      using BlockBCA = mkc_timeseries::BCaBootStrap<Decimal, mkc_timeseries::StationaryBlockResampler<Decimal>>;
+      BlockBCA bca(barSeries, B, /*confidence=*/1.0 - alpha, score, sampler);
+
+      // Conservative scalar for permutation testing (tames right tail per Masters)
+      const Decimal lowerBound = bca.getLowerBound();
+      return lowerBound;
     }
 
     /// Minimum number of closed trades required to even attempt this test
