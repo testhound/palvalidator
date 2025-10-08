@@ -510,14 +510,16 @@ namespace mkc_timeseries
 	      const Decimal eta_t   = (h_t   + l_t)   * half;
 
 	      // EDGE small-mean moments
-	      // X1_t = (η_t - o_t)(o_t - c_{t-1}) + (o_t - c_{t-1})(c_{t-1} - η_{t-1})
-	      const Decimal ot_minus_ctm1 = (o_t - c_tm1);
-	      const Decimal X1 = (eta_t - o_t) * ot_minus_ctm1
-		+  ot_minus_ctm1 * (c_tm1 - eta_tm1);
 
-	      // X2_t = (η_t - o_t)(o_t - η_{t-1}) + (η_t - c_{t-1})(c_{t-1} - η_{t-1})
-	      const Decimal X2 = (eta_t - o_t)   * (o_t   - eta_tm1)
-		+ (eta_t - c_tm1) * (c_tm1 - eta_tm1);
+        //
+        const Decimal ot_minus_ctm1 = (o_t - c_tm1);
+        const Decimal X1 = (eta_t - o_t) * ot_minus_ctm1
+          +  ot_minus_ctm1 * (c_tm1 - eta_tm1);
+
+        // Corrected X2_t formula from Ardia et al. (2022)
+        // X2_t = (η_t - o_t)(o_t - η_{t-1}) + (η_t - o_t)(o_t - c_{t-1})
+        const Decimal X2 = (eta_t - o_t) * (o_t - eta_tm1)
+        + (eta_t - o_t) * ot_minus_ctm1;
 
 	      const bool oeqh = leqAbs(O_t - H_t);
 	      const bool oeql = leqAbs(O_t - L_t);
@@ -577,9 +579,8 @@ namespace mkc_timeseries
 	  Decimal VX1 = zero, VX2 = zero;
 	  if (Npairs >= 2) {
             VX1 = (sumSqX1 - (sumX1 * sumX1) / N) / Decimal(static_cast<long>(Npairs - 1));
-            VX2 = (sumSqX2 - (sumSqX2 * sumSqX2) / N) / Decimal(static_cast<long>(Npairs - 1));
-            // ^^^ Note: Intentional symmetry; if you prefer, keep VX2’s numerator as
-            // (sumSqX2 - (sumX2 * sumX2) / N). Use whichever you had standardized.
+
+            VX2 = (sumSqX2 - (sumX2 * sumX2) / N) / Decimal(static_cast<long>(Npairs - 1));
 	  }
 
 	  // Diagonal-optimal weights; fallback to 0.5/0.5 if degenerate

@@ -265,11 +265,11 @@ std::tuple<Num, Num> computeBidAskSpreadAnalysis(std::shared_ptr<ValidatorConfig
         }
         
         // Calculate bid/ask spreads using Corwin-Schultz method
-	using EdgeCalc = mkc_timeseries::EdgeSpreadCalculator<Num>;
-        auto spreads = EdgeCalc::calculateProportionalSpreadsVector(oosTimeSeries,
-								    30,
-								    config->getSecurity()->getTick(),
-								    EdgeCalc::NegativePolicy::Epsilon);
+
+	using CorwinSchultzCalc = mkc_timeseries::CorwinSchultzSpreadCalculator<Num>;
+	auto spreads = CorwinSchultzCalc::calculateProportionalSpreadsVector(oosTimeSeries,
+									     config->getSecurity()->getTick(),
+									     CorwinSchultzCalc::NegativePolicy::Epsilon);
         
         logStream << "Calculated " << spreads.size() << " bid/ask spread measurements" << std::endl;
         
