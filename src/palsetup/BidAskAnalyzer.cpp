@@ -40,6 +40,7 @@ BidAskSpreadAnalysis BidAskAnalyzer::analyzeSpreads(const mkc_timeseries::OHLCTi
     
     // Calculate Edge spreads
     using EdgeCalc = mkc_timeseries::EdgeSpreadCalculator<Num>;
+    using mkc_timeseries::DecimalConstants;
     auto edgeSpreads = EdgeCalc::calculateProportionalSpreadsVector(
       series,
       edgeWindowDays,
@@ -48,6 +49,24 @@ BidAskSpreadAnalysis BidAskAnalyzer::analyzeSpreads(const mkc_timeseries::OHLCTi
     
     if (!edgeSpreads.empty())
     {
+      // Count zero spreads for diagnostic purposes
+      size_t zeroCount = 0;
+      for (const auto& spread : edgeSpreads)
+      {
+        if (spread == DecimalConstants<Num>::DecimalZero)
+        {
+          ++zeroCount;
+        }
+      }
+
+      double zeroPercentage = (static_cast<double>(zeroCount) / edgeSpreads.size()) * 100.0;
+
+      std::cout << "\n[Diagnostic] Edge Estimator Zero Spreads:" << std::endl;
+      std::cout << "  Total spreads calculated: " << edgeSpreads.size() << std::endl;
+      std::cout << "  Zero spreads: " << zeroCount
+                << " (" << std::fixed << std::setprecision(2)
+                << zeroPercentage << "%)" << std::endl;
+
       analysis.edge = calculateSpreadStatistics(
         edgeSpreads, "Edge (30-day window)");
     }

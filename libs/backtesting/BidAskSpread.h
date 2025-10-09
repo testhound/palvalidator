@@ -206,70 +206,140 @@ namespace mkc_timeseries
       static std::vector<Decimal>
       calculateProportionalSpreadsVector(const OHLCTimeSeries<Decimal, LookupPolicy>& series,
 					 const Decimal& tick = DecimalConstants<Decimal>::DecimalZero,
-					 NegativePolicy negPolicy = NegativePolicy::ClampToZero)
+					 NegativePolicy negPolicy = NegativePolicy::ClampToZero,
+					 unsigned int window_len = 20)
       {
-        std::vector<Decimal> spreads;
-        if (series.getNumEntries() < 2) {
+	std::vector<Decimal> spreads;
+	const std::size_t n = series.getNumEntries();
+	if (n < 2) {
 	  return spreads;
-        }
-        spreads.reserve(series.getNumEntries() - 1);
+	}
 
-        const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+	// Guard silly windows (treat 0/1 as "no smoothing": i.e., emit on each pair as available)
+	if (window_len == 0) window_len = 1;
 
-        // helper for Epsilon policy (1e-8 as Decimal; no string ctor dependency)
-        auto epsMin = []() -> Decimal
-	{
+	spreads.reserve(n - 1);
+
+	// Constants
+	const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+	const Decimal one  = DecimalConstants<Decimal>::DecimalOne;
+	const Decimal two  = DecimalConstants<Decimal>::DecimalTwo;
+
+	// alpha denominator: (3 - 2*sqrt(2)) as Decimal
+	static const Decimal SQRT2 = DEC_NAMESPACE::sqrt(two);
+	static const Decimal ALPHA_DEN = (Decimal(3) - two * SQRT2);
+
+	// Epsilon helpers (scale-aware; falls back to 1e-8)
+	auto epsMin = []() -> Decimal {
 	  return Decimal(1) / Decimal(100000000); // 1e-8
-        };
-
-        auto epsFromTick = [&](const Decimal& close_t) -> Decimal
-	{
-	  if (tick > zero && close_t > zero)
-	    {
-	      // ε = max(1e-8, tick / Close_t)
-	      Decimal eps_tick = tick / close_t;
-	      return (eps_tick > epsMin()) ? eps_tick : epsMin();
-	    }
+	};
+	auto epsFromTick = [&](const Decimal& close_t) -> Decimal {
+	  if (tick > zero && close_t > zero) {
+	    Decimal e = tick / close_t;               // proportional epsilon
+	    return (e > epsMin()) ? e : epsMin();
+	  }
 	  return epsMin();
-        };
+	};
 
-        // Iterate adjacent (t-1, t) pairs in sorted order (mirrors your original implementation)
-        auto it = series.beginSortedAccess();
-        auto prev_it = it;
-        ++it;  // now: prev_it = t-1, it = t
+	// Rolling buffers/sums for beta and gamma
+	std::deque<Decimal> beta_q;
+	std::deque<Decimal> gamma_q;
+	Decimal beta_sum  = zero;
+	Decimal gamma_sum = zero;
 
-        for (; it != series.endSortedAccess(); ++it, ++prev_it)
+	// Iterate consecutive pairs (t-1, t)
+	auto it_prev = series.beginSortedAccess();
+	auto it_curr = it_prev;
+	++it_curr;
+
+	for (; it_curr != series.endSortedAccess(); ++it_curr, ++it_prev)
 	  {
-	    try
-	      {
-		Decimal s = calculateProportionalSpread(*prev_it, *it); // may be negative
+	    const auto& e0 = *it_prev;
+	    const auto& e1 = *it_curr;
 
-		if (s < zero)
-		  {
-		    if (negPolicy == NegativePolicy::Skip)
-		      continue; // drop this observation
-		    else if (negPolicy == NegativePolicy::Epsilon)
+	    // Extract prices as Decimals
+	    const Decimal H0 = e0.getHighValue();
+	    const Decimal L0 = e0.getLowValue();
+	    const Decimal H1 = e1.getHighValue();
+	    const Decimal L1 = e1.getLowValue();
+	    const Decimal C1 = e1.getCloseValue(); // for epsilon scaling only
 
-		      spreads.push_back(epsFromTick(it->getCloseValue()));
-		    else
-		      // ClampToZero (legacy)
-		      spreads.push_back(zero);
-		  }
-		else
-		  {
-		    spreads.push_back(s);
-		  }
+	    // Basic validity (strictly positive lows/highs)
+	    if (L0 <= zero || L1 <= zero || H0 <= zero || H1 <= zero) {
+	      // Keep vector length behavior consistent with legacy: emit 0 per pair
+	      spreads.push_back(zero);
+	      continue;
+	    }
+
+	    // Per Corwin–Schultz:
+	    // beta_t = [ln(H0/L0)]^2 + [ln(H1/L1)]^2
+	    // gamma_t = [ln(max(H0, H1)/min(L0, L1))]^2
+	    const Decimal lnH0L0 = DEC_NAMESPACE::log(H0 / L0);
+	    const Decimal lnH1L1 = DEC_NAMESPACE::log(H1 / L1);
+
+	    const Decimal maxH = (H0 > H1) ? H0 : H1;
+	    const Decimal minL = (L0 < L1) ? L0 : L1;
+	    const Decimal lnRange2 = DEC_NAMESPACE::log(maxH / minL);
+
+	    const Decimal beta_t  = lnH0L0 * lnH0L0 + lnH1L1 * lnH1L1;
+	    const Decimal gamma_t = lnRange2 * lnRange2;
+
+	    // Push into rolling window
+	    beta_q.push_back(beta_t);
+	    gamma_q.push_back(gamma_t);
+	    beta_sum  += beta_t;
+	    gamma_sum += gamma_t;
+
+	    if (beta_q.size() > window_len) {
+	      beta_sum  -= beta_q.front();  beta_q.pop_front();
+	      gamma_sum -= gamma_q.front(); gamma_q.pop_front();
+	    }
+
+	    // Compute smoothed means (use whatever is available until the window fills)
+	    const Decimal w = static_cast<Decimal>(beta_q.size());
+	    const Decimal beta_bar  = beta_sum  / w;
+	    const Decimal gamma_bar = gamma_sum / w;
+
+	    // alpha = (sqrt(2*beta_bar) - sqrt(beta_bar)) / (3 - 2*sqrt(2)) - sqrt(gamma_bar / (3 - 2*sqrt(2)))
+	    // Use DEC_NAMESPACE math to stay in Decimal domain
+	    // Guard tiny negatives from rounding with max(zero, ·) before sqrt
+	    const Decimal term_beta  = (Decimal)DEC_NAMESPACE::sqrt((two * beta_bar > zero) ? two * beta_bar : zero)
+	      - (Decimal)DEC_NAMESPACE::sqrt((beta_bar > zero) ? beta_bar : zero);
+	    const Decimal term_gamma = (Decimal)DEC_NAMESPACE::sqrt((gamma_bar > zero) ? (gamma_bar / ALPHA_DEN) : zero);
+	    const Decimal alpha      = (ALPHA_DEN != zero) ? (term_beta / ALPHA_DEN - term_gamma) : zero;
+
+	    // S = 2 * (e^alpha - 1) / (1 + e^alpha)  == 2 * tanh(alpha/2)
+	    // Compute in a numerically friendly way in Decimal domain
+	    const Decimal exp_a = DEC_NAMESPACE::exp(alpha);
+	    Decimal S = zero;
+	    if (exp_a + one != zero) {
+	      S = (two * (exp_a - one)) / (exp_a + one);
+	    } else {
+	      // Pathological only if exp_a == -1 (impossible here), fall back
+	      S = zero;
+	    }
+
+	    // Handle negatives and near-zeros per policy
+	    if (S <= zero) {
+	      if (negPolicy == NegativePolicy::Skip) {
+		continue; // drop this observation
+	      } else if (negPolicy == NegativePolicy::Epsilon) {
+		spreads.push_back(epsFromTick(C1));
+	      } else { // ClampToZero
+		spreads.push_back(zero);
 	      }
-	    catch (const std::domain_error& e)
-	      {
-		// Preserve existing behavior—skip bad pair, warn on stderr
-		std::cerr << "Warning: Skipping a period in vector calculation due to math error: "
-			  << e.what() << std::endl;
+	    } else {
+	      // Optional tiny-floor to avoid exact zeros if Epsilon is requested
+	      if (negPolicy == NegativePolicy::Epsilon && S < epsMin()) {
+		spreads.push_back(epsFromTick(C1));
+	      } else {
+		spreads.push_back(S);
 	      }
-        }
+	    }
+	  }
 
-        return spreads;
-      }      
+	return spreads;
+      }
 
       // SECTION: Dollar Spread Calculation
 
@@ -414,219 +484,263 @@ namespace mkc_timeseries
      */
     static std::vector<Decimal>
     calculateProportionalSpreadsVector(const OHLCTimeSeries<Decimal, LookupPolicy>& series,
-				       unsigned window_len = 30,
+				       unsigned int window_len = 30,
 				       const Decimal& tick = DecimalConstants<Decimal>::DecimalZero,
 				       NegativePolicy negPolicy = NegativePolicy::ClampToZero,
-				       const Decimal& eps = DecimalConstants<Decimal>::DecimalZero)
+				       bool sign = false)
     {
-      std::vector<Decimal> out;
       const std::size_t n = series.getNumEntries();
-      if (n < 2 || window_len == 0)
-        return out;
+      if (n < 2 || window_len == 0) {
+	return {};
+      }
 
-      out.reserve(n - 1);
-
-      auto it = series.beginSortedAccess();
-      auto prev_it = it; ++it; // (t-1, t) pairs in time order
-
-      struct PairRec {
-        Decimal X1, X2;
-        bool oeqh, oeql, ceqh, ceql;  // extremes on day t
-        std::size_t t_idx;            // 1-based index of day t
-      };
-      std::deque<PairRec> win;
-
-      // Running sums within the window (O(1) updates)
-      Decimal sumX1 = DecimalConstants<Decimal>::DecimalZero;
-      Decimal sumX2 = DecimalConstants<Decimal>::DecimalZero;
-      Decimal sumSqX1 = DecimalConstants<Decimal>::DecimalZero;
-      Decimal sumSqX2 = DecimalConstants<Decimal>::DecimalZero;
-      std::size_t cnt_oh = 0, cnt_ol = 0, cnt_ch = 0, cnt_cl = 0;
-
+      // Decimal constants for the algorithm
       const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
       const Decimal one  = DecimalConstants<Decimal>::DecimalOne;
       const Decimal two  = DecimalConstants<Decimal>::DecimalTwo;
       const Decimal four = two + two;
-      const Decimal half = one / two;
+      const Decimal neg_four = zero - four;
 
-      auto leqAbs = [&](const Decimal& d)
-      {
-	return d.abs() <= eps;
+      std::vector<Decimal> spreads;
+      spreads.reserve(n - 1);
+
+      // Helpers for tolerance and epsilon
+      auto epsMin = []() -> Decimal {
+	return Decimal(1) / Decimal(100000000); // 1e-8
+      };
+      auto epsFromTick = [&](const Decimal& close_t) -> Decimal {
+	if (tick > zero && close_t > zero) {
+	  Decimal e = tick / close_t;                // ~proportional epsilon
+	  return (e > epsMin()) ? e : epsMin();      // floor at 1e-8
+	}
+	return epsMin();
+      };
+      auto almost_equal = [&](const Decimal& a, const Decimal& b, const Decimal& tol) -> bool {
+	const Decimal diff = DEC_NAMESPACE::abs(a - b);
+	return diff <= tol * (DEC_NAMESPACE::abs(a) + DEC_NAMESPACE::abs(b) + one);
       };
 
-      // ε helper for Epsilon policy (uses tick and the *current* close C_t)
-      auto epsFromTick = [&](const Decimal& Ct) -> Decimal
-      {
-	// 1e-8 using long (avoid long long)
-	const Decimal epsMin = Decimal(1) / Decimal(100000000L);
-	if (tick > zero && Ct > zero)
-	  {
-	    Decimal e = tick / Ct;
-	    return (e > epsMin) ? e : epsMin;
-	  }
-	return epsMin;
+      auto it = series.beginSortedAccess();
+      auto prev_it = it;
+      ++it;
+
+      // Holds per-day precomputed values
+      struct MomentData {
+	// rolling-means vector (34 entries)
+	std::vector<Decimal> x_values;
       };
 
-      // 1-based index for the "t" side of each pair
-      std::size_t t_index = 1;
+      std::deque<MomentData> window_data;
 
-      for (; it != series.endSortedAccess(); ++it, ++prev_it, ++t_index)
+      for (; it != series.endSortedAccess(); ++it, ++prev_it)
 	{
-	  const auto& e_tm1 = *prev_it;
-	  const auto& e_t   = *it;
+	  const auto& entry_t0 = *prev_it;
+	  const auto& entry_t1 = *it;
 
-	  const Decimal O_tm1 = e_tm1.getOpenValue();
-	  const Decimal H_tm1 = e_tm1.getHighValue();
-	  const Decimal L_tm1 = e_tm1.getLowValue();
-	  const Decimal C_tm1 = e_tm1.getCloseValue();
+	  // Extract OHLC prices
+	  const Decimal o0 = entry_t0.getOpenValue();
+	  const Decimal h0 = entry_t0.getHighValue();
+	  const Decimal l0 = entry_t0.getLowValue();
+	  const Decimal c0 = entry_t0.getCloseValue();
 
-	  const Decimal O_t = e_t.getOpenValue();
-	  const Decimal H_t = e_t.getHighValue();
-	  const Decimal L_t = e_t.getLowValue();
-	  const Decimal C_t = e_t.getCloseValue();
+	  const Decimal o1 = entry_t1.getOpenValue();
+	  const Decimal h1 = entry_t1.getHighValue();
+	  const Decimal l1 = entry_t1.getLowValue();
+	  const Decimal c1 = entry_t1.getCloseValue();
 
-	  // Must be positive to take logs
-	  bool valid_pair = (O_tm1 > zero && H_tm1 > zero && L_tm1 > zero && C_tm1 > zero &&
-			     O_t   > zero && H_t   > zero && L_t   > zero && C_t   > zero);
-
-	  // "No-trade" heuristic: H_t == L_t == C_{t-1}
-	  if (valid_pair && leqAbs(H_t - L_t) && leqAbs(H_t - C_tm1))
-            valid_pair = false;
-
-	  if (valid_pair)
+	  // Basic price validity
+	  if (o0 <= zero || h0 <= zero || l0 <= zero || c0 <= zero ||
+	      o1 <= zero || h1 <= zero || l1 <= zero || c1 <= zero)
 	    {
-	      // Logs via decimal math wrappers
-	      const Decimal o_tm1 = DEC_NAMESPACE::log(O_tm1);
-	      const Decimal h_tm1 = DEC_NAMESPACE::log(H_tm1);
-	      const Decimal l_tm1 = DEC_NAMESPACE::log(L_tm1);
-	      const Decimal c_tm1 = DEC_NAMESPACE::log(C_tm1);
-
-	      const Decimal o_t = DEC_NAMESPACE::log(O_t);
-	      const Decimal h_t = DEC_NAMESPACE::log(H_t);
-	      const Decimal l_t = DEC_NAMESPACE::log(L_t);
-	      const Decimal c_t = DEC_NAMESPACE::log(C_t);
-
-	      const Decimal eta_tm1 = (h_tm1 + l_tm1) * half;
-	      const Decimal eta_t   = (h_t   + l_t)   * half;
-
-	      // EDGE small-mean moments
-
-        //
-        const Decimal ot_minus_ctm1 = (o_t - c_tm1);
-        const Decimal X1 = (eta_t - o_t) * ot_minus_ctm1
-          +  ot_minus_ctm1 * (c_tm1 - eta_tm1);
-
-        // Corrected X2_t formula from Ardia et al. (2022)
-        // X2_t = (η_t - o_t)(o_t - η_{t-1}) + (η_t - o_t)(o_t - c_{t-1})
-        const Decimal X2 = (eta_t - o_t) * (o_t - eta_tm1)
-        + (eta_t - o_t) * ot_minus_ctm1;
-
-	      const bool oeqh = leqAbs(O_t - H_t);
-	      const bool oeql = leqAbs(O_t - L_t);
-	      const bool ceqh = leqAbs(C_t - H_t);
-	      const bool ceql = leqAbs(C_t - L_t);
-
-	      // Push into window and update sums/counters
-	      win.push_back({X1, X2, oeqh, oeql, ceqh, ceql, t_index});
-	      sumX1 += X1;      sumSqX1 += X1 * X1;
-	      sumX2 += X2;      sumSqX2 += X2 * X2;
-	      if (oeqh)
-		++cnt_oh;
-
-	      if (oeql)
-		++cnt_ol;
-
-	      if (ceqh)
-		++cnt_ch;
-
-	      if (ceql)
-		++cnt_cl;
-	    }
-
-	  // Eject pairs whose t_idx fell out of the rolling window
-	  const std::size_t left = (t_index >= window_len) ? (t_index - window_len + 1) : 1;
-	  while (!win.empty() && win.front().t_idx < left)
-	    {
-	      const auto& r = win.front();
-	      sumX1 -= r.X1;   sumSqX1 -= r.X1 * r.X1;
-	      sumX2 -= r.X2;   sumSqX2 -= r.X2 * r.X2;
- 
-	      if (r.oeqh)
-		--cnt_oh;
-	    
-	      if (r.oeql)
-		--cnt_ol;
-	    
-	      if (r.ceqh)
-		--cnt_ch;
-	    
-	      if (r.ceql)
-		--cnt_cl;
-
-	      win.pop_front();
-	    }
-
-	  // Emit a spread for this t if the window is non-empty
-	  const std::size_t Npairs = win.size();
-	  if (Npairs == 0)
-            continue;
-
-	  const Decimal N  = Decimal(static_cast<long>(Npairs));
-	  const Decimal EX1 = sumX1 / N;
-	  const Decimal EX2 = sumX2 / N;
-
-	  // Sample variances (guard Npairs==1)
-	  Decimal VX1 = zero, VX2 = zero;
-	  if (Npairs >= 2) {
-            VX1 = (sumSqX1 - (sumX1 * sumX1) / N) / Decimal(static_cast<long>(Npairs - 1));
-
-            VX2 = (sumSqX2 - (sumX2 * sumX2) / N) / Decimal(static_cast<long>(Npairs - 1));
-	  }
-
-	  // Diagonal-optimal weights; fallback to 0.5/0.5 if degenerate
-	  const Decimal denomV = VX1 + VX2;
-	  const Decimal w1 = (denomV > zero) ? (VX2 / denomV) : half;
-	  const Decimal w2 = (denomV > zero) ? (VX1 / denomV) : half;
-
-	  // ν averages over the window (frequencies of extremes at open/close)
-	  const Decimal nu_oh = Decimal(static_cast<long>(cnt_oh)) / N;
-	  const Decimal nu_ol = Decimal(static_cast<long>(cnt_ol)) / N;
-	  const Decimal nu_ch = Decimal(static_cast<long>(cnt_ch)) / N;
-	  const Decimal nu_cl = Decimal(static_cast<long>(cnt_cl)) / N;
-
-	  const Decimal nu_open  = (nu_oh + nu_ol) * half;
-	  const Decimal nu_close = (nu_ch + nu_cl) * half;
-	  const Decimal nu_avg   = (nu_open + nu_close) * half;
-
-	  // S^2 = -2*(w1*E[X1]+w2*E[X2]) / (1 - 4*w1*w2*nu_avg)
-	  const Decimal k = four * w1 * w2;
-	  const Decimal denom = one - k * nu_avg;
-
-	  // Negative/invalid handling (use policy)
-	  if (denom <= zero)
-	    {
-	      if (negPolicy == NegativePolicy::ClampToZero)
-                out.push_back(zero);
-	      else if (negPolicy == NegativePolicy::Epsilon)
-                out.push_back(epsFromTick(C_t));
-	      // Skip: emit nothing
+	      // Keep vector length consistent; policy: push literal zero for invalid prints
+	      spreads.push_back(zero);
 	      continue;
 	    }
 
-	  Decimal S2 = -DecimalConstants<Decimal>::DecimalTwo * (w1 * EX1 + w2 * EX2) / denom;
-	  if (S2 < zero)
-	    {
-	      if (negPolicy == NegativePolicy::ClampToZero)
-                out.push_back(zero);
-	      else if (negPolicy == NegativePolicy::Epsilon)
-                out.push_back(epsFromTick(C_t));
-	      continue; // Skip: drop this observation
+	  // Compute adaptive tolerance using current close
+	  const Decimal tol = epsFromTick(c1);
+
+	  // Compute log-prices
+	  const Decimal log_o0 = DEC_NAMESPACE::log(o0);
+	  const Decimal log_h0 = DEC_NAMESPACE::log(h0);
+	  const Decimal log_l0 = DEC_NAMESPACE::log(l0);
+	  const Decimal log_c0 = DEC_NAMESPACE::log(c0);
+	  const Decimal log_o1 = DEC_NAMESPACE::log(o1);
+	  const Decimal log_h1 = DEC_NAMESPACE::log(h1);
+	  const Decimal log_l1 = DEC_NAMESPACE::log(l1);
+	  const Decimal log_c1 = DEC_NAMESPACE::log(c1);
+
+	  const Decimal m0 = (log_h0 + log_l0) / two;
+	  const Decimal m1 = (log_h1 + log_l1) / two;
+
+	  // Log-returns
+	  const Decimal r1 = m1 - log_o1;
+	  const Decimal r2 = log_o1 - m0;
+	  const Decimal r3 = m1 - log_c0;
+	  const Decimal r4 = log_c0 - m0;
+	  const Decimal r5 = log_o1 - log_c0;
+
+	  // Indicator variables with tolerance tests
+	  const bool hl_diff = !almost_equal(log_h1, log_l1, tol);
+	  const bool lc_diff = !almost_equal(log_l1, log_c0, tol);
+	  const Decimal tau  = (hl_diff || lc_diff) ? one : zero;
+
+	  const Decimal po1 = tau * ( !almost_equal(log_o1, log_h1, tol) ? one : zero );
+	  const Decimal po2 = tau * ( !almost_equal(log_o1, log_l1, tol) ? one : zero );
+	  const Decimal pc1 = tau * ( !almost_equal(log_c0, log_h0, tol) ? one : zero );
+	  const Decimal pc2 = tau * ( !almost_equal(log_c0, log_l0, tol) ? one : zero );
+
+	  // Build the current moment vector (34 entries)
+	  MomentData current_data;
+	  current_data.x_values.resize(34);
+
+	  // Base products for rolling means
+	  current_data.x_values[0]  = r1 * r2;
+	  current_data.x_values[1]  = r3 * r4;
+	  current_data.x_values[2]  = r1 * r5;
+	  current_data.x_values[3]  = r4 * r5;
+	  current_data.x_values[4]  = tau;
+	  current_data.x_values[5]  = r1;
+	  current_data.x_values[6]  = tau * r2;
+	  current_data.x_values[7]  = r3;
+	  current_data.x_values[8]  = tau * r4;
+	  current_data.x_values[9]  = r5;
+
+	  // Squares & cross terms (as in the EDGE moment set)
+	  current_data.x_values[10] = pow(r1 * r2, 2);
+	  current_data.x_values[11] = pow(r3 * r4, 2);
+	  current_data.x_values[12] = pow(r1 * r5, 2);
+	  current_data.x_values[13] = pow(r4 * r5, 2);
+	  current_data.x_values[14] = (r1 * r2) * (r3 * r4);
+	  current_data.x_values[15] = (r1 * r5) * (r4 * r5);
+
+	  current_data.x_values[16] = (tau * r2) * r2;
+	  current_data.x_values[17] = (tau * r4) * r4;
+	  current_data.x_values[18] = (tau * r5) * r5;
+
+	  current_data.x_values[19] = (tau * r2) * (r1 * r2);
+	  current_data.x_values[20] = (tau * r4) * (r3 * r4);
+	  current_data.x_values[21] = (tau * r5) * (r1 * r5);
+	  current_data.x_values[22] = (tau * r4) * (r4 * r5);
+	  current_data.x_values[23] = (tau * r4) * (r1 * r2);
+	  current_data.x_values[24] = (tau * r2) * (r3 * r4);
+
+	  current_data.x_values[25] = (tau * r2) * r4;
+	  current_data.x_values[26] = (tau * r1) * (r4 * r5);
+	  current_data.x_values[27] = (tau * r5) * (r4 * r5);
+	  current_data.x_values[28] = (tau * r4) * r5;
+	  current_data.x_values[29] = tau * r5;
+
+	  // Open/Close boundary prob. components
+	  current_data.x_values[30] = po1;
+	  current_data.x_values[31] = po2;
+	  current_data.x_values[32] = pc1;
+	  current_data.x_values[33] = pc2;
+
+	  // Rolling window maintenance
+	  window_data.push_back(std::move(current_data));
+	  if (window_data.size() > window_len) {
+	    window_data.pop_front();
+	  }
+	  if (window_data.empty()) {
+	    continue;
+	  }
+
+	  // Rolling means m[0..33]
+	  std::vector<Decimal> m(34, zero);
+	  for (const auto& data : window_data) {
+	    for (size_t i = 0; i < 34; ++i) {
+	      m[i] += data.x_values[i];
+	    }
+	  }
+	  for (size_t i = 0; i < 34; ++i) {
+	    m[i] /= static_cast<Decimal>(window_data.size());
+	  }
+
+	  // Probabilities (means)
+	  const Decimal pt = m[4];
+	  const Decimal po = m[30] + m[31];
+	  const Decimal pc = m[32] + m[33];
+
+	  // Count of valid pairs in the window
+	  Decimal nt = zero;
+	  for (const auto& data : window_data) {
+	    nt += data.x_values[4];   // tau
+	  }
+
+	  // Gate: emit with ≥ 1 valid pair (not 2)
+	  if (nt < one) {
+	    continue;
+	  }
+
+	  // Safe denominators (avoid collapsing to exact zeros)
+	  const Decimal pt_safe = (pt > tol) ? pt : tol;
+	  const Decimal po_safe = (po > tol) ? po : tol;
+	  const Decimal pc_safe = (pc > tol) ? pc : tol;
+
+	  try {
+	    // Input vectors
+	    const Decimal a1  = neg_four / po_safe;
+	    const Decimal a2  = neg_four / pc_safe;
+	    const Decimal a3  = m[5]  / pt_safe;
+	    const Decimal a4  = m[8]  / pt_safe;
+	    const Decimal a5  = m[7]  / pt_safe;
+	    const Decimal a6  = m[9]  / pt_safe;
+
+	    const Decimal a12 = two * a1 * a2;
+	    const Decimal a11 = a1 * a1;
+	    const Decimal a22 = a2 * a2;
+	    const Decimal a33 = a3 * a3;
+	    const Decimal a55 = a5 * a5;
+	    const Decimal a66 = a6 * a6;
+
+	    // Expectations
+	    const Decimal e1 = a1 * (m[0] - a3 * m[6]) + a2 * (m[1] - a4 * m[7]);
+	    const Decimal e2 = a1 * (m[2] - a3 * m[29]) + a2 * (m[3] - a4 * m[9]);
+
+	    // Variances
+	    const Decimal v1 = -pow(e1, 2) + (a11 * (m[10] - two * a3 * m[19] + a33 * m[16]) +
+					      a22 * (m[11] - two * a5 * m[20] + a55 * m[17]) +
+					      a12 * (m[14] - a3 * m[24] - a5 * m[23] + a3 * a5 * m[25]));
+	    const Decimal v2 = -pow(e2, 2) + (a11 * (m[12] - two * a3 * m[21] + a33 * m[18]) +
+					      a22 * (m[13] - two * a6 * m[22] + a66 * m[17]) +
+					      a12 * (m[15] - a3 * m[27] - a6 * m[26] + a3 * a6 * m[28]));
+
+	    // Square spread s^2
+	    const Decimal vt = v1 + v2;
+	    Decimal s2;
+	    if (vt > zero) {
+	      s2 = (v2 * e1 + v1 * e2) / vt;
+	    } else {
+	      s2 = (e1 + e2) / two;
 	    }
 
-	  out.push_back(DEC_NAMESPACE::sqrt(S2));
+	    // Root and sign
+	    Decimal s = DEC_NAMESPACE::sqrt(DEC_NAMESPACE::abs(s2));
+	    if (sign) {
+	      s *= (s2 > zero) ? one : (zero - one);
+	    }
+
+	    // Apply NegativePolicy & near-zero handling
+	    if (s <= tol) {
+	      if (negPolicy == NegativePolicy::Skip) {
+		continue;   // drop degenerate obs
+	      } else if (negPolicy == NegativePolicy::Epsilon) {
+		spreads.push_back(epsFromTick(c1));
+		continue;
+	      } // ClampToZero: fall through to push literal zero
+	    }
+
+	    spreads.push_back(s);
+	  }
+	  catch (const std::domain_error& e) {
+	    // Preserve existing behavior—skip bad period, warn on stderr
+	    std::cerr << "Warning: Skipping a period in vector calculation due to math error: "
+		      << e.what() << std::endl;
+	  }
 	}
 
-      return out;
+      return spreads;
     }
   };
 } // namespace mkc_timeseries
