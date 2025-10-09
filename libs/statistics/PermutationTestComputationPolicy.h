@@ -27,6 +27,161 @@
 namespace mkc_timeseries
 {
   /**
+   * @class StandardPValueComputationPolicy
+   * @brief Policy class for computing standard bias-corrected permutation test p-values.
+   *
+   * This policy implements the standard +1 correction method recommended in permutation
+   * testing literature (e.g., Good 2005; North et al. 2002) to avoid zero p-values
+   * and yield unbiased small-sample estimates.
+   *
+   * @tparam Decimal The numerical type used for calculations.
+   */
+  template<typename Decimal>
+  class StandardPValueComputationPolicy
+  {
+  public:
+    /**
+     * @brief Computes a bias-corrected Monte Carlo permutation test p-value.
+     *
+     * Applies the "+1" correction often recommended in the permutation-testing literature
+     * (e.g. Good 2005; North et al. 2002) to avoid zero p-values and to yield an unbiased
+     * small-sample estimate.  Given:
+     *   - k = number of permutations whose test statistic ≥ the observed statistic
+     *   - N = total number of permutations run
+     *
+     * this returns
+     * \f[
+     *    p \;=\; \frac{k + 1}{\,N + 1\,}
+     * \f]
+     *
+     * which enforces a minimum p-value of \(1/(N+1)\) when \(k=0\).
+     *
+     * @param k
+     *   Count of "extreme" permutations (i.e. ones at least as good as baseline).
+     * @param N
+     *   Total number of permutations executed.
+     * @return
+     *   A bias-corrected p-value in the interval \([1/(N+1),\,1]\).
+     */
+    static Decimal computePermutationPValue(std::uint32_t k,
+                                            std::uint32_t N)
+    {
+      return Decimal(k + 1) / Decimal(N + 1);
+    }
+  };
+
+  /**
+   * @class WilsonPValueComputationPolicy
+   * @brief Policy class for computing conservative permutation test p-values using Wilson score method.
+   *
+   * This policy uses the Wilson score upper confidence bound to provide a conservative
+   * p-value estimate that accounts for Monte Carlo uncertainty in permutation tests.
+   *
+   * @tparam Decimal The numerical type used for calculations.
+   */
+  template<typename Decimal>
+  class WilsonPValueComputationPolicy
+  {
+  public:
+    /**
+     * @brief Conservative permutation p-value using the Wilson one-sided upper bound.
+     *
+     * Given a permutation test with @f$N@f$ random permutations and @f$k@f$ "extreme"
+     * permutations (statistics at least as extreme as observed), we first compute the
+     * **+1 corrected** estimator
+     *
+     * \f[
+     *   \hat p \;=\; \frac{k+1}{N+1},
+     * \f]
+     *
+     * then return the **Wilson one-sided upper bound** for @f$p@f$ at the desired
+     * confidence (controlled by @p z). This inflates the reported p-value just enough
+     * to account for Monte-Carlo uncertainty, so downstream rules like "promote if
+     * @f$p \le \alpha@f$" are robust to finite @f$N@f$.
+     *
+     * @param k  Count of permutations with test statistic ≥ observed (extreme count).
+     * @param N  Total number of (valid) permutations performed.
+     * @return   Conservative p-value = Wilson upper bound for \f$\hat p = (k+1)/(N+1)\f$.
+     *
+     * @par Rationale
+     * - The +1 correction ensures permutation p-values are never reported as zero and
+     *   yields valid exact p-values under random permutations.
+     * - Using the Wilson **upper** bound turns your p-value into a one-sided confidence
+     *   bound for the *true* tail probability, directly addressing Monte-Carlo error at finite @f$N@f$.
+     */
+    static Decimal computePermutationPValue(std::uint32_t k,
+                                            std::uint32_t N)
+    {
+      const double phat = static_cast<double>(k + 1) / static_cast<double>(N + 1);
+      constexpr double kZ_OneSided95 = 1.6448536269514722;
+
+      return Decimal(wilsonUpperBound(phat, N, kZ_OneSided95));
+    }
+
+  private:
+    /**
+     * @brief One-sided Wilson score *upper* confidence bound for a binomial proportion.
+     *
+     * Computes the Wilson score upper bound for the true success probability @f$p@f$
+     * given an observed proportion @f$\hat p@f$ from @f$N@f$ Bernoulli trials:
+     *
+     * \f[
+     * \mathrm{UB}_\text{Wilson}(\hat p; N, z) \;=\;
+     * \frac{\hat p + \frac{z^2}{2N} + z\,\sqrt{\frac{\hat p(1-\hat p)}{N} + \frac{z^2}{4N^2}}}
+     *      {1 + \frac{z^2}{N}}
+     * \f]
+     *
+     * where @f$z@f$ is the normal quantile. For a **one-sided 95%** upper bound,
+     * use @f$z \approx 1.64485@f$; for a **two-sided 95%** interval (each tail @f$\alpha/2=0.025@f$),
+     * @f$z \approx 1.96@f$. The result is clipped to @f$[0,1]@f$ for numerical safety.
+     *
+     * @param phat  Observed proportion in @f$[0,1]@f$ (e.g., \f$\hat p = (k+1)/(N+1)\f$ for
+     *              permutation tests with a +1 correction).
+     * @param N     Number of Bernoulli trials (sample size).
+     * @param z     Normal critical value (default 1.96; set 1.64485 for one-sided 95%).
+     * @return      The Wilson one-sided *upper* confidence bound in @f$[0,1]@f$.
+     *
+     * @note Compared to the simple Wald bound \f$\hat p \pm z\sqrt{\hat p (1-\hat p)/N}\f$,
+     *       the Wilson score bound has substantially better coverage—especially for small \f$N\f$
+     *       or proportions near 0 or 1.
+     *
+     * @par References
+     * - E. B. Wilson (1927), "Probable Inference, the Law of Succession, and Statistical Inference,"
+     *   *JASA* 22(158), 209–212. (Original derivation of the score interval.)
+     * - L. D. Brown, T. T. Cai, A. DasGupta (2001), "Interval Estimation for a Binomial Proportion,"
+     *   *Statistical Science* 16(2), 101–133. Excellent review and comparison of binomial intervals.
+     * - NIST/SEMATECH e-Handbook of Statistical Methods, "Confidence Intervals for a Proportion"
+     *   (one-sided adaptation via replacing \f$z_{\alpha/2}\f$ with \f$z_{\alpha}\f$).
+     * - Overview/derivation summary: "Binomial proportion confidence interval — Wilson score interval."
+     */
+    static double wilsonUpperBound(double phat, std::uint32_t N, double z = 1.645)
+    {
+      // --- Algorithmic notes (step-by-step) ---
+      // 1) Precompute z^2 and denominator term 1 + z^2 / N.
+      // 2) Compute the "center" term: phat + z^2/(2N).
+      // 3) Compute the "radius" term:
+      //      z * sqrt( phat*(1 - phat)/N + z^2/(4N^2) )
+      //    which is the score-test standard error evaluated at the bound.
+      // 4) Upper bound = (center + radius) / denom.
+      // 5) Clip to [0, 1] to stabilize edge cases (very small/large phat, small N).
+
+      const double z2 = z*z;
+      const double denom  = 1.0 + z2 / N;
+      const double center = phat + z2 / (2.0 * N);
+      const double rad    = z * std::sqrt((phat * (1.0 - phat) + z2 / (4.0 * N)) / N);
+      double ub = (center + rad) / denom;
+
+      if (ub < 0.0)
+        ub = 0.0;
+
+      if (ub > 1.0)
+        ub = 1.0;
+
+      return ub;
+    }
+  };
+
+  /**
    * @class DefaultPermuteMarketChangesPolicy
    * @brief Performs a hypothesis test via Monte-Carlo permutation testing of a trading strategy.
    *
@@ -65,12 +220,15 @@ namespace mkc_timeseries
    * Defaults to `PermutationTestingNullTestStatisticPolicy<Decimal>`.
    * @tparam Executor A policy class that defines the execution model for permutations,
    * specifically whether concurrency is used. Defaults to `concurrency::StdAsyncExecutor`.
+   * @tparam PValueComputationPolicy A policy class that defines how to compute the final p-value
+   * from the permutation test results. Defaults to `StandardPValueComputationPolicy<Decimal>`.
    */
   template <class Decimal,
-	    class BackTestResultPolicy,
-	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
-	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
-	    typename Executor = concurrency::ThreadPoolExecutor<>>
+     class BackTestResultPolicy,
+     typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
+     typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
+     typename Executor = concurrency::ThreadPoolExecutor<>,
+     typename PValueComputationPolicy = StandardPValueComputationPolicy<Decimal>>
   class DefaultPermuteMarketChangesPolicy : public PermutationTestSubject<Decimal>
   {
     static_assert(has_return_type<_PermutationTestResultPolicy>::value,
@@ -214,7 +372,7 @@ namespace mkc_timeseries
       }
 
       uint32_t extreme = extremeCount.load(std::memory_order_relaxed);
-      Decimal pValue = computePermutationPValue(extreme, valid);
+      Decimal pValue = PValueComputationPolicy::computePermutationPValue(extreme, valid);
 
       // 7) Grab whatever summary the statistics‐collection policy holds
       Decimal summaryTestStat = testStatCollector.getTestStat();
@@ -223,35 +381,6 @@ namespace mkc_timeseries
       return _PermutationTestResultPolicy::createReturnValue(pValue,
 							     summaryTestStat,
 							     baseLineTestStat);
-    }
-
-    /**
-     * @brief Computes a bias-corrected Monte Carlo permutation test p-value.
-     *
-     * Applies the “+1” correction often recommended in the permutation-testing literature
-     * (e.g. Good 2005; North et al. 2002) to avoid zero p-values and to yield an unbiased
-     * small-sample estimate.  Given:
-     *   - k = number of permutations whose test statistic ≥ the observed statistic
-     *   - N = total number of permutations run
-     *
-     * this returns
-     * \f[
-     *    p \;=\; \frac{k + 1}{\,N + 1\,}
-     * \f]
-     *
-     * which enforces a minimum p-value of \(1/(N+1)\) when \(k=0\).
-     *
-     * @param k
-     *   Count of “extreme” permutations (i.e. ones at least as good as baseline).
-     * @param N
-     *   Total number of permutations executed.
-     * @return
-     *   A bias-corrected p-value in the interval \([1/(N+1),\,1]\).
-     */
-    static Decimal computePermutationPValue(std::uint32_t k,
-                                            std::uint32_t N)
-    {
-      return Decimal(k + 1) / Decimal(N + 1);
     }
   };
 }

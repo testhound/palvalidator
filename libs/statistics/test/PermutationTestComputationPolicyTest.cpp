@@ -381,3 +381,229 @@ TEST_CASE("numPermutations==1 yields p=1 or 0.5","[unit]") {
   auto p2 = policy2.runPermutationTest(bt,1,DecimalType("0.5"));
   REQUIRE(p2 == DecimalType("0.5"));
 }
+
+// ----------------------------------------------------------------------------
+// Policy class unit tests
+// ----------------------------------------------------------------------------
+
+TEST_CASE("StandardPValueComputationPolicy: basic formula", "[policy][unit]") {
+  // Test (k+1)/(N+1) formula
+  SECTION("k=0, N=99 should give 1/100") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 99);
+    REQUIRE(p == DecimalType("0.01"));
+  }
+  
+  SECTION("k=5, N=99 should give 6/100") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(5, 99);
+    REQUIRE(p == DecimalType("0.06"));
+  }
+  
+  SECTION("k=N should give 1.0") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(100, 100);
+    REQUIRE(p == DecimalType("1.0"));
+  }
+}
+
+TEST_CASE("StandardPValueComputationPolicy: minimum p-value", "[policy][unit]") {
+  // Minimum p-value should be 1/(N+1)
+  SECTION("N=999, k=0 gives minimum of 1/1000") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 999);
+    REQUIRE(p == DecimalType("0.001"));
+  }
+  
+  SECTION("N=9, k=0 gives minimum of 1/10") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 9);
+    REQUIRE(p == DecimalType("0.1"));
+  }
+}
+
+TEST_CASE("StandardPValueComputationPolicy: edge cases", "[policy][unit]") {
+  SECTION("N=1, k=0 should give 0.5") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 1);
+    REQUIRE(p == DecimalType("0.5"));
+  }
+  
+  SECTION("N=1, k=1 should give 1.0") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(1, 1);
+    REQUIRE(p == DecimalType("1.0"));
+  }
+  
+  SECTION("All extreme: k=N") {
+    for (uint32_t N = 10; N <= 100; N += 10) {
+      auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(N, N);
+      REQUIRE(p == DecimalType("1.0"));
+    }
+  }
+}
+
+TEST_CASE("WilsonPValueComputationPolicy: conservativeness", "[policy][unit]") {
+  // Wilson should be >= Standard (conservative)
+  SECTION("Wilson >= Standard for various k,N") {
+    std::vector<std::tuple<uint32_t, uint32_t>> test_cases = {
+      {0, 99},    // k=0, N=99
+      {5, 99},    // k=5, N=99
+      {10, 100},  // k=10, N=100
+      {50, 100},  // k=50, N=100
+      {1, 10},    // k=1, N=10
+      {5, 10}     // k=5, N=10
+    };
+    
+    for (const auto& [k, N] : test_cases) {
+      auto standard_p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+      auto wilson_p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+      
+      INFO("k=" << k << ", N=" << N);
+      REQUIRE(wilson_p >= standard_p);
+    }
+  }
+}
+
+TEST_CASE("WilsonPValueComputationPolicy: returns valid p-values", "[policy][unit]") {
+  // Wilson p-values should be in [0, 1]
+  SECTION("Various k,N combinations stay in [0,1]") {
+    for (uint32_t N = 10; N <= 100; N += 10) {
+      for (uint32_t k = 0; k <= N; k += N/5) {
+        auto p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+        INFO("k=" << k << ", N=" << N << ", p=" << p);
+        REQUIRE(p >= DecimalType("0.0"));
+        REQUIRE(p <= DecimalType("1.0"));
+      }
+    }
+  }
+}
+
+TEST_CASE("WilsonPValueComputationPolicy: edge cases", "[policy][unit]") {
+  SECTION("k=0, small N") {
+    // When k=0, Wilson should be more conservative than standard 1/(N+1)
+    auto standard = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 10);
+    auto wilson = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 10);
+    REQUIRE(wilson > standard);
+  }
+  
+  SECTION("k=N should give 1.0") {
+    auto p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(100, 100);
+    REQUIRE(p.getAsDouble() == Catch::Approx(1.0).epsilon(0.01));
+  }
+  
+  SECTION("Very small N=1") {
+    // With N=1, k=0 should still be valid
+    auto p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 1);
+    REQUIRE(p >= DecimalType("0.0"));
+    REQUIRE(p <= DecimalType("1.0"));
+  }
+}
+
+TEST_CASE("WilsonPValueComputationPolicy: conservativeness increases with smaller N", "[policy][unit]") {
+  // The Wilson adjustment should be more conservative (larger difference from standard) 
+  // when N is smaller, as Monte Carlo uncertainty is higher
+  
+  uint32_t k = 5;  // Fixed number of extreme values
+  
+  // Calculate difference between Wilson and Standard for different N
+  std::vector<double> differences;
+  std::vector<uint32_t> N_values = {20, 50, 100, 500, 1000};
+  
+  for (uint32_t N : N_values) {
+    auto standard = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+    auto wilson = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+    double diff = (wilson - standard).getAsDouble();
+    differences.push_back(diff);
+  }
+  
+  // Verify that differences decrease as N increases (monotonic)
+  for (size_t i = 1; i < differences.size(); ++i) {
+    INFO("N=" << N_values[i-1] << " diff=" << differences[i-1] << 
+         ", N=" << N_values[i] << " diff=" << differences[i]);
+    REQUIRE(differences[i] < differences[i-1]);
+  }
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy with StandardPValueComputationPolicy", "[policy][integration]") {
+  // Test that using StandardPValueComputationPolicy explicitly works as default
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  using StandardTester = DefaultPermuteMarketChangesPolicy<
+    DecimalType,
+    AlwaysLowStatPolicy,
+    PValueReturnPolicy<DecimalType>,
+    PermutationTestingNullTestStatisticPolicy<DecimalType>,
+    concurrency::ThreadPoolExecutor<>,
+    StandardPValueComputationPolicy<DecimalType>
+  >;
+  
+  StandardTester policy;
+  auto p = policy.runPermutationTest(bt, 4, DecimalType("0.5"));
+  
+  // With AlwaysLowStatPolicy (always 0.1 < baseline 0.5), k=0, N=4
+  // Standard formula: (0+1)/(4+1) = 1/5 = 0.2
+  REQUIRE(p == DecimalType("0.2"));
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy with WilsonPValueComputationPolicy", "[policy][integration]") {
+  // Test that using WilsonPValueComputationPolicy gives conservative p-values
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  using WilsonTester = DefaultPermuteMarketChangesPolicy<
+    DecimalType,
+    AlwaysLowStatPolicy,
+    PValueReturnPolicy<DecimalType>,
+    PermutationTestingNullTestStatisticPolicy<DecimalType>,
+    concurrency::ThreadPoolExecutor<>,
+    WilsonPValueComputationPolicy<DecimalType>
+  >;
+  
+  using StandardTester = DefaultPermuteMarketChangesPolicy<
+    DecimalType,
+    AlwaysLowStatPolicy,
+    PValueReturnPolicy<DecimalType>,
+    PermutationTestingNullTestStatisticPolicy<DecimalType>,
+    concurrency::ThreadPoolExecutor<>,
+    StandardPValueComputationPolicy<DecimalType>
+  >;
+  
+  WilsonTester wilsonPolicy;
+  StandardTester standardPolicy;
+  
+  auto baseline = DecimalType("0.5");
+  auto wilson_p = wilsonPolicy.runPermutationTest(bt, 10, baseline);
+  auto standard_p = standardPolicy.runPermutationTest(bt, 10, baseline);
+  
+  INFO("Wilson p=" << wilson_p << ", Standard p=" << standard_p);
+  REQUIRE(wilson_p > standard_p);  // Wilson should be more conservative
+}
+
+TEST_CASE("Policy classes: numerical stability", "[policy][unit]") {
+  // Test extreme cases for numerical stability
+  
+  SECTION("Very large N") {
+    uint32_t k = 100;
+    uint32_t N = 10000;
+    
+    auto standard = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+    auto wilson = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+    
+    // Both should be valid p-values
+    REQUIRE(standard >= DecimalType("0.0"));
+    REQUIRE(standard <= DecimalType("1.0"));
+    REQUIRE(wilson >= DecimalType("0.0"));
+    REQUIRE(wilson <= DecimalType("1.0"));
+    
+    // They should be very close for large N (Wilson adjustment becomes negligible)
+    double diff = (wilson - standard).getAsDouble();
+    REQUIRE(diff < 0.01);  // Less than 1% difference
+  }
+  
+  SECTION("k very close to N") {
+    uint32_t N = 100;
+    uint32_t k = 99;
+    
+    auto standard = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+    auto wilson = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(k, N);
+    
+    // Both should be very close to 1.0
+    REQUIRE(standard.getAsDouble() > 0.99);
+    REQUIRE(wilson.getAsDouble() > 0.99);
+  }
+}
