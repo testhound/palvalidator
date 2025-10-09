@@ -179,7 +179,11 @@ private:
     using UnadjustedMcpt = MonteCarloPermuteMarketChanges<
         Num,
         PolicyType,
-        DefaultPermuteMarketChangesPolicy<Num, PolicyType<Num>>
+        DefaultPermuteMarketChangesPolicy<Num, PolicyType<Num>,
+            PValueReturnPolicy<Num>,
+            PermutationTestingNullTestStatisticPolicy<Num>,
+            concurrency::ThreadPoolExecutor<>,
+            WilsonPValueComputationPolicy<Num>>
     >;
     PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection> validation;
     
