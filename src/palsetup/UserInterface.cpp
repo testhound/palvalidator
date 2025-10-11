@@ -11,9 +11,66 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
+#include <limits> 
 #include <boost/date_time/gregorian/gregorian.hpp>
 
 namespace fs = std::filesystem;
+
+namespace {
+  // Prints "typical-day" diagnostics for either long (asLong=true) or short (asLong=false)
+  void PrintTypicalDayDiagnostics(const std::vector<Num>& rocVec,
+                                  bool asLong,
+                                  double alpha = 0.10,
+                                  double winsorTail = 0.01,
+                                  double PF = 2.0,
+                                  const std::string& indent = "   ")
+  {
+      using namespace mkc_timeseries;
+
+      if (rocVec.empty()) return;
+
+      // Winsorize a working copy for quantile stability (same policy as compute fns)
+      std::vector<Num> wv = rocVec;
+      if (wv.size() >= 20) {
+          WinsorizeInPlace(wv, winsorTail);  // 1% per tail by default
+      }
+
+      // Center & quantiles (linear interpolation)
+      const Num median = MedianOfVec(wv);
+      const Num q_lo   = LinearInterpolationQuantile(wv, alpha);
+      const Num q_hi   = LinearInterpolationQuantile(wv, 1.0 - alpha);
+
+      // One-sided central widths
+      const Num upWidth   = q_hi - median;     // typical up wiggle
+      const Num downWidth = median - q_lo;     // typical down move
+
+      const double up   = upWidth.getAsDouble();
+      const double down = downWidth.getAsDouble();
+
+      const double eps = 1e-12;
+      const double CAR = up / std::max(down, eps);      // central asymmetry ratio
+      const double RWL_long  = CAR;                     // ≈ target/stop for longs
+      const double RWL_short = 1.0 / std::max(CAR, eps);
+      const double RWL = asLong ? RWL_long : RWL_short;
+      const double Profitability = 100.0 * PF / (PF + RWL);
+
+      // Empirical coverage of the central band [q10, q90] on the ORIGINAL (unwinsorized) ROC
+      std::size_t inside = 0;
+      for (const auto& r : rocVec) if (r >= q_lo && r <= q_hi) ++inside;
+      const double coverage = 100.0 * static_cast<double>(inside) / std::max<std::size_t>(rocVec.size(), 1);
+
+      std::cout << std::fixed << std::setprecision(2);
+      std::cout << indent << "[Typical-day diagnostics]\n";
+      std::cout << indent << "   alpha per tail: " << (alpha * 100.0) << "%, "
+                << "band coverage ≈ " << coverage << "%\n";
+      std::cout << indent << "   median = " << median.getAsDouble() << "%, "
+                << "q10 = " << q_lo.getAsDouble() << "%, "
+                << "q90 = " << q_hi.getAsDouble() << "%\n";
+      std::cout << indent << "   CAR=" << CAR
+                << " | Implied RWL (" << (asLong ? "long" : "short") << ")=" << RWL
+                << " | Profitability (PF=" << PF << ")=" << Profitability << "%\n";
+  }
+}
 
 UserInterface::UserInterface() : indicatorMode_(false), statsOnlyMode_(false) {}
 
@@ -448,136 +505,86 @@ void UserInterface::displayCleanStartInfo(const CleanStartResult& cleanStart,
 }
 
 void UserInterface::displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<Num>& inSampleSeries,
-                                         const mkc_timeseries::OHLCTimeSeries<Num>& outOfSampleSeries,
-                                         const SetupConfiguration& config) {
+                                          const mkc_timeseries::OHLCTimeSeries<Num>& outOfSampleSeries,
+                                          const SetupConfiguration& config)
+{
     using namespace mkc_timeseries;
-    
+
     const uint32_t period = static_cast<uint32_t>(config.getHoldingPeriod());
-    
-    std::cout << "\n=== Statistics-Only Analysis ===" << std::endl;
-    std::cout << "Ticker: " << config.getTickerSymbol() << std::endl;
-    std::cout << "Time Frame: " << config.getTimeFrameStr() << std::endl;
-    std::cout << "In-Sample Bars: " << inSampleSeries.getNumEntries() << std::endl;
-    std::cout << "Holding Period: " << period << std::endl;
-    std::cout << "=================================" << std::endl;
-    
+
+    std::cout << "\n=== Statistics-Only Analysis ===\n";
+    std::cout << "Ticker: "      << config.getTickerSymbol()    << "\n";
+    std::cout << "Time Frame: "  << config.getTimeFrameStr()     << "\n";
+    std::cout << "In-Sample Bars: " << inSampleSeries.getNumEntries() << "\n";
+    std::cout << "Holding Period: " << period << "\n";
+    std::cout << "=================================\n";
+
     try {
-        // Calculate base ROC series for all methods
+        // Base ROC for diagnostics/summary (same horizon)
         auto rocSeries = RocSeries(inSampleSeries.CloseTimeSeries(), period);
-        auto rocVec = rocSeries.getTimeSeriesAsVector();
-        
-        // 1. ComputeRobustStopAndTargetFromSeries (2-argument version)
-        std::cout << "\n1. Robust Stop and Target (Qn + Medcouple skew):" << std::endl;
-        auto [robustProfit, robustStop] = ComputeRobustStopAndTargetFromSeries(inSampleSeries, period);
-        
-        // Calculate statistics for robust method (uses full ROC series)
-        Num robustMedian = MedianOfVec(rocVec);
-        RobustQn<Num> robustQnEstimator;
-        Num robustQn = robustQnEstimator.getRobustQn(rocVec);
-        Num robustSkew = RobustSkewMedcouple(rocSeries);
-        
-        std::cout << std::fixed << std::setprecision(4);
-        std::cout << "   Statistics - Median: " << robustMedian.getAsDouble() << "%, Qn: " << robustQn.getAsDouble() << "%, Skew: " << robustSkew.getAsDouble() << std::endl;
-        std::cout << std::setprecision(2);
-        std::cout << "   Profit Target Width: " << robustProfit.getAsDouble() << "%" << std::endl;
-        std::cout << "   Stop Loss Width:     " << robustStop.getAsDouble() << "%" << std::endl;
-        
-        // 2. ComputeLongStopAndTargetFromSeries
-        std::cout << "\n2. Long Position Stop and Target (Partitioned distributions):" << std::endl;
-        auto [longProfit, longStop] = ComputeLongStopAndTargetFromSeries(inSampleSeries, period);
-        
-        // Calculate statistics for long method (uses positive and negative partitions)
-        const Num zero = DecimalConstants<Num>::DecimalZero;
-        std::vector<Num> positiveRocs, negativeRocs;
-        for (const auto& roc : rocVec) {
-            if (roc > zero) positiveRocs.push_back(roc);
-            else if (roc < zero) negativeRocs.push_back(roc);
-        }
-        
-        Num longPosMedian = positiveRocs.empty() ? zero : MedianOfVec(positiveRocs);
-        RobustQn<Num> longPosQnEstimator;
-        Num longPosQn = positiveRocs.empty() ? zero : longPosQnEstimator.getRobustQn(positiveRocs);
-        Num longNegMedian = negativeRocs.empty() ? zero : MedianOfVec(negativeRocs);
-        
-        // Calculate skew for positive and negative partitions
-        Num longPosSkew = zero, longNegSkew = zero;
-        if (positiveRocs.size() >= 3) {
-            NumericTimeSeries<Num> posRocSeries(rocSeries.getTimeFrame());
-            auto baseTime = boost::posix_time::second_clock::local_time();
-            for (size_t i = 0; i < positiveRocs.size(); ++i) {
-                auto timestamp = baseTime + boost::posix_time::seconds(static_cast<long>(i));
-                posRocSeries.addEntry(NumericTimeSeriesEntry<Num>(timestamp, positiveRocs[i], rocSeries.getTimeFrame()));
-            }
-            longPosSkew = RobustSkewMedcouple(posRocSeries);
-        }
-        if (negativeRocs.size() >= 3) {
-            NumericTimeSeries<Num> negRocSeries(rocSeries.getTimeFrame());
-            auto baseTime = boost::posix_time::second_clock::local_time();
-            for (size_t i = 0; i < negativeRocs.size(); ++i) {
-                auto timestamp = baseTime + boost::posix_time::seconds(static_cast<long>(i));
-                negRocSeries.addEntry(NumericTimeSeriesEntry<Num>(timestamp, negativeRocs[i], rocSeries.getTimeFrame()));
-            }
-            longNegSkew = RobustSkewMedcouple(negRocSeries);
-        }
-        
-        std::cout << std::setprecision(4);
-        std::cout << "   Statistics - Pos: Med=" << longPosMedian.getAsDouble() << "%, Qn=" << longPosQn.getAsDouble() << "%, Skew=" << longPosSkew.getAsDouble() << std::endl;
-        std::cout << "                Neg: Med=" << longNegMedian.getAsDouble() << "%, Skew=" << longNegSkew.getAsDouble() << std::endl;
-        std::cout << std::setprecision(2);
-        std::cout << "   Profit Target Width: " << longProfit.getAsDouble() << "%" << std::endl;
-        std::cout << "   Stop Loss Width:     " << longStop.getAsDouble() << "%" << std::endl;
-        
-        // 3. ComputeShortStopAndTargetFromSeries
-        std::cout << "\n3. Short Position Stop and Target (Partitioned distributions):" << std::endl;
+        auto rocVec    = rocSeries.getTimeSeriesAsVector();
+
+        // Compute stop/target via the new typical-day methods
+        auto [longProfit,  longStop ] = ComputeLongStopAndTargetFromSeries (inSampleSeries, period);
         auto [shortProfit, shortStop] = ComputeShortStopAndTargetFromSeries(inSampleSeries, period);
-        
-        // Calculate statistics for short method (uses negative and positive partitions)
-        RobustQn<Num> shortNegQnEstimator;
-        Num shortNegQn = negativeRocs.empty() ? zero : shortNegQnEstimator.getRobustQn(negativeRocs);
-        Num shortPosMedian = positiveRocs.empty() ? zero : MedianOfVec(positiveRocs);
-        
-        std::cout << std::setprecision(4);
-        std::cout << "   Statistics - Neg: Med=" << longNegMedian.getAsDouble() << "%, Qn=" << shortNegQn.getAsDouble() << "%, Skew=" << longNegSkew.getAsDouble() << std::endl;
-        std::cout << "                Pos: Med=" << shortPosMedian.getAsDouble() << "%, Skew=" << longPosSkew.getAsDouble() << std::endl;
-        std::cout << std::setprecision(2);
-        std::cout << "   Profit Target Width: " << shortProfit.getAsDouble() << "%" << std::endl;
-        std::cout << "   Stop Loss Width:     " << shortStop.getAsDouble() << "%" << std::endl;
-        
-        // Summary comparison
-        std::cout << "\n=== Summary Comparison ===" << std::endl;
-        std::cout << "Method                    | Profit Target | Stop Loss | Key Statistics" << std::endl;
-        std::cout << "--------------------------|---------------|-----------|------------------" << std::endl;
+
+        // 1) Typical-day band & diagnostics (computed once; helper prints band, CAR, RWL, Profitability)
+        std::cout << "\n1. Typical-day band & diagnostics (q10 / median / q90):\n";
+        PrintTypicalDayDiagnostics(rocVec, /*asLong=*/true );   // long-side view (prints RWL/Profitability for long)
+        PrintTypicalDayDiagnostics(rocVec, /*asLong=*/false);   // short-side view (prints RWL/Profitability for short)
+
+        // 2) Long/Short widths (concise)
+        std::cout << "\n2. Long Position Stop and Target (Typical-day q10/median/q90):\n";
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "Robust (Qn+Skew)         |        " << robustProfit.getAsDouble() << "% |    " << robustStop.getAsDouble() << "% | Full ROC (Skew: " << std::setprecision(3) << robustSkew.getAsDouble() << ")" << std::endl;
-        std::cout << std::setprecision(2);
-        std::cout << "Long Position             |        " << longProfit.getAsDouble() << "% |    " << longStop.getAsDouble() << "% | Pos/Neg Partition" << std::endl;
-        std::cout << "Short Position            |        " << shortProfit.getAsDouble() << "% |    " << shortStop.getAsDouble() << "% | Neg/Pos Partition" << std::endl;
-        
-        // Additional summary statistics
-        std::cout << "\n=== Data Summary ===" << std::endl;
-        std::cout << std::setprecision(4);
-        std::cout << "Total ROC observations:   " << rocVec.size() << std::endl;
-        std::cout << "Positive ROC count:       " << positiveRocs.size() << " (" << std::setprecision(1) << (100.0 * positiveRocs.size() / rocVec.size()) << "%)" << std::endl;
-        std::cout << "Negative ROC count:       " << negativeRocs.size() << " (" << (100.0 * negativeRocs.size() / rocVec.size()) << "%)" << std::endl;
-        
-    } catch (const std::domain_error& e) {
-        std::cerr << "\nData Error: " << e.what() << std::endl;
-        std::cerr << "Suggestion: Ensure sufficient data for analysis (minimum ~25 bars recommended)" << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "\nError calculating statistics: " << e.what() << std::endl;
+        std::cout << "   Profit Target Width: " << longProfit.getAsDouble()  << "%\n";
+        std::cout << "   Stop   Loss   Width: " << longStop.getAsDouble()    << "%\n";
+
+        std::cout << "\n3. Short Position Stop and Target (Typical-day q10/median/q90):\n";
+        std::cout << "   Profit Target Width: " << shortProfit.getAsDouble() << "%\n";
+        std::cout << "   Stop   Loss   Width: " << shortStop.getAsDouble()   << "%\n";
+
+        // 4) Summary table
+        std::cout << "\n=== Summary Comparison ===\n";
+        std::cout << "Position Type             | Profit Target | Stop Loss | Method\n";
+        std::cout << "--------------------------|---------------|-----------|-------------------------\n";
+        std::cout << "Long Position             |        " << longProfit.getAsDouble()
+                  << "% |    " << longStop.getAsDouble()
+                  << "% | Typical-day (q10–q90)\n";
+        std::cout << "Short Position            |        " << shortProfit.getAsDouble()
+                  << "% |    " << shortStop.getAsDouble()
+                  << "% | Typical-day (q10–q90)\n";
+
+        // 5) Data summary
+        const Num zero = DecimalConstants<Num>::DecimalZero;
+        std::size_t posCount = 0, negCount = 0;
+        for (const auto& roc : rocVec) {
+            if (roc > zero) ++posCount;
+            else if (roc < zero) ++negCount;
+        }
+        std::cout << "\n=== Data Summary ===\n";
+        std::cout << std::setprecision(0);
+        std::cout << "Total ROC observations:   " << rocVec.size() << "\n";
+        std::cout << std::setprecision(1);
+        std::cout << "Positive ROC count:       " << posCount << " (" << (100.0 * posCount / std::max<std::size_t>(rocVec.size(),1)) << "%)\n";
+        std::cout << "Negative ROC count:       " << negCount << " (" << (100.0 * negCount / std::max<std::size_t>(rocVec.size(),1)) << "%)\n";
+
     }
-    
-    // Display bid/ask spread analysis
-    std::cout << "\n=== Transaction Cost Analysis ===" << std::endl;
+    catch (const std::domain_error& e) {
+        std::cerr << "\nData Error: " << e.what() << "\n";
+        std::cerr << "Suggestion: Ensure sufficient data for analysis (minimum ~25 bars recommended)\n";
+    }
+    catch (const std::exception& e) {
+        std::cerr << "\nError calculating statistics: " << e.what() << "\n";
+    }
+
+    // Transaction cost analysis (unchanged)
+    std::cout << "\n=== Transaction Cost Analysis ===\n";
     BidAskAnalyzer analyzer;
-    auto spreadAnalysis = analyzer.analyzeSpreads(
-        outOfSampleSeries,
-        config.getSecurityTick());
+    auto spreadAnalysis = analyzer.analyzeSpreads(outOfSampleSeries, config.getSecurityTick());
     BidAskAnalyzer::displayAnalysisToConsole(spreadAnalysis);
-    
-    std::cout << "\n=================================" << std::endl;
-    std::cout << "Note: All values are percentage widths from median/center point." << std::endl;
-    std::cout << "No files were written in statistics-only mode." << std::endl;
+
+    std::cout << "\n=================================\n";
+    std::cout << "Note: All values are percentage widths from the median (center) of in-sample ROC.\n";
 }
 
 void UserInterface::displaySeparateResults(const CombinedStatisticsResults& stats,
@@ -586,7 +593,7 @@ void UserInterface::displaySeparateResults(const CombinedStatisticsResults& stat
     const auto& longResults = stats.getLongResults();
     const auto& shortResults = stats.getShortResults();
     
-    std::cout << "\nLong Position Stop and Target (Partitioned distributions):" << std::endl;
+    std::cout << "\n2. Long Position Stop and Target (Typical-day q10/median/q90):" << std::endl;
     std::cout << std::fixed << std::setprecision(4);
     std::cout << "   Statistics - Pos: Med=" << longResults.getPosMedian().getAsDouble() << "%, Qn=" << longResults.getPosQn().getAsDouble() << "%, Skew=" << longResults.getPosSkew().getAsDouble() << std::endl;
     std::cout << "                Neg: Med=" << longResults.getNegMedian().getAsDouble() << "%, Skew=" << longResults.getNegSkew().getAsDouble() << std::endl;
@@ -594,7 +601,7 @@ void UserInterface::displaySeparateResults(const CombinedStatisticsResults& stat
     std::cout << "   Profit Target Width: " << longResults.getProfitTargetValue().getAsDouble() << "%" << std::endl;
     std::cout << "   Stop Loss Width:     " << longResults.getStopValue().getAsDouble() << "%" << std::endl;
     
-    std::cout << "\nShort Position Stop and Target (Partitioned distributions):" << std::endl;
+    std::cout << "\n3. Short Position Stop and Target (Typical-day q10/median/q90):" << std::endl;
     std::cout << std::setprecision(4);
     std::cout << "   Statistics - Neg: Med=" << shortResults.getNegMedian().getAsDouble() << "%, Qn=" << shortResults.getNegQn().getAsDouble() << "%, Skew=" << shortResults.getNegSkew().getAsDouble() << std::endl;
     std::cout << "                Pos: Med=" << shortResults.getPosMedian().getAsDouble() << "%, Skew=" << shortResults.getPosSkew().getAsDouble() << std::endl;
