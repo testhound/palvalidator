@@ -1,7 +1,4 @@
-The `README.md` has been reviewed and updated to include the information from `BiasCorrectedBootstrap.h` and `StatUtils.h`.
-
-***
-# Statistics Library (`libs/statistics`)
+Statistics Library (`libs/statistics`)
 
 ## Overview
 
@@ -13,119 +10,209 @@ The library is templated on a `Decimal` type, allowing for flexibility in numeri
 
 The library revolves around a few core concepts:
 
-* **Strategy Performance Evaluation**: Calculating various metrics to describe how a trading strategy has performed on historical or synthetic data.
-* **Hypothesis Testing**: Using statistical tests, particularly permutation tests, to determine if observed strategy performance is statistically significant or likely due to chance.
-* **Robustness Analysis**: Assessing how sensitive a strategy's performance is to small changes in its parameters or market conditions.
-* **Multiple Testing Correction**: Adjusting p-values when multiple strategies or hypotheses are tested simultaneously to control the family-wise error rate (FWER) or false discovery rate (FDR).
-* **Bootstrapping and Confidence Intervals**: Using resampling methods to estimate the sampling distribution of a statistic and compute robust confidence intervals.
-* **Policy-Based Design**: Allowing flexible customization of algorithms by injecting specific behaviors (policies) for computation, result handling, and parallel execution.
+- **Strategy Performance Evaluation**: Calculating various metrics to describe how a trading strategy has performed on historical or synthetic data.
+  
+- **Hypothesis Testing**: Using statistical tests, particularly permutation tests, to determine if observed strategy performance is statistically significant or likely due to chance.
+  
+- **Robustness Analysis**: Assessing how sensitive a strategy's performance is to small changes in its parameters or market conditions.
+  
+- **Multiple Testing Correction**: Adjusting p-values when multiple strategies or hypotheses are tested simultaneously to control the family-wise error rate (FWER) or false discovery rate (FDR).
+  
+- **Bootstrapping and Confidence Intervals**: Using resampling methods to estimate the sampling distribution of a statistic and compute robust confidence intervals.
+  
+- **Policy-Based Design**: Allowing flexible customization of algorithms by injecting specific behaviors (policies) for computation, result handling, and parallel execution.
+  
+- **Regime Analysis**: Labeling market data based on volatility regimes to perform stress tests under different market conditions.
+  
 
-***
+---
+
 ## Major Classes and Their Roles
 
 ### 1. Data Preparation and Basic Metrics
 
-* **`Returns<Decimal>` (`Returns.h`)**:
-    * **Intent**: Provides utility functions to calculate simple and percentage returns between two price points.
-    * **Interaction**: Used by various components that need to calculate returns as a basis for performance metrics.
-
-* **`SummaryStats<Decimal>` (`SummaryStats.h`)**:
-    * **Intent**: A class to accumulate a series of decimal values and compute basic summary statistics like median, min/max values, and the robust Qn estimator of scale.
-    * **Interaction**: Used within robustness testing (`RobustnessCalculator`) and potentially other areas where a quick summary of a distribution of values is needed.
-
-* **`StatUtils<Decimal>` (`StatUtils.h`)**:
-    * **Intent**: A struct containing static utility methods for common financial statistics, such as Profit Factor, Log Profit Factor, mean, and standard deviation. It also provides bootstrapping utilities for these statistics.
-    * **Interaction**: Leveraged by test policies (e.g., `AllHighResLogPFPolicy` in `MonteCarloTestPolicy.h`) to derive performance metrics.
-
-* **`StrategyDataPreparer<Decimal, BaselineStatPolicy, Executor>` (`StrategyDataPreparer.h`)**:
-    * **Intent**: A stateless utility to build `PalStrategy` objects from PAL patterns and run baseline backtests to compute an initial performance statistic for each strategy. This is often the first step before more complex validation.
-    * **Interaction**: Uses `PalStrategy`, `BackTester`, and a `BaselineStatPolicy` (see `MonteCarloTestPolicy.h`) to get the performance metric. Produces a `StrategyDataContainer` (defined in `PALMonteCarloTypes.h`) which is consumed by validation algorithms like `PALMastersMonteCarloValidation`.
-
-* **`PALMonteCarloTypes.h`**:
-    * **Intent**: Defines shared data structures used across Monte Carlo validation components, primarily: `StrategyContext<Decimal>` and `StrategyDataContainer<Decimal>`.
-    * **Interaction**: These types are fundamental for passing around collections of strategies and their initial performance data.
+- **`Returns<Decimal>` (`Returns.h`)**:
+  
+  - **Intent**: Provides utility functions to calculate simple and percentage returns between two price points.
+    
+  - **Interaction**: Used by various components that need to calculate returns as a basis for performance metrics.
+    
+- **`SummaryStats<Decimal>` (`SummaryStats.h`)**:
+  
+  - **Intent**: A class to accumulate a series of decimal values and compute basic summary statistics like median, min/max values, and the robust Qn estimator of scale.
+    
+  - **Interaction**: Used within robustness testing (`RobustnessCalculator`) and potentially other areas where a quick summary of a distribution of values is needed.
+    
+- **`StatUtils<Decimal>` (`StatUtils.h`)**:
+  
+  - **Intent**: A struct containing static utility methods for common financial statistics, such as Profit Factor, Log Profit Factor, mean, and standard deviation. It also provides bootstrapping utilities for these statistics.
+    
+  - **Interaction**: Leveraged by test policies (e.g., `AllHighResLogPFPolicy` in `MonteCarloTestPolicy.h`) to derive performance metrics.
+    
+- **`StrategyDataPreparer<Decimal, BaselineStatPolicy, Executor>` (`StrategyDataPreparer.h`)**:
+  
+  - **Intent**: A stateless utility to build `PalStrategy` objects from PAL patterns and run baseline backtests to compute an initial performance statistic for each strategy. This is often the first step before more complex validation.
+    
+  - **Interaction**: Uses `PalStrategy`, `BackTester`, and a `BaselineStatPolicy` (see `MonteCarloTestPolicy.h`) to get the performance metric. Produces a `StrategyDataContainer` (defined in `PALMonteCarloTypes.h`) which is consumed by validation algorithms like `PALMastersMonteCarloValidation`.
+    
+- **`PALMonteCarloTypes.h`**:
+  
+  - **Intent**: Defines shared data structures used across Monte Carlo validation components, primarily: `StrategyContext<Decimal>` and `StrategyDataContainer<Decimal>`.
+    
+  - **Interaction**: These types are fundamental for passing around collections of strategies and their initial performance data.
+    
 
 ### 2. Bootstrapping and Resampling
 
 This framework is designed to estimate the properties of a statistic by resampling from the original data, and is particularly useful for constructing confidence intervals without making strong assumptions about the data's distribution.
 
-* **`BiasCorrectedBootStrap<Decimal, Sampler>` (`BiasCorrectedBootstrap.h`)**:
-    * **Intent**: A flexible class that computes a statistic and its Bias-Corrected and Accelerated (BCa) confidence interval. The BCa method accounts for bias and skewness in the bootstrap distribution.
-    * **Interaction**: This class is templated on a `Sampler` policy, which determines how the data is resampled.
-    * **Resampling Policies**:
-        * `IIDResampler`: The classic method for independent and identically distributed data, where a new sample is created by drawing with replacement from the original data set. It includes a `jackknife` method for computing the acceleration factor.
-        * `StationaryBlockResampler`: Designed for time series data with serial correlation, this policy resamples blocks of data with a variable mean length. It also has a block-based `jackknife` analog.
-
-* **`BCaAnnualizer<Decimal>` (`BiasCorrectedBootstrap.h`)**:
-    * **Intent**: A utility class to annualize the mean and confidence interval bounds from a `BCaBootStrap` result, typically for financial metrics.
+- **`BiasCorrectedBootStrap<Decimal, Sampler>` (`BiasCorrectedBootstrap.h`)**:
+  
+  - **Intent**: A flexible class that computes a statistic and its Bias-Corrected and Accelerated (BCa) confidence interval. The BCa method accounts for bias and skewness in the bootstrap distribution.
+    
+  - **Interaction**: This class is templated on a `Sampler` policy, which determines how the data is resampled.
+    
+  - **Resampling Policies**:
+    
+    - `IIDResampler`: The classic method for independent and identically distributed data, where a new sample is created by drawing with replacement from the original data set. It includes a `jackknife` method for computing the acceleration factor.
+      
+    - `StationaryBlockResampler`: Designed for time series data with serial correlation, this policy resamples blocks of data with a variable mean length. It also has a block-based `jackknife` analog.
+      
+    - `RegimeMixBlockResampler`: An advanced policy for time series data with regime labels (e.g., volatility states). It constructs a bootstrap sample that matches a user-defined proportional mix of these regimes. This is used for "what-if" analysis and stress testing.
+      
+- **`BCaAnnualizer<Decimal>` (`BiasCorrectedBootstrap.h`)**:
+  
+  - **Intent**: A utility class to annualize the mean and confidence interval bounds from a `BCaBootStrap` result, typically for financial metrics.
+- **`BoundedDrawdowns<Decimal, Executor>` (`BoundedDrawdowns.h`)**:
+  
+  - **Intent**: A utility class to estimate and bound the magnitude of trading system drawdowns. It provides methods to calculate the maximum drawdown, estimate a fractile of the drawdown distribution using Monte Carlo simulation, and compute BCa confidence intervals for that fractile.
+    
+  - **Interaction**: Can be used with different executors to parallelize the Monte Carlo simulations.
+    
 
 ### 3. Monte Carlo Permutation Testing Framework
 
 This framework assesses the statistical significance of a trading strategy's performance by comparing its observed metric against a distribution of metrics from permuted (randomized) data.
 
-* **`MonteCarloPermutationTest<Decimal, ReturnType>` (`MonteCarloPermutationTest.h`)**:
-    * **Intent**: An abstract base class defining the interface for Monte Carlo permutation tests.
-    * **Interaction**: Subclassed by concrete permutation test implementations like `MonteCarloPermuteMarketChanges` and `OriginalMCPT`.
-
-* **`MonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy>` (`MonteCarloPermutationTest.h`)**:
-    * **Intent**: Implements a Monte Carlo Permutation Test (MCPT) by creating synthetic time series and permuting market changes.
-
-* **`OriginalMCPT<Decimal>` (`MonteCarloPermutationTest.h`)**:
-    * **Intent**: Implements the MCPT by shuffling the *position vectors* (buy/sell signals) of a strategy.
-
-* **`MonteCarloPayoffRatio<Decimal>` (`MonteCarloPermutationTest.h`)**:
-    * **Intent**: Uses Monte Carlo simulation to derive a robust estimate of a strategy's payoff ratio.
-
-* **Policy Classes for Permutation Testing**:
-    * **`MonteCarloTestPolicy.h`**: Defines policies for how a test statistic is extracted from a backtest (e.g., `AllHighResLogPFPolicy`, `CumulativeReturnPolicy`).
-    * **`PermutationTestComputationPolicy.h`**: Implements the core logic for running permutations, parallel execution, and p-value calculation.
-    * **`PermutationTestResultPolicy.h`**: Defines how results from permutation tests are structured and collected.
+- **`MonteCarloPermutationTest<Decimal, ReturnType>` (`MonteCarloPermutationTest.h`)**:
+  
+  - **Intent**: An abstract base class defining the interface for Monte Carlo permutation tests.
+    
+  - **Interaction**: Subclassed by concrete permutation test implementations like `MonteCarloPermuteMarketChanges` and `OriginalMCPT`.
+    
+- **`MonteCarloPermuteMarketChanges<Decimal, _BackTestResultPolicy, _ComputationPolicy>` (`MonteCarloPermutationTest.h`)**:
+  
+  - **Intent**: Implements a Monte Carlo Permutation Test (MCPT) by creating synthetic time series and permuting market changes.
+- **`OriginalMCPT<Decimal>` (`MonteCarloPermutationTest.h`)**:
+  
+  - **Intent**: Implements the MCPT by shuffling the *position vectors* (buy/sell signals) of a strategy.
+- **`MonteCarloPayoffRatio<Decimal>` (`MonteCarloPermutationTest.h`)**:
+  
+  - **Intent**: Uses Monte Carlo simulation to derive a robust estimate of a strategy's payoff ratio.
+- **Policy Classes for Permutation Testing**:
+  
+  - **`MonteCarloTestPolicy.h`**: Defines policies for how a test statistic is extracted from a backtest (e.g., `AllHighResLogPFPolicy`, `CumulativeReturnPolicy`).
+    
+  - **`PermutationTestComputationPolicy.h`**: Implements the core logic for running permutations, parallel execution, and p-value calculation.
+    
+  - **`PermutationTestResultPolicy.h`**: Defines how results from permutation tests are structured and collected.
+    
 
 ### 4. Robustness Testing
 
 These classes assess how a strategy's performance changes when its parameters are varied slightly.
 
-* **`RobustnessTest.h`**:
-    * Includes `RobustnessTestResult`, `RobustnessCalculator`, and `RobustnessTest` to define criteria, calculate, and orchestrate robustness tests.
-
-* **`RobustnessTester.h`**:
-    * `PalRobustnessTester<Decimal>`: An abstract base class for testing the robustness of a group of PAL patterns.
-    * `PalStandardRobustnessTester<Decimal>` and `StatisticallySignificantRobustnessTester<Decimal>` are concrete implementations.
-
-* **`LogRobustnessTest.h`**:
-    * Provides static utility methods to log detailed robustness test results to a file.
+- **`RobustnessTest.h`**:
+  
+  - Includes `RobustnessTestResult`, `RobustnessCalculator`, and `RobustnessTest` to define criteria, calculate, and orchestrate robustness tests.
+- **`RobustnessTester.h`**:
+  
+  - `PalRobustnessTester<Decimal>`: An abstract base class for testing the robustness of a group of PAL patterns.
+    
+  - `PalStandardRobustnessTester<Decimal>` and `StatisticallySignificantRobustnessTester<Decimal>` are concrete implementations.
+    
+- **`LogRobustnessTest.h`**:
+  
+  - Provides static utility methods to log detailed robustness test results to a file.
 
 ### 5. Multiple Testing Correction and Advanced Validation
 
 These components help to control for the increased chance of finding "significant" results purely by luck when testing many strategies simultaneously.
 
-* **`MultipleTestingCorrection.h`**:
-    * Defines various correction policies, including `BenjaminiHochbergFdr`, `RomanoWolfStepdownCorrection`, and `HolmRomanoWolfCorrection` to control false discovery rate and family-wise error rate.
+- **`MultipleTestingCorrection.h`**:
+  
+  - Defines various correction policies, including `BenjaminiHochbergFdr`, `RomanoWolfStepdownCorrection`, and `HolmRomanoWolfCorrection` to control false discovery rate and family-wise error rate.
+- **`PALMonteCarloValidation.h`**:
+  
+  - A class for orchestrating Monte Carlo validation of multiple PAL strategies, using a specific `McptType` and a `_StrategySelection` policy.
+- **`PALMastersMonteCarloValidation.h`**:
+  
+  - Orchestrates validation using one of the Masters/Romano-Wolf algorithms, which addresses selection bias.
 
-* **`PALMonteCarloValidation.h`**:
-    * A class for orchestrating Monte Carlo validation of multiple PAL strategies, using a specific `McptType` and a `_StrategySelection` policy.
+### 6. Regime-Based Analysis and Stress Testing
 
-* **`PALMastersMonteCarloValidation.h`**:
-    * Orchestrates validation using one of the Masters/Romano-Wolf algorithms, which addresses selection bias.
+This set of tools allows for the analysis of strategy performance under different market regimes, such as varying levels of volatility. This is particularly useful for stress testing and understanding how a strategy might behave in future market conditions.
+
+- **`VolTercileLabeler<Num>` (`RegimeLabeler.h`)**:
+  
+  - **Intent**: Labels bars into three volatility terciles (Low, Medium, High) based on a rolling window of absolute returns. This is a preparatory step for regime-based analysis.
+    
+  - **Interaction**: Used by `BarAlignedSeries` to generate volatility labels for a dense market series.
+    
+- **`BarAlignedSeries<Num>` (`BarAlignedSeries.h`)**:
+  
+  - **Intent**: An adapter that connects a dense market time series to a sparse trade time series. It generates market volatility regime labels that are precisely aligned with a strategy's trade-sequence returns.
+    
+  - **Interaction**: It uses the `VolTercileLabeler` to label the entire market history and then projects these labels onto the specific bars where trades occurred. The output is a vector of regime labels that is perfectly aligned with the trade sequence.
+    
+- **`RegimeMixStress.h` and `RegimeMixStressRunner.h`**:
+  
+  - **Intent**: These files provide the framework for conducting regime mix stress tests. `RegimeMixStress.h` defines the configuration for the stress test, including the different regime mixes to be tested. `RegimeMixStressRunner.h` orchestrates the stress test by using the `RegimeMixBlockResampler` to generate bootstrap samples according to the specified regime mixes and then calculates performance statistics (like annualized geometric mean) for each mix.
+    
+  - **Interaction**: The `RegimeMixStressRunner` takes a set of returns and their corresponding regime labels (generated by `BarAlignedSeries`) and runs a series of bootstrap analyses for different what-if scenarios (e.g., "mostly high volatility," "mostly low volatility"). This allows for a deeper understanding of a strategy's robustness across different market conditions.
+    
 
 ## Key Interactions and Workflows
 
-1.  **Basic Permutation Test for a Single Strategy**:
-    * A `BackTester` runs a single `PalStrategy`.
-    * An `McptType` (e.g., `MonteCarloPermuteMarketChanges`) is used to run the permutation test.
-    * Policies define how the test statistic is calculated and how results are collected.
-
-2.  **Robustness Testing of PAL Patterns**:
-    * A `PalRobustnessTester` orchestrates tests on a set of strategies.
-    * `RobustnessTestMonteCarlo` runs backtests with varied parameters.
-    * A `RobustnessCalculator` evaluates if a strategy meets the robustness criteria.
-
-3.  **Validation with Multiple Testing Correction**:
-    * `PALMonteCarloValidation` runs a specified `McptType` for multiple strategies.
-    * A `_StrategySelection` policy applies a multiple testing correction algorithm to the results.
-
-4.  **Masters/Romano-Wolf Stepwise Validation**:
-    * `PALMastersMonteCarloValidation` prepares strategy data and then invokes an algorithm like `MastersRomanoWolfImproved`.
-    * The algorithm computes adjusted p-values to control FWER, and `UnadjustedPValueStrategySelection` filters the survivors.
+1. **Basic Permutation Test for a Single Strategy**:
+  
+  - A `BackTester` runs a single `PalStrategy`.
+    
+  - An `McptType` (e.g., `MonteCarloPermuteMarketChanges`) is used to run the permutation test.
+    
+  - Policies define how the test statistic is calculated and how results are collected.
+    
+2. **Robustness Testing of PAL Patterns**:
+  
+  - A `PalRobustnessTester` orchestrates tests on a set of strategies.
+    
+  - `RobustnessTestMonteCarlo` runs backtests with varied parameters.
+    
+  - A `RobustnessCalculator` evaluates if a strategy meets the robustness criteria.
+    
+3. **Validation with Multiple Testing Correction**:
+  
+  - `PALMonteCarloValidation` runs a specified `McptType` for multiple strategies.
+    
+  - A `_StrategySelection` policy applies a multiple testing correction algorithm to the results.
+    
+4. **Masters/Romano-Wolf Stepwise Validation**:
+  
+  - `PALMastersMonteCarloValidation` prepares strategy data and then invokes an algorithm like `MastersRomanoWolfImproved`.
+    
+  - The algorithm computes adjusted p-values to control FWER, and `UnadjustedPValueStrategySelection` filters the survivors.
+    
+5. **Regime-Based Stress Testing**:
+  
+  - A dense market time series and the closed position history of a strategy are provided as input.
+    
+  - `BarAlignedSeries` is used to generate a vector of volatility regime labels that are aligned with the strategy's trades. This involves using the `VolTercileLabeler` to classify each bar in the dense series into a volatility regime (low, medium, or high).
+    
+  - The `RegimeMixStressRunner` is configured with different "mixes" of these regimes (e.g., 80% high-vol, 10% mid-vol, 10% low-vol).
+    
+  - For each mix, the runner uses `BCaBootStrap` with the `RegimeMixBlockResampler` to create thousands of resampled return series that conform to the target regime proportions.
+    
+  - Confidence intervals on performance metrics (like the geometric mean return) are calculated for each regime mix to assess how the strategy might perform in different market environments.
+    
 
 Generally, data flows from basic calculations (`Returns`, `StatUtils`) to strategy performance evaluation (`BackTester`). This performance is then rigorously tested using a combination of permutation tests, robustness tests, and advanced validation frameworks that incorporate multiple testing corrections to ensure reliable selection of strategies from a larger pool. Policy classes are key to customizing these statistical procedures, providing flexibility and modularity to the library.
