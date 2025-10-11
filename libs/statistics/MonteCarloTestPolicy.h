@@ -185,16 +185,8 @@ namespace mkc_timeseries
   {
   public:
     /**
-     * @brief omputes a composite score that balances risk-adjusted return (Sharpe Ratio)
+     * @brief Computes a composite score that balances risk-adjusted return (Sharpe Ratio)
      * with statistical confidence (Total Bars in Market).
-     *
-     * This policy addresses the challenge of strategies that have high performance but
-     * are based on very few data points. The final score is a product of two components:
-     * 1. Quality Score: The Sharpe Ratio of the high-resolution, per-bar return series.
-     * This measures the smoothness and magnitude of returns.
-     * 2. Confidence Score: The natural logarithm of the total number of bars the
-     * strategy was in the market. This explicitly penalizes strategies with low
-     * activity and rewards those with a more robust sample size.
      *
      * The statistic is then bootstrapped to generate a p-value, providing a robust
      * assessment of strategy viability.
@@ -279,37 +271,7 @@ namespace mkc_timeseries
         return DecimalConstants<Decimal>::DecimalZero;
     }
 
-private:
-    /**
-     * @brief Helper to compute the Sharpe Ratio for a series of returns.
-     * @note This is a simplified Sharpe Ratio assuming a risk-free rate of 0.
-     * It is calculated as Mean(returns) / StdDev(returns).
-     */
-    static Decimal computeSharpeRatio(const std::vector<Decimal>& returns)
-    {
-        if (returns.size() < 2) {
-            return DecimalConstants<Decimal>::DecimalZero;
-        }
-
-        Decimal sum = std::accumulate(returns.begin(), returns.end(), DecimalConstants<Decimal>::DecimalZero);
-        Decimal mean = sum / static_cast<Decimal>(returns.size());
-
-        Decimal sq_sum_diff = DecimalConstants<Decimal>::DecimalZero;
-        for(const auto& r : returns) {
-            sq_sum_diff += (r - mean) * (r - mean);
-        }
-
-        // Use sample standard deviation (N-1 in denominator)
-        Decimal stdev = Decimal(std::sqrt(num::to_double(sq_sum_diff / static_cast<Decimal>(returns.size() - 1))));
-
-        if (stdev == DecimalConstants<Decimal>::DecimalZero) {
-            // If there is no volatility, the Sharpe Ratio is technically infinite if mean > 0.
-            // We return a large but finite number for positive mean, and 0 otherwise.
-            return (mean > DecimalConstants<Decimal>::DecimalZero) ? Decimal(100.0) : DecimalConstants<Decimal>::DecimalZero;
-        }
-
-        return mean / stdev;
-    }
+  private:
   };
 
   template <class Decimal> class NonGranularProfitFactorPolicy
