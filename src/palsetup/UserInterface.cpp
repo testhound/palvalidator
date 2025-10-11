@@ -29,18 +29,18 @@ namespace {
 
       if (rocVec.empty()) return;
 
-      // Winsorize a working copy for quantile stability (same policy as compute fns)
+      // 1) Working copy for winsorized quantiles (same policy as compute fns)
       std::vector<Num> wv = rocVec;
       if (wv.size() >= 20) {
           WinsorizeInPlace(wv, winsorTail);  // 1% per tail by default
       }
 
-      // Center & quantiles (linear interpolation)
+      // 2) Center & quantiles (linear interpolation)
       const Num median = MedianOfVec(wv);
       const Num q_lo   = LinearInterpolationQuantile(wv, alpha);
       const Num q_hi   = LinearInterpolationQuantile(wv, 1.0 - alpha);
 
-      // One-sided central widths
+      // 3) One-sided central widths (percent magnitudes)
       const Num upWidth   = q_hi - median;     // typical up wiggle
       const Num downWidth = median - q_lo;     // typical down move
 
@@ -48,27 +48,60 @@ namespace {
       const double down = downWidth.getAsDouble();
 
       const double eps = 1e-12;
-      const double CAR = up / std::max(down, eps);      // central asymmetry ratio
-      const double RWL_long  = CAR;                     // ≈ target/stop for longs
+      const double CAR = up / std::max(down, eps);   // (q90 - median) / (median - q10)
+      const double RWL_long  = CAR;                  // ≈ target/stop for longs
       const double RWL_short = 1.0 / std::max(CAR, eps);
-      const double RWL = asLong ? RWL_long : RWL_short;
-      const double Profitability = 100.0 * PF / (PF + RWL);
+      const double Profitability = 100.0 * PF / (PF + (asLong ? RWL_long : RWL_short));
 
-      // Empirical coverage of the central band [q10, q90] on the ORIGINAL (unwinsorized) ROC
+      // 4) Coverage of [q10, q90] on the ORIGINAL (unwinsorized) series
       std::size_t inside = 0;
       for (const auto& r : rocVec) if (r >= q_lo && r <= q_hi) ++inside;
       const double coverage = 100.0 * static_cast<double>(inside) / std::max<std::size_t>(rocVec.size(), 1);
 
-      std::cout << std::fixed << std::setprecision(2);
+      // 5) CAR interpretation / classification
+      const double delta   = std::fabs(CAR - 1.0);
+      const double stretch = delta * 100.0;                      // percent stretch vs. symmetry
+      const bool   upside  = (CAR > 1.0);                        // which side is more stretched?
+      // Buckets (tweak if you like):
+      const char*  strength =
+          (delta < 0.05) ? "≈ symmetric (±5%)" :
+          (delta < 0.15) ? "mild" :
+          (delta < 0.30) ? "moderate" : "strong";
+
+      // Implications phrased for both sides
+      // Long: target/stop ≈ CAR; Short: target/stop ≈ 1/CAR
+      std::ostringstream implication;
+      if (upside) {
+          // Center stretches more to the upside
+          implication << "Upside-stretched (" << strength << "): up ≈ " << std::fixed << std::setprecision(1)
+                     << stretch << "% larger than down. "
+                     << "Implications → Long: target > stop; Short: stop > target.";
+      } else if (delta < 0.05) {
+          implication << "Center ≈ symmetric: up ~ down. "
+                      << "Implications → Long: target ~ stop; Short: stop ~ target.";
+      } else {
+          // Center stretches more to the downside
+          implication << "Downside-stretched (" << strength << "): down ≈ " << std::fixed << std::setprecision(1)
+                     << stretch << "% larger than up. "
+                     << "Implications → Long: stop > target; Short: target > stop.";
+      }
+
+      // 6) Print
+      std::cout << std::fixed;
       std::cout << indent << "[Typical-day diagnostics]\n";
-      std::cout << indent << "   alpha per tail: " << (alpha * 100.0) << "%, "
-                << "band coverage ≈ " << coverage << "%\n";
-      std::cout << indent << "   median = " << median.getAsDouble() << "%, "
-                << "q10 = " << q_lo.getAsDouble() << "%, "
-                << "q90 = " << q_hi.getAsDouble() << "%\n";
-      std::cout << indent << "   CAR=" << CAR
-                << " | Implied RWL (" << (asLong ? "long" : "short") << ")=" << RWL
-                << " | Profitability (PF=" << PF << ")=" << Profitability << "%\n";
+      std::cout << indent << "   alpha per tail: " << std::setprecision(2) << (alpha * 100.0)
+                << "%, band coverage ≈ " << coverage << "%\n";
+      std::cout << indent << "   q10="   << std::setprecision(4) << q_lo.getAsDouble()   << "%, "
+                << "median=" << median.getAsDouble() << "%, "
+                << "q90="    << q_hi.getAsDouble()   << "%\n";
+      std::cout << indent << "   UpWidth="   << std::setprecision(2) << up   << "%, "
+                << "DownWidth=" << down << "%\n";
+      std::cout << indent << "   CAR = UpWidth/DownWidth = " << std::setprecision(3) << CAR
+                << "  →  " << implication.str() << "\n";
+      std::cout << indent << "   Implied RWL (" << (asLong ? "long" : "short") << ") ≈ "
+                << std::setprecision(3) << (asLong ? RWL_long : RWL_short)
+                << " | Profitability (PF=" << std::setprecision(0) << PF << ") = "
+                << std::setprecision(2) << Profitability << "%\n";
   }
 }
 
