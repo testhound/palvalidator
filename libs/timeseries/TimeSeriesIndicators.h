@@ -22,6 +22,25 @@ namespace mkc_timeseries
 {
   using namespace boost::accumulators;
 
+  // Local quantile function to avoid circular dependency with StatUtils
+  // Uses linear interpolation between values
+  template <typename Decimal>
+  Decimal LinearInterpolationQuantile(std::vector<Decimal> v, double q)
+  {
+    if (v.empty()) return Decimal(0);
+    q = std::min(std::max(q, 0.0), 1.0);
+    const double idx = q * (static_cast<double>(v.size()) - 1.0);
+    const auto lo = static_cast<std::size_t>(std::floor(idx));
+    const auto hi = static_cast<std::size_t>(std::ceil(idx));
+    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(lo), v.end());
+    const Decimal vlo = v[lo];
+    if (hi == lo) return vlo;
+    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(hi), v.end());
+    const Decimal vhi = v[hi];
+    const Decimal w = Decimal(idx - std::floor(idx));
+    return vlo + (vhi - vlo) * w;
+  }
+
   /**
    * @brief Divides each element of series1 by its corresponding element in series2.
    *
@@ -957,184 +976,203 @@ namespace mkc_timeseries
   }
 
   /**
-   * @brief Computes asymmetric stop and target for a LONG position.
+   * @brief Compute the long-side profit-target and stop widths from in-sample returns
+   *        using a "typical day" design based on central quantiles.
    *
-   * This method implements a hybrid approach based on partitioned return distributions.
-   * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
-   * 2.  The PROFIT TARGET is calculated from the POSITIVE returns distribution using
-   * robust statistics (Median + Qn) to identify a "typical" profitable move.
-   * 3.  The STOP LOSS is calculated from the NEGATIVE returns distribution using an
-   * empirical quantile (e.g., 15th percentile) to identify a "typical worst-case" loss.
+   * This routine derives both the profit target and the stop directly from the
+   * **in-sample** distribution of n-period rate of change (ROC) values, with the goal
+   * of capturing *typical* (i.e., central, non-tail) upside and downside moves over
+   * the same horizon that the strategy trades.
    *
-   * This approach respects the inherent asymmetry of financial returns, modeling gains and
-   * losses as distinct processes.
+   * Design philosophy (why "typical day"):
+   * - Financial returns are skewed and heavy-tailed; ±1σ (≈67%) from a normal model is
+   *   not a robust proxy for daily moves. Empirically, the *central 80%* band bounded
+   *   by the 10th/90th percentiles more closely matches a real-world “1-σ-ish” zone.
+   * - We therefore define the target and stop as **distances from the median** to the
+   *   **90th** and **10th** percentiles, respectively:
    *
-   * @tparam Decimal Numeric type for calculations.
-   * @param series The OHLC time series to analyze.
-   * @param period The lookback period for ROC calculation (should match median hold time).
-   * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
-   * @throws std::domain_error if the series has too few entries for meaningful analysis.
+   *        target_width_long = q90(ROC) − median(ROC)
+   *        stop_width_long   = median(ROC) − q10(ROC)
+   *
+   *   This anchors both sides to the same center and avoids pairing a center-based
+   *   target with a deep-tail stop (a common source of asymmetry and over-wide stops).
+   *
+   * Method summary:
+   * 1) Build the n-period ROC series from closes.
+   * 2) Compute the median of ROC.
+   * 3) Apply light winsorization (default 1% per tail) when the sample is sufficiently
+   *    large to reduce one-off shock influence while preserving central shape.
+   * 4) Compute q10 and q90 using a **linear-interpolated** quantile function for
+   *    numerical smoothness (avoids step changes as N varies by ±1).
+   * 5) Return { profit_width, stop_width } as positive magnitudes in percent terms.
+   *
+   * Why 10th/90th (and not σ or extreme tails):
+   * - q10/q90 live inside the central mass where most days occur; they are deliberately
+   *   less sensitive to fat tails than fixed tail cuts (e.g., 5th/95th) yet wide enough
+   *   to avoid over-tight “typical” stops that will be hit by noise.
+   * - Measuring from the *same center* (median) guarantees symmetry of construction:
+   *   if the tape is downside-skewed, stop_width_long > target_width_long *naturally*,
+   *   reflecting the data—not a hand-picked parameter.
+   *
+   * Implications for downstream “profitability” metric:
+   * - Many miners approximate winners:losers via RWL ≈ target/stop. With the typical-day
+   *   construction, RWL becomes a *central* (non-tail) reward-to-risk ratio, so the
+   *   miner’s implied “profitability” is data-driven by everyday tape rather than by
+   *   extreme losses or a global scale proxy.
+   *
+   * Determinism and stability:
+   * - No optimization or tuning is required; defaults are fixed (α=0.10, winsor=1%/tail).
+   * - Linear interpolation yields smooth outputs as samples roll.
+   * - An ε-floor is applied to guard against degenerate zero widths in tiny samples.
+   *
+   * Complexity:
+   * - Quantile evaluation is selection-based (nth_element style); overall O(N).
+   *
+   * Extensibility (maintainer notes):
+   * - α can be parameterized if needed (e.g., 0.08–0.12) to tighten/loosen what counts
+   *   as “typical”. Keep α symmetric for longs/shorts unless you have a principled
+   *   reason to deviate.
+   * - For regime-aware systems, consider computing widths per-regime and aggregating.
+   * - If enabling/adjusting winsorization, keep it light (≤1–2% per tail) to preserve
+   *   central shape and skew information.
+   *
+   * @tparam Decimal   Fixed-point/decimal type used throughout the backtester.
+   * @param  series    OHLC time series (closes used to compute ROC).
+   * @param  period    ROC horizon in bars (default 1).
+   * @return std::pair<Decimal, Decimal>
+   *         { profit_width_long, stop_width_long } as positive magnitudes (e.g., 0.0123 = 1.23%).
+   * @throws std::domain_error on insufficient data.
    */
   template <typename Decimal>
   std::pair<Decimal, Decimal>
   ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-                                     uint32_t period = 1)
+				     uint32_t period = 1)
   {
     using namespace mkc_timeseries;
 
-    // --- Configuration Constants ---
-    constexpr size_t kMinTotalSamples = 25;     // Minimum total ROC values needed.
-    constexpr size_t kMinPartitionSamples = 10; // Minimum values in pos/neg partitions.
-    constexpr double kStopQuantile = 0.15;      // e.g., 15th percentile of losses for the stop.
+    // --- Minimal sanity ---
+    if (series.getNumEntries() < 3)
+      throw std::domain_error("ComputeLongStopAndTargetFromSeries: input too small");
 
-    if (series.getNumEntries() < kMinTotalSamples)
-      throw std::domain_error("ComputeLongStopAndTargetFromSeries: Input series too small for robust analysis.");
-
-    // --- Data Preparation ---
+    // Build n-period ROC% from closes
     auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
-    auto rocVec = rocSeries.getTimeSeriesAsVector();
-
-    if (rocVec.size() < kMinTotalSamples)
-      throw std::domain_error("ComputeLongStopAndTargetFromSeries: ROC series too small after calculation.");
+    auto rocVec    = rocSeries.getTimeSeriesAsVector();
+    if (rocVec.size() < 3)
+      throw std::domain_error("ComputeLongStopAndTargetFromSeries: ROC series too small");
 
     const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-    const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
-    
-    std::vector<Decimal> positive_rocs, negative_rocs;
-    for (const auto& roc : rocVec) {
-      if (roc > zero)
-	positive_rocs.push_back(roc);
-      else if (roc < zero)
-	negative_rocs.push_back(roc);
+    const Decimal eps  = DecimalConstants<Decimal>::createDecimal("1e-8");
+
+    // --- Center on the median of the full (in-sample) ROC distribution ---
+    const Decimal median = MedianOfVec(rocVec);
+
+    // --- Light winsorization for stability on tails (1% per side) ---
+    constexpr double kWinsorTail = 0.01;
+    std::vector<Decimal> wv = rocVec;
+    if (wv.size() >= 20) {
+      WinsorizeInPlace(wv, kWinsorTail);
     }
 
-    Decimal profitWidth = zero;
-    Decimal stopWidth = zero;
+    // --- "Typical day" symmetric quantiles around the center ---
+    // α=0.10 → lower = 10th pct, upper = 90th pct
+    constexpr double kAlpha = 0.10;
+    const Decimal q_lo = LinearInterpolationQuantile(wv, kAlpha);
+    const Decimal q_hi = LinearInterpolationQuantile(wv, 1.0 - kAlpha);
 
-    // --- Profit Target Calculation (from Positive ROCs) ---
-    if (positive_rocs.size() >= kMinPartitionSamples)
-      {
-        RobustQn<Decimal> qn_estimator;
-        Decimal median_pos = MedianOfVec(positive_rocs);
-        Decimal qn_pos = qn_estimator.getRobustQn(positive_rocs);
-        profitWidth = median_pos + qn_pos;
-      }
-    else
-      {
-        // Fallback: use a simple quantile of the entire distribution if not enough positive samples.
-        profitWidth = SampleQuantile(rocVec, 0.75);
-      }
-    
-    // --- Stop Loss Calculation (from Negative ROCs) ---
-    if (negative_rocs.size() >= kMinPartitionSamples)
-      {
-        // SampleQuantile needs a copy as it modifies the vector.
-        Decimal stop_level = SampleQuantile(std::vector<Decimal>(negative_rocs), kStopQuantile);
-        stopWidth = -stop_level; // stop_level is negative, so this makes it positive.
-      }
-    else
-      {
-        // Fallback: use a simple quantile of the entire distribution.
-        Decimal stop_level = SampleQuantile(rocVec, kStopQuantile);
-        stopWidth = -stop_level;
-      }
-    
-    // --- Sanity Checks and Finalization ---
+    // Widths are positive distances from the center in the expected directions
+    Decimal profitWidth = q_hi - median;   // typical upside for longs
+    Decimal stopWidth   = median - q_lo;   // typical downside for longs
+
     if (profitWidth <= zero)
       profitWidth = eps;
-    if (stopWidth <= zero)
-      stopWidth = eps;
+
+    if (stopWidth   <= zero)
+      stopWidth   = eps;
 
     return {profitWidth, stopWidth};
   }
 
-
   /**
-   * @brief Computes asymmetric stop and target for a SHORT position.
+   * @brief Compute the short-side profit-target and stop widths from in-sample returns
+   *        using the same "typical day" central-quantile design as the long side.
    *
-   * This method mirrors the logic of the long-side calculation but for short selling.
-   * 1.  It separates the n-period Rate of Change (ROC) series into positive and negative returns.
-   * 2.  The PROFIT TARGET is calculated from the NEGATIVE returns distribution using
-   * robust statistics (Median - Qn) to identify a "typical" profitable drop.
-   * 3.  The STOP LOSS is calculated from the POSITIVE returns distribution using an
-   * empirical quantile (e.g., 85th percentile) to identify an "unusually strong" rally.
+   * This function mirrors the long-side construction but flips the directions to
+   * match short trades:
    *
-   * This approach respects the inherent asymmetry of financial returns, modeling gains and
-   * losses as distinct processes.
+   *        target_width_short = median(ROC) − q10(ROC)   // typical downside move
+   *        stop_width_short   = q90(ROC) − median(ROC)   // typical upside wiggle
    *
-   * @tparam Decimal Numeric type for calculations.
-   * @param series The OHLC time series to analyze.
-   * @param period The lookback period for ROC calculation (should match median hold time).
-   * @return A pair of {profitWidth, stopWidth}, both representing positive distances.
-   * @throws std::domain_error if the series has too few entries for meaningful analysis.
+   * Rationale (symmetry and “typical” behavior):
+   * - Shorts are evaluated against the same central band [q10, q90] and the same center
+   *   (median). The only change is directional: the *profit* for shorts is a typical
+   *   **down** move (median → q10), while the *stop* is a typical **up** move (median → q90).
+   * - Using identical construction on both sides ensures the winners:losers proxy
+   *   RWL ≈ target/stop remains a central, non-tail measure for the miner’s
+   *   profitability calculation.
+   *
+   * Implementation notes (shared with long variant):
+   * - ROC construction, median, light winsorization (≈1% per tail), and linear-interpolated
+   *   quantiles are applied identically for numerical stability and robustness to fat tails.
+   * - No optimization/tuning is required; defaults are deterministic.
+   * - An ε-floor prevents degenerate outputs on very small samples.
+   *
+   * Behavior under skew:
+   * - If the tape exhibits classic downside skew, you should expect
+   *   target_width_short (downward “typical” move) to be comparable to or larger than
+   *   target_width_long, while stop_width_short may be relatively smaller (typical upside
+   *   wiggle) — all dictated by the in-sample central distribution.
+   *
+   * Complexity and extensibility:
+   * - Same O(N) selection-based quantile cost as the long-side function.
+   * - α and winsorization may be parameterized in the future if maintainers need to align
+   *   with instrument-specific conventions; keep the construction symmetric unless justified.
+   *
+   * @tparam Decimal   Fixed-point/decimal type used throughout the backtester.
+   * @param  series    OHLC time series (closes used to compute ROC).
+   * @param  period    ROC horizon in bars (default 1).
+   * @return std::pair<Decimal, Decimal>
+   *         { profit_width_short, stop_width_short } as positive magnitudes (e.g., 0.0100 = 1.00%).
+   * @throws std::domain_error on insufficient data.
    */
   template <typename Decimal>
   std::pair<Decimal, Decimal>
   ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-                                      uint32_t period = 1)
+				      uint32_t period = 1)
   {
     using namespace mkc_timeseries;
 
-    // --- Configuration Constants ---
-    constexpr size_t kMinTotalSamples = 25;
-    constexpr size_t kMinPartitionSamples = 10;
-    constexpr double kStopQuantile = 0.85; // e.g., 85th percentile of gains for the stop.
+    if (series.getNumEntries() < 3)
+      throw std::domain_error("ComputeShortStopAndTargetFromSeries: input too small");
 
-    if (series.getNumEntries() < kMinTotalSamples)
-      throw std::domain_error("ComputeShortStopAndTargetFromSeries: Input series too small for robust analysis.");
-
-    // --- Data Preparation ---
     auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
-    auto rocVec = rocSeries.getTimeSeriesAsVector();
+    auto rocVec    = rocSeries.getTimeSeriesAsVector();
+    if (rocVec.size() < 3)
+      throw std::domain_error("ComputeShortStopAndTargetFromSeries: ROC series too small");
 
-    if (rocVec.size() < kMinTotalSamples)
-      throw std::domain_error("ComputeShortStopAndTargetFromSeries: ROC series too small after calculation.");
-    
     const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-    const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-6");
+    const Decimal eps  = DecimalConstants<Decimal>::createDecimal("1e-8");
 
-    std::vector<Decimal> positive_rocs, negative_rocs;
-    for (const auto& roc : rocVec) {
-      if (roc > zero)
-	positive_rocs.push_back(roc);
-      else if (roc < zero)
-	negative_rocs.push_back(roc);
+    const Decimal median = MedianOfVec(rocVec);
+
+    constexpr double kWinsorTail = 0.01;
+    std::vector<Decimal> wv = rocVec;
+    if (wv.size() >= 20) {
+      WinsorizeInPlace(wv, kWinsorTail);
     }
-    
-    Decimal profitWidth = zero;
-    Decimal stopWidth = zero;
-    
-    // --- Profit Target Calculation (from Negative ROCs) ---
-    if (negative_rocs.size() >= kMinPartitionSamples)
-      {
-        RobustQn<Decimal> qn_estimator;
-        Decimal median_neg = MedianOfVec(negative_rocs);
-        Decimal qn_neg = qn_estimator.getRobustQn(negative_rocs);
-        profitWidth = -(median_neg - qn_neg); // Result should be positive width.
-      }
-    else
-      {
-        // Fallback: use a simple quantile of the entire distribution.
-        profitWidth = -(SampleQuantile(rocVec, 0.25));
-      }
-    
-    // --- Stop Loss Calculation (from Positive ROCs) ---
-    if (positive_rocs.size() >= kMinPartitionSamples)
-      {
-        // SampleQuantile needs a copy as it modifies the vector.
-        stopWidth = SampleQuantile(std::vector<Decimal>(positive_rocs), kStopQuantile);
-      }
-    else
-      {
-        // Fallback: use a simple quantile of the entire distribution.
-        stopWidth = SampleQuantile(rocVec, kStopQuantile);
-      }
 
-    // --- Sanity Checks and Finalization ---
+    constexpr double kAlpha = 0.10;
+    const Decimal q_lo = LinearInterpolationQuantile(wv, kAlpha);
+    const Decimal q_hi = LinearInterpolationQuantile(wv, 1.0 - kAlpha);
+
+    // For shorts, the "typical" profit is the downside; the stop is the upside wiggle
+    Decimal profitWidth = median - q_lo;   // typical downside for shorts
+    Decimal stopWidth   = q_hi - median;   // typical upside for shorts
+
     if (profitWidth <= zero)
       profitWidth = eps;
-    if (stopWidth <= zero)
-      stopWidth = eps;
+
+    if (stopWidth   <= zero)
+      stopWidth   = eps;
 
     return {profitWidth, stopWidth};
   }
