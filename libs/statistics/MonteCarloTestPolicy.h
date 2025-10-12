@@ -185,8 +185,7 @@ namespace mkc_timeseries
   {
   public:
     /**
-     * @brief Computes a composite score that balances risk-adjusted return (Sharpe Ratio)
-     * with statistical confidence (Total Bars in Market).
+     * @brief Computes a Sharpe Ratio while taming the tails.
      *
      * The statistic is then bootstrapped to generate a p-value, providing a robust
      * assessment of strategy viability.
@@ -215,31 +214,20 @@ namespace mkc_timeseries
 	return getMinTradeFailureTestStatistic();
       }
 
-      // ---- Tunables (lift to your header/config if desired)
-      const unsigned B     = 1000;   // BCa replicates
-      const double   alpha = 0.05;   // 95% CI
+      const unsigned B     = 1000;   // Number of bootstrap replications
+      const double   alpha = 0.05;   // 95% Confidence interval
       const double   eps   = 1e-8;   // ε-floor for Sharpe denominator
 
       auto computeSharpeScore = [&](const std::vector<Decimal>& r) -> Decimal
       {
-	const Decimal meanDec = StatUtils<Decimal>::computeMean(r);
-	const Decimal stdDevDec = StatUtils<Decimal>::computeStdDev(r, meanDec); // sample stddev with N-1
-	double mean = num::to_double(meanDec);
-	double sd_temp = num::to_double(stdDevDec);
-	double var = sd_temp * sd_temp;  // variance = stddev^2
-	var = std::max(0.0, var);  // ensure non-negative
-
-	const double sd = std::sqrt(var + eps);        // ε-ridge for stability
-	const double sr = (sd > 0.0) ? (mean / sd) : 0.0;
-
-	return Decimal(sr);
+        return StatUtils<Decimal>::sharpeFromReturns(r, eps);
       };
 
       // ---- Stationary-block resampler with L = median holding period (min 2)
       size_t L = 2;
       {
-	auto& cph = strat->getStrategyBroker().getClosedPositionHistory();
-	const unsigned medHold = cph.getMedianHoldingPeriod();
+	auto& closedPositions = strat->getStrategyBroker().getClosedPositionHistory();
+	const unsigned medHold = closedPositions.getMedianHoldingPeriod();
 	L = std::max<size_t>(2, static_cast<size_t>(medHold));
       }
 
@@ -259,11 +247,11 @@ namespace mkc_timeseries
       return lowerBound;
     }
 
-    /// Minimum number of closed trades required to even attempt this test
+    /// Minimum number of trades required to even attempt this test
     static unsigned int getMinStrategyTrades() { return 3; }
 
     // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize() { return 10; }
+    static unsigned int getMinBarSeriesSize() { return 20; }
 
     // Return a test statistic constant if we don't meet the minimum trade criteria
     static Decimal getMinTradeFailureTestStatistic()
