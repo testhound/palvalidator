@@ -232,145 +232,104 @@ namespace mkc_timeseries
    *
    * @tparam Decimal The numeric type used for the data (e.g., double, number).
    */
-  template <class Decimal, class Rng = randutils::mt19937_rng>
-  struct StationaryBlockResampler
+
+template <class Decimal, class Rng = randutils::mt19937_rng>
+struct StationaryBlockResampler
+{
+  explicit StationaryBlockResampler(size_t L = 3)
+    : m_L(std::max<size_t>(2, L)) {}
+
+  // --- Bootstrap sample: geometric-length blocks ---
+  std::vector<Decimal>
+  operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
   {
-    /**
-     * @brief Constructs a StationaryBlockResampler.
-     * @param L The mean block length. Must be at least 2.
-     */
-    explicit StationaryBlockResampler(size_t L = 3)
-      : m_L(std::max<size_t>(2, L)) {}
+    if (x.empty())
+      throw std::invalid_argument("StationaryBlockResampler: empty sample.");
 
-    /**
-     * @brief Resamples the input vector using the stationary block method.
-     *
-     * A new block is started at a random index with probability `p = 1/L`, or
-     * the current block is continued by advancing to the next index (circularly).
-     * This process continues until a resample of size `n` is created.
-     *
-     * @param x The original time series data vector.
-     * @param n The size of the resampled vector.
-     * @param rng A high-quality random number generator.
-     * @return A new vector of size n, containing a resampled time series.
-     * @throws std::invalid_argument If the input vector x is empty.
-     */
-    std::vector<Decimal>
-    operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
+    std::vector<Decimal> y;
+    y.reserve(n);
+
+    // Build doubled buffer once so we can copy contiguous runs without mod math.
+    const size_t xn = x.size();
+    std::vector<Decimal> x2;
+    x2.reserve(2 * xn);
+    x2.insert(x2.end(), x.begin(), x.end());
+    x2.insert(x2.end(), x.begin(), x.end());
+
+    const double p = 1.0 / static_cast<double>(m_L);
+    const double log1m_p = std::log1p(-p);  // ln(1 - p) < 0
+
+    auto draw_geometric_len = [&](Rng& r) -> size_t {
+      // L = 1 + floor( ln(1-U) / ln(1-p) ), U ~ U(0,1)
+      double U = r.uniform(0.0, 1.0);
+      // ensure U in (0,1) to avoid log(0)
+      if (U <= 0.0) U = std::numeric_limits<double>::min();
+      if (U >= 1.0) U = std::nextafter(1.0, 0.0);
+      const double t = std::log1p(-U) / log1m_p;
+      const auto len = static_cast<size_t>(std::floor(t)) + 1u;
+      return (len == 0 ? 1u : len);
+    };
+
+    // Start index uniform in [0, xn-1]
+    size_t idx = rng.uniform(size_t(0), xn - 1);
+
+    while (y.size() < n)
     {
-      if (x.empty())
-	{
-	  throw std::invalid_argument("StationaryBlockResampler: empty sample.");
-	}
-      std::vector<Decimal> y;
-      y.reserve(n);
+        const size_t len = draw_geometric_len(rng);
+        const size_t remaining = n - y.size();
+        const size_t k = std::min({len, remaining, xn});  // ensures base + k ≤ base + xn ≤ 2*xn
 
-      const double p = 1.0 / static_cast<double>(m_L);
-      size_t idx = rng.uniform(size_t(0), x.size() - 1);
+      // Copy k items contiguously from doubled buffer
+      const size_t base = idx;
+      y.insert(y.end(), x2.begin() + static_cast<std::ptrdiff_t>(base),
+                        x2.begin() + static_cast<std::ptrdiff_t>(base + k));
 
-      while (y.size() < n)
-	{
-	  y.push_back(x[idx]);
-	  if (rng.uniform(0.0, 1.0) < p)
-	    {
-	      idx = rng.uniform(size_t(0), x.size() - 1);    // start new block
-	    }
-	  else
-	    {
-	      idx = (idx + 1) % x.size();                    // continue block
-	    }
-	}
-      return y;
+      // Start next block at a fresh random position (as in stationary bootstrap)
+      idx = rng.uniform(size_t(0), xn - 1);
     }
+    return y;
+  }
 
-    /**
-     * @brief Performs a block jackknife for the acceleration factor.
-     *
-     * @details
-     * The jackknife procedure is essential for computing the acceleration factor 'a'
-     * in the BCa bootstrap. For time series data, the standard "delete-one"
-     * jackknife is invalid as it breaks the dependence structure. This "delete-block"
-     * jackknife is the correct analog.
-     *
-     * ### How it Works:
-     * The "delete-block" jackknife measures the influence of contiguous segments
-     * of the time series. For a dataset of size `n` and a block length `L`:
-     * 1. It creates `n` new datasets, called jackknife replicates.
-     * 2. The first replicate is the original dataset with the block from index 0 to `L-1` removed.
-     * 3. The second replicate is the original dataset with the block from index 1 to `L` removed.
-     * 4. This continues for all `n` possible starting positions, treating the data
-     * as circular (a block removed from the end wraps around to the beginning).
-     * 5. The statistic (e.g., mean) is calculated for each of these `n` replicates.
-     *
-     * This method correctly assesses the sensitivity of the statistic to different
-     * segments of the time series while preserving the data's autocorrelation,
-     * which is crucial for dependent data. The skewness of the resulting `n`
-     * jackknife statistics is then used to calculate the acceleration factor 'a'.
-     *
-     * Reference: Künsch, H. R. (1989). The Jackknife and the Bootstrap for
-     * General Stationary Observations. The Annals of Statistics, 17(3), 1217–1241.
-     *
-     * @tparam StatFn The type of the function object that computes the statistic.
-     * @param x The original time series data vector.
-     * @param stat The statistic function to apply to each jackknife replicate.
-     * @return A vector of n jackknife statistic values.
-     * @throws std::invalid_argument If the input vector x has fewer than 2 elements.
-     */
-    using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+  // --- Block jackknife with doubled buffer & single copy ---
+  using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
 
-    std::vector<Decimal>
-    jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
+  std::vector<Decimal>
+  jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
+  {
+    const size_t n = x.size();
+    if (n < 2)
+      throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
+
+    const size_t L_eff = std::min(m_L, n - 1); // ensure remainder non-empty
+    const size_t keep = n - L_eff;
+
+    // Double buffer for one-shot contiguous copies irrespective of wrap.
+    std::vector<Decimal> x2;
+    x2.reserve(2 * n);
+    x2.insert(x2.end(), x.begin(), x.end());
+    x2.insert(x2.end(), x.begin(), x.end());
+
+    std::vector<Decimal> jk(n);
+    std::vector<Decimal> y(keep);
+
+    for (size_t start = 0; start < n; ++start)
     {
-      const size_t n = x.size();
-      if (n < 2)
-	{
-	  throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
-	}
-      const size_t L_eff = std::min(m_L, n - 1); // ensure remainder non-empty
-
-      std::vector<Decimal> jk;
-      jk.reserve(n);
-      std::vector<Decimal> y;
-      y.reserve(n - L_eff);
-
-      for (size_t start = 0; start < n; ++start)
-	{
-	  const size_t end = (start + L_eff) % n; // element after the deleted block
-	  y.clear();
-
-	  if (start < end)
-	    {
-	      // delete [start, end): keep [0, start) and [end, n)
-	      y.insert(y.end(), x.begin(), x.begin() + static_cast<std::ptrdiff_t>(start));
-	      y.insert(y.end(), x.begin() + static_cast<std::ptrdiff_t>(end), x.end());
-	    }
-	  else
-	    {
-	      // wrapped deletion: delete [start, n) U [0, end); keep [end, start)
-	      y.insert(y.end(),
-		       x.begin() + static_cast<std::ptrdiff_t>(end),
-		       x.begin() + static_cast<std::ptrdiff_t>(start));
-	    }
-
-	  // y has size n - L_eff >= 1
-	  jk.push_back(stat(y));
-	}
-
-      return jk;
+      const size_t end = start + L_eff; // first kept index after deleted block
+      // Keep the run [end, end+keep) in circular sense -> contiguous in x2
+      std::copy_n(x2.begin() + static_cast<std::ptrdiff_t>(end),
+                  static_cast<std::ptrdiff_t>(keep),
+                  y.begin());
+      jk[start] = stat(y);
     }
+    return jk;
+  }
 
-    /**
-     * @brief Gets the mean block length configured for the resampler.
-     * @return The mean block length.
-     */
-    size_t meanBlockLen() const
-    {
-      return m_L;
-    }
+  size_t meanBlockLen() const { return m_L; }
 
-  private:
-    size_t m_L;
-  };
+private:
+  size_t m_L;
+};
+
 
   // ------------------------------ BCa Bootstrap --------------------------------
 
@@ -394,529 +353,241 @@ namespace mkc_timeseries
    * Defaults to `IIDResampler<Decimal>`.
    */
   template <class Decimal, class Sampler = IIDResampler<Decimal>, class Rng = randutils::mt19937_rng>
-  class BCaBootStrap
+class BCaBootStrap
+{
+public:
+  using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
+  BCaBootStrap(const std::vector<Decimal>& returns,
+               unsigned int num_resamples,
+               double confidence_level = 0.95)
+    : m_returns(returns),
+      m_num_resamples(num_resamples),
+      m_confidence_level(confidence_level),
+      m_statistic(&mkc_timeseries::StatUtils<Decimal>::computeMean),
+      m_sampler(Sampler{}),
+      m_is_calculated(false)
   {
-  public:
-    using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+    validateConstructorArgs();
+  }
 
-    /**
-     * @brief Constructs a BCaBootStrap object with default settings.
-     * @param returns The input data vector (e.g., a time series of returns).
-     * @param num_resamples The number of bootstrap replicates to generate.
-     * @param confidence_level The desired confidence level for the interval (e.g., 0.95).
-     * @throws std::invalid_argument If inputs are invalid.
-     */
-    BCaBootStrap(const std::vector<Decimal>& returns,
-		 unsigned int num_resamples,
-		 double confidence_level = 0.95)
-      : m_returns(returns),
-	m_num_resamples(num_resamples),
-	m_confidence_level(confidence_level),
-	m_statistic(&mkc_timeseries::StatUtils<Decimal>::computeMean),
-	m_sampler(Sampler{}),
-	m_is_calculated(false)
+  BCaBootStrap(const std::vector<Decimal>& returns,
+               unsigned int num_resamples,
+               double confidence_level,
+               StatFn statistic)
+    : m_returns(returns),
+      m_num_resamples(num_resamples),
+      m_confidence_level(confidence_level),
+      m_statistic(std::move(statistic)),
+      m_sampler(Sampler{}),
+      m_is_calculated(false)
+  {
+    if (!m_statistic)
+      throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
+    validateConstructorArgs();
+  }
+
+  BCaBootStrap(const std::vector<Decimal>& returns,
+               unsigned int num_resamples,
+               double confidence_level,
+               StatFn statistic,
+               Sampler sampler)
+    : m_returns(returns),
+      m_num_resamples(num_resamples),
+      m_confidence_level(confidence_level),
+      m_statistic(std::move(statistic)),
+      m_sampler(std::move(sampler)),
+      m_is_calculated(false)
+  {
+    if (!m_statistic)
+      throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
+    validateConstructorArgs();
+  }
+
+  virtual ~BCaBootStrap() = default;
+
+  Decimal getMean() const        { ensureCalculated(); return m_theta_hat; }
+  Decimal getStatistic() const   { return getMean(); } // alias
+  Decimal getLowerBound() const  { ensureCalculated(); return m_lower_bound; }
+  Decimal getUpperBound() const  { ensureCalculated(); return m_upper_bound; }
+
+protected:
+  // Data & config
+  const std::vector<Decimal>& m_returns;
+  unsigned int                m_num_resamples;
+  double                      m_confidence_level;
+  StatFn                      m_statistic;
+  Sampler                     m_sampler;
+  bool                        m_is_calculated;
+
+  // Results
+  Decimal m_theta_hat{};
+  Decimal m_lower_bound{};
+  Decimal m_upper_bound{};
+
+  // Test hooks (kept for mocks)
+  void setStatistic(const Decimal& theta)  { m_theta_hat = theta; }
+  void setMean(const Decimal& theta)       { m_theta_hat = theta; }
+  void setLowerBound(const Decimal& lower) { m_lower_bound = lower; }
+  void setUpperBound(const Decimal& upper) { m_upper_bound = upper; }
+
+  void validateConstructorArgs() const
+  {
+    if (m_returns.empty())
+      throw std::invalid_argument("BCaBootStrap: input returns vector cannot be empty.");
+    if (m_num_resamples < 100u)
+      throw std::invalid_argument("BCaBootStrap: number of resamples should be at least 100.");
+    if (m_confidence_level <= 0.0 || m_confidence_level >= 1.0)
+      throw std::invalid_argument("BCaBootStrap: confidence level must be between 0 and 1.");
+  }
+
+  void ensureCalculated() const
+  {
+    if (!m_is_calculated)
+      const_cast<BCaBootStrap*>(this)->calculateBCaBounds();
+  }
+
+  /**
+   * Core BCa algorithm with micro-optimizations:
+   *  1) Compute θ̂
+   *  2) Generate bootstrap replicates; count < θ̂ on the fly
+   *  3) Compute z0 from the running count (no extra pass)
+   *  4) Compute a via jackknife with double accumulators
+   *  5) Get α1, α2 and select order statistics via nth_element
+   */
+  virtual void calculateBCaBounds()
+  {
+    if (m_is_calculated) return;
+
+    const size_t n = m_returns.size();
+    if (n < 2)
+      throw std::invalid_argument("BCa bootstrap requires at least 2 data points.");
+
+    // (1) θ̂
+    m_theta_hat = m_statistic(m_returns);
+
+    // (2) Bootstrap replicates; count < θ̂ on the fly
+    std::vector<Decimal> boot_stats;
+    boot_stats.reserve(m_num_resamples);
+
+    thread_local static Rng rng;
+    unsigned int count_less = 0;
+
+    for (unsigned int b = 0; b < m_num_resamples; ++b)
     {
-      validateConstructorArgs();
+      std::vector<Decimal> resample = m_sampler(m_returns, n, rng);
+      const Decimal stat_b = m_statistic(resample);
+      if (stat_b < m_theta_hat) ++count_less;
+      boot_stats.push_back(stat_b);
     }
 
-    /**
-     * @brief Constructs a BCaBootStrap object with a custom statistic.
-     * @param returns The input data vector.
-     * @param num_resamples The number of bootstrap replicates.
-     * @param confidence_level The desired confidence level.
-     * @param statistic The function to compute the statistic of interest.
-     * @throws std::invalid_argument If inputs are invalid.
-     */
-    BCaBootStrap(const std::vector<Decimal>& returns,
-		 unsigned int num_resamples,
-		 double confidence_level,
-		 StatFn statistic)
-      : m_returns(returns),
-	m_num_resamples(num_resamples),
-	m_confidence_level(confidence_level),
-	m_statistic(std::move(statistic)),
-	m_sampler(Sampler{}),
-	m_is_calculated(false)
+    // (3) Bias-correction z0
+    const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
+    const double z0 = inverseNormalCdf(prop_less);
+
+    // (4) Acceleration a via jackknife (use doubles for cubic/quadratic sums)
+    const std::vector<Decimal> jk_stats = m_sampler.jackknife(m_returns, m_statistic);
+    const size_t n_jk = jk_stats.size();
+
+    // mean of jackknife stats in Decimal to preserve your numeric type
+    Decimal jk_sum = DecimalConstants<Decimal>::DecimalZero;
+    for (const auto& th : jk_stats) jk_sum += th;
+    const Decimal jk_avg = jk_sum / Decimal(n_jk);
+
+    // accumulate in double to cheapen cubic/quad math
+    double num_d = 0.0; // sum (d^3)
+    double den_d = 0.0; // sum (d^2)
+    for (const auto& th : jk_stats)
     {
-      if (!m_statistic)
-	{
-	  throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
-	}
-      validateConstructorArgs();
+      const double d = (jk_avg - th).getAsDouble();
+      const double d2 = d * d;
+      den_d += d2;
+      num_d += d2 * d;
     }
 
-    /**
-     * @brief Constructs a BCaBootStrap object with a custom statistic and sampler.
-     * @param returns The input data vector.
-     * @param num_resamples The number of bootstrap replicates.
-     * @param confidence_level The desired confidence level.
-     * @param statistic The function to compute the statistic of interest.
-     * @param sampler The resampling policy instance to use.
-     * @throws std::invalid_argument If inputs are invalid.
-     */
-    BCaBootStrap(const std::vector<Decimal>& returns,
-		 unsigned int num_resamples,
-		 double confidence_level,
-		 StatFn statistic,
-		 Sampler sampler)
-      : m_returns(returns),
-	m_num_resamples(num_resamples),
-	m_confidence_level(confidence_level),
-	m_statistic(std::move(statistic)),
-	m_sampler(std::move(sampler)),
-	m_is_calculated(false)
+    Decimal a = DecimalConstants<Decimal>::DecimalZero;
+    if (den_d > 0.0)
     {
-      if (!m_statistic)
-	{
-	  throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
-	}
-      validateConstructorArgs();
+      const double den15 = std::pow(den_d, 1.5);
+      if (den15 > 0.0)
+        a = Decimal(num_d / (6.0 * den15));
     }
 
-    virtual ~BCaBootStrap() = default;
+    // (5) Adjusted percentiles → bounds
+    const double alpha       = (1.0 - m_confidence_level) * 0.5;
+    const double z_alpha_lo  = inverseNormalCdf(alpha);
+    const double z_alpha_hi  = inverseNormalCdf(1.0 - alpha);
 
-    /**
-     * @brief Gets the value of the statistic on the original data.
-     * @return The statistic value.
-     */
-    Decimal getMean() const
-    {
-      ensureCalculated();
-      return m_theta_hat;
-    }
+    const double a_d = a.getAsDouble();
 
-    /**
-     * @brief Alias for `getMean()`.
-     * @return The statistic value.
-     */
-    Decimal getStatistic() const
-    {
-      return getMean();
-    } // alias for backward compat
+    // Early-exit when a ~ 0 to avoid divisions & improve stability
 
-    /**
-     * @brief Gets the lower bound of the BCa confidence interval.
-     * @return The lower bound.
-     */
-    Decimal getLowerBound() const
-    {
-      ensureCalculated();
-      return m_lower_bound;
-    }
+    const bool z0_finite = std::isfinite(z0);
+    const double alpha1 = (!z0_finite || std::abs(a_d) < 1e-12)
+      ? standardNormalCdf(z0 + z_alpha_lo)
+      : standardNormalCdf(z0 + (z0 + z_alpha_lo) / (1.0 - a_d * (z0 + z_alpha_lo)));
 
-    /**
-     * @brief Gets the upper bound of the BCa confidence interval.
-     * @return The upper bound.
-     */
-    Decimal getUpperBound() const
-    {
-      ensureCalculated();
-      return m_upper_bound;
-    }
+    const double alpha2 = (!z0_finite || std::abs(a_d) < 1e-12)
+      ? standardNormalCdf(z0 + z_alpha_hi)
+      : standardNormalCdf(z0 + (z0 + z_alpha_hi) / (1.0 - a_d * (z0 + z_alpha_hi)));
 
-  protected:
-    // Data & config
-    const std::vector<Decimal>& m_returns;
-    unsigned int m_num_resamples;
-    double m_confidence_level;
-    StatFn m_statistic;
-    Sampler m_sampler;
-    bool m_is_calculated;
+    const auto clamp01 = [](double v) noexcept {
+      return (v <= 0.0) ? std::nextafter(0.0, 1.0)
+       : (v >= 1.0) ? std::nextafter(1.0, 0.0)
+                    : v;
+    };
 
-    // Results
-    Decimal m_theta_hat;
-    Decimal m_lower_bound;
-    Decimal m_upper_bound;
+    const double a1 = clamp01(alpha1);
+    const double a2 = clamp01(alpha2);
 
-    // Test hooks (kept for mocks)
-    void setStatistic(const Decimal& theta)
-    {
-      m_theta_hat = theta;
-    }
-    void setMean(const Decimal& theta)
-    {
-      m_theta_hat = theta;
-    }
-    void setLowerBound(const Decimal& lower)
-    {
-      m_lower_bound = lower;
-    }
-    void setUpperBound(const Decimal& upper)
-    {
-      m_upper_bound = upper;
-    }
+    int li = unbiasedIndex(std::min(a1, a2), m_num_resamples);
+    int ui = unbiasedIndex(std::max(a1, a2), m_num_resamples);  
 
-    /**
-     * @brief Validates the constructor arguments.
-     * @throws std::invalid_argument If any argument is invalid.
-     */
-    void validateConstructorArgs() const
-    {
-      if (m_returns.empty())
-	{
-	  throw std::invalid_argument("BCaBootStrap: input returns vector cannot be empty.");
-	}
-      if (m_num_resamples < 100)
-	{
-	  throw std::invalid_argument("BCaBootStrap: number of resamples should be at least 100.");
-	}
-      if (m_confidence_level <= 0.0 || m_confidence_level >= 1.0)
-	{
-	  throw std::invalid_argument("BCaBootStrap: confidence level must be between 0 and 1.");
-	}
-    }
+    // Select order statistics in O(B)
+    std::nth_element(boot_stats.begin(), boot_stats.begin() + li, boot_stats.end());
+    m_lower_bound = boot_stats[li];
 
-    /**
-     * @brief Ensures that the confidence bounds have been calculated.
-     *
-     * This is a lazy calculation mechanism. The first time a getter for the
-     * results is called, `calculateBCaBounds()` is executed. Subsequent calls
-     * return the cached results.
-     */
-    void ensureCalculated() const
-    {
-      if (!m_is_calculated)
-	{
-	  const_cast<BCaBootStrap*>(this)->calculateBCaBounds();
-	}
-    }
+    std::nth_element(boot_stats.begin(), boot_stats.begin() + ui, boot_stats.end());
+    m_upper_bound = boot_stats[ui];
 
-    /**
-     * @brief The core algorithm for computing the BCa confidence bounds.
-     *
-     * @details
-     * This method calculates the Bias-Corrected and Accelerated (BCa) confidence
-     * interval. It's more accurate than a simple percentile interval because it
-     * adjusts for both bias and skewness in the bootstrap distribution. The
-     * algorithm can be understood as a five-step journey where each step
-     * builds upon the last.
-     *
-     * ### Step 1: Calculate the Original Statistic (Our Anchor Point)
-     * We start by calculating the statistic (e.g., the mean) on the original,
-     * untouched data. This gives us our single best estimate, `m_theta_hat`,
-     * which serves as the central point of our analysis.
-     *
-     * ### Step 2: Generate the Bootstrap Distribution (Create a "Bootstrap World")
-     * Next, we create thousands of new datasets by resampling from the original
-     * data (using the chosen `Sampler` policy). For each of these resamples, we
-     * calculate the same statistic. This collection of statistics forms the
-     * "bootstrap distribution." It shows us how our statistic might vary if we
-     * could sample from the true underlying population. At the end of this step,
-     * we sort this distribution from smallest to largest.
-     *
-     * ### Step 3: Compute the Bias-Correction Factor, `z₀` (Is Our Anchor Centered?)
-     * Now, we check if our original statistic (`m_theta_hat`) is in the center
-     * of the bootstrap world we just created. We do this by finding the proportion
-     * of our bootstrap statistics that are less than `m_theta_hat`. If this
-     * proportion is not 50%, our bootstrap distribution is "biased." The `z₀`
-     * value is simply the standard normal score (Z-score) of this proportion,
-     * quantifying this bias. A `z₀` of 0 means no bias.
-     *
-     * ### Step 4: Compute the Acceleration Factor, `a` (Is Our World Skewed?)
-     * This step measures the skewness of our statistic's distribution. It answers
-     * the question: "Does the standard error of our statistic change as the
-     * data changes?" We use the jackknife procedure for this. By systematically
-     * removing parts of the original data and recalculating the statistic each
-     * time, we see how much our statistic's value is influenced by different
-     * parts of the data. The skewness of these "influence" values gives us the
-     * acceleration factor `a`. A non-zero `a` indicates that the bootstrap
-     * distribution is lopsided (skewed).
-     *
-     * ### Step 5: Calculate the Adjusted Percentiles (Find the New Endpoints)
-     * This is the final step where everything comes together. We start with the
-     * standard percentiles for our confidence level (e.g., for 95% confidence),
-     * We then plug our bias factor (`z₀`) and acceleration factor (`a`) into
-     * the BCa formula. This formula "warps" the standard percentiles to account
-     * for the bias and skew we found. The output is a new pair of adjusted percentiles.
-     * We use these new percentiles to find the corresponding values in our sorted bootstrap
-     * distribution from Step 2. These values are our final, more accurate, BCa confidence bounds.
-     *
-     * @throws std::invalid_argument If the original data vector has fewer than 2 data points.
-     */
-    virtual void calculateBCaBounds()
-    {
-      if (m_is_calculated)
-	{
-	  return;
-	}
+    m_is_calculated = true;
+  }
 
-      const size_t n = m_returns.size();
-      if (n < 2)
-	{
-	  throw std::invalid_argument("BCa bootstrap requires at least 2 data points.");
-	}
+  // ---- Math helpers ----
+  static inline double standardNormalCdf(double x) noexcept
+  {
+    // Hoist constants to constexpr for compile-time folding
+    constexpr double INV_SQRT2 = 1.0 / 1.4142135623730950488; // 1/sqrt(2)
+    return 0.5 * (1.0 + std::erf(x * INV_SQRT2));
+  }
 
-      // 1) θ̂ (original statistic)
-      m_theta_hat = m_statistic(m_returns);
+  static inline double inverseNormalCdf(double p) noexcept
+  {
+    if (p <= 0.0) return -std::numeric_limits<double>::infinity();
+    if (p >= 1.0) return  std::numeric_limits<double>::infinity();
+    return (p < 0.5) ? -inverseNormalCdfHelper(p) : inverseNormalCdfHelper(1.0 - p);
+  }
 
-      // 2) Bootstrap replicates using the selected resampling policy
-      std::vector<Decimal> boot_stats;
-      boot_stats.reserve(m_num_resamples);
+  static inline double inverseNormalCdfHelper(double p) noexcept
+  {
+    // Abramowitz & Stegun 26.2.23
+    constexpr double c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+    constexpr double d0 = 1.432788, d1 = 0.189269, d2 = 0.001308;
+    const double t  = std::sqrt(-2.0 * std::log(p));
+    const double num = (c0 + c1 * t + c2 * t * t);
+    const double den = (1.0 + d0 * t + d1 * t * t + d2 * t * t * t);
+    return t - num / den;
+  }
 
-      thread_local static Rng rng;
-
-      for (unsigned int b = 0; b < m_num_resamples; ++b)
-	{
-	  // Resample using policy class
-	  std::vector<Decimal> resample = m_sampler(m_returns, n, rng);
-	  boot_stats.push_back(m_statistic(resample));
-	}
-      std::sort(boot_stats.begin(), boot_stats.end());
-
-      // 3) Bias-correction z0
-      const auto count_less = std::count_if(
-					    boot_stats.begin(), boot_stats.end(),
-					    [this](const Decimal& v){ return v < this->m_theta_hat; });
-      const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
-      const double z0 = inverseNormalCdf(prop_less);
-
-      // 4) Acceleration a via jackknife, delegated to the sampler
-
-      /**
-       * @details
-       * ### Why is the Skew Correction Called "Accelerated"?
-       *
-       * The term "accelerated" refers to the acceleration constant `a`, which
-       * measures how rapidly the standard error of our statistic changes on a
-       * normalized scale. It's called an "acceleration" because, in statistical
-       * theory, it relates to the rate of change (or "acceleration") of the
-       * statistic's variance as the underlying data distribution changes.
-       *
-       * A simple way to think about it is:
-       * - If our statistic's standard error is very stable and doesn't change
-       * much when we subtly alter the data, the acceleration is low.
-       * - If the standard error is very sensitive and changes quickly, the
-       * acceleration is high. This indicates a more skewed or unstable
-       * distribution that requires a larger correction.
-       *
-       * The jackknife procedure is the mechanism we use to estimate this value.
-       * By removing parts of the data and observing how much the statistic
-       * "wobbles," we get a practical measure of this theoretical acceleration.
-       */
-      const std::vector<Decimal> jk_stats = m_sampler.jackknife(m_returns, m_statistic);
-      const size_t n_jk = jk_stats.size();
-
-      Decimal jk_sum(DecimalConstants<Decimal>::DecimalZero);
-      for (const auto& th : jk_stats)
-	{
-	  jk_sum += th;
-	}
-      const Decimal jk_avg = jk_sum / Decimal(n_jk);
-
-      Decimal num(DecimalConstants<Decimal>::DecimalZero);
-      Decimal den(DecimalConstants<Decimal>::DecimalZero);
-      for (const auto& th : jk_stats)
-	{
-	  const Decimal d = jk_avg - th;
-	  num += d * d * d;
-	  den += d * d;
-	}
-
-      Decimal a(DecimalConstants<Decimal>::DecimalZero);
-      if (den > DecimalConstants<Decimal>::DecimalZero)
-	{
-	  const double den15 = std::pow(num::to_double(den), 1.5);
-	  if (den15 > 0.0)
-	    {
-	      a = num / (Decimal(6) * Decimal(den15));
-	    }
-	}
-
-      // 5) Adjusted percentiles → bounds
-      /**
-       * @details
-       * ### Step 5: Combining and Adjusting to Find the Final Bounds
-       *
-       * This is the final step where all our calculated components come together.
-       * The goal is to "warp" the standard confidence percentiles (e.g., 2.5%
-       * and 97.5%) using the bias and skewness we discovered in the data.
-       *
-       * #### The Process:
-       * 1.  **Get Standard Endpoints:** We first find the standard Z-scores that
-       * correspond to our desired confidence level (e.g., -1.96 and +1.96 for
-       * 95% confidence). These are our uncorrected, "textbook" endpoints.
-       *
-       * 2.  **Apply the BCa Formula:** We plug these Z-scores, along with our
-       * bias-correction factor (`z₀`) and our acceleration factor (`a`), into
-       * the BCa adjustment formula. This is where the result of the jackknife
-       * (`a`) is finally used. It modifies the interval to account for skew:
-       * - The **bias factor `z₀`** shifts the center of the confidence interval.
-       * - The **acceleration factor `a`** expands or contracts the interval
-       * asymmetrically to better fit the lopsided shape of a skewed distribution.
-       *
-       * 3.  **Find the Final Bounds:** The BCa formula outputs two new, adjusted
-       * percentiles (`alpha1` and `alpha2`). The very last step is to take
-       * these final percentiles and find the values at those positions in our
-       * sorted bootstrap distribution (from Step 2). These values are the
-       * final, robust, BCa confidence interval bounds.
-       */
-      const double alpha = (1.0 - m_confidence_level) / 2.0;
-      const double z_alpha_lo = inverseNormalCdf(alpha);
-      const double z_alpha_hi = inverseNormalCdf(1.0 - alpha);
-
-      const double a_d = a.getAsDouble();
-
-      const double t1 = z0 + z_alpha_lo;
-      const double alpha1 = standardNormalCdf(z0 + t1 / (1.0 - a_d * t1));
-
-      const double t2 = z0 + z_alpha_hi;
-      const double alpha2 = standardNormalCdf(z0 + t2 / (1.0 - a_d * t2));
-
-      const int lower_idx = unbiasedIndex(alpha1, m_num_resamples);
-      const int upper_idx = unbiasedIndex(alpha2, m_num_resamples);
-
-      m_lower_bound = boot_stats[lower_idx];
-      m_upper_bound = boot_stats[upper_idx];
-
-      m_is_calculated = true;
-    }
-
-    // ---- Math helpers ----
-
-    /**
-     * @brief Computes the Standard Normal Cumulative Distribution Function (CDF).
-     *
-     * @details
-     * ### What it Does (In Simple Terms)
-     * Imagine a perfect bell curve (a "standard normal distribution") where the
-     * total area underneath it is 1.0 (representing 100% probability). This
-     * function takes a point on the horizontal axis (a Z-score `x`) and returns
-     * the total area under the curve to the left of that point.
-     *
-     * In essence, it **converts a Z-score into a percentile**. For example:
-     * - `standardNormalCdf(0.0)` would return `0.5`, because the point 0.0 is exactly
-     * at the center of the bell curve, with 50% of the area to its left.
-     * - `standardNormalCdf(1.96)` would return approximately `0.975`, meaning that
-     * 97.5% of all values are less than or equal to 1.96.
-     *
-     * ### Its Role in the BCa Algorithm
-     * This function is used in **Step 5** of the `calculateBCaBounds` method.
-     * After we have calculated the final, adjusted Z-scores for our confidence
-     * bounds (which account for bias `z₀` and skewness `a`), we need to turn
-     * them back into percentiles. This function performs that final conversion,
-     * giving us the exact percentile points (e.g., 3.1% and 98.2%) we need to
-     * look up in our sorted list of bootstrap results.
-     *
-     * @param x The value (Z-score) at which to evaluate the CDF.
-     * @return The probability `P(Z <= x)`, a value between 0.0 and 1.0.
-     */
-    double standardNormalCdf(double x) const
-    {
-      return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
-    }
-
-    /**
-     * @brief Computes the inverse of the Standard Normal CDF (quantile function).
-     *
-     * @details
-     * ### What it Does (In Simple Terms)
-     * This function does the **exact opposite** of `standardNormalCdf`. You give
-     * it a percentile (a probability `p` between 0.0 and 1.0), and it tells you
-     * the corresponding Z-score on the horizontal axis of the bell curve.
-     *
-     * It's like using a Z-table in reverse. For example:
-     * - `inverseNormalCdf(0.5)` would return `0.0`, the center of the distribution.
-     * - `inverseNormalCdf(0.975)` would return approximately `1.96`.
-     *
-     * ### Its Role in the BCa Algorithm
-     * This function is critical in two steps of `calculateBCaBounds`:
-     * 1.  **Step 3 (Bias `z₀`):** We calculate the proportion of bootstrap results
-     * less than our original statistic. This proportion is a percentile. We
-     * feed it into this function to get our bias-correction factor, `z₀`.
-     * 2.  **Step 5 (Adjusted Percentiles):** We need to know the starting Z-scores
-     * for our desired confidence level (e.g., 95%). We call this function
-     * with `0.025` and `0.975` to get the initial Z-scores (`z_alpha_lo`
-     * and `z_alpha_hi`) before we adjust them for bias and skew.
-     *
-     * @param p The probability or percentile (a value between 0 and 1).
-     * @return The Z-score `x` such that `P(Z <= x) = p`.
-     */
-    double inverseNormalCdf(double p) const
-    {
-      if (p <= 0.0)
-	{
-	  return -std::numeric_limits<double>::infinity();
-	}
-      if (p >= 1.0)
-	{
-	  return  std::numeric_limits<double>::infinity();
-	}
-      return (p < 0.5) ? -inverseNormalCdfHelper(p) : inverseNormalCdfHelper(1.0 - p);
-    }
-
-    /**
-     * @brief A helper function for `inverseNormalCdf` using a mathematical approximation.
-     *
-     * @details
-     * ### What it Does (In Simple Terms)
-     * Calculating the inverse normal CDF exactly is extremely complex. There's no
-     * simple formula for it. This function uses a well-known and highly accurate
-     * mathematical "shortcut" (a rational approximation) to compute the result.
-     * It's the computational engine that does the heavy lifting for the main
-     * `inverseNormalCdf` function.
-     *
-     * For a maintainer, this function can be treated as a "black box." Its internal
-     * constants and formula are a standard, proven method for getting the job done
-     * with sufficient precision for confidence interval calculations.
-     *
-     * ### Its Role in the BCa Algorithm
-     * This function does not have a direct role in the BCa algorithm itself; it
-     * is purely an implementation detail. It is called by `inverseNormalCdf` to
-     * perform the actual calculation.
-     *
-     * Implements the rational approximation from Approximation from Abramowitz & Stegun,
-     * "Handbook of Mathematical Functions", Eq. 26.2.23.
-     *
-     * Citation details:
-     *
-     * Chapter 26: "Probability Functions"
-     *
-     * Section 2: "Normal or Gaussian Probability Function"
-     *
-     * Formula 23: This is the specific equation number within that section.
-     * It provides a highly accurate rational approximation for the inverse normal
-     * CDF, which is what the inverseNormalCdfHelper function implements.
-     *
-     * @param p The probability, assumed to be in the range (0, 0.5].
-     * @return The inverse normal CDF value.
-     */
-    double inverseNormalCdfHelper(double p) const
-    {
-      // Abramowitz & Stegun 26.2.23 (sufficient for CI work)
-      static const double c[] = {2.515517, 0.802853, 0.010328};
-      static const double d[] = {1.432788, 0.189269, 0.001308};
-      const double t = std::sqrt(-2.0 * std::log(p));
-      const double num = (c[0] + c[1] * t + c[2] * t * t);
-      const double den = (1.0 + d[0] * t + d[1] * t * t + d[2] * t * t * t);
-      return t - num / den;
-    }
-
-    /**
-     * @brief Calculates an "unbiased" index for a sorted vector based on a percentile.
-     *
-     * This method uses `p * (B + 1)` and flooring to determine the index, which is
-     * a common approach to find an index that corresponds to a percentile of a
-     * finite sample. The result is clamped to be within the valid index range `[0, B-1]`.
-     *
-     * @param p The percentile (a value from 0.0 to 1.0).
-     * @param B The total number of elements in the sorted vector.
-     * @return The integer index corresponding to the given percentile.
-     */
-    static int unbiasedIndex(double p, unsigned int B)
-    {
-      int idx = static_cast<int>(std::floor(p * (static_cast<double>(B) + 1.0))) - 1;
-      if (idx < 0)
-	{
-	  idx = 0;
-	}
-      const int maxIdx = static_cast<int>(B) - 1;
-      if (idx > maxIdx)
-	{
-	  idx = maxIdx;
-	}
-      return idx;
-    }
-  };
+  static inline int unbiasedIndex(double p, unsigned int B) noexcept
+  {
+    int idx = static_cast<int>(std::floor(p * (static_cast<double>(B) + 1.0))) - 1;
+    if (idx < 0) idx = 0;
+    const int maxIdx = static_cast<int>(B) - 1;
+    if (idx > maxIdx) idx = maxIdx;
+    return idx;
+  }
+};
 
   // ------------------------------ Annualizer -----------------------------------
 
