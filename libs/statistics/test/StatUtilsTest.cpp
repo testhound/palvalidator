@@ -571,3 +571,333 @@ TEST_CASE("Quantile function with linear interpolation", "[Quantile]") {
         REQUIRE(num::to_double(StatUtils<DecimalType>::quantile(v, 0.5)) == Catch::Approx(20.0));
     }
 }
+
+TEST_CASE("StatUtils::computeVariance basic correctness and edge cases", "[StatUtils][Variance]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Known small dataset: {1,2,3,4} -> sample variance = 5/(4-1) = 1.666666...") {
+        std::vector<DecimalType> v = {
+            DecimalType("1.0"), DecimalType("2.0"),
+            DecimalType("3.0"), DecimalType("4.0")
+        };
+        DecimalType mean = Stat::computeMean(v);
+        DecimalType var  = Stat::computeVariance(v, mean);
+
+        REQUIRE(num::to_double(mean) == Catch::Approx(2.5));
+        REQUIRE(num::to_double(var)  == Catch::Approx(1.6666666667));
+    }
+
+    SECTION("Single-element vector -> variance = 0") {
+        std::vector<DecimalType> v = { DecimalType("42.0") };
+        DecimalType mean = Stat::computeMean(v);
+        DecimalType var  = Stat::computeVariance(v, mean);
+
+        REQUIRE(num::to_double(mean) == Catch::Approx(42.0));
+        REQUIRE(var == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Empty vector -> variance = 0") {
+        std::vector<DecimalType> v;
+        DecimalType mean = Stat::computeMean(v);
+        DecimalType var  = Stat::computeVariance(v, mean);
+
+        REQUIRE(mean == DecimalConstants<DecimalType>::DecimalZero);
+        REQUIRE(var  == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Agreement with StdDev: var ≈ (stddev)^2 (for mixed small returns)") {
+        std::vector<DecimalType> v = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"), DecimalType("0.15")
+        };
+        DecimalType mean = Stat::computeMean(v);
+        DecimalType var  = Stat::computeVariance(v, mean);
+        DecimalType sd   = Stat::computeStdDev(v, mean);
+
+        REQUIRE(num::to_double(var) == Catch::Approx(std::pow(num::to_double(sd), 2)).margin(1e-9));
+    }
+}
+
+TEST_CASE("StatUtils::computeMeanAndVariance correctness and consistency", "[StatUtils][MeanVar]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Matches computeMean + computeVariance on a mixed set") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        // One-pass result
+        auto [m1, v1] = Stat::computeMeanAndVariance(r);
+
+        // Two-pass reference
+        DecimalType m2 = Stat::computeMean(r);
+        DecimalType v2 = Stat::computeVariance(r, m2);
+
+        REQUIRE(num::to_double(m1) == Catch::Approx(num::to_double(m2)).epsilon(1e-12));
+        REQUIRE(num::to_double(v1) == Catch::Approx(num::to_double(v2)).epsilon(1e-12));
+
+        // StdDev^2 ≈ Var sanity check
+        DecimalType sd = Stat::computeStdDev(r, m2);
+
+        REQUIRE(num::to_double(v1) == Catch::Approx(std::pow(num::to_double(sd), 2)).margin(1e-9));
+    }
+
+    SECTION("Edge cases: empty and single-element") {
+        {
+            std::vector<DecimalType> r;
+            auto [m, v] = Stat::computeMeanAndVariance(r);
+            REQUIRE(m == DecimalConstants<DecimalType>::DecimalZero);
+            REQUIRE(v == DecimalConstants<DecimalType>::DecimalZero);
+        }
+        {
+            std::vector<DecimalType> r = { DecimalType("7.5") };
+            auto [m, v] = Stat::computeMeanAndVariance(r);
+            REQUIRE(num::to_double(m) == Catch::Approx(7.5));
+            REQUIRE(v == DecimalConstants<DecimalType>::DecimalZero);
+        }
+    }
+
+    SECTION("Light numerical-stability check (large level + tiny noise)") {
+        // Use moderate magnitudes to stay within DecimalType precision comfortably.
+        std::vector<DecimalType> r = {
+            DecimalType("10000.0000"),
+            DecimalType("10000.0001"),
+            DecimalType("9999.9999"),
+            DecimalType("10000.0002"),
+            DecimalType("9999.9998")
+        };
+
+        // One-pass mean/var
+        auto [m_dec, v_dec] = Stat::computeMeanAndVariance(r);
+
+        // Double-precision reference (unbiased sample variance)
+        std::vector<double> d;
+        d.reserve(r.size());
+        for (const auto& x : r) d.push_back(num::to_double(x));
+        const double n = static_cast<double>(d.size());
+        const double m_ref = std::accumulate(d.begin(), d.end(), 0.0) / n;
+        double ss = 0.0;
+        for (double x : d) {
+            const double diff = x - m_ref;
+            ss += diff * diff;
+        }
+        const double v_ref = (d.size() > 1) ? (ss / (n - 1.0)) : 0.0;
+
+        REQUIRE(num::to_double(m_dec) == Catch::Approx(m_ref).margin(1e-10));
+        REQUIRE(num::to_double(v_dec) == Catch::Approx(v_ref).margin(1e-8));
+    }
+}
+
+// --------------------------- New Tests: ComputeFast / computeMeanAndVarianceFast ---------------------------
+
+TEST_CASE("ComputeFast<DecimalType>::run matches standard mean/variance", "[StatUtils][ComputeFast]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Typical mixed returns") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"), DecimalType("0.15")
+        };
+
+        // Reference (regular path)
+        auto [m_ref, v_ref] = Stat::computeMeanAndVariance(r);
+
+        // Fast path (hybrid Welford specialization for dec::decimal)
+        auto [m_fast, v_fast] = Stat::computeMeanAndVarianceFast(r);
+
+        REQUIRE(num::to_double(m_fast) == Catch::Approx(num::to_double(m_ref)).epsilon(1e-12));
+        REQUIRE(num::to_double(v_fast) == Catch::Approx(num::to_double(v_ref)).epsilon(1e-12));
+
+        // StdDev^2 ≈ Var sanity (computed from fast mean)
+        DecimalType sd = Stat::computeStdDev(r, m_fast);
+        REQUIRE(num::to_double(v_fast) == Catch::Approx(std::pow(num::to_double(sd), 2)).margin(1e-9));
+    }
+
+    SECTION("Edge cases: empty and single element") {
+        {
+            std::vector<DecimalType> r;
+            auto [m_ref, v_ref]   = Stat::computeMeanAndVariance(r);
+            auto [m_fast, v_fast] = Stat::computeMeanAndVarianceFast(r);
+
+            REQUIRE(m_fast == m_ref);
+            REQUIRE(v_fast == v_ref);
+        }
+        {
+            std::vector<DecimalType> r = { DecimalType("7.5") };
+            auto [m_ref, v_ref]   = Stat::computeMeanAndVariance(r);
+            auto [m_fast, v_fast] = Stat::computeMeanAndVarianceFast(r);
+
+            REQUIRE(num::to_double(m_fast) == Catch::Approx(num::to_double(m_ref)).epsilon(1e-12));
+            REQUIRE(v_fast == v_ref); // both should be zero
+        }
+    }
+}
+
+TEST_CASE("computeMeanAndVarianceFast numerical stability on large level + tiny noise", "[StatUtils][ComputeFast][Stability]") {
+    using Stat = StatUtils<DecimalType>;
+
+    // Moderate magnitudes given Decimal precision; mirrors earlier stability test.
+    std::vector<DecimalType> r = {
+        DecimalType("10000.0000"),
+        DecimalType("10000.0001"),
+        DecimalType("9999.9999"),
+        DecimalType("10000.0002"),
+        DecimalType("9999.9998")
+    };
+
+    // Regular path
+    auto [m_ref, v_ref] = Stat::computeMeanAndVariance(r);
+
+    // Fast path
+    auto [m_fast, v_fast] = Stat::computeMeanAndVarianceFast(r);
+
+    // Means should be extremely close
+    REQUIRE(num::to_double(m_fast) == Catch::Approx(num::to_double(m_ref)).margin(1e-10));
+
+    // Variances are ~1e-8 in scale; allow tight absolute margin
+    REQUIRE(num::to_double(v_fast) == Catch::Approx(num::to_double(v_ref)).margin(1e-8));
+
+    // stddev^2 ≈ var (fast outputs)
+    DecimalType sd_fast = Stat::computeStdDev(r, m_fast);
+    REQUIRE(num::to_double(v_fast) == Catch::Approx(std::pow(num::to_double(sd_fast), 2)).margin(1e-9));
+}
+
+TEST_CASE("StatUtils::sharpeFromReturns basic behavior and edge cases", "[StatUtils][Sharpe]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Typical mixed returns (fast path)") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"), DecimalType("0.15")
+        };
+
+        // Reference via fast mean/variance then formula (same eps/ppy)
+        auto [m, v] = Stat::computeMeanAndVarianceFast(r);
+        const double eps = 1e-8;
+        const double sd  = std::sqrt(std::max(0.0, num::to_double(v) + eps));
+        const double ref = (sd > 0.0) ? (num::to_double(m) / sd) : 0.0;
+
+        DecimalType sr = Stat::sharpeFromReturns(r, /*eps=*/eps, /*periodsPerYear=*/1.0, 0.0);
+        REQUIRE(num::to_double(sr) == Catch::Approx(ref).epsilon(1e-8));
+    }
+
+    SECTION("Annualization scales Sharpe by sqrt(periodsPerYear)") {
+        std::vector<DecimalType> r = { DecimalType("0.01"), DecimalType("0.00"),
+                                       DecimalType("-0.005"), DecimalType("0.015") };
+
+        const double eps = 1e-8;
+        const double sr1   = num::to_double(Stat::sharpeFromReturns(r, eps, 1.0, 0.0));
+        const double sr252 = num::to_double(Stat::sharpeFromReturns(r, eps, 252.0, 0.0));
+
+        REQUIRE(sr252 == Catch::Approx(sr1 * std::sqrt(252.0)).epsilon(1e-8));
+    }
+
+    SECTION("Risk-free subtraction reduces Sharpe (holding variance constant)") {
+        // Slight variation to avoid zero variance
+        std::vector<DecimalType> r = { DecimalType("0.010"), DecimalType("0.010"), DecimalType("0.011") };
+
+        const double eps = 1e-8;
+        const double sr0    = num::to_double(Stat::sharpeFromReturns(r, eps, 1.0, /*rf*/0.0));
+        const double sr5bps = num::to_double(Stat::sharpeFromReturns(r, eps, 1.0, /*rf*/0.0005));
+
+        REQUIRE(sr5bps < sr0);
+    }
+
+    SECTION("Empty vector -> Sharpe = 0") {
+        std::vector<DecimalType> r;
+        REQUIRE(Stat::sharpeFromReturns(r) == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Constant returns with eps=0 -> Sharpe = 0 (degenerate variance)") {
+        std::vector<DecimalType> r = { DecimalType("0.01"), DecimalType("0.01"), DecimalType("0.01") };
+        // With eps=0 the sd path should detect zero variance and return 0.
+        REQUIRE(Stat::sharpeFromReturns(r, /*eps=*/0.0, 1.0, 0.0) == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Numerical sanity: stddev^2 ≈ variance inside Sharpe path") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.08"), DecimalType("-0.02"),
+            DecimalType("0.03"), DecimalType("0.01"), DecimalType("-0.04")
+        };
+
+        // Compare sd^2 (reconstructed from Sharpe components) with fast variance
+        auto [m, v] = Stat::computeMeanAndVarianceFast(r);
+        const double eps = 1e-8;
+
+        // Rebuild sd from the returned Sharpe: sr = mean / sd  =>  sd = mean / sr
+        const double sr = num::to_double(Stat::sharpeFromReturns(r, eps, 1.0, 0.0));
+        const double sd = (sr != 0.0) ? (num::to_double(m) / sr) : 0.0;
+
+        REQUIRE(std::pow(sd, 2) == Catch::Approx(num::to_double(v) + eps).margin(1e-9));
+    }
+}
+
+TEST_CASE("StatUtils::sharpeFromReturns (lean) behavior and edge cases", "[StatUtils][SharpeLean]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Lean matches explicit mean/sd formula with fast mean/var") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"), DecimalType("0.15")
+        };
+
+        const double eps = 1e-8;
+
+        auto [m, v] = Stat::computeMeanAndVarianceFast(r);
+        const double sd  = std::sqrt(std::max(0.0, num::to_double(v) + eps));
+        const double ref = (sd > 0.0) ? (num::to_double(m) / sd) : 0.0;
+
+        const double sr_lean = num::to_double(Stat::sharpeFromReturns(r, eps));
+        REQUIRE(sr_lean == Catch::Approx(ref).margin(1e-9));
+    }
+
+    SECTION("Lean equals general overload with defaults (ppy=1, rf=0)") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.02"), DecimalType("-0.01"),
+            DecimalType("0.03"), DecimalType("-0.005"), DecimalType("0.015")
+        };
+        const double eps = 1e-8;
+
+        const double sr_lean = num::to_double(Stat::sharpeFromReturns(r, eps));
+        const double sr_gen  = num::to_double(Stat::sharpeFromReturns(r, eps, /*periodsPerYear=*/1.0, /*rf=*/0.0));
+
+        REQUIRE(sr_lean == Catch::Approx(sr_gen).margin(1e-9));
+    }
+
+    SECTION("Annualized general ≈ lean * sqrt(periodsPerYear)") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.01"), DecimalType("0.00"),
+            DecimalType("-0.005"), DecimalType("0.015")
+        };
+        const double eps = 1e-8;
+        const double ppy = 252.0;
+
+        const double sr_lean = num::to_double(Stat::sharpeFromReturns(r, eps));
+        const double sr_ann  = num::to_double(Stat::sharpeFromReturns(r, eps, ppy, /*rf=*/0.0));
+
+        REQUIRE(sr_ann == Catch::Approx(sr_lean * std::sqrt(ppy)).margin(5e-9));
+    }
+
+    SECTION("Empty vector -> Sharpe = 0") {
+        std::vector<DecimalType> r;
+        REQUIRE(Stat::sharpeFromReturns(r) == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Constant returns with eps=0 -> Sharpe = 0 (degenerate variance)") {
+        std::vector<DecimalType> r = { DecimalType("0.01"), DecimalType("0.01"), DecimalType("0.01") };
+        REQUIRE(Stat::sharpeFromReturns(r, /*eps=*/0.0) == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("General with positive risk-free reduces Sharpe vs lean") {
+        // Slight variation to ensure non-zero variance
+        std::vector<DecimalType> r = { DecimalType("0.010"), DecimalType("0.010"), DecimalType("0.011") };
+        const double eps = 1e-8;
+
+        const double sr_lean = num::to_double(Stat::sharpeFromReturns(r, eps));
+        const double sr_rf   = num::to_double(Stat::sharpeFromReturns(r, eps, /*ppy=*/1.0, /*rf=*/0.0005));
+
+        REQUIRE(sr_rf < sr_lean);
+    }
+}
+
