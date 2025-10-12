@@ -28,9 +28,9 @@
 
 #include "DecimalConstants.h"
 #include "number.h"
-#include "randutils.hpp"  // high-quality RNG
+#include "randutils.hpp"
 #include "TimeFrame.h"
-#include "StatUtils.h"    // StatUtils<Decimal>::computeMean by default
+#include "StatUtils.h"
 
 namespace mkc_timeseries
 {
@@ -232,54 +232,54 @@ namespace mkc_timeseries
    *
    * @tparam Decimal The numeric type used for the data (e.g., double, number).
    */
+
   template <class Decimal, class Rng = randutils::mt19937_rng>
   struct StationaryBlockResampler
   {
-    /**
-     * @brief Constructs a StationaryBlockResampler.
-     * @param L The mean block length. Must be at least 2.
-     */
     explicit StationaryBlockResampler(size_t L = 3)
       : m_L(std::max<size_t>(2, L)) {}
 
-    /**
-     * @brief Resamples the input vector using the stationary block method.
-     *
-     * A new block is started at a random index with probability `p = 1/L`, or
-     * the current block is continued by advancing to the next index (circularly).
-     * This process continues until a resample of size `n` is created.
-     *
-     * @param x The original time series data vector.
-     * @param n The size of the resampled vector.
-     * @param rng A high-quality random number generator.
-     * @return A new vector of size n, containing a resampled time series.
-     * @throws std::invalid_argument If the input vector x is empty.
-     */
+    // --- Bootstrap sample: geometric-length blocks ---
     std::vector<Decimal>
     operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
     {
       if (x.empty())
-	{
-	  throw std::invalid_argument("StationaryBlockResampler: empty sample.");
-	}
+	throw std::invalid_argument("StationaryBlockResampler: empty sample.");
+
       std::vector<Decimal> y;
       y.reserve(n);
 
+      // Build doubled buffer once so we can copy contiguous runs without mod math.
+      const size_t xn = x.size();
+      std::vector<Decimal> x2;
+      x2.reserve(2 * xn);
+      x2.insert(x2.end(), x.begin(), x.end());
+      x2.insert(x2.end(), x.begin(), x.end());
+
+      // Stationary bootstrap: mean block length = m_L, so p = 1/m_L; draw X~Geom(p) on {0,1,...}; length = 1+X
       const double p = 1.0 / static_cast<double>(m_L);
-      size_t idx = rng.uniform(size_t(0), x.size() - 1);
+      std::geometric_distribution<size_t> geo(p);
+
+      // Start index uniform in [0, xn-1]
+      size_t idx = rng.uniform(size_t(0), xn - 1);
 
       while (y.size() < n)
 	{
-	  y.push_back(x[idx]);
-	  if (rng.uniform(0.0, 1.0) < p)
-	    {
-	      idx = rng.uniform(size_t(0), x.size() - 1);    // start new block
-	    }
-	  else
-	    {
-	      idx = (idx + 1) % x.size();                    // continue block
-	    }
+	  // 1-based block length; use the wrapper's underlying URBG via engine()
+	  size_t len = 1 + geo(rng.engine());
+
+	  const size_t remaining = n - y.size();
+	  const size_t k = std::min({len, remaining, xn});  // cap to xn to keep single-copy within x2
+
+	  const size_t base = idx; // idx is already in [0, xn-1]
+	  y.insert(y.end(),
+		   x2.begin() + static_cast<std::ptrdiff_t>(base),
+		   x2.begin() + static_cast<std::ptrdiff_t>(base + k));
+
+	  // Next block starts at a fresh random index (stationary bootstrap)
+	  idx = rng.uniform(size_t(0), xn - 1);
 	}
+
       return y;
     }
 
@@ -316,6 +316,7 @@ namespace mkc_timeseries
      * @return A vector of n jackknife statistic values.
      * @throws std::invalid_argument If the input vector x has fewer than 2 elements.
      */
+
     using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
 
     std::vector<Decimal>
@@ -323,39 +324,29 @@ namespace mkc_timeseries
     {
       const size_t n = x.size();
       if (n < 2)
-	{
-	  throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
-	}
-      const size_t L_eff = std::min(m_L, n - 1); // ensure remainder non-empty
+	throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
 
-      std::vector<Decimal> jk;
-      jk.reserve(n);
-      std::vector<Decimal> y;
-      y.reserve(n - L_eff);
+      const size_t L_eff = std::min(m_L, n - 1); // ensure remainder non-empty
+      const size_t keep = n - L_eff;
+
+      // Double buffer for one-shot contiguous copies irrespective of wrap.
+      std::vector<Decimal> x2;
+      x2.reserve(2 * n);
+      x2.insert(x2.end(), x.begin(), x.end());
+      x2.insert(x2.end(), x.begin(), x.end());
+
+      std::vector<Decimal> jk(n);
+      std::vector<Decimal> y(keep);
 
       for (size_t start = 0; start < n; ++start)
 	{
-	  const size_t end = (start + L_eff) % n; // element after the deleted block
-	  y.clear();
-
-	  if (start < end)
-	    {
-	      // delete [start, end): keep [0, start) and [end, n)
-	      y.insert(y.end(), x.begin(), x.begin() + static_cast<std::ptrdiff_t>(start));
-	      y.insert(y.end(), x.begin() + static_cast<std::ptrdiff_t>(end), x.end());
-	    }
-	  else
-	    {
-	      // wrapped deletion: delete [start, n) U [0, end); keep [end, start)
-	      y.insert(y.end(),
-		       x.begin() + static_cast<std::ptrdiff_t>(end),
-		       x.begin() + static_cast<std::ptrdiff_t>(start));
-	    }
-
-	  // y has size n - L_eff >= 1
-	  jk.push_back(stat(y));
+	  const size_t end = start + L_eff; // first kept index after deleted block
+	  // Keep the run [end, end+keep) in circular sense -> contiguous in x2
+	  std::copy_n(x2.begin() + static_cast<std::ptrdiff_t>(end),
+		      static_cast<std::ptrdiff_t>(keep),
+		      y.begin());
+	  jk[start] = stat(y);
 	}
-
       return jk;
     }
 
@@ -363,14 +354,12 @@ namespace mkc_timeseries
      * @brief Gets the mean block length configured for the resampler.
      * @return The mean block length.
      */
-    size_t meanBlockLen() const
-    {
-      return m_L;
-    }
+    size_t meanBlockLen() const { return m_L; }
 
   private:
     size_t m_L;
   };
+
 
   // ------------------------------ BCa Bootstrap --------------------------------
 
@@ -439,9 +428,7 @@ namespace mkc_timeseries
 	m_is_calculated(false)
     {
       if (!m_statistic)
-	{
-	  throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
-	}
+	throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
       validateConstructorArgs();
     }
 
@@ -467,9 +454,7 @@ namespace mkc_timeseries
 	m_is_calculated(false)
     {
       if (!m_statistic)
-	{
-	  throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
-	}
+	throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
       validateConstructorArgs();
     }
 
@@ -492,7 +477,7 @@ namespace mkc_timeseries
     Decimal getStatistic() const
     {
       return getMean();
-    } // alias for backward compat
+    }// alias
 
     /**
      * @brief Gets the lower bound of the BCa confidence interval.
@@ -517,30 +502,33 @@ namespace mkc_timeseries
   protected:
     // Data & config
     const std::vector<Decimal>& m_returns;
-    unsigned int m_num_resamples;
-    double m_confidence_level;
-    StatFn m_statistic;
-    Sampler m_sampler;
-    bool m_is_calculated;
+    unsigned int                m_num_resamples;
+    double                      m_confidence_level;
+    StatFn                      m_statistic;
+    Sampler                     m_sampler;
+    bool                        m_is_calculated;
 
     // Results
-    Decimal m_theta_hat;
-    Decimal m_lower_bound;
-    Decimal m_upper_bound;
+    Decimal m_theta_hat{};
+    Decimal m_lower_bound{};
+    Decimal m_upper_bound{};
 
     // Test hooks (kept for mocks)
     void setStatistic(const Decimal& theta)
     {
       m_theta_hat = theta;
     }
+
     void setMean(const Decimal& theta)
     {
       m_theta_hat = theta;
     }
+
     void setLowerBound(const Decimal& lower)
     {
       m_lower_bound = lower;
     }
+
     void setUpperBound(const Decimal& upper)
     {
       m_upper_bound = upper;
@@ -550,35 +538,22 @@ namespace mkc_timeseries
      * @brief Validates the constructor arguments.
      * @throws std::invalid_argument If any argument is invalid.
      */
+
     void validateConstructorArgs() const
     {
       if (m_returns.empty())
-	{
-	  throw std::invalid_argument("BCaBootStrap: input returns vector cannot be empty.");
-	}
-      if (m_num_resamples < 100)
-	{
-	  throw std::invalid_argument("BCaBootStrap: number of resamples should be at least 100.");
-	}
+	throw std::invalid_argument("BCaBootStrap: input returns vector cannot be empty.");
+      if (m_num_resamples < 100u)
+	throw std::invalid_argument("BCaBootStrap: number of resamples should be at least 100.");
       if (m_confidence_level <= 0.0 || m_confidence_level >= 1.0)
-	{
-	  throw std::invalid_argument("BCaBootStrap: confidence level must be between 0 and 1.");
-	}
+	throw std::invalid_argument("BCaBootStrap: confidence level must be between 0 and 1.");
     }
 
-    /**
-     * @brief Ensures that the confidence bounds have been calculated.
-     *
-     * This is a lazy calculation mechanism. The first time a getter for the
-     * results is called, `calculateBCaBounds()` is executed. Subsequent calls
-     * return the cached results.
-     */
+  
     void ensureCalculated() const
     {
       if (!m_is_calculated)
-	{
-	  const_cast<BCaBootStrap*>(this)->calculateBCaBounds();
-	}
+	const_cast<BCaBootStrap*>(this)->calculateBCaBounds();
     }
 
     /**
@@ -636,42 +611,54 @@ namespace mkc_timeseries
     virtual void calculateBCaBounds()
     {
       if (m_is_calculated)
-	{
-	  return;
-	}
+	return;
 
       const size_t n = m_returns.size();
       if (n < 2)
-	{
-	  throw std::invalid_argument("BCa bootstrap requires at least 2 data points.");
-	}
+	throw std::invalid_argument("BCa bootstrap requires at least 2 data points.");
 
-      // 1) θ̂ (original statistic)
+      // (1) θ̂
       m_theta_hat = m_statistic(m_returns);
 
-      // 2) Bootstrap replicates using the selected resampling policy
+      // (2) Bootstrap replicates; count < θ̂ on the fly
       std::vector<Decimal> boot_stats;
       boot_stats.reserve(m_num_resamples);
 
       thread_local static Rng rng;
+      unsigned int count_less = 0;
 
       for (unsigned int b = 0; b < m_num_resamples; ++b)
 	{
-	  // Resample using policy class
 	  std::vector<Decimal> resample = m_sampler(m_returns, n, rng);
-	  boot_stats.push_back(m_statistic(resample));
+	  const Decimal stat_b = m_statistic(resample);
+	  if (stat_b < m_theta_hat) ++count_less;
+	  boot_stats.push_back(stat_b);
 	}
-      std::sort(boot_stats.begin(), boot_stats.end());
 
-      // 3) Bias-correction z0
-      const auto count_less = std::count_if(
-					    boot_stats.begin(), boot_stats.end(),
-					    [this](const Decimal& v){ return v < this->m_theta_hat; });
+      bool all_equal = true;
+      for (size_t i = 1; i < boot_stats.size(); ++i)
+	{
+	  if (!(boot_stats[i] == boot_stats[0]))
+	    {
+	      all_equal = false;
+	      break; 
+	    }
+	}
+
+      if (all_equal)
+	{
+	  // CI collapses to a point mass; no need to compute z0/a or select order stats
+
+	  m_lower_bound = m_upper_bound = boot_stats[0];
+	  m_is_calculated = true;
+	  return;
+      }
+
+      // (3) Bias-correction z0
       const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
       const double z0 = inverseNormalCdf(prop_less);
 
-      // 4) Acceleration a via jackknife, delegated to the sampler
-
+      // (4) Acceleration a via jackknife (use doubles for cubic/quadratic sums)
       /**
        * @details
        * ### Why is the Skew Correction Called "Accelerated"?
@@ -696,33 +683,31 @@ namespace mkc_timeseries
       const std::vector<Decimal> jk_stats = m_sampler.jackknife(m_returns, m_statistic);
       const size_t n_jk = jk_stats.size();
 
-      Decimal jk_sum(DecimalConstants<Decimal>::DecimalZero);
-      for (const auto& th : jk_stats)
-	{
-	  jk_sum += th;
-	}
+      // mean of jackknife stats in Decimal to preserve your numeric type
+      Decimal jk_sum = DecimalConstants<Decimal>::DecimalZero;
+      for (const auto& th : jk_stats) jk_sum += th;
       const Decimal jk_avg = jk_sum / Decimal(n_jk);
 
-      Decimal num(DecimalConstants<Decimal>::DecimalZero);
-      Decimal den(DecimalConstants<Decimal>::DecimalZero);
+      // accumulate in double to cheapen cubic/quad math
+      double num_d = 0.0; // sum (d^3)
+      double den_d = 0.0; // sum (d^2)
       for (const auto& th : jk_stats)
 	{
-	  const Decimal d = jk_avg - th;
-	  num += d * d * d;
-	  den += d * d;
+	  const double d = (jk_avg - th).getAsDouble();
+	  const double d2 = d * d;
+	  den_d += d2;
+	  num_d += d2 * d;
 	}
 
-      Decimal a(DecimalConstants<Decimal>::DecimalZero);
-      if (den > DecimalConstants<Decimal>::DecimalZero)
+      Decimal a = DecimalConstants<Decimal>::DecimalZero;
+      if (den_d > 0.0)
 	{
-	  const double den15 = std::pow(num::to_double(den), 1.5);
+	  const double den15 = std::pow(den_d, 1.5);
 	  if (den15 > 0.0)
-	    {
-	      a = num / (Decimal(6) * Decimal(den15));
-	    }
+	    a = Decimal(num_d / (6.0 * den15));
 	}
 
-      // 5) Adjusted percentiles → bounds
+      // (5) Adjusted percentiles → bounds
       /**
        * @details
        * ### Step 5: Combining and Adjusting to Find the Final Bounds
@@ -750,28 +735,44 @@ namespace mkc_timeseries
        * sorted bootstrap distribution (from Step 2). These values are the
        * final, robust, BCa confidence interval bounds.
        */
-      const double alpha = (1.0 - m_confidence_level) / 2.0;
-      const double z_alpha_lo = inverseNormalCdf(alpha);
-      const double z_alpha_hi = inverseNormalCdf(1.0 - alpha);
+      const double alpha       = (1.0 - m_confidence_level) * 0.5;
+      const double z_alpha_lo  = inverseNormalCdf(alpha);
+      const double z_alpha_hi  = inverseNormalCdf(1.0 - alpha);
 
       const double a_d = a.getAsDouble();
 
-      const double t1 = z0 + z_alpha_lo;
-      const double alpha1 = standardNormalCdf(z0 + t1 / (1.0 - a_d * t1));
+      // Early-exit when a ~ 0 to avoid divisions & improve stability
 
-      const double t2 = z0 + z_alpha_hi;
-      const double alpha2 = standardNormalCdf(z0 + t2 / (1.0 - a_d * t2));
+      const bool z0_finite = std::isfinite(z0);
+      const double alpha1 = (!z0_finite || std::abs(a_d) < 1e-12)
+	? standardNormalCdf(z0 + z_alpha_lo)
+	: standardNormalCdf(z0 + (z0 + z_alpha_lo) / (1.0 - a_d * (z0 + z_alpha_lo)));
 
-      const int lower_idx = unbiasedIndex(alpha1, m_num_resamples);
-      const int upper_idx = unbiasedIndex(alpha2, m_num_resamples);
+      const double alpha2 = (!z0_finite || std::abs(a_d) < 1e-12)
+	? standardNormalCdf(z0 + z_alpha_hi)
+	: standardNormalCdf(z0 + (z0 + z_alpha_hi) / (1.0 - a_d * (z0 + z_alpha_hi)));
 
-      m_lower_bound = boot_stats[lower_idx];
-      m_upper_bound = boot_stats[upper_idx];
+      const auto clamp01 = [](double v) noexcept {
+	return (v <= 0.0) ? std::nextafter(0.0, 1.0)
+	  : (v >= 1.0) ? std::nextafter(1.0, 0.0)
+	  : v;
+      };
+
+      const double a1 = clamp01(alpha1);
+      const double a2 = clamp01(alpha2);
+
+      int li = unbiasedIndex(std::min(a1, a2), m_num_resamples);
+      int ui = unbiasedIndex(std::max(a1, a2), m_num_resamples);  
+
+      // Select order statistics in O(B)
+      std::nth_element(boot_stats.begin(), boot_stats.begin() + li, boot_stats.end());
+      m_lower_bound = boot_stats[li];
+
+      std::nth_element(boot_stats.begin(), boot_stats.begin() + ui, boot_stats.end());
+      m_upper_bound = boot_stats[ui];
 
       m_is_calculated = true;
     }
-
-    // ---- Math helpers ----
 
     /**
      * @brief Computes the Standard Normal Cumulative Distribution Function (CDF).
@@ -800,9 +801,11 @@ namespace mkc_timeseries
      * @param x The value (Z-score) at which to evaluate the CDF.
      * @return The probability `P(Z <= x)`, a value between 0.0 and 1.0.
      */
-    double standardNormalCdf(double x) const
+    static inline double standardNormalCdf(double x) noexcept
     {
-      return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
+      // Hoist constants to constexpr for compile-time folding
+      constexpr double INV_SQRT2 = 1.0 / 1.4142135623730950488; // 1/sqrt(2)
+      return 0.5 * (1.0 + std::erf(x * INV_SQRT2));
     }
 
     /**
@@ -831,16 +834,13 @@ namespace mkc_timeseries
      * @param p The probability or percentile (a value between 0 and 1).
      * @return The Z-score `x` such that `P(Z <= x) = p`.
      */
-    double inverseNormalCdf(double p) const
+    static inline double inverseNormalCdf(double p) noexcept
     {
       if (p <= 0.0)
-	{
-	  return -std::numeric_limits<double>::infinity();
-	}
-      if (p >= 1.0)
-	{
-	  return  std::numeric_limits<double>::infinity();
-	}
+	return -std::numeric_limits<double>::infinity();
+
+      if (p >= 1.0) return  std::numeric_limits<double>::infinity();
+
       return (p < 0.5) ? -inverseNormalCdfHelper(p) : inverseNormalCdfHelper(1.0 - p);
     }
 
@@ -880,14 +880,14 @@ namespace mkc_timeseries
      * @param p The probability, assumed to be in the range (0, 0.5].
      * @return The inverse normal CDF value.
      */
-    double inverseNormalCdfHelper(double p) const
+    static inline double inverseNormalCdfHelper(double p) noexcept
     {
-      // Abramowitz & Stegun 26.2.23 (sufficient for CI work)
-      static const double c[] = {2.515517, 0.802853, 0.010328};
-      static const double d[] = {1.432788, 0.189269, 0.001308};
-      const double t = std::sqrt(-2.0 * std::log(p));
-      const double num = (c[0] + c[1] * t + c[2] * t * t);
-      const double den = (1.0 + d[0] * t + d[1] * t * t + d[2] * t * t * t);
+      // Abramowitz & Stegun 26.2.23
+      constexpr double c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
+      constexpr double d0 = 1.432788, d1 = 0.189269, d2 = 0.001308;
+      const double t  = std::sqrt(-2.0 * std::log(p));
+      const double num = (c0 + c1 * t + c2 * t * t);
+      const double den = (1.0 + d0 * t + d1 * t * t + d2 * t * t * t);
       return t - num / den;
     }
 
@@ -902,18 +902,18 @@ namespace mkc_timeseries
      * @param B The total number of elements in the sorted vector.
      * @return The integer index corresponding to the given percentile.
      */
-    static int unbiasedIndex(double p, unsigned int B)
+    static inline int unbiasedIndex(double p, unsigned int B) noexcept
     {
       int idx = static_cast<int>(std::floor(p * (static_cast<double>(B) + 1.0))) - 1;
+
       if (idx < 0)
-	{
-	  idx = 0;
-	}
+	idx = 0;
+
       const int maxIdx = static_cast<int>(B) - 1;
+
       if (idx > maxIdx)
-	{
-	  idx = maxIdx;
-	}
+	idx = maxIdx;
+ 
       return idx;
     }
   };
@@ -928,7 +928,8 @@ namespace mkc_timeseries
    * @param trading_days_per_year The number of trading days in a year.
    * @param trading_hours_per_day The number of trading hours in a day.
    * @return The annualization factor.
-   * @throws std::invalid_argument If the time frame is unsupported or intraday_minutes_per_bar is zero for INTRADAY data.
+   * @throws std::invalid_argument If the time frame is unsupported or intraday_minutes_per_bar
+   * is zero for INTRADAY data.
    */
   inline double calculateAnnualizationFactor(TimeFrame::Duration timeFrame,
 					     unsigned int intraday_minutes_per_bar = 0,

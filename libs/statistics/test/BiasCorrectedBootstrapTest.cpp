@@ -532,3 +532,121 @@ TEST_CASE("BCaAnnualizer functionality", "[BCaAnnualizer]") {
         REQUIRE_THROWS_AS(BCaAnnualizer<DecimalType>(mock_bca, -252.0), std::invalid_argument);
     }
 }
+
+TEST_CASE("BCaBootStrap: interval widens with confidence level", "[BCaBootStrap][Monotonicity]") {
+    using D = DecimalType;
+    std::vector<D> x;
+    for (int i = 0; i < 60; ++i) {
+        x.push_back(createDecimal(i % 7 == 0 ? "-0.02" : "0.01"));
+    }
+
+    BCaBootStrap<D> bca90(x, 3000, 0.90);
+    BCaBootStrap<D> bca99(x, 3000, 0.99);
+
+    const double w90 = num::to_double(bca90.getUpperBound() - bca90.getLowerBound());
+    const double w99 = num::to_double(bca99.getUpperBound() - bca99.getLowerBound());
+    REQUIRE(w99 >= w90);
+}
+
+TEST_CASE("BCaBootStrap: n<2 throws when computing", "[BCaBootStrap][Validation]") {
+    using D = DecimalType;
+    std::vector<D> x = { createDecimal("0.01") }; // n = 1
+    BCaBootStrap<D> bca(x, 200, 0.95);
+    REQUIRE_THROWS_AS(bca.getLowerBound(), std::invalid_argument);
+}
+
+TEST_CASE("StationaryBlockResampler: estimated mean block length matches L", "[Resampler][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    const size_t n = 400;              // output size
+    const size_t xn = 200;             // source size
+    std::vector<D> x; x.reserve(xn);
+    for (size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    randutils::seed_seq_fe128 seed{111u, 222u, 333u, 444u};
+    randutils::mt19937_rng rng(seed);
+
+    const size_t L = 4;
+    Policy pol(L);
+    std::vector<D> y = pol(x, n, rng);
+
+    // Count block boundaries: where contiguity (next == (cur+1)%xn) breaks
+    size_t breaks = 1; // first block starts at t=0
+    for (size_t t = 0; t + 1 < y.size(); ++t) {
+        int cur = static_cast<int>(num::to_double(y[t]));
+        int nxt = static_cast<int>(num::to_double(y[t + 1]));
+        if (nxt != (cur + 1) % static_cast<int>(xn)) breaks++;
+    }
+    const double Lhat = static_cast<double>(n) / static_cast<double>(breaks);
+    REQUIRE(Lhat == Catch::Approx(static_cast<double>(L)).margin(1.5)); // generous for randomness
+}
+
+TEST_CASE("StationaryBlockResampler: contiguity increases with L", "[Resampler][Stationary]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    const size_t n = 300, xn = 150;
+    std::vector<D> x; x.reserve(xn);
+    for (size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    auto frac_adjacent = [&](size_t L, uint64_t s1, uint64_t s2, uint64_t s3, uint64_t s4){
+        randutils::seed_seq_fe128 seed{s1, s2, s3, s4};
+        randutils::mt19937_rng rng(seed);
+        Policy pol(L);
+        auto y = pol(x, n, rng);
+        size_t adj = 0;
+        for (size_t t = 0; t + 1 < y.size(); ++t) {
+            int cur = static_cast<int>(num::to_double(y[t]));
+            int nxt = static_cast<int>(num::to_double(y[t+1]));
+            if (nxt == (cur + 1) % static_cast<int>(xn)) adj++;
+        }
+        return static_cast<double>(adj) / static_cast<double>(n - 1);
+    };
+
+    const double f2 = frac_adjacent(2, 10,20,30,40);  // ~0.5 expected
+    const double f6 = frac_adjacent(6, 10,20,30,40);  // ~0.83 expected
+    REQUIRE(f6 > f2 + 0.15);  // clear separation
+}
+
+TEST_CASE("StationaryBlockResampler: stability with very large L", "[Resampler][Stationary][Stress]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    const size_t xn = 7;
+    std::vector<D> x; x.reserve(xn);
+    for (size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    randutils::seed_seq_fe128 seed{999u, 1u, 2u, 3u};
+    randutils::mt19937_rng rng(seed);
+
+    const size_t n = 80;
+    Policy pol(1000);  // mean length >> xn and n
+    auto y = pol(x, n, rng);
+
+    REQUIRE(y.size() == n);
+
+    // Ensure we saw more than one block (i.e., not a single giant copy)
+    size_t breaks = 0;
+    for (size_t t = 0; t + 1 < y.size(); ++t) {
+        int cur = static_cast<int>(num::to_double(y[t]));
+        int nxt = static_cast<int>(num::to_double(y[t + 1]));
+        if (nxt != (cur + 1) % static_cast<int>(xn)) breaks++;
+    }
+    REQUIRE(breaks >= 1);
+}
+
+TEST_CASE("BCaBootStrap: degenerate dataset collapses interval", "[BCaBootStrap][Edge]") {
+    using D = DecimalType;
+    std::vector<D> x(25, createDecimal("0.0123"));  // all same
+    BCaBootStrap<D> bca(x, 2000, 0.95);
+
+    auto mu = bca.getMean();
+    auto lo = bca.getLowerBound();
+    auto hi = bca.getUpperBound();
+
+    REQUIRE(num::to_double(hi - lo) == Catch::Approx(0.0).margin(1e-15));
+    REQUIRE(num::to_double(mu - lo) == Catch::Approx(0.0).margin(1e-15));
+    REQUIRE(num::to_double(hi - mu) == Catch::Approx(0.0).margin(1e-15));
+}
+
