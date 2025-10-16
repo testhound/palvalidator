@@ -975,6 +975,157 @@ namespace mkc_timeseries
 							 series, period, kDefaultUseAnchors);
   }
 
+  // -----------------------------------------------------------------------------
+  // Stop/Target method selector
+  // -----------------------------------------------------------------------------
+  enum class StopTargetMethod {
+    TypicalDayFixedAlpha,          // fixed α (e.g., 0.10)
+    TypicalDayCalibratedAlpha,     // single α* calibrated to match legacy target (symmetric)
+    TypicalDayCalibratedAsymmetric // separate α_up*, α_dn* to match legacy target & stop
+  };
+
+  // Default method for the no-flag overloads
+  constexpr StopTargetMethod kDefaultStopTargetMethod = StopTargetMethod::TypicalDayCalibratedAlpha;
+
+  // -----------------------------------------------------------------------------
+  // Legacy baseline (old approach): target from positives via median(Pos)+Qn(Pos),
+  // stop from negatives via loss-quantile (e.g., 15th percentile).
+  // Returns {T_old, S_old} as positive magnitudes (percent widths).
+  // -----------------------------------------------------------------------------
+  template <typename Decimal>
+  std::pair<Decimal, Decimal>
+  ComputeLegacyBaselineLongWidths(const OHLCTimeSeries<Decimal>& series,
+				  uint32_t period = 1,
+				  double stopQuantile = 0.15,
+				  size_t minPart = 10)
+  {
+    using DC = DecimalConstants<Decimal>;
+    auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+    auto rocVec    = rocSeries.getTimeSeriesAsVector();
+
+    const Decimal zero = DC::DecimalZero;
+    std::vector<Decimal> pos, neg;
+    pos.reserve(rocVec.size());
+    neg.reserve(rocVec.size());
+    for (const auto& r : rocVec) {
+      if (r > zero)
+	pos.push_back(r);
+      else if (r < zero)
+	neg.push_back(r);
+    }
+
+    // Target_old from positives: median(Pos) + Qn(Pos)
+    Decimal T_old = DC::createDecimal("1e-6");
+    if (pos.size() >= minPart)
+      {
+	RobustQn<Decimal> qn;
+	const Decimal medPos = MedianOfVec(pos);
+	const Decimal qnPos  = qn.getRobustQn(pos);
+	T_old = medPos + qnPos; // positive magnitude
+      }
+    else
+      {
+	// fallback: upper central quantile of full
+	T_old = LinearInterpolationQuantile(rocVec, 0.75) - MedianOfVec(rocVec);
+	if (T_old < zero) T_old = -T_old;
+      }
+
+    // Stop_old from negatives: p-quantile of losses (negative), take magnitude
+    Decimal S_old = DC::createDecimal("1e-6");
+    if (neg.size() >= minPart)
+      {
+	Decimal qLoss = LinearInterpolationQuantile(neg, stopQuantile); // negative
+	S_old = -qLoss;
+      }
+    else
+      {
+	Decimal qLoss = LinearInterpolationQuantile(rocVec, stopQuantile);
+	if (qLoss > zero)
+	  qLoss = -qLoss;
+	S_old = -qLoss;
+      }
+
+    if (T_old <= zero)
+      T_old = DC::createDecimal("1e-6");
+    if (S_old <= zero)
+      S_old = DC::createDecimal("1e-6");
+
+    return {T_old, S_old};
+  }
+
+  // Compute up/down widths for a given alpha on a winsorized copy
+  template <typename Decimal>
+  inline std::pair<Decimal, Decimal>
+  WidthsForAlpha(const std::vector<Decimal>& wv, const Decimal& median, double alpha)
+  {
+    const Decimal q_lo = LinearInterpolationQuantile(wv, alpha);
+    const Decimal q_hi = LinearInterpolationQuantile(wv, 1.0 - alpha);
+    return { q_hi - median,  // upWidth
+	     median - q_lo }; // downWidth
+  }
+
+  // Grid-search α in [alphaLo, alphaHi] to match a target width on the upside
+  template <typename Decimal>
+  double CalibrateAlphaForTargetWidth(const std::vector<Decimal>& wv,
+				      const Decimal& median,
+				      const Decimal& targetOld,
+				      double alphaLo = 0.06,
+				      double alphaHi = 0.16,
+				      int steps = 25)
+  {
+    double bestAlpha = alphaLo;
+    Decimal bestErr = (WidthsForAlpha(wv, median, alphaLo).first - targetOld);
+    if (bestErr < DecimalConstants<Decimal>::DecimalZero)
+      bestErr = -bestErr;
+
+    for (int i = 1; i <= steps; ++i) {
+      const double a = alphaLo + (alphaHi - alphaLo) * (double(i) / steps);
+      const Decimal up = WidthsForAlpha(wv, median, a).first;
+      Decimal err = up - targetOld;
+
+      if (err < DecimalConstants<Decimal>::DecimalZero)
+	err = -err;
+
+      if (err < bestErr)
+	{
+	  bestErr = err;
+	  bestAlpha = a;
+	}
+    }
+    return bestAlpha;
+  }
+
+  // Grid-search α to match a target width on the downside
+  template <typename Decimal>
+  double CalibrateAlphaForStopWidth(const std::vector<Decimal>& wv,
+				    const Decimal& median,
+				    const Decimal& stopOld,
+				    double alphaLo = 0.06,
+				    double alphaHi = 0.16,
+				    int steps = 25)
+  {
+    double bestAlpha = alphaLo;
+    Decimal bestErr = (WidthsForAlpha(wv, median, alphaLo).second - stopOld);
+    if (bestErr < DecimalConstants<Decimal>::DecimalZero) bestErr = -bestErr;
+
+    for (int i = 1; i <= steps; ++i)
+      {
+	const double a = alphaLo + (alphaHi - alphaLo) * (double(i) / steps);
+	const Decimal down = WidthsForAlpha(wv, median, a).second;
+	Decimal err = down - stopOld;
+
+	if (err < DecimalConstants<Decimal>::DecimalZero)
+	  err = -err;
+
+	if (err < bestErr)
+	  {
+	    bestErr = err;
+	    bestAlpha = a;
+	  }
+      }
+    return bestAlpha;
+  }
+
   /**
    * @brief Compute the long-side profit-target and stop widths from in-sample returns
    *        using a "typical day" design based on central quantiles.
@@ -1046,42 +1197,61 @@ namespace mkc_timeseries
   template <typename Decimal>
   std::pair<Decimal, Decimal>
   ComputeLongStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-				     uint32_t period = 1)
+				     uint32_t period,
+				     StopTargetMethod method = StopTargetMethod::TypicalDayCalibratedAlpha)
   {
-    using namespace mkc_timeseries;
+    using DC = DecimalConstants<Decimal>;
 
-    // --- Minimal sanity ---
     if (series.getNumEntries() < 3)
       throw std::domain_error("ComputeLongStopAndTargetFromSeries: input too small");
 
-    // Build n-period ROC% from closes
     auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
     auto rocVec    = rocSeries.getTimeSeriesAsVector();
     if (rocVec.size() < 3)
       throw std::domain_error("ComputeLongStopAndTargetFromSeries: ROC series too small");
 
-    const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-    const Decimal eps  = DecimalConstants<Decimal>::createDecimal("1e-8");
-
-    // --- Center on the median of the full (in-sample) ROC distribution ---
+    // Center
     const Decimal median = MedianOfVec(rocVec);
 
-    // --- Light winsorization for stability on tails (1% per side) ---
-    constexpr double kWinsorTail = 0.01;
+    // Winsorized working vector (stability, tail-robust)
     std::vector<Decimal> wv = rocVec;
     if (wv.size() >= 20) {
-      WinsorizeInPlace(wv, kWinsorTail);
+      WinsorizeInPlace(wv, 0.01); // 1%/tail
     }
 
-    // --- "Typical day" symmetric quantiles around the center ---
-    // α=0.10 → lower = 10th pct, upper = 90th pct
-    constexpr double kAlpha = 0.10;
-    const Decimal q_lo = LinearInterpolationQuantile(wv, kAlpha);
-    const Decimal q_hi = LinearInterpolationQuantile(wv, 1.0 - kAlpha);
+    Decimal profitWidth, stopWidth;
+    const Decimal zero = DC::DecimalZero;
+    const Decimal eps  = DC::createDecimal("1e-8");
 
-    // Widths are positive distances from the center in the expected directions
-    Decimal profitWidth = q_hi - median;   // typical upside for longs
-    Decimal stopWidth   = median - q_lo;   // typical downside for longs
+    if (method == StopTargetMethod::TypicalDayFixedAlpha) {
+      constexpr double kAlpha = 0.10;
+      const auto [up, dn] = WidthsForAlpha(wv, median, kAlpha);
+      profitWidth = up;
+      stopWidth   = dn;
+    }
+    else if (method == StopTargetMethod::TypicalDayCalibratedAlpha)
+    {
+      const auto legacy   = ComputeLegacyBaselineLongWidths(series, period);
+      const Decimal T_old = legacy.first;  // use only the target width from legacy
+
+      const double alphaStar   = CalibrateAlphaForTargetWidth(wv, median, T_old, 0.06, 0.16, 25);
+      const auto   [up, dn]    = WidthsForAlpha(wv, median, alphaStar);
+
+      // --- Target cap: don't push the target beyond legacy distance ---
+      profitWidth = (up > T_old ? T_old : up);
+      stopWidth   = dn;   
+    }
+    else { // TypicalDayCalibratedAsymmetric
+      const auto [T_old, S_old] = ComputeLegacyBaselineLongWidths(series, period);
+      const double a_up = CalibrateAlphaForTargetWidth(wv, median, T_old, 0.06, 0.16, 25);
+      const double a_dn = CalibrateAlphaForStopWidth  (wv, median, S_old, 0.06, 0.16, 25);
+      const Decimal up  = WidthsForAlpha(wv, median, a_up).first;
+      const Decimal dn  = WidthsForAlpha(wv, median, a_dn).second;
+
+      // Cap only the target side to legacy
+      profitWidth = (up > T_old ? T_old : up);
+      stopWidth   = dn;
+    }
 
     if (profitWidth <= zero)
       profitWidth = eps;
@@ -1137,9 +1307,10 @@ namespace mkc_timeseries
   template <typename Decimal>
   std::pair<Decimal, Decimal>
   ComputeShortStopAndTargetFromSeries(const OHLCTimeSeries<Decimal>& series,
-				      uint32_t period = 1)
+				      uint32_t period,
+				      StopTargetMethod method = StopTargetMethod::TypicalDayCalibratedAlpha)
   {
-    using namespace mkc_timeseries;
+    using DC = DecimalConstants<Decimal>;
 
     if (series.getNumEntries() < 3)
       throw std::domain_error("ComputeShortStopAndTargetFromSeries: input too small");
@@ -1149,31 +1320,46 @@ namespace mkc_timeseries
     if (rocVec.size() < 3)
       throw std::domain_error("ComputeShortStopAndTargetFromSeries: ROC series too small");
 
-    const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-    const Decimal eps  = DecimalConstants<Decimal>::createDecimal("1e-8");
-
     const Decimal median = MedianOfVec(rocVec);
-
-    constexpr double kWinsorTail = 0.01;
     std::vector<Decimal> wv = rocVec;
     if (wv.size() >= 20) {
-      WinsorizeInPlace(wv, kWinsorTail);
+      WinsorizeInPlace(wv, 0.01);
     }
 
-    constexpr double kAlpha = 0.10;
-    const Decimal q_lo = LinearInterpolationQuantile(wv, kAlpha);
-    const Decimal q_hi = LinearInterpolationQuantile(wv, 1.0 - kAlpha);
+    Decimal profitWidth, stopWidth;
+    const Decimal zero = DC::DecimalZero;
+    const Decimal eps  = DC::createDecimal("1e-8");
 
-    // For shorts, the "typical" profit is the downside; the stop is the upside wiggle
-    Decimal profitWidth = median - q_lo;   // typical downside for shorts
-    Decimal stopWidth   = q_hi - median;   // typical upside for shorts
+    if (method == StopTargetMethod::TypicalDayFixedAlpha) {
+      constexpr double kAlpha = 0.10;
+      const auto [up, dn] = WidthsForAlpha(wv, median, kAlpha);
+      // For shorts: profit is downWidth; stop is upWidth
+      profitWidth = dn;
+      stopWidth   = up;
+    }
+    else if (method == StopTargetMethod::TypicalDayCalibratedAlpha)
+    {
+      const auto legacy   = ComputeLegacyBaselineLongWidths(series, period);
+      const Decimal T_old = legacy.first;
 
-    if (profitWidth <= zero)
-      profitWidth = eps;
+      const double alphaStar   = CalibrateAlphaForTargetWidth(wv, median, T_old, 0.06, 0.16, 25);
+      const auto   [up, dn]    = WidthsForAlpha(wv, median, alphaStar);
+      profitWidth = dn; // mirror
+      stopWidth   = (up > T_old ? T_old : up); // short stop (mirror of long target) is capped
+    }
+    else { // TypicalDayCalibratedAsymmetric
+      const auto [T_old, S_old] = ComputeLegacyBaselineLongWidths(series, period);
+      const double a_up = CalibrateAlphaForTargetWidth(wv, median, T_old, 0.06, 0.16, 25);
+      const double a_dn = CalibrateAlphaForStopWidth  (wv, median, S_old, 0.06, 0.16, 25);
+      const Decimal up  = WidthsForAlpha(wv, median, a_up).first;
+      const Decimal dn  = WidthsForAlpha(wv, median, a_dn).second;
 
-    if (stopWidth   <= zero)
-      stopWidth   = eps;
+      profitWidth = dn;
+      stopWidth   = (up > T_old ? T_old : up); // cap short stop (mirror of long target)
+    }
 
+    if (profitWidth <= zero) profitWidth = eps;
+    if (stopWidth   <= zero) stopWidth   = eps;
     return {profitWidth, stopWidth};
   }
 
