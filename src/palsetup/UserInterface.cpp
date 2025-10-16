@@ -17,16 +17,50 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+// Returns the alpha used by the current stop/target method.
+// For FixedAlpha returns the constant; for Calibrated* it solves α* the same way as in the compute fns.
+static double ResolveAlphaForMethod(const mkc_timeseries::OHLCTimeSeries<Num>& series,
+                                    uint32_t period,
+                                    mkc_timeseries::StopTargetMethod method,
+                                    double fixedAlpha = 0.10)
+{
+    using namespace mkc_timeseries;
+
+    if (method == StopTargetMethod::TypicalDayFixedAlpha) {
+        return fixedAlpha;
+    }
+
+    // Build ROC and a winsorized working copy (same policy as compute fns)
+    auto rocSeries = RocSeries(series.CloseTimeSeries(), period);
+    auto rocVec    = rocSeries.getTimeSeriesAsVector();
+    std::vector<Num> wv = rocVec;
+    if (wv.size() >= 20) WinsorizeInPlace(wv, 0.01);
+
+    const Num median = MedianOfVec(wv);
+
+    // Legacy baseline (for calibration) — same helper logic as compute fns
+    const auto legacy = ComputeLegacyBaselineLongWidths(series, period);
+    const Num  T_old  = legacy.first;
+
+    if (method == StopTargetMethod::TypicalDayCalibratedAlpha) {
+        return CalibrateAlphaForTargetWidth(wv, median, T_old, 0.06, 0.16, 25);
+    }
+
+    // TypicalDayCalibratedAsymmetric: the "band" has no single α; pick α_up* for reporting
+    // (since LongTarget = q_{1-α_up*}-median, ShortStop mirrors it)
+    return CalibrateAlphaForTargetWidth(wv, median, T_old, 0.06, 0.16, 25);
+}
   // Prints "typical-day" diagnostics for either long (asLong=true) or short (asLong=false)
   void PrintTypicalDayDiagnostics(const std::vector<Num>& rocVec,
                                   bool asLong,
                                   double alpha = 0.10,
                                   double winsorTail = 0.01,
                                   double PF = 2.0,
-                                  const std::string& indent = "   ")
+                                  const std::string& indent = "   ",
+                                  bool printBandHeader = true)
   {
       using namespace mkc_timeseries;
-
       if (rocVec.empty()) return;
 
       // 1) Working copy for winsorized quantiles (same policy as compute fns)
@@ -40,7 +74,7 @@ namespace {
       const Num q_lo   = LinearInterpolationQuantile(wv, alpha);
       const Num q_hi   = LinearInterpolationQuantile(wv, 1.0 - alpha);
 
-      // 3) One-sided central widths (percent magnitudes)
+      // 3) One-sided central widths
       const Num upWidth   = q_hi - median;     // typical up wiggle
       const Num downWidth = median - q_lo;     // typical down move
 
@@ -51,7 +85,8 @@ namespace {
       const double CAR = up / std::max(down, eps);   // (q90 - median) / (median - q10)
       const double RWL_long  = CAR;                  // ≈ target/stop for longs
       const double RWL_short = 1.0 / std::max(CAR, eps);
-      const double Profitability = 100.0 * PF / (PF + (asLong ? RWL_long : RWL_short));
+      const double RWL       = asLong ? RWL_long : RWL_short;
+      const double Profit    = 100.0 * PF / (PF + RWL);
 
       // 4) Coverage of [q10, q90] on the ORIGINAL (unwinsorized) series
       std::size_t inside = 0;
@@ -60,48 +95,46 @@ namespace {
 
       // 5) CAR interpretation / classification
       const double delta   = std::fabs(CAR - 1.0);
-      const double stretch = delta * 100.0;                      // percent stretch vs. symmetry
-      const bool   upside  = (CAR > 1.0);                        // which side is more stretched?
-      // Buckets (tweak if you like):
+      const double stretch = delta * 100.0;                      // % stretch vs symmetry
+      const bool   upside  = (CAR > 1.0);
       const char*  strength =
           (delta < 0.05) ? "≈ symmetric (±5%)" :
           (delta < 0.15) ? "mild" :
           (delta < 0.30) ? "moderate" : "strong";
 
-      // Implications phrased for both sides
-      // Long: target/stop ≈ CAR; Short: target/stop ≈ 1/CAR
-      std::ostringstream implication;
-      if (upside) {
-          // Center stretches more to the upside
-          implication << "Upside-stretched (" << strength << "): up ≈ " << std::fixed << std::setprecision(1)
-                     << stretch << "% larger than down. "
-                     << "Implications → Long: target > stop; Short: stop > target.";
-      } else if (delta < 0.05) {
-          implication << "Center ≈ symmetric: up ~ down. "
-                      << "Implications → Long: target ~ stop; Short: stop ~ target.";
+      std::ostringstream interp;
+      if (upside && delta >= 0.05) {
+          interp << "Upside-stretched (" << strength << "): up ≈ "
+                 << std::fixed << std::setprecision(1) << stretch
+                 << "% larger than down. Implications → Long: target > stop; Short: stop > target.";
+      } else if (!upside && delta >= 0.05) {
+          interp << "Downside-stretched (" << strength << "): down ≈ "
+                 << std::fixed << std::setprecision(1) << stretch
+                 << "% larger than up. Implications → Long: stop > target; Short: target > stop.";
       } else {
-          // Center stretches more to the downside
-          implication << "Downside-stretched (" << strength << "): down ≈ " << std::fixed << std::setprecision(1)
-                     << stretch << "% larger than up. "
-                     << "Implications → Long: stop > target; Short: target > stop.";
+          interp << "Center ≈ symmetric: up ~ down. Implications → Long: target ~ stop; Short: stop ~ target.";
       }
 
       // 6) Print
       std::cout << std::fixed;
-      std::cout << indent << "[Typical-day diagnostics]\n";
-      std::cout << indent << "   alpha per tail: " << std::setprecision(2) << (alpha * 100.0)
-                << "%, band coverage ≈ " << coverage << "%\n";
-      std::cout << indent << "   q10="   << std::setprecision(4) << q_lo.getAsDouble()   << "%, "
-                << "median=" << median.getAsDouble() << "%, "
-                << "q90="    << q_hi.getAsDouble()   << "%\n";
-      std::cout << indent << "   UpWidth="   << std::setprecision(2) << up   << "%, "
-                << "DownWidth=" << down << "%\n";
-      std::cout << indent << "   CAR = UpWidth/DownWidth = " << std::setprecision(3) << CAR
-                << "  →  " << implication.str() << "\n";
+      if (printBandHeader) {
+          std::cout << indent << "[Typical-day diagnostics]\n";
+          std::cout << indent << "   alpha per tail: " << std::setprecision(2) << (alpha * 100.0)
+                    << "%, band coverage ≈ " << coverage << "%\n";
+          std::cout << indent << "   q10="   << std::setprecision(4) << q_lo.getAsDouble()   << "%, "
+                    << "median=" << median.getAsDouble() << "%, "
+                    << "q90="    << q_hi.getAsDouble()   << "%\n";
+          std::cout << indent << "   UpWidth="   << std::setprecision(2) << up   << "%, "
+                    << "DownWidth=" << down << "%\n";
+          std::cout << indent << "   CAR = UpWidth/DownWidth = " << std::setprecision(3) << CAR
+                    << "  →  " << interp.str() << "\n";
+      }
+
+      // Per-side one-liner (always print)
       std::cout << indent << "   Implied RWL (" << (asLong ? "long" : "short") << ") ≈ "
-                << std::setprecision(3) << (asLong ? RWL_long : RWL_short)
+                << std::setprecision(3) << RWL
                 << " | Profitability (PF=" << std::setprecision(0) << PF << ") = "
-                << std::setprecision(2) << Profitability << "%\n";
+                << std::setprecision(2) << Profit << "%\n";
   }
 }
 
@@ -561,10 +594,16 @@ void UserInterface::displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<N
         auto [longProfit,  longStop ] = ComputeLongStopAndTargetFromSeries (inSampleSeries, period);
         auto [shortProfit, shortStop] = ComputeShortStopAndTargetFromSeries(inSampleSeries, period);
 
+        // Determine the method you’re using (if you pass it in; otherwise default)
+        const StopTargetMethod method = kDefaultStopTargetMethod;
+
+        // Resolve the effective alpha for this series/method
+        const double alpha_used = ResolveAlphaForMethod(inSampleSeries, period, method);
+
         // 1) Typical-day band & diagnostics (computed once; helper prints band, CAR, RWL, Profitability)
         std::cout << "\n1. Typical-day band & diagnostics (q10 / median / q90):\n";
-        PrintTypicalDayDiagnostics(rocVec, /*asLong=*/true );   // long-side view (prints RWL/Profitability for long)
-        PrintTypicalDayDiagnostics(rocVec, /*asLong=*/false);   // short-side view (prints RWL/Profitability for short)
+        PrintTypicalDayDiagnostics(rocVec, /*asLong=*/true,  /*alpha=*/alpha_used, /*winsor=*/0.01, /*PF=*/2.0, "   ", /*printBandHeader=*/true);
+        PrintTypicalDayDiagnostics(rocVec, /*asLong=*/false, /*alpha=*/alpha_used, /*winsor=*/0.01, /*PF=*/2.0, "   ", /*printBandHeader=*/false);
 
         // 2) Long/Short widths (concise)
         std::cout << "\n2. Long Position Stop and Target (Typical-day q10/median/q90):\n";
