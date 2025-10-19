@@ -298,6 +298,48 @@ TEST_CASE ("Security operations", "[Security]")
       REQUIRE(*(assignCorn.getTimeSeries()) == *(corn.getTimeSeries()));
     }
 
+  SECTION("resetTimeSeries replaces the underlying series", "[Security][resetTimeSeries]") {
+    // Build two distinct mini series
+    auto s1 = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
+    auto s2 = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
+
+    auto e1 = createEquityEntry("20200102", "100", "105", "99",  "102",  1000000);
+    auto e2 = createEquityEntry("20200103", "102", "106", "101", "104",  1100000);
+    s1->addEntry(*e1);
+    s1->addEntry(*e2);
+
+    auto e3 = createEquityEntry("20200102", "200", "205", "198", "204",  900000);
+    auto e4 = createEquityEntry("20200103", "204", "208", "203", "207",  950000);
+    s2->addEntry(*e3);
+    s2->addEntry(*e4);
+
+    // Start with s1
+    EquitySecurity<DecimalType> sec("TST", "Test Security", s1);
+
+    // Sanity: values come from s1
+    boost::gregorian::date d1(2020, 1, 2);
+    boost::gregorian::date d2(2020, 1, 3);
+    REQUIRE(sec.getCloseValue(d1, 0) == e1->getCloseValue());
+    REQUIRE(sec.getCloseValue(d2, 0) == e2->getCloseValue());
+
+    // Swap to s2 and verify values changed
+    sec.resetTimeSeries(s2);
+    REQUIRE(*(sec.getTimeSeries()) == *s2);
+    REQUIRE(sec.getCloseValue(d1, 0) == e3->getCloseValue());
+    REQUIRE(sec.getCloseValue(d2, 0) == e4->getCloseValue());
+  }
+
+  SECTION("resetTimeSeries throws on null pointer", "[Security][resetTimeSeries][throws]") {
+    auto s1 = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::SHARES);
+    auto e1 = createEquityEntry("20200102", "100", "105", "99", "102", 1000000);
+    s1->addEntry(*e1);
+
+    EquitySecurity<DecimalType> sec("TST", "Test Security", s1);
+
+    std::shared_ptr<const OHLCTimeSeries<DecimalType>> nullTs;
+    REQUIRE_THROWS_AS(sec.resetTimeSeries(nullTs), SecurityException);
+  }
+
   // --- Intraday isDateFound (ptime) ---
   SECTION("Intraday isDateFound returns correct result", "[TimeSeries Access (ptime)]") {
     // pick a known entry

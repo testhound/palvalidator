@@ -237,46 +237,53 @@ namespace mkc_timeseries
   struct StationaryBlockResampler
   {
     explicit StationaryBlockResampler(size_t L = 3)
-      : m_L(std::max<size_t>(2, L)) {}
+      : m_L(std::max<size_t>(2, L)),
+	m_geo(1.0 / static_cast<double>(m_L))
+    {}
 
-    // --- Bootstrap sample: geometric-length blocks ---
+    // --- Bootstrap sample: geometric-length blocks (no x2 allocation) ---
     std::vector<Decimal>
     operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
     {
       if (x.empty())
 	throw std::invalid_argument("StationaryBlockResampler: empty sample.");
 
-      std::vector<Decimal> y;
-      y.reserve(n);
-
-      // Build doubled buffer once so we can copy contiguous runs without mod math.
       const size_t xn = x.size();
-      std::vector<Decimal> x2;
-      x2.reserve(2 * xn);
-      x2.insert(x2.end(), x.begin(), x.end());
-      x2.insert(x2.end(), x.begin(), x.end());
 
-      // Stationary bootstrap: mean block length = m_L, so p = 1/m_L; draw X~Geom(p) on {0,1,...}; length = 1+X
-      const double p = 1.0 / static_cast<double>(m_L);
-      std::geometric_distribution<size_t> geo(p);
+      // Pre-size output once; we’ll fill by index (no push_back, no insert)
+      std::vector<Decimal> y(n);
 
-      // Start index uniform in [0, xn-1]
+      // Stationary bootstrap: mean block length L -> p = 1/L; length = 1 + Geom(p) on {0,1,...}
+      // First start idx uniform in [0, xn-1]
       size_t idx = rng.uniform(size_t(0), xn - 1);
 
-      while (y.size() < n)
+      size_t pos = 0;  // write cursor into y
+      while (pos < n)
 	{
-	  // 1-based block length; use the wrapper's underlying URBG via engine()
-	  size_t len = 1 + geo(rng.engine());
+	  size_t len = 1 + m_geo(rng.engine());                // proposed block length
+	  size_t remaining = n - pos;
+	  size_t k = std::min({len, remaining, xn});         // never copy more than xn in one shot
 
-	  const size_t remaining = n - y.size();
-	  const size_t k = std::min({len, remaining, xn});  // cap to xn to keep single-copy within x2
+	  // Fast contiguous copy with wrap handling (0 or 1 wrap):
+	  size_t room_to_end = xn - idx;
+	  if (k <= room_to_end) {
+	    // Single span: [idx, idx+k)
+	    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(idx),
+			static_cast<std::ptrdiff_t>(k),
+			y.begin() + static_cast<std::ptrdiff_t>(pos));
+	  } else {
+	    // Wrap: copy tail [idx, xn), then head [0, k - room_to_end)
+	    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(idx),
+			static_cast<std::ptrdiff_t>(room_to_end),
+			y.begin() + static_cast<std::ptrdiff_t>(pos));
+	    const size_t rem = k - room_to_end;
+	    std::copy_n(x.begin(),
+			static_cast<std::ptrdiff_t>(rem),
+			y.begin() + static_cast<std::ptrdiff_t>(pos + room_to_end));
+	  }
 
-	  const size_t base = idx; // idx is already in [0, xn-1]
-	  y.insert(y.end(),
-		   x2.begin() + static_cast<std::ptrdiff_t>(base),
-		   x2.begin() + static_cast<std::ptrdiff_t>(base + k));
-
-	  // Next block starts at a fresh random index (stationary bootstrap)
+	  pos += k;
+	  // Next block starts at fresh random index (stationary bootstrap)
 	  idx = rng.uniform(size_t(0), xn - 1);
 	}
 
@@ -326,25 +333,32 @@ namespace mkc_timeseries
       if (n < 2)
 	throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
 
-      const size_t L_eff = std::min(m_L, n - 1); // ensure remainder non-empty
-      const size_t keep = n - L_eff;
-
-      // Double buffer for one-shot contiguous copies irrespective of wrap.
-      std::vector<Decimal> x2;
-      x2.reserve(2 * n);
-      x2.insert(x2.end(), x.begin(), x.end());
-      x2.insert(x2.end(), x.begin(), x.end());
+      const size_t L_eff = std::min(m_L, n - 1); // ensure at least 1 kept
+      const size_t keep  = n - L_eff;
 
       std::vector<Decimal> jk(n);
       std::vector<Decimal> y(keep);
 
       for (size_t start = 0; start < n; ++start)
 	{
-	  const size_t end = start + L_eff; // first kept index after deleted block
-	  // Keep the run [end, end+keep) in circular sense -> contiguous in x2
-	  std::copy_n(x2.begin() + static_cast<std::ptrdiff_t>(end),
-		      static_cast<std::ptrdiff_t>(keep),
+	  // Circular index where the kept region begins (immediately after deleted block)
+	  const size_t start_keep = (start + L_eff) % n;
+
+	  // Copy keep entries from x[start_keep … start_keep+keep) with wrap if needed
+	  const size_t tail = std::min(keep, n - start_keep);   // bytes available to end
+	  // First span: [start_keep, start_keep + tail)
+	  std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
+		      static_cast<std::ptrdiff_t>(tail),
 		      y.begin());
+
+	  // Second span (wrap): [0, keep - tail)
+	  const size_t head = keep - tail;
+	  if (head != 0) {
+	    std::copy_n(x.begin(),
+			static_cast<std::ptrdiff_t>(head),
+			y.begin() + static_cast<std::ptrdiff_t>(tail));
+	  }
+
 	  jk[start] = stat(y);
 	}
       return jk;
@@ -358,6 +372,7 @@ namespace mkc_timeseries
 
   private:
     size_t m_L;
+    mutable std::geometric_distribution<size_t> m_geo;
   };
 
 

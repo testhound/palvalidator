@@ -185,7 +185,7 @@ private:
             concurrency::ThreadPoolExecutor<>,
             WilsonPValueComputationPolicy<Num>>
     >;
-    PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection> validation;
+  PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection, concurrency::StdAsyncExecutor> validation;
     
 public:
     explicit UnadjustedValidationWrapper(unsigned long p) : validation(p) {}

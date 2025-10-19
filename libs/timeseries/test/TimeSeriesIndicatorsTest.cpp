@@ -91,7 +91,8 @@ const DecimalType TEST_DEC_TOL_INDICATORS = fromString<DecimalType>("0.00001");
 const DecimalType ROBUST_QN_TOL_INDICATORS = fromString<DecimalType>("0.001");
 const DecimalType ROC_TOL_INDICATORS = fromString<DecimalType>("0.0001");
 
-TEST_CASE("TimeSeriesIndicators Tests", "[TimeSeriesIndicators]") {
+TEST_CASE("TimeSeriesIndicators Tests", "[TimeSeriesIndicators]")
+{
   TimeFrame::Duration daily_tf = TimeFrame::DAILY;
 
   SECTION("ComputeRobustStopAndTargetFromSeries") {
@@ -1233,4 +1234,274 @@ TEST_CASE("TimeSeriesIndicators Tests", "[TimeSeriesIndicators]") {
     auto last = prSeries.endRandomAccess(); --last;
     REQUIRE(last->getValue() == decimalApprox(DC::DecimalOne, TEST_DEC_TOL_INDICATORS));
   }
+
+  SECTION("ComputeLong/ShortStopAndTargetFromSeries — Calibrated (Hybrid): mirror & target-cap invariants")
+    {
+      using mkc_timeseries::ComputeLongStopAndTargetFromSeries;
+      using mkc_timeseries::ComputeShortStopAndTargetFromSeries;
+      using mkc_timeseries::ComputeLegacyBaselineLongWidths;
+      using mkc_timeseries::StopTargetMethod;
+      using DC = DecimalConstants<DecimalType>;
+
+      // Build a deterministic synthetic OHLC with mixed small ups/downs and a few larger shocks
+      OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+      double close = 100.0;
+      for (int i = 1; i <= 80; ++i) {
+	// Alternating ±0.4% typical, with occasional -2.0% and +1.5% shocks
+	double r_bp = (i % 2 == 0 ? +0.004 : -0.004);
+	if (i == 20 || i == 60) r_bp = -0.020;
+	if (i == 40)            r_bp = +0.015;
+
+	double open  = close;
+	double nextC = close * (1.0 + r_bp);
+	double high  = std::max(open, nextC) * 1.002;
+	double low   = std::min(open, nextC) * 0.998;
+
+	// Span across multiple months to avoid invalid dates
+	std::string dateStr;
+	if (i <= 31) {
+	  std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+	  dateStr = "202301" + day;  // January 1-31
+	} else if (i <= 59) {
+	  int day = i - 31;
+	  std::string dayStr = (day < 10 ? "0" + std::to_string(day) : std::to_string(day));
+	  dateStr = "202302" + dayStr;  // February 1-28
+	} else {
+	  int day = i - 59;
+	  std::string dayStr = (day < 10 ? "0" + std::to_string(day) : std::to_string(day));
+	  dateStr = "202303" + dayStr;  // March 1-21
+	}
+	series.addEntry(*createEquityEntry(dateStr,
+					   std::to_string(open),
+					   std::to_string(high),
+					   std::to_string(low),
+					   std::to_string(nextC),
+					   1000));
+	close = nextC;
+      }
+
+      // Legacy baseline (for cap reference)
+      auto legacyPair = ComputeLegacyBaselineLongWidths<DecimalType>(series, 1);
+      DecimalType T_old = legacyPair.first;   // legacy long target width
+
+      // Calibrated (Hybrid) method
+      auto [L_target, L_stop] = ComputeLongStopAndTargetFromSeries<DecimalType>(
+										series, 1, StopTargetMethod::TypicalDayCalibratedAlpha);
+      auto [S_target, S_stop] = ComputeShortStopAndTargetFromSeries<DecimalType>(
+										 series, 1, StopTargetMethod::TypicalDayCalibratedAlpha);
+
+      // --- Basic positivity ---
+      REQUIRE(L_target > DC::DecimalZero);
+      REQUIRE(L_stop   > DC::DecimalZero);
+      REQUIRE(S_target > DC::DecimalZero);
+      REQUIRE(S_stop   > DC::DecimalZero);
+
+      // --- Mirror properties (single-center quantile geometry) ---
+      // Long target == Short stop; Long stop == Short target
+      REQUIRE(L_target == decimalApprox(S_stop, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(L_stop   == decimalApprox(S_target, TEST_DEC_TOL_INDICATORS));
+
+      // --- Target-cap invariant (only the side that mirrors the legacy target is capped) ---
+      // Long: cap applies to target; Short: cap applies to stop
+      REQUIRE(L_target <= T_old);
+      REQUIRE(S_stop   <= T_old);
+
+      // --- Period sensitivity: using a different holding period should change widths (usually) ---
+      auto [L2_target, L2_stop] = ComputeLongStopAndTargetFromSeries<DecimalType>(
+										  series, 2, StopTargetMethod::TypicalDayCalibratedAlpha);
+      bool changed_some = (L2_target - L_target).abs() > TEST_DEC_TOL_INDICATORS
+	|| (L2_stop   - L_stop).abs()   > TEST_DEC_TOL_INDICATORS;
+      REQUIRE(changed_some);
+    }
+
+  SECTION("ComputeLong/ShortStopAndTargetFromSeries — Fixed-α (Typical-day band): mirror & sanity")
+    {
+      using mkc_timeseries::ComputeLongStopAndTargetFromSeries;
+      using mkc_timeseries::ComputeShortStopAndTargetFromSeries;
+      using mkc_timeseries::StopTargetMethod;
+      using DC = DecimalConstants<DecimalType>;
+
+      // Build a mild-chop synthetic series (different from above to avoid reusing exact shape)
+      OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+      double close = 50.0;
+      for (int i = 1; i <= 60; ++i) {
+	double r_bp = (i % 3 == 0 ? +0.006 : (i % 3 == 1 ? -0.004 : +0.002));
+	double open  = close;
+	double nextC = close * (1.0 + r_bp);
+	double high  = std::max(open, nextC) * 1.001;
+	double low   = std::min(open, nextC) * 0.999;
+
+	// Span across multiple months to avoid invalid dates
+	// February 1-28 (days 1-28), March 1-31 (days 29-59), April 1 (day 60)
+	std::string dateStr;
+	if (i <= 28) {
+	  std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+	  dateStr = "202302" + day;  // February 1-28
+	} else if (i <= 59) {
+	  int day = i - 28;
+	  std::string dayStr = (day < 10 ? "0" + std::to_string(day) : std::to_string(day));
+	  dateStr = "202303" + dayStr;  // March 1-31
+	} else {
+	  int day = i - 59;
+	  std::string dayStr = (day < 10 ? "0" + std::to_string(day) : std::to_string(day));
+	  dateStr = "202304" + dayStr;  // April 1
+	}
+	series.addEntry(*createEquityEntry(dateStr,
+					   std::to_string(open),
+					   std::to_string(high),
+					   std::to_string(low),
+					   std::to_string(nextC),
+					   1000));
+	close = nextC;
+      }
+
+      auto [L_target, L_stop] = ComputeLongStopAndTargetFromSeries<DecimalType>(
+										series, 1, StopTargetMethod::TypicalDayFixedAlpha);
+      auto [S_target, S_stop] = ComputeShortStopAndTargetFromSeries<DecimalType>(
+										 series, 1, StopTargetMethod::TypicalDayFixedAlpha);
+
+      // Positivity
+      REQUIRE(L_target > DC::DecimalZero);
+      REQUIRE(L_stop   > DC::DecimalZero);
+      REQUIRE(S_target > DC::DecimalZero);
+      REQUIRE(S_stop   > DC::DecimalZero);
+
+      // Mirror (long target == short stop; long stop == short target)
+      REQUIRE(L_target == decimalApprox(S_stop, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(L_stop   == decimalApprox(S_target, TEST_DEC_TOL_INDICATORS));
+    }
+
+
+  SECTION("ComputeLong/ShortStopAndTargetFromSeries — symmetric ROC (diagnostic: quantiles vs outputs)")
+    {
+      using mkc_timeseries::ComputeLongStopAndTargetFromSeries;
+      using mkc_timeseries::ComputeShortStopAndTargetFromSeries;
+      using mkc_timeseries::StopTargetMethod;
+      using mkc_timeseries::RocSeries;
+      using mkc_timeseries::WinsorizeInPlace;
+      using mkc_timeseries::LinearInterpolationQuantile;
+      using mkc_timeseries::MedianOfVec;
+      using DC = DecimalConstants<DecimalType>;
+
+      // --- Build a continuous, symmetric ROC distribution (no point masses) ---
+      std::vector<double> rocs; rocs.reserve(1000);
+      auto linspace = [](double a, double b, int n) {
+	std::vector<double> v; v.reserve(n);
+	if (n <= 1) { v.push_back(a); return v; }
+	const double step = (b - a) / (n - 1);
+	for (int i = 0; i < n; ++i) v.push_back(a + i * step);
+	return v;
+      };
+      // Symmetric tails (±2%) and mid-bands (±1% range)
+      rocs.insert(rocs.end(), 50, -0.020);
+      rocs.insert(rocs.end(), 50, +0.020);
+      auto neg_mid = linspace(-0.012, -0.008, 450);
+      auto pos_mid = linspace(+0.008, +0.012, 450);
+      rocs.insert(rocs.end(), neg_mid.begin(), neg_mid.end());
+      rocs.insert(rocs.end(), pos_mid.begin(), pos_mid.end());
+
+      // --- Convert to an OHLC time series with unique dates (roll year) ---
+      OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+      double close = 100.0;
+      const int N = static_cast<int>(rocs.size());
+      const int BARS_PER_MONTH   = 28;
+      const int MONTHS_PER_YEAR  = 12;
+      const int BARS_PER_YEAR    = BARS_PER_MONTH * MONTHS_PER_YEAR;
+      auto two = [](int x){ return (x < 10 ? "0" + std::to_string(x) : std::to_string(x)); };
+      for (int i = 0; i < N; ++i) {
+	const double r  = rocs[i];
+	const double o  = close;
+	const double c1 = close * (1.0 + r);
+	const double h  = std::max(o, c1) * 1.001;
+	const double l  = std::min(o, c1) * 0.999;
+	const int year  = 2023 + (i / BARS_PER_YEAR);
+	const int rem   =  i % BARS_PER_YEAR;
+	const int month = 1 + (rem / BARS_PER_MONTH);
+	const int day   = 1 + (rem % BARS_PER_MONTH);
+	const std::string ymd = std::to_string(year) + two(month) + two(day);
+	series.addEntry(*createEquityEntry(ymd,
+					   std::to_string(o),
+					   std::to_string(h),
+					   std::to_string(l),
+					   std::to_string(c1),
+					   1000));
+	close = c1;
+      }
+
+      // --- Call production functions (fixed-α) ---
+      auto [L_target, L_stop] = ComputeLongStopAndTargetFromSeries<DecimalType>(
+										series, 1, StopTargetMethod::TypicalDayFixedAlpha);
+      auto [S_target, S_stop] = ComputeShortStopAndTargetFromSeries<DecimalType>(
+										 series, 1, StopTargetMethod::TypicalDayFixedAlpha);
+
+      // Basic invariants
+      REQUIRE(L_target > DC::DecimalZero);
+      REQUIRE(L_stop   > DC::DecimalZero);
+      REQUIRE(S_target > DC::DecimalZero);
+      REQUIRE(S_stop   > DC::DecimalZero);
+
+      // Mirror invariants (fixed-α mode should be center-mirrored)
+      REQUIRE(L_target == decimalApprox(S_stop, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(L_stop   == decimalApprox(S_target, TEST_DEC_TOL_INDICATORS));
+
+      // --- Diagnostics: recompute the exact internal quantities used by fixed-α path ---
+      // 1) Build ROC series (period=1)
+      auto rocSeries = RocSeries(series.CloseTimeSeries(), 1);
+      auto dv = rocSeries.getTimeSeriesAsVector();            // vector<DecimalType> of percentage changes
+      std::vector<DecimalType> wv = dv;                      // copy for winsorization
+      const double tau = 0.01;                                // must match production
+      WinsorizeInPlace(wv, tau);
+
+      // 2) Median, quantiles with the same routine as production
+      DecimalType median = MedianOfVec(wv);
+
+      // NOTE: α must match production's TypicalDayFixedAlpha (e.g., 0.10 or 0.128)
+      // If you later change the constexpr in the implementation, update this to match:
+      const double alpha = 0.10;
+      DecimalType q_lo = LinearInterpolationQuantile(wv, alpha);
+      DecimalType q_hi = LinearInterpolationQuantile(wv, 1.0 - alpha);
+
+      DecimalType up = q_hi - median;
+      DecimalType dn = median - q_lo;
+
+      // 3) Print everything we need to see
+      INFO("[Diag] n=" << wv.size()
+	   << "  alpha=" << alpha
+	   << "  tau=" << tau
+	   << "  q_lo=" << q_lo << "%  median=" << median << "%  q_hi=" << q_hi << "%");
+      INFO("[Diag] widths: up=" << up << "%  dn=" << dn << "%");
+      INFO("[Diag] function: L_target=" << L_target << "%  L_stop=" << L_stop
+	   << "%  S_target=" << S_target << "%  S_stop=" << S_stop << "%");
+
+      // 4) Sanity: function outputs should match the directly computed widths (fixed-α mode)
+      REQUIRE(L_target == decimalApprox(up, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(L_stop   == decimalApprox(dn, TEST_DEC_TOL_INDICATORS));
+
+      // 5) Log CAR; don't fail the suite on CAR yet — we want the prints first
+      const double t = L_target.getAsDouble();
+      const double s = L_stop.getAsDouble();
+      const double car = (s != 0.0 ? t / s : 0.0);
+      INFO("[Diag] CAR=" << car << "  |CAR-1|=" << std::abs(car - 1.0));
+      // (Optionally) you can keep a loose check, but do not REQUIRE it yet:
+      // REQUIRE(std::abs(car - 1.0) <= 0.25);
+    }
+  
+  SECTION("ComputeLong/ShortStopAndTargetFromSeries — error conditions (too few bars)")
+    {
+      using mkc_timeseries::ComputeLongStopAndTargetFromSeries;
+      using mkc_timeseries::ComputeShortStopAndTargetFromSeries;
+      using mkc_timeseries::StopTargetMethod;
+
+      OHLCTimeSeries<DecimalType> tiny(TimeFrame::DAILY, TradingVolume::SHARES);
+      // Only 2 bars (ROC size = 1) → should throw
+      tiny.addEntry(*createEquityEntry("20230401","100","101","99","100",1000));
+      tiny.addEntry(*createEquityEntry("20230402","100","101","99","101",1000));
+
+      REQUIRE_THROWS_AS(ComputeLongStopAndTargetFromSeries<DecimalType>(
+									tiny, 1, StopTargetMethod::TypicalDayCalibratedAlpha),
+			std::domain_error);
+      REQUIRE_THROWS_AS(ComputeShortStopAndTargetFromSeries<DecimalType>(
+									 tiny, 1, StopTargetMethod::TypicalDayCalibratedAlpha),
+			std::domain_error);
+    }
 }

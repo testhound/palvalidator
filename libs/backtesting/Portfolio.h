@@ -151,10 +151,39 @@ namespace mkc_timeseries
        */
       ConstPortfolioIterator
       findSecurity (const std::string& tradingSymbol) const
-	{
-	  return mPortfolioSecurities.find (tradingSymbol);
-	}
+      {
+	return mPortfolioSecurities.find (tradingSymbol);
+      }
+      
+      /**
+       * @brief Remove a security by symbol if it exists. No-op if absent.
+       */
+      void removeSecurity(const std::string& tradingSymbol)
+      {
+	mPortfolioSecurities.erase(tradingSymbol);
+      }
 
+      /**
+       * @brief Replace (insert-or-assign) the security stored under its symbol.
+       * If a security with the same symbol exists, it is overwritten in-place.
+       * If absent, it is inserted.
+       */
+      void replaceSecurity(std::shared_ptr<Security<Decimal>> security)
+      {
+	auto sym = security->getSymbol();
+
+	mPortfolioSecurities.insert_or_assign(sym, std::move(security));
+      }
+
+      /**
+       * @brief Convenience: replace by symbol explicitly.
+       */
+      void replaceSecurity(const std::string& tradingSymbol,
+			   std::shared_ptr<Security<Decimal>> security)
+      {
+	mPortfolioSecurities.insert_or_assign(tradingSymbol, std::move(security));
+      }
+      
     private:
       std::string mPortfolioName;
       std::map<std::string, SecurityPtr> mPortfolioSecurities;

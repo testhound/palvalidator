@@ -237,11 +237,28 @@ namespace mkc_timeseries
       virtual std::shared_ptr<BacktesterStrategy<Decimal>>
       cloneForBackTesting () const = 0;
 
+      virtual std::shared_ptr<BacktesterStrategy<Decimal>>
+      clone_shallow(const std::shared_ptr<Portfolio<Decimal>>& portfolio) const
+      {
+	// Fallback: deep clone
+	return clone(portfolio);
+      }
+
       virtual std::vector<int> getPositionDirectionVector() const = 0;
 
       virtual std::vector<Decimal> getPositionReturnsVector() const = 0;
 
       virtual unsigned long numTradingOpportunities() const = 0;
+
+      /**
+       * @brief Get the pattern's maximum bars back requirement.
+       * @return Maximum lookback period required by the pattern.
+       * @note All derived strategy classes must implement this method.
+       */
+      virtual uint32_t getPatternMaxBarsBack() const
+      {
+        return 0;
+      }
 
       /**
        * @brief Get the maximum holding period for this strategy.

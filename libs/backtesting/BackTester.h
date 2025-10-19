@@ -135,6 +135,14 @@ namespace mkc_timeseries
       mStrategyRawList.push_back(aStrategy.get());
     }
 
+    void setSingleStrategy(const std::shared_ptr<BacktesterStrategy<Decimal>>& s)
+    {
+      mStrategyList.clear();
+      mStrategyRawList.clear();
+      mStrategyList.push_back(s);
+      mStrategyRawList.push_back(s.get());
+    }
+
     /**
      * @brief Add a date-range over which to run the backtest.
      * @param range DateRange specifying start and end dates.
