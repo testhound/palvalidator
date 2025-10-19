@@ -266,7 +266,7 @@ namespace mkc_timeseries
       mPatternEvaluators.push_back(eval);
     }
 
-    uint32_t getPatternMaxBarsBack() const
+    uint32_t getPatternMaxBarsBack() const override
     {
       return mStrategyMaxBarsBack;
     }
@@ -329,6 +329,29 @@ namespace mkc_timeseries
       return cloned;
     }
 
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    clone_shallow(const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    {
+      // Build the new strategy with the target portfolio, but DO NOT call addPricePattern(...)
+      // (that would recompile). Instead, copy the already-compiled evaluators + patterns.
+      auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
+								       portfolio,
+								       this->getStrategyOptions());
+
+      // Recreate the portfolio filter for the new portfolio.
+      cloned->mPortfolioFilter = cloned->createPortfolioFilter(portfolio);
+
+      // Copy patterns and precompiled evaluators directly (shallow for patterns, value-copy for lambdas).
+      cloned->mPalPatterns         = this->mPalPatterns;
+      cloned->mPatternEvaluators   = this->mPatternEvaluators;
+      cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
+      cloned->mMCPTAttributes      = this->mMCPTAttributes;
+      cloned->mBreakevenEnabled    = this->mBreakevenEnabled;
+      cloned->mBreakevenActivationBars = this->mBreakevenActivationBars;
+
+      return cloned;
+    }
+    
     std::shared_ptr<BacktesterStrategy<Decimal>>
     cloneForBackTesting () const override
     {
@@ -671,7 +694,7 @@ namespace mkc_timeseries
       }
     }
 
-    uint32_t getPatternMaxBarsBack() const
+    uint32_t getPatternMaxBarsBack() const override
     {
       return mPalPattern->getMaxBarsBack();
     }
@@ -737,6 +760,11 @@ namespace mkc_timeseries
     const PatternEvaluator& getPatternEvaluator() const
     {
       return mPatternEvaluator;
+    }
+
+    void setPatternEvaluator(const PatternEvaluator& eval)
+    {
+      mPatternEvaluator = eval;
     }
 
     [[deprecated("Use of this addLongPositionBar no longer supported")]]
@@ -836,6 +864,21 @@ namespace mkc_timeseries
                                                         this->getPalPattern(),
                                                         portfolio,
                                                         this->getStrategyOptions());
+    }
+
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    clone_shallow(const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    {
+      // Construct a new strategy bound to the new portfolio, but DO NOT recompile with evaluater.
+      auto cloned = std::make_shared<PalLongStrategy<Decimal>>(
+							       this->getStrategyName(),
+							       this->getPalPattern(),      // same (immutable) pattern
+							       portfolio,
+							       this->getStrategyOptions());
+      
+      // Reuse the precompiled evaluator to avoid per-permutation compilation cost.
+      cloned->setPatternEvaluator(this->getPatternEvaluator());
+      return cloned;
     }
 
     std::shared_ptr<PalStrategy<Decimal>>
@@ -986,6 +1029,18 @@ namespace mkc_timeseries
                                                          this->getPalPattern(),
                                                          portfolio,
                                                          this->getStrategyOptions());
+    }
+
+    std::shared_ptr<BacktesterStrategy<Decimal>>
+    clone_shallow(const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    {
+      auto cloned = std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
+								this->getPalPattern(),
+								portfolio,
+								this->getStrategyOptions());
+      
+      cloned->setPatternEvaluator(this->getPatternEvaluator());
+      return cloned;
     }
 
     std::shared_ptr<PalStrategy<Decimal>>

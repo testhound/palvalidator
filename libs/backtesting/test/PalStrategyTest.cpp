@@ -288,6 +288,9 @@ createLongPattern3_WideTargets()
 
 void printPositionHistory(const ClosedPositionHistory<DecimalType>& history);
 
+
+
+
 void backTestLoop(std::shared_ptr<Security<DecimalType>> security, BacktesterStrategy<DecimalType>& strategy, 
 		  TimeSeriesDate& backTestStartDate, TimeSeriesDate& backTestEndDate)
 {
@@ -1017,3 +1020,112 @@ SECTION ("PalStrategy getMaxHoldingPeriod method validation")
 
 }
 
+
+// --- NEW TESTS: clone_shallow for PalLongStrategy and PalShortStrategy --------
+
+TEST_CASE("PalShortStrategy::clone_shallow on synthetic equity series", "[PalStrategy][clone_shallow][short][synthetic]")
+{
+  using Dec = DecimalType;
+  using mkc_timeseries::OHLCTimeSeries;
+
+  // Create a simple short pattern that's easy to satisfy: just High0 > High1
+  auto createSimpleShortPattern = []() -> std::shared_ptr<PriceActionLabPattern> {
+    auto percentLong = std::make_shared<DecimalType>(createDecimal("10.00"));
+    auto percentShort = std::make_shared<DecimalType>(createDecimal("90.00"));
+    auto desc = std::make_shared<PatternDescription>("SimpleShort.txt", 1, 20200110,
+                                                     percentLong, percentShort, 1, 1);
+    
+    // Simple pattern: High of 0 bars ago > High of 1 bar ago
+    auto high0 = std::make_shared<PriceBarHigh>(0);
+    auto high1 = std::make_shared<PriceBarHigh>(1);
+    auto shortPattern = std::make_shared<GreaterThanExpr>(high0, high1);
+    
+    auto entry = createShortOnOpen();
+    auto target = createShortProfitTarget("50.00");  // Wide target
+    auto stop = createShortStopLoss("50.00");        // Wide stop
+    
+    return std::make_shared<PriceActionLabPattern>(desc, shortPattern, entry, target, stop);
+  };
+
+  // --- 1) Build two identical synthetic equity series ---
+  auto ts1 = std::make_shared<OHLCTimeSeries<Dec>>(mkc_timeseries::TimeFrame::DAILY,
+                                                   mkc_timeseries::TradingVolume::SHARES);
+  auto ts2 = std::make_shared<OHLCTimeSeries<Dec>>(mkc_timeseries::TimeFrame::DAILY,
+                                                   mkc_timeseries::TradingVolume::SHARES);
+
+  // Helper to insert 1 bar into both series
+  auto pushBar = [&](const std::string& d, const std::string& o,
+                     const std::string& h, const std::string& l,
+                     const std::string& c, mkc_timeseries::volume_t v) {
+    auto e1 = createEquityEntry(d, o, h, l, c, v);
+    auto e2 = createEquityEntry(d, o, h, l, c, v);
+    ts1->addEntry(*e1);
+    ts2->addEntry(*e2);
+  };
+
+  // Create simple data where High decreases until the signal day, then jumps up
+  // This ensures the pattern (High0 > High1) only triggers on 2020-01-10
+  pushBar("20200102", "100.00", "107.00", " 99.00", "100.00", 1000000); // Early bar
+  pushBar("20200103", "100.00", "106.00", " 99.00", "100.00", 1000000); // Early bar
+  pushBar("20200106", "100.00", "105.00", " 99.00", "100.00", 1000000); // H = 105.00
+  pushBar("20200107", "100.00", "104.00", " 99.00", "100.00", 1000000); // H = 104.00 < 105, no trigger
+  pushBar("20200108", "100.00", "103.00", " 99.00", "100.00", 1000000); // H = 103.00 < 104, no trigger
+  pushBar("20200109", "100.00", "102.00", " 99.00", "100.00", 1000000); // H1 = 102.00 < 103, no trigger
+  pushBar("20200110", "100.00", "107.00", " 99.00", "100.00", 1000000); // H0 = 107.00 > H1(102), TRIGGERS!
+  pushBar("20200113", "100.00", "106.00", " 99.00", "100.00", 1000000); // Fill date bar
+  pushBar("20200114", "100.00", "105.00", " 99.00", "100.00", 1000000); // Extra bar
+  pushBar("20200115", "100.00", "105.00", " 99.00", "100.00", 1000000); // Extra bar
+  pushBar("20200116", "100.00", "105.00", " 99.00", "100.00", 1000000); // Extra bar
+
+  // --- 2) Two portfolios + two Equity securities sharing identical series ---
+  auto eq1 = std::make_shared<mkc_timeseries::EquitySecurity<Dec>>("NVDA", "Test Equity", ts1);
+  auto eq2 = std::make_shared<mkc_timeseries::EquitySecurity<Dec>>("MSFT", "Test Equity", ts2);
+
+  auto port1 = std::make_shared<Portfolio<Dec>>("P1");
+  auto port2 = std::make_shared<Portfolio<Dec>>("P2");
+  port1->addSecurity(eq1);
+  port2->addSecurity(eq2);
+
+  // --- 3) Original + shallow clone (bind to different portfolios) ---
+  StrategyOptions noMax(false, 0, 0);
+  PalShortStrategy<Dec> original("Short Shallow Synthetic", createSimpleShortPattern(), port1, noMax);
+  auto shallow = original.clone_shallow(port2);
+  REQUIRE(shallow);
+
+  REQUIRE(original.getPatternMaxBarsBack() == shallow->getPatternMaxBarsBack());
+
+  // --- 4) Drive both strategies ---
+  // The backtest loop uses: orderDate = boost_previous_weekday(backTesterDate)
+  // We need to start before the first data point to ensure proper bar accumulation
+  
+  TimeSeriesDate start(createDate("20200106"));  // Start from first data point
+  TimeSeriesDate end(createDate("20200117"));    // End well after fill date
+
+  // Original
+  {
+    backTestLoop(eq1, original, start, end);
+    
+    // Debug output
+    auto br = original.getStrategyBroker();
+    std::cout << "Original - Total trades: " << br.getTotalTrades() << std::endl;
+    std::cout << "Original - Open trades: " << br.getOpenTrades() << std::endl;
+    std::cout << "Original - Is short: " << original.isShortPosition(eq1->getSymbol()) << std::endl;
+    
+    REQUIRE(original.isShortPosition(eq1->getSymbol()));
+    REQUIRE(br.getTotalTrades() == 1);
+    REQUIRE(br.getOpenTrades() == 1);
+  }
+
+  // Shallow clone
+  {
+    backTestLoop(eq2, *shallow, start, end);
+    
+    auto br = shallow->getStrategyBroker();
+    std::cout << "Shallow - Total trades: " << br.getTotalTrades() << std::endl;
+    std::cout << "Shallow - Open trades: " << br.getOpenTrades() << std::endl;
+    
+    REQUIRE(shallow->isShortPosition(eq2->getSymbol()));
+    REQUIRE(br.getTotalTrades() == 1);
+    REQUIRE(br.getOpenTrades() == 1);
+  }
+}

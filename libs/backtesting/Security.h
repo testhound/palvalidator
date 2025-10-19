@@ -418,6 +418,24 @@ namespace mkc_timeseries
       }
 
       /**
+       * @brief Replace the underlying time series pointer for this Security.
+       *
+       * Intended for synthetic/permutation workflows where the Security's identity
+       * (symbol, tick size, BPV) stays the same but the price history changes.
+       * Not thread-safe against concurrent readers; ensure per-thread usage.
+       *
+       * @param newTimeSeries Shared pointer to the new (const) OHLC time series.
+       * @throws SecurityException if newTimeSeries is null.
+       */
+      void resetTimeSeries(std::shared_ptr<const OHLCTimeSeries<Decimal>> newTimeSeries)
+      {
+	if (!newTimeSeries)
+	  throw SecurityException("Security::resetTimeSeries: null time series");
+
+	mSecurityTimeSeries = std::move(newTimeSeries);
+      }
+
+      /**
        * @brief Gets the intraday time frame duration for this security's time series.
        * @return boost::posix_time::time_duration representing the most common interval between bars
        * @throws TimeSeriesException if the security's time frame is not INTRADAY or insufficient data

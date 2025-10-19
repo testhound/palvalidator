@@ -24,20 +24,27 @@ namespace mkc_timeseries
 
   // Local quantile function to avoid circular dependency with StatUtils
   // Uses linear interpolation between values
+
   template <typename Decimal>
   Decimal LinearInterpolationQuantile(std::vector<Decimal> v, double q)
   {
-    if (v.empty()) return Decimal(0);
+    if (v.empty())
+      return Decimal(0);
+
+    std::sort(v.begin(), v.end());
+
     q = std::min(std::max(q, 0.0), 1.0);
     const double idx = q * (static_cast<double>(v.size()) - 1.0);
     const auto lo = static_cast<std::size_t>(std::floor(idx));
     const auto hi = static_cast<std::size_t>(std::ceil(idx));
-    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(lo), v.end());
+
     const Decimal vlo = v[lo];
-    if (hi == lo) return vlo;
-    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(hi), v.end());
+    if (hi == lo)
+      return vlo;
+
     const Decimal vhi = v[hi];
     const Decimal w = Decimal(idx - std::floor(idx));
+
     return vlo + (vhi - vlo) * w;
   }
 
@@ -757,43 +764,47 @@ namespace mkc_timeseries
    * @param values Vector to winsorize (modified in-place).
    * @param tau Tail probability for winsorization (e.g., 0.01 for 1% per tail).
    */
-
   template <typename Decimal>
   void WinsorizeInPlace(std::vector<Decimal>& values, double tau)
   {
-    if (values.empty()) return;
+    if (values.empty() || values.size() < 3)
+      return;
 
-  
-    if (tau < 0.0) tau = 0.0;
-    if (tau > 0.25) tau = 0.25;
-    if (tau == 0.0) return;
+    if (tau < 0.0)
+      tau = 0.0;
+
+    if (tau > 0.25)
+      tau = 0.25;
+
+    if (tau == 0.0)
+      return;
 
     const size_t n = values.size();
+    std::vector<Decimal> tmp(values);
+    std::sort(tmp.begin(), tmp.end());
 
-    // Nearest-rank on (n-1)*p to pick tail cutpoints.
-    auto kth_value = [&](double p) -> Decimal {
-      if (p <= 0.0) {
-	return *std::min_element(values.begin(), values.end());
-      }
-      if (p >= 1.0) {
-	return *std::max_element(values.begin(), values.end());
-      }
-      const double r = p * static_cast<double>(n - 1);
-      size_t k = static_cast<size_t>(std::llround(r));
-      if (k >= n) k = n - 1;
+    // --- FIX: Enforce symmetric index selection to avoid rounding artifacts ---
+    // Calculate the lower index and derive the upper index from it.
+    const double r = tau * static_cast<double>(n - 1);
+    const size_t k_lo = static_cast<size_t>(std::llround(r));
+    const size_t k_hi = (n - 1) - k_lo;
 
-      std::vector<Decimal> tmp(values);
-      std::nth_element(tmp.begin(), tmp.begin() + static_cast<std::ptrdiff_t>(k), tmp.end());
-      return tmp[k];
-    };
-
-    const Decimal lo = kth_value(tau);
-    const Decimal hi = kth_value(1.0 - tau);
-
-    for (auto& x : values) {
-      if (x < lo) x = lo;
-      else if (x > hi) x = hi;
+    // Ensure indices are valid
+    if (k_lo >= n || k_hi >= n || k_lo > k_hi) {
+      // This should not happen with valid tau and n>=3, but as a safeguard:
+      return;
     }
+
+    const Decimal lo = tmp[k_lo];
+    const Decimal hi = tmp[k_hi];
+
+    for (auto& x : values)
+      {
+	if (x < lo)
+	  x = lo;
+	else if (x > hi)
+	  x = hi;
+      }
   }
 
   /**

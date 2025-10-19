@@ -11,6 +11,8 @@
 #include "pcg_extras.hpp"
 #include "randutils.hpp"
 #include <random>
+#include <array>
+
 using uint32 = unsigned int;
 
 /**
@@ -31,7 +33,40 @@ public:
   void seed() {
     auto newSeed = randutils::auto_seed_256{};
     mRandGen.seed(newSeed);
-}
+  }
+
+  // deterministic seed constructor
+  explicit RandomMersenne(uint64_t seed)
+  {
+    seed_u64(seed);
+  }
+
+  // eseed with fresh entropy (already have something similar; keep it if you like)
+  void reseed()
+  {
+    mRandGen.seed(randutils::auto_seed_256{});
+  }
+
+  // NEW: deterministic seeding from a 64-bit value
+  void seed_u64(uint64_t seed)
+  {
+    std::array<uint32_t, 2> seed_data =
+      {
+	static_cast<uint32_t>(seed),
+	static_cast<uint32_t>(seed >> 32)
+      };
+
+    randutils::seed_seq_fe128 seq(seed_data.begin(), seed_data.end());
+    mRandGen.seed(seq);
+  }
+
+  template <class It>
+  void seed_seq(It first, It last)
+  {
+    randutils::seed_seq_fe256 seq(first, last);  // uses full-entropy mixer
+    mRandGen.seed(seq);
+  }
+
   /**
    * @brief Draws a random unsigned 32-bit integer within the inclusive range [min, max].
    *
