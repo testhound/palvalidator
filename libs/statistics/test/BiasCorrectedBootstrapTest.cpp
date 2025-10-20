@@ -13,12 +13,21 @@
 #include <cmath>
 #include <algorithm>
 
-#include "BiasCorrectedBootstrap.h" // Includes policy classes
-#include "TestUtils.h"              // DecimalType, createDecimal
-#include "number.h"                 // num::to_double
-#include "randutils.hpp"            // for seeded rng in policy tests
+#include "BiasCorrectedBootstrap.h"
+#include "TestUtils.h"
+#include "number.h"
+#include "randutils.hpp"
+#include "ClosedPositionHistory.h"
+#include "MonthlyReturnsBuilder.h"
+#include "BoundFutureReturns.h"
+#include "BoostDateHelper.h"
+#include "TradingPosition.h"
 
 using namespace mkc_timeseries;
+using namespace boost::gregorian;
+
+// Symbol constant used in tests
+const static std::string myCornSymbol("@C");
 
 TEST_CASE("createSliceIndicesForBootstrap Tests", "[Slicer]")
 {
@@ -650,3 +659,214 @@ TEST_CASE("BCaBootStrap: degenerate dataset collapses interval", "[BCaBootStrap]
     REQUIRE(num::to_double(hi - mu) == Catch::Approx(0.0).margin(1e-15));
 }
 
+TEST_CASE("BoundFutureReturns: monthly aggregation and BCa bounds (Stationary blocks)", "[BoundFutureReturns][Monthly][Stationary]") {
+    using D = DecimalType;
+
+    // Fabricate a ClosedPositionHistory with 8 distinct months.
+    // We use single-bar positions so each month's compounded return equals the intended value.
+    ClosedPositionHistory<D> hist;
+    TradingVolume one(1, TradingVolume::CONTRACTS);
+
+    // Helper to add a 1-bar LONG position with return r in (year, month, day)
+    auto add_long_1bar = [&](int y, int m, int d, const char* r_str) {
+        D r = createDecimal(r_str);                   // e.g. "0.02" for +2%
+        D entry = createDecimal("100");
+        D exit  = entry * (D("1.0") + r);
+
+        TimeSeriesDate de(y, m, d);
+        auto e = createTimeSeriesEntry(de, entry, entry, entry, entry, 10);
+        auto pos = std::make_shared<TradingPositionLong<D>>(myCornSymbol, e->getOpenValue(), *e, one);
+
+        // Close next day in same month when possible (or same day if helper allows)
+        int d_exit = std::min(d + 1, 28);
+        TimeSeriesDate dx(y, m, d_exit);
+        pos->ClosePosition(dx, exit);
+        hist.addClosedPosition(pos);
+    };
+
+    // Jan..Aug 2021: [+2%, -1%, +1.5%, +0.5%, -0.8%, +3.0%, +0.2%, +1.0%]
+    add_long_1bar(2021, Jan,  5, "0.02");   // Jan
+    add_long_1bar(2021, Feb,  9, "-0.01");  // Feb
+    add_long_1bar(2021, Mar,  3, "0.015");  // Mar
+    add_long_1bar(2021, Apr, 12, "0.005");  // Apr
+    add_long_1bar(2021, May,  6, "-0.008"); // May
+    add_long_1bar(2021, Jun, 15, "0.03");   // Jun
+    add_long_1bar(2021, Jul,  7, "0.002");  // Jul
+    add_long_1bar(2021, Aug, 19, "0.01");   // Aug
+
+    // 1) Verify monthly aggregation
+    auto monthly = mkc_timeseries::buildMonthlyReturnsFromClosedPositions<D>(hist);
+    REQUIRE(monthly.size() == 8);
+
+    // Check chronological order and magnitudes (exact equality is fine with single-bar months)
+    REQUIRE(monthly[0] == createDecimal("0.02"));
+    REQUIRE(monthly[1] == createDecimal("-0.01"));
+    REQUIRE(monthly[2] == createDecimal("0.015"));
+    REQUIRE(monthly[3] == createDecimal("0.005"));
+    REQUIRE(monthly[4] == createDecimal("-0.008"));
+    REQUIRE(monthly[5] == createDecimal("0.03"));
+    REQUIRE(monthly[6] == createDecimal("0.002"));
+    REQUIRE(monthly[7] == createDecimal("0.01"));
+
+    // 2) Run BoundFutureReturns with Stationary blocks (default Resampler)
+    const unsigned B   = 2000;   // keep moderate for test runtime
+    const double   cl  = 0.95;
+    const unsigned L   = 3;      // mean block length
+
+    mkc_timeseries::BoundFutureReturns<D> bfr(
+        hist,
+        /*blockLen=*/L,
+        /*lowerQuantileP=*/0.10,
+        /*upperQuantileP=*/0.90,
+        /*numBootstraps=*/B,
+        /*confLevel=*/cl
+    );
+
+    // Basic ordering invariants
+    D lowerBound = bfr.getLowerBound();              // conservative lower (q10 CI lower)
+    D upperBound = bfr.getUpperBound();              // conservative upper (q90 CI upper)
+    D q10_point  = bfr.getLowerPointQuantile();      // point q10
+    D q90_point  = bfr.getUpperPointQuantile();      // point q90
+
+    REQUIRE(lowerBound <= q10_point);
+    REQUIRE(q10_point  <= q90_point);
+    REQUIRE(q90_point  <= upperBound);
+
+    // Switching to point policy should set bounds == point quantiles
+    bfr.usePointPolicy();
+    REQUIRE(bfr.getLowerBound() == q10_point);
+    REQUIRE(bfr.getUpperBound() == q90_point);
+}
+
+TEST_CASE("BoundFutureReturns: works with IID resampler as well", "[BoundFutureReturns][IID]") {
+    using D = DecimalType;
+
+    // Build 8 months again (simpler pattern)
+    ClosedPositionHistory<D> hist;
+    TradingVolume one(1, TradingVolume::CONTRACTS);
+    auto add_long_1bar = [&](int y, int m, int d, const char* r_str) {
+        D r = createDecimal(r_str), entry = createDecimal("100");
+        D exit = entry * (D("1.0") + r);
+        TimeSeriesDate de(y, m, d);
+        auto e = createTimeSeriesEntry(de, entry, entry, entry, entry, 10);
+        auto pos = std::make_shared<TradingPositionLong<D>>(myCornSymbol, e->getOpenValue(), *e, one);
+        int d_exit = std::min(d + 1, 28);
+        TimeSeriesDate dx(y, m, d_exit);
+        pos->ClosePosition(dx, exit);
+        hist.addClosedPosition(pos);
+    };
+
+    // Sep..Apr (8 months): mildly skewed mixture
+    add_long_1bar(2021, Sep,  2,  "0.012");
+    add_long_1bar(2021, Oct,  5,  "-0.006");
+    add_long_1bar(2021, Nov, 10,  "0.007");
+    add_long_1bar(2021, Dec, 14,  "0.004");
+    add_long_1bar(2022, Jan,  6,  "-0.011");
+    add_long_1bar(2022, Feb, 17,  "0.018");
+    add_long_1bar(2022, Mar,  8,  "0.000");
+    add_long_1bar(2022, Apr, 21,  "0.009");
+
+    // Instantiate with IID resampler
+    mkc_timeseries::BoundFutureReturns<D, IIDResampler<D>> bfr_iid(
+        hist,
+        /*blockLen=*/3,              // ignored by IID policy
+        /*lowerQuantileP=*/0.10,
+        /*upperQuantileP=*/0.90,
+        /*numBootstraps=*/2000,
+        /*confLevel=*/0.95
+    );
+
+    // Invariants
+    REQUIRE(bfr_iid.getLowerBound() <= bfr_iid.getLowerPointQuantile());
+    REQUIRE(bfr_iid.getUpperPointQuantile() <= bfr_iid.getUpperBound());
+    REQUIRE(bfr_iid.getLowerPointQuantile() <= bfr_iid.getUpperPointQuantile());
+
+    // Sanity: monthly returns available and size >= 8
+    const auto& monthly = bfr_iid.getMonthlyReturns();
+    REQUIRE(monthly.size() >= 8);
+}
+
+TEST_CASE("BoundFutureReturns: 20-month dataset yields stable bounds (Stationary blocks)", "[BoundFutureReturns][Monthly][20M]") {
+    using D = DecimalType;
+
+    // --- Fabricate 20 distinct months of returns ---
+    // Jan 2020 .. Aug 2021 (inclusive) = 20 months
+    // Mix of small positives/negatives to resemble mild skew + variance
+    const char* rstrs[20] = {
+        "0.012", "-0.006", "0.007", "0.004", "-0.011",
+        "0.018", "0.000", "0.009", "0.013", "-0.004",
+        "0.006", "0.008", "-0.007", "0.015", "0.003",
+        "0.011", "-0.005", "0.010", "0.002", "0.014"
+    };
+
+    ClosedPositionHistory<D> hist;
+    TradingVolume one(1, TradingVolume::CONTRACTS);
+
+    auto add_long_1bar = [&](int y, int m, int d, const char* r_str) {
+        D r = createDecimal(r_str);
+        D entry = createDecimal("100");
+        D exit  = entry * (D("1.0") + r);
+
+        TimeSeriesDate de(y, m, d);
+        auto e = createTimeSeriesEntry(de, entry, entry, entry, entry, 10);
+        auto pos = std::make_shared<TradingPositionLong<D>>(myCornSymbol, e->getOpenValue(), *e, one);
+
+        int d_exit = std::min(d + 1, 28);
+        TimeSeriesDate dx(y, m, d_exit);
+        pos->ClosePosition(dx, exit);
+        hist.addClosedPosition(pos);
+    };
+
+    // Fill months Jan 2020 .. Aug 2021
+    {
+        int y = 2020;
+        int m = static_cast<int>(Jan);
+        for (int i = 0; i < 20; ++i) {
+            add_long_1bar(y, m, 5 + (i % 10), rstrs[i]); // stagger day a bit (5..14)
+            // Advance month/year
+            if (++m > static_cast<int>(Dec)) {
+                m = static_cast<int>(Jan);
+                ++y;
+            }
+        }
+    }
+
+    // 1) Verify monthly aggregation
+    auto monthly = mkc_timeseries::buildMonthlyReturnsFromClosedPositions<D>(hist);
+    REQUIRE(monthly.size() == 20);
+
+    // Spot-check a few exact values (single-bar months => exact equality)
+    REQUIRE(monthly.front() == createDecimal("0.012"));   // Jan 2020
+    REQUIRE(monthly[1]      == createDecimal("-0.006"));  // Feb 2020
+    REQUIRE(monthly[10]     == createDecimal("0.006"));   // Nov 2020
+    REQUIRE(monthly.back()  == createDecimal("0.014"));   // Aug 2021
+
+    // 2) Run BoundFutureReturns with stationary blocks
+    const unsigned B  = 1500;   // moderate for test runtime
+    const double   cl = 0.95;
+    const unsigned L  = 4;      // average block length
+
+    mkc_timeseries::BoundFutureReturns<D> bfr(
+        hist,
+        /*blockLen=*/L,
+        /*lowerQuantileP=*/0.10,
+        /*upperQuantileP=*/0.90,
+        /*numBootstraps=*/B,
+        /*confLevel=*/cl
+    );
+
+    // 3) Ordering / policy invariants
+    D lowerBound = bfr.getLowerBound();         // conservative lower (q10 CI lower)
+    D upperBound = bfr.getUpperBound();         // conservative upper (q90 CI upper)
+    D q10_point  = bfr.getLowerPointQuantile(); // point q10
+    D q90_point  = bfr.getUpperPointQuantile(); // point q90
+
+    REQUIRE(lowerBound <= q10_point);
+    REQUIRE(q10_point  <= q90_point);
+    REQUIRE(q90_point  <= upperBound);
+
+    // Switch to point policy and verify bounds equal the point quantiles
+    bfr.usePointPolicy();
+    REQUIRE(bfr.getLowerBound() == q10_point);
+    REQUIRE(bfr.getUpperBound() == q90_point);
+}
