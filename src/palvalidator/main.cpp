@@ -691,16 +691,16 @@ int main(int argc, char **argv)
     if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
         pipelineMode == PipelineMode::PermutationOnly) {
         
-        std::cout << "\nEnter number of permutations (default: 5000): ";
+        std::cout << "\nEnter number of permutations (default: 10000): ";
         std::getline(std::cin, input);
-        params.permutations = input.empty() ? 5000 : std::stoul(input);
+        params.permutations = input.empty() ? 10000 : std::stoul(input);
 
         std::cout << "Enter p-value threshold (default: 0.05): ";
         std::getline(std::cin, input);
         params.pValueThreshold = input.empty() ? Num(0.05) : Num(std::stod(input));
     } else {
         // Set default values for bootstrap-only mode (won't be used)
-        params.permutations = 5000;
+        params.permutations = 10000;
         params.pValueThreshold = Num(0.05);
     }
     
@@ -709,12 +709,12 @@ int main(int argc, char **argv)
     if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
         pipelineMode == PipelineMode::BootstrapOnly) {
         
-        std::cout << "\nEnter number of bootstrap samples (default: 10000): ";
+        std::cout << "\nEnter number of bootstrap samples (default: 25000): ";
         std::getline(std::cin, input);
-        numBootstrapSamples = input.empty() ? 10000 : std::stoul(input);
+        numBootstrapSamples = input.empty() ? 25000 : std::stoul(input);
     } else {
         // Set default value for permutation-only mode (won't be used)
-        numBootstrapSamples = 10000;
+        numBootstrapSamples = 25000;
     }
     
     // Set validation method based on pipeline mode
