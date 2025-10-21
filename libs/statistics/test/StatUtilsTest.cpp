@@ -11,12 +11,17 @@
 #include <cmath> // For std::log
 #include <numeric> // For std::accumulate
 
+#include "TimeSeries.h"
+#include "ClosedPositionHistory.h"
+#include "MonthlyReturnsBuilder.h"
 #include "StatUtils.h"
 #include "TestUtils.h" // For DecimalType typedef
 #include "DecimalConstants.h"
 #include "number.h" // For num::to_double
 
 using namespace mkc_timeseries;
+constexpr double kACFAbsTol = 1e-6;  // decimal vs double accumulation tolerance
+const static std::string myCornSymbol("@C");
 
 // Test suite for the StatUtils::computeProfitFactor function
 TEST_CASE("StatUtils::computeProfitFactor", "[StatUtils]") {
@@ -901,3 +906,305 @@ TEST_CASE("StatUtils::sharpeFromReturns (lean) behavior and edge cases", "[StatU
     }
 }
 
+// --------------------------- New Tests: ACF & Block-Length Heuristic ---------------------------
+
+TEST_CASE("StatUtils::computeACF basic behavior and edge cases", "[StatUtils][ACF]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("n < 2 throws") {
+        std::vector<DecimalType> x = { createDecimal("0.01") };
+        REQUIRE_THROWS_AS(Stat::computeACF(x, /*maxLag=*/5), std::invalid_argument);
+    }
+
+    SECTION("Constant series: rho[0]=1, others ~0") {
+        std::vector<DecimalType> x(6, createDecimal("0.05"));
+        auto acf = Stat::computeACF(x, /*maxLag=*/10);
+        REQUIRE(acf.size() == 6 - 1 + 1);          // min(maxLag, n-1)+1 = 6
+        REQUIRE(num::to_double(acf[0]) == Catch::Approx(1.0));
+        for (size_t k = 1; k < acf.size(); ++k) {
+            REQUIRE(num::to_double(acf[k]) == Catch::Approx(0.0).margin(1e-12));
+        }
+    }
+
+    SECTION("Agreement with reference (double) implementation") {
+        // Mild trend + noise to ensure nontrivial ACF
+        std::vector<DecimalType> x;
+        for (int t = 0; t < 20; ++t) {
+            // 0.01 * t + small deterministic wobble (keeps test deterministic)
+            double v = 0.01 * t + ( (t % 3 == 0) ? 0.002 : (t % 3 == 1 ? -0.001 : 0.0) );
+            x.push_back(createDecimal(std::to_string(v)));
+        }
+
+        // Library ACF (Decimal)
+        auto acf_dec = Stat::computeACF(x, /*maxLag=*/12);
+
+        // Reference ACF (double) using the same definition:
+        auto acf_ref = [&]() {
+            const size_t n = x.size();
+            const size_t L = std::min<std::size_t>(12, n - 1);
+            std::vector<double> xd(n);
+            double mu = 0.0;
+            for (auto& d : x) mu += num::to_double(d);
+            mu /= double(n);
+            double denom = 0.0;
+            for (size_t i = 0; i < n; ++i) {
+                xd[i] = num::to_double(x[i]) - mu;
+                denom += xd[i] * xd[i];
+            }
+            std::vector<double> r(L + 1, 0.0);
+            if (denom == 0.0) { r[0] = 1.0; return r; }
+            r[0] = 1.0;
+            for (size_t k = 1; k <= L; ++k) {
+                double nume = 0.0;
+                for (size_t t = k; t < n; ++t) nume += xd[t] * xd[t - k];
+                r[k] = nume / denom;
+            }
+            return r;
+        }();
+
+        REQUIRE(acf_dec.size() == acf_ref.size());
+        for (size_t k = 0; k < acf_ref.size(); ++k) {
+            REQUIRE(num::to_double(acf_dec[k]) == Catch::Approx(acf_ref[k]).margin(kACFAbsTol));
+        }
+    }
+}
+
+TEST_CASE("StatUtils::suggestStationaryBlockLengthFromACF heuristic", "[StatUtils][ACF][BlockLen]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("No lag clears threshold -> clamp to minL") {
+        // thresh = 2/sqrt(nSamples). Choose n=25 -> thresh = 0.4
+        // Make all |rho(k)| <= 0.39 so none is 'significant'.
+        std::vector<DecimalType> acf = {
+            createDecimal("1.0"), createDecimal("0.39"), createDecimal("-0.10"),
+            createDecimal("0.00"), createDecimal("0.05")
+        };
+        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/25, /*minL=*/2, /*maxL=*/6);
+        REQUIRE(L == 2);
+    }
+
+    SECTION("Largest significant lag determines L (within clamps)") {
+        // n=100 -> thresh = 2 / 10 = 0.2
+        // Significant at lags 1 and 2, then it drops below threshold
+        std::vector<DecimalType> acf = {
+            createDecimal("1.0"), createDecimal("0.25"), createDecimal("0.22"),
+            createDecimal("0.05"), createDecimal("0.00")
+        };
+        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/100, /*minL=*/2, /*maxL=*/6);
+        REQUIRE(L == 2);
+    }
+
+    SECTION("Clamp to maxL when significance extends beyond range") {
+        // n=100 -> thresh = 0.2; make lag 9 still significant
+        std::vector<DecimalType> acf(11, createDecimal("0.0"));
+        acf[0] = createDecimal("1.0");
+        acf[9] = createDecimal("0.25"); // significant far out
+        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/100, /*minL=*/2, /*maxL=*/6);
+        REQUIRE(L == 6); // clamped to maxL
+    }
+
+    SECTION("Empty ACF or zero nSamples throws") {
+        std::vector<DecimalType> empty_acf;
+        REQUIRE_THROWS_AS(Stat::suggestStationaryBlockLengthFromACF(empty_acf, 10), std::invalid_argument);
+        std::vector<DecimalType> acf = { createDecimal("1.0"), createDecimal("0.1") };
+        REQUIRE_THROWS_AS(Stat::suggestStationaryBlockLengthFromACF(acf, 0), std::invalid_argument);
+    }
+}
+
+// --------------------------- Smoke test: Monthly -> ACF -> BlockLen ---------------------------
+
+TEST_CASE("StatUtils: end-to-end monthly->ACF->block length", "[StatUtils][ACF][Monthly][Smoke]") {
+    using D    = DecimalType;
+    using Stat = StatUtils<DecimalType>;
+
+    // Fabricate 12 months in 2021 with deliberate short-range dependence:
+    // Pairs of identical returns increase |rho(1)|, and the symmetric design keeps mean ~ 0.
+    // Sequence (Jan..Dec): +2%, +2%, -2%, -2%, +1.5%, +1.5%, -1.5%, -1.5%, +1%, +1%, -1%, -1%
+    ClosedPositionHistory<D> hist;
+    TradingVolume one(1, TradingVolume::CONTRACTS);
+
+    auto add_long_1bar = [&](int y, int m, int d, const char* r_str) {
+        D r     = createDecimal(r_str);
+        D entry = createDecimal("100");
+        D exit  = entry * (D("1.0") + r);
+
+        TimeSeriesDate de(y, m, d);
+        auto e = createTimeSeriesEntry(de, entry, entry, entry, entry, 10);
+        auto pos = std::make_shared<TradingPositionLong<D>>(myCornSymbol, e->getOpenValue(), *e, one);
+
+        int d_exit = std::min(d + 1, 28);
+        TimeSeriesDate dx(y, m, d_exit);
+        pos->ClosePosition(dx, exit);
+        hist.addClosedPosition(pos);
+    };
+
+    // Build the 12 months (single-bar per month → monthly return equals r_str exactly)
+    add_long_1bar(2021, Jan,  5,  "0.02");
+    add_long_1bar(2021, Feb,  8,  "0.02");
+    add_long_1bar(2021, Mar,  5, "-0.02");
+    add_long_1bar(2021, Apr, 12, "-0.02");
+    add_long_1bar(2021, May,  6,  "0.015");
+    add_long_1bar(2021, Jun, 15,  "0.015");
+    add_long_1bar(2021, Jul,  7, "-0.015");
+    add_long_1bar(2021, Aug, 19, "-0.015");
+    add_long_1bar(2021, Sep,  9,  "0.01");
+    add_long_1bar(2021, Oct, 13,  "0.01");
+    add_long_1bar(2021, Nov,  3, "-0.01");
+    add_long_1bar(2021, Dec, 21, "-0.01");
+
+    // 1) Build monthly returns
+    auto monthly = mkc_timeseries::buildMonthlyReturnsFromClosedPositions<D>(hist);
+    REQUIRE(monthly.size() == 12);
+
+    // Spot-check a few exact values (single-bar months)
+    REQUIRE(monthly.front() == createDecimal("0.02"));    // Jan
+    REQUIRE(monthly[1]      == createDecimal("0.02"));    // Feb
+    REQUIRE(monthly[2]      == createDecimal("-0.02"));   // Mar
+    REQUIRE(monthly.back()  == createDecimal("-0.01"));   // Dec
+
+    // 2) Compute ACF up to 6 lags
+    const std::size_t maxLag = 6;
+    auto acf = Stat::computeACF(monthly, maxLag);
+
+    // ACF shape: length = min(maxLag, n-1) + 1 = 7, and rho[0] == 1
+    REQUIRE(acf.size() == 7);
+    REQUIRE(num::to_double(acf[0]) == Catch::Approx(1.0));
+
+    // 3) Suggest stationary bootstrap block length using the heuristic
+    //    thresh = 2/sqrt(n) with n = 12 → ~0.577.
+    const double thresh = 2.0 / std::sqrt(12.0);
+
+    // Recompute k* like the production heuristic does (largest lag with |rho(k)| > thresh)
+    unsigned k_star = 1;
+    for (std::size_t k = 1; k < acf.size(); ++k) {
+        if (std::fabs(num::to_double(acf[k])) > thresh) {
+            k_star = static_cast<unsigned>(k);
+        }
+    }
+
+    // Production clamp is [2,6] by default
+    const unsigned expectedL = std::max<unsigned>(2, std::min<unsigned>(6, k_star));
+
+    const unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, monthly.size(),
+                                                                 /*minL=*/2, /*maxL=*/6);
+
+    // 4) The suggested L should match the heuristic’s clamped k*
+    REQUIRE(L == expectedL);
+
+    // 5) Sanity: L is within [2,6]
+    REQUIRE(L >= 2);
+    REQUIRE(L <= 6);
+}
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust correctness & stability", "[StatUtils][LPF][Robust]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Robust LPF is conservative vs classic on typical mixed returns") {
+        // Balanced sample with non-trivial wins and losses
+        std::vector<DecimalType> r = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"), DecimalType("0.15"),
+            DecimalType("0.05"),  DecimalType("-0.02")
+        };
+
+        // Classic LPF (uncompressed)
+        DecimalType lpf_classic = Stat::computeLogProfitFactor(r, /*compressResult=*/false);
+
+        // Robust LPF (uncompressed; default priors)
+        DecimalType lpf_robust  = Stat::computeLogProfitFactorRobust(
+            r,
+            /*compressResult=*/false
+        );
+
+        // Robust should not exceed classic (adds denominator ridge & ruin clamp)
+        REQUIRE(num::to_double(lpf_robust) <= num::to_double(lpf_classic) + 1e-12);
+    }
+
+    SECTION("Ruin handling: robust LPF penalizes near/at -100% events instead of skipping them") {
+        // Contains invalid log arguments in classic path (-1.0, -1.5) → classic ends up with only wins
+        // and returns the 'no-loss' sentinel (100). Robust should clamp & count losses → much smaller LPF.
+        std::vector<DecimalType> r = { DecimalType("0.50"), DecimalType("-1.0"), DecimalType("-1.5") };
+
+        DecimalType lpf_classic = Stat::computeLogProfitFactor(r, /*compressResult=*/false);
+        DecimalType lpf_robust  = Stat::computeLogProfitFactorRobust(r, /*compressResult=*/false);
+
+        // Classic goes to sentinel 100; robust must be finite and strictly smaller.
+        REQUIRE(lpf_classic == DecimalConstants<DecimalType>::DecimalOneHundred);
+        REQUIRE(num::to_double(lpf_robust) < 100.0);
+        REQUIRE(num::to_double(lpf_robust) >= 0.0); // still non-negative by definition
+    }
+
+    SECTION("Small-loss denominator stabilization: robust LPF prevents huge blow-ups") {
+        // Tiny losses can make classic denominator ~0 in log-space → enormous LPF
+        std::vector<DecimalType> r = {
+            DecimalType("0.03"), DecimalType("0.02"), DecimalType("0.01"),
+            DecimalType("-0.00000001"), DecimalType("-0.00000002")
+        };
+
+        DecimalType lpf_classic = Stat::computeLogProfitFactor(r, /*compressResult=*/false);
+        DecimalType lpf_robust  = Stat::computeLogProfitFactorRobust(r, /*compressResult=*/false);
+
+        // Robust should be ≤ classic (ridge in denominator) and not NaN/inf
+        REQUIRE(num::to_double(lpf_robust) <= num::to_double(lpf_classic) + 1e-12);
+        REQUIRE(std::isfinite(num::to_double(lpf_robust)));
+    }
+
+    SECTION("Compression consistency: compressed == log1p(uncompressed)") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        DecimalType uncompressed = Stat::computeLogProfitFactorRobust(
+            r,
+            /*compressResult=*/false
+        );
+        DecimalType compressed = Stat::computeLogProfitFactorRobust(
+            r,
+            /*compressResult=*/true
+        );
+
+        const double exp_compressed = std::log1p(num::to_double(uncompressed));
+        REQUIRE(num::to_double(compressed) == Catch::Approx(exp_compressed).margin(1e-12));
+    }
+
+    SECTION("Prior strength monotonicity: larger prior_strength → smaller (more conservative) LPF") {
+        std::vector<DecimalType> r = {
+            DecimalType("0.12"), DecimalType("-0.04"),
+            DecimalType("0.09"), DecimalType("-0.03"),
+            DecimalType("0.02")
+        };
+
+        // Hold all knobs equal, vary prior_strength
+        const bool   compress = false;
+        const double eps      = 1e-8;
+        const double floor    = 1e-6;
+
+        DecimalType lpf_ps_0_5 = Stat::computeLogProfitFactorRobust(r, compress, eps, floor, /*prior_strength=*/0.5);
+        DecimalType lpf_ps_1_0 = Stat::computeLogProfitFactorRobust(r, compress, eps, floor, /*prior_strength=*/1.0);
+        DecimalType lpf_ps_2_0 = Stat::computeLogProfitFactorRobust(r, compress, eps, floor, /*prior_strength=*/2.0);
+
+        REQUIRE(num::to_double(lpf_ps_1_0) <= num::to_double(lpf_ps_0_5) + 1e-12);
+        REQUIRE(num::to_double(lpf_ps_2_0) <= num::to_double(lpf_ps_1_0) + 1e-12);
+    }
+
+    SECTION("Ruin clamp epsilon prevents -inf and yields finite conservative value") {
+        // A single ruin bar with no positive bars; classic would skip and report 'no-loss' sentinel (100).
+        std::vector<DecimalType> r = { DecimalType("-1.0") };
+
+        DecimalType lpf_classic = Stat::computeLogProfitFactor(r, /*compressResult=*/false);
+        DecimalType lpf_robust  = Stat::computeLogProfitFactorRobust(
+            r,
+            /*compressResult=*/false,
+            /*ruin_eps=*/1e-8,  // explicit for test clarity
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0
+        );
+
+        REQUIRE(lpf_classic == DecimalConstants<DecimalType>::DecimalOneHundred); // classic 'no-loss' path
+        REQUIRE(std::isfinite(num::to_double(lpf_robust)));
+        // With only losses, numerator ~ 0 → robust LPF should be ~0 (or very small, due to ridge)
+        REQUIRE(num::to_double(lpf_robust) >= 0.0);
+        REQUIRE(num::to_double(lpf_robust) <= 0.10); // generous upper cap for this corner
+    }
+}

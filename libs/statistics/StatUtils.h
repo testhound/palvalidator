@@ -259,7 +259,118 @@ namespace mkc_timeseries
 	
       return computeFactor(win, loss, compressResult);
     }
+
+    /**
+     * @brief Computes a robust, regularized Profit Factor in logarithmic space.
+     * @details This function calculates a highly stabilized version of the Profit Factor
+     * by transforming returns into log space (`log(1+r)`), which inherently tames
+     * the impact of extreme outliers. It introduces several "tricks" to enhance
+     * its statistical stability and honesty, especially for series with few trades
+     * or catastrophic losses:
+     *
+     * 1.  **Log Transformation**: Mitigates the effect of massive outlier wins/losses.
+     * 2.  **Ruin-Aware Clamping**: Instead of ignoring ruinous trades (r <= -100%),
+     * it clamps them to a small value (`ruin_eps`), ensuring they are heavily
+     * penalized rather than discarded.
+     * 3.  **Bayesian Regularization**: It adds a "pseudo-loss" (a prior) to the
+     * denominator. This prior is based on the median log-loss magnitude, which
+     * prevents the Profit Factor from becoming infinite or unstable when there
+     * are few or no observed losses. This makes the metric more reliable for
+     * short return series.
+     * 4.  **Denominator Floor**: An absolute minimum value for the denominator is
+     * enforced to prevent division by pathologically small numbers.
+     *
+     * The resulting metric is less susceptible to distortion and provides a more
+     * conservative and reliable measure of a strategy's profitability.
+     *
+     * @param xs A vector of returns.
+     * @param compressResult If true (default), applies a final `log(1+x)`
+     * compression to the result to make it more symmetric and easier to compare.
+     * @param ruin_eps A small positive value to clamp the growth factor (1+r) to when
+     * it is <= 0. This prevents undefined logs and penalizes ruinous outcomes.
+     * @param denom_floor An absolute minimum value for the denominator (in log-space
+     * units) to ensure numerical stability.
+     * @param prior_strength A multiplier for the median log-loss used to create the
+     * Bayesian prior. A value of 1.0 represents one "pseudo-loss" of typical magnitude.
+     * @return The robust Log Profit Factor as a Decimal.
+     */
+    static Decimal computeLogProfitFactorRobust(const std::vector<Decimal>& xs,
+						bool   compressResult = true,     // default to compressed output
+						double ruin_eps       = 1e-8,     // clamp for (1+r) near/under 0
+						double denom_floor    = 1e-6,     // absolute floor in log-space units
+						double prior_strength = 1.0       // ~1 “pseudo-loss” of median magnitude
+						)
+    {
+      if (xs.empty())
+	return DecimalConstants<Decimal>::DecimalZero;
+
+      // --- Algorithm Step 1: Build log(1+r) streams with ruin-aware clamping ---
+      // This loop transforms each raw return 'r' into its log-space equivalent 'log(1+r)'.
+      // It separates them into sums of log-wins and log-losses and handles ruinous trades.
+      std::vector<double> loss_magnitudes; // store |-log(1+r)| for losses
+      loss_magnitudes.reserve(xs.size());
+
+      Decimal sum_log_wins(DecimalConstants<Decimal>::DecimalZero);
+      Decimal sum_log_losses(DecimalConstants<Decimal>::DecimalZero); // negative sum
+
+      for (auto r : xs)
+	{
+	  double rr = num::to_double(r);
+	  double m  = 1.0 + rr;
+	  if (m <= 0.0)
+	    m = ruin_eps; // keep tail instead of skipping
+	  
+	  const double lr = std::log(m);
+	  if (rr > 0.0)
+	    {
+	      sum_log_wins += Decimal(lr);       // lr > 0
+	    }
+	  else if (rr < 0.0 || lr < 0.0)       // include zero/flat only if lr < 0
+	    {
+	      sum_log_losses += Decimal(lr);     // lr <= 0
+	      loss_magnitudes.push_back(-lr);    // store positive magnitude
+	    }
+	}
+
+      // --- Algorithm Step 2: Compute a robust Bayesian prior for the denominator ---
+      // To prevent division by zero when no losses occur, we add a "pseudo-loss" to the
+      // denominator. This prior is based on the median loss magnitude, which is a robust
+      // measure of a "typical" loss, unaffected by extreme outliers.
+      Decimal prior_loss_mag(DecimalConstants<Decimal>::DecimalZero);
+      if (!loss_magnitudes.empty())
+	{
+	  // Compute median in double then wrap to Decimal
+	  std::nth_element(loss_magnitudes.begin(),
+			   loss_magnitudes.begin() + loss_magnitudes.size()/2,
+			   loss_magnitudes.end());
+	  const double med = loss_magnitudes[loss_magnitudes.size()/2];
+	  prior_loss_mag = Decimal(med) * Decimal(prior_strength);
+	}
+      else
+	{
+	  // If no observed losses, use a conservative prior magnitude consistent with ruin_eps
+	  prior_loss_mag = Decimal(std::max(-std::log(1.0 - 1e-3), denom_floor)) * Decimal(prior_strength);
+	}
+
+      // 3) Form stabilized numerator/denominator (denom is |sum of negative logs|)
+      Decimal numer = sum_log_wins;
+      Decimal denom = num::abs(sum_log_losses) + prior_loss_mag;
       
+      // Absolute floor to prevent pathological tiny denominators
+      if (denom < Decimal(denom_floor))
+	denom = Decimal(denom_floor);
+
+      Decimal pf = (denom > DecimalConstants<Decimal>::DecimalZero)
+	? (numer / denom)
+	: DecimalConstants<Decimal>::DecimalZero;
+      
+      // 4) Optional final compression
+      if (compressResult)
+	return Decimal(std::log(num::to_double(DecimalConstants<Decimal>::DecimalOne + pf)));
+
+      return pf;
+    }
+    
     /**
      * @brief Computes the Log Profit Factor from a series of returns.
      * @details This variant takes the logarithm of each return (plus one) before summing,
@@ -415,6 +526,102 @@ namespace mkc_timeseries
       return std::make_tuple(lpf, p_log);
     }
 
+    /**
+     * @brief Compute the autocorrelation function (ACF) ρ[k] for k=0..maxLag, in Decimal.
+     *
+     * @tparam Decimal  dec::decimal<...> (or compatible numeric) type.
+     * @param monthly   Vector of monthly returns (decimal fractions, e.g. 0.012 == +1.2%).
+     * @param maxLag    Maximum lag to compute (capped at n-1).
+     * @return          std::vector<Decimal> with length (min(maxLag,n-1)+1), ρ[0] == 1.
+     *
+     * Definition:
+     *   ρ(k) = sum_{t=k}^{n-1} (x_t - μ)(x_{t-k} - μ) / sum_{t=0}^{n-1} (x_t - μ)^2
+     */
+    static std::vector<Decimal>
+    computeACF(const std::vector<Decimal>& monthly, std::size_t maxLag)
+    {
+      const std::size_t n = monthly.size();
+      if (n < 2) {
+        throw std::invalid_argument("computeACF: need at least 2 months to compute ACF.");
+      }
+
+      const std::size_t L = (maxLag >= (n - 1)) ? (n - 1) : maxLag;
+
+      // Mean in Decimal
+      Decimal mu = Decimal(0);
+      for (const auto& v : monthly)
+	mu += v;
+      
+      mu /= Decimal(static_cast<double>(n)); // safe: Decimal / Decimal
+
+      // Centered values and denominator (sum of squares)
+      std::vector<Decimal> xd(n);
+      Decimal denom = Decimal(0);
+      for (std::size_t t = 0; t < n; ++t)
+	{
+	  xd[t] = monthly[t] - mu;
+	  denom += xd[t] * xd[t];
+	}
+
+      std::vector<Decimal> acf(L + 1, Decimal(0));
+      if (denom == Decimal(0)) {
+        // Constant series: define ρ[0]=1 and others = 0
+        acf[0] = Decimal(1);
+        return acf;
+      }
+
+      acf[0] = Decimal(1);
+
+      for (std::size_t k = 1; k <= L; ++k)
+	{
+	  Decimal num = Decimal(0);
+	  for (std::size_t t = k; t < n; ++t)
+	    num += xd[t] * xd[t - k];
+
+	  acf[k] = num / denom;   // stays in Decimal
+	}
+
+      return acf;
+    }
+
+    /**
+     * @brief Suggest a stationary-bootstrap mean block length from an ACF curve.
+     *
+     * Heuristic:
+     *  - Noise band ≈ 2/sqrt(nSamples).
+     *  - Let k* be the largest lag with |ρ(k)| > band, clamp to [minL, maxL].
+     *
+     * Works with ACF stored as Decimal or double.
+     */
+    static unsigned
+    suggestStationaryBlockLengthFromACF(const std::vector<Decimal>& acf,
+    	std::size_t nSamples,
+    	unsigned minL = 2,
+    	unsigned maxL = 6)
+    {
+      if (acf.empty() || nSamples == 0)
+        throw std::invalid_argument("suggestStationaryBlockLengthFromACF: empty ACF or nSamples=0.");
+
+      const double thresh = 2.0 / std::sqrt(static_cast<double>(nSamples));
+      unsigned k_star = 1;
+
+      // skip ρ[0]
+      for (std::size_t k = 1; k < acf.size(); ++k)
+	{
+	  const double rk = std::fabs(acf[k].getAsDouble());
+	  if (rk > thresh)
+	    k_star = static_cast<unsigned>(k);
+	}
+
+      if (k_star < minL)
+	k_star = minL;
+
+      if (k_star > maxL)
+	k_star = maxL;
+
+      return k_star;
+    }
+    
     static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
 								     std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
 								     size_t numBootstraps = 100)
