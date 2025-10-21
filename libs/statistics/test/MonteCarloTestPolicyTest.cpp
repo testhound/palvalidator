@@ -154,21 +154,42 @@ TEST_CASE("Bootstrapped Monte Carlo Policies", "[MonteCarloTestPolicy]") {
       REQUIRE(statistic == failureStat);
     }
 
-    SECTION("Calculates a statistic whose distribution is centered on the true log profit factor") {
+    SECTION("Returns a conservative BCa lower bound for log profit factor") {
       backtester->setNumTrades(minTrades);
       backtester->setHighResReturns(returns);
+
       DT trueLPF = StatUtils<DT>::computeLogProfitFactor(returns);
-            
+
       std::vector<DT> results;
-      results.reserve(100);
-      for(int i = 0; i < 100; ++i) {
+      results.reserve(150);
+      for (int i = 0; i < 150; ++i) {
 	results.push_back(BootStrappedLogProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester));
       }
 
-      DT mean_lpf = StatUtils<DT>::computeMean(results);
-      DT stddev_lpf = StatUtils<DT>::computeStdDev(results, mean_lpf);
+      DT mean_lpf   = StatUtils<DT>::computeMean(results);
+      // 1) Conservative on average
+      REQUIRE(num::to_double(mean_lpf) <= num::to_double(trueLPF) + 1e-12);
 
-      REQUIRE_THAT(num::to_double(trueLPF), Catch::Matchers::WithinAbs(num::to_double(mean_lpf), num::to_double(stddev_lpf * DT(3.0))));
+      // 2) Coverage sanity: most draws should be ≤ true LPF
+      size_t covered = 0;
+      for (const auto& lb : results) if (lb <= trueLPF) ++covered;
+      REQUIRE(covered >= 135); // ≥90% of 150 draws conservative
+      
+      // 3) Monotonicity: if we improve returns (3% wins / 1% losses), LB should increase
+      std::vector<DT> stronger = returns;
+      for (auto& r : stronger) {
+	if (r > DT(0)) r = DT("0.03"); else r = DT("-0.01");
+      }
+      backtester->setHighResReturns(stronger);
+
+      std::vector<DT> results_stronger;
+      results_stronger.reserve(100);
+      for (int i = 0; i < 100; ++i) {
+	results_stronger.push_back(BootStrappedLogProfitFactorPolicy<DT>::getPermutationTestStatistic(backtester));
+      }
+      DT mean_lpf_stronger = StatUtils<DT>::computeMean(results_stronger);
+      
+      REQUIRE(num::to_double(mean_lpf_stronger) >= num::to_double(mean_lpf) - 1e-12);
     }
   }
 
