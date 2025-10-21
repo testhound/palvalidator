@@ -88,19 +88,43 @@ namespace mkc_timeseries
                        double   upperQuantileP  = 0.90,
                        unsigned numBootstraps   = 5000,
                        double   confLevel       = 0.95)
+      : BoundFutureReturns(buildMonthlyReturnsFromClosedPositions<Decimal>(closedPositions),
+                           blockLen, lowerQuantileP, upperQuantileP, numBootstraps, confLevel)
+    {
+      // Delegating constructor: builds monthly returns and delegates to the main constructor
+      // This eliminates code duplication between the two constructors
+    }
+
+    /**
+     * @brief Constructor that takes pre-computed monthly returns directly
+     * @param monthlyReturns  Pre-computed vector of monthly returns
+     * @param blockLen         Stationary block length (default 3 months)
+     * @param lowerQuantileP   Lower quantile p in (0, 0.5) (default 0.10)
+     * @param upperQuantileP   Upper quantile p in (0.5, 1)  (default 0.90)
+     * @param numBootstraps    Number of bootstrap replicates B (default 5000)
+     * @param confLevel        Confidence level in (0,1) for BCa CI (default 0.95)
+     *
+     * This constructor avoids rebuilding monthly returns when they are already available.
+     * Throws std::invalid_argument on invalid parameters or insufficient data.
+     */
+    BoundFutureReturns(const std::vector<Decimal> &monthlyReturns,
+                       unsigned blockLen        = 3,
+                       double   lowerQuantileP  = 0.10,
+                       double   upperQuantileP  = 0.90,
+                       unsigned numBootstraps   = 5000,
+                       double   confLevel       = 0.95)
       : m_lowerP(lowerQuantileP),
 	m_upperP(upperQuantileP),
 	m_B(numBootstraps),
-	m_conf(confLevel)
+	m_conf(confLevel),
+	m_monthly(monthlyReturns)
     {
       validateInputs();
 
-      // 1) Aggregate to monthly returns (compounded within calendar month).
-      m_monthly = buildMonthlyReturnsFromClosedPositions<Decimal>(closedPositions);
       if (m_monthly.size() < 8)
         {
-   throw std::invalid_argument(
-          "BoundFutureReturns: need at least ~8 months to estimate quantile bounds robustly.");
+          throw std::invalid_argument(
+				      "BoundFutureReturns: need at least ~8 months to estimate quantile bounds robustly.");
         }
 
       // 2) Resampler for BCa (stationary block by default).
@@ -195,19 +219,19 @@ namespace mkc_timeseries
     {
       if (!(m_lowerP > 0.0 && m_lowerP < 0.5))
         {
-   throw std::invalid_argument("BoundFutureReturns: lowerQuantileP must be in (0, 0.5).");
+	  throw std::invalid_argument("BoundFutureReturns: lowerQuantileP must be in (0, 0.5).");
         }
       if (!(m_upperP > 0.5 && m_upperP < 1.0))
         {
-   throw std::invalid_argument("BoundFutureReturns: upperQuantileP must be in (0.5, 1).");
+	  throw std::invalid_argument("BoundFutureReturns: upperQuantileP must be in (0.5, 1).");
         }
       if (m_B < 1000)
         {
-   throw std::invalid_argument("BoundFutureReturns: numBootstraps should be >= ~1000.");
+	  throw std::invalid_argument("BoundFutureReturns: numBootstraps should be >= ~1000.");
         }
       if (!(m_conf > 0.0 && m_conf < 1.0))
         {
-   throw std::invalid_argument("BoundFutureReturns: confLevel must be in (0, 1).");
+	  throw std::invalid_argument("BoundFutureReturns: confLevel must be in (0, 1).");
         }
     }
 

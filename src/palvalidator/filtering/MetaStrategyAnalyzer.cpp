@@ -8,6 +8,7 @@
 #include "DecimalConstants.h"
 #include "BiasCorrectedBootstrap.h"
 #include "BoundedDrawdowns.h"
+#include "BoundFutureReturns.h"
 #include "ParallelExecutors.h"
 #include "StatUtils.h"
 #include "utils/TimeUtils.h"
@@ -350,13 +351,14 @@ namespace palvalidator
 	}
 
       if (metaReturns.size() < 2U)
-	{
-	  outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
-	  DrawdownResults emptyDrawdown;
-	  return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-				DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
-				false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown);
-	}
+ {
+   outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
+   DrawdownResults emptyDrawdown;
+   return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+    DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+    false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
+    DecimalConstants<Num>::DecimalZero);
+ }
 
       // --- Metrics used by both gates ------------------------------------------
       const uint32_t numTrades        = bt->getClosedPositionHistory().getNumPositions();
@@ -415,6 +417,11 @@ namespace palvalidator
       // --- Final decision for this pyramid level --------------------------------
       const bool pyramidPassed = (regularBootstrapPass && multiSplitPass);
 
+            // --- Future Returns Bound Analysis ----------------------------------------
+      const auto& closedPositionHistory = bt->getClosedPositionHistory();
+      outputStream << "\n";
+      Num futureReturnsLowerBoundPct = performFutureReturnsBoundAnalysis(closedPositionHistory, outputStream);
+
       outputStream << std::endl;
       outputStream << "      Annualized Lower Bound (GeoMean, compounded): "
 		   << (bootstrapResults.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
@@ -458,8 +465,60 @@ namespace palvalidator
 
       // --- Return per-level results --------------------------------------------
       return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-			    bootstrapResults.lbGeoAnn, H.baseHurdle,
-			    pyramidPassed, metaAnnualizedTrades, numTrades, bt, drawdownResults);
+       bootstrapResults.lbGeoAnn, H.baseHurdle,
+       pyramidPassed, metaAnnualizedTrades, numTrades, bt, drawdownResults,
+       futureReturnsLowerBoundPct);
+    }
+    
+    Num MetaStrategyAnalyzer::performFutureReturnsBoundAnalysis(
+        const ClosedPositionHistory<Num>& closedPositionHistory,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+      
+      if (closedPositionHistory.getNumPositions() < 8)
+      {
+        outputStream << "      Future Returns Bound Analysis: Skipped "
+                     << "(need at least 8 monthly returns, have "
+                     << closedPositionHistory.getNumPositions() << " positions)\n";
+        return DecimalConstants<Num>::DecimalZero;
+      }
+      
+      try
+      {
+        using BoundFutureReturns = mkc_timeseries::BoundFutureReturns<Num>;
+
+        // 1) Build monthly returns from closed trades
+        const auto monthly =
+          mkc_timeseries::buildMonthlyReturnsFromClosedPositions<Num>(closedPositionHistory);
+
+        const unsigned blockLength = 4;
+
+        // 3) Use new constructor that takes pre-computed monthly returns directly
+        //    This avoids rebuilding monthly returns inside BoundFutureReturns
+        BoundFutureReturns futureReturns(monthly,  // Pass monthly returns directly
+                                         blockLength,
+                                         0.10, 0.90,  // default quantiles (10th and 90th percentile)
+                                         mNumResamples,  // bootstrap resamples
+                                         mConfidenceLevel.getAsDouble());
+         
+        // Get lower bound as percentage (getLowerBound() * 100.0)
+        Num futureReturnsLowerBoundPct = futureReturns.getLowerBound() *
+          DecimalConstants<Num>::DecimalOneHundred;
+        
+        outputStream << "      Future Returns Lower Bound (monthly BCa): "
+                     << futureReturnsLowerBoundPct << "% "
+                     << "(monthly vector size: " << monthly.size()
+                     << ", block length: " << blockLength << ")\n";
+        
+        return futureReturnsLowerBoundPct;
+      }
+      catch (const std::exception& e)
+      {
+        outputStream << "      Future Returns Bound Analysis: Failed - "
+                     << e.what() << "\n";
+        return DecimalConstants<Num>::DecimalZero;
+      }
     }
     
     std::shared_ptr<BackTester<Num>> MetaStrategyAnalyzer::executeBacktesting(
@@ -987,8 +1046,8 @@ namespace palvalidator
 
       // Write comparison summary
       performanceFile << "=== Pyramid Comparison Summary ===" << std::endl;
-      performanceFile << "Level | Description              | Ann. Lower Bound | Required Return | Pass/Fail | Trades/Year" << std::endl;
-      performanceFile << "------|--------------------------|------------------|-----------------|-----------|------------" << std::endl;
+      performanceFile << "Level | Description              | Ann. Lower Bound | Future Ret LB | Required Return | Pass/Fail | Trades/Year" << std::endl;
+      performanceFile << "------|--------------------------|------------------|---------------|-----------------|-----------|------------" << std::endl;
       
       // Save original stream state to restore it later
       std::ios_base::fmtflags original_flags = performanceFile.flags();
@@ -1004,6 +1063,8 @@ namespace palvalidator
                          << std::left << std::setw(24) << result.getDescription() << " | "
                          << std::right << std::setw(15)
                          << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
+                         << std::right << std::setw(12)
+                         << result.getFutureReturnsLowerBound().getAsDouble() << "% | "
                          << std::right << std::setw(14)
                          << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
                          << std::right << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
@@ -1039,8 +1100,8 @@ namespace palvalidator
 						       std::ostream& outputStream) const
     {
       outputStream << "\n[Meta] Pyramid Analysis Summary:\n";
-      outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Drawdown UB | Required Return | Pass/Fail\n";
-      outputStream << "      ------|--------------------------|----------|------------------|-------------|-----------------|----------\n";
+      outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Future Ret LB | Drawdown UB | Required Return | Pass/Fail\n";
+      outputStream << "      ------|--------------------------|----------|------------------|---------------|-------------|-----------------|----------\n";
 
       // Save original stream state to restore it later
       std::ios_base::fmtflags original_flags = outputStream.flags();
@@ -1073,7 +1134,11 @@ namespace palvalidator
 
 	  // Ann. Lower Bound
 	  outputStream << std::right << std::setw(15)
-		       << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | ";
+	        << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | ";
+
+	  // Future Returns Lower Bound
+	  outputStream << std::right << std::setw(12)
+	        << result.getFutureReturnsLowerBound().getAsDouble() << "% | ";
 
 	  // Drawdown UB
 	  if (drawdownResults.hasResults())

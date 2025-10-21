@@ -211,11 +211,13 @@ namespace palvalidator
           PyramidResults(unsigned int pyramidLevel, const std::string& description,
                         const Num& annualizedLowerBound, const Num& requiredReturn,
                         bool passed, const Num& annualizedTrades, uint32_t numTrades,
-                        std::shared_ptr<BackTester<Num>> backTester, const DrawdownResults& drawdownResults)
+                        std::shared_ptr<BackTester<Num>> backTester, const DrawdownResults& drawdownResults,
+                        const Num& futureReturnsLowerBound)
               : mPyramidLevel(pyramidLevel), mDescription(description),
                 mAnnualizedLowerBound(annualizedLowerBound), mRequiredReturn(requiredReturn),
                 mPassed(passed), mAnnualizedTrades(annualizedTrades), mNumTrades(numTrades),
-                mBackTester(backTester), mDrawdownResults(drawdownResults) {}
+                mBackTester(backTester), mDrawdownResults(drawdownResults),
+                mFutureReturnsLowerBound(futureReturnsLowerBound) {}
           
           // Getters
           unsigned int getPyramidLevel() const { return mPyramidLevel; }
@@ -227,6 +229,7 @@ namespace palvalidator
           uint32_t getNumTrades() const { return mNumTrades; }
           std::shared_ptr<BackTester<Num>> getBackTester() const { return mBackTester; }
           const DrawdownResults& getDrawdownResults() const { return mDrawdownResults; }
+          const Num& getFutureReturnsLowerBound() const { return mFutureReturnsLowerBound; }
           
       private:
           unsigned int mPyramidLevel;
@@ -238,6 +241,7 @@ namespace palvalidator
           uint32_t mNumTrades;
           std::shared_ptr<BackTester<Num>> mBackTester;
           DrawdownResults mDrawdownResults;
+          Num mFutureReturnsLowerBound;
       };
 
       // Helper methods for analyzeMetaStrategyUnified
@@ -323,6 +327,16 @@ namespace palvalidator
           const std::vector<Num>& metaReturns,
           uint32_t numTrades,
           size_t blockLength) const;
+      
+      /**
+       * @brief Perform future returns bound analysis on closed position history
+       * @param closedPositionHistory History of closed positions
+       * @param outputStream Output stream for logging
+       * @return Lower bound percentage for future returns (0 if analysis fails or insufficient data)
+       */
+      Num performFutureReturnsBoundAnalysis(
+          const ClosedPositionHistory<Num>& closedPositionHistory,
+          std::ostream& outputStream) const;
 
       // Helper methods for performStatisticalAnalysis
       void calculatePerPeriodEstimates(
