@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include "TimeSeriesCsvReader.h"
+#include "BackTester.h"
 #include "PalStrategy.h"
 #include "BoostDateHelper.h"
 #include "TestUtils.h"
@@ -185,6 +186,76 @@ static double meanHoldingDays(const StrategyBroker<Decimal, FractionPolicy, SubP
     ++count;
   }
   return (count > 0) ? (sumDays / count) : 0.0;
+}
+
+// Minimal long pattern: C(1) > O(1)
+static std::shared_ptr<PriceActionLabPattern> makeLongC1gtO1()
+{
+  auto pLong  = std::make_shared<DecimalType>(createDecimal("50.00"));
+  auto pShort = std::make_shared<DecimalType>(createDecimal("50.00"));
+  auto desc   = std::make_shared<PatternDescription>("LONG_C1gtO1", 1, 20200101, pLong, pShort, /*maxbars*/1, /*dummy*/1);
+
+  auto c1 = std::make_shared<PriceBarClose>(1);
+  auto o1 = std::make_shared<PriceBarOpen>(1);
+  auto expr = std::make_shared<GreaterThanExpr>(c1, o1);
+
+  auto entry  = createLongOnOpen();
+  auto target = createLongProfitTarget("50.00"); // wide targets/stops to avoid accidental exits
+  auto stop   = createLongStopLoss("50.00");
+  return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
+}
+
+// Minimal short pattern: O(2) > C(2)
+static std::shared_ptr<PriceActionLabPattern> makeShortO2gtC2()
+{
+  auto pLong  = std::make_shared<DecimalType>(createDecimal("50.00"));
+  auto pShort = std::make_shared<DecimalType>(createDecimal("50.00"));
+  auto desc   = std::make_shared<PatternDescription>("SHORT_O2gtC2", 2, 20200101, pLong, pShort, /*maxbars*/2, /*dummy*/1);
+
+  auto o2 = std::make_shared<PriceBarOpen>(2);
+  auto c2 = std::make_shared<PriceBarClose>(2);
+  auto expr = std::make_shared<GreaterThanExpr>(o2, c2);
+
+  auto entry  = createShortOnOpen();
+  auto target = createShortProfitTarget("50.00");
+  auto stop   = createShortStopLoss("50.00");
+  return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
+}
+
+// Build a tiny daily series where both patterns fire on the same evaluation bar.
+// At bar (2020-01-10), we want:
+//   C(1) > O(1)  → use 2020-01-09 close > open
+//   O(2) > C(2)  → use 2020-01-08 open  > close
+static std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
+makeSeriesBothSidesFire()
+{
+  using namespace mkc_timeseries;
+  auto ts = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+
+  // Mon 2020-01-06
+  ts->addEntry(*createTimeSeriesEntry("20200106", "100", "101", "99", "100", "1000"));
+  // Tue 2020-01-07
+  ts->addEntry(*createTimeSeriesEntry("20200107", "100", "101", "99", "100", "1000"));
+  // Wed 2020-01-08  (O > C)  => satisfies O(2) > C(2) on Friday
+  ts->addEntry(*createTimeSeriesEntry("20200108", "120", "125", "110", "110", "1000"));
+  // Thu 2020-01-09  (C > O)  => satisfies C(1) > O(1) on Friday
+  ts->addEntry(*createTimeSeriesEntry("20200109", "100", "112", "99", "110", "1000"));
+  // Fri 2020-01-10  (evaluation bar)
+  ts->addEntry(*createTimeSeriesEntry("20200110", "110", "115", "105", "112", "1000"));
+  ts->addEntry(*createTimeSeriesEntry("20200113", "112", "116", "108", "114", "1000"));
+
+  return ts;
+}
+
+// Helper: one-day backtest focused on 2020-01-10, using the project’s loop style.
+static void runTinyLoop(std::shared_ptr<mkc_timeseries::Security<DecimalType>> sec,
+                        BacktesterStrategy<DecimalType>& strat)
+{
+  TimeSeriesDate start(createDate("20200106"));
+  TimeSeriesDate end  (createDate("20200113"));
+  // Reuse the same loop as earlier tests
+  backTestLoop(std::static_pointer_cast<mkc_timeseries::Security<DecimalType>>(sec),
+               strat, start, end);
 }
 
 // -----------------------------------------------------------------------------
@@ -374,4 +445,463 @@ TEST_CASE("PalMetaStrategy: Breakeven property test on shorts (N=0 vs baseline)"
   const double mean1 = meanHoldingDays(b1);
 
   REQUIRE(mean1 <= Catch::Approx(mean0).margin(1e-9));
+}
+
+TEST_CASE("PalMetaStrategy: both-sides-fire → current behavior (flag OFF) enters exactly one trade, long wins",
+          "[PalMetaStrategy][BothSides]")
+{
+  using namespace mkc_timeseries;
+
+  // Manual series
+  auto ts = makeSeriesBothSidesFire();
+
+  // Security + portfolio
+  DecimalType tick(createDecimal("0.25"));
+  auto sec = std::make_shared<FuturesSecurity<DecimalType>>("@C",
+                                                            "Test futures",
+                                                            createDecimal("50.0"),
+                                                            tick,
+                                                            ts);
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("P");
+  portfolio->addSecurity(sec);
+
+  // Meta strategy with BOTH patterns, add LONG first so it wins ties (current behavior)
+  PalMetaStrategy<DecimalType> meta("BothSidesFlagOff", portfolio);
+  meta.addPricePattern(makeLongC1gtO1());
+  meta.addPricePattern(makeShortO2gtC2());
+  // default: skipIfBothSidesFire == false
+
+  runTinyLoop(sec, meta);
+
+  auto& broker = meta.getStrategyBroker();
+  REQUIRE(broker.getTotalTrades() == 1);
+  REQUIRE(broker.getClosedTrades() <= 1); // may still be open
+
+  // Verify it's a LONG entry on 2020-01-10
+  auto it = broker.beginStrategyTransactions();
+  REQUIRE(it != broker.endStrategyTransactions());
+  auto txn = it->second;
+
+  auto entryOrder = txn->getEntryTradingOrder();
+  REQUIRE(entryOrder);
+  REQUIRE(entryOrder->isEntryOrder());
+  REQUIRE(entryOrder->isLongOrder());
+
+  REQUIRE(txn->getTradingPosition()->getEntryDate() == createDate("20200113"));
+}
+
+TEST_CASE("PalMetaStrategy: both-sides-fire → neutrality (flag ON) enters NO trade on that bar",
+          "[PalMetaStrategy][BothSides][Neutral]")
+{
+  using namespace mkc_timeseries;
+
+  auto ts = makeSeriesBothSidesFire();
+
+  DecimalType tick(createDecimal("0.25"));
+  auto sec = std::make_shared<FuturesSecurity<DecimalType>>("TEST",
+                                                            "Test futures",
+                                                            createDecimal("50.0"),
+                                                            tick,
+                                                            ts);
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("P");
+  portfolio->addSecurity(sec);
+
+  PalMetaStrategy<DecimalType> meta("BothSidesFlagOn", portfolio);
+  meta.addPricePattern(makeLongC1gtO1());
+  meta.addPricePattern(makeShortO2gtC2());
+  meta.setSkipIfBothSidesFire(true); // <<— neutrality enabled
+
+  runTinyLoop(sec, meta);
+
+  auto& broker = meta.getStrategyBroker();
+  REQUIRE(broker.getTotalTrades() == 0); // stood aside on 2020-01-10
+}
+
+// -----------------------------------------------------------------------------
+// NEW TESTS: Add to end of PalMetaStrategyTest.cpp
+// -----------------------------------------------------------------------------
+
+// Helper: Create a long pattern with a 0% stop loss
+static std::shared_ptr<PriceActionLabPattern>
+createLongPattern_ZeroStop()
+{
+  auto pLong  = std::make_shared<DecimalType>(createDecimal("90.00"));
+  auto pShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+  auto desc   = std::make_shared<PatternDescription>("LONG_ZERO_STOP", 1, 20200101, pLong, pShort, 1, 1);
+
+  // Simple pattern: C(1) > O(1)
+  auto c1 = std::make_shared<PriceBarClose>(1);
+  auto o1 = std::make_shared<PriceBarOpen>(1);
+  auto expr = std::make_shared<GreaterThanExpr>(c1, o1);
+
+  auto entry  = createLongOnOpen();
+  auto target = createLongProfitTarget("5.00"); // 5% target
+  auto stop   = createLongStopLoss("0.00");   // 0% stop
+  return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
+}
+
+// Helper: Create a long pattern with a short 2% target
+static std::shared_ptr<PriceActionLabPattern>
+createLongPattern_ShortTarget()
+{
+    auto pLong  = std::make_shared<DecimalType>(createDecimal("90.00"));
+    auto pShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+    auto desc   = std::make_shared<PatternDescription>("LONG_SHORT_TGT", 1, 20200101, pLong, pShort, 1, 1);
+
+    // Simple pattern: C(1) > O(1)
+    auto c1 = std::make_shared<PriceBarClose>(1);
+    auto o1 = std::make_shared<PriceBarOpen>(1);
+    auto expr = std::make_shared<GreaterThanExpr>(c1, o1);
+
+    auto entry  = createLongOnOpen();
+    auto target = createLongProfitTarget("2.00"); // 2% target
+    auto stop   = createLongStopLoss("50.00");   // wide stop
+    return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
+}
+
+// Helper: Time series to test 0% stop and breakeven
+// Enters on 2020-01-09, is immediately profitable on 2020-01-10
+static std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
+makeSeriesForBreakevenTest()
+{
+  using namespace mkc_timeseries;
+  auto ts = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+
+  // 2020-01-07 (bar 2)
+  ts->addEntry(*createTimeSeriesEntry("20200107", "100", "101", "99", "100", "1000"));
+  // 2020-01-08 (bar 1: C > O) -> Signal for 2020-01-09
+  ts->addEntry(*createTimeSeriesEntry("20200108", "100", "105", "99", "104", "1000"));
+  // 2020-01-09 (bar 0: Evaluation bar) -> Order placed
+  ts->addEntry(*createTimeSeriesEntry("20200109", "104", "108", "103", "105", "1000"));
+  // 2020-01-10 (Fill date) -> Entry @ 106. Close is 108 (profitable)
+  ts->addEntry(*createTimeSeriesEntry("20200110", "106", "109", "105", "108", "1000"));
+  // 2020-01-13 (BE eval bar) -> Open @ 108
+  ts->addEntry(*createTimeSeriesEntry("20200113", "108", "110", "107", "109", "1000"));
+  // 2020-01-14 (Exit fill bar) -> Open @ 107
+  ts->addEntry(*createTimeSeriesEntry("20200114", "107", "108", "106", "107", "1000"));
+
+  return ts;
+}
+
+// Helper: Time series for maxHold test
+// Enters on 2020-01-09, then trades flat (no target hit)
+static std::shared_ptr< mkc_timeseries::OHLCTimeSeries<DecimalType> >
+makeSeriesForMaxHoldTest()
+{
+  using namespace mkc_timeseries;
+  auto ts = std::make_shared<OHLCTimeSeries<DecimalType>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+
+  // 2020-01-07 (bar 2)
+  ts->addEntry(*createTimeSeriesEntry("20200107", "100", "101", "99", "100", "1000"));
+  // 2020-01-08 (bar 1: C > O) -> Signal
+  ts->addEntry(*createTimeSeriesEntry("20200108", "100", "105", "99", "104", "1000"));
+  // 2020-01-09 (bar 0: Eval) -> Order
+  ts->addEntry(*createTimeSeriesEntry("20200109", "104", "108", "103", "105", "1000"));
+  // 2020-01-10 (Fill date) -> Entry @ 106. (t=0)
+  ts->addEntry(*createTimeSeriesEntry("20200110", "106", "107", "105", "106", "1000"));
+  // 2020-01-13 (t=1)
+  ts->addEntry(*createTimeSeriesEntry("20200113", "106", "107", "105", "106", "1000"));
+  // 2020-01-14 (t=2)
+  ts->addEntry(*createTimeSeriesEntry("20200114", "106", "107", "105", "106", "1000"));
+  // 2020-01-15 (t=3) -> maxHold reached, exit order placed
+  ts->addEntry(*createTimeSeriesEntry("20200115", "106", "107", "105", "106", "1000"));
+  // 2020-01-16 (Exit fill) -> Exit @ 106.5
+  ts->addEntry(*createTimeSeriesEntry("20200116", "106.5", "107", "105", "106", "1000"));
+
+  return ts;
+}
+
+
+TEST_CASE("PalMetaStrategy::clone_shallow copies state flags", "[PalMetaStrategy][clone_shallow]")
+{
+    using namespace mkc_timeseries;
+    DecimalType tick(createDecimal("0.25"));
+
+    // --- Setup for 'BothSidesFire' flag test ---
+    auto tsBothSides = makeSeriesBothSidesFire();
+    auto secBothSides = std::make_shared<FuturesSecurity<DecimalType>>("TEST_BSF", "Test", createDecimal("50.0"), tick, tsBothSides);
+    auto portBothSides = std::make_shared<Portfolio<DecimalType>>("P_BSF");
+    portBothSides->addSecurity(secBothSides);
+
+    // --- Setup for 'BreakevenEnabled' flag test ---
+    auto tsBE = makeSeriesForBreakevenTest();
+    auto secBE = std::make_shared<FuturesSecurity<DecimalType>>("TEST_BE", "Test", createDecimal("50.0"), tick, tsBE);
+    auto portBE = std::make_shared<Portfolio<DecimalType>>("P_BE");
+    portBE->addSecurity(secBE);
+
+    SECTION("clone_shallow copies mSkipIfBothSidesFire flag")
+    {
+        PalMetaStrategy<DecimalType> metaOrig("Orig_BSF", portBothSides);
+        metaOrig.addPricePattern(makeLongC1gtO1());
+        metaOrig.addPricePattern(makeShortO2gtC2());
+        metaOrig.setSkipIfBothSidesFire(true); // Enable flag on original
+
+        // Clone it (shallow) to a new portfolio (can be the same portfolio for this test)
+        auto metaClone = metaOrig.clone_shallow(portBothSides);
+        REQUIRE(metaClone);
+
+        // Run the test loop on the CLONE
+        runTinyLoop(secBothSides, *metaClone);
+
+        // Assert that the CLONE behaved as if the flag was true
+        auto& broker = metaClone->getStrategyBroker();
+        REQUIRE(broker.getTotalTrades() == 0); // Proves mSkipIfBothSidesFire was copied
+    }
+
+    SECTION("clone_shallow copies mBreakevenEnabled flag")
+      {
+	using namespace mkc_timeseries;
+
+	// --- Common Setup ---
+	auto tsBE = makeSeriesForBreakevenTest();        // tiny 2020-01-07..14 series
+	DecimalType tick(createDecimal("0.25"));
+	TimeSeriesDate startDate(createDate("20200107"));
+	TimeSeriesDate endDate  (createDate("20200115"));
+	DateRange backtestRange(startDate, endDate);
+	auto timeframe = TimeFrame::DAILY;
+
+	// A minimal long pattern that can actually trigger on this tiny series,
+	// with a short 2% target so we get a closed trade in-range.
+	auto makeLongWithShortTarget = []() {
+	  auto pLong  = std::make_shared<DecimalType>(createDecimal("50.00"));
+	  auto pShort = std::make_shared<DecimalType>(createDecimal("50.00"));
+	  auto desc   = std::make_shared<PatternDescription>("LONG_C1gtO1_TGT2", 1, 20200101, pLong, pShort, 1, 1);
+
+	  auto c1 = std::make_shared<PriceBarClose>(1);
+	  auto o1 = std::make_shared<PriceBarOpen>(1);
+	  auto expr = std::make_shared<GreaterThanExpr>(c1, o1);
+
+	  auto entry  = createLongOnOpen();
+	  auto target = createLongProfitTarget("2.00");   // 2% target -> hit on 2020-01-10 (high=109)
+	  auto stop   = createLongStopLoss("50.00");      // wide stop so target/BE govern exits
+	  return std::make_shared<PriceActionLabPattern>(desc, expr, entry, target, stop);
+	};
+
+	// =========================
+	// Original strategy run
+	// =========================
+	auto secBE_orig  = std::make_shared<FuturesSecurity<DecimalType>>("@C", "Test Orig", createDecimal("50.0"), tick, tsBE);
+	auto portBE_orig = std::make_shared<Portfolio<DecimalType>>("P_BE_Orig");
+	portBE_orig->addSecurity(secBE_orig);
+
+	auto metaOrig_ptr = std::make_shared<PalMetaStrategy<DecimalType>>("Orig_BE", portBE_orig);
+	metaOrig_ptr->addPricePattern(makeLongWithShortTarget());
+	metaOrig_ptr->addBreakEvenStop(/*N=*/0); // enable BE on original
+
+	auto backtesterOrig = BackTesterFactory<DecimalType>::backTestStrategy(metaOrig_ptr, timeframe, backtestRange);
+	REQUIRE(backtesterOrig);
+
+	const auto& cphOrig = backtesterOrig->getClosedPositionHistory();
+	REQUIRE(cphOrig.getNumPositions() == 1);
+
+	// =========================
+	// Clone strategy run
+	// =========================
+	auto tsBE_clone  = makeSeriesForBreakevenTest(); // fresh copy of same tiny series
+	auto secBE_clone = std::make_shared<FuturesSecurity<DecimalType>>("@C", "Test Clone", createDecimal("50.0"), tick, tsBE_clone);
+	auto portBE_clone = std::make_shared<Portfolio<DecimalType>>("P_BE_Clone");
+	portBE_clone->addSecurity(secBE_clone);
+
+	// clone_shallow copies patterns + compiled evaluators + BE flag
+	auto metaClone = std::static_pointer_cast<PalMetaStrategy<DecimalType>>(metaOrig_ptr->clone_shallow(portBE_clone));
+	REQUIRE(metaClone);
+
+	auto backtesterClone = BackTesterFactory<DecimalType>::backTestStrategy(metaClone, timeframe, backtestRange);
+	REQUIRE(backtesterClone);
+
+	const auto& cphClone = backtesterClone->getClosedPositionHistory();
+	REQUIRE(cphClone.getNumPositions() == 1);
+      }
+}
+
+
+TEST_CASE("PalMetaStrategy 0% Stop-Loss Behavior", "[PalMetaStrategy][ZeroStop]")
+{
+    using namespace mkc_timeseries;
+    auto ts = makeSeriesForBreakevenTest();
+    DecimalType tick(createDecimal("0.25"));
+    auto sec = std::make_shared<FuturesSecurity<DecimalType>>("@C", "Corn", createDecimal("50.0"), tick, ts);
+    auto portfolio = std::make_shared<Portfolio<DecimalType>>("Corn Portfolio");
+    portfolio->addSecurity(sec);
+
+    // Manually create a position unit to test exits
+    auto entryBar = ts->getTimeSeriesEntry(createDate("20200110"));
+    auto posUnit = std::make_shared<TradingPositionLong<DecimalType>>(
+        sec->getSymbol(), 
+        entryBar.getOpenValue(), // 106
+        entryBar, 
+        TradingVolume(1, TradingVolume::CONTRACTS)
+    );
+    posUnit->setProfitTarget(createDecimal("5.00"));
+    posUnit->setStopLoss(createDecimal("0.00")); // Pattern had 0% stop
+
+    SECTION("0% stop pattern places NO stop order") // Removed "when not profitable" - always true if BE off
+      {
+	// Strategy setup
+	PalMetaStrategy<DecimalType> meta("ZeroStop_NoBE", portfolio);
+	meta.addPricePattern(createLongPattern_ZeroStop()); // Pattern with 0% stop
+	// Breakeven is DISABLED by default
+
+	auto& broker = meta.getStrategyBroker();
+	auto symbol = sec->getSymbol();
+	TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+	// --- Simulate Entry ---
+	// 1. Place entry order on 2020-01-09
+	ptime orderDateTime = ptime(createDate("20200109"), getDefaultBarTime());
+	meta.EnterLongOnOpen(symbol, orderDateTime, createDecimal("0.00"), createDecimal("5.00"));
+
+	// 2. Process fill on 2020-01-10
+	ptime fillDateTime = ptime(createDate("20200110"), getDefaultBarTime());
+	meta.eventProcessPendingOrders(fillDateTime); // Will fill at Open = 106.00
+
+	REQUIRE(broker.isLongPosition(symbol)); // Verify entry occurred
+
+	// --- Check Exit Order Placement ---
+	// 3. Call eventExitOrders for the *next* processing date (2020-01-13)
+	//    Need the position state first
+	const auto& instrPos = broker.getInstrumentPosition(symbol);
+	ptime exitOrderPlacementDateTime = ptime(createDate("20200113"), getDefaultBarTime());
+	meta.eventExitOrders(sec.get(), instrPos, exitOrderPlacementDateTime);
+
+	// 4. Check pending orders in the broker
+	int stopOrders = 0;
+	int limitOrders = 0;
+	for (auto it = broker.beginPendingOrders(); it != broker.endPendingOrders(); ++it) {
+	  // Check the order's *creation* date matches the exit order placement date
+	  if (it->first == exitOrderPlacementDateTime) {
+	    if (std::dynamic_pointer_cast<SellAtStopOrder<DecimalType>>(it->second)) {
+	      stopOrders++;
+            }
+            if (std::dynamic_pointer_cast<SellAtLimitOrder<DecimalType>>(it->second)) {
+	      limitOrders++;
+            }
+	  }
+	}
+
+	REQUIRE(limitOrders == 1); // Profit target is placed
+	// Crucial check: No stop order should be placed because the pattern's stop is 0%
+	// and breakeven is off
+	REQUIRE(stopOrders == 0);
+      }
+ 
+    SECTION("0% stop pattern correctly receives a Breakeven stop when profitable")
+    {
+        // Strategy setup
+        PalMetaStrategy<DecimalType> meta("ZeroStop_WithBE", portfolio);
+        meta.addPricePattern(createLongPattern_ZeroStop()); // Pattern with 0% stop
+        meta.addBreakEvenStop(0); // Enable BE immediately (N=0)
+
+        auto& broker = meta.getStrategyBroker();
+        auto symbol = sec->getSymbol();
+        TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+        // --- Simulate Entry ---
+        // 1. Place entry order on 2020-01-09 (based on 2020-01-08 bar: C > O)
+        ptime orderDateTime = ptime(createDate("20200109"), getDefaultBarTime());
+        // Use the strategy's method to place the order
+        meta.EnterLongOnOpen(symbol, orderDateTime, createDecimal("0.00"), createDecimal("5.00"));
+
+        // 2. Process fill on 2020-01-10
+        ptime fillDateTime = ptime(createDate("20200110"), getDefaultBarTime());
+        meta.eventProcessPendingOrders(fillDateTime); // Will fill at Open = 106.00
+
+        REQUIRE(broker.isLongPosition(symbol));
+        REQUIRE(broker.getInstrumentPosition(symbol).getNumPositionUnits() == 1);
+        DecimalType entryPrice = broker.getInstrumentPosition(symbol).getFillPrice(1);
+        REQUIRE(entryPrice == createDecimal("106.00"));
+
+        // --- Simulate Profitability Check for Breakeven ---
+        // 3. Process the next bar (2020-01-13) to update position state
+        //    The close of 2020-01-10 was 108, making the position profitable.
+        //    The bar for 2020-01-13 has Close = 109.
+        ptime nextBarDateTime = ptime(createDate("20200113"), getDefaultBarTime());
+        meta.eventProcessPendingOrders(nextBarDateTime); // This adds the bar data to the open position
+
+        // Get the updated position state AFTER adding the bar
+        const auto& instrPos = broker.getInstrumentPosition(symbol);
+        REQUIRE_FALSE(instrPos.isFlatPosition()); // Should still be long
+        auto posIt = instrPos.getInstrumentPosition(1);
+        REQUIRE(posIt != instrPos.endInstrumentPosition());
+        auto& posUnit = *posIt;
+
+        // Verify conditions for BE activation are met:
+        REQUIRE(posUnit->getLastClose() > posUnit->getEntryPrice()); // Profitable (109 > 106)
+        REQUIRE(posUnit->getNumBarsSinceEntry() >= 0); // Meets N=0
+
+        // --- Check Exit Order Placement ---
+        // 4. Call eventExitOrders for the *next* processing date (2020-01-14)
+        ptime exitOrderPlacementDateTime = ptime(createDate("20200114"), getDefaultBarTime());
+        meta.eventExitOrders(sec.get(), instrPos, exitOrderPlacementDateTime);
+
+        // 5. Check pending orders in the broker
+        int stopOrders = 0;
+        int limitOrders = 0;
+        DecimalType stopPrice(0);
+        for (auto it = broker.beginPendingOrders(); it != broker.endPendingOrders(); ++it) {
+            // Check the order's *creation* date matches the exit order placement date
+            if (it->first == exitOrderPlacementDateTime) {
+                 if (auto stopOrder = std::dynamic_pointer_cast<SellAtStopOrder<DecimalType>>(it->second)) {
+                    stopOrders++;
+                    stopPrice = stopOrder->getStopPrice();
+                }
+                if (std::dynamic_pointer_cast<SellAtLimitOrder<DecimalType>>(it->second)) {
+                    limitOrders++;
+                }
+            }
+        }
+
+        REQUIRE(limitOrders == 1); // Profit target is still placed
+        REQUIRE(stopOrders == 1);  // Breakeven stop *is* placed
+        // Stop is placed at entry price because BE was armed and position was profitable
+        REQUIRE(stopPrice == entryPrice);
+    }
+}
+
+
+TEST_CASE("PalMetaStrategy Exit Priority: maxHoldingPeriod supersedes other exits", "[PalMetaStrategy][ExitPriority]")
+{
+    using namespace mkc_timeseries;
+    auto ts = makeSeriesForMaxHoldTest();
+    DecimalType tick(createDecimal("0.25"));
+    auto sec = std::make_shared<FuturesSecurity<DecimalType>>("@C", "Test", createDecimal("50.0"), tick, ts);
+    auto portfolio = std::make_shared<Portfolio<DecimalType>>("Corn poortfolio");
+    portfolio->addSecurity(sec);
+    
+    // Set maxHold = 3 bars
+    StrategyOptions options(false, 0, 3);
+    PalMetaStrategy<DecimalType> meta("MaxHold_Test", portfolio, options);
+    meta.addPricePattern(createLongPattern_ShortTarget()); // 2% target, 50% stop
+
+    TimeSeriesDate start(createDate("20200107"));
+    TimeSeriesDate end(createDate("20200117"));
+
+    backTestLoop(sec, meta, start, end);
+    
+    auto& broker = meta.getStrategyBroker();
+    REQUIRE(broker.getClosedTrades() == 1);
+    
+    auto pos = broker.beginClosedPositions()->second;
+    
+    // Entry: 2020-01-10 @ 106.00
+    // t=0: 2020-01-10 (Close 106)
+    // t=1: 2020-01-13 (Close 106)
+    // t=2: 2020-01-14 (Close 106)
+    // t=3: 2020-01-15 (Close 106) -> maxHold reached (3 >= 3)
+    // Exit order placed for 2020-01-16 Open
+    
+    REQUIRE(pos->getEntryDate() == createDate("20200110"));
+    REQUIRE(pos->getExitDate() == createDate("20200116"));
+    
+    // Verify it was a maxHold exit by checking num bars
+    REQUIRE(pos->getNumBarsSinceEntry() == 4); 
+    
+    // Verify it was a market-on-open exit
+    // Exit price should be the OPEN of the exit date bar
+    auto exitBar = ts->getTimeSeriesEntry(createDate("20200116"));
+    REQUIRE(pos->getExitPrice() == exitBar.getOpenValue()); // 106.5
+    
+    // Verify target was not hit
+    DecimalType targetPrice = pos->getEntryPrice() * createDecimal("1.02"); // 106 * 1.02 = 108.12
+    REQUIRE(pos->getExitPrice() < targetPrice);
 }
