@@ -8,6 +8,7 @@
 #include "PalAst.h"
 #include "PalCodeGenVisitor.h"
 #include "WealthLab8CodeGenerator.h"
+#include "number.h"
 
 using namespace std;
 using namespace mkc_palast;
@@ -232,12 +233,40 @@ int main(int argc, char* argv[]) {
             return INVALID_INPUT_ERROR;
         }
         
-        // Get class name for WealthLab8
+        // Get class name and stop percentages for WealthLab8
         string className;
+        num::DefaultNumber longStopPercent = num::fromString<num::DefaultNumber>("2.0");
+        num::DefaultNumber shortStopPercent = num::fromString<num::DefaultNumber>("2.0");
         if (platform == "WealthLab8") {
             className = getUserInput("Enter WealthLab8 strategy class name", "GeneratedStrategy");
             if (className.empty()) {
                 cerr << "Error: Class name cannot be empty for WealthLab8" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+            
+            // Get long side stop percentage
+            string longStopInput = getUserInput("Enter long side stop percentage (will be divided by 100)", "2.0");
+            try {
+                longStopPercent = num::fromString<num::DefaultNumber>(longStopInput);
+                if (longStopPercent < num::fromString<num::DefaultNumber>("0.0")) {
+                    cerr << "Error: Long side stop percentage must be non-negative" << endl;
+                    return INVALID_INPUT_ERROR;
+                }
+            } catch (const std::exception& e) {
+                cerr << "Error: Invalid long side stop percentage: " << longStopInput << " (" << e.what() << ")" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+            
+            // Get short side stop percentage
+            string shortStopInput = getUserInput("Enter short side stop percentage (will be divided by 100)", "2.0");
+            try {
+                shortStopPercent = num::fromString<num::DefaultNumber>(shortStopInput);
+                if (shortStopPercent < num::fromString<num::DefaultNumber>("0.0")) {
+                    cerr << "Error: Short side stop percentage must be non-negative" << endl;
+                    return INVALID_INPUT_ERROR;
+                }
+            } catch (const std::exception& e) {
+                cerr << "Error: Invalid short side stop percentage: " << shortStopInput << " (" << e.what() << ")" << endl;
                 return INVALID_INPUT_ERROR;
             }
         }
@@ -285,7 +314,9 @@ int main(int argc, char* argv[]) {
                 EasyLanguageRADCodeGenVisitor codeGen(system, outputFileName);
                 codeGen.generateCode();
             } else if (platform == "WealthLab8") {
-                WealthLab8CodeGenVisitor codeGen(system, outputFileName, className);
+                WealthLab8CodeGenVisitor codeGen(system, outputFileName, className,
+                                               num::to_double(longStopPercent),
+                                               num::to_double(shortStopPercent));
                 codeGen.generateCode();
             }
             
