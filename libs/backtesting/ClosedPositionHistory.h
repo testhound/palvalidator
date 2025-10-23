@@ -148,7 +148,14 @@ namespace mkc_timeseries
       mNumBarsInMarket += position->getNumBarsInPosition();
 
       if (position->RMultipleStopSet())
-        mRMultipleSum += position->getRMultiple();
+	{
+	  // If the R multiple stop equals entry, risk distance is zero → avoid division by zero
+	  if (position->getRMultipleStop() != position->getEntryPrice())
+	    {
+	      mRMultipleSum += position->getRMultiple();
+	    }
+	  // else: skip contributing to expectancy; R is undefined at breakeven
+	}
 
       // Insert using the ptime key
       mPositions.insert(std::make_pair(dt, position));
