@@ -42,6 +42,19 @@ namespace palvalidator::filtering::stages
          << " - Insufficient returns for bootstrap (" << n << " < " << MIN_RETURNS_FOR_BOOTSTRAP << ").\n";
       return false;
     }
+    
+    // Validate minimum trades for bootstrap analysis
+    if (ctx.backtester)
+    {
+      const auto numTrades = ctx.backtester->getNumTrades();
+      if (numTrades < MIN_TRADES_FOR_BOOTSTRAP)
+      {
+        os << "✗ Strategy filtered out: " << (ctx.strategy ? ctx.strategy->getStrategyName() : std::string("<unknown>"))
+           << " - Insufficient trades for bootstrap (" << numTrades << " < " << MIN_TRADES_FOR_BOOTSTRAP << ").\n";
+        return false;
+      }
+    }
+    
     return true;
   }
 
@@ -54,7 +67,22 @@ namespace palvalidator::filtering::stages
       if (!validateReturnCount(ctx, os))
       {
         std::ostringstream ss;
-        ss << "Insufficient returns (" << ctx.highResReturns.size() << " < " << MIN_RETURNS_FOR_BOOTSTRAP << ")";
+        const auto numReturns = ctx.highResReturns.size();
+        const auto numTrades = ctx.backtester ? ctx.backtester->getNumTrades() : 0;
+        
+        if (numReturns < MIN_RETURNS_FOR_BOOTSTRAP)
+        {
+          ss << "Insufficient returns (" << numReturns << " < " << MIN_RETURNS_FOR_BOOTSTRAP << ")";
+        }
+        else if (numTrades < MIN_TRADES_FOR_BOOTSTRAP)
+        {
+          ss << "Insufficient trades (" << numTrades << " < " << MIN_TRADES_FOR_BOOTSTRAP << ")";
+        }
+        else
+        {
+          ss << "Insufficient data for bootstrap analysis";
+        }
+        
         return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, ss.str());
       }
 
