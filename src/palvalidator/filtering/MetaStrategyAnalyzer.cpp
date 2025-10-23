@@ -175,6 +175,9 @@ namespace palvalidator
           metaStrategy->addPricePattern(pattern);
         }
 
+      // Don't take a position if both long and short signals fire
+      metaStrategy->setSkipIfBothSidesFire(true);
+
       return metaStrategy;
     }
 
@@ -197,6 +200,9 @@ namespace palvalidator
           auto pattern = strategy->getPalPattern();
           metaStrategy->addPricePattern(pattern);
         }
+
+      // Don't take a position if both long and short signals fire
+      metaStrategy->setSkipIfBothSidesFire(true);
 
       return metaStrategy;
     }
@@ -475,12 +481,16 @@ namespace palvalidator
         std::ostream& outputStream) const
     {
       using mkc_timeseries::DecimalConstants;
-      
-      if (closedPositionHistory.getNumPositions() < 8)
+
+      // 1) Build monthly returns from closed trades
+        const auto monthly =
+          mkc_timeseries::buildMonthlyReturnsFromClosedPositions<Num>(closedPositionHistory);
+
+      if (monthly.size() < 12)
       {
         outputStream << "      Future Returns Bound Analysis: Skipped "
-                     << "(need at least 8 monthly returns, have "
-                     << closedPositionHistory.getNumPositions() << " positions)\n";
+                     << "(need at least 12 monthly returns, have "
+                     << monthly.size() << " returns)\n";
         return DecimalConstants<Num>::DecimalZero;
       }
       
@@ -488,14 +498,13 @@ namespace palvalidator
       {
         using BoundFutureReturns = mkc_timeseries::BoundFutureReturns<Num>;
 
-        // 1) Build monthly returns from closed trades
-        const auto monthly =
-          mkc_timeseries::buildMonthlyReturnsFromClosedPositions<Num>(closedPositionHistory);
+	// 3) Compute autocorrelation of monthly returns
+	const auto acf = mkc_timeseries::StatUtils<Num>::computeACF(monthly, 12); // Max lag 12
 
-        const unsigned blockLength = 4;
+	// 4) Suggest block length (e.g., clamp between 2 and 6)
+	const unsigned blockLength =
+	  mkc_timeseries::StatUtils<Num>::suggestStationaryBlockLengthFromACF(acf, monthly.size(), 2, 6);
 
-        // 3) Use new constructor that takes pre-computed monthly returns directly
-        //    This avoids rebuilding monthly returns inside BoundFutureReturns
         BoundFutureReturns futureReturns(monthly,  // Pass monthly returns directly
                                          blockLength,
                                          0.10, 0.90,  // default quantiles (10th and 90th percentile)

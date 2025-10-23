@@ -2461,7 +2461,8 @@ PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
     mPayOffRatio()
 {
   mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
-  mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
+  if (getStopLossAsDecimal() > mkc_timeseries::DecimalConstants<num::DefaultNumber>::DecimalZero)
+      mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
 }
 
 /**
@@ -2513,7 +2514,8 @@ PriceActionLabPattern::PriceActionLabPattern (PatternDescription* description,
     }
 
   mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
-  mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
+  if (getStopLossAsDecimal() > mkc_timeseries::DecimalConstants<num::DefaultNumber>::DecimalZero)
+    mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
 }
 
 /**
@@ -2545,7 +2547,9 @@ PriceActionLabPattern::PriceActionLabPattern(PatternDescriptionPtr description,
     mPayOffRatio()
 {
   mMaxBarsBack = PalPatternMaxBars::evaluateExpression (mPattern.get());
-  mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
+
+  if (getStopLossAsDecimal() > mkc_timeseries::DecimalConstants<num::DefaultNumber>::DecimalZero)
+    mPayOffRatio = getProfitTargetAsDecimal() / getStopLossAsDecimal();
 }
 
 /**

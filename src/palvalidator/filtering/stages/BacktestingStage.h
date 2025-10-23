@@ -18,6 +18,7 @@ namespace palvalidator::filtering::stages
 
   private:
     static constexpr size_t MIN_RETURNS_FOR_BOOTSTRAP = 20;
+    static constexpr size_t MIN_TRADES_FOR_BOOTSTRAP = 5;
 
     void createFreshPortfolio(StrategyAnalysisContext& ctx) const;
     void runBacktest(StrategyAnalysisContext& ctx) const;

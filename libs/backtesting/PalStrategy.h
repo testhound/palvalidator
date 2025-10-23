@@ -193,56 +193,56 @@ namespace mkc_timeseries
     }
   };
 
-
-  // A PalMetaStrategy is composed of individual Pal strategies (patterns): long and/or short
-  template <class Decimal, class Filter = NoPortfolioFilter<Decimal>> class PalMetaStrategy : public BacktesterStrategy<Decimal>
+  template <class Decimal, class Filter = NoPortfolioFilter<Decimal>>
+  class PalMetaStrategy : public BacktesterStrategy<Decimal>
   {
   public:
     typedef typename std::list<std::shared_ptr<PriceActionLabPattern>> PalPatterns;
     typedef typename PalPatterns::const_iterator ConstStrategiesIterator;
-    // PatternEvaluator type is now taken from PALPatternInterpreter, which is updated.
     using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
     PalMetaStrategy(const std::string& strategyName,
-                    std::shared_ptr<Portfolio<Decimal>> portfolio,
-                    const StrategyOptions& strategyOptions = defaultStrategyOptions)
+      std::shared_ptr<Portfolio<Decimal>> portfolio,
+      const StrategyOptions& strategyOptions = defaultStrategyOptions)
       : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
-        mPalPatterns(),
-        mPatternEvaluators(),
-        mMCPTAttributes(),
-        mStrategyMaxBarsBack(0),
-        mPortfolioFilter(createPortfolioFilter(portfolio)),
+	mPalPatterns(),
+	mPatternEvaluators(),
+	mMCPTAttributes(),
+	mStrategyMaxBarsBack(0),
+	mPortfolioFilter(createPortfolioFilter(portfolio)),
 	mBreakevenEnabled(false),
-	mBreakevenActivationBars(0)
+	mBreakevenActivationBars(0),
+	mSkipIfBothSidesFire(false)
     {}
 
     PalMetaStrategy(const PalMetaStrategy<Decimal, Filter>& rhs)
       : BacktesterStrategy<Decimal>(rhs),
-        mPalPatterns(rhs.mPalPatterns),
-        mPatternEvaluators(rhs.mPatternEvaluators),
-        mMCPTAttributes(rhs.mMCPTAttributes),
-        mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack),
-        mPortfolioFilter(rhs.mPortfolioFilter),
-	mBreakevenEnabled(rhs.mBreakevenEnabled),
-	mBreakevenActivationBars(rhs.mBreakevenActivationBars)
+      mPalPatterns(rhs.mPalPatterns),
+      mPatternEvaluators(rhs.mPatternEvaluators),
+      mMCPTAttributes(rhs.mMCPTAttributes),
+      mStrategyMaxBarsBack(rhs.mStrategyMaxBarsBack),
+      mPortfolioFilter(rhs.mPortfolioFilter),
+      mBreakevenEnabled(rhs.mBreakevenEnabled),
+      mBreakevenActivationBars(rhs.mBreakevenActivationBars),
+      mSkipIfBothSidesFire(rhs.mSkipIfBothSidesFire)
     {}
 
     PalMetaStrategy<Decimal, Filter>&
     operator=(const PalMetaStrategy<Decimal, Filter>& rhs)
     {
-      if (this == &rhs)
-      {
-        return *this;
+      if (this == &rhs) {
+	return *this;
       }
 
       BacktesterStrategy<Decimal>::operator=(rhs);
-      mPalPatterns = rhs.mPalPatterns;
-      mPatternEvaluators = rhs.mPatternEvaluators; // Consider if deep copy or re-compilation is needed for stateful evaluators
-      mMCPTAttributes = rhs.mMCPTAttributes;
-      mStrategyMaxBarsBack = rhs.mStrategyMaxBarsBack;
-      mPortfolioFilter = rhs.mPortfolioFilter;
-      mBreakevenEnabled = rhs.mBreakevenEnabled;
-      mBreakevenActivationBars = rhs.mBreakevenActivationBars;
+      mPalPatterns               = rhs.mPalPatterns;
+      mPatternEvaluators         = rhs.mPatternEvaluators; // If evaluators become stateful, revisit
+      mMCPTAttributes            = rhs.mMCPTAttributes;
+      mStrategyMaxBarsBack       = rhs.mStrategyMaxBarsBack;
+      mPortfolioFilter           = rhs.mPortfolioFilter;
+      mBreakevenEnabled          = rhs.mBreakevenEnabled;
+      mBreakevenActivationBars   = rhs.mBreakevenActivationBars;
+      mSkipIfBothSidesFire       = rhs.mSkipIfBothSidesFire; // [BOTH-SIDES]
 
       return *this;
     }
@@ -259,9 +259,7 @@ namespace mkc_timeseries
 
       mPalPatterns.push_back(pattern);
 
-      // compile & cache
-      // This will use the new PALPatternInterpreter which returns the updated PatternEvaluator type
-      // The PatternEvaluator from PALPatternInterpreter.h takes (Security*, date)
+      // Compile & cache evaluator for this pattern
       auto eval = PALPatternInterpreter<Decimal>::compileEvaluator(pattern->getPatternExpression().get());
       mPatternEvaluators.push_back(eval);
     }
@@ -271,9 +269,11 @@ namespace mkc_timeseries
       return mStrategyMaxBarsBack;
     }
 
-    std::shared_ptr<PriceActionLabPattern> getPalPattern() const
+    std::shared_ptr<PriceActionLabPattern> getPatternAt(uint32_t idx)
     {
-      throw PalStrategyException("PalMetaStrategy::getPalPattern not implemented for meta strategy. Access patterns via iterators.");
+      auto it = mPalPatterns.begin();
+      std::advance(it, idx);
+      return *it;
     }
 
     ConstStrategiesIterator beginPricePatterns() const
@@ -286,45 +286,22 @@ namespace mkc_timeseries
       return mPalPatterns.end();
     }
 
-    const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
-    {
-      return BacktesterStrategy<Decimal>::getSizeForOrder(aSecurity);
-    }
-
-    [[deprecated("Use of this getPositionDirectionVector will throw an exception")]] // Attribute from HEAD
-    std::vector<int> getPositionDirectionVector() const
-    {
-      throw PalStrategyException("getPositionDirectionVector is no longer supported"); // Message from HEAD
-      // return mMCPTAttributes.getPositionDirection(); // Original code commented out in HEAD
-    }
-
-    [[deprecated("Use of this getPositionReturnsVector will throw an exception")]] // Attribute from HEAD
-    std::vector<Decimal> getPositionReturnsVector() const
-    {
-      throw PalStrategyException("getPositionReturnsVector is no longer supported"); // Message from HEAD
-      // return mMCPTAttributes.getPositionReturns(); // Original code commented out in HEAD
-    }
-
-    [[deprecated("Use of this numTradingOpportunities will throw an exception")]] // Attribute from HEAD
-    unsigned long numTradingOpportunities() const
-    {
-      throw PalStrategyException("numTradingOpportunities is no longer supported"); // Message from HEAD
-      // return mMCPTAttributes.numTradingOpportunities(); // Original code commented out in HEAD
-    }
-
     std::shared_ptr<BacktesterStrategy<Decimal>>
-    clone (const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
+    clone(const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
     {
       // Using HEAD's more detailed clone logic that handles options
       auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
-                                                                       portfolio,
-                                                                       this->getStrategyOptions());
-      // Manually copy patterns and compiled evaluators
-      for (const auto& pattern : mPalPatterns)
-      {
-          cloned->addPricePattern(pattern);
+								       portfolio,
+								       this->getStrategyOptions());
+      // Copy patterns (which updates mStrategyMaxBarsBack)
+      for (const auto& pattern : mPalPatterns) {
+	cloned->addPricePattern(pattern);
       }
-      cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
+      cloned->mStrategyMaxBarsBack     = this->mStrategyMaxBarsBack;
+      cloned->mMCPTAttributes          = this->mMCPTAttributes;
+      cloned->mBreakevenEnabled        = this->mBreakevenEnabled;
+      cloned->mBreakevenActivationBars = this->mBreakevenActivationBars;
+      cloned->mSkipIfBothSidesFire     = this->mSkipIfBothSidesFire; // [BOTH-SIDES]
 
       return cloned;
     }
@@ -332,38 +309,36 @@ namespace mkc_timeseries
     std::shared_ptr<BacktesterStrategy<Decimal>>
     clone_shallow(const std::shared_ptr<Portfolio<Decimal>>& portfolio) const override
     {
-      // Build the new strategy with the target portfolio, but DO NOT call addPricePattern(...)
-      // (that would recompile). Instead, copy the already-compiled evaluators + patterns.
+      // Build with the target portfolio; copy patterns + compiled evaluators (no recompile)
       auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
 								       portfolio,
 								       this->getStrategyOptions());
-
-      // Recreate the portfolio filter for the new portfolio.
-      cloned->mPortfolioFilter = cloned->createPortfolioFilter(portfolio);
-
-      // Copy patterns and precompiled evaluators directly (shallow for patterns, value-copy for lambdas).
-      cloned->mPalPatterns         = this->mPalPatterns;
-      cloned->mPatternEvaluators   = this->mPatternEvaluators;
-      cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
-      cloned->mMCPTAttributes      = this->mMCPTAttributes;
-      cloned->mBreakevenEnabled    = this->mBreakevenEnabled;
-      cloned->mBreakevenActivationBars = this->mBreakevenActivationBars;
+      cloned->mPalPatterns              = this->mPalPatterns;
+      cloned->mPatternEvaluators        = this->mPatternEvaluators;
+      cloned->mStrategyMaxBarsBack      = this->mStrategyMaxBarsBack;
+      cloned->mPortfolioFilter          = cloned->createPortfolioFilter(portfolio); // bind to new portfolio
+      cloned->mMCPTAttributes           = this->mMCPTAttributes;
+      cloned->mBreakevenEnabled         = this->mBreakevenEnabled;
+      cloned->mBreakevenActivationBars  = this->mBreakevenActivationBars;
+      cloned->mSkipIfBothSidesFire      = this->mSkipIfBothSidesFire; // [BOTH-SIDES]
 
       return cloned;
     }
-    
+
     std::shared_ptr<BacktesterStrategy<Decimal>>
     cloneForBackTesting () const override
     {
       auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
-                                                                       this->getPortfolio(),
-                                                                       this->getStrategyOptions());
-      // Manually copy patterns and compiled evaluators
-      for (const auto& pattern : mPalPatterns)
-      {
-          cloned->addPricePattern(pattern);
+								       this->getPortfolio(),
+								       this->getStrategyOptions());
+      for (const auto& pattern : mPalPatterns) {
+	cloned->addPricePattern(pattern);
       }
-      cloned->mStrategyMaxBarsBack = this->mStrategyMaxBarsBack;
+      cloned->mStrategyMaxBarsBack     = this->mStrategyMaxBarsBack;
+      cloned->mMCPTAttributes          = this->mMCPTAttributes;
+      cloned->mBreakevenEnabled        = this->mBreakevenEnabled;
+      cloned->mBreakevenActivationBars = this->mBreakevenActivationBars;
+      cloned->mSkipIfBothSidesFire     = this->mSkipIfBothSidesFire; // [BOTH-SIDES]
 
       return cloned;
     }
@@ -371,13 +346,6 @@ namespace mkc_timeseries
     /**
      * @brief Enable a breakeven stop that becomes active starting at bar N
      *        (t = N, where t=0 is the first bar after entry).
-     * 
-     * Semantics:
-     * - For each unit, once barsSinceEntry >= N, we arm a stop at the unit's entry price.
-     * - The breakeven stop is only placed if the trade is currently profitable
-     *   on the last completed bar (Close > Entry for longs; Close < Entry for shorts).
-     * - Once armed, the breakeven stop replaces the original percent stop
-     *   (target orders are still placed).
      */
     void addBreakEvenStop(unsigned int activationBars)
     {
@@ -392,26 +360,57 @@ namespace mkc_timeseries
       mBreakevenActivationBars = 0;
     }
 
+    void setSkipIfBothSidesFire(bool enable) { mSkipIfBothSidesFire = enable; }
+
+    // Implement pure virtual methods from BacktesterStrategy
+    const TradingVolume& getSizeForOrder(const Security<Decimal>& aSecurity) const override
+    {
+       return BacktesterStrategy<Decimal>::getSizeForOrder(aSecurity);
+    }
+
+    std::vector<int> getPositionDirectionVector() const override
+    {
+      throw PalStrategyException("getPositionDirectionVector is no longer supported for PalMetaStrategy");
+    }
+
+    std::vector<Decimal> getPositionReturnsVector() const override
+    {
+      throw PalStrategyException("getPositionReturnsVector is no longer supported for PalMetaStrategy");
+    }
+
+    unsigned long numTradingOpportunities() const override
+    {
+      throw PalStrategyException("numTradingOpportunities is no longer supported for PalMetaStrategy");
+    }
+
     // Bring base class date-based methods into scope if BacktesterStrategy defines them.
     using BacktesterStrategy<Decimal>::eventEntryOrders;
     using BacktesterStrategy<Decimal>::eventExitOrders;
 
     void eventEntryOrders (Security<Decimal>* aSecurity,
-                           const InstrumentPosition<Decimal>& instrPos,
-                           const ptime& processingDateTime) override
+			   const InstrumentPosition<Decimal>& instrPos,
+			   const ptime& processingDateTime) override
     {
-      if (this->isFlatPosition (aSecurity->getSymbol()))
+      if (this->isFlatPosition(aSecurity->getSymbol()))
 	{
+	  // [BOTH-SIDES] Optional neutrality: stand aside if both long & short fire on same bar
+	  if (mSkipIfBothSidesFire) {
+	    auto both = detectBothSidesFire(aSecurity, processingDateTime);
+	    if (both.first && both.second) {
+	      return; // conflicting evidence — skip this bar
+	    }
+	  }
+
 	  entryOrdersCommon(aSecurity, instrPos, processingDateTime, FlatEntryOrderConditions<Decimal>());
 	}
-      else if (this->isLongPosition (aSecurity->getSymbol()))
+      else if (this->isLongPosition(aSecurity->getSymbol()))
 	{
-	  // When in a long position, use existing conditions that only allow long patterns
+	  // When in a long position, only allow long patterns
 	  entryOrdersCommon(aSecurity, instrPos, processingDateTime, LongEntryOrderConditions<Decimal>());
 	}
-      else if (this->isShortPosition (aSecurity->getSymbol()))
+      else if (this->isShortPosition(aSecurity->getSymbol()))
 	{
-	  // When in a short position, use existing conditions that only allow short patterns
+	  // When in a short position, only allow short patterns
 	  entryOrdersCommon(aSecurity, instrPos, processingDateTime, ShortEntryOrderConditions<Decimal>());
 	}
       else
@@ -425,10 +424,9 @@ namespace mkc_timeseries
 			 const ptime& processingDateTime) override
     {
       uint32_t numUnits = instrPos.getNumPositionUnits();
-      if (numUnits == 0)
-	{
-	  return;
-	}
+      if (numUnits == 0) {
+	return;
+      }
 
       // Iterate newest-to-oldest to avoid invalidation when units close intraloop
       for (uint32_t unitNum = numUnits; unitNum >= 1; --unitNum)
@@ -462,166 +460,206 @@ namespace mkc_timeseries
 	  PercentNumber<Decimal> stopAsPercent   = PercentNumber<Decimal>::createPercentNumber(stop);
 
 	  // 3) Breakeven logic (active starting at t = N and only if currently profitable)
-	  const bool beEligible = mBreakevenEnabled &&
-	    (pos->getNumBarsSinceEntry() >= mBreakevenActivationBars);
+	  if (mBreakevenEnabled && pos->getNumBarsSinceEntry() >= mBreakevenActivationBars)
+	    {
+	      bool currentlyProfitable =
+		(this->isLongPosition(aSecurity->getSymbol())  && lastClose > entryPx) ||
+		(this->isShortPosition(aSecurity->getSymbol()) && lastClose < entryPx);
 
+	      if (currentlyProfitable)
+		{
+		  // Replace original percent stop with a BE stop at entry price
+		  if (this->isLongPosition(aSecurity->getSymbol()))
+		    {
+		      this->ExitLongUnitAtStop(aSecurity->getSymbol(),
+		          processingDateTime,
+		          entryPx, // be stop
+		          unitNum);
+		    }
+		  else
+		    {
+		      this->ExitShortUnitAtStop(aSecurity->getSymbol(),
+		    processingDateTime,
+		    entryPx, // be stop
+		    unitNum);
+		    }
+
+		  // Keep profit target active
+		  if (this->isLongPosition(aSecurity->getSymbol()))
+		    {
+		      this->ExitLongUnitAtLimit(aSecurity->getSymbol(),
+						processingDateTime,
+						entryPx,
+						targetAsPercent,
+						unitNum);
+		    }
+		  else
+		    {
+		      this->ExitShortUnitAtLimit(aSecurity->getSymbol(),
+						 processingDateTime,
+						 entryPx,
+						 targetAsPercent,
+						 unitNum);
+		    }
+
+		  // Maintain R-multiple bookkeeping based on BE level if desired (kept original)
+		  instrPos.setRMultipleStop(entryPx, unitNum);
+		  continue; // finished exits for this unit
+		}
+	    }
+
+	  // 4) Original stop/target exits (no BE armed, or not profitable)
 	  if (this->isLongPosition(aSecurity->getSymbol()))
 	    {
-	      // Always place the profit target
+	      // Original percent target (above entry)
 	      this->ExitLongUnitAtLimit(aSecurity->getSymbol(),
 					processingDateTime,
-					entryPx,            // base for percent target
+					entryPx,
 					targetAsPercent,
 					unitNum);
 
-	      if (beEligible && lastClose > entryPx)
-		{
-		  // Arm breakeven: stop at the entry price (tighter than percent stop)
-		  // Uses broker's absolute per-unit stop overload.
-		  this->ExitLongUnitAtStop(aSecurity->getSymbol(),
-					   processingDateTime,
-					   entryPx,           // breakeven stop level
-					   unitNum);          // per-unit
-		}
-	      else
-		{
-		  // Original percent stop (below entry for longs)
-		  this->ExitLongUnitAtStop(aSecurity->getSymbol(),
-					   processingDateTime,
-					   entryPx,
-					   stopAsPercent,
-					   unitNum);
-		}
+	      if (stopAsPercent.getAsPercent() > DecimalConstants<Decimal>::DecimalZero) {
+		// Original percent stop (below entry for longs)
+		this->ExitLongUnitAtStop(aSecurity->getSymbol(),
+					 processingDateTime,
+					 entryPx,
+					 stopAsPercent,
+					 unitNum);
+	      }
 
 	      // Maintain R-multiple bookkeeping as before
 	      instrPos.setRMultipleStop(LongStopLoss<Decimal>(entryPx, stopAsPercent).getStopLoss(), unitNum);
 	    }
 	  else if (this->isShortPosition(aSecurity->getSymbol()))
 	    {
-	      // Always place the profit target
+	      // Original percent target (below entry)
 	      this->ExitShortUnitAtLimit(aSecurity->getSymbol(),
 					 processingDateTime,
-					 entryPx,            // base for percent target
+					 entryPx,
 					 targetAsPercent,
 					 unitNum);
 
-	      if (beEligible && lastClose < entryPx)
-		{
-		  // Arm breakeven for shorts: stop at the entry price (tighter than percent stop)
-		  this->ExitShortUnitAtStop(aSecurity->getSymbol(),
-					    processingDateTime,
-					    entryPx,           // breakeven stop level
-					    unitNum);          // per-unit
-		}
-	      else
-		{
-		  // Original percent stop (above entry for shorts)
-		  this->ExitShortUnitAtStop(aSecurity->getSymbol(),
-					    processingDateTime,
-					    entryPx,
-					    stopAsPercent,
-					    unitNum);
-		}
+	      if (stopAsPercent.getAsPercent() > DecimalConstants<Decimal>::DecimalZero) {
+		// Original percent stop (above entry for shorts)
+		this->ExitShortUnitAtStop(aSecurity->getSymbol(),
+					  processingDateTime,
+					  entryPx,
+					  stopAsPercent,
+					  unitNum);
+	      }
 
 	      // Maintain R-multiple bookkeeping as before
 	      instrPos.setRMultipleStop(ShortStopLoss<Decimal>(entryPx, stopAsPercent).getStopLoss(), unitNum);
 	    }
 	  else
 	    {
-	      throw PalStrategyException("PalMetaStrategy::eventExitOrders - Expecting long or short position but found none or error state");
+	      throw PalStrategyException("PalMetaStrategy::eventExitOrders - expecting long or short position but found none or error state");
 	    }
-	}
+	} // end for each unit
     }
 
   private:
     // Helper method to create portfolio filter from portfolio's first security
     std::shared_ptr<Filter> createPortfolioFilter(std::shared_ptr<Portfolio<Decimal>> portfolio)
     {
-      if (portfolio->getNumSecurities() == 0)
-      {
-        throw PalStrategyException("PalMetaStrategy: Portfolio must contain at least one security for filter initialization");
+      if (portfolio->getNumSecurities() == 0) {
+	throw PalStrategyException("PalMetaStrategy: Portfolio must contain at least one security for filter initialization");
       }
-      
-      // Get the first security from the portfolio
-      auto firstSecurity = portfolio->beginPortfolio()->second;
+
+      auto firstSecurity  = portfolio->beginPortfolio()->second;
       auto ohlcTimeSeries = firstSecurity->getTimeSeries();
-      
-      // Create filter with OHLC data
+
       return std::make_shared<Filter>(*ohlcTimeSeries);
+    }
+
+    std::pair<bool,bool>
+    detectBothSidesFire(Security<Decimal>* aSecurity,
+			const boost::posix_time::ptime& processingDateTime) const
+    {
+      bool foundLong  = false;
+      bool foundShort = false;
+
+      auto patIt  = mPalPatterns.begin();
+      auto evalIt = mPatternEvaluators.begin();
+
+      for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end(); ++patIt, ++evalIt)
+	{
+	  const auto& pat   = *patIt;
+	  const bool  isLong = pat->isLongPattern();
+
+	  // If we've already confirmed this side on this bar, no need to evaluate more of the same side.
+	  if ((isLong && foundLong) || (!isLong && foundShort))
+	    continue;
+
+	  // Evaluate only the still-needed side.
+	  if ((*evalIt)(aSecurity, processingDateTime))
+	    {
+	      if (isLong)
+		foundLong  = true;
+	      else
+		foundShort = true;
+
+	      // Early exit as soon as both sides are detected.
+	      if (foundLong && foundShort)
+		break;
+	    }
+	}
+
+      return {foundLong, foundShort};
     }
 
     // Takes ptime for intraday order timing, but uses date for PatternEvaluator
     void entryOrdersCommon (Security<Decimal>* aSecurity,
-                            const InstrumentPosition<Decimal>& instrPos, // Parameter not used in logic from
-                            const ptime& processingDateTime,
-                            const EntryOrderConditions<Decimal>& entryConditions)
+			    const InstrumentPosition<Decimal>& instrPos, // (unused in this logic)
+			    const ptime& processingDateTime,
+			    const EntryOrderConditions<Decimal>& entryConditions)
     {
-      // NEW: Check portfolio filter first
-      if (!mPortfolioFilter->areEntriesAllowed(processingDateTime))
-      {
-        return; // Exit early if entries not allowed
+      // Portfolio filter check first
+      if (!mPortfolioFilter->areEntriesAllowed(processingDateTime)) {
+	return;
       }
 
-      // No iterator needed for PatternEvaluator based on PALPatternInterpreter.h
+      // Evaluate patterns in order; first match issues entry orders via entryConditions
       if (entryConditions.canEnterMarket(this, aSecurity))
- {
-   auto patIt  = mPalPatterns.begin();
-   auto evalIt = mPatternEvaluators.begin();
-   for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end();
-        ++patIt, ++evalIt)
-     {
-       std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
+	{
+	  auto patIt  = mPalPatterns.begin();
+	  auto evalIt = mPatternEvaluators.begin();
+	  for (; patIt != mPalPatterns.end() && evalIt != mPatternEvaluators.end(); ++patIt, ++evalIt)
+	    {
+	      std::shared_ptr<PriceActionLabPattern> pricePattern = *patIt;
 
-       if (!entryConditions.canTradePattern (this, pricePattern, aSecurity))
-  {
-    continue;
-  }
+	      if (!entryConditions.canTradePattern(this, pricePattern, aSecurity)) {
+		continue;
+	      }
 
-       // PatternEvaluator now takes ptime. Orders are placed using ptime.
-       if ((*evalIt)(aSecurity, processingDateTime))
-  {
-    // entryConditions will use processingDateTime for actual order placement
-    entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
-    break; // Assuming one pattern match per bar is sufficient for meta strategy
-  }
-     }
- }
-    }
-
-    // NOTE: eventExitLongOrders and eventExitShortOrders helper methods removed
-    // All exit logic is now handled directly in eventExitOrders with individual unit processing
-
-    [[deprecated("Use of this addLongPositionBar no longer supported")]]
-    void addLongPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/, // Parameter unused
-                            const date& /*processingDate*/) // Parameter unused
-    {
-      // mMCPTAttributes.addLongPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
-    }
-
-    [[deprecated("Use of this addShortPositionBar no longer supported")]]
-    void addShortPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
-                             const date& /*processingDate*/)
-    {
-      // mMCPTAttributes.addShortPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
-    }
-
-    [[deprecated("Use of this addFlatPositionBar no longer supported")]]
-    void addFlatPositionBar(std::shared_ptr<Security<Decimal>> /*aSecurity*/,
-                            const date& /*processingDate*/)
-    {
-      // mMCPTAttributes.addFlatPositionBar (aSecurity, processingDate); // Original code commented out in HEAD
+	      if ((*evalIt)(aSecurity, processingDateTime))
+		{
+		  entryConditions.createEntryOrders(this, pricePattern, aSecurity, processingDateTime);
+		  break; // single pattern per bar for meta strategy
+		}
+	    }
+	}
     }
 
   private:
+    // --- state ---
     PalPatterns mPalPatterns;
-    std::vector<PatternEvaluator> mPatternEvaluators;
-    MCPTStrategyAttributes<Decimal> mMCPTAttributes;
-    unsigned int mStrategyMaxBarsBack;
-    std::shared_ptr<Filter> mPortfolioFilter;
-    bool mBreakevenEnabled;
-    unsigned int mBreakevenActivationBars; 
-  };
+    std::list<PatternEvaluator> mPatternEvaluators;
 
+    MCPTStrategyAttributes<Decimal> mMCPTAttributes;
+
+    uint32_t mStrategyMaxBarsBack;
+
+    std::shared_ptr<Filter> mPortfolioFilter;
+
+    // Breakeven controls
+    bool mBreakevenEnabled;
+    unsigned int mBreakevenActivationBars;
+
+    // [BOTH-SIDES] Neutrality toggle: when true, skip entries if both directions fire simultaneously
+    bool mSkipIfBothSidesFire;
+  };
+  
   /**
    * @brief Base class for price-action-based strategies using a single pattern.
    */

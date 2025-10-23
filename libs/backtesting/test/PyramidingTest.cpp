@@ -86,6 +86,74 @@ std::shared_ptr<EquitySecurity<DecimalType>> createTestSecurity()
                                                          timeSeries);
 }
 
+std::shared_ptr<OHLCTimeSeries<DecimalType>> createFallingThenRisingTimeSeries()
+{
+    auto timeSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(
+        TimeFrame::DAILY, TradingVolume::SHARES);
+    
+    // O, H, L, C
+    // Day 1: 2023-11-01 (Base)
+    auto entry1 = createTimeSeriesEntry("20231101", "100.00", "101.00", "99.00", "100.00", 1000);
+    timeSeries->addEntry(*entry1);
+    
+    // Day 2: 2023-11-02 (Close < Prev Close) -> Short Signal 1
+    auto entry2 = createTimeSeriesEntry("20231102", "100.00", "101.00", "98.00", "99.00", 1100);
+    timeSeries->addEntry(*entry2);
+    
+    // Day 3: 2023-11-03 (Fill 1 @ 99.5) (Close < Prev Close) -> Short Signal 2
+    auto entry3 = createTimeSeriesEntry("20231103", "99.50", "100.00", "97.00", "98.00", 1200);
+    timeSeries->addEntry(*entry3);
+    
+    // Day 4: 2023-11-06 (Fill 2 @ 98.5) (Close < Prev Close) -> Short Signal 3
+    auto entry4 = createTimeSeriesEntry("20231106", "98.50", "99.00", "96.00", "97.00", 1050);
+    timeSeries->addEntry(*entry4);
+    
+    // Day 5: 2023-11-07 (Fill 3 @ 97.5) -> Prices start to rise
+    // Unit 1 Stop @ 99.5 * 1.02 = 101.49
+    // Unit 2 Stop @ 98.5 * 1.02 = 100.47
+    // Unit 3 Stop @ 97.5 * 1.02 = 99.45
+    // High is 100.00. Unit 3 (99.45) should be stopped out.
+    auto entry5 = createTimeSeriesEntry("20231107", "97.50", "100.00", "97.00", "99.00", 1300);
+    timeSeries->addEntry(*entry5);
+    
+    // Day 6: 2023-11-08 -> Prices rise more
+    // High is 101.00. Unit 2 (100.47) should be stopped out.
+    auto entry6 = createTimeSeriesEntry("20231108", "99.00", "101.00", "98.50", "100.00", 1150);
+    timeSeries->addEntry(*entry6);
+
+    // Day 7: 2023-11-09 -> Prices rise more
+    // High is 102.00. Unit 1 (101.49) should be stopped out.
+    auto entry7 = createTimeSeriesEntry("20231109", "100.00", "102.00", "99.00", "101.00", 1250);
+    timeSeries->addEntry(*entry7);
+    
+    // Day 8: 2023-11-10 (Extra bar)
+    auto entry8 = createTimeSeriesEntry("20231110", "101.00", "103.00", "100.00", "102.00", 1100);
+    timeSeries->addEntry(*entry8);
+
+    return timeSeries;
+}
+
+// Helper: Simple short pattern (Close[0] < Close[1])
+std::shared_ptr<PriceActionLabPattern> createSimpleShortPattern()
+{
+    auto percentLong = std::make_shared<DecimalType>(createDecimal("10.00"));
+    auto percentShort = std::make_shared<DecimalType>(createDecimal("90.00"));
+    auto desc = std::make_shared<PatternDescription>("PYRAMID_SHORT_TEST.txt", 1, 20231101,
+                                                     percentLong, percentShort, 1, 1);
+
+    // Simple pattern: Close[0] < Close[1] (current close < previous close)
+    // Implemented as Close[1] > Close[0] (equivalent condition using GreaterThanExpr)
+    auto close0 = std::make_shared<PriceBarClose>(0);
+    auto close1 = std::make_shared<PriceBarClose>(1);
+    auto lt1 = std::make_shared<GreaterThanExpr>(close1, close0);
+
+    auto entry = createShortOnOpen();
+    auto target = createShortProfitTarget("50.00");  // 50% profit target (won't be hit)
+    auto stop = createShortStopLoss("2.00");        // 2% stop loss
+    
+    return std::make_shared<PriceActionLabPattern>(desc, lt1, entry, target, stop);
+}
+
 TEST_CASE("Pyramiding Individual Unit Exit Tests", "[Pyramiding][StrategyBroker]")
 {
     auto testSecurity = createTestSecurity();
@@ -669,4 +737,86 @@ TEST_CASE("Pyramiding Integration Tests", "[Pyramiding][Integration]")
         REQUIRE(winningTrades == 2);
         REQUIRE(losingTrades == 1);
     }
+}
+
+TEST_CASE("PalMetaStrategy Short-Side Pyramiding with Staggered Stop Exits", "[Pyramiding][PalMetaStrategy][Shorts]")
+{
+    auto timeSeries = createFallingThenRisingTimeSeries();
+    auto testSecurity = std::make_shared<EquitySecurity<DecimalType>>(testSymbol,
+                                                         "Test Security",
+                                                         timeSeries);
+    TradingVolume oneShare(1, TradingVolume::SHARES);
+    std::string portName("Test Portfolio");
+    auto aPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
+    aPortfolio->addSecurity(testSecurity);
+
+    // Create a strategy with pyramiding enabled (2 extra positions)
+    auto pattern = createSimpleShortPattern();
+    StrategyOptions pyramidOptions(true, 2, 0); // Allow 2 additional, no time limit
+    std::string strategyName("Staggered Short Stop Test");
+    auto strategy = std::make_shared<PalMetaStrategy<DecimalType>>(strategyName, aPortfolio, pyramidOptions);
+    strategy->addPricePattern(pattern);
+    
+    // Create BackTester
+    DateRange backtestRange(TimeSeriesDate(2023, Nov, 1), TimeSeriesDate(2023, Nov, 10));
+    auto backTester = BackTesterFactory<DecimalType>::getBackTester(TimeFrame::DAILY, backtestRange);
+    backTester->addStrategy(strategy);
+    
+    // Run the backtest
+    backTester->backtest();
+    
+    auto& broker = strategy->getStrategyBroker();
+    
+    // 1. Verify all 3 short trades were entered
+    REQUIRE(broker.getTotalTrades() == 3);
+    REQUIRE(broker.getClosedTrades() == 3);
+    REQUIRE(broker.isFlatPosition(testSymbol));
+    
+    DecimalType stopPercent = pattern->getStopLossAsDecimal(); // 2.00%
+    
+    // 2. Verify all were losing trades and exited at their *own* stop-loss
+    int tradesVerified = 0;
+    for (auto it = broker.beginClosedPositions(); it != broker.endClosedPositions(); ++it) {
+        auto position = it->second;
+        REQUIRE(position->isShortPosition());
+        REQUIRE(position->isLosingPosition()); // exit > entry
+        
+        DecimalType entryPrice = position->getEntryPrice();
+        DecimalType exitPrice = position->getExitPrice();
+        
+        // Calculate the *expected* stop price for *this* unit
+        ShortStopLoss<DecimalType> expectedStop(entryPrice, 
+            PercentNumber<DecimalType>::createPercentNumber(stopPercent));
+        DecimalType expectedStopPrice = num::Round2Tick(
+            expectedStop.getStopLoss(),
+            broker.getTick(testSymbol),
+            broker.getTickDiv2(testSymbol)
+        );
+        
+        // The exit price should match the calculated stop price
+        REQUIRE(exitPrice == expectedStopPrice);
+        
+        // Check based on known data
+        if (entryPrice == createDecimal("99.50")) // Unit 1
+        {
+            REQUIRE(exitPrice == createDecimal("101.49")); // 99.50 * 1.02
+            REQUIRE(position->getExitDate() == TimeSeriesDate(2023, Nov, 9));
+            tradesVerified++;
+        }
+        else if (entryPrice == createDecimal("98.50")) // Unit 2
+        {
+            REQUIRE(exitPrice == createDecimal("100.47")); // 98.50 * 1.02
+            REQUIRE(position->getExitDate() == TimeSeriesDate(2023, Nov, 8));
+            tradesVerified++;
+        }
+        else if (entryPrice == createDecimal("97.50")) // Unit 3
+        {
+            REQUIRE(exitPrice == createDecimal("99.45")); // 97.50 * 1.02
+            REQUIRE(position->getExitDate() == TimeSeriesDate(2023, Nov, 8));
+            tradesVerified++;
+        }
+    }
+    
+    // Ensure all 3 trades were found and verified
+    REQUIRE(tradesVerified == 3);
 }
