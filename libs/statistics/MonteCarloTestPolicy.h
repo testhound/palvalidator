@@ -196,10 +196,16 @@ namespace mkc_timeseries
     }
     
     /// Minimum number of closed trades required to even attempt this test
-    static unsigned int getMinStrategyTrades() { return 3; }
+    static unsigned int getMinStrategyTrades()
+    {
+      return 5;
+    }
 
     // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize() { return 20; }
+    static unsigned int getMinBarSeriesSize()
+    {
+      return 20;
+    }
 
     // Return a test statistic constant if we don't meet the minimum trade criteria
     static Decimal getMinTradeFailureTestStatistic()
@@ -276,10 +282,16 @@ namespace mkc_timeseries
     }
 
     /// Minimum number of trades required to even attempt this test
-    static unsigned int getMinStrategyTrades() { return 3; }
+    static unsigned int getMinStrategyTrades()
+    {
+      return 5;
+    }
 
     // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize() { return 20; }
+    static unsigned int getMinBarSeriesSize()
+    {
+      return 20;
+    }
 
     // Return a test statistic constant if we don't meet the minimum trade criteria
     static Decimal getMinTradeFailureTestStatistic()
