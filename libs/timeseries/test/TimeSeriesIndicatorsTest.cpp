@@ -10,6 +10,7 @@
 
 // Project headers
 #include "TimeSeriesIndicators.h"
+#include "BootStrapIndicators.h"
 #include "TimeSeries.h"
 #include "TimeSeriesEntry.h"
 #include "TestUtils.h"
@@ -1504,4 +1505,137 @@ TEST_CASE("TimeSeriesIndicators Tests", "[TimeSeriesIndicators]")
 									 tiny, 1, StopTargetMethod::TypicalDayCalibratedAlpha),
 			std::domain_error);
     }
+
+
+  SECTION("BootstrappedIndicators (ComputeBootStrappedLong/ShortStopAndTarget)")
+    {
+      using mkc_timeseries::ComputeBootStrappedLongStopAndTarget;
+      using mkc_timeseries::ComputeBootStrappedShortStopAndTarget;
+      using DC = DecimalConstants<DecimalType>;
+
+      // --- Build a long synthetic series (80 bars) with negative skew ---
+      // This is required to be > kMinBootstrapSize (30)
+      OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+      double close = 100.0;
+      for (int i = 1; i <= 80; ++i) {
+        // Typical moves ±0.5%, with large -3% shocks
+        double r_bp = (i % 2 == 0 ? +0.005 : -0.005);
+        if (i == 20 || i == 50 || i == 70) r_bp = -0.030; // Negative skew
+        if (i == 40) r_bp = +0.015; // One positive outlier
+
+        // *** FIX: ADD DETERMINISTIC NOISE to spread data ***
+        // This prevents quantiles from collapsing onto a single value.
+        // Offset is tiny, e.g., from +0.00001 to +0.00080
+        double noise = static_cast<double>(i) * 0.00001; 
+        r_bp += noise;
+
+        double open  = close;
+        double nextC = close * (1.0 + r_bp);
+        double high  = std::max(open, nextC) * 1.002;
+        double low   = std::min(open, nextC) * 0.998;
+
+        std::string dateStr;
+        if (i <= 31) {
+          std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+          dateStr = "202301" + day;
+        } else if (i <= 59) {
+          int day = i - 31;
+          std::string dayStr = (day < 10 ? "0" + std::to_string(day) : std::to_string(day));
+          dateStr = "202302" + dayStr;
+        } else {
+          int day = i - 59;
+          std::string dayStr = (day < 10 ? "0" + std::to_string(day) : std::to_string(day));
+          dateStr = "202303" + dayStr;
+        }
+        series.addEntry(*createEquityEntry(dateStr,
+                                           std::to_string(open),
+                                           std::to_string(high),
+                                           std::to_string(low),
+                                           std::to_string(nextC),
+                                           1000));
+        close = nextC;
+      }
+
+      auto [L_target, L_stop] = ComputeBootStrappedLongStopAndTarget<DecimalType>(series, 1);
+      auto [S_target, S_stop] = ComputeBootStrappedShortStopAndTarget<DecimalType>(series, 1);
+
+      // --- 1. Basic positivity ---
+      REQUIRE(L_target > DC::DecimalZero);
+      REQUIRE(L_stop   > DC::DecimalZero);
+      REQUIRE(S_target > DC::DecimalZero);
+      REQUIRE(S_stop   > DC::DecimalZero);
+
+      // --- 2. Asymmetry (Negative Skew) ---
+      // For neg skew: Downside width > Upside width
+      // Long target (upside) should be SMALLER than long stop (downside)
+      // Short target (downside) should be LARGER than short stop (upside)
+      INFO("L_target (Up_Low): " << L_target << ", L_stop (Down_High): " << L_stop);
+      INFO("S_target (Down_Low): " << S_target << ", S_stop (Up_High): " << S_stop);
+      
+      // We test the underlying widths. The bootstrap returns conservative bounds,
+      // so we compare L_stop (upper bound of downside) vs L_target (lower bound of upside).
+      // The gap should be even larger.
+      REQUIRE(L_stop > L_target);
+
+      // --- 3. Mirror properties ---
+      // Because the bootstrap is run on the same underlying stats (upside/downside width),
+      // the mirrored values should be *very* close. We use a tight tolerance.
+      // Long Target (Upside_Low) vs Short Stop (Upside_High) -> NOT mirrored
+      // Long Stop (Downside_High) vs Short Target (Downside_Low) -> NOT mirrored
+      //
+      // Let's re-read the table:
+      // L_target = bounds.upside_lower_bound
+      // L_stop   = bounds.downside_upper_bound
+      // S_target = bounds.downside_lower_bound
+      // S_stop   = bounds.upside_upper_bound
+      //
+      // There is no guaranteed numerical mirror relationship between these
+      // *conservative bounds*.
+      // L_target (5th %ile of Up) is not necessarily equal to S_stop (95th %ile of Up).
+      // L_stop (95th %ile of Down) is not necessarily equal to S_target (5th %ile of Down).
+      //
+      // The core test is the asymmetry one (Test #2).
+    }
+
+  SECTION("BootstrappedIndicators — error conditions (too few bars)")
+    {
+      using mkc_timeseries::ComputeBootStrappedLongStopAndTarget;
+      using mkc_timeseries::ComputeBootStrappedShortStopAndTarget;
+      using DC = DecimalConstants<DecimalType>;
+      const DecimalType eps = DC::createDecimal("1e-8");
+
+      // --- Test 1: < 3 bars (throws domain_error) ---
+      OHLCTimeSeries<DecimalType> tiny(TimeFrame::DAILY, TradingVolume::SHARES);
+      tiny.addEntry(*createEquityEntry("20230401","100","101","99","100",1000));
+      tiny.addEntry(*createEquityEntry("20230402","100","101","99","101",1000));
+
+      REQUIRE_THROWS_AS(ComputeBootStrappedLongStopAndTarget<DecimalType>(tiny, 1),
+                        std::domain_error);
+      REQUIRE_THROWS_AS(ComputeBootStrappedShortStopAndTarget<DecimalType>(tiny, 1),
+                        std::domain_error);
+
+      // --- Test 2: 3 bars (ROC size = 2, throws domain_error) ---
+      tiny.addEntry(*createEquityEntry("20230403","101","102","100","101",1000));
+      REQUIRE_THROWS_AS(ComputeBootStrappedLongStopAndTarget<DecimalType>(tiny, 1),
+                        std::domain_error);
+      REQUIRE_THROWS_AS(ComputeBootStrappedShortStopAndTarget<DecimalType>(tiny, 1),
+                        std::domain_error);
+      
+      // --- Test 3: > 3 bars but < kMinBootstrapSize (returns eps) ---
+      OHLCTimeSeries<DecimalType> small(TimeFrame::DAILY, TradingVolume::SHARES);
+      for (int i = 1; i <= 15; ++i) { // 15 bars < 30 (kMinBootstrapSize)
+	std::string day = (i < 10 ? "0" + std::to_string(i) : std::to_string(i));
+	small.addEntry(*createEquityEntry("202305" + day, "100", "101", "99", "100", 1000));
+      }
+
+      auto [L_target, L_stop] = ComputeBootStrappedLongStopAndTarget<DecimalType>(small, 1);
+      auto [S_target, S_stop] = ComputeBootStrappedShortStopAndTarget<DecimalType>(small, 1);
+      
+      // Should return the degenerate epsilon bounds
+      REQUIRE(L_target == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(L_stop   == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(S_target == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
+      REQUIRE(S_stop   == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
+    }
 }
+
