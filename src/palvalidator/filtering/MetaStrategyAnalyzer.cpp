@@ -27,7 +27,75 @@ namespace palvalidator
   {
     static std::size_t kMinSliceLen = 20;
     using palvalidator::filtering::makeCostStressHurdles;
-    
+
+
+    /**
+     * @brief Calculates the block length for stationary bootstrap, switching between
+     * median hold period (for short series) and ACF-based method (for long series).
+     * @param returns Vector of returns.
+     * @param medianHold Median holding period in bars.
+     * @param outputStream Stream for logging which method was used.
+     * @param minSizeForACF Minimum number of returns to attempt ACF calculation.
+     * @param maxACFLag Maximum lag to compute for ACF.
+     * @param minACFL Minimum suggested block length from ACF.
+     * @param maxACFL Maximum suggested block length from ACF.
+     * @return Suggested block length L (>= 2).
+     */
+    static std::size_t calculateBlockLengthAdaptive(const std::vector<Num>& returns,
+                                                unsigned int medianHold,
+                                                std::ostream& outputStream,
+                                                std::size_t minSizeForACF = 100,
+                                                std::size_t maxACFLag = 20,
+                                                unsigned int minACFL = 2,
+                                                unsigned int maxACFL = 12) // Default max L for meta
+    {
+        if (returns.size() < minSizeForACF)
+        {
+            // --- Method 1: Median Holding Period (for shorter series) ---
+            std::size_t L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
+            // Add a check to prevent excessively large L from median hold on short series
+            L = std::min(L, returns.size() / 2); // Cap L at n/2 for safety
+            L = std::max<std::size_t>(2, L);     // Ensure L is still at least 2
+
+            outputStream << "      (Using block length L=" << L
+                         << " based on median hold period, n=" << returns.size() << " < " << minSizeForACF << ")\n";
+            return L;
+        }
+        else
+        {
+            // --- Method 2: ACF-based (for longer series) ---
+            try
+            {
+                // Ensure maxACFLag is reasonable given series size
+                std::size_t effectiveMaxLag = std::min(maxACFLag, returns.size() - 1);
+                if (effectiveMaxLag < 1) {
+                  throw std::runtime_error("Cannot compute ACF with effective max lag < 1");
+                }
+
+                const auto acf = mkc_timeseries::StatUtils<Num>::computeACF(returns, effectiveMaxLag);
+                unsigned int L_acf = mkc_timeseries::StatUtils<Num>::suggestStationaryBlockLengthFromACF(
+                    acf, returns.size(), minACFL, maxACFL); // Use passed-in min/max L
+
+                outputStream << "      (Using block length L=" << L_acf
+                             << " based on ACF [maxLag=" << effectiveMaxLag << ", maxL=" << maxACFL
+                             << "], n=" << returns.size() << " >= " << minSizeForACF << ")\n";
+                return static_cast<std::size_t>(L_acf);
+            }
+            catch (const std::exception& e)
+            {
+                // Fallback to median holding period if ACF fails
+                std::size_t L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
+                // Add safety cap here too
+                L = std::min(L, returns.size() / 2);
+                L = std::max<std::size_t>(2, L);
+
+                outputStream << "      Warning: ACF block length calculation failed ('" << e.what()
+                             << "'). Falling back to L=" << L << " based on median hold period.\n";
+                return L;
+            }
+        }
+    }
+
     MetaStrategyAnalyzer::MetaStrategyAnalyzer(const RiskParameters& riskParams,
     	       const Num& confidenceLevel,
     	       unsigned int numResamples)
@@ -357,19 +425,19 @@ namespace palvalidator
 	}
 
       if (metaReturns.size() < 2U)
- {
-   outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
-   DrawdownResults emptyDrawdown;
-   return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-    DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
-    false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
-    DecimalConstants<Num>::DecimalZero);
- }
+	{
+	  outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
+	  DrawdownResults emptyDrawdown;
+	  return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+				DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+				false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
+				DecimalConstants<Num>::DecimalZero);
+	}
 
       // --- Metrics used by both gates ------------------------------------------
       const uint32_t numTrades        = bt->getClosedPositionHistory().getNumPositions();
       const unsigned int metaMedianHold = bt->getClosedPositionHistory().getMedianHoldingPeriod();
-      const std::size_t Lmeta           = std::max<std::size_t>(2, metaMedianHold);
+      const std::size_t Lmeta           = calculateBlockLengthAdaptive(metaReturns, metaMedianHold, outputStream);
       const Num metaAnnualizedTrades    = Num(bt->getEstimatedAnnualizedTrades());
       const double annualizationFactor  = calculateAnnualizationFactor(timeFrame, baseSecurity);
 
@@ -493,43 +561,45 @@ namespace palvalidator
                      << monthly.size() << " returns)\n";
         return DecimalConstants<Num>::DecimalZero;
       }
-      
+
+      // Get median hold from history (needed even if ACF is used)
+      unsigned int medianHold = closedPositionHistory.getMedianHoldingPeriod();
+
+      // Use specific ACF settings for monthly data (shorter max lag/L)
+      const std::size_t blockLength = calculateBlockLengthAdaptive(monthly, medianHold, outputStream,
+                                                                   100, // min size for ACF
+                                                                   12,  // maxACFLag for monthly
+                                                                   2,   // minACFL
+                                                                   6);  // maxACFL for monthly
       try
-      {
-        using BoundFutureReturns = mkc_timeseries::BoundFutureReturns<Num>;
-
-	// 3) Compute autocorrelation of monthly returns
-	const auto acf = mkc_timeseries::StatUtils<Num>::computeACF(monthly, 12); // Max lag 12
-
-	// 4) Suggest block length (e.g., clamp between 2 and 6)
-	const unsigned blockLength =
-	  mkc_timeseries::StatUtils<Num>::suggestStationaryBlockLengthFromACF(acf, monthly.size(), 2, 6);
-
-        BoundFutureReturns futureReturns(monthly,  // Pass monthly returns directly
-                                         blockLength,
-                                         0.10, 0.90,  // default quantiles (10th and 90th percentile)
-                                         mNumResamples,  // bootstrap resamples
-                                         mConfidenceLevel.getAsDouble());
+	{
+	  using BoundFutureReturns = mkc_timeseries::BoundFutureReturns<Num>;
+	  
+	  BoundFutureReturns futureReturns(monthly,  // Pass monthly returns directly
+					   blockLength,
+					   0.10, 0.90,  // default quantiles (10th and 90th percentile)
+					   mNumResamples,  // bootstrap resamples
+					   mConfidenceLevel.getAsDouble());
          
-        // Get lower bound as percentage (getLowerBound() * 100.0)
-        Num futureReturnsLowerBoundPct = futureReturns.getLowerBound() *
-          DecimalConstants<Num>::DecimalOneHundred;
+	  // Get lower bound as percentage (getLowerBound() * 100.0)
+	  Num futureReturnsLowerBoundPct = futureReturns.getLowerBound() *
+	    DecimalConstants<Num>::DecimalOneHundred;
         
-        outputStream << "      Future Returns Lower Bound (monthly BCa): "
-                     << futureReturnsLowerBoundPct << "% "
-                     << "(monthly vector size: " << monthly.size()
-                     << ", block length: " << blockLength << ")\n";
-        
-        return futureReturnsLowerBoundPct;
-      }
+	  outputStream << "      Future Returns Lower Bound (monthly BCa): "
+		       << futureReturnsLowerBoundPct << "% "
+		       << "(monthly vector size: " << monthly.size()
+		       << ", block length: " << blockLength << ")\n";
+	      
+	  return futureReturnsLowerBoundPct;
+	}
       catch (const std::exception& e)
-      {
-        outputStream << "      Future Returns Bound Analysis: Failed - "
-                     << e.what() << "\n";
-        return DecimalConstants<Num>::DecimalZero;
-      }
+	{
+	  outputStream << "      Future Returns Bound Analysis: Failed - "
+		       << e.what() << "\n";
+	  return DecimalConstants<Num>::DecimalZero;
+	}
     }
-    
+
     std::shared_ptr<BackTester<Num>> MetaStrategyAnalyzer::executeBacktesting(
         std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
         TimeFrame::Duration timeFrame,

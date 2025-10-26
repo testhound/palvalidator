@@ -1,5 +1,6 @@
 #include "StatisticsCalculator.h"
 #include "TimeSeriesIndicators.h"
+#include "BootStrapIndicators.h"
 #include "DecimalConstants.h"
 #include <iostream>
 #include <stdexcept>
@@ -107,7 +108,7 @@ LongStatisticsResults StatisticsCalculator::computeLongStopAndTarget(
     using namespace mkc_timeseries;
     
     // Calculate long stop and target using partitioned distributions
-    auto [profitWidth, stopWidth] = ComputeLongStopAndTargetFromSeries(series, static_cast<uint32_t>(holdingPeriod));
+    auto [profitWidth, stopWidth] = ComputeBootStrappedLongStopAndTarget(series, static_cast<uint32_t>(holdingPeriod));
     
     // Calculate partitioned statistics (following displayStatisticsOnly pattern)
     auto rocSeries = RocSeries(series.CloseTimeSeries(), static_cast<uint32_t>(holdingPeriod));
@@ -164,7 +165,7 @@ ShortStatisticsResults StatisticsCalculator::computeShortStopAndTarget(
     using namespace mkc_timeseries;
     
     // Calculate short stop and target using partitioned distributions
-    auto [profitWidth, stopWidth] = ComputeShortStopAndTargetFromSeries(series, static_cast<uint32_t>(holdingPeriod));
+    auto [profitWidth, stopWidth] = ComputeBootStrappedShortStopAndTarget(series, static_cast<uint32_t>(holdingPeriod));
     
     // Calculate partitioned statistics (following displayStatisticsOnly pattern)
     auto rocSeries = RocSeries(series.CloseTimeSeries(), static_cast<uint32_t>(holdingPeriod));
