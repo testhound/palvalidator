@@ -2,6 +2,7 @@
 #include "TimeFrameUtility.h"
 #include "DecimalConstants.h"
 #include "TimeSeriesIndicators.h"
+#include "BootStrapIndicators.h"
 #include "TimeSeriesProcessor.h"
 #include "BidAskAnalyzer.h"
 #include "SecurityAttributesFactory.h"
@@ -590,9 +591,9 @@ void UserInterface::displayStatisticsOnly(const mkc_timeseries::OHLCTimeSeries<N
         auto rocSeries = RocSeries(inSampleSeries.CloseTimeSeries(), period);
         auto rocVec    = rocSeries.getTimeSeriesAsVector();
 
-        // Compute stop/target via the new typical-day methods
-        auto [longProfit,  longStop ] = ComputeLongStopAndTargetFromSeries (inSampleSeries, period);
-        auto [shortProfit, shortStop] = ComputeShortStopAndTargetFromSeries(inSampleSeries, period);
+        // Compute stop/target via the new bootstrapped methods
+        auto [longProfit,  longStop ] = ComputeBootStrappedLongStopAndTarget (inSampleSeries, period);
+        auto [shortProfit, shortStop] = ComputeBootStrappedShortStopAndTarget(inSampleSeries, period);
 
         // Determine the method you’re using (if you pass it in; otherwise default)
         const StopTargetMethod method = kDefaultStopTargetMethod;
