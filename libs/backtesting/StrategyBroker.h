@@ -20,6 +20,7 @@
 #include "StopLoss.h"
 #include "SecurityAttributes.h"
 #include "SecurityAttributesFactory.h"
+#include "PatternPositionRegistry.h"
 // Ensure ptime and getDefaultBarTime are available
 #include "TimeSeriesEntry.h" // For OHLCTimeSeriesEntry, ptime, getDefaultBarTime
 
@@ -508,6 +509,70 @@ namespace mkc_timeseries
                                                                      stopLoss,
                                                                      profitTarget);
       mOrderManager.addTradingOrder (order);
+    }
+
+    // Pattern-aware order creation methods
+    
+    /**
+     * @brief Submit a pattern-aware market-on-open long order using ptime.
+     *
+     * @param tradingSymbol Ticker symbol to trade.
+     * @param orderDateTime Exact date and time of the order.
+     * @param pattern Pattern that triggered this entry
+     * @param unitsInOrder Number of units to enter.
+     * @param stopLoss Optional stop-loss price.
+     * @param profitTarget Optional profit-target price.
+     */
+    void EnterLongOnOpenWithPattern(const std::string& tradingSymbol,
+                                   const ptime& orderDateTime,
+                                   std::shared_ptr<PriceActionLabPattern> pattern,
+                                   const TradingVolume& unitsInOrder,
+                                   const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                   const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+    {
+      auto order = std::make_shared<MarketOnOpenLongOrder<Decimal>>(tradingSymbol,
+                                                                    unitsInOrder,
+                                                                    orderDateTime,
+                                                                    stopLoss,
+                                                                    profitTarget);
+      
+      // Register pattern mapping externally
+      if (pattern) {
+        PatternPositionRegistry::getInstance().registerOrderPattern(order->getOrderID(), pattern);
+      }
+      
+      mOrderManager.addTradingOrder(order);
+    }
+
+    /**
+     * @brief Submit a pattern-aware market-on-open short order using ptime.
+     *
+     * @param tradingSymbol Ticker symbol to short.
+     * @param orderDateTime Exact date and time of the order.
+     * @param pattern Pattern that triggered this entry
+     * @param unitsInOrder Number of units to enter.
+     * @param stopLoss Optional stop-loss price.
+     * @param profitTarget Optional profit-target price.
+     */
+    void EnterShortOnOpenWithPattern(const std::string& tradingSymbol,
+                                    const ptime& orderDateTime,
+                                    std::shared_ptr<PriceActionLabPattern> pattern,
+                                    const TradingVolume& unitsInOrder,
+                                    const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                    const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+    {
+      auto order = std::make_shared<MarketOnOpenShortOrder<Decimal>>(tradingSymbol,
+                                                                     unitsInOrder,
+                                                                     orderDateTime,
+                                                                     stopLoss,
+                                                                     profitTarget);
+      
+      // Register pattern mapping externally
+      if (pattern) {
+        PatternPositionRegistry::getInstance().registerOrderPattern(order->getOrderID(), pattern);
+      }
+      
+      mOrderManager.addTradingOrder(order);
     }
 
     /**
@@ -1494,6 +1559,11 @@ namespace mkc_timeseries
                                                                      getEntryBar(order->getTradingSymbol(),
                                                                                  order->getFillDateTime()),
                                                                      order->getUnitsInOrder());
+      
+      // Transfer pattern mapping from order to position EXTERNALLY
+      PatternPositionRegistry::getInstance().transferOrderToPosition(
+          order->getOrderID(), position->getPositionID());
+          
       position->setStopLoss(stopLoss);
       position->setProfitTarget(profitTarget);
       position->addObserver (*this);
@@ -1519,6 +1589,11 @@ namespace mkc_timeseries
                                                         getEntryBar(order->getTradingSymbol(),
                                                                     order->getFillDateTime()),
                                                         order->getUnitsInOrder());
+      
+      // Transfer pattern mapping from order to position EXTERNALLY
+      PatternPositionRegistry::getInstance().transferOrderToPosition(
+          order->getOrderID(), position->getPositionID());
+          
       position->setStopLoss(stopLoss);
       position->setProfitTarget(profitTarget);
       position->addObserver (*this);
