@@ -57,7 +57,7 @@ std::shared_ptr<OHLCTimeSeries<DecimalType>> createTestTimeSeries()
 }
 
 // Helper function to create a simple long pattern for pyramiding tests
-std::shared_ptr<PriceActionLabPattern> createSimpleLongPattern()
+static std::shared_ptr<PriceActionLabPattern> createSimpleLongPattern()
 {
     auto percentLong = std::make_shared<DecimalType>(createDecimal("90.00"));
     auto percentShort = std::make_shared<DecimalType>(createDecimal("10.00"));
@@ -134,7 +134,7 @@ std::shared_ptr<OHLCTimeSeries<DecimalType>> createFallingThenRisingTimeSeries()
 }
 
 // Helper: Simple short pattern (Close[0] < Close[1])
-std::shared_ptr<PriceActionLabPattern> createSimpleShortPattern()
+static std::shared_ptr<PriceActionLabPattern> createSimpleShortPattern()
 {
     auto percentLong = std::make_shared<DecimalType>(createDecimal("10.00"));
     auto percentShort = std::make_shared<DecimalType>(createDecimal("90.00"));

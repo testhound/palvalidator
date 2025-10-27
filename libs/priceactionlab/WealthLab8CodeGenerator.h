@@ -1,25 +1,18 @@
-// WealthLab8CodeGenerator.h — full replacement with:
-//   - “pyramids = adds” semantics
-//   - Max Risk % stop override
-//   - Skip-when-both-sides-fire toggle (default: enabled)
+// WealthLab8CodeGenerator.h
 // -----------------------------------------------------------------------------
+// Changes in this version:
+//  • StartIndex is now 0 so WL8 executes from the earliest bar.
+//  • Each emitted pattern in EnterLong/EnterShort is guarded by a
+//    per-pattern lookback check (idx >= patternMaxBarsBack) to exactly
+//    match PalMetaStrategy’s behavior.
+//  • Guard uses short-circuit AND so price/volume accessors aren’t evaluated
+//    until the index is safe.
 //
-// What’s new here:
-//  • Adds WL8 parameter: paramSkipIfBothSides (0/1), default 1 (enabled).
-//  • In flat state, if both long & short signals fire and the toggle is ON,
-//    the strategy stands aside for that bar.
-//  • Otherwise proceeds normally, with explicit tie preference preserved.
-//
-// Previously added (retained):
-//  • Generator ctor accepts (double longStopPercent, double shortStopPercent)
-//  • Generated C# fields mLongStopPercent, mShortStopPercent
-//  • Generated C# override GetMaxRiskStopLevel(...) for Max Risk % sizing
-//  • Volume accessor V(int) in EnterLong/EnterShort
-//  • StartIndex uses PAL getMaxBarsBack() with explanatory comment
-//  • Explicit long/short tie preference in Execute
-//  • Clarified per-symbol OpenPositions counting comment
-//  • Note on getpatternIndex() lowercase 'p'
-//  • Unsupported-node errors include current pattern index
+// Retained features:
+//  • “Pyramids = adds” semantics (allowedTotal = 1 + maxAdds).
+//  • Skip-when-both-sides-fire toggle (default: enabled).
+//  • Max Risk % stop override via GetMaxRiskStopLevel.
+//  • Volume accessor V(n); richer errors; lower-case getpatternIndex() note.
 // -----------------------------------------------------------------------------
 
 #pragma once
@@ -39,7 +32,6 @@
 class WealthLab8CodeGenVisitor : public PalCodeGenVisitor
 {
 public:
-    // Pass percent stops (e.g., 2.0 == 2%) to embed in generated C# as literals
     WealthLab8CodeGenVisitor(std::shared_ptr<PriceActionLabSystem> system,
                              std::string outputFileName,
                              std::string className,
@@ -59,25 +51,14 @@ public:
         if (!mOut.is_open())
             throw std::runtime_error("Cannot open output file: " + mOutputFileName);
 
-        // Pre-scan StartIndex via PAL pattern metadata (already accounts for lookback).
-        int maxBarsBack = 0;
-        for (auto it = mSystem->patternLongsBegin(); it != mSystem->patternLongsEnd(); ++it)
-            maxBarsBack = std::max(maxBarsBack, static_cast<int>(it->second->getMaxBarsBack()));
-        for (auto it = mSystem->patternShortsBegin(); it != mSystem->patternShortsEnd(); ++it)
-            maxBarsBack = std::max(maxBarsBack, static_cast<int>(it->second->getMaxBarsBack()));
-
-        // NOTE: getMaxBarsBack() comes from PalPatternMaxBars::evaluateExpression and already
-        // includes extra-bars-needed semantics. No +1 bump required.
-        const int startIndex = maxBarsBack;
-
         writeFilePreamble();
         writeClassPreamble();
         writeConstructor();
-        writeInitialize(startIndex);
-        writeExecute();             // explicit tie preference + "adds" semantics + both-sides toggle
-        writeEnterLong();           // includes V(int)
-        writeEnterShort();          // includes V(int)
-        writeGetMaxRiskStopLevel(); // WL8 Max Risk % sizing support
+        writeInitialize(/*startIndex*/0); // Start as early as possible; per-pattern guards handle safety
+        writeExecute();                   // includes tie toggle + pyramids=adds
+        writeEnterLong();                 // per-pattern lookback guards + V(n)
+        writeEnterShort();                // per-pattern lookback guards + V(n)
+        writeGetMaxRiskStopLevel();       // WL8 Max Risk % sizing support
         writePrivateMembers();
         writePosInfo();
         writeNamespaceEpilogue();
@@ -90,7 +71,7 @@ public:
     void visit(PriceBarHigh* n) override        { emitRef("H", n->getBarOffset()); }
     void visit(PriceBarLow* n) override         { emitRef("L", n->getBarOffset()); }
     void visit(PriceBarClose* n) override       { emitRef("C", n->getBarOffset()); }
-    void visit(VolumeBarReference* n) override  { emitRef("V", n->getBarOffset()); } // volume support
+    void visit(VolumeBarReference* n) override  { emitRef("V", n->getBarOffset()); }
 
     void visit(Roc1BarReference*) override        { unsupportedNode("ROC1"); }
     void visit(MeanderBarReference*) override     { unsupportedNode("Meander"); }
@@ -129,7 +110,6 @@ private:
     // ------------------------------- Emission helpers ---------------------------------
     [[noreturn]] void unsupportedNode(const char* name)
     {
-        // Include current pattern index to speed triage.
         std::ostringstream oss;
         oss << "WealthLab8CodeGenVisitor: unsupported AST node: " << name
             << " (patternIndex=" << mCurrentPatternIndex << ")";
@@ -157,7 +137,6 @@ private:
     {
         mOut << "    public class " << mClassName << " : UserStrategyBase\n";
         mOut << "    {\n";
-        // Emit fields for Max Risk % stops (in percent units, e.g., 2.0 == 2%) as literals
         mOut << "        // Max Risk % stop configuration (percent units)\n";
         mOut << "        private double mLongStopPercent = " << std::fixed << std::setprecision(8) << mLongStopPercent << ";\n";
         mOut << "        private double mShortStopPercent = " << std::fixed << std::setprecision(8) << mShortStopPercent << ";\n";
@@ -169,13 +148,9 @@ private:
         mOut << "        public " << mClassName << "()\n";
         mOut << "        {\n";
         mOut << "            paramEnablePyramiding = AddParameter(\"Enable Pyramiding\", ParameterType.Int32, 0, 0, 1, 1);\n";
-        // Label clarifies “adds” (not total positions)
         mOut << "            paramMaxPyramids     = AddParameter(\"Max Pyramids (adds)\", ParameterType.Int32, 3, 0, 10, 1);\n";
         mOut << "            paramMaxHold        = AddParameter(\"Max Hold Period\", ParameterType.Int32, 8, 5, 50, 5);\n";
-        // NEW: 0/1 toggle; default 1 (stand aside when both sides fire from flat)
         mOut << "            paramSkipIfBothSides = AddParameter(\"Skip if Long & Short fire (flat)\", ParameterType.Int32, 1, 0, 1, 1);\n";
-        mOut << "            // NOTE: mLongStopPercent / mShortStopPercent are embedded literals from the generator.\n";
-        mOut << "            // If you prefer WL8 UI parameters for these, expose them via AddParameter and assign here.\n";
         mOut << "        }\n";
     }
 
@@ -184,14 +159,13 @@ private:
         mOut << "        //create indicators and other objects here, this is executed prior to the main trading loop\n";
         mOut << "        public override void Initialize(BarHistory bars)\n";
         mOut << "        {\n";
-        mOut << "            // StartIndex derived from PAL getMaxBarsBack() (already includes lookback needs).\n";
+        mOut << "            // Start as early as possible; per-pattern guards will ensure safe access.\n";
         mOut << "            StartIndex = " << startIndex << ";\n";
         mOut << "        }\n";
     }
 
     void writeExecute()
     {
-        // Emit Execute with explicit tie preference (true = Long-first, false = Short-first).
         constexpr bool preferLongOnTies = true;
 
         mOut << "        //execute the strategy rules here, this is executed once for each bar in the backtest history\n";
@@ -239,14 +213,13 @@ private:
         mOut << "                }\n";
         mOut << "            }\n";
 
-        // NEW: If flat and both directions are allowed, optionally stand aside when both fire
+        // Flat-state conflict neutralization (toggle)
         mOut << "            if (!hasAny && goLong && goShort && paramSkipIfBothSides.AsInt != 0)\n";
         mOut << "            {\n";
         mOut << "                bool longSignal = EnterLong(bars, idx);\n";
         mOut << "                bool shortSignal = EnterShort(bars, idx);\n";
         mOut << "                if (longSignal && shortSignal)\n";
         mOut << "                    return; // stand aside this bar\n";
-        mOut << "                // otherwise, proceed only with the side that actually signaled\n";
         mOut << "                goLong = longSignal;\n";
         mOut << "                goShort = shortSignal;\n";
         mOut << "            }\n";
@@ -304,13 +277,13 @@ private:
         mOut << "        // LONG patterns evaluated inline (no interpreter)\n";
         mOut << "        public bool EnterLong(BarHistory bars, int idx)\n";
         mOut << "        {\n";
-        mOut << "            if (idx < StartIndex) return false; // safety\n";
+        // Removed global StartIndex guard; per-pattern guards below ensure safe access
         mOut << "            // shorthand accessors scoped to this method\n";
         mOut << "            double O(int n) => bars.Open[idx - n];\n";
         mOut << "            double H(int n) => bars.High[idx - n];\n";
         mOut << "            double L(int n) => bars.Low[idx - n];\n";
         mOut << "            double C(int n) => bars.Close[idx - n];\n";
-        mOut << "            double V(int n) => bars.Volume[idx - n]; // Volume accessor for patterns\n";
+        mOut << "            double V(int n) => bars.Volume[idx - n];\n";
 
         for (auto it = mSystem->patternLongsBegin(); it != mSystem->patternLongsEnd(); ++it)
         {
@@ -326,13 +299,13 @@ private:
         mOut << "        // SHORT patterns evaluated inline (no interpreter)\n";
         mOut << "        public bool EnterShort(BarHistory bars, int idx)\n";
         mOut << "        {\n";
-        mOut << "            if (idx < StartIndex) return false; // safety\n";
+        // Removed global StartIndex guard; per-pattern guards below ensure safe access
         mOut << "            // shorthand accessors scoped to this method\n";
         mOut << "            double O(int n) => bars.Open[idx - n];\n";
         mOut << "            double H(int n) => bars.High[idx - n];\n";
         mOut << "            double L(int n) => bars.Low[idx - n];\n";
         mOut << "            double C(int n) => bars.Close[idx - n];\n";
-        mOut << "            double V(int n) => bars.Volume[idx - n]; // Volume accessor for patterns\n";
+        mOut << "            double V(int n) => bars.Volume[idx - n];\n";
 
         for (auto it = mSystem->patternShortsBegin(); it != mSystem->patternShortsEnd(); ++it)
         {
@@ -343,17 +316,14 @@ private:
         mOut << "        }\n";
     }
 
-    // Provide a customized initial Stop Loss level for Max Risk % sizing
+    // WL8 Max Risk % sizing stop level
     void writeGetMaxRiskStopLevel()
     {
-        mOut << "        // Provide a customized initial Stop Loss level for Max Risk % sizing\n";
-        mOut << "        // WL8 will call this to compute position size based on your configured percent stops.\n";
         mOut << "        public override double GetMaxRiskStopLevel(BarHistory bars, PositionType pt, int idx)\n";
         mOut << "        {\n";
-        mOut << "            // Compute from the close using side-specific percent\n";
         mOut << "            double referencePrice = bars.Close[idx];\n";
         mOut << "            double referenceStopPercent = (pt == PositionType.Long) ? mLongStopPercent : mShortStopPercent;\n";
-        mOut << "            double frac = referenceStopPercent / 100.0; // convert percent → fraction\n";
+        mOut << "            double frac = referenceStopPercent / 100.0;\n";
         mOut << "            double offset = referencePrice * frac;\n";
         mOut << "            double stop = (pt == PositionType.Long) ? (referencePrice - offset) : (referencePrice + offset);\n";
         mOut << "            return stop;\n";
@@ -362,7 +332,6 @@ private:
 
     void writePrivateMembers()
     {
-        mOut << "        //declare private variables below\n";
         mOut << "        private Parameter paramEnablePyramiding;\n";
         mOut << "        private Parameter paramMaxPyramids;\n";
         mOut << "        private Parameter paramMaxHold;\n";
@@ -385,12 +354,14 @@ private:
     // --------------------------- Pattern emission & helpers ---------------------------
     void emitPatternBlock(PriceActionLabPattern* pat, bool isLong)
     {
-        // Track pattern index for richer error messages.
         const auto* desc = pat->getPatternDescription().get();
-        // NOTE: method name is getpatternIndex() with a lowercase 'p' in PAL.
+        // NOTE: method is getpatternIndex() (lowercase 'p').
         const int patIdx = desc ? desc->getpatternIndex() : 0;
         const int savedIdx = mCurrentPatternIndex;
         mCurrentPatternIndex = patIdx;
+
+        // Pattern-specific lookback requirement
+        const unsigned int patMbb = pat->getMaxBarsBack();
 
         std::vector<std::string> clauses;
         collectConjuncts(pat->getPatternExpression().get(), clauses);
@@ -400,15 +371,17 @@ private:
             if (!expr.empty()) clauses.push_back(expr);
         }
 
-        mOut << "            // pattern " << patIdx << "\n";
-        mOut << "            if\n";
-        mOut << "            (\n";
+        mOut << "            // pattern " << patIdx << " (requires " << patMbb << " bars back)\n";
+        mOut << "            if (\n";
+        mOut << "                idx > " << patMbb << " &&\n";
+        if (clauses.size() > 1) mOut << "                (\n";
         for (size_t i = 0; i < clauses.size(); ++i)
         {
             mOut << "                " << clauses[i];
             if (i + 1 < clauses.size()) mOut << " &&";
             mOut << "\n";
         }
+        if (clauses.size() > 1) mOut << "                )\n";
         mOut << "            )\n";
         mOut << "            {\n";
 
@@ -435,17 +408,14 @@ private:
     void collectConjuncts(PatternExpression* node, std::vector<std::string>& out)
     {
         if (!node) return;
-
         if (auto* andNode = dynamic_cast<AndExpr*>(node))
         {
             collectConjuncts(andNode->getLHS(), out);
             collectConjuncts(andNode->getRHS(), out);
             return;
         }
-
         std::string atom = buildAtomicString(node);
-        if (!atom.empty())
-            out.push_back(atom);
+        if (!atom.empty()) out.push_back(atom);
     }
 
     std::string buildAtomicString(PatternExpression* node)
@@ -463,19 +433,15 @@ private:
     }
 
 private:
-    // Inputs and output
     std::shared_ptr<PriceActionLabSystem> mSystem;
     std::string mOutputFileName;
     std::string mClassName;
     std::ofstream mOut;
 
-    // Expr builder
     std::ostringstream mExpr;
 
-    // Context: current pattern id for better diagnostics
     int mCurrentPatternIndex;
 
-    // User-provided percent stops (e.g., 2.0 == 2%)
     double mLongStopPercent;
     double mShortStopPercent;
 };

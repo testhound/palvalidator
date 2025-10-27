@@ -20,6 +20,7 @@
 #include "TimeSeriesEntry.h"
 #include "StatUtils.h"
 #include "TimeSeriesIndicators.h"
+#include "PatternPositionRegistry.h"
 
 namespace mkc_timeseries
 {
@@ -748,6 +749,83 @@ namespace mkc_timeseries
     ClosedPositionHistory::ConstTradeReturnIterator endLosersReturns() const
     {
       return mLosersVect.end();
+    }
+
+    /**
+     * @brief Get the pattern associated with a position (PRIMARY REQUIREMENT)
+     * @param position The trading position to look up
+     * @return Shared pointer to the associated pattern, or nullptr if none exists
+     */
+    std::shared_ptr<PriceActionLabPattern>
+    getPatternForPosition(std::shared_ptr<TradingPosition<Decimal>> position) const
+    {
+      if (!position) {
+        return nullptr;
+      }
+      return PatternPositionRegistry::getInstance().getPatternForPosition(position->getPositionID());
+    }
+
+    /**
+     * @brief Get all closed positions associated with a specific pattern
+     * @param pattern The pattern to look up
+     * @return Vector of positions associated with the pattern
+     */
+    std::vector<std::shared_ptr<TradingPosition<Decimal>>>
+    getPositionsForPattern(std::shared_ptr<PriceActionLabPattern> pattern) const
+    {
+      if (!pattern) {
+        return std::vector<std::shared_ptr<TradingPosition<Decimal>>>();
+      }
+      
+      auto& registry = PatternPositionRegistry::getInstance();
+      auto positionIDs = registry.getPositionsForPattern(pattern);
+      
+      std::vector<std::shared_ptr<TradingPosition<Decimal>>> result;
+      for (uint32_t positionID : positionIDs) {
+        // Find position by ID in mPositions
+        for (const auto& entry : mPositions) {
+          if (entry.second->getPositionID() == positionID) {
+            result.push_back(entry.second);
+            break;
+          }
+        }
+      }
+      return result;
+    }
+
+    /**
+     * @brief Get all closed positions that have associated patterns
+     * @return Vector of positions with patterns
+     */
+    std::vector<std::shared_ptr<TradingPosition<Decimal>>>
+    getPositionsWithPatterns() const
+    {
+      std::vector<std::shared_ptr<TradingPosition<Decimal>>> result;
+      auto& registry = PatternPositionRegistry::getInstance();
+      
+      for (const auto& entry : mPositions) {
+        if (registry.hasPatternForPosition(entry.second->getPositionID())) {
+          result.push_back(entry.second);
+        }
+      }
+      return result;
+    }
+
+    /**
+     * @brief Get count of positions with patterns
+     * @return Number of positions that have associated patterns
+     */
+    size_t getPositionCountWithPatterns() const
+    {
+      size_t count = 0;
+      auto& registry = PatternPositionRegistry::getInstance();
+      
+      for (const auto& entry : mPositions) {
+        if (registry.hasPatternForPosition(entry.second->getPositionID())) {
+          count++;
+        }
+      }
+      return count;
     }
 
   private:

@@ -17,6 +17,7 @@
 #include "InstrumentPosition.h"
 #include "StrategyBroker.h"
 #include "SecurityBacktestProperties.h"
+#include "PatternPositionRegistry.h"
 
 
 namespace mkc_timeseries
@@ -435,11 +436,91 @@ namespace mkc_timeseries
        const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
        const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
       {
-	auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
-	mBroker.EnterShortOnOpen (tradingSymbol, orderDateTime,
-				  getSizeForOrder(*aSecurity),
-				  stopLoss,
-				  profitTarget);
+ auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
+ mBroker.EnterShortOnOpen (tradingSymbol, orderDateTime,
+      getSizeForOrder(*aSecurity),
+      stopLoss,
+      profitTarget);
+      }
+
+      /**
+       * @brief Submit a pattern-aware market‐on‐open entry order (long side).
+       * @param tradingSymbol  Ticker to enter.
+       * @param orderDate      Date of the entry bar.
+       * @param pattern        Pattern that triggered this entry
+       * @param stopLoss       Optional stop‐loss price.
+       * @param profitTarget   Optional profit‐target price.
+       */
+      void EnterLongOnOpenWithPattern(const std::string& tradingSymbol,
+                                      const date& orderDate,
+                                      std::shared_ptr<PriceActionLabPattern> pattern,
+                                      const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                      const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      {
+          EnterLongOnOpenWithPattern(tradingSymbol, ptime(orderDate, getDefaultBarTime()),
+                                    pattern, stopLoss, profitTarget);
+      }
+
+      /**
+       * @brief Submit a pattern-aware market‐on‐open entry order (long side) using ptime.
+       * @param tradingSymbol    Ticker to enter.
+       * @param orderDateTime    DateTime of the entry bar.
+       * @param pattern          Pattern that triggered this entry
+       * @param stopLoss         Optional stop‐loss price.
+       * @param profitTarget     Optional profit‐target price.
+       */
+      void EnterLongOnOpenWithPattern(const std::string& tradingSymbol,
+                                      const ptime& orderDateTime,
+                                      std::shared_ptr<PriceActionLabPattern> pattern,
+                                      const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                      const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      {
+          auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
+          
+          // Use the pattern-aware broker method
+          mBroker.EnterLongOnOpenWithPattern(tradingSymbol, orderDateTime, pattern,
+                                            getSizeForOrder(*aSecurity),
+                                            stopLoss, profitTarget);
+      }
+
+      /**
+       * @brief Submit a pattern-aware market‐on‐open entry order (short side).
+       * @param tradingSymbol  Ticker to enter short.
+       * @param orderDate      Date of the entry bar.
+       * @param pattern        Pattern that triggered this entry
+       * @param stopLoss       Optional stop‐loss price.
+       * @param profitTarget   Optional profit‐target price.
+       */
+      void EnterShortOnOpenWithPattern(const std::string& tradingSymbol,
+                                       const date& orderDate,
+                                       std::shared_ptr<PriceActionLabPattern> pattern,
+                                       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                       const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      {
+          EnterShortOnOpenWithPattern(tradingSymbol, ptime(orderDate, getDefaultBarTime()),
+                                     pattern, stopLoss, profitTarget);
+      }
+
+      /**
+       * @brief Submit a pattern-aware market‐on‐open entry order (short side) using ptime.
+       * @param tradingSymbol    Ticker to enter short.
+       * @param orderDateTime    DateTime of the entry bar.
+       * @param pattern          Pattern that triggered this entry
+       * @param stopLoss         Optional stop‐loss price.
+       * @param profitTarget     Optional profit‐target price.
+       */
+      void EnterShortOnOpenWithPattern(const std::string& tradingSymbol,
+                                       const ptime& orderDateTime,
+                                       std::shared_ptr<PriceActionLabPattern> pattern,
+                                       const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
+                                       const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
+      {
+          auto aSecurity = mPortfolio->findSecurity(tradingSymbol)->second;
+          
+          // Use the pattern-aware broker method
+          mBroker.EnterShortOnOpenWithPattern(tradingSymbol, orderDateTime, pattern,
+                                             getSizeForOrder(*aSecurity),
+                                             stopLoss, profitTarget);
       }
 
       /**

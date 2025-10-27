@@ -105,11 +105,13 @@ namespace mkc_timeseries
 
       if (pattern->isLongPattern())
       {
-        strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+        strategy->EnterLongOnOpenWithPattern(aSecurity->getSymbol(), processingDateTime,
+                                            pattern, stop, target);
       }
       else
       {
-        strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+        strategy->EnterShortOnOpenWithPattern(aSecurity->getSymbol(), processingDateTime,
+                                             pattern, stop, target);
       }
     }
   };
@@ -149,7 +151,8 @@ namespace mkc_timeseries
       Decimal target = pattern->getProfitTargetAsDecimal();
       Decimal stop = pattern->getStopLossAsDecimal();
 
-      strategy->EnterLongOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+      strategy->EnterLongOnOpenWithPattern(aSecurity->getSymbol(), processingDateTime,
+                                          pattern, stop, target);
     }
   };
 
@@ -189,7 +192,8 @@ namespace mkc_timeseries
       Decimal target = pattern->getProfitTargetAsDecimal();
       Decimal stop = pattern->getStopLossAsDecimal();
 
-      strategy->EnterShortOnOpen (aSecurity->getSymbol(), processingDateTime, stop, target);
+      strategy->EnterShortOnOpenWithPattern(aSecurity->getSymbol(), processingDateTime,
+                                           pattern, stop, target);
     }
   };
 

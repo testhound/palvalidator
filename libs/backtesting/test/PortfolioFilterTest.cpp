@@ -356,7 +356,7 @@ TEST_CASE("PortfolioFilter / AdaptiveVolatilityPortfolioFilter (one-argument con
 }
 
 // Helper function to create a simple test pattern
-std::shared_ptr<PriceActionLabPattern> createTestLongPattern()
+static std::shared_ptr<PriceActionLabPattern> createTestLongPattern()
 {
     // Use AstResourceManager for proper AST creation
     AstResourceManager resourceManager;

@@ -547,6 +547,24 @@ virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
     }
 
     /**
+     * @brief Get the StrategyBroker for a strategy by name.
+     * @param strategyName The name of the strategy to find
+     * @return Reference to the StrategyBroker for the named strategy
+     * @throws BackTesterException if the strategy is not found
+     */
+    auto& getStrategyBrokerForStrategy(const std::string& strategyName)
+    {
+      for (auto& strategy : mStrategyList)
+      {
+        if (strategy->getStrategyName() == strategyName)
+        {
+          return strategy->getStrategyBroker();
+        }
+      }
+      throw BackTesterException("Strategy not found: " + strategyName);
+    }
+
+    /**
      * @brief Determines whether this is a backtester that operates
      * on the daily time frame.
      * @return `true` if operating on the daily time frame `false` otherwise
