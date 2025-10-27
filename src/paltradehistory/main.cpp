@@ -18,6 +18,7 @@
 #include "Portfolio.h"
 #include "number.h"
 #include "BacktesterStrategy.h"
+#include "PalAst.h"
 #include <algorithm>
 #include <limits>
 
@@ -92,7 +93,7 @@ void writeTradeHistoryCSV(const std::string& filename,
     }
 
     // Write CSV header
-    csvFile << "Ticker,Direction,EntryDateTime,EntryPrice,ExitDate,ExitPrice,PercentReturn,BarsInPosition\n";
+    csvFile << "Ticker,Direction,EntryDateTime,EntryPrice,ExitDate,ExitPrice,PercentReturn,BarsInPosition,PatternIndex,IndexDate\n";
 
     // Iterate through all closed positions
     auto it = closedHistory.beginTradingPositions();
@@ -112,6 +113,16 @@ void writeTradeHistoryCSV(const std::string& filename,
         std::ostringstream exitStream;
         exitStream << boost::gregorian::to_simple_string(exitDate);
         
+        // Get pattern information for this position
+        auto pattern = closedHistory.getPatternForPosition(position);
+        unsigned int patternIndex = 0;
+        unsigned int indexDate = 0;
+        
+        if (pattern) {
+            patternIndex = pattern->getpatternIndex();
+            indexDate = pattern->getIndexDate();
+        }
+        
         // Write trade data to CSV
         csvFile << securitySymbol << ","
                 << direction << ","
@@ -120,7 +131,9 @@ void writeTradeHistoryCSV(const std::string& filename,
                 << exitStream.str() << ","
                 << std::fixed << std::setprecision(2) << position->getExitPrice() << ","
                 << std::fixed << std::setprecision(2) << position->getPercentReturn() << ","
-                << position->getNumBarsInPosition() << "\n";
+                << position->getNumBarsInPosition() << ","
+                << patternIndex << ","
+                << indexDate << "\n";
     }
     
     csvFile.close();
