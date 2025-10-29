@@ -6,6 +6,8 @@
 #include "BackTester.h"
 #include "PalStrategy.h"
 #include <sstream>
+#include <cmath>
+
 
 namespace palvalidator::filtering::stages
 {
@@ -21,9 +23,22 @@ namespace palvalidator::filtering::stages
 
   size_t BootstrapAnalysisStage::computeBlockLength(const StrategyAnalysisContext& ctx) const
   {
-    if (!ctx.backtester) return 2;
-    const unsigned int medianHoldBars = ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod();
-    return std::max<size_t>(2, static_cast<size_t>(medianHoldBars));
+    // 1) Median holding period (economic horizon)
+    unsigned int medianHoldBars = 2;
+    if (ctx.backtester)
+      medianHoldBars = ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod();
+
+    // 2) n^(1/3) heuristic (statistical horizon), prefer already-prepared returns
+    size_t n = ctx.highResReturns.size();
+    size_t lCube = (n > 0) ? static_cast<size_t>(std::lround(std::pow(static_cast<double>(n), 1.0/3.0))) : 0;
+
+    // 3) Hybrid: max of the two, with a minimum of 2
+    size_t L = std::max<size_t>(2, std::max(static_cast<size_t>(medianHoldBars), lCube));
+
+    const size_t L_cap = 12;
+    L = std::min(L, L_cap);
+
+    return L;
   }
 
   double BootstrapAnalysisStage::computeAnnualizationFactor(const StrategyAnalysisContext& ctx) const
