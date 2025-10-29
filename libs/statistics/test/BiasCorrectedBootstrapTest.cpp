@@ -443,6 +443,45 @@ TEST_CASE("Policy jackknife: Stationary clamps L to n-1", "[Resampler][Jackknife
     }
 }
 
+TEST_CASE("StationaryBlockResampler jackknife with nonlinear statistic (variance)", 
+          "[Resampler][Jackknife][Stationary][Nonlinear]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // Small sequence for deterministic variance
+    std::vector<D> x = { D(1), D(2), D(3), D(4), D(5) };
+
+    // Statistic: population variance (nonlinear)
+    typename Policy::StatFn stat = [](const std::vector<D>& v) -> D {
+        const size_t n = v.size();
+        D mean = StatUtils<D>::computeMean(v);
+        D sumsq = D(0);
+        for (const auto& val : v) {
+            const D diff = val - mean;
+            sumsq += diff * diff;
+        }
+        return sumsq / D(n);
+    };
+
+    Policy pol(2);
+    auto jk = pol.jackknife(x, stat);
+
+    // Expect n replicates
+    REQUIRE(jk.size() == x.size());
+
+    // Ensure results are finite and vary (i.e., not all identical)
+    bool all_equal = true;
+    for (size_t i = 1; i < jk.size(); ++i) {
+        if (jk[i] != jk[0]) { all_equal = false; break; }
+    }
+    REQUIRE_FALSE(all_equal);
+
+    // Sanity: mean of jackknife variances roughly near variance of full sample
+    D fullVar = stat(x);
+    D avgJk = StatUtils<D>::computeMean(jk);
+    REQUIRE(num::to_double(avgJk) == Catch::Approx(num::to_double(fullVar)).margin(0.5));
+}
+
 // --------------------------- Annualizer tests ---------------------------
 
 template<class Decimal>

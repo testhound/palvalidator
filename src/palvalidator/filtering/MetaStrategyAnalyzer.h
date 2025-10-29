@@ -113,28 +113,6 @@ namespace palvalidator
 				      ValidationMethod validationMethod,
 				      std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt);
 
-      /**
-       * @brief Perform statistical analysis on meta-strategy returns
-       * @param metaReturns Vector of portfolio returns
-       * @param baseSecurity Security for annualization factor calculation
-       * @param timeFrame Time frame for analysis
-       * @param blockLength Block length for bootstrap resampling
-       * @param annualizedTrades Annualized trades for cost hurdle calculation
-       * @param strategyCount Number of strategies (for reporting)
-       * @param outputStream Output stream for logging (may be TeeStream for dual output)
-       * @param numTrades Number of trades for drawdown analysis
-       */
-      void performStatisticalAnalysis(
-          const std::vector<Num>& metaReturns,
-          std::shared_ptr<Security<Num>> baseSecurity,
-          TimeFrame::Duration timeFrame,
-          size_t blockLength,
-          const Num& annualizedTrades,
-          size_t strategyCount,
-          std::ostream& outputStream,
-          uint32_t numTrades
-          );
-
     private:
       // Pyramiding configuration class
       class PyramidConfiguration {

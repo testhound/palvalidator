@@ -22,7 +22,9 @@ namespace palvalidator
 
     // Templated on RNG to enable deterministic tests when needed.
     // Default remains randutils::mt19937_rng for production.
-    template <class Num, class Rng = randutils::mt19937_rng>
+    template <class Num,
+	      class Rng = randutils::mt19937_rng,
+	      template<class, class> class SamplerT = palvalidator::resampling::RegimeMixBlockResampler>
     class RegimeMixStressRunner
     {
     public:
@@ -108,7 +110,11 @@ namespace palvalidator
         using mkc_timeseries::GeoMeanStat;
         using mkc_timeseries::BCaAnnualizer;
         using mkc_timeseries::DecimalConstants;
-        using BlockBCA = BCaBootStrap<Num, RegimeMixBlockResampler<Num, Rng>, Rng>;
+
+	// Select the sampler type chosen by template argument
+	using Sampler = SamplerT<Num, Rng>;
+	using MixBCA  = BCaBootStrap<Num, Sampler, Rng>;
+        //using BlockBCA = BCaBootStrap<Num, RegimeMixBlockResampler<Num, Rng>, Rng>;
 
         if (returns.size() != labels.size())
 	  {
@@ -122,7 +128,7 @@ namespace palvalidator
         for (const auto &mix : mConfig.mixes())
 	  {
             // Build state-aware resampler for this mix (with RNG type Rng)
-            RegimeMixBlockResampler<Num, Rng> sampler
+            Sampler sampler
 	      (
 	       mL,
 	       labels,
@@ -131,7 +137,7 @@ namespace palvalidator
 	       );
 
             GeoMeanStat<Num> statGeo;
-            BlockBCA bcaGeo(returns, mNumResamples, mConfidenceLevel, statGeo, sampler);
+            MixBCA bcaGeo(returns, mNumResamples, mConfidenceLevel, statGeo, sampler);
 
             const Num lbGeoPeriod = bcaGeo.getLowerBound();
             (void)lbGeoPeriod; // keep for symmetry; annualizer uses the same bca object

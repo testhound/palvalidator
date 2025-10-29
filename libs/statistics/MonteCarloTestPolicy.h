@@ -242,6 +242,16 @@ namespace mkc_timeseries
 
       // Pull every bar-by-bar return (entry→exit and any still-open)
       std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+
+      // Convert percent bars → log bars (r_log = log(1 + r_pct)):
+      std::vector<Decimal> logBars;
+      logBars.reserve(barSeries.size());
+      for (const auto& r : barSeries)
+	{
+	  // Use your Decimal math: Decimal one(DecimalConstants<Decimal>::DecimalOne);
+	  logBars.push_back(std::log(DecimalConstants<Decimal>::DecimalOne + r));
+	}
+      
       const uint32_t nBars = static_cast<uint32_t>(barSeries.size());
 
       if (numTrades < minTradesRequired || nBars < minBarsRequired) {
@@ -274,7 +284,7 @@ namespace mkc_timeseries
       } score{computeSharpeScore};
 
       using BlockBCA = mkc_timeseries::BCaBootStrap<Decimal, mkc_timeseries::StationaryBlockResampler<Decimal>>;
-      BlockBCA bca(barSeries, B, /*confidence=*/1.0 - alpha, score, sampler);
+      BlockBCA bca(logBars, B, /*confidence=*/1.0 - alpha, score, sampler);
 
       // Conservative scalar for permutation testing (tames right tail per Masters)
       const Decimal lowerBound = bca.getLowerBound();

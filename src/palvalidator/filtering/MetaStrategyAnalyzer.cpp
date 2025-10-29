@@ -72,7 +72,9 @@ namespace palvalidator
                   throw std::runtime_error("Cannot compute ACF with effective max lag < 1");
                 }
 
-                const auto acf = mkc_timeseries::StatUtils<Num>::computeACF(returns, effectiveMaxLag);
+		auto logReturns = StatUtils<Num>::percentBarsToLogBars(returns);
+		
+                const auto acf = mkc_timeseries::StatUtils<Num>::computeACF(logReturns, effectiveMaxLag);
                 unsigned int L_acf = mkc_timeseries::StatUtils<Num>::suggestStationaryBlockLengthFromACF(
                     acf, returns.size(), minACFL, maxACFL); // Use passed-in min/max L
 
@@ -193,35 +195,6 @@ namespace palvalidator
 	  outputStream << "[Meta] Error in unified meta-strategy backtesting: " << e.what() << "\n";
 	  mMetaStrategyPassed = false;
 	}
-    }
-
-    void MetaStrategyAnalyzer::performStatisticalAnalysis(
-    			  const std::vector<Num>& metaReturns,
-    			  std::shared_ptr<Security<Num>> baseSecurity,
-    			  TimeFrame::Duration timeFrame,
-    			  size_t blockLength,
-    			  const Num& annualizedTrades,
-    			  size_t strategyCount,
-    			  std::ostream& outputStream,
-    			  uint32_t numTrades)
-    {
-      // Calculate per-period point estimates
-      calculatePerPeriodEstimates(metaReturns, outputStream);
-
-      // Calculate annualization factor
-      double annualizationFactor = calculateAnnualizationFactor(timeFrame, baseSecurity);
-
-      // Perform bootstrap analysis
-      auto bootstrapResults = performBootstrapAnalysis(metaReturns, annualizationFactor, blockLength, outputStream);
-
-      // Calculate cost hurdles
-      auto costResults = calculateCostHurdles(annualizedTrades, outputStream);
-
-      // Report final results and store member variables
-      reportFinalResults(bootstrapResults, costResults, strategyCount, outputStream);
- 
-      // Perform drawdown analysis
-      performDrawdownAnalysis(metaReturns, numTrades, blockLength, outputStream);
     }
 
     std::shared_ptr<PalMetaStrategy<Num>>
@@ -769,14 +742,15 @@ namespace palvalidator
 	  std::vector<Num> xs(returns.begin() + static_cast<std::ptrdiff_t>(start),
 			      returns.begin() + static_cast<std::ptrdiff_t>(end));
 
-	  // BCa on per-period arithmetic mean with stationary block bootstrap
+	  // BCa on per-period geometric mean with stationary block bootstrap
 	  StationaryBlockResampler<Num> sampler(blockLength);
+	  GeoMeanStat<Num> statGeo;
 	  using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
 
 	  BlockBCA bca(xs,
 		       numResamples,
 		       confidenceLevel,
-		       &StatUtils<Num>::computeMean,
+		       statGeo,
 		       sampler);
 
 	  // Annualize the BCa bounds (correct approach)

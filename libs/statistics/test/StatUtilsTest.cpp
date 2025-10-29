@@ -453,7 +453,7 @@ TEST_CASE("GeoMeanStat basic correctness and edge cases", "[StatUtils][GeoMean]"
 
     SECTION("Return <= -1 throws by default") {
         std::vector<DecimalType> v = { DecimalType("0.02"), DecimalType("-1.0") };
-        GeoMeanStat<DecimalType> stat; // clip=false
+        GeoMeanStat<DecimalType> stat(false); // clip=false
         REQUIRE_THROWS_AS(stat(v), std::domain_error);
     }
 
@@ -471,6 +471,87 @@ TEST_CASE("GeoMeanStat basic correctness and edge cases", "[StatUtils][GeoMean]"
 
         // And the result must be strictly greater than -1
         REQUIRE(got > DecimalType("-1.0"));
+    }
+}
+
+TEST_CASE("GeoMeanStat: auto winsorization at small N", "[StatUtils][GeoMean][Winsor]") {
+    using D = DecimalType;
+    using DC = DecimalConstants<D>;
+
+    auto manual_winsor1_log_geom = [](const std::vector<D>& v) {
+        std::vector<D> logs; logs.reserve(v.size());
+        const D one = DC::DecimalOne;
+        for (auto& r : v) {
+            D g = one + r;
+            REQUIRE(g > D("0")); // assume no ruin in this helper
+            logs.push_back(std::log(g));
+        }
+        auto s = logs;
+        std::sort(s.begin(), s.end());
+        const std::size_t n = s.size();
+        const std::size_t k = 1;
+        const D lo = s[k], hi = s[n - 1 - k];
+        for (auto& x : logs) { if (x < lo) x = lo; else if (x > hi) x = hi; }
+        D sum = DC::DecimalZero;
+        for (auto& x : logs) sum += x;
+        const D avg = sum / D(static_cast<double>(n));
+        return std::exp(avg) - one;
+    };
+
+    auto raw_geom = [](const std::vector<D>& v) {
+        using std::log; using std::exp;
+        const D one = DC::DecimalOne;
+        D sum = DC::DecimalZero;
+        for (auto& r : v) { D g = one + r; REQUIRE(g > D("0")); sum += std::log(g); }
+        const D avg = sum / D(static_cast<double>(v.size()));
+        return std::exp(avg) - one;
+    };
+
+    SECTION("N=30 → winsorize one per tail") {
+        std::vector<D> v(30, D("0.005"));
+        v[3]  = D("-0.45");  // extreme negative
+        v[17] = D("0.20");   // extreme positive
+
+        GeoMeanStat<D> stat;         // default clipping as configured in production
+        D got  = stat(v);            // auto winsorization should apply (k=1)
+        D expd = manual_winsor1_log_geom(v);
+
+        REQUIRE(num::to_double(got) == Catch::Approx(num::to_double(expd)).margin(1e-8));
+    }
+
+    SECTION("N=19 → no winsorization") {
+        std::vector<D> v(19, D("0.005"));
+        v[2]  = D("-0.45");
+        v[10] = D("0.20");
+
+        GeoMeanStat<D> stat;
+        D got  = stat(v);            // no winsorization for N<20
+        D expd = raw_geom(v);
+
+        REQUIRE(num::to_double(got) == Catch::Approx(num::to_double(expd)).margin(1e-8));
+    }
+
+    SECTION("N=50 → no winsorization") {
+        std::vector<D> v(50, D("0.005"));
+        v[5]  = D("-0.45");
+        v[22] = D("0.20");
+
+        GeoMeanStat<D> stat;
+        D got  = stat(v);            // no winsorization for N>=50
+        D expd = raw_geom(v);
+
+        REQUIRE(num::to_double(got) == Catch::Approx(num::to_double(expd)).margin(1e-8));
+    }
+
+    SECTION("Clipping with ruin + small-N winsorization does not throw") {
+        std::vector<D> v(30, D("0.0"));
+        v[7]  = D("-1.0");  // ruin bar (will be clamped if clipping is on)
+        v[12] = D("0.25");
+
+        GeoMeanStat<D> stat(/*clip_ruin=*/true, /*ruin_eps=*/1e-8);
+        D got = stat(v); // should not throw
+        REQUIRE(got > D("-1.0"));
+        REQUIRE(std::isfinite(num::to_double(got)));
     }
 }
 

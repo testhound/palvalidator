@@ -10,6 +10,7 @@
 #include <array> 
 #include "DecimalConstants.h"
 #include "number.h"
+#include "decimal_math.h"
 #include "TimeSeriesIndicators.h"
 #include "randutils.hpp"
 
@@ -18,46 +19,124 @@ namespace mkc_timeseries
   // Forward declare StatUtils so ComputeFast can reference it
   template <class Decimal> struct StatUtils;
 
+  /**
+   * @brief Computes the geometric mean of a series of percentage returns with automatic
+   *        ruin clipping and adaptive log-space winsorization for small sample sizes.
+   *
+   * The geometric mean represents the average compound return per period:
+   * \f[
+   *    \text{GeoMean} = \exp\left(\frac{1}{N}\sum_{i=1}^{N}\log(1 + r_i)\right) - 1
+   * \f]
+   * where \(r_i\) are individual period returns expressed as fractions (e.g., 0.01 = 1%).
+   *
+   * ### Key Features
+   * - **Decimal-native math:** All operations (log, exp) use the Decimal overloads from
+   *   `decimal_math.h` for high precision and consistency with other financial statistics.
+   * - **Ruin-aware clamping:** If \(1 + r_i \le 0\), the growth factor is replaced by
+   *   `ruin_eps` to prevent domain errors in the logarithm while strongly penalizing
+   *   catastrophic losses.
+   * - **Automatic winsorization (small-N safeguard):**
+   *   - For sample sizes 20 ≤ N < 50, the most extreme low and high log(1+r) values are
+   *     winsorized (clamped to the 2nd and (N-1)th order statistics).
+   *   - For N < 20 or N ≥ 50, no winsorization is applied.
+   *   - This stabilization reduces volatility in BCa bootstrap acceleration values (`a`)
+   *     when bootstrapping small datasets without introducing noticeable bias.
+   *
+   * ### Typical Use
+   * This statistic is intended for Monte-Carlo or bootstrap analysis where small-N series
+   * of percent returns (e.g., daily or monthly) must be aggregated into a robust mean
+   * performance measure.
+   *
+   * ### Example
+   * @code
+   * std::vector<dec::decimal<8>> returns = { 0.01, -0.005, 0.02, 0.00, -0.03 };
+   * GeoMeanStat<dec::decimal<8>> stat;
+   * auto gm = stat(returns);
+   * std::cout << "Geometric mean = " << gm << std::endl;
+   * @endcode
+   *
+   * ### Notes
+   * - The returned value is a fractional return (e.g., 0.015 = +1.5%).
+   * - Default ruin epsilon (`1e-8`) matches other robust statistics such as
+   *   `computeLogProfitFactorRobust` for consistency.
+   * - Default clipping is enabled (`clip_ruin = true`) so resampling pipelines never throw
+   *   exceptions on bad data; strict validation can be enforced by setting
+   *   `clip_ruin = false`.
+   *
+   * @tparam Decimal Decimal number type supporting `std::log` and `std::exp`.
+   */
   template <class Decimal>
   struct GeoMeanStat
   {
-    // Optional behavior for r <= -1: "throw" or "clip".
-    explicit GeoMeanStat(bool clip_ruin = false, double eps = 1e-12)
-      : clip(clip_ruin),
-	epsilon(eps)
-    {}
+    // Production defaults: clip ruin; epsilon coherent with other robust stats
+    explicit GeoMeanStat(bool clip_ruin = true, double ruin_eps = 1e-8)
+      : clip(clip_ruin), epsilon(ruin_eps) {}
 
     Decimal operator()(const std::vector<Decimal>& v) const
     {
-      if (v.empty())
-	return Decimal(0);
+      using DC = DecimalConstants<Decimal>;
+      if (v.empty()) return DC::DecimalZero;
 
-      long double sum = 0.0L;
-      size_t n = 0;
+      const Decimal one  = DC::DecimalOne;
+      const Decimal zero = DC::DecimalZero;
+      const Decimal epsD = Decimal(epsilon);
 
-      for (const auto& d : v)
+      // 1) Build log(1+r) vector with ruin-aware clamp
+      std::vector<Decimal> logs;
+      logs.reserve(v.size());
+      for (const auto& r : v)
 	{
-	  double r = d.getAsDouble();
-	  if (r <= -1.0)
+	  Decimal growth = one + r;
+	  if (growth <= zero) {
+	    if (!clip)
+	      throw std::domain_error("GeoMeanStat: r <= -1 (log(1+r) undefined)");
+	    growth = epsD;              // punitive clamp
+	  }
+	  logs.push_back(std::log(growth));  // Decimal-native log
+	}
+
+      // 2) Auto winsorization policy (only for small N)
+      const std::size_t n = logs.size();
+      const std::size_t k = chooseWinsorK(n);  // 0 or 1 under current policy
+
+      if (k > 0)
+	{
+	  auto sorted = logs;                   // small N: full sort is fine
+	  std::sort(sorted.begin(), sorted.end());
+	  const Decimal lo = sorted[k];
+	  const Decimal hi = sorted[n - 1 - k];
+	  for (auto& x : logs)
 	    {
-	      if (!clip)
-		throw std::domain_error("GeoMeanStat: r <= -1 (log(1+r) undefined)");
+	      if (x < lo)
+		x = lo;
+	      else if (x > hi)
+		x = hi;
+	    }
+	}
 
-	      r = -1.0 + epsilon; // winsorize to avoid -inf; also log it in your pipeline
-            }
+      // 3) Mean of (possibly winsorized) logs → exp(mean) - 1
+      Decimal sumLogs = DC::DecimalZero;
+      for (const auto& x : logs)
+	sumLogs += x;
 
-	  sum += std::log1p(r);
-	  ++n;
-        }
-
-      return Decimal(std::expm1(sum / static_cast<long double>(n)));
+      const Decimal avgLog = sumLogs / Decimal(static_cast<double>(n));
+      return std::exp(avgLog) - one;
     }
 
   private:
+    // One per side for 20..49; otherwise none
+    static inline std::size_t chooseWinsorK(std::size_t n)
+    {
+      if (n >= 20 && n < 50)
+	return 1;  // clamps just the most extreme low & high
+
+      return 0;
+    }
+
     bool   clip;
     double epsilon;
   };
-
+  
   /**
    * @brief A generic helper struct for fast mean and variance computation.
    * @tparam Decimal The data type for which statistics are computed.
@@ -154,7 +233,18 @@ namespace mkc_timeseries
   struct StatUtils
   {
   public:
-  /**
+    static inline std::vector<Decimal>
+    percentBarsToLogBars(const std::vector<Decimal>& pct)
+    {
+      std::vector<Decimal> out;
+      out.reserve(pct.size());
+      const auto one = DecimalConstants<Decimal>::DecimalOne;
+      for (const auto& r : pct)
+	out.push_back(std::log(one + r));
+      return out;
+    }
+
+    /**
        * @brief Computes the mean and variance using a fast, specialized path.
        * @details This method serves as a dispatcher to the most efficient available
        * implementation for computing mean and variance. It delegates the calculation
@@ -295,78 +385,83 @@ namespace mkc_timeseries
      * @return The robust Log Profit Factor as a Decimal.
      */
     static Decimal computeLogProfitFactorRobust(const std::vector<Decimal>& xs,
-						bool   compressResult = true,     // default to compressed output
-						double ruin_eps       = 1e-8,     // clamp for (1+r) near/under 0
-						double denom_floor    = 1e-6,     // absolute floor in log-space units
-						double prior_strength = 1.0       // ~1 “pseudo-loss” of median magnitude
-						)
+						bool   compressResult = true,   // keep compressed scale by default
+						double ruin_eps       = 1e-8,    // clamp for (1+r) <= 0
+						double denom_floor    = 1e-6,    // absolute floor in log-space units
+						double prior_strength = 1.0)     // ~1 “pseudo-loss” of median magnitude
     {
-      if (xs.empty())
-	return DecimalConstants<Decimal>::DecimalZero;
+      using DC = DecimalConstants<Decimal>;
 
-      // --- Algorithm Step 1: Build log(1+r) streams with ruin-aware clamping ---
-      // This loop transforms each raw return 'r' into its log-space equivalent 'log(1+r)'.
-      // It separates them into sums of log-wins and log-losses and handles ruinous trades.
-      std::vector<double> loss_magnitudes; // store |-log(1+r)| for losses
+      if (xs.empty())
+	return DC::DecimalZero;
+
+      // --- Step 1: Build log(1+r) stream with ruin-aware clamping ---
+      // Keep everything in Decimal where practical.
+      const Decimal one     = DC::DecimalOne;
+      const Decimal zero    = DC::DecimalZero;
+      const Decimal d_ruin  = Decimal(ruin_eps);
+
+      std::vector<Decimal> loss_magnitudes;      // store |-log(1+r)| for losses
       loss_magnitudes.reserve(xs.size());
 
-      Decimal sum_log_wins(DecimalConstants<Decimal>::DecimalZero);
-      Decimal sum_log_losses(DecimalConstants<Decimal>::DecimalZero); // negative sum
+      Decimal sum_log_wins   = DC::DecimalZero;  // Σ log(1+r) for r>0
+      Decimal sum_log_losses = DC::DecimalZero;  // Σ log(1+r) for r<0 (will be <= 0)
 
-      for (auto r : xs)
+      for (const auto& r : xs)
 	{
-	  double rr = num::to_double(r);
-	  double m  = 1.0 + rr;
-	  if (m <= 0.0)
-	    m = ruin_eps; // keep tail instead of skipping
-	  
-	  const double lr = std::log(m);
-	  if (rr > 0.0)
+	  // growth = 1 + r, clamped for ruin
+	  Decimal growth = one + r;
+	  if (growth <= zero)
+	    growth = d_ruin;
+
+	  const Decimal lr = std::log(growth);     // Decimal-native log
+
+	  // Classify purely by raw return sign (clean & unambiguous):
+	  if (r > zero)               // win: lr > 0 (except r tiny)
 	    {
-	      sum_log_wins += Decimal(lr);       // lr > 0
+	      sum_log_wins += lr;
 	    }
-	  else if (rr < 0.0 || lr < 0.0)       // include zero/flat only if lr < 0
+	  else if (r < zero)          // loss: lr < 0 (except clamped ruin -> large negative)
 	    {
-	      sum_log_losses += Decimal(lr);     // lr <= 0
-	      loss_magnitudes.push_back(-lr);    // store positive magnitude
+	      sum_log_losses += lr;
+	      loss_magnitudes.push_back(-lr); // store positive magnitude
 	    }
+	  // r == 0 → lr == 0 → ignore (neither win nor loss)
 	}
 
-      // --- Algorithm Step 2: Compute a robust Bayesian prior for the denominator ---
-      // To prevent division by zero when no losses occur, we add a "pseudo-loss" to the
-      // denominator. This prior is based on the median loss magnitude, which is a robust
-      // measure of a "typical" loss, unaffected by extreme outliers.
-      Decimal prior_loss_mag(DecimalConstants<Decimal>::DecimalZero);
+      // --- Step 2: Robust prior for the denominator (|Σ losses|) ---
+      // If we observed losses, use median(|log-loss|).
+      // Otherwise, tie prior to ruin model: magnitude ~ -log(ruin_eps).
+      Decimal prior_loss_mag = DC::DecimalZero;
       if (!loss_magnitudes.empty())
 	{
-	  // Compute median in double then wrap to Decimal
+	  const std::size_t mid = loss_magnitudes.size() / 2;
 	  std::nth_element(loss_magnitudes.begin(),
-			   loss_magnitudes.begin() + loss_magnitudes.size()/2,
+			   loss_magnitudes.begin() + static_cast<std::ptrdiff_t>(mid),
 			   loss_magnitudes.end());
-	  const double med = loss_magnitudes[loss_magnitudes.size()/2];
-	  prior_loss_mag = Decimal(med) * Decimal(prior_strength);
+	  const Decimal med = loss_magnitudes[mid];
+	  prior_loss_mag = med * Decimal(prior_strength);
 	}
       else
 	{
-	  // If no observed losses, use a conservative prior magnitude consistent with ruin_eps
-	  prior_loss_mag = Decimal(std::max(-std::log(1.0 - 1e-3), denom_floor)) * Decimal(prior_strength);
+	  const Decimal mag = Decimal(std::max(-std::log(ruin_eps), denom_floor));
+	  prior_loss_mag = mag * Decimal(prior_strength);
 	}
 
-      // 3) Form stabilized numerator/denominator (denom is |sum of negative logs|)
-      Decimal numer = sum_log_wins;
-      Decimal denom = num::abs(sum_log_losses) + prior_loss_mag;
-      
-      // Absolute floor to prevent pathological tiny denominators
-      if (denom < Decimal(denom_floor))
-	denom = Decimal(denom_floor);
+      // --- Step 3: Form stabilized numerator/denominator ---
+      const Decimal numer = sum_log_wins;
+      Decimal denom       = num::abs(sum_log_losses) + prior_loss_mag;
 
-      Decimal pf = (denom > DecimalConstants<Decimal>::DecimalZero)
-	? (numer / denom)
-	: DecimalConstants<Decimal>::DecimalZero;
-      
-      // 4) Optional final compression
+      // Absolute floor in log-space units
+      const Decimal d_floor = Decimal(denom_floor);
+      if (denom < d_floor)
+	denom = d_floor;
+
+      Decimal pf = (denom > DC::DecimalZero) ? (numer / denom) : DC::DecimalZero;
+
+      // --- Step 4: Optional final compression (log(1+pf)) ---
       if (compressResult)
-	return Decimal(std::log(num::to_double(DecimalConstants<Decimal>::DecimalOne + pf)));
+	return std::log(DC::DecimalOne + pf);
 
       return pf;
     }
