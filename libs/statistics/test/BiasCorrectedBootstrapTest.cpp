@@ -579,6 +579,128 @@ TEST_CASE("BCaAnnualizer functionality", "[BCaAnnualizer]") {
         REQUIRE_THROWS_AS(BCaAnnualizer<DecimalType>(mock_bca, 0.0), std::invalid_argument);
         REQUIRE_THROWS_AS(BCaAnnualizer<DecimalType>(mock_bca, -252.0), std::invalid_argument);
     }
+
+    SECTION("Annualizer is idempotent at K=1")
+      {
+	MockBCaBootStrapForAnnualizer<DecimalType> mock;
+	auto mean  = createDecimal("0.0123");
+	auto lower = createDecimal("-0.004");
+	auto upper = createDecimal("0.025");
+	mock.setTestResults(mean, lower, upper);
+
+	BCaAnnualizer<DecimalType> ann(mock, /*K=*/1.0);
+
+	REQUIRE(num::to_double(ann.getAnnualizedMean())       == Catch::Approx(num::to_double(mean)));
+	REQUIRE(num::to_double(ann.getAnnualizedLowerBound()) == Catch::Approx(num::to_double(lower)));
+	REQUIRE(num::to_double(ann.getAnnualizedUpperBound()) == Catch::Approx(num::to_double(upper)));
+      }
+
+    SECTION("Annualized mean is monotone in K for fixed sign of mean")
+      {
+	MockBCaBootStrapForAnnualizer<DecimalType> mock;
+
+	// Positive mean
+	mock.setTestResults(createDecimal("0.0010"), createDecimal("0.0005"), createDecimal("0.0015"));
+	BCaAnnualizer<DecimalType> a252p(mock, 252.0), a504p(mock, 504.0);
+	REQUIRE(a252p.getAnnualizedMean() < a504p.getAnnualizedMean()); // strictly increases
+
+	// Negative mean
+	mock.setTestResults(createDecimal("-0.0010"), createDecimal("-0.0015"), createDecimal("-0.0005"));
+	BCaAnnualizer<DecimalType> a252n(mock, 252.0), a504n(mock, 504.0);
+	REQUIRE(a504n.getAnnualizedMean() < a252n.getAnnualizedMean()); // becomes more negative
+      }
+
+    SECTION("Annualization preserves ordering (lower <= mean <= upper)")
+      {
+	MockBCaBootStrapForAnnualizer<DecimalType> mock;
+	mock.setTestResults(createDecimal("0.001"), createDecimal("-0.002"), createDecimal("0.003"));
+	BCaAnnualizer<DecimalType> ann(mock, 252.0);
+
+	auto lo = ann.getAnnualizedLowerBound();
+	auto mu = ann.getAnnualizedMean();
+	auto hi = ann.getAnnualizedUpperBound();
+
+	REQUIRE(lo <= mu);
+	REQUIRE(mu <= hi);
+      }
+
+    SECTION("Near-ruin lower bound remains finite and > -1 after annualization")
+      {
+	MockBCaBootStrapForAnnualizer<DecimalType> mock;
+	// lower is extremely close to -1, mean/upper are safe
+	mock.setTestResults(createDecimal("-0.50"), createDecimal("-0.9999999"), createDecimal("0.02"));
+	
+	BCaAnnualizer<DecimalType> ann(mock, 252.0);
+	auto lo = ann.getAnnualizedLowerBound();
+
+	REQUIRE(std::isfinite(num::to_double(lo)));
+	REQUIRE(num::to_double(lo) > -1.0);
+      }
+
+    SECTION("Annualize then de-annualize recovers per-period value")
+      {
+	MockBCaBootStrapForAnnualizer<DecimalType> mock;
+	auto r = createDecimal("0.0009"); // 9 bps
+	mock.setTestResults(r, r, r);
+
+	const double K = 252.0;
+	BCaAnnualizer<DecimalType> ann(mock, K);
+
+	// de-annualize: (1+R)^(1/K) - 1
+	auto deannualize = [K](DecimalType R) {
+	  double Rd = num::to_double(R);
+	  double back = std::pow(1.0 + Rd, 1.0 / K) - 1.0;
+	  return createDecimal(std::to_string(back));
+	};
+
+	REQUIRE(num::to_double(deannualize(ann.getAnnualizedMean())) == Catch::Approx(num::to_double(r)).margin(1e-12));
+      }
+
+    SECTION("calculateAnnualizationFactor intraday edge cases")
+      {
+	// Negative minutes should throw
+	REQUIRE_THROWS_AS(calculateAnnualizationFactor(TimeFrame::INTRADAY, -5), std::invalid_argument);
+
+	// 390-min bar (one bar per trading day) ≈ DAILY factor
+	REQUIRE(calculateAnnualizationFactor(TimeFrame::INTRADAY, 390) == Catch::Approx(252.0));
+      }
+
+    SECTION("Annualizer stable for tiny returns")
+      {
+	MockBCaBootStrapForAnnualizer<DecimalType> mock;
+	
+	// Use explicit decimal strings (no scientific notation) within decimal<8> precision
+	auto m  = createDecimal("0.00000100"); // 1e-6
+	auto lo = createDecimal("0.00000050"); // 5e-7
+	auto hi = createDecimal("0.00000200"); // 2e-6
+	mock.setTestResults(m, lo, hi);
+
+	const double K = 1e6; // large factor to stress numerics but stay finite
+	BCaAnnualizer<DecimalType> ann(mock, K);
+
+	// Compare to analytic expectation using long-double path
+	auto expect = [&](DecimalType r){
+	  long double R = static_cast<long double>(num::to_double(r));
+	  long double y = std::exp(K * std::log1p(R)) - 1.0L;
+	  return static_cast<double>(y);
+	};
+
+	// All three should be finite and match the analytic calculation tightly
+	REQUIRE(std::isfinite(num::to_double(ann.getAnnualizedMean())));
+	REQUIRE(std::isfinite(num::to_double(ann.getAnnualizedLowerBound())));
+	REQUIRE(std::isfinite(num::to_double(ann.getAnnualizedUpperBound())));
+
+	auto round8 = [](double x) {
+	  return std::round(x * 1e8) / 1e8;
+	};
+
+	REQUIRE(num::to_double(ann.getAnnualizedLowerBound())
+        == Catch::Approx(round8(expect(lo))).margin(1e-12));
+	REQUIRE(num::to_double(ann.getAnnualizedMean())
+		== Catch::Approx(round8(expect(m))).margin(1e-12));
+	REQUIRE(num::to_double(ann.getAnnualizedUpperBound())
+		== Catch::Approx(round8(expect(hi))).margin(1e-12));
+      }
 }
 
 TEST_CASE("BCaBootStrap: interval widens with confidence level", "[BCaBootStrap][Monotonicity]") {
