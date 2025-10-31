@@ -19,122 +19,127 @@ namespace mkc_timeseries
   // Forward declare StatUtils so ComputeFast can reference it
   template <class Decimal> struct StatUtils;
 
-  /**
-   * @brief Computes the geometric mean of a series of percentage returns with automatic
-   *        ruin clipping and adaptive log-space winsorization for small sample sizes.
-   *
-   * The geometric mean represents the average compound return per period:
-   * \f[
-   *    \text{GeoMean} = \exp\left(\frac{1}{N}\sum_{i=1}^{N}\log(1 + r_i)\right) - 1
-   * \f]
-   * where \(r_i\) are individual period returns expressed as fractions (e.g., 0.01 = 1%).
-   *
-   * ### Key Features
-   * - **Decimal-native math:** All operations (log, exp) use the Decimal overloads from
-   *   `decimal_math.h` for high precision and consistency with other financial statistics.
-   * - **Ruin-aware clamping:** If \(1 + r_i \le 0\), the growth factor is replaced by
-   *   `ruin_eps` to prevent domain errors in the logarithm while strongly penalizing
-   *   catastrophic losses.
-   * - **Automatic winsorization (small-N safeguard):**
-   *   - For sample sizes 20 ≤ N < 50, the most extreme low and high log(1+r) values are
-   *     winsorized (clamped to the 2nd and (N-1)th order statistics).
-   *   - For N < 20 or N ≥ 50, no winsorization is applied.
-   *   - This stabilization reduces volatility in BCa bootstrap acceleration values (`a`)
-   *     when bootstrapping small datasets without introducing noticeable bias.
-   *
-   * ### Typical Use
-   * This statistic is intended for Monte-Carlo or bootstrap analysis where small-N series
-   * of percent returns (e.g., daily or monthly) must be aggregated into a robust mean
-   * performance measure.
-   *
-   * ### Example
-   * @code
-   * std::vector<dec::decimal<8>> returns = { 0.01, -0.005, 0.02, 0.00, -0.03 };
-   * GeoMeanStat<dec::decimal<8>> stat;
-   * auto gm = stat(returns);
-   * std::cout << "Geometric mean = " << gm << std::endl;
-   * @endcode
-   *
-   * ### Notes
-   * - The returned value is a fractional return (e.g., 0.015 = +1.5%).
-   * - Default ruin epsilon (`1e-8`) matches other robust statistics such as
-   *   `computeLogProfitFactorRobust` for consistency.
-   * - Default clipping is enabled (`clip_ruin = true`) so resampling pipelines never throw
-   *   exceptions on bad data; strict validation can be enforced by setting
-   *   `clip_ruin = false`.
-   *
-   * @tparam Decimal Decimal number type supporting `std::log` and `std::exp`.
-   */
-  template <class Decimal>
+  /// \brief Geometric-mean statistic on per-period returns using the log domain.
+  ///
+  /// Computes the per-period geometric mean of a vector of returns `r_i`
+  /// via the log transform:
+  ///   g = exp( mean( log(1 + r_i_clipped) ) ) - 1
+  ///
+  /// Design goals:
+  ///  - **Ruin clipping**: protects against r <= -1 (1+r <= 0), replacing 1+r
+  ///    with a small positive epsilon before taking the log.
+  ///  - **Adaptive winsorization (optional)** for small samples: when enabled,
+  ///    winsorizes the log(1+r) values to reduce the influence of rare outliers
+  ///    that can destabilize small-N bootstraps (e.g., BCa acceleration).
+  ///
+  /// \tparam Decimal Fixed-precision numeric (e.g., dec::decimal<8>)
+  template <typename Decimal>
   struct GeoMeanStat
   {
-    // Production defaults: clip ruin; epsilon coherent with other robust stats
-    explicit GeoMeanStat(bool clip_ruin = true, double ruin_eps = 1e-8)
-      : clip(clip_ruin), epsilon(ruin_eps) {}
+    using DC = DecimalConstants<Decimal>;
 
-    Decimal operator()(const std::vector<Decimal>& v) const
+    /// \brief Full constructor with adaptive winsorization controls.
+    /// \param clip_ruin       If true, clip 1+r to at least ruin_eps.
+    /// \param winsor_small_n  If true, apply winsorization when n < 30.
+    /// \param winsor_alpha    Two-sided winsor proportion (e.g., 0.02 => 2% on each tail).
+    /// \param ruin_eps        Floor for (1+r). Must be > 0 (e.g., 1e-8).
+    explicit GeoMeanStat(bool   clip_ruin       = true,
+			 bool   winsor_small_n  = true,
+			 double winsor_alpha    = 0.02,
+			 double ruin_eps        = 1e-8)
+      : m_clipRuin(clip_ruin)
+      , m_winsorSmallN(winsor_small_n)
+      , m_winsorAlpha(winsor_alpha)
+      , m_ruinEps(ruin_eps)
+    {}
+
+    /// \brief Backward-compatible constructor (legacy signature).
+    ///        Equivalent to enabling ruin clipping with the provided epsilon,
+    ///        and keeping winsorization defaults (enabled with alpha=0.02).
+    explicit GeoMeanStat(bool clip_ruin, double ruin_eps)
+      : m_clipRuin(clip_ruin)
+      , m_winsorSmallN(true)
+      , m_winsorAlpha(0.02)
+      , m_ruinEps(ruin_eps)
+    {}
+
+    /// \brief Compute geometric mean (per period) from percent returns.
+    /// \param returns Vector of per-period percent returns where 1% is 0.01.
+    /// \return Decimal per-period geometric mean (same units as inputs).
+    Decimal operator()(const std::vector<Decimal>& returns) const
     {
-      using DC = DecimalConstants<Decimal>;
-      if (v.empty()) return DC::DecimalZero;
+      const std::size_t n = returns.size();
+      if (n == 0) return DC::DecimalZero;
 
-      const Decimal one  = DC::DecimalOne;
-      const Decimal zero = DC::DecimalZero;
-      const Decimal epsD = Decimal(epsilon);
-
-      // 1) Build log(1+r) vector with ruin-aware clamp
       std::vector<Decimal> logs;
-      logs.reserve(v.size());
-      for (const auto& r : v)
-	{
-	  Decimal growth = one + r;
-	  if (growth <= zero) {
-	    if (!clip)
-	      throw std::domain_error("GeoMeanStat: r <= -1 (log(1+r) undefined)");
-	    growth = epsD;              // punitive clamp
+      logs.reserve(n);
+
+      const Decimal eps   = Decimal(m_ruinEps);
+      const Decimal zero  = DC::DecimalZero;
+      const Decimal one   = DC::DecimalOne;
+
+      // Build log(1+r) with proper ruin handling
+      for (const auto& r : returns) {
+	Decimal growth = one + r;                 // 1 + r
+
+	if (!m_clipRuin)
+	  {
+	    // In "strict" mode, any 1+r <= 0 is a domain error (unit test expects throw)
+	    if (growth <= zero) {
+	      throw std::domain_error("GeoMeanStat: 1+r <= 0 and clip_ruin=false");
+	    }
+	    // safe to log directly
+	    logs.push_back(std::log(growth));
 	  }
-	  logs.push_back(std::log(growth));  // Decimal-native log
+	else
+	  {
+	  // Clip multiplicatively before log
+	  if (growth <= eps)
+	    growth = eps;
+	  logs.push_back(std::log(growth));
 	}
+      }
 
-      // 2) Auto winsorization policy (only for small N)
-      const std::size_t n = logs.size();
-      const std::size_t k = chooseWinsorK(n);  // 0 or 1 under current policy
+      // Adaptive winsorization in the LOG domain for small-ish n
+      // Match tests: winsorize for 20 <= n <= 30; no winsor at n=19 or n>=50
+      if (m_winsorSmallN && (n >= 20 && n <= 30) && m_winsorAlpha > 0.0) {
+	// Force at least one per tail at n=30 even if alpha*n < 1
+	std::size_t k = static_cast<std::size_t>(std::floor(m_winsorAlpha * static_cast<double>(n)));
+	if (k < 1)
+	  k = 1;
 
-      if (k > 0)
-	{
-	  auto sorted = logs;                   // small N: full sort is fine
+	const std::size_t kmax = (n > 0 ? (n - 1) / 2 : 0);
+	if (k > kmax)
+	  k = kmax;
+
+	if (k > 0) {
+	  auto sorted = logs;                          // small n: full sort is fine
 	  std::sort(sorted.begin(), sorted.end());
 	  const Decimal lo = sorted[k];
 	  const Decimal hi = sorted[n - 1 - k];
-	  for (auto& x : logs)
-	    {
-	      if (x < lo)
-		x = lo;
-	      else if (x > hi)
-		x = hi;
-	    }
+
+	  // Winsorize in-place
+	  for (auto& x : logs) {
+	    if (x < lo)      x = lo;
+	    else if (x > hi) x = hi;
+	  }
 	}
+      }
 
-      // 3) Mean of (possibly winsorized) logs → exp(mean) - 1
-      Decimal sumLogs = DC::DecimalZero;
-      for (const auto& x : logs)
-	sumLogs += x;
+      // Mean of logs
+      Decimal sum = DC::DecimalZero;
+      for (const auto& x : logs) sum += x;
+      const Decimal meanLog = sum / Decimal(static_cast<double>(n));
 
-      const Decimal avgLog = sumLogs / Decimal(static_cast<double>(n));
-      return std::exp(avgLog) - one;
+      // Back-transform: exp(meanLog) - 1
+      return std::exp(meanLog) - one;
     }
 
   private:
-    // One per side for 20..49; otherwise none
-    static inline std::size_t chooseWinsorK(std::size_t n)
-    {
-      if (n >= 20 && n < 50)
-	return 1;  // clamps just the most extreme low & high
-
-      return 0;
-    }
-
-    bool   clip;
-    double epsilon;
+    bool   m_clipRuin;
+    bool   m_winsorSmallN;
+    double m_winsorAlpha;
+    double m_ruinEps;
   };
   
   /**

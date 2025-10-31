@@ -19,6 +19,7 @@
 #include "PalStrategy.h"
 #include "TimeSeriesIndicators.h"
 #include "CostStressUtils.h"
+#include "MetaSelectionBootstrap.h"
 #include <fstream>
 
 namespace palvalidator
@@ -301,6 +302,94 @@ namespace palvalidator
       return configs;
     }
 
+    bool MetaStrategyAnalyzer::runSelectionAwareMetaGate(
+							 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+							 std::shared_ptr<mkc_timeseries::Security<Num>> baseSecurity,
+							 const mkc_timeseries::DateRange& backtestingDates,
+							 mkc_timeseries::TimeFrame::Duration timeFrame,
+							 std::size_t Lmeta,
+							 double annualizationFactor,
+							 const mkc_timeseries::BackTester<Num>* bt,
+							 std::ostream& os,
+							 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
+							 ) const
+    {
+      using NumT = Num;
+      using Rng  = randutils::mt19937_rng;
+
+      // Build component (per-strategy) return series over the SAME window
+      std::vector<std::vector<NumT>> componentReturns;
+      componentReturns.reserve(survivingStrategies.size());
+      for (const auto& strat : survivingStrategies)
+	{
+	  auto clonedStrat = strat->cloneForBackTesting();
+	  auto single = BackTesterFactory<NumT>::backTestStrategy(clonedStrat, timeFrame, backtestingDates);
+	  auto r = single->getAllHighResReturns(clonedStrat.get());
+
+	  if (r.size() >= 2)
+	    componentReturns.emplace_back(std::move(r));
+	}
+
+      if (componentReturns.empty()) {
+	os << "      [MetaSel] Skipped (no component series available)\n";
+	return true; // non-penalizing skip
+      }
+
+      // Outer selection-aware bootstrap (replays meta construction)
+      const std::size_t outerB = 2000;  // production default
+      const double cl          = mConfidenceLevel.getAsDouble();
+      const std::size_t Lmean  = Lmeta;
+      const double ppy         = annualizationFactor;
+
+      palvalidator::analysis::MetaSelectionBootstrap<NumT, Rng> msb(outerB, cl, Lmean, ppy);
+
+      // Builder: mirror production meta rule (equal-weight by bar as default)
+      auto builder = [](const std::vector<std::vector<NumT>>& mats) -> std::vector<NumT> {
+	if (mats.empty())
+	  return {};
+
+	std::size_t m = std::numeric_limits<std::size_t>::max();
+	for (const auto& s : mats)
+	  m = std::min(m, s.size());
+
+	if (m < 2)
+	  return {};
+
+	std::vector<NumT> out(m, NumT(0));
+	const NumT w = NumT(1.0 / static_cast<double>(mats.size()));
+	for (const auto& s : mats)
+	  {
+	    for (std::size_t i = 0; i < m; ++i)
+	      out[i] += w * s[i];
+	  }
+	return out;
+      };
+
+      Rng rng;  // seed from your global seed infra if desired
+      auto msbRes = msb.run(componentReturns, builder, rng);
+
+      // Hurdle uses the meta's annualized trades (same as other gates)
+      const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
+      const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
+						oosSpreadStats,
+						Num(bt->getEstimatedAnnualizedTrades()),
+						configuredPerSide);
+
+      const bool passBase = (msbRes.lbAnnualized > H.baseHurdle);
+      const bool pass1Qn  = (msbRes.lbAnnualized > H.h_1q);
+      const bool pass     = (passBase && pass1Qn);
+
+      os << "      [MetaSel] Selection-aware bootstrap: "
+	 << "Ann GM LB=" << (100.0 * num::to_double(msbRes.lbAnnualized)) << "% "
+	 << (pass ? "(PASS)" : "(FAIL)")
+	 << " vs Base=" << (100.0 * num::to_double(H.baseHurdle)) << "%"
+	 << ", +1·Qn=" << (100.0 * num::to_double(H.h_1q)) << "% "
+	 << "@ CL=" << (100.0 * msbRes.cl) << "%, B=" << msbRes.B
+	 << ", L~" << Lmean << "\n";
+
+      return pass;
+    }
+    
     std::size_t
     MetaStrategyAnalyzer::chooseInitialSliceCount(std::size_t n, std::size_t Lmeta) const
     {
@@ -441,6 +530,18 @@ namespace palvalidator
       const bool pass1Qn  = (bootstrapResults.lbGeoAnn > H.h_1q);
       const bool regularBootstrapPass = (passBase && pass1Qn);
 
+      // Add the selection-aware gate (AND with existing gates)
+      const bool passMetaSelectionAware =
+	runSelectionAwareMetaGate(survivingStrategies,
+				  baseSecurity,
+				  backtestingDates,
+				  timeFrame,
+				  Lmeta,
+				  annualizationFactor,
+				  bt.get(),
+				  outputStream,
+				  oosSpreadStats);
+
       // --- Multi-split OOS gate (median per-slice LB > hurdle) ------------------
 
       const std::size_t K = chooseInitialSliceCount(metaReturns.size(), Lmeta);
@@ -462,9 +563,9 @@ namespace palvalidator
       const bool multiSplitPass = (!ms.applied) || ms.pass;
 
       // --- Final decision for this pyramid level --------------------------------
-      const bool pyramidPassed = (regularBootstrapPass && multiSplitPass);
+      const bool pyramidPassed = (regularBootstrapPass && multiSplitPass && passMetaSelectionAware);
 
-            // --- Future Returns Bound Analysis ----------------------------------------
+      // --- Future Returns Bound Analysis ----------------------------------------
       const auto& closedPositionHistory = bt->getClosedPositionHistory();
       outputStream << "\n";
       Num futureReturnsLowerBoundPct = performFutureReturnsBoundAnalysis(closedPositionHistory, outputStream);

@@ -947,7 +947,7 @@ namespace mkc_timeseries
    * is zero for INTRADAY data.
    */
   inline double calculateAnnualizationFactor(TimeFrame::Duration timeFrame,
-					     unsigned int intraday_minutes_per_bar = 0,
+					     int intraday_minutes_per_bar = 0,
 					     double trading_days_per_year = 252.0,
 					     double trading_hours_per_day = 6.5)
   {
@@ -965,7 +965,11 @@ namespace mkc_timeseries
 	    {
 	      throw std::invalid_argument("For INTRADAY timeframe, intraday_minutes_per_bar must be specified.");
 	    }
-	  double bars_per_hour = 60.0 / intraday_minutes_per_bar;
+	  double bars_per_hour = 60.0 / static_cast<double>(intraday_minutes_per_bar);
+	  if (!(bars_per_hour > 0.0) || !(trading_days_per_year > 0.0) || !(trading_hours_per_day > 0.0))
+            {
+                throw std::invalid_argument("Annualization inputs must be positive finite values.");
+            }
 	  return trading_hours_per_day * bars_per_hour * trading_days_per_year;
 	}
       case TimeFrame::QUARTERLY:
@@ -1005,20 +1009,47 @@ namespace mkc_timeseries
      * @throws std::invalid_argument If the annualization factor is not positive.
      */
     template <class Sampler, class Rng = randutils::mt19937_rng>
-    BCaAnnualizer(const BCaBootStrap<Decimal, Sampler, Rng>& bca_results, double annualization_factor)
+    BCaAnnualizer(const BCaBootStrap<Decimal, Sampler, Rng>& bca_results,
+		  double annualization_factor)
     {
-      if (annualization_factor <= 0.0)
+      if (!(annualization_factor > 0.0) || !std::isfinite(annualization_factor))
 	{
-	  throw std::invalid_argument("Annualization factor must be positive.");
+	  throw std::invalid_argument("Annualization factor must be positive and finite.");
 	}
-      const Decimal one = DecimalConstants<Decimal>::DecimalOne;
-      const double mean_d  = (one + bca_results.getMean()).getAsDouble();
-      const double lower_d = (one + bca_results.getLowerBound()).getAsDouble();
-      const double upper_d = (one + bca_results.getUpperBound()).getAsDouble();
 
-      m_annualized_mean        = Decimal(std::pow(mean_d,  annualization_factor)) - one;
-      m_annualized_lower_bound = Decimal(std::pow(lower_d, annualization_factor)) - one;
-      m_annualized_upper_bound = Decimal(std::pow(upper_d, annualization_factor)) - one;
+      const Decimal one  = DecimalConstants<Decimal>::DecimalOne;
+      const Decimal epsD = Decimal(1e-12);        // small ε to stay inside domain of log1p
+      const Decimal neg1 = DecimalConstants<Decimal>::DecimalMinusOne;
+
+      const Decimal r_mean  = bca_results.getMean();
+      const Decimal r_lower = bca_results.getLowerBound();
+      const Decimal r_upper = bca_results.getUpperBound();
+
+      // Clip returns to (-1, +∞) to ensure log1p is well-defined.
+      const Decimal r_mean_c  = std::max(r_mean,  neg1 + epsD);
+      const Decimal r_lower_c = std::max(r_lower, neg1 + epsD);
+      const Decimal r_upper_c = std::max(r_upper, neg1 + epsD);
+
+      // Compute with long double intermediates for stability:
+      auto annualize = [annualization_factor](const Decimal& r) -> Decimal
+      {
+	const long double lr = std::log1p(static_cast<long double>(r.getAsDouble()));
+	const long double K  = static_cast<long double>(annualization_factor);
+	long double y  = std::exp(K * lr) - 1.0L;
+
+	// Guard: near-ruin + large K can underflow numerically to exactly -1.0.
+	// Bump to a value that will remain > -1.0 after quantizing to decimal<8>.
+	const long double bump = 1e-7L;                // 10 ULPs at 8 decimal places
+
+	if (y <= -1.0L)
+	  y = -1.0L + bump;
+
+	return Decimal(static_cast<double>(y));
+      };
+
+      m_annualized_mean        = annualize(r_mean_c);
+      m_annualized_lower_bound = annualize(r_lower_c);
+      m_annualized_upper_bound = annualize(r_upper_c);
     }
 
     /**
@@ -1049,9 +1080,9 @@ namespace mkc_timeseries
     }
 
   private:
-    Decimal m_annualized_mean;
-    Decimal m_annualized_lower_bound;
-    Decimal m_annualized_upper_bound;
+    Decimal m_annualized_mean{};
+    Decimal m_annualized_lower_bound{};
+    Decimal m_annualized_upper_bound{};
   };
 } // namespace mkc_timeseries
 

@@ -43,6 +43,23 @@ namespace num
   }
 
   /**
+   * @brief Generic conversion to double - works for both floating-point and decimal types.
+   * @tparam T The type to convert (can be double, float, or any decimal type with getAsDouble()).
+   * @param val The value to convert.
+   * @return A double representing the value.
+   * @details This function uses SFINAE to handle both built-in floating-point types
+   *          (which are cast directly) and decimal types (which use getAsDouble()).
+   */
+  template<typename T>
+  inline double to_double(const T& val) {
+    if constexpr (std::is_floating_point_v<T>) {
+      return static_cast<double>(val);
+    } else {
+      return val.getAsDouble();
+    }
+  }
+
+  /**
    * @brief Converts a string representation to a decimal type.
    * @tparam N The target decimal type (e.g., DefaultNumber, dec::decimal<P, RP>).
    * @param s The std::string to convert.
