@@ -32,24 +32,81 @@ namespace palvalidator
 {
   namespace analysis
   {
-    / -----------------------------------------------------------------------------
-      // PercentileTBootstrap
-      // -----------------------------------------------------------------------------
-      // Two-level studentized (percentile-t) bootstrap with a pluggable resampler.
-      //
-      // Concept:
-      //   Outer bootstrap: resample from x → compute θ* (the statistic of interest)
-      //   Inner bootstrap: resample again from that outer sample → estimate its SE*
-      //
-      // The resulting studentized pivot is:
-      //     t = (θ* - θ̂) / SE*
-      // and the CI is formed using percentile quantiles of {t}:
-      //
-      //     lower = θ̂ - t_hi * SE_hat
-      //     upper = θ̂ - t_lo * SE_hat
-      //
-      // Useful when n is small (≈20–40) or the statistic is skewed/heavy-tailed.
-      // -----------------------------------------------------------------------------
+    /*
+      PercentileTBootstrap
+      --------------------
+      Two-level (nested) studentized percentile-t bootstrap with a pluggable resampler.
+      
+      Why this class exists
+      ---------------------
+      Plain percentile bootstrap intervals can under-cover when:
+      - the sampling distribution of your statistic is skewed or heavy-tailed, or
+      - n is small (~20–40), which is common for per-strategy trade samples.
+      
+      The percentile-t approach helps by “studentizing” each outer bootstrap replicate:
+      * Outer loop: resample the original series → compute θ* (your sampler/statistic)
+      * Inner loop: resample again from the OUTER sample → estimate SE* for that θ*
+      * Build the studentized pivot t = (θ* - θ_hat) / SE*
+      * Take percentile quantiles of t to form a CI around θ_hat using SE_hat
+      (SE_hat = SD of θ* across outer replicates, which is simple and stable)
+
+      Composability
+      -------------
+      - Sampler is any callable: Decimal f(const std::vector<Decimal>&)
+      (e.g., GeoMeanStat on per-period returns, log-PF, etc.)
+      - Resampler is any object with:
+      void operator()(const std::vector<Decimal>& x,
+      std::vector<Decimal>& y,
+      std::size_t m,
+      Rng& rng) const;
+      std::size_t getL() const;
+      This lets you plug in stationary-block resampling (recommended) or IID resampling.
+      - RNG defaults to randutils::mt19937_rng to match the rest of your codebase.
+      
+      Small-n notes
+      -------------
+      - You can use full-size outer samples (m_outer = n) and still get benefits from
+      studentization.
+      - Or, you can make the inner loop slightly smaller (m_inner < m_outer) to gain
+      a touch of conservatism when n is very small. The class exposes ratios and
+      per-call overrides for both outer and inner m.
+      
+      Replicate counts (B_outer, B_inner)
+      -----------------------------------
+      These affect *quantile smoothness* and stability, not your data size. As a rule of thumb:
+      - B_outer >= 400
+      - B_inner >= 100
+      More is better if runtime allows.
+      
+      Returned diagnostics
+      --------------------
+      The Result struct includes:
+      - mean, lower, upper     → θ_hat and the percentile-t CI (per-period scale)
+      - cl                     → confidence level
+      - B_outer, B_inner       → requested replicate counts
+      - effective_B            → number of usable outer reps (finite pivots)
+      - skipped_outer          → outer reps skipped due to NaN/Inf or SE* <= 0, etc.
+      - skipped_inner_total    → total inner replicates skipped across all outer reps
+      - n, m_outer, m_inner    → sizes used
+      - L                      → resampler L (diagnostics)
+      - se_hat                 → SD(θ*) across valid outer reps (used in final CI)
+      
+      CI construction summary
+      -----------------------
+      1) θ_hat = sampler(x)
+      2) For b in 1..B_outer:
+      y_outer ~ resampler(x, m_outer)
+      θ*_b = sampler(y_outer)
+      For j in 1..B_inner:
+      y_inner ~ resampler(y_outer, m_inner)
+      θ°_bj = sampler(y_inner)
+      SE*_b = SD({θ°_bj})
+      t_b = (θ*_b - θ_hat) / SE*_b
+      Keep only finite t_b and finite θ*_b with positive SE*_b
+      3) SE_hat = SD({θ*_b}) over valid outer replicates
+      4) t_lo, t_hi = type-7 quantiles of {t_b} at α/2 and 1-α/2 (α = 1-CL)
+      5) CI = [θ_hat - t_hi * SE_hat,  θ_hat - t_lo * SE_hat]
+    */
     template <class Decimal, class Sampler, class Resampler, class Rng = randutils::mt19937_rng>
     class PercentileTBootstrap
     {
