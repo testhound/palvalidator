@@ -292,6 +292,20 @@ namespace palvalidator
           std::ostream& outputStream,
 	  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt) const;
       
+      // Runs selection-aware outer bootstrap that replays meta construction.
+      // Returns true if the annualized LB from the selection-aware CI exceeds the hurdle.
+      bool runSelectionAwareMetaGate(
+				     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+				     std::shared_ptr<mkc_timeseries::Security<Num>> baseSecurity,
+				     const mkc_timeseries::DateRange& backtestingDates,
+				     mkc_timeseries::TimeFrame::Duration timeFrame,
+				     std::size_t Lmeta,
+				     double annualizationFactor,
+				     const mkc_timeseries::BackTester<Num>* bt,  // for annualized trades in hurdle
+				     std::ostream& os,
+				     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
+				     ) const;
+
       void writeComprehensivePerformanceReport(
           const std::vector<PyramidResults>& allResults,
           const std::string& performanceFileName,
