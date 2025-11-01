@@ -9,8 +9,10 @@
 #include <cmath>
 #include <utility>
 
-#include "BiasCorrectedBootstrap.h"   // for Stat types; we won’t call its resampler now
-#include "StatUtils.h"                // GeoMeanStat, num::to_double
+#include "BiasCorrectedBootstrap.h"
+#include "Annualizer.h"
+#include "StationaryMaskResamplers.h"
+#include "StatUtils.h"
 #include "randutils.hpp"
 
 namespace palvalidator
@@ -94,7 +96,7 @@ namespace palvalidator
 
       Result run(const Matrix& componentReturns,
 		 const Builder& metaBuilder,
-		 Rng& rng) const
+		 Rng&           rng) const
       {
 	if (componentReturns.empty())
 	  {
@@ -116,34 +118,39 @@ namespace palvalidator
 	    throw std::invalid_argument("MetaSelectionBootstrap.run: insufficient common length");
 	  }
 
-	// Statistic (log-aware geometric mean) with your ruin/winsor guards
+	// Statistic (log-aware geometric mean) with your ruin/winsor guards.
 	mkc_timeseries::GeoMeanStat<Num> geoStat(
 						 /*clip_ruin=*/true,
 						 /*winsor_small_n=*/true,
 						 /*winsor_alpha=*/0.02,
-						 /*ruin_eps=*/1e-8   // must be double
+						 /*ruin_eps=*/1e-8   // double overload expected
 						 );
 
 	std::vector<Num> stats;
 	stats.reserve(mB);
 
+	// Pre-size a reusable resampled matrix to avoid per-replicate reallocations
 	const std::size_t k = componentReturns.size();
 	Matrix resampled(k, Series(m));
 
+	// Shared-index resampler (index mode) with mean block length L
+	palvalidator::resampling::StationaryMaskIndexResampler idxResampler(mL);
+
 	for (std::size_t b = 0; b < mB; ++b)
 	  {
-	    // (1) Shared restart mask (synchronized block timing across strategies)
-	    const std::vector<uint8_t> restart_mask =
-	      make_restart_mask(m, static_cast<double>(mL), rng.engine());
+	    // (1) Build a SHARED stationary-bootstrap index path of length m.
+	    //     We generate a "virtual" index stream with n = m for the shared clock.
+	    std::vector<std::size_t> shared_idx;
+	    idxResampler(/*n=*/m, /*out_idx=*/shared_idx, /*m_out=*/m, rng);       // operator()(n, out_idx, m, rng). :contentReference[oaicite:1]{index=1}
 
-	    // (2) Per-component resampling with uniform starts at each restart
+	    // (2) Apply the shared path to every component (modulo its own n_i)
 	    bool degenerate = false;
 
 	    for (std::size_t i = 0; i < k; ++i)
 	      {
-		const auto& src = componentReturns[i];
+		const auto& src  = componentReturns[i];
 		const std::size_t n_i = src.size();
-		if (n_i == 0)
+		if (n_i < 2)
 		  {
 		    degenerate = true;
 		    break;
@@ -152,37 +159,23 @@ namespace palvalidator
 		auto& dst = resampled[i];
 		dst.resize(m);
 
-		std::uniform_int_distribution<std::size_t> ustart(0, n_i - 1);
-
-		std::size_t pos = 0;
-		bool have_pos = false;
-
 		for (std::size_t t = 0; t < m; ++t)
 		  {
-		    if (restart_mask[t] || !have_pos)
-		      {
-			pos = ustart(rng.engine());
-			have_pos = true;
-		      }
-		    else
-		      {
-			pos = (pos + 1) % n_i;
-		      }
-
-		    dst[t] = src[pos];
+		    const std::size_t j = shared_idx[t] % n_i;
+		    dst[t] = src[j];
 		  }
 	      }
 
 	    if (degenerate)
 	      {
-		continue;
+		continue; // skip replicate
 	      }
 
 	    // (3) Rebuild the meta using the production rule
 	    Series meta = metaBuilder(resampled);
 	    if (meta.size() < 2)
 	      {
-		continue;
+		continue; // degenerate replicate
 	      }
 
 	    // (4) Statistic: per-period GeoMean (log-aware)
@@ -198,11 +191,11 @@ namespace palvalidator
 	// (5) Hyndman–Fan type-7 quantile for the lower bound
 	std::sort(stats.begin(), stats.end());
 	const double alpha = 1.0 - mCL;
-	const double n = static_cast<double>(stats.size());
-	const double p = alpha;
-	const double h = (n - 1) * p + 1.0;   // type-7 definition
+	const double n   = static_cast<double>(stats.size());
+	const double p   = alpha;
+	const double h   = (n - 1.0) * p + 1.0;                 // type-7 definition
 	const std::size_t i = static_cast<std::size_t>(std::floor(h));
-	const double frac = h - static_cast<double>(i);
+	const double frac   = h - static_cast<double>(i);
 
 	Num lbPer;
 	if (i <= 1)
@@ -220,12 +213,8 @@ namespace palvalidator
 	    lbPer = x0 + (x1 - x0) * Num(frac);
 	  }
 
-	// (6) Annualize via exp(K*log1p(g)) - 1 for stability
-	const long double g  = static_cast<long double>(num::to_double(lbPer));
-	const long double K  = static_cast<long double>(mPPY);
-	const long double ann = std::exp(K * std::log1p(g)) - 1.0L;
-	const Num lbAnn = Num(static_cast<double>(ann));
-
+	using A = mkc_timeseries::Annualizer<Num>;
+	const Num lbAnn = A::annualize_one(lbPer, mPPY);
 	return Result{lbPer, lbAnn, mCL, mB};
       }
       
