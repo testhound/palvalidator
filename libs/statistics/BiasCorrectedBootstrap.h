@@ -31,6 +31,7 @@
 #include "randutils.hpp"
 #include "TimeFrame.h"
 #include "StatUtils.h"
+#include "Annualizer.h"
 
 namespace mkc_timeseries
 {
@@ -1017,39 +1018,16 @@ namespace mkc_timeseries
 	  throw std::invalid_argument("Annualization factor must be positive and finite.");
 	}
 
-      const Decimal one  = DecimalConstants<Decimal>::DecimalOne;
-      const Decimal epsD = Decimal(1e-12);        // small ε to stay inside domain of log1p
-      const Decimal neg1 = DecimalConstants<Decimal>::DecimalMinusOne;
-
       const Decimal r_mean  = bca_results.getMean();
       const Decimal r_lower = bca_results.getLowerBound();
       const Decimal r_upper = bca_results.getUpperBound();
 
-      // Clip returns to (-1, +∞) to ensure log1p is well-defined.
-      const Decimal r_mean_c  = std::max(r_mean,  neg1 + epsD);
-      const Decimal r_lower_c = std::max(r_lower, neg1 + epsD);
-      const Decimal r_upper_c = std::max(r_upper, neg1 + epsD);
+      using A = Annualizer<Decimal>;
+      const auto trip = A::annualize_triplet(r_lower, r_mean, r_upper, annualization_factor);
 
-      // Compute with long double intermediates for stability:
-      auto annualize = [annualization_factor](const Decimal& r) -> Decimal
-      {
-	const long double lr = std::log1p(static_cast<long double>(r.getAsDouble()));
-	const long double K  = static_cast<long double>(annualization_factor);
-	long double y  = std::exp(K * lr) - 1.0L;
-
-	// Guard: near-ruin + large K can underflow numerically to exactly -1.0.
-	// Bump to a value that will remain > -1.0 after quantizing to decimal<8>.
-	const long double bump = 1e-7L;                // 10 ULPs at 8 decimal places
-
-	if (y <= -1.0L)
-	  y = -1.0L + bump;
-
-	return Decimal(static_cast<double>(y));
-      };
-
-      m_annualized_mean        = annualize(r_mean_c);
-      m_annualized_lower_bound = annualize(r_lower_c);
-      m_annualized_upper_bound = annualize(r_upper_c);
+      m_annualized_mean        = trip.mean;
+      m_annualized_lower_bound = trip.lower;
+      m_annualized_upper_bound = trip.upper;
     }
 
     /**
