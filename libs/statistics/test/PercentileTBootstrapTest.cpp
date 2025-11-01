@@ -19,6 +19,8 @@
 #include <numeric>
 #include <cmath>
 #include <stdexcept>
+#include <limits>
+#include <random>
 
 #include "number.h"
 #include "StatUtils.h"
@@ -26,6 +28,8 @@
 #include "BiasCorrectedBootstrap.h"
 #include "StationaryMaskResamplers.h"
 #include "PercentileTBootstrap.h"
+#include "ParallelExecutors.h"
+#include "ParallelFor.h"
 
 using palvalidator::analysis::PercentileTBootstrap;
 using palvalidator::resampling::StationaryMaskValueResampler;
@@ -45,6 +49,49 @@ static inline double annualize_expect(double r_per_period, long double K)
     const long double a = std::exp(K * g) - 1.0L;
     return static_cast<double>(a);
 }
+
+// Simple sampler: arithmetic mean
+struct MeanSampler
+{
+    template <typename Decimal>
+    Decimal operator()(const std::vector<Decimal>& x) const
+    {
+        long double sum = 0.0L;
+        for (auto& v : x) sum += static_cast<long double>(v);
+        return static_cast<Decimal>(sum / static_cast<long double>(x.size()));
+    }
+};
+
+// Minimal IID value resampler for tests (no blocks); matches (src, dst, m, rng) + getL()
+struct IIDResamplerForTest
+{
+    std::size_t getL() const noexcept { return 0; }
+
+    template <typename Decimal, typename Rng>
+    void operator()(const std::vector<Decimal>& src,
+                    std::vector<Decimal>&       dst,
+                    std::size_t                 m,
+                    Rng&                         rng) const
+    {
+        std::uniform_int_distribution<std::size_t> pick(0, src.size() - 1);
+        dst.resize(m);
+        for (std::size_t i = 0; i < m; ++i)
+        {
+            dst[i] = src[pick(rng)];
+        }
+    }
+};
+
+// Convenience alias for our test instantiations
+template <typename Exec>
+using PctT = PercentileTBootstrap<
+    double,                // Decimal
+    MeanSampler,           // Sampler
+    IIDResamplerForTest,   // Resampler
+    std::mt19937_64,       // Rng
+    Exec                   // Executor (template parameter on the class)
+>;
+
 
 TEST_CASE("PercentileTBootstrap: constructor validation", "[Bootstrap][PercentileT]")
 {
@@ -444,4 +491,67 @@ TEST_CASE("PercentileT + GeoMean → BCaAnnualizer: ordering, finiteness, and an
         // For small positive per-period GeoMean, higher compounding frequency yields >= annualized mean.
         REQUIRE(m504 >= m252 - 1e-12);
     }
+}
+
+TEST_CASE("PercentileTBootstrap runs correctly with ThreadPoolExecutor", "[bootstrap][threadpool]")
+{
+    // Synthetic data: mildly non-Gaussian to exercise studentization
+    std::mt19937_64 gen_data(12345);
+    std::normal_distribution<double> g(0.0, 1.0);
+    std::vector<double> x; x.reserve(1000);
+    for (int i = 0; i < 1000; ++i)
+    {
+        double v = g(gen_data);
+        if ((i % 25) == 0) v *= 1.5;     // small heteroskedastic bumps
+        x.push_back(v);
+    }
+
+    const double CL = 0.95;
+
+    // Choose modest bootstrap sizes to keep the test fast but meaningful
+    const std::size_t B_outer = 500;
+    const std::size_t B_inner = 160;
+
+    // Resampler + sampler
+    IIDResamplerForTest resampler{};
+    MeanSampler         sampler{};
+
+    // Construct single-threaded and thread-pooled variants
+    PctT<concurrency::SingleThreadExecutor>   pct_single(B_outer, B_inner, CL, resampler, 0.6, 0.5);
+    PctT<concurrency::ThreadPoolExecutor<4>>  pct_pool  (B_outer, B_inner, CL, resampler, 0.6, 0.5);
+
+    // IMPORTANT: use identical RNG seeds for deterministic equivalence
+    std::mt19937_64 rng1(0xBEEFu);
+    std::mt19937_64 rng2(0xBEEFu);
+
+    auto R1 = pct_single.run(x, sampler, rng1);
+    auto R2 = pct_pool.run  (x, sampler, rng2);
+
+    // Basic invariants
+    REQUIRE(R1.n == R2.n);
+    REQUIRE(R1.B_outer == R2.B_outer);
+    REQUIRE(R1.B_inner == R2.B_inner);
+    REQUIRE(R1.effective_B > 16);
+    REQUIRE(R2.effective_B == R1.effective_B);
+
+    // Numeric equivalence (parallel outer should be bit-stable here; allow tiny tolerance)
+    auto near = [](double a, double b, double tol) {
+        return std::fabs(a - b) <= tol * std::max(1.0, std::max(std::fabs(a), std::fabs(b)));
+    };
+
+    const double tight = 1e-12;
+
+    // Compare core outputs
+    REQUIRE( near(static_cast<double>(R1.mean),  static_cast<double>(R2.mean),  tight) );
+    REQUIRE( near(static_cast<double>(R1.lower), static_cast<double>(R2.lower), tight) );
+    REQUIRE( near(static_cast<double>(R1.upper), static_cast<double>(R2.upper), tight) );
+    REQUIRE( near(R1.se_hat, R2.se_hat, tight) );
+
+    // Sanity on skipped diagnostics (exact match expected under identical RNG usage)
+    REQUIRE(R1.skipped_outer       == R2.skipped_outer);
+    REQUIRE(R1.skipped_inner_total == R2.skipped_inner_total);
+
+    // CI ordering & coverage sanity
+    REQUIRE(static_cast<double>(R1.lower) <= static_cast<double>(R1.upper));
+    REQUIRE(static_cast<double>(R2.lower) <= static_cast<double>(R2.upper));
 }
