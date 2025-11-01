@@ -8,6 +8,7 @@
 #include "ClosedPositionHistory.h"
 #include "BackTester.h"
 #include "PalStrategy.h"
+#include "ParallelExecutors.h"
 #include <sstream>
 #include <cmath>
 
@@ -102,8 +103,8 @@ namespace palvalidator::filtering::stages
     os << "Strategy Median holding period = " << medianHoldBars << "\n";
 
     // Use the mask-based stationary resamplers for everything
-    using MaskValueResampler = palvalidator::resampling::StationaryMaskValueResampler<Num>;
-    using BCaResampler       = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+    using MaskValueResampler = palvalidator::resampling::StationaryBlockValueResampler<Num>;
+    using BCaResampler       = mkc_timeseries::StationaryBlockResampler<Num>;
 
     BCaResampler       bcaResampler(L);
     MaskValueResampler smallNResampler(L);
@@ -173,7 +174,9 @@ namespace palvalidator::filtering::stages
 	    palvalidator::analysis::PercentileTBootstrap<
 	      Num,
 	      mkc_timeseries::GeoMeanStat<Num>,
-	      MaskValueResampler
+	      MaskValueResampler,
+	      randutils::mt19937_rng,
+	      concurrency::ThreadPoolExecutor<0>
 	      > pT(B_out, B_in, CL, smallNResampler, rho_o, rho_i);
 
 	    auto ptRes = pT.run(ctx.highResReturns, geoStat, rng);

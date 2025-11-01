@@ -15,6 +15,7 @@
 using palvalidator::resampling::make_restart_mask;
 using palvalidator::resampling::StationaryMaskValueResampler;
 using palvalidator::resampling::StationaryMaskIndexResampler;
+using palvalidator::resampling::StationaryBlockValueResampler;
 
 TEST_CASE("make_restart_mask: basic invariants", "[Resampler][Mask]")
 {
@@ -262,4 +263,165 @@ TEST_CASE("make_restart_mask: empirical mean block length ~ L", "[Resampler][Mas
 
     // Expect empirical mean block length close to theoretical L
     REQUIRE(empirical_L == Catch::Approx(L).margin(0.15 * L));
+}
+
+TEST_CASE("StationaryBlockValueResampler: constructor and operator() validation", "[Resampler][BlockValue]")
+{
+    using D = DecimalType;
+
+    // Monotone source so we can infer indices from values
+    const std::size_t n = 8;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i)));
+
+    randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+    randutils::mt19937_rng rng(seed);
+
+    SECTION("L < 1 either throws or clamps to 1")
+    {
+        bool threw = false;
+        try {
+            StationaryBlockValueResampler<D> res0(0);
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+
+        if (!threw)
+        {
+            // If implementation clamps, verify behavior is equivalent to L=1
+            StationaryBlockValueResampler<D> res0(0);
+            StationaryBlockValueResampler<D> res1(1);
+            std::vector<D> y0, y1;
+            res0(x, y0, /*m=*/32, rng);
+            // Re-seed for a fair comparison
+            randutils::mt19937_rng rng2(seed);
+            res1(x, y1, /*m=*/32, rng2);
+            REQUIRE(y0.size() == y1.size());
+            // With identical seeds and equivalent semantics, outputs should match exactly
+            REQUIRE(y0 == y1);
+        }
+    }
+
+    SECTION("x.size() < 2 throws")
+    {
+        StationaryBlockValueResampler<D> res(3);
+        std::vector<D> tiny{ D(7) };
+        std::vector<D> y;
+        REQUIRE_THROWS_AS(res(tiny, y, /*m=*/10, rng), std::invalid_argument);
+    }
+
+    SECTION("m < 2 throws")
+    {
+        StationaryBlockValueResampler<D> res(3);
+        std::vector<D> y;
+        REQUIRE_THROWS_AS(res(x, y, /*m=*/1, rng), std::invalid_argument);
+    }
+}
+
+TEST_CASE("StationaryBlockValueResampler: shape, domain, contiguity rises with L", "[Resampler][BlockValue]")
+{
+    using D = DecimalType;
+
+    const std::size_t n = 250;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i)));
+
+    const std::size_t m = 500;
+
+    auto contiguity_fraction = [&](std::size_t L, randutils::mt19937_rng& rng) -> double {
+        StationaryBlockValueResampler<D> res(L);
+        std::vector<D> y;
+        res(x, y, m, rng);
+
+        REQUIRE(y.size() == m);
+
+        // Domain: values must be in [0, n-1]
+        for (const auto& v : y)
+        {
+            const double vd = num::to_double(v);
+            REQUIRE(vd >= 0.0);
+            REQUIRE(vd < static_cast<double>(n));
+        }
+
+        // Contiguity: count transitions where next == (cur+1) % n
+        std::size_t adjacent = 0;
+        for (std::size_t t = 0; t + 1 < y.size(); ++t)
+        {
+            int cur = static_cast<int>(num::to_double(y[t]));
+            int nxt = static_cast<int>(num::to_double(y[t + 1]));
+            if (nxt == (cur + 1) % static_cast<int>(n)) adjacent++;
+        }
+        return static_cast<double>(adjacent) / static_cast<double>(m - 1);
+    };
+
+    // Two independent RNGs with deterministic seeds per L
+    randutils::seed_seq_fe128 s2{11u,22u,33u,44u};
+    randutils::mt19937_rng rngL2(s2);
+    randutils::mt19937_rng rngL6(s2);
+
+    const double f2 = contiguity_fraction(2, rngL2);
+    const double f6 = contiguity_fraction(6, rngL6);
+
+    // Expect contiguity to be noticeably higher with larger L
+    REQUIRE(f6 > f2 + 0.15);
+}
+
+TEST_CASE("StationaryBlockValueResampler: determinism under identical seeds", "[Resampler][BlockValue]")
+{
+    using D = DecimalType;
+
+    const std::size_t n = 120;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i)));
+
+    const std::size_t m = 300;
+    const std::size_t L = 5;
+
+    randutils::seed_seq_fe128 seed{99u,77u,55u,33u};
+    randutils::mt19937_rng rng1(seed);
+    randutils::mt19937_rng rng2(seed);
+
+    StationaryBlockValueResampler<D> res(L);
+    std::vector<D> y1, y2;
+
+    res(x, y1, m, rng1);
+    res(x, y2, m, rng2);
+
+    REQUIRE(y1.size() == m);
+    REQUIRE(y2.size() == m);
+    REQUIRE(y1 == y2);
+}
+
+TEST_CASE("StationaryBlockValueResampler: empirical mean block length ~ L", "[Resampler][BlockValueStats]")
+{
+    using D = DecimalType;
+
+    const std::size_t n = 500;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i)));
+
+    randutils::seed_seq_fe128 seed{42u,99u,7u,21u};
+    randutils::mt19937_rng rng(seed);
+
+    const std::size_t m = 5000;
+    const std::size_t L  = 6;
+
+    StationaryBlockValueResampler<D> res(L);
+
+    // Build one large draw and estimate blocks by counting “breaks”
+    std::vector<D> y;
+    res(x, y, m, rng);
+
+    // Count restarts as 1 + number of non-adjacent transitions
+    std::size_t restarts = 1;
+    for (std::size_t t = 0; t + 1 < y.size(); ++t)
+    {
+        int cur = static_cast<int>(num::to_double(y[t]));
+        int nxt = static_cast<int>(num::to_double(y[t + 1]));
+        if (nxt != (cur + 1) % static_cast<int>(n))
+            restarts++;
+    }
+
+    const double empirical_L = static_cast<double>(m) / static_cast<double>(restarts);
+    REQUIRE(empirical_L == Catch::Approx(static_cast<double>(L)).margin(0.20 * static_cast<double>(L)));
 }

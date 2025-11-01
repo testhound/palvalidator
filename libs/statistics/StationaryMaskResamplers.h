@@ -44,30 +44,108 @@ namespace palvalidator
      *
      * @see StationaryMaskValueResampler, StationaryMaskIndexResampler
      */
+    // Replace existing make_restart_mask with this run-length version.
     template <class Rng>
     inline std::vector<uint8_t> make_restart_mask(std::size_t m, double L, Rng& rng)
     {
       if (m < 2)
-	{
-	  throw std::invalid_argument("make_restart_mask: m must be >= 2");
-	}
+        throw std::invalid_argument("make_restart_mask: m must be >= 2");
       if (!(L >= 1.0) || !std::isfinite(L))
-	{
-	  throw std::invalid_argument("make_restart_mask: L must be finite and >= 1");
-	}
+        throw std::invalid_argument("make_restart_mask: L must be finite and >= 1");
 
       const double p = (L <= 1.0) ? 1.0 : (1.0 / L);
-      std::bernoulli_distribution restart_dist(p);
+
+      // geometric_distribution models the number of failures before first success.
+      // We want run lengths in {1,2,...} with mean 1/p = L, so we use (k + 1).
+      std::geometric_distribution<std::size_t> geo(p);
 
       std::vector<uint8_t> mask(m, 0u);
-      mask[0] = 1u;
-      for (std::size_t t = 1; t < m; ++t)
+      std::size_t t = 0;
+
+      // First element must be a restart.
+      mask[t++] = 1u;
+
+      while (t < m)
 	{
-	  mask[t] = restart_dist(rng.engine()) ? 1u : 0u;
+	  const std::size_t run_len = 1 + geo(rng.engine()); // length >= 1
+	  // We mark ONLY the restart at the beginning of the run.
+	  // The continuation positions are zeros; the value/index resampler advances pos.
+	  // Advance t by the run length: next loop iteration will mark a new restart (if any room left).
+	  const std::size_t next = t + run_len;
+	  if (next < m)
+	    {
+	      mask[t] = 1u; // new run starts at t
+	    }
+	  t = next;
 	}
+
       return mask;
     }
 
+    template <class Decimal>
+    class StationaryBlockValueResampler
+    {
+    public:
+      explicit StationaryBlockValueResampler(std::size_t L)
+	: m_L(L < 1 ? 1 : L)
+      {}
+
+      std::size_t getL() const
+      {
+	return m_L;
+      }
+
+      template <class Rng>
+      void operator()(const std::vector<Decimal>& x,
+		      std::vector<Decimal>& y,
+		      std::size_t m,
+		      Rng& rng) const
+      {
+        const std::size_t n = x.size();
+
+	// NEW: strict validation to match mask resamplers & unit tests
+	if (n < 2)
+	  {
+	    throw std::invalid_argument("StationaryBlockValueResampler: x.size() must be >= 2");
+	  }
+	if (m < 2)
+	  {
+	    throw std::invalid_argument("StationaryBlockValueResampler: m must be >= 2");
+	  }
+
+        // Build doubled buffer once per call for contiguous copies across wrap.
+        std::vector<Decimal> x2;
+        x2.reserve(n * 2);
+        x2.insert(x2.end(), x.begin(), x.end());
+        x2.insert(x2.end(), x.begin(), x.end());
+
+        // Geometric block lengths with mean L → p = 1/L
+        const double p = (m_L <= 1 ? 1.0 : 1.0 / static_cast<double>(m_L));
+        std::geometric_distribution<std::size_t> geo(p);
+        std::uniform_int_distribution<std::size_t> ustart(0, n - 1);
+
+        y.resize(m);
+        std::size_t wrote = 0;
+
+        while (wrote < m)
+	  {
+            const std::size_t start = ustart(rng.engine());
+            const std::size_t run   = 1 + geo(rng.engine());      // length ≥ 1
+            const std::size_t take  = std::min(run, m - wrote);
+
+            // Copy from doubled buffer; always contiguous
+            std::copy_n(x2.begin() + static_cast<std::ptrdiff_t>(start),
+                        static_cast<std::ptrdiff_t>(take),
+                        y.begin() + static_cast<std::ptrdiff_t>(wrote));
+
+            wrote += take;
+	  }
+      }
+
+    private:
+      std::size_t m_L;
+    };
+    
     /**
      * @brief Stationary bootstrap resampler that returns resampled values (“value mode”).
      *
@@ -167,7 +245,9 @@ namespace palvalidator
 	      }
 	    else
 	      {
-		pos = (pos + 1) % n;
+		++pos;
+		if (pos == n)
+		  pos = 0;
 	      }
 	    y[t] = x[pos];
 	  }

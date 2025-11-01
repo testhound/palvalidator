@@ -132,7 +132,7 @@ TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife returns n finite stats
     // All finite and within the data range
     double minv = +std::numeric_limits<double>::infinity();
     double maxv = -std::numeric_limits<double>::infinity();
-    std::size_t identical = 0;
+
     for (const auto& z : jk)
     {
         const double d = num::to_double(z);
