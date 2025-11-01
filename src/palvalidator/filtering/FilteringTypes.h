@@ -258,14 +258,38 @@ namespace palvalidator
      */
     struct BootstrapAnalysisResult
     {
-      Num lbGeoPeriod;                 // per-period geometric mean lower bound
-      Num lbMeanPeriod;                // per-period arithmetic mean lower bound
-      Num annualizedLowerBoundGeo;     // annualized GM lower bound
-      Num annualizedLowerBoundMean;    // annualized arithmetic mean lower bound
-      unsigned int medianHoldBars{0};
-      size_t blockLength{0};
-      std::string failureReason;       // reason if bootstrap failed
-      bool computationSucceeded{false}; // true if bootstrap computation completed
+      // ---- existing fields (keep yours) ----
+      bool   computationSucceeded { false };
+      std::string failureReason;
+
+      // Per-period lower bounds (for reporting)
+      Num lbGeoPeriod { Num(0) };
+      Num lbMeanPeriod { Num(0) };
+
+      // Annualized bounds (for reporting)
+      Num annualizedLowerBoundGeo { Num(0) };
+      Num annualizedLowerBoundMean { Num(0) };
+
+      // Diagnostics
+      std::size_t blockLength { 0 };
+      unsigned int medianHoldBars { 0 };
+
+      // ---- NEW: gate metadata (single source of truth) ----
+      // Gate decision result: did the lower bound clear the hurdle?
+      bool gatePassedHurdle { false };
+
+      // True if the comparison was done on annualized scale; false if per-period.
+      bool gateIsAnnualized { true };
+
+      // The exact LB value used in the comparison (same scale as gateIsAnnualized indicates).
+      Num gateComparedLB { Num(0) };
+
+      // The exact hurdle used in the comparison (same scale as gateIsAnnualized indicates).
+      Num gateComparedHurdle { Num(0) };
+
+      // Human-readable short label of the policy applied:
+      // "BCa only", "min-of-LBs (25..29)", "AND-gate (<=24)"
+      std::string gatePolicy;
 
       bool isValid() const
       {
@@ -274,7 +298,7 @@ namespace palvalidator
         return computationSucceeded && failureReason.empty();
       }
     };
-
+    
     /**
      * @brief Hurdle calculation outputs and pass/fail flags
      */

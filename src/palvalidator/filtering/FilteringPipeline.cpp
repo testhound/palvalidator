@@ -29,104 +29,157 @@ namespace palvalidator::filtering
   }
 
   FilterDecision FilteringPipeline::executeForStrategy(
-    StrategyAnalysisContext& ctx,
-    std::ostream& os)
+						       StrategyAnalysisContext& ctx,
+						       std::ostream& os)
   {
-    // Stage 1: Backtesting (lines 67-82)
-    // GATE: Requires >= 20 returns
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 1: Backtesting
+    // GATE: Requires sufficient data (legacy behavior)
+    // ──────────────────────────────────────────────────────────────────────────
     auto backtestDecision = mBacktestingStage.execute(ctx, os);
     if (!backtestDecision.passed())
-    {
-      return backtestDecision; // Fail-fast: insufficient data
-    }
+      {
+        return backtestDecision; // Fail-fast: insufficient data
+      }
 
-    // Stage 2: Bootstrap Analysis (lines 84-118)
-    // NO GATE: Pure computation
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 2: Bootstrap Analysis
+    // Computes per-period and annualized bounds. DO NOT gate here because
+    // the hurdle is produced by the next stage (depends on bootstrap too).
+    // ──────────────────────────────────────────────────────────────────────────
     auto bootstrap = mBootstrapStage.execute(ctx, os);
-    if (!bootstrap.isValid())
-    {
-      std::string reason = bootstrap.failureReason.empty()
-        ? "Bootstrap analysis produced invalid results (unknown reason)"
-        : bootstrap.failureReason;
-      os << "✗ Strategy filtered out: Bootstrap analysis failed - " << reason << "\n";
-      return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
-    }
 
-    // Store computed values in context for later stages
+    if (!bootstrap.computationSucceeded)
+      {
+        std::string reason = bootstrap.failureReason.empty()
+	  ? "Bootstrap analysis produced invalid results (unknown reason)"
+	  : bootstrap.failureReason;
+        os << "✗ Strategy filtered out: Bootstrap analysis failed - " << reason << "\n";
+        return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
+      }
+
+    // Persist diagnostics in context for later stages
     ctx.blockLength = bootstrap.blockLength;
     ctx.annualizationFactor = mBootstrapStage.computeAnnualizationFactor(ctx);
 
-    // Stage 3: Hurdle Analysis (lines 122-157)
-    // GATE: Must pass BOTH baseHurdle AND 1Qn stress
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 3: Hurdle Analysis
+    // GATE: Must pass cost-stressed base + 1Qn hurdle computation.
+    // Produces ctx.finalRequiredReturn (ANNUALIZED).
+    // ──────────────────────────────────────────────────────────────────────────
     auto hurdle = mHurdleStage.execute(ctx, bootstrap, os);
     ctx.finalRequiredReturn = hurdle.finalRequiredReturn;
 
     if (!hurdle.passed())
-    {
-      os << "      → Gate: FAIL vs cost-stressed hurdles.\n\n";
-      return FilterDecision::Fail(FilterDecisionType::FailHurdle,
-                                  "Failed cost-stressed hurdles");
-    }
+      {
+        os << "      → Gate: FAIL vs cost-stressed hurdles.\n\n";
+        return FilterDecision::Fail(
+				    FilterDecisionType::FailHurdle,
+				    "Failed cost-stressed hurdles");
+      }
 
     os << "      → Gate: PASS vs cost-stressed hurdles.\n";
 
-    // Stage 4: Robustness Analysis (lines 160-184)
-    // GATE: If triggered (divergence/near-hurdle/small-N), must pass checks
-    // Note: RobustnessStage updates FilteringSummary directly (matches legacy)
+    // ──────────────────────────────────────────────────────────────────────────
+    // Single Source-of-Truth Bootstrap Gate (Pipeline-level)
+    //
+    // Compare the bootstrap’s conservative ANNUALIZED Geo LB against the
+    // ANNUALIZED hurdle produced by the Hurdle stage. We avoid any per-period
+    // vs annualized ambiguity, and we avoid double-gating.
+    //
+    // Note: if you later expose per-method annualized LBs (BCa, m/n, t),
+    // you can optionally implement AND-gate for n<=24 here. For now,
+    // the conservative LB equals min-of-LBs and is a solid, simple gate.
+    // ──────────────────────────────────────────────────────────────────────────
+    const bool bootstrapPasses =
+      (bootstrap.annualizedLowerBoundGeo > hurdle.finalRequiredReturn);
 
-    // AM-GM divergence diagnostic (legacy line 160-162)
+    os << "   [Pipeline] Bootstrap gate (annualized): "
+       << "GeoLB=" << (bootstrap.annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred) << "% "
+       << "vs Hurdle=" << (hurdle.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "% → "
+       << (bootstrapPasses ? "PASS" : "FAIL") << "\n";
+
+    if (!bootstrapPasses)
+      {
+        os << "✗ Strategy filtered out: Bootstrap lower bound failed to exceed hurdle\n\n";
+        return FilterDecision::Fail(
+				    FilterDecisionType::FailHurdle,
+				    "Bootstrap lower bound below required return");
+      }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 4: Robustness Analysis
+    // GATE: If divergence/near-hurdle/small-N, must pass robustness checks.
+    // ──────────────────────────────────────────────────────────────────────────
     const auto divergence =
       palvalidator::analysis::DivergenceAnalyzer::assessAMGMDivergence(
-        bootstrap.annualizedLowerBoundGeo,
-        bootstrap.annualizedLowerBoundMean,
-        /*absThresh=*/0.05,
-        /*relThresh=*/0.30);
+								       bootstrap.annualizedLowerBoundGeo,
+								       bootstrap.annualizedLowerBoundMean,
+								       /*absThresh=*/0.05,
+								       /*relThresh=*/0.30);
 
-    // Determine if robustness checks needed (legacy lines 165-168)
-    const bool nearHurdle = (bootstrap.annualizedLowerBoundGeo <=
-                            (ctx.finalRequiredReturn + mRobustnessConfig.borderlineAnnualMargin));
-    const bool smallN = (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
+    const bool nearHurdle =
+      (bootstrap.annualizedLowerBoundGeo
+       <= (ctx.finalRequiredReturn + mRobustnessConfig.borderlineAnnualMargin));
+
+    const bool smallN =
+      (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
+
     const bool mustRobust = divergence.flagged || nearHurdle || smallN;
 
     if (mustRobust)
-    {
-      auto robustnessDecision = mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os);
-      if (!robustnessDecision.passed())
       {
-        return robustnessDecision; // Fail-fast: robustness failed
+        auto robustnessDecision =
+	  mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os);
+
+        if (!robustnessDecision.passed())
+	  {
+            return robustnessDecision; // Fail-fast: robustness failed
+	  }
       }
-    }
 
-    // Stage 5: L-Sensitivity Stress (lines 188-230)
-    // GATE: If enabled, must pass fraction threshold and gap tolerance
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 5: L-Sensitivity Stress
+    // GATE: If enabled, must pass fraction threshold and gap tolerance.
+    // (Uses ctx.blockLength and ctx.annualizationFactor.)
+    // ──────────────────────────────────────────────────────────────────────────
     double lSensitivityRelVar = 0.0;
-    auto lSensitivityDecision = executeLSensitivityStress(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
-    if (!lSensitivityDecision.passed())
-    {
-      return lSensitivityDecision; // Fail-fast: L-sensitivity failed
-    }
+    auto lSensitivityDecision =
+      executeLSensitivityStress(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
 
-    // Stage 6: Regime-Mix Stress (lines 233-249)
-    // GATE: Must pass configured fraction of regime mixes
+    if (!lSensitivityDecision.passed())
+      {
+        return lSensitivityDecision; // Fail-fast: L-sensitivity failed
+      }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 6: Regime-Mix Stress
+    // GATE: Must pass configured fraction of regime mixes.
+    // ──────────────────────────────────────────────────────────────────────────
     auto regimeMixDecision = mRegimeMixStage.execute(ctx, bootstrap, hurdle, os);
     if (!regimeMixDecision.passed())
-    {
-      return regimeMixDecision; // Fail-fast: regime-mix failed
-    }
+      {
+        return regimeMixDecision; // Fail-fast: regime-mix failed
+      }
 
-    // Stage 7: Fragile Edge Advisory (lines 254-258)
-    // GATE: May drop if policy action is Drop AND apply is enabled
-    auto fragileEdgeDecision = mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
+    // ──────────────────────────────────────────────────────────────────────────
+    // Stage 7: Fragile Edge Advisory
+    // GATE: May drop if policy action is Drop AND apply is enabled.
+    // ──────────────────────────────────────────────────────────────────────────
+    auto fragileEdgeDecision =
+      mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
     if (!fragileEdgeDecision.passed())
-    {
-      return fragileEdgeDecision; // Fail-fast: fragile edge drop
-    }
+      {
+        return fragileEdgeDecision; // Fail-fast: fragile edge drop
+      }
 
-    // All gates passed - log success and return
+    // ──────────────────────────────────────────────────────────────────────────
+    // Success: all gates passed
+    // ──────────────────────────────────────────────────────────────────────────
     logPassedStrategy(ctx, bootstrap, hurdle, os);
     return FilterDecision::Pass();
   }
-
+  
   FilterDecision FilteringPipeline::executeLSensitivityStress(
     const StrategyAnalysisContext& ctx,
     const BootstrapAnalysisResult& bootstrap,
