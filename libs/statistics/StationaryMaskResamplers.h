@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <cstddef>
 #include <cmath>
+#include <functional>
+#include "randutils.hpp"
 
 namespace palvalidator
 {
@@ -293,6 +295,85 @@ namespace palvalidator
 
     private:
       std::size_t m_L;
+    };
+
+    // Adapter: make StationaryMaskValueResampler compatible with BCaBootStrap
+    // (returns-by-value operator() and block jackknife API)
+    template <class Decimal, class Rng = randutils::mt19937_rng>
+    struct StationaryMaskValueResamplerAdapter
+    {
+    public:
+      using Inner = palvalidator::resampling::StationaryMaskValueResampler<Decimal>;
+      using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
+      explicit StationaryMaskValueResamplerAdapter(std::size_t L)
+	: m_inner(L)
+	, m_L(std::max<std::size_t>(2, L))
+      {}
+
+      // BCa expects: vector<Decimal> operator()(x, n, rng)
+      std::vector<Decimal>
+      operator()(const std::vector<Decimal>& x, std::size_t n, Rng& rng) const
+      {
+        if (x.empty())
+	  {
+            throw std::invalid_argument("StationaryMaskValueResamplerAdapter: empty sample.");
+	  }
+        std::vector<Decimal> y;
+        y.resize(n);
+        m_inner(x, y, n, rng); // fill-by-reference
+        return y;              // return-by-value to satisfy BCa
+      }
+
+      // BCa expects a jackknife for acceleration 'a'
+      // We implement a delete-block jackknife (circular, length L_eff)
+      std::vector<Decimal>
+      jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
+      {
+        const std::size_t n = x.size();
+        if (n < 2)
+	  {
+            throw std::invalid_argument("StationaryMaskValueResamplerAdapter::jackknife requires n>=2.");
+	  }
+
+        const std::size_t L_eff = std::min<std::size_t>(m_L, n - 1); // keep at least 1
+        const std::size_t keep  = n - L_eff;
+
+        std::vector<Decimal> jk(n);
+        std::vector<Decimal> y(keep);
+
+        for (std::size_t start = 0; start < n; ++start)
+	  {
+            // start_keep = immediately after the deleted block
+            const std::size_t start_keep = (start + L_eff) % n;
+
+            // Copy keep entries circularly: first tail then (optional) head
+            const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
+            std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
+                        static_cast<std::ptrdiff_t>(tail),
+                        y.begin());
+
+            const std::size_t head = keep - tail;
+            if (head != 0)
+	      {
+                std::copy_n(x.begin(),
+                            static_cast<std::ptrdiff_t>(head),
+                            y.begin() + static_cast<std::ptrdiff_t>(tail));
+	      }
+
+            jk[start] = stat(y);
+	  }
+        return jk;
+      }
+
+      std::size_t meanBlockLen() const
+      {
+        return m_L;
+      }
+
+    private:
+      Inner        m_inner;
+      std::size_t  m_L;
     };
   }
 } // namespace palvalidator::resampling
