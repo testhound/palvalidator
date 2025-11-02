@@ -753,31 +753,37 @@ namespace palvalidator
 	  // 5) Layperson-friendly report — put Lower Bound and L front and center
 	  const std::size_t n = monthly.size();
 
-	  outputStream << "\n=== Future Monthly Return Bound (Monitoring) ===\n";
-	  outputStream << "Lower Bound (monthly, " << std::lround(100 * cl)
+	  // 5) Layperson-friendly report — indented to match the rest of the pipeline
+	  const std::string INDENT = "      ";  // 6 spaces, matches other report sections
+
+	  outputStream << "\n" << INDENT << "=== Future Monthly Return Bound (Monitoring) ===\n";
+	  outputStream << INDENT << "Lower Bound (monthly, " << std::lround(100 * cl)
 		       << "% confidence): " << pct(lb)
 		       << "    [Block length L = " << blockLength << "]\n";
 
-	  outputStream << "What this means: With about " << std::lround(100 * cl)
+	  outputStream << INDENT << "What this means: With about " << std::lround(100 * cl)
 		       << "% confidence, any future month is expected to be no worse than "
 		       << pct(lb) << ".\n";
 
-	  outputStream << "How we estimated it: We used a block bootstrap with L = "
+	  outputStream << INDENT << "How we estimated it: We used a block bootstrap with L = "
 		       << blockLength
-		       << " to respect typical month-to-month dependence. We then looked at the "
+		       << " to respect typical month-to-month dependence.\n"
+		       << INDENT
+		       << "We then looked at the "
 		       << std::lround(100 * pL)
 		       << "th percentile of monthly returns and applied a BCa confidence interval.\n"
+		       << INDENT
 		       << "The number shown above is the **lower endpoint** of that interval (a conservative bound).\n";
 
-	  outputStream << "Data used: " << n
+	  outputStream << INDENT << "Data used: " << n
 		       << " monthly returns"
 		       << "  |  Bootstrap resamples: " << B
 		       << "  |  Confidence level: " << std::lround(100 * cl) << "%\n";
 
-	  outputStream << "Interpretation guide:\n"
-		       << " • If this bound is well above 0%, downside months are usually mild.\n"
-		       << " • If it’s near/below 0%, expect occasional negative months of that size.\n"
-		       << " • Larger L assumes stronger serial dependence; smaller L assumes less.\n";
+	  outputStream << INDENT << "Interpretation guide:\n"
+		       << INDENT << " • If this bound is well above 0%, downside months are usually mild.\n"
+		       << INDENT << " • If it’s near/below 0%, expect occasional negative months of that size.\n"
+		       << INDENT << " • Larger L assumes stronger serial dependence; smaller L assumes less.\n";
 
 	  // 6) Return as a percent (matches prior behavior in your PyramidResults table)
 	  return lb * DecimalConstants<Num>::DecimalOneHundred;
