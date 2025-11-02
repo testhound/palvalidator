@@ -197,27 +197,52 @@ namespace palvalidator::filtering
     }
 
     size_t L_cap = mLSensitivityConfig.maxL;
-    if (mLSensitivityConfig.capByMaxHold)
-    {
-      unsigned int maxHoldBars = 0;
-      if (ctx.strategy)
-        maxHoldBars = ctx.strategy->getMaxHoldingPeriod();
 
-      if (maxHoldBars == 0 && ctx.clonedStrategy)
-        maxHoldBars = ctx.clonedStrategy->getMaxHoldingPeriod();
+    if (mLSensitivityConfig.capByMaxHold)  // (Consider renaming to capByMedianHold)
+      {
+	// n = number of high-res per-period returns used in LSensitivity
+	const size_t n = ctx.highResReturns.size();
 
-      // Fallbacks: bootstrap block length (median-hold proxy), then legacy default of 8 bars.
-      if (maxHoldBars == 0)
-	{
-	  if (ctx.blockLength > 0)
-	    maxHoldBars = static_cast<unsigned int>(ctx.blockLength);
-	  else
-	    maxHoldBars = 8;
+	// 1) Median holding period from the backtester (typ. 2–3, occasionally 4)
+	size_t medHold = 0;
+	if (ctx.backtester) {
+	  medHold = static_cast<size_t>(
+					ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod()
+					);
 	}
 
-      const size_t byHold = static_cast<size_t>(std::max<unsigned int>(2, maxHoldBars + mLSensitivityConfig.capBuffer));
-      L_cap = std::min(mLSensitivityConfig.maxL, byHold);
-    }
+	// Fallbacks if unavailable (rare): use blockLength if set; else a tiny neutral 3
+	if (medHold == 0) {
+	  medHold = (ctx.blockLength > 0) ? ctx.blockLength : 3;
+	}
+
+	// 2) Base dependence proxy = median hold, floored at 2
+	size_t base = std::max<size_t>(2, medHold);
+
+	// 3) Gentle buffer: at most 50% of base (but at least 1)
+	const size_t gentleBuf = std::min(mLSensitivityConfig.capBuffer,
+					  std::max<size_t>(1, base / 2));
+
+	// 4) Structural guards
+	const size_t sampleCap = (n > 0 ? std::max<size_t>(2, n - 1) : mLSensitivityConfig.maxL);
+	const size_t growthCap = 2 * base;  // don't explore > 2× the base
+
+	// --- NEW: ensure we can test at least up to base+2 ---
+	const size_t neighborhoodCap = base + 2;                  // e.g., base=2 -> require up to 4
+	const size_t desiredCap      = std::max(base + gentleBuf, // gentle peek
+						neighborhoodCap); // but never less than base+2
+
+	// 5) Final cap (conservative, sample-aware, gently buffered)
+	L_cap = std::min({ mLSensitivityConfig.maxL, sampleCap, growthCap, desiredCap});
+	L_cap = std::max<size_t>(2, L_cap);
+
+	// (Optional) helpful diagnostics
+	os << "      [L-cap] medHold=" << medHold
+	    << ", base=" << base
+	    << ", buf=" << gentleBuf
+	    << ", n=" << n
+	    << " => L_cap=" << L_cap << "\n";
+      }
 
     // Run L-sensitivity stress with the computed cap
     const auto Lres = mLSensitivityStage.execute(ctx, L_cap, ctx.annualizationFactor, hurdle.finalRequiredReturn, os);
@@ -228,31 +253,42 @@ namespace palvalidator::filtering
       return FilterDecision::Pass();
     }
 
-    // One-line summary (legacy lines 208-213)
+    // One-line summary (augmented)
     const double frac = (Lres.numTested == 0) ? 0.0 : double(Lres.numPassed) / double(Lres.numTested);
-    os << "      [L-grid] pass fraction = " << (100.0 * frac) << "%, "
-       << "min LB at L=" << Lres.L_at_min
-       << ", min LB = " << (Lres.minLbAnn * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-       << "relVar = " << Lres.relVar << " → decision: "
-       << (Lres.pass ? "PASS" : "FAIL") << "\n";
-
+    os << "      [L-grid] tested=" << Lres.numTested
+       << ", passed=" << Lres.numPassed
+       << " (" << (100.0 * frac) << "%; threshold=" << (100.0 * mLSensitivityConfig.minPassFraction) << "%)"
+       << ", min LB at L=" << Lres.L_at_min
+       << ", min LB=" << (Lres.minLbAnn * DecimalConstants<Num>::DecimalOneHundred) << "% "
+       << "(hurdle=" << (hurdle.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%)"
+       << ", relVar=" << Lres.relVar
+       << ", L_cap=" << L_cap
+      << " → decision: " << (Lres.pass ? "PASS" : "FAIL") << "\n";
+    
     // Feed relVar for fragile edge (legacy line 216)
     outRelVar = Lres.relVar;
 
     // Check if stress passed
     if (!Lres.pass)
     {
-      // Determine failure type: catastrophic vs variability (legacy lines 220-223)
-      // NOTE: This is where pipeline determines failure type since stage doesn't update summary
-      const bool catastrophic =
-        (hurdle.finalRequiredReturn - Lres.minLbAnn) > Num(std::max(0.0, mLSensitivityConfig.minGapTolerance));
+      // Determine failure type: catastrophic vs variability
+      const Num gap = (hurdle.finalRequiredReturn - Lres.minLbAnn);
+      const double gapPct = (gap * DecimalConstants<Num>::DecimalOneHundred).getAsDouble();
+      const double tolPct = 100.0 * std::max(0.0, mLSensitivityConfig.minGapTolerance);
+      const bool catastrophic = (gap > Num(std::max(0.0, mLSensitivityConfig.minGapTolerance)));
 
-      os << "   ✗ Strategy filtered out due to L-sensitivity: "
-         "insufficient robustness across block lengths (capped).\n\n";
+      os << "   ✗ Strategy filtered out due to L-sensitivity.\n"
+         << "      Details: passFraction=" << (100.0 * frac) << "% (min=" << (100.0 * mLSensitivityConfig.minPassFraction)
+         << "%), minLB=" << (Lres.minLbAnn * DecimalConstants<Num>::DecimalOneHundred) << "% at L=" << Lres.L_at_min
+         << ", hurdle=" << (hurdle.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+         << "gap=" << gapPct << "% (tolerance=" << tolPct << "%), relVar=" << Lres.relVar
+         << ", L_cap=" << L_cap << "\n\n";
 
-      return FilterDecision::Fail(
-        FilterDecisionType::FailLSensitivity,
-        catastrophic ? "L-sensitivity: catastrophic gap" : "L-sensitivity: high variability");
+      const std::string reason = catastrophic
+        ? "L-sensitivity: catastrophic gap — minLB(" + std::to_string(gapPct) + "% below hurdle) exceeds tolerance(" + std::to_string(tolPct) + "%)"
+        : "L-sensitivity: high variability — passFraction=" + std::to_string(100.0 * frac) + "% < minPass=" + std::to_string(100.0 * mLSensitivityConfig.minPassFraction) + "%";
+
+      return FilterDecision::Fail(FilterDecisionType::FailLSensitivity, reason);
     }
 
     return FilterDecision::Pass();
