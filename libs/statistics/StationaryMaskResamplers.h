@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <cstddef>
 #include <cmath>
+#include <functional>
+#include "randutils.hpp"
 
 namespace palvalidator
 {
@@ -42,30 +44,108 @@ namespace palvalidator
      *
      * @see StationaryMaskValueResampler, StationaryMaskIndexResampler
      */
+    // Replace existing make_restart_mask with this run-length version.
     template <class Rng>
     inline std::vector<uint8_t> make_restart_mask(std::size_t m, double L, Rng& rng)
     {
       if (m < 2)
-	{
-	  throw std::invalid_argument("make_restart_mask: m must be >= 2");
-	}
+        throw std::invalid_argument("make_restart_mask: m must be >= 2");
       if (!(L >= 1.0) || !std::isfinite(L))
-	{
-	  throw std::invalid_argument("make_restart_mask: L must be finite and >= 1");
-	}
+        throw std::invalid_argument("make_restart_mask: L must be finite and >= 1");
 
       const double p = (L <= 1.0) ? 1.0 : (1.0 / L);
-      std::bernoulli_distribution restart_dist(p);
+
+      // geometric_distribution models the number of failures before first success.
+      // We want run lengths in {1,2,...} with mean 1/p = L, so we use (k + 1).
+      std::geometric_distribution<std::size_t> geo(p);
 
       std::vector<uint8_t> mask(m, 0u);
-      mask[0] = 1u;
-      for (std::size_t t = 1; t < m; ++t)
+      std::size_t t = 0;
+
+      // First element must be a restart.
+      mask[t++] = 1u;
+
+      while (t < m)
 	{
-	  mask[t] = restart_dist(rng.engine()) ? 1u : 0u;
+	  const std::size_t run_len = 1 + geo(rng.engine()); // length >= 1
+	  // We mark ONLY the restart at the beginning of the run.
+	  // The continuation positions are zeros; the value/index resampler advances pos.
+	  // Advance t by the run length: next loop iteration will mark a new restart (if any room left).
+	  const std::size_t next = t + run_len;
+	  if (next < m)
+	    {
+	      mask[t] = 1u; // new run starts at t
+	    }
+	  t = next;
 	}
+
       return mask;
     }
 
+    template <class Decimal>
+    class StationaryBlockValueResampler
+    {
+    public:
+      explicit StationaryBlockValueResampler(std::size_t L)
+	: m_L(L < 1 ? 1 : L)
+      {}
+
+      std::size_t getL() const
+      {
+	return m_L;
+      }
+
+      template <class Rng>
+      void operator()(const std::vector<Decimal>& x,
+		      std::vector<Decimal>& y,
+		      std::size_t m,
+		      Rng& rng) const
+      {
+        const std::size_t n = x.size();
+
+	// NEW: strict validation to match mask resamplers & unit tests
+	if (n < 2)
+	  {
+	    throw std::invalid_argument("StationaryBlockValueResampler: x.size() must be >= 2");
+	  }
+	if (m < 2)
+	  {
+	    throw std::invalid_argument("StationaryBlockValueResampler: m must be >= 2");
+	  }
+
+        // Build doubled buffer once per call for contiguous copies across wrap.
+        std::vector<Decimal> x2;
+        x2.reserve(n * 2);
+        x2.insert(x2.end(), x.begin(), x.end());
+        x2.insert(x2.end(), x.begin(), x.end());
+
+        // Geometric block lengths with mean L → p = 1/L
+        const double p = (m_L <= 1 ? 1.0 : 1.0 / static_cast<double>(m_L));
+        std::geometric_distribution<std::size_t> geo(p);
+        std::uniform_int_distribution<std::size_t> ustart(0, n - 1);
+
+        y.resize(m);
+        std::size_t wrote = 0;
+
+        while (wrote < m)
+	  {
+            const std::size_t start = ustart(rng.engine());
+            const std::size_t run   = 1 + geo(rng.engine());      // length ≥ 1
+            const std::size_t take  = std::min(run, m - wrote);
+
+            // Copy from doubled buffer; always contiguous
+            std::copy_n(x2.begin() + static_cast<std::ptrdiff_t>(start),
+                        static_cast<std::ptrdiff_t>(take),
+                        y.begin() + static_cast<std::ptrdiff_t>(wrote));
+
+            wrote += take;
+	  }
+      }
+
+    private:
+      std::size_t m_L;
+    };
+    
     /**
      * @brief Stationary bootstrap resampler that returns resampled values (“value mode”).
      *
@@ -165,7 +245,9 @@ namespace palvalidator
 	      }
 	    else
 	      {
-		pos = (pos + 1) % n;
+		++pos;
+		if (pos == n)
+		  pos = 0;
 	      }
 	    y[t] = x[pos];
 	  }
@@ -293,6 +375,85 @@ namespace palvalidator
 
     private:
       std::size_t m_L;
+    };
+
+    // Adapter: make StationaryMaskValueResampler compatible with BCaBootStrap
+    // (returns-by-value operator() and block jackknife API)
+    template <class Decimal, class Rng = randutils::mt19937_rng>
+    struct StationaryMaskValueResamplerAdapter
+    {
+    public:
+      using Inner = palvalidator::resampling::StationaryMaskValueResampler<Decimal>;
+      using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
+      explicit StationaryMaskValueResamplerAdapter(std::size_t L)
+	: m_inner(L)
+	, m_L(std::max<std::size_t>(2, L))
+      {}
+
+      // BCa expects: vector<Decimal> operator()(x, n, rng)
+      std::vector<Decimal>
+      operator()(const std::vector<Decimal>& x, std::size_t n, Rng& rng) const
+      {
+        if (x.empty())
+	  {
+            throw std::invalid_argument("StationaryMaskValueResamplerAdapter: empty sample.");
+	  }
+        std::vector<Decimal> y;
+        y.resize(n);
+        m_inner(x, y, n, rng); // fill-by-reference
+        return y;              // return-by-value to satisfy BCa
+      }
+
+      // BCa expects a jackknife for acceleration 'a'
+      // We implement a delete-block jackknife (circular, length L_eff)
+      std::vector<Decimal>
+      jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
+      {
+        const std::size_t n = x.size();
+        if (n < 2)
+	  {
+            throw std::invalid_argument("StationaryMaskValueResamplerAdapter::jackknife requires n>=2.");
+	  }
+
+        const std::size_t L_eff = std::min<std::size_t>(m_L, n - 1); // keep at least 1
+        const std::size_t keep  = n - L_eff;
+
+        std::vector<Decimal> jk(n);
+        std::vector<Decimal> y(keep);
+
+        for (std::size_t start = 0; start < n; ++start)
+	  {
+            // start_keep = immediately after the deleted block
+            const std::size_t start_keep = (start + L_eff) % n;
+
+            // Copy keep entries circularly: first tail then (optional) head
+            const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
+            std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
+                        static_cast<std::ptrdiff_t>(tail),
+                        y.begin());
+
+            const std::size_t head = keep - tail;
+            if (head != 0)
+	      {
+                std::copy_n(x.begin(),
+                            static_cast<std::ptrdiff_t>(head),
+                            y.begin() + static_cast<std::ptrdiff_t>(tail));
+	      }
+
+            jk[start] = stat(y);
+	  }
+        return jk;
+      }
+
+      std::size_t meanBlockLen() const
+      {
+        return m_L;
+      }
+
+    private:
+      Inner        m_inner;
+      std::size_t  m_L;
     };
   }
 } // namespace palvalidator::resampling

@@ -96,6 +96,11 @@ namespace palvalidator
 
     private:
 
+      // Computes the observed longest losing streak and its (1 - alpha) bootstrap upper bound
+      // Writes a one-line summary to `os`. Returns {observed, upperBound}.
+      std::pair<int,int>
+      computeLosingStreakBound(const ClosedPositionHistory<Num>& cph,
+			       std::ostream& os) const;
       /**
        * @brief Analyze meta-strategy using unified PalMetaStrategy approach
        * @param survivingStrategies Vector of strategies that survived individual filtering
@@ -184,42 +189,53 @@ namespace palvalidator
 					 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const;
       
       // Pyramiding analysis results class
-      class PyramidResults {
+      class PyramidResults
+      {
       public:
-          PyramidResults(unsigned int pyramidLevel, const std::string& description,
-                        const Num& annualizedLowerBound, const Num& requiredReturn,
-                        bool passed, const Num& annualizedTrades, uint32_t numTrades,
-                        std::shared_ptr<BackTester<Num>> backTester, const DrawdownResults& drawdownResults,
-                        const Num& futureReturnsLowerBound)
-              : mPyramidLevel(pyramidLevel), mDescription(description),
-                mAnnualizedLowerBound(annualizedLowerBound), mRequiredReturn(requiredReturn),
-                mPassed(passed), mAnnualizedTrades(annualizedTrades), mNumTrades(numTrades),
-                mBackTester(backTester), mDrawdownResults(drawdownResults),
-                mFutureReturnsLowerBound(futureReturnsLowerBound) {}
+	PyramidResults(unsigned int pyramidLevel, const std::string& description,
+		       const Num& annualizedLowerBound, const Num& requiredReturn,
+		       bool passed, const Num& annualizedTrades, uint32_t numTrades,
+		       std::shared_ptr<BackTester<Num>> backTester, const DrawdownResults& drawdownResults,
+		       const Num& futureReturnsLowerBound,
+		       int observedLosingStreak,
+		       int losingStreakUpperBound)
+	  : mPyramidLevel(pyramidLevel), mDescription(description),
+	    mAnnualizedLowerBound(annualizedLowerBound), mRequiredReturn(requiredReturn),
+	    mPassed(passed), mAnnualizedTrades(annualizedTrades), mNumTrades(numTrades),
+	    mBackTester(backTester),
+	    mDrawdownResults(drawdownResults),
+	    mFutureReturnsLowerBound(futureReturnsLowerBound),
+	    mObservedLosingStreak(observedLosingStreak),
+	    mLosingStreakUpperBound(losingStreakUpperBound)
+	{}
           
-          // Getters
-          unsigned int getPyramidLevel() const { return mPyramidLevel; }
-          const std::string& getDescription() const { return mDescription; }
-          const Num& getAnnualizedLowerBound() const { return mAnnualizedLowerBound; }
-          const Num& getRequiredReturn() const { return mRequiredReturn; }
-          bool getPassed() const { return mPassed; }
-          const Num& getAnnualizedTrades() const { return mAnnualizedTrades; }
-          uint32_t getNumTrades() const { return mNumTrades; }
-          std::shared_ptr<BackTester<Num>> getBackTester() const { return mBackTester; }
-          const DrawdownResults& getDrawdownResults() const { return mDrawdownResults; }
-          const Num& getFutureReturnsLowerBound() const { return mFutureReturnsLowerBound; }
+	// Getters
+	unsigned int getPyramidLevel() const { return mPyramidLevel; }
+	const std::string& getDescription() const { return mDescription; }
+	const Num& getAnnualizedLowerBound() const { return mAnnualizedLowerBound; }
+	const Num& getRequiredReturn() const { return mRequiredReturn; }
+	bool getPassed() const { return mPassed; }
+	const Num& getAnnualizedTrades() const { return mAnnualizedTrades; }
+	uint32_t getNumTrades() const { return mNumTrades; }
+	std::shared_ptr<BackTester<Num>> getBackTester() const { return mBackTester; }
+	const DrawdownResults& getDrawdownResults() const { return mDrawdownResults; }
+	const Num& getFutureReturnsLowerBound() const { return mFutureReturnsLowerBound; }
+	int getObservedLosingStreak() const { return mObservedLosingStreak; }
+	int getLosingStreakUpperBound() const { return mLosingStreakUpperBound; }
           
       private:
-          unsigned int mPyramidLevel;
-          std::string mDescription;
-          Num mAnnualizedLowerBound;
-          Num mRequiredReturn;
-          bool mPassed;
-          Num mAnnualizedTrades;
-          uint32_t mNumTrades;
-          std::shared_ptr<BackTester<Num>> mBackTester;
-          DrawdownResults mDrawdownResults;
-          Num mFutureReturnsLowerBound;
+	unsigned int mPyramidLevel;
+	std::string mDescription;
+	Num mAnnualizedLowerBound;
+	Num mRequiredReturn;
+	bool mPassed;
+	Num mAnnualizedTrades;
+	uint32_t mNumTrades;
+	std::shared_ptr<BackTester<Num>> mBackTester;
+	DrawdownResults mDrawdownResults;
+	Num mFutureReturnsLowerBound;
+	int mObservedLosingStreak{0};
+	int mLosingStreakUpperBound{0};
       };
 
       // Helper methods for analyzeMetaStrategyUnified

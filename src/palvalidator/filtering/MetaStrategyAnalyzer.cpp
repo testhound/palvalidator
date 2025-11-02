@@ -20,6 +20,7 @@
 #include "TimeSeriesIndicators.h"
 #include "CostStressUtils.h"
 #include "MetaSelectionBootstrap.h"
+#include "MetaLosingStreakBootstrapBound.h"
 #include <fstream>
 
 namespace palvalidator
@@ -50,17 +51,34 @@ namespace palvalidator
                                                 unsigned int minACFL = 2,
                                                 unsigned int maxACFL = 12) // Default max L for meta
     {
-        if (returns.size() < minSizeForACF)
+      if (returns.size() < minSizeForACF)
         {
-            // --- Method 1: Median Holding Period (for shorter series) ---
-            std::size_t L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
-            // Add a check to prevent excessively large L from median hold on short series
-            L = std::min(L, returns.size() / 2); // Cap L at n/2 for safety
-            L = std::max<std::size_t>(2, L);     // Ensure L is still at least 2
+	  std::size_t n = returns.size();
+	  std::size_t L = 0;
 
-            outputStream << "      (Using block length L=" << L
-                         << " based on median hold period, n=" << returns.size() << " < " << minSizeForACF << ")\n";
-            return L;
+	  if (n < 50)
+	    {
+	      // Very short: trust the median hold
+	      L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
+	    }
+	  else
+	    {
+	      // Medium-length: heuristic n^(1/3)
+	      L = static_cast<std::size_t>(std::floor(std::pow(static_cast<double>(n), 1.0/3.0)));
+	      
+	      // Blend with median hold if that’s materially higher
+	      L = std::max<std::size_t>(L, static_cast<std::size_t>(medianHold));
+	    }
+
+	  // Safety caps
+	  L = std::min(L, n / 2);
+	  L = std::max<std::size_t>(2, L);
+
+	  outputStream << "      (Using block length L=" << L
+		       << " based on "
+		       << (n < 50 ? "median hold period" : "n^(1/3) heuristic")
+		       << ", n=" << n << " < " << minSizeForACF << ")\n";
+	  return L;
         }
         else
         {
@@ -487,14 +505,14 @@ namespace palvalidator
 	}
 
       if (metaReturns.size() < 2U)
-	{
-	  outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
-	  DrawdownResults emptyDrawdown;
-	  return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-				DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
-				false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
-				DecimalConstants<Num>::DecimalZero);
-	}
+ {
+   outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
+   DrawdownResults emptyDrawdown;
+   return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+    DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+    false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
+    DecimalConstants<Num>::DecimalZero, 0, 0);
+ }
 
       // --- Metrics used by both gates ------------------------------------------
       const uint32_t numTrades        = bt->getClosedPositionHistory().getNumPositions();
@@ -570,17 +588,23 @@ namespace palvalidator
       outputStream << "\n";
       Num futureReturnsLowerBoundPct = performFutureReturnsBoundAnalysis(closedPositionHistory, outputStream);
 
+        // --- Max consecutive losses (trade-level) bound ----------------------------
+      const auto [observedLosingStreak, losingStreakUpperBound] =
+	computeLosingStreakBound(closedPositionHistory, outputStream);
+
       outputStream << std::endl;
       outputStream << "      Annualized Lower Bound (GeoMean, compounded): "
-		   << (bootstrapResults.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-		   << "      Annualized Lower Bound (Mean, compounded):    "
-		   << (bootstrapResults.lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-		   << "      Required Return (max(cost,riskfree)): "
-		   << (H.baseHurdle * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+     << (bootstrapResults.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+     << "      Annualized Lower Bound (Mean, compounded):    "
+     << (bootstrapResults.lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+     << "      Required Return (max(cost,riskfree)): "
+     << (H.baseHurdle * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+     << "      Max Consecutive Losing Trades (Upper Bound): "
+     << losingStreakUpperBound << " trades\n";
       outputStream << "      Gates → Regular: " << (regularBootstrapPass ? "PASS" : "FAIL")
-		   << ", Multi-split: " << (ms.applied ? (multiSplitPass ? "PASS" : "FAIL")
-					    : "SKIPPED")
-		   << "\n\n";
+     << ", Multi-split: " << (ms.applied ? (multiSplitPass ? "PASS" : "FAIL")
+         : "SKIPPED")
+     << "\n\n";
 
       if (pyramidPassed)
         outputStream << "      RESULT: ✓ Pyramid Level " << config.getPyramidLevel() << " PASSES\n";
@@ -613,66 +637,53 @@ namespace palvalidator
 
       // --- Return per-level results --------------------------------------------
       return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-       bootstrapResults.lbGeoAnn, H.baseHurdle,
-       pyramidPassed, metaAnnualizedTrades, numTrades, bt, drawdownResults,
-       futureReturnsLowerBoundPct);
+			    bootstrapResults.lbGeoAnn, H.baseHurdle,
+			    pyramidPassed, metaAnnualizedTrades,
+			    numTrades, bt, drawdownResults,
+			    futureReturnsLowerBoundPct, observedLosingStreak,
+			    losingStreakUpperBound);
+    }
+
+    std::pair<int,int>
+    MetaStrategyAnalyzer::computeLosingStreakBound(const ClosedPositionHistory<Num>& cph,
+    		   std::ostream& os) const
+    {
+      using mkc_timeseries::MetaLosingStreakBootstrapBound;
+      using mkc_timeseries::StationaryTradeBlockSampler;
+      using ExecT = concurrency::ThreadPoolExecutor<>;
+      using RngT  = randutils::mt19937_rng;
+
+      ExecT exec;   // thread pool executor
+      RngT  rng;    // high-quality auto-seeded
+
+      typename MetaLosingStreakBootstrapBound<Num,
+    	      StationaryTradeBlockSampler<Num>,
+    	      ExecT,
+    	      RngT>::Options opts;
+      opts.B               = mNumResamples;                 // align with your bootstrap budget
+      opts.alpha           = 1.0 - mConfidenceLevel.getAsDouble();// use same CL as rest of analysis
+      opts.sampleFraction  = 1.0;                           // full m-out-of-n by default
+      opts.treatZeroAsLoss = false;
+
+      MetaLosingStreakBootstrapBound<Num,
+         StationaryTradeBlockSampler<Num>,
+         ExecT,
+         RngT> bounder(exec, rng, opts);
+
+      const int observed = bounder.observedStreak(cph);
+      int upper    = bounder.computeUpperBound(cph);
+
+      // Safety belt: empirical upper bound should never be < observed
+      if (upper < observed)
+	upper = observed;
+
+      os << "      Losing-streak bound @ " << (mConfidenceLevel * 100)
+  << "% CL: observed=" << observed
+  << ", upper bound=" << upper << " (trades)\n";
+
+      return {observed, upper};
     }
     
-    Num MetaStrategyAnalyzer::performFutureReturnsBoundAnalysis(
-        const ClosedPositionHistory<Num>& closedPositionHistory,
-        std::ostream& outputStream) const
-    {
-      using mkc_timeseries::DecimalConstants;
-
-      // 1) Build monthly returns from closed trades
-        const auto monthly =
-          mkc_timeseries::buildMonthlyReturnsFromClosedPositions<Num>(closedPositionHistory);
-
-      if (monthly.size() < 12)
-      {
-        outputStream << "      Future Returns Bound Analysis: Skipped "
-                     << "(need at least 12 monthly returns, have "
-                     << monthly.size() << " returns)\n";
-        return DecimalConstants<Num>::DecimalZero;
-      }
-
-      // Get median hold from history (needed even if ACF is used)
-      unsigned int medianHold = closedPositionHistory.getMedianHoldingPeriod();
-
-      // Use specific ACF settings for monthly data (shorter max lag/L)
-      const std::size_t blockLength = calculateBlockLengthAdaptive(monthly, medianHold, outputStream,
-                                                                   100, // min size for ACF
-                                                                   12,  // maxACFLag for monthly
-                                                                   2,   // minACFL
-                                                                   6);  // maxACFL for monthly
-      try
-	{
-	  using BoundFutureReturns = mkc_timeseries::BoundFutureReturns<Num>;
-	  
-	  BoundFutureReturns futureReturns(monthly,  // Pass monthly returns directly
-					   blockLength,
-					   0.10, 0.90,  // default quantiles (10th and 90th percentile)
-					   mNumResamples,  // bootstrap resamples
-					   mConfidenceLevel.getAsDouble());
-         
-	  // Get lower bound as percentage (getLowerBound() * 100.0)
-	  Num futureReturnsLowerBoundPct = futureReturns.getLowerBound() *
-	    DecimalConstants<Num>::DecimalOneHundred;
-        
-	  outputStream << "      Future Returns Lower Bound (monthly BCa): "
-		       << futureReturnsLowerBoundPct << "% "
-		       << "(monthly vector size: " << monthly.size()
-		       << ", block length: " << blockLength << ")\n";
-	      
-	  return futureReturnsLowerBoundPct;
-	}
-      catch (const std::exception& e)
-	{
-	  outputStream << "      Future Returns Bound Analysis: Failed - "
-		       << e.what() << "\n";
-	  return DecimalConstants<Num>::DecimalZero;
-	}
-    }
 
     std::shared_ptr<BackTester<Num>> MetaStrategyAnalyzer::executeBacktesting(
         std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
@@ -682,6 +693,108 @@ namespace palvalidator
       return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, backtestingDates);
     }
 
+    Num MetaStrategyAnalyzer::performFutureReturnsBoundAnalysis(
+								     const ClosedPositionHistory<Num>& closedPositionHistory,
+								     std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      // 1) Build monthly returns from closed trades
+      const auto monthly =
+	mkc_timeseries::buildMonthlyReturnsFromClosedPositions<Num>(closedPositionHistory);
+
+      if (monthly.size() < 12)
+	{
+	  outputStream << "      Future Returns Bound Analysis: Skipped "
+		       << "(need at least 12 monthly returns, have "
+		       << monthly.size() << " returns)\n";
+	  return DecimalConstants<Num>::DecimalZero;
+	}
+
+      // 2) Pick block length (adaptive: median-hold for very short; n^(1/3) for medium; ACF for long)
+      const unsigned int medianHold = closedPositionHistory.getMedianHoldingPeriod();
+      const std::size_t blockLength = calculateBlockLengthAdaptive(
+								   monthly,          // returns
+								   medianHold,       // median holding period (bars → months here)
+								   outputStream,     // logs which path was chosen
+								   100,              // min size for ACF on monthly
+								   12,               // maxACFLag for monthly
+								   2,                // min L from ACF
+								   6                 // max L from ACF (monthly)
+								   );
+
+      try
+	{
+	  // 3) Construct the bounder (stationary block bootstrap + BCa)
+	  using BoundFutureReturnsT = mkc_timeseries::BoundFutureReturns<Num>;
+	  const double cl = mConfidenceLevel.getAsDouble();
+	  const double pL = 0.10; // lower-tail quantile (10th percentile) for monitoring
+	  const double pU = 0.90; // upper (not used for gating here, but standard pair)
+	  const std::size_t B = mNumResamples;
+
+	  BoundFutureReturnsT bfr(monthly,                // monthly return series
+				  blockLength,            // L
+				  pL, pU,                 // lower/upper quantiles
+				  B,                      // bootstrap resamples
+				  cl);                    // confidence level
+
+	  // 4) Operational lower bound (BCa lower endpoint at pL)
+	  const Num lb = bfr.getLowerBound();
+
+	  // Utility: print a percentage with 4 decimals
+	  auto pct = [](const Num& x) {
+	    std::ostringstream ss;
+	    ss.setf(std::ios::fixed);
+	    ss << std::setprecision(4)
+	       << (x * DecimalConstants<Num>::DecimalOneHundred) << "%";
+	    return ss.str();
+	  };
+
+	  // 5) Layperson-friendly report — put Lower Bound and L front and center
+	  const std::size_t n = monthly.size();
+
+	  // 5) Layperson-friendly report — indented to match the rest of the pipeline
+	  const std::string INDENT = "      ";  // 6 spaces, matches other report sections
+
+	  outputStream << "\n" << INDENT << "=== Future Monthly Return Bound (Monitoring) ===\n";
+	  outputStream << INDENT << "Lower Bound (monthly, " << std::lround(100 * cl)
+		       << "% confidence): " << pct(lb)
+		       << "    [Block length L = " << blockLength << "]\n";
+
+	  outputStream << INDENT << "What this means: With about " << std::lround(100 * cl)
+		       << "% confidence, any future month is expected to be no worse than "
+		       << pct(lb) << ".\n";
+
+	  outputStream << INDENT << "How we estimated it: We used a block bootstrap with L = "
+		       << blockLength
+		       << " to respect typical month-to-month dependence.\n"
+		       << INDENT
+		       << "We then looked at the "
+		       << std::lround(100 * pL)
+		       << "th percentile of monthly returns and applied a BCa confidence interval.\n"
+		       << INDENT
+		       << "The number shown above is the **lower endpoint** of that interval (a conservative bound).\n";
+
+	  outputStream << INDENT << "Data used: " << n
+		       << " monthly returns"
+		       << "  |  Bootstrap resamples: " << B
+		       << "  |  Confidence level: " << std::lround(100 * cl) << "%\n";
+
+	  outputStream << INDENT << "Interpretation guide:\n"
+		       << INDENT << " • If this bound is well above 0%, downside months are usually mild.\n"
+		       << INDENT << " • If it’s near/below 0%, expect occasional negative months of that size.\n"
+		       << INDENT << " • Larger L assumes stronger serial dependence; smaller L assumes less.\n";
+
+	  // 6) Return as a percent (matches prior behavior in your PyramidResults table)
+	  return lb * DecimalConstants<Num>::DecimalOneHundred;
+	}
+      catch (const std::exception& e)
+	{
+	  outputStream << "      Future Returns Bound Analysis: Failed - " << e.what() << "\n";
+	  return DecimalConstants<Num>::DecimalZero;
+	}
+    }
+    
     void MetaStrategyAnalyzer::performExitBarTuning(
         const ClosedPositionHistory<Num>& closedPositionHistory,
         std::ostream& outputStream,
@@ -1160,6 +1273,8 @@ namespace palvalidator
                          << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
           performanceFile << "Annualized Trades: " << result.getAnnualizedTrades() << std::endl;
           performanceFile << "Total Trades: " << result.getNumTrades() << std::endl;
+          performanceFile << "Max Consecutive Losing Trades (Upper Bound): "
+                         << result.getLosingStreakUpperBound() << " trades" << std::endl;
           performanceFile << "Result: " << (result.getPassed() ? "PASS" : "FAIL") << std::endl;
           
           // Write drawdown analysis for this pyramid level
@@ -1200,8 +1315,8 @@ namespace palvalidator
 
       // Write comparison summary
       performanceFile << "=== Pyramid Comparison Summary ===" << std::endl;
-      performanceFile << "Level | Description              | Ann. Lower Bound | Future Ret LB | Required Return | Pass/Fail | Trades/Year" << std::endl;
-      performanceFile << "------|--------------------------|------------------|---------------|-----------------|-----------|------------" << std::endl;
+      performanceFile << "Level | Description              | Ann. Lower Bound | Future Ret LB | Max Loss Streak UB | Required Return | Pass/Fail | Trades/Year" << std::endl;
+      performanceFile << "------|--------------------------|------------------|---------------|---------------------|-----------------|-----------|------------" << std::endl;
       
       // Save original stream state to restore it later
       std::ios_base::fmtflags original_flags = performanceFile.flags();
@@ -1219,6 +1334,8 @@ namespace palvalidator
                          << (result.getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
                          << std::right << std::setw(12)
                          << result.getFutureReturnsLowerBound().getAsDouble() << "% | "
+                         << std::right << std::setw(18)
+                         << result.getLosingStreakUpperBound() << " | "
                          << std::right << std::setw(14)
                          << (result.getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble() << "% | "
                          << std::right << std::setw(9) << (result.getPassed() ? "PASS" : "FAIL") << " | "
@@ -1254,8 +1371,8 @@ namespace palvalidator
 						       std::ostream& outputStream) const
     {
       outputStream << "\n[Meta] Pyramid Analysis Summary:\n";
-      outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Future Ret LB | Drawdown UB | Required Return | Pass/Fail\n";
-      outputStream << "      ------|--------------------------|----------|------------------|---------------|-------------|-----------------|----------\n";
+      outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Future Ret LB | Max Loss Streak UB | Drawdown UB | Required Return | Pass/Fail\n";
+      outputStream << "      ------|--------------------------|----------|------------------|---------------|---------------------|-------------|-----------------|----------\n";
 
       // Save original stream state to restore it later
       std::ios_base::fmtflags original_flags = outputStream.flags();
@@ -1293,6 +1410,10 @@ namespace palvalidator
 	  // Future Returns Lower Bound
 	  outputStream << std::right << std::setw(12)
 	        << result.getFutureReturnsLowerBound().getAsDouble() << "% | ";
+
+	  // Max Consecutive Losing Trades Upper Bound
+	  outputStream << std::right << std::setw(18)
+	        << result.getLosingStreakUpperBound() << " | ";
 
 	  // Drawdown UB
 	  if (drawdownResults.hasResults())

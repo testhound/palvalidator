@@ -8,6 +8,7 @@
 #define __DECIMAL_CONSTANT_H 1
 
 #include <string>
+#include <type_traits>
 #include "decimal.h"
 
 namespace mkc_timeseries
@@ -35,7 +36,11 @@ namespace mkc_timeseries
       
       static Decimal createDecimal (const std::string& valueString)
       {
-	return dec::fromString<Decimal>(valueString);
+        if constexpr (std::is_floating_point_v<Decimal>) {
+          return static_cast<Decimal>(std::stod(valueString));
+        } else {
+          return dec::fromString<Decimal>(valueString);
+        }
       }
     };
 

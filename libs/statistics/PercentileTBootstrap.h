@@ -26,7 +26,10 @@
 #include <limits>
 #include "number.h"
 #include "randutils.hpp"
+#include "RngUtils.h"
 #include "MOutOfNPercentileBootstrap.h"
+#include "ParallelExecutors.h"
+#include "ParallelFor.h"
 
 namespace palvalidator
 {
@@ -107,7 +110,12 @@ namespace palvalidator
       4) t_lo, t_hi = type-7 quantiles of {t_b} at α/2 and 1-α/2 (α = 1-CL)
       5) CI = [θ_hat - t_hi * SE_hat,  θ_hat - t_lo * SE_hat]
     */
-    template <class Decimal, class Sampler, class Resampler, class Rng = randutils::mt19937_rng>
+
+    template <class Decimal,
+       class Sampler,
+       class Resampler,
+       class Rng = randutils::mt19937_rng,
+       typename Executor = concurrency::SingleThreadExecutor>
     class PercentileTBootstrap
     {
     public:
@@ -183,159 +191,233 @@ namespace palvalidator
       //
       // Returns: Result with θ̂, CI bounds, and diagnostics.
       // Throws:  invalid_argument or runtime_error if inputs invalid or too many degenerate reps.
+
+      // PercentileTBootstrap::run — outer-only parallel, adaptive inner SE*, nth_element(type-7)
       Result run(const std::vector<Decimal>& x,
 		 Sampler                      sampler,
 		 Rng&                         rng,
 		 std::size_t                  m_outer_override = 0,
 		 std::size_t                  m_inner_override = 0) const
       {
-        const std::size_t n = x.size();
-        if (n < 3)
+	const std::size_t n = x.size();
+	if (n < 3)
 	  {
-            throw std::invalid_argument("PercentileTBootstrap.run: n must be >= 3");
+	    throw std::invalid_argument("PercentileTBootstrap.run: n must be >= 3");
 	  }
 
-        // Decide m_outer and m_inner
-        std::size_t m_outer = (m_outer_override > 0)
+	// Decide m_outer and m_inner from overrides or ratios
+	std::size_t m_outer = (m_outer_override > 0)
 	  ? m_outer_override
 	  : static_cast<std::size_t>(std::floor(m_ratio_outer * static_cast<double>(n)));
-        if (m_outer < 2)  m_outer = 2;
-        if (m_outer > n)  m_outer = n;
+	if (m_outer < 2)  m_outer = 2;
+	if (m_outer > n)  m_outer = n;
 
-        std::size_t m_inner = (m_inner_override > 0)
+	std::size_t m_inner = (m_inner_override > 0)
 	  ? m_inner_override
 	  : static_cast<std::size_t>(std::floor(m_ratio_inner * static_cast<double>(m_outer)));
-        if (m_inner < 2)        m_inner = 2;
-        if (m_inner > m_outer)  m_inner = m_outer;
+	if (m_inner < 2)        m_inner = 2;
+	if (m_inner > m_outer)  m_inner = m_outer;
 
-        // Original statistic
-        const Decimal theta_hat = sampler(x);
+	// Baseline statistic
+	const Decimal theta_hat   = sampler(x);
+	const double  theta_hat_d = num::to_double(theta_hat);
 
-        // Storage
-        std::vector<Decimal> thetas_outer; thetas_outer.reserve(m_B_outer);
-        std::vector<double>  tvals;        tvals.reserve(m_B_outer);
+	// Output buffers (index-addressable; safe for parallel fill by index)
+	std::vector<double> theta_star_ds(m_B_outer, std::numeric_limits<double>::quiet_NaN());
+	std::vector<double> tvals         (m_B_outer, std::numeric_limits<double>::quiet_NaN());
 
-        std::vector<Decimal> y_outer;  y_outer.resize(m_outer);
-        std::vector<Decimal> y_inner;  y_inner.resize(m_inner);
+	// Diagnostics
+	std::atomic<std::size_t> skipped_outer{0};
+	std::atomic<std::size_t> skipped_inner_total{0};
 
-        std::size_t skipped_outer = 0;
-        std::size_t skipped_inner_total = 0;
-
-        // --- Outer loop ---
-        for (std::size_t b = 0; b < m_B_outer; ++b)
+	// Per-outer RNGs: seed deterministically from caller's rng using common utilities
+	std::vector<Rng> rngs(m_B_outer);
+	for (std::size_t b = 0; b < m_B_outer; ++b)
 	  {
-            // Resample outer
-            m_resampler(x, y_outer, m_outer, rng);
-
-            // theta* on the outer resample
-            const Decimal theta_star = sampler(y_outer);
-            const double  theta_star_d = num::to_double(theta_star);
-            if (!std::isfinite(theta_star_d))
-	      {
-                ++skipped_outer;
-                continue;
-	      }
-
-            // --- Inner loop to estimate SE* on the OUTER sample ---
-            double sum = 0.0;
-            double sum2 = 0.0;
-            std::size_t eff_inner = 0;
-
-            for (std::size_t j = 0; j < m_B_inner; ++j)
-	      {
-                m_resampler(y_outer, y_inner, m_inner, rng);
-                const Decimal theta_inner = sampler(y_inner);
-                const double  v = num::to_double(theta_inner);
-                if (!std::isfinite(v))
-		  {
-                    ++skipped_inner_total;
-                    continue;
-		  }
-                ++eff_inner;
-                sum  += v;
-                sum2 += v * v;
-	      }
-
-            if (eff_inner < m_B_inner / 2)
-	      {
-                // Too many degenerate inner resamples; skip this outer replicate
-                ++skipped_outer;
-                continue;
-	      }
-
-            const double mean_inner = sum / static_cast<double>(eff_inner);
-            const double var_inner =
-	      std::max(0.0, (sum2 / static_cast<double>(eff_inner)) - (mean_inner * mean_inner));
-            const double se_star = std::sqrt(var_inner);
-
-            if (!(se_star > 0.0) || !std::isfinite(se_star))
-	      {
-                ++skipped_outer;
-                continue;
-	      }
-
-            // Studentized pivot for this outer replicate
-            const double t_b = (theta_star_d - num::to_double(theta_hat)) / se_star;
-
-            if (!std::isfinite(t_b))
-	      {
-                ++skipped_outer;
-                continue;
-	      }
-
-            thetas_outer.emplace_back(theta_star);
-            tvals.emplace_back(t_b);
+	    const uint64_t s1 = mkc_timeseries::rng_utils::get_random_value(rng);
+	    const uint64_t s2 = mkc_timeseries::rng_utils::get_random_value(rng);
+	    std::seed_seq seq{
+	      static_cast<uint32_t>(s1),
+	      static_cast<uint32_t>(s1 >> 32),
+	      static_cast<uint32_t>(s2),
+	      static_cast<uint32_t>(s2 >> 32)
+	    };
+	    rngs[b] = Rng(seq);
 	  }
 
-        // Check effective outer replicates
-        if (tvals.size() < m_B_outer / 2)
+	// Resampler diagnostics (IID resampler may return 0)
+	const std::size_t Ldiag = m_resampler.getL();
+
+	// -----------------------------
+	// Parallelize the OUTER loop only
+	// -----------------------------
+	Executor exec{};
+	concurrency::parallel_for_chunked(static_cast<uint32_t>(m_B_outer), exec,
+					  [&](uint32_t b32)
+					  {
+					    const std::size_t b = static_cast<std::size_t>(b32);
+					    Rng& local_rng = rngs[b];
+
+					    // Thread-local reusable buffers for this task/iteration
+					    std::vector<Decimal> y_outer; y_outer.resize(m_outer);
+					    std::vector<Decimal> y_inner; y_inner.resize(m_inner);
+
+					    // OUTER resample
+					    m_resampler(x, y_outer, m_outer, local_rng);
+
+					    // theta* on OUTER sample
+					    const Decimal theta_star   = sampler(y_outer);
+					    const double  theta_star_d = num::to_double(theta_star);
+					    if (!std::isfinite(theta_star_d))
+					      {
+						skipped_outer.fetch_add(1, std::memory_order_relaxed);
+						return;
+					      }
+
+					    // --- Inner bootstrap for SE* (adaptive early-stop, Welford accumulators) ---
+					    double mean = 0.0, m2 = 0.0;
+					    std::size_t eff_inner = 0;
+
+					    auto push_inner = [&](double v) noexcept
+					    {
+					      ++eff_inner;
+					      const double delta = v - mean;
+					      mean += delta / static_cast<double>(eff_inner);
+					      m2   += delta * (v - mean);
+					    };
+
+					    constexpr std::size_t MIN_INNER    = 100;   // robustness floor
+					    constexpr std::size_t CHECK_EVERY  = 16;    // stabilization cadence
+					    constexpr double      REL_EPS      = 0.015; // 1.5% relative tolerance
+					    double last_se = std::numeric_limits<double>::infinity();
+
+					    for (std::size_t j = 0; j < m_B_inner; ++j)
+					      {
+						m_resampler(y_outer, y_inner, m_inner, local_rng);
+						const Decimal theta_inner = sampler(y_inner);
+						const double  v = num::to_double(theta_inner);
+						if (!std::isfinite(v))
+						  {
+						    skipped_inner_total.fetch_add(1, std::memory_order_relaxed);
+						    continue;
+						  }
+						push_inner(v);
+
+						if (eff_inner >= MIN_INNER && ((eff_inner % CHECK_EVERY) == 0))
+						  {
+						    const double se_now = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
+						    if (std::isfinite(se_now) &&
+							std::fabs(se_now - last_se) <= REL_EPS * std::max(se_now, 1e-300))
+						      {
+							break; // SE* stabilized
+						      }
+						    last_se = se_now;
+						  }
+					      }
+
+					    if (eff_inner < MIN_INNER)
+					      {
+						skipped_outer.fetch_add(1, std::memory_order_relaxed);
+						return;
+					      }
+
+					    const double se_star = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
+					    if (!(se_star > 0.0) || !std::isfinite(se_star))
+					      {
+						skipped_outer.fetch_add(1, std::memory_order_relaxed);
+						return;
+					      }
+
+					    const double t_b = (theta_star_d - theta_hat_d) / se_star;
+
+					    // Write results
+					    theta_star_ds[b] = theta_star_d;
+					    tvals[b]         = t_b;
+					  });
+
+	// Collect effective outer replicates
+	std::vector<double> t_eff;     t_eff.reserve(m_B_outer);
+	std::vector<double> theta_eff; theta_eff.reserve(m_B_outer);
+
+	for (std::size_t b = 0; b < m_B_outer; ++b)
 	  {
-            throw std::runtime_error("PercentileTBootstrap: too many degenerate outer replicates");
+	    const double tb = tvals[b];
+	    const double th = theta_star_ds[b];
+	    if (std::isfinite(tb) && std::isfinite(th))
+	      {
+		t_eff.push_back(tb);
+		theta_eff.push_back(th);
+	      }
 	  }
 
-        // SE_hat from outer theta* spread
-        double sumT = 0.0, sumT2 = 0.0;
-        for (const auto& th : thetas_outer)
-   {
-            const double v = num::to_double(th);
-            sumT  += v;
-            sumT2 += v * v;
+	const std::size_t effective_B = t_eff.size();
+	if (effective_B < 16)
+	  {
+	    throw std::runtime_error("PercentileTBootstrap.run: too few finite studentized pivots");
 	  }
-        const double effB = static_cast<double>(thetas_outer.size());
-        const double meanT = sumT / effB;
-        const double varT  = std::max(0.0, (sumT2 / effB) - (meanT * meanT));
-        const double se_hat = std::sqrt(varT);
 
-        // Guard against zero/NaN SE_hat; if it happens, CI collapses at mean.
-        const double SE = (se_hat > 0.0 && std::isfinite(se_hat)) ? se_hat : 0.0;
+	// SE_hat = SD(theta*) across valid outer replicates
+	double se_hat;
+	{
+	  double sum = 0.0, sum2 = 0.0;
+	  for (double v : theta_eff)
+	    {
+	      sum  += v;
+	      sum2 += v * v;
+	    }
+	  const double m = static_cast<double>(theta_eff.size());
+	  const double var = std::max(0.0, (sum2 / m) - (sum / m) * (sum / m));
+	  se_hat = std::sqrt(var);
+	}
 
-        // t-quantiles (type-7) from the collected pivots
-        std::sort(tvals.begin(), tvals.end());
-        const double alpha = 1.0 - m_CL;
-        const double t_lo = static_cast<double>(quantile_type7_sorted(tvals, alpha / 2.0));
-        const double t_hi = static_cast<double>(quantile_type7_sorted(tvals, 1.0 - alpha / 2.0));
+	// Type-7 quantile via two nth_element passes (O(B))
+	auto type7_quantile = [](std::vector<double> v, double p) -> double
+	{
+	  const std::size_t m = v.size();
+	  if (m == 0) return std::numeric_limits<double>::quiet_NaN();
+	  if (m == 1) return v[0];
 
-        // Build CI
-        const double theta_hat_d = num::to_double(theta_hat);
-        const double lb = theta_hat_d - t_hi * SE;
-        const double ub = theta_hat_d - t_lo * SE;
+	  const double h = (m - 1) * p;
+	  const std::size_t k = static_cast<std::size_t>(std::floor(h));
+	  const double frac = h - static_cast<double>(k);
 
-        return Result{
-	  /*mean               =*/ theta_hat,
-	  /*lower              =*/ Decimal(lb),
-	  /*upper              =*/ Decimal(ub),
-	  /*cl                 =*/ m_CL,
-	  /*B_outer            =*/ m_B_outer,
-	  /*B_inner            =*/ m_B_inner,
-	  /*effective_B        =*/ tvals.size(),
-	  /*skipped_outer      =*/ skipped_outer,
-	  /*skipped_inner_total=*/ skipped_inner_total,
-	  /*n                  =*/ n,
-	  /*m_outer            =*/ m_outer,
-	  /*m_inner            =*/ m_inner,
-	  /*L                  =*/ m_resampler.getL(),
-	  /*se_hat             =*/ SE
-        };
+	  std::nth_element(v.begin(), v.begin() + k, v.end());
+	  const double vk = v[k];
+
+	  if (frac == 0.0 || k + 1 == m)
+            return vk;
+
+	  std::nth_element(v.begin() + k + 1, v.begin() + k + 1, v.end());
+	  const double vkp1 = v[k + 1];
+
+	  return vk + frac * (vkp1 - vk);
+	};
+
+	const double alpha = 1.0 - m_CL;
+	const double t_lo  = type7_quantile(t_eff, alpha / 2.0);
+	const double t_hi  = type7_quantile(t_eff, 1.0 - alpha / 2.0);
+
+	// Final CI on per-period scale
+	const double lower_d = theta_hat_d - t_hi * se_hat;
+	const double upper_d = theta_hat_d - t_lo * se_hat;
+
+	// Fill Result (unchanged struct)
+	Result R;
+	R.mean                = theta_hat;
+	R.lower               = Decimal(lower_d);
+	R.upper               = Decimal(upper_d);
+	R.cl                  = m_CL;
+	R.B_outer             = m_B_outer;
+	R.B_inner             = m_B_inner;
+	R.effective_B         = effective_B;
+	R.skipped_outer       = skipped_outer.load(std::memory_order_relaxed);
+	R.skipped_inner_total = skipped_inner_total.load(std::memory_order_relaxed);
+	R.n                   = n;
+	R.m_outer             = m_outer;
+	R.m_inner             = m_inner;
+	R.L                   = Ldiag;
+	R.se_hat              = se_hat;
+	return R;
       }
 
     private:

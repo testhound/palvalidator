@@ -54,46 +54,56 @@ namespace palvalidator::filtering::stages
    */
   static std::vector<size_t> makeDefaultLGrid(size_t Lcenter, size_t n, size_t Lcap)
   {
-    const size_t hardCap = std::max<size_t>(2, std::min(Lcap, n - 1));
-    const size_t Lcube = (n > 0) ? static_cast<size_t>(std::lround(std::pow(double(n), 1.0/3.0))) : 0;
+    // Enforce a sane cap: 2 <= L <= min(Lcap, n-1)
+    const size_t hardCap = std::max<size_t>(2, std::min(Lcap, (n > 0 ? n - 1 : 0)));
+    const size_t Lc     = (Lcenter > 0) ? std::min(std::max<size_t>(2, Lcenter), hardCap) : 2;
+    const size_t Lcube  = (n > 0) ? static_cast<size_t>(std::lround(std::pow(double(n), 1.0/3.0))) : 0;
 
-    std::vector<size_t> g = {
-      2,3,4,5,6,8,10,
-      (Lcenter > 0 ? Lcenter : 2),
-      2 * std::max<size_t>(2, Lcenter),
-      Lcube
-    };
+    std::vector<size_t> g;
 
-    // Optional “neighborhood” around center:
-    if (Lcenter > 0)
-      {
-      g.push_back(Lcenter + 1);
-      if (Lcenter > 2)
-	g.push_back(Lcenter - 1);
+    // N-aware branch: with very small samples, prefer a tighter grid to reduce
+    // variance and compute cost. Otherwise, use a broader grid.
+    if (n >= 20 && n <= 28) {
+      g = { 2, 3, 4, 5, (Lcenter > 0 ? Lcenter : 2) };
+    } else {
+      g = {
+	2, 3, 4, 5, 6, 8, 10,
+	(Lcenter > 0 ? Lcenter : 2),
+	2 * std::max<size_t>(2, Lcenter),
+	Lcube
+      };
     }
 
-    for (auto& L : g)
-      {
-	if (L < 2)
-	  L = 2;
-	if (L > hardCap)
-	  L = hardCap;
-      }
+    // Optional neighborhood around center to probe local sensitivity
+    if (Lcenter > 0) {
+      g.push_back(Lcenter + 1);
+      if (Lcenter > 2) g.push_back(Lcenter - 1);
+    }
 
+    // Cap to [2, hardCap]
+    for (auto& L : g) {
+      if (L < 2)      L = 2;
+      if (L > hardCap) L = hardCap;
+    }
+
+    // Sort, unique, and remove invalids (must also be < n to be meaningful)
     std::sort(g.begin(), g.end());
     g.erase(std::unique(g.begin(), g.end()), g.end());
     g.erase(std::remove_if(g.begin(), g.end(),
-			   [&](size_t L){ return L < 2 || L >= n || L > hardCap; }),
+			   [&](size_t L){ return L < 2 || (n > 0 && L >= n) || L > hardCap; }),
 	    g.end());
 
-    const size_t Lc = std::max<size_t>(2, std::min(Lcenter, hardCap));
-
-    if (Lc >= 2 && !std::binary_search(g.begin(), g.end(), Lc)) {
+    // Ensure the capped Lcenter (Lc) is present
+    if (!std::binary_search(g.begin(), g.end(), Lc)) {
       g.insert(std::lower_bound(g.begin(), g.end(), Lc), Lc);
     }
+
+    // Failsafe: never return empty
+    if (g.empty()) g.push_back(2);
+
     return g;
   }
-
+  
   /**
    * @brief Executes the block-length sensitivity (L-grid) bootstrap stage for a
    *        single trading strategy.
@@ -200,28 +210,23 @@ namespace palvalidator::filtering::stages
     R.L_at_min = L_at_min;
     R.numPassed = passCount;
 
-    // compute relVar
+// Compute relVar with a tiny μ-floor for stability when μ≈0
     auto meanFn = [](const std::vector<Num>& v){
       Num s = Num(0); for (auto x: v) s += x; return s / Num(v.size());
     };
 
     const Num mu = meanFn(lbs);
-    if (mu != Num(0))
-      {
-	Num ss = Num(0);
-	for (auto x: lbs)
-	  {
-	    Num d = x - mu;
-	    ss += d*d;
-	  }
+    Num ss = Num(0);
+    for (auto x : lbs) {
+      const Num d = x - mu;
+      ss += d * d;
+    }
+    const Num var = ss / Num(lbs.size());
 
-	const Num var = ss / Num(lbs.size());
-	R.relVar = (var / (mu * mu)).getAsDouble();
-      }
-    else
-      {
-	R.relVar = 0.0;
-      }
+    // ε is in "annualized return" units; tiny but nonzero.
+    const Num eps = Num(1e-8);
+    const Num mu2 = std::max(mu * mu, eps);
+    R.relVar = (var / mu2).getAsDouble();
 
     const double frac = (grid.empty() ? 0.0 : double(passCount) / double(grid.size()));
     bool pass = (frac >= mCfg.minPassFraction);

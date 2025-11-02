@@ -201,71 +201,110 @@ namespace palvalidator
 		 Rng&                         rng,
 		 std::size_t                  m_sub_override = 0) const
       {
-        const std::size_t n = x.size();
-        if (n < 3)
+	const std::size_t n = x.size();
+	if (n < 3)
 	  {
-            throw std::invalid_argument("MOutOfNPercentileBootstrap.run: n must be >= 3");
+	    throw std::invalid_argument("MOutOfNPercentileBootstrap.run: n must be >= 3");
 	  }
 
-        std::size_t m_sub = (m_sub_override > 0)
+	std::size_t m_sub = (m_sub_override > 0)
 	  ? m_sub_override
 	  : static_cast<std::size_t>(std::floor(m_ratio * static_cast<double>(n)));
-        if (m_sub < 2)  m_sub = 2;
-        if (m_sub >= n) m_sub = n - 1;
+	if (m_sub < 2)  m_sub = 2;
+	if (m_sub >= n) m_sub = n - 1;
 
-        const Decimal theta_hat = sampler(x);
+	const Decimal theta_hat = sampler(x);
 
-        std::vector<Decimal> thetas;
-        thetas.reserve(m_B);
+	// Collect bootstrap statistics as doubles (much faster to sort/select & interpolate).
+	std::vector<double> thetas_d;
+	thetas_d.reserve(m_B);
 
-        std::vector<Decimal> y;
-        y.resize(m_sub);
+	std::vector<Decimal> y;
+	y.resize(m_sub);
 
-        std::size_t skipped = 0;
+	std::size_t skipped = 0;
 
-        for (std::size_t b = 0; b < m_B; ++b)
+	for (std::size_t b = 0; b < m_B; ++b)
 	  {
-            // Use injected resampler
-            m_resampler(x, y, m_sub, rng);
+	    // Draw length-m_sub resample with injected resampler
+	    m_resampler(x, y, m_sub, rng);
 
-            const Decimal theta_star = sampler(y);
-            const double  v = theta_star.getAsDouble();
-            if (!std::isfinite(v))
+	    const Decimal theta_star = sampler(y);
+	    const double  v          = num::to_double(theta_star);
+	    if (!std::isfinite(v))
 	      {
-                ++skipped;
-                continue;
+		++skipped;
+		continue;
 	      }
-            thetas.emplace_back(theta_star);
+	    thetas_d.emplace_back(v);
 	  }
 
-        if (thetas.size() < m_B / 2)
+	if (thetas_d.size() < m_B / 2)
 	  {
-            throw std::runtime_error("MOutOfNPercentileBootstrap: too many degenerate replicates");
+	    throw std::runtime_error("MOutOfNPercentileBootstrap: too many degenerate replicates");
 	  }
 
-        std::sort(thetas.begin(), thetas.end());
+	// Hyndman–Fan type-7 via two nth_element passes (linear-time; no full sort).
+	// Helper closure computes type-7 on an UNSORTED vector by selecting neighbors.
+	auto quantile_type7_via_nth = [](const std::vector<double>& s, double p) -> double
+	{
+	  if (s.empty())
+	    {
+	      throw std::invalid_argument("quantile_type7_via_nth: empty input");
+	    }
+	  // Clamp edges with min/max (O(n)).
+	  if (p <= 0.0)
+	    {
+	      return *std::min_element(s.begin(), s.end());
+	    }
+	  if (p >= 1.0)
+	    {
+	      return *std::max_element(s.begin(), s.end());
+	    }
 
-        const double alpha = 1.0 - m_CL;
-        const double pl = alpha / 2.0;
-        const double pu = 1.0 - alpha / 2.0;
+	  const double nd = static_cast<double>(s.size());
+	  const double h  = (nd - 1.0) * p + 1.0;                 // 1-based
+	  std::size_t i1  = static_cast<std::size_t>(std::floor(h)); // in [1, n-1]
+	  if (i1 < 1)                i1 = 1;
+	  if (i1 >= s.size())        i1 = s.size() - 1;
+	  const double frac = h - static_cast<double>(i1);        // in [0,1)
 
-        const Decimal lb = quantile_type7_sorted(thetas, pl);
-        const Decimal ub = quantile_type7_sorted(thetas, pu);
+	  // x0 = order statistic at rank (i1) in 1-based → index i1-1 in 0-based
+	  std::vector<double> w0(s.begin(), s.end());
+	  std::nth_element(w0.begin(), w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1), w0.end());
+	  const double x0 = w0[i1 - 1];
 
-        return Result{
+	  // x1 = order statistic at rank (i1+1) in 1-based → index i1 in 0-based
+	  std::vector<double> w1(s.begin(), s.end());
+	  std::nth_element(w1.begin(), w1.begin() + static_cast<std::ptrdiff_t>(i1), w1.end());
+	  const double x1 = w1[i1];
+
+	  return x0 + (x1 - x0) * frac;
+	};
+
+	const double alpha = 1.0 - m_CL;
+	const double pl    = alpha / 2.0;
+	const double pu    = 1.0 - alpha / 2.0;
+
+	const double lb_d = quantile_type7_via_nth(thetas_d, pl);
+	const double ub_d = quantile_type7_via_nth(thetas_d, pu);
+
+	const Decimal lb = Decimal(lb_d);
+	const Decimal ub = Decimal(ub_d);
+
+	return Result{
 	  /*mean        =*/ theta_hat,
 	  /*lower       =*/ lb,
 	  /*upper       =*/ ub,
 	  /*cl          =*/ m_CL,
 	  /*B           =*/ m_B,
-	  /*effective_B =*/ thetas.size(),
+	  /*effective_B =*/ thetas_d.size(),
 	  /*skipped     =*/ skipped,
 	  /*n           =*/ n,
 	  /*m_sub       =*/ m_sub,
 	  /*L           =*/ m_resampler.getL()
-        };
+	};
       }
-
     private:
       std::size_t  m_B;
       double       m_CL;
