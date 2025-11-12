@@ -290,7 +290,11 @@ namespace palvalidator
       // Human-readable short label of the policy applied:
       // "BCa only", "min-of-LBs (25..29)", "AND-gate (<=24)"
       std::string gatePolicy;
+      
+      std::optional<Num> lbGeoSmallNPeriod;  // min(m/n, BCa) on chosen resampler
+      std::optional<Num> lbGeoPTPeriod;      // percentile-t (geo), per-period
 
+      double annFactorUsed {0.0};
       bool isValid() const
       {
         // Valid means the computation ran successfully, regardless of whether bounds are positive or negative

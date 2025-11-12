@@ -7,6 +7,7 @@
 #include <cmath>
 #include <functional>
 #include "randutils.hpp"
+#include "RngUtils.h"
 
 namespace palvalidator
 {
@@ -66,8 +67,8 @@ namespace palvalidator
       mask[t++] = 1u;
 
       while (t < m)
-	{
-	  const std::size_t run_len = 1 + geo(rng.engine()); // length >= 1
+ {
+   const std::size_t run_len = 1 + geo(mkc_timeseries::rng_utils::get_engine(rng)); // length >= 1
 	  // We mark ONLY the restart at the beginning of the run.
 	  // The continuation positions are zeros; the value/index resampler advances pos.
 	  // Advance t by the run length: next loop iteration will mark a new restart (if any room left).
@@ -128,9 +129,9 @@ namespace palvalidator
         std::size_t wrote = 0;
 
         while (wrote < m)
-	  {
-            const std::size_t start = ustart(rng.engine());
-            const std::size_t run   = 1 + geo(rng.engine());      // length ≥ 1
+   {
+            const std::size_t start = ustart(mkc_timeseries::rng_utils::get_engine(rng));
+            const std::size_t run   = 1 + geo(mkc_timeseries::rng_utils::get_engine(rng));      // length ≥ 1
             const std::size_t take  = std::min(run, m - wrote);
 
             // Copy from doubled buffer; always contiguous
@@ -240,7 +241,7 @@ namespace palvalidator
 	  {
 	    if (mask[t] || !have_pos)
 	      {
-		pos = ustart(rng.engine());
+	 pos = ustart(mkc_timeseries::rng_utils::get_engine(rng));
 		have_pos = true;
 	      }
 	    else
@@ -353,7 +354,7 @@ namespace palvalidator
 	  {
 	    if (mask[t] || !have_pos)
 	      {
-		pos = ustart(rng.engine());
+	 pos = ustart(mkc_timeseries::rng_utils::get_engine(rng));
 		have_pos = true;
 	      }
 	    else
@@ -387,8 +388,8 @@ namespace palvalidator
       using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
 
       explicit StationaryMaskValueResamplerAdapter(std::size_t L)
-	: m_inner(L)
-	, m_L(std::max<std::size_t>(2, L))
+ : m_inner(L)
+ , m_L(std::max<std::size_t>(2, L))
       {}
 
       // BCa expects: vector<Decimal> operator()(x, n, rng)
@@ -396,13 +397,22 @@ namespace palvalidator
       operator()(const std::vector<Decimal>& x, std::size_t n, Rng& rng) const
       {
         if (x.empty())
-	  {
+   {
             throw std::invalid_argument("StationaryMaskValueResamplerAdapter: empty sample.");
-	  }
+   }
         std::vector<Decimal> y;
         y.resize(n);
         m_inner(x, y, n, rng); // fill-by-reference
         return y;              // return-by-value to satisfy BCa
+      }
+
+      // MOutOfNPercentileBootstrap expects: void operator()(x, y, m, rng)
+      void operator()(const std::vector<Decimal>& x,
+                      std::vector<Decimal>& y,
+                      std::size_t m,
+                      Rng& rng) const
+      {
+        m_inner(x, y, m, rng); // delegate to inner resampler
       }
 
       // BCa expects a jackknife for acceleration 'a'
@@ -447,6 +457,11 @@ namespace palvalidator
       }
 
       std::size_t meanBlockLen() const
+      {
+        return m_L;
+      }
+
+      std::size_t getL() const
       {
         return m_L;
       }

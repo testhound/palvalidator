@@ -15,6 +15,8 @@
 #include "BarAlignedSeries.h"
 #include "CostStressUtils.h"
 #include "filtering/FilteringPipeline.h"
+#include "filtering/TradingBootstrapFactory.h"
+#include "ConfigSeeds.h"
 #include <limits>
 
 namespace palvalidator
@@ -25,17 +27,27 @@ namespace palvalidator
     using palvalidator::filtering::makeCostStressHurdles;
 
     constexpr std::size_t kRegimeVolWindow = 20;
-    
-    PerformanceFilter::PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples)
-      : mHurdleCalculator(riskParams),
-	mConfidenceLevel(confidenceLevel),
-	mNumResamples(numResamples),
-	mRobustnessConfig(),
-	mFragileEdgePolicy(),
-	mFilteringSummary(),
-	mApplyFragileAdvice(true)
+    PerformanceFilter::PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel,
+					 unsigned int numResamples, uint64_t masterSeed)
+    : mHurdleCalculator(riskParams),
+      mConfidenceLevel(confidenceLevel),
+      mNumResamples(numResamples),
+      mRobustnessConfig(),
+      mFragileEdgePolicy(),
+      mFilteringSummary(),
+      mApplyFragileAdvice(true),
+      mBootstrapFactory(std::make_unique<BootstrapFactory>(masterSeed))
     {
     }
+
+    PerformanceFilter::PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel,
+    	 unsigned int numResamples)
+      : PerformanceFilter (riskParams, confidenceLevel, numResamples, palvalidator::config::kDefaultCrnMasterSeed)
+    {
+    }
+
+    // Destructor definition required for std::unique_ptr with incomplete type in header
+    PerformanceFilter::~PerformanceFilter() = default;
 
     std::vector<std::shared_ptr<PalStrategy<Num>>>
     PerformanceFilter::filterByPerformance(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -143,7 +155,8 @@ namespace palvalidator
         mLSensitivity,
         mFragileEdgePolicy,
         mApplyFragileAdvice,
-        mFilteringSummary
+        mFilteringSummary,
+	*mBootstrapFactory
       );
     }
 

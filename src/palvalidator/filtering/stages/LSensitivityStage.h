@@ -2,12 +2,14 @@
 
 #include "filtering/FilteringTypes.h"
 #include "filtering/PerformanceFilter.h" // for LSensitivityConfig
+#include "filtering/BootstrapConfig.h"
 #include <ostream>
 #include <vector>
 
 namespace palvalidator::filtering::stages
 {
   using namespace palvalidator::filtering;
+  using palvalidator::bootstrap_cfg::BootstrapFactory;
 
   struct LSensitivityResultSimple
   {
@@ -26,7 +28,8 @@ namespace palvalidator::filtering::stages
     // Use the LSensitivityConfig nested in PerformanceFilter and pass bootstrap params
     explicit LSensitivityStage(const palvalidator::filtering::PerformanceFilter::LSensitivityConfig& cfg,
                                unsigned int numResamples,
-                               const Num& confidenceLevel);
+                               const Num& confidenceLevel,
+                               BootstrapFactory& bootstrapFactory);
 
     /**
      * Run L-grid sensitivity check using the logic adapted from PerformanceFilter::runLSensitivity.
@@ -43,6 +46,7 @@ namespace palvalidator::filtering::stages
     const palvalidator::filtering::PerformanceFilter::LSensitivityConfig& mCfg;
     unsigned int mNumResamples;
     Num mConfidenceLevel;
+    BootstrapFactory& mBootstrapFactory;
   };
 
 } // namespace palvalidator::filtering::stages

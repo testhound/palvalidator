@@ -15,6 +15,7 @@
 #include "analysis/DivergenceAnalyzer.h"
 #include "analysis/FragileEdgeAnalyzer.h"
 #include "RegimeMixStress.h"
+#include "filtering/BootstrapConfig.h"
 
 namespace palvalidator
 {
@@ -24,6 +25,7 @@ namespace palvalidator
     class FilteringPipeline;
 
     using namespace mkc_timeseries;
+    using palvalidator::bootstrap_cfg::BootstrapFactory;
     using Num = num::DefaultNumber;
 
     /**
@@ -71,7 +73,13 @@ namespace palvalidator
        * @param confidenceLevel Confidence level for BCa bootstrap analysis (e.g., 0.95)
        * @param numResamples Number of bootstrap resamples (e.g., 2000)
        */
+      PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel,
+   unsigned int numResamples, uint64_t masterSeed);
+
       PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples);
+
+      // Destructor must be declared in header and defined in .cpp for std::unique_ptr with incomplete type
+      ~PerformanceFilter();
 
       /**
        * @brief Filter strategies based on BCa bootstrap performance analysis
@@ -137,6 +145,7 @@ namespace palvalidator
       FilteringSummary mFilteringSummary;            ///< Summary of filtering results
       bool mApplyFragileAdvice;                      ///< Whether to apply fragile edge advice
       LSensitivityConfig mLSensitivity;
+      std::unique_ptr<BootstrapFactory> mBootstrapFactory;
     };
 
   } // namespace filtering

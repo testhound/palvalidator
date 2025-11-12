@@ -1,16 +1,22 @@
 #pragma once
 
 #include "filtering/FilteringTypes.h"
+#include "filtering/BootstrapConfig.h"
+#include "TradingBootstrapFactory.h"
 #include <ostream>
 
 namespace palvalidator::filtering::stages
 {
   using namespace palvalidator::filtering;
 
+  using palvalidator::bootstrap_cfg::BootstrapFactory;
+
   class BootstrapAnalysisStage
   {
   public:
-    BootstrapAnalysisStage(const Num& confidenceLevel, unsigned int numResamples);
+    BootstrapAnalysisStage(const Num& confidenceLevel,
+			   unsigned int numResamples,
+			   BootstrapFactory& bootstrapFactory);
 
     /**
      * Compute BCa bootstrap bounds and annualize results.
@@ -33,6 +39,7 @@ namespace palvalidator::filtering::stages
   private:
     Num mConfidenceLevel;
     unsigned int mNumResamples;
+    BootstrapFactory& mBootstrapFactory;
   };
 
 } // namespace palvalidator::filtering::stages

@@ -14,15 +14,22 @@ using mkc_timeseries::rng_utils::get_engine;
 using mkc_timeseries::rng_utils::get_random_index;
 using mkc_timeseries::rng_utils::get_random_uniform_01;
 using mkc_timeseries::rng_utils::bernoulli;
-using mkc_timeseries::rng_utils::CommonRandomNumberKey;
 using mkc_timeseries::rng_utils::make_seed;
 using mkc_timeseries::rng_utils::make_seed_seq;
+using mkc_timeseries::rng_utils::CRNKey;
 using mkc_timeseries::rng_utils::CRNRng;
+using mkc_timeseries::rng_utils::CRNEngineProvider;
+using mkc_timeseries::rng_utils::splitmix64;
+using mkc_timeseries::rng_utils::hash_combine64;
 
 static inline double mean(const std::vector<double>& v)
 {
   return std::accumulate(v.begin(), v.end(), 0.0) / static_cast<double>(v.size());
 }
+
+/* =========================
+ * Core RNG utility tests
+ * ========================= */
 
 TEST_CASE("RngUtils: get_engine returns alias and preserves sequence", "[rng][engine]") {
   // std engine
@@ -124,139 +131,178 @@ TEST_CASE("RngUtils: get_random_index(0) is safe no-op", "[rng][index][edge]") {
   REQUIRE( get_random_index(rng, 0) == 0 );
 }
 
-// === CRN (Common Random Numbers) tests ===
-#include <algorithm>
-#include <unordered_map>
+/* =========================
+ * CRNKey / CRN providers
+ * ========================= */
 
-using mkc_timeseries::rng_utils::CommonRandomNumberKey;
-using mkc_timeseries::rng_utils::make_seed;
-using mkc_timeseries::rng_utils::make_seed_seq;
+TEST_CASE("CRNKey: seed determinism and tag-order sensitivity", "[rng][crn][CRNKey]") {
+  const uint64_t MASTER = 0xD00DCAFEF00DCAFEull;
 
-TEST_CASE("CRN: CommonRandomNumberKey ctor/getters", "[rng][crn][key]") {
-  const uint64_t M = 0xA1B2C3D4E5F60718ull;
-  const uint64_t S = 0x0102030405060708ull;
-  const uint64_t T = 3;   // stageTag
-  const uint64_t L = 5;   // Lvalue
-  const uint64_t R = 42;  // replicate
-  const uint64_t F = 7;   // fold
-  CommonRandomNumberKey k(M, S, T, L, R, F);
+  // Same tags & order -> same seeds for any replicate
+  CRNKey k1(MASTER, {1, 2, 3});
+  CRNKey k2(MASTER, {1, 2, 3});
+  REQUIRE(k1.make_seed_for(0) == k2.make_seed_for(0));
+  REQUIRE(k1.make_seed_for(42) == k2.make_seed_for(42));
 
-  REQUIRE(k.masterSeed() == M);
-  REQUIRE(k.strategyId() == S);
-  REQUIRE(k.stageTag()   == T);
-  REQUIRE(k.Lvalue()     == L);
-  REQUIRE(k.replicate()  == R);
-  REQUIRE(k.fold()       == F);
+  // Different order -> almost surely different
+  CRNKey k3(MASTER, {1, 3, 2});
+  REQUIRE(k1.make_seed_for(0)  != k3.make_seed_for(0));
+  REQUIRE(k1.make_seed_for(42) != k3.make_seed_for(42));
+
+  // Different master -> different
+  CRNKey k4(MASTER ^ 0xFFFF, {1,2,3});
+  REQUIRE(k1.make_seed_for(7) != k4.make_seed_for(7));
 }
 
-TEST_CASE("CRN: make_seed is deterministic and field-sensitive", "[rng][crn][seed]") {
-  const uint64_t M = 0x123456789ABCDEF0ull;
-  CommonRandomNumberKey k1(M, /*strategy*/11, /*stage*/1, /*L*/0, /*rep*/0, /*fold*/0);
-  CommonRandomNumberKey k2(M, /*strategy*/11, /*stage*/1, /*L*/0, /*rep*/0, /*fold*/0);
+TEST_CASE("CRNKey: with_tag / with_tags composes identically to explicit construction", "[rng][crn][CRNKey]") {
+  const uint64_t MASTER = 0xABCDEF0102030405ull;
 
-  // Deterministic for identical keys
-  REQUIRE(make_seed(k1) == make_seed(k2));
+  CRNKey base(MASTER);
+  auto k_step = base.with_tag(11).with_tag(22).with_tag(33);
+  CRNKey k_full(MASTER, {11, 22, 33});
 
-  // Changing any field should almost surely change the seed
-  CommonRandomNumberKey k_strategy(M, 12, 1, 0, 0, 0);
-  CommonRandomNumberKey k_stage   (M, 11, 2, 0, 0, 0);
-  CommonRandomNumberKey k_L       (M, 11, 1, 9, 0, 0);
-  CommonRandomNumberKey k_rep     (M, 11, 1, 0, 1, 0);
-  CommonRandomNumberKey k_fold    (M, 11, 1, 0, 0, 1);
-
-  const auto s0 = make_seed(k1);
-  REQUIRE(make_seed(k_strategy) != s0);
-  REQUIRE(make_seed(k_stage)    != s0);
-  REQUIRE(make_seed(k_L)        != s0);
-  REQUIRE(make_seed(k_rep)      != s0);
-  REQUIRE(make_seed(k_fold)     != s0);
-}
-
-TEST_CASE("CRN: per-replicate RNGs reproduce identical sequences", "[rng][crn][sequence]") {
-  const uint64_t M = 0xDEADBEEFCAFEBABEull;
-  const uint64_t strat = 0xAABBCCDD11223344ull;
-  const uint64_t stage = 1;
-  const uint64_t L     = 0;
-  const uint64_t fold  = 0;
-
-  // Build first few outputs for replicates 0..9
-  std::vector<std::array<uint64_t, 3>> seq_a(10), seq_b(10);
-
-  for (uint64_t r = 0; r < 10; ++r) {
-    CommonRandomNumberKey key(M, strat, stage, L, r, fold);
-    std::seed_seq sseq = make_seed_seq(make_seed(key));
-    std::mt19937_64 eng(sseq);
-    for (int i = 0; i < 3; ++i) seq_a[r][i] = eng();
-  }
-
-  // Recompute with fresh engines; sequences must match bit-for-bit
-  for (uint64_t r = 0; r < 10; ++r) {
-    CommonRandomNumberKey key(M, strat, stage, L, r, fold);
-    std::seed_seq sseq = make_seed_seq(make_seed(key));
-    std::mt19937_64 eng(sseq);
-    for (int i = 0; i < 3; ++i) seq_b[r][i] = eng();
-  }
-
-  REQUIRE(seq_a == seq_b);
-}
-
-TEST_CASE("CRN: replicate streams are independent of iteration order (parallel safety)", "[rng][crn][order]") {
-  const uint64_t M = 0xCAFED00D12345678ull;
-  const uint64_t strat = 0x55AA55AA77889900ull;
-  const uint64_t stage = 2;
-  const uint64_t L     = 4;
-  const uint64_t fold  = 0;
-
-  // Reference sequences computed in ascending replicate order
-  std::unordered_map<uint64_t, std::array<uint64_t, 2>> ref;
-  for (uint64_t r = 0; r < 16; ++r) {
-    CommonRandomNumberKey key(M, strat, stage, L, r, fold);
-    std::seed_seq sseq = make_seed_seq(make_seed(key));
-    std::mt19937_64 eng(sseq);
-    ref[r] = { eng(), eng() };
-  }
-
-  // Now simulate "parallel" chunking by visiting replicates in a scrambled order
-  std::vector<uint64_t> order(16);
-  std::iota(order.begin(), order.end(), 0);
-  std::reverse(order.begin(), order.end());           // reverse
-  std::rotate(order.begin(), order.begin()+3, order.end()); // rotate
-
-  for (auto r : order) {
-    CommonRandomNumberKey key(M, strat, stage, L, r, fold);
-    std::seed_seq sseq = make_seed_seq(make_seed(key));
-    std::mt19937_64 eng(sseq);
-    std::array<uint64_t, 2> got{ eng(), eng() };
-    REQUIRE(got == ref[r]); // order independent: per-replicate stream is the same
+  for (size_t r : {0u, 1u, 7u, 123u}) {
+    REQUIRE(k_step.make_seed_for(r) == k_full.make_seed_for(r));
   }
 }
 
-TEST_CASE("CRN: make_seed_seq yields reproducible mt19937_64 engines", "[rng][crn][seedseq]") {
-  const uint64_t M = 0xFACEFACEFACEFACEull;
-  CommonRandomNumberKey key(M, /*strategy*/123, /*stage*/9, /*L*/7, /*rep*/99, /*fold*/3);
+/* ---------------------------
+ * CRNEngineProvider tests
+ * --------------------------- */
 
-  std::seed_seq sseq1 = make_seed_seq(make_seed(key));
-  std::seed_seq sseq2 = make_seed_seq(make_seed(key));
+TEST_CASE("CRNEngineProvider<std::mt19937_64>: deterministic per-replicate engines", "[rng][crn][CRNEngineProvider][std]") {
+  const uint64_t MASTER = 0x1111222233334444ull;
+  CRNKey key(MASTER, {0xAA, 0xBB, 0xCC});
+  CRNEngineProvider<std::mt19937_64> prov(key);
 
-  std::mt19937_64 e1(sseq1);
-  std::mt19937_64 e2(sseq2);
+  // Reference outputs for replicates 0..9
+  std::vector<std::array<uint64_t,3>> ref(10);
+  for (size_t r = 0; r < ref.size(); ++r) {
+    auto eng = prov.make_engine(r);
+    for (int i = 0; i < 3; ++i) ref[r][i] = eng();
+  }
 
-  for (int i = 0; i < 20; ++i) {
-    REQUIRE(e1() == e2()); // identical streams when seeded from the same key
+  // Recompute and compare bit-for-bit
+  for (size_t r = 0; r < ref.size(); ++r) {
+    auto eng = prov.make_engine(r);
+    std::array<uint64_t,3> got{eng(), eng(), eng()};
+    REQUIRE(got == ref[r]);
   }
 }
 
-// === CRNRng tests ===
-using mkc_timeseries::rng_utils::CRNRng;
+TEST_CASE("CRNEngineProvider<randutils::mt19937_rng>: deterministic per-replicate engines", "[rng][crn][CRNEngineProvider][randutils]") {
+  const uint64_t MASTER = 0xFACEFACEFACEFACEull;
+  CRNKey key(MASTER, {7, 8, 9});
+  CRNEngineProvider<randutils::mt19937_rng> prov(key);
 
-TEST_CASE("CRNRng<std::mt19937_64>: deterministic per-replicate engines", "[rng][crn][crnrng][std]") {
+  // Reference (first 3 draws of underlying std engine) for replicates 0..7
+  std::vector<std::array<uint32_t,3>> ref(8);
+  for (size_t r = 0; r < ref.size(); ++r) {
+    auto rng = prov.make_engine(r);
+    auto& eng = rng.engine();
+    for (int i = 0; i < 3; ++i) ref[r][i] = static_cast<uint32_t>(eng());
+  }
+
+  // Recompute
+  for (size_t r = 0; r < ref.size(); ++r) {
+    auto rng = prov.make_engine(r);
+    auto& eng = rng.engine();
+    std::array<uint32_t,3> got{ static_cast<uint32_t>(eng()),
+                                static_cast<uint32_t>(eng()),
+                                static_cast<uint32_t>(eng()) };
+    REQUIRE(got == ref[r]);
+  }
+}
+
+// Permuting wrapper that remaps replicate index: b -> perm[b]
+template <class BaseProv>
+struct PermutingProv {
+  using Engine = typename BaseProv::Engine;
+  PermutingProv(BaseProv base, std::vector<size_t> perm)
+    : base_(std::move(base)), perm_(std::move(perm)) {}
+  Engine make_engine(std::size_t b) const {
+    return base_.make_engine(perm_[b]);
+  }
+  BaseProv base_;
+  std::vector<size_t> perm_;
+};
+
+TEST_CASE("CRNEngineProvider: replicate-order independence (permuted vs identity)", "[rng][crn][CRNEngineProvider][order]") {
+  using Eng = randutils::mt19937_rng;
+
+  const uint64_t MASTER = 0xBADC0FFEE0DDF00Dull;
+  CRNKey key(MASTER, {0xDE, 0xAD, 0xBE, 0xEF});
+  CRNEngineProvider<Eng> base(key);
+
+  const size_t B = 512;
+  std::vector<size_t> id(B), scr(B);
+  std::iota(id.begin(), id.end(), 0);
+  scr = id;
+  std::reverse(scr.begin(), scr.end());
+  std::rotate(scr.begin(), scr.begin()+17, scr.end());
+
+  PermutingProv<CRNEngineProvider<Eng>> prov_id(base, id);
+  PermutingProv<CRNEngineProvider<Eng>> prov_sc(base, scr);
+
+  // Build first two draws from each replicate in two orders; compare per-replicate equality
+  std::vector<std::array<uint32_t,2>> a(B), b(B);
+  for (size_t r = 0; r < B; ++r) {
+    auto rng = prov_id.make_engine(r);
+    auto& e  = rng.engine();
+    a[r] = { static_cast<uint32_t>(e()), static_cast<uint32_t>(e()) };
+  }
+  for (size_t r = 0; r < B; ++r) {
+    auto rng = prov_sc.make_engine(r);
+    auto& e  = rng.engine();
+    b[r] = { static_cast<uint32_t>(e()), static_cast<uint32_t>(e()) };
+  }
+
+  REQUIRE(a.size() == b.size());
+  // Order independence: scrambled run maps replicate r -> scr[r], so compare a[scr[r]] with b[r].
+  for (size_t r = 0; r < B; ++r) {
+    REQUIRE(a[scr[r]] == b[r]);
+  }
+}
+
+TEST_CASE("CRNEngineProvider: different replicates produce diverse outputs", "[rng][crn][CRNEngineProvider][replicates]") {
+  using Eng = std::mt19937_64;
+  CRNEngineProvider<Eng> prov(CRNKey(0x0123456789ABCDEFull, {42}));
+
+  // First draw from replicates 0..31; ensure not all identical
+  std::vector<uint64_t> firsts(32);
+  for (size_t r = 0; r < firsts.size(); ++r) {
+    auto eng = prov.make_engine(r);
+    firsts[r] = eng();
+  }
+  bool any_diff = false;
+  for (size_t i = 1; i < firsts.size(); ++i)
+    if (firsts[i] != firsts[0]) { any_diff = true; break; }
+  REQUIRE(any_diff);
+}
+
+TEST_CASE("CRNEngineProvider: extending tags changes streams (sensitivity)", "[rng][crn][CRNEngineProvider][tags]") {
+  using Eng = std::mt19937_64;
+  const uint64_t MASTER = 0xCAFEBABECAFED00Dull;
+
+  CRNEngineProvider<Eng> p1(CRNKey(MASTER, {11,22}));
+  CRNEngineProvider<Eng> p2(CRNKey(MASTER, {11,22}).with_tag(33)); // extra tag
+
+  auto e1 = p1.make_engine(5);
+  auto e2 = p2.make_engine(5);
+
+  // With overwhelming probability, first outputs differ when tags differ
+  REQUIRE(e1() != e2());
+}
+
+/* ---------------------------
+ * CRNRng (wrapper) tests
+ * --------------------------- */
+
+TEST_CASE("CRNRng<std::mt19937_64>: deterministic per-replicate engines (domain-agnostic)", "[rng][crn][crnrng][std]") {
   const uint64_t M = 0x1111222233334444ull;
-  const uint64_t strat = 0xABCDEF1122334455ull;
-  const uint64_t stage = 1;
-  const uint64_t L     = 3;
-  const uint64_t fold  = 0;
 
-  CRNRng<> crn(M, strat, stage, L, fold); // default Eng = std::mt19937_64
+  // Build a domain-agnostic tag set (e.g., {idA, idB, idC})
+  CRNRng<> crn( CRNKey(M).with_tags({0xAA, 0xBB, 0xCC}) ); // default Eng = std::mt19937_64
 
   // Build reference outputs for replicates 0..9
   std::vector<std::array<uint64_t, 3>> ref(10);
@@ -273,58 +319,27 @@ TEST_CASE("CRNRng<std::mt19937_64>: deterministic per-replicate engines", "[rng]
   }
 }
 
-TEST_CASE("CRNRng<std::mt19937_64>: iteration order independence (parallel safety)", "[rng][crn][crnrng][order]") {
-  const uint64_t M = 0xCAFEBABECAFED00Dull;
-  const uint64_t strat = 0x5566778899AABBCCull;
-  const uint64_t stage = 2;
-  const uint64_t L     = 5;
-
-  CRNRng<> crn(M, strat, stage, L);
-
-  // Reference sequences computed in ascending replicate order
-  std::unordered_map<size_t, std::array<uint64_t, 2>> ref;
-  for (size_t r = 0; r < 16; ++r) {
-    auto eng = crn.make_engine(r);
-    ref[r] = { eng(), eng() };
-  }
-
-  // Scrambled order simulating chunked parallel loops
-  std::vector<size_t> order(16);
-  std::iota(order.begin(), order.end(), 0);
-  std::reverse(order.begin(), order.end());
-  std::rotate(order.begin(), order.begin() + 4, order.end());
-
-  for (auto r : order) {
-    auto eng = crn.make_engine(r);
-    std::array<uint64_t, 2> got{ eng(), eng() };
-    REQUIRE(got == ref[r]); // same per-replicate stream regardless of visit order
-  }
-}
-
-TEST_CASE("CRNRng<std::mt19937_64>: with_L and with_fold change streams", "[rng][crn][crnrng][params]") {
+TEST_CASE("CRNRng<std::mt19937_64>: tag updates via with_tag/with_tags change streams", "[rng][crn][crnrng][params]") {
   const uint64_t M = 0xDEADBEEFCAFEBABEull;
-  const uint64_t strat = 0xA1A2A3A4A5A6A7A8ull;
-  const uint64_t stage = 3;
 
-  CRNRng<> base(M, strat, stage, /*L*/2, /*fold*/0);
+  CRNRng<> base( CRNKey(M).with_tags({0x01, 0x02}) );
   auto e_base = base.make_engine(7);
 
-  CRNRng<> L_changed  = base.with_L(9);
-  auto e_L = L_changed.make_engine(7);
+  CRNRng<> plus_one  = base.with_tag(0x03);
+  auto e_plus = plus_one.make_engine(7);
 
-  CRNRng<> fold_changed = base.with_fold(1);
-  auto e_f = fold_changed.make_engine(7);
+  CRNRng<> plus_many = base.with_tags({0x10, 0x20});
+  auto e_many = plus_many.make_engine(7);
 
-  // The first outputs should differ when L or fold differs (with overwhelming probability)
-  REQUIRE(e_base() != e_L());
-  REQUIRE(base.make_engine(7)() != e_f());
+  // The first outputs should differ when tag sets differ (with overwhelming probability)
+  REQUIRE(e_base() != e_plus());
+  REQUIRE(base.make_engine(7)() != e_many());
 }
 
-TEST_CASE("CRNRng<randutils::mt19937_rng>: deterministic per-replicate rng", "[rng][crn][crnrng][randutils]") {
+TEST_CASE("CRNRng<randutils::mt19937_rng>: deterministic per-replicate rng (domain-agnostic)", "[rng][crn][crnrng][randutils]") {
   const uint64_t M = 0xFACEFACEFACEFACEull;
-  const uint64_t strat = 0x0F1E2D3C4B5A6978ull;
-  const uint64_t stage = 4;
-  CRNRng<randutils::mt19937_rng> crn_ru(M, strat, stage, /*L*/0, /*fold*/0);
+
+  CRNRng<randutils::mt19937_rng> crn_ru( CRNKey(M).with_tags({7, 8, 9}) );
 
   std::vector<std::array<uint32_t, 3>> ref(8), got(8);
 
@@ -351,10 +366,8 @@ TEST_CASE("CRNRng<randutils::mt19937_rng>: deterministic per-replicate rng", "[r
 
 TEST_CASE("CRNRng: different replicates produce non-identical sequences", "[rng][crn][crnrng][replicates]") {
   const uint64_t M = 0x0123456789ABCDEFull;
-  const uint64_t strat = 0x0011223344556677ull;
-  const uint64_t stage = 5;
 
-  CRNRng<> crn(M, strat, stage);
+  CRNRng<> crn( CRNKey(M).with_tags({0x44, 0x55}) );
 
   // First draw from replicates 0..15; ensure at least one pair differs
   std::vector<uint64_t> firsts(16);
@@ -368,4 +381,103 @@ TEST_CASE("CRNRng: different replicates produce non-identical sequences", "[rng]
   for (size_t i = 1; i < firsts.size(); ++i)
     if (firsts[i] != firsts[0]) { any_diff = true; break; }
   REQUIRE(any_diff);
+}
+
+TEST_CASE("splitmix64: determinism and basic avalanche", "[rng][hash][splitmix64]") {
+  // Determinism: same input -> same output
+  REQUIRE(splitmix64(0x123456789ABCDEF0ull) == splitmix64(0x123456789ABCDEF0ull));
+
+  // Small set should be collision-free (not a proof, just a sanity check)
+  std::unordered_map<uint64_t, bool> seen;
+  for (uint64_t i = 0; i < 1000; ++i) {
+    auto h = splitmix64(i);
+    REQUIRE(seen.find(h) == seen.end());
+    seen[h] = true;
+  }
+
+  // Basic avalanche: low 8 bits shouldn't be constant across a sequence
+  uint64_t first = splitmix64(0);
+  bool any_diff_low8 = false;
+  for (uint64_t i = 1; i < 256; ++i) {
+    uint64_t h = splitmix64(i);
+    if ((h & 0xFFu) != (first & 0xFFu)) { any_diff_low8 = true; break; }
+  }
+  REQUIRE(any_diff_low8);
+}
+
+/* ---- hash_combine64 ---- */
+
+TEST_CASE("hash_combine64: determinism, order sensitivity, and tag extension", "[rng][hash][combine]") {
+  // Determinism
+  REQUIRE(hash_combine64({1,2,3}) == hash_combine64({1,2,3}));
+
+  // Order sensitivity
+  REQUIRE(hash_combine64({1,2,3}) != hash_combine64({1,3,2}));
+
+  // Appending tags changes hash
+  uint64_t h_base = hash_combine64({0xDEAD'BEEFull, 0xAA, 0xBB});
+  uint64_t h_ext  = hash_combine64({0xDEAD'BEEFull, 0xAA, 0xBB, 0xCC});
+  REQUIRE(h_base != h_ext);
+
+  // Combine with splitmix64 path: different inputs should typically differ
+  REQUIRE(hash_combine64({splitmix64(1), splitmix64(2)}) !=
+          hash_combine64({splitmix64(2), splitmix64(1)}));
+}
+
+/* ---- make_seed_seq ---- */
+
+TEST_CASE("make_seed_seq: same seed → identical engine sequences", "[rng][seed_seq][determinism]") {
+  using mkc_timeseries::rng_utils::make_seed_seq;
+
+  const uint64_t seed64 = 0xBADC0FFEE0DDF00Dull;
+
+  auto ss1 = make_seed_seq(seed64);
+  auto ss2 = make_seed_seq(seed64);
+
+  std::mt19937_64 e1(ss1), e2(ss2);
+
+  // First several draws must match bit-for-bit
+  for (int i = 0; i < 16; ++i) {
+    REQUIRE(e1() == e2());
+  }
+}
+
+TEST_CASE("make_seed_seq: different seeds → different engine sequences", "[rng][seed_seq][diversity]") {
+  using mkc_timeseries::rng_utils::make_seed_seq;
+
+  auto ss1 = make_seed_seq(0x1111222233334444ull);
+  auto ss2 = make_seed_seq(0x1111222233334445ull);
+
+  std::mt19937_64 e1(ss1), e2(ss2);
+
+  // Very likely to differ on first draw; if not, check a few more
+  bool differ = false;
+  for (int i = 0; i < 8; ++i) {
+    if (e1() != e2()) { differ = true; break; }
+  }
+  REQUIRE(differ);
+}
+
+TEST_CASE("make_seed_seq: stable across re-initialization cycles", "[rng][seed_seq][stability]") {
+  using mkc_timeseries::rng_utils::make_seed_seq;
+
+  const uint64_t seed64 = 0xCAFEBABECAFED00Dull;
+
+  // Build two engines from the same seed, advance one, then rebuild and compare fresh
+  auto ssA = make_seed_seq(seed64);
+  auto ssB = make_seed_seq(seed64);
+
+  std::mt19937_64 ea(ssA), eb(ssB);
+
+  // Advance 'ea' some steps
+  for (int i = 0; i < 1024; ++i) (void)ea();
+
+  // Rebuild 'ec' from the same seed and compare to a freshly built 'ed'
+  auto ssC = make_seed_seq(seed64);
+  auto ssD = make_seed_seq(seed64);
+  std::mt19937_64 ec(ssC), ed(ssD);
+
+  for (int i = 0; i < 16; ++i) {
+    REQUIRE(ec() == ed());
+  }
 }

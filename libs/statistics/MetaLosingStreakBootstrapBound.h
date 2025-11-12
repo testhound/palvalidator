@@ -87,7 +87,7 @@ namespace mkc_timeseries
       bool        useACFBlockLen   = true;  // enable ACF → L estimation
       std::size_t acfMaxLag        = 12;    // max lag (in trades) for ACF
       unsigned    acfMinL          = 2;     // clamp suggested L to [acfMinL, acfMaxL]
-      unsigned    acfMaxL          = 6;
+      unsigned    acfMaxL          = 10;
     };
 
     // Constructor: you pass in Executor & RNG; Sampler can be passed or default-constructed.

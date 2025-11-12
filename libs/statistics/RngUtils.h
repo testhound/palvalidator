@@ -6,6 +6,7 @@
 #include <random>
 #include <limits>
 #include <array>
+#include <initializer_list>
 
 namespace mkc_timeseries
 {
@@ -101,121 +102,178 @@ namespace mkc_timeseries
       return h;
     }
 
-    // A stable, immutable key describing "what this randomness is for".
-    class CommonRandomNumberKey {
+    // Domain-agnostic "key": just a master seed + immutable vector of 64-bit tags.
+    // No knowledge of what those tags *mean*.
+    class CRNKey
+    {
     public:
-      // Constructor with sensible defaults for optional dimensions.
-      // - Lvalue defaults to 0 when not applicable
-      // - replicate defaults to 0 (caller typically sets this per replicate)
-      // - fold defaults to 0 when not using CV folds or time splits
-      CommonRandomNumberKey(uint64_t masterSeed,
-			    uint64_t strategyId,
-			    uint64_t stageTag,
-			    uint64_t Lvalue    = 0,
-			    uint64_t replicate = 0,
-			    uint64_t fold      = 0) noexcept
-	: m_masterSeed(masterSeed)
-	, m_strategyId(strategyId)
-	, m_stageTag(stageTag)
-	, m_Lvalue(Lvalue)
-	, m_replicate(replicate)
-	, m_fold(fold)
+      CRNKey(uint64_t masterSeed, std::vector<uint64_t> tags = {})
+	: m_masterSeed(masterSeed), m_tags(std::move(tags))
       {}
 
-      // Getters (no setters to preserve immutability)
-      uint64_t masterSeed() const noexcept { return m_masterSeed; }
-      uint64_t strategyId() const noexcept { return m_strategyId; }
-      uint64_t stageTag()   const noexcept { return m_stageTag; }
-      uint64_t Lvalue()     const noexcept { return m_Lvalue; }
-      uint64_t replicate()  const noexcept { return m_replicate; }
-      uint64_t fold()       const noexcept { return m_fold; }
+      // Append one or more tags → return a new key (cheap: small vector)
+      CRNKey with_tag(uint64_t tag) const
+      {
+	auto t = m_tags; t.push_back(tag);
+	return CRNKey(m_masterSeed, std::move(t));
+      }
+
+      CRNKey with_tags(std::initializer_list<uint64_t> tags) const
+      {
+	auto t = m_tags; t.insert(t.end(), tags.begin(), tags.end());
+	return CRNKey(m_masterSeed, std::move(t));
+      }
+
+      uint64_t masterSeed() const noexcept
+      {
+	return m_masterSeed;
+      }
+
+      const std::vector<uint64_t>& tags() const noexcept
+      {
+	return m_tags;
+      }
+
+      // Derive a 64-bit seed for a given replicate index (replicate is just another tag)
+      uint64_t make_seed_for(std::size_t replicate) const
+      {
+	uint64_t h = m_masterSeed;
+	for (auto v : m_tags) h = hash_combine64({h, v});
+	h = hash_combine64({h, static_cast<uint64_t>(replicate)});
+	return h;
+      }
 
     private:
       uint64_t m_masterSeed;
-      uint64_t m_strategyId;
-      uint64_t m_stageTag;
-      uint64_t m_Lvalue;
-      uint64_t m_replicate;
-      uint64_t m_fold;
+      std::vector<uint64_t> m_tags;
     };
 
-    // Derive a 64-bit seed for this replicate (stable across threads/runs)
-    inline uint64_t make_seed(const CommonRandomNumberKey& k) {
-      return hash_combine64({
-	  k.masterSeed(), k.strategyId(), k.stageTag(),
-	  k.Lvalue(), k.replicate(), k.fold()
-	});
-    }
+    inline std::seed_seq make_seed_seq(uint64_t seed64)
+    {
+      // Expand a 64-bit seed into eight 32-bit words using diversified SplitMix64
+      const uint64_t s0 = seed64;
+      const uint64_t s1 = splitmix64(s0);
+      const uint64_t s2 = splitmix64(s0 ^ 0x9e3779b97f4a7c15ull);
+      const uint64_t s3 = splitmix64(s0 + 0xd1342543de82ef95ull);
+      const uint64_t s4 = splitmix64(s1 ^ 0x94d049bb133111ebull);
+      const uint64_t s5 = splitmix64(s2 + 0xbf58476d1ce4e5b9ull);
+      const uint64_t s6 = splitmix64(s3 ^ 0x6a09e667f3bcc909ull);
+      const uint64_t s7 = splitmix64(s4 + 0x243f6a8885a308d3ull);
 
-    // Build a seed_seq for engines that take it
-    inline std::seed_seq make_seed_seq(uint64_t seed64) {
-      // expand to multiple 32-bit words to better fill state
-      std::array<uint32_t, 4> words = {
-	static_cast<uint32_t>(seed64),
-	static_cast<uint32_t>(seed64 >> 32),
-	static_cast<uint32_t>(splitmix64(seed64)),
-	static_cast<uint32_t>(splitmix64(seed64 ^ 0x9e3779b97f4a7c15ull))
+      // Combine several rounds to decorrelate
+      const uint64_t mix = (s3 ^ s5 ^ s6 ^ s7);
+
+      std::array<uint32_t, 8> words = {
+	static_cast<uint32_t>(s0), static_cast<uint32_t>(s0 >> 32),
+	static_cast<uint32_t>(s1), static_cast<uint32_t>(s1 >> 32),
+	static_cast<uint32_t>(s2), static_cast<uint32_t>(s2 >> 32),
+	static_cast<uint32_t>(mix), static_cast<uint32_t>(mix >> 32)
       };
+
       return std::seed_seq(words.begin(), words.end());
     }
 
     // Helper: construct a seeded engine regardless of API style
     template<class Eng>
-    inline Eng construct_seeded_engine(std::seed_seq& sseq) {
-      if constexpr (std::is_constructible_v<Eng, std::seed_seq&>) {
-	return Eng(sseq);            // e.g., std::mt19937_64(ss)
-      } else {
-	Eng e; e.seed(sseq);         // e.g., randutils::mt19937_rng.seed(ss)
-	return e;
+    inline Eng construct_seeded_engine(std::seed_seq& sseq)
+    {
+      if constexpr (std::is_constructible_v<Eng, std::seed_seq&>)
+	{
+	  return Eng(sseq);            // e.g., std::mt19937_64(ss)
+	}
+      else
+	{
+	  Eng e;
+
+	  e.seed(sseq);         // e.g., randutils::mt19937_rng.seed(ss)
+	  return e;
       }
     }
 
-    // Common-Random-Numbers RNG provider (factory-style), generic over engine type.
+    // Helper that constructs engines from a CRNKey. Engine defaults to std::mt19937_64,
+    // but is fully generic. Completely domain-agnostic.
     template<class Eng = std::mt19937_64>
-    class CRNRng {
+    class CRNEngineProvider
+    {
     public:
       using Engine = Eng;
-      using Key    = CommonRandomNumberKey;
 
-      // Constructor with sensible defaults for optional dimensions.
-      explicit CRNRng(uint64_t masterSeed,
-		      uint64_t strategyId,
-		      uint64_t stageTag,
-		      uint64_t Lvalue = 0,
-		      uint64_t fold   = 0) noexcept
-	: m_masterSeed(masterSeed)
-	, m_strategyId(strategyId)
-	, m_stageTag(stageTag)
-	, m_Lvalue(Lvalue)
-	, m_fold(fold)
+      explicit CRNEngineProvider(CRNKey key)
+	:  m_key(std::move(key))
       {}
 
-      // Fluent variants for tweaking L / fold across loops
-      CRNRng with_L(uint64_t Lvalue) const noexcept {
-	CRNRng cpy = *this; cpy.m_Lvalue = Lvalue; return cpy;
-      }
-      CRNRng with_fold(uint64_t fold) const noexcept {
-	CRNRng cpy = *this; cpy.m_fold = fold; return cpy;
+      // Bind more tags (returns a new provider with extended key)
+      CRNEngineProvider with_tag(uint64_t tag) const
+      {
+	return CRNEngineProvider(m_key.with_tag(tag));
       }
 
-      // Make a fresh engine for replicate k (deterministic, order/parallel-safe)
-      Engine make_engine(std::size_t replicate) const {
-	Key key(m_masterSeed, m_strategyId, m_stageTag,
-		m_Lvalue, static_cast<uint64_t>(replicate), m_fold);
-	auto seed64 = make_seed(key);
+      CRNEngineProvider with_tags(std::initializer_list<uint64_t> tags) const
+      {
+	return CRNEngineProvider(m_key.with_tags(tags));
+      }
+
+      // The only method BCa (or any client) needs:
+      Engine make_engine(std::size_t replicate) const
+      {
+	auto seed64 = m_key.make_seed_for(replicate);
 	auto sseq   = make_seed_seq(seed64);
 	return construct_seeded_engine<Engine>(sseq);
       }
 
-      // Accessors (for logging/debug)
-      uint64_t masterSeed() const noexcept { return m_masterSeed; }
-      uint64_t strategyId() const noexcept { return m_strategyId; }
-      uint64_t stageTag()   const noexcept { return m_stageTag; }
-      uint64_t Lvalue()     const noexcept { return m_Lvalue; }
-      uint64_t fold()       const noexcept { return m_fold; }
+      const CRNKey& key() const noexcept
+      {
+	return m_key;
+      }
 
     private:
-      uint64_t m_masterSeed, m_strategyId, m_stageTag, m_Lvalue, m_fold;
+      CRNKey m_key;
+    };
+    
+    // Derive a 64-bit seed for a given CRNKey + replicate index
+    inline uint64_t make_seed(const CRNKey& key, std::size_t replicate)
+    {
+      return key.make_seed_for(replicate);
+    }
+
+
+    // Domain-agnostic CRN RNG provider (wrapper over CRNEngineProvider + CRNKey)
+    template<class Eng = std::mt19937_64>
+    class CRNRng
+    {
+    public:
+      using Engine = Eng;
+
+      // Construct from a CRNKey (master seed + any opaque tag sequence)
+      explicit CRNRng(CRNKey key)
+	: m_provider(std::move(key))
+      {}
+
+      // Fluent methods to extend the tag sequence (return a new CRNRng)
+      CRNRng with_tag(uint64_t tag) const
+      {
+	return CRNRng(m_provider.key().with_tag(tag));
+      }
+ 
+      CRNRng with_tags(std::initializer_list<uint64_t> tags) const
+      {
+	return CRNRng(m_provider.key().with_tags(tags));
+      }
+
+      // Produce a fresh, deterministically seeded engine for replicate k
+      Engine make_engine(std::size_t replicate) const
+      {
+	return m_provider.make_engine(replicate);
+      }
+
+      // Access underlying key if you want to log/debug
+      const CRNKey& key() const noexcept
+      {
+	return m_provider.key();
+      }
+
+    private:
+      CRNEngineProvider<Engine> m_provider;
     };
   } // namespace rng_utils
 } // namespace mkc_timeseries

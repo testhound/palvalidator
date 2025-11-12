@@ -10,6 +10,7 @@
 #include "filtering/stages/LSensitivityStage.h"
 #include "filtering/stages/RegimeMixStage.h"
 #include "filtering/stages/FragileEdgeStage.h"
+#include "filtering/BootstrapConfig.h"
 #include <ostream>
 #include <memory>
 
@@ -47,15 +48,15 @@ namespace palvalidator::filtering
      * @param applyFragileAdvice Whether to apply fragile edge recommendations
      * @param summary Reference to FilteringSummary for tracking results
      */
-    FilteringPipeline(
-      const TradingHurdleCalculator& hurdleCalc,
-      const Num& confidenceLevel,
-      unsigned int numResamples,
-      const RobustnessChecksConfig& robustnessConfig,
-      const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
-      const FragileEdgePolicy& fragileEdgePolicy,
-      bool applyFragileAdvice,
-      FilteringSummary& summary);
+    FilteringPipeline(const TradingHurdleCalculator& hurdleCalc,
+		      const Num& confidenceLevel,
+		      unsigned int numResamples,
+		      const RobustnessChecksConfig& robustnessConfig,
+		      const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
+		      const FragileEdgePolicy& fragileEdgePolicy,
+		      bool applyFragileAdvice,
+		      FilteringSummary& summary,
+		      BootstrapFactory& bootstrapFactory);
 
     /**
      * @brief Execute complete filtering pipeline for a single strategy
@@ -79,9 +80,10 @@ namespace palvalidator::filtering
     stages::RegimeMixStage mRegimeMixStage;
     stages::FragileEdgeStage mFragileEdgeStage;
 
-    // Configuration references
+    // Configuration references (must be before mBootstrapFactory since they're initialized first)
     const RobustnessChecksConfig& mRobustnessConfig;
     const PerformanceFilter::LSensitivityConfig& mLSensitivityConfig;
+    BootstrapFactory& mBootstrapFactory;
 
     /**
      * @brief Execute L-sensitivity stress testing if enabled

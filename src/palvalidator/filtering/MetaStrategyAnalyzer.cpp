@@ -720,15 +720,15 @@ namespace palvalidator
 								   100,              // min size for ACF on monthly
 								   12,               // maxACFLag for monthly
 								   2,                // min L from ACF
-								   6                 // max L from ACF (monthly)
+								   12                 // max L from ACF (monthly)
 								   );
 
       try
 	{
 	  // 3) Construct the bounder (stationary block bootstrap + BCa)
 	  using BoundFutureReturnsT = mkc_timeseries::BoundFutureReturns<Num>;
-	  const double cl = mConfidenceLevel.getAsDouble();
-	  const double pL = 0.10; // lower-tail quantile (10th percentile) for monitoring
+	  const double cl = 0.99;
+	  const double pL = 0.05; // lower-tail quantile (10th percentile) for monitoring
 	  const double pU = 0.90; // upper (not used for gating here, but standard pair)
 	  const std::size_t B = mNumResamples;
 

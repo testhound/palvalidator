@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cstddef>
 #include "randutils.hpp"
+#include "RngUtils.h"
 
 namespace palvalidator
 {
@@ -100,7 +101,7 @@ namespace palvalidator
      * @tparam Rng
      *   Random-number generator type. Defaults to `randutils::mt19937_rng`.
      */
-    template <class Decimal, class Sampler, class Resampler, class Rng = randutils::mt19937_rng>
+    template <class Decimal, class Sampler, class Resampler, class Rng = std::mt19937_64>
     class MOutOfNPercentileBootstrap
     {
     public:
@@ -197,15 +198,73 @@ namespace palvalidator
        *     especially when used with an “m-out-of-n” (\f$m<n\f$) regime.
        */
       Result run(const std::vector<Decimal>& x,
+   Sampler                      sampler,
+   Rng&                         rng,
+   std::size_t                  m_sub_override = 0) const
+      {
+ // Make a copy-per-replicate engine by advancing shared rng (draw a seed per b)
+ // or, cheaper: capture a pointer to rng and use it directly inside resampler if allowed.
+ // Here we draw a 64-bit seed per replicate to create an engine instance deterministically
+ // from rng — preserves behavior while sharing the core.
+
+ return run_core_(x, sampler, m_sub_override,
+    [&rng](std::size_t /*b*/) {
+      std::uniform_int_distribution<uint64_t> U;
+      const uint64_t seed = U(mkc_timeseries::rng_utils::get_engine(rng));
+      auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed); // materialize as lvalue
+      return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
+  });
+      }
+
+      template <class Provider>
+      Result run(const std::vector<Decimal>& x,
 		 Sampler                      sampler,
-		 Rng&                         rng,
+		 const Provider&              provider,
 		 std::size_t                  m_sub_override = 0) const
       {
+	return run_core_(x, sampler, m_sub_override,
+			 [&provider](std::size_t b) {
+			   return provider.make_engine(b);
+			 });
+      }
+
+    private:
+      // Extracted: unsorted type-7 quantile via two nth_element passes
+      static double quantile_type7_via_nth(const std::vector<double>& s, double p)
+      {
+	if (s.empty()) throw std::invalid_argument("quantile_type7_via_nth: empty input");
+	if (p <= 0.0)  return *std::min_element(s.begin(), s.end());
+	if (p >= 1.0)  return *std::max_element(s.begin(), s.end());
+
+	const double nd = static_cast<double>(s.size());
+	const double h  = (nd - 1.0) * p + 1.0;
+	std::size_t i1  = static_cast<std::size_t>(std::floor(h));
+	if (i1 < 1)         i1 = 1;
+	if (i1 >= s.size()) i1 = s.size() - 1;
+	const double frac = h - static_cast<double>(i1);
+
+	std::vector<double> w0(s.begin(), s.end());
+	std::nth_element(w0.begin(), w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1), w0.end());
+	const double x0 = w0[i1 - 1];
+
+	std::vector<double> w1(s.begin(), s.end());
+	std::nth_element(w1.begin(), w1.begin() + static_cast<std::ptrdiff_t>(i1), w1.end());
+	const double x1 = w1[i1];
+
+	return x0 + (x1 - x0) * frac;
+      }
+
+      // Core runner: EngineMaker must support `auto operator()(std::size_t b) -> Engine`
+      template <class EngineMaker>
+      Result run_core_(const std::vector<Decimal>& x,
+		       Sampler                      sampler,
+		       std::size_t                  m_sub_override,
+		       EngineMaker&&                make_engine) const
+      {
 	const std::size_t n = x.size();
-	if (n < 3)
-	  {
-	    throw std::invalid_argument("MOutOfNPercentileBootstrap.run: n must be >= 3");
-	  }
+	if (n < 3) {
+	  throw std::invalid_argument("MOutOfNPercentileBootstrap.run_core_: n must be >= 3");
+	}
 
 	std::size_t m_sub = (m_sub_override > 0)
 	  ? m_sub_override
@@ -215,72 +274,24 @@ namespace palvalidator
 
 	const Decimal theta_hat = sampler(x);
 
-	// Collect bootstrap statistics as doubles (much faster to sort/select & interpolate).
-	std::vector<double> thetas_d;
-	thetas_d.reserve(m_B);
-
-	std::vector<Decimal> y;
-	y.resize(m_sub);
+	std::vector<double> thetas_d; thetas_d.reserve(m_B);
+	std::vector<Decimal> y; y.resize(m_sub);
 
 	std::size_t skipped = 0;
 
-	for (std::size_t b = 0; b < m_B; ++b)
-	  {
-	    // Draw length-m_sub resample with injected resampler
-	    m_resampler(x, y, m_sub, rng);
+	for (std::size_t b = 0; b < m_B; ++b) {
+	  auto rng = make_engine(b);                 // ← per replicate
+	  m_resampler(x, y, m_sub, rng);
 
-	    const Decimal theta_star = sampler(y);
-	    const double  v          = num::to_double(theta_star);
-	    if (!std::isfinite(v))
-	      {
-		++skipped;
-		continue;
-	      }
-	    thetas_d.emplace_back(v);
-	  }
+	  const Decimal theta_star = sampler(y);
+	  const double  v          = num::to_double(theta_star);
+	  if (!std::isfinite(v)) { ++skipped; continue; }
+	  thetas_d.emplace_back(v);
+	}
 
-	if (thetas_d.size() < m_B / 2)
-	  {
-	    throw std::runtime_error("MOutOfNPercentileBootstrap: too many degenerate replicates");
-	  }
-
-	// Hyndman–Fan type-7 via two nth_element passes (linear-time; no full sort).
-	// Helper closure computes type-7 on an UNSORTED vector by selecting neighbors.
-	auto quantile_type7_via_nth = [](const std::vector<double>& s, double p) -> double
-	{
-	  if (s.empty())
-	    {
-	      throw std::invalid_argument("quantile_type7_via_nth: empty input");
-	    }
-	  // Clamp edges with min/max (O(n)).
-	  if (p <= 0.0)
-	    {
-	      return *std::min_element(s.begin(), s.end());
-	    }
-	  if (p >= 1.0)
-	    {
-	      return *std::max_element(s.begin(), s.end());
-	    }
-
-	  const double nd = static_cast<double>(s.size());
-	  const double h  = (nd - 1.0) * p + 1.0;                 // 1-based
-	  std::size_t i1  = static_cast<std::size_t>(std::floor(h)); // in [1, n-1]
-	  if (i1 < 1)                i1 = 1;
-	  if (i1 >= s.size())        i1 = s.size() - 1;
-	  const double frac = h - static_cast<double>(i1);        // in [0,1)
-
-	  // x0 = order statistic at rank (i1) in 1-based → index i1-1 in 0-based
-	  std::vector<double> w0(s.begin(), s.end());
-	  std::nth_element(w0.begin(), w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1), w0.end());
-	  const double x0 = w0[i1 - 1];
-
-	  // x1 = order statistic at rank (i1+1) in 1-based → index i1 in 0-based
-	  std::vector<double> w1(s.begin(), s.end());
-	  std::nth_element(w1.begin(), w1.begin() + static_cast<std::ptrdiff_t>(i1), w1.end());
-	  const double x1 = w1[i1];
-
-	  return x0 + (x1 - x0) * frac;
-	};
+	if (thetas_d.size() < m_B / 2) {
+	  throw std::runtime_error("MOutOfNPercentileBootstrap: too many degenerate replicates");
+	}
 
 	const double alpha = 1.0 - m_CL;
 	const double pl    = alpha / 2.0;
@@ -289,13 +300,10 @@ namespace palvalidator
 	const double lb_d = quantile_type7_via_nth(thetas_d, pl);
 	const double ub_d = quantile_type7_via_nth(thetas_d, pu);
 
-	const Decimal lb = Decimal(lb_d);
-	const Decimal ub = Decimal(ub_d);
-
 	return Result{
 	  /*mean        =*/ theta_hat,
-	  /*lower       =*/ lb,
-	  /*upper       =*/ ub,
+	  /*lower       =*/ Decimal(lb_d),
+	  /*upper       =*/ Decimal(ub_d),
 	  /*cl          =*/ m_CL,
 	  /*B           =*/ m_B,
 	  /*effective_B =*/ thetas_d.size(),
@@ -305,6 +313,7 @@ namespace palvalidator
 	  /*L           =*/ m_resampler.getL()
 	};
       }
+      
     private:
       std::size_t  m_B;
       double       m_CL;

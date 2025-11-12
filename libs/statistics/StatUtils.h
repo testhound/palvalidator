@@ -855,6 +855,54 @@ namespace mkc_timeseries
       return {Decimal(mean), Decimal(var)};
     }
 
+    // Fisher bias-corrected *sample* skewness and *excess* kurtosis.
+    // Returns {skew, exkurt}. For n<4 or zero variance, returns {0,0}.
+    static inline std::pair<double,double>
+    computeSkewAndExcessKurtosis(const std::vector<Decimal>& v)
+    {
+      const std::size_t n = v.size();
+      if (n < 4)
+	return {0.0, 0.0};
+
+      // Use the fast, numerically-stable dispatcher you already have.
+      auto [meanDec, varDec] = StatUtils<Decimal>::computeMeanAndVarianceFast(v);
+      const double mu  = num::to_double(meanDec);
+      double var       = num::to_double(varDec);
+
+      if (var <= 0.0)
+	return {0.0, 0.0};
+
+      const double s   = std::sqrt(var);
+      
+      long double m3 = 0.0L, m4 = 0.0L;
+      for (const auto& xi : v) {
+	const long double z  = static_cast<long double>(num::to_double(xi) - mu);
+	const long double z2 = z * z;
+	m3 += z * z2;
+	m4 += z2 * z2;
+      }
+
+      const long double nl = static_cast<long double>(n);
+      // Fisher (bias-corrected) sample skewness g1
+      const long double g1 = (nl / ((nl - 1.0L) * (nl - 2.0L))) * (m3 / std::pow(static_cast<long double>(s), 3));
+      // Fisher (bias-corrected) *excess* kurtosis g2
+      const long double g2 =
+	( (nl * (nl + 1.0L)) / ((nl - 1.0L) * (nl - 2.0L) * (nl - 3.0L)) ) * (m4 / std::pow(static_cast<long double>(s), 4))
+	- ( 3.0L * std::pow(nl - 1.0L, 2) ) / ( (nl - 2.0L) * (nl - 3.0L) );
+      
+      return { static_cast<double>(g1), static_cast<double>(g2) };
+    }
+
+    // Pragmatic heavy-tail detector: |skew| > SKEW_T or exkurt > EXKURT_T.
+    static inline bool
+    hasHeavyTails(const std::vector<Decimal>& v,
+		  double SKEW_T = 0.8,
+		  double EXKURT_T = 2.0)
+    {
+      const auto [sk, ek] = computeSkewAndExcessKurtosis(v);
+      return (std::fabs(sk) > SKEW_T) || (ek > EXKURT_T);
+    }
+
     /**
      * @brief Computes the sample standard deviation of a vector of Decimal values.
      * @param data The vector of data points.

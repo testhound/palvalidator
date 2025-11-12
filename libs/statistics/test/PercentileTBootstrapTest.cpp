@@ -153,7 +153,7 @@ TEST_CASE("PercentileTBootstrap: run() input validation", "[Bootstrap][Percentil
 
     std::vector<D> tiny{ D(1), D(2) };
     randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
-    randutils::mt19937_rng rng(seed);
+    std::mt19937_64 rng(seed);
 
     PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>> pt(500, 120, 0.95, res);
     REQUIRE_THROWS_AS(pt.run(tiny, mean_sampler, rng), std::invalid_argument);
@@ -177,7 +177,7 @@ TEST_CASE("PercentileTBootstrap: basic behavior with mean sampler (small-n)", "[
 
     StationaryMaskValueResampler<D> res(/*L=*/3);
     randutils::seed_seq_fe128 seed{11u,22u,33u,44u};
-    randutils::mt19937_rng rng(seed);
+    std::mt19937_64 rng(seed);
 
     // Keep runtime reasonable: B_outer=500, B_inner=150
     PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
@@ -209,7 +209,8 @@ TEST_CASE("PercentileTBootstrap: basic behavior with mean sampler (small-n)", "[
 
     SECTION("m overrides are respected")
     {
-        randutils::mt19937_rng rng2(seed);
+        randutils::seed_seq_fe128 seed2{11u,22u,33u,44u};
+        std::mt19937_64 rng2(seed2);
         const std::size_t m_outer = 18; // <= n
         const std::size_t m_inner = 10; // <= m_outer
         auto out2 = pt.run(x, mean_sampler, rng2, m_outer, m_inner);
@@ -219,7 +220,9 @@ TEST_CASE("PercentileTBootstrap: basic behavior with mean sampler (small-n)", "[
 
     SECTION("Higher CL widens the interval (90% vs 95%)")
     {
-        randutils::mt19937_rng rngA(seed), rngB(seed);
+        randutils::seed_seq_fe128 seedA{11u,22u,33u,44u};
+        randutils::seed_seq_fe128 seedB{11u,22u,33u,44u};
+        std::mt19937_64 rngA(seedA), rngB(seedB);
         PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
             pt90(500, 150, 0.90, res),
             pt95(500, 150, 0.95, res);
@@ -251,7 +254,7 @@ TEST_CASE("PercentileTBootstrap: basic behavior with mean sampler (small-n)", "[
 	  {
 	    randutils::seed_seq_fe128 sA{11u,22u,33u,44u, static_cast<uint32_t>(k)};
 	    randutils::seed_seq_fe128 sB{11u,22u,33u,44u, static_cast<uint32_t>(k)};
-	    randutils::mt19937_rng rngA(sA), rngB(sB);
+	    std::mt19937_64 rngA(sA), rngB(sB);
 
 	    const auto a = pt_m1.run(x, mean_sampler, rngA);
 	    const auto b = pt_m2.run(x, mean_sampler, rngB);
@@ -313,7 +316,7 @@ TEST_CASE("PercentileTBootstrap: GeoMeanStat sampler (small- and moderate-n)", "
 
     randutils::seed_seq_fe128 seedA{2025u,10u,30u,1u};
     randutils::seed_seq_fe128 seedB{77u,88u,99u,11u};
-    randutils::mt19937_rng rng_small(seedA), rng_mod(seedB);
+    std::mt19937_64 rng_small(seedA), rng_mod(seedB);
 
     // Keep costs modest, but within guidelines
     PercentileTBootstrap<D, decltype(sampler), StationaryMaskValueResampler<D>>
@@ -348,7 +351,9 @@ TEST_CASE("PercentileTBootstrap: GeoMeanStat sampler (small- and moderate-n)", "
 
     SECTION("Confidence widening for GeoMeanStat (90% vs 95%)")
     {
-        randutils::mt19937_rng rngA(seedA), rngB(seedA);
+        randutils::seed_seq_fe128 seedA_copy{2025u,10u,30u,1u};
+        randutils::seed_seq_fe128 seedB_copy{2025u,10u,30u,1u};
+        std::mt19937_64 rngA(seedA_copy), rngB(seedB_copy);
 
         PercentileTBootstrap<D, decltype(sampler), StationaryMaskValueResampler<D>>
             pt90(/*B_outer=*/500, /*B_inner=*/150, /*CL=*/0.90, res_small),
@@ -395,7 +400,7 @@ TEST_CASE("PercentileT + GeoMean → BCaAnnualizer: ordering, finiteness, and an
     StationaryMaskValueResampler<D> res(/*L=*/3);
 
     randutils::seed_seq_fe128 seed{2025u, 10u, 30u, 2u};
-    randutils::mt19937_rng rng(seed);
+    std::mt19937_64 rng(seed);
 
     // Keep costs moderate; small-n so studentization is affordable
     PercentileTBootstrap<D, decltype(sampler), StationaryMaskValueResampler<D>>

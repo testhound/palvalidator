@@ -54,6 +54,11 @@ namespace palvalidator::filtering::stages
     }
 
     // Execute robustness analyzer (returns a RobustnessResults or similar)
+    // Ensure we have a valid cloned strategy for the bootstrap factory
+    if (!ctx.clonedStrategy) {
+        throw std::runtime_error("RobustnessStage::execute - clonedStrategy is null - cannot proceed with robustness analysis");
+    }
+    
     const auto rob = palvalidator::analysis::RobustnessAnalyzer::runFlaggedStrategyRobustness(
         strategyName,
         ctx.highResReturns,
@@ -61,6 +66,8 @@ namespace palvalidator::filtering::stages
         ctx.annualizationFactor,
         ctx.finalRequiredReturn,
         mCfg,
+        *ctx.clonedStrategy,
+        mBootstrapFactory,
         os);
 
     if (rob.verdict == palvalidator::analysis::RobustnessVerdict::ThumbsDown)
