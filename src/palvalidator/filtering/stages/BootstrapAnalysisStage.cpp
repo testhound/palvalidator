@@ -104,7 +104,7 @@ namespace palvalidator::filtering::stages
     const bool heavy_tails = has_heavy_tails_wide(skew, exkurt);
 
     // Routing (pragmatic): m/n for small N; percentile-t through medium N; extend m/n if heavy tails.
-    bool run_mn = (n <= 40);
+    bool run_mn = palvalidator::bootstrap_helpers::should_run_smallN(n, heavy_tails);
     bool run_pt = (n <= 80);
     if (!run_mn && n <= 60 && heavy_tails) run_mn = true;
     if (n <= 24) run_pt = true; // tiny n → keep t as a second view

@@ -43,6 +43,69 @@ namespace palvalidator::filtering::stages
                                      std::ostream& os) const;
 
   private:
+    // Helper classes for organizing results
+    class LGridPoint
+    {
+    public:
+      LGridPoint(size_t blockLength, const Num& annualizedLowerBound)
+        : mBlockLength(blockLength)
+        , mAnnualizedLowerBound(annualizedLowerBound)
+      {}
+
+      size_t getBlockLength() const { return mBlockLength; }
+      const Num& getAnnualizedLowerBound() const { return mAnnualizedLowerBound; }
+
+    private:
+      size_t mBlockLength;
+      Num mAnnualizedLowerBound;
+    };
+
+    /**
+     * Build the L-grid for sensitivity testing
+     */
+    std::vector<size_t> buildLGrid(const StrategyAnalysisContext& ctx,
+                                    size_t hardCap,
+                                    std::ostream& os) const;
+
+    /**
+     * Run bootstrap for a single L value using small-N conservative method
+     */
+    Num runSmallNBootstrapForL(const StrategyAnalysisContext& ctx,
+                                size_t blockLength,
+                                double annualizationFactor,
+                                bool heavyTails,
+                                std::ostream& os) const;
+
+    /**
+     * Run bootstrap for a single L value using standard BCa method
+     */
+    Num runStandardBootstrapForL(const StrategyAnalysisContext& ctx,
+                                  size_t blockLength,
+                                  double annualizationFactor,
+                                  std::ostream& os) const;
+
+    /**
+     * Compute statistics across all L-grid results
+     */
+    void computeGridStatistics(const std::vector<LGridPoint>& gridResults,
+                                LSensitivityResultSimple& result) const;
+
+    /**
+     * Determine pass/fail based on grid statistics and thresholds
+     */
+    bool evaluatePassCriteria(const LSensitivityResultSimple& result,
+                               const Num& finalRequiredReturn,
+                               size_t gridSize) const;
+
+    /**
+     * Log summary of L-grid results
+     */
+    void logGridSummary(const std::vector<size_t>& grid,
+                        const std::vector<LGridPoint>& gridResults,
+                        const LSensitivityResultSimple& result,
+                        const Num& finalRequiredReturn,
+                        std::ostream& os) const;
+
     const palvalidator::filtering::PerformanceFilter::LSensitivityConfig& mCfg;
     unsigned int mNumResamples;
     Num mConfidenceLevel;
