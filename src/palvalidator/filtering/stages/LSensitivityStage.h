@@ -11,16 +11,8 @@ namespace palvalidator::filtering::stages
   using namespace palvalidator::filtering;
   using palvalidator::bootstrap_cfg::BootstrapFactory;
 
-  struct LSensitivityResultSimple
-  {
-    bool ran{false};
-    bool pass{false};
-    size_t numTested{0};
-    size_t numPassed{0};
-    size_t L_at_min{0};
-    Num minLbAnn{Num(0)};
-    double relVar{0.0};
-  };
+  // Note: LSensitivityResultSimple is now defined in FilteringTypes.h
+  // to avoid circular dependencies and allow reuse by RobustnessAnalyzer
 
   class LSensitivityStage
   {

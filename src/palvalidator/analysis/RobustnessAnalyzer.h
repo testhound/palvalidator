@@ -3,9 +3,11 @@
 #include <vector>
 #include <ostream>
 #include <string>
+#include <optional>
 #include "StatisticalTypes.h"
 #include "number.h"
 #include "filtering/BootstrapConfig.h"
+#include "filtering/FilteringTypes.h"
 
 namespace mkc_timeseries {
     template<class Decimal> class BacktesterStrategy;
@@ -55,7 +57,8 @@ public:
         const RobustnessChecksConfig<Num>& cfg,
         const mkc_timeseries::BacktesterStrategy<Num>& strategy,
         BootstrapFactory& bootstrapFactory,
-        std::ostream& os);
+        std::ostream& os,
+        const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt = std::nullopt);
 
 private:
   // ========== Helper Classes ==========
@@ -176,6 +179,7 @@ private:
       std::ostream& os);
   
   static LSensitivityAnalysis performLSensitivityAnalysis_(
+      const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt,
       const std::vector<Num>& returns,
       size_t L_baseline,
       double annualizationFactor,

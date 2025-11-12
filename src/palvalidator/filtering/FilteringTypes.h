@@ -212,6 +212,26 @@ namespace palvalidator
     // -------------------------------------------------------------------------
 
     /**
+     * @brief Simple result structure for L-sensitivity grid analysis
+     *
+     * This structure captures the key outcomes from running a full L-grid
+     * sensitivity analysis in LSensitivityStage. It can be reused by downstream
+     * stages (e.g., RobustnessStage) to avoid redundant computation.
+     *
+     * Note: Defined before StrategyAnalysisContext since it's used as a member.
+     */
+    struct LSensitivityResultSimple
+    {
+      bool ran{false};        ///< True if the grid analysis was performed
+      bool pass{false};       ///< True if pass criteria were met
+      size_t numTested{0};    ///< Number of L values tested in the grid
+      size_t numPassed{0};    ///< Number of L values that passed the hurdle
+      size_t L_at_min{0};     ///< L value that produced the minimum lower bound
+      Num minLbAnn{Num(0)};   ///< Minimum annualized lower bound across the grid
+      double relVar{0.0};     ///< Relative variance of lower bounds across grid
+    };
+
+    /**
      * @brief Context carrying inputs and intermediate state for per-strategy analysis
      *
      * Note: stores shared_ptr references to existing project types to avoid
@@ -236,6 +256,10 @@ namespace palvalidator
       size_t blockLength{0};
       double annualizationFactor{0.0};
       Num finalRequiredReturn;
+
+      // Cached L-sensitivity grid result (populated by LSensitivityStage if it runs)
+      // Used by RobustnessStage to avoid redundant L-sensitivity computation
+      std::optional<LSensitivityResultSimple> lgrid_result;
 
       StrategyAnalysisContext(
         std::shared_ptr<PalStrategy<Num>> strat,

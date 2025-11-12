@@ -7,6 +7,7 @@
 #include "StatUtils.h"
 #include "DecimalConstants.h"
 #include "filtering/TradingBootstrapFactory.h"
+#include "filtering/FilteringTypes.h"
 #include "BacktesterStrategy.h"
 #include "SmallNBootstrapHelpers.h"
 #include "Annualizer.h"
@@ -29,7 +30,8 @@ namespace palvalidator
     				      const RobustnessChecksConfig<Num>& cfg,
     				      const mkc_timeseries::BacktesterStrategy<Num>& strategy,
     				      BootstrapFactory& bootstrapFactory,
-    				      std::ostream& os)
+    				      std::ostream& os,
+    				      const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt)
     {
       using mkc_timeseries::DecimalConstants;
 
@@ -61,7 +63,7 @@ namespace palvalidator
 
       // Step 2: L-sensitivity analysis
       const auto lSensitivity = performLSensitivityAnalysis_(
-        returns, L_eff, annualizationFactor, baseline.getAnnualizedLB(),
+        gridOpt, returns, L_eff, annualizationFactor, baseline.getAnnualizedLB(),
         cfg, strategy, bootstrapFactory, os);
 
       // Check L-sensitivity bounds
@@ -180,6 +182,7 @@ namespace palvalidator
     }
 
     RobustnessAnalyzer::LSensitivityAnalysis RobustnessAnalyzer::performLSensitivityAnalysis_(
+      const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt,
       const std::vector<Num>& returns,
       size_t L_baseline,
       double annualizationFactor,
@@ -189,9 +192,29 @@ namespace palvalidator
       BootstrapFactory& bootstrapFactory,
       std::ostream& os)
     {
-      // Delegate to existing implementation
+      using mkc_timeseries::DecimalConstants;
+
+      // If we have a precomputed grid result from LSensitivityStage, use it
+      if (gridOpt && gridOpt->ran)
+      {
+        const auto& R = *gridOpt;
+        
+        // Check if any L value failed (LB <= 0)
+        const bool anyFail = (R.numPassed < R.numTested);
+        const Num annMin = R.minLbAnn;
+        const Num annMax = lbAnnual_base;  // Not used downstream; placeholder for compatibility
+        const double relV = R.relVar;
+        
+        os << "   [ROBUST] L-sensitivity (using grid result): "
+           << "min-ann=" << (annMin * DecimalConstants<Num>::DecimalOneHundred)
+           << "%, relVar=" << relV << ", anyFail=" << (anyFail ? "Y" : "N") << "\n";
+        
+        return LSensitivityAnalysis(annMin, annMax, relV, anyFail);
+      }
+
+      // Fallback: run the existing local 3-point sweep (L-1, L, L+1)
       const auto ls = runLSensitivityWithCache_(
-        returns, L_baseline, annualizationFactor, lbAnnual_base, 
+        returns, L_baseline, annualizationFactor, lbAnnual_base,
         cfg, strategy, bootstrapFactory, os);
 
       return LSensitivityAnalysis(ls.ann_min, ls.ann_max, ls.relVar, ls.anyFail);
@@ -604,7 +627,6 @@ namespace palvalidator
       auto evalL = [&](size_t Ltry, int foldTag)
       {
 	if (Ltry == L0) {
-	  os << "  L=" << L0 << " (base);";
 	  return; // baseline already computed by caller
 	}
 
