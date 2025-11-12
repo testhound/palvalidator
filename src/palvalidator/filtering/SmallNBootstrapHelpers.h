@@ -12,6 +12,7 @@
 #include "TradingBootstrapFactory.h"
 #include "BootstrapConfig.h"
 #include "Annualizer.h"
+#include "StatUtils.h"
 
 namespace palvalidator::bootstrap_helpers
 {
@@ -367,6 +368,23 @@ namespace palvalidator::bootstrap_helpers
     const char* resampler_name{""};
   };
 
+    // Forward declaration so the 11-arg legacy overload can delegate to it
+  template <typename Num, typename GeoStat, typename StrategyT>
+  SmallNConservativeResult<Num, GeoStat, StrategyT>
+  conservative_smallN_lower_bound(const std::vector<Num>& returns,
+                                  std::size_t              L,
+                                  double                   annualizationFactor,
+                                  double                   confLevel,
+                                  std::size_t              B,
+                                  double                   rho_m,
+                                  StrategyT&               strategy,
+                                  palvalidator::bootstrap_cfg::BootstrapFactory& bootstrapFactory,
+                                  std::ostream*            os,
+                                  int                      stageTag,
+                                  int                      fold,
+                                  std::optional<bool>      heavy_tails_override);
+
+
   template <typename Num, typename GeoStat, typename StrategyT>
   inline SmallNConservativeResult<Num, GeoStat, StrategyT>
   conservative_smallN_lower_bound(const std::vector<Num>& returns,
@@ -380,211 +398,244 @@ namespace palvalidator::bootstrap_helpers
   		  std::ostream* os = nullptr,
   		  int stageTag = 3, int fold = 0)
   {
-    using mkc_timeseries::DecimalConstants;
+    const auto [skew, exkurt] =
+        mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
+    const bool heavy = has_heavy_tails_wide(skew, exkurt);
+    const std::optional<bool> heavy_override = heavy ? std::optional<bool>(true)
+                                                     : std::nullopt;
 
-    const std::size_t n = returns.size();
-    const double rho = (rho_m > 0.0 ? rho_m : mn_ratio_from_n(n));
-
-    const char* chosenName = nullptr;
-    std::size_t L_small = 0;
-
-    auto out = dispatch_smallN_resampler<Num>(
-					      returns, L,
-					      [&](auto& resampler, double /*ratio_pos*/, bool /*use_block*/, std::size_t Ls){
-						using ResamplerT = std::decay_t<decltype(resampler)>;
-
-						// M-out-of-N
-						GeoStat statGeo;
-						auto [mnBoot, mnCrn] =
-						  bootstrapFactory.template makeMOutOfN<Num, GeoStat, ResamplerT>(
-														  B, confLevel, rho, resampler, strategy, stageTag, /*L*/Ls, fold);
-
-						auto mnR = mnBoot.run(returns, GeoStat(), mnCrn);
-						const Num lbP_mn = mnR.lower;
-
-						// BCa with same resampler (comparability)
-						auto bca = bootstrapFactory.makeBCa<Num>(
-											 returns, B, confLevel, statGeo, resampler, strategy, stageTag, /*L*/Ls, fold);
-						const Num lbP_bca = bca.getLowerBound();
-
-						SmallNConservativeResult<Num, GeoStat, StrategyT> r;
-						r.per_lower     = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
-						r.ann_lower     = mkc_timeseries::Annualizer<Num>::annualize_one(r.per_lower, annualizationFactor);
-						r.m_sub         = mnR.m_sub;
-						r.L_used        = mnR.L;
-						r.effB_mn       = mnR.effective_B;
-						r.effB_bca      = B; // BCa effective_B equals B here
-						return r;
-					      },
-					      &chosenName, &L_small
-					      );
-
-    out.resampler_name = chosenName;
-    out.L_used         = (out.L_used == 0 ? L_small : out.L_used);
-
-    if (os) {
-      (*os) << "   [Bootstrap] SmallNResampler=" << chosenName
-	    << "  (L_small=" << L_small << ")\n";
-    }
-
-    return out;
+    return conservative_smallN_lower_bound<Num, GeoStat, StrategyT>(returns,
+								    L,
+								    annualizationFactor,
+								    confLevel,
+								    B,
+								    rho_m,
+								    strategy,
+								    bootstrapFactory,
+								    os,
+								    stageTag,
+								    fold,
+								    heavy_override);
   }
 
-  template <typename Num, typename GeoStat, typename StrategyT>
-  inline SmallNConservativeResult<Num, GeoStat, StrategyT>
-  conservative_smallN_lower_bound(const std::vector<Num>& returns,
-				  std::size_t L,
-				  double annualizationFactor,
-				  double confLevel,
-				  std::size_t B,
-				  double rho_m,                        // if <=0 → compute via mn_ratio_from_n
-				  StrategyT& strategy,
-				  palvalidator::bootstrap_cfg::BootstrapFactory& bootstrapFactory,
-				  std::ostream* os,
-				  int stageTag, int fold,
-				  std::optional<bool> heavy_tails_override)
+  // tiny traits to detect availability of 'upper' member and getUpperBound()
+namespace detail {
+  template <class T, class = void>
+  struct has_member_upper : std::false_type {};
+  template <class T>
+  struct has_member_upper<T, std::void_t<decltype(std::declval<T>().upper)>> : std::true_type {};
+
+  template <class T, class = void>
+  struct has_getUpperBound : std::false_type {};
+  template <class T>
+  struct has_getUpperBound<T, std::void_t<decltype(std::declval<T>().getUpperBound())>> : std::true_type {};
+}
+
+template <typename Num, typename GeoStat, typename StrategyT>
+inline SmallNConservativeResult<Num, GeoStat, StrategyT>
+conservative_smallN_lower_bound(const std::vector<Num>& returns,
+                                std::size_t              L,
+                                double                   annualizationFactor,
+                                double                   confLevel,
+                                std::size_t              B,
+                                double                   rho_m,   // if <=0 → compute via mn_ratio_from_n
+                                StrategyT&               strategy,
+                                palvalidator::bootstrap_cfg::BootstrapFactory& bootstrapFactory,
+                                std::ostream*            os,       // optional stage logger
+                                int                      stageTag,
+                                int                      fold,
+                                std::optional<bool>      heavy_tails_override)
+{
+  using IIDResampler  = mkc_timeseries::IIDResampler<Num>;
+  using BlockValueRes = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+
+  const std::size_t n   = returns.size();
+  const double      rho = (rho_m > 0.0 ? rho_m : mn_ratio_from_n(n));
+
+  // Small-N dependence proxies (cheap and deterministic)
+  const double      ratio_pos = sign_positive_ratio(returns);
+  const std::size_t runlen    = longest_sign_run(returns);
+  const std::size_t L_small   = clamp_smallL(L);
+
+  // Decide resampler with optional heavy-tail override + tiny MC guard
+  bool use_block = false;
+  if (heavy_tails_override.has_value()) {
+    use_block = *heavy_tails_override;  // true = block, false = IID
+  }
+  else
+    {
+    const bool choose_block_fast = choose_block_smallN(ratio_pos, n, runlen);
+    if (choose_block_fast) {
+      use_block = true;
+    }
+    else if (n <= 40) {
+      using palvalidator::bootstrap_helpers::internal::borderline_run_exceeds_MC95;
+      use_block = borderline_run_exceeds_MC95(n, ratio_pos, runlen);
+    }
+    else {
+      use_block = false;
+    }
+  }
+
+  const char* chosenName = use_block
+    ? "StationaryMaskValueResamplerAdapter(small L)"
+    : "IIDResampler";
+
+  SmallNConservativeResult<Num, GeoStat, StrategyT> r{};
+  r.L_used = L_small;
+
+  // z for two-sided CL (for CI→σ back-out)
+  const double z = z_from_two_sided_CL(confLevel);
+
+  // ---------- Run engines on the chosen resampler ----------
+  if (use_block)
   {
-    using mkc_timeseries::DecimalConstants;
-    using IIDResampler  = mkc_timeseries::IIDResampler<Num>;
-    using BlockValueRes = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+    BlockValueRes resampler(L_small);
 
-    const std::size_t n   = returns.size();
-    const double      rho = (rho_m > 0.0 ? rho_m : mn_ratio_from_n(n));
+    // m-out-of-n on SAME resampler
+    GeoStat statGeo;
+    auto [mnBoot, mnCrn] =
+      bootstrapFactory.template makeMOutOfN<Num, GeoStat, BlockValueRes>(
+        B, confLevel, rho, resampler, strategy, stageTag, /*L*/L_small, fold);
 
-    // Small-N dependence proxies
-    const double      ratio_pos = sign_positive_ratio(returns);
-    const std::size_t runlen    = longest_sign_run(returns);
-    const std::size_t L_small   = clamp_smallL(L);
+    auto mnR      = mnBoot.run(returns, GeoStat(), mnCrn);
+    const Num lbP_mn = mnR.lower;
 
-    // --- Decide resampler with optional heavy-tail override and MC guard ------
-    bool use_block = false;
-
-    if (heavy_tails_override.has_value()) {
-      // Caller (e.g., LSensitivity) forces the choice based on widened tails
-      use_block = *heavy_tails_override;  // true = block, false = IID
-    }
-    else
-      {
-	// First: cheap heuristic (sign-imbalance OR obvious streakiness)
-	const bool choose_block_fast = choose_block_smallN(ratio_pos, n, runlen);
-
-	if (choose_block_fast)
-	  {
-	    use_block = true;
-	  }
-	else if (n <= 40)
-	  {
-	    // Borderline zone: consult a tiny MC 1-sided runs test at 95% quantile
-	    using palvalidator::bootstrap_helpers::internal::borderline_run_exceeds_MC95;
-	    use_block = borderline_run_exceeds_MC95(n, ratio_pos, runlen);
-	  }
-	else
-	  {
-	    use_block = false; // large-n → IID unless overridden elsewhere
-	  }
-      }
-
-    const char* chosenName = use_block
-      ? "StationaryMaskValueResamplerAdapter(small L)"
-      : "IIDResampler";
-
-    // ------------------------- Run the engines on the chosen resampler --------
-    SmallNConservativeResult<Num, GeoStat, StrategyT> r{};
-    r.L_used = L_small;
-
-    if (use_block)
-      {
-	BlockValueRes resampler(L_small);
-
-	// m-out-of-n on SAME resampler
-	GeoStat statGeo;
-	auto [mnBoot, mnCrn] =
-	  bootstrapFactory.template makeMOutOfN<Num, GeoStat, BlockValueRes>(B,
-									     confLevel,
-									     rho,
-									     resampler,
-									     strategy,
-									     stageTag,
-									     /*L*/L_small,
-									     fold);
-
-	auto mnR      = mnBoot.run(returns, GeoStat(), mnCrn);
-	const double mn_ratio   = (n > 0) ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n)) : 0.0;
-	const double shrinkRate = 1.0 - mn_ratio;
-
-	if (os) {
-	  (*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
-		<< "  n=" << n
-		<< "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
-		<< "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
-		<< "\n";
-	}
-	
-	const Num lbP_mn  = mnR.lower;
-
-	// BCa on SAME resampler
-	auto bca     = bootstrapFactory.makeBCa<Num>(
-						     returns, B, confLevel, statGeo, resampler,
-						     strategy, stageTag, /*L*/L_small, fold);
-	const Num lbP_bca = bca.getLowerBound();
-
-	r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
-	r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(r.per_lower, annualizationFactor);
-	r.m_sub     = mnR.m_sub;
-	r.effB_mn   = mnR.effective_B;
-	r.effB_bca  = B;
-      }
-    else
-      {
-	IIDResampler resampler;
-
-	// m-out-of-n on SAME resampler
-	GeoStat statGeo;
-	auto [mnBoot, mnCrn] =
-	  bootstrapFactory.template makeMOutOfN<Num, GeoStat, IIDResampler>(B,
-									    confLevel,
-									    rho,
-									    resampler,
-									    strategy,
-									    stageTag,
-									    /*L*/L_small,
-									    fold);
-
-	auto mnR      = mnBoot.run(returns, GeoStat(), mnCrn);
-
-	const double mn_ratio   = (n > 0) ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n)) : 0.0;
-	const double shrinkRate = 1.0 - mn_ratio;
-
-	if (os) {
-	  (*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
-		<< "  n=" << n
-		<< "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
-		<< "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
-		<< "\n";
-	}
-	
-	const Num lbP_mn  = mnR.lower;
-
-	// BCa on SAME resampler
-	auto bca     = bootstrapFactory.makeBCa<Num>(
-						     returns, B, confLevel, statGeo, resampler,
-						     strategy, stageTag, /*L*/L_small, fold);
-	const Num lbP_bca = bca.getLowerBound();
-
-	r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
-	r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(r.per_lower, annualizationFactor);
-	r.m_sub     = mnR.m_sub;
-	r.effB_mn   = mnR.effective_B;
-	r.effB_bca  = B;
-      }
-
-    r.resampler_name = chosenName;
-
+    // Log m_sub/n shrink
+    const double mn_ratio   = (n > 0) ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n)) : 0.0;
+    const double shrinkRate = 1.0 - mn_ratio;
     if (os) {
-      (*os) << "   [Bootstrap] SmallNResampler=" << chosenName
-	    << "  (L_small=" << L_small << ")\n";
+      (*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
+            << "  n=" << n
+            << "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
+            << "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
+            << "\n";
     }
 
-    return r;
+    // Try to log an effective σ from CI width if 'upper' is available on mnR
+    if (os) {
+      if constexpr (detail::has_member_upper<decltype(mnR)>::value) {
+        const double width = std::max(0.0, num::to_double(mnR.upper - mnR.lower));
+        const double sigma = (z > 0.0) ? (width / (2.0 * z)) : std::numeric_limits<double>::quiet_NaN();
+	const double var = (sigma * sigma) * 100.0;
+	(*os) << "   [Diag] m/n σ(per-period)≈ " << sigma
+              << "  var≈ " << var
+              << "  effB=" << mnR.effective_B
+              << "  L=" << mnR.L
+              << "\n";
+      } else {
+        (*os) << "   [Diag] m/n σ: skipped (no two-sided CI available)\n";
+      }
+    }
+
+    // BCa on SAME resampler
+    auto bca      = bootstrapFactory.makeBCa<Num>(
+                      returns, B, confLevel, statGeo, resampler,
+                      strategy, stageTag, /*L*/L_small, fold);
+    const Num lbP_bca = bca.getLowerBound();
+
+    // Try to log an effective σ from CI width if getUpperBound() exists
+    if (os) {
+      if constexpr (detail::has_getUpperBound<decltype(bca)>::value) {
+        const Num ubP_bca = bca.getUpperBound();
+        const double width = std::max(0.0, num::to_double(ubP_bca - lbP_bca));
+        const double sigma = (z > 0.0) ? (width / (2.0 * z)) : std::numeric_limits<double>::quiet_NaN();
+	const double var = (sigma * sigma) * 100.0;
+        (*os) << "   [Diag] BCa σ(per-period)≈ " << sigma
+              << "  var≈ " << var
+              << "  effB=" << B
+              << "  L=" << L_small
+              << "\n";
+      } else {
+        (*os) << "   [Diag] BCa σ: skipped (upper bound API not available)\n";
+      }
+    }
+
+    // Combine (conservative: min of engines)
+    r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
+    r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(r.per_lower, annualizationFactor);
+    r.m_sub     = mnR.m_sub;                // from MOutOfN result
+    r.effB_mn   = mnR.effective_B;          // number of usable replicates
+    r.effB_bca  = B;                        // BCa effective_B equals B here
   }
+  else
+  {
+    IIDResampler resampler;
+
+    // m-out-of-n on SAME resampler
+    GeoStat statGeo;
+    auto [mnBoot, mnCrn] =
+      bootstrapFactory.template makeMOutOfN<Num, GeoStat, IIDResampler>(
+        B, confLevel, rho, resampler, strategy, stageTag, /*L*/L_small, fold);
+
+    auto mnR      = mnBoot.run(returns, GeoStat(), mnCrn);
+    const Num lbP_mn = mnR.lower;
+
+    // Log m_sub/n shrink
+    const double mn_ratio   = (n > 0) ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n)) : 0.0;
+    const double shrinkRate = 1.0 - mn_ratio;
+    if (os) {
+      (*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
+            << "  n=" << n
+            << "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
+            << "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
+            << "\n";
+    }
+
+    // Try to log an effective σ from CI width if 'upper' is available on mnR
+    if (os) {
+      if constexpr (detail::has_member_upper<decltype(mnR)>::value) {
+        const double width = std::max(0.0, num::to_double(mnR.upper - mnR.lower));
+        const double sigma = (z > 0.0) ? (width / (2.0 * z)) : std::numeric_limits<double>::quiet_NaN();
+	const double var = (sigma * sigma) * 100.0;
+        (*os) << "   [Diag] m/n σ(per-period)≈ " << sigma
+              << "  var≈ " << var
+              << "  effB=" << mnR.effective_B
+              << "  L=" << mnR.L
+              << "\n";
+      } else {
+        (*os) << "   [Diag] m/n σ: skipped (no two-sided CI available)\n";
+      }
+    }
+
+    // BCa on SAME resampler
+    auto bca      = bootstrapFactory.makeBCa<Num>(
+                      returns, B, confLevel, statGeo, resampler,
+                      strategy, stageTag, /*L*/L_small, fold);
+    const Num lbP_bca = bca.getLowerBound();
+
+    // Try to log an effective σ from CI width if getUpperBound() exists
+    if (os) {
+      if constexpr (detail::has_getUpperBound<decltype(bca)>::value) {
+        const Num ubP_bca = bca.getUpperBound();
+        const double width = std::max(0.0, num::to_double(ubP_bca - lbP_bca));
+        const double sigma = (z > 0.0) ? (width / (2.0 * z)) : std::numeric_limits<double>::quiet_NaN();
+	const double var = (sigma * sigma) * 100.0;
+        (*os) << "   [Diag] BCa σ(per-period)≈ " << sigma
+              << "  var≈ " << var
+              << "  effB=" << B
+              << "  L=" << L_small
+              << "\n";
+      } else {
+        (*os) << "   [Diag] BCa σ: skipped (upper bound API not available)\n";
+      }
+    }
+
+    // Combine (conservative: min of engines)
+    r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
+    r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(r.per_lower, annualizationFactor);
+    r.m_sub     = mnR.m_sub;                // from MOutOfN result
+    r.effB_mn   = mnR.effective_B;          // number of usable replicates
+    r.effB_bca  = B;                        // BCa effective_B equals B here
+  }
+
+  r.resampler_name = chosenName;
+
+  if (os) {
+    (*os) << "   [Bootstrap] SmallNResampler=" << r.resampler_name
+          << "  (L_small=" << L_small << ")\n";
+  }
+
+  return r;
+}
 } // namespace palvalidator::bootstrap_helpers
