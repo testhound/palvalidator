@@ -369,7 +369,8 @@ namespace palvalidator::bootstrap_helpers
   };
 
     // Forward declaration so the 11-arg legacy overload can delegate to it
-  template <typename Num, typename GeoStat, typename StrategyT>
+  template <typename Num, typename GeoStat, typename StrategyT,
+            typename BootstrapFactoryT = palvalidator::bootstrap_cfg::BootstrapFactory>
   SmallNConservativeResult<Num, GeoStat, StrategyT>
   conservative_smallN_lower_bound(const std::vector<Num>& returns,
                                   std::size_t              L,
@@ -378,14 +379,15 @@ namespace palvalidator::bootstrap_helpers
                                   std::size_t              B,
                                   double                   rho_m,
                                   StrategyT&               strategy,
-                                  palvalidator::bootstrap_cfg::BootstrapFactory& bootstrapFactory,
+                                  BootstrapFactoryT&       bootstrapFactory,
                                   std::ostream*            os,
                                   int                      stageTag,
                                   int                      fold,
                                   std::optional<bool>      heavy_tails_override);
 
 
-  template <typename Num, typename GeoStat, typename StrategyT>
+  template <typename Num, typename GeoStat, typename StrategyT,
+            typename BootstrapFactoryT = palvalidator::bootstrap_cfg::BootstrapFactory>
   inline SmallNConservativeResult<Num, GeoStat, StrategyT>
   conservative_smallN_lower_bound(const std::vector<Num>& returns,
   		  std::size_t L,
@@ -394,7 +396,7 @@ namespace palvalidator::bootstrap_helpers
   		  std::size_t B,
   		  double rho_m,                        // if <=0 → compute via mn_ratio_from_n
   		  StrategyT& strategy,
-  		  palvalidator::bootstrap_cfg::BootstrapFactory& bootstrapFactory,
+  		  BootstrapFactoryT& bootstrapFactory,
   		  std::ostream* os = nullptr,
   		  int stageTag = 3, int fold = 0)
   {
@@ -404,7 +406,7 @@ namespace palvalidator::bootstrap_helpers
     const std::optional<bool> heavy_override = heavy ? std::optional<bool>(true)
                                                      : std::nullopt;
 
-    return conservative_smallN_lower_bound<Num, GeoStat, StrategyT>(returns,
+    return conservative_smallN_lower_bound<Num, GeoStat, StrategyT, BootstrapFactoryT>(returns,
 								    L,
 								    annualizationFactor,
 								    confLevel,
@@ -431,7 +433,8 @@ namespace detail {
   struct has_getUpperBound<T, std::void_t<decltype(std::declval<T>().getUpperBound())>> : std::true_type {};
 }
 
-template <typename Num, typename GeoStat, typename StrategyT>
+template <typename Num, typename GeoStat, typename StrategyT,
+          typename BootstrapFactoryT>
 inline SmallNConservativeResult<Num, GeoStat, StrategyT>
 conservative_smallN_lower_bound(const std::vector<Num>& returns,
                                 std::size_t              L,
@@ -440,7 +443,7 @@ conservative_smallN_lower_bound(const std::vector<Num>& returns,
                                 std::size_t              B,
                                 double                   rho_m,   // if <=0 → compute via mn_ratio_from_n
                                 StrategyT&               strategy,
-                                palvalidator::bootstrap_cfg::BootstrapFactory& bootstrapFactory,
+                                BootstrapFactoryT&       bootstrapFactory,
                                 std::ostream*            os,       // optional stage logger
                                 int                      stageTag,
                                 int                      fold,
@@ -529,7 +532,7 @@ conservative_smallN_lower_bound(const std::vector<Num>& returns,
     }
 
     // BCa on SAME resampler
-    auto bca      = bootstrapFactory.makeBCa<Num>(
+    auto bca      = bootstrapFactory.template makeBCa<Num>(
                       returns, B, confLevel, statGeo, resampler,
                       strategy, stageTag, /*L*/L_small, fold);
     const Num lbP_bca = bca.getLowerBound();
@@ -599,7 +602,7 @@ conservative_smallN_lower_bound(const std::vector<Num>& returns,
     }
 
     // BCa on SAME resampler
-    auto bca      = bootstrapFactory.makeBCa<Num>(
+    auto bca      = bootstrapFactory.template makeBCa<Num>(
                       returns, B, confLevel, statGeo, resampler,
                       strategy, stageTag, /*L*/L_small, fold);
     const Num lbP_bca = bca.getLowerBound();
