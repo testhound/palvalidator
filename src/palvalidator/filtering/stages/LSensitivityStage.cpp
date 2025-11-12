@@ -1,6 +1,9 @@
 #include "filtering/stages/LSensitivityStage.h"
+#include "filtering/TradingBootstrapFactory.h"
 #include "BiasCorrectedBootstrap.h"
+#include "StationaryMaskResamplers.h"
 #include "StatUtils.h"
+#include "SmallNBootstrapHelpers.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
@@ -16,10 +19,12 @@ namespace palvalidator::filtering::stages
 
   LSensitivityStage::LSensitivityStage(const palvalidator::filtering::PerformanceFilter::LSensitivityConfig& cfg,
                                        unsigned int numResamples,
-                                       const Num& confidenceLevel)
+                                       const Num& confidenceLevel,
+                                       BootstrapFactory& bootstrapFactory)
     : mCfg(cfg)
     , mNumResamples(numResamples)
     , mConfidenceLevel(confidenceLevel)
+    , mBootstrapFactory(bootstrapFactory)
   {}
 
   /**
@@ -138,125 +143,173 @@ namespace palvalidator::filtering::stages
    * @param ctx  StrategyAnalysisContext containing backtest results, returns,
    *             and configuration for this strategy.
    */
-  LSensitivityResultSimple LSensitivityStage::execute(const StrategyAnalysisContext& ctx,
-                                                      size_t L_cap,
-                                                      double annualizationFactor,
-                                                      const Num& finalRequiredReturn,
-                                                      std::ostream& os) const
+LSensitivityResultSimple
+LSensitivityStage::execute(const StrategyAnalysisContext& ctx,
+                           size_t L_cap,
+                           double annualizationFactor,
+                           const Num& finalRequiredReturn,
+                           std::ostream& os) const
+{
+  namespace bh  = palvalidator::bootstrap_helpers;
+  namespace bhi = palvalidator::bootstrap_helpers::internal;
+  using mkc_timeseries::DecimalConstants;
+  using GeoStat      = mkc_timeseries::GeoMeanStat<Num>;
+  using BCaResampler = mkc_timeseries::StationaryBlockResampler<Num>;
+
+  LSensitivityResultSimple R;
+  const size_t n = ctx.highResReturns.size();
+  if (n < 20) {
+    os << "      [L-grid] Skipped (n<20).\n";
+    return R;
+  }
+
+  const auto [skew, exkurt] =
+    StatUtils<Num>::computeSkewAndExcessKurtosis(ctx.highResReturns);
+  const bool heavy_tails_wide =
+    palvalidator::bootstrap_helpers::has_heavy_tails_wide(skew, exkurt);
+
+  // Cap L to a safe range
+  const size_t hardCap = std::max<size_t>(2, std::min(L_cap, n - 1));
+
+  // Build the L grid (keeps your existing helper/behavior in this TU)
+  std::vector<size_t> grid;
+  if (!mCfg.Lgrid.empty()) {
+    grid = mCfg.Lgrid;
+    grid.erase(std::remove_if(grid.begin(), grid.end(),
+                              [&](size_t L){ return L < 2 || L >= n || L > hardCap; }),
+               grid.end());
+    std::sort(grid.begin(), grid.end());
+    grid.erase(std::unique(grid.begin(), grid.end()), grid.end());
+    const size_t Lc = std::max<size_t>(2, std::min(static_cast<size_t>(ctx.blockLength), hardCap));
+    if (!grid.empty() && !std::binary_search(grid.begin(), grid.end(), Lc))
+      grid.insert(std::lower_bound(grid.begin(), grid.end(), Lc), Lc);
+    else if (grid.empty())
+      grid.push_back(Lc);
+  } else {
+    grid = makeDefaultLGrid(ctx.blockLength, n, hardCap);
+  }
+
+  if (grid.empty()) {
+    os << "      [L-grid] No feasible L values after capping.\n";
+    return R;
+  }
+
+  // Policy: use conservative small-N engine (min of m/n & BCa on same resampler) for n ≤ 40.
+  const bool use_smallN = (n <= 40);
+
+  R.ran = true;
+  R.numTested = 0;
+  R.numPassed = 0;
+  R.minLbAnn  = Num(std::numeric_limits<double>::infinity());
+  R.L_at_min  = 0;
+
+  std::vector<Num> lbs; lbs.reserve(grid.size());
+  std::vector<std::pair<size_t, Num>> perL;
+
+  for (size_t L : grid)
   {
-    LSensitivityResultSimple R;
-    const size_t n = ctx.highResReturns.size();
-    if (n < 20) {
-      os << "      [L-grid] Skipped (n<20).\n";
-      return R;
-    }
+    Num lbAnn;
 
-    const size_t hardCap = std::max<size_t>(2, std::min(L_cap, n - 1));
-    std::vector<size_t> grid;
-
-    if (!mCfg.Lgrid.empty())
+    if (use_smallN)
     {
-      grid = mCfg.Lgrid;
-      grid.erase(std::remove_if(grid.begin(), grid.end(),
-                                [&](size_t L){ return L < 2 || L >= n || L > hardCap; }),
-                 grid.end());
-      std::sort(grid.begin(), grid.end());
-      grid.erase(std::unique(grid.begin(), grid.end()), grid.end());
-      const size_t Lc = std::max<size_t>(2, std::min(static_cast<size_t>(ctx.blockLength), hardCap));
-      if (!grid.empty() && !std::binary_search(grid.begin(), grid.end(), Lc))
-        grid.insert(std::lower_bound(grid.begin(), grid.end(), Lc), Lc);
-      else if (grid.empty())
-        grid.push_back(Lc);
+      if (!ctx.clonedStrategy) {
+	throw std::runtime_error("LSensitivityStage::execute: clonedStrategy is null (small-N path)");
+      }
+      
+      // Consolidated small-N runner: picks IID vs Block (small L), runs m/n & BCa, returns min
+
+      auto s = bh::conservative_smallN_lower_bound<Num, GeoStat>(
+              ctx.highResReturns,
+              L,
+              annualizationFactor,
+              mConfidenceLevel.getAsDouble(),
+              mNumResamples,
+              /*rho_m*/ -1.0,
+              *ctx.clonedStrategy,
+              mBootstrapFactory,
+              &os, /*stageTag*/2, 0,
+              heavy_tails_wide); 
+
+      lbAnn = s.ann_lower;
+
+      os << "        L=" << L << " [SmallN: "
+         << (s.resampler_name ? s.resampler_name : "n/a")
+         << ", m_sub=" << s.m_sub
+         << ", L_small=" << s.L_used
+         << "] → Ann GM LB = "
+         << (lbAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
     }
     else
     {
-      grid = makeDefaultLGrid(ctx.blockLength, n, hardCap);
-    }
+      // Larger-N fallback: BCa(Geo) with full stationary block resampler at L
+      BCaResampler sampler(L);
+      std::function<Num(const std::vector<Num>&)> geoFn = GeoStat();
 
-    if (grid.empty()) {
-      os << "      [L-grid] No feasible L values after capping.\n";
-      return R;
-    }
-
-    GeoMeanStat<Num> statGeo;
-    Num minLb = Num(std::numeric_limits<double>::infinity());
-    size_t L_at_min = 0;
-    size_t passCount = 0;
-    std::vector<Num> lbs; lbs.reserve(grid.size());
-    R.ran = true;
-
-    std::vector<std::pair<size_t, Num>> perL;
-    for (size_t L : grid) {
-      StationaryBlockResampler<Num> sampler(L);
-      BCaBootStrap<Num, StationaryBlockResampler<Num>> bcaGeo(ctx.highResReturns, mNumResamples, mConfidenceLevel.getAsDouble(), statGeo, sampler);
-      const Num lbGeoPeriod = bcaGeo.getLowerBound();
-      BCaAnnualizer<Num> annualizer(bcaGeo, annualizationFactor);
-      const Num lbGeoAnn = annualizer.getAnnualizedLowerBound();
-      R.numTested++;
-      if (lbGeoAnn < minLb)
-	{
-	  minLb = lbGeoAnn;
-	  L_at_min = L;
-	}
-
-      if (lbGeoAnn > finalRequiredReturn)
-	++passCount;
-
-      lbs.push_back(lbGeoAnn);
-      perL.emplace_back(L, lbGeoAnn);
-    }
-
-    R.minLbAnn = minLb;
-    R.L_at_min = L_at_min;
-    R.numPassed = passCount;
-
-// Compute relVar with a tiny μ-floor for stability when μ≈0
-    auto meanFn = [](const std::vector<Num>& v){
-      Num s = Num(0); for (auto x: v) s += x; return s / Num(v.size());
-    };
-
-    const Num mu = meanFn(lbs);
-    Num ss = Num(0);
-    for (auto x : lbs) {
-      const Num d = x - mu;
-      ss += d * d;
-    }
-    const Num var = ss / Num(lbs.size());
-
-    // ε is in "annualized return" units; tiny but nonzero.
-    const Num eps = Num(1e-8);
-    const Num mu2 = std::max(mu * mu, eps);
-    R.relVar = (var / mu2).getAsDouble();
-
-    const double frac = (grid.empty() ? 0.0 : double(passCount) / double(grid.size()));
-    bool pass = (frac >= mCfg.minPassFraction);
-
-    if (pass && mCfg.minGapTolerance > 0.0)
-      {
-	const Num gap = finalRequiredReturn - minLb;
-	if (gap > Num(mCfg.minGapTolerance))
-	  pass = false;
+      if (!ctx.clonedStrategy) {
+        throw std::runtime_error("LSensitivityStage::execute: clonedStrategy is null - cannot proceed with bootstrap analysis");
       }
 
-    R.pass = pass;
+      auto bcaGeo = mBootstrapFactory.makeBCa<Num>(ctx.highResReturns,
+                                                   mNumResamples,
+                                                   mConfidenceLevel.getAsDouble(),
+                                                   geoFn,
+                                                   std::move(sampler),
+                                                   *ctx.clonedStrategy,
+                                                   /*stageTag*/2, /*L*/L, /*fold*/0);
 
-    os << "      [L-grid] Tested L = ";
-    for (size_t i = 0; i < grid.size(); ++i) { os << grid[i]; if (i + 1 < grid.size()) os << ", "; }
-    os << "\n";
+      lbAnn = mkc_timeseries::BCaAnnualizer<Num>(bcaGeo, annualizationFactor).getAnnualizedLowerBound();
 
-    for (const auto& kv : perL) {
-      const auto L = kv.first;
-      const auto lbAnn = kv.second;
-      os << "        L=" << L << ": Ann GM LB = "
-         << (lbAnn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%"
-         << (lbAnn > finalRequiredReturn ? "  (PASS)" : "  (FAIL)") << "\n";
+      os << "        L=" << L << " [BCa]: Ann GM LB = "
+         << (lbAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
     }
 
-    os << "        → pass fraction = " << (100.0 * frac) << "%, "
-       << "min LB at L=" << R.L_at_min
-       << ", min LB = " << (R.minLbAnn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+    ++R.numTested;
+    if (lbAnn < R.minLbAnn) { R.minLbAnn = lbAnn; R.L_at_min = L; }
+    if (lbAnn > finalRequiredReturn) ++R.numPassed;
 
-    return R;
+    lbs.push_back(lbAnn);
+    perL.emplace_back(L, lbAnn);
   }
+
+  // relVar over annualized LBs
+  auto meanFn = [](const std::vector<Num>& v){
+    Num s = Num(0); for (auto x : v) s += x; return s / Num(v.size());
+  };
+  const Num mu = meanFn(lbs);
+  Num ss = Num(0);
+  for (auto x : lbs) { const Num d = x - mu; ss += d * d; }
+  const Num var = ss / Num(lbs.size());
+  const Num eps = Num(1e-8);
+  const Num mu2 = std::max(mu * mu, eps);
+  R.relVar = (var / mu2).getAsDouble();
+
+  const double frac = (grid.empty() ? 0.0 : double(R.numPassed) / double(grid.size()));
+  bool pass = (frac >= mCfg.minPassFraction);
+
+  if (pass && mCfg.minGapTolerance > 0.0) {
+    const Num gap = finalRequiredReturn - R.minLbAnn;
+    if (gap > Num(mCfg.minGapTolerance)) pass = false;
+  }
+  R.pass = pass;
+
+  // Summary logging
+  os << "      [L-grid] Tested L = ";
+  for (size_t i = 0; i < grid.size(); ++i) { os << grid[i]; if (i + 1 < grid.size()) os << ", "; }
+  os << "\n";
+
+  for (const auto& kv : perL) {
+    const auto L = kv.first;
+    const auto lbAnn = kv.second;
+    os << "        L=" << L << ": Ann GM LB = "
+       << (lbAnn * DecimalConstants<Num>::DecimalOneHundred) << "%"
+       << (lbAnn > finalRequiredReturn ? "  (PASS)" : "  (FAIL)") << "\n";
+  }
+
+  os << "        → pass fraction = " << (100.0 * frac) << "%, "
+     << "min LB at L=" << R.L_at_min
+     << ", min LB = " << (R.minLbAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+
+  return R;
+}
 
 } // namespace palvalidator::filtering::stages

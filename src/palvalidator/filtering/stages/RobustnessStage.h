@@ -1,6 +1,7 @@
 #pragma once
 
 #include "filtering/FilteringTypes.h"
+#include "filtering/BootstrapConfig.h"
 #include <ostream>
 
 namespace palvalidator::analysis {
@@ -14,6 +15,7 @@ namespace palvalidator::analysis {
 namespace palvalidator::filtering::stages
 {
   using namespace palvalidator::filtering;
+  using palvalidator::bootstrap_cfg::BootstrapFactory;
 
   /**
    * @brief Stage responsible for running robustness checks (split-sample, tail-risk, L-sensitivity)
@@ -27,8 +29,8 @@ namespace palvalidator::filtering::stages
   class RobustnessStage
   {
   public:
-    RobustnessStage(const RobustnessChecksConfig& cfg, FilteringSummary& summary)
-      : mCfg(cfg), mSummary(summary)
+    RobustnessStage(const RobustnessChecksConfig& cfg, FilteringSummary& summary, BootstrapFactory& bootstrapFactory)
+      : mCfg(cfg), mSummary(summary), mBootstrapFactory(bootstrapFactory)
     {}
 
     /**
@@ -54,6 +56,7 @@ namespace palvalidator::filtering::stages
   private:
     const RobustnessChecksConfig& mCfg;
     FilteringSummary& mSummary;
+    BootstrapFactory& mBootstrapFactory;
   };
 
 } // namespace palvalidator::filtering::stages

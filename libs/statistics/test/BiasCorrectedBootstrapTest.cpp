@@ -17,6 +17,7 @@
 #include "TestUtils.h"
 #include "number.h"
 #include "randutils.hpp"
+#include "RngUtils.h"
 #include "ClosedPositionHistory.h"
 #include "MonthlyReturnsBuilder.h"
 #include "BoundFutureReturns.h"
@@ -28,6 +29,21 @@ using namespace boost::gregorian;
 
 // Symbol constant used in tests
 const static std::string myCornSymbol("@C");
+
+template <class BaseProvider>
+struct PermutingProvider {
+    using Engine = typename BaseProvider::Engine;
+    PermutingProvider(BaseProvider base, std::vector<size_t> perm)
+        : base_(std::move(base)), perm_(std::move(perm)) {}
+
+    Engine make_engine(std::size_t b) const {
+        const std::size_t pb = perm_[b]; // remapped replicate index
+        return base_.make_engine(pb);
+    }
+
+    BaseProvider base_;
+    std::vector<size_t> perm_;
+};
 
 TEST_CASE("createSliceIndicesForBootstrap Tests", "[Slicer]")
 {
@@ -1030,4 +1046,297 @@ TEST_CASE("BoundFutureReturns: 20-month dataset yields stable bounds (Stationary
     bfr.usePointPolicy();
     REQUIRE(bfr.getLowerBound() == q10_point);
     REQUIRE(bfr.getUpperBound() == q90_point);
+}
+
+
+TEST_CASE("BCaBootStrap + CRNRng: deterministic across runs (Stationary blocks)", "[BCaBootStrap][CRN][Determinism][Stationary]") {
+    using D = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+    using Provider = mkc_timeseries::rng_utils::CRNRng<Eng>;
+
+    // Mildly autocorrelated-ish toy series (positive and negative clusters)
+    std::vector<D> returns;
+    for (int k = 0; k < 40; ++k) {
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("0.002"));
+    }
+
+    const unsigned B  = 1000;
+    const double   cl = 0.95;
+    const unsigned L  = 3;
+
+    Resamp sampler(L);
+
+    // Stable CRN provider (same masterSeed/strategyId/stage/L -> same replicate streams)
+    const uint64_t masterSeed = 0xDEADBEEFCAFEBABEull;
+    const uint64_t strategyId = 0x1122334455667788ull;
+    const uint64_t stageTag   = 1; // Bootstrap
+
+    Provider crn(mkc_timeseries::rng_utils::CRNKey(masterSeed)
+		 .with_tags({ strategyId, stageTag, static_cast<uint64_t>(L), 0ull })
+		 );
+
+    // Two independent runs with the same provider must match bit-for-bit
+    BCaBootStrap<D, Resamp, Eng, Provider> bca1(returns, B, cl, &StatUtils<D>::computeMean, sampler, crn);
+    BCaBootStrap<D, Resamp, Eng, Provider> bca2(returns, B, cl, &StatUtils<D>::computeMean, sampler, crn);
+
+    auto lo1 = bca1.getLowerBound();
+    auto hi1 = bca1.getUpperBound();
+    auto mu1 = bca1.getMean();
+
+    auto lo2 = bca2.getLowerBound();
+    auto hi2 = bca2.getUpperBound();
+    auto mu2 = bca2.getMean();
+
+    REQUIRE(num::to_double(lo1) == Catch::Approx(num::to_double(lo2)).epsilon(0));
+    REQUIRE(num::to_double(hi1) == Catch::Approx(num::to_double(hi2)).epsilon(0));
+    REQUIRE(num::to_double(mu1) == Catch::Approx(num::to_double(mu2)).epsilon(0));
+}
+
+TEST_CASE("BCaBootStrap + CRNRng: changing CRN L alters replicate streams (usually alters bounds)",
+          "[BCaBootStrap][CRN][Sensitivity][Stationary]") {
+    using D = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+    using Provider = mkc_timeseries::rng_utils::CRNRng<Eng>;
+
+    // Same dataset as above
+    std::vector<D> returns;
+    for (int k = 0; k < 40; ++k) {
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("0.002"));
+    }
+
+    const unsigned B  = 1000;
+    const double   cl = 0.95;
+
+    // CRN base (same seed/strategy/stage)
+    const uint64_t masterSeed = 0xDEADBEEFCAFEBABEull;
+    const uint64_t strategyId = 0x1122334455667788ull;
+    const uint64_t stageTag   = 1; // Bootstrap
+
+    // Two different L values => different per-replicate engines
+    const unsigned L3 = 3, L4 = 4;
+    Resamp pol3(L3), pol4(L4);
+
+    Provider crn3(mkc_timeseries::rng_utils::CRNKey(masterSeed)
+		  .with_tags({ strategyId, stageTag, static_cast<uint64_t>(L3), 0ull })
+		  );
+    Provider crn4(mkc_timeseries::rng_utils::CRNKey(masterSeed)
+		  .with_tags({ strategyId, stageTag, static_cast<uint64_t>(L4), 0ull })
+		  );
+ 
+
+    BCaBootStrap<D, Resamp, Eng, Provider> bca3(returns, B, cl, &StatUtils<D>::computeMean, pol3, crn3);
+    BCaBootStrap<D, Resamp, Eng, Provider> bca4(returns, B, cl, &StatUtils<D>::computeMean, pol4, crn4);
+
+    auto lo3 = bca3.getLowerBound();
+    auto hi3 = bca3.getUpperBound();
+    auto lo4 = bca4.getLowerBound();
+    auto hi4 = bca4.getUpperBound();
+
+    // We don't assert strict inequality on both (to avoid rare flakiness), just that at least one differs.
+    bool bounds_differ = (num::to_double(lo3) != num::to_double(lo4)) || (num::to_double(hi3) != num::to_double(hi4));
+    REQUIRE(bounds_differ);
+}
+
+TEST_CASE("BCaBootStrap + CRNRng: deterministic with IID resampler too", "[BCaBootStrap][CRN][Determinism][IID]") {
+    using D = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = IIDResampler<D, Eng>;
+    using Provider = mkc_timeseries::rng_utils::CRNRng<Eng>;
+
+    // Lightly skewed IID-looking series
+    std::vector<D> returns = {
+        createDecimal("0.012"), createDecimal("-0.006"), createDecimal("0.007"),
+        createDecimal("0.004"), createDecimal("-0.011"), createDecimal("0.018"),
+        createDecimal("0.000"), createDecimal("0.009"), createDecimal("0.010"),
+        createDecimal("-0.003"), createDecimal("0.006"), createDecimal("0.013")
+    };
+
+    const unsigned B  = 1200;
+    const double   cl = 0.95;
+
+    Resamp sampler; // IID
+
+    const uint64_t masterSeed = 0xFACEFACEFACEFACEull;
+    const uint64_t strategyId = 0x0F1E2D3C4B5A6978ull;
+    const uint64_t stageTag   = 1;
+
+    mkc_timeseries::rng_utils::CRNRng<Eng> crn(mkc_timeseries::rng_utils::CRNKey(masterSeed)
+					       .with_tags({ strategyId, stageTag, 0ull, 0ull }));
+    
+    mkc_timeseries::rng_utils::CRNRng<Eng> crn_again(mkc_timeseries::rng_utils::CRNKey(masterSeed)
+						     .with_tags({ strategyId, stageTag, 0ull, 0ull }));
+    BCaBootStrap<D, Resamp, Eng, Provider> bca1(returns, B, cl, &StatUtils<D>::computeMean, sampler, crn);
+    BCaBootStrap<D, Resamp, Eng, Provider> bca2(returns, B, cl, &StatUtils<D>::computeMean, sampler, crn_again);
+
+    REQUIRE(num::to_double(bca1.getLowerBound()) == Catch::Approx(num::to_double(bca2.getLowerBound())).epsilon(0));
+    REQUIRE(num::to_double(bca1.getUpperBound()) == Catch::Approx(num::to_double(bca2.getUpperBound())).epsilon(0));
+    REQUIRE(num::to_double(bca1.getMean())       == Catch::Approx(num::to_double(bca2.getMean())).epsilon(0));
+}
+
+
+TEST_CASE("BCaBootStrap + CRNRng: replicate-order independence (permuted vs identity)", "[BCaBootStrap][CRN][OrderIndependence]") {
+    using D       = DecimalType;
+    using Eng     = randutils::mt19937_rng;
+    using Resamp  = StationaryBlockResampler<D, Eng>;
+    using CRNProv = mkc_timeseries::rng_utils::CRNRng<Eng>;
+    using PermProv= PermutingProvider<CRNProv>;
+
+    // A dataset with mild dependence structure (clusters of +/-)
+    std::vector<D> returns;
+    for (int k = 0; k < 40; ++k) {
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("0.002"));
+    }
+
+    const unsigned B  = 1000;
+    const double   cl = 0.95;
+    const unsigned L  = 3;
+
+    Resamp sampler(L);
+
+    // Same CRN base for both runs
+    const uint64_t masterSeed = 0xBADC0FFEE0DDF00Dull;
+    const uint64_t strategyId = 0x1234567890ABCDEFull;
+    const uint64_t stageTag   = 1; // Bootstrap
+
+    CRNProv crn(mkc_timeseries::rng_utils::CRNKey(masterSeed)
+		.with_tags({ strategyId, stageTag, static_cast<uint64_t>(L), 0ull }));
+
+    // Identity permutation
+    std::vector<size_t> idperm(B);
+    std::iota(idperm.begin(), idperm.end(), 0);
+
+    // Scrambled permutation simulating different iteration/chunk orders
+    std::vector<size_t> scrperm = idperm;
+    std::reverse(scrperm.begin(), scrperm.end());
+    std::rotate(scrperm.begin(), scrperm.begin() + 7, scrperm.end());
+
+    PermProv prov_id(crn, idperm);
+    PermProv prov_scr(crn, scrperm);
+
+    // BCa with identity order
+    BCaBootStrap<D, Resamp, Eng, PermProv> bca_id(returns, B, cl, &StatUtils<D>::computeMean, sampler, prov_id);
+
+    // BCa with scrambled order
+    BCaBootStrap<D, Resamp, Eng, PermProv> bca_scr(returns, B, cl, &StatUtils<D>::computeMean, sampler, prov_scr);
+
+    // Results MUST be identical (order-independent)
+    auto lo_id = bca_id.getLowerBound();
+    auto hi_id = bca_id.getUpperBound();
+    auto mu_id = bca_id.getMean();
+
+    auto lo_sc = bca_scr.getLowerBound();
+    auto hi_sc = bca_scr.getUpperBound();
+    auto mu_sc = bca_scr.getMean();
+
+    REQUIRE(num::to_double(lo_id) == Catch::Approx(num::to_double(lo_sc)).epsilon(0));
+    REQUIRE(num::to_double(hi_id) == Catch::Approx(num::to_double(hi_sc)).epsilon(0));
+    REQUIRE(num::to_double(mu_id) == Catch::Approx(num::to_double(mu_sc)).epsilon(0));
+}
+
+TEST_CASE("IIDResampler in-place operator(): size, domain, overwrite, equivalence", "[Resampler][IID][InPlace]") {
+    using D = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    // Source sample with distinct values so we can check membership easily
+    const std::size_t xn = 128;
+    std::vector<D> x; x.reserve(xn);
+    for (std::size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    // Target length
+    const std::size_t n = 500;
+
+    // Prepare two identical RNGs so we can compare to the return-by-value overload
+    randutils::seed_seq_fe128 seed{2025u, 11u, 12u, 42u};
+    randutils::mt19937_rng rng_val(seed);
+    randutils::mt19937_rng rng_ip (seed);
+
+    Policy pol;
+
+    // Return-by-value path
+    std::vector<D> y_val = pol(x, n, rng_val);
+
+    // In-place path – verify it resizes and overwrites
+    std::vector<D> y_ip(7, D(-999));  // non-matching sentinel contents/size
+    pol(x, y_ip, n, rng_ip);
+
+    // 1) size must match
+    REQUIRE(y_ip.size() == n);
+
+    // 2) values must be from x's domain [0..xn-1]
+    for (const auto& v : y_ip) {
+        const double vd = num::to_double(v);
+        REQUIRE(vd >= 0.0);
+        REQUIRE(vd < static_cast<double>(xn));
+    }
+
+    // 3) Equivalence: with identical RNG state, in-place equals return-by-value
+    REQUIRE(y_ip == y_val);
+
+    // 4) Overwrite check: calling again should change (advance RNG state)
+    pol(x, y_ip, n, rng_ip);
+    REQUIRE(y_ip != y_val); // very high probability; if flaky, compare first 10 elems differ
+}
+
+TEST_CASE("StationaryBlockResampler in-place operator(): size, domain, equivalence", "[Resampler][Stationary][InPlace]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // Monotone source so contiguity and domain checks are easy
+    const std::size_t xn = 200;
+    std::vector<D> x; x.reserve(xn);
+    for (std::size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    // Output length and mean block length
+    const std::size_t n = 600;
+    const std::size_t L = 4;
+    Policy pol(L);
+
+    // Two identical RNGs to match sequences across overloads
+    randutils::seed_seq_fe128 seed{1234u, 5678u, 91011u, 1213u};
+    randutils::mt19937_rng rng_val(seed);
+    randutils::mt19937_rng rng_ip (seed);
+
+    // Return-by-value
+    std::vector<D> y_val = pol(x, n, rng_val);
+
+    // In-place
+    std::vector<D> y_ip; // empty; must be resized
+    pol(x, y_ip, n, rng_ip);
+
+    // 1) size must match and non-empty
+    REQUIRE(y_ip.size() == n);
+
+    // 2) values must lie in domain [0..xn-1]
+    for (const auto& v : y_ip) {
+        const double vd = num::to_double(v);
+        REQUIRE(vd >= 0.0);
+        REQUIRE(vd < static_cast<double>(xn));
+    }
+
+    // 3) Equivalence with identical RNG state
+    REQUIRE(y_ip == y_val);
+
+    // 4) Basic contiguity sanity (should be substantial for L=4)
+    std::size_t adjacent = 0;
+    for (std::size_t t = 0; t + 1 < y_ip.size(); ++t) {
+        int cur = static_cast<int>(num::to_double(y_ip[t]));
+        int nxt = static_cast<int>(num::to_double(y_ip[t + 1]));
+        if (nxt == (cur + 1) % static_cast<int>(xn)) adjacent++;
+    }
+    const double frac_adj = static_cast<double>(adjacent) / static_cast<double>(n - 1);
+    REQUIRE(frac_adj > 0.50); // conservative threshold; already covered more tightly elsewhere
 }

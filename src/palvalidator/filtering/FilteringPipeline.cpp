@@ -1,30 +1,104 @@
 #include "filtering/FilteringPipeline.h"
 #include "analysis/DivergenceAnalyzer.h"
 #include "DecimalConstants.h"
+#include "SmallNBootstrapHelpers.h"
 #include <sstream>
+
+namespace
+{
+  template <typename NumT>
+  void dumpHighResReturns_(const std::vector<NumT>& r, std::ostream& os,
+                           std::size_t max_head = 12, std::size_t max_tail = 12)
+  {
+    using mkc_timeseries::DecimalConstants;
+    const std::size_t n = r.size();
+    if (n == 0)
+      {
+	os << "   [Diag] highResReturns: <empty>\n";
+	return;
+      }
+
+    // Basic stats
+    NumT sum = DecimalConstants<NumT>::DecimalZero;
+    NumT rmin = r[0], rmax = r[0];
+    std::size_t pos = 0;
+    for (const auto& v : r)
+      {
+	sum = sum + v;
+	if (v < rmin)
+	  rmin = v;
+	if (v > rmax)
+	  rmax = v;
+	if (v > DecimalConstants<NumT>::DecimalZero)
+	  ++pos;
+      }
+    const double mean = (n ? (sum / NumT(static_cast<int>(n))).getAsDouble() : 0.0);
+    const double pctPos = 100.0 * static_cast<double>(pos) / static_cast<double>(n);
+
+    // Longest sign run (very lightweight dependence proxy)
+    auto sign = [&](const NumT& v){ return (v > DecimalConstants<NumT>::DecimalZero) ? 1 : (v < DecimalConstants<NumT>::DecimalZero ? -1 : 0); };
+    int last = sign(r[0]);
+    std::size_t curRun = 1, bestRun = 1;
+    for (std::size_t i = 1; i < n; ++i) {
+      const int s = sign(r[i]);
+      if (s == last && s != 0)
+	{
+	  ++curRun;
+	}
+      else
+	{
+	  bestRun = std::max(bestRun, curRun);
+	  curRun = 1;
+	  last = s;
+	}
+    }
+    bestRun = std::max(bestRun, curRun);
+
+    os << "   [Diag] highResReturns: n=" << n
+       << "  mean=" << std::setprecision(10) << mean
+       << "  min="  << rmin
+       << "  max="  << rmax
+       << "  %>0="  << pctPos << "%  longestSignRun=" << bestRun << "\n";
+
+    // Head/Tail print
+    const std::size_t showHead = std::min(max_head, n);
+    const std::size_t showTail = (n > max_head ? std::min(max_tail, n - showHead) : 0);
+    if (showHead) {
+      os << "   [Diag] head(" << showHead << "):";
+      for (std::size_t i = 0; i < showHead; ++i) os << " [" << i << "]=" << r[i];
+      os << "\n";
+    }
+    if (showTail) {
+      os << "   [Diag] tail(" << showTail << "):";
+      for (std::size_t i = n - showTail; i < n; ++i) os << " [" << i << "]=" << r[i];
+      os << "\n";
+    }
+  }
+}
 
 namespace palvalidator::filtering
 {
   using mkc_timeseries::DecimalConstants;
 
-  FilteringPipeline::FilteringPipeline(
-    const TradingHurdleCalculator& hurdleCalc,
-    const Num& confidenceLevel,
-    unsigned int numResamples,
-    const RobustnessChecksConfig& robustnessConfig,
-    const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
-    const FragileEdgePolicy& fragileEdgePolicy,
-    bool applyFragileAdvice,
-    FilteringSummary& summary)
+  FilteringPipeline::FilteringPipeline(const TradingHurdleCalculator& hurdleCalc,
+				       const Num& confidenceLevel,
+				       unsigned int numResamples,
+				       const RobustnessChecksConfig& robustnessConfig,
+				       const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
+				       const FragileEdgePolicy& fragileEdgePolicy,
+				       bool applyFragileAdvice,
+				       FilteringSummary& summary,
+				       BootstrapFactory& bootstrapFactory)
     : mBacktestingStage()
-    , mBootstrapStage(confidenceLevel, numResamples)
+    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory)
     , mHurdleStage(hurdleCalc)
-    , mRobustnessStage(robustnessConfig, summary)
-    , mLSensitivityStage(lSensitivityConfig, numResamples, confidenceLevel)
+    , mRobustnessStage(robustnessConfig, summary, bootstrapFactory)
+    , mLSensitivityStage(lSensitivityConfig, numResamples, confidenceLevel, bootstrapFactory)
     , mRegimeMixStage(confidenceLevel, numResamples)
     , mFragileEdgeStage(fragileEdgePolicy, applyFragileAdvice)
     , mRobustnessConfig(robustnessConfig)
     , mLSensitivityConfig(lSensitivityConfig)
+    , mBootstrapFactory(bootstrapFactory)
   {
   }
 
@@ -32,6 +106,9 @@ namespace palvalidator::filtering
 						       StrategyAnalysisContext& ctx,
 						       std::ostream& os)
   {
+    namespace bhi = palvalidator::bootstrap_helpers::internal;
+    using mkc_timeseries::DecimalConstants;
+
     // ──────────────────────────────────────────────────────────────────────────
     // Stage 1: Backtesting
     // GATE: Requires sufficient data (legacy behavior)
@@ -39,7 +116,7 @@ namespace palvalidator::filtering
     auto backtestDecision = mBacktestingStage.execute(ctx, os);
     if (!backtestDecision.passed())
       {
-        return backtestDecision; // Fail-fast: insufficient data
+	return backtestDecision; // Fail-fast: insufficient data
       }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -51,15 +128,23 @@ namespace palvalidator::filtering
 
     if (!bootstrap.computationSucceeded)
       {
-        std::string reason = bootstrap.failureReason.empty()
+	std::string reason = bootstrap.failureReason.empty()
 	  ? "Bootstrap analysis produced invalid results (unknown reason)"
 	  : bootstrap.failureReason;
-        os << "✗ Strategy filtered out: Bootstrap analysis failed - " << reason << "\n";
-        return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
+
+	os << "✗ Strategy filtered out: Bootstrap analysis failed - " << reason << "\n";
+	return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
+      }
+
+    const bool kLogReturnsOnSuccess = false; // flip to true when debugging
+    if (kLogReturnsOnSuccess)
+      {
+	os << "   [Diag] Dumping highResReturns (bootstrap succeeded):\n";
+	dumpHighResReturns_(ctx.highResReturns, os, /*head*/12, /*tail*/12);
       }
 
     // Persist diagnostics in context for later stages
-    ctx.blockLength = bootstrap.blockLength;
+    ctx.blockLength        = bootstrap.blockLength;
     ctx.annualizationFactor = mBootstrapStage.computeAnnualizationFactor(ctx);
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -72,8 +157,11 @@ namespace palvalidator::filtering
 
     if (!hurdle.passed())
       {
-        os << "      → Gate: FAIL vs cost-stressed hurdles.\n\n";
-        return FilterDecision::Fail(
+	os << "   [Diag] Dumping highResReturns after bootstrap hurdle failure:\n";
+	dumpHighResReturns_(ctx.highResReturns, os, /*head*/12, /*tail*/12);
+
+	os << "      → Gate: FAIL vs cost-stressed hurdles.\n\n";
+	return FilterDecision::Fail(
 				    FilterDecisionType::FailHurdle,
 				    "Failed cost-stressed hurdles");
       }
@@ -81,28 +169,44 @@ namespace palvalidator::filtering
     os << "      → Gate: PASS vs cost-stressed hurdles.\n";
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Single Source-of-Truth Bootstrap Gate (Pipeline-level)
+    // Single Source-of-Truth Bootstrap Gate (Pipeline-level, hurdle-aware)
     //
-    // Compare the bootstrap’s conservative ANNUALIZED Geo LB against the
-    // ANNUALIZED hurdle produced by the Hurdle stage. We avoid any per-period
-    // vs annualized ambiguity, and we avoid double-gating.
-    //
-    // Note: if you later expose per-method annualized LBs (BCa, m/n, t),
-    // you can optionally implement AND-gate for n<=24 here. For now,
-    // the conservative LB equals min-of-LBs and is a solid, simple gate.
+    // Recombine the per-engine per-period GEO LBs using the near-hurdle combiner
+    // now that the hurdle is known, then annualize for gating.
+    // Fallback to the stage's neutral combined LB if parts are unavailable.
     // ──────────────────────────────────────────────────────────────────────────
-    const bool bootstrapPasses =
-      (bootstrap.annualizedLowerBoundGeo > hurdle.finalRequiredReturn);
+    Num geoPerForGate = bootstrap.lbGeoPeriod; // start from neutral pick
+    if (bootstrap.lbGeoSmallNPeriod || bootstrap.lbGeoPTPeriod)
+      {
+	std::vector<Num> parts;
+	if (bootstrap.lbGeoSmallNPeriod) parts.push_back(*bootstrap.lbGeoSmallNPeriod);
+	if (bootstrap.lbGeoPTPeriod)     parts.push_back(*bootstrap.lbGeoPTPeriod);
 
-    os << "   [Pipeline] Bootstrap gate (annualized): "
-       << "GeoLB=" << (bootstrap.annualizedLowerBoundGeo * DecimalConstants<Num>::DecimalOneHundred) << "% "
-       << "vs Hurdle=" << (hurdle.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "% → "
+	const double annUsed =
+	  (bootstrap.annFactorUsed > 0.0) ? bootstrap.annFactorUsed
+	  : ctx.annualizationFactor; // safety fallback
+
+	geoPerForGate = bhi::combine_LBs_with_near_hurdle<Num>(
+							       parts,
+							       annUsed,
+							       ctx.finalRequiredReturn,   // annualized hurdle
+							       /*proximity_bps=*/75.0);   // switch to min near hurdle
+      }
+
+    const Num annGeoForGate =
+      mkc_timeseries::Annualizer<Num>::annualize_one(geoPerForGate, ctx.annualizationFactor);
+
+    const bool bootstrapPasses = (annGeoForGate > ctx.finalRequiredReturn);
+
+    os << "   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): "
+       << "GeoLB=" << (annGeoForGate * DecimalConstants<Num>::DecimalOneHundred) << "% "
+       << "vs Hurdle=" << (ctx.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "% → "
        << (bootstrapPasses ? "PASS" : "FAIL") << "\n";
 
     if (!bootstrapPasses)
       {
-        os << "✗ Strategy filtered out: Bootstrap lower bound failed to exceed hurdle\n\n";
-        return FilterDecision::Fail(
+	os << "✗ Strategy filtered out: Bootstrap lower bound failed to exceed hurdle\n\n";
+	return FilterDecision::Fail(
 				    FilterDecisionType::FailHurdle,
 				    "Bootstrap lower bound below required return");
       }
@@ -113,14 +217,13 @@ namespace palvalidator::filtering
     // ──────────────────────────────────────────────────────────────────────────
     const auto divergence =
       palvalidator::analysis::DivergenceAnalyzer::assessAMGMDivergence(
-								       bootstrap.annualizedLowerBoundGeo,
+								       annGeoForGate,
 								       bootstrap.annualizedLowerBoundMean,
 								       /*absThresh=*/0.05,
 								       /*relThresh=*/0.30);
 
     const bool nearHurdle =
-      (bootstrap.annualizedLowerBoundGeo
-       <= (ctx.finalRequiredReturn + mRobustnessConfig.borderlineAnnualMargin));
+      (annGeoForGate <= (ctx.finalRequiredReturn + mRobustnessConfig.borderlineAnnualMargin));
 
     const bool smallN =
       (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
@@ -129,12 +232,12 @@ namespace palvalidator::filtering
 
     if (mustRobust)
       {
-        auto robustnessDecision =
+	auto robustnessDecision =
 	  mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os);
 
-        if (!robustnessDecision.passed())
+	if (!robustnessDecision.passed())
 	  {
-            return robustnessDecision; // Fail-fast: robustness failed
+	    return robustnessDecision; // Fail-fast: robustness failed
 	  }
       }
 
@@ -149,7 +252,7 @@ namespace palvalidator::filtering
 
     if (!lSensitivityDecision.passed())
       {
-        return lSensitivityDecision; // Fail-fast: L-sensitivity failed
+	return lSensitivityDecision; // Fail-fast: L-sensitivity failed
       }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -159,7 +262,7 @@ namespace palvalidator::filtering
     auto regimeMixDecision = mRegimeMixStage.execute(ctx, bootstrap, hurdle, os);
     if (!regimeMixDecision.passed())
       {
-        return regimeMixDecision; // Fail-fast: regime-mix failed
+	return regimeMixDecision; // Fail-fast: regime-mix failed
       }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -170,7 +273,7 @@ namespace palvalidator::filtering
       mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
     if (!fragileEdgeDecision.passed())
       {
-        return fragileEdgeDecision; // Fail-fast: fragile edge drop
+	return fragileEdgeDecision; // Fail-fast: fragile edge drop
       }
 
     // ──────────────────────────────────────────────────────────────────────────
