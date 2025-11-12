@@ -146,7 +146,10 @@ namespace palvalidator::filtering::stages
       std::size_t smallN_m_sub = 0, smallN_L_used = 0, smallN_effB_mn = 0;
 
       if (run_mn) {
-	auto smallN = conservative_smallN_lower_bound<Num, mkc_timeseries::GeoMeanStat<Num>>(
+	// If heavy tails detected, force block resampler; otherwise let heuristics/MC guard decide.
+        std::optional<bool> heavy_override = heavy_tails ? std::optional<bool>(true)
+                                                         : std::nullopt;
+        auto smallN = conservative_smallN_lower_bound<Num, mkc_timeseries::GeoMeanStat<Num>>(
 											     ctx.highResReturns,
 											     L,
 											     annFactor,
@@ -155,8 +158,8 @@ namespace palvalidator::filtering::stages
 											     /*rho_m<=0 → auto*/ -1.0,
 											     *ctx.clonedStrategy,
 											     mBootstrapFactory,
-											     &os, /*stage*/1, /*fold*/0);
-
+											     &os, /*stage*/1, /*fold*/0,
+											     /*heavy_tails_override=*/heavy_override);
 	lbGeo_smallN_per = smallN.per_lower;
 	lbGeo_smallN_ann = smallN.ann_lower;
 	smallN_resampler = smallN.resampler_name ? smallN.resampler_name : "n/a";
