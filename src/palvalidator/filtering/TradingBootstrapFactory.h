@@ -1,0 +1,222 @@
+// TradingBootstrapFactory.h
+#pragma once
+#include <cstdint>
+#include <vector>
+#include <functional>
+#include "BiasCorrectedBootstrap.h"
+#include "RngUtils.h"
+#include "StatUtils.h"
+#include "randutils.hpp"
+#include "BacktesterStrategy.h"
+#include "MOutOfNPercentileBootstrap.h"
+#include "PercentileTBootstrap.h"
+
+// Bring BCaBootStrap into scope
+using mkc_timeseries::BCaBootStrap;
+using mkc_timeseries::IIDResampler;
+using mkc_timeseries::StationaryBlockResampler;
+
+template<class Engine = randutils::mt19937_rng>
+class TradingBootstrapFactory
+{
+public:
+  explicit TradingBootstrapFactory(uint64_t masterSeed) : m_masterSeed(masterSeed) {}
+
+  // ========== Overloads accepting BacktesterStrategy (calls hashCode()) ==========
+
+  // Full control: custom statFn + BacktesterStrategy object
+  template<class Decimal, class Resampler>
+  auto makeBCa(const std::vector<Decimal>& returns,
+               unsigned B, double CL,
+               std::function<Decimal(const std::vector<Decimal>&)> statFn,
+               Resampler sampler,
+               const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+               uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+  {
+    return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
+                       strategy.hashCode(), stageTag, L, fold);
+  }
+
+  // Convenience: default statistic (mean) + BacktesterStrategy object
+  template<class Decimal, class Resampler>
+  auto makeBCa(const std::vector<Decimal>& returns,
+               unsigned B, double CL,
+               Resampler sampler,
+               const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+               uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+  {
+    using Stat = mkc_timeseries::StatUtils<Decimal>;
+    return makeBCaImpl(returns, B, CL,
+                       std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
+                       std::move(sampler), strategy.hashCode(), stageTag, L, fold);
+  }
+
+  // ========== Overloads accepting raw uint64_t strategy ID ==========
+
+  // Full control: custom statFn + raw strategy ID
+  template<class Decimal, class Resampler>
+  auto makeBCa(const std::vector<Decimal>& returns,
+               unsigned B, double CL,
+               std::function<Decimal(const std::vector<Decimal>&)> statFn,
+               Resampler sampler,
+               uint64_t strategyId,
+               uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+  {
+    return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
+                       strategyId, stageTag, L, fold);
+  }
+
+  // Convenience: default statistic (mean) + raw strategy ID
+  template<class Decimal, class Resampler>
+  auto makeBCa(const std::vector<Decimal>& returns,
+               unsigned B, double CL,
+               Resampler sampler,
+               uint64_t strategyId,
+               uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+  {
+    using Stat = mkc_timeseries::StatUtils<Decimal>;
+    return makeBCaImpl(returns, B, CL,
+                       std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
+                       std::move(sampler), strategyId, stageTag, L, fold);
+  }
+
+  // ===========================================================================
+  //                    MOutOfNPercentileBootstrap
+  // ===========================================================================
+
+  // Returns (bootstrap, CRNRng) so you can call run(...) later.
+  template<class Decimal, class Sampler, class Resampler>
+  auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
+                   const Resampler& resampler,
+                   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+                   uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+
+    Bootstrap mn(B, CL, m_ratio, resampler);
+    return { std::move(mn), std::move(crn) };
+  }
+
+  // Raw strategyId
+  template<class Decimal, class Sampler, class Resampler>
+  auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
+                   const Resampler& resampler,
+                   uint64_t strategyId,
+                   uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    Bootstrap mn(B, CL, m_ratio, resampler);
+    return { std::move(mn), std::move(crn) };
+  }
+
+
+  // ===========================================================================
+  //                     PercentileTBootstrap
+  // ===========================================================================
+
+  // Returns (bootstrap, CRNRng); Executor defaults to SingleThreadExecutor
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makePercentileT(std::size_t B_outer, std::size_t B_inner,
+                       double CL,
+                       const Resampler& resampler,
+                       const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+                       uint64_t stageTag, uint64_t L, uint64_t fold,
+                       double m_ratio_outer = 1.0,
+                       double m_ratio_inner = 1.0)
+    -> std::pair<
+         palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+
+    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
+    return { std::move(pt), std::move(crn) };
+  }
+
+  // Raw strategyId
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makePercentileT(std::size_t B_outer, std::size_t B_inner,
+                       double CL,
+                       const Resampler& resampler,
+                       uint64_t strategyId,
+                       uint64_t stageTag, uint64_t L, uint64_t fold,
+                       double m_ratio_outer = 1.0,
+                       double m_ratio_inner = 1.0)
+    -> std::pair<
+         palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
+    return { std::move(pt), std::move(crn) };
+  }
+
+
+private:
+  uint64_t m_masterSeed;
+
+  // Common implementation used by all overloads
+  template<class Decimal, class Resampler>
+  auto makeBCaImpl(const std::vector<Decimal>& returns,
+                   unsigned B, double CL,
+                   std::function<Decimal(const std::vector<Decimal>&)> statFn,
+                   Resampler sampler,
+                   uint64_t strategyHash,
+                   uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+  {
+    using Provider = mkc_timeseries::rng_utils::CRNEngineProvider<Engine>;
+    using Key      = mkc_timeseries::rng_utils::CRNKey;
+
+    Provider prov(
+      Key(m_masterSeed)
+        .with_tag(strategyHash)
+        .with_tags({ stageTag, L, fold })
+    );
+
+    return BCaBootStrap<Decimal, Resampler, Engine, Provider>(
+      returns, B, CL, std::move(statFn), std::move(sampler), prov
+    );
+  }
+
+  // Build a CRNKey from domain tags (handy if you compose CRN outside)
+  inline mkc_timeseries::rng_utils::CRNKey
+  makeCRNKey(uint64_t strategyId, uint64_t stageTag, uint64_t L, uint64_t fold) const
+  {
+    using mkc_timeseries::rng_utils::CRNKey;
+
+    return CRNKey(m_masterSeed)
+              .with_tag(strategyId)
+              .with_tags({ stageTag, L, fold });
+  }
+};
