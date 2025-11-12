@@ -105,6 +105,11 @@ namespace palvalidator::bootstrap_helpers
     return (std::fabs(skew) >= 0.90) || (exkurt >= 1.20);
   }
 
+  inline bool should_run_smallN(std::size_t n, bool heavy_tails)
+  {
+    return (n <= 40) || ( (n <= 60) && heavy_tails );
+  }
+  
   inline bool choose_block_smallN(double ratio_pos,
                                 std::size_t n,
                                 std::size_t longest_run,
