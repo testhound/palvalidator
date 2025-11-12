@@ -144,3 +144,56 @@ TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife returns n finite stats
     // Variation: for a monotone x and delete-block L>=2, jk means should not be all identical
     REQUIRE(maxv > minv);
 }
+
+TEST_CASE("StationaryMaskValueResamplerAdapter: L=1 reports correctly", "[Resampler][Adapter][L=1][Report]")
+{
+    using D = num::DefaultNumber;
+
+    // Construct adapter with L=1. After the ctor change, it should report exactly 1.
+    MaskValueResamplerAdapter<D> adp(/*L=*/1);
+
+    // These accessors are provided by the adapter (forwarding the inner resampler's config)
+    REQUIRE(adp.getL() == 1);
+    REQUIRE(adp.meanBlockLen() == 1);
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter: L=1 yields IID-like no-continuation", "[Resampler][Adapter][L=1][IID]")
+{
+    using D = num::DefaultNumber;
+
+    // Monotone source so we can detect block continuation via value adjacency.
+    const std::size_t n = 997; // prime length to avoid trivial periodic artifacts
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i)));
+
+    const std::size_t m = 5000; // long replicate to get a good signal
+    MaskValueResamplerAdapter<D> adp(/*L=*/1);
+
+    randutils::seed_seq_fe128 seed{2025u, 11u, 12u, 1u};
+    randutils::mt19937_rng rng(seed);
+
+    // Generate one long replicate
+    std::vector<D> y = adp(x, m, rng);
+    REQUIRE(y.size() == m);
+
+    // Count how many times the resampler "continues" the previous block:
+    // for monotone x, continuation means y[k] == (y[k-1] + 1) % n
+    std::size_t continuations = 0;
+    for (std::size_t k = 1; k < m; ++k)
+    {
+        const int prev = static_cast<int>(num::to_double(y[k-1]));
+        const int curr = static_cast<int>(num::to_double(y[k]));
+        const int cont = (prev + 1) % static_cast<int>(n);
+        if (curr == cont) ++continuations;
+    }
+
+    // With L=1, every step is a restart → indices at t-1 and t are independent uniforms.
+    // There's still a 1/n chance the new start equals (prev+1)%n purely by coincidence.
+    // Model as Binomial(m-1, p=1/n) and allow a generous sigma band.
+    const double p  = 1.0 / static_cast<double>(n);
+    const double N  = static_cast<double>(m - 1);
+    const double mu = N * p;
+    const double sd = std::sqrt(N * p * (1.0 - p));
+    // 6σ is very generous and should be plenty stable across platforms/seeds.
+    REQUIRE(std::abs(static_cast<double>(continuations) - mu) <= 6.0 * sd);
+}

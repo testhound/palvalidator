@@ -1246,3 +1246,97 @@ TEST_CASE("BCaBootStrap + CRNRng: replicate-order independence (permuted vs iden
     REQUIRE(num::to_double(hi_id) == Catch::Approx(num::to_double(hi_sc)).epsilon(0));
     REQUIRE(num::to_double(mu_id) == Catch::Approx(num::to_double(mu_sc)).epsilon(0));
 }
+
+TEST_CASE("IIDResampler in-place operator(): size, domain, overwrite, equivalence", "[Resampler][IID][InPlace]") {
+    using D = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    // Source sample with distinct values so we can check membership easily
+    const std::size_t xn = 128;
+    std::vector<D> x; x.reserve(xn);
+    for (std::size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    // Target length
+    const std::size_t n = 500;
+
+    // Prepare two identical RNGs so we can compare to the return-by-value overload
+    randutils::seed_seq_fe128 seed{2025u, 11u, 12u, 42u};
+    randutils::mt19937_rng rng_val(seed);
+    randutils::mt19937_rng rng_ip (seed);
+
+    Policy pol;
+
+    // Return-by-value path
+    std::vector<D> y_val = pol(x, n, rng_val);
+
+    // In-place path – verify it resizes and overwrites
+    std::vector<D> y_ip(7, D(-999));  // non-matching sentinel contents/size
+    pol(x, y_ip, n, rng_ip);
+
+    // 1) size must match
+    REQUIRE(y_ip.size() == n);
+
+    // 2) values must be from x's domain [0..xn-1]
+    for (const auto& v : y_ip) {
+        const double vd = num::to_double(v);
+        REQUIRE(vd >= 0.0);
+        REQUIRE(vd < static_cast<double>(xn));
+    }
+
+    // 3) Equivalence: with identical RNG state, in-place equals return-by-value
+    REQUIRE(y_ip == y_val);
+
+    // 4) Overwrite check: calling again should change (advance RNG state)
+    pol(x, y_ip, n, rng_ip);
+    REQUIRE(y_ip != y_val); // very high probability; if flaky, compare first 10 elems differ
+}
+
+TEST_CASE("StationaryBlockResampler in-place operator(): size, domain, equivalence", "[Resampler][Stationary][InPlace]") {
+    using D = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    // Monotone source so contiguity and domain checks are easy
+    const std::size_t xn = 200;
+    std::vector<D> x; x.reserve(xn);
+    for (std::size_t i = 0; i < xn; ++i) x.push_back(D(static_cast<int>(i)));
+
+    // Output length and mean block length
+    const std::size_t n = 600;
+    const std::size_t L = 4;
+    Policy pol(L);
+
+    // Two identical RNGs to match sequences across overloads
+    randutils::seed_seq_fe128 seed{1234u, 5678u, 91011u, 1213u};
+    randutils::mt19937_rng rng_val(seed);
+    randutils::mt19937_rng rng_ip (seed);
+
+    // Return-by-value
+    std::vector<D> y_val = pol(x, n, rng_val);
+
+    // In-place
+    std::vector<D> y_ip; // empty; must be resized
+    pol(x, y_ip, n, rng_ip);
+
+    // 1) size must match and non-empty
+    REQUIRE(y_ip.size() == n);
+
+    // 2) values must lie in domain [0..xn-1]
+    for (const auto& v : y_ip) {
+        const double vd = num::to_double(v);
+        REQUIRE(vd >= 0.0);
+        REQUIRE(vd < static_cast<double>(xn));
+    }
+
+    // 3) Equivalence with identical RNG state
+    REQUIRE(y_ip == y_val);
+
+    // 4) Basic contiguity sanity (should be substantial for L=4)
+    std::size_t adjacent = 0;
+    for (std::size_t t = 0; t + 1 < y_ip.size(); ++t) {
+        int cur = static_cast<int>(num::to_double(y_ip[t]));
+        int nxt = static_cast<int>(num::to_double(y_ip[t + 1]));
+        if (nxt == (cur + 1) % static_cast<int>(xn)) adjacent++;
+    }
+    const double frac_adj = static_cast<double>(adjacent) / static_cast<double>(n - 1);
+    REQUIRE(frac_adj > 0.50); // conservative threshold; already covered more tightly elsewhere
+}

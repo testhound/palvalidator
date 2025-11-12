@@ -388,8 +388,8 @@ namespace palvalidator
       using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
 
       explicit StationaryMaskValueResamplerAdapter(std::size_t L)
- : m_inner(L)
- , m_L(std::max<std::size_t>(2, L))
+	: m_inner(L)
+	, m_L(L)
       {}
 
       // BCa expects: vector<Decimal> operator()(x, n, rng)
