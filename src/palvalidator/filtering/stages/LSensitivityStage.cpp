@@ -435,6 +435,12 @@ namespace palvalidator::filtering::stages
     // --- Step 9: Log summary ---
     logGridSummary(grid, gridResults, R, finalRequiredReturn, os);
 
+    // --- Step 10: Cache result for downstream consumers (RobustnessAnalyzer) ---
+    // This avoids redundant L-sensitivity computation in robustness checks
+    if (R.ran) {
+      const_cast<StrategyAnalysisContext&>(ctx).lgrid_result = R;
+    }
+
     return R;
   }
 

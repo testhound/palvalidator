@@ -59,6 +59,9 @@ namespace palvalidator::filtering::stages
         throw std::runtime_error("RobustnessStage::execute - clonedStrategy is null - cannot proceed with robustness analysis");
     }
     
+    // Pass the cached L-grid result if available (avoids redundant computation)
+    const auto& gridOpt = ctx.lgrid_result;
+    
     const auto rob = palvalidator::analysis::RobustnessAnalyzer::runFlaggedStrategyRobustness(
         strategyName,
         ctx.highResReturns,
@@ -68,7 +71,8 @@ namespace palvalidator::filtering::stages
         mCfg,
         *ctx.clonedStrategy,
         mBootstrapFactory,
-        os);
+        os,
+        gridOpt);
 
     if (rob.verdict == palvalidator::analysis::RobustnessVerdict::ThumbsDown)
     {
