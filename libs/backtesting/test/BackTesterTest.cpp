@@ -669,6 +669,193 @@ SECTION("getAllHighResReturns with only open short positions") {
     REQUIRE(allR[1] == -((b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue()));
 }
 
+ // --- New tests for BackTester::getAllHighResReturnsWithDates ---
+// Place these near your existing "getAllHighResReturns" sections.
+
+SECTION("getAllHighResReturnsWithDates — mixed: one closed + one open long trade") {
+  using DT = DecimalType;
+  const std::string sym = "@C_MIXED_LONG";
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+  auto mkBar = [&](int Y,int M,int D, const std::string& openStr, const std::string& closeStr) {
+    TimeSeriesDate dt(Y, M, D);
+    DT o = createDecimal(openStr);
+    DT c = createDecimal(closeStr);
+    // simple high/low = open/close envelope keeps entries valid
+    DT h = std::max(o, c);
+    DT l = std::min(o, c);
+    return createTimeSeriesEntry(dt, o, h, l, c, 1);
+  };
+
+  // Two 2-bar sequences
+  auto b1 = mkBar(2020, Jan, 1, "100.00", "105.00"); // closed trade: entry
+  auto b2 = mkBar(2020, Jan, 2, "105.00", "110.00"); // closed trade: exit
+  auto b3 = mkBar(2020, Jan, 3, "200.00", "202.00"); // open trade: entry
+  auto b4 = mkBar(2020, Jan, 4, "202.00", "210.00"); // open trade: second bar
+
+  auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  ts->addEntry(*b1); ts->addEntry(*b2); ts->addEntry(*b3); ts->addEntry(*b4);
+
+  auto portfolio = std::make_shared<Portfolio<DT>>("port");
+  portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("50.0"), createDecimal("0.25"), ts));
+
+  auto pattern = createLongPattern1();
+  auto strat = std::make_shared<PalLongStrategy<DT>>("long-mixed", pattern, portfolio);
+
+  DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 4));
+  bt.addStrategy(strat);
+
+  // Inject CLOSED 2-bar trade
+  {
+    auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+    pos->addBar(*b2);
+    pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+    auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+    closedHist.addClosedPosition(pos);
+  }
+  // Inject OPEN 2-bar trade
+  {
+    auto posO = std::make_shared<TradingPositionLong<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+    posO->addBar(*b4);
+    auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
+    instrPos.addPosition(posO);
+  }
+
+  // Baseline returns for cross-check
+  auto onlyR = bt.getAllHighResReturns(strat.get());
+  REQUIRE(onlyR.size() == 4);
+
+  // With dates
+  auto allWithDates = bt.getAllHighResReturnsWithDates(strat.get());
+  REQUIRE(allWithDates.size() == onlyR.size());
+
+  // Timestamp order should correspond to the bar sequence we fed (Jan 1 → Jan 4)
+  REQUIRE(allWithDates.size() == 4);
+  REQUIRE(allWithDates[0].first.date() == b1->getDateValue());
+  REQUIRE(allWithDates[1].first.date() == b2->getDateValue());
+  REQUIRE(allWithDates[2].first.date() == b3->getDateValue());
+  REQUIRE(allWithDates[3].first.date() == b4->getDateValue());
+
+  // Values identical to getAllHighResReturns
+  for (size_t i = 0; i < allWithDates.size(); ++i) {
+    REQUIRE(allWithDates[i].second == onlyR[i]);
+  }
+
+  // Spot-check math
+  REQUIRE(allWithDates[0].second == (b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue());
+  REQUIRE(allWithDates[1].second == (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue());
+  REQUIRE(allWithDates[2].second == (b3->getCloseValue() - b3->getOpenValue()) / b3->getOpenValue());
+  REQUIRE(allWithDates[3].second == (b4->getCloseValue() - b3->getCloseValue()) / b3->getCloseValue());
+}
+
+SECTION("getAllHighResReturnsWithDates — only closed long positions") {
+  using DT = DecimalType;
+  const std::string sym = "@ONLY_CLOSED_LONG";
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+  auto mkBar = [&](int Y,int M,int D, const std::string& openStr, const std::string& closeStr) {
+    TimeSeriesDate dt(Y, M, D);
+    DT o = createDecimal(openStr), c = createDecimal(closeStr);
+    DT h = std::max(o, c), l = std::min(o, c);
+    return createTimeSeriesEntry(dt, o, h, l, c, 1);
+  };
+
+  auto b1 = mkBar(2020, Jan, 1, "100.00", "104.00");
+  auto b2 = mkBar(2020, Jan, 2, "104.00", "120.00");
+
+  auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  ts->addEntry(*b1); ts->addEntry(*b2);
+
+  auto portfolio = std::make_shared<Portfolio<DT>>("port");
+  portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("1.0"), createDecimal("0.01"), ts));
+
+  auto pattern = createLongPattern1();
+  auto strat = std::make_shared<PalLongStrategy<DT>>("long-closed", pattern, portfolio);
+
+  DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 2));
+  bt.addStrategy(strat);
+
+  {
+    auto pos = std::make_shared<TradingPositionLong<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+    pos->addBar(*b2);
+    pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+    auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+    closedHist.addClosedPosition(pos);
+  }
+
+  auto allWithDates = bt.getAllHighResReturnsWithDates(strat.get());
+  REQUIRE(allWithDates.size() == 2);
+  REQUIRE(allWithDates[0].first.date() == b1->getDateValue());
+  REQUIRE(allWithDates[1].first.date() == b2->getDateValue());
+
+  REQUIRE(allWithDates[0].second == (b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue());
+  REQUIRE(allWithDates[1].second == (b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue());
+}
+
+SECTION("getAllHighResReturnsWithDates — mixed: one closed + one open SHORT trade") {
+  using DT = DecimalType;
+  const std::string sym = "@MIXED_SHORT";
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+
+  auto mkBar = [&](int Y,int M,int D, const std::string& openStr, const std::string& closeStr) {
+    TimeSeriesDate dt(Y, M, D);
+    DT o = createDecimal(openStr), c = createDecimal(closeStr);
+    DT h = std::max(o, c), l = std::min(o, c);
+    return createTimeSeriesEntry(dt, o, h, l, c, 1);
+  };
+
+  auto b1 = mkBar(2020, Jan, 1, "100.00", "95.00");   // closed short: entry
+  auto b2 = mkBar(2020, Jan, 2, "95.00",  "90.00");   // closed short: exit
+  auto b3 = mkBar(2020, Jan, 3, "200.00", "205.00");  // open short: entry (loss)
+  auto b4 = mkBar(2020, Jan, 4, "205.00", "210.00");  // open short: 2nd bar (loss)
+
+  auto ts = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+  ts->addEntry(*b1); ts->addEntry(*b2); ts->addEntry(*b3); ts->addEntry(*b4);
+
+  auto portfolio = std::make_shared<Portfolio<DT>>("port");
+  portfolio->addSecurity(std::make_shared<FuturesSecurity<DT>>(sym, sym, createDecimal("50.0"), createDecimal("0.25"), ts));
+
+  auto pattern = createShortPattern1();
+  auto strat = std::make_shared<PalShortStrategy<DT>>("short-mixed", pattern, portfolio);
+
+  DailyBackTester<DT> bt(TimeSeriesDate(2020, Jan, 1), TimeSeriesDate(2020, Jan, 4));
+  bt.addStrategy(strat);
+
+  // Closed short
+  {
+    auto pos = std::make_shared<TradingPositionShort<DT>>(sym, b1->getOpenValue(), *b1, oneContract);
+    pos->addBar(*b2);
+    pos->ClosePosition(b2->getDateValue(), b2->getCloseValue());
+    auto& closedHist = const_cast<ClosedPositionHistory<DT>&>(strat->getStrategyBroker().getClosedPositionHistory());
+    closedHist.addClosedPosition(pos);
+  }
+  // Open short
+  {
+    auto posO = std::make_shared<TradingPositionShort<DT>>(sym, b3->getOpenValue(), *b3, oneContract);
+    posO->addBar(*b4);
+    auto& instrPos = const_cast<InstrumentPosition<DT>&>(strat->getStrategyBroker().getInstrumentPosition(sym));
+    instrPos.addPosition(posO);
+  }
+
+  auto onlyR = bt.getAllHighResReturns(strat.get());
+  auto allWithDates = bt.getAllHighResReturnsWithDates(strat.get());
+
+  REQUIRE(allWithDates.size() == 4);
+  REQUIRE(allWithDates[0].first.date() == b1->getDateValue());
+  REQUIRE(allWithDates[1].first.date() == b2->getDateValue());
+  REQUIRE(allWithDates[2].first.date() == b3->getDateValue());
+  REQUIRE(allWithDates[3].first.date() == b4->getDateValue());
+
+  // Cross-check equals non-dated version
+  for (size_t i = 0; i < allWithDates.size(); ++i) REQUIRE(allWithDates[i].second == onlyR[i]);
+
+  // Short sign convention spot checks
+  REQUIRE(allWithDates[0].second == -((b1->getCloseValue() - b1->getOpenValue()) / b1->getOpenValue()));
+  REQUIRE(allWithDates[1].second == -((b2->getCloseValue() - b1->getCloseValue()) / b1->getCloseValue()));
+  REQUIRE(allWithDates[2].second == -((b3->getCloseValue() - b3->getOpenValue()) / b3->getOpenValue()));
+  REQUIRE(allWithDates[3].second == -((b4->getCloseValue() - b3->getCloseValue()) / b3->getCloseValue()));
+}
+ 
  //
 
 // In BackTesterTest.cpp, replace the old section with this.

@@ -259,7 +259,7 @@ namespace mkc_timeseries
      * @return A flat std::vector<Decimal> of all per-bar returns
      *         (closed and open) for that strategy.
      */
-virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
+    virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
     {
       // 1) Get all high-resolution returns from closed trades.
       // This logic is now correctly encapsulated in ClosedPositionHistory.
@@ -313,6 +313,66 @@ virtual std::vector<Decimal> getAllHighResReturns(StrategyPtr strat) const
       return allReturns;
     }
 
+    virtual std::vector<std::pair<boost::posix_time::ptime, Decimal>>
+    getAllHighResReturnsWithDates(StrategyPtr strat) const
+    {
+      using boost::posix_time::ptime;
+
+      std::vector<std::pair<ptime, Decimal>> all;
+
+      // 1) Closed trades: delegate to ClosedPositionHistory’s timestamped extractor
+      const auto& closedHist = strat->getStrategyBroker().getClosedPositionHistory();
+      {
+        auto closed = closedHist.getHighResBarReturnsWithDates();
+        all.insert(all.end(),
+                   std::make_move_iterator(closed.begin()),
+                   std::make_move_iterator(closed.end()));
+      }
+
+      // 2) Open positions: append bar-by-bar M2M returns with timestamps
+      for (auto it = strat->getPortfolio()->beginPortfolio();
+	   it != strat->getPortfolio()->endPortfolio();
+	   ++it)
+	{
+	  const auto& sec     = it->second;
+	  const auto& instr   = strat->getInstrumentPosition(sec->getSymbol());
+
+	  for (uint32_t u = 1; u <= instr.getNumPositionUnits(); ++u)
+	    {
+	      auto posPtr = *instr.getInstrumentPosition(u);
+
+	      auto begin = posPtr->beginPositionBarHistory();
+	      auto end   = posPtr->endPositionBarHistory();
+	      if (begin == end)
+                continue;
+
+	      // For open positions, start from the actual entry price
+	      Decimal prevReferencePrice = posPtr->getEntryPrice();
+
+	      for (auto curr = begin; curr != end; ++curr)
+		{
+		  const ptime ts          = curr->first;               // bar timestamp
+		  const Decimal closeNow  = curr->second.getCloseValue();
+		  Decimal rForBar;
+
+		  if (prevReferencePrice != DecimalConstants<Decimal>::DecimalZero)
+                    rForBar = (closeNow - prevReferencePrice) / prevReferencePrice;
+		  else
+                    rForBar = DecimalConstants<Decimal>::DecimalZero;
+
+		  if (posPtr->isShortPosition())
+                    rForBar *= -1;
+
+		  all.emplace_back(ts, rForBar);
+
+		  prevReferencePrice = closeNow;
+		}
+	    }
+	}
+
+      return all;
+    }
+    
     std::vector<ExpandedBarMetrics<Decimal>> getExpandedHighResReturns(StrategyPtr strat) const
     {
       std::vector<ExpandedBarMetrics<Decimal>> allMetrics;
