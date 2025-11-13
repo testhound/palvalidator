@@ -343,6 +343,71 @@ namespace mkc_timeseries
         return allReturns;
     }
 
+    std::vector<std::pair<boost::posix_time::ptime, Decimal>>
+    getHighResBarReturnsWithDates() const
+    {
+      using boost::posix_time::ptime;
+      std::vector<std::pair<ptime, Decimal>> all;
+
+      // Iterate every closed position (keyed by entry ptime)
+      for (auto it = mPositions.begin(); it != mPositions.end(); ++it)
+	{
+	  const auto& pos = it->second;
+
+	  // Walk the recorded bar history for the position
+	  auto bar_it  = pos->beginPositionBarHistory();
+	  auto bar_end = pos->endPositionBarHistory();
+	  if (bar_it == bar_end)
+            continue;
+
+	  // First reference is the actual entry price (so the first return
+	  // is entry→1st-close; final return is last-ref→exitPrice)
+	  Decimal prevReferencePrice = pos->getEntryPrice();
+
+	  for (; bar_it != bar_end; ++bar_it)
+	    {
+	      const auto& tsBar   = bar_it->first;   // ptime timestamp
+	      const auto& barInfo = bar_it->second;  // OpenPositionBar<Decimal>
+	      Decimal returnForBar;
+
+	      // If this is the final recorded bar for the position, we compute to the *exit price*
+	      if (std::next(bar_it) == bar_end)
+		{
+		  const Decimal exitPrice = pos->getExitPrice();
+		  if (prevReferencePrice != DecimalConstants<Decimal>::DecimalZero)
+                    returnForBar = (exitPrice - prevReferencePrice) / prevReferencePrice;
+		  else
+                    returnForBar = DecimalConstants<Decimal>::DecimalZero;
+
+		  // Record the return at the *exit* timestamp to reflect realized P&L timing
+		  const auto& exitTimeStamp = pos->getExitDateTime();
+		  if (pos->isShortPosition())
+                    returnForBar *= -1;
+
+		  all.emplace_back(exitTimeStamp, returnForBar);
+		}
+	      else
+		{
+		  // Intermediate bars: mark-to-market using the bar close
+		  const Decimal currentClose = barInfo.getCloseValue();
+		  if (prevReferencePrice != DecimalConstants<Decimal>::DecimalZero)
+                    returnForBar = (currentClose - prevReferencePrice) / prevReferencePrice;
+		  else
+                    returnForBar = DecimalConstants<Decimal>::DecimalZero;
+
+		  if (pos->isShortPosition())
+                    returnForBar *= -1;
+
+		  all.emplace_back(tsBar, returnForBar);
+
+		  // Next reference is the current close
+		  prevReferencePrice = currentClose;
+		}
+	    }
+	}
+      return all;
+    }
+    
     std::vector<ExpandedBarMetrics<Decimal>> getExpandedHighResBarReturns() const
     {
       std::vector<ExpandedBarMetrics<Decimal>> result;

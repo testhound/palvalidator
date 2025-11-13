@@ -1280,4 +1280,166 @@ TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
       REQUIRE(monthly[0] == createDecimal("0.10"));   // Apr
       REQUIRE(monthly[1] == createDecimal("-0.10"));  // Jun
     }
+
+SECTION("getHighResBarReturnsWithDates: empty history returns empty vector")
+{
+  ClosedPositionHistory<DecimalType> hist;
+  auto pairs = hist.getHighResBarReturnsWithDates();
+  REQUIRE(pairs.empty());
+}
+
+SECTION("getHighResBarReturnsWithDates: single-bar long trade (exit timestamp + entry→exit return)")
+{
+  ClosedPositionHistory<DecimalType> hist;
+  TradingVolume one(1, TradingVolume::CONTRACTS);
+
+  // Entry bar (daily)
+  TimeSeriesDate d0(2020, Jan, 1);
+  auto e0 = createTimeSeriesEntry(d0, createDecimal("100"), createDecimal("100"),
+                                  createDecimal("100"), createDecimal("100"), 1);
+
+  auto pos = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, e0->getOpenValue(), *e0, one);
+
+  // Close on the same day at same price
+  pos->ClosePosition(d0, createDecimal("100"));
+  hist.addClosedPosition(pos);
+
+  auto pairs = hist.getHighResBarReturnsWithDates();
+  REQUIRE(pairs.size() == 1);
+
+  // Value: (exit - entry)/entry == 0
+  REQUIRE(pairs[0].second == createDecimal("0"));
+
+  // Timestamp should be the exit datetime (00:00:00 for daily overload)
+  REQUIRE(pairs[0].first.date() == d0);
+}
+
+SECTION("getHighResBarReturnsWithDates: two-bar long trade (intermediate bar timestamp; exit timestamp)")
+{
+  ClosedPositionHistory<DecimalType> hist;
+  TradingVolume one(1, TradingVolume::CONTRACTS);
+
+  // Entry bar
+  TimeSeriesDate d0(2020, Jan, 1);
+  auto e0 = createTimeSeriesEntry(d0, createDecimal("100"), createDecimal("101"),
+                                  createDecimal("99"),  createDecimal("100"), 1);
+  auto pos = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, e0->getOpenValue(), *e0, one);
+
+  // Second bar
+  TimeSeriesDate d1(2020, Jan, 2);
+  auto b1 = createTimeSeriesEntry(d1, createDecimal("100"), createDecimal("111"),
+                                  createDecimal("99"),  createDecimal("110"), 1);
+  pos->addBar(*b1);
+
+  // Exit on day 2 at 110 (same as bar close)
+  pos->ClosePosition(d1, createDecimal("110"));
+  hist.addClosedPosition(pos);
+
+  auto pairs = hist.getHighResBarReturnsWithDates();
+  REQUIRE(pairs.size() == 2);
+
+  // First pair: timestamp = entry bar datetime; return = (close0 - entry)/entry
+  REQUIRE(pairs[0].first.date() == d0);
+  REQUIRE(pairs[0].second == (e0->getCloseValue() - e0->getOpenValue()) / e0->getOpenValue());
+
+  // Second pair: timestamp = exit datetime; return = (exit - close0)/close0
+  REQUIRE(pairs[1].first.date() == d1);
+  REQUIRE(pairs[1].second == (createDecimal("110") - e0->getCloseValue()) / e0->getCloseValue());
+}
+
+SECTION("getHighResBarReturnsWithDates: two-bar short trade (sign convention + timestamps)")
+{
+  ClosedPositionHistory<DecimalType> hist;
+  TradingVolume one(1, TradingVolume::CONTRACTS);
+
+  // Entry bar 100 close; next bar 98 close; exit at 95
+  TimeSeriesDate d0(2023, Jan, 1);
+  auto e0 = createTimeSeriesEntry(d0, createDecimal("100"), createDecimal("100"),
+                                  createDecimal("100"), createDecimal("100"), 1);
+  TimeSeriesDate d1(2023, Jan, 2);
+  auto b1 = createTimeSeriesEntry(d1, createDecimal("100"), createDecimal("100"),
+                                  createDecimal("97"),  createDecimal("98"),  1);
+
+  auto pos = std::make_shared<TradingPositionShort<DecimalType>>(myCornSymbol, e0->getOpenValue(), *e0, one);
+  pos->addBar(*b1);
+  DecimalType exitPx = createDecimal("95");
+  pos->ClosePosition(d1, exitPx);
+  hist.addClosedPosition(pos);
+
+  auto pairs = hist.getHighResBarReturnsWithDates();
+  REQUIRE(pairs.size() == 2);
+
+  // For short, returns are negated vs long:
+  // r0 = (close0 - entry)/entry, then negate
+  DecimalType r0 = (e0->getCloseValue() - e0->getOpenValue()) / e0->getOpenValue();
+  // r1 = (exit - close0)/close0, then negate  [close0 is day-1 close]
+  DecimalType r1 = (exitPx - e0->getCloseValue()) / e0->getCloseValue();
+
+  REQUIRE(pairs[0].first.date() == d0);
+  REQUIRE(pairs[0].second == (r0 * createDecimal("-1")));
+  REQUIRE(pairs[1].first.date() == d1);
+  REQUIRE(pairs[1].second == (r1 * createDecimal("-1")));
+}
+
+SECTION("getHighResBarReturnsWithDates: intraday ptime (timestamps preserved)")
+{
+  using boost::posix_time::time_from_string;
+  ClosedPositionHistory<DecimalType> hist;
+  TradingVolume one(1, TradingVolume::SHARES);
+
+  // 09:00 and 09:05 bars; exit at 09:10
+  auto eA = createTimeSeriesEntry("20250526","09:00:00","100","102","99","101","100");
+  auto eB = createTimeSeriesEntry("20250526","09:05:00","101","103","100","102","100");
+  auto pos = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, eA->getOpenValue(), *eA, one);
+  pos->addBar(*eB);
+  auto exitDT = time_from_string("2025-05-26 09:10:00");
+  pos->ClosePosition(exitDT, createDecimal("102.50"));
+  hist.addClosedPosition(pos);
+
+  auto pairs = hist.getHighResBarReturnsWithDates();
+  REQUIRE(pairs.size() == 2);
+
+  // Timestamps: first = 09:00 bar time; second = explicit exit ptime 09:10
+  REQUIRE(pairs[0].first == eA->getDateTime());
+  REQUIRE(pairs[1].first == exitDT);
+}
+
+SECTION("getHighResBarReturnsWithDates: multiple sequential positions → globally nondecreasing timestamps")
+{
+  ClosedPositionHistory<DecimalType> hist;
+  TradingVolume one(1, TradingVolume::CONTRACTS);
+
+  // Position A: Jan 1 → Jan 3
+  {
+    TimeSeriesDate d0(2021, Jan, 1);
+    auto e0 = createTimeSeriesEntry(d0, createDecimal("100"), createDecimal("101"),
+                                    createDecimal("99"),  createDecimal("100"), 1);
+    auto A = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, e0->getOpenValue(), *e0, one);
+    auto d1 = TimeSeriesDate(2021, Jan, 2);
+    auto b1 = createTimeSeriesEntry(d1, createDecimal("100"), createDecimal("101"),
+                                    createDecimal("99"),  createDecimal("101"), 1);
+    A->addBar(*b1);
+    auto d2 = TimeSeriesDate(2021, Jan, 3);
+    A->ClosePosition(d2, createDecimal("103"));
+    hist.addClosedPosition(A);
+  }
+  // Position B: Jan 4 → Jan 5
+  {
+    TimeSeriesDate d0(2021, Jan, 4);
+    auto e0 = createTimeSeriesEntry(d0, createDecimal("200"), createDecimal("201"),
+                                    createDecimal("199"), createDecimal("200"), 1);
+    auto B = std::make_shared<TradingPositionLong<DecimalType>>(myCornSymbol, e0->getOpenValue(), *e0, one);
+    auto d1 = TimeSeriesDate(2021, Jan, 5);
+    B->ClosePosition(d1, createDecimal("210"));
+    hist.addClosedPosition(B);
+  }
+
+  auto pairs = hist.getHighResBarReturnsWithDates();
+  REQUIRE(pairs.size() == 3); // A: two records (bar0+t_exit), B: one record (bar0==exit)
+
+  // Check nondecreasing order of timestamps
+  REQUIRE(std::is_sorted(pairs.begin(), pairs.end(),
+			 [](const auto& a, const auto& b){ return a.first <= b.first; }));
+}
+
 }

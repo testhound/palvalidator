@@ -3,6 +3,7 @@
 #include <limits>
 #include <numeric>
 #include <iomanip>
+#include <map>
 #include "BackTester.h"
 #include "Portfolio.h"
 #include "DecimalConstants.h"
@@ -152,13 +153,13 @@ namespace palvalidator
     }
 
     void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(
-     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-     std::shared_ptr<Security<Num>> baseSecurity,
-     const DateRange& backtestingDates,
-     TimeFrame::Duration timeFrame,
-     std::ostream& outputStream,
-     ValidationMethod validationMethod,
-     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
+							  const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+							  std::shared_ptr<Security<Num>> baseSecurity,
+							  const DateRange& backtestingDates,
+							  TimeFrame::Duration timeFrame,
+							  std::ostream& outputStream,
+							  ValidationMethod validationMethod,
+							  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
     {
       if (survivingStrategies.empty())
 	{
@@ -169,45 +170,134 @@ namespace palvalidator
 
       outputStream << "\n[Meta] Building unified PalMetaStrategy from "
 		   << survivingStrategies.size() << " survivors...\n";
-      
+
       try
 	{
-	  // Create pyramid configurations
+	  // 1) Create all pyramid configurations and collect results
 	  std::vector<PyramidConfiguration> pyramidConfigs = createPyramidConfigurations();
-	  
-	  // Storage for all pyramid results
 	  std::vector<PyramidResults> allResults;
-   
-	  // Run analysis for each pyramid level
+	  allResults.reserve(pyramidConfigs.size());
+
 	  for (const auto& config : pyramidConfigs)
 	    {
-	      auto result = analyzeSinglePyramidLevel(config, survivingStrategies, baseSecurity,
-						      backtestingDates, timeFrame, outputStream,
+	      auto result = analyzeSinglePyramidLevel(
+						      config,
+						      survivingStrategies,
+						      baseSecurity,
+						      backtestingDates,
+						      timeFrame,
+						      outputStream,
 						      oosSpreadStats);
-	      allResults.push_back(result);
+	      allResults.push_back(std::move(result));
 	    }
-   
-	  // Write comprehensive performance file with all pyramid results
-	  std::string performanceFileName = palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
-    									      baseSecurity->getSymbol(), validationMethod);
+
+	  // 2) Persist reports (unchanged)
+	  const std::string performanceFileName =
+	    palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
+									      baseSecurity->getSymbol(), validationMethod);
+
 	  writeComprehensivePerformanceReport(allResults, performanceFileName, outputStream);
-	  
-	  // Output pyramid comparison summary
 	  outputPyramidComparison(allResults, outputStream);
-   
-	  // Set overall meta-strategy result based on best performing pyramid level
-	  mMetaStrategyPassed = false;
-	  for (const auto& result : allResults)
+
+	  // 3) Choose the canonical "best" passing configuration
+	  //
+	  //    Primary key  : conservative MAR = (annualized LB GeoMean) / (drawdown UB)
+	  //    Fallback key : highest annualized LB (when drawdown UB missing/invalid)
+	  //    Tiebreaker   : larger (LB - requiredReturn)
+	  //
+	  //    This aligns the stored state with what you recommend in the printed summary.
+
+	  auto hasValidDD = [](const PyramidResults& r) -> bool {
+	    const auto& dd = r.getDrawdownResults();
+	    return dd.hasResults() && dd.getUpperBound() > mkc_timeseries::DecimalConstants<Num>::DecimalZero;
+	  };
+
+	  auto conservativeMAR = [&](const PyramidResults& r) -> Num {
+	    if (!hasValidDD(r)) return mkc_timeseries::DecimalConstants<Num>::DecimalZero;
+	    return r.getAnnualizedLowerBound() / r.getDrawdownResults().getUpperBound();
+	  };
+
+	  auto margin = [&](const PyramidResults& r) -> Num {
+	    return r.getAnnualizedLowerBound() - r.getRequiredReturn();
+	  };
+
+	  // Filter to passers
+	  std::vector<const PyramidResults*> passers;
+	  passers.reserve(allResults.size());
+	  for (const auto& r : allResults)
+	    if (r.getPassed()) passers.push_back(&r);
+
+	  mMetaStrategyPassed = !passers.empty();
+
+	  if (!mMetaStrategyPassed)
 	    {
-	      if (result.getPassed())
+	      // No passer → keep legacy zeros for members
+	      // (writeComprehensivePerformanceReport already reflects per-level outcomes)
+	      return;
+	    }
+
+	  // Rank passers by MAR (if available), else by LB; then by margin
+	  const PyramidResults* best = passers.front();
+	  bool bestHasValidDD = hasValidDD(*best);
+	  Num  bestMAR        = bestHasValidDD ? conservativeMAR(*best)
+	    : mkc_timeseries::DecimalConstants<Num>::DecimalZero;
+	  Num  bestLB         = best->getAnnualizedLowerBound();
+	  Num  bestMargin     = margin(*best);
+
+	  for (std::size_t i = 1; i < passers.size(); ++i)
+	    {
+	      const PyramidResults* cand = passers[i];
+	      const bool candValidDD = hasValidDD(*cand);
+	      const Num  candMAR     = candValidDD ? conservativeMAR(*cand)
+		: mkc_timeseries::DecimalConstants<Num>::DecimalZero;
+	      const Num  candLB      = cand->getAnnualizedLowerBound();
+	      const Num  candMargin  = margin(*cand);
+
+	      bool better = false;
+
+	      if (bestHasValidDD || candValidDD)
 		{
-		  mMetaStrategyPassed = true;
-		  // Store the best result for backward compatibility
-		  mAnnualizedLowerBound = result.getAnnualizedLowerBound();
-		  mRequiredReturn = result.getRequiredReturn();
-		  break;
+		  // Prefer valid MAR; if both valid, compare MAR; if only candidate valid, candidate wins
+		  if (!bestHasValidDD && candValidDD) {
+		    better = true;
+		  } else if (bestHasValidDD && candValidDD) {
+		    if (candMAR > bestMAR) better = true;
+		    else if (candMAR == bestMAR && candMargin > bestMargin) better = true;
+		    else if (candMAR == bestMAR && candMargin == bestMargin && candLB > bestLB) better = true;
+		  }
+		}
+	      else
+		{
+		  // Neither has valid DD → compare LB; tie-break by margin
+		  if (candLB > bestLB) better = true;
+		  else if (candLB == bestLB && candMargin > bestMargin) better = true;
+		}
+
+	      if (better)
+		{
+		  best           = cand;
+		  bestHasValidDD = candValidDD;
+		  bestMAR        = candMAR;
+		  bestLB         = candLB;
+		  bestMargin     = candMargin;
 		}
 	    }
+
+	  // 4) Update canonical members so downstream reads match the recommendation
+	  mAnnualizedLowerBound = best->getAnnualizedLowerBound();
+	  mRequiredReturn       = best->getRequiredReturn();
+
+	  // Optional: log the chosen configuration succinctly
+	  outputStream << "      [Meta] Chosen configuration → Level "
+		       << best->getPyramidLevel()
+		       << " (“" << best->getDescription() << "”), "
+		       << "Ann LB=" << (mAnnualizedLowerBound * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred)
+		       << "%, Required=" << (mRequiredReturn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred)
+		       << "%";
+	  if (bestHasValidDD) {
+	    outputStream << ", MAR=" << (bestMAR.getAsDouble());
+	  }
+	  outputStream << "\n";
 	}
       catch (const std::exception& e)
 	{
@@ -215,7 +305,7 @@ namespace palvalidator
 	  mMetaStrategyPassed = false;
 	}
     }
-
+    
     std::shared_ptr<PalMetaStrategy<Num>>
     MetaStrategyAnalyzer::createMetaStrategy(
 					     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -322,7 +412,7 @@ namespace palvalidator
 
     bool MetaStrategyAnalyzer::runSelectionAwareMetaGate(
 							 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-							 std::shared_ptr<mkc_timeseries::Security<Num>> baseSecurity,
+							 std::shared_ptr<mkc_timeseries::Security<Num>> /* baseSecurity */,
 							 const mkc_timeseries::DateRange& backtestingDates,
 							 mkc_timeseries::TimeFrame::Duration timeFrame,
 							 std::size_t Lmeta,
@@ -332,76 +422,139 @@ namespace palvalidator
 							 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
 							 ) const
     {
-      using NumT = Num;
-      using Rng  = randutils::mt19937_rng;
+      using NumT   = Num;
+      using Rng    = randutils::mt19937_rng;
+      using PTime  = boost::posix_time::ptime;
 
-      // Build component (per-strategy) return series over the SAME window
-      std::vector<std::vector<NumT>> componentReturns;
-      componentReturns.reserve(survivingStrategies.size());
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 1) Gather (ptime, return) per-strategy and build the UNION timestamp index
+      // ─────────────────────────────────────────────────────────────────────────────
+      std::vector<std::vector<std::pair<PTime, NumT>>> series_with_dates;
+      series_with_dates.reserve(survivingStrategies.size());
+
+      std::map<PTime, std::size_t> union_index;               // ordered union → column index
       for (const auto& strat : survivingStrategies)
 	{
-	  auto clonedStrat = strat->cloneForBackTesting();
-	  auto single = BackTesterFactory<NumT>::backTestStrategy(clonedStrat, timeFrame, backtestingDates);
-	  auto r = single->getAllHighResReturns(clonedStrat.get());
+	  auto cloned = strat->cloneForBackTesting();
+	  auto single = mkc_timeseries::BackTesterFactory<NumT>::backTestStrategy(
+										  cloned, timeFrame, backtestingDates);
 
-	  if (r.size() >= 2)
-	    componentReturns.emplace_back(std::move(r));
+	  auto ts = single->getAllHighResReturnsWithDates(cloned.get()); // vector<pair<ptime,Num>>
+	  if (ts.size() >= 2)
+	    {
+	      for (const auto& pr : ts) union_index.emplace(pr.first, 0U);
+	      series_with_dates.emplace_back(std::move(ts));
+	    }
 	}
 
-      if (componentReturns.empty()) {
-	os << "      [MetaSel] Skipped (no component series available)\n";
-	return true; // non-penalizing skip
-      }
+      if (series_with_dates.empty())
+	{
+	  os << "      [MetaSel] Skipped (no component series available)\n";
+	  return true; // non-penalizing skip
+	}
 
-      // Outer selection-aware bootstrap (replays meta construction)
-      const std::size_t outerB = 2000;  // production default
-      const double cl          = mConfidenceLevel.getAsDouble();
+      // Stamp contiguous indices 0..T-1 onto the union map
+      {
+	std::size_t col = 0;
+	for (auto& kv : union_index) kv.second = col++;
+      }
+      const std::size_t T = union_index.size();
+
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 2) Encode presence via parallel indicator rows; build dense (2*C)×T matrix
+      //    Row 0..C-1   : values aligned to union (0 if missing at that bar)
+      //    Row C..2C-1  : indicators (1 if present, else 0) aligned to union
+      // ─────────────────────────────────────────────────────────────────────────────
+      const std::size_t C = series_with_dates.size();
+      std::vector<std::vector<NumT>> componentMatrix;
+      componentMatrix.resize(2 * C, std::vector<NumT>(T, mkc_timeseries::DecimalConstants<NumT>::DecimalZero));
+
+      for (std::size_t s = 0; s < C; ++s)
+	{
+	  auto& valuesRow = componentMatrix[s];
+	  auto& indicRow  = componentMatrix[C + s];
+
+	  for (const auto& [pt, r] : series_with_dates[s])
+	    {
+	      const auto it = union_index.find(pt);
+	      if (it == union_index.end()) continue;
+	      const std::size_t j = it->second;
+	      valuesRow[j] = r;
+	      indicRow [j] = mkc_timeseries::DecimalConstants<NumT>::DecimalOne; // 1 = present
+	    }
+	}
+
+      // Safety: if union had < 2 bars after pruning, skip (can happen with pathological inputs)
+      if (T < 2)
+	{
+	  os << "      [MetaSel] Skipped (insufficient union length)\n";
+	  return true;
+	}
+
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 3) Configure selection-aware bootstrap (generic CL = 0.95) and builder
+      // ─────────────────────────────────────────────────────────────────────────────
+      const std::size_t outerB = 2000;
+      const double cl          = mConfidenceLevel.getAsDouble(); // keep 0.95 for this gate
       const std::size_t Lmean  = Lmeta;
       const double ppy         = annualizationFactor;
 
       palvalidator::analysis::MetaSelectionBootstrap<NumT, Rng> msb(outerB, cl, Lmean, ppy);
 
-      // Builder: mirror production meta rule (equal-weight by bar as default)
-      auto builder = [](const std::vector<std::vector<NumT>>& mats) -> std::vector<NumT> {
-	if (mats.empty())
-	  return {};
+      // Builder: for each bar t, average only components that are present at t:
+      // meta[t] = sum_k values[k][t] / sum_k indicators[k][t], with k over 0..C-1.
+      auto builder_date_aligned =
+	[C](const std::vector<std::vector<NumT>>& mats) -> std::vector<NumT>
+	{
+	  if (mats.empty()) return {};
+	  const std::size_t Tloc = mats[0].size();
+	  if (Tloc < 2 || mats.size() < 2 * C) return {};
 
-	std::size_t m = std::numeric_limits<std::size_t>::max();
-	for (const auto& s : mats)
-	  m = std::min(m, s.size());
+	  std::vector<NumT> meta;
+	  meta.resize(Tloc, mkc_timeseries::DecimalConstants<NumT>::DecimalZero);
 
-	if (m < 2)
-	  return {};
+	  for (std::size_t t = 0; t < Tloc; ++t)
+	    {
+	      NumT num = mkc_timeseries::DecimalConstants<NumT>::DecimalZero;
+	      NumT den = mkc_timeseries::DecimalConstants<NumT>::DecimalZero;
 
-	std::vector<NumT> out(m, NumT(0));
-	const NumT w = NumT(1.0 / static_cast<double>(mats.size()));
-	for (const auto& s : mats)
-	  {
-	    for (std::size_t i = 0; i < m; ++i)
-	      out[i] += w * s[i];
-	  }
-	return out;
-      };
+	      for (std::size_t k = 0; k < C; ++k)
+		{
+		  const NumT w = mats[C + k][t];  // indicator (0 or 1)
+		  if (w != mkc_timeseries::DecimalConstants<NumT>::DecimalZero)
+		    {
+		      num += mats[k][t];            // value already zero when missing
+		      den += w;                     // count present components
+		    }
+		}
 
-      Rng rng;  // seed from your global seed infra if desired
-      auto msbRes = msb.run(componentReturns, builder, rng);
+	      meta[t] = (den != mkc_timeseries::DecimalConstants<NumT>::DecimalZero)
+		? (num / den)
+		: mkc_timeseries::DecimalConstants<NumT>::DecimalZero;
+	    }
+	  return meta;
+	};
 
-      // Hurdle uses the meta's annualized trades (same as other gates)
+      Rng rng;
+      auto msbRes = msb.run(componentMatrix, builder_date_aligned, rng); // <— Matrix is std::vector<std::vector<Num>>
+
+      // ─────────────────────────────────────────────────────────────────────────────
+      // 4) Hurdles and logging (unchanged)
+      // ─────────────────────────────────────────────────────────────────────────────
       const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
-      const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
-						oosSpreadStats,
-						Num(bt->getEstimatedAnnualizedTrades()),
-						configuredPerSide);
+      const auto H = makeCostStressHurdles<Num>(
+						mHurdleCalculator, oosSpreadStats,
+						Num(bt->getEstimatedAnnualizedTrades()), configuredPerSide);
 
       const bool passBase = (msbRes.lbAnnualized > H.baseHurdle);
       const bool pass1Qn  = (msbRes.lbAnnualized > H.h_1q);
       const bool pass     = (passBase && pass1Qn);
 
-      os << "      [MetaSel] Selection-aware bootstrap: "
+      os << "      [MetaSel] Selection-aware bootstrap (date-aligned): "
 	 << "Ann GM LB=" << (100.0 * num::to_double(msbRes.lbAnnualized)) << "% "
 	 << (pass ? "(PASS)" : "(FAIL)")
-	 << " vs Base=" << (100.0 * num::to_double(H.baseHurdle)) << "%"
-	 << ", +1·Qn=" << (100.0 * num::to_double(H.h_1q)) << "% "
+	 << " vs Base=" << (100.0 * num::to_double(H.baseHurdle)) << "%, "
+	 << "+1·Qn=" << (100.0 * num::to_double(H.h_1q)) << "% "
 	 << "@ CL=" << (100.0 * msbRes.cl) << "%, B=" << msbRes.B
 	 << ", L~" << Lmean << "\n";
 
@@ -728,7 +881,7 @@ namespace palvalidator
 	  // 3) Construct the bounder (stationary block bootstrap + BCa)
 	  using BoundFutureReturnsT = mkc_timeseries::BoundFutureReturns<Num>;
 	  const double cl = 0.99;
-	  const double pL = 0.05; // lower-tail quantile (10th percentile) for monitoring
+	  const double pL = 0.05; // lower-tail quantile (5th percentile) for monitoring
 	  const double pU = 0.90; // upper (not used for gating here, but standard pair)
 	  const std::size_t B = mNumResamples;
 
