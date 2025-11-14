@@ -1,5 +1,5 @@
 #include "filtering/stages/LSensitivityStage.h"
-#include "filtering/TradingBootstrapFactory.h"
+#include "TradingBootstrapFactory.h"
 #include "BiasCorrectedBootstrap.h"
 #include "StationaryMaskResamplers.h"
 #include "StatUtils.h"

@@ -2,7 +2,7 @@
 #include "filtering/stages/LSensitivityStage.h"
 #include "filtering/FilteringTypes.h"
 #include "filtering/PerformanceFilter.h"
-#include "filtering/TradingBootstrapFactory.h"
+#include "TradingBootstrapFactory.h"
 #include "ConfigSeeds.h"
 #include "PalStrategy.h"
 #include "TestUtils.h"

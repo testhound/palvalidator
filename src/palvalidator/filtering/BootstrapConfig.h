@@ -1,7 +1,6 @@
 #pragma once
 #include "randutils.hpp"
-
-template <class T> class TradingBootstrapFactory;
+#include "TradingBootstrapFactory.h"
 
 namespace palvalidator::bootstrap_cfg
 {

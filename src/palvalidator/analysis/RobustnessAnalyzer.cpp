@@ -6,7 +6,7 @@
 #include "BiasCorrectedBootstrap.h"
 #include "StatUtils.h"
 #include "DecimalConstants.h"
-#include "filtering/TradingBootstrapFactory.h"
+#include "TradingBootstrapFactory.h"
 #include "filtering/FilteringTypes.h"
 #include "BacktesterStrategy.h"
 #include "SmallNBootstrapHelpers.h"

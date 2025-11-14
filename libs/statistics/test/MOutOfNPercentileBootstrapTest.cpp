@@ -448,3 +448,137 @@ TEST_CASE("MOutOfNPercentileBootstrap + GeoMeanStat: moderate-n (n=60) sanity", 
              >= num::to_double(ann252.getAnnualizedMean()) - 1e-12);
     }
 }
+
+// -----------------------------------------------
+// Executor policy: SingleThread vs ThreadPool
+// -----------------------------------------------
+TEST_CASE("MOutOfNPercentileBootstrap: Executor policy parity (CRN provider)", "[Bootstrap][MOutOfN][Executor]")
+{
+    using D = DecimalType;
+    using ResT = StationaryMaskValueResampler<D>;
+
+    // Simple deterministic series
+    const std::size_t n = 64;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(0.001 * static_cast<double>(i % 9) - 0.002));
+
+    // Statistic under test: arithmetic mean
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        long double s = 0.0L;
+        for (const auto& v : a)
+            s += static_cast<long double>(num::to_double(v));
+        return D(static_cast<double>(s / static_cast<long double>(a.size())));
+    };
+
+    // Dependence-aware resampler
+    ResT res(/*L=*/4);
+
+    // Deterministic CRN-like provider: engine per replicate index b
+    struct DummyCRN {
+        std::mt19937_64 make_engine(std::size_t b) const {
+            std::seed_seq ss{ static_cast<unsigned>(b & 0xffffffffu),
+                              static_cast<unsigned>((b >> 32) & 0xffffffffu),
+                              0xA5A5A5A5u, 0x5A5A5A5Au };
+            return std::mt19937_64(ss);
+        }
+    } crn_provider;
+
+    // Common bootstrap settings
+    const std::size_t B   = 1200;
+    const double      CL  = 0.95;
+    const double      rho = 0.70;
+
+    // Single-thread executor specialization
+    using BootST = MOutOfNPercentileBootstrap<
+        D, decltype(mean_sampler), ResT, std::mt19937_64, concurrency::SingleThreadExecutor
+    >;
+
+    // Thread-pool executor specialization
+    using BootTP = MOutOfNPercentileBootstrap<
+        D, decltype(mean_sampler), ResT, std::mt19937_64, concurrency::ThreadPoolExecutor<>
+    >;
+
+    BootST boot_st(B, CL, rho, res);
+    BootTP boot_tp(B, CL, rho, res);
+
+    boot_st.setChunkSizeHint(2048);
+    boot_tp.setChunkSizeHint(2048);
+
+    auto r_st = boot_st.run(x, mean_sampler, crn_provider);
+    auto r_tp = boot_tp.run(x, mean_sampler, crn_provider);
+
+    // Sanity: identical effective_B/skips and near-perfect parity
+    REQUIRE(r_st.B           == r_tp.B);
+    REQUIRE(r_st.effective_B == r_tp.effective_B);
+    REQUIRE(r_st.skipped     == r_tp.skipped);
+    REQUIRE(r_st.n           == r_tp.n);
+    REQUIRE(r_st.m_sub       == r_tp.m_sub);
+    REQUIRE(r_st.L           == r_tp.L);
+
+    REQUIRE(num::to_double(r_st.mean)  == Catch::Approx(num::to_double(r_tp.mean)).margin(0.0));
+    REQUIRE(num::to_double(r_st.lower) == Catch::Approx(num::to_double(r_tp.lower)).margin(0.0));
+    REQUIRE(num::to_double(r_st.upper) == Catch::Approx(num::to_double(r_tp.upper)).margin(0.0));
+}
+
+// --------------------------------------------------------------
+// Executor policy: sanity at small-n with GeoMean (n=24, B=1000)
+// --------------------------------------------------------------
+TEST_CASE("MOutOfNPercentileBootstrap: ThreadPoolExecutor works at small-n", "[Bootstrap][MOutOfN][Executor][SmallN]")
+{
+    using D = DecimalType;
+    using mkc_timeseries::GeoMeanStat;
+    using ResT = StationaryMaskValueResampler<D>;
+
+    const std::size_t n = 24;
+    std::vector<D> r; r.reserve(n);
+    const double base[] = { +0.0015, -0.0008, +0.0007, -0.0004, +0.0011, 0.0 };
+    for (std::size_t i = 0; i < n; ++i)
+        r.emplace_back(D(base[i % 6]));
+
+    GeoMeanStat<D> geo(/*clip_ruin=*/true, /*winsor_small_n=*/true, /*winsor_alpha=*/0.02, /*ruin_eps=*/1e-9);
+    auto sampler = [&](const std::vector<D>& a) -> D { return geo(a); };
+
+    ResT res(/*L=*/3);
+
+    struct DummyCRN {
+        std::mt19937_64 make_engine(std::size_t b) const {
+            std::seed_seq ss{ static_cast<unsigned>(b), 0xC0FFEEu, 0xFACEFEEDu };
+            return std::mt19937_64(ss);
+        }
+    } crn;
+
+    const std::size_t B  = 1000;
+    const double      CL = 0.95;
+
+    using BootST = MOutOfNPercentileBootstrap<
+        D, decltype(sampler), ResT, std::mt19937_64, concurrency::SingleThreadExecutor
+    >;
+    using BootTP = MOutOfNPercentileBootstrap<
+        D, decltype(sampler), ResT, std::mt19937_64, concurrency::ThreadPoolExecutor<>
+    >;
+
+    BootST st(B, CL, /*rho=*/0.70, res);
+    BootTP tp(B, CL, /*rho=*/0.70, res);
+
+    auto a = st.run(r, sampler, crn);
+    auto b = tp.run(r, sampler, crn);
+
+    // Ensure results are finite and ordered
+    REQUIRE(std::isfinite(num::to_double(a.lower)));
+    REQUIRE(std::isfinite(num::to_double(a.mean  )));
+    REQUIRE(std::isfinite(num::to_double(a.upper )));
+    REQUIRE(a.lower <= a.mean);
+    REQUIRE(a.mean  <= a.upper);
+
+    REQUIRE(std::isfinite(num::to_double(b.lower)));
+    REQUIRE(std::isfinite(num::to_double(b.mean  )));
+    REQUIRE(std::isfinite(num::to_double(b.upper )));
+    REQUIRE(b.lower <= b.mean);
+    REQUIRE(b.mean  <= b.upper);
+
+    // Parity: identical under CRN provider
+    REQUIRE(num::to_double(a.mean)  == Catch::Approx(num::to_double(b.mean)).margin(0.0));
+    REQUIRE(num::to_double(a.lower) == Catch::Approx(num::to_double(b.lower)).margin(0.0));
+    REQUIRE(num::to_double(a.upper) == Catch::Approx(num::to_double(b.upper)).margin(0.0));
+}

@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "filtering/FilteringTypes.h"
 #include "filtering/stages/BootstrapAnalysisStage.h"
-#include "filtering/TradingBootstrapFactory.h"
+#include "TradingBootstrapFactory.h"
 #include "filtering/BootstrapConfig.h"
 #include <boost/date_time/gregorian/gregorian.hpp>
 

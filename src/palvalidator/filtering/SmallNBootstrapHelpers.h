@@ -9,7 +9,6 @@
 #include <random>
 #include "BiasCorrectedBootstrap.h"
 #include "StationaryMaskResamplers.h"
-#include "TradingBootstrapFactory.h"
 #include "BootstrapConfig.h"
 #include "Annualizer.h"
 #include "StatUtils.h"

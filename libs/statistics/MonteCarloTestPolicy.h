@@ -13,7 +13,9 @@
 #include "DecimalConstants.h"
 #include "BackTester.h"
 #include "StatUtils.h"
-#include "BiasCorrectedBootstrap.h" 
+#include "BiasCorrectedBootstrap.h"
+#include "TradingBootstrapFactory.h"
+#include "ParallelExecutors.h"
 
 namespace mkc_timeseries
 {
@@ -129,91 +131,63 @@ namespace mkc_timeseries
   class BootStrappedLogProfitFactorPolicy
   {
   public:
-    /**
-     * @brief Compute the permutation‐test statistic as the log‐profit‐factor
-     *        over every bar‐by‐bar return (closed + open) for the sole strategy.
-     */
 
-    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    static Decimal
+    getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
-      // Expect exactly one strategy
+      // Enforce single-strategy invariant
       if (bt->getNumStrategies() != 1) {
 	throw BackTesterException(
-				  "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - "
-				  "expected one strategy");
+				  "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - expected one strategy");
       }
 
-      // Thresholds (keep consistent with other PF/LPF policies)
-      const unsigned int minTradesRequired = getMinStrategyTrades();
-      const unsigned int minBarsRequired   = getMinBarSeriesSize();
+      // Basic activity thresholds (keep consistent with your pipeline)
+      const unsigned int minTradesRequired = getMinStrategyTrades();  // e.g., 5
+      const unsigned int minBarsRequired   = getMinBarSeriesSize();   // e.g., 20
 
       const uint32_t numTrades = bt->getNumTrades();
       auto strat = *(bt->beginStrategies());
 
-      // Pull every bar-by-bar return (entry→exit and any still-open)
+      // Pull the high-resolution (bar-by-bar) return stream for this strategy
       std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
 
+      // If too thin, return a neutral/benign statistic (coherent with your other policies)
       if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired) {
 	return getMinTradeFailureTestStatistic();
       }
 
-      // --- BCa configuration (mirrors BootStrappedSharpeRatioPolicy) ---
-      const unsigned B     = 1000;  // bootstrap replications
-      const double   alpha = 0.05;  // 95% CI
+      // Fast, robust statistic for permutation testing:
+      // - log(1+r) domain (variance-stabilizing)
+      // - ruin-aware clamp (1+r <= 0 => epsilon)
+      // - conservative prior on losses (prevents explosion at tiny loss counts)
+      // - optional final compression (log(1 + pf)) for symmetry
+      //
+      // Keep parameters aligned with your StatUtils implementation defaults to remain
+      // consistent across the codebase.
+      constexpr double kRuinEps      = 1e-8;  // clamp for (1+r) <= 0
+      constexpr double kDenomFloor   = 1e-6;  // guard tiny denominators
+      constexpr double kPriorStrength= 1.0;   // ~1 pseudo-loss of median magnitude
 
-      // Statistic to bootstrap: log profit factor (no compression)
-      auto computeLogPF = [](const std::vector<Decimal>& r) -> Decimal {
-	return StatUtils<Decimal>::computeLogProfitFactorRobust(r, /*compressResult=*/true);
-      };
+      return StatUtils<Decimal>::computeLogProfitFactorRobust(
+							      barSeries,
+							      /*compressResult=*/true,
+							      /*ruin_eps=*/kRuinEps,
+							      /*denom_floor=*/kDenomFloor,
+							      /*prior_strength=*/kPriorStrength);
+    }    
 
-      // Stationary-block resampler with L = median holding period (min 2)
-      size_t L = 2;
-      try {
-	const auto& closedPositions =
-	  strat->getStrategyBroker().getClosedPositionHistory();
+    /// Minimum number of trades required to attempt this test
+    static unsigned int getMinStrategyTrades() { return 5; }
 
-	const unsigned medHold = closedPositions.getMedianHoldingPeriod();
-	L = std::max<size_t>(2, static_cast<size_t>(medHold));
-      }
-      catch (...) {
-	// If the broker/history isn't available for some reason, keep L=2
-      }
+    // Minimum bars for statistical significance
+    static unsigned int getMinBarSeriesSize() { return 20; }
 
-      mkc_timeseries::StationaryBlockResampler<Decimal> sampler(L);
-
-      struct Score {
-	decltype(computeLogPF)& f;
-	Decimal operator()(const std::vector<Decimal>& v) const { return f(v); }
-      } score{computeLogPF};
-
-      using BlockBCA = mkc_timeseries::BCaBootStrap<
-	Decimal, mkc_timeseries::StationaryBlockResampler<Decimal>>;
-
-      BlockBCA bca(barSeries, B, /*confidence=*/1.0 - alpha, score, sampler);
-
-      // Conservative scalar for permutation testing
-      return bca.getLowerBound();
-    }
-    
-    /// Minimum number of closed trades required to even attempt this test
-    static unsigned int getMinStrategyTrades()
-    {
-      return 5;
-    }
-
-    // Minimum number of bars in the series to be considered statistically significant
-    static unsigned int getMinBarSeriesSize()
-    {
-      return 20;
-    }
-
-    // Return a test statistic constant if we don't meet the minimum trade criteria
     static Decimal getMinTradeFailureTestStatistic()
     {
-      return DecimalConstants<Decimal>::DecimalZero;
-    }
-  };
-
+    return DecimalConstants<Decimal>::DecimalZero;
+  }
+};
+  
   template <class Decimal>
   class BootStrappedSharpeRatioPolicy
   {
