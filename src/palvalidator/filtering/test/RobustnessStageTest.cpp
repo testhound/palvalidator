@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "filtering/stages/RobustnessStage.h"
 #include "filtering/FilteringTypes.h"
-#include "filtering/TradingBootstrapFactory.h"
+#include "TradingBootstrapFactory.h"
 #include "ConfigSeeds.h"
 #include "PalStrategy.h"
 #include "TestUtils.h"

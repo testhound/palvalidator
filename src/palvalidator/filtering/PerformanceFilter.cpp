@@ -15,7 +15,7 @@
 #include "BarAlignedSeries.h"
 #include "CostStressUtils.h"
 #include "filtering/FilteringPipeline.h"
-#include "filtering/TradingBootstrapFactory.h"
+#include "TradingBootstrapFactory.h"
 #include "ConfigSeeds.h"
 #include <limits>
 
