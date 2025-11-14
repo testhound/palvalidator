@@ -4,8 +4,11 @@
 #include <cmath>
 #include <stdexcept>
 #include <cstddef>
+#include <limits>
 #include "randutils.hpp"
 #include "RngUtils.h"
+#include "ParallelExecutors.h"
+#include "ParallelFor.h"
 
 namespace palvalidator
 {
@@ -101,7 +104,11 @@ namespace palvalidator
      * @tparam Rng
      *   Random-number generator type. Defaults to `randutils::mt19937_rng`.
      */
-    template <class Decimal, class Sampler, class Resampler, class Rng = std::mt19937_64>
+    template <class Decimal,
+	      class Sampler,
+	      class Resampler,
+	      class Rng = std::mt19937_64,
+	      class Executor = concurrency::SingleThreadExecutor>
     class MOutOfNPercentileBootstrap
     {
     public:
@@ -140,10 +147,12 @@ namespace palvalidator
 				 double      confidence_level,
 				 double      m_ratio,
 				 const Resampler& resampler)
-	: m_B(B)
-	, m_CL(confidence_level)
-	, m_ratio(m_ratio)
-	, m_resampler(resampler)
+	: m_B(B),
+	  m_CL(confidence_level),
+	  m_ratio(m_ratio),
+	  m_resampler(resampler),
+	  m_exec(std::make_shared<Executor>()),
+	  m_chunkHint(0)
       {
         if (m_B < 400)
 	  {
@@ -198,22 +207,18 @@ namespace palvalidator
        *     especially when used with an “m-out-of-n” (\f$m<n\f$) regime.
        */
       Result run(const std::vector<Decimal>& x,
-   Sampler                      sampler,
-   Rng&                         rng,
-   std::size_t                  m_sub_override = 0) const
+		 Sampler sampler,
+		 Rng& rng,
+		 std::size_t m_sub_override = 0) const
       {
- // Make a copy-per-replicate engine by advancing shared rng (draw a seed per b)
- // or, cheaper: capture a pointer to rng and use it directly inside resampler if allowed.
- // Here we draw a 64-bit seed per replicate to create an engine instance deterministically
- // from rng — preserves behavior while sharing the core.
+	// Derive a per-replicate engine from the supplied RNG (works for std engines AND randutils)
+	auto make_engine = [&rng](std::size_t /*b*/) {
+	  const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
+	  auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
+	  return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
+	};
 
- return run_core_(x, sampler, m_sub_override,
-    [&rng](std::size_t /*b*/) {
-      std::uniform_int_distribution<uint64_t> U;
-      const uint64_t seed = U(mkc_timeseries::rng_utils::get_engine(rng));
-      auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed); // materialize as lvalue
-      return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
-  });
+	return run_core_(x, sampler, m_sub_override, make_engine);
       }
 
       template <class Provider>
@@ -222,11 +227,23 @@ namespace palvalidator
 		 const Provider&              provider,
 		 std::size_t                  m_sub_override = 0) const
       {
-	return run_core_(x, sampler, m_sub_override,
-			 [&provider](std::size_t b) {
-			   return provider.make_engine(b);
-			 });
+	auto make_engine = [&provider](std::size_t b) {
+	  return provider.make_engine(b);  // CRN: 1 engine per replicate index
+	};
+	
+	return run_core_(x, sampler, m_sub_override, make_engine);
       }
+
+      void setChunkSizeHint(uint32_t c)
+      {
+	m_chunkHint = c;
+      }
+
+      // Introspection helpers
+      std::size_t B()        const { return m_B; }
+      double      CL()       const { return m_CL; }
+      double      mratio()   const { return m_ratio; }
+      const Resampler& resampler() const { return m_resampler; }
 
     private:
       // Extracted: unsorted type-7 quantile via two nth_element passes
@@ -254,7 +271,6 @@ namespace palvalidator
 	return x0 + (x1 - x0) * frac;
       }
 
-      // Core runner: EngineMaker must support `auto operator()(std::size_t b) -> Engine`
       template <class EngineMaker>
       Result run_core_(const std::vector<Decimal>& x,
 		       Sampler                      sampler,
@@ -263,7 +279,7 @@ namespace palvalidator
       {
 	const std::size_t n = x.size();
 	if (n < 3) {
-	  throw std::invalid_argument("MOutOfNPercentileBootstrap.run_core_: n must be >= 3");
+	  throw std::invalid_argument("MOutOfNPercentileBootstrap: n must be >= 3");
 	}
 
 	std::size_t m_sub = (m_sub_override > 0)
@@ -274,25 +290,34 @@ namespace palvalidator
 
 	const Decimal theta_hat = sampler(x);
 
-	std::vector<double> thetas_d; thetas_d.reserve(m_B);
-	std::vector<Decimal> y; y.resize(m_sub);
+	// Pre-allocate; NaN marks skipped/invalid replicates
+	std::vector<double> thetas_d(m_B, std::numeric_limits<double>::quiet_NaN());
 
+	// Parallel over B using the internally default-constructed Executor
+	concurrency::parallel_for_chunked(static_cast<uint32_t>(m_B), *m_exec,
+						    [&](uint32_t b) {
+						      auto rng = make_engine(b);
+						      std::vector<Decimal> y; y.resize(m_sub);
+						      m_resampler(x, y, m_sub, rng);
+						      const double v = num::to_double(sampler(y));
+						      if (std::isfinite(v)) thetas_d[b] = v;
+						    },
+						    /*chunkSizeHint=*/m_chunkHint
+						    );
+
+	// Compact NaNs and validate effective_B
 	std::size_t skipped = 0;
-
-	for (std::size_t b = 0; b < m_B; ++b) {
-	  auto rng = make_engine(b);                 // ← per replicate
-	  m_resampler(x, y, m_sub, rng);
-
-	  const Decimal theta_star = sampler(y);
-	  const double  v          = num::to_double(theta_star);
-	  if (!std::isfinite(v)) { ++skipped; continue; }
-	  thetas_d.emplace_back(v);
+	{
+	  auto it = std::remove_if(thetas_d.begin(), thetas_d.end(),
+				   [](double v){ return !std::isfinite(v); });
+	  skipped = static_cast<std::size_t>(std::distance(it, thetas_d.end()));
+	  thetas_d.erase(it, thetas_d.end());
 	}
-
 	if (thetas_d.size() < m_B / 2) {
 	  throw std::runtime_error("MOutOfNPercentileBootstrap: too many degenerate replicates");
 	}
 
+		// Percentile CI (type-7) at CL
 	const double alpha = 1.0 - m_CL;
 	const double pl    = alpha / 2.0;
 	const double pu    = 1.0 - alpha / 2.0;
@@ -319,6 +344,8 @@ namespace palvalidator
       double       m_CL;
       double       m_ratio;
       Resampler    m_resampler;
+      mutable std::shared_ptr<Executor> m_exec; 
+      mutable uint32_t m_chunkHint{0};
     };
   }
 } // namespace palvalidator::analysis

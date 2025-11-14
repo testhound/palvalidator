@@ -88,47 +88,55 @@ public:
   //                    MOutOfNPercentileBootstrap
   // ===========================================================================
 
-  // Returns (bootstrap, CRNRng) so you can call run(...) later.
-  template<class Decimal, class Sampler, class Resampler>
+  // BacktesterStrategy overload (Executor defaults to SingleThreadExecutor)
+  template<class Decimal, class Sampler, class Resampler,
+	   class Executor = concurrency::SingleThreadExecutor>
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
-                   const Resampler& resampler,
-                   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-                   uint64_t stageTag, uint64_t L, uint64_t fold)
+		   const Resampler& resampler,
+		   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+		   uint64_t stageTag, uint64_t L, uint64_t fold)
     -> std::pair<
-         palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>,
-         mkc_timeseries::rng_utils::CRNRng<Engine>
-       >
+    palvalidator::analysis::MOutOfNPercentileBootstrap<
+      Decimal, Sampler, Resampler, Engine, Executor>,
+    mkc_timeseries::rng_utils::CRNRng<Engine>
+    >
   {
-    using Bootstrap = palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>;
+    using Bootstrap =
+      palvalidator::analysis::MOutOfNPercentileBootstrap<
+	Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler);
-    return { std::move(mn), std::move(crn) };
+    Bootstrap mn(B, CL, m_ratio, resampler);  // Executor default-constructed inside
+    return std::make_pair(std::move(mn), std::move(crn));
   }
 
-  // Raw strategyId
-  template<class Decimal, class Sampler, class Resampler>
+  // Raw strategyId overload (Executor defaults to SingleThreadExecutor)
+  template<class Decimal, class Sampler, class Resampler,
+	   class Executor = concurrency::SingleThreadExecutor>
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
-                   const Resampler& resampler,
-                   uint64_t strategyId,
-                   uint64_t stageTag, uint64_t L, uint64_t fold)
+		   const Resampler& resampler,
+		   uint64_t strategyId,
+		   uint64_t stageTag, uint64_t L, uint64_t fold)
     -> std::pair<
-         palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>,
-         mkc_timeseries::rng_utils::CRNRng<Engine>
-       >
+    palvalidator::analysis::MOutOfNPercentileBootstrap<
+      Decimal, Sampler, Resampler, Engine, Executor>,
+    mkc_timeseries::rng_utils::CRNRng<Engine>
+    >
   {
-    using Bootstrap = palvalidator::analysis::MOutOfNPercentileBootstrap<Decimal, Sampler, Resampler, Engine>;
+    using Bootstrap =
+      palvalidator::analysis::MOutOfNPercentileBootstrap<
+	Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
-    Bootstrap mn(B, CL, m_ratio, resampler);
-    return { std::move(mn), std::move(crn) };
+
+    Bootstrap mn(B, CL, m_ratio, resampler);  // Executor default-constructed inside
+    return std::make_pair(std::move(mn), std::move(crn));
   }
-
-
+  
   // ===========================================================================
   //                     PercentileTBootstrap
   // ===========================================================================
@@ -155,7 +163,7 @@ public:
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
 
     PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
-    return { std::move(pt), std::move(crn) };
+    return std::make_pair(std::move(pt), std::move(crn));
   }
 
   // Raw strategyId
@@ -178,7 +186,7 @@ public:
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
     PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
-    return { std::move(pt), std::move(crn) };
+    return std::make_pair(std::move(pt), std::move(crn));
   }
 
 
