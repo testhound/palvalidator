@@ -2,6 +2,7 @@
 
 #include "filtering/FilteringTypes.h"
 #include "filtering/BootstrapConfig.h"
+#include "filtering/ValidationPolicy.h"
 #include <ostream>
 
 namespace palvalidator::analysis {
@@ -42,6 +43,7 @@ namespace palvalidator::filtering::stages
      *  - nearHurdle: whether the annualized LB is within the borderline margin
      *  - smallN: whether the sample size is considered small for robustness checks
      *  - os: output stream for logging (preserves original logging format)
+     *  - validationPolicy: The validation policy to use for the checks.
      *
      * Returns:
      *  - FilterDecision::Pass() if robustness checks pass or are not required
@@ -51,7 +53,8 @@ namespace palvalidator::filtering::stages
                            const palvalidator::analysis::DivergenceResult<Num>& divergence,
                            bool nearHurdle,
                            bool smallN,
-                           std::ostream& os) const;
+                           std::ostream& os,
+                           const ValidationPolicy& validationPolicy) const;
 
   private:
     const RobustnessChecksConfig& mCfg;

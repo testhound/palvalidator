@@ -1,65 +1,28 @@
 #include "TradingHurdleCalculator.h"
 #include "DecimalConstants.h"
 #include <algorithm>
-#include <iostream>
 
 namespace palvalidator
 {
-  namespace filtering
-  {
-    TradingHurdleCalculator::TradingHurdleCalculator(
-						     const RiskParameters& riskParams,
-						     const Num& costBufferMultiplier,
-						     const Num& slippagePerSide)
-      : mRiskParams(riskParams),
-	mCostBufferMultiplier(costBufferMultiplier),
-	mSlippagePerSide(slippagePerSide),
-	mSlippagePerRoundTrip(slippagePerSide * mkc_timeseries::DecimalConstants<Num>::DecimalTwo)
+    namespace filtering
     {
-    }
 
-    Num TradingHurdleCalculator::calculateRiskFreeHurdle() const
-    {
-      return mRiskParams.riskFreeRate + mRiskParams.riskPremium;
-    }
+        TradingHurdleCalculator::TradingHurdleCalculator(const Num& slippagePerSide)
+            : mSlippagePerSide(slippagePerSide),
+              mSlippagePerRoundTrip(slippagePerSide * mkc_timeseries::DecimalConstants<Num>::DecimalTwo)
+        {
+        }
 
-    Num TradingHurdleCalculator::calculateAnnualizedCostHurdle(const Num& annualizedTrades) const
-    {
-      return annualizedTrades * mSlippagePerRoundTrip;
-    }
+      Num
+      TradingHurdleCalculator::calculateTradingSpreadCost(const Num& annualizedTrades,
+							  const std::optional<OOSSpreadStats>& oosSpreadStats) const
+      {
+	if (!oosSpreadStats)
+	    // Use precomputed default slippage per round trip when no OOS stats are provided
+	    return annualizedTrades * mSlippagePerRoundTrip;
 
-    Num TradingHurdleCalculator::calculateCostBasedRequiredReturn(const Num& annualizedTrades) const
-    {
-      const Num annualizedCostHurdle = calculateAnnualizedCostHurdle(annualizedTrades);
-      return annualizedCostHurdle * mCostBufferMultiplier;
-    }
-
-    Num TradingHurdleCalculator::calculateFinalRequiredReturn(const Num& annualizedTrades) const
-    {
-      const Num riskFreeHurdle = calculateRiskFreeHurdle();
-      const Num costBasedRequiredReturn = calculateCostBasedRequiredReturn(annualizedTrades);
-      return std::max(costBasedRequiredReturn, riskFreeHurdle);
-    }
-
-    Num TradingHurdleCalculator::calculateFinalRequiredReturnWithPerSideSlippage(
-										 const Num& annualizedTrades,
-										 const Num& perSideSlippage) const
-    {
-      // risk-free part unchanged
-      const Num rf = calculateRiskFreeHurdle();
-
-      // cost part with override:
-      // per round-trip = 2 * per-side
-      const Num two = mkc_timeseries::DecimalConstants<Num>::DecimalTwo;
-      const Num perRoundTrip = two * perSideSlippage;
-
-      // annualized cost before buffer
-      const Num annualizedCost = annualizedTrades * perRoundTrip;
-
-      // apply buffer (same multiplier as in the calculator)
-      const Num costReq = annualizedCost * mCostBufferMultiplier;
-
-      return std::max(rf, costReq);
-    }
-  } // namespace filtering
+	const Num roundTrip = oosSpreadStats->mean;
+	return annualizedTrades * roundTrip;
+      }
+    } // namespace filtering
 } // namespace palvalidator

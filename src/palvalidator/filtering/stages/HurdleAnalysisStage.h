@@ -9,11 +9,11 @@ namespace palvalidator::filtering::stages
   using namespace palvalidator::filtering;
 
   /**
-   * @brief Calculate cost- and risk-based hurdles and evaluate pass/fail
+   * @brief Calculates the trading spread cost, which serves as the new hurdle.
    *
-   * This stage wraps the existing TradingHurdleCalculator usage and the
-   * cost-stress helpers (makeCostStressHurdles / printCostStressConcise) from
-   * CostStressUtils.h. It returns a HurdleAnalysisResult describing the outcome.
+   * This stage uses the simplified `TradingHurdleCalculator` to determine the
+   * total annualized trading spread cost. This cost is then used by the
+   * `ValidationPolicy` to make a pass/fail decision.
    */
   class HurdleAnalysisStage
   {
@@ -21,11 +21,14 @@ namespace palvalidator::filtering::stages
     explicit HurdleAnalysisStage(const TradingHurdleCalculator& calc);
 
     /**
-     * Execute hurdle calculation for the provided context and bootstrap results.
-     * Writes the same concise cost-stress output as the original implementation.
+     * @brief Executes the hurdle calculation for the provided context.
+     *
+     * @param ctx The strategy analysis context.
+     * @param bootstrap The bootstrap analysis result.
+     * @param os The output stream for logging.
+     * @return A `HurdleAnalysisResult` containing the calculated cost.
      */
     HurdleAnalysisResult execute(const StrategyAnalysisContext& ctx,
-                                 const BootstrapAnalysisResult& bootstrap,
                                  std::ostream& os) const;
 
   private:

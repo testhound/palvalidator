@@ -12,7 +12,7 @@
 #include "BackTester.h"
 #include "TimeFrame.h"
 #include "filtering/FilteringTypes.h"
-#include "filtering/TradingHurdleCalculator.h"
+#include "filtering/MetaTradingHurdleCalculator.h"
 #include "utils/ValidationTypes.h"
 
 // Forward declarations
@@ -392,7 +392,7 @@ namespace palvalidator
           std::ostream& outputStream);
 
     private:
-      TradingHurdleCalculator mHurdleCalculator; ///< Calculator for trading hurdles
+      palvalidator::filtering::meta::MetaTradingHurdleCalculator mHurdleCalculator; ///< Calculator for trading hurdles
       Num mConfidenceLevel;                      ///< Confidence level for BCa bootstrap
       unsigned int mNumResamples;                ///< Number of bootstrap resamples
       bool mMetaStrategyPassed;                  ///< Result of last meta-strategy analysis

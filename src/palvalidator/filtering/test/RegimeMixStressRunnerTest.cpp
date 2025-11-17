@@ -26,6 +26,7 @@
 #include "RegimeMixStressRunner.h"
 #include "RegimeMixStress.h"
 #include "RegimeMixBlockResampler.h"
+#include "filtering/ValidationPolicy.h"
 
 #include "TestUtils.h"   // DecimalType, createDecimal
 #include "number.h"
@@ -140,7 +141,8 @@ TEST_CASE("RegimeMixStressRunner: all mixes PASS when LB > hurdle for constant r
     const D            hurdle       = createDecimal("0.0015");
 
     // Use default RNG (randutils) in runner template parameter
-    RegimeMixStressRunner<D> runner(cfg, L, numResamples, confLevel, annFactor, hurdle);
+    palvalidator::filtering::ValidationPolicy policy(hurdle);
+    RegimeMixStressRunner<D> runner(cfg, L, numResamples, confLevel, annFactor, policy);
 
     std::ostringstream os;
     const auto res = runner.run(returns, labels, os);
@@ -179,7 +181,8 @@ TEST_CASE("RegimeMixStressRunner: all mixes FAIL when LB < hurdle for constant r
     const double       annFactor    = 1.0;
     const D            hurdle       = createDecimal("0.0020"); // 0.20%
 
-    RegimeMixStressRunner<D> runner(cfg, L, numResamples, confLevel, annFactor, hurdle);
+    palvalidator::filtering::ValidationPolicy policy(hurdle);
+    RegimeMixStressRunner<D> runner(cfg, L, numResamples, confLevel, annFactor, policy);
 
     std::ostringstream os;
     const auto res = runner.run(returns, labels, os);
@@ -231,7 +234,8 @@ TEST_CASE("RegimeMixStressRunner + FixedRng: mix affects LB deterministically", 
     // we expect LB(Low2) < LB(Mid2) < LB(High2)
     const D hurdle = createDecimal("0.0014"); // 0.14%: Low2 likely fails, High2 likely passes
 
-    RegimeMixStressRunner<D, FixedRng> runner(cfg, L, numResamples, confLevel, annFactor, hurdle);
+    palvalidator::filtering::ValidationPolicy policy(hurdle);
+    RegimeMixStressRunner<D, FixedRng> runner(cfg, L, numResamples, confLevel, annFactor, policy);
 
     std::ostringstream os;
     const auto res = runner.run(returns, labels, os);
@@ -274,8 +278,8 @@ TEST_CASE("RegimeMixStressRunner: throws on returns/labels size mismatch", "[Reg
     RegimeMixConfig cfg(mixes, /*minPassFraction=*/1.0, /*minBarsPerRegime=*/L + 5);
 
     // Either RNG (default or FixedRng) is fine here; keep default
-    RegimeMixStressRunner<D> runner(cfg, L, /*B=*/100, /*alpha=*/0.90, /*ann=*/1.0,
-                                    /*hurdle=*/createDecimal("0.0010"));
+    palvalidator::filtering::ValidationPolicy policy(createDecimal("0.0010"));
+    RegimeMixStressRunner<D> runner(cfg, L, /*B=*/100, /*alpha=*/0.90, /*ann=*/1.0, policy);
 
     std::ostringstream os;
     REQUIRE_THROWS_AS(runner.run(returns, labels, os), std::invalid_argument);

@@ -22,6 +22,7 @@
 #include "CostStressUtils.h"
 #include "MetaSelectionBootstrap.h"
 #include "MetaLosingStreakBootstrapBound.h"
+#include "Annualizer.h"
 #include <fstream>
 
 namespace palvalidator
@@ -658,14 +659,14 @@ namespace palvalidator
 	}
 
       if (metaReturns.size() < 2U)
- {
-   outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
-   DrawdownResults emptyDrawdown;
-   return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-    DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
-    false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
-    DecimalConstants<Num>::DecimalZero, 0, 0);
- }
+	{
+	  outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
+	  DrawdownResults emptyDrawdown;
+	  return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+				DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+				false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
+				DecimalConstants<Num>::DecimalZero, 0, 0);
+	}
 
       // --- Metrics used by both gates ------------------------------------------
       const uint32_t numTrades        = bt->getClosedPositionHistory().getNumPositions();
@@ -674,9 +675,20 @@ namespace palvalidator
       const Num metaAnnualizedTrades    = Num(bt->getEstimatedAnnualizedTrades());
       const double annualizationFactor  = calculateAnnualizationFactor(timeFrame, baseSecurity);
 
+      const double Keff = mkc_timeseries::computeEffectiveAnnualizationFactor(metaAnnualizedTrades,
+      							 metaMedianHold,
+      							 annualizationFactor,
+      							 &outputStream);
+
+      const double p = (annualizationFactor > 0.0) ? (Keff / annualizationFactor) : 1.0;
+      if (p > 1.2 || p < 0.01) {
+	outputStream << "      [Meta] Warning: participation p=" << p
+		     << " looks unusual; verify estimated annualized trades / median hold.\n";
+      }
+
       // --- Regular (whole-sample) BCa gate -------------------------------------
       calculatePerPeriodEstimates(metaReturns, outputStream);
-      const auto bootstrapResults = performBootstrapAnalysis(metaReturns, annualizationFactor, Lmeta, outputStream);
+      const auto bootstrapResults = performBootstrapAnalysis(metaReturns, Keff, Lmeta, outputStream);
 
       // Build calibrated + Qn-stressed cost hurdles (uses OOS spread stats if present)
       const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
@@ -708,7 +720,7 @@ namespace palvalidator
 				  backtestingDates,
 				  timeFrame,
 				  Lmeta,
-				  annualizationFactor,
+				  Keff,
 				  bt.get(),
 				  outputStream,
 				  oosSpreadStats);
@@ -723,7 +735,7 @@ namespace palvalidator
 					metaReturns,
 					K,
 					Lmeta,
-					annualizationFactor,
+					Keff,
 					baseSecurity.get(),
 					timeFrame,
 					bt.get(),

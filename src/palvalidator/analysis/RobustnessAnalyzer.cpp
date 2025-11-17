@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 #include <iomanip>
+#include <optional>
 #include "BiasCorrectedBootstrap.h"
 #include "StatUtils.h"
 #include "DecimalConstants.h"
@@ -22,111 +23,187 @@ namespace palvalidator
     static inline double asDouble_(const T& x){ return x.getAsDouble(); }
 
     RobustnessResult RobustnessAnalyzer::runFlaggedStrategyRobustness(
-    				      const std::string& label,
-    				      const std::vector<Num>& returns,
-    				      size_t L_in,
-    				      double annualizationFactor,
-    				      const Num& finalRequiredReturn,
-    				      const RobustnessChecksConfig<Num>& cfg,
-    				      const mkc_timeseries::BacktesterStrategy<Num>& strategy,
-    				      BootstrapFactory& bootstrapFactory,
-    				      std::ostream& os,
-    				      const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt)
+								      const std::string& label,
+								      const std::vector<Num>& returns,
+								      size_t L_in,
+								      double annualizationFactor,
+								      const palvalidator::filtering::ValidationPolicy& validationPolicy,
+								      const RobustnessChecksConfig<Num>& cfg,
+								      const mkc_timeseries::BacktesterStrategy<Num>& strategy,
+								      BootstrapFactory& bootstrapFactory,
+								      std::ostream& os,
+								      const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt)
     {
       using mkc_timeseries::DecimalConstants;
 
-      // Guard: empty returns
+      // Guard: empty or too-short returns
       const size_t n = returns.size();
       if (n == 0)
-      {
-        os << "   [ROBUST] " << label << ": empty return series. ThumbsDown.\n";
-        return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, 0.0};
-      }
-
+	{
+	  os << "   [ROBUST] " << label << ": empty return series. ThumbsDown.\n";
+	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, 0.0};
+	}
       if (n < 2)
 	{
 	  os << "   [ROBUST] " << label << ": Insufficient return series length (< 2). ThumbsDown.\n";
 	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound, 0.0};
 	}
 
-      // Clamp block length
+      // Clamp block length for baseline
       const size_t L_eff = clampBlockLen_(L_in, n, cfg.minL);
 
-      // Step 1: Baseline analysis
+      // ── Step 1: Baseline analysis (Small-N conservative OR BCa) ──────────────────
       const auto baseline = computeBaselineAnalysis_(
-        returns, L_eff, annualizationFactor, cfg, strategy, bootstrapFactory, os);
-      
+						     returns, L_eff, annualizationFactor, cfg, strategy, bootstrapFactory, os);
+
       os << "   [ROBUST] " << label << " baseline (L=" << baseline.getEffectiveL() << "): "
-         << "per-period Geo LB=" << (baseline.getPerPeriodLB() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-         << "annualized Geo LB=" << (baseline.getAnnualizedLB() * DecimalConstants<Num>::DecimalOneHundred) << "%  "
-         << "[" << (baseline.isSmallN() ? "SmallN" : "BCa") << "]\n";
+	 << "per-period Geo LB="
+	 << (baseline.getPerPeriodLB() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+	 << "annualized Geo LB="
+	 << (baseline.getAnnualizedLB() * DecimalConstants<Num>::DecimalOneHundred) << "%  "
+	 << "[" << (baseline.isSmallN() ? "SmallN" : "BCa") << "]\n";
 
-      // Step 2: L-sensitivity analysis
+      // ── Step 2: L-sensitivity ────────────────────────────────────────────────────
       const auto lSensitivity = performLSensitivityAnalysis_(
-        gridOpt, returns, L_eff, annualizationFactor, baseline.getAnnualizedLB(),
-        cfg, strategy, bootstrapFactory, os);
+							     gridOpt, returns, L_eff, annualizationFactor, baseline.getAnnualizedLB(),
+							     cfg, strategy, bootstrapFactory, os);
 
-      // Check L-sensitivity bounds
-      if (lSensitivity.hasAnyFailure() || (lSensitivity.getMinAnnualized() <= finalRequiredReturn))
-      {
-        os << "   [ROBUST] L-sensitivity FAIL: LB below zero/hurdle at some L.\n";
-        return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound,
-                lSensitivity.getRelativeVariability()};
-      }
+      // (A) Epsilon policy for near-hurdle:
+      //     allow tiny shortfalls when comparing the MIN over the L-grid to the hurdle.
+      //     Use 2 bps absolute OR 10% of the hurdle, whichever is larger.
+      const double epsAbsBase = 0.00020; // 2 bps (annualized)
+      const Num    minAnn     = lSensitivity.getMinAnnualized();
+      const Num    reqRet     = validationPolicy.getRequiredReturn();
+      const double epsRel     = 0.10;    // 10% of hurdle
+      const double epsAbsEff  = std::max(epsAbsBase, epsRel * reqRet.getAsDouble());
 
-      // Check L-sensitivity variability
-      const auto hurdleCheck = nearHurdle_(baseline.getAnnualizedLB(), finalRequiredReturn, cfg);
-      if (lSensitivity.getRelativeVariability() > cfg.relVarTol)
-      {
-        if (hurdleCheck.near)
-        {
-          os << "   [ROBUST] L-sensitivity FAIL: relVar=" << lSensitivity.getRelativeVariability()
-             << " > " << cfg.relVarTol << " and base LB near hurdle "
-             << "(Δabs=" << hurdleCheck.distAbs << ", Δrel=" << hurdleCheck.distRel << ").\n";
-          return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityVarNearHurdle,
-                  lSensitivity.getRelativeVariability()};
-        }
-        else
-        {
-          os << "   [ROBUST] L-sensitivity PASS (high variability relVar="
-             << lSensitivity.getRelativeVariability()
-             << " but base LB comfortably above hurdle).\n";
-        }
-      }
-      else
-      {
-        os << "   [ROBUST] L-sensitivity PASS (relVar=" << lSensitivity.getRelativeVariability() << ")\n";
-      }
+      const bool minPassWithEps =
+        validationPolicy.hasPassed(minAnn) ||
+        (minAnn >= (reqRet - Num(epsAbsEff)));
 
-      // Step 3: Split-sample analysis
+      if (lSensitivity.hasAnyFailure() || !minPassWithEps)
+	{
+	  os << "   [ROBUST] L-sensitivity FAIL: LB below zero or below hurdle (beyond eps) at some L.\n";
+	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::LSensitivityBound,
+		  lSensitivity.getRelativeVariability()};
+	}
+
+      // (B) Adaptive relative-variability tolerance:
+      //     - small n  → modest boost
+      //     - bigger margin (baseline above hurdle) → allow a bit more variability
+      const double baseTol    = cfg.relVarTol;
+      const double nEff       = std::max(10.0, std::sqrt(static_cast<double>(n)));
+      const double marginA    = std::max(0.0, (baseline.getAnnualizedLB().getAsDouble() - reqRet.getAsDouble()));
+      const double marginFrac = (reqRet.getAsDouble() > 0.0)
+	? (marginA / reqRet.getAsDouble())
+	: 0.0;
+      const double tolAdj =
+        1.0
+        + 0.5 / nEff                          // modest boost for small samples
+        + 0.25 * std::min(1.0, marginFrac);   // up to +25% if baseline >> hurdle
+      const double relVarTolEff = baseTol * tolAdj;
+
+      double relVarTolUsed = relVarTolEff;
+      const bool relVarOK = checkLSensitivityTolerance_(lSensitivity,
+							baseline.getAnnualizedLB(),
+							relVarTolEff,
+							relVarTolUsed,
+							os);
+
+      if (!relVarOK)
+	{
+	  const auto hurdleCheck = nearHurdle_(baseline.getAnnualizedLB(), reqRet, cfg);
+	  if (hurdleCheck.near)
+	    {
+	      os << "   [ROBUST] L-sensitivity FAIL: relVar exceeds tolerance ("
+		 << relVarTolUsed << ") and base LB near hurdle "
+		 << "(Δabs=" << hurdleCheck.distAbs << ", Δrel=" << hurdleCheck.distRel << ").\n";
+	      return {RobustnessVerdict::ThumbsDown,
+		      RobustnessFailReason::LSensitivityVarNearHurdle,
+		      lSensitivity.getRelativeVariability()};
+	    }
+	  else
+	    {
+	      os << "   [ROBUST] L-sensitivity PASS despite high relVar "
+		 << "(baseline comfortably above hurdle; tol used=" << relVarTolUsed << ").\n";
+	    }
+	}
+ 
+      // ── Step 3: Split-sample ─────────────────────────────────────────────────────
       const auto splitSample = performSplitSampleAnalysis_(
-        returns, annualizationFactor, finalRequiredReturn, cfg, strategy, bootstrapFactory, os);
-      
-      if (!splitSample.passed())
-      {
-        os << "   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.\n";
-        return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::SplitSample,
-                lSensitivity.getRelativeVariability()};
-      }
+							   returns, annualizationFactor, validationPolicy, cfg, strategy, bootstrapFactory, os);
 
-      // Step 4: Tail-risk analysis
+      if (!splitSample.passed())
+	{
+	  os << "   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.\n";
+	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::SplitSample,
+		  lSensitivity.getRelativeVariability()};
+	}
+
+      // ── Step 4: Tail-risk ────────────────────────────────────────────────────────
       const auto tailRisk = performTailRiskAnalysis_(
-        returns, baseline.getPerPeriodLB(), baseline.getAnnualizedLB(),
-        finalRequiredReturn, cfg, os);
+						     returns, baseline.getPerPeriodLB(), baseline.getAnnualizedLB(),
+						     reqRet, cfg, os);
 
       if (tailRisk.shouldFail())
-      {
-        os << "   [ROBUST] Tail risk FAIL (severe tails and borderline LB) → ThumbsDown.\n";
-        return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::TailRisk,
-                lSensitivity.getRelativeVariability()};
-      }
+	{
+	  os << "   [ROBUST] Tail risk FAIL (severe tails and borderline LB) → ThumbsDown.\n";
+	  return {RobustnessVerdict::ThumbsDown, RobustnessFailReason::TailRisk,
+		  lSensitivity.getRelativeVariability()};
+	}
 
       os << "   [ROBUST] All checks PASS → ThumbsUp.\n";
       return {RobustnessVerdict::ThumbsUp, RobustnessFailReason::None,
-              lSensitivity.getRelativeVariability()};
+	      lSensitivity.getRelativeVariability()};
     }
     
     // ========== Helper Method Implementations ==========
+
+    bool RobustnessAnalyzer::checkLSensitivityTolerance_(const LSensitivityAnalysis& lsen,
+							 const Num& baselineAnnualizedLB,
+							 double relVarTolEff,
+							 double& relVarTolUsed,
+							 std::ostream& os)
+    {
+      const double baseAnn = baselineAnnualizedLB.getAsDouble();
+      const bool   smallEdge = (baseAnn < 0.00050);   // 50 bps
+      const double absEps    = 0.00020;               // 2 bps (annualized)
+
+      // Absolute movement across the L grid vs. the baseline
+      const double annMin = lsen.getMinAnnualized().getAsDouble();
+      const double annMax = lsen.getMaxAnnualized().getAsDouble();
+      const double maxAbsDelta = std::max(std::abs(annMin - baseAnn),
+					  std::abs(annMax - baseAnn));
+
+      // If edge is tiny and movements are within absolute epsilon, accept immediately.
+      if (smallEdge && (maxAbsDelta <= absEps)) {
+	os << "   [ROBUST] L-sensitivity PASS via absolute epsilon "
+	   << "(maxΔ=" << std::fixed << std::setprecision(6)
+	   << maxAbsDelta << " ≤ " << absEps
+	   << ", baseline=" << baseAnn << ")\n";
+	relVarTolUsed = relVarTolEff; // unchanged
+	return true;
+      }
+
+      // Otherwise, possibly relax relative tolerance a bit for tiny edges.
+      relVarTolUsed = smallEdge ? (relVarTolEff * 1.25) : relVarTolEff;
+
+      const double relVar = lsen.getRelativeVariability();
+      if (relVar <= relVarTolUsed) {
+	os << "   [ROBUST] L-sensitivity PASS (relVar=" << relVar
+	   << " ≤ " << relVarTolUsed
+	   << (smallEdge ? " with small-edge adj" : "")
+	   << ")\n";
+	return true;
+      }
+
+      // Caller will decide final fail vs. near-hurdle grace.
+      os << "   [ROBUST] L-sensitivity: relVar=" << relVar
+	 << " > " << relVarTolUsed
+	 << (smallEdge ? " (small-edge adj applied)" : "")
+	 << "\n";
+      return false;
+    }
     
     RobustnessAnalyzer::BaselineAnalysis RobustnessAnalyzer::computeBaselineAnalysis_(
       const std::vector<Num>& returns,
@@ -158,7 +235,7 @@ namespace palvalidator
           returns, L_eff, annualizationFactor, cfg.cl, cfg.B,
           /*rho_m auto*/ -1.0,
           const_cast<mkc_timeseries::BacktesterStrategy<Num>&>(strategy),
-          bootstrapFactory, &os, /*stageTag*/3, /*fold*/0);
+          bootstrapFactory, &os, /*stageTag*/3, /*fold*/0, std::optional<bool>(true));
 
         lbPeriod_base = s.per_lower;
         lbAnnual_base = s.ann_lower;
@@ -222,13 +299,13 @@ namespace palvalidator
 
     RobustnessAnalyzer::SplitSampleAnalysis
     RobustnessAnalyzer::performSplitSampleAnalysis_(
-						    const std::vector<Num>& returns,
-						    double annualizationFactor,
-						    const Num& finalRequiredReturn,
-						    const RobustnessChecksConfig<Num>& cfg,
-						    const mkc_timeseries::BacktesterStrategy<Num>& strategy,
-						    BootstrapFactory& bootstrapFactory,
-						    std::ostream& os)
+        const std::vector<Num>& returns,
+        double annualizationFactor,
+        const palvalidator::filtering::ValidationPolicy& validationPolicy,
+        const RobustnessChecksConfig<Num>& cfg,
+        const mkc_timeseries::BacktesterStrategy<Num>& strategy,
+        BootstrapFactory& bootstrapFactory,
+        std::ostream& os)
     {
       using mkc_timeseries::DecimalConstants;
       using GeoStat      = mkc_timeseries::GeoMeanStat<Num>;
@@ -351,74 +428,118 @@ namespace palvalidator
 	}
 
       // Final pass/fail check vs zero and hurdle
-      const bool passed =
-	(lb1A_cons > DecimalConstants<Num>::DecimalZero) &&
-	(lb2A_cons > DecimalConstants<Num>::DecimalZero) &&
-	(lb1A_cons > finalRequiredReturn) &&
-	(lb2A_cons > finalRequiredReturn);
 
+        // Final pass/fail check vs zero and hurdle, with near-hurdle epsilon
+      const double epsAbsBase = 0.00020; // 2 bps absolute
+      const double epsRel     = 0.10;    // or 10% of hurdle
+      const double epsAbsEff  = std::max(epsAbsBase, epsRel * validationPolicy.getRequiredReturn().getAsDouble());
+      
+      const auto req = validationPolicy.getRequiredReturn();
+      const bool h1Pass =
+	validationPolicy.hasPassed(lb1A_cons) || (lb1A_cons >= (req - Num(epsAbsEff)));
+      const bool h2Pass =
+	validationPolicy.hasPassed(lb2A_cons) || (lb2A_cons >= (req - Num(epsAbsEff)));
+      
+      const bool passed = h1Pass && h2Pass;
       if (passed)
 	{
 	  os << "   [ROBUST] Split-sample PASS\n";
 	}
       else
 	{
-	  os << "   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.\n";
+	  os << "   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle (beyond eps).\n";
 	}
 
       return SplitSampleAnalysis(passed, lb1A_cons, lb2A_cons);
     }
     
-    RobustnessAnalyzer::TailRiskAnalysis RobustnessAnalyzer::performTailRiskAnalysis_(
-      const std::vector<Num>& returns,
-      const Num& lbPeriod_base,
-      const Num& lbAnnual_base,
-      const Num& finalRequiredReturn,
-      const RobustnessChecksConfig<Num>& cfg,
-      std::ostream& os)
+    RobustnessAnalyzer::TailRiskAnalysis
+    RobustnessAnalyzer::performTailRiskAnalysis_(
+						 const std::vector<Num>& returns,
+						 const Num& lbPeriod_base,
+						 const Num& lbAnnual_base,
+						 const Num& finalRequiredReturn,
+						 const RobustnessChecksConfig<Num>& cfg,
+						 std::ostream& os)
     {
       using mkc_timeseries::DecimalConstants;
 
       const size_t n = returns.size();
 
-      // Compute tail statistics in log space for comparison
+      // --- Compute tail statistics in log space ---------------------------------
       std::vector<Num> returns_log;
       toLog1pVector_(returns, returns_log);
-      std::sort(returns_log.begin(), returns_log.end(), 
-                [](const Num& a, const Num& b){ return a < b; });
+      std::sort(returns_log.begin(), returns_log.end(),
+		[](const Num& a, const Num& b){ return a < b; });
 
       const double alphaEff = effectiveTailAlpha_(n, cfg.tailAlpha);
-      const TailStats tlog = computeTailStatsType7_(returns_log, alphaEff);
+      const TailStats tlog  = computeTailStatsType7_(returns_log, alphaEff);
 
-      const Num q05_log = tlog.q_alpha;
-      const Num lbLog_base = toLog1p_(lbPeriod_base);
+      const Num q05_log    = tlog.q_alpha;            // 5% (or alphaEff) lower-tail quantile in log space
+      const Num lbLog_base = toLog1p_(lbPeriod_base); // per-period GM LB mapped to log(1+·)
 
+      // --- NEW: denominator floor via a robust scale term ------------------------
+      // Build |log(1+r)| and take its 60th percentile as a scale estimate.
+      std::vector<Num> abs_log;
+      abs_log.reserve(returns_log.size());
+      for (const auto& v : returns_log) abs_log.push_back(absNum_(v));
+
+      std::sort(abs_log.begin(), abs_log.end(),
+		[](const Num& a, const Num& b){ return a < b; });
+
+      const double scaleQuant = 0.60; // tunable (0.55–0.70 are also reasonable)
+      const TailStats tAbs    = computeTailStatsType7_(abs_log, scaleQuant);
+      const Num qAbs60        = tAbs.q_alpha;
+
+      // Denominator for the "severe" test: max(|LB_log|, qAbs60)
+      const Num scaleDen = (absNum_(lbLog_base) > qAbs60) ? absNum_(lbLog_base) : qAbs60;
+
+      // --- Adaptive tail multiple (kept from prior logic) ------------------------
+      //   • if annualized LB < 10 bps, allow ~+75%
+      //   • else if < 20 bps, allow ~+33%
+      //   • small n (<= 30) add another +10%
+      double tailMultAdj = 1.0;
+      const double lbA = lbAnnual_base.getAsDouble();
+      if (lbA < 0.001)      tailMultAdj += 0.75; // very small edge (<10 bps)
+      else if (lbA < 0.002) tailMultAdj += 0.33; // small edge (<20 bps)
+      if (returns.size() <= 30) tailMultAdj += 0.10;
+
+      const Num tailMultEff = Num(cfg.tailMultiple.getAsDouble() * tailMultAdj);
+
+      // --- Severe tail decision (uses scaleDen instead of |LB_log|) --------------
       const bool severe_tails =
-        (q05_log < DecimalConstants<Num>::DecimalZero) &&
-        (absNum_(q05_log) > cfg.tailMultiple * absNum_(lbLog_base));
+	(q05_log < DecimalConstants<Num>::DecimalZero) &&
+	(absNum_(q05_log) > tailMultEff * scaleDen);
 
+      // Borderline flag relative to the required annual hurdle
       const auto hurdleCheck = nearHurdle_(lbAnnual_base, finalRequiredReturn, cfg);
 
-      // Compute display statistics in raw space
+      // --- Display statistics in raw space for readability -----------------------
       std::vector<Num> sorted_raw = returns;
-      std::sort(sorted_raw.begin(), sorted_raw.end(), 
-                [](const Num& a, const Num& b){ return a < b; });
-      const TailStats tDisp = computeTailStatsType7_(sorted_raw, alphaEff);
-      const Num q05_disp = tDisp.q_alpha;
-      const Num es05_disp = tDisp.es_alpha;
+      std::sort(sorted_raw.begin(), sorted_raw.end(),
+		[](const Num& a, const Num& b){ return a < b; });
+      const TailStats tDisp  = computeTailStatsType7_(sorted_raw, alphaEff);
+      const Num q05_disp     = tDisp.q_alpha;
+      const Num es05_disp    = tDisp.es_alpha;
 
       os << "   [ROBUST] Tail risk (alpha=" << alphaEff << "): q05="
-         << (q05_disp * DecimalConstants<Num>::DecimalOneHundred) << "%, ES05="
-         << (es05_disp * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-         << "severe=" << (severe_tails ? "yes" : "no") << ", "
-         << "borderline=" << (hurdleCheck.near ? "yes" : "no") << "\n";
+	 << (q05_disp * DecimalConstants<Num>::DecimalOneHundred) << "%, ES05="
+	 << (es05_disp * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+	 << "severe=" << (severe_tails ? "yes" : "no") << ", "
+	 << "borderline=" << (hurdleCheck.near ? "yes" : "no") << "\n";
 
-      logTailRiskExplanation(os, lbPeriod_base, q05_disp, es05_disp, 
-                             cfg.tailMultiple.getAsDouble());
+      // Trace the denominator composition in log space for transparency
+      os << "      · Tail denom components (log): |LB_log|=" << absNum_(lbLog_base)
+	 << ", qAbs60=" << qAbs60
+	 << " → scaleDen=" << scaleDen
+	 << ", mult=" << tailMultEff << "\n";
+
+      // Keep the human-readable explanation (raw space) as before
+      logTailRiskExplanation(os, lbPeriod_base, q05_disp, es05_disp, cfg.tailMultiple.getAsDouble());
 
       return TailRiskAnalysis(q05_disp, es05_disp, severe_tails, hurdleCheck.near);
     }
-
+    
     // ========== Utility Method Implementations ==========
     
     Num RobustnessAnalyzer::annualizeLB_(const Num& perPeriodLB, double k)
@@ -644,7 +765,8 @@ namespace palvalidator
 								     /*rho_m auto*/ -1.0,
 								     const_cast<mkc_timeseries::BacktesterStrategy<Num>&>(strategy),
 								     bootstrapFactory,
-								     &os, /*stageTag=*/3, /*fold=*/foldTag);
+								     &os, /*stageTag=*/3, /*fold=*/foldTag,
+								     std::optional<bool>(true));
 
 	  lbA_cons = s.ann_lower;
 
@@ -698,8 +820,11 @@ namespace palvalidator
       if (n == 0)
 	return 0.0;
 
-      // Ensure at least ~1 observation in tail when possible; cap to avoid alpha > 0.5
-      const double minAlpha = (n >= 20) ? alpha : std::min(0.5, std::max(alpha, 1.0 / static_cast<double>(n)));
+      // Ensure at least ~1 obs in tail; with very small samples, don't probe ultra-extreme tails.
+      double minAlpha = (n >= 20) ? alpha : std::min(0.5, std::max(alpha, 1.0 / static_cast<double>(n)));
+      if (n < 40)
+	minAlpha = std::max(minAlpha, 0.075); // use at least 7.5% tail for n<40
+
       return minAlpha;
     }
 

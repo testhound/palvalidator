@@ -4,9 +4,11 @@
 #include "StationaryMaskResamplers.h"
 #include "StatUtils.h"
 #include "SmallNBootstrapHelpers.h"
+#include "Annualizer.h"
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <limits>
 
 namespace palvalidator::filtering::stages
 {
@@ -57,58 +59,84 @@ namespace palvalidator::filtering::stages
    * @param Lcap     Maximum allowed block length for this stage.
    * @return std::vector<size_t> Sorted and deduplicated list of candidate L values.
    */
+  // Tightened for very small n: local {Lc-1, Lc, Lc+1} when n <= 32
   static std::vector<size_t> makeDefaultLGrid(size_t Lcenter, size_t n, size_t Lcap)
   {
     // Enforce a sane cap: 2 <= L <= min(Lcap, n-1)
     const size_t hardCap = std::max<size_t>(2, std::min(Lcap, (n > 0 ? n - 1 : 0)));
-    const size_t Lc     = (Lcenter > 0) ? std::min(std::max<size_t>(2, Lcenter), hardCap) : 2;
-    const size_t Lcube  = (n > 0) ? static_cast<size_t>(std::lround(std::pow(double(n), 1.0/3.0))) : 0;
+    const size_t Lc      = (Lcenter > 0) ? std::min(std::max<size_t>(2, Lcenter), hardCap) : 2;
+    const size_t Lcube   = (n > 0) ? static_cast<size_t>(std::lround(std::pow(double(n), 1.0 / 3.0))) : 0;
 
     std::vector<size_t> g;
 
-    // N-aware branch: with very small samples, prefer a tighter grid to reduce
-    // variance and compute cost. Otherwise, use a broader grid.
-    if (n >= 20 && n <= 28) {
-      g = { 2, 3, 4, 5, (Lcenter > 0 ? Lcenter : 2) };
-    } else {
-      g = {
-	2, 3, 4, 5, 6, 8, 10,
-	(Lcenter > 0 ? Lcenter : 2),
-	2 * std::max<size_t>(2, Lcenter),
-	Lcube
-      };
-    }
+    // Small-sample branch: probe only a tight local neighborhood around center
+    if (n >= 20 && n <= 32)
+      {
+        const size_t LcEff = (Lcenter > 0 ? Lcenter : 2);
+        const size_t Lm1   = (LcEff > 2 ? LcEff - 1 : 2);
+        const size_t Lp1   = (LcEff + 1 <= hardCap ? LcEff + 1 : hardCap);
 
-    // Optional neighborhood around center to probe local sensitivity
-    if (Lcenter > 0) {
-      g.push_back(Lcenter + 1);
-      if (Lcenter > 2) g.push_back(Lcenter - 1);
-    }
+        g = { std::max<size_t>(2, Lm1), std::max<size_t>(2, LcEff), std::min(hardCap, Lp1) };
+      }
+    else
+      {
+        // Broader grid for larger samples
+        g = {
+	  2, 3, 4, 5, 6, 8, 10,
+	  (Lcenter > 0 ? Lcenter : 2),
+	  2 * std::max<size_t>(2, Lcenter),
+	  Lcube
+        };
+
+        // Optional local neighborhood to probe around center
+        if (Lcenter > 0)
+	  {
+            g.push_back(Lcenter + 1);
+            if (Lcenter > 2)
+	      {
+                g.push_back(Lcenter - 1);
+	      }
+	  }
+      }
 
     // Cap to [2, hardCap]
-    for (auto& L : g) {
-      if (L < 2)      L = 2;
-      if (L > hardCap) L = hardCap;
-    }
+    for (auto &L : g)
+      {
+        if (L < 2)
+	  {
+            L = 2;
+	  }
+        if (L > hardCap)
+	  {
+            L = hardCap;
+	  }
+      }
 
-    // Sort, unique, and remove invalids (must also be < n to be meaningful)
+    // Sort, unique, and remove invalids (also require L < n)
     std::sort(g.begin(), g.end());
     g.erase(std::unique(g.begin(), g.end()), g.end());
     g.erase(std::remove_if(g.begin(), g.end(),
-			   [&](size_t L){ return L < 2 || (n > 0 && L >= n) || L > hardCap; }),
-	    g.end());
+                           [&](size_t L)
+                           {
+			     return L < 2 || (n > 0 && L >= n) || L > hardCap;
+                           }),
+            g.end());
 
-    // Ensure the capped Lcenter (Lc) is present
-    if (!std::binary_search(g.begin(), g.end(), Lc)) {
-      g.insert(std::lower_bound(g.begin(), g.end(), Lc), Lc);
-    }
+    // Ensure the capped center Lc is present
+    if (!std::binary_search(g.begin(), g.end(), Lc))
+      {
+        g.insert(std::lower_bound(g.begin(), g.end(), Lc), Lc);
+      }
 
-    // Failsafe: never return empty
-    if (g.empty()) g.push_back(2);
+    // Failsafe
+    if (g.empty())
+      {
+        g.push_back(2);
+      }
 
     return g;
   }
-
+  
   std::vector<size_t> LSensitivityStage::buildLGrid(const StrategyAnalysisContext& ctx,
                                                       size_t hardCap,
                                                       std::ostream& os) const

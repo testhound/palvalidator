@@ -18,6 +18,12 @@ using namespace mkc_timeseries;
 using palvalidator::analysis::DivergenceResult;
 using palvalidator::bootstrap_cfg::BootstrapFactory;
 
+// Small helper to build the centralized validation policy from the test's hurdle
+static inline ValidationPolicy makePolicyFromCtx(const StrategyAnalysisContext& ctx)
+{
+  return ValidationPolicy(ctx.finalRequiredReturn);
+}
+
 // Helper functions copied from PalStrategyTestHelpers.cpp since we can't link to it
 static std::shared_ptr<LongMarketEntryOnOpen> createLongOnOpen()
 {
@@ -113,7 +119,8 @@ TEST_CASE("RobustnessStage: passing and failing paths", "[RobustnessStage]")
     ctx.finalRequiredReturn = Num("0.001"); // small hurdle
 
     std::ostringstream os;
-    const auto decision = stage.execute(ctx, div, /*nearHurdle*/ false, /*smallN*/ false, os);
+    const ValidationPolicy policy = makePolicyFromCtx(ctx);
+    const auto decision = stage.execute(ctx, div, /*nearHurdle*/ false, /*smallN*/ false, os, policy);
 
     REQUIRE(decision.passed());
     // No robustness failure counters should be incremented
@@ -134,8 +141,10 @@ TEST_CASE("RobustnessStage: passing and failing paths", "[RobustnessStage]")
     ctx.finalRequiredReturn = Num("0.001");
 
     std::ostringstream os;
-    const auto decision = stage.execute(ctx, div, /*nearHurdle*/ true, /*smallN*/ false, os);
 
+    const ValidationPolicy policy = makePolicyFromCtx(ctx);
+    const auto decision = stage.execute(ctx, div, /*nearHurdle*/ true, /*smallN*/ false, os, policy);
+ 
     REQUIRE(!decision.passed());
     // At least one failure counter should be incremented (split/tail/L-bound)
     const auto totalFails = summary.getFailLBoundCount() + summary.getFailLVarCount() +

@@ -4,10 +4,11 @@
 #include "RegimeLabeler.h"
 #include "RegimeMixStress.h"
 #include "RegimeMixStationaryResampler.h"
-#include "RegimeMixStressRunner.h"
+#include "filtering/RegimeMixStressRunner.h"
 #include "BarAlignedSeries.h"
 #include "TimeSeriesCsvReader.h"
 #include "DecimalConstants.h"
+#include "Annualizer.h"
 #include <algorithm>
 #include <iomanip>
 #include <limits>
@@ -291,21 +292,79 @@ namespace palvalidator::filtering::stages
       palvalidator::analysis::RegimeMixStressRunner<
 	NumT, Rng, palvalidator::resampling::RegimeMixBlockResampler>;
 
+    // --- Annualization (NEW): bars/year via λ × medianHoldBars -------------------
+    // Prefer the bootstrap-propagated factor if it’s already set to bars/year.
+    // Otherwise compute it here from backtester: lambda (trades/year) × median hold.
+    double annUsed = 0.0;
+
+    // 1) Pull λ (trades/year) and median hold (bars)
+    double lambdaTradesPerYear = 0.0;
+    unsigned int medianHoldBars = 0;
+
+    if (ctx.backtester) {
+      try {
+	lambdaTradesPerYear = ctx.backtester->getEstimatedAnnualizedTrades(); // λ
+	medianHoldBars = ctx.backtester
+	  ->getClosedPositionHistory()
+	  .getMedianHoldingPeriod();                         // bars/trade
+      } catch (...) {
+	// leave defaults; we’ll fall back below if needed
+      }
+    }
+
+    // 2) If the bootstrap stage already published bars/year, prefer it.
+    //    (In the updated pipeline, bootstrap.annFactorUsed == barsPerYear.)
+    if (bootstrap.annFactorUsed > 0.0)
+      {
+	annUsed = bootstrap.annFactorUsed;
+      }
+    else
+      {
+	// Compute bars/year from λ × medianHoldBars (fallback)
+	const double barsPerYear = lambdaTradesPerYear * static_cast<double>(medianHoldBars);
+	if (barsPerYear > 0.0)
+	  {
+	    annUsed = barsPerYear;
+	  }
+	else if (ctx.annualizationFactor > 0.0)
+	  {
+	    // Final fallback to whatever the context carried (legacy path)
+	    annUsed = ctx.annualizationFactor;
+	    os << "   [RegimeMix] Warning: λ×medianHoldBars unavailable; "
+	      "falling back to ctx.annualizationFactor = " << annUsed << "\n";
+	  }
+	else
+	  {
+	    os << "   [RegimeMix] Warning: could not determine bars/year; results may be unscaled.\n";
+	  }
+      }
+
+    // 3) Log clearly (no 'p' participation; this is now bars/year)
+    if (annUsed > 0.0)
+      {
+	os << "   [RegimeMix] annualization (bars/year via λ×medianHoldBars) = "
+	   << annUsed
+	   << "  [λ=" << lambdaTradesPerYear
+	   << ", medianHoldBars=" << medianHoldBars << "]\n";
+      }
+ 
+    ValidationPolicy policy(hurdle.finalRequiredReturn);
+
     RunnerStationary runnerStat(cfg,
-				bootstrap.blockLength,
-				mNumResamples,
-				mConfidenceLevel.getAsDouble(),
-				ctx.annualizationFactor,
-				hurdle.finalRequiredReturn);
+                                bootstrap.blockLength,
+                                mNumResamples,
+                                mConfidenceLevel.getAsDouble(),
+                                annUsed,
+                                policy);
 
     auto resStat = runnerStat.run(ctx.highResReturns, compactLabels, os);
 
     RunnerFixed runnerFixed(cfg,
-			    bootstrap.blockLength,
-			    mNumResamples,
-			    mConfidenceLevel.getAsDouble(),
-			    ctx.annualizationFactor,
-			    hurdle.finalRequiredReturn);
+                            bootstrap.blockLength,
+                            mNumResamples,
+                            mConfidenceLevel.getAsDouble(),
+                            annUsed,
+                            policy);
 
     auto resFixed = runnerFixed.run(ctx.highResReturns, compactLabels, os);
 
