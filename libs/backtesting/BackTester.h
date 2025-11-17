@@ -473,21 +473,44 @@ namespace mkc_timeseries
      */
     double getEstimatedAnnualizedTrades() const
     {
-        uint32_t total_trades = getNumTrades();
+      uint32_t total_trades = getNumTrades();
 
-        boost::gregorian::days duration_in_days = getEndDate() - getStartDate();
-        
-        if (duration_in_days.days() <= 0)
-        {
-            throw BackTesterException("getEstimatedAnnualizedTrades: Backtest duration must be positive.");
-        }
+      // Sum duration across ALL configured ranges using ptime when available.
+      double total_years = 0.0;
 
-        // Convert duration to years (using 365.25 to account for leap years)
-        double duration_in_years = duration_in_days.days() / 365.25;
+      for (auto it = beginBacktestDateRange(); it != endBacktestDateRange(); ++it)
+	{
+	  const DateRange& r = it->second;
 
-        return static_cast<double>(total_trades) / duration_in_years;
+	  // Prefer ptime bounds when present
+	  const auto startPT = r.getFirstDateTime();
+	  const auto endPT   = r.getLastDateTime();
+
+	  // If ptime bounds are valid, use them; otherwise fall back to date
+	  if (!startPT.is_not_a_date_time() && !endPT.is_not_a_date_time())
+	    {
+	      // Duration in seconds → years
+	      const auto secs = (endPT - startPT).total_seconds();
+	      if (secs > 0)
+                total_years += static_cast<double>(secs) / (365.25 * 24.0 * 3600.0);
+	    }
+	  else
+	    {
+	      // Fallback to date-only granularity
+	      const auto days = (r.getFirstDate() <= r.getLastDate())
+		? (r.getLastDate() - r.getFirstDate()).days()
+		: 0;
+	      if (days > 0)
+                total_years += static_cast<double>(days) / 365.25;
+	    }
+	}
+
+      if (total_years <= 0.0)
+        throw BackTesterException("getEstimatedAnnualizedTrades: Total backtest duration must be positive across all ranges.");
+
+      return static_cast<double>(total_trades) / total_years;
     }
-
+    
     /**
      * @brief Get the total number of bars across all trades (closed + open) for the first strategy
      * @return Total count of bars in all closed and open trades
