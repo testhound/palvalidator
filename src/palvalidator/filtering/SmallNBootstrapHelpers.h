@@ -7,6 +7,7 @@
 #include <ostream>
 #include <optional>
 #include <random>
+#include <iomanip>
 #include "BiasCorrectedBootstrap.h"
 #include "StationaryMaskResamplers.h"
 #include "BootstrapConfig.h"
@@ -466,25 +467,25 @@ conservative_smallN_lower_bound(const std::vector<Num>& returns,
 
   // Decide resampler with optional heavy-tail override + tiny MC guard
   bool use_block = false;
-  if (heavy_tails_override.has_value()) {
-    use_block = *heavy_tails_override;  // true = block, false = IID
-  }
+
+  constexpr std::size_t N_BLOCK_ALWAYS = 60; // tweakable
+
+  if (heavy_tails_override.has_value())
+    {
+      use_block = *heavy_tails_override;           // explicit caller choice
+    }
+  else if (n <= N_BLOCK_ALWAYS)
+    {
+      use_block = true;                             // never IID at tiny n
+    }
   else
     {
-    const bool choose_block_fast = choose_block_smallN(ratio_pos, n, runlen);
-    if (choose_block_fast) {
-      use_block = true;
+      // Original heuristic (kept for larger samples)
+      const bool choose_block_fast = choose_block_smallN(ratio_pos, n, runlen);
+      use_block = choose_block_fast;
     }
-    else if (n <= 40) {
-      using palvalidator::bootstrap_helpers::internal::borderline_run_exceeds_MC95;
-      use_block = borderline_run_exceeds_MC95(n, ratio_pos, runlen);
-    }
-    else {
-      use_block = false;
-    }
-  }
 
-  const char* chosenName = use_block
+    const char* chosenName = use_block
     ? "StationaryMaskValueResamplerAdapter(small L)"
     : "IIDResampler";
 

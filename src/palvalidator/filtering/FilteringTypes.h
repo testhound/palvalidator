@@ -275,6 +275,11 @@ namespace palvalidator
         , timeFrame(tf)
         , oosSpreadStats(spread)
       {}
+
+      bool hasAnnualizationFactor() const
+      {
+	return annualizationFactor > 0.0;
+      }
     };
 
     /**

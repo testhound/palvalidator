@@ -2,7 +2,7 @@
 #include <memory>
 #include <utility>
 #include "Security.h"
-#include "SyntheticTimeSeries.h"  // for Eod/Intraday impls & interface
+#include "SyntheticTimeSeries.h"  // SyntheticNullModel, EOD/Intraday impls & interface
 
 namespace mkc_timeseries
 {
@@ -19,11 +19,13 @@ namespace mkc_timeseries
    *  Decimal        : numeric type
    *  LookupPolicy   : OHLCTimeSeries lookup policy
    *  RoundingPolicy : tick rounding policy
+   *  NullModel      : synthetic null model (defaults to legacy N1 behavior)
    */
   template<
     class Decimal,
     class LookupPolicy,
-    template<class> class RoundingPolicy
+    template<class> class RoundingPolicy,
+    SyntheticNullModel NullModel = SyntheticNullModel::N1_MaxDestruction
     >
   class SyntheticCache
   {
@@ -35,7 +37,7 @@ namespace mkc_timeseries
       : m_sec(baseSec->clone(baseSec->getTimeSeries()))
     {
       if (!m_sec) {
-	throw SecurityException("SyntheticCache: failed to clone base security");
+        throw SecurityException("SyntheticCache: failed to clone base security");
       }
       initImplFrom(*baseSec->getTimeSeries(), baseSec->getTick(), baseSec->getTickDiv2());
     }
@@ -73,62 +75,90 @@ namespace mkc_timeseries
       virtual std::shared_ptr<const SeriesT> buildSeries() = 0;
     };
 
-    // EOD adapter
+    // EOD adapter (N1: legacy independent shuffles)
     class EodImpl final : public ImplIface
     {
     public:
       EodImpl(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
-	: m_impl(base, tick, tickDiv2)
+        : m_impl(base, tick, tickDiv2)
       {}
 
       void shuffleFactors(RandomMersenne& rng) override
       {
-	m_impl.shuffleFactors(rng);
+        m_impl.shuffleFactors(rng);
       }
 
       std::shared_ptr<const SeriesT> buildSeries() override
       {
-	return m_impl.buildSeries();
+        return m_impl.buildSeries();
       }
 
     private:
       EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> m_impl;
     };
 
-    // Intraday adapter
-    class IntradayImpl final : public ImplIface {
+    // EOD adapter (N0: paired-day shuffle — gap + H/L/C permuted together)
+    class EodImplN0 final : public ImplIface
+    {
     public:
-      IntradayImpl(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
-	: m_impl(base, tick, tickDiv2)
+      EodImplN0(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
+        : m_impl(base, tick, tickDiv2)
       {}
 
       void shuffleFactors(RandomMersenne& rng) override
       {
-	m_impl.shuffleFactors(rng);
+        m_impl.shuffleFactors(rng);
       }
-    
+
       std::shared_ptr<const SeriesT> buildSeries() override
       {
-	return m_impl.buildSeries();
+        return m_impl.buildSeries();
       }
 
     private:
-      IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> m_impl; // :contentReference[oaicite:2]{index=2}
+      EodSyntheticTimeSeriesImpl_N0<Decimal, LookupPolicy, RoundingPolicy> m_impl;
+    };
+
+    // Intraday adapter (unchanged)
+    class IntradayImpl final : public ImplIface {
+    public:
+      IntradayImpl(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
+        : m_impl(base, tick, tickDiv2)
+      {}
+
+      void shuffleFactors(RandomMersenne& rng) override
+      {
+        m_impl.shuffleFactors(rng);
+      }
+
+      std::shared_ptr<const SeriesT> buildSeries() override
+      {
+        return m_impl.buildSeries();
+      }
+
+    private:
+      IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> m_impl;
     };
 
     void initImplFrom(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
     {
       // Decide EOD vs Intraday from the base series, same as SyntheticTimeSeries does.
-      // (Uses your series' time-frame or an equivalent indicator.)
       const auto tf = base.getTimeFrame();
-      if (tf == TimeFrame::DAILY)
-	m_impl = std::make_unique<EodImpl>(base, tick, tickDiv2);
-      else
-	m_impl = std::make_unique<IntradayImpl>(base, tick, tickDiv2);
+      if (tf == TimeFrame::DAILY) {
+        if constexpr (NullModel == SyntheticNullModel::N0_PairedDay) {
+          m_impl = std::make_unique<EodImplN0>(base, tick, tickDiv2); // N0: paired-day
+        } else {
+          // N1 (legacy) and N2 (until implemented) both fall back to N1 here
+          m_impl = std::make_unique<EodImpl>(base, tick, tickDiv2);   // N1: current behavior
+        }
+      } else {
+        m_impl = std::make_unique<IntradayImpl>(base, tick, tickDiv2);
+      }
     }
 
   private:
     std::unique_ptr<ImplIface> m_impl;  // chosen at runtime (EOD or Intraday)
     SecPtr                      m_sec;  // one reusable Security; series swapped per permutation
   };
+
 } // namespace mkc_timeseries

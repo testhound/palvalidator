@@ -11,7 +11,7 @@
 #include "utils/TimeUtils.h"
 #include "RegimeLabeler.h"
 #include "RegimeMixStress.h"
-#include "RegimeMixStressRunner.h"
+#include "filtering/RegimeMixStressRunner.h"
 #include "BarAlignedSeries.h"
 #include "CostStressUtils.h"
 #include "filtering/FilteringPipeline.h"
@@ -27,10 +27,9 @@ namespace palvalidator
     using palvalidator::filtering::makeCostStressHurdles;
 
     constexpr std::size_t kRegimeVolWindow = 20;
-    PerformanceFilter::PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel,
-					 unsigned int numResamples, uint64_t masterSeed)
-    : mHurdleCalculator(riskParams),
-      mConfidenceLevel(confidenceLevel),
+    PerformanceFilter::PerformanceFilter(const Num& confidenceLevel,
+    	 unsigned int numResamples, uint64_t masterSeed)
+    : mConfidenceLevel(confidenceLevel),
       mNumResamples(numResamples),
       mRobustnessConfig(),
       mFragileEdgePolicy(),
@@ -40,9 +39,9 @@ namespace palvalidator
     {
     }
 
-    PerformanceFilter::PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel,
+    PerformanceFilter::PerformanceFilter(const Num& confidenceLevel,
     	 unsigned int numResamples)
-      : PerformanceFilter (riskParams, confidenceLevel, numResamples, palvalidator::config::kDefaultCrnMasterSeed)
+      : PerformanceFilter (confidenceLevel, numResamples, palvalidator::config::kDefaultCrnMasterSeed)
     {
     }
 
@@ -65,13 +64,8 @@ namespace palvalidator
 
       outputStream << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
       outputStream << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
-      outputStream << "Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * "
-		   << mHurdleCalculator.getCostBufferMultiplier() << ")\n";
-      outputStream << "Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate + Risk Premium ( "
-		   << mHurdleCalculator.getRiskPremium() << ") )\n";
-      outputStream << "  - Cost assumptions: $0 commission; slippage/spread per side uses configured floor"
-		   << " and may be calibrated by OOS spreads when available.\n";
-      outputStream << "  - Risk-Free Rate assumption: " << (mHurdleCalculator.getRiskFreeRate() * DecimalConstants<Num>::DecimalOneHundred) << "%.\n";
+      outputStream << "Filter 2 (Economic Significance): Annualized Lower Bound > Trading Spread Costs\n";
+      outputStream << "  - Cost assumptions: $0 commission; slippage/spread per side is data-driven when available.\n";
 
       for (const auto& strategy : survivingStrategies)
 	{
@@ -147,8 +141,11 @@ namespace palvalidator
 
     std::unique_ptr<FilteringPipeline> PerformanceFilter::createPipeline()
     {
+      // In the new design, the TradingHurdleCalculator is simplified and used
+      // directly within the pipeline, so we pass it here.
+      TradingHurdleCalculator hurdleCalculator;
       return std::make_unique<FilteringPipeline>(
-        mHurdleCalculator,
+        hurdleCalculator,
         mConfidenceLevel,
         mNumResamples,
         mRobustnessConfig,

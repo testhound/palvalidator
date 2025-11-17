@@ -179,3 +179,126 @@ TEST_CASE("SyntheticCache: Intraday impl is chosen and invariants are preserved"
     REQUIRE(interiorChanged);
   }
 }
+
+TEST_CASE("SyntheticCache: EOD N0_PairedDay preserves day-units (gap + H/O/L/O/C/O) up to permutation",
+          "[SyntheticCache][EOD][N0]") {
+  using DT = DecimalType;
+
+  // Helper to extract per-day tuples (gap_t, H/O, L/O, C/O) from an EOD series
+  auto day_factors = [](const OHLCTimeSeries<DT>& ts) {
+    std::vector<std::tuple<DT,DT,DT,DT>> v;
+    v.reserve(ts.getNumEntries() ? ts.getNumEntries()-1 : 0);
+
+    bool first = true;
+    DT prevClose{};
+    for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it) {
+      const auto& e = *it;
+      if (first) {
+        first = false;
+        prevClose = e.getCloseValue();
+        continue; // no defined gap for first bar
+      }
+      const DT O = e.getOpenValue();
+      const DT H = e.getHighValue();
+      const DT L = e.getLowValue();
+      const DT C = e.getCloseValue();
+      const DT gap = O / prevClose;
+      v.emplace_back(gap, H / O, L / O, C / O);
+      prevClose = C;
+    }
+    return v;
+  };
+
+  auto as_multiset = [](std::vector<std::tuple<DT,DT,DT,DT>> v) {
+    std::sort(v.begin(), v.end());
+    return v;
+  };
+
+  const DT tick     = DecimalConstants<DT>::EquityTick;
+  const DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Use local daily series helper already present in this file
+  auto baseSeries = makeDailySeries();
+  REQUIRE(baseSeries);
+  REQUIRE(baseSeries->getTimeFrame() == TimeFrame::DAILY);
+
+  // Original per-day tuples
+  const auto orig_ms = as_multiset(day_factors(*baseSeries));
+
+  // Build base Security and N0 cache (paired-day)
+  auto baseSec = std::make_shared<EquitySecurity<DT>>("N0SYM", "N0 Test Security", baseSeries);
+  using CacheN0 =
+    SyntheticCache<
+      DT,
+      LogNLookupPolicy<DT>,
+      NoRounding,
+      SyntheticNullModel::N0_PairedDay
+    >;
+
+  CacheN0 cacheN0(baseSec);
+
+  RandomMersenne rng;
+  rng.seed_u64(0xA11CEu);
+
+  // First permutation/build
+  auto& sec1 = cacheN0.shuffleAndRebuild(rng);
+  auto ts1 = sec1->getTimeSeries();
+  REQUIRE(ts1);
+  REQUIRE(ts1->getNumEntries() == baseSeries->getNumEntries());
+  REQUIRE(ts1->getTimeFrame() == TimeFrame::DAILY);
+  REQUIRE(ts1->getFirstDate() == baseSeries->getFirstDate());
+  REQUIRE(ts1->getLastDate()  == baseSeries->getLastDate());
+
+  // Under N0, the multiset of (gap, H/O, L/O, C/O) across days should be identical to original
+  const auto ms1 = as_multiset(day_factors(*ts1));
+  REQUIRE(ms1 == orig_ms);
+
+  // Bar-level sanity: OHLC invariants hold
+  for (auto it = ts1->beginSortedAccess(); it != ts1->endSortedAccess(); ++it) {
+    const auto& b = *it;
+    REQUIRE(b.getHighValue() >= std::max(b.getOpenValue(), b.getCloseValue()));
+    REQUIRE(b.getLowValue()  <= std::min(b.getOpenValue(),  b.getCloseValue()));
+  }
+}
+
+TEST_CASE("SyntheticCache: EOD N0_PairedDay reuses Security and swaps series pointer per shuffle",
+          "[SyntheticCache][EOD][N0][Reuse]") {
+  using DT = DecimalType;
+
+  const DT tick     = DecimalConstants<DT>::EquityTick;
+  const DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N0SYM2", "N0 Reuse Test", baseSeries);
+
+  using CacheN0 =
+    SyntheticCache<
+      DT,
+      LogNLookupPolicy<DT>,
+      NoRounding,
+      SyntheticNullModel::N0_PairedDay
+    >;
+
+  CacheN0 cache(baseSec);
+
+  RandomMersenne rng;
+  rng.seed_u64(0xBADA55u);
+
+  auto& sec1 = cache.shuffleAndRebuild(rng);
+  REQUIRE(sec1);
+  auto ts1 = sec1->getTimeSeries();
+  REQUIRE(ts1);
+
+  // Second build: same Security*, different series instance expected
+  auto* sec_addr = sec1.get();
+  auto& sec2 = cache.shuffleAndRebuild(rng);
+  REQUIRE(sec2.get() == sec_addr);          // same Security reused
+  auto ts2 = sec2->getTimeSeries();
+  REQUIRE(ts2);
+  REQUIRE(ts2 != ts1);                      // swapped series pointer
+
+  // Both builds keep sizes & timeframe
+  REQUIRE(ts2->getNumEntries() == baseSeries->getNumEntries());
+  REQUIRE(ts2->getTimeFrame()  == TimeFrame::DAILY);
+}
+

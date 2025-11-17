@@ -11,6 +11,7 @@
 #include "ParallelExecutors.h"
 #include "filtering/BootstrapConfig.h" 
 #include "SmallNBootstrapHelpers.h"
+#include "Annualizer.h"
 #include <sstream>
 #include <cmath>
 
@@ -161,62 +162,42 @@ namespace palvalidator::filtering::stages
 
   std::optional<BootstrapAnalysisStage::PercentileTResult>
   BootstrapAnalysisStage::runPercentileTBootstrap(const StrategyAnalysisContext& ctx,
-                                                   double confidenceLevel,
-                                                   size_t blockLength,
-                                                   std::ostream& os) const
+						  double confidenceLevel,
+						  size_t blockLength,
+						  std::ostream& os) const
   {
-    using palvalidator::bootstrap_helpers::dispatch_smallN_resampler;
-    using palvalidator::bootstrap_helpers::PTRunSimple;
     using PTExec = concurrency::ThreadPoolExecutor<0>;
+    using ResamplerT = mkc_timeseries::StationaryBlockResampler<Num>;
 
-    const std::size_t n = ctx.highResReturns.size();
+    const std::size_t n     = ctx.highResReturns.size();
     const std::size_t B_out = std::max<std::size_t>(mNumResamples, 400);
-    const std::size_t B_in = std::max<std::size_t>(mNumResamples / 5, 100ul);
-    const double rho_o = 1.0;                       // outer uses full size
-    const double rho_i = (n <= 24) ? 0.85 : 0.95;   // inner smaller at tiny n
+    const std::size_t B_in  = std::max<std::size_t>(mNumResamples / 5, 100ul);
+    const double rho_o = 1.0;
+    const double rho_i = (n <= 24) ? 0.85 : 0.95;
 
-    const char* chosen_name = nullptr;
-    std::size_t L_small = 0;
+    ResamplerT resampler(blockLength);
+    auto [ptBoot, ptCrn] =
+      mBootstrapFactory.template makePercentileT<Num,
+                                                 mkc_timeseries::GeoMeanStat<Num>,
+                                                 ResamplerT,
+                                                 PTExec>(
+							 B_out, B_in, confidenceLevel, resampler, *ctx.clonedStrategy,
+							 /*stage*/1, blockLength, /*fold*/0, rho_o, rho_i);
 
-    auto ptRes = dispatch_smallN_resampler(
-      ctx.highResReturns, blockLength,
-      [&](auto& resampler, double, bool, std::size_t) {
-        using ResamplerT = std::decay_t<decltype(resampler)>;
-        auto [ptBoot, ptCrn] =
-          mBootstrapFactory.template makePercentileT<Num,
-                                                      mkc_timeseries::GeoMeanStat<Num>,
-                                                      ResamplerT,
-                                                      PTExec>(
-            B_out, B_in, confidenceLevel, resampler, *ctx.clonedStrategy,
-            /*stage*/1, blockLength, /*fold*/0, rho_o, rho_i);
-        auto r = ptBoot.run(ctx.highResReturns, mkc_timeseries::GeoMeanStat<Num>(), ptCrn);
-        PTRunSimple<Num> out;
-        out.lower = r.lower;
-        out.m_outer = r.m_outer;
-        out.m_inner = r.m_inner;
-        out.L = r.L;
-        out.effective_B = r.effective_B;
-        return out;
-      },
-      &chosen_name, &L_small);
+    auto r = ptBoot.run(ctx.highResReturns, mkc_timeseries::GeoMeanStat<Num>(), ptCrn);
 
     os << "   [Bootstrap] Percentile-t:"
-       << "  resampler=" << (chosen_name ? chosen_name : "n/a")
-       << "  m_outer=" << ptRes.m_outer
-       << "  m_inner=" << ptRes.m_inner
-       << "  L=" << ptRes.L
-       << "  effB=" << ptRes.effective_B
-       << "  LB=" << ptRes.lower << "\n";
+       << "  resampler=StationaryBlockResampler"
+       << "  m_outer=" << r.m_outer
+       << "  m_inner=" << r.m_inner
+       << "  L=" << r.L
+       << "  effB=" << r.effective_B
+       << "  LB=" << r.lower << "\n";
 
-    return PercentileTResult(
-      ptRes.lower,
-      chosen_name ? chosen_name : "n/a",
-      ptRes.m_outer,
-      ptRes.m_inner,
-      ptRes.L,
-      ptRes.effective_B);
+    return PercentileTResult(r.lower, "StationaryBlockResampler",
+			     r.m_outer, r.m_inner, r.L, r.effective_B);
   }
-
+  
   BootstrapAnalysisStage::BCaMeanResult
   BootstrapAnalysisStage::runBCaMeanBootstrap(const StrategyAnalysisContext& ctx,
                                                double confidenceLevel,
@@ -325,20 +306,20 @@ namespace palvalidator::filtering::stages
 
     // --- Step 1: Ensure backtester & high-res returns exist ----------------
     if (!initializeBacktester(ctx, os))
-    {
-      R.failureReason = "Failed to initialize backtester";
-      return R;
-    }
+      {
+	R.failureReason = "Failed to initialize backtester";
+	return R;
+      }
 
     const std::size_t n = ctx.highResReturns.size();
     if (n < 2)
-    {
-      R.failureReason = "Insufficient returns (need at least 2, have " + std::to_string(n) + ")";
-      os << "   [Bootstrap] Skipped (" << R.failureReason << ")\n";
-      return R;
-    }
+      {
+	R.failureReason = "Insufficient returns (need at least 2, have " + std::to_string(n) + ")";
+	os << "   [Bootstrap] Skipped (" << R.failureReason << ")\n";
+	return R;
+      }
 
-    // --- Step 2: Compute block length and annualization factor ------------
+    // --- Step 2: Compute block length and *bars/year* annualization --------
     const std::size_t L = computeBlockLength(ctx);
     R.blockLength = L;
 
@@ -347,65 +328,93 @@ namespace palvalidator::filtering::stages
     R.medianHoldBars = medianHoldBars;
     os << "Strategy Median holding period = " << medianHoldBars << "\n";
 
-    const double annFactor = computeAnnualizationFactor(ctx);
+    // Base calendar factor (e.g., 252 daily, etc.) retained for fallback only
+    const double baseAnnFactor = computeAnnualizationFactor(ctx);
+
+    // λ = trades/year from the backtester (preferred)
+    double lambdaTradesPerYear = 0.0;
+    if (ctx.backtester) {
+      try {
+	lambdaTradesPerYear = ctx.backtester->getEstimatedAnnualizedTrades();
+      } catch (...) {
+	lambdaTradesPerYear = 0.0;
+      }
+    }
+
+    // New: Annualize M2M bar statistics using bars/year = λ × medianHoldBars.
+    // If λ is unavailable or medianHoldBars == 0, fall back to base calendar factor.
+    double barsPerYear = lambdaTradesPerYear * static_cast<double>(medianHoldBars);
+    if (!(barsPerYear > 0.0)) {
+      barsPerYear = baseAnnFactor;
+      os << "   [Bootstrap] Warning: trades/year (λ) or medianHoldBars unavailable; "
+	"falling back to base calendar factor = " << baseAnnFactor << "\n";
+    }
+
+    // Publish for downstream stages (interpretation: *bars/year* on M2M series)
+    R.annFactorUsed = barsPerYear;
+
     const double CL = mConfidenceLevel.getAsDouble();
 
     try
-    {
-      // --- Step 3: Analyze distribution and determine which methods to run ----
-      const auto diagnostics = analyzeDistribution(ctx, os);
-      os << "   [Bootstrap] L=" << L << "\n";
-
-      // --- Step 4: Run small-N conservative bootstrap (if applicable) ---------
-      std::optional<SmallNResult> smallNResult;
-      if (diagnostics.shouldRunSmallN())
       {
-        smallNResult = runSmallNBootstrap(ctx, CL, annFactor, L, 
-                                          diagnostics.hasHeavyTails(), os);
+	// --- Step 3: Analyze distribution and determine which methods to run ----
+	const auto diagnostics = analyzeDistribution(ctx, os);
+	os << "   [Bootstrap] L=" << L << "\n";
+
+	// --- Step 4: Run small-N conservative bootstrap (if applicable) ---------
+	std::optional<SmallNResult> smallNResult;
+	if (diagnostics.shouldRunSmallN())
+	  {
+	    smallNResult = runSmallNBootstrap(ctx, CL, barsPerYear, L,
+					      diagnostics.hasHeavyTails(), os);
+	  }
+
+	// --- Step 5: Run percentile-t bootstrap (if applicable) -----------------
+	std::optional<PercentileTResult> percentileTResult;
+	if (diagnostics.shouldRunPercentileT())
+	  {
+	    percentileTResult = runPercentileTBootstrap(ctx, CL, L, os);
+	  }
+
+	// --- Step 6: Run BCa mean bootstrap (always for compatibility) ----------
+	const auto bcaMeanResult = runBCaMeanBootstrap(ctx, CL, barsPerYear, L, os);
+	R.lbMeanPeriod = bcaMeanResult.getLowerBoundPeriod();
+	R.annualizedLowerBoundMean = bcaMeanResult.getLowerBoundAnnualized();
+
+	// --- Step 7: Combine geometric lower bounds -----------------------------
+	const Num lbGeoPer_neutral = combineGeometricLowerBounds(smallNResult, percentileTResult, os);
+	R.lbGeoPeriod = lbGeoPer_neutral;
+
+	// Annualize geometric lower bound using barsPerYear (λ × medianHoldBars)
+	R.annualizedLowerBoundGeo =
+	  mkc_timeseries::Annualizer<Num>::annualize_one(R.lbGeoPeriod, barsPerYear);
+
+	// Publish the parts for downstream near-hurdle refinement
+	R.lbGeoSmallNPeriod = smallNResult.has_value()
+	  ? std::optional<Num>(smallNResult->getLowerBoundPeriod())
+	  : std::nullopt;
+	R.lbGeoPTPeriod = percentileTResult.has_value()
+	  ? std::optional<Num>(percentileTResult->getLowerBoundPeriod())
+	  : std::nullopt;
+
+	// --- Step 8: Log final policy and finish --------------------------------
+	logFinalPolicy(smallNResult, percentileTResult, n, L,
+		       diagnostics.getSkew(), diagnostics.getExcessKurtosis(),
+		       diagnostics.hasHeavyTails(), os);
+
+	os << "   [Bootstrap] Annualization factor (bars/year via λ×medianHoldBars) = "
+	   << barsPerYear
+	   << "  [λ=" << lambdaTradesPerYear
+	   << ", medianHoldBars=" << medianHoldBars << "]\n";
+
+	R.computationSucceeded = true;
+	return R;
       }
-
-      // --- Step 5: Run percentile-t bootstrap (if applicable) -----------------
-      std::optional<PercentileTResult> percentileTResult;
-      if (diagnostics.shouldRunPercentileT())
-      {
-        percentileTResult = runPercentileTBootstrap(ctx, CL, L, os);
-      }
-
-      // --- Step 6: Run BCa mean bootstrap (always for compatibility) ----------
-      const auto bcaMeanResult = runBCaMeanBootstrap(ctx, CL, annFactor, L, os);
-      R.lbMeanPeriod = bcaMeanResult.getLowerBoundPeriod();
-      R.annualizedLowerBoundMean = bcaMeanResult.getLowerBoundAnnualized();
-
-      // --- Step 7: Combine geometric lower bounds -----------------------------
-      const Num lbGeoPer_neutral = combineGeometricLowerBounds(smallNResult, percentileTResult, os);
-      R.lbGeoPeriod = lbGeoPer_neutral;
-      R.annualizedLowerBoundGeo = mkc_timeseries::Annualizer<Num>::annualize_one(
-        R.lbGeoPeriod, annFactor);
-
-      // Publish the parts for downstream near-hurdle refinement
-      R.lbGeoSmallNPeriod = smallNResult.has_value() 
-        ? std::optional<Num>(smallNResult->getLowerBoundPeriod()) 
-        : std::nullopt;
-      R.lbGeoPTPeriod = percentileTResult.has_value() 
-        ? std::optional<Num>(percentileTResult->getLowerBoundPeriod()) 
-        : std::nullopt;
-      R.annFactorUsed = annFactor;
-
-      // --- Step 8: Log final policy and finish --------------------------------
-      logFinalPolicy(smallNResult, percentileTResult, n, L, 
-                     diagnostics.getSkew(), diagnostics.getExcessKurtosis(),
-                     diagnostics.hasHeavyTails(), os);
-
-      os << "   [Bootstrap] Annualization factor = " << annFactor << "\n";
-
-      R.computationSucceeded = true;
-      return R;
-    }
     catch (const std::exception& e)
-    {
-      R.failureReason = std::string("Bootstrap computation failed: ") + e.what();
-      os << "Warning: BootstrapAnalysisStage " << R.failureReason << "\n";
-      return R;
-    }
+      {
+	R.failureReason = std::string("Bootstrap computation failed: ") + e.what();
+	os << "Warning: BootstrapAnalysisStage " << R.failureReason << "\n";
+	return R;
+      }
   }
 } // namespace palvalidator::filtering::stages

@@ -10,7 +10,6 @@
 #include "PalStrategy.h"
 #include "TimeFrame.h"
 #include "filtering/FilteringTypes.h"
-#include "filtering/TradingHurdleCalculator.h"
 #include "analysis/RobustnessAnalyzer.h"
 #include "analysis/DivergenceAnalyzer.h"
 #include "analysis/FragileEdgeAnalyzer.h"
@@ -68,17 +67,16 @@ namespace palvalidator
 
       void setLSensitivityConfig(const LSensitivityConfig& cfg) { mLSensitivity = cfg; }
       /**
-       * @brief Constructor with risk parameters and bootstrap configuration
-       * @param riskParams Risk parameters including risk-free rate and premium
+       * @brief Constructor with bootstrap configuration
        * @param confidenceLevel Confidence level for BCa bootstrap analysis (e.g., 0.95)
        * @param numResamples Number of bootstrap resamples (e.g., 2000)
+       * @param masterSeed A seed for the random number generator.
        */
-      PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel,
-   unsigned int numResamples, uint64_t masterSeed);
+      PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples, uint64_t masterSeed);
 
-      PerformanceFilter(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples);
+      PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples);
 
-      // Destructor must be declared in header and defined in .cpp for std::unique_ptr with incomplete type
+// Destructor must be declared in header and defined in .cpp for std::unique_ptr with incomplete type
       ~PerformanceFilter();
 
       /**
@@ -137,7 +135,6 @@ namespace palvalidator
       void updateSummaryForDecision(const FilterDecision& decision);
 
     private:
-      TradingHurdleCalculator mHurdleCalculator;     ///< Calculator for trading hurdles
       Num mConfidenceLevel;                          ///< Confidence level for BCa bootstrap
       unsigned int mNumResamples;                    ///< Number of bootstrap resamples
       RobustnessChecksConfig mRobustnessConfig;      ///< Configuration for robustness checks

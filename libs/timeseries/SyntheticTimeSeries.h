@@ -25,6 +25,13 @@
 namespace mkc_timeseries
 {
 
+  // Null model selector for synthetic resampling
+  enum class SyntheticNullModel {
+    N1_MaxDestruction = 0,  // current behavior (independent shuffles)
+    N0_PairedDay      = 1,  // shuffle day-units intact: (gap, H/L/C[, Volume]) together
+    N2_BlockDays      = 2   // (reserved) shuffle blocks of day-units; not implemented here
+  };
+
 // Forward declaration of the Pimpl interface and concrete implementations
 // Pimpl interface and classes are now templated on LookupPolicy, with a default
 
@@ -65,6 +72,250 @@ namespace mkc_timeseries
     virtual std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> clone() const = 0;
   };
 
+
+  // ================================
+  // N0: Paired-day EOD implementation
+  // ================================
+  template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
+  class EodSyntheticTimeSeriesImpl_N0
+    : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>
+  {
+  public:
+    EodSyntheticTimeSeriesImpl_N0(const OHLCTimeSeries<Decimal, LookupPolicy>& sourceSeries,
+				  const Decimal& minimumTick,
+				  const Decimal& minimumTickDiv2)
+      : mSourceTimeSeries(sourceSeries),
+	mMinimumTick(minimumTick),
+	mMinimumTickDiv2(minimumTickDiv2),
+	mDateSeries(sourceSeries.getNumEntries()),
+	mFirstOpen(DecimalConstants<Decimal>::DecimalZero)
+#ifdef SYNTHETIC_VOLUME
+      , mFirstVolume(DecimalConstants<Decimal>::DecimalZero)
+#endif
+    {
+      initEodDataInternal();
+    }
+
+    EodSyntheticTimeSeriesImpl_N0(const EodSyntheticTimeSeriesImpl_N0& other) = default;
+
+    // Paired-day shuffle: permute indices {1..n-1} once and apply to all day-factor arrays
+    void shuffleFactors(RandomMersenne& randGenerator) override
+    {
+      const size_t n = mRelativeOpen.size();
+      if (n <= 2) return;
+
+      // Build day index permutation; keep index 0 fixed as anchor
+      std::vector<size_t> idx(n);
+      std::iota(idx.begin(), idx.end(), size_t{0});
+
+      // Fisher–Yates over subrange [1..n-1]
+      for (size_t i = n - 1; i > 1; --i) {
+	// draw j in [1, i]
+	size_t j = randGenerator.DrawNumberExclusive(i) + 1; // DrawNumberExclusive(i) yields [0..i-1]
+	std::swap(idx[i], idx[j]);
+      }
+
+      auto apply_perm = [&](const std::vector<Decimal>& src, std::vector<Decimal>& dst) {
+	dst.resize(n);
+	for (size_t k = 0; k < n; ++k) dst[k] = src[idx[k]];
+      };
+
+      std::vector<Decimal> newOpen, newHigh, newLow, newClose;
+#ifdef SYNTHETIC_VOLUME
+      std::vector<Decimal> newVolume;
+#endif
+
+      // Apply the same permutation to all day-factor arrays
+      apply_perm(mRelativeOpen,  newOpen);
+      apply_perm(mRelativeHigh,  newHigh);
+      apply_perm(mRelativeLow,   newLow);
+      apply_perm(mRelativeClose, newClose);
+#ifdef SYNTHETIC_VOLUME
+      apply_perm(mRelativeVolume, newVolume);
+#endif
+
+      // Ensure the anchor day keeps open factor = 1
+      if (!newOpen.empty()) newOpen[0] = DecimalConstants<Decimal>::DecimalOne;
+
+      mRelativeOpen.swap(newOpen);
+      mRelativeHigh.swap(newHigh);
+      mRelativeLow.swap(newLow);
+      mRelativeClose.swap(newClose);
+#ifdef SYNTHETIC_VOLUME
+      mRelativeVolume.swap(newVolume);
+#endif
+    }
+
+    std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> buildSeries() override {
+      return buildEodInternal();
+    }
+
+    Decimal        getFirstOpen()               const override { return mFirstOpen; }
+    unsigned long  getNumOriginalElements()     const override { return mSourceTimeSeries.getNumEntries(); }
+    std::vector<Decimal> getRelativeOpenFactors()  const override { return mRelativeOpen;  }
+    std::vector<Decimal> getRelativeHighFactors()  const override { return mRelativeHigh;  }
+    std::vector<Decimal> getRelativeLowFactors()   const override { return mRelativeLow;   }
+    std::vector<Decimal> getRelativeCloseFactors() const override { return mRelativeClose; }
+#ifdef SYNTHETIC_VOLUME
+    std::vector<Decimal> getRelativeVolumeFactors() const override { return mRelativeVolume; }
+#endif
+
+    std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> clone() const override {
+      return std::make_unique<EodSyntheticTimeSeriesImpl_N0<Decimal, LookupPolicy, RoundingPolicy>>(*this);
+    }
+
+  private:
+    // Copied from EodSyntheticTimeSeriesImpl with identical logic
+    void initEodDataInternal()
+    {
+      using SourceSeriesType = OHLCTimeSeries<Decimal, LookupPolicy>;
+      using Iter = typename SourceSeriesType::ConstRandomAccessIterator;
+
+      if (mSourceTimeSeries.getNumEntries() == 0) {
+	mFirstOpen = DecimalConstants<Decimal>::DecimalZero;
+#ifdef SYNTHETIC_VOLUME
+	mFirstVolume = DecimalConstants<Decimal>::DecimalZero;
+#endif
+	return;
+      }
+
+      Iter it = mSourceTimeSeries.beginRandomAccess();
+      Decimal one = DecimalConstants<Decimal>::DecimalOne;
+
+      mRelativeOpen.reserve(mSourceTimeSeries.getNumEntries());
+      mRelativeHigh.reserve(mSourceTimeSeries.getNumEntries());
+      mRelativeLow.reserve(mSourceTimeSeries.getNumEntries());
+      mRelativeClose.reserve(mSourceTimeSeries.getNumEntries());
+#ifdef SYNTHETIC_VOLUME
+      mRelativeVolume.reserve(mSourceTimeSeries.getNumEntries());
+#endif
+
+      mFirstOpen = it->getOpenValue();
+#ifdef SYNTHETIC_VOLUME
+      mFirstVolume = it->getVolumeValue();
+#endif
+
+      mRelativeOpen.push_back(one);
+#ifdef SYNTHETIC_VOLUME
+      mRelativeVolume.push_back(one);
+#endif
+
+      if (mFirstOpen != DecimalConstants<Decimal>::DecimalZero) {
+	mRelativeHigh.push_back(it->getHighValue()  / mFirstOpen);
+	mRelativeLow.push_back(it->getLowValue()    / mFirstOpen);
+	mRelativeClose.push_back(it->getCloseValue()/ mFirstOpen);
+      } else {
+	mRelativeHigh.push_back(one);
+	mRelativeLow.push_back(one);
+	mRelativeClose.push_back(one);
+      }
+      mDateSeries.addElement(it->getDateValue());
+
+      if (mSourceTimeSeries.getNumEntries() > 1) {
+	Iter prev_it = it;
+	++it;
+	for (; it != mSourceTimeSeries.endRandomAccess(); ++it, ++prev_it) {
+	  Decimal currOpen  = it->getOpenValue();
+	  Decimal prevClose = prev_it->getCloseValue();
+
+	  mRelativeOpen.push_back(
+				  (prevClose != DecimalConstants<Decimal>::DecimalZero)
+				  ? currOpen / prevClose
+				  : one
+				  );
+
+	  if (currOpen != DecimalConstants<Decimal>::DecimalZero) {
+	    mRelativeHigh.push_back(it->getHighValue()  / currOpen);
+	    mRelativeLow.push_back(it->getLowValue()    / currOpen);
+	    mRelativeClose.push_back(it->getCloseValue()/ currOpen);
+	  } else {
+	    mRelativeHigh.push_back(one);
+	    mRelativeLow.push_back(one);
+	    mRelativeClose.push_back(one);
+	  }
+
+#ifdef SYNTHETIC_VOLUME
+	  Decimal v0 = it->getVolumeValue();
+	  Decimal v1 = prev_it->getVolumeValue();
+	  mRelativeVolume.push_back(
+				    (v1 > DecimalConstants<Decimal>::DecimalZero) ? (v0 / v1) : one
+				    );
+#endif
+	  mDateSeries.addElement(it->getDateValue());
+	}
+      }
+    }
+
+    std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> buildEodInternal()
+    {
+      if (mSourceTimeSeries.getNumEntries() == 0) {
+	return std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(
+								       mSourceTimeSeries.getTimeFrame(), mSourceTimeSeries.getVolumeUnits());
+      }
+
+      Decimal preciseChainPrice = mFirstOpen;
+#ifdef SYNTHETIC_VOLUME
+      Decimal preciseChainVolume = mFirstVolume;
+#endif
+      std::vector<OHLCTimeSeriesEntry<Decimal>> bars;
+      bars.reserve(mRelativeOpen.size());
+
+      for (size_t i = 0; i < mRelativeOpen.size(); ++i) {
+	Decimal preciseOpenOfDay  = (i == 0) ? preciseChainPrice
+	  : preciseChainPrice * mRelativeOpen[i];
+	Decimal preciseCloseOfDay = preciseOpenOfDay * mRelativeClose[i];
+
+	Decimal open  = RoundingPolicy<Decimal>::round(preciseOpenOfDay,               mMinimumTick, mMinimumTickDiv2);
+	Decimal high  = RoundingPolicy<Decimal>::round(preciseOpenOfDay*mRelativeHigh[i],  mMinimumTick, mMinimumTickDiv2);
+	Decimal low   = RoundingPolicy<Decimal>::round(preciseOpenOfDay*mRelativeLow[i],   mMinimumTick, mMinimumTickDiv2);
+	Decimal close = RoundingPolicy<Decimal>::round(preciseCloseOfDay,              mMinimumTick, mMinimumTickDiv2);
+
+	high = std::max({high, open, close});
+	low  = std::min({low, open, close});
+
+	preciseChainPrice = preciseCloseOfDay;
+
+#ifdef SYNTHETIC_VOLUME
+	Decimal currentDayVolume;
+	if (i == 0) {
+	  currentDayVolume = preciseChainVolume;
+	} else {
+	  currentDayVolume = (mRelativeVolume.size() > i)
+            ? preciseChainVolume * mRelativeVolume[i]
+            : preciseChainVolume;
+	}
+	Decimal volume = num::Round2Tick(currentDayVolume,
+					 DecimalConstants<Decimal>::DecimalOne,
+					 DecimalConstants<Decimal>::DecimalZero);
+	preciseChainVolume = currentDayVolume;
+
+	bars.emplace_back(mDateSeries.getDate(i), open, high, low, close,
+			  volume, mSourceTimeSeries.getTimeFrame());
+#else
+	bars.emplace_back(mDateSeries.getDate(i), open, high, low, close,
+			  DecimalConstants<Decimal>::DecimalZero, mSourceTimeSeries.getTimeFrame());
+#endif
+      }
+
+      return std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(
+								     mSourceTimeSeries.getTimeFrame(), mSourceTimeSeries.getVolumeUnits(),
+								     bars.begin(), bars.end());
+    }
+
+  private:
+    OHLCTimeSeries<Decimal, LookupPolicy> mSourceTimeSeries;
+    Decimal        mMinimumTick;
+    Decimal        mMinimumTickDiv2;
+    VectorDate     mDateSeries;
+    std::vector<Decimal> mRelativeOpen, mRelativeHigh, mRelativeLow, mRelativeClose;
+#ifdef SYNTHETIC_VOLUME
+    std::vector<Decimal> mRelativeVolume;
+#endif
+    Decimal        mFirstOpen;
+#ifdef SYNTHETIC_VOLUME
+    Decimal        mFirstVolume;
+#endif
+  };
 
 /**
  * @class EodSyntheticTimeSeriesImpl
@@ -556,7 +807,8 @@ private:
  */
   template <class Decimal,
 	    class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>,
-	    template<class> class RoundingPolicy = NoRounding>
+	    template<class> class RoundingPolicy = NoRounding,
+	    SyntheticNullModel NullModel = SyntheticNullModel::N1_MaxDestruction>
 class SyntheticTimeSeries
 {
 public:
@@ -568,21 +820,32 @@ public:
         mMinimumTickDiv2(minimumTickDiv2),
         mRandGenerator()
     {
-        bool isIntraday = (aTimeSeries.getTimeFrame() == TimeFrame::Duration::INTRADAY);
+      bool isIntraday = (aTimeSeries.getTimeFrame() == TimeFrame::Duration::INTRADAY);
 
-	if (!isIntraday)
-	  {
-	    mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(
-												       mSourceTimeSeriesCopy,
-												       mMinimumTick, mMinimumTickDiv2);
-	  }
-	else
-	  {
-	    mPimpl = std::make_unique<IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(
-													    mSourceTimeSeriesCopy,
+      if (!isIntraday)
+	{
+	  // EOD: choose implementation by NullModel at compile time
+	  if constexpr (NullModel == SyntheticNullModel::N0_PairedDay)
+	    {
+	    mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl_N0<Decimal, LookupPolicy, RoundingPolicy>>(mSourceTimeSeriesCopy,
 													    mMinimumTick,
 													    mMinimumTickDiv2);
 	  }
+	  else
+	    {
+	      // N1 (current) or N2 (defer to N1 for now)
+	      mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(mSourceTimeSeriesCopy,
+													   mMinimumTick,
+													   mMinimumTickDiv2);
+	    }
+	}
+      else
+	{
+	  // Intraday unchanged for now
+	  mPimpl = std::make_unique<IntradaySyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(mSourceTimeSeriesCopy,
+													    mMinimumTick,
+													    mMinimumTickDiv2);
+	}
     }
 
     ~SyntheticTimeSeries() = default;

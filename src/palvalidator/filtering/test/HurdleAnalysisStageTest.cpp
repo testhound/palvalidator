@@ -1,4 +1,3 @@
-#define CATCH_CONFIG_MAIN
 #include <catch2/catch_test_macros.hpp>
 
 #include "filtering/stages/HurdleAnalysisStage.h"
@@ -6,50 +5,39 @@
 #include "filtering/TradingHurdleCalculator.h"
 
 #include <boost/date_time/gregorian/gregorian.hpp>
-#include <iostream>
+#include <sstream>
 
 using namespace palvalidator::filtering;
 using namespace palvalidator::filtering::stages;
 
-TEST_CASE("HurdleAnalysisStage: basic execution returns sensible hurdle", "[HurdleAnalysis]")
+TEST_CASE("HurdleAnalysisStage: basic execution returns sensible trading-spread hurdle", "[HurdleAnalysis]")
 {
-  // Build simple risk parameters required by TradingHurdleCalculator
-  palvalidator::utils::RiskParameters rp;
-  rp.riskFreeRate = Num("0.01");  // 1%
-  rp.riskPremium  = Num("0.02");  // 2%
-
-  // Construct TradingHurdleCalculator with required parameters
-  TradingHurdleCalculator calc(rp);
+  // Simplified TradingHurdleCalculator (per-side slippage only; default 0.10% per side).
+  TradingHurdleCalculator calc;
 
   HurdleAnalysisStage stage(calc);
 
-  // Prepare a minimal context. DateRange requires two dates.
+  // Minimal context (no backtester needed for this smoke test).
   const boost::gregorian::date d1(2020, 1, 1);
   const boost::gregorian::date d2(2020, 12, 31);
-  mkc_timeseries::DateRange inSample(d1, d2);
-  mkc_timeseries::DateRange oosSample(d1, d2);
-
-  auto tf = mkc_timeseries::TimeFrame::DAILY; // use DAILY timeframe for the test
+  mkc_timeseries::DateRange isRange(d1, d2);
+  mkc_timeseries::DateRange oosRange(d1, d2);
+  auto tf = mkc_timeseries::TimeFrame::DAILY;
 
   StrategyAnalysisContext ctx(
-    nullptr,
-    nullptr,
-    inSample,
-    oosSample,
-    tf,
-    std::nullopt
-  );
-
-  BootstrapAnalysisResult boot;
-  boot.annualizedLowerBoundGeo = Num("0.01");   // 1%
-  boot.annualizedLowerBoundMean = Num("0.015"); // 1.5%
+      /*backtester*/ nullptr,
+      /*baseSecurity*/ nullptr,
+      isRange,
+      oosRange,
+      tf,
+      /*oosSpreadStats*/ std::nullopt);
 
   std::ostringstream os;
-  const auto result = stage.execute(ctx, boot, os);
 
-  // Basic sanity checks: finalRequiredReturn must be a numeric value (non-NaN).
+  // New API: execute(ctx, os) only (no BootstrapAnalysisResult parameter)
+  const auto result = stage.execute(ctx, os);
+
+  // Sanity checks: hurdle is computed and non-negative; log has content.
   REQUIRE(result.finalRequiredReturn >= Num(0));
-
-  // Ensure the stage wrote something to the log stream (concise cost-stress output)
   REQUIRE(!os.str().empty());
 }

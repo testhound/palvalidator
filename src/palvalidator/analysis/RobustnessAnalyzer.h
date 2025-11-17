@@ -8,6 +8,7 @@
 #include "number.h"
 #include "filtering/BootstrapConfig.h"
 #include "filtering/FilteringTypes.h"
+#include "filtering/ValidationPolicy.h"
 
 namespace mkc_timeseries {
     template<class Decimal> class BacktesterStrategy;
@@ -41,7 +42,7 @@ public:
      * @param returns Per-period net returns after costs/slippage
      * @param L_in Block length for the block sampler (median holding period)
      * @param annualizationFactor Multiplier to annualize per-period LBs
-     * @param finalRequiredReturn Annualized hurdle used in the main filter
+     * @param validationPolicy The validation policy to use for the checks.
      * @param cfg Configuration parameters for the robustness checks
      * @param strategy Strategy object for bootstrap factory (must not be null)
      * @param bootstrapFactory Factory for creating bootstrap instances
@@ -53,7 +54,7 @@ public:
         const std::vector<Num>& returns,
         size_t L_in,
         double annualizationFactor,
-        const Num& finalRequiredReturn,
+        const palvalidator::filtering::ValidationPolicy& validationPolicy,
         const RobustnessChecksConfig<Num>& cfg,
         const mkc_timeseries::BacktesterStrategy<Num>& strategy,
         BootstrapFactory& bootstrapFactory,
@@ -61,6 +62,7 @@ public:
         const std::optional<palvalidator::filtering::LSensitivityResultSimple>& gridOpt = std::nullopt);
 
 private:
+
   // ========== Helper Classes ==========
   
   /**
@@ -167,6 +169,16 @@ private:
     bool mIsBorderline;
   };
 
+  // ========== Private Methods ==========
+  
+  // Decide pass/fail for L-sensitivity variability with a guard for tiny edges.
+  // Returns true if variability is acceptable. Also returns the tolerance used.
+  static bool checkLSensitivityTolerance_(const LSensitivityAnalysis& lsen,
+         const Num& baselineAnnualizedLB,
+         double relVarTolEff,
+         double& relVarTolUsed,
+         std::ostream& os);
+
   // ========== Analysis Methods ==========
   
   static BaselineAnalysis computeBaselineAnalysis_(
@@ -192,7 +204,7 @@ private:
   static SplitSampleAnalysis performSplitSampleAnalysis_(
       const std::vector<Num>& returns,
       double annualizationFactor,
-      const Num& finalRequiredReturn,
+      const palvalidator::filtering::ValidationPolicy& validationPolicy,
       const RobustnessChecksConfig<Num>& cfg,
       const mkc_timeseries::BacktesterStrategy<Num>& strategy,
       BootstrapFactory& bootstrapFactory,

@@ -902,3 +902,174 @@ TEST_CASE("Intraday SyntheticTimeSeries: two runs produce different series",
     }
     REQUIRE(sawDifference);
 }
+
+// --- New tests for N0 paired-day synthetic series ---
+// Place near your other SyntheticTimeSeries tests in SyntheticTimeSeriesTest.cpp
+
+TEST_CASE("EOD N0_PairedDay preserves day-units (gap + intraday shape) up to permutation", "[SyntheticTimeSeries][N0]")
+{
+  using DT = DecimalType;
+
+  // Helpers
+  auto day_factors = [](const OHLCTimeSeries<DT>& ts) {
+    // Return vector of tuples per day: (gap, H/O, L/O, C/O). We skip the first day’s gap, which is undefined.
+    std::vector<std::tuple<DT,DT,DT,DT>> out;
+    out.reserve(ts.getNumEntries());
+
+    bool first = true;
+    DT prevClose{};
+    for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it) {
+      const auto& e = *it;
+      if (first) {
+        first = false;
+        prevClose = e.getCloseValue();
+        continue; // no gap for first day
+      }
+      const DT O = e.getOpenValue();
+      const DT H = e.getHighValue();
+      const DT L = e.getLowValue();
+      const DT C = e.getCloseValue();
+
+      // gap = Open_t / Close_{t-1}
+      const DT gap = O / prevClose;
+      // intraday normalization relative to Open
+      const DT h_o = H / O;
+      const DT l_o = L / O;
+      const DT c_o = C / O;
+
+      out.emplace_back(gap, h_o, l_o, c_o);
+      prevClose = C;
+    }
+    return out;
+  };
+
+  auto as_multiset = [](const std::vector<std::tuple<DT,DT,DT,DT>>& v) {
+    // Copy and sort lexicographically so we can compare as multisets
+    auto s = v;
+    std::sort(s.begin(), s.end(), [](auto& a, auto& b){
+      if (std::get<0>(a) != std::get<0>(b)) return std::get<0>(a) < std::get<0>(b);
+      if (std::get<1>(a) != std::get<1>(b)) return std::get<1>(a) < std::get<1>(b);
+      if (std::get<2>(a) != std::get<2>(b)) return std::get<2>(a) < std::get<2>(b);
+      return std::get<3>(a) < std::get<3>(b);
+    });
+    return s;
+  };
+
+  // Sample series via helper (consistent with your existing tests) 
+  OHLCTimeSeries<DT> sample = createSampleTimeSeries();  // already used elsewhere in this file
+  DT tick     = DecimalConstants<DT>::EquityTick;
+  DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Original day-factor multiset
+  auto orig_factors = day_factors(sample);
+  auto orig_multiset = as_multiset(orig_factors);
+
+  // Build synthetic with N0 (paired-day) via facade template parameter
+  // Note: the default facade template is N1; we explicitly opt into N0 here.
+  SyntheticTimeSeries<
+      DT,
+      mkc_timeseries::LogNLookupPolicy<DT>,
+      NoRounding,
+      SyntheticNullModel::N0_PairedDay
+  > synN0(sample, tick, tickDiv2);
+
+  synN0.createSyntheticSeries();
+  auto syn_ts = *synN0.getSyntheticTimeSeries();
+
+  // Sizes and date range should match existing expectations in your tests.
+  REQUIRE(syn_ts.getNumEntries() == sample.getNumEntries());
+  REQUIRE(sample.getFirstDate() == syn_ts.getFirstDate());
+  REQUIRE(sample.getLastDate()  == syn_ts.getLastDate());
+
+  // Under N0, the vector of per-day tuples (gap, H/O, L/O, C/O) should be a PERMUTATION of the original.
+  // (First day is anchored; we compare from day 2 onward by construction of day_factors).
+  auto syn_multiset = as_multiset(day_factors(syn_ts));
+  REQUIRE(syn_multiset == orig_multiset); // same multiset => days moved intact (paired), shapes preserved
+}
+
+TEST_CASE("Facade default (N1) vs explicit N0: both valid; N0 preserves day-units, N1 not required to", "[SyntheticTimeSeries][N0][N1]")
+{
+  using DT = DecimalType;
+  OHLCTimeSeries<DT> sample = createSampleTimeSeries();  // helper exists in this test file
+  DT tick     = DecimalConstants<DT>::EquityTick;
+  DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Explicit N0 instance
+  SyntheticTimeSeries<
+      DT,
+      mkc_timeseries::LogNLookupPolicy<DT>,
+      NoRounding,
+      SyntheticNullModel::N0_PairedDay
+  > synN0(sample, tick, tickDiv2);
+
+  synN0.createSyntheticSeries();
+  auto synN0_ts = *synN0.getSyntheticTimeSeries();
+
+  // Default (no NullModel template arg): still N1 (max-destruction) per your header
+  SyntheticTimeSeries<DT> synN1(sample, tick, tickDiv2);
+  synN1.createSyntheticSeries();
+  auto synN1_ts = *synN1.getSyntheticTimeSeries();
+
+  // Basic sanity: both build full-length series on the same calendar
+  REQUIRE(synN0_ts.getNumEntries() == sample.getNumEntries());
+  REQUIRE(synN1_ts.getNumEntries() == sample.getNumEntries());
+  REQUIRE(sample.getFirstDate() == synN0_ts.getFirstDate());
+  REQUIRE(sample.getFirstDate() == synN1_ts.getFirstDate());
+  REQUIRE(sample.getLastDate()  == synN0_ts.getLastDate());
+  REQUIRE(sample.getLastDate()  == synN1_ts.getLastDate());
+
+  // N0 preserves day-units as a permutation (see previous test’s factor extraction)
+  auto orig_ms = [&]{
+    auto v = std::vector<std::tuple<DT,DT,DT,DT>>{};
+    // reuse the factor extractor from the previous test by re-declaring a local copy:
+    auto day_factors = [](const OHLCTimeSeries<DT>& ts) {
+      std::vector<std::tuple<DT,DT,DT,DT>> out;
+      bool first = true; DT prevClose{};
+      for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it) {
+        const auto& e = *it;
+        if (first) { first = false; prevClose = e.getCloseValue(); continue; }
+        const DT O = e.getOpenValue(), H = e.getHighValue(), L = e.getLowValue(), C = e.getCloseValue();
+        out.emplace_back(O / prevClose, H / O, L / O, C / O);
+        prevClose = C;
+      }
+      return out;
+    };
+    auto s = day_factors(sample);
+    std::sort(s.begin(), s.end());
+    return s;
+  }();
+
+  auto msN0 = [&]{
+    auto s = std::vector<std::tuple<DT,DT,DT,DT>>{};
+    // local factor extractor:
+    auto day_factors = [](const OHLCTimeSeries<DT>& ts) {
+      std::vector<std::tuple<DT,DT,DT,DT>> out;
+      bool first = true; DT prevClose{};
+      for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it) {
+        const auto& e = *it;
+        if (first) { first = false; prevClose = e.getCloseValue(); continue; }
+        const DT O = e.getOpenValue(), H = e.getHighValue(), L = e.getLowValue(), C = e.getCloseValue();
+        out.emplace_back(O / prevClose, H / O, L / O, C / O);
+        prevClose = C;
+      }
+      return out;
+    };
+    s = day_factors(synN0_ts);
+    std::sort(s.begin(), s.end());
+    return s;
+  }();
+
+  REQUIRE(msN0 == orig_ms);  // N0 == permutation of day-units
+
+  // For N1 we make no assertion of equality to the original multiset (it may or may not match),
+  // but we do assert it’s a valid, well-formed time series:
+  REQUIRE(synN1_ts.getNumEntries() == sample.getNumEntries());
+  // Open/High/Low/Close sanity per bar
+  for (auto it = synN1_ts.beginSortedAccess(); it != synN1_ts.endSortedAccess(); ++it) {
+    const auto& e = *it;
+    REQUIRE(e.getHighValue() >= e.getOpenValue());
+    REQUIRE(e.getHighValue() >= e.getCloseValue());
+    REQUIRE(e.getLowValue()  <= e.getOpenValue());
+    REQUIRE(e.getLowValue()  <= e.getCloseValue());
+  }
+}

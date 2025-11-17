@@ -4,6 +4,7 @@
 
 #include "RegimeMixStress.h"
 #include "RegimeMixBlockResampler.h"
+#include "filtering/ValidationPolicy.h"
 
 #include <vector>
 #include <string>
@@ -29,17 +30,17 @@ namespace palvalidator
     {
     public:
       RegimeMixStressRunner(const RegimeMixConfig &config,
-			    std::size_t L,
-			    unsigned int numResamples,
-			    double confidenceLevel,
-			    double annualizationFactor,
-			    Num finalRequiredReturn)
-        : mConfig(config),
-          mL(std::max<std::size_t>(2, L)),
-          mNumResamples(numResamples),
-          mConfidenceLevel(confidenceLevel),
-          mAnnualizationFactor(annualizationFactor),
-          mFinalRequiredReturn(finalRequiredReturn)
+                            std::size_t L,
+                            unsigned int numResamples,
+                            double confidenceLevel,
+                            double annualizationFactor,
+                            const palvalidator::filtering::ValidationPolicy& validationPolicy)
+          : mConfig(config),
+            mL(std::max<std::size_t>(2, L)),
+            mNumResamples(numResamples),
+            mConfidenceLevel(confidenceLevel),
+            mAnnualizationFactor(annualizationFactor),
+            mValidationPolicy(validationPolicy)
       {
       }
 
@@ -145,7 +146,7 @@ namespace palvalidator
             BCaAnnualizer<Num> annualizer(bcaGeo, mAnnualizationFactor);
             const Num lbGeoAnn = annualizer.getAnnualizedLowerBound();
 
-            const bool pass = (lbGeoAnn > mFinalRequiredReturn);
+            const bool pass = mValidationPolicy.hasPassed(lbGeoAnn);
             details.emplace_back(mix.name(), lbGeoAnn, pass);
             if (pass) ++passCount;
 
@@ -171,7 +172,7 @@ namespace palvalidator
       unsigned int mNumResamples;
       double mConfidenceLevel;
       double mAnnualizationFactor;
-      Num mFinalRequiredReturn;
+      const palvalidator::filtering::ValidationPolicy& mValidationPolicy;
     };
 
   } // namespace analysis

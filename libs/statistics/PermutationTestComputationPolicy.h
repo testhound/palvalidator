@@ -226,11 +226,13 @@ namespace mkc_timeseries
    * from the permutation test results. Defaults to `StandardPValueComputationPolicy<Decimal>`.
    */
   template <class Decimal,
-     class BackTestResultPolicy,
-     typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
-     typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
-     typename Executor = concurrency::ThreadPoolExecutor<>,
-     typename PValueComputationPolicy = StandardPValueComputationPolicy<Decimal>>
+	    class BackTestResultPolicy,
+	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
+	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
+	    typename Executor = concurrency::ThreadPoolExecutor<>,
+	    typename PValueComputationPolicy = StandardPValueComputationPolicy<Decimal>,
+	    SyntheticNullModel NullModel = SyntheticNullModel::N1_MaxDestruction
+	    >
   class DefaultPermuteMarketChangesPolicy : public PermutationTestSubject<Decimal>
   {
     static_assert(has_return_type<_PermutationTestResultPolicy>::value,
@@ -242,6 +244,11 @@ namespace mkc_timeseries
     static_assert(has_get_test_stat<_PermutationTestStatisticsCollectionPolicy>::value,
 		  "_PermutationTestStatisticsCollectionPolicy must implement getTestStat()");
   public:
+    using CacheType = SyntheticCache<Decimal,
+				     LogNLookupPolicy<Decimal>,
+				     NoRounding,
+				     NullModel>;
+    
     using ReturnType = typename _PermutationTestResultPolicy::ReturnType;
 
     DefaultPermuteMarketChangesPolicy()
@@ -317,19 +324,17 @@ namespace mkc_timeseries
       std::mutex                                 testStatMutex;
 
       // ---- Parallel work: TLS cache/portfolio/RNG + one-time BackTester clone per worker ----
-      using CacheT =
-	SyntheticCache<Decimal, /*Lookup*/ LogNLookupPolicy<Decimal>, /*Rounding*/ NoRounding>;
 
       auto work = [=, &validPerms, &extremeCount, &testStatCollector, &testStatMutex](uint32_t /*permIndex*/) {
 	// --- thread-local state (initialized once per worker thread) ---
 	static thread_local RandomMersenne                        tls_rng;
-	static thread_local std::unique_ptr<CacheT>               tls_cache;
+	static thread_local std::unique_ptr<CacheType>               tls_cache;
 	static thread_local std::shared_ptr<Portfolio<Decimal>>   tls_portfolio;
 	static thread_local std::shared_ptr<BackTester<Decimal>>  tls_bt;
 
 	if (!tls_cache) {
 	  // Build cache from the *baseline* security; cache will swap series per permutation
-	  tls_cache = std::make_unique<CacheT>(theSecurity);
+	  tls_cache = std::make_unique<CacheType>(theSecurity);
 	}
 	if (!tls_portfolio) {
 	  // Build one portfolio per worker (copy/clone baseline ONCE)

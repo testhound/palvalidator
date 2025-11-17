@@ -183,7 +183,8 @@ private:
             PValueReturnPolicy<Num>,
             PermutationTestingNullTestStatisticPolicy<Num>,
             concurrency::ThreadPoolExecutor<>,
-            WilsonPValueComputationPolicy<Num>>
+					  WilsonPValueComputationPolicy<Num>,
+					  SyntheticNullModel::N0_PairedDay>
     >;
   PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection, concurrency::StdAsyncExecutor> validation;
     
