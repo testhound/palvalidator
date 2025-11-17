@@ -153,21 +153,21 @@ const RiskParameters& getRiskParameters()
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
-				       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-				       std::shared_ptr<Security<Num>> baseSecurity,
-				       const DateRange& inSampleBacktestingDates,
-				       const DateRange& oosBacktestingDates,
-				       TimeFrame::Duration theTimeFrame,
-				       std::ostream& os,
-				       unsigned int numResamples,
-				       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
+    const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+    std::shared_ptr<Security<Num>> baseSecurity,
+    const DateRange& inSampleBacktestingDates,
+    const DateRange& oosBacktestingDates,
+    TimeFrame::Duration theTimeFrame,
+    std::ostream& os,
+    unsigned int numResamples,
+    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
 {
-    const RiskParameters& riskParams = getRiskParameters();
     const Num confidenceLevel = Num("0.95");
     
-    PerformanceFilter filter(riskParams, confidenceLevel, numResamples);
+    // The RiskParameters are no longer needed for PerformanceFilter construction
+    PerformanceFilter filter(confidenceLevel, numResamples);
     return filter.filterByPerformance(survivingStrategies, baseSecurity, inSampleBacktestingDates,
-				      oosBacktestingDates, theTimeFrame, os, oosSpreadStats);
+                                      oosBacktestingDates, theTimeFrame, os, oosSpreadStats);
 }
 
 // Analyze meta-strategy performance using unified PalMetaStrategy approach
@@ -182,16 +182,17 @@ void filterMetaStrategy(
     ValidationMethod validationMethod = ValidationMethod::Unadjusted,
     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
 {
-    const RiskParameters& riskParams = getRiskParameters();
     const Num confidenceLevel = Num("0.95");
     
     os << "\n" << std::string(80, '=') << std::endl;
     os << "META-STRATEGY ANALYSIS" << std::endl;
     os << std::string(80, '=') << std::endl;
     
-    MetaStrategyAnalyzer analyzer(riskParams, confidenceLevel, numResamples);
+    // The MetaStrategyAnalyzer might need to be updated as well, but for now,
+    // we will pass a default-constructed RiskParameters object.
+    MetaStrategyAnalyzer analyzer(getRiskParameters(), confidenceLevel, numResamples);
     analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity,
-				 backtestingDates, theTimeFrame,
+     backtestingDates, theTimeFrame,
 				 os, validationMethod,
 				 oosSpreadStats);
     
