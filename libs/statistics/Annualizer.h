@@ -4,11 +4,29 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <ostream>
 #include "number.h"
 #include "DecimalConstants.h"
 
 namespace mkc_timeseries
 {
+  template <typename NumT>
+  inline double computeEffectiveAnnualizationFactor(NumT annualizedTrades,
+						    unsigned int medianHoldBars,
+						    double baseAnnualizationFactor,
+						    std::ostream* os = nullptr)
+  {
+    const double at   = num::to_double(annualizedTrades);
+    const double Keff = std::max(1.0, at * static_cast<double>(medianHoldBars));  // clamp to >= 1
+    if (os) {
+      const double p = (baseAnnualizationFactor > 0.0) ? (Keff / baseAnnualizationFactor) : 1.0;
+      (*os) << "      [Bootstrap] Annualization factor (base) = " << baseAnnualizationFactor
+	    << ", effective (participation-weighted) = " << Keff
+	    << "  (p=" << p << ")\n";
+    }
+    return Keff;
+  }
+
   /**
    * Annualizer for per-period returns.
    *
@@ -75,6 +93,60 @@ namespace mkc_timeseries
       t.mean  = annualize_one(mean,  K, eps, bump);
       t.upper = annualize_one(upper, K, eps, bump);
       return t;
+    }
+
+    /**
+     * De-annualize a K-period compounded return R back to a single-period return r.
+     *
+     * Inverse of annualize_one:
+     *   R = (1 + r)^K - 1   ⇒   r = exp( log1p(R) / K ) - 1
+     *
+     * Guards mirror annualize_one():
+     * - If K <= 0 or not finite → throw std::invalid_argument.
+     * - If R <= -1 → clamp to (-1 + eps) so log1p(R) stays defined.
+     * - If exp(...) - 1 underflows to exactly -1 in Decimal quantization,
+     *   bump slightly toward > -1 (same 'bump' convention as annualize_one).
+     */
+    static Decimal deannualize_one(const Decimal& R, double K,
+				   double eps = 1e-12,
+				   long double bump = 1e-7L)
+    {
+      if (!(K > 0.0) || !std::isfinite(K))
+	throw std::invalid_argument("Annualizer::deannualize_one: invalid K");
+
+      // Clamp near -1 to keep log1p safe
+      Decimal Rclamped = R;
+      if (Rclamped <= -Decimal(1)) {
+	// move to (-1 + eps) in Decimal space
+	Rclamped = Decimal(-1) + Decimal(eps);
+      }
+
+      // r = exp( log1p(R) / K ) - 1
+
+      long double lp1 = std::log1p(static_cast<long double>(Rclamped.getAsDouble()));
+      long double r_ld = std::exp(lp1 / static_cast<long double>(K)) - 1.0L;
+      
+      // Quantization safety: avoid landing exactly at -1
+      if (r_ld <= -1.0L) {
+	r_ld = -1.0L + bump;
+      }
+
+      return Decimal(static_cast<double>(r_ld));
+    }
+
+    /**
+     * De-annualize a (lower, mean, upper) triplet to per-period.
+     * Monotone transform preserves ordering.
+     */
+    static Triplet deannualize_triplet(const Triplet& t, double K,
+				       double eps = 1e-12,
+				       long double bump = 1e-7L)
+    {
+      Triplet out;
+      out.lower = deannualize_one(t.lower, K, eps, bump);
+      out.mean  = deannualize_one(t.mean,  K, eps, bump);
+      out.upper = deannualize_one(t.upper, K, eps, bump);
+      return out;
     }
   };
 } // namespace mkc_timeseries
