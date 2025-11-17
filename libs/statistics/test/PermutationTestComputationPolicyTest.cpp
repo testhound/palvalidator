@@ -18,6 +18,15 @@ using namespace mkc_timeseries;
 using DecimalType = DecimalType;  // from TestUtils.h
 
 namespace {
+  template <class Decimal>
+  struct DummyBackTestResultPolicy
+  {
+    static Decimal getPermutationTestStatistic(std::shared_ptr<mkc_timeseries::BackTester<Decimal>>) {
+      return Decimal{}; // never executed in these smoke tests
+    }
+    static uint32_t getMinStrategyTrades() { return 1; }
+  };
+  
   // --------------------------------------------------------------------------
   // Unit-level: fake policies for determinism
   // --------------------------------------------------------------------------
@@ -606,4 +615,61 @@ TEST_CASE("Policy classes: numerical stability", "[policy][unit]") {
     REQUIRE(standard.getAsDouble() > 0.99);
     REQUIRE(wilson.getAsDouble() > 0.99);
   }
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: CacheType uses default N1 null model",
+          "[PermutationPolicy][NullModel][N1]") {
+  using DT = DecimalType;
+
+  // Default template args include PValueComputationPolicy; here we pass it explicitly to match the signature:
+  using PolicyDefault =
+    DefaultPermuteMarketChangesPolicy<
+      DT,
+      DummyBackTestResultPolicy<DT>,                 // BackTestResultPolicy
+      PValueReturnPolicy<DT>,                        // _PermutationTestResultPolicy (default)
+      PermutationTestingNullTestStatisticPolicy<DT>, // _PermutationTestStatisticsCollectionPolicy (default)
+      concurrency::SingleThreadExecutor,             // Executor (ok to choose SingleThread)
+      StandardPValueComputationPolicy<DT>            // PValueComputationPolicy (explicit)
+      // NullModel omitted -> defaults to N1_MaxDestruction in your NullModel-enabled version
+    >;
+
+  using ExpectedCacheN1 =
+    SyntheticCache<
+      DT,
+      LogNLookupPolicy<DT>,
+      NoRounding,
+      SyntheticNullModel::N1_MaxDestruction
+    >;
+
+  static_assert(std::is_same<typename PolicyDefault::CacheType, ExpectedCacheN1>::value,
+                "PolicyDefault::CacheType should resolve to SyntheticCache with N1_MaxDestruction.");
+  REQUIRE(true);
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: CacheType uses N0_PairedDay when specified",
+          "[PermutationPolicy][NullModel][N0]") {
+  using DT = DecimalType;
+
+  using PolicyN0 =
+    DefaultPermuteMarketChangesPolicy<
+      DT,
+      DummyBackTestResultPolicy<DT>,                 // BackTestResultPolicy
+      PValueReturnPolicy<DT>,                        // _PermutationTestResultPolicy
+      PermutationTestingNullTestStatisticPolicy<DT>, // _PermutationTestStatisticsCollectionPolicy
+      concurrency::SingleThreadExecutor,             // Executor
+      StandardPValueComputationPolicy<DT>,           // PValueComputationPolicy
+      SyntheticNullModel::N0_PairedDay               // << new knob
+    >;
+
+  using ExpectedCacheN0 =
+    SyntheticCache<
+      DT,
+      LogNLookupPolicy<DT>,
+      NoRounding,
+      SyntheticNullModel::N0_PairedDay
+    >;
+
+  static_assert(std::is_same<typename PolicyN0::CacheType, ExpectedCacheN0>::value,
+                "PolicyN0::CacheType should resolve to SyntheticCache with N0_PairedDay.");
+  REQUIRE(true);
 }
