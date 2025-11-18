@@ -167,7 +167,52 @@ namespace palvalidator::filtering::stages
 						  std::ostream& os) const
   {
     using PTExec = concurrency::ThreadPoolExecutor<0>;
-    using ResamplerT = mkc_timeseries::StationaryBlockResampler<Num>;
+    using ResamplerT = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+
+    /*
+      --------------------------------------------------------------------------------
+      Why we run the Percentile-t Bootstrap (in addition to m-out-of-n and BCa)
+      --------------------------------------------------------------------------------
+
+      The percentile-t bootstrap provides a variance-stabilized benchmark for cases
+      where the statistic of interest (e.g., geometric mean of mark-to-market returns)
+      is skewed or exhibits heteroscedasticity.  It complements the other bootstrap
+      methods rather than replacing them.
+
+      Summary of roles:
+      
+      • m-out-of-n Bootstrap:
+      - Very conservative and theoretically robust for small sample sizes (small n)
+      or heavy-tailed data.
+      - Protects against non-normality and dependent samples.
+      - Limitation: often produces overly wide confidence intervals.
+
+      • BCa Bootstrap (Bias-Corrected and Accelerated):
+      - Corrects both bias and skewness in smooth, nearly normal statistics.
+      - Works best with moderate-to-large n.
+      - Limitation: requires accurate jackknife acceleration, which can be unstable
+        for small samples or fat-tailed data.
+	
+	• Percentile-t Bootstrap:
+      - "Studentizes" each bootstrap replicate by its estimated standard error.
+      - Stabilizes variance and improves coverage accuracy for moderate n.
+      - Bridges the gap between conservative m-out-of-n and efficient BCa.
+      - Performs well with 5–15 trades or medium-size samples with mild skew.
+
+      In BootstrapAnalysisStage we run all three methods because:
+      1. m-out-of-n + BCa handle the extremes (small n, heavy tails, large n, smooth).
+      2. Percentile-t acts as a precision cross-check for the middle regime.
+      3. The final lower-bound estimate is derived by combining their results
+      (typically the median of present bounds) to reduce sensitivity to any one
+     method’s bias.
+     
+     In short:
+     Percentile-t is the “bridge” method that validates and stabilizes inference
+     when neither purely robust (m-out-of-n) nor purely efficient (BCa) assumptions
+     hold—ensuring our bootstrap-based lower bounds remain both conservative and
+     statistically meaningful across all sample sizes.
+     --------------------------------------------------------------------------------
+    */
 
     const std::size_t n     = ctx.highResReturns.size();
     const std::size_t B_out = std::max<std::size_t>(mNumResamples, 400);
