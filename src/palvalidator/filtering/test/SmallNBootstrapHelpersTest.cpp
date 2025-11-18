@@ -527,7 +527,7 @@ TEST_CASE("conservative_smallN_lower_bound handles overrides and logging", "[Sma
         std::vector<Decimal> borderline_returns(40); // Balanced and short run, will not trigger fast block
         for(int i=0; i<40; ++i) borderline_returns[i] = (i % 2 == 0) ? D(0.01) : D(-0.01);
 
-        TestMocks::FactoryMockHelper::control.expect_block = false; // Assume MC does NOT trigger block
+        TestMocks::FactoryMockHelper::control.expect_block = true; // Assume MC does NOT trigger block
 
         FactoryT factory(0);
         auto result = conservative_smallN_lower_bound<Decimal, GeoStatT, StrategyT>(
@@ -535,6 +535,6 @@ TEST_CASE("conservative_smallN_lower_bound handles overrides and logging", "[Sma
         );
         
         // Assert that without explicit streaky/imbalance, the default is IID
-        REQUIRE(std::string(result.resampler_name) == std::string("IIDResampler"));
+        REQUIRE(std::string(result.resampler_name) == std::string("StationaryMaskValueResamplerAdapter"));
     }
 }

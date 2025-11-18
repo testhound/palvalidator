@@ -23,6 +23,7 @@
 #include "MetaSelectionBootstrap.h"
 #include "MetaLosingStreakBootstrapBound.h"
 #include "Annualizer.h"
+#include "StationaryMaskResamplers.h"
 #include <fstream>
 
 namespace palvalidator
@@ -1059,8 +1060,9 @@ namespace palvalidator
         std::ostream& outputStream) const
     {
       // Block length for meta bootstrap
-      StationaryBlockResampler<Num> metaSampler(blockLength);
-      using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
+      using ResamplerT = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+      ResamplerT metaSampler(blockLength);
+      using BlockBCA = BCaBootStrap<Num, ResamplerT>;
 
       // Bootstrap portfolio series
       GeoMeanStat<Num> statGeo;
@@ -1122,9 +1124,11 @@ namespace palvalidator
 			      returns.begin() + static_cast<std::ptrdiff_t>(end));
 
 	  // BCa on per-period geometric mean with stationary block bootstrap
-	  StationaryBlockResampler<Num> sampler(blockLength);
+	  
 	  GeoMeanStat<Num> statGeo;
-	  using BlockBCA = BCaBootStrap<Num, StationaryBlockResampler<Num>>;
+	  using ResamplerT = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+	  ResamplerT sampler(blockLength);
+	  using BlockBCA = BCaBootStrap<Num, ResamplerT>;
 
 	  BlockBCA bca(xs,
 		       numResamples,
