@@ -486,7 +486,7 @@ conservative_smallN_lower_bound(const std::vector<Num>& returns,
     }
 
     const char* chosenName = use_block
-    ? "StationaryMaskValueResamplerAdapter(small L)"
+    ? "StationaryMaskValueResamplerAdapter"
     : "IIDResampler";
 
   SmallNConservativeResult<Num, GeoStat, StrategyT> r{};
