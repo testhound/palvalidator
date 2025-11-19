@@ -101,6 +101,7 @@ namespace palvalidator::filtering
         const BootstrapAnalysisResult& bootstrap,
         const HurdleAnalysisResult& hurdle,
         double& outRelVar,
+	const Num& requiredReturn,
         std::ostream& os) const;
 
     /**
