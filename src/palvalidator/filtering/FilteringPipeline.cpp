@@ -102,113 +102,121 @@ namespace palvalidator::filtering
   {
   }
 
-    FilterDecision FilteringPipeline::executeForStrategy(
-        StrategyAnalysisContext& ctx,
-        std::ostream& os)
-    {
-        // Stage 1: Backtesting
-        auto backtestDecision = mBacktestingStage.execute(ctx, os);
-        if (!backtestDecision.passed())
-        {
-            return backtestDecision;
-        }
+  FilterDecision FilteringPipeline::executeForStrategy(
+						       StrategyAnalysisContext& ctx,
+						       std::ostream& os)
+  {
+    using mkc_timeseries::DecimalConstants;
+    
+    // Stage 1: Backtesting
+    auto backtestDecision = mBacktestingStage.execute(ctx, os);
+    if (!backtestDecision.passed())
+      {
+        return backtestDecision;
+      }
 
-        // Stage 2: Bootstrap Analysis
-        auto bootstrap = mBootstrapStage.execute(ctx, os);
-        if (!bootstrap.computationSucceeded)
-        {
-            std::string reason = bootstrap.failureReason.empty()
-                                     ? "Bootstrap analysis failed"
-                                     : bootstrap.failureReason;
-            os << "✗ Strategy filtered out: " << reason << "\n";
-            return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
-        }
+    // Stage 2: Bootstrap Analysis
+    auto bootstrap = mBootstrapStage.execute(ctx, os);
+    if (!bootstrap.computationSucceeded)
+      {
+        std::string reason = bootstrap.failureReason.empty()
+	  ? "Bootstrap analysis failed"
+	  : bootstrap.failureReason;
+        os << "✗ Strategy filtered out: " << reason << "\n";
+        return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
+      }
 
-	// Make bootstrap AF available to downstream stages for consistent scaling
-        ctx.annualizationFactor = bootstrap.annFactorUsed;
+    // Make bootstrap AF available to downstream stages for consistent scaling
+    ctx.annualizationFactor = bootstrap.annFactorUsed;
 
-	os << "   [Bootstrap->Pipeline] Using OOS bootstrap annualization: annFactorUsed="
-	   << bootstrap.annFactorUsed
-	   << " (will be used for both LB annualization and cost-hurdle trades/yr)\n";
+    os << "   [Bootstrap->Pipeline] Using OOS bootstrap annualization: annFactorUsed="
+       << bootstrap.annFactorUsed
+       << " (will be used for both LB annualization and cost-hurdle trades/yr)\n";
 
-        // Stage 3: Hurdle Analysis (Simplified)
-        auto hurdle = mHurdleStage.execute(ctx, os);
+    // Stage 3: Hurdle Analysis (Simplified)
+    auto hurdle = mHurdleStage.execute(ctx, os);
 
-        // Stage 4: Centralized Validation
-        ValidationPolicy policy(hurdle.finalRequiredReturn);
+    // Stage 4: Centralized Validation (Relaxed Gate: LB > 0)
+    // Only check for a positive per-period lower bound. Rely on MetaStrategy for LB > Hurdle check.
+    ValidationPolicy policy(hurdle.finalRequiredReturn);
 
-	const bool isEdgePositive = (bootstrap.lbGeoPeriod > DecimalConstants<Num>::DecimalZero);
+    const bool isEdgePositive = (bootstrap.lbGeoPeriod > DecimalConstants<Num>::DecimalZero);
 
-        if (!isEdgePositive)
-        {
-            os << "✗ Strategy filtered out: Per-period lower bound is not positive ("
-               << (bootstrap.lbGeoPeriod * 100).getAsDouble() << "%).\n";
-            return FilterDecision::Fail(FilterDecisionType::FailHurdle,
-                                        "Per-period geometric LB not > 0");
-        }
+    if (!isEdgePositive)
+      {
+        os << "✗ Strategy filtered out: Per-period lower bound is not positive ("
+           << (bootstrap.lbGeoPeriod * 100).getAsDouble() << "%).\n";
+        return FilterDecision::Fail(FilterDecisionType::FailHurdle,
+                                    "Per-period geometric LB not > 0");
+      }
 
-        os << "✓ Strategy passed primary validation gate.\n";
+    os << "✓ Strategy passed primary validation gate.\n"; //
 
-        // --- Supplemental Analysis Stages (for passed strategies) ---
+    // --- Supplemental Analysis Stages (for passed strategies) ---
 
-        // Stage 5: Robustness Analysis
-        const auto divergence = palvalidator::analysis::DivergenceAnalyzer::assessAMGMDivergence(
-            bootstrap.annualizedLowerBoundGeo,
-            bootstrap.annualizedLowerBoundMean,
-            0.05, 0.30);
+    // Stage 5: Robustness Analysis
+    const auto divergence = palvalidator::analysis::DivergenceAnalyzer::assessAMGMDivergence(
+											     bootstrap.annualizedLowerBoundGeo,
+											     bootstrap.annualizedLowerBoundMean,
+											     0.05, 0.30);
 
-        const bool nearHurdle = false;
-        const bool smallN = (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
-        const bool mustRobust = divergence.flagged || nearHurdle || smallN;
+    const bool nearHurdle = false; // Set to false to remove this veto trigger for specialists
+    const bool smallN = (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
+    const bool mustRobust = divergence.flagged || nearHurdle || smallN;
 
-        if (mustRobust)
-        {
-            auto robustnessDecision =
-                mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os, policy);
-            if (!robustnessDecision.passed())
-            {
-	      //return robustnessDecision;
-		os << "   [INFO] Robustness check failed, but passing to MetaStrategy for final decision.\n";
-            }
-        }
+    if (mustRobust)
+      {
+        auto robustnessDecision =
+	  mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os, policy);
+        if (!robustnessDecision.passed())
+	  {
+	    // NOTE: Veto is intentionally converted to an advisory for specialists
+	    os << "   [INFO] Robustness check failed, but passing to MetaStrategy for final decision.\n";
+	  }
+      }
 
-        // Stage 6: L-Sensitivity Stress
-        double lSensitivityRelVar = 0.0;
-        auto lSensitivityDecision =
-            executeLSensitivityStress(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
-        if (!lSensitivityDecision.passed())
-        {
-	  //return lSensitivityDecision;
-	    os << "   [INFO] L-Sensitivity failed, but passing to MetaStrategy for final decision.\n";
-        }
+    // Stage 6: L-Sensitivity Stress
+    double lSensitivityRelVar = 0.0;
+    
+    // *** MODIFICATION POINT ***: Use zero hurdle for L-Sensitivity to enforce LB > 0 under stress
+    // We pass 0 to signal that the only requirement is a non-negative LB, not one > cost-hurdle.
+    auto lSensitivityDecision =
+      executeLSensitivityStress(ctx, bootstrap, hurdle, lSensitivityRelVar, Num(0.0), os);
+    
+    if (!lSensitivityDecision.passed())
+      {
+	// NOTE: Veto is intentionally converted to an advisory for specialists
+        os << "   [INFO] L-Sensitivity failed, but passing to MetaStrategy for final decision.\n";
+      }
 
-        // Stage 7: Regime-Mix Stress
-        auto regimeMixDecision = mRegimeMixStage.execute(ctx, bootstrap, hurdle, os);
-        if (!regimeMixDecision.passed())
-        {
-	  //return regimeMixDecision;
-	  os << "   [INFO] Regime-Mix failed, but passing to MetaStrategy for final decision.\n";
-        }
+    // Stage 7: Regime-Mix Stress
+    auto regimeMixDecision = mRegimeMixStage.execute(ctx, bootstrap, hurdle, os);
+    if (!regimeMixDecision.passed())
+      {
+	// NOTE: Veto is intentionally converted to an advisory for specialists
+	os << "   [INFO] Regime-Mix failed, but passing to MetaStrategy for final decision.\n";
+      }
 
-        // Stage 8: Fragile Edge Advisory
-        auto fragileEdgeDecision =
-            mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
-        if (!fragileEdgeDecision.passed())
-        {
-	  //return fragileEdgeDecision;
-	    os << "   [INFO] FragileEdge check failed, but passing to MetaStrategy for final decision.\n";
-        }
+    // Stage 8: Fragile Edge Advisory
+    auto fragileEdgeDecision =
+      mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
+    if (!fragileEdgeDecision.passed())
+      {
+	// NOTE: Veto is intentionally converted to an advisory for specialists
+        os << "   [INFO] FragileEdge check failed, but passing to MetaStrategy for final decision.\n";
+      }
 
-        // --- Success ---
-        logPassedStrategy(ctx, bootstrap, policy, os);
-        return FilterDecision::Pass();
-    }
+    // --- Success ---
+    logPassedStrategy(ctx, bootstrap, policy, os);
+    return FilterDecision::Pass();
+  }
   
    FilterDecision FilteringPipeline::executeLSensitivityStress(
        const StrategyAnalysisContext& ctx,
        const BootstrapAnalysisResult& bootstrap,
        const HurdleAnalysisResult& hurdle,
        double& outRelVar,
+       const Num& requiredReturn,
        std::ostream& os) const
    {
        // This method's logic remains largely the same, but the hurdle comparison
@@ -237,7 +245,7 @@ namespace palvalidator::filtering
        }
 
        const double annUsed = (bootstrap.annFactorUsed > 0.0) ? bootstrap.annFactorUsed : ctx.annualizationFactor;
-       const auto Lres = mLSensitivityStage.execute(ctx, L_cap, annUsed, hurdle.finalRequiredReturn, os);
+       const auto Lres = mLSensitivityStage.execute(ctx, L_cap, annUsed, requiredReturn, os);
 
        if (!Lres.ran)
        {
@@ -247,7 +255,7 @@ namespace palvalidator::filtering
        outRelVar = Lres.relVar;
        if (!Lres.pass)
        {
-           const Num gap = (hurdle.finalRequiredReturn - Lres.minLbAnn);
+           const Num gap = (requiredReturn - Lres.minLbAnn);
            const bool catastrophic = (gap > Num(std::max(0.0, mLSensitivityConfig.minGapTolerance)));
            const std::string reason = catastrophic
                                     ? "L-sensitivity: catastrophic gap"
