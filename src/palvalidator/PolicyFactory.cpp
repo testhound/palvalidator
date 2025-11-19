@@ -184,7 +184,7 @@ private:
             PermutationTestingNullTestStatisticPolicy<Num>,
             concurrency::ThreadPoolExecutor<>,
 					  WilsonPValueComputationPolicy<Num>,
-					  SyntheticNullModel::N0_PairedDay>
+					  SyntheticNullModel::N1_MaxDestruction>
     >;
   PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection, concurrency::StdAsyncExecutor> validation;
     
