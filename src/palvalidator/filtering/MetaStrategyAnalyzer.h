@@ -13,12 +13,23 @@
 #include "TimeFrame.h"
 #include "filtering/FilteringTypes.h"
 #include "filtering/MetaTradingHurdleCalculator.h"
+#include "filtering/CostStressUtils.h"
 #include "utils/ValidationTypes.h"
 
-// Forward declarations
+// Forward declarations for external types
 namespace mkc_timeseries {
   template<typename Decimal> class BackTester;
   template<typename Decimal> class ClosedPositionHistory;
+}
+
+// Forward declaration for CostStressHurdlesT
+namespace palvalidator
+{
+  namespace filtering
+  {
+    template<typename Num>
+    struct CostStressHurdlesT;
+  }
 }
 
 namespace palvalidator
@@ -167,6 +178,102 @@ namespace palvalidator
           std::string mErrorMessage;
       };
 
+      // Bootstrap results struct (moved here for use by PyramidGateResults)
+      struct BootstrapResults {
+          Num lbGeoPeriod;
+          Num lbMeanPeriod;
+          Num lbGeoAnn;
+          Num lbMeanAnn;
+          size_t blockLength;
+      };
+
+      // Backtest result class for pyramid analysis
+      class PyramidBacktestResult
+      {
+      public:
+        PyramidBacktestResult(std::shared_ptr<BackTester<Num>> bt, std::vector<Num> returns)
+          : mBacktester(std::move(bt)), mMetaReturns(std::move(returns))
+        {}
+
+        std::shared_ptr<BackTester<Num>> getBacktester() const { return mBacktester; }
+        const std::vector<Num>& getMetaReturns() const { return mMetaReturns; }
+        const ClosedPositionHistory<Num>& getClosedPositionHistory() const
+        {
+          return mBacktester->getClosedPositionHistory();
+        }
+
+      private:
+        std::shared_ptr<BackTester<Num>> mBacktester;
+        std::vector<Num> mMetaReturns;
+      };
+
+      // Validation gate results class
+      class PyramidGateResults
+      {
+      public:
+        PyramidGateResults(bool regularPass, bool multiSplitPass, bool metaSelectionPass,
+                          const BootstrapResults& bootResults, const CostStressHurdlesT<Num>& hurdles,
+                          double keff, std::size_t lMeta, const Num& metaAnnTrades)
+          : mRegularBootstrapPass(regularPass),
+            mMultiSplitPass(multiSplitPass),
+            mPassMetaSelectionAware(metaSelectionPass),
+            mAllGatesPassed(regularPass && multiSplitPass && metaSelectionPass),
+            mBootstrapResults(bootResults),
+            mHurdles(hurdles),
+            mKeff(keff),
+            mLMeta(lMeta),
+            mMetaAnnualizedTrades(metaAnnTrades)
+        {}
+
+        // Pass/Fail Status
+        bool regularBootstrapPassed() const { return mRegularBootstrapPass; }
+        bool multiSplitPassed() const { return mMultiSplitPass; }
+        bool passMetaSelectionAware() const { return mPassMetaSelectionAware; }
+        bool allGatesPassed() const { return mAllGatesPassed; }
+        
+        // Key Data
+        const BootstrapResults& getBootstrapResults() const { return mBootstrapResults; }
+        const CostStressHurdlesT<Num>& getHurdles() const { return mHurdles; }
+        double getKeff() const { return mKeff; }
+        std::size_t getLMeta() const { return mLMeta; }
+        const Num& getMetaAnnualizedTrades() const { return mMetaAnnualizedTrades; }
+
+      private:
+        bool mRegularBootstrapPass;
+        bool mMultiSplitPass;
+        bool mPassMetaSelectionAware;
+        bool mAllGatesPassed;
+
+        BootstrapResults mBootstrapResults;
+        CostStressHurdlesT<Num> mHurdles;
+        double mKeff;
+        std::size_t mLMeta;
+        Num mMetaAnnualizedTrades;
+      };
+
+      // Risk analysis results class
+      class PyramidRiskResults
+      {
+      public:
+        PyramidRiskResults(DrawdownResults ddResults, Num futureLB, int obsStreak, int ubStreak)
+          : mDrawdownResults(std::move(ddResults)),
+            mFutureReturnsLowerBoundPct(futureLB),
+            mObservedLosingStreak(obsStreak),
+            mLosingStreakUpperBound(ubStreak)
+        {}
+
+        const DrawdownResults& getDrawdownResults() const { return mDrawdownResults; }
+        const Num& getFutureReturnsLowerBoundPct() const { return mFutureReturnsLowerBoundPct; }
+        int getObservedLosingStreak() const { return mObservedLosingStreak; }
+        int getLosingStreakUpperBound() const { return mLosingStreakUpperBound; }
+
+      private:
+        DrawdownResults mDrawdownResults;
+        Num mFutureReturnsLowerBoundPct;
+        int mObservedLosingStreak;
+        int mLosingStreakUpperBound;
+      };
+
       struct MultiSplitResult
       {
         bool                 applied;     // true if slices were created (K valid)
@@ -298,8 +405,44 @@ namespace palvalidator
 			  unsigned int numResamples,
 			  double confidenceLevel,
 			    double annualizationFactor) const;
-    
-      PyramidResults analyzeSinglePyramidLevel(
+
+			   // New helper methods for analyzeSinglePyramidLevel refactoring
+			   PyramidBacktestResult runPyramidBacktest(
+			       const PyramidConfiguration& config,
+			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+			       std::shared_ptr<Security<Num>> baseSecurity,
+			       const DateRange& backtestingDates,
+			       TimeFrame::Duration timeFrame,
+			       std::ostream& outputStream) const;
+
+			   PyramidGateResults runPyramidValidationGates(
+			       const std::vector<Num>& metaReturns,
+			       std::shared_ptr<BackTester<Num>> bt,
+			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+			       std::shared_ptr<Security<Num>> baseSecurity,
+			       const DateRange& backtestingDates,
+			       TimeFrame::Duration timeFrame,
+			       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+			       std::ostream& outputStream) const;
+
+			   PyramidRiskResults runPyramidRiskAnalysis(
+			       const std::vector<Num>& metaReturns,
+			       const ClosedPositionHistory<Num>& closedHistory,
+			       std::size_t lMeta,
+			       std::ostream& outputStream) const;
+
+			   void logPyramidValidationResults(
+			       const PyramidGateResults& gates,
+			       const PyramidRiskResults& risk,
+			       unsigned int pyramidLevel,
+			       std::ostream& outputStream) const;
+
+			   void logDrawdownAnalysis(
+			       const DrawdownResults& drawdownResults,
+			       uint32_t numTrades,
+			       std::ostream& outputStream) const;
+			 
+			   PyramidResults analyzeSinglePyramidLevel(
           const PyramidConfiguration& config,
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
@@ -331,6 +474,22 @@ namespace palvalidator
           const std::vector<PyramidResults>& allResults,
           std::ostream& outputStream) const;
       
+      /**
+       * @brief Select the best passing pyramid configuration based on MAR ratio and performance metrics
+       *
+       * Selection criteria (in priority order):
+       * 1. Primary: Conservative MAR ratio (annualized LB / drawdown UB) - higher is better
+       * 2. Fallback: Highest annualized lower bound (when drawdown UB missing/invalid)
+       * 3. Tiebreaker: Larger margin (LB - requiredReturn)
+       *
+       * @param allResults All pyramid analysis results
+       * @param outputStream Output stream for logging the selection
+       * @return Pointer to the best passing configuration, or nullptr if none passed
+       */
+      const PyramidResults* selectBestPassingConfiguration(
+          const std::vector<PyramidResults>& allResults,
+          std::ostream& outputStream) const;
+      
       DrawdownResults performDrawdownAnalysisForPyramid(
           const std::vector<Num>& metaReturns,
           uint32_t numTrades,
@@ -354,14 +513,6 @@ namespace palvalidator
       double calculateAnnualizationFactor(
           TimeFrame::Duration timeFrame,
           std::shared_ptr<Security<Num>> baseSecurity) const;
-      
-      struct BootstrapResults {
-          Num lbGeoPeriod;
-          Num lbMeanPeriod;
-          Num lbGeoAnn;
-          Num lbMeanAnn;
-          size_t blockLength;
-      };
       
       BootstrapResults performBootstrapAnalysis(
           const std::vector<Num>& metaReturns,

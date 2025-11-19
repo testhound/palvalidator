@@ -209,27 +209,9 @@ namespace palvalidator
 	  //
 	  //    This aligns the stored state with what you recommend in the printed summary.
 
-	  auto hasValidDD = [](const PyramidResults& r) -> bool {
-	    const auto& dd = r.getDrawdownResults();
-	    return dd.hasResults() && dd.getUpperBound() > mkc_timeseries::DecimalConstants<Num>::DecimalZero;
-	  };
+	  const PyramidResults* best = selectBestPassingConfiguration(allResults, outputStream);
 
-	  auto conservativeMAR = [&](const PyramidResults& r) -> Num {
-	    if (!hasValidDD(r)) return mkc_timeseries::DecimalConstants<Num>::DecimalZero;
-	    return r.getAnnualizedLowerBound() / r.getDrawdownResults().getUpperBound();
-	  };
-
-	  auto margin = [&](const PyramidResults& r) -> Num {
-	    return r.getAnnualizedLowerBound() - r.getRequiredReturn();
-	  };
-
-	  // Filter to passers
-	  std::vector<const PyramidResults*> passers;
-	  passers.reserve(allResults.size());
-	  for (const auto& r : allResults)
-	    if (r.getPassed()) passers.push_back(&r);
-
-	  mMetaStrategyPassed = !passers.empty();
+	  mMetaStrategyPassed = (best != nullptr);
 
 	  if (!mMetaStrategyPassed)
 	    {
@@ -238,68 +220,9 @@ namespace palvalidator
 	      return;
 	    }
 
-	  // Rank passers by MAR (if available), else by LB; then by margin
-	  const PyramidResults* best = passers.front();
-	  bool bestHasValidDD = hasValidDD(*best);
-	  Num  bestMAR        = bestHasValidDD ? conservativeMAR(*best)
-	    : mkc_timeseries::DecimalConstants<Num>::DecimalZero;
-	  Num  bestLB         = best->getAnnualizedLowerBound();
-	  Num  bestMargin     = margin(*best);
-
-	  for (std::size_t i = 1; i < passers.size(); ++i)
-	    {
-	      const PyramidResults* cand = passers[i];
-	      const bool candValidDD = hasValidDD(*cand);
-	      const Num  candMAR     = candValidDD ? conservativeMAR(*cand)
-		: mkc_timeseries::DecimalConstants<Num>::DecimalZero;
-	      const Num  candLB      = cand->getAnnualizedLowerBound();
-	      const Num  candMargin  = margin(*cand);
-
-	      bool better = false;
-
-	      if (bestHasValidDD || candValidDD)
-		{
-		  // Prefer valid MAR; if both valid, compare MAR; if only candidate valid, candidate wins
-		  if (!bestHasValidDD && candValidDD) {
-		    better = true;
-		  } else if (bestHasValidDD && candValidDD) {
-		    if (candMAR > bestMAR) better = true;
-		    else if (candMAR == bestMAR && candMargin > bestMargin) better = true;
-		    else if (candMAR == bestMAR && candMargin == bestMargin && candLB > bestLB) better = true;
-		  }
-		}
-	      else
-		{
-		  // Neither has valid DD → compare LB; tie-break by margin
-		  if (candLB > bestLB) better = true;
-		  else if (candLB == bestLB && candMargin > bestMargin) better = true;
-		}
-
-	      if (better)
-		{
-		  best           = cand;
-		  bestHasValidDD = candValidDD;
-		  bestMAR        = candMAR;
-		  bestLB         = candLB;
-		  bestMargin     = candMargin;
-		}
-	    }
-
 	  // 4) Update canonical members so downstream reads match the recommendation
 	  mAnnualizedLowerBound = best->getAnnualizedLowerBound();
 	  mRequiredReturn       = best->getRequiredReturn();
-
-	  // Optional: log the chosen configuration succinctly
-	  outputStream << "      [Meta] Chosen configuration → Level "
-		       << best->getPyramidLevel()
-		       << " (“" << best->getDescription() << "”), "
-		       << "Ann LB=" << (mAnnualizedLowerBound * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred)
-		       << "%, Required=" << (mRequiredReturn * mkc_timeseries::DecimalConstants<Num>::DecimalOneHundred)
-		       << "%";
-	  if (bestHasValidDD) {
-	    outputStream << ", MAR=" << (bestMAR.getAsDouble());
-	  }
-	  outputStream << "\n";
 	}
       catch (const std::exception& e)
 	{
@@ -581,233 +504,325 @@ namespace palvalidator
       return K;
     }
 
-    MetaStrategyAnalyzer::PyramidResults
-    MetaStrategyAnalyzer::analyzeSinglePyramidLevel(
-						    const PyramidConfiguration& config,
-						    const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-						    std::shared_ptr<Security<Num>> baseSecurity,
-						    const DateRange& backtestingDates,
-						    TimeFrame::Duration timeFrame,
-						    std::ostream& outputStream,
-						    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const
+    MetaStrategyAnalyzer::PyramidBacktestResult
+    MetaStrategyAnalyzer::runPyramidBacktest(
+        const PyramidConfiguration& config,
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        std::shared_ptr<Security<Num>> baseSecurity,
+        const DateRange& backtestingDates,
+        TimeFrame::Duration timeFrame,
+        std::ostream& outputStream) const
     {
-      using mkc_timeseries::DecimalConstants;
-
-      outputStream << "\n[Meta] Pyramid Level " << config.getPyramidLevel()
-		   << " (" << config.getDescription() << "):\n";
-
-      // --- Build the meta-strategy and run backtest (unchanged paths) -----------
       std::shared_ptr<BackTester<Num>> bt;
       std::vector<Num> metaReturns;
 
       if (config.getFilterType() == PyramidConfiguration::ADAPTIVE_VOLATILITY_FILTER)
-	{
-	  auto filteredStrategy = createMetaStrategyWithAdaptiveFilter(
-								       survivingStrategies, baseSecurity, config.getStrategyOptions());
-	  bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, backtestingDates);
-	  metaReturns = bt->getAllHighResReturns(filteredStrategy.get());
-	}
+      {
+        auto filteredStrategy = createMetaStrategyWithAdaptiveFilter(
+            survivingStrategies, baseSecurity, config.getStrategyOptions());
+        bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, backtestingDates);
+        metaReturns = bt->getAllHighResReturns(filteredStrategy.get());
+      }
       else if (config.getFilterType() == PyramidConfiguration::BREAKEVEN_STOP)
-	{
-	  auto initialStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
-	  auto initialBt = executeBacktesting(initialStrategy, timeFrame, backtestingDates);
+      {
+        auto initialStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+        auto initialBt = executeBacktesting(initialStrategy, timeFrame, backtestingDates);
 
-	  const auto& closedPositionHistory = initialBt->getClosedPositionHistory();
-	  if (closedPositionHistory.getNumPositions() > 0)
-	    {
-	      try
-		{
-		  mkc_timeseries::ExitPolicyJointAutoTuner<Num> exitTuner(closedPositionHistory, 8);
-		  auto tuningReport = exitTuner.tuneExitPolicy();
-		  unsigned int breakevenActivationBars =
-                    static_cast<unsigned int>(tuningReport.getBreakevenActivationBars());
+        const auto& closedPositionHistory = initialBt->getClosedPositionHistory();
+        if (closedPositionHistory.getNumPositions() > 0)
+        {
+          try
+          {
+            mkc_timeseries::ExitPolicyJointAutoTuner<Num> exitTuner(closedPositionHistory, 8);
+            auto tuningReport = exitTuner.tuneExitPolicy();
+            unsigned int breakevenActivationBars =
+                static_cast<unsigned int>(tuningReport.getBreakevenActivationBars());
 
-		  outputStream << "      Exit policy tuning completed. Breakeven activation bars: "
-			       << breakevenActivationBars << "\n";
+            outputStream << "      Exit policy tuning completed. Breakeven activation bars: "
+                        << breakevenActivationBars << "\n";
 
-		  auto breakevenStrategy = createMetaStrategy(
-							      survivingStrategies, baseSecurity, config.getStrategyOptions());
-		  breakevenStrategy->addBreakEvenStop(breakevenActivationBars);
+            auto breakevenStrategy = createMetaStrategy(
+                survivingStrategies, baseSecurity, config.getStrategyOptions());
+            breakevenStrategy->addBreakEvenStop(breakevenActivationBars);
 
-		  bt = executeBacktesting(breakevenStrategy, timeFrame, backtestingDates);
-		  metaReturns = bt->getAllHighResReturns(breakevenStrategy.get());
-		}
-	      catch (const std::exception& e)
-		{
-		  outputStream << "      Warning: Exit policy tuning failed: " << e.what()
-			       << ". Using standard strategy without breakeven stop.\n";
-		  auto fallback = createMetaStrategy(
-						     survivingStrategies, baseSecurity, config.getStrategyOptions());
-		  bt = executeBacktesting(fallback, timeFrame, backtestingDates);
-		  metaReturns = bt->getAllHighResReturns(fallback.get());
-		}
-	    }
-	  else
-	    {
-	      outputStream << "      No closed positions available for exit policy tuning. Using standard strategy.\n";
-	      auto metaStrategy = createMetaStrategy(
-						     survivingStrategies, baseSecurity, config.getStrategyOptions());
-	      bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
-	      metaReturns = bt->getAllHighResReturns(metaStrategy.get());
-	    }
-	}
+            bt = executeBacktesting(breakevenStrategy, timeFrame, backtestingDates);
+            metaReturns = bt->getAllHighResReturns(breakevenStrategy.get());
+          }
+          catch (const std::exception& e)
+          {
+            outputStream << "      Warning: Exit policy tuning failed: " << e.what()
+                        << ". Using standard strategy without breakeven stop.\n";
+            auto fallback = createMetaStrategy(
+                survivingStrategies, baseSecurity, config.getStrategyOptions());
+            bt = executeBacktesting(fallback, timeFrame, backtestingDates);
+            metaReturns = bt->getAllHighResReturns(fallback.get());
+          }
+        }
+        else
+        {
+          outputStream << "      No closed positions available for exit policy tuning. Using standard strategy.\n";
+          auto metaStrategy = createMetaStrategy(
+              survivingStrategies, baseSecurity, config.getStrategyOptions());
+          bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+          metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+        }
+      }
       else
-	{
-	  auto metaStrategy = createMetaStrategy(
-						 survivingStrategies, baseSecurity, config.getStrategyOptions());
-	  bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
-	  metaReturns = bt->getAllHighResReturns(metaStrategy.get());
-	}
+      {
+        auto metaStrategy = createMetaStrategy(
+            survivingStrategies, baseSecurity, config.getStrategyOptions());
+        bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+        metaReturns = bt->getAllHighResReturns(metaStrategy.get());
+      }
 
-      if (metaReturns.size() < 2U)
-	{
-	  outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
-	  DrawdownResults emptyDrawdown;
-	  return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-				DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
-				false, DecimalConstants<Num>::DecimalZero, 0, bt, emptyDrawdown,
-				DecimalConstants<Num>::DecimalZero, 0, 0);
-	}
+      return PyramidBacktestResult(bt, metaReturns);
+    }
 
-      // --- Metrics used by both gates ------------------------------------------
-      const uint32_t numTrades        = bt->getClosedPositionHistory().getNumPositions();
+    MetaStrategyAnalyzer::PyramidGateResults
+    MetaStrategyAnalyzer::runPyramidValidationGates(
+        const std::vector<Num>& metaReturns,
+        std::shared_ptr<BackTester<Num>> bt,
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        std::shared_ptr<Security<Num>> baseSecurity,
+        const DateRange& backtestingDates,
+        TimeFrame::Duration timeFrame,
+        std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      // Calculate metrics used by all gates
       const unsigned int metaMedianHold = bt->getClosedPositionHistory().getMedianHoldingPeriod();
-      const std::size_t Lmeta           = calculateBlockLengthAdaptive(metaReturns, metaMedianHold, outputStream);
-      const Num metaAnnualizedTrades    = Num(bt->getEstimatedAnnualizedTrades());
-      const double annualizationFactor  = calculateAnnualizationFactor(timeFrame, baseSecurity);
+      const std::size_t Lmeta = calculateBlockLengthAdaptive(metaReturns, metaMedianHold, outputStream);
+      const Num metaAnnualizedTrades = Num(bt->getEstimatedAnnualizedTrades());
+      const double annualizationFactor = calculateAnnualizationFactor(timeFrame, baseSecurity);
 
       const double Keff = mkc_timeseries::computeEffectiveAnnualizationFactor(metaAnnualizedTrades,
-      							 metaMedianHold,
-      							 annualizationFactor,
-      							 &outputStream);
+                                                                               metaMedianHold,
+                                                                               annualizationFactor,
+                                                                               &outputStream);
 
       const double p = (annualizationFactor > 0.0) ? (Keff / annualizationFactor) : 1.0;
       if (p > 1.2 || p < 0.01) {
-	outputStream << "      [Meta] Warning: participation p=" << p
-		     << " looks unusual; verify estimated annualized trades / median hold.\n";
+        outputStream << "      [Meta] Warning: participation p=" << p
+                    << " looks unusual; verify estimated annualized trades / median hold.\n";
       }
 
-      // --- Regular (whole-sample) BCa gate -------------------------------------
+      // Regular (whole-sample) BCa gate
       calculatePerPeriodEstimates(metaReturns, outputStream);
       const auto bootstrapResults = performBootstrapAnalysis(metaReturns, Keff, Lmeta, outputStream);
 
-      // Build calibrated + Qn-stressed cost hurdles (uses OOS spread stats if present)
+      // Build calibrated + Qn-stressed cost hurdles
       const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
       const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
-						oosSpreadStats,
-						metaAnnualizedTrades,
-						configuredPerSide
-						);
+                                                oosSpreadStats,
+                                                metaAnnualizedTrades,
+                                                configuredPerSide);
       outputStream << "         Estimated annualized trades: "
-		   << metaAnnualizedTrades << " /yr\n";
+                  << metaAnnualizedTrades << " /yr\n";
 
       printCostStressConcise<Num>(outputStream,
-				  H,
-				  bootstrapResults.lbGeoAnn,
-				  "Meta",
-				  oosSpreadStats,
-				  false,
-				  mHurdleCalculator.calculateRiskFreeHurdle());
+                                  H,
+                                  bootstrapResults.lbGeoAnn,
+                                  "Meta",
+                                  oosSpreadStats,
+                                  false,
+                                  mHurdleCalculator.calculateRiskFreeHurdle());
 
       // Policy: require LB > base AND LB > +1·Qn
       const bool passBase = (bootstrapResults.lbGeoAnn > H.baseHurdle);
-      const bool pass1Qn  = (bootstrapResults.lbGeoAnn > H.h_1q);
+      const bool pass1Qn = (bootstrapResults.lbGeoAnn > H.h_1q);
       const bool regularBootstrapPass = (passBase && pass1Qn);
 
-      // Add the selection-aware gate (AND with existing gates)
+      // Selection-aware gate
       const bool passMetaSelectionAware =
-	runSelectionAwareMetaGate(survivingStrategies,
-				  baseSecurity,
-				  backtestingDates,
-				  timeFrame,
-				  Lmeta,
-				  Keff,
-				  bt.get(),
-				  outputStream,
-				  oosSpreadStats);
+        runSelectionAwareMetaGate(survivingStrategies,
+                                  baseSecurity,
+                                  backtestingDates,
+                                  timeFrame,
+                                  Lmeta,
+                                  Keff,
+                                  bt.get(),
+                                  outputStream,
+                                  oosSpreadStats);
 
-      // --- Multi-split OOS gate (median per-slice LB > hurdle) ------------------
-
+      // Multi-split OOS gate
       const std::size_t K = chooseInitialSliceCount(metaReturns.size(), Lmeta);
       outputStream << "      Multi-split bootstrap: K=" << K
-		   << ", L=" << Lmeta << ", n=" << metaReturns.size() << "\n";
+                  << ", L=" << Lmeta << ", n=" << metaReturns.size() << "\n";
 
       const auto ms = runMultiSplitGate(
-					metaReturns,
-					K,
-					Lmeta,
-					Keff,
-					baseSecurity.get(),
-					timeFrame,
-					bt.get(),
-					outputStream,
-					oosSpreadStats);
+          metaReturns,
+          K,
+          Lmeta,
+          Keff,
+          baseSecurity.get(),
+          timeFrame,
+          bt.get(),
+          outputStream,
+          oosSpreadStats);
 
       // Non-penalizing when not applied (too short to slice)
       const bool multiSplitPass = (!ms.applied) || ms.pass;
 
-      // --- Final decision for this pyramid level --------------------------------
-      const bool pyramidPassed = (regularBootstrapPass && multiSplitPass && passMetaSelectionAware);
+      return PyramidGateResults(regularBootstrapPass, multiSplitPass, passMetaSelectionAware,
+                                bootstrapResults, H, Keff, Lmeta, metaAnnualizedTrades);
+    }
 
-      // --- Future Returns Bound Analysis ----------------------------------------
-      const auto& closedPositionHistory = bt->getClosedPositionHistory();
+    MetaStrategyAnalyzer::PyramidRiskResults
+    MetaStrategyAnalyzer::runPyramidRiskAnalysis(
+        const std::vector<Num>& metaReturns,
+        const ClosedPositionHistory<Num>& closedHistory,
+        std::size_t lMeta,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      // Future Returns Bound Analysis
       outputStream << "\n";
-      Num futureReturnsLowerBoundPct = performFutureReturnsBoundAnalysis(closedPositionHistory, outputStream);
+      Num futureReturnsLowerBoundPct = performFutureReturnsBoundAnalysis(closedHistory, outputStream);
 
-        // --- Max consecutive losses (trade-level) bound ----------------------------
+      // Max consecutive losses (trade-level) bound
       const auto [observedLosingStreak, losingStreakUpperBound] =
-	computeLosingStreakBound(closedPositionHistory, outputStream);
+        computeLosingStreakBound(closedHistory, outputStream);
 
-      outputStream << std::endl;
+      // Drawdown analysis
+      const uint32_t numTrades = closedHistory.getNumPositions();
+      auto drawdownResults = performDrawdownAnalysisForPyramid(metaReturns, numTrades, lMeta);
+
+      return PyramidRiskResults(drawdownResults, futureReturnsLowerBoundPct,
+                                observedLosingStreak, losingStreakUpperBound);
+    }
+
+    void MetaStrategyAnalyzer::logPyramidValidationResults(
+        const PyramidGateResults& gates,
+        const PyramidRiskResults& risk,
+        unsigned int pyramidLevel,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      outputStream << "\n";
       outputStream << "      Annualized Lower Bound (GeoMean, compounded): "
-     << (bootstrapResults.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Annualized Lower Bound (Mean, compounded):    "
-     << (bootstrapResults.lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Required Return (max(cost,riskfree)): "
-     << (H.baseHurdle * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-     << "      Max Consecutive Losing Trades (Upper Bound): "
-     << losingStreakUpperBound << " trades\n";
-      outputStream << "      Gates → Regular: " << (regularBootstrapPass ? "PASS" : "FAIL")
-     << ", Multi-split: " << (ms.applied ? (multiSplitPass ? "PASS" : "FAIL")
-         : "SKIPPED")
-     << "\n\n";
-
-      if (pyramidPassed)
-        outputStream << "      RESULT: ✓ Pyramid Level " << config.getPyramidLevel() << " PASSES\n";
+                  << (gates.getBootstrapResults().lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+                  << "      Annualized Lower Bound (Mean, compounded):    "
+                  << (gates.getBootstrapResults().lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+                  << "      Required Return (max(cost,riskfree)): "
+                  << (gates.getHurdles().baseHurdle * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
+                  << "      Max Consecutive Losing Trades (Upper Bound): "
+                  << risk.getLosingStreakUpperBound() << " trades\n";
+      outputStream << "      Gates → Regular: " << (gates.regularBootstrapPassed() ? "PASS" : "FAIL")
+                  << ", Multi-split: " << (gates.multiSplitPassed() ? "PASS" : "FAIL")
+                  << ", MetaSel: " << (gates.passMetaSelectionAware() ? "PASS" : "FAIL")
+                  << "\n\n";
+      
+      if (gates.allGatesPassed())
+        outputStream << "      RESULT: ✓ Pyramid Level " << pyramidLevel << " PASSES\n";
       else
-        outputStream << "      RESULT: ✗ Pyramid Level " << config.getPyramidLevel() << " FAILS\n";
+        outputStream << "      RESULT: ✗ Pyramid Level " << pyramidLevel << " FAILS\n";
+    }
 
-      // --- Drawdown analysis (unchanged) ---------------------------------------
-      auto drawdownResults = performDrawdownAnalysisForPyramid(metaReturns, numTrades, Lmeta);
+    void MetaStrategyAnalyzer::logDrawdownAnalysis(
+        const DrawdownResults& drawdownResults,
+        uint32_t numTrades,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
       if (drawdownResults.hasResults())
-	{
-	  const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
-	  const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+      {
+        const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+        const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
 
-	  outputStream << "      Drawdown Analysis (BCa on q=" << qPct
-		       << "% percentile of max drawdown over " << numTrades << " trades):\n";
-	  outputStream << "        Point estimate (q=" << qPct << "%ile): "
-		       << (drawdownResults.getPointEstimate() * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-	  outputStream << "        Two-sided " << ciPct << "% CI for that percentile: ["
-		       << (drawdownResults.getLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-		       << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred) << "%]\n";
-	  outputStream << "        " << ciPct << "% one-sided upper bound: "
-		       << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
-		       << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
-		       << "%ile drawdown does not exceed this value)\n";
-	}
+        outputStream << "      Drawdown Analysis (BCa on q=" << qPct
+                    << "% percentile of max drawdown over " << numTrades << " trades):\n";
+        outputStream << "        Point estimate (q=" << qPct << "%ile): "
+                    << (drawdownResults.getPointEstimate() * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+        outputStream << "        Two-sided " << ciPct << "% CI for that percentile: ["
+                    << (drawdownResults.getLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+                    << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred) << "%]\n";
+        outputStream << "        " << ciPct << "% one-sided upper bound: "
+                    << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
+                    << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
+                    << "%ile drawdown does not exceed this value)\n";
+      }
       else
-	{
-	  outputStream << "      Drawdown Analysis: " << drawdownResults.getErrorMessage() << "\n";
-	}
+      {
+        outputStream << "      Drawdown Analysis: " << drawdownResults.getErrorMessage() << "\n";
+      }
+    }
 
-      // --- Return per-level results --------------------------------------------
-      return PyramidResults(config.getPyramidLevel(), config.getDescription(),
-			    bootstrapResults.lbGeoAnn, H.baseHurdle,
-			    pyramidPassed, metaAnnualizedTrades,
-			    numTrades, bt, drawdownResults,
-			    futureReturnsLowerBoundPct, observedLosingStreak,
-			    losingStreakUpperBound);
+    MetaStrategyAnalyzer::PyramidResults
+    MetaStrategyAnalyzer::analyzeSinglePyramidLevel(
+        const PyramidConfiguration& config,
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        std::shared_ptr<Security<Num>> baseSecurity,
+        const DateRange& backtestingDates,
+        TimeFrame::Duration timeFrame,
+        std::ostream& outputStream,
+        std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      outputStream << "\n[Meta] Pyramid Level " << config.getPyramidLevel()
+                  << " (" << config.getDescription() << "):\n";
+      
+      // --- Step 1: Run Backtest ---
+      auto btResult = runPyramidBacktest(config, survivingStrategies, baseSecurity,
+                                        backtestingDates, timeFrame, outputStream);
+      
+      if (btResult.getMetaReturns().size() < 2U)
+      {
+        outputStream << "      Not enough data from pyramid level " << config.getPyramidLevel() << ".\n";
+        DrawdownResults emptyDrawdown;
+        return PyramidResults(config.getPyramidLevel(), config.getDescription(),
+                              DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+                              false, DecimalConstants<Num>::DecimalZero, 0,
+                              btResult.getBacktester(), emptyDrawdown,
+                              DecimalConstants<Num>::DecimalZero, 0, 0);
+      }
+      
+      // --- Step 2: Run All Validation Gates ---
+      auto gates = runPyramidValidationGates(
+          btResult.getMetaReturns(),
+          btResult.getBacktester(),
+          survivingStrategies,
+          baseSecurity,
+          backtestingDates,
+          timeFrame,
+          oosSpreadStats,
+          outputStream
+      );
+      
+      // --- Step 3: Run All Risk Analyses ---
+      auto risk = runPyramidRiskAnalysis(
+          btResult.getMetaReturns(),
+          btResult.getClosedPositionHistory(),
+          gates.getLMeta(),
+          outputStream
+      );
+      
+      // --- Step 4: Log Results ---
+      logPyramidValidationResults(gates, risk, config.getPyramidLevel(), outputStream);
+      logDrawdownAnalysis(risk.getDrawdownResults(),
+                         btResult.getClosedPositionHistory().getNumPositions(),
+                         outputStream);
+      
+      // --- Step 5: Return Final Aggregated Result ---
+      return PyramidResults(
+          config.getPyramidLevel(),
+          config.getDescription(),
+          gates.getBootstrapResults().lbGeoAnn,
+          gates.getHurdles().baseHurdle,
+          gates.allGatesPassed(),
+          gates.getMetaAnnualizedTrades(),
+          btResult.getClosedPositionHistory().getNumPositions(),
+          btResult.getBacktester(),
+          risk.getDrawdownResults(),
+          risk.getFutureReturnsLowerBoundPct(),
+          risk.getObservedLosingStreak(),
+          risk.getLosingStreakUpperBound()
+      );
     }
 
     std::pair<int,int>
@@ -1535,9 +1550,104 @@ namespace palvalidator
       outputStream << "\n      Comprehensive pyramiding analysis written to: " << performanceFileName << std::endl;
     }
 
+    const MetaStrategyAnalyzer::PyramidResults*
+    MetaStrategyAnalyzer::selectBestPassingConfiguration(
+        const std::vector<PyramidResults>& allResults,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+      
+      // Helper lambdas for selection criteria
+      auto hasValidDD = [](const PyramidResults& r) -> bool {
+        const auto& dd = r.getDrawdownResults();
+        return dd.hasResults() && dd.getUpperBound() > DecimalConstants<Num>::DecimalZero;
+      };
+
+      auto conservativeMAR = [&](const PyramidResults& r) -> Num {
+        if (!hasValidDD(r)) return DecimalConstants<Num>::DecimalZero;
+        return r.getAnnualizedLowerBound() / r.getDrawdownResults().getUpperBound();
+      };
+
+      auto margin = [&](const PyramidResults& r) -> Num {
+        return r.getAnnualizedLowerBound() - r.getRequiredReturn();
+      };
+
+      // Filter to passers
+      std::vector<const PyramidResults*> passers;
+      passers.reserve(allResults.size());
+      for (const auto& r : allResults)
+        if (r.getPassed()) passers.push_back(&r);
+
+      if (passers.empty())
+      {
+        return nullptr;
+      }
+
+      // Rank passers by MAR (if available), else by LB; then by margin
+      const PyramidResults* best = passers.front();
+      bool bestHasValidDD = hasValidDD(*best);
+      Num  bestMAR        = bestHasValidDD ? conservativeMAR(*best)
+        : DecimalConstants<Num>::DecimalZero;
+      Num  bestLB         = best->getAnnualizedLowerBound();
+      Num  bestMargin     = margin(*best);
+
+      for (std::size_t i = 1; i < passers.size(); ++i)
+      {
+        const PyramidResults* cand = passers[i];
+        const bool candValidDD = hasValidDD(*cand);
+        const Num  candMAR     = candValidDD ? conservativeMAR(*cand)
+          : DecimalConstants<Num>::DecimalZero;
+        const Num  candLB      = cand->getAnnualizedLowerBound();
+        const Num  candMargin  = margin(*cand);
+
+        bool better = false;
+
+        if (bestHasValidDD || candValidDD)
+        {
+          // Prefer valid MAR; if both valid, compare MAR; if only candidate valid, candidate wins
+          if (!bestHasValidDD && candValidDD) {
+            better = true;
+          } else if (bestHasValidDD && candValidDD) {
+            if (candMAR > bestMAR) better = true;
+            else if (candMAR == bestMAR && candMargin > bestMargin) better = true;
+            else if (candMAR == bestMAR && candMargin == bestMargin && candLB > bestLB) better = true;
+          }
+        }
+        else
+        {
+          // Neither has valid DD → compare LB; tie-break by margin
+          if (candLB > bestLB) better = true;
+          else if (candLB == bestLB && candMargin > bestMargin) better = true;
+        }
+
+        if (better)
+        {
+          best           = cand;
+          bestHasValidDD = candValidDD;
+          bestMAR        = candMAR;
+          bestLB         = candLB;
+          bestMargin     = candMargin;
+        }
+      }
+
+      // Log the chosen configuration
+      outputStream << "      [Meta] Chosen configuration → Level "
+                   << best->getPyramidLevel()
+                   << " ("" << best->getDescription() << ""), "
+                   << "Ann LB=" << (best->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred)
+                   << "%, Required=" << (best->getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred)
+                   << "%";
+      if (bestHasValidDD) {
+        outputStream << ", MAR=" << (bestMAR.getAsDouble());
+      }
+      outputStream << "\n";
+
+      return best;
+    }
+
     void MetaStrategyAnalyzer::outputPyramidComparison(
-						       const std::vector<PyramidResults>& allResults,
-						       std::ostream& outputStream) const
+    		       const std::vector<PyramidResults>& allResults,
+    		       std::ostream& outputStream) const
     {
       outputStream << "\n[Meta] Pyramid Analysis Summary:\n";
       outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Future Ret LB | Max Loss Streak UB | Drawdown UB | Required Return | Pass/Fail\n";
