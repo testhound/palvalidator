@@ -5,6 +5,7 @@
 #include "RegimeMixStress.h"
 #include "RegimeMixStationaryResampler.h"
 #include "filtering/RegimeMixStressRunner.h"
+#include "filtering/RegimeMixUtils.h"
 #include "BarAlignedSeries.h"
 #include "TimeSeriesCsvReader.h"
 #include "DecimalConstants.h"
@@ -21,142 +22,10 @@ namespace palvalidator::filtering::stages
   using palvalidator::analysis::RegimeMixConfig;
   using palvalidator::analysis::RegimeMixStressRunner;
   using palvalidator::analysis::VolTercileLabeler;
+  using palvalidator::filtering::regime_mix_utils::computeLongRunMixWeights;
+  using palvalidator::filtering::regime_mix_utils::adaptMixesToPresentRegimes;
 
   constexpr std::size_t kRegimeVolWindow = 20;
-
-  // Helper: Build long-run mix weights (from legacy lines 615-652)
-  static std::vector<double>
-  computeLongRunMixWeights(const std::vector<Num>& baselineReturns,
-                           std::size_t volWindow,
-                           double shrinkToEqual)
-  {
-    if (baselineReturns.size() < volWindow + 2)
-      {
-	// Fallback: equal weights if baseline is too short
-	return {1.0/3.0, 1.0/3.0, 1.0/3.0};
-      }
-
-    VolTercileLabeler<Num> labeler(volWindow);
-    const std::vector<int> z = labeler.computeLabels(baselineReturns);
-
-    std::array<double, 3> cnt{0.0, 0.0, 0.0};
-    for (int zi : z)
-      {
-	if (zi >= 0 && zi <= 2) cnt[static_cast<std::size_t>(zi)] += 1.0;
-      }
-    const double n = std::max(1.0, cnt[0] + cnt[1] + cnt[2]);
-    std::array<double, 3> p{cnt[0]/n, cnt[1]/n, cnt[2]/n};
-
-    // Shrink toward equal to avoid over-committing
-    const double lam = std::clamp(shrinkToEqual, 0.0, 1.0);
-    std::array<double, 3> w{
-      (1.0 - lam) * p[0] + lam * (1.0/3.0),
-      (1.0 - lam) * p[1] + lam * (1.0/3.0),
-      (1.0 - lam) * p[2] + lam * (1.0/3.0)
-    };
-
-    // Clip tiny buckets and renormalize
-    const double eps = 0.02; // min 2% mass per bucket
-    for (double& v : w) v = std::max(v, eps);
-    const double s = w[0] + w[1] + w[2];
-    return {w[0]/s, w[1]/s, w[2]/s};
-  }
-
-  // Helper: Adapt mixes to present regimes (from legacy lines 870-967)
-  static bool adaptMixesToPresentRegimes(
-					 const std::vector<int>& tradeLabels,
-					 const std::vector<RegimeMix>& mixesIn,
-					 std::vector<int>& labelsOut,
-					 std::vector<RegimeMix>& mixesOut,
-					 std::ostream& os)
-  {
-    // 1) Detect which of {0,1,2} appear and build old→new id map
-    std::array<int, 3> present{0, 0, 0};
-    for (int z : tradeLabels)
-      {
-	if (0 <= z && z <= 2)
-	  {
-	    present[static_cast<std::size_t>(z)] = 1;
-	  }
-      }
-
-    std::array<int, 3> old2new{-1, -1, -1};
-    int next = 0;
-    for (int s = 0; s < 3; ++s)
-      {
-	if (present[static_cast<std::size_t>(s)] == 1)
-	  {
-	    old2new[static_cast<std::size_t>(s)] = next++;
-	  }
-      }
-    const int Sobs = next;
-
-    // If fewer than 2 regimes present, the stress is uninformative → skip (non-gating)
-    if (Sobs < 2)
-      {
-	os << "   [RegimeMix] Skipped (only " << Sobs
-	   << " regime present in OOS trades; mix stress uninformative).\n";
-	return false;
-      }
-
-    // 2) Remap labels to compact 0..Sobs-1
-    labelsOut.clear();
-    labelsOut.reserve(tradeLabels.size());
-    for (int z : tradeLabels)
-      {
-	if (!(0 <= z && z <= 2))
-	  {
-	    os << "   [RegimeMix] Skipped (unexpected label " << z << ").\n";
-	    return false;
-	  }
-	const int m = old2new[static_cast<std::size_t>(z)];
-	if (m < 0)
-	  {
-	    os << "   [RegimeMix] Skipped (label remap failed).\n";
-	    return false;
-	  }
-	labelsOut.push_back(m);
-      }
-
-    // 3) Adapt each mix's 3 weights to observed regimes and renormalize
-    mixesOut.clear();
-    mixesOut.reserve(mixesIn.size());
-
-    for (const auto& mx : mixesIn)
-      {
-	const std::string& nm = mx.name();
-	const std::vector<double>& w3 = mx.weights();
-
-	std::vector<double> wS(static_cast<std::size_t>(Sobs), 0.0);
-	double sum = 0.0;
-
-	for (int old = 0; old < 3; ++old)
-	  {
-	    const int nw = old2new[static_cast<std::size_t>(old)];
-	    if (nw >= 0)
-	      {
-		const double w = (old < static_cast<int>(w3.size())) ? w3[static_cast<std::size_t>(old)] : 0.0;
-		wS[static_cast<std::size_t>(nw)] += w;
-		sum += w;
-	      }
-	  }
-
-	if (sum <= 0.0)
-	  {
-	    // Fallback to equal within observed regimes
-	    const double eq = 1.0 / static_cast<double>(Sobs);
-	    std::fill(wS.begin(), wS.end(), eq);
-	  }
-	else
-	  {
-	    for (double& v : wS) v /= sum;
-	  }
-
-	mixesOut.emplace_back(nm, wS);
-      }
-
-    return true;
-  }
 
   FilterDecision RegimeMixStage::execute(
 					 const StrategyAnalysisContext& ctx,
