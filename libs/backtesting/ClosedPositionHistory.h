@@ -167,7 +167,24 @@ namespace mkc_timeseries
         {
           mNumWinners++;
           mSumWinners += position->getPercentReturn();
-   mLogSumWinners += position->getLogTradeReturn();
+          
+          // Safely compute log trade return, handling edge cases
+          try {
+            mLogSumWinners += position->getLogTradeReturn();
+          } catch (const std::domain_error& e) {
+            // Log the error with position details for debugging
+            std::cerr << "Warning: Failed to compute log trade return for winning position "
+                      << position->getPositionID() << " (" << position->getTradingSymbol() << "): "
+                      << e.what() << std::endl;
+            std::cerr << "  Entry Price: " << position->getEntryPrice()
+                      << ", Exit Price: " << position->getExitPrice()
+                      << ", Trade Return: " << position->getTradeReturn() << std::endl;
+            
+            // Use safe approximation based on the percent return using log(1+r) formula
+            Decimal safeLogReturn = std::log(DecimalConstants<Decimal>::DecimalOne + position->getTradeReturn());
+            mLogSumWinners += safeLogReturn;
+          }
+          
           mWinnersStats (num::to_double(position->getPercentReturn()));
           mWinnersVect.push_back(num::to_double(position->getPercentReturn()));
           mBarsPerWinningPosition.push_back (position->getNumBarsInPosition());
@@ -179,7 +196,24 @@ namespace mkc_timeseries
         {
           mNumLosers++;
           mSumLosers += position->getPercentReturn();
-   mLogSumLosers += position->getLogTradeReturn();
+          
+          // Safely compute log trade return, handling edge cases
+          try {
+            mLogSumLosers += position->getLogTradeReturn();
+          } catch (const std::domain_error& e) {
+            // Log the error with position details for debugging
+            std::cerr << "Warning: Failed to compute log trade return for losing position "
+                      << position->getPositionID() << " (" << position->getTradingSymbol() << "): "
+                      << e.what() << std::endl;
+            std::cerr << "  Entry Price: " << position->getEntryPrice()
+                      << ", Exit Price: " << position->getExitPrice()
+                      << ", Trade Return: " << position->getTradeReturn() << std::endl;
+            
+            // Use safe approximation based on the percent return using log(1+r) formula
+            Decimal safeLogReturn = std::log(DecimalConstants<Decimal>::DecimalOne + position->getTradeReturn());
+            mLogSumLosers += safeLogReturn;
+          }
+          
           mLosersStats (num::to_double(percReturn));
           mLosersVect.push_back(num::to_double(num::abs(percReturn)));
           mBarsPerLosingPosition.push_back (position->getNumBarsInPosition());

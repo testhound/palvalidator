@@ -82,12 +82,48 @@ namespace mkc_timeseries
     }
 
   template <class Decimal>
-  Decimal calculateLogTradeReturn (const Decimal& referencePrice,
-				   const Decimal& secondPrice)
+  Decimal calculateLogTradeReturn(const Decimal& referencePrice,
+				  const Decimal& secondPrice)
   {
-    return calculateNaturalLog (secondPrice / referencePrice);
-  }
+    // Validate reference (entry) price
+    if (referencePrice <= DecimalConstants<Decimal>::DecimalZero)
+      {
+	std::ostringstream ss;
+	ss << "calculateLogTradeReturn: referencePrice must be > 0 "
+	   << "(referencePrice=" << referencePrice << ", secondPrice=" << secondPrice << ")";
+	throw std::domain_error(ss.str());
+      }
 
+    // Validate second (exit or close) price
+    if (secondPrice <= DecimalConstants<Decimal>::DecimalZero)
+      {
+	std::ostringstream ss;
+	ss << "calculateLogTradeReturn: secondPrice must be > 0 "
+	   << "(referencePrice=" << referencePrice << ", secondPrice=" << secondPrice << ")";
+	throw std::domain_error(ss.str());
+      }
+
+    // Now it is safe to divide and take the log
+    try
+      {
+        return calculateNaturalLog(secondPrice / referencePrice);
+      }
+    catch (const std::exception& e)
+      {
+        // Catch any log-specific errors and enhance them with price context
+        std::ostringstream ss;
+        ss << "calculateLogTradeReturn: caught exception from calculateNaturalLog: "
+           << e.what()
+           << " (referencePrice=" << referencePrice
+           << ", secondPrice=" << secondPrice
+           << ", ratio=" << (referencePrice != DecimalConstants<Decimal>::DecimalZero
+                             ? secondPrice / referencePrice
+                             : DecimalConstants<Decimal>::DecimalZero)
+           << ")";
+        throw std::domain_error(ss.str());
+      }
+  }
+  
   template <class Decimal>
     Decimal calculatePercentReturn (const Decimal& referencePrice, 
 					  const Decimal& secondPrice)
