@@ -179,8 +179,9 @@ void filterMetaStrategy(
     TimeFrame::Duration theTimeFrame,
     std::ostream& os,
     unsigned int numResamples,
-    ValidationMethod validationMethod = ValidationMethod::Unadjusted,
-    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
+    ValidationMethod validationMethod,
+    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+    const DateRange& inSampleDates)
 {
     const Num confidenceLevel = Num("0.95");
     
@@ -194,7 +195,8 @@ void filterMetaStrategy(
     analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity,
      backtestingDates, theTimeFrame,
 				 os, validationMethod,
-				 oosSpreadStats);
+				 oosSpreadStats,
+				 inSampleDates);
     
     os << std::string(80, '=') << std::endl;
 }
@@ -368,7 +370,8 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
 				bootlog,
 				numBootstrapSamples,
 				validationMethod,
-				oosSpreadStats);
+				oosSpreadStats,
+				config->getInsampleDateRange());
     }
     
     bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "

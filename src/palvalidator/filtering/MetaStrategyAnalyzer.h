@@ -70,13 +70,14 @@ namespace palvalidator
        * @param validationMethod Validation method for reporting purposes
        */
       void analyzeMetaStrategy(
-			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-			       std::shared_ptr<Security<Num>> baseSecurity,
-			       const DateRange& backtestingDates,
-			       TimeFrame::Duration timeFrame,
-			       std::ostream& outputStream,
-			       ValidationMethod validationMethod = ValidationMethod::Unadjusted,
-			       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt);
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          const DateRange& backtestingDates,
+          TimeFrame::Duration timeFrame,
+          std::ostream& outputStream,
+          ValidationMethod validationMethod,
+          std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+          const DateRange& inSampleDates);
 
       /**
        * @brief Check if the last analyzed meta-strategy passed performance criteria
@@ -121,13 +122,14 @@ namespace palvalidator
        * @param outputStream Output stream for logging
        */
       void analyzeMetaStrategyUnified(
-				      const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-				      std::shared_ptr<Security<Num>> baseSecurity,
-				      const DateRange& backtestingDates,
-				      TimeFrame::Duration timeFrame,
-				      std::ostream& outputStream,
-				      ValidationMethod validationMethod,
-				      std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt);
+          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+          std::shared_ptr<Security<Num>> baseSecurity,
+          const DateRange& backtestingDates,
+          TimeFrame::Duration timeFrame,
+          std::ostream& outputStream,
+          ValidationMethod validationMethod,
+          std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+          const DateRange& inSampleDates);
 
     private:
       // Pyramiding configuration class
@@ -178,6 +180,21 @@ namespace palvalidator
           std::string mErrorMessage;
       };
 
+      // Regime mix analysis results
+      struct RegimeMixResult {
+          bool passed;
+          double minAnnualizedLB;  // The lowest LB across all tested mixes
+          std::vector<std::string> failingMixes;
+          
+          RegimeMixResult()
+            : passed(true), minAnnualizedLB(0.0)
+          {}
+          
+          RegimeMixResult(bool p, double minLB, std::vector<std::string> failing)
+            : passed(p), minAnnualizedLB(minLB), failingMixes(std::move(failing))
+          {}
+      };
+
       // Bootstrap results struct (moved here for use by PyramidGateResults)
       struct BootstrapResults {
           Num lbGeoPeriod;
@@ -213,11 +230,13 @@ namespace palvalidator
       public:
         PyramidGateResults(bool regularPass, bool multiSplitPass, bool metaSelectionPass,
                           const BootstrapResults& bootResults, const CostStressHurdlesT<Num>& hurdles,
-                          double keff, std::size_t lMeta, const Num& metaAnnTrades)
+                          double keff, std::size_t lMeta, const Num& metaAnnTrades,
+                          const RegimeMixResult& regimeMixResult)
           : mRegularBootstrapPass(regularPass),
             mMultiSplitPass(multiSplitPass),
             mPassMetaSelectionAware(metaSelectionPass),
-            mAllGatesPassed(regularPass && multiSplitPass && metaSelectionPass),
+            mRegimeMixResult(regimeMixResult),
+            mAllGatesPassed(regularPass && multiSplitPass && metaSelectionPass && regimeMixResult.passed),
             mBootstrapResults(bootResults),
             mHurdles(hurdles),
             mKeff(keff),
@@ -229,11 +248,13 @@ namespace palvalidator
         bool regularBootstrapPassed() const { return mRegularBootstrapPass; }
         bool multiSplitPassed() const { return mMultiSplitPass; }
         bool passMetaSelectionAware() const { return mPassMetaSelectionAware; }
+        bool regimeMixPassed() const { return mRegimeMixResult.passed; }
         bool allGatesPassed() const { return mAllGatesPassed; }
         
         // Key Data
         const BootstrapResults& getBootstrapResults() const { return mBootstrapResults; }
         const CostStressHurdlesT<Num>& getHurdles() const { return mHurdles; }
+        const RegimeMixResult& getRegimeMixResult() const { return mRegimeMixResult; }
         double getKeff() const { return mKeff; }
         std::size_t getLMeta() const { return mLMeta; }
         const Num& getMetaAnnualizedTrades() const { return mMetaAnnualizedTrades; }
@@ -242,6 +263,7 @@ namespace palvalidator
         bool mRegularBootstrapPass;
         bool mMultiSplitPass;
         bool mPassMetaSelectionAware;
+        RegimeMixResult mRegimeMixResult;
         bool mAllGatesPassed;
 
         BootstrapResults mBootstrapResults;
@@ -423,7 +445,8 @@ namespace palvalidator
 			       const DateRange& backtestingDates,
 			       TimeFrame::Duration timeFrame,
 			       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-			       std::ostream& outputStream) const;
+			       std::ostream& outputStream,
+			       const DateRange& inSampleDates) const;
 
 			   PyramidRiskResults runPyramidRiskAnalysis(
 			       const std::vector<Num>& metaReturns,
@@ -443,27 +466,49 @@ namespace palvalidator
 			       std::ostream& outputStream) const;
 			 
 			   PyramidResults analyzeSinglePyramidLevel(
-          const PyramidConfiguration& config,
-          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-          std::shared_ptr<Security<Num>> baseSecurity,
-          const DateRange& backtestingDates,
-          TimeFrame::Duration timeFrame,
-          std::ostream& outputStream,
-	  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt) const;
+			       const PyramidConfiguration& config,
+			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+			       std::shared_ptr<Security<Num>> baseSecurity,
+			       const DateRange& backtestingDates,
+			       TimeFrame::Duration timeFrame,
+			       std::ostream& outputStream,
+			std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+			const DateRange& inSampleDates) const;
       
       // Runs selection-aware outer bootstrap that replays meta construction.
       // Returns true if the annualized LB from the selection-aware CI exceeds the hurdle.
       bool runSelectionAwareMetaGate(
-				     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-				     std::shared_ptr<mkc_timeseries::Security<Num>> baseSecurity,
-				     const mkc_timeseries::DateRange& backtestingDates,
-				     mkc_timeseries::TimeFrame::Duration timeFrame,
-				     std::size_t Lmeta,
-				     double annualizationFactor,
-				     const mkc_timeseries::BackTester<Num>* bt,  // for annualized trades in hurdle
-				     std::ostream& os,
-				     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
-				     ) const;
+         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+         std::shared_ptr<mkc_timeseries::Security<Num>> baseSecurity,
+         const mkc_timeseries::DateRange& backtestingDates,
+         mkc_timeseries::TimeFrame::Duration timeFrame,
+         std::size_t Lmeta,
+         double annualizationFactor,
+         const mkc_timeseries::BackTester<Num>* bt,  // for annualized trades in hurdle
+         std::ostream& os,
+         std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
+         ) const;
+
+      /**
+       * @brief Run regime mix stress testing on the meta-strategy
+       * @param bt BackTester instance to get high-res returns with dates
+       * @param baseSecurity Base security for regime labeling
+       * @param backtestingDates Date range for context (IS/OOS)
+       * @param annualizationFactor Keff for annualizing returns
+       * @param requiredReturn Cost hurdle to compare against
+       * @param blockLength Block length L for bootstrap resampling
+       * @param outputStream Output stream for logging
+       * @return RegimeMixResult with pass/fail status and details
+       */
+      RegimeMixResult runRegimeMixGate(
+        const std::shared_ptr<BackTester<Num>>& bt,
+        const std::shared_ptr<Security<Num>>& baseSecurity,
+        const DateRange& backtestingDates,
+        double annualizationFactor,
+        const Num& requiredReturn,
+        std::size_t blockLength,
+        std::ostream& outputStream,
+        const DateRange& inSampleDates) const;
 
       void writeComprehensivePerformanceReport(
           const std::vector<PyramidResults>& allResults,

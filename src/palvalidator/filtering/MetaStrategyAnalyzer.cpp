@@ -24,6 +24,11 @@
 #include "MetaLosingStreakBootstrapBound.h"
 #include "Annualizer.h"
 #include "StationaryMaskResamplers.h"
+#include "filtering/RegimeMixUtils.h"
+#include "filtering/RegimeMixStressRunner.h"
+#include "RegimeMixStationaryResampler.h"
+#include "BarAlignedSeries.h"
+#include "RegimeLabeler.h"
 #include <fstream>
 
 namespace palvalidator
@@ -139,29 +144,30 @@ namespace palvalidator
     		   TimeFrame::Duration timeFrame,
     		   std::ostream& outputStream,
     		   ValidationMethod validationMethod,
-		   std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
+     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+     const DateRange& inSampleDates)
     {
       if (survivingStrategies.empty())
-	{
-	  outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
-	  mMetaStrategyPassed = false;
-	  return;
-	}
+ {
+   outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
+   mMetaStrategyPassed = false;
+   return;
+ }
 
       outputStream << "\n[Meta] Building unified PalMetaStrategy from " << survivingStrategies.size() << " survivors...\n";
 
       analyzeMetaStrategyUnified(survivingStrategies, baseSecurity, backtestingDates,
-				 timeFrame, outputStream, validationMethod, oosSpreadStats);
+     timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates);
     }
 
-    void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(
-							  const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+    void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 							  std::shared_ptr<Security<Num>> baseSecurity,
 							  const DateRange& backtestingDates,
 							  TimeFrame::Duration timeFrame,
 							  std::ostream& outputStream,
 							  ValidationMethod validationMethod,
-							  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
+							  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+							  const DateRange& inSampleDates)
     {
       if (survivingStrategies.empty())
 	{
@@ -189,7 +195,8 @@ namespace palvalidator
 						      backtestingDates,
 						      timeFrame,
 						      outputStream,
-						      oosSpreadStats);
+						      oosSpreadStats,
+						      inSampleDates);
 	      allResults.push_back(std::move(result));
 	    }
 
@@ -321,7 +328,8 @@ namespace palvalidator
       
       // Pyramid Level 3: 3 additional positions
       configs.emplace_back(3, "3 Additional Positions", StrategyOptions(true, 3, 8));
-      
+
+#ifdef ADDITIONAL_METASTRATEGIES
       // Pyramid Level 4: Adaptive Volatility Filter (no pyramiding)
       configs.emplace_back(4, "Volatility Filter",
                           StrategyOptions(false, 0, 8),
@@ -331,6 +339,7 @@ namespace palvalidator
       configs.emplace_back(5, "Breakeven Stop",
                           StrategyOptions(false, 0, 8),
                           PyramidConfiguration::BREAKEVEN_STOP);
+#endif
       
       return configs;
     }
@@ -485,6 +494,291 @@ namespace palvalidator
 
       return pass;
     }
+
+    MetaStrategyAnalyzer::RegimeMixResult
+    MetaStrategyAnalyzer::runRegimeMixGate(
+        const std::shared_ptr<BackTester<Num>>& bt,
+        const std::shared_ptr<Security<Num>>& baseSecurity,
+        const DateRange& backtestingDates,
+        double annualizationFactor,
+        const Num& requiredReturn,
+        std::size_t blockLength,
+        std::ostream& outputStream,
+        const DateRange& inSampleDates) const
+    {
+      using mkc_timeseries::FilterTimeSeries;
+      using mkc_timeseries::RocSeries;
+      using palvalidator::analysis::BarAlignedSeries;
+      using palvalidator::analysis::RegimeMix;
+      using palvalidator::analysis::RegimeMixConfig;
+      using palvalidator::analysis::RegimeMixStressRunner;
+      using palvalidator::analysis::VolTercileLabeler;
+      using palvalidator::filtering::regime_mix_utils::computeLongRunMixWeights;
+      using palvalidator::filtering::regime_mix_utils::adaptMixesToPresentRegimes;
+
+      constexpr std::size_t kRegimeVolWindow = 20;
+
+      outputStream << "\n      [Meta Regime Mix] Starting regime mix stress testing...\n";
+
+      // Step A: Data Preparation & Alignment
+      // Get meta-strategy returns with dates from the closed position history
+      const auto& closedHistory = bt->getClosedPositionHistory();
+      auto metaReturnsWithDates = closedHistory.getHighResBarReturnsWithDates();
+      
+      if (metaReturnsWithDates.size() < 2)
+      {
+        outputStream << "      [Meta Regime Mix] Skipped (insufficient returns with dates)\n";
+        return RegimeMixResult(true, 0.0, {}); // Non-gating skip
+      }
+
+      // Extract just the returns for the regime mix runners
+      std::vector<Num> metaReturns;
+      metaReturns.reserve(metaReturnsWithDates.size());
+      for (const auto& [date, ret] : metaReturnsWithDates)
+      {
+        metaReturns.push_back(ret);
+      }
+
+      // Build OOS close series for regime labeling
+      auto oosInstrumentTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), backtestingDates);
+      const auto& oosClose = oosInstrumentTS.CloseTimeSeries();
+
+      // Calculate regime labels for the base security
+      std::vector<Num> oosCloseReturns;
+      const auto entries = oosClose.getEntriesCopy();
+      if (entries.size() < 2)
+      {
+        outputStream << "      [Meta Regime Mix] Skipped (insufficient OOS close data)\n";
+        return RegimeMixResult(true, 0.0, {}); // Non-gating skip
+      }
+
+      oosCloseReturns.reserve(entries.size() - 1);
+      for (std::size_t i = 1; i < entries.size(); ++i)
+      {
+        const Num c0 = entries[i - 1].getValue();
+        const Num c1 = entries[i].getValue();
+        if (c0 == Num(0))
+        {
+          outputStream << "      [Meta Regime Mix] Skipped (zero close price encountered)\n";
+          return RegimeMixResult(true, 0.0, {}); // Non-gating skip
+        }
+        oosCloseReturns.push_back((c1 - c0) / c0);
+      }
+
+      if (oosCloseReturns.size() < kRegimeVolWindow + 2)
+      {
+        outputStream << "      [Meta Regime Mix] Skipped (insufficient data for volatility window)\n";
+        return RegimeMixResult(true, 0.0, {}); // Non-gating skip
+      }
+
+      // Label the OOS bars by volatility terciles
+      VolTercileLabeler<Num> labeler(kRegimeVolWindow);
+      std::vector<int> oosBarLabels = labeler.computeLabels(oosCloseReturns);
+
+      // Build timestamp -> label map
+      std::map<boost::posix_time::ptime, int> dateToLabel;
+      for (std::size_t i = 1; i < entries.size() && (i - 1) < oosBarLabels.size(); ++i)
+      {
+        dateToLabel[entries[i].getDateTime()] = oosBarLabels[i - 1];
+      }
+
+      // Align meta-strategy returns to regime labels
+      std::vector<int> metaLabels;
+      metaLabels.reserve(metaReturnsWithDates.size());
+      for (const auto& [date, ret] : metaReturnsWithDates)
+      {
+        auto it = dateToLabel.find(date);
+        if (it != dateToLabel.end())
+        {
+          metaLabels.push_back(it->second);
+        }
+        else
+        {
+          // If we can't find the exact date, use the closest previous label
+          // This handles cases where meta returns might be on different timestamps
+          auto lower = dateToLabel.lower_bound(date);
+          if (lower != dateToLabel.begin())
+          {
+            --lower;
+            metaLabels.push_back(lower->second);
+          }
+          else if (!dateToLabel.empty())
+          {
+            metaLabels.push_back(dateToLabel.begin()->second);
+          }
+          else
+          {
+            metaLabels.push_back(1); // Default to mid volatility
+          }
+        }
+      }
+
+      if (metaLabels.size() != metaReturns.size())
+      {
+        outputStream << "      [Meta Regime Mix] Skipped (label/return size mismatch: "
+                     << metaLabels.size() << " vs " << metaReturns.size() << ")\n";
+        return RegimeMixResult(true, 0.0, {}); // Non-gating skip
+      }
+
+      // Step B: Define the Mixes
+      std::vector<RegimeMix> mixes;
+
+      // Equal: neutral benchmark
+      mixes.emplace_back("Equal(0.33,0.33,0.33)",
+                         std::vector<double>{1.0/3.0, 1.0/3.0, 1.0/3.0});
+      
+      // MidVolFav: overweight middle regime
+      mixes.emplace_back("MidVolFav(0.25,0.50,0.25)",
+                         std::vector<double>{0.25, 0.50, 0.25});
+      
+      // LowVolFav: stronger tilt to low-vol
+      mixes.emplace_back("LowVolFav(0.50,0.35,0.15)",
+                         std::vector<double>{0.50, 0.35, 0.15});
+
+      // EvenMinusHV: evenly tilted away from HighVol
+      mixes.emplace_back("EvenMinusHV(0.35,0.35,0.30)",
+                         std::vector<double>{0.35, 0.35, 0.30});
+
+      // LongRun: Calculate from in-sample data
+      auto inSampleTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), inSampleDates);
+      auto insampleROC = RocSeries(inSampleTS.CloseTimeSeries(), /*period=*/1);
+      auto baselineRoc = insampleROC.getTimeSeriesAsVector();
+
+      if (!baselineRoc.empty())
+      {
+        auto clip_and_normalize = [](std::vector<double> w, double floor = 0.01) {
+          for (auto& v : w)
+            v = std::max(v, floor);
+          double s = 0.0;
+          for (double v : w)
+            s += v;
+          if (s <= 0.0)
+            return std::vector<double>{1.0/3.0, 1.0/3.0, 1.0/3.0};
+          for (auto& v : w)
+            v /= s;
+          return w;
+        };
+
+        std::vector<double> w = computeLongRunMixWeights(
+          baselineRoc, kRegimeVolWindow, /*shrinkToEqual=*/0.25);
+        
+        w = clip_and_normalize(std::move(w), /*floor=*/0.01);
+
+        std::ostringstream name;
+        name.setf(std::ios::fixed); name << std::setprecision(2);
+        name << "LongRun(" << w[0] << "," << w[1] << "," << w[2] << ")";
+        
+        mixes.emplace_back(name.str(), w);
+
+        outputStream << "      [Meta Regime Mix] LongRun weights (shrunk 25%, floored 1%): ("
+                     << std::fixed << std::setprecision(2)
+                     << w[0] << ", " << w[1] << ", " << w[2] << ")\n";
+      }
+
+      // Step C: Adapt mixes to present regimes
+      std::vector<int> compactLabels;
+      std::vector<RegimeMix> adaptedMixes;
+
+      if (!adaptMixesToPresentRegimes(metaLabels, mixes, compactLabels, adaptedMixes, outputStream))
+      {
+        return RegimeMixResult(true, 0.0, {}); // Non-gating skip
+      }
+
+      // Step D: Execute the runners
+      const double mixPassFrac = 0.50;
+      const std::size_t minBarsPerRegime = static_cast<std::size_t>(std::max<std::size_t>(2, blockLength + 5));
+      RegimeMixConfig cfg(adaptedMixes, mixPassFrac, minBarsPerRegime);
+
+      using NumT = Num;
+      using Rng  = randutils::mt19937_rng;
+
+      using RunnerStationary =
+        RegimeMixStressRunner<NumT, Rng, palvalidator::resampling::RegimeMixStationaryResampler>;
+
+      using RunnerFixed =
+        RegimeMixStressRunner<NumT, Rng, palvalidator::resampling::RegimeMixBlockResampler>;
+
+      palvalidator::filtering::ValidationPolicy policy(requiredReturn);
+
+      RunnerStationary runnerStat(cfg, blockLength, mNumResamples,
+                                   mConfidenceLevel.getAsDouble(),
+                                   annualizationFactor, policy);
+
+      auto resStat = runnerStat.run(metaReturns, compactLabels, outputStream);
+
+      RunnerFixed runnerFixed(cfg, blockLength, mNumResamples,
+                              mConfidenceLevel.getAsDouble(),
+                              annualizationFactor, policy);
+
+      auto resFixed = runnerFixed.run(metaReturns, compactLabels, outputStream);
+
+      // Step E: Gating Logic
+      const bool passStat  = resStat.overallPass();
+      const bool passFixed = resFixed.overallPass();
+
+      // Compute median of stationary annualized LBs across mixes (bps above hurdle)
+      auto stationaryMedianOverHurdle_bps = [&]() -> double
+      {
+        const auto& perMix = resStat.perMix();
+        if (perMix.empty()) return -1e9;
+        std::vector<NumT> lbs;
+        lbs.reserve(perMix.size());
+        for (const auto& d : perMix) lbs.push_back(d.annualizedLowerBound());
+        std::sort(lbs.begin(), lbs.end(), [](const NumT& a, const NumT& b){ return a < b; });
+        const NumT medianLB = lbs[lbs.size() / 2];
+
+        const double lb = num::to_double(medianLB);
+        const double hurdleDec = requiredReturn.getAsDouble();
+        return 10000.0 * (lb - hurdleDec);
+      }();
+
+      const double margin_bps = 50.0; // 50 bps forgiveness threshold
+      const bool strongStatPass = passStat && (stationaryMedianOverHurdle_bps >= margin_bps);
+
+      const bool regimeMixPass = (passStat && passFixed) || (passStat && !passFixed && strongStatPass);
+
+      // Collect failing mixes and find minimum LB
+      std::vector<std::string> failingMixes;
+      double minAnnualizedLB = std::numeric_limits<double>::max();
+
+      for (const auto& mx : resStat.perMix())
+      {
+        const double lb = num::to_double(mx.annualizedLowerBound());
+        minAnnualizedLB = std::min(minAnnualizedLB, lb);
+        if (!mx.pass())
+        {
+          failingMixes.push_back(mx.mixName());
+        }
+      }
+
+      outputStream << "      [Meta Regime Mix] Gate=AND (+forgiveness "
+                   << margin_bps << "bps): stationary=" << (passStat ? "PASS" : "FAIL")
+                   << " fixed-L=" << (passFixed ? "PASS" : "FAIL")
+                   << " | stationary median over hurdle = " << stationaryMedianOverHurdle_bps << " bps\n";
+
+      if (!regimeMixPass)
+      {
+        outputStream << "      [Meta Regime Mix] ✗ FAIL (AND gate).";
+        if (passStat && !passFixed && !strongStatPass) outputStream << " Reason: fixed-L veto.";
+        if (!passStat && passFixed)                    outputStream << " Reason: stationary veto.";
+        if (!passStat && !passFixed)                   outputStream << " Reason: both failed.";
+        outputStream << "\n";
+
+        if (!failingMixes.empty())
+        {
+          outputStream << "      Failing mixes (stationary): ";
+          for (std::size_t i = 0; i < failingMixes.size(); ++i)
+            outputStream << (i ? ", " : "") << failingMixes[i];
+          outputStream << "\n";
+        }
+      }
+      else
+      {
+        outputStream << "      [Meta Regime Mix] ✓ PASS\n";
+      }
+
+      return RegimeMixResult(regimeMixPass, minAnnualizedLB, failingMixes);
+    }
     
     std::size_t
     MetaStrategyAnalyzer::chooseInitialSliceCount(std::size_t n, std::size_t Lmeta) const
@@ -587,7 +881,8 @@ namespace palvalidator
         const DateRange& backtestingDates,
         TimeFrame::Duration timeFrame,
         std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-        std::ostream& outputStream) const
+        std::ostream& outputStream,
+        const DateRange& inSampleDates) const
     {
       using mkc_timeseries::DecimalConstants;
 
@@ -665,8 +960,21 @@ namespace palvalidator
       // Non-penalizing when not applied (too short to slice)
       const bool multiSplitPass = (!ms.applied) || ms.pass;
 
+      // Regime Mix Gate
+      outputStream << "\n";
+      const auto regimeResult = runRegimeMixGate(
+          bt,
+          baseSecurity,
+          backtestingDates,
+          Keff,
+          H.baseHurdle,
+          Lmeta,
+          outputStream,
+          inSampleDates
+      );
+
       return PyramidGateResults(regularBootstrapPass, multiSplitPass, passMetaSelectionAware,
-                                bootstrapResults, H, Keff, Lmeta, metaAnnualizedTrades);
+                                bootstrapResults, H, Keff, Lmeta, metaAnnualizedTrades, regimeResult);
     }
 
     MetaStrategyAnalyzer::PyramidRiskResults
@@ -714,7 +1022,21 @@ namespace palvalidator
       outputStream << "      Gates → Regular: " << (gates.regularBootstrapPassed() ? "PASS" : "FAIL")
                   << ", Multi-split: " << (gates.multiSplitPassed() ? "PASS" : "FAIL")
                   << ", MetaSel: " << (gates.passMetaSelectionAware() ? "PASS" : "FAIL")
-                  << "\n\n";
+                  << ", RegimeMix: " << (gates.regimeMixPassed() ? "PASS" : "FAIL")
+                  << "\n";
+      
+      // Show regime mix details if it failed
+      const auto& regimeMixResult = gates.getRegimeMixResult();
+      if (!regimeMixResult.passed && !regimeMixResult.failingMixes.empty())
+      {
+        outputStream << "      Regime Mix Failing Scenarios: ";
+        for (std::size_t i = 0; i < regimeMixResult.failingMixes.size(); ++i)
+          outputStream << (i ? ", " : "") << regimeMixResult.failingMixes[i];
+        outputStream << "\n";
+        outputStream << "      Minimum Annualized LB across mixes: "
+                    << (regimeMixResult.minAnnualizedLB * 100.0) << "%\n";
+      }
+      outputStream << "\n";
       
       if (gates.allGatesPassed())
         outputStream << "      RESULT: ✓ Pyramid Level " << pyramidLevel << " PASSES\n";
@@ -760,7 +1082,8 @@ namespace palvalidator
         const DateRange& backtestingDates,
         TimeFrame::Duration timeFrame,
         std::ostream& outputStream,
-        std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const
+        std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+        const DateRange& inSampleDates) const
     {
       using mkc_timeseries::DecimalConstants;
 
@@ -791,7 +1114,8 @@ namespace palvalidator
           backtestingDates,
           timeFrame,
           oosSpreadStats,
-          outputStream
+          outputStream,
+          inSampleDates
       );
       
       // --- Step 3: Run All Risk Analyses ---
