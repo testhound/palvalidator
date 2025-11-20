@@ -137,6 +137,25 @@ namespace palvalidator
       // They will be set when analyzeMetaStrategy() is called
     }
 
+    /**
+     * @brief Orchestrates the complete meta-strategy validation pipeline.
+     *
+     * Objective:
+     * This is the public entry point. It serves as a wrapper that:
+     * 1. Checks if there are any surviving strategies to analyze.
+     * 2. Delegates the heavy lifting to `analyzeMetaStrategyUnified` to build
+     * and stress-test the Unified PalMetaStrategy.
+     *
+     * Arguments:
+     * survivingStrategies: List of individual strategies that passed initial filtering.
+     * baseSecurity:        The underlying asset (e.g., SPY) used for backtesting context.
+     * backtestingDates:    The specific date range (IS/OOS) to run the validation on.
+     * timeFrame:           Bar duration (Daily, Intraday) for the backtest.
+     * outputStream:        Where logs and results are printed.
+     * validationMethod:    The type of statistical validation used (e.g., Romano-Wolf), for reporting.
+     * oosSpreadStats:      (Optional) Realized OOS spread data for calibrating cost hurdles.
+     * inSampleDates:       Required for the Regime Mix "Long Run" baseline calculation.
+     */
     void MetaStrategyAnalyzer::analyzeMetaStrategy(
     		   const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     		   std::shared_ptr<Security<Num>> baseSecurity,
@@ -160,6 +179,22 @@ namespace palvalidator
      timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates);
     }
 
+    /**
+     * @brief Executes the Unified Meta-Strategy analysis across all pyramid levels.
+     *
+     * Objective:
+     * This method runs the core experiment:
+     * 1. Constructs multiple versions of the portfolio (Level 0 = No Pyramiding,
+     * Level 1 = 1 Add-on, etc.).
+     * 2. Runs a full backtest and validation suite (`analyzeSinglePyramidLevel`)
+     * for each configuration.
+     * 3. Generates comprehensive performance reports.
+     * 4. Selects the "Best" configuration (canonical passer) based on risk-adjusted
+     * metrics (MAR ratio) to update the analyzer's final state.
+     *
+     * Arguments:
+     * (Same as analyzeMetaStrategy)
+     */
     void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 							  std::shared_ptr<Security<Num>> baseSecurity,
 							  const DateRange& backtestingDates,
@@ -237,7 +272,26 @@ namespace palvalidator
 	  mMetaStrategyPassed = false;
 	}
     }
-    
+
+    /**
+     * @brief Factory method to build a standard PalMetaStrategy.
+     *
+     * Objective:
+     * Combines multiple individual `PalStrategy` instances into a single
+     * `PalMetaStrategy` container.
+     *
+     * Configuration:
+     * - Sets the portfolio name to "Unified Meta Strategy".
+     * - Configures `setSkipIfBothSidesFire(true)` to prevent simultaneous Long/Short
+     * conflicts (neutralizing exposure rather than doubling it).
+     *
+     * Arguments:
+     * survivingStrategies: The components to add to the portfolio.
+     * baseSecurity:        The asset these strategies trade.
+     *
+     * Returns:
+     * A shared pointer to the fully configured meta-strategy.
+     */
     std::shared_ptr<PalMetaStrategy<Num>>
     MetaStrategyAnalyzer::createMetaStrategy(
 					     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -263,6 +317,20 @@ namespace palvalidator
       return metaStrategy;
     }
 
+    /**
+     * @brief Factory method to build a PalMetaStrategy with custom execution options.
+     *
+     * Objective:
+     * Similar to the standard factory, but allows injecting `StrategyOptions`.
+     * This is primarily used to configure **Pyramiding** (e.g., allowing
+     * multiple positions in the same direction).
+     *
+     * Arguments:
+     * survivingStrategies: The components.
+     * baseSecurity:        The asset.
+     * strategyOptions:     Configuration object containing pyramiding limits
+     * (e.g., `maxOpenPositions`).
+     */
     std::shared_ptr<PalMetaStrategy<Num>>
     MetaStrategyAnalyzer::createMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -289,6 +357,23 @@ namespace palvalidator
       return metaStrategy;
     }
 
+    /**
+     * @brief Factory method for a Volatility-Filtered Meta-Strategy.
+     *
+     * Objective:
+     * Creates a `PalMetaStrategy` wrapped with an `AdaptiveVolatilityPortfolioFilter`.
+     * This is used specifically for Pyramid Level 4 ("Volatility Filter"), which
+     * dynamically reduces exposure when market volatility (Simons HLC) exceeds
+     * historical norms.
+     *
+     * Arguments:
+     * survivingStrategies: The components.
+     * baseSecurity:        The asset.
+     * strategyOptions:     Execution options.
+     *
+     * Returns:
+     * A shared pointer to the filtered strategy instance.
+     */
     std::shared_ptr<PalMetaStrategy<Num, AdaptiveVolatilityPortfolioFilter<Num, mkc_timeseries::SimonsHLCVolatilityPolicy>>>
     MetaStrategyAnalyzer::createMetaStrategyWithAdaptiveFilter(
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -312,6 +397,23 @@ namespace palvalidator
       return metaStrategy;
     }
 
+    /**
+     * @brief Defines the set of portfolio configurations to test.
+     *
+     * Objective:
+     * Acts as the "Experiment Design" generator. It creates a list of scenarios
+     * to stress-test the portfolio's scalability:
+     * - Level 0: Base case (1 position max).
+     * - Level 1: 2 positions max (1 add-on).
+     * - Level 2: 3 positions max (2 add-ons).
+     * - Level 3: 4 positions max (3 add-ons).
+     *
+     * (Optional #ifdefs exist for Volatility Filters and Breakeven Stops).
+     *
+     * Returns:
+     * A vector of `PyramidConfiguration` objects, each defining a specific
+     * backtest scenario.
+     */
     std::vector<MetaStrategyAnalyzer::PyramidConfiguration>
     MetaStrategyAnalyzer::createPyramidConfigurations() const
     {
@@ -344,6 +446,30 @@ namespace palvalidator
       return configs;
     }
 
+    /**
+     * @brief Executes the Selection-Aware Bootstrap (Gate #3).
+     *
+     * Objective:
+     * Corrects for the "Lucky Survivor" bias. Since the components were pre-selected
+     * based on performance, a standard bootstrap is biased upwards.
+     * This method:
+     * 1. Reconstructs the exact "meta-strategy construction process" inside
+     * the bootstrap loop.
+     * 2. Resamples component returns *before* aggregation.
+     * 3. Verifies if the portfolio's edge persists even after accounting for
+     * selection bias.
+     *
+     * Arguments:
+     * survivingStrategies: The pool of components to resample.
+     * backtestingDates:    Simulation window.
+     * Lmeta:               Block length derived from the portfolio's serial dependence.
+     * annualizationFactor: The effective 'K' factor for scaling returns.
+     * bt:                  Backtester (used for trade frequency stats).
+     * oosSpreadStats:      Used to set the hurdle bar.
+     *
+     * Returns:
+     * True if the bias-corrected Lower Bound > Hurdle.
+     */
     bool MetaStrategyAnalyzer::runSelectionAwareMetaGate(
 							 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 							 std::shared_ptr<mkc_timeseries::Security<Num>> /* baseSecurity */,
@@ -495,6 +621,31 @@ namespace palvalidator
       return pass;
     }
 
+    /**
+     * @brief Executes the Regime Mix Stress Test (Gate #5).
+     *
+     * Objective:
+     * Ensures the portfolio is "All-Weather" and robust to volatility changes.
+     * It tests the portfolio against specific market regimes:
+     * 1. **Data Alignment:** Maps irregular portfolio returns to the daily
+     * volatility regime of the base asset (Low, Mid, High).
+     *
+     * 2. **Mix Stress:** Resamples returns weighted by regime scenarios
+     * (e.g., "Low Volatility Favored", "High Volatility Favored").
+     *
+     * 3. **Gating:** Fails the portfolio if it cannot maintain a positive
+     * expectancy in ANY reasonable market regime.
+     *
+     * Arguments:
+     * bt:                  Backtester (source of high-res portfolio returns).
+     * baseSecurity:        Source of volatility data (Close prices).
+     * annualizationFactor: For scaling the stress-test LBs.
+     * requiredReturn:      The cost hurdle to clear.
+     * inSampleDates:       Used to compute the asset's "Long Run" baseline regime mix.
+     *
+     * Returns:
+     * A `RegimeMixResult` containing pass/fail status and a list of any failing mixes.
+     */
     MetaStrategyAnalyzer::RegimeMixResult
     MetaStrategyAnalyzer::runRegimeMixGate(
         const std::shared_ptr<BackTester<Num>>& bt,
@@ -779,7 +930,27 @@ namespace palvalidator
 
       return RegimeMixResult(regimeMixPass, minAnnualizedLB, failingMixes);
     }
-    
+
+    /**
+     * @brief Determines the number of time-slices (K) for the Multi-Split Gate.
+     *
+     * Objective:
+     * Calculates a heuristic $K$ for the OOS consistency check (Gate #4).
+     * It balances the need for granularity (more slices = better consistency check)
+     * with statistical significance (too many slices = insufficient sample size $n$ per slice).
+     *
+     * Logic:
+     * - Target $K=4$ for long datasets ($n \ge 160$).
+     * - Target $K=3$ for shorter datasets.
+     * - Clamps $K$ so that each slice has at least `kMinSliceLen` bars.
+     *
+     * Arguments:
+     * n:     Total number of returns.
+     * Lmeta: The calculated block length (used to determine minimum slice length).
+     *
+     * Returns:
+     * The integer $K$ (slice count).
+     */
     std::size_t
     MetaStrategyAnalyzer::chooseInitialSliceCount(std::size_t n, std::size_t Lmeta) const
     {
@@ -798,6 +969,28 @@ namespace palvalidator
       return K;
     }
 
+    /**
+     * @brief Executes the backtest simulation for a specific pyramid configuration.
+     *
+     * Objective:
+     * Acts as the execution engine for `analyzeSinglePyramidLevel`. It handles
+     * the logic branching for different configuration types:
+     * - **Standard:** Runs a normal backtest with the specified pyramiding limits.
+     * - **Adaptive Filter:** Wraps the strategy in a volatility filter before running.
+     * - **Breakeven:** Performs an initial pass to tune exit parameters, adds a
+     * breakeven stop, and re-runs the backtest.
+     *
+     * Arguments:
+     * config:              The configuration (Level ID, Type, Options).
+     * survivingStrategies: Components.
+     * baseSecurity:        The asset.
+     * backtestingDates:    Simulation window.
+     * timeFrame:           Bar duration.
+     * outputStream:        Logging stream.
+     *
+     * Returns:
+     * A `PyramidBacktestResult` containing the `BackTester` instance and the raw returns.
+     */
     MetaStrategyAnalyzer::PyramidBacktestResult
     MetaStrategyAnalyzer::runPyramidBacktest(
         const PyramidConfiguration& config,
@@ -872,6 +1065,27 @@ namespace palvalidator
       return PyramidBacktestResult(bt, metaReturns);
     }
 
+    /**
+     * @brief The Central Validator: Runs all 5 statistical gates for a single pyramid level.
+     *
+     * Objective:
+     * This is the "Gatekeeper". It orchestrates the sequential validation checks:
+     * 1. **Metrics Calculation:** Computes block length (L), K-factor, and participation.
+     * 2. **Regular Gate:** Standard BCa Bootstrap vs. Cost Hurdle.
+     * 3. **Selection-Aware Gate:** Checks for selection bias.
+     * 4. **Multi-Split Gate:** Checks for OOS consistency (time slicing).
+     * 5. **Regime Mix Gate:** Checks for volatility robustness.
+     *
+     * Arguments:
+     * metaReturns:         The raw return series of the portfolio.
+     * bt:                  The backtester instance.
+     * survivingStrategies: The components (needed for Selection-Aware gate).
+     * oosSpreadStats:      Realized spread data for cost calibration.
+     * inSampleDates:       Passed down to Regime Mix gate.
+     *
+     * Returns:
+     * A `PyramidGateResults` object summarizing the outcome of all 5 gates.
+     */
     MetaStrategyAnalyzer::PyramidGateResults
     MetaStrategyAnalyzer::runPyramidValidationGates(
         const std::vector<Num>& metaReturns,
@@ -977,6 +1191,25 @@ namespace palvalidator
                                 bootstrapResults, H, Keff, Lmeta, metaAnnualizedTrades, regimeResult);
     }
 
+    /**
+     * @brief Aggregates post-validation risk metrics.
+     *
+     * Objective:
+     * Once a strategy passes validation, this method calculates the "Safety" metrics
+     * used for monitoring and sizing:
+     * 1. **Future Monthly Bound:** The VaR-like lower bound for a single month.
+     * 2. **Losing Streak Bound:** The statistical upper bound for consecutive losses.
+     * 3. **Drawdown Analysis:** The BCa confidence intervals for Max Drawdown.
+     *
+     * Arguments:
+     * metaReturns:   Portfolio return series.
+     * closedHistory: Trade list (for streak analysis).
+     * lMeta:         Block length.
+     * outputStream:  Logging stream.
+     *
+     * Returns:
+     * A `PyramidRiskResults` object containing the computed risk metrics.
+     */
     MetaStrategyAnalyzer::PyramidRiskResults
     MetaStrategyAnalyzer::runPyramidRiskAnalysis(
         const std::vector<Num>& metaReturns,
@@ -1002,6 +1235,19 @@ namespace palvalidator
                                 observedLosingStreak, losingStreakUpperBound);
     }
 
+    /**
+     * @brief Logging helper for the validation gates.
+     *
+     * Objective:
+     * Formats and prints the pass/fail status of the 5 gates (Regular, Multi-Split,
+     * MetaSel, RegimeMix) and the primary performance metrics to the console.
+     *
+     * Arguments:
+     * gates:        Results from `runPyramidValidationGates`.
+     * risk:         Results from `runPyramidRiskAnalysis`.
+     * pyramidLevel: Integer ID of the current level (0, 1, etc.).
+     * outputStream: Logging stream.
+     */
     void MetaStrategyAnalyzer::logPyramidValidationResults(
         const PyramidGateResults& gates,
         const PyramidRiskResults& risk,
@@ -1074,6 +1320,25 @@ namespace palvalidator
       }
     }
 
+    /**
+     * @brief Worker method: Runs the full analysis lifecycle for ONE configuration.
+     *
+     * Objective:
+     * Encapsulates the entire workflow for a specific pyramid level (e.g., Level 1):
+     * 1. **Backtest:** Runs the strategy with the specific config options.
+     * 2. **Validate:** Calls `runPyramidValidationGates` to test robustness.
+     * 3. **Risk:** Calls `runPyramidRiskAnalysis` (Drawdowns, Future Bounds).
+     * 4. **Log:** Writes detailed logs for this specific level.
+     * 5. **Package:** Returns a `PyramidResults` object for comparison.
+     *
+     * Arguments:
+     * config:              The specific setup (Level 0, 1, 2, etc.).
+     * survivingStrategies: The components.
+     * outputStream:        For real-time logging.
+     *
+     * Returns:
+     * A `PyramidResults` object containing all metrics and pass/fail status.
+     */
     MetaStrategyAnalyzer::PyramidResults
     MetaStrategyAnalyzer::analyzeSinglePyramidLevel(
         const PyramidConfiguration& config,
@@ -1149,6 +1414,23 @@ namespace palvalidator
       );
     }
 
+    /**
+     * @brief Estimates the statistical upper bound for consecutive losing trades.
+     *
+     * Objective:
+     * Uses a specialized bootstrap (`MetaLosingStreakBootstrapBound`) to estimate
+     * the "Worst Case" losing streak.
+     * - Instead of just reporting the observed streak (e.g., 3 losses in a row),
+     * it resamples the trade sequence to find the likely maximum streak
+     * at 95% confidence (e.g., "We are 95% sure it won't exceed 6 losses").
+     *
+     * Arguments:
+     * cph: The history of closed positions (W/L sequence).
+     * os:  Output stream for logging.
+     *
+     * Returns:
+     * A pair {Observed Streak, Bootstrap Upper Bound}.
+     */
     std::pair<int,int>
     MetaStrategyAnalyzer::computeLosingStreakBound(const ClosedPositionHistory<Num>& cph,
     		   std::ostream& os) const
@@ -1189,7 +1471,6 @@ namespace palvalidator
       return {observed, upper};
     }
     
-
     std::shared_ptr<BackTester<Num>> MetaStrategyAnalyzer::executeBacktesting(
         std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
         TimeFrame::Duration timeFrame,
@@ -1198,6 +1479,23 @@ namespace palvalidator
       return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, backtestingDates);
     }
 
+    /**
+     * @brief Estimates the "Worst Case" future monthly return (VaR-like metric).
+     *
+     * Objective:
+     * Answers the question: "How bad could a single month get?"
+     * 1. Aggregates trade-level returns into **Monthly Returns**.
+     * 2. Calculates an adaptive block length (L) for monthly dependence.
+     * 3. Runs a BCa Bootstrap to estimate the **5th Percentile** (Left Tail)
+     * of the monthly return distribution.
+     * 4. Returns the lower bound of that 5th percentile estimate.
+     *
+     * This serves as a "Monitoring Bound"—if live monthly returns dip below this,
+     * the strategy is likely broken.
+     *
+     * Returns:
+     * The lower bound % (as a decimal).
+     */
     Num MetaStrategyAnalyzer::performFutureReturnsBoundAnalysis(
 								     const ClosedPositionHistory<Num>& closedPositionHistory,
 								     std::ostream& outputStream) const
@@ -1299,7 +1597,24 @@ namespace palvalidator
 	  return DecimalConstants<Num>::DecimalZero;
 	}
     }
-    
+
+    /**
+     * @brief Analyzes trade history to suggest optimal exit parameters.
+     *
+     * Objective:
+     * Uses the `ExitPolicyJointAutoTuner` to analyze the holding period distribution
+     * of winning vs. losing trades. It identifies:
+     * 1. **Breakeven Activation:** The optimal bar count to move stops to breakeven.
+     * 2. **Time Stop:** The optimal bar count to force an exit (if applicable).
+     *
+     * This is used primarily for the "Breakeven Stop" pyramid configuration (Level 5)
+     * and for reporting tuning suggestions in Level 0.
+     *
+     * Arguments:
+     * closedPositionHistory: The list of trades to analyze.
+     * outputStream:          Logging stream.
+     * performanceFile:       The file stream where the detailed report is written.
+     */
     void MetaStrategyAnalyzer::performExitBarTuning(
         const ClosedPositionHistory<Num>& closedPositionHistory,
         std::ostream& outputStream,
@@ -1343,6 +1658,19 @@ namespace palvalidator
         }
     }
 
+    /**
+     * @brief Generates a detailed trade-by-trade report file.
+     *
+     * Objective:
+     * Delegates to `PerformanceReporter` to write the raw backtest artifacts
+     * (equity curve, trade list) to a CSV/Text file. Also appends the
+     * Exit Bar Tuning analysis.
+     *
+     * Arguments:
+     * bt:                  The backtester instance.
+     * performanceFileName: Path to the output file.
+     * outputStream:        Logging stream (for error reporting).
+     */
     void MetaStrategyAnalyzer::writePerformanceReport(
         std::shared_ptr<BackTester<Num>> bt,
         const std::string& performanceFileName,
@@ -1366,6 +1694,18 @@ namespace palvalidator
         }
     }
 
+    /**
+     * @brief Computes basic point estimates for returns.
+     *
+     * Objective:
+     * Calculates the simple Arithmetic Mean and Geometric Mean of the return series
+     * *before* any bootstrapping or annualization. Used for sanity checking the
+     * data distribution.
+     *
+     * Arguments:
+     * metaReturns:  Vector of period returns.
+     * outputStream: Logging stream.
+     */
     void MetaStrategyAnalyzer::calculatePerPeriodEstimates(
         const std::vector<Num>& metaReturns,
         std::ostream& outputStream) const
@@ -1377,6 +1717,21 @@ namespace palvalidator
                    << "Geometric mean =" << (gm * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
     }
 
+    /**
+     * @brief Determines the scaling factor for annualization.
+     *
+     * Objective:
+     * Returns the number of bars in a trading year based on the timeframe.
+     * - **Daily:** Returns ~252.
+     * - **Intraday:** Calculates `252 * (MinutesPerDay / BarDuration)`.
+     *
+     * Arguments:
+     * timeFrame:    The bar duration enum.
+     * baseSecurity: Used to retrieve the trading session length (minutes per day).
+     *
+     * Returns:
+     * The float scaling factor.
+     */
     double MetaStrategyAnalyzer::calculateAnnualizationFactor(
         TimeFrame::Duration timeFrame,
         std::shared_ptr<Security<Num>> baseSecurity) const
@@ -1392,6 +1747,24 @@ namespace palvalidator
         }
     }
 
+    /**
+     * @brief Executes the Regular (Gate #2) BCa Bootstrap.
+     *
+     * Objective:
+     * Runs the standard Bias-Corrected and Accelerated (BCa) Block Bootstrap
+     * on the entire OOS return series.
+     * - Computes Lower Bounds for both Geometric Mean and Arithmetic Mean.
+     * - Annualizes the results using the provided factor.
+     *
+     * Arguments:
+     * metaReturns:         Return series.
+     * annualizationFactor: The K-factor (or 252) for scaling.
+     * blockLength:         Stationary block length $L$.
+     * outputStream:        Logging stream.
+     *
+     * Returns:
+     * A `BootstrapResults` struct containing period and annualized bounds.
+     */
     MetaStrategyAnalyzer::BootstrapResults MetaStrategyAnalyzer::performBootstrapAnalysis(
         const std::vector<Num>& metaReturns,
         double annualizationFactor,
@@ -1427,6 +1800,24 @@ namespace palvalidator
       return {lbGeoPeriod, lbMeanPeriod, lbGeoAnn, lbMeanAnn, blockLength};
     }
 
+    /**
+     * @brief Helper for Multi-Split: Bootstraps specific sub-segments.
+     *
+     * Objective:
+     * Cuts the return series into $K$ slices and runs an independent BCa bootstrap
+     * on each slice.
+     *
+     * Arguments:
+     * returns:             The full return series.
+     * K:                   Number of slices.
+     * blockLength:         Block length $L$.
+     * numResamples:        Bootstrap iterations per slice.
+     * confidenceLevel:     Confidence level (e.g., 0.95).
+     * annualizationFactor: Scaling factor.
+     *
+     * Returns:
+     * A vector of annualized Lower Bounds (one per slice).
+     */
     std::vector<Num>
     MetaStrategyAnalyzer::bootstrapReturnSlices(const std::vector<Num>& returns,
 						std::size_t K,
@@ -1483,6 +1874,30 @@ namespace palvalidator
       return out;
     }
 
+    /**
+     * @brief Executes the Multi-Split / Time-Slicing Gate (Gate #4).
+     *
+     * Objective:
+     * Tests if the strategy's edge is consistent across time.
+     * 1. Divides OOS history into $K$ slices.
+     * 2. Bootstraps each slice independently.
+     * 3. **Pass Condition:** The *Median* lower bound of the slices must exceed
+     * the cost hurdle.
+     *
+     * This prevents a strategy from passing based on one "lucky year" that
+     * obscures poor performance in other years.
+     *
+     * Arguments:
+     * metaReturns:  Portfolio returns.
+     * K:            Initial slice count target.
+     * Lmeta:        Block length.
+     * annualizationFactor: Scaling factor.
+     * bt:           Backtester (for trade counts).
+     * oosSpreadStats: For cost hurdle calibration.
+     *
+     * Returns:
+     * A `MultiSplitResult` containing the LBs per slice and pass/fail status.
+     */
     MetaStrategyAnalyzer::MultiSplitResult
     MetaStrategyAnalyzer::runMultiSplitGate(
 					    const std::vector<Num>              &metaReturns,
@@ -1598,7 +2013,25 @@ namespace palvalidator
 
       return r;
     }
-    
+
+    /**
+     * @brief Computes the "Required Return" thresholds.
+     *
+     * Objective:
+     * Calculates the hurdles a strategy must clear to be viable:
+     * 1. **Risk-Free:** Must beat the risk-free rate.
+     * 2. **Cost-Based:** Must cover estimated slippage/commissions + a safety buffer.
+     * 3. **Final:** `max(RiskFree, CostBased)`.
+     *
+     * Logs a detailed breakdown of how the hurdle was derived.
+     *
+     * Arguments:
+     * annualizedTrades: The turnover rate (trades/year).
+     * outputStream:     Logging stream.
+     *
+     * Returns:
+     * A `CostHurdleResults` struct.
+     */
     MetaStrategyAnalyzer::CostHurdleResults MetaStrategyAnalyzer::calculateCostHurdles(
         const Num& annualizedTrades,
         std::ostream& outputStream) const
@@ -1622,6 +2055,20 @@ namespace palvalidator
       return {riskFreeHurdle, costBasedRequiredReturn, finalRequiredReturn};
     }
 
+    /**
+     * @brief Standalone helper for BCa Max Drawdown analysis.
+     *
+     * Objective:
+     * Calculates the confidence intervals for the Maximum Drawdown statistic.
+     * Used primarily when a simple console print is needed (not part of the
+     * structured `PyramidResults` object).
+     *
+     * Arguments:
+     * metaReturns:  Return series.
+     * numTrades:    Trade count (sample size $n$).
+     * blockLength:  Block length $L$.
+     * outputStream: Logging stream.
+     */
     void MetaStrategyAnalyzer::performDrawdownAnalysis(
         const std::vector<Num>& metaReturns,
         uint32_t numTrades,
@@ -1639,16 +2086,14 @@ namespace palvalidator
        
               // Calculate drawdown bounds using BCa bootstrap with parallel execution
               // Parameters: metaReturns, mNumResamples, mConfidenceLevel, numTrades, 5000, mConfidenceLevel, blockLength
-              auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(
-                  metaReturns,
-                  mNumResamples,
-                  mConfidenceLevel.getAsDouble(),
-                  static_cast<int>(numTrades),
-                  5000,
-                  mConfidenceLevel.getAsDouble(),
-                  blockLength,
-                  executor
-                  );
+              auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(metaReturns,
+										   mNumResamples,
+										   mConfidenceLevel.getAsDouble(),
+										   static_cast<int>(numTrades),
+										   5000,
+										   mConfidenceLevel.getAsDouble(),
+										   blockLength,
+										   executor);
 
               const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the dd percentile you targeted
               const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the CI level
@@ -1677,6 +2122,20 @@ namespace palvalidator
         }
     }
 
+    /**
+     * @brief Finalizes the analysis state and prints the verdict.
+     *
+     * Objective:
+     * Updates the member variables `mMetaStrategyPassed`, `mAnnualizedLowerBound`,
+     * and `mRequiredReturn` based on the results of the primary gate.
+     * Prints the final "PASS" or "FAIL" banner for the Unified Strategy.
+     *
+     * Arguments:
+     * bootstrapResults: Outcome of the primary bootstrap.
+     * costResults:      The calculated hurdles.
+     * strategyCount:    Number of components in the portfolio.
+     * outputStream:     Logging stream.
+     */
     void MetaStrategyAnalyzer::reportFinalResults(
         const BootstrapResults& bootstrapResults,
         const CostHurdleResults& costResults,
@@ -1704,6 +2163,17 @@ namespace palvalidator
       outputStream << "      Costs: $0 commission; per-side slippage uses configured floor and may be calibrated by OOS spreads.\n";
     }
 
+    /**
+     * @brief Structured BCa Max Drawdown analysis for Pyramid results.
+     *
+     * Objective:
+     * Identical to `performDrawdownAnalysis` mathematically, but returns a
+     * `DrawdownResults` object instead of printing to the stream. This object
+     * is stored in the `PyramidResults` for later comparison (MAR calculation).
+     *
+     * Returns:
+     * A `DrawdownResults` object containing Point Estimate, CI Lower/Upper bounds.
+     */
     MetaStrategyAnalyzer::DrawdownResults MetaStrategyAnalyzer::performDrawdownAnalysisForPyramid(
         const std::vector<Num>& metaReturns,
         uint32_t numTrades,
@@ -1742,6 +2212,21 @@ namespace palvalidator
         }
     }
 
+    /**
+     * @brief Generates the master report file for all pyramid levels.
+     *
+     * Objective:
+     * Creates a single, detailed text file containing:
+     * 1. Trade logs for every level (0, 1, 2...).
+     * 2. Statistical summaries for every level.
+     * 3. Drawdown analysis for every level.
+     * 4. The comparison table summary.
+     *
+     * Arguments:
+     * allResults:          Vector of results for all levels.
+     * performanceFileName: Output file path.
+     * outputStream:        Logging stream (for error reporting).
+     */
     void MetaStrategyAnalyzer::writeComprehensivePerformanceReport(
         const std::vector<PyramidResults>& allResults,
         const std::string& performanceFileName,
@@ -1874,6 +2359,24 @@ namespace palvalidator
       outputStream << "\n      Comprehensive pyramiding analysis written to: " << performanceFileName << std::endl;
     }
 
+    /**
+     * @brief Selects the single best portfolio configuration (Canonical Passer).
+     *
+     * Objective:
+     * After testing all levels (0, 1, 2, 3...), this method picks the winner.
+     * Selection Logic:
+     * 1. **Filter:** Only consider levels that PASSED all gates.
+     * 2. **Primary Metric:** **MAR Ratio** (Annualized Return / Max Drawdown).
+     * We prioritize efficiency (return per unit of risk) over raw profit.
+     * 3. **Tie-Breaker:** If MARs are invalid or equal, prioritize raw
+     * Annualized Lower Bound.
+     *
+     * This ensures the system recommends the most robust, risk-efficient
+     * version of the portfolio, not just the one with the highest leverage.
+     *
+     * Returns:
+     * A pointer to the winning `PyramidResults` object (or nullptr if none passed).
+     */
     const MetaStrategyAnalyzer::PyramidResults*
     MetaStrategyAnalyzer::selectBestPassingConfiguration(
         const std::vector<PyramidResults>& allResults,
@@ -1969,6 +2472,19 @@ namespace palvalidator
       return best;
     }
 
+    /**
+     * @brief Prints the summary comparison table to the console.
+     *
+     * Objective:
+     * Displays the ASCII table summarizing the key metrics (LB, MAR, Drawdown, Pass/Fail)
+     * for all analyzed pyramid levels.
+     * Also identifies and prints the "Best Performance" recommendation based on
+     * the MAR ratio.
+     *
+     * Arguments:
+     * allResults:   Vector of results for all levels.
+     * outputStream: The console/log stream.
+     */
     void MetaStrategyAnalyzer::outputPyramidComparison(
     		       const std::vector<PyramidResults>& allResults,
     		       std::ostream& outputStream) const
