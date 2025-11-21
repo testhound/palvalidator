@@ -621,12 +621,14 @@ namespace palvalidator
       return pass;
     }
 
+    
     /**
      * @brief Executes the Regime Mix Stress Test (Gate #5).
      *
      * Objective:
      * Ensures the portfolio is "All-Weather" and robust to volatility changes.
      * It tests the portfolio against specific market regimes:
+     *
      * 1. **Data Alignment:** Maps irregular portfolio returns to the daily
      * volatility regime of the base asset (Low, Mid, High).
      *
@@ -657,6 +659,54 @@ namespace palvalidator
         std::ostream& outputStream,
         const DateRange& inSampleDates) const
     {
+      /**
+       * @brief The "All-Weather" Robustness Validator.
+       *
+       * @section summary Executive Summary
+       * This stage transforms validation from a simple "performance check" into a robustness proof.
+       * It acts as an "All-Weather" stress test: instead of asking "How does this strategy perform
+       * on average?" (standard bootstrap), it asks "How does this strategy perform if the future
+       * market environment is structurally different from the past?"
+       *
+       * It is arguably the most rigorous filter in the pipeline because it destroys "lucky timing"
+       * bias. A strategy cannot hide poor performance in High Volatility periods simply because
+       * those periods were rare in the backtest history.
+       *
+       * @section technical Technical Implementation
+       * The logic relies on **Regime-Conditional Resampling**:
+       *
+       * 1. **Dynamic Labeling (VolTercileLabeler):**
+       * Defines regimes using **Relative Volatility** (top 33% of the asset's own history)
+       * rather than arbitrary thresholds (e.g., VIX > 20). This makes the test robust across
+       * different asset classes.
+       *
+       * 2. **Sparse-to-Dense Alignment (BarAlignedSeries):**
+       * Maps continuous market regimes to sparse, irregular trade timestamps. This ensures
+       * that a trade executed on a Tuesday is strictly evaluated against Tuesday's specific
+       * volatility regime.
+       *
+       * 3. **Weighted Bootstrapping (RegimeMixStressRunner):**
+       * Creates synthetic equity curves by forcing the bootstrapper to pick trades from
+       * specific regimes based on probability weights (e.g., forcing 30% of trades to
+       * come from the "High Vol" bucket).
+       *
+       * @section mixes Tested Scenarios
+       * The stage evaluates five distinct market textures:
+       * - **Equal (0.33, 0.33, 0.33):** Removes historical frequency bias.
+       * - **MidVolFav (0.25, 0.50, 0.25):** Simulates a mean-reverting, grinding market.
+       * - **LowVolFav (0.50, 0.35, 0.15):** Simulates a calm, bull-market environment.
+       * - **EvenMinusHV (0.35, 0.35, 0.30):** A balanced view capping extreme volatility exposure.
+       * - **LongRun:** Uses the actual historical distribution as a baseline reality check.
+       *
+       * @section value Strategic Value
+       * - **Detects "Hidden Beta":** Exposes strategies that hold implicit "Short Volatility"
+       * positions by failing them in Equal or High Vol weighted mixes.
+       * - **Validates Portfolio Effect:** Proves that diversification is structural, allowing
+       * the portfolio to pass all regimes even if individual components are specialists.
+       * - **Prevents Curve Fitting:** Makes it mathematically difficult to overfit a strategy
+       * to work in three different volatility regimes simultaneously unless the edge is genuine.
+       */
+
       using mkc_timeseries::FilterTimeSeries;
       using mkc_timeseries::RocSeries;
       using palvalidator::analysis::BarAlignedSeries;
