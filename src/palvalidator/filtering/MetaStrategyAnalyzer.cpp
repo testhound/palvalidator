@@ -840,6 +840,11 @@ namespace palvalidator
       mixes.emplace_back("EvenMinusHV(0.35,0.35,0.30)",
                          std::vector<double>{0.35, 0.35, 0.30});
 
+      // HighVolFav: Stress test for crisis periods / regime shifts
+      // 50% High Volatility, 30% Mid, 20% Low
+      mixes.emplace_back("HighVolFav(0.20,0.30,0.50)",
+			 std::vector<double>{0.20, 0.30, 0.50});
+
       // LongRun: Calculate from in-sample data
       auto inSampleTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), inSampleDates);
       auto insampleROC = RocSeries(inSampleTS.CloseTimeSeries(), /*period=*/1);
