@@ -10,14 +10,37 @@ namespace palvalidator
 {
   namespace analysis
   {
-
-    // Labels bars into 3 volatility terciles using a rolling window of |r|.
-    //  label: 0 = LowVol, 1 = MidVol, 2 = HighVol
-    // No default ctor: window must be provided.
+    /**
+     * @brief Partitions a return series into three volatility regimes (Low, Mid, High).
+     *
+     * Objective:
+     * Used by the Regime Mix filtering stage to generate market "state" labels
+     * for stress testing. Instead of using arbitrary external thresholds (like VIX > 20),
+     * this class calculates **Relative Volatility** based on the asset's own history.
+     *
+     * Algorithm:
+     * 1. Calculates a rolling "Mean Absolute Deviation" (proxy for volatility)
+     * over a specified window (e.g., 20 days).
+     * 2. Sorts the entire history of these volatility readings.
+     * 3. Identifies the 33rd and 66th percentiles (Terciles).
+     * 4. Labels every bar based on which bucket it falls into:
+     * - 0: Low Volatility (Bottom 33%)
+     * - 1: Mid Volatility (Middle 33%)
+     * - 2: High Volatility (Top 33%)
+     */
     template <class Num>
     class VolTercileLabeler
     {
     public:
+      /**
+       * @brief Constructs the labeler with a specific lookback window.
+       *
+       * @param window The size of the rolling window used to calculate volatility.
+       * A value of 20 (approx 1 trading month) is standard.
+       * Must be >= 2.
+       *
+       * @throws std::invalid_argument if window < 2.
+       */
       explicit VolTercileLabeler(std::size_t window)
         : mWindow(window)
       {
@@ -27,8 +50,26 @@ namespace palvalidator
 	  }
       }
 
-      // RegimeLabeler.h  (only the tail-fill part is new)
-
+      /**
+       * @brief Computes the regime label (0, 1, or 2) for every bar in the input series.
+       *
+       * Logic:
+       * 1. **Rolling Volatility:** Computes the mean absolute return over `mWindow`.
+       * 2. **Thresholds:** Sorts the volatility values to find the cut-off points
+       * (q1 = 33rd percentile, q2 = 66th percentile).
+       * 3. **Assignment:**
+       * - If Vol <= q1 -> Label 0
+       * - If Vol >= q2 -> Label 2
+       * - Else         -> Label 1
+       * 4. **Padding:**
+       * - The "Warmup" period (indices 0 to window-1) is filled with the first calculated label.
+       * - The "Tail" period is filled with the last calculated label.
+       *
+       * @param returns The vector of bar-to-bar returns (e.g., close-to-close).
+       * @return A vector of integers (size == returns.size()) containing labels 0, 1, or 2.
+       *
+       * @throws std::invalid_argument If the return series is shorter than (window + 2).
+       */
       std::vector<int> computeLabels(const std::vector<Num> &returns) const
       {
 	const std::size_t n = returns.size();
@@ -81,7 +122,7 @@ namespace palvalidator
 	      }
 	  }
 
-	// NEW: Fill the trailing tail (last mWindow-1 bars) with the last computed label
+	// Fill the trailing tail (last mWindow-1 bars) with the last computed label
 	const std::size_t lastComputedIdx = (rollAbs.empty() ? 0 : rollAbs.size() - 1);
 	if (lastComputedIdx < n)
 	  {

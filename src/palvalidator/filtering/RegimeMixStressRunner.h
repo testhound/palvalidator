@@ -20,15 +20,44 @@ namespace palvalidator
 {
   namespace analysis
   {
-
-    // Templated on RNG to enable deterministic tests when needed.
-    // Default remains randutils::mt19937_rng for production.
+    /**
+     * @brief Orchestrates the Regime Mix Stress Test execution.
+     *
+     * Objective:
+     * This class acts as the runner for the regime-conditional bootstrap analysis.
+     * It takes the aligned market data (returns and regime labels) and iterates
+     * through a list of hypothetical market scenarios ("Mixes").
+     *
+     * For each mix (e.g., "High Volatility Favored"), it:
+     * 1. Configures a regime-aware resampler (`SamplerT`) with the mix's target weights.
+     * 2. Runs a Bias-Corrected (BCa) Bootstrap to estimate the Lower Bound of returns
+     * under those specific simulated conditions.
+     * 3. Compares the result against the Validation Policy (Hurdle).
+     * 4. Aggregates the results to determine an overall Pass/Fail decision.
+     *
+     * @tparam Num The numeric type (e.g., double).
+     * @tparam Rng The random number generator type (default: randutils::mt19937_rng).
+     * @tparam SamplerT The resampling policy to use. This allows the runner to switch
+     * between "Stationary" (random block length) and "Block" (fixed block length)
+     * resampling strategies while reusing the same execution logic.
+     */
     template <class Num,
 	      class Rng = randutils::mt19937_rng,
 	      template<class, class> class SamplerT = palvalidator::resampling::RegimeMixBlockResampler>
     class RegimeMixStressRunner
     {
     public:
+      public:
+      /**
+       * @brief Constructs the runner with all necessary configuration.
+       *
+       * @param config Contains the list of Mixes to test and the pass/fail threshold.
+       * @param L The block length for bootstrapping (dependent structure preservation).
+       * @param numResamples Number of bootstrap iterations (e.g., 2000).
+       * @param confidenceLevel The BCa confidence level (e.g., 0.95 for 95% LB).
+       * @param annualizationFactor Scaling factor to convert per-period returns to annualized.
+       * @param validationPolicy The policy containing the Cost Hurdle the strategy must clear.
+       */
       RegimeMixStressRunner(const RegimeMixConfig &config,
                             std::size_t L,
                             unsigned int numResamples,
@@ -44,24 +73,33 @@ namespace palvalidator
       {
       }
 
+      /**
+       * @brief Result container for a single specific Mix scenario.
+       */
       class MixResult
       {
       public:
         MixResult(std::string mixName, Num annLb, bool pass)
-	  : mMixName(std::move(mixName)), mAnnualizedLowerBound(annLb), mPass(pass)
+	  : mMixName(std::move(mixName)),
+	    mAnnualizedLowerBound(annLb),
+	    mPass(pass)
         {
         }
 
+	/// @brief The name of the scenario (e.g., "LowVolFav").
         const std::string & mixName() const
         {
 	  return mMixName;
         }
 
+	/// @brief The annualized BCa Lower Bound achieved under this scenario.
+	
         Num annualizedLowerBound() const
         {
 	  return mAnnualizedLowerBound;
         }
 
+	/// @brief True if LB > Hurdle.
         bool pass() const
         {
 	  return mPass;
@@ -73,6 +111,9 @@ namespace palvalidator
         bool mPass;
       };
 
+      /**
+       * @brief Aggregate result for the entire suite of regime tests.
+       */
       class Result
       {
       public:
@@ -81,16 +122,19 @@ namespace palvalidator
         {
         }
 
+	/// @brief Detailed results for every mix tested.
         const std::vector<MixResult> & perMix() const
         {
 	  return mPerMix;
         }
 
+	/// @brief The percentage of mixes that passed (0.0 to 1.0).
         double passFraction() const
         {
 	  return mPassFraction;
         }
 
+	/// @brief True if passFraction >= config.minPassFraction().
         bool overallPass() const
         {
 	  return mOverallPass;
@@ -102,6 +146,36 @@ namespace palvalidator
         bool mOverallPass;
       };
 
+      /**
+       * @brief Executes the stress test suite.
+       *
+       * Algorithm:
+       * 1. **Validation:** Ensures `returns` and `labels` have equal length.
+       *
+       * 2. **Iteration:** Loops through every `RegimeMix` defined in `mConfig`.
+       *
+       * 3. **Sampler Configuration:** For each mix, instantiates a `SamplerT`.
+       * - This sampler is fed the `labels` (history) and the `mix.weights()` (target).
+       * - The sampler creates a probability distribution that biases the bootstrap
+       * selection toward the specific regimes defined in the mix.
+       *
+       * 4. **Bootstrap:** Runs `BCaBootStrap` using this biased sampler.
+       * - This generates a synthetic distribution of returns representing the
+       * hypothetical market condition.
+       *
+       * 5. **Assessment:** Calculates the Annualized Geometric Mean Lower Bound.
+       * - Checks `mValidationPolicy.hasPassed(lb)`.
+       *
+       * 6. **Aggregation:** Counts how many mixes passed and calculates the pass fraction.
+       *
+       *        *
+       * @param returns The vector of per-period returns.
+       * @param labels The vector of regime labels (0, 1, 2) aligned to `returns`.
+       * @param os Output stream for real-time logging of results.
+       * @return A `Result` object containing the aggregate decision and details.
+       *
+       * @throws std::invalid_argument If `returns.size() != labels.size()`.
+       */
       Result run(const std::vector<Num> &returns,
 		 const std::vector<int> &labels,
 		 std::ostream &os) const
