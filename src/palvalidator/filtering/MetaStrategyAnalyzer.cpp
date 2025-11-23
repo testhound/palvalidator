@@ -215,6 +215,12 @@ namespace palvalidator
       outputStream << "\n[Meta] Building unified PalMetaStrategy from "
 		   << survivingStrategies.size() << " survivors...\n";
 
+      // We determine the policy for the entire session before running any levels.
+      mEffectiveSlippageFloor = determineEffectiveSlippageFloor(survivingStrategies,
+								mHurdleCalculator.getSlippagePerSide(),
+								oosSpreadStats,
+								outputStream);
+
       try
 	{
 	  // 1) Create all pyramid configurations and collect results
@@ -602,10 +608,10 @@ namespace palvalidator
       // ─────────────────────────────────────────────────────────────────────────────
       // 4) Hurdles and logging (unchanged)
       // ─────────────────────────────────────────────────────────────────────────────
-      const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
       const auto H = makeCostStressHurdles<Num>(
 						mHurdleCalculator, oosSpreadStats,
-						Num(bt->getEstimatedAnnualizedTrades()), configuredPerSide);
+						Num(bt->getEstimatedAnnualizedTrades()),
+						mEffectiveSlippageFloor);
 
       const bool passBase = (msbRes.lbAnnualized > H.baseHurdle);
       const bool pass1Qn  = (msbRes.lbAnnualized > H.h_1q);
@@ -987,6 +993,65 @@ namespace palvalidator
       return RegimeMixResult(regimeMixPass, minAnnualizedLB, failingMixes);
     }
 
+    std::optional<Num> MetaStrategyAnalyzer::determineEffectiveSlippageFloor(
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        const std::optional<Num>& currentConfiguredSlippage,
+        const std::optional<palvalidator::filtering::OOSSpreadStats>& oosSpreadStats,
+        std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      // 1. Calculate Average Profit Target
+      Num sumTargets = DecimalConstants<Num>::DecimalZero;
+      size_t count = 0;
+      
+      for (const auto& strat : survivingStrategies) {
+          if (strat && strat->getPalPattern()) {
+              sumTargets = sumTargets + strat->getPalPattern()->getProfitTargetAsDecimal();
+              count++;
+          }
+      }
+      
+      Num avgTarget = (count > 0) ? (sumTargets / Num(count)) : Num("0.01");
+      outputStream << "****** avgTarget = " << avgTarget << "*******" << ::std::endl << std::endl;
+      // 2. Check Threshold (0.75% / 0.0075)
+      // If avg target < 0.75%, we assume this is a Low Volatility / Micro-Target strategy.
+      const bool isLowVolStrategy = (avgTarget < Num("0.75"));
+      
+      // 3. Determine Floor
+      if (isLowVolStrategy) 
+      {
+          // Case A: We have actual spread stats (Preferred)
+          if (oosSpreadStats.has_value()) 
+          {
+              outputStream << "      [Auto-Tune] Detected Micro-Target Strategy (Avg Target: " 
+                           << (avgTarget * DecimalConstants<Num>::DecimalOneHundred) 
+                           << "%).\n"
+                           << "      [Auto-Tune] Policy: Removing 10bps fixed floor. Using actual OOS spread statistics (" 
+                           << (oosSpreadStats->mean * DecimalConstants<Num>::DecimalOneHundred) << "%).\n";
+              
+              // Return 0.0. 
+              // This causes makeCostStressHurdles to use std::max(0.0, actual_spread/2), 
+              // effectively letting the actual spread drive the cost.
+              return Num("0.0"); 
+          }
+          // Case B: No stats available (Fallback)
+          else 
+          {
+              const Num lowVolFallback = Num("0.0002"); // 2 bps
+              outputStream << "      [Auto-Tune] Detected Micro-Target Strategy (Avg Target: " 
+                           << (avgTarget * DecimalConstants<Num>::DecimalOneHundred) 
+                           << "%).\n"
+                           << "      [Auto-Tune] Warning: No OOS spread stats available. Lowering floor to 2 bps ("
+                           << (lowVolFallback * DecimalConstants<Num>::DecimalOneHundred) << "%).\n";
+              return lowVolFallback;
+          }
+      }
+      
+      // Default: Return original configured value (usually 10 bps)
+      return currentConfiguredSlippage;
+    }
+
     /**
      * @brief Determines the number of time-slices (K) for the Multi-Split Gate.
      *
@@ -1178,11 +1243,11 @@ namespace palvalidator
       const auto bootstrapResults = performBootstrapAnalysis(metaReturns, Keff, Lmeta, outputStream);
 
       // Build calibrated + Qn-stressed cost hurdles
-      const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
+      
       const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
                                                 oosSpreadStats,
                                                 metaAnnualizedTrades,
-                                                configuredPerSide);
+                                                mEffectiveSlippageFloor);
       outputStream << "         Estimated annualized trades: "
                   << metaAnnualizedTrades << " /yr\n";
 
@@ -2028,12 +2093,10 @@ namespace palvalidator
       //const auto hurdles = calculateCostHurdles(annualizedTrades, os);
       //const Num required = hurdles.finalRequiredReturn;
 
-      const std::optional<Num> configuredPerSide = mHurdleCalculator.getSlippagePerSide();
-
       const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
 						oosSpreadStats,
 						annualizedTrades,
-						configuredPerSide);
+						mEffectiveSlippageFloor);
 
       os << "         Estimated annualized trades: "
 	 << annualizedTrades << " /yr\n";
