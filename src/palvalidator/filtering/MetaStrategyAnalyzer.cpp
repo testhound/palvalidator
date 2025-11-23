@@ -29,6 +29,7 @@
 #include "RegimeMixStationaryResampler.h"
 #include "BarAlignedSeries.h"
 #include "RegimeLabeler.h"
+#include "filtering/PositionSizingCalculator.h"
 #include <fstream>
 
 namespace palvalidator
@@ -241,7 +242,7 @@ namespace palvalidator
 									      baseSecurity->getSymbol(), validationMethod);
 
 	  writeComprehensivePerformanceReport(allResults, performanceFileName, outputStream);
-	  outputPyramidComparison(allResults, outputStream);
+	  outputPyramidComparison(allResults, baseSecurity, outputStream);
 
 	  // 3) Choose the canonical "best" passing configuration
 	  //
@@ -1394,7 +1395,7 @@ namespace palvalidator
      * Returns:
      * A `PyramidResults` object containing all metrics and pass/fail status.
      */
-    MetaStrategyAnalyzer::PyramidResults
+    PyramidResults
     MetaStrategyAnalyzer::analyzeSinglePyramidLevel(
         const PyramidConfiguration& config,
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -2229,7 +2230,7 @@ namespace palvalidator
      * Returns:
      * A `DrawdownResults` object containing Point Estimate, CI Lower/Upper bounds.
      */
-    MetaStrategyAnalyzer::DrawdownResults MetaStrategyAnalyzer::performDrawdownAnalysisForPyramid(
+    DrawdownResults MetaStrategyAnalyzer::performDrawdownAnalysisForPyramid(
         const std::vector<Num>& metaReturns,
         uint32_t numTrades,
         size_t blockLength) const
@@ -2432,7 +2433,7 @@ namespace palvalidator
      * Returns:
      * A pointer to the winning `PyramidResults` object (or nullptr if none passed).
      */
-    const MetaStrategyAnalyzer::PyramidResults*
+    const PyramidResults*
     MetaStrategyAnalyzer::selectBestPassingConfiguration(
         const std::vector<PyramidResults>& allResults,
         std::ostream& outputStream) const
@@ -2515,7 +2516,7 @@ namespace palvalidator
       // Log the chosen configuration
       outputStream << "      [Meta] Chosen configuration → Level "
                    << best->getPyramidLevel()
-                   << " ("" << best->getDescription() << ""), "
+                   << " (" << best->getDescription() << "), "
                    << "Ann LB=" << (best->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred)
                    << "%, Required=" << (best->getRequiredReturn() * DecimalConstants<Num>::DecimalOneHundred)
                    << "%";
@@ -2540,9 +2541,9 @@ namespace palvalidator
      * allResults:   Vector of results for all levels.
      * outputStream: The console/log stream.
      */
-    void MetaStrategyAnalyzer::outputPyramidComparison(
-    		       const std::vector<PyramidResults>& allResults,
-    		       std::ostream& outputStream) const
+    void MetaStrategyAnalyzer::outputPyramidComparison(const std::vector<PyramidResults>& allResults,
+						       std::shared_ptr<Security<Num>> baseSecurity,
+						       std::ostream& outputStream) const
     {
       outputStream << "\n[Meta] Pyramid Analysis Summary:\n";
       outputStream << "      Level | Description              |      MAR | Ann. Lower Bound | Future Ret LB | Max Loss Streak UB | Drawdown UB | Required Return | Pass/Fail\n";
@@ -2647,6 +2648,12 @@ namespace palvalidator
 			   << "% annualized lower bound)\n";
 	    }
 	  outputStream << "      Recommended Configuration: " << bestResult->getDescription() << "\n";
+
+	  palvalidator::filtering::PositionSizingCalculator<Num>::recommendSizing(baseSecurity, 
+										  *bestResult, 
+										  outputStream,
+										  0.20); // You can make this 0.20 configurable or a constant
+	  
 	}
 
       outputStream << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
