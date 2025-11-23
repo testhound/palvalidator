@@ -185,7 +185,20 @@ namespace palvalidator
       }
 
     private:
-
+      /**
+     * @brief Auto-adjusts the slippage floor based on strategy characteristics.
+     * * If the strategy targets very small moves (Profit Target < 0.75%), it is likely 
+     * trading a Low Volatility instrument (Currency, Bonds). In this case, the 
+     * default "Stress Test" slippage floor of 10 bps (0.10%) is artificially high.
+     * * This method detects that condition and relaxes the floor to allow the 
+     * actual OOS spread statistics to drive the cost hurdle.
+     */
+    std::optional<Num> determineEffectiveSlippageFloor(
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+        const std::optional<Num>& currentConfiguredSlippage,
+        const std::optional<palvalidator::filtering::OOSSpreadStats>& oosSpreadStats,
+        std::ostream& outputStream) const;
+      
       // Computes the observed longest losing streak and its (1 - alpha) bootstrap upper bound
       // Writes a one-line summary to `os`. Returns {observed, upperBound}.
       std::pair<int,int>
@@ -596,6 +609,7 @@ namespace palvalidator
       bool mMetaStrategyPassed;                  ///< Result of last meta-strategy analysis
       Num mAnnualizedLowerBound;                 ///< Last calculated annualized lower bound
       Num mRequiredReturn;                       ///< Last calculated required return
+      std::optional<Num> mEffectiveSlippageFloor;
     };
 
   } // namespace filtering
