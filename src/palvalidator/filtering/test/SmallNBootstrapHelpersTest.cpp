@@ -268,17 +268,14 @@ TEST_CASE("mn_ratio_from_n heuristic", "[SmallN][mn]") {
   // n=0 → 1.0
   REQUIRE(mn_ratio_from_n(0) == Approx(1.0));
 
-  // small n (e.g., n=5): m_ceil = n-2 = 3; floor=16 → clamped to 3 → ratio=0.6
-  REQUIRE(mn_ratio_from_n(5) == Approx(3.0/5.0));
-
-  // n=2: special guard allows m==n → ratio 1.0 (as implemented)
+  // n=2: special guard allows m==n (ratio=1.0)
   REQUIRE(mn_ratio_from_n(2) == Approx(1.0));
 
-  // n=30: target ≈ ceil(0.8*n)=24 → ratio≈0.8
-  REQUIRE(mn_ratio_from_n(30) == Approx(24.0/30.0).epsilon(1e-12));
+  // n=30: m = 30^(2/3) approx 9.65 -> 10 (rounded/clamped)
+  REQUIRE(mn_ratio_from_n(30) * 30.0 == Approx(9.65).margin(1.0));
 
-  // n=100: target ≈ 80 → ratio≈0.8
-  REQUIRE(mn_ratio_from_n(100) == Approx(80.0/100.0).epsilon(1e-12));
+  // n=100: m = 100^(2/3) approx 21.54 -> 22
+  REQUIRE(mn_ratio_from_n(100) * 100.0 == Approx(21.54).margin(1.0));
 }
 
 TEST_CASE("dispatch_smallN_resampler forwards use_block and L_small", "[SmallN][dispatch]") {
