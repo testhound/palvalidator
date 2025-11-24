@@ -127,21 +127,28 @@ namespace palvalidator::filtering::stages
   {
     using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
     using mkc_timeseries::DecimalConstants;
-
+    using mkc_timeseries::GeoMeanStat;
+    using palvalidator::bootstrap_helpers::mn_ratio_from_n;
+    
     // If heavy tails detected, force block resampler; otherwise let heuristics/MC guard decide.
     std::optional<bool> heavy_override = heavyTails ? std::optional<bool>(true) : std::nullopt;
+
+    size_t n = ctx.highResReturns.size();
     
-    auto smallN = conservative_smallN_lower_bound<Num, mkc_timeseries::GeoMeanStat<Num>>(
-      ctx.highResReturns,
-      blockLength,
-      annualizationFactor,
-      confidenceLevel,
-      mNumResamples,
-      /*rho_m<=0 → auto*/ -1.0,
-      *ctx.clonedStrategy,
-      mBootstrapFactory,
-      &os, /*stage*/1, /*fold*/0,
-      /*heavy_tails_override=*/heavy_override);
+    double computed_rho = mn_ratio_from_n(n);
+
+    auto smallN = conservative_smallN_lower_bound<Num, GeoMeanStat<Num>>(ctx.highResReturns,
+									 blockLength,
+									 annualizationFactor,
+									 confidenceLevel,
+									 mNumResamples,
+									 computed_rho,
+									 *ctx.clonedStrategy,
+									 mBootstrapFactory,
+									 &os,
+									 /*stage*/1,
+									 /*fold*/0,
+									 heavy_override);
 
     os << "   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):"
        << "  resampler=" << (smallN.resampler_name ? smallN.resampler_name : "n/a")

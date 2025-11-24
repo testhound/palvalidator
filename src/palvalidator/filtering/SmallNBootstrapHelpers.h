@@ -136,21 +136,30 @@ namespace palvalidator::bootstrap_helpers
   }
   
   // m/n rule for small N (raise m; keep m < n with guards)
+  // m/n rule for small N (raise m; keep m < n with guards)
+  // UPDATED: Now uses n^(2/3) heuristic as the target default.
   inline double mn_ratio_from_n(std::size_t n)
   {
     if (n == 0) return 1.0;
+    if (n < 3) return 1.0; // Too small to subsample meaningfully
 
-    // Target ~0.80*n with sensible floors/ceilings
-    double m_target = std::ceil(0.80 * static_cast<double>(n));
-    double m_floor  = 16.0;                                     // raised floor
-    double m_ceil   = static_cast<double>((n > 2) ? (n - 2) : n); // ensure m < n
+    // 1. Calculate Power Law Target: m = n^(2/3)
+    //    For N=30 -> m=9.65 (approx 10)
+    double m_target = std::pow(static_cast<double>(n), 2.0/3.0);
+    
+    // 2. Define Bounds
+    //    Floor: We want at least ~7-8 items to calculate a meaningful statistic
+    //    Ceil:  Must be strictly less than n (n-1 or n-2) to be a true subsample
+    double m_floor  = 7.0; 
+    double m_ceil   = static_cast<double>(n - 1); 
 
-    double m = std::min(std::max(m_target, m_floor), m_ceil);
-    if (m < 2.0) m = 2.0;
-
+    // 3. Clamp
+    double m = std::max(m_floor, std::min(m_target, m_ceil));
+    
+    // 4. Return Ratio
     return m / static_cast<double>(n);
   }
-
+  
   // -----------------------------------------------------------------------------
   // Runtime→template dispatch for "SmallNResampler"
   // Calls fn(resampler, ratio_pos, use_block, L_small) with either IID or Block.
