@@ -2116,10 +2116,15 @@ namespace palvalidator
 				  false,
 				  mHurdleCalculator.calculateRiskFreeHurdle());
 
-      // Gate on median vs base & +1·Qn
-      const bool passBase = (r.medianLB > H.baseHurdle);
-      const bool pass1Qn  = (r.medianLB > H.h_1q);
-      r.pass = (passBase && pass1Qn);
+      // 1. Consistency: The "Typical" period must clear the high hurdle
+      const bool passConsistency = (r.medianLB > H.baseHurdle) && (r.medianLB > H.h_1q);
+
+      // 2. Survival: The "Worst" period must clear the floor
+      //    (e.g., -5% annualized, or even 0.0 depending on your risk tolerance)
+      const Num survivalFloor = Num("-0.05"); // -5% annualized tolerance
+      const bool passSurvival = (r.minLB > survivalFloor);
+
+      r.pass = (passConsistency && passSurvival);
 
       if (!r.pass)
 	{
