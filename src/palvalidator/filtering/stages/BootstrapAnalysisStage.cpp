@@ -277,6 +277,30 @@ namespace palvalidator::filtering::stages
     return BCaMeanResult(lbMean_BCa, annualizedLB);
   }
 
+  /**
+   * @brief Combines lower bounds from Small-N and Percentile-t bootstraps into a single robust metric.
+   *
+   * @details
+   * Implements a "Sign-Aware Blending" policy to balance robustness (m-out-of-n) with
+   * statistical efficiency (Percentile-t):
+   *
+   * 1. Agreement (Same Direction): If both methods agree that the strategy is profitable
+   * (both LB > 0) or unprofitable (both LB < 0), we take the **Arithmetic Mean**.
+   * This smooths out the excessive variance penalty of the conservative m-out-of-n bootstrap
+   * while tempering the potential instability of the Percentile-t bootstrap in small samples.
+   *
+   * 2. Conflict (Straddle Zero): If the methods disagree on the sign (one predicts profit,
+   * the other predicts loss), we enforce strict conservatism and take the **Minimum**.
+   * This ensures a strategy cannot "average its way" into passing the filter if a robust
+   * method signals a genuine risk of negative expectancy.
+   *
+   * 3. Fallback: If only one method succeeded, its result is returned directly.
+   *
+   * @param smallN The result from the conservative m-out-of-n / BCa duel.
+   * @param percentileT The result from the Percentile-t bootstrap.
+   * @param os Output stream for logging (unused in calculation).
+   * @return Num The blended per-period geometric lower bound.
+   */
   Num BootstrapAnalysisStage::combineGeometricLowerBounds(
     const std::optional<SmallNResult>& smallN,
     const std::optional<PercentileTResult>& percentileT,
@@ -284,26 +308,61 @@ namespace palvalidator::filtering::stages
   {
     using mkc_timeseries::DecimalConstants;
 
-    // Neutral, hurdle-agnostic combine INSIDE the stage:
-    // - If both present → median-of-present
-    // - If one present → that one
-    // - Else → fall back to zero (caller should handle this case)
-    auto median_of_present = [](std::vector<Num> v) -> Num {
-      if (v.empty()) return Num(0);
-      if (v.size() == 1) return v[0];
-      std::sort(v.begin(), v.end(), [](const Num& a, const Num& b) { return a < b; });
-      if (v.size() == 2) return v[0] + (v[1] - v[0]) / Num(2);
-      return v[1]; // size()==3
+    // Helper: Determine effective sign (-1, 0, 1)
+    auto get_sign = [](const Num& v) -> int {
+      if (v > DecimalConstants<Num>::DecimalZero) return 1;
+      if (v < DecimalConstants<Num>::DecimalZero) return -1;
+      return 0;
     };
 
-    std::vector<Num> geo_parts;
-    if (smallN.has_value())
-      geo_parts.push_back(smallN->getLowerBoundPeriod());
-    
-    if (percentileT.has_value())
-      geo_parts.push_back(percentileT->getLowerBoundPeriod());
+    // Case 1: Neither available (should generally not happen if diagnostics pass)
+    if (!smallN.has_value() && !percentileT.has_value())
+    {
+      return DecimalConstants<Num>::DecimalZero;
+    }
 
-    return median_of_present(geo_parts);
+    // Case 2: Only SmallN available
+    if (smallN.has_value() && !percentileT.has_value())
+    {
+      return smallN->getLowerBoundPeriod();
+    }
+
+    // Case 3: Only Percentile-t available
+    if (!smallN.has_value() && percentileT.has_value())
+    {
+      return percentileT->getLowerBoundPeriod();
+    }
+
+    // Case 4: Both available -> Smart Blending
+    const Num valSmallN = smallN->getLowerBoundPeriod();
+    const Num valPercT  = percentileT->getLowerBoundPeriod();
+
+    const int s1 = get_sign(valSmallN);
+    const int s2 = get_sign(valPercT);
+
+    // LOGIC:
+    // If they straddle zero (one positive, one negative), we have a fundamental
+    // disagreement on whether the strategy has an edge. In a conservative filter,
+    // we cannot "average our way" into profitability. We must respect the downside risk.
+    bool straddleZero = (s1 * s2 < 0);
+
+    // Furthermore, if the divergence is massive (e.g. one is > 2x the other),
+    // it suggests instability. However, checking "straddle zero" captures the most
+    // critical risk for filtering (Pass vs Fail).
+
+    if (straddleZero)
+    {
+       // Conservative: Trust the pessimist if they disagree on the sign.
+       // This prevents a negative m-out-of-n result from being "saved" by an optimistic Percentile-t.
+       return (valSmallN < valPercT) ? valSmallN : valPercT;
+    }
+    else
+    {
+       // Agreement: Both positive (or both negative).
+       // Take the Arithmetic Mean to smooth out the variance penalty of m-out-of-n
+       // while tempering the potential overconfidence of Percentile-t.
+       return valSmallN + (valPercT - valSmallN) / Num(2);
+    }
   }
 
   void BootstrapAnalysisStage::logFinalPolicy(
