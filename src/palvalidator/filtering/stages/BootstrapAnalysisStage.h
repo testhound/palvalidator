@@ -160,7 +160,6 @@ namespace palvalidator::filtering::stages
                                                     double confidenceLevel,
                                                     double annualizationFactor,
                                                     size_t blockLength,
-                                                    bool heavyTails,
                                                     std::ostream& os) const;
 
     /**
