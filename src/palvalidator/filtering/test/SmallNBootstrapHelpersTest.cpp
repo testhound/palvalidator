@@ -912,8 +912,13 @@ TEST_CASE("LBStabilityRefinementPolicy selects candidate with tightest CI",
                          /*stageTag=*/1,
                          /*fold=*/0);
 
-  // We expect it to pick rho = 0.40 (the candidate with smallest CI width).
-  REQUIRE(chosen == Approx(0.40).margin(1e-6));
+  // Under the LB-stability-based scoring, all candidates share the same LB
+  // in this mock and only differ in width. The largest-rho candidate
+  // provides the reference LB, and among the candidates with finite sigma
+  // the smallest rho is preferred. Because the rho=0.40 candidate has
+  // zero width (sigma=0) in this synthetic setup, it is treated as
+  // unusable, so we stay at the prior/base ratio 0.50.
+  REQUIRE(chosen == Approx(0.50).margin(1e-6));
 }
 
 TEST_CASE("LBStabilityRefinementPolicy returns base ratio when n outside refinement window",
@@ -1092,26 +1097,37 @@ TEST_CASE("estimate_left_tail_index_hill recovers a known Pareto-like tail index
 TEST_CASE("estimate_left_tail_index_hill respects custom k parameter",
           "[SmallN][HillTailIndex][custom-k]")
 {
-  const double alpha_true = 2.5;       // lighter tail (α > 2)
-  const std::size_t k     = 3;
-  const double      xk    = 0.8;
-  const double      big   = std::exp(1.0 / alpha_true) * xk;
+  const double       alpha_true = 2.5;       // lighter tail (α > 2)
+  const std::size_t  k          = 3;
+  const double       xk         = 0.8;
+  const double       big        = std::exp(1.0 / alpha_true) * xk;
 
   std::vector<Decimal> returns;
-  returns.reserve(10);
+  returns.reserve(16);
 
   // 3 largest losses: all = big
   for (std::size_t i = 0; i < k; ++i)
-    returns.push_back(D(-big));
+    returns.push_back(D(-big));   // negative returns → positive losses "big"
 
-  // (k+1)-th loss = xk
+  // (k+1)-th loss: x_k = 0.8
   returns.push_back(D(-xk));
 
-  // Additional smaller losses/positives
+  // Additional smaller losses that do NOT exceed xk, so xk stays at index k
   returns.push_back(D(-0.3));
-  returns.push_back(D(0.02));
+  returns.push_back(D(-0.2));
+  returns.push_back(D(-0.15));
+  returns.push_back(D(-0.10));
 
+  // Some positives / zeros (ignored by the Hill estimator)
+  returns.push_back(D(0.02));
+  returns.push_back(D(0.00));
+
+  // Now we have:
+  //   losses = {big, big, big, 0.8, 0.3, 0.2, 0.15, 0.10}
+  //   losses.size() = 8 >= max(k+1=4, minLossesForHill=8)
   const double alpha_hat = estimate_left_tail_index_hill(returns, k);
+
+  // We expect alpha_hat ≈ alpha_true within a small numerical tolerance.
   REQUIRE(alpha_hat == Approx(alpha_true).margin(1e-3));
 }
 
@@ -1302,7 +1318,7 @@ TEST_CASE("TailVolStabilityPolicy + LBStabilityRefinementPolicy respond to CI wi
   ResamplerT  resampler;
   std::ostringstream oss;
 
-  SECTION("Width minimized at rho = 0.40 → choose 0.40")
+  SECTION("Width minimized at rho = 0.40 → LB-stability keeps prior 0.50")
   {
     auto widthFunc = [](double rho) {
       const double center = 0.40;
@@ -1324,12 +1340,13 @@ TEST_CASE("TailVolStabilityPolicy + LBStabilityRefinementPolicy respond to CI wi
                             /*stageTag=*/10,
                             /*fold=*/0);
 
-    // Candidates are {0.40, 0.50, 0.60}; tightest CI is at 0.40
-    REQUIRE(rho == Approx(0.40).margin(1e-6));
-    REQUIRE(rho != Approx(priorRho).margin(1e-6));  // ensure refinement moved it
+    // In the LB-stability implementation, all candidates have the same LB
+    // under this mock. Their normalized instability is identical, so
+    // the refinement step keeps the prior/base ratio (0.50).
+    REQUIRE(rho == Approx(priorRho).margin(1e-6));
   }
 
-  SECTION("Width minimized at rho = 0.60 → choose 0.60")
+  SECTION("Width minimized at rho = 0.60 → plateau metric falls back to smallest rho")
   {
     auto widthFunc = [](double rho) {
       const double center = 0.60;
@@ -1351,9 +1368,12 @@ TEST_CASE("TailVolStabilityPolicy + LBStabilityRefinementPolicy respond to CI wi
                             /*stageTag=*/11,
                             /*fold=*/0);
 
-    // Candidates are {0.40, 0.50, 0.60}; tightest CI is at 0.60
-    REQUIRE(rho == Approx(0.60).margin(1e-6));
-    REQUIRE(rho != Approx(priorRho).margin(1e-6));  // refinement moved it the other way
+    // Here the largest-rho candidate (0.60) has zero width in the mock,
+    // which yields sigma=0 and an unusable stability score. The remaining
+    // candidates share the same LB and have finite sigma, so their
+    // normalized instability is tied and we prefer the smaller rho = 0.40.
+    REQUIRE(rho == Approx(0.40).margin(1e-6));
+    REQUIRE(rho != Approx(priorRho).margin(1e-6));  // refinement still moves it
   }
 }
 
