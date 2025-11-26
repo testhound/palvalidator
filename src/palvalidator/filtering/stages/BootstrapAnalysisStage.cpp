@@ -23,7 +23,15 @@ namespace palvalidator::filtering::stages
   using mkc_timeseries::ClosedPositionHistory;
   using mkc_timeseries::Security;
   using palvalidator::bootstrap_cfg::BootstrapFactory;
-  
+
+  /**
+ * @brief Constructs the Bootstrap Analysis Stage.
+ *
+ * @param confidenceLevel The target confidence level for lower bound calculations (e.g., 0.95).
+ * @param numResamples The number of bootstrap replicates to generate (B).
+ * @param bootstrapFactory Reference to the factory used to instantiate specific bootstrap engines
+ * (BCa, Percentile-t, etc.).
+ */
   BootstrapAnalysisStage::BootstrapAnalysisStage(const Num& confidenceLevel,
   				 unsigned int numResamples,
   				 BootstrapFactory& bootstrapFactory)
@@ -32,6 +40,22 @@ namespace palvalidator::filtering::stages
     , mBootstrapFactory(bootstrapFactory)
   {}
 
+  /**
+   * @brief Determines the optimal block length (L) for stationary block bootstrapping.
+   *
+   * @details
+   * This method employs a hybrid heuristic to capture serial dependence in the return series:
+   * 1. **Economic Horizon:** Uses the median holding period of the strategy. This captures
+   * dependence structural to the trading logic.
+   * 2. **Statistical Horizon:** Uses the Hall/Politis $N^{1/3}$ rule of thumb for optimal MSE
+   * in block bootstrapping.
+   *
+   * The final $L$ is the maximum of these two, clamped to a safety range (min 2, max 12)
+   * to prevent excessive variance reduction in small samples.
+   *
+   * @param ctx The analysis context containing returns and backtester data.
+   * @return size_t The calculated block length.
+   */
   size_t BootstrapAnalysisStage::computeBlockLength(const StrategyAnalysisContext& ctx) const
   {
     // 1) Median holding period (economic horizon)
@@ -52,6 +76,20 @@ namespace palvalidator::filtering::stages
     return L;
   }
 
+  /**
+   * @brief Calculates the scalar factor required to convert per-period returns to annualized returns.
+   *
+   * @details
+   * This method detects the time frame of the base security. If the data is Intraday,
+   * it attempts to resolve the specific minute-duration to calculate standard market-year scaling.
+   * Otherwise, it defaults to standard constants (e.g., 252 for Daily).
+   *
+   * @note This factor is primarily used as a fallback. The `execute` method prefers
+   * calculating annualization based on trade frequency ($\lambda$) if available.
+   *
+   * @param ctx The analysis context.
+   * @return double The annualization factor.
+   */
   double BootstrapAnalysisStage::computeAnnualizationFactor(const StrategyAnalysisContext& ctx) const
   {
     // Mirror original logic: use intraday minutes when appropriate
@@ -66,6 +104,19 @@ namespace palvalidator::filtering::stages
     return calculateAnnualizationFactor(ctx.timeFrame);
   }
 
+  /**
+   * @brief Lazily initializes the backtester and high-resolution returns if they do not yet exist.
+   *
+   * @details
+   * The context passed from previous stages might only contain the raw Strategy and Security.
+   * This method ensures a `BackTester` is instantiated, the strategy is cloned into a
+   * portfolio, and `highResReturns` (Mark-to-Market returns) are populated for analysis.
+   *
+   * @param ctx [in,out] The analysis context. `ctx.backtester` and `ctx.highResReturns` may be modified.
+   * @param os Output stream for error logging.
+   * @return true If initialization was successful or already complete.
+   * @return false If an exception occurred during backtesting.
+   */
   bool BootstrapAnalysisStage::initializeBacktester(StrategyAnalysisContext& ctx, std::ostream& os) const
   {
     if (ctx.backtester)
@@ -94,6 +145,20 @@ namespace palvalidator::filtering::stages
     }
   }
 
+  /**
+   * @brief Performs statistical profiling of the return series to determine bootstrap dispatch logic.
+   *
+   * @details
+   * Calculates higher moments (Skewness, Excess Kurtosis) to detect deviations from normality.
+   *
+   * **Dispatch Logic:**
+   * - **Small-N (m-out-of-n):** Activated if $N \le 40$, or if $N \le 60$ and Heavy Tails are detected.
+   * - **Percentile-t:** Activated for small-to-medium samples ($N \le 80$) to provide variance stabilization.
+   *
+   * @param ctx The analysis context containing the return series.
+   * @param os Output stream for diagnostic logging.
+   * @return DistributionDiagnostics A struct containing moment values and boolean flags for which engines to run.
+   */
   BootstrapAnalysisStage::DistributionDiagnostics
   BootstrapAnalysisStage::analyzeDistribution(const StrategyAnalysisContext& ctx, std::ostream& os) const
   {
@@ -116,22 +181,33 @@ namespace palvalidator::filtering::stages
 
     return DistributionDiagnostics(skew, exkurt, heavy_tails, run_mn, run_pt);
   }
-  
+
+  /**
+   * @brief Executes the "Conservative Small-N" bootstrap pipeline.
+   *
+   * @details
+   * This method acts as a wrapper around `conservative_smallN_lower_bound`. It:
+   * 1. Configures the "Duel" between the m-out-of-n bootstrap and the BCa bootstrap.
+   * 2. Enables the **TailVolStabilityPolicy** (by passing `rho_m = -1.0`), which adaptively
+   * refines the subsampling ratio ($m/n$) based on the stability of the lower bound.
+   * 3. Logs detailed diagnostics about the chosen resampler and effective sample size.
+   *
+   * @param ctx The analysis context.
+   * @param confidenceLevel The target confidence level.
+   * @param annualizationFactor The factor to scale results to annual figures.
+   * @param blockLength The block size for resampling.
+   * @param os Output stream for logging.
+   * @return std::optional<SmallNResult> The result if calculation succeeds, or nullopt on failure.
+   */
   std::optional<BootstrapAnalysisStage::SmallNResult>
   BootstrapAnalysisStage::runSmallNBootstrap(const StrategyAnalysisContext& ctx,
 					     double confidenceLevel,
 					     double annualizationFactor,
 					     size_t blockLength,
-					     bool heavyTails,
 					     std::ostream& os) const
   {
     using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
     using mkc_timeseries::GeoMeanStat;
-
-    // If heavy tails detected, force block resampler; otherwise let heuristics/MC guard decide.
-    std::optional<bool> heavy_override = heavyTails
-      ? std::optional<bool>(true)
-      : std::nullopt;
 
     // Pass rho_m <= 0.0 to enable TailVolStabilityPolicy (tail/vol prior + LB-stability refinement)
     // inside conservative_smallN_lower_bound. We use -1.0 here to make it explicit.
@@ -148,7 +224,7 @@ namespace palvalidator::filtering::stages
 									 &os,
 									 /*stage*/1,
 									 /*fold*/0,
-									 heavy_override);
+									 std::nullopt);
 
     os << "   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):"
        << "  resampler=" << (smallN.resampler_name ? smallN.resampler_name : "n/a")
@@ -166,7 +242,21 @@ namespace palvalidator::filtering::stages
 			smallN.L_used,
 			smallN.effB_mn);
   }
-  
+
+  /**
+   * @brief Executes the Double Bootstrap (Percentile-t) method for variance stabilization.
+   *
+   * @details
+   * Runs a nested bootstrap (Outer Loop B, Inner Loop B_in) to estimate the distribution of the
+   * t-statistic. This is particularly effective for samples with moderate skewness or
+   * heteroscedasticity where simple percentile methods might have poor coverage.
+   *
+   * @param ctx The analysis context.
+   * @param confidenceLevel The target confidence level.
+   * @param blockLength The block size for resampling.
+   * @param os Output stream for logging.
+   * @return std::optional<PercentileTResult> The result containing the studentized lower bound.
+   */
   std::optional<BootstrapAnalysisStage::PercentileTResult>
   BootstrapAnalysisStage::runPercentileTBootstrap(const StrategyAnalysisContext& ctx,
 						  double confidenceLevel,
@@ -249,7 +339,24 @@ namespace palvalidator::filtering::stages
     return PercentileTResult(r.lower, "StationaryBlockResampler",
 			     r.m_outer, r.m_inner, r.L, r.effective_B);
   }
-  
+
+  /**
+   * @brief Executes the Bias-Corrected and Accelerated (BCa) bootstrap for the Arithmetic Mean.
+   *
+   * @details
+   * Unlike the other methods in this stage (which focus on Geometric Mean/CAGR), this method
+   * computes the lower bound of the **Arithmetic Mean**.
+   *
+   * @note This is typically used for calculating risk-adjusted ratios (like Sharpe/Sortino)
+   * rather than wealth accumulation, but is calculated here for completeness and reporting.
+   *
+   * @param ctx The analysis context.
+   * @param confidenceLevel The target confidence level.
+   * @param annualizationFactor Factor to annualize the mean.
+   * @param blockLength Block length for the StationaryBlockResampler.
+   * @param os Output stream for logging.
+   * @return BCaMeanResult Struct containing per-period and annualized mean lower bounds.
+   */
   BootstrapAnalysisStage::BCaMeanResult
   BootstrapAnalysisStage::runBCaMeanBootstrap(const StrategyAnalysisContext& ctx,
                                                double confidenceLevel,
@@ -365,6 +472,23 @@ namespace palvalidator::filtering::stages
     }
   }
 
+  /**
+   * @brief Logs the decision matrix used to derive the final Lower Bound.
+   *
+   * @details
+   * This helper constructs a human-readable string explaining exactly how the
+   * separate bootstrap results (Small-N, Percentile-t) were combined (e.g., "Vote of Two",
+   * "Min", or "Fallback"). This is critical for audit trails.
+   *
+   * @param smallN Result from the Small-N bootstrap (optional).
+   * @param percentileT Result from the Percentile-t bootstrap (optional).
+   * @param n Sample size.
+   * @param blockLength Block length used.
+   * @param skew Sample skewness.
+   * @param excessKurtosis Sample kurtosis.
+   * @param heavyTails Boolean flag indicating if heavy tails were detected.
+   * @param os Output stream.
+   */
   void BootstrapAnalysisStage::logFinalPolicy(
     const std::optional<SmallNResult>& smallN,
     const std::optional<PercentileTResult>& percentileT,
@@ -408,6 +532,21 @@ namespace palvalidator::filtering::stages
                          heavyTails, resamplerNameForLog, std::min<std::size_t>(blockLength, 3));
   }
 
+  /**
+   * @brief Orchestrates the entire Bootstrap Analysis process.
+   *
+   * @details
+   * This is the main entry point for the stage. The workflow is:
+   * 1. **Setup:** Initialize backtester and compute time-series properties ($N$, $L$, $\lambda$).
+   * 2. **Analysis:** Profile the distribution (Skew/Kurtosis) to decide which engines to run.
+   * 3. **Execution:** Run the selected engines (Small-N, Percentile-t) and the baseline BCa Mean.
+   * 4. **Synthesis:** Combine the results using `combineGeometricLowerBounds` to produce a
+   * single, robust Conservative Lower Bound (CLB) for the strategy's edge.
+   *
+   * @param ctx The analysis context.
+   * @param os Output stream for logging.
+   * @return BootstrapAnalysisResult The final object containing all bounds, factors, and status flags.
+   */
   BootstrapAnalysisResult
   BootstrapAnalysisStage::execute(StrategyAnalysisContext& ctx, std::ostream& os) const
   {
@@ -476,8 +615,7 @@ namespace palvalidator::filtering::stages
 	std::optional<SmallNResult> smallNResult;
 	if (diagnostics.shouldRunSmallN())
 	  {
-	    smallNResult = runSmallNBootstrap(ctx, CL, barsPerYear, L,
-					      diagnostics.hasHeavyTails(), os);
+	    smallNResult = runSmallNBootstrap(ctx, CL, barsPerYear, L, os);
 	  }
 
 	// --- Step 5: Run percentile-t bootstrap (if applicable) -----------------
