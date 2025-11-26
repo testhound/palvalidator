@@ -653,10 +653,16 @@ namespace mkc_timeseries
 			 boost::gregorian::from_undelimited_string("20040923"));
 
       addUnLeveragedETF (std::string("SMH"),
-			 std::string("VanEck Vectors Semiconductor ETF "),
+			 std::string("VanEck Vectors Semiconductor ETF"),
 			 createDecimal("0.35"),
 			 boost::gregorian::from_undelimited_string("20111220"));
 
+      addUnLeveragedETF (std::string("SOXX"),
+			 std::string("iShares Semiconductor ETF"),
+			 createDecimal("0.34"),
+			 boost::gregorian::from_undelimited_string("20010710"));
+
+      
       addUnLeveragedETF (std::string("GDX"),
 			 std::string("Van Eck Gold Miners ETF"),
 			 createDecimal("0.52"),
