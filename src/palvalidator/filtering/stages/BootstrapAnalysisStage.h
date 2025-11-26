@@ -37,6 +37,7 @@ namespace palvalidator::filtering::stages
     double computeAnnualizationFactor(const StrategyAnalysisContext& ctx) const;
 
   private:
+    
     // Helper classes for organizing bootstrap results
     class DistributionDiagnostics
     {

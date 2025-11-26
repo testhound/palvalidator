@@ -116,33 +116,33 @@ namespace palvalidator::filtering::stages
 
     return DistributionDiagnostics(skew, exkurt, heavy_tails, run_mn, run_pt);
   }
-
+  
   std::optional<BootstrapAnalysisStage::SmallNResult>
   BootstrapAnalysisStage::runSmallNBootstrap(const StrategyAnalysisContext& ctx,
-                                              double confidenceLevel,
-                                              double annualizationFactor,
-                                              size_t blockLength,
-                                              bool heavyTails,
-                                              std::ostream& os) const
+					     double confidenceLevel,
+					     double annualizationFactor,
+					     size_t blockLength,
+					     bool heavyTails,
+					     std::ostream& os) const
   {
     using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
-    using mkc_timeseries::DecimalConstants;
     using mkc_timeseries::GeoMeanStat;
-    using palvalidator::bootstrap_helpers::mn_ratio_from_n;
-    
-    // If heavy tails detected, force block resampler; otherwise let heuristics/MC guard decide.
-    std::optional<bool> heavy_override = heavyTails ? std::optional<bool>(true) : std::nullopt;
 
-    size_t n = ctx.highResReturns.size();
-    
-    double computed_rho = mn_ratio_from_n(n);
+    // If heavy tails detected, force block resampler; otherwise let heuristics/MC guard decide.
+    std::optional<bool> heavy_override = heavyTails
+      ? std::optional<bool>(true)
+      : std::nullopt;
+
+    // Pass rho_m <= 0.0 to enable TailVolStabilityPolicy (tail/vol prior + LB-stability refinement)
+    // inside conservative_smallN_lower_bound. We use -1.0 here to make it explicit.
+    const double rho_m = -1.0;
 
     auto smallN = conservative_smallN_lower_bound<Num, GeoMeanStat<Num>>(ctx.highResReturns,
 									 blockLength,
 									 annualizationFactor,
 									 confidenceLevel,
 									 mNumResamples,
-									 computed_rho,
+									 rho_m, // adaptive policy enabled
 									 *ctx.clonedStrategy,
 									 mBootstrapFactory,
 									 &os,
@@ -159,14 +159,14 @@ namespace palvalidator::filtering::stages
        << "  LB(ann)=" << smallN.ann_lower << "\n";
 
     return SmallNResult(
-      smallN.per_lower,
-      smallN.ann_lower,
-      smallN.resampler_name ? smallN.resampler_name : "n/a",
-      smallN.m_sub,
-      smallN.L_used,
-      smallN.effB_mn);
+			smallN.per_lower,
+			smallN.ann_lower,
+			smallN.resampler_name ? smallN.resampler_name : "n/a",
+			smallN.m_sub,
+			smallN.L_used,
+			smallN.effB_mn);
   }
-
+  
   std::optional<BootstrapAnalysisStage::PercentileTResult>
   BootstrapAnalysisStage::runPercentileTBootstrap(const StrategyAnalysisContext& ctx,
 						  double confidenceLevel,
