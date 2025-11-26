@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <random>
-
+#include <functional>
 #include "SmallNBootstrapHelpers.h"  // target under test
 #include "number.h"
 #include "TestUtils.h"               // for createDecimal if desired
@@ -93,6 +93,79 @@ namespace TestMocks {
     FactoryControl FactoryMockHelper::control = {};
 
 } // namespace TestMocks
+
+namespace LBStabTestMocks {
+
+  struct GeoStat {
+    GeoStat() = default;
+  };
+
+  struct Strategy {
+    uint64_t hashCode() const { return 0xABCDEF01u; }
+  };
+
+  template <class Num>
+  struct MOutOfNEngine {
+    Num          lower{};
+    Num          upper{};
+    std::size_t  m_sub{0};
+    std::size_t  L{0};
+    std::size_t  effective_B{0};
+
+    template <class CRN>
+    MOutOfNEngine run(const std::vector<Num>&,
+                      const GeoStat&,
+                      CRN) const
+    {
+      return *this;
+    }
+  };
+
+  struct ResamplerTag { };
+
+  template <class EngineTag>
+  class Factory
+  {
+  public:
+    using WidthFunc = std::function<double(double)>;
+
+    Factory() = default;
+
+    explicit Factory(WidthFunc f)
+      : widthFunc_(std::move(f))
+    {
+    }
+
+    template <class Decimal, class GeoStatT, class ResamplerT>
+    auto makeMOutOfN(std::size_t B,
+                     double      CL,
+                     double      m_ratio,
+                     const ResamplerT&,
+                     const Strategy&,
+                     uint64_t /*stageTag*/,
+                     uint64_t L,
+                     uint64_t /*fold*/)
+      -> std::pair<MOutOfNEngine<Decimal>, int>
+    {
+      (void)CL;
+
+      const double width = widthFunc_ ? widthFunc_(m_ratio) : 0.02;
+
+      MOutOfNEngine<Decimal> eng;
+      eng.lower       = Decimal(0.0);
+      eng.upper       = Decimal(width);
+      eng.m_sub       = static_cast<std::size_t>(std::round(m_ratio * 100.0));
+      eng.L           = static_cast<std::size_t>(L);
+      eng.effective_B = static_cast<std::size_t>(B);
+
+      return { eng, 0 }; // dummy CRN tag
+    }
+
+  private:
+    WidthFunc widthFunc_;
+  };
+
+} // namespace LBStabTestMocks
 
 // Map the real template dependencies to our mocks
 using GeoStatT = TestMocks::MockGeoStat;
@@ -534,4 +607,1051 @@ TEST_CASE("conservative_smallN_lower_bound handles overrides and logging", "[Sma
         // Assert that without explicit streaky/imbalance, the default is IID
         REQUIRE(std::string(result.resampler_name) == std::string("StationaryMaskValueResamplerAdapter"));
     }
+}
+
+TEST_CASE("MNRatioContext stores constructor arguments and exposes them via getters",
+          "[SmallN][MNRatioContext]")
+{
+  SECTION("Heavy tails = true with positive tail index")
+  {
+    const std::size_t n        = 37;
+    const double      sigmaAnn = 0.42;
+    const double      skew     = -0.7;
+    const double      exkurt   = 1.8;
+    const double      tailIdx  = 1.5;
+    const bool        heavy    = true;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+    REQUIRE(ctx.getN()         == n);
+    REQUIRE(ctx.getSigmaAnn()  == Approx(sigmaAnn));
+    REQUIRE(ctx.getSkew()      == Approx(skew));
+    REQUIRE(ctx.getExKurt()    == Approx(exkurt));
+    REQUIRE(ctx.getTailIndex() == Approx(tailIdx));
+    REQUIRE(ctx.hasHeavyTails() == heavy);
+  }
+
+  SECTION("Heavy tails = false with non-positive tail index (invalid Hill estimate)")
+  {
+    const std::size_t n        = 20;
+    const double      sigmaAnn = 0.10;
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0; // "invalid" marker from estimate_left_tail_index_hill
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+    REQUIRE(ctx.getN()         == n);
+    REQUIRE(ctx.getSigmaAnn()  == Approx(sigmaAnn));
+    REQUIRE(ctx.getSkew()      == Approx(skew));
+    REQUIRE(ctx.getExKurt()    == Approx(exkurt));
+    REQUIRE(ctx.getTailIndex() == Approx(tailIdx));
+    REQUIRE(ctx.hasHeavyTails() == heavy);
+  }
+}
+
+TEST_CASE("MNRatioContext is copyable and preserves all fields",
+          "[SmallN][MNRatioContext][copy]")
+{
+  const std::size_t n        = 50;
+  const double      sigmaAnn = 0.55;
+  const double      skew     = 0.9;
+  const double      exkurt   = 2.3;
+  const double      tailIdx  = 1.2;
+  const bool        heavy    = true;
+
+  MNRatioContext original(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+  // Copy construct
+  MNRatioContext copy = original;
+
+  REQUIRE(copy.getN()         == original.getN());
+  REQUIRE(copy.getSigmaAnn()  == Approx(original.getSigmaAnn()));
+  REQUIRE(copy.getSkew()      == Approx(original.getSkew()));
+  REQUIRE(copy.getExKurt()    == Approx(original.getExKurt()));
+  REQUIRE(copy.getTailIndex() == Approx(original.getTailIndex()));
+  REQUIRE(copy.hasHeavyTails() == original.hasHeavyTails());
+
+  // Copy assign
+  MNRatioContext assigned(1, 0.0, 0.0, 0.0, 0.0, false);
+  assigned = original;
+
+  REQUIRE(assigned.getN()         == original.getN());
+  REQUIRE(assigned.getSigmaAnn()  == Approx(original.getSigmaAnn()));
+  REQUIRE(assigned.getSkew()      == Approx(original.getSkew()));
+  REQUIRE(assigned.getExKurt()    == Approx(original.getExKurt()));
+  REQUIRE(assigned.getTailIndex() == Approx(original.getTailIndex()));
+  REQUIRE(assigned.hasHeavyTails() == original.hasHeavyTails());
+}
+
+TEST_CASE("TailVolPriorPolicy returns high-vol ratio for heavy tails or high sigma",
+          "[SmallN][TailVolPriorPolicy][highvol]")
+{
+  TailVolPriorPolicy policy; // defaults: highVolAnnThreshold=0.40, highVolRatio=0.80, normalRatio=0.50
+
+  SECTION("High annualized volatility triggers high-vol ratio")
+  {
+    const std::size_t n        = 50;
+    const double      sigmaAnn = 0.50;   // >= 0.40 threshold
+    const double      skew     = 0.20;
+    const double      exkurt   = 0.50;
+    const double      tailIdx  = 3.0;    // non-extreme tail index
+    const bool        heavy    = false;  // no heavy tail flag
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    // For n=50, maxRho = 49/50 ≈ 0.98, so we should get exactly the highVolRatio (0.80)
+    REQUIRE(rho == Approx(0.80).margin(1e-6));
+  }
+
+  SECTION("Extreme tail index triggers high-vol ratio even if sigmaAnn is small")
+  {
+    const std::size_t n        = 40;
+    const double      sigmaAnn = 0.10;   // below vol threshold
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = 1.5;    // 0 < alpha < 2.0 → extremeTail=true
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(0.80).margin(1e-6));
+  }
+
+  SECTION("Heavy-tails flag alone is enough to trigger high-vol ratio")
+  {
+    const std::size_t n        = 30;
+    const double      sigmaAnn = 0.05;   // below threshold
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0;   // invalid / unknown tail index
+    const bool        heavy    = true;   // explicit heavy flag
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(0.80).margin(1e-6));
+  }
+}
+
+TEST_CASE("TailVolPriorPolicy returns normal ratio for non-heavy, low-vol regimes",
+          "[SmallN][TailVolPriorPolicy][normal]")
+{
+  TailVolPriorPolicy policy; // 0.80 vs 0.50
+
+  const std::size_t n        = 50;
+  const double      sigmaAnn = 0.10;  // below 0.40
+  const double      skew     = 0.10;
+  const double      exkurt   = 0.20;
+  const double      tailIdx  = 3.0;
+  const bool        heavy    = false;
+
+  MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+  const double rho = policy.computePriorRatio(ctx);
+
+  REQUIRE(rho == Approx(0.50).margin(1e-6));
+}
+
+TEST_CASE("TailVolPriorPolicy handles tiny n via ~50% rule and clamping",
+          "[SmallN][TailVolPriorPolicy][tinyN]")
+{
+  TailVolPriorPolicy policy;
+
+  SECTION("n = 4 → m≈ceil(0.5*n) = 2 ⇒ rho = 0.5")
+  {
+    const std::size_t n        = 4;
+    const double      sigmaAnn = 0.10;
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(0.50).margin(1e-6));
+  }
+
+  SECTION("n = 3 → m≈ceil(0.5*3)=2 ⇒ rho ≈ 2/3")
+  {
+    const std::size_t n        = 3;
+    const double      sigmaAnn = 0.10;
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(2.0 / 3.0).margin(1e-6));
+  }
+
+  SECTION("n < 3 → early guard returns 1.0")
+  {
+    const std::size_t n        = 2;
+    const double      sigmaAnn = 0.10;
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(1.0).margin(1e-6));
+  }
+}
+
+TEST_CASE("TailVolPriorPolicy clamps ratios to [2/n, (n-1)/n]",
+          "[SmallN][TailVolPriorPolicy][clamp]")
+{
+  SECTION("High-vol ratio is clamped to (n-1)/n from above")
+  {
+    // Build a policy with a very aggressive highVolRatio to test max clamp
+    TailVolPriorPolicy policy(/*highVolAnnThreshold=*/0.40,
+                              /*highVolRatio=*/0.95,
+                              /*normalRatio=*/0.50);
+
+    const std::size_t n        = 5;
+    const double      sigmaAnn = 0.50; // high vol regime
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = 3.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    // maxRho = (n-1)/n = 4/5 = 0.8, so 0.95 must be clamped down to 0.8
+    REQUIRE(rho == Approx(4.0 / 5.0).margin(1e-6));
+  }
+
+  SECTION("Normal ratio is clamped to at least 2/n from below")
+  {
+    // Build a policy with a very small normalRatio to test min clamp
+    TailVolPriorPolicy policy(/*highVolAnnThreshold=*/0.40,
+                              /*highVolRatio=*/0.80,
+                              /*normalRatio=*/0.01);
+
+    const std::size_t n        = 50;
+    const double      sigmaAnn = 0.10; // normal regime
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = 3.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    const double minRho = 2.0 / static_cast<double>(n); // 2/50 = 0.04
+    REQUIRE(rho == Approx(minRho).margin(1e-6));
+  }
+}
+
+TEST_CASE("LBStabilityRefinementPolicy selects candidate with tightest CI",
+          "[SmallN][LBStabilityRefinementPolicy][stability]")
+{
+  using Num        = Decimal;
+  using GeoStatT   = LBStabTestMocks::GeoStat;
+  using StrategyT  = LBStabTestMocks::Strategy;
+  using ResamplerT = LBStabTestMocks::ResamplerTag;
+  using EngineTag  = palvalidator::bootstrap_cfg::BootstrapEngine;
+  using FactoryT   = LBStabTestMocks::Factory<EngineTag>;
+  using PolicyT    = LBStabilityRefinementPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT>;
+
+  // Candidate ratios: baseRatio + deltas = 0.5 + {-0.10, 0, +0.10} → {0.40, 0.50, 0.60}
+  std::vector<double> deltas = { -0.10, 0.0, +0.10 };
+  PolicyT policy(deltas,
+                 /*minB=*/200,
+                 /*maxB=*/600,
+                 /*minNForRefine=*/15,
+                 /*maxNForRefine=*/60);
+
+  // CI width minimized at rho = 0.40
+  auto widthFunc = [](double rho) {
+    const double center = 0.40;
+    return std::fabs(rho - center);
+  };
+
+  FactoryT factory(widthFunc);
+  StrategyT strategy;
+  ResamplerT resampler;
+  std::ostringstream oss;
+
+  const std::size_t n        = 30;     // within [minNForRefine, maxNForRefine]
+  const double      sigmaAnn = 0.20;
+  const double      skew     = 0.10;
+  const double      exkurt   = 0.50;
+  const double      tailIdx  = 3.0;
+  const bool        heavy    = false;
+
+  MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+  std::vector<Num> returns(n, D(0.001));
+
+  const std::size_t L_small   = 3;
+  const double      confLevel = 0.95;
+  const std::size_t B_full    = 2000;
+  const double      baseRatio = 0.50;
+
+  const double chosen =
+      policy.refineRatio(returns,
+                         ctx,
+                         L_small,
+                         confLevel,
+                         B_full,
+                         baseRatio,
+                         strategy,
+                         factory,
+                         resampler,
+                         &oss,
+                         /*stageTag=*/1,
+                         /*fold=*/0);
+
+  // We expect it to pick rho = 0.40 (the candidate with smallest CI width).
+  REQUIRE(chosen == Approx(0.40).margin(1e-6));
+}
+
+TEST_CASE("LBStabilityRefinementPolicy returns base ratio when n outside refinement window",
+          "[SmallN][LBStabilityRefinementPolicy][n-window]")
+{
+  using Num        = Decimal;
+  using GeoStatT   = LBStabTestMocks::GeoStat;
+  using StrategyT  = LBStabTestMocks::Strategy;
+  using ResamplerT = LBStabTestMocks::ResamplerTag;
+  using EngineTag  = palvalidator::bootstrap_cfg::BootstrapEngine;
+  using FactoryT   = LBStabTestMocks::Factory<EngineTag>;
+  using PolicyT    = LBStabilityRefinementPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT>;
+
+  std::vector<double> deltas = { -0.10, 0.0, +0.10 };
+  PolicyT policy(deltas,
+                 /*minB=*/200,
+                 /*maxB=*/600,
+                 /*minNForRefine=*/15,
+                 /*maxNForRefine=*/60);
+
+  FactoryT factory;  // default ctor: widthFunc_ is empty → uses fallback width
+  StrategyT strategy;
+  ResamplerT resampler;
+  std::ostringstream oss;
+
+  SECTION("n too small (< minNForRefine) → no refinement")
+  {
+    const std::size_t n        = 10;
+    const double      sigmaAnn = 0.15;
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    std::vector<Num> returns(n, D(0.001));
+
+    const double baseRatio = 0.55;
+    const double chosen =
+        policy.refineRatio(returns,
+                           ctx,
+                           /*L_small=*/3,
+                           /*confLevel=*/0.95,
+                           /*B_full=*/2000,
+                           baseRatio,
+                           strategy,
+                           factory,
+                           resampler,
+                           &oss,
+                           /*stageTag=*/1,
+                           /*fold=*/0);
+
+    REQUIRE(chosen == Approx(baseRatio).margin(1e-6));
+  }
+
+  SECTION("n too large (> maxNForRefine) → no refinement")
+  {
+    const std::size_t n        = 100;
+    const double      sigmaAnn = 0.15;
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const double      tailIdx  = -1.0;
+    const bool        heavy    = false;
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    std::vector<Num> returns(n, D(0.001));
+
+    const double baseRatio = 0.60;
+    const double chosen =
+        policy.refineRatio(returns,
+                           ctx,
+                           /*L_small=*/3,
+                           /*confLevel=*/0.95,
+                           /*B_full=*/2000,
+                           baseRatio,
+                           strategy,
+                           factory,
+                           resampler,
+                           &oss,
+                           /*stageTag=*/1,
+                           /*fold=*/0);
+
+    REQUIRE(chosen == Approx(baseRatio).margin(1e-6));
+  }
+}
+
+TEST_CASE("estimate_left_tail_index_hill returns -1 when there are no losses",
+          "[SmallN][HillTailIndex][no-losses]")
+{
+  std::vector<Decimal> returns;
+  returns.push_back(D(0.01));
+  returns.push_back(D(0.02));
+  returns.push_back(D(0.00));
+
+  const double alpha = estimate_left_tail_index_hill(returns);
+  REQUIRE(alpha == Approx(-1.0).margin(1e-12));
+}
+
+TEST_CASE("estimate_left_tail_index_hill returns -1 with too few losses",
+          "[SmallN][HillTailIndex][too-few]")
+{
+  // Default k = 5, so we need at least k+1 = 6 negative values.
+  // Here we only provide 3 negative returns.
+  std::vector<Decimal> returns;
+  returns.push_back(D(-0.01));
+  returns.push_back(D(-0.02));
+  returns.push_back(D(-0.03));
+  returns.push_back(D(0.01));   // positive, ignored
+  returns.push_back(D(0.00));   // zero, ignored
+
+  const double alpha = estimate_left_tail_index_hill(returns); // k = 5
+  REQUIRE(alpha == Approx(-1.0).margin(1e-12));
+}
+
+TEST_CASE("estimate_left_tail_index_hill returns -1 for constant losses (no tail variation)",
+          "[SmallN][HillTailIndex][degenerate]")
+{
+  // All losses are identical -> losses[i]/xk == 1 for all i -> log(1) == 0
+  // → hill == 0 → function should return -1.
+  std::vector<Decimal> returns;
+
+  // 7 identical negative returns -> 7 losses, >= k+1 with k=5
+  for (int i = 0; i < 7; ++i)
+    returns.push_back(D(-1.0));
+
+  const double alpha = estimate_left_tail_index_hill(returns); // k = 5
+  REQUIRE(alpha == Approx(-1.0).margin(1e-12));
+}
+
+TEST_CASE("estimate_left_tail_index_hill recovers a known Pareto-like tail index",
+          "[SmallN][HillTailIndex][synthetic]")
+{
+  // We construct a synthetic left-tail sample where the Hill estimator is exact.
+  //
+  // For the Hill estimator in this implementation:
+  //   - losses are sorted descending
+  //   - x_k = losses[k] (k-th index, 0-based)
+  //   - hill = (1/k) * sum_{i=0}^{k-1} log(losses[i] / x_k)
+  //   - alpha_hat = 1 / hill
+  //
+  // If we choose:
+  //   losses[0..k-1] = x_k * exp(1/alpha_true)
+  //   losses[k]      = x_k
+  // then:
+  //   log(losses[i] / x_k) = 1/alpha_true for i < k
+  //   hill = (1/k) * k * (1/alpha_true) = 1/alpha_true
+  //   alpha_hat = alpha_true  (exact, up to floating error)
+
+  const double alpha_true = 1.5;       // Heavy-ish tail (α < 2)
+  const std::size_t k     = 5;
+  const double      xk    = 1.0;
+  const double      big   = std::exp(1.0 / alpha_true) * xk;  // > xk
+
+  std::vector<Decimal> returns;
+  returns.reserve(10);
+
+  // 5 largest losses: all = big
+  for (std::size_t i = 0; i < k; ++i)
+    returns.push_back(D(-big));   // negative returns → positive losses big
+
+  // The (k+1)-th largest loss: x_k = 1.0
+  returns.push_back(D(-xk));
+
+  // Some extra noise (smaller losses and positives) that should not affect the Hill core
+  returns.push_back(D(-0.5));   // smaller loss
+  returns.push_back(D(-0.2));   // smaller loss
+  returns.push_back(D(0.01));   // positive, ignored
+  returns.push_back(D(0.00));   // zero, ignored
+
+  const double alpha_hat = estimate_left_tail_index_hill(returns, k);
+
+  // We expect alpha_hat ≈ alpha_true within a small numerical tolerance.
+  REQUIRE(alpha_hat == Approx(alpha_true).margin(1e-3));
+}
+
+TEST_CASE("estimate_left_tail_index_hill respects custom k parameter",
+          "[SmallN][HillTailIndex][custom-k]")
+{
+  const double alpha_true = 2.5;       // lighter tail (α > 2)
+  const std::size_t k     = 3;
+  const double      xk    = 0.8;
+  const double      big   = std::exp(1.0 / alpha_true) * xk;
+
+  std::vector<Decimal> returns;
+  returns.reserve(10);
+
+  // 3 largest losses: all = big
+  for (std::size_t i = 0; i < k; ++i)
+    returns.push_back(D(-big));
+
+  // (k+1)-th loss = xk
+  returns.push_back(D(-xk));
+
+  // Additional smaller losses/positives
+  returns.push_back(D(-0.3));
+  returns.push_back(D(0.02));
+
+  const double alpha_hat = estimate_left_tail_index_hill(returns, k);
+  REQUIRE(alpha_hat == Approx(alpha_true).margin(1e-3));
+}
+
+TEST_CASE("TailVolStabilityPolicy with NoRefinementPolicy returns prior ratio",
+          "[SmallN][TailVolStabilityPolicy][no-refine]")
+{
+  using Num        = Decimal;
+  using GeoStatT   = LBStabTestMocks::GeoStat;
+  using StrategyT  = LBStabTestMocks::Strategy;
+  using ResamplerT = LBStabTestMocks::ResamplerTag;
+  using EngineTag  = palvalidator::bootstrap_cfg::BootstrapEngine;
+  using FactoryT   = LBStabTestMocks::Factory<EngineTag>;
+  using NoRefT     = NoRefinementPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT>;
+
+  // Prior policy: defaults highVolAnnThreshold=0.40, highVolRatio=0.80, normalRatio=0.50
+  TailVolPriorPolicy prior;
+
+  // Refinement policy that just returns baseRatio
+  NoRefT noRefine;
+
+  TailVolStabilityPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT, NoRefT>
+      policy(prior, noRefine);
+
+  // Context: high-vol regime -> prior ratio should be 0.80
+  const std::size_t n        = 30;
+  const double      sigmaAnn = 0.50;  // >= 0.40 threshold
+  const double      skew     = 0.10;
+  const double      exkurt   = 0.50;
+  const double      tailIdx  = 3.0;   // non-extreme tail index
+  const bool        heavy    = false;
+
+  MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+  std::vector<Num> returns(n, D(0.001));  // contents irrelevant here
+  const std::size_t L_small   = 3;
+  const double      confLevel = 0.95;
+  const std::size_t B_full    = 2000;
+
+  StrategyT strategy;
+  FactoryT  factory;    // default: no special width function
+  ResamplerT resampler;
+  std::ostringstream oss;
+
+  const double rho =
+      policy.computeRatio(returns,
+                          ctx,
+                          L_small,
+                          confLevel,
+                          B_full,
+                          strategy,
+                          factory,
+                          resampler,
+                          &oss,
+                          /*stageTag=*/1,
+                          /*fold=*/0);
+
+  // High-vol regime for n=30 should give prior ≈ 0.80, and NoRefinementPolicy must not change it.
+  REQUIRE(rho == Approx(0.80).margin(1e-6));
+
+  // Sanity: prior is indeed 0.80 under this context
+  REQUIRE(prior.computePriorRatio(ctx) == Approx(0.80).margin(1e-6));
+}
+
+TEST_CASE("TailVolStabilityPolicy passes prior ratio into refinement policy",
+          "[SmallN][TailVolStabilityPolicy][refine]")
+{
+  using Num        = Decimal;
+  using GeoStatT   = LBStabTestMocks::GeoStat;
+  using StrategyT  = LBStabTestMocks::Strategy;
+  using ResamplerT = LBStabTestMocks::ResamplerTag;
+  using EngineTag  = palvalidator::bootstrap_cfg::BootstrapEngine;
+  using FactoryT   = LBStabTestMocks::Factory<EngineTag>;
+
+  // Custom refinement policy that returns baseRatio * 0.5
+  struct CaptureRefinementPolicy
+  {
+    double refineRatio(const std::vector<Num>&,
+                       const MNRatioContext&,
+                       std::size_t,
+                       double,
+                       std::size_t,
+                       double baseRatio,
+                       StrategyT&,
+                       FactoryT&,
+                       ResamplerT&,
+                       std::ostream*,
+                       int,
+                       int) const
+    {
+      // Refinement rule: shrink ratio by 50%
+      return baseRatio * 0.5;
+    }
+  };
+
+  TailVolPriorPolicy     prior;
+  CaptureRefinementPolicy refine;
+
+  TailVolStabilityPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT, CaptureRefinementPolicy>
+      policy(prior, refine);
+
+  // Context: normal regime (low vol, light tails) -> prior ratio should be 0.50
+  const std::size_t n        = 40;
+  const double      sigmaAnn = 0.10;  // below 0.40 threshold
+  const double      skew     = 0.10;
+  const double      exkurt   = 0.20;
+  const double      tailIdx  = 5.0;   // light tail
+  const bool        heavy    = false;
+
+  MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+  std::vector<Num> returns(n, D(0.001));
+  const std::size_t L_small   = 3;
+  const double      confLevel = 0.95;
+  const std::size_t B_full    = 2000;
+
+  StrategyT      strategy;
+  FactoryT       factory;
+  ResamplerT     resampler;
+  std::ostringstream oss;
+
+  const double rho =
+      policy.computeRatio(returns,
+                          ctx,
+                          L_small,
+                          confLevel,
+                          B_full,
+                          strategy,
+                          factory,
+                          resampler,
+                          &oss,
+                          /*stageTag=*/2,
+                          /*fold=*/0);
+
+  const double priorRho = prior.computePriorRatio(ctx);
+
+  // In this context, priorRho should be the "normalRatio" (0.50)
+  REQUIRE(priorRho == Approx(0.50).margin(1e-6));
+
+  // And the final ratio should be baseRatio * 0.5 per our test refinement policy
+  REQUIRE(rho == Approx(priorRho * 0.5).margin(1e-6));
+  REQUIRE(rho != Approx(priorRho).margin(1e-6)); // sanity: refinement actually changed it
+}
+
+TEST_CASE("TailVolStabilityPolicy + LBStabilityRefinementPolicy respond to CI width shape",
+          "[SmallN][TailVolStabilityPolicy][LBStabilityRefinementPolicy][integration]")
+{
+  using Num        = Decimal;
+  using GeoStatT   = LBStabTestMocks::GeoStat;
+  using StrategyT  = LBStabTestMocks::Strategy;
+  using ResamplerT = LBStabTestMocks::ResamplerTag;
+  using EngineTag  = palvalidator::bootstrap_cfg::BootstrapEngine;
+  using FactoryT   = LBStabTestMocks::Factory<EngineTag>;
+  using RefineT    = LBStabilityRefinementPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT>;
+  using PolicyT    = TailVolStabilityPolicy<Num, GeoStatT, StrategyT, ResamplerT, FactoryT, RefineT>;
+
+  // Prior that maps this context to 0.50 (normal regime)
+  TailVolPriorPolicy prior;
+
+  // Refinement policy probing around the prior with ±0.10
+  std::vector<double> deltas = { -0.10, 0.0, +0.10 };
+  RefineT refine(deltas,
+                 /*minB=*/200,
+                 /*maxB=*/600,
+                 /*minNForRefine=*/15,
+                 /*maxNForRefine=*/60);
+
+  PolicyT policy(prior, refine);
+
+  // Context: normal regime (low vol, light tails) → prior ratio should be 0.50
+  const std::size_t n        = 30;
+  const double      sigmaAnn = 0.10;  // below high-vol threshold
+  const double      skew     = 0.10;
+  const double      exkurt   = 0.20;
+  const double      tailIdx  = 5.0;   // light tail
+  const bool        heavy    = false;
+
+  MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+
+  const double priorRho = prior.computePriorRatio(ctx);
+  REQUIRE(priorRho == Approx(0.50).margin(1e-6)); // sanity: we are in the normal regime
+
+  std::vector<Num> returns(n, D(0.001));
+  const std::size_t L_small   = 3;
+  const double      confLevel = 0.95;
+  const std::size_t B_full    = 2000;
+
+  StrategyT   strategy;
+  ResamplerT  resampler;
+  std::ostringstream oss;
+
+  SECTION("Width minimized at rho = 0.40 → choose 0.40")
+  {
+    auto widthFunc = [](double rho) {
+      const double center = 0.40;
+      return std::fabs(rho - center);
+    };
+
+    FactoryT factory(widthFunc);
+
+    const double rho =
+        policy.computeRatio(returns,
+                            ctx,
+                            L_small,
+                            confLevel,
+                            B_full,
+                            strategy,
+                            factory,
+                            resampler,
+                            &oss,
+                            /*stageTag=*/10,
+                            /*fold=*/0);
+
+    // Candidates are {0.40, 0.50, 0.60}; tightest CI is at 0.40
+    REQUIRE(rho == Approx(0.40).margin(1e-6));
+    REQUIRE(rho != Approx(priorRho).margin(1e-6));  // ensure refinement moved it
+  }
+
+  SECTION("Width minimized at rho = 0.60 → choose 0.60")
+  {
+    auto widthFunc = [](double rho) {
+      const double center = 0.60;
+      return std::fabs(rho - center);
+    };
+
+    FactoryT factory(widthFunc);
+
+    const double rho =
+        policy.computeRatio(returns,
+                            ctx,
+                            L_small,
+                            confLevel,
+                            B_full,
+                            strategy,
+                            factory,
+                            resampler,
+                            &oss,
+                            /*stageTag=*/11,
+                            /*fold=*/0);
+
+    // Candidates are {0.40, 0.50, 0.60}; tightest CI is at 0.60
+    REQUIRE(rho == Approx(0.60).margin(1e-6));
+    REQUIRE(rho != Approx(priorRho).margin(1e-6));  // refinement moved it the other way
+  }
+}
+
+TEST_CASE("TailVolPriorPolicy returns light-tail ratio for very light tails and large n",
+          "[SmallN][TailVolPriorPolicy][lightTail]")
+{
+  TailVolPriorPolicy policy;
+
+  const std::size_t nLarge    = policy.getNLargeThreshold();       // default 80
+  const double      alphaLight = policy.getLightTailAlphaThreshold(); // default 4.0
+
+  // Sanity check: we are in the "large n" region
+  REQUIRE(nLarge >= 5);
+
+  // Very light tails + large n + low vol + no heavy flag
+  const std::size_t n        = nLarge + 20;       // e.g. 100 if threshold is 80
+  const double      sigmaAnn = 0.10;              // below 0.40
+  const double      skew     = 0.10;
+  const double      exkurt   = 0.10;
+  const double      tailIdx  = alphaLight + 1.0;  // comfortably in light-tail regime
+  const bool        heavy    = false;
+
+  MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+  const double rho = policy.computePriorRatio(ctx);
+
+  // We should be in the "very light tail & large n" regime → lightTailRatio
+  REQUIRE(rho == Approx(policy.getLightTailRatio()).margin(1e-6));
+}
+
+TEST_CASE("TailVolPriorPolicy light-tail regime activates only beyond tail-index and n thresholds",
+          "[SmallN][TailVolPriorPolicy][lightTail][cutoffs]")
+{
+  TailVolPriorPolicy policy;
+
+  const std::size_t nLarge     = policy.getNLargeThreshold();         // default 80
+  const double      alphaLight = policy.getLightTailAlphaThreshold(); // default 4.0
+
+  const double sigmaAnn = 0.10;  // low vol
+  const double skew     = 0.0;
+  const double exkurt   = 0.0;
+  const bool   heavy    = false;
+
+  SECTION("n just below nLargeThreshold stays in normal regime even with very light tails")
+  {
+    const std::size_t n       = (nLarge > 0 ? nLarge - 1 : 0);
+    const double      tailIdx = alphaLight + 0.5; // very light, but n too small
+
+    REQUIRE(n >= 3); // sanity guard for the test
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(policy.getNormalRatio()).margin(1e-6));
+  }
+
+  SECTION("tail index just below alphaLightThreshold stays in normal regime even for large n")
+  {
+    const std::size_t n       = nLarge + 10;       // safely above large-n threshold
+    const double      tailIdx = alphaLight - 0.1;  // just under light-tail cutoff
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(policy.getNormalRatio()).margin(1e-6));
+  }
+
+  SECTION("Both n and tail index beyond thresholds activate light-tail regime")
+  {
+    const std::size_t n       = nLarge + 10;       // large n
+    const double      tailIdx = alphaLight + 0.1;  // just over light-tail cutoff
+
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    REQUIRE(rho == Approx(policy.getLightTailRatio()).margin(1e-6));
+  }
+}
+
+
+TEST_CASE("TailVolPriorPolicy boundary behavior at classification thresholds",
+          "[SmallN][TailVolPriorPolicy][boundaries]")
+{
+  TailVolPriorPolicy policy;
+
+  const double      sigmaThresh  = policy.getHighVolAnnThreshold();       // e.g. 0.40
+  const double      alphaHeavy   = policy.getHeavyTailAlphaThreshold();   // e.g. 2.0
+  const double      alphaLight   = policy.getLightTailAlphaThreshold();   // e.g. 4.0
+  const std::size_t nLarge       = policy.getNLargeThreshold();           // e.g. 80
+
+  SECTION("sigmaAnn just below / at / above high-vol threshold")
+  {
+    const std::size_t n       = 50;
+    const double      skew    = 0.0;
+    const double      exkurt  = 0.0;
+    const double      tailIdx = 3.0;   // not extreme
+    const bool        heavy   = false;
+
+    // Just below: should still be normal regime
+    {
+      const double sigmaAnn = sigmaThresh - 1e-6;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getNormalRatio()).margin(1e-6));
+    }
+
+    // Exactly at threshold: high-vol regime (>= threshold)
+    {
+      const double sigmaAnn = sigmaThresh;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+    }
+
+    // Just above: also high-vol
+    {
+      const double sigmaAnn = sigmaThresh + 1e-6;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+    }
+  }
+
+  SECTION("Heavy-tail alpha threshold: just below / at / above")
+  {
+    const std::size_t n       = 40;
+    const double      sigmaAnn = 0.10;  // low vol
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const bool        heavy    = false;
+
+    // Just below threshold → extreme heavy tail → high-vol ratio
+    {
+      const double tailIdx = alphaHeavy - 1e-6;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+    }
+
+    // Exactly at threshold → still treated as heavy (<= threshold)
+    {
+      const double tailIdx = alphaHeavy;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+    }
+
+    // Just above threshold → no longer heavy-tail by alpha; stays normal regime
+    {
+      const double tailIdx = alphaHeavy + 1e-6;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getNormalRatio()).margin(1e-6));
+    }
+  }
+
+  SECTION("Light-tail alpha threshold with large n")
+  {
+    // Ensure we are in the large-n region
+    REQUIRE(nLarge >= 5);
+    const std::size_t n        = nLarge + 10; // safely large
+    const double      sigmaAnn = 0.10;        // low vol
+    const double      skew     = 0.0;
+    const double      exkurt   = 0.0;
+    const bool        heavy    = false;
+
+    // Just below light-tail cutoff → normal regime
+    {
+      const double tailIdx = alphaLight - 1e-6;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getNormalRatio()).margin(1e-6));
+    }
+
+    // Exactly at light-tail cutoff → enters light-tail regime
+    {
+      const double tailIdx = alphaLight;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getLightTailRatio()).margin(1e-6));
+    }
+
+    // Just above light-tail cutoff → also light-tail regime
+    {
+      const double tailIdx = alphaLight + 1e-6;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getLightTailRatio()).margin(1e-6));
+    }
+  }
+
+  SECTION("Large-n threshold boundary for light-tail regime")
+  {
+    const double sigmaAnn = 0.10;       // low vol
+    const double skew     = 0.0;
+    const double exkurt   = 0.0;
+    const double tailIdx  = alphaLight + 1.0; // comfortably light tail
+    const bool   heavy    = false;
+
+    // Just below nLargeThreshold → cannot enter light-tail regime yet
+    if (nLarge > 1)
+    {
+      const std::size_t nBelow = nLarge - 1;
+      REQUIRE(nBelow >= 3); // sanity
+      MNRatioContext ctxBelow(nBelow, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rhoBelow = policy.computePriorRatio(ctxBelow);
+      REQUIRE(rhoBelow == Approx(policy.getNormalRatio()).margin(1e-6));
+    }
+
+    // Exactly at nLargeThreshold → qualifies as large-n, with light tails
+    {
+      const std::size_t nEq = nLarge;
+      REQUIRE(nEq >= 5); // from design / defaults
+      MNRatioContext ctxEq(nEq, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rhoEq = policy.computePriorRatio(ctxEq);
+      REQUIRE(rhoEq == Approx(policy.getLightTailRatio()).margin(1e-6));
+    }
+  }
+
+  SECTION("Boundary between tiny-n path (n<5) and normal regime (n>=5)")
+  {
+    const double sigmaAnn = 0.10;
+    const double skew     = 0.0;
+    const double exkurt   = 0.0;
+    const double tailIdx  = 3.0;
+    const bool   heavy    = false;
+
+    // n = 4 -> tiny-n branch → ~0.5
+    {
+      const std::size_t n = 4;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(0.50).margin(1e-6));
+    }
+
+    // n = 5 -> no longer tiny-n; goes through normal regime logic
+    {
+      const std::size_t n = 5;
+      MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIdx, heavy);
+      const double rho = policy.computePriorRatio(ctx);
+      REQUIRE(rho == Approx(policy.getNormalRatio()).margin(1e-6));
+    }
+  }
+}
+
+TEST_CASE("TailVolPriorPolicy: high-vol and heavy-tail signals override light-tail regime",
+          "[SmallN][TailVolPriorPolicy][override]")
+{
+  TailVolPriorPolicy policy;
+
+  const double      sigmaThresh  = policy.getHighVolAnnThreshold();        // e.g. 0.40
+  const double      alphaHeavy   = policy.getHeavyTailAlphaThreshold();    // e.g. 2.0
+  const double      alphaLight   = policy.getLightTailAlphaThreshold();    // e.g. 4.0
+  const std::size_t nLarge       = policy.getNLargeThreshold();            // e.g. 80
+
+  // Base conditions that *would* normally put us in the light-tail regime:
+  // - very light tail index
+  // - large n
+  // - low volatility
+  const std::size_t nBase        = nLarge + 10;        // safely large
+  const double      tailIdxBase  = alphaLight + 1.0;   // comfortably light tail (α > 4)
+  const double      sigmaLow     = sigmaThresh - 0.10; // clearly below high-vol threshold
+  const double      skew         = 0.0;
+  const double      exkurt       = 0.0;
+
+  SECTION("High volatility overrides and forces high-vol ratio even with light tails & large n")
+  {
+    const bool   heavy    = false;
+    const double sigmaAnn = sigmaThresh + 0.10; // above threshold → high-vol
+
+    MNRatioContext ctx(nBase, sigmaAnn, skew, exkurt, tailIdxBase, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    // Despite n large and tailIdx very light, high volatility must dominate.
+    REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+  }
+
+  SECTION("Heavy-tails flag overrides and forces high-vol ratio even with light tails & low vol")
+  {
+    const bool   heavy    = true;       // explicit heavy flag
+    const double sigmaAnn = sigmaLow;   // low volatility still
+
+    MNRatioContext ctx(nBase, sigmaAnn, skew, exkurt, tailIdxBase, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    // Heavy flag alone is enough to put us into high-vol regime.
+    REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+  }
+
+  SECTION("Very heavy tail index overrides and forces high-vol ratio (even if sigma is low)")
+  {
+    const bool   heavy    = false;
+    const double sigmaAnn = sigmaLow;
+    const double tailIdx  = alphaHeavy - 0.10;  // just below heavy-tail threshold (α <= 2) → extreme
+
+    MNRatioContext ctx(nBase, sigmaAnn, skew, exkurt, tailIdx, heavy);
+    const double rho = policy.computePriorRatio(ctx);
+
+    // α in (0, heavyTailAlphaThreshold] is treated as extreme heavy tail → high-vol.
+    REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
+  }
 }
