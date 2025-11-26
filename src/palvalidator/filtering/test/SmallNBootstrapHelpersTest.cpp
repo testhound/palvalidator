@@ -1675,3 +1675,155 @@ TEST_CASE("TailVolPriorPolicy: high-vol and heavy-tail signals override light-ta
     REQUIRE(rho == Approx(policy.getHighVolRatio()).margin(1e-6));
   }
 }
+
+// =============================================================================
+// NEW UNIT TESTS FOR REFACTORED HELPERS
+// =============================================================================
+
+TEST_CASE("resolve_adaptive_subsample_ratio handles explicit overrides and clamping",
+          "[SmallN][Refactor][PolicyResolution]")
+{
+    // Setup common types
+    using ResamplerT = mkc_timeseries::IIDResampler<Decimal>;
+    StrategyT strategy;
+    FactoryT factory(0); // Mock factory
+    std::ostringstream oss;
+    ResamplerT resampler;
+    
+    // Context: N=50, Normal Volatility
+    MNRatioContext ctx(50, 0.15, 0.0, 0.0, 3.0, false);
+    std::vector<Decimal> returns(50, D(0.001));
+
+    // [FIX]: Ensure state is clean before these sections run
+    TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{}; 
+
+    SECTION("Explicit request is respected when valid") {
+        double requested = 0.40;
+        double result = resolve_adaptive_subsample_ratio<Decimal, GeoStatT>(
+            requested, returns, ctx, /*L_small=*/3, 0.95, 1000, 
+            strategy, factory, resampler, &oss, 0, 0
+        );
+        REQUIRE(result == Approx(0.40));
+    }
+
+    SECTION("Explicit request is clamped (Too High)") {
+        // N=50, Max valid is (n-1)/n = 0.98
+        double requested = 1.50; 
+        double result = resolve_adaptive_subsample_ratio<Decimal, GeoStatT>(
+            requested, returns, ctx, /*L_small=*/3, 0.95, 1000, 
+            strategy, factory, resampler, &oss, 0, 0
+        );
+        REQUIRE(result == Approx(0.98));
+    }
+
+    SECTION("Explicit request is clamped (Too Low)") {
+        // N=50, Min valid is 2/n = 0.04
+        double requested = 0.01; 
+        double result = resolve_adaptive_subsample_ratio<Decimal, GeoStatT>(
+            requested, returns, ctx, /*L_small=*/3, 0.95, 1000, 
+            strategy, factory, resampler, &oss, 0, 0
+        );
+        REQUIRE(result == Approx(0.04));
+    }
+
+    SECTION("Adaptive Mode (Implicit <= 0) runs the policy") {
+        // [FIX]: Reset control. We use IIDResampler in this test, so expect_block must be false.
+        TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{
+            .expect_block = false, // <--- CRITICAL FIX
+            .mn_lb_val = 0.0,
+            .bca_lb_val = 0.0
+        };
+
+        // We pass 0.0. The function should instantiate TailVolStabilityPolicy.
+        double requested = 0.0;
+        double result = resolve_adaptive_subsample_ratio<Decimal, GeoStatT>(
+            requested, returns, ctx, /*L_small=*/3, 0.95, 1000, 
+            strategy, factory, resampler, &oss, 0, 0
+        );
+        
+        REQUIRE(result > 0.0);
+        REQUIRE(result <= 1.0);
+        
+        // Verify logging occurred (proving the adaptive path was taken)
+        REQUIRE(oss.str().find("Adaptive m/n") != std::string::npos);
+        
+        // Verify the mock was actually called
+        REQUIRE(TestMocks::FactoryMockHelper::control.mn_called == true);
+    }
+}
+
+TEST_CASE("execute_bootstrap_duel picks the conservative minimum",
+          "[SmallN][Refactor][DuelKernel]")
+{
+    using ResamplerT = mkc_timeseries::IIDResampler<Decimal>;
+    
+    // Setup data
+    std::vector<Decimal> returns(100, D(0.001));
+    ResamplerT resampler;
+    StrategyT strategy;
+    double ann_factor = 252.0;
+    std::ostringstream oss;
+    
+    SECTION("Scenario A: m-out-of-n LB < BCa LB -> Returns m-out-of-n") {
+        // Configure Mock: MN=0.01, BCa=0.02
+        TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{
+            .mn_lb_val = 0.01,
+            .bca_lb_val = 0.02,
+            .m_sub_used = 50
+        };
+        FactoryT factory(0);
+
+        auto result = execute_bootstrap_duel<ResamplerT, Decimal, GeoStatT>(
+            returns, resampler, /*rho=*/0.5, /*L=*/3, ann_factor, 0.95, 1000, 1.96,
+            strategy, factory, 0, 0, &oss, "TestResampler"
+        );
+
+        REQUIRE(num::to_double(result.per_lower) == Approx(0.01));
+        REQUIRE(result.effB_bca == 1000);
+        
+        // Verify diagnostics
+        REQUIRE(std::string(result.resampler_name) == "TestResampler");
+        // Check logs for Duel details
+        std::string logs = oss.str();
+        REQUIRE(logs.find("m/n") != std::string::npos);
+        REQUIRE(logs.find("BCa") != std::string::npos);
+    }
+
+    SECTION("Scenario B: BCa LB < m-out-of-n LB -> Returns BCa") {
+        // Configure Mock: MN=0.03, BCa=0.015
+        TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{
+            .mn_lb_val = 0.03,
+            .bca_lb_val = 0.015,
+            .m_sub_used = 50
+        };
+        FactoryT factory(0);
+
+        auto result = execute_bootstrap_duel<ResamplerT, Decimal, GeoStatT>(
+            returns, resampler, /*rho=*/0.5, /*L=*/3, ann_factor, 0.95, 1000, 1.96,
+            strategy, factory, 0, 0, nullptr, "TestResampler"
+        );
+
+        REQUIRE(num::to_double(result.per_lower) == Approx(0.015));
+    }
+    
+    SECTION("Scenario C: Handles Diagnostics Logging") {
+         TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{
+            .mn_lb_val = 0.01,
+            .bca_lb_val = 0.01,
+            .m_sub_used = 80
+        };
+        FactoryT factory(0);
+
+        execute_bootstrap_duel<ResamplerT, Decimal, GeoStatT>(
+            returns, resampler, 0.8, 3, ann_factor, 0.95, 1000, 1.96,
+            strategy, factory, 0, 0, &oss, "MyResampler"
+        );
+        
+        std::string logs = oss.str();
+        
+        // Should report the shrink rate (1.0 - 0.8 = 0.2)
+        REQUIRE(logs.find("shrink=0.200") != std::string::npos);
+        // Should report sigma calculation
+        REQUIRE(logs.find("σ(per-period)") != std::string::npos);
+    }
+}

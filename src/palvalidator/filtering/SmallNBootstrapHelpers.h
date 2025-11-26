@@ -1530,7 +1530,259 @@ namespace palvalidator::bootstrap_helpers
     const char* resampler_name{""};///< Name of the chosen resampler (IID or Block).
   };
 
-    // Forward declaration so the 11-arg legacy overload can delegate to it
+  /**
+   * @brief Determines the optimal m-out-of-n subsampling ratio (rho).
+   *
+   * @details
+   * This function resolves the policy for the subsampling ratio:
+   * 1. Explicit Override: If the user provided a fixed `requested_rho` > 0,
+   * it clamps that value to valid bounds and returns it.
+   * 2. Adaptive Policy: If `requested_rho` <= 0, it instantiates the
+   * TailVolStabilityPolicy (Prior + Refinement) to calculate the optimal
+   * ratio based on data characteristics.
+   *
+   * @tparam Num Numeric type.
+   * @tparam GeoStat Statistic functor type.
+   * @tparam StrategyT Strategy type.
+   * @tparam ResamplerT The resampler type (IID or Block).
+   * @tparam BootstrapFactoryT Factory type.
+   *
+   * @param requested_rho The user-requested ratio (pass <= 0 for adaptive).
+   * @param returns The vector of returns.
+   * @param ctx The statistical context (volatility, skew, tail index).
+   * @param L_small The block length to use.
+   * @param confLevel The confidence level.
+   * @param B The bootstrap replicates budget.
+   * @param strategy The strategy object.
+   * @param factory The bootstrap factory.
+   * @param resampler The resampler instance.
+   * @param os Optional output stream for logging.
+   * @param stageTag CRN tag.
+   * @param fold CRN fold.
+   * @return double The final subsampling ratio to use.
+   */
+  template <typename Num, typename GeoStat, typename StrategyT, typename ResamplerT, typename BootstrapFactoryT>
+  double resolve_adaptive_subsample_ratio(
+					  double requested_rho,
+					  const std::vector<Num>& returns,
+					  const MNRatioContext& ctx,
+					  std::size_t L_small,
+					  double confLevel,
+					  std::size_t B,
+					  StrategyT& strategy,
+					  BootstrapFactoryT& factory,
+					  ResamplerT& resampler,
+					  std::ostream* os,
+					  int stageTag,
+					  int fold)
+  {
+    const std::size_t n = ctx.getN();
+
+    // Case 1: Explicit User Request
+    if (requested_rho > 0.0)
+      {
+	if (n < 3) return 1.0;
+
+	// Clamping logic (from original implementation)
+	const double minRho = 2.0 / static_cast<double>(n);
+	const double maxRho = (n > 2)
+	  ? static_cast<double>(n - 1) / static_cast<double>(n)
+	  : 0.5;
+
+	return std::max(minRho, std::min(requested_rho, maxRho));
+      }
+
+    // Case 2: Adaptive TailVolStability Policy
+    // Using the heavy-tail/volatility prior and the LB-stability refinement
+    using RefineT = LBStabilityRefinementPolicy<Num, GeoStat, StrategyT, ResamplerT, BootstrapFactoryT>;
+  
+    TailVolPriorPolicy priorPolicy;
+    RefineT refinePolicy({ -0.10, 0.0, +0.10 }); // Search +/- 10% around prior
+
+    TailVolStabilityPolicy<Num, GeoStat, StrategyT, ResamplerT, BootstrapFactoryT, RefineT>
+      policy(priorPolicy, refinePolicy);
+
+    double calculated_rho = policy.computeRatio(returns, ctx, L_small, confLevel, B,
+						strategy, factory, resampler, os, stageTag, fold);
+
+    // Logging specific to the adaptive decision
+    if (os)
+      {
+	const double m_cont = calculated_rho * static_cast<double>(n);
+	(*os) << "   [Bootstrap] Adaptive m/n (TailVolStabilityPolicy): n=" << n
+	      << "  sigmaAnn=" << std::fixed << std::setprecision(2) << (ctx.getSigmaAnn() * 100.0) << "%"
+	      << "  skew=" << std::setprecision(3) << ctx.getSkew()
+	      << "  exkurt=" << ctx.getExKurt()
+	      << "  tailIndex=" << std::setprecision(3) << ctx.getTailIndex()
+	      << "  heavy_tails=" << (ctx.hasHeavyTails() ? "yes" : "no")
+	      << "  m≈" << std::setprecision(2) << m_cont
+	      << "  ratio=" << std::setprecision(3) << calculated_rho
+	      << "\n";
+      }
+
+    return calculated_rho;
+  }
+
+  /**
+   * @brief Executes the "Duel" between m-out-of-n and BCa bootstraps.
+   *
+   * @details
+   * This kernel function performs the heavy lifting:
+   * 1. Runs the m-out-of-n bootstrap using the provided resampler and ratio.
+   * 2. Runs the BCa bootstrap using the same resampler.
+   * 3. Logs detailed diagnostics (shrinkage rates, implied sigma).
+   * 4. Returns the result containing the MINIMUM of the two Lower Bounds.
+   *
+   * @tparam ResamplerT The specific resampler type (IID or Block).
+   * @tparam Num Numeric type.
+   * @tparam GeoStat Statistic functor type.
+   * @tparam StrategyT Strategy type.
+   * @tparam BootstrapFactoryT Factory type.
+   *
+   * @param returns The vector of returns.
+   * @param resampler The instantiated resampler object.
+   * @param rho The subsampling ratio to use for m-out-of-n.
+   * @param L_small The block length.
+   * @param annualizationFactor Factor to annualize results.
+   * @param confLevel Confidence level.
+   * @param B Number of bootstrap replicates.
+   * @param z Z-score corresponding to confidence level (for sigma calc).
+   * @param strategy The strategy object.
+   * @param factory The bootstrap factory.
+   * @param stageTag CRN tag.
+   * @param fold CRN fold.
+   * @param os Optional output stream.
+   * @param resamplerName String name of the resampler for reporting.
+   * @return SmallNConservativeResult Combined result struct.
+   */
+  template <typename ResamplerT, typename Num, typename GeoStat, typename StrategyT, typename BootstrapFactoryT>
+  SmallNConservativeResult<Num, GeoStat, StrategyT>
+  execute_bootstrap_duel(
+			 const std::vector<Num>& returns,
+			 ResamplerT& resampler,
+			 double rho,
+			 std::size_t L_small,
+			 double annualizationFactor,
+			 double confLevel,
+			 std::size_t B,
+			 double z,
+			 StrategyT& strategy,
+			 BootstrapFactoryT& factory,
+			 int stageTag,
+			 int fold,
+			 std::ostream* os,
+			 const char* resamplerName)
+  {
+    SmallNConservativeResult<Num, GeoStat, StrategyT> r{};
+    r.L_used = L_small;
+    r.resampler_name = resamplerName;
+
+    const std::size_t n = returns.size();
+
+    // ---------------------------------------------------------
+    // 1. Run m-out-of-n Bootstrap
+    // ---------------------------------------------------------
+    auto [mnBoot, mnCrn] = factory.template makeMOutOfN<Num, GeoStat, ResamplerT>(B,
+										  confLevel,
+										  rho,
+										  resampler,
+										  strategy,
+										  stageTag,
+										  static_cast<int>(L_small),
+										  fold);
+
+    auto mnR = mnBoot.run(returns, GeoStat(), mnCrn);
+    const Num lbP_mn = mnR.lower;
+
+    r.m_sub = mnR.m_sub;
+    r.effB_mn = mnR.effective_B;
+
+    // --- Diagnostics for m-out-of-n ---
+    if (os)
+      {
+	const double mn_ratio = (n > 0)
+	  ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n))
+	  : 0.0;
+	const double shrinkRate = 1.0 - mn_ratio;
+
+	(*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
+	      << "  n=" << n
+	      << "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
+	      << "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
+	      << "\n";
+
+	// Attempt to calculate implied sigma if upper bound is available
+	if constexpr (detail::has_member_upper<decltype(mnR)>::value)
+	  {
+	    const double width = std::max(0.0, num::to_double(mnR.upper - mnR.lower));
+	    const double sigma_mn = (z > 0.0)
+	      ? (width / (2.0 * z))
+	      : std::numeric_limits<double>::quiet_NaN();
+	    const double var = (sigma_mn * sigma_mn) * 100.0;
+
+	    (*os) << "   [Diag] m/n σ(per-period)≈ " << sigma_mn
+		  << "  var≈ " << var
+		  << "  effB=" << mnR.effective_B
+		  << "  L=" << mnR.L
+		  << "\n";
+	  }
+	else
+	  {
+	    (*os) << "   [Diag] m/n σ: skipped (no two-sided CI available)\n";
+	  }
+      }
+
+    // ---------------------------------------------------------
+    // 2. Run BCa Bootstrap
+    // ---------------------------------------------------------
+    auto bca = factory.template makeBCa<Num>(
+					     returns, B, confLevel, GeoStat(), resampler,
+					     strategy, stageTag, static_cast<int>(L_small), fold);
+
+    const Num lbP_bca = bca.getLowerBound();
+    r.effB_bca = B;
+
+    // --- Diagnostics for BCa ---
+    if (os)
+      {
+	if constexpr (detail::has_getUpperBound<decltype(bca)>::value)
+	  {
+	    const Num ubP_bca  = bca.getUpperBound();
+	    const double width = std::max(0.0, num::to_double(ubP_bca - lbP_bca));
+	    const double sigma_bca = (z > 0.0)
+	      ? (width / (2.0 * z))
+	      : std::numeric_limits<double>::quiet_NaN();
+	    const double var = (sigma_bca * sigma_bca) * 100.0;
+
+	    (*os) << "   [Diag] BCa σ(per-period)≈ " << sigma_bca
+		  << "  var≈ " << var
+		  << "  effB=" << B
+		  << "  L=" << L_small
+		  << "\n";
+	  }
+	else
+	  {
+	    (*os) << "   [Diag] BCa σ: skipped (upper bound API not available)\n";
+	  }
+      }
+
+    // ---------------------------------------------------------
+    // 3. Combine (Conservative Minimum)
+    // ---------------------------------------------------------
+    r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
+    r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(
+								 r.per_lower, annualizationFactor);
+
+    if (os)
+      {
+	(*os) << "   [Bootstrap] SmallNResampler=" << r.resampler_name
+	      << "  (L_small=" << r.L_used << ")\n";
+      }
+
+    return r;
+  }
+
+  // Forward declaration so the 11-arg legacy overload can delegate to it
   template <typename Num, typename GeoStat, typename StrategyT,
             typename BootstrapFactoryT = palvalidator::bootstrap_cfg::BootstrapFactory>
   SmallNConservativeResult<Num, GeoStat, StrategyT>
@@ -1592,7 +1844,7 @@ namespace palvalidator::bootstrap_helpers
                                   double                   annualizationFactor,
                                   double                   confLevel,
                                   std::size_t              B,
-                                  double                   rho_m,                        // if <=0 → use TailVolStabilityPolicy
+                                  double                   rho_m,  // if <=0 → use TailVolStabilityPolicy
                                   StrategyT&               strategy,
                                   BootstrapFactoryT&       bootstrapFactory,
                                   std::ostream*            os = nullptr,
@@ -1600,411 +1852,161 @@ namespace palvalidator::bootstrap_helpers
                                   int                      fold = 0)
   {
     const auto [skew, exkurt] =
-        mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
+      mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
     const bool heavy = has_heavy_tails_wide(skew, exkurt);
     const std::optional<bool> heavy_override = heavy ? std::optional<bool>(true)
-                                                     : std::nullopt;
+      : std::nullopt;
 
     return conservative_smallN_lower_bound<Num, GeoStat, StrategyT, BootstrapFactoryT>(
-        returns,
-        L,
-        annualizationFactor,
-        confLevel,
-        B,
-        rho_m,
-        strategy,
-        bootstrapFactory,
-        os,
-        stageTag,
-        fold,
-        heavy_override);
+										       returns,
+										       L,
+										       annualizationFactor,
+										       confLevel,
+										       B,
+										       rho_m,
+										       strategy,
+										       bootstrapFactory,
+										       os,
+										       stageTag,
+										       fold,
+										       heavy_override);
   }
 
   /**
    * @brief Core implementation of the conservative small-N lower bound logic.
    *
-   * Executes a "duel" between the m-out-of-n bootstrap and the BCa bootstrap, returning
-   * the more conservative (minimum) Lower Bound of the two.
-   *
    * @details
-   * **Purpose:**
-   * Standard bootstrapping (n-out-of-n) often under-estimates risk in small samples (N < 40)
-   * because it overfits to the specific realized history. This function mitigates that by:
+   * This function orchestrates the "Small-N" bootstrap process:
+   * 1. Analyzes distribution (Vol, Skew, Tail Index).
+   * 2. Selects the appropriate Resampler (IID or StationaryBlock) based on
+   * data characteristics or overrides.
+   * 3. Calculates the optimal m-out-of-n ratio (using `resolve_adaptive_subsample_ratio`).
+   * 4. Executes the "Duel" (m/n vs BCa) via `execute_bootstrap_duel`.
    *
-   * 1. Adaptive subsampling: When `rho_m <= 0`, uses a TailVolStabilityPolicy:
-   *    - Tail/volatility-based prior (`TailVolPriorPolicy`) to propose a base m/n ratio
-   *      (e.g., 80% for heavy tail / high volatility, 50% otherwise).
-   *    - LB-stability refinement (`LBStabilityRefinementPolicy`) that probes nearby ratios
-   *      and chooses the one with the most stable bootstrap interval.
-   *    If `rho_m > 0`, that explicit ratio is used (clamped) and no refinement occurs.
-   *
-   * 2. Resampler Selection: Automatically choosing between an IID Resampler (for balanced data)
-   *    and a Stationary Block Resampler (for streaky/heavy-tailed data).
-   *
-   * 3. Conservative Policy: It runs *both* m-out-of-n and BCa, then returns `min(LB_mn, LB_bca)`.
-   *
-   * @param returns The vector of high-resolution returns.
-   * @param L The requested block length. Note: For small N, this is internally clamped to [2, 3].
-   * @param annualizationFactor Factor to annualize the resulting per-period statistic.
-   * @param confLevel Confidence level (0.5 < CL < 1.0).
-   * @param B Number of bootstrap replicates.
-   * @param rho_m The subsampling ratio. **Important:** Pass <= 0.0 to enable the
-   *              TailVolStabilityPolicy (Recommended).
-   * @param strategy The strategy object (used for CRN key generation).
-   * @param bootstrapFactory Factory for creating the specific bootstrap engines.
-   * @param os Optional stream for detailed logging (shrinkage rates, effective sigma, variance).
-   * @param stageTag CRN tag for reproducibility.
-   * @param fold CRN fold for reproducibility.
-   * @param heavy_tails_override Optional boolean. If set, forces Block resampling (true) or
-   *        IID resampling (false), bypassing internal detection heuristics.
-   *
-   * @return SmallNConservativeResult Struct containing the minimum LB, the chosen resampler name,
-   *         and the effective subsample size used.
+   * @tparam Num Numeric type.
+   * @tparam GeoStat Statistic functor.
+   * @tparam StrategyT Strategy type.
+   * @tparam BootstrapFactoryT Factory type.
    */
   template <typename Num, typename GeoStat, typename StrategyT,
-            typename BootstrapFactoryT>
+	    typename BootstrapFactoryT>
   inline SmallNConservativeResult<Num, GeoStat, StrategyT>
-  conservative_smallN_lower_bound(const std::vector<Num>& returns,
-                                  std::size_t              L,
-                                  double                   annualizationFactor,
-                                  double                   confLevel,
-                                  std::size_t              B,
-                                  double                   rho_m,   // if <=0 → use TailVolStabilityPolicy
-                                  StrategyT&               strategy,
-                                  BootstrapFactoryT&       bootstrapFactory,
-                                  std::ostream*            os,       // optional stage logger
-                                  int                      stageTag,
-                                  int                      fold,
-                                  std::optional<bool>      heavy_tails_override)
+  conservative_smallN_lower_bound(
+				  const std::vector<Num>& returns,
+				  std::size_t              L,
+				  double                   annualizationFactor,
+				  double                   confLevel,
+				  std::size_t              B,
+				  double                   rho_m,   // if <=0 → use TailVolStabilityPolicy
+				  StrategyT&               strategy,
+				  BootstrapFactoryT&       bootstrapFactory,
+				  std::ostream* os,       // optional stage logger
+				  int                      stageTag,
+				  int                      fold,
+				  std::optional<bool>      heavy_tails_override)
   {
-    using IIDResampler  = mkc_timeseries::IIDResampler<Num>;
-    using BlockValueRes = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
-
+    // ---------------------------------------------------------
+    // 1. Setup & Context Analysis
+    // ---------------------------------------------------------
     const std::size_t n = returns.size();
 
-    // Basic distributional diagnostics for the m/n policy
-    const auto [mean, variance] =
-        mkc_timeseries::StatUtils<Num>::computeMeanAndVarianceFast(returns);
+    const auto [mean, variance] = mkc_timeseries::StatUtils<Num>::computeMeanAndVarianceFast(returns);
     const double sigma = std::sqrt(num::to_double(variance));
-
     double sigmaAnn = sigma;
-    if (annualizationFactor > 0.0)
-      sigmaAnn *= std::sqrt(annualizationFactor);
+    if (annualizationFactor > 0.0) sigmaAnn *= std::sqrt(annualizationFactor);
 
-    const auto [skew, exkurt] =
-        mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
-
+    const auto [skew, exkurt] = mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
+    const double tailIndex    = estimate_left_tail_index_hill(returns);
+   
+    // Detect Heavy Tails
     const bool heavy_from_shape = has_heavy_tails_wide(skew, exkurt);
     const bool heavy_flag = heavy_tails_override.has_value()
-                            ? *heavy_tails_override
-                            : heavy_from_shape;
+      ? *heavy_tails_override
+      : heavy_from_shape;
 
-    const double tailIndex = estimate_left_tail_index_hill(returns);
+    MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIndex, heavy_flag);
 
-    MNRatioContext ctx(n,
-                       sigmaAnn,
-                       skew,
-                       exkurt,
-                       tailIndex,
-                       heavy_flag);
-
-    // Small-N dependence proxies (cheap and deterministic)
-    const double      ratio_pos = sign_positive_ratio(returns);
-    const std::size_t runlen    = longest_sign_run(returns);
-    const std::size_t L_small   = clamp_smallL(L);
-
-    // Decide resampler with optional heavy-tail override + tiny MC guard
+    // ---------------------------------------------------------
+    // 2. Resampler Selection Logic
+    // ---------------------------------------------------------
     bool use_block = false;
-    constexpr std::size_t N_BLOCK_ALWAYS = 60; // tweakable
+    constexpr std::size_t N_BLOCK_ALWAYS = 60;
 
     if (heavy_tails_override.has_value())
-    {
-      use_block = *heavy_tails_override;           // explicit caller choice
-    }
+      {
+	use_block = *heavy_tails_override;
+      }
     else if (n <= N_BLOCK_ALWAYS)
-    {
-      use_block = true;                            // never IID at tiny n
-    }
+      {
+	use_block = true; // Force block for very small samples
+      }
     else
-    {
-      // Original heuristic (kept for larger samples)
-      const bool choose_block_fast = choose_block_smallN(ratio_pos, n, runlen);
-      use_block = choose_block_fast;
-    }
+      {
+	// Use dependence proxies for larger N
+	const double ratio_pos   = sign_positive_ratio(returns);
+	const std::size_t runlen = longest_sign_run(returns);
+	use_block = choose_block_smallN(ratio_pos, n, runlen);
+      }
 
-    const char* chosenName = use_block
-      ? "StationaryMaskValueResamplerAdapter"
-      : "IIDResampler";
-
-    SmallNConservativeResult<Num, GeoStat, StrategyT> r{};
-    r.L_used = L_small;
-    r.resampler_name = chosenName;
-
-    // z for two-sided CL (for CI→σ back-out)
+    const std::size_t L_small = clamp_smallL(L);
     const double z = z_from_two_sided_CL(confLevel);
 
-    // Tail/vol prior policy (can later be made configurable)
-    TailVolPriorPolicy priorPolicy;
+    // ---------------------------------------------------------
+    // 3. Execution Dispatch via Generic Lambda
+    // ---------------------------------------------------------
+    // This lambda encapsulates the policy resolution and execution steps.
+    auto run_variant = [&](auto& resampler, const char* name)
+    {
+      // Use std::decay_t to strip the reference (T&) from decltype(resampler).
+      // This ensures ResamplerT is passed as the pure Value Type (T) to the template,
+      // matching the expectation of std::is_same_v in the tests.
+      using ResamplerType = std::decay_t<decltype(resampler)>;
 
-    // Helper to clamp an explicit rho into [2/n, (n-1)/n]
-    auto clamp_explicit_rho = [n](double rho_raw) {
-      if (n < 3) return 1.0;
-      const double minRho = 2.0 / static_cast<double>(n);
-      const double maxRho = (n > 2)
-          ? static_cast<double>(n - 1) / static_cast<double>(n)
-          : 0.5;
-      return std::max(minRho, std::min(rho_raw, maxRho));
+      // A. Resolve Ratio (Policy)
+      double final_rho = resolve_adaptive_subsample_ratio<Num, GeoStat>(rho_m,
+									returns,
+									ctx,
+									L_small,
+									confLevel,
+									B,
+									strategy,
+									bootstrapFactory,
+									resampler,
+									os,
+									stageTag,
+									fold);
+
+      // B. Execute Duel (Kernel)
+      return execute_bootstrap_duel<ResamplerType, Num, GeoStat>(returns,
+								       resampler,
+								       final_rho,
+								       L_small,
+								       annualizationFactor,
+								       confLevel,
+								       B,
+								       z,
+								       strategy,
+								       bootstrapFactory,
+								       stageTag,
+								       fold,
+								       os,
+								       name);
     };
 
-    // Decide final m/n ratio
-    double rho = 1.0;
-
-    if (rho_m > 0.0)
-    {
-      // Caller has explicitly specified m/n; respect it (with clamping) and
-      // do NOT run the refinement logic.
-      rho = clamp_explicit_rho(rho_m);
-    }
-    else
-    {
-      if (use_block)
-      {
-        using RefineT = LBStabilityRefinementPolicy<Num, GeoStat, StrategyT, BlockValueRes, BootstrapFactoryT>;
-        RefineT refinePolicy({ -0.10, 0.0, +0.10 });
-
-        TailVolStabilityPolicy<Num, GeoStat, StrategyT, BlockValueRes, BootstrapFactoryT, RefineT>
-            policy(priorPolicy, refinePolicy);
-
-        BlockValueRes resampler(L_small);
-        rho = policy.computeRatio(returns,
-                                  ctx,
-                                  L_small,
-                                  confLevel,
-                                  B,
-                                  strategy,
-                                  bootstrapFactory,
-                                  resampler,
-                                  os,
-                                  stageTag,
-                                  fold);
-      }
-      else
-      {
-        using RefineT = LBStabilityRefinementPolicy<Num, GeoStat, StrategyT, IIDResampler, BootstrapFactoryT>;
-        RefineT refinePolicy({ -0.10, 0.0, +0.10 });
-
-        TailVolStabilityPolicy<Num, GeoStat, StrategyT, IIDResampler, BootstrapFactoryT, RefineT>
-            policy(priorPolicy, refinePolicy);
-
-        IIDResampler resampler;
-        rho = policy.computeRatio(returns,
-                                  ctx,
-                                  L_small,
-                                  confLevel,
-                                  B,
-                                  strategy,
-                                  bootstrapFactory,
-                                  resampler,
-                                  os,
-                                  stageTag,
-                                  fold);
-      }
-    }
-
-    if (os)
-    {
-      const double m_cont = rho * static_cast<double>(n);
-      (*os) << "   [Bootstrap] Adaptive m/n (TailVolStabilityPolicy): n=" << n
-            << "  sigmaAnn=" << std::fixed << std::setprecision(2) << (sigmaAnn * 100.0) << "%"
-            << "  skew=" << std::setprecision(3) << skew
-            << "  exkurt=" << exkurt
-            << "  tailIndex=" << std::setprecision(3) << tailIndex
-            << "  heavy_tails=" << (heavy_flag ? "yes" : "no")
-            << "  m≈" << std::setprecision(2) << m_cont
-            << "  ratio=" << std::setprecision(3) << rho
-            << "\n";
-    }
-
-    // ---------- Run engines on the chosen resampler with the final rho ----------
+    // ---------------------------------------------------------
+    // 4. Branch & Execute
+    // ---------------------------------------------------------
     if (use_block)
-    {
-      BlockValueRes resampler(L_small);
-
-      // m-out-of-n on SAME resampler
-      GeoStat statGeo;
-      auto [mnBoot, mnCrn] =
-          bootstrapFactory.template makeMOutOfN<Num, GeoStat, BlockValueRes>(
-              B, confLevel, rho, resampler, strategy, stageTag, /*L*/ static_cast<int>(L_small), fold);
-
-      auto mnR       = mnBoot.run(returns, GeoStat(), mnCrn);
-      const Num lbP_mn = mnR.lower;
-
-      // Log m_sub/n shrink
-      const double mn_ratio   = (n > 0)
-          ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n))
-          : 0.0;
-      const double shrinkRate = 1.0 - mn_ratio;
-      if (os)
       {
-        (*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
-              << "  n=" << n
-              << "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
-              << "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
-              << "\n";
+	using BlockValueRes = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+	BlockValueRes resampler(L_small);
+	return run_variant(resampler, "StationaryMaskValueResamplerAdapter");
       }
-
-      // Try to log an effective σ from CI width if 'upper' is available on mnR
-      if (os)
-      {
-        if constexpr (detail::has_member_upper<decltype(mnR)>::value)
-        {
-          const double width = std::max(0.0, num::to_double(mnR.upper - mnR.lower));
-          const double sigma_mn = (z > 0.0)
-                                  ? (width / (2.0 * z))
-                                  : std::numeric_limits<double>::quiet_NaN();
-          const double var = (sigma_mn * sigma_mn) * 100.0;
-          (*os) << "   [Diag] m/n σ(per-period)≈ " << sigma_mn
-                << "  var≈ " << var
-                << "  effB=" << mnR.effective_B
-                << "  L=" << mnR.L
-                << "\n";
-        }
-        else
-        {
-          (*os) << "   [Diag] m/n σ: skipped (no two-sided CI available)\n";
-        }
-      }
-
-      // BCa on SAME resampler
-      auto bca        = bootstrapFactory.template makeBCa<Num>(
-          returns, B, confLevel, statGeo, resampler,
-          strategy, stageTag, /*L*/ static_cast<int>(L_small), fold);
-      const Num lbP_bca = bca.getLowerBound();
-
-      // Try to log an effective σ from CI width if getUpperBound() exists
-      if (os)
-      {
-        if constexpr (detail::has_getUpperBound<decltype(bca)>::value)
-        {
-          const Num ubP_bca  = bca.getUpperBound();
-          const double width = std::max(0.0, num::to_double(ubP_bca - lbP_bca));
-          const double sigma_bca = (z > 0.0)
-                                   ? (width / (2.0 * z))
-                                   : std::numeric_limits<double>::quiet_NaN();
-          const double var = (sigma_bca * sigma_bca) * 100.0;
-          (*os) << "   [Diag] BCa σ(per-period)≈ " << sigma_bca
-                << "  var≈ " << var
-                << "  effB=" << B
-                << "  L=" << L_small
-                << "\n";
-        }
-        else
-        {
-          (*os) << "   [Diag] BCa σ: skipped (upper bound API not available)\n";
-        }
-      }
-
-      // Combine (conservative: min of engines)
-      r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
-      r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(
-          r.per_lower, annualizationFactor);
-      r.m_sub     = mnR.m_sub;       // from MOutOfN result
-      r.effB_mn   = mnR.effective_B; // number of usable replicates
-      r.effB_bca  = B;               // BCa effective_B equals B here
-    }
     else
-    {
-      IIDResampler resampler;
-
-      // m-out-of-n on SAME resampler
-      GeoStat statGeo;
-      auto [mnBoot, mnCrn] =
-          bootstrapFactory.template makeMOutOfN<Num, GeoStat, IIDResampler>(
-              B, confLevel, rho, resampler, strategy, stageTag, /*L*/ static_cast<int>(L_small), fold);
-
-      auto mnR       = mnBoot.run(returns, GeoStat(), mnCrn);
-      const Num lbP_mn = mnR.lower;
-
-      // Log m_sub/n shrink
-      const double mn_ratio   = (n > 0)
-          ? (static_cast<double>(mnR.m_sub) / static_cast<double>(n))
-          : 0.0;
-      const double shrinkRate = 1.0 - mn_ratio;
-      if (os)
       {
-        (*os) << "   [Bootstrap] m_sub=" << mnR.m_sub
-              << "  n=" << n
-              << "  m/n=" << std::fixed << std::setprecision(3) << mn_ratio
-              << "  shrink=" << std::fixed << std::setprecision(3) << shrinkRate
-              << "\n";
+	using IIDResampler = mkc_timeseries::IIDResampler<Num>;
+	IIDResampler resampler;
+	return run_variant(resampler, "IIDResampler");
       }
-
-      // Try to log an effective σ from CI width if 'upper' is available on mnR
-      if (os)
-      {
-        if constexpr (detail::has_member_upper<decltype(mnR)>::value)
-        {
-          const double width = std::max(0.0, num::to_double(mnR.upper - mnR.lower));
-          const double sigma_mn = (z > 0.0)
-                                  ? (width / (2.0 * z))
-                                  : std::numeric_limits<double>::quiet_NaN();
-          const double var = (sigma_mn * sigma_mn) * 100.0;
-          (*os) << "   [Diag] m/n σ(per-period)≈ " << sigma_mn
-                << "  var≈ " << var
-                << "  effB=" << mnR.effective_B
-                << "  L=" << mnR.L
-                << "\n";
-        }
-        else
-        {
-          (*os) << "   [Diag] m/n σ: skipped (no two-sided CI available)\n";
-        }
-      }
-
-      // BCa on SAME resampler
-      auto bca        = bootstrapFactory.template makeBCa<Num>(
-          returns, B, confLevel, statGeo, resampler,
-          strategy, stageTag, /*L*/ static_cast<int>(L_small), fold);
-      const Num lbP_bca = bca.getLowerBound();
-
-      // Try to log an effective σ from CI width if getUpperBound() exists
-      if (os)
-      {
-        if constexpr (detail::has_getUpperBound<decltype(bca)>::value)
-        {
-          const Num ubP_bca  = bca.getUpperBound();
-          const double width = std::max(0.0, num::to_double(ubP_bca - lbP_bca));
-          const double sigma_bca = (z > 0.0)
-                                   ? (width / (2.0 * z))
-                                   : std::numeric_limits<double>::quiet_NaN();
-          const double var = (sigma_bca * sigma_bca) * 100.0;
-          (*os) << "   [Diag] BCa σ(per-period)≈ " << sigma_bca
-                << "  var≈ " << var
-                << "  effB=" << B
-                << "  L=" << L_small
-                << "\n";
-        }
-        else
-        {
-          (*os) << "   [Diag] BCa σ: skipped (upper bound API not available)\n";
-        }
-      }
-
-      // Combine (conservative: min of engines)
-      r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
-      r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(
-          r.per_lower, annualizationFactor);
-      r.m_sub     = mnR.m_sub;       // from MOutOfN result
-      r.effB_mn   = mnR.effective_B; // number of usable replicates
-      r.effB_bca  = B;               // BCa effective_B equals B here
-    }
-
-    if (os)
-    {
-      (*os) << "   [Bootstrap] SmallNResampler=" << r.resampler_name
-            << "  (L_small=" << r.L_used << ")\n";
-    }
-
-    return r;
   }
 } // namespace palvalidator::bootstrap_helpers
