@@ -102,11 +102,12 @@ namespace palvalidator::filtering
   {
   }
 
-  FilterDecision FilteringPipeline::executeForStrategy(
-						       StrategyAnalysisContext& ctx,
+  FilterDecision FilteringPipeline::executeForStrategy(StrategyAnalysisContext& ctx,
 						       std::ostream& os)
   {
     using mkc_timeseries::DecimalConstants;
+
+    bool runAdvisoryStages = false;
     
     // Stage 1: Backtesting
     auto backtestDecision = mBacktestingStage.execute(ctx, os);
@@ -153,59 +154,60 @@ namespace palvalidator::filtering
     os << "✓ Strategy passed primary validation gate.\n"; //
 
     // --- Supplemental Analysis Stages (for passed strategies) ---
-
-    // Stage 5: Robustness Analysis
-    const auto divergence = palvalidator::analysis::DivergenceAnalyzer::assessAMGMDivergence(
-											     bootstrap.annualizedLowerBoundGeo,
-											     bootstrap.annualizedLowerBoundMean,
-											     0.05, 0.30);
-
-    const bool nearHurdle = false; // Set to false to remove this veto trigger for specialists
-    const bool smallN = (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
-    const bool mustRobust = divergence.flagged || nearHurdle || smallN;
-
-    if (mustRobust)
+    if (runAdvisoryStages)
       {
-        auto robustnessDecision =
-	  mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os, policy);
-        if (!robustnessDecision.passed())
+	// Stage 5: Robustness Analysis
+	const auto divergence = palvalidator::analysis::DivergenceAnalyzer::assessAMGMDivergence(
+												 bootstrap.annualizedLowerBoundGeo,
+												 bootstrap.annualizedLowerBoundMean,
+												 0.05, 0.30);
+
+	const bool nearHurdle = false; // Set to false to remove this veto trigger for specialists
+	const bool smallN = (ctx.highResReturns.size() < mRobustnessConfig.minTotalForSplit);
+	const bool mustRobust = divergence.flagged || nearHurdle || smallN;
+
+	if (mustRobust)
+	  {
+	    auto robustnessDecision =
+	      mRobustnessStage.execute(ctx, divergence, nearHurdle, smallN, os, policy);
+	    if (!robustnessDecision.passed())
+	      {
+		// NOTE: Veto is intentionally converted to an advisory for specialists
+		os << "   [INFO] Robustness check failed, but passing to MetaStrategy for final decision.\n";
+	      }
+	  }
+
+	// Stage 6: L-Sensitivity Stress
+	double lSensitivityRelVar = 0.0;
+    
+	// *** MODIFICATION POINT ***: Use zero hurdle for L-Sensitivity to enforce LB > 0 under stress
+	// We pass 0 to signal that the only requirement is a non-negative LB, not one > cost-hurdle.
+	auto lSensitivityDecision =
+	  executeLSensitivityStress(ctx, bootstrap, hurdle, lSensitivityRelVar, Num(0.0), os);
+    
+	if (!lSensitivityDecision.passed())
 	  {
 	    // NOTE: Veto is intentionally converted to an advisory for specialists
-	    os << "   [INFO] Robustness check failed, but passing to MetaStrategy for final decision.\n";
+	    os << "   [INFO] L-Sensitivity failed, but passing to MetaStrategy for final decision.\n";
+	  }
+
+	// Stage 7: Regime-Mix Stress
+	auto regimeMixDecision = mRegimeMixStage.execute(ctx, bootstrap, hurdle, os);
+	if (!regimeMixDecision.passed())
+	  {
+	    // NOTE: Veto is intentionally converted to an advisory for specialists
+	    os << "   [INFO] Regime-Mix failed, but passing to MetaStrategy for final decision.\n";
+	  }
+
+	// Stage 8: Fragile Edge Advisory
+	auto fragileEdgeDecision =
+	  mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
+	if (!fragileEdgeDecision.passed())
+	  {
+	    // NOTE: Veto is intentionally converted to an advisory for specialists
+	    os << "   [INFO] FragileEdge check failed, but passing to MetaStrategy for final decision.\n";
 	  }
       }
-
-    // Stage 6: L-Sensitivity Stress
-    double lSensitivityRelVar = 0.0;
-    
-    // *** MODIFICATION POINT ***: Use zero hurdle for L-Sensitivity to enforce LB > 0 under stress
-    // We pass 0 to signal that the only requirement is a non-negative LB, not one > cost-hurdle.
-    auto lSensitivityDecision =
-      executeLSensitivityStress(ctx, bootstrap, hurdle, lSensitivityRelVar, Num(0.0), os);
-    
-    if (!lSensitivityDecision.passed())
-      {
-	// NOTE: Veto is intentionally converted to an advisory for specialists
-        os << "   [INFO] L-Sensitivity failed, but passing to MetaStrategy for final decision.\n";
-      }
-
-    // Stage 7: Regime-Mix Stress
-    auto regimeMixDecision = mRegimeMixStage.execute(ctx, bootstrap, hurdle, os);
-    if (!regimeMixDecision.passed())
-      {
-	// NOTE: Veto is intentionally converted to an advisory for specialists
-	os << "   [INFO] Regime-Mix failed, but passing to MetaStrategy for final decision.\n";
-      }
-
-    // Stage 8: Fragile Edge Advisory
-    auto fragileEdgeDecision =
-      mFragileEdgeStage.execute(ctx, bootstrap, hurdle, lSensitivityRelVar, os);
-    if (!fragileEdgeDecision.passed())
-      {
-	// NOTE: Veto is intentionally converted to an advisory for specialists
-        os << "   [INFO] FragileEdge check failed, but passing to MetaStrategy for final decision.\n";
-      }
-
     // --- Success ---
     logPassedStrategy(ctx, bootstrap, policy, os);
     return FilterDecision::Pass();
