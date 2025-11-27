@@ -381,25 +381,50 @@ namespace palvalidator::bootstrap_helpers
     double      lightTailAlphaThreshold_;
     std::size_t nLargeThreshold_;
   };
-  
+
   /**
    * @brief Estimates the Pareto tail index (alpha) of the left tail (losses) using the Hill estimator.
    *
    * @details
-   * **Purpose:**
-   * To quantify "Tail Risk". This function isolates negative returns (losses), converts them to
-   * positive magnitudes, and estimates the decay rate of the tail distribution.
+   * Origin:
+   * Named after statistician Bruce M. Hill (1975), "A Simple General Approach to Inference About
+   *                                                  the Tail of a Distribution".
    *
-   * **Logic:**
-   * 1. Extract all negative returns and take their absolute value.
-   * 2. Sort them descending (largest loss first).
-   * 3. Take the top **k** extreme losses.
-   * 4. Compute the average logarithmic distance between the extreme losses and the k-th loss (the threshold).
-   * 5. Alpha = 1.0 / (Average Log Distance).
+   * Why his contribution was a breakthrough
+   *Before Hill's work, statisticians often tried to fit a single curve (like a Normal or Log-Normal distribution)
+   * to the entire dataset. The problem with this approach—specifically for assets like a
+   * 3x leveraged ETF—is that the "boring" middle data often overpowers the model, hiding the extreme risks
+   * in the tails.
    *
-   * **Interpretation:**
-   * - **Alpha < 2.0**: Very Heavy Tails (infinite variance region). High risk.
-   * - **Alpha > 4.0**: Light Tails (Gaussian-like). Low risk.
+   * Bruce Hill's insight was that you could ignore the middle of the distribution entirely.
+   * He demonstrated that if you isolate just the most extreme observations (the "tail") and
+   * treat them conditionally, they follow a predictable mathematical pattern (a Pareto distribution)
+   * regardless of what the rest of the data looks like.
+   *
+   * Purpose:
+   *
+   * To quantify "Hidden Tail Risk" that standard moments (Variance, Skewness, Kurtosis) often miss in small samples (N < 60).
+   * While standard metrics fit the entire curve (allowing the "boring middle" to dilute risk signals), the Hill estimator
+   * focuses exclusively on the extremes. This is critical for leveraged assets (e.g., 3x ETFs) where losses scale
+   * aggressively relative to the threshold.
+   *
+   * The Algorithm (Step-by-Step):
+   * 1. Isolate & Flip: Extract only negative returns (losses) and convert to positive magnitudes (e.g., -0.05 -> 0.05).
+   * 2. Sort: Order magnitudes descending (largest crash first).
+   * 3. Threshold: Select the top k worst losses. The k-th loss becomes the threshold (xk).
+   * 4. Measure Distance: Compute the "Hill Mean" (H), which is the average logarithmic distance of extremes beyond the threshold:
+   *
+   * H = (1/k) * Sum( ln( Loss[i] / Threshold ) )
+   *
+   * *Note: A large Hill Mean implies that once the threshold is broken, losses tend to run significantly deeper.*
+   *
+   * 5. Invert: The Tail Index Alpha = 1.0 / H.
+   *
+   * Interpretation:
+   * - Alpha < 2.0 (Infinite Variance / Very Heavy Tails): The "Wild" regime. The asset is capable of moves that are
+   * physically impossible under a standard bell curve. This often triggers high subsampling ratios (e.g., 0.8-0.9)
+   * in the bootstrap to prevent optimizing away black swan events.
+   * - Alpha > 4.0 (Light Tails): The "Mild" regime. Gaussian-like behavior where risk is well-contained.
    *
    * @tparam Num Numeric type.
    * @param returns The vector of raw returns.
@@ -422,7 +447,7 @@ namespace palvalidator::bootstrap_helpers
 	  losses.push_back(-v);
       }
 
-    constexpr std::size_t minLossesForHill = 8; // or 10
+    constexpr std::size_t minLossesForHill = 8;
 
     if (losses.size() < std::max<std::size_t>(k + 1, minLossesForHill))
       return -1.0; // treat tail index as "unknown" for small samples
