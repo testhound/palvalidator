@@ -198,7 +198,13 @@ namespace palvalidator
         const std::optional<Num>& currentConfiguredSlippage,
         const std::optional<palvalidator::filtering::OOSSpreadStats>& oosSpreadStats,
         std::ostream& outputStream) const;
-      
+
+      void performBlockLengthSensitivity(const std::vector<Num>& metaReturns,
+					 std::size_t calculatedL,
+					 double annualizationFactor,
+					 const Num& hurdle,
+					 std::ostream& outputStream) const;
+
       // Computes the observed longest losing streak and its (1 - alpha) bootstrap upper bound
       // Writes a one-line summary to `os`. Returns {observed, upperBound}.
       std::pair<int,int>

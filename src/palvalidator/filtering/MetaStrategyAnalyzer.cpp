@@ -1517,7 +1517,17 @@ namespace palvalidator
       logDrawdownAnalysis(risk.getDrawdownResults(),
                          btResult.getClosedPositionHistory().getNumPositions(),
                          outputStream);
-      
+
+      if (gates.allGatesPassed()) 
+	{
+	  // Only run sensitivity check if the strategy is a passer
+	  performBlockLengthSensitivity(btResult.getMetaReturns(), 
+					gates.getLMeta(), 
+					gates.getKeff(), 
+					gates.getHurdles().baseHurdle, // or finalRequiredReturn
+					outputStream
+					);
+	}      
       // --- Step 5: Return Final Aggregated Result ---
       return PyramidResults(
           config.getPyramidLevel(),
@@ -1887,10 +1897,10 @@ namespace palvalidator
      * A `BootstrapResults` struct containing period and annualized bounds.
      */
     MetaStrategyAnalyzer::BootstrapResults MetaStrategyAnalyzer::performBootstrapAnalysis(
-        const std::vector<Num>& metaReturns,
-        double annualizationFactor,
-        size_t blockLength,
-        std::ostream& outputStream) const
+											  const std::vector<Num>& metaReturns,
+											  double annualizationFactor,
+											  size_t blockLength,
+											  std::ostream& outputStream) const
     {
       // Block length for meta bootstrap
       using ResamplerT = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
@@ -1921,6 +1931,50 @@ namespace palvalidator
       return {lbGeoPeriod, lbMeanPeriod, lbGeoAnn, lbMeanAnn, blockLength};
     }
 
+    void MetaStrategyAnalyzer::performBlockLengthSensitivity(
+							     const std::vector<Num>& metaReturns,
+							     std::size_t calculatedL,
+							     double annualizationFactor,
+							     const Num& hurdle,
+							     std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      // Define multipliers to stress-test the block length
+      std::vector<double> multipliers = {0.5, 1.5, 2.0};
+    
+      outputStream << "\n" 
+		   << "      === Block Length Sensitivity Audit ===\n"
+		   << "      (Checking robustness against L variation)\n";
+
+      // Print the baseline (current result)
+      outputStream << "      Baseline (L=" << calculatedL << "): Included in analysis above.\n";
+
+      for (double mult : multipliers)
+	{
+	  // Calculate new L, ensuring it is at least 2 and at most n/2
+	  std::size_t newL = static_cast<std::size_t>(calculatedL * mult);
+	  newL = std::max<std::size_t>(2, newL);
+	  newL = std::min<std::size_t>(metaReturns.size() / 2, newL);
+
+	  // Skip if effective L didn't change (e.g., small L rounding)
+	  if (newL == calculatedL) continue; 
+
+	  // Run Bootstrap with new L
+	  auto results = performBootstrapAnalysis(metaReturns, annualizationFactor, newL, outputStream);
+        
+	  // Check vs Hurdle
+	  bool pass = (results.lbGeoAnn > hurdle);
+        
+	  outputStream << "      Sensitivity L=" << std::left << std::setw(4) << newL 
+		       << " (" << std::fixed << std::setprecision(1) << mult << "x): "
+		       << "LB=" << (results.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "% "
+		       << (pass ? "[PASS]" : "[FAIL]") 
+		       << "\n";
+	}
+      outputStream << "      ======================================\n\n";
+    }
+    
     /**
      * @brief Helper for Multi-Split: Bootstraps specific sub-segments.
      *
