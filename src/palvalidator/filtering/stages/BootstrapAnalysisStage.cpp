@@ -576,7 +576,7 @@ namespace palvalidator::filtering::stages
     const unsigned int medianHoldBars =
       ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod();
     R.medianHoldBars = medianHoldBars;
-    os << "Strategy Median holding period = " << medianHoldBars << "\n";
+    os << "\n" << "Strategy Median holding period = " << medianHoldBars << "\n";
 
     // Base calendar factor (e.g., 252 daily, etc.) retained for fallback only
     const double baseAnnFactor = computeAnnualizationFactor(ctx);
