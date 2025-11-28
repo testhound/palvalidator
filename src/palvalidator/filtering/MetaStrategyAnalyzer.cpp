@@ -1013,7 +1013,7 @@ namespace palvalidator
       }
       
       Num avgTarget = (count > 0) ? (sumTargets / Num(count)) : Num("0.01");
-      outputStream << "****** avgTarget = " << avgTarget << "*******" << ::std::endl << std::endl;
+
       // 2. Check Threshold (0.75% / 0.0075)
       // If avg target < 0.75%, we assume this is a Low Volatility / Micro-Target strategy.
       const bool isLowVolStrategy = (avgTarget < Num("0.75"));
@@ -1948,7 +1948,7 @@ namespace palvalidator
 		   << "      (Checking robustness against L variation)\n";
 
       // Print the baseline (current result)
-      outputStream << "      Baseline (L=" << calculatedL << "): Included in analysis above.\n";
+      outputStream << "      Baseline (L=" << calculatedL << "): Included in analysis above.\n" << std::endl;
 
       for (double mult : multipliers)
 	{
@@ -1970,7 +1970,7 @@ namespace palvalidator
 		       << " (" << std::fixed << std::setprecision(1) << mult << "x): "
 		       << "LB=" << (results.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "% "
 		       << (pass ? "[PASS]" : "[FAIL]") 
-		       << "\n";
+		       << "\n" << "\n";
 	}
       outputStream << "      ======================================\n\n";
     }
