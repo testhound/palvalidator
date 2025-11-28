@@ -149,37 +149,88 @@ namespace palvalidator::filtering::stages
    * @brief Performs statistical profiling of the return series to determine bootstrap dispatch logic.
    *
    * @details
-   * Calculates higher moments (Skewness, Excess Kurtosis) to detect deviations from normality.
+   * This method profiles the distribution to detect "Hidden Tail Risks" and selects the
+   * appropriate combination of bootstrap engines. It employs a "Dual-Check" for heavy tails:
    *
-   * **Dispatch Logic:**
-   * - **Small-N (m-out-of-n):** Activated if $N \le 40$, or if $N \le 60$ and Heavy Tails are detected.
-   * - **Percentile-t:** Activated for small-to-medium samples ($N \le 80$) to provide variance stabilization.
+   * 1. Global Moments: Checks Skewness (> 0.9) and Excess Kurtosis (> 1.2).
+   * 2. Hill Estimator: Estimates the Pareto tail index (alpha) of the losses.
+   *    If alpha <= 2.0, it signals infinite variance potential and forces the robust path
+   *    even if global moments appear normal.
+   *
+   * Conservative Dispatch Logic:
+   * - Small-N (m-out-of-n, conservative duel):
+   *     • Always activated if N <= 40.
+   *     • Activated if 40 < N <= 60 AND Heavy Tails (via moments or Hill) are detected.
+   *     • Additionally, for 60 < N <= 80, activated when the Hill estimator alone
+   *       indicates very heavy tails (alpha <= 2.0).
+   *
+   * - BCa Geometric:
+   *     • Activated whenever we are NOT in the Small-N regime.
+   *       (i.e., well-behaved tails or larger N where Hill does not flag extreme heaviness).
+   *
+   * - Percentile-t:
+   *     • Activated for N <= 80 as a universal stabilizer to correct for
+   *       skewness and second-order errors.
    *
    * @param ctx The analysis context containing the return series.
-   * @param os Output stream for diagnostic logging.
-   * @return DistributionDiagnostics A struct containing moment values and boolean flags for which engines to run.
+   * @param os Output stream for diagnostic logging (shows Hill Alpha and Moment values).
+   * @return DistributionDiagnostics Struct containing boolean flags for engine execution.
    */
   BootstrapAnalysisStage::DistributionDiagnostics
   BootstrapAnalysisStage::analyzeDistribution(const StrategyAnalysisContext& ctx, std::ostream& os) const
   {
     using mkc_timeseries::StatUtils;
     using palvalidator::bootstrap_helpers::has_heavy_tails_wide;
+    using palvalidator::bootstrap_helpers::estimate_left_tail_index_hill;
 
     const std::size_t n = ctx.highResReturns.size();
-    const auto [skew, exkurt] = StatUtils<Num>::computeSkewAndExcessKurtosis(ctx.highResReturns);
-    const bool heavy_tails = has_heavy_tails_wide(skew, exkurt);
 
-    // Routing (pragmatic): m/n for small N; percentile-t through medium N; extend m/n if heavy tails.
-    bool run_mn = palvalidator::bootstrap_helpers::should_run_smallN(n, heavy_tails);
+    // 1. Global Moments
+    const auto [skew, exkurt] =
+      StatUtils<Num>::computeSkewAndExcessKurtosis(ctx.highResReturns);
+    const bool heavy_via_moments = has_heavy_tails_wide(skew, exkurt);
+
+    // 2. Hill Estimator (hidden tail risk detector)
+    //    Alpha <= 2.0 implies potential infinite-variance behavior.
+    const double tailIndex = estimate_left_tail_index_hill(ctx.highResReturns);
+    const bool  valid_hill = (tailIndex > 0.0);
+    const bool  heavy_via_hill = valid_hill && (tailIndex <= 2.0);
+
+    // 3. Combined Heavy-Tail flag
+    const bool heavy_tails = heavy_via_moments || heavy_via_hill;
+
+    // 4. Small-N (m-out-of-n duel)
+    //    Base rule: n <= 40, or (n <= 60 && heavy_tails).
+    bool run_mn =
+      palvalidator::bootstrap_helpers::should_run_smallN(n, heavy_tails);
+
+    // Conservative extension:
+    // If we are in the upper-medium regime (60 < n <= 80),
+    // and Hill alone flags very heavy tails, force the Small-N path.
+    if (!run_mn && heavy_via_hill && n > 60 && n <= 80)
+    {
+      run_mn = true;
+    }
+
+    // 5. Percentile-t for small-to-medium N
     bool run_pt = (n <= 80);
-    if (!run_mn && n <= 60 && heavy_tails) run_mn = true;
-    if (n <= 24) run_pt = true; // tiny n → keep t as a second view
 
+    // 6. BCa Geo: only when we are not in the strict Small-N regime
+    bool run_bca_geo = !run_mn;
+
+    // Logging (including Hill alpha and which detector fired)
     os << "   [Bootstrap] n=" << n
-       << "  skew=" << skew << "  exkurt=" << exkurt
-       << "  heavy_tails=" << (heavy_tails ? "yes" : "no") << "\n";
+       << "  skew=" << skew
+       << "  exkurt=" << exkurt
+       << "  alpha=" << (valid_hill ? std::to_string(tailIndex) : "n/a")
+       << "  heavy_tails=" << (heavy_tails ? "yes" : "no")
+       << " (moments=" << heavy_via_moments << ", hill=" << heavy_via_hill << ")"
+       << "  [Flags: smallN=" << run_mn
+       << ", bcaGeo=" << run_bca_geo
+       << ", pt=" << run_pt << "]\n";
 
-    return DistributionDiagnostics(skew, exkurt, heavy_tails, run_mn, run_pt);
+    return DistributionDiagnostics(skew, exkurt, heavy_tails,
+                                   run_mn, run_pt, run_bca_geo);
   }
 
   /**
@@ -385,6 +436,61 @@ namespace palvalidator::filtering::stages
   }
 
   /**
+   * @brief Executes the Bias-Corrected and Accelerated (BCa) bootstrap for the Geometric Mean.
+   *
+   * @details
+   * This method is used when N > 40 (where strict m-out-of-n is not required), but we still
+   * want the statistical efficiency of BCa to blend with Percentile-t.
+   *
+   * @param ctx The analysis context.
+   * @param confidenceLevel The target confidence level.
+   * @param blockLength Block length for the StationaryBlockResampler.
+   * @param os Output stream for logging.
+   * @return BCaGeoResult Struct containing per-period lower bounds.
+   */
+  BootstrapAnalysisStage::BCaGeoResult
+  BootstrapAnalysisStage::runBCaGeoBootstrap(const StrategyAnalysisContext& ctx,
+                                              double confidenceLevel,
+                                              size_t blockLength,
+                                              std::ostream& os) const
+  {
+    using BCaResampler = mkc_timeseries::StationaryBlockResampler<Num>;
+    using GeoStat = mkc_timeseries::GeoMeanStat<Num>;
+
+    BCaResampler bcaResampler(blockLength);
+
+    // Create the statistic function from GeoMeanStat
+    std::function<Num(const std::vector<Num>&)> geoStatFn =
+        [](const std::vector<Num>& returns) { return GeoStat()(returns); };
+
+    // Use the BCa factory method with 2 template arguments
+    auto bcaGeo = mBootstrapFactory.template makeBCa<Num, BCaResampler>(
+        ctx.highResReturns,
+        mNumResamples,
+        confidenceLevel,
+        geoStatFn,       // The statistic function
+        bcaResampler,
+        *ctx.clonedStrategy,
+        /*stage*/1,
+        static_cast<uint64_t>(blockLength),
+        /*fold*/0
+    );
+
+    const Num lbGeo_BCa = bcaGeo.getLowerBound();
+
+    // Note: We primarily need the per-period LB for blending.
+    // Annualization happens later in the pipeline.
+
+    os << "   [Bootstrap] BCa (GeoMean):"
+       << "  resampler=StationaryBlockResampler"
+       << "  L=" << blockLength
+       << "  effB=" << mNumResamples
+       << "  LB=" << lbGeo_BCa << "\n";
+
+    return BCaGeoResult(lbGeo_BCa);
+  }
+
+  /**
    * @brief Combines lower bounds from Small-N and Percentile-t bootstraps into a single robust metric.
    *
    * @details
@@ -411,77 +517,66 @@ namespace palvalidator::filtering::stages
   Num BootstrapAnalysisStage::combineGeometricLowerBounds(
     const std::optional<SmallNResult>& smallN,
     const std::optional<PercentileTResult>& percentileT,
+    const std::optional<BCaGeoResult>& bcaGeo,
     std::ostream& os) const
   {
     using mkc_timeseries::DecimalConstants;
 
-    // Helper: Determine effective sign (-1, 0, 1)
     auto get_sign = [](const Num& v) -> int {
       if (v > DecimalConstants<Num>::DecimalZero) return 1;
       if (v < DecimalConstants<Num>::DecimalZero) return -1;
       return 0;
     };
 
-    // Case 1: Neither available (should generally not happen if diagnostics pass)
-    if (!smallN.has_value() && !percentileT.has_value())
-    {
-      return DecimalConstants<Num>::DecimalZero;
+    // 1. Determine the "Anchor" result.
+    // Priority: SmallN (Conservative) > BCaGeo (Efficient)
+    std::optional<Num> valAnchor;
+
+    if (smallN.has_value()) {
+        valAnchor = smallN->getLowerBoundPeriod();
+    }
+    else if (bcaGeo.has_value()) {
+        valAnchor = bcaGeo->getLowerBoundPeriod();
     }
 
-    // Case 2: Only SmallN available
-    if (smallN.has_value() && !percentileT.has_value())
-    {
-      return smallN->getLowerBoundPeriod();
-    }
+    // 2. Fallbacks if one side is missing
+    if (!valAnchor.has_value() && !percentileT.has_value()) return DecimalConstants<Num>::DecimalZero;
+    if (valAnchor.has_value() && !percentileT.has_value()) return *valAnchor;
+    if (!valAnchor.has_value() && percentileT.has_value()) return percentileT->getLowerBoundPeriod();
 
-    // Case 3: Only Percentile-t available
-    if (!smallN.has_value() && percentileT.has_value())
-    {
-      return percentileT->getLowerBoundPeriod();
-    }
+    // 3. Smart Blending (Anchor vs Percentile-t)
+    const Num v1 = *valAnchor;
+    const Num v2 = percentileT->getLowerBoundPeriod();
 
-    // Case 4: Both available -> Smart Blending
-    const Num valSmallN = smallN->getLowerBoundPeriod();
-    const Num valPercT  = percentileT->getLowerBoundPeriod();
+    const int s1 = get_sign(v1);
+    const int s2 = get_sign(v2);
 
-    const int s1 = get_sign(valSmallN);
-    const int s2 = get_sign(valPercT);
-
-    // LOGIC:
-    // If they straddle zero (one positive, one negative), we have a fundamental
-    // disagreement on whether the strategy has an edge. In a conservative filter,
-    // we cannot "average our way" into profitability. We must respect the downside risk.
     bool straddleZero = (s1 * s2 < 0);
-
-    // Furthermore, if the divergence is massive (e.g. one is > 2x the other),
-    // it suggests instability. However, checking "straddle zero" captures the most
-    // critical risk for filtering (Pass vs Fail).
 
     if (straddleZero)
     {
-       // Conservative: Trust the pessimist if they disagree on the sign.
-       // This prevents a negative m-out-of-n result from being "saved" by an optimistic Percentile-t.
-       return (valSmallN < valPercT) ? valSmallN : valPercT;
+       // Conservative: Trust the pessimist if they disagree on sign.
+       return (v1 < v2) ? v1 : v2;
     }
     else
     {
-       // Agreement: Both positive (or both negative).
-       // Take the Arithmetic Mean to smooth out the variance penalty of m-out-of-n
-       // while tempering the potential overconfidence of Percentile-t.
-       return valSmallN + (valPercT - valSmallN) / Num(2);
+       // Agreement: Arithmetic Mean to smooth variance.
+       return v1 + (v2 - v1) / Num(2);
     }
   }
 
-  /**
+/**
    * @brief Logs the decision matrix used to derive the final Lower Bound.
    *
    * @details
    * This helper constructs a human-readable string explaining exactly how the
-   * separate bootstrap results (Small-N, Percentile-t) were combined (e.g., "Vote of Two",
-   * "Min", or "Fallback"). This is critical for audit trails.
+   * separate bootstrap results (Small-N, Percentile-t, BCa Geo) were combined.
+   * This ensures the audit trail accurately reflects whether a "Small-N Duel"
+   * or a "Standard Blend" was performed.
    *
    * @param smallN Result from the Small-N bootstrap (optional).
    * @param percentileT Result from the Percentile-t bootstrap (optional).
+   * @param bcaGeo Result from the BCa Geometric bootstrap (optional).
    * @param n Sample size.
    * @param blockLength Block length used.
    * @param skew Sample skewness.
@@ -492,6 +587,7 @@ namespace palvalidator::filtering::stages
   void BootstrapAnalysisStage::logFinalPolicy(
     const std::optional<SmallNResult>& smallN,
     const std::optional<PercentileTResult>& percentileT,
+    const std::optional<BCaGeoResult>& bcaGeo,
     size_t n,
     size_t blockLength,
     double skew,
@@ -504,15 +600,26 @@ namespace palvalidator::filtering::stages
     constexpr bool kUseVoteOfTwoMedian = true;
     const char* policyLabel = nullptr;
     
+    // Case 1: Strict Small-N Duel + Percentile-t
     if (smallN.has_value() && percentileT.has_value())
     {
       policyLabel = kUseVoteOfTwoMedian 
         ? "smallN(min of m/n,BCa) ⊕ percentile-t (median of present)"
         : "min( smallN(min of m/n,BCa), percentile-t )";
     }
+    // Case 2: Option B (Normal Regime) - BCa Geo + Percentile-t Blend
+    else if (bcaGeo.has_value() && percentileT.has_value())
+    {
+       policyLabel = "BCa(Geo) ⊕ percentile-t (blend)";
+    }
+    // Case 3: Individual / Edge Cases
     else if (smallN.has_value())
     {
       policyLabel = "smallN(min of m/n,BCa)";
+    }
+    else if (bcaGeo.has_value())
+    {
+      policyLabel = "BCa (Geo)";
     }
     else if (percentileT.has_value())
     {
@@ -523,7 +630,8 @@ namespace palvalidator::filtering::stages
       policyLabel = "BCa (fallback)";
     }
 
-    // For logging, prefer the small-N resampler name if available.
+    // For logging, prefer the small-N resampler name if available (as it might differ, e.g., IID).
+    // If small-N wasn't run, we know BCa/PT used the StationaryBlockResampler.
     const char* resamplerNameForLog = smallN.has_value() 
       ? smallN->getResamplerName().c_str() 
       : "StationaryBlockResampler";
@@ -618,6 +726,14 @@ namespace palvalidator::filtering::stages
 	    smallNResult = runSmallNBootstrap(ctx, CL, barsPerYear, L, os);
 	  }
 
+	// --- Step 4b: Run BCa Geo bootstrap (New Option B logic) ---------------
+	// Run this if we are NOT running SmallN, but need a partner for Percentile-t
+	std::optional<BCaGeoResult> bcaGeoResult;
+	if (diagnostics.shouldRunBCaGeo())
+	  {
+	     bcaGeoResult = runBCaGeoBootstrap(ctx, CL, L, os);
+	  }
+
 	// --- Step 5: Run percentile-t bootstrap (if applicable) -----------------
 	std::optional<PercentileTResult> percentileTResult;
 	if (diagnostics.shouldRunPercentileT())
@@ -630,8 +746,13 @@ namespace palvalidator::filtering::stages
 	R.lbMeanPeriod = bcaMeanResult.getLowerBoundPeriod();
 	R.annualizedLowerBoundMean = bcaMeanResult.getLowerBoundAnnualized();
 
-	// --- Step 7: Combine geometric lower bounds -----------------------------
-	const Num lbGeoPer_neutral = combineGeometricLowerBounds(smallNResult, percentileTResult, os);
+	// --- Step 7: Combine geometric lower bounds (Updated) ------------------
+	// Now passes bcaGeoResult as the third option
+	const Num lbGeoPer_neutral = combineGeometricLowerBounds(
+	    smallNResult,
+	    percentileTResult,
+	    bcaGeoResult,
+	    os);
 	R.lbGeoPeriod = lbGeoPer_neutral;
 
 	// Annualize geometric lower bound using barsPerYear (λ × medianHoldBars)
@@ -647,7 +768,7 @@ namespace palvalidator::filtering::stages
 	  : std::nullopt;
 
 	// --- Step 8: Log final policy and finish --------------------------------
-	logFinalPolicy(smallNResult, percentileTResult, n, L,
+	logFinalPolicy(smallNResult, percentileTResult, bcaGeoResult, n, L,
 		       diagnostics.getSkew(), diagnostics.getExcessKurtosis(),
 		       diagnostics.hasHeavyTails(), os);
 

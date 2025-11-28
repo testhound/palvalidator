@@ -43,12 +43,13 @@ namespace palvalidator::filtering::stages
     {
     public:
       DistributionDiagnostics(double skew, double excessKurtosis, bool heavyTails,
-                              bool runSmallN, bool runPercentileT)
+                              bool runSmallN, bool runPercentileT, bool runBCaGeo)
         : mSkew(skew)
         , mExcessKurtosis(excessKurtosis)
         , mHeavyTails(heavyTails)
         , mRunSmallN(runSmallN)
         , mRunPercentileT(runPercentileT)
+        , mRunBCaGeo(runBCaGeo)
       {}
 
       double getSkew() const { return mSkew; }
@@ -56,6 +57,7 @@ namespace palvalidator::filtering::stages
       bool hasHeavyTails() const { return mHeavyTails; }
       bool shouldRunSmallN() const { return mRunSmallN; }
       bool shouldRunPercentileT() const { return mRunPercentileT; }
+      bool shouldRunBCaGeo() const { return mRunBCaGeo; }
 
     private:
       double mSkew;
@@ -63,6 +65,7 @@ namespace palvalidator::filtering::stages
       bool mHeavyTails;
       bool mRunSmallN;
       bool mRunPercentileT;
+      bool mRunBCaGeo;
     };
 
     class SmallNResult
@@ -141,6 +144,19 @@ namespace palvalidator::filtering::stages
       Num mLowerBoundAnnualized;
     };
 
+    class BCaGeoResult
+    {
+    public:
+      BCaGeoResult(const Num& lowerBoundPeriod)
+        : mLowerBoundPeriod(lowerBoundPeriod)
+      {}
+
+      const Num& getLowerBoundPeriod() const { return mLowerBoundPeriod; }
+
+    private:
+      Num mLowerBoundPeriod;
+    };
+
     // Core computation methods
     /**
      * Initialize backtester if not already present in context
@@ -180,10 +196,19 @@ namespace palvalidator::filtering::stages
                                       std::ostream& os) const;
 
     /**
+     * Run BCa bootstrap for geometric mean statistic
+     */
+    BCaGeoResult runBCaGeoBootstrap(const StrategyAnalysisContext& ctx,
+                                    double confidenceLevel,
+                                    size_t blockLength,
+                                    std::ostream& os) const;
+
+    /**
      * Combine geometric lower bounds from multiple bootstrap methods
      */
     Num combineGeometricLowerBounds(const std::optional<SmallNResult>& smallN,
                                      const std::optional<PercentileTResult>& percentileT,
+                                     const std::optional<BCaGeoResult>& bcaGeo,
                                      std::ostream& os) const;
 
     /**
@@ -191,6 +216,7 @@ namespace palvalidator::filtering::stages
      */
     void logFinalPolicy(const std::optional<SmallNResult>& smallN,
                         const std::optional<PercentileTResult>& percentileT,
+			 const std::optional<BCaGeoResult>& bcaGeo,
                         size_t n,
                         size_t blockLength,
                         double skew,
