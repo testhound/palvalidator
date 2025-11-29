@@ -81,22 +81,31 @@ namespace palvalidator
 
       /**
        * @brief Filter strategies based on BCa bootstrap performance analysis
+       *
+       * CRITICAL CONTRACT: This method performs OUT-OF-SAMPLE validation ONLY.
+       * The oosBacktestingDates parameter MUST represent a time period that occurs
+       * AFTER the inSampleBacktestingDates period. This is enforced at runtime.
+       *
        * @param survivingStrategies Vector of strategies that survived Monte Carlo validation
        * @param baseSecurity Security to test strategies against
-       * @param backtestingDates Date range for backtesting
+       * @param inSampleBacktestingDates In-sample date range (for reference/context only)
+       * @param oosBacktestingDates OUT-OF-SAMPLE date range for bootstrap analysis
+       *                            MUST occur after inSampleBacktestingDates
        * @param timeFrame Time frame for analysis
        * @param outputStream Output stream for logging (typically a TeeStream)
+       * @param oosSpreadStats Optional OOS spread statistics for cost calibration
        * @return Vector of strategies that passed performance filtering
+       * @throws std::invalid_argument if oosBacktestingDates does not occur after inSampleBacktestingDates
        */
       std::vector<std::shared_ptr<PalStrategy<Num>>> filterByPerformance(
-									 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-									 std::shared_ptr<Security<Num>> baseSecurity,
-									 const DateRange& inSampleBacktestingDates,
-									 const DateRange& oosBacktestingDates,
-									 TimeFrame::Duration timeFrame,
-									 std::ostream& outputStream,
-									 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt
-									 );
+      			 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+      			 std::shared_ptr<Security<Num>> baseSecurity,
+      			 const DateRange& inSampleBacktestingDates,
+      			 const DateRange& oosBacktestingDates,
+      			 TimeFrame::Duration timeFrame,
+      			 std::ostream& outputStream,
+      			 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt
+      			 );
 
       /**
        * @brief Get the filtering summary from the last run

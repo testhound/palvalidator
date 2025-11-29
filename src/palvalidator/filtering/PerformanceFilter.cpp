@@ -50,13 +50,26 @@ namespace palvalidator
 
     std::vector<std::shared_ptr<PalStrategy<Num>>>
     PerformanceFilter::filterByPerformance(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-					   std::shared_ptr<Security<Num>> baseSecurity,
-					   const DateRange& inSampleBacktestingDates,
-					   const DateRange& oosBacktestingDates,
-					   TimeFrame::Duration timeFrame,
-					   std::ostream& outputStream,
-					   std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
+    	   std::shared_ptr<Security<Num>> baseSecurity,
+    	   const DateRange& inSampleBacktestingDates,
+    	   const DateRange& oosBacktestingDates,
+    	   TimeFrame::Duration timeFrame,
+    	   std::ostream& outputStream,
+    	   std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats)
     {
+      // CRITICAL VALIDATION: Ensure we're using OOS dates for bootstrap analysis
+      // This prevents accidental use of in-sample dates in the validation pipeline
+      if (oosBacktestingDates.getFirstDateTime() <= inSampleBacktestingDates.getLastDateTime())
+      {
+        std::ostringstream errorMsg;
+        errorMsg << "PerformanceFilter::filterByPerformance - FATAL: OOS dates must occur AFTER in-sample dates.\n"
+                 << "  In-Sample: " << inSampleBacktestingDates.getFirstDateTime() << " to "
+                 << inSampleBacktestingDates.getLastDateTime() << "\n"
+                 << "  Out-of-Sample: " << oosBacktestingDates.getFirstDateTime() << " to "
+                 << oosBacktestingDates.getLastDateTime();
+        throw std::invalid_argument(errorMsg.str());
+      }
+      
       std::vector<std::shared_ptr<PalStrategy<Num>>> filteredStrategies;
 
       // Reset summary for new filtering run
