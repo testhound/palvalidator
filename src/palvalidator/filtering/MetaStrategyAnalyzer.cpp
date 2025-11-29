@@ -160,24 +160,38 @@ namespace palvalidator
     void MetaStrategyAnalyzer::analyzeMetaStrategy(
     		   const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
     		   std::shared_ptr<Security<Num>> baseSecurity,
-    		   const DateRange& backtestingDates,
+    		   const DateRange& oosBacktestingDates,
     		   TimeFrame::Duration timeFrame,
     		   std::ostream& outputStream,
     		   ValidationMethod validationMethod,
      std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
      const DateRange& inSampleDates)
     {
+      // CRITICAL VALIDATION: Ensure oosBacktestingDates occur after inSampleDates
+      // This is a fundamental requirement for proper out-of-sample validation
+      if (oosBacktestingDates.getFirstDateTime() <= inSampleDates.getLastDateTime())
+      {
+        std::ostringstream errorMsg;
+        errorMsg << "MetaStrategyAnalyzer::analyzeMetaStrategy - FATAL: OOS dates must occur AFTER in-sample dates.\n"
+                 << "  In-Sample: " << inSampleDates.getFirstDateTime() << " to "
+                 << inSampleDates.getLastDateTime() << "\n"
+                 << "  Out-of-Sample: " << oosBacktestingDates.getFirstDateTime() << " to "
+                 << oosBacktestingDates.getLastDateTime() << "\n"
+                 << "  This validation ensures the meta-strategy analysis uses only out-of-sample data.";
+        throw std::invalid_argument(errorMsg.str());
+      }
+      
       if (survivingStrategies.empty())
- {
-   outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
-   mMetaStrategyPassed = false;
-   return;
- }
+	{
+	  outputStream << "\n[Meta] No surviving strategies to aggregate.\n";
+	  mMetaStrategyPassed = false;
+	  return;
+	}
 
       outputStream << "\n[Meta] Building unified PalMetaStrategy from " << survivingStrategies.size() << " survivors...\n";
 
-      analyzeMetaStrategyUnified(survivingStrategies, baseSecurity, backtestingDates,
-     timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates);
+      analyzeMetaStrategyUnified(survivingStrategies, baseSecurity, oosBacktestingDates,
+				 timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates);
     }
 
     /**
@@ -197,13 +211,13 @@ namespace palvalidator
      * (Same as analyzeMetaStrategy)
      */
     void MetaStrategyAnalyzer::analyzeMetaStrategyUnified(const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-							  std::shared_ptr<Security<Num>> baseSecurity,
-							  const DateRange& backtestingDates,
-							  TimeFrame::Duration timeFrame,
-							  std::ostream& outputStream,
-							  ValidationMethod validationMethod,
-							  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-							  const DateRange& inSampleDates)
+    			  std::shared_ptr<Security<Num>> baseSecurity,
+    			  const DateRange& oosBacktestingDates,
+    			  TimeFrame::Duration timeFrame,
+    			  std::ostream& outputStream,
+    			  ValidationMethod validationMethod,
+    			  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+    			  const DateRange& inSampleDates)
     {
       if (survivingStrategies.empty())
 	{
@@ -234,7 +248,7 @@ namespace palvalidator
 						      config,
 						      survivingStrategies,
 						      baseSecurity,
-						      backtestingDates,
+						      oosBacktestingDates,
 						      timeFrame,
 						      outputStream,
 						      oosSpreadStats,
@@ -478,16 +492,16 @@ namespace palvalidator
      * True if the bias-corrected Lower Bound > Hurdle.
      */
     bool MetaStrategyAnalyzer::runSelectionAwareMetaGate(
-							 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-							 std::shared_ptr<mkc_timeseries::Security<Num>> /* baseSecurity */,
-							 const mkc_timeseries::DateRange& backtestingDates,
-							 mkc_timeseries::TimeFrame::Duration timeFrame,
-							 std::size_t Lmeta,
-							 double annualizationFactor,
-							 const mkc_timeseries::BackTester<Num>* bt,
-							 std::ostream& os,
-							 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
-							 ) const
+    			 const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+    			 std::shared_ptr<mkc_timeseries::Security<Num>> /* baseSecurity */,
+    			 const mkc_timeseries::DateRange& oosBacktestingDates,
+    			 mkc_timeseries::TimeFrame::Duration timeFrame,
+    			 std::size_t Lmeta,
+    			 double annualizationFactor,
+    			 const mkc_timeseries::BackTester<Num>* bt,
+    			 std::ostream& os,
+    			 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats
+    			 ) const
     {
       using NumT   = Num;
       using Rng    = randutils::mt19937_rng;
@@ -501,10 +515,10 @@ namespace palvalidator
 
       std::map<PTime, std::size_t> union_index;               // ordered union → column index
       for (const auto& strat : survivingStrategies)
-	{
-	  auto cloned = strat->cloneForBackTesting();
-	  auto single = mkc_timeseries::BackTesterFactory<NumT>::backTestStrategy(
-										  cloned, timeFrame, backtestingDates);
+ {
+   auto cloned = strat->cloneForBackTesting();
+   auto single = mkc_timeseries::BackTesterFactory<NumT>::backTestStrategy(
+    						  cloned, timeFrame, oosBacktestingDates);
 
 	  auto ts = single->getAllHighResReturnsWithDates(cloned.get()); // vector<pair<ptime,Num>>
 	  if (ts.size() >= 2)
@@ -659,7 +673,7 @@ namespace palvalidator
     MetaStrategyAnalyzer::runRegimeMixGate(
         const std::shared_ptr<BackTester<Num>>& bt,
         const std::shared_ptr<Security<Num>>& baseSecurity,
-        const DateRange& backtestingDates,
+        const DateRange& oosBacktestingDates,
         double annualizationFactor,
         const Num& requiredReturn,
         std::size_t blockLength,
@@ -748,7 +762,7 @@ namespace palvalidator
       }
 
       // Build OOS close series for regime labeling
-      auto oosInstrumentTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), backtestingDates);
+      auto oosInstrumentTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), oosBacktestingDates);
       const auto& oosClose = oosInstrumentTS.CloseTimeSeries();
 
       // Calculate regime labels for the base security
@@ -1117,7 +1131,7 @@ namespace palvalidator
         const PyramidConfiguration& config,
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
         std::shared_ptr<Security<Num>> baseSecurity,
-        const DateRange& backtestingDates,
+        const DateRange& oosBacktestingDates,
         TimeFrame::Duration timeFrame,
         std::ostream& outputStream) const
     {
@@ -1128,13 +1142,13 @@ namespace palvalidator
       {
         auto filteredStrategy = createMetaStrategyWithAdaptiveFilter(
             survivingStrategies, baseSecurity, config.getStrategyOptions());
-        bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, backtestingDates);
+        bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, oosBacktestingDates);
         metaReturns = bt->getAllHighResReturns(filteredStrategy.get());
       }
       else if (config.getFilterType() == PyramidConfiguration::BREAKEVEN_STOP)
       {
         auto initialStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
-        auto initialBt = executeBacktesting(initialStrategy, timeFrame, backtestingDates);
+        auto initialBt = executeBacktesting(initialStrategy, timeFrame, oosBacktestingDates);
 
         const auto& closedPositionHistory = initialBt->getClosedPositionHistory();
         if (closedPositionHistory.getNumPositions() > 0)
@@ -1153,7 +1167,7 @@ namespace palvalidator
                 survivingStrategies, baseSecurity, config.getStrategyOptions());
             breakevenStrategy->addBreakEvenStop(breakevenActivationBars);
 
-            bt = executeBacktesting(breakevenStrategy, timeFrame, backtestingDates);
+            bt = executeBacktesting(breakevenStrategy, timeFrame, oosBacktestingDates);
             metaReturns = bt->getAllHighResReturns(breakevenStrategy.get());
           }
           catch (const std::exception& e)
@@ -1162,7 +1176,7 @@ namespace palvalidator
                         << ". Using standard strategy without breakeven stop.\n";
             auto fallback = createMetaStrategy(
                 survivingStrategies, baseSecurity, config.getStrategyOptions());
-            bt = executeBacktesting(fallback, timeFrame, backtestingDates);
+            bt = executeBacktesting(fallback, timeFrame, oosBacktestingDates);
             metaReturns = bt->getAllHighResReturns(fallback.get());
           }
         }
@@ -1171,7 +1185,7 @@ namespace palvalidator
           outputStream << "      No closed positions available for exit policy tuning. Using standard strategy.\n";
           auto metaStrategy = createMetaStrategy(
               survivingStrategies, baseSecurity, config.getStrategyOptions());
-          bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+          bt = executeBacktesting(metaStrategy, timeFrame, oosBacktestingDates);
           metaReturns = bt->getAllHighResReturns(metaStrategy.get());
         }
       }
@@ -1179,7 +1193,7 @@ namespace palvalidator
       {
         auto metaStrategy = createMetaStrategy(
             survivingStrategies, baseSecurity, config.getStrategyOptions());
-        bt = executeBacktesting(metaStrategy, timeFrame, backtestingDates);
+        bt = executeBacktesting(metaStrategy, timeFrame, oosBacktestingDates);
         metaReturns = bt->getAllHighResReturns(metaStrategy.get());
       }
 
@@ -1213,7 +1227,7 @@ namespace palvalidator
         std::shared_ptr<BackTester<Num>> bt,
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
         std::shared_ptr<Security<Num>> baseSecurity,
-        const DateRange& backtestingDates,
+        const DateRange& oosBacktestingDates,
         TimeFrame::Duration timeFrame,
         std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
         std::ostream& outputStream,
@@ -1268,7 +1282,7 @@ namespace palvalidator
       const bool passMetaSelectionAware =
         runSelectionAwareMetaGate(survivingStrategies,
                                   baseSecurity,
-                                  backtestingDates,
+                                  oosBacktestingDates,
                                   timeFrame,
                                   Lmeta,
                                   Keff,
@@ -1300,7 +1314,7 @@ namespace palvalidator
       const auto regimeResult = runRegimeMixGate(
           bt,
           baseSecurity,
-          backtestingDates,
+          oosBacktestingDates,
           Keff,
           H.baseHurdle,
           Lmeta,
@@ -1465,7 +1479,7 @@ namespace palvalidator
         const PyramidConfiguration& config,
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
         std::shared_ptr<Security<Num>> baseSecurity,
-        const DateRange& backtestingDates,
+        const DateRange& oosBacktestingDates,
         TimeFrame::Duration timeFrame,
         std::ostream& outputStream,
         std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
@@ -1478,7 +1492,7 @@ namespace palvalidator
       
       // --- Step 1: Run Backtest ---
       auto btResult = runPyramidBacktest(config, survivingStrategies, baseSecurity,
-                                        backtestingDates, timeFrame, outputStream);
+                                        oosBacktestingDates, timeFrame, outputStream);
       
       if (btResult.getMetaReturns().size() < 2U)
       {
@@ -1497,7 +1511,7 @@ namespace palvalidator
           btResult.getBacktester(),
           survivingStrategies,
           baseSecurity,
-          backtestingDates,
+          oosBacktestingDates,
           timeFrame,
           oosSpreadStats,
           outputStream,
@@ -1605,9 +1619,9 @@ namespace palvalidator
     std::shared_ptr<BackTester<Num>> MetaStrategyAnalyzer::executeBacktesting(
         std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
         TimeFrame::Duration timeFrame,
-        const DateRange& backtestingDates) const
+        const DateRange& oosBacktestingDates) const
     {
-      return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, backtestingDates);
+      return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, oosBacktestingDates);
     }
 
     /**

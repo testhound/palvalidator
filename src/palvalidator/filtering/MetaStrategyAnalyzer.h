@@ -140,17 +140,27 @@ namespace palvalidator
 
       /**
        * @brief Analyze meta-strategy performance using unified PalMetaStrategy approach
+       *
+       * CRITICAL CONTRACT: This method performs OUT-OF-SAMPLE validation ONLY.
+       * The oosBacktestingDates parameter MUST represent a time period that occurs
+       * AFTER the inSampleDates period. This is enforced at runtime to prevent
+       * accidental use of in-sample data in the validation pipeline.
+       *
        * @param survivingStrategies Vector of strategies that survived individual filtering
        * @param baseSecurity Security to test strategies against
-       * @param backtestingDates Date range for backtesting
+       * @param oosBacktestingDates OUT-OF-SAMPLE date range for meta-strategy analysis
+       *                            MUST occur after inSampleDates
        * @param timeFrame Time frame for analysis
        * @param outputStream Output stream for logging (typically a TeeStream)
        * @param validationMethod Validation method for reporting purposes
+       * @param oosSpreadStats Optional OOS spread statistics for cost calibration
+       * @param inSampleDates In-sample date range (for reference and regime mix baseline)
+       * @throws std::invalid_argument if oosBacktestingDates does not occur after inSampleDates
        */
       void analyzeMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
-          const DateRange& backtestingDates,
+          const DateRange& oosBacktestingDates,
           TimeFrame::Duration timeFrame,
           std::ostream& outputStream,
           ValidationMethod validationMethod,
@@ -214,14 +224,17 @@ namespace palvalidator
        * @brief Analyze meta-strategy using unified PalMetaStrategy approach
        * @param survivingStrategies Vector of strategies that survived individual filtering
        * @param baseSecurity Security to test strategies against
-       * @param backtestingDates Date range for backtesting
+       * @param oosBacktestingDates OUT-OF-SAMPLE date range for backtesting
        * @param timeFrame Time frame for analysis
        * @param outputStream Output stream for logging
+       * @param validationMethod Validation method for reporting purposes
+       * @param oosSpreadStats Optional OOS spread statistics
+       * @param inSampleDates In-sample date range for regime mix baseline
        */
       void analyzeMetaStrategyUnified(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
-          const DateRange& backtestingDates,
+          const DateRange& oosBacktestingDates,
           TimeFrame::Duration timeFrame,
           std::ostream& outputStream,
           ValidationMethod validationMethod,
@@ -406,15 +419,15 @@ namespace palvalidator
       std::shared_ptr<BackTester<Num>> executeBacktesting(
           std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
           TimeFrame::Duration timeFrame,
-          const DateRange& backtestingDates) const;
+          const DateRange& oosBacktestingDates) const;
       
       template<typename FilterType>
       std::shared_ptr<BackTester<Num>> executeBacktestingWithFilter(
           std::shared_ptr<PalMetaStrategy<Num, FilterType>> metaStrategy,
           TimeFrame::Duration timeFrame,
-          const DateRange& backtestingDates) const
+          const DateRange& oosBacktestingDates) const
       {
-        return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, backtestingDates);
+        return BackTesterFactory<Num>::backTestStrategy(metaStrategy, timeFrame, oosBacktestingDates);
       }
       
       void performExitBarTuning(
@@ -453,7 +466,7 @@ namespace palvalidator
 			       const PyramidConfiguration& config,
 			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 			       std::shared_ptr<Security<Num>> baseSecurity,
-			       const DateRange& backtestingDates,
+			       const DateRange& oosBacktestingDates,
 			       TimeFrame::Duration timeFrame,
 			       std::ostream& outputStream) const;
 
@@ -462,7 +475,7 @@ namespace palvalidator
 			       std::shared_ptr<BackTester<Num>> bt,
 			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 			       std::shared_ptr<Security<Num>> baseSecurity,
-			       const DateRange& backtestingDates,
+			       const DateRange& oosBacktestingDates,
 			       TimeFrame::Duration timeFrame,
 			       std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
 			       std::ostream& outputStream,
@@ -489,7 +502,7 @@ namespace palvalidator
 			       const PyramidConfiguration& config,
 			       const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
 			       std::shared_ptr<Security<Num>> baseSecurity,
-			       const DateRange& backtestingDates,
+			       const DateRange& oosBacktestingDates,
 			       TimeFrame::Duration timeFrame,
 			       std::ostream& outputStream,
 			std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
@@ -500,7 +513,7 @@ namespace palvalidator
       bool runSelectionAwareMetaGate(
          const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
          std::shared_ptr<mkc_timeseries::Security<Num>> baseSecurity,
-         const mkc_timeseries::DateRange& backtestingDates,
+         const mkc_timeseries::DateRange& oosBacktestingDates,
          mkc_timeseries::TimeFrame::Duration timeFrame,
          std::size_t Lmeta,
          double annualizationFactor,
@@ -513,17 +526,18 @@ namespace palvalidator
        * @brief Run regime mix stress testing on the meta-strategy
        * @param bt BackTester instance to get high-res returns with dates
        * @param baseSecurity Base security for regime labeling
-       * @param backtestingDates Date range for context (IS/OOS)
+       * @param oosBacktestingDates OUT-OF-SAMPLE date range for regime labeling
        * @param annualizationFactor Keff for annualizing returns
        * @param requiredReturn Cost hurdle to compare against
        * @param blockLength Block length L for bootstrap resampling
        * @param outputStream Output stream for logging
+       * @param inSampleDates In-sample date range for LongRun baseline calculation
        * @return RegimeMixResult with pass/fail status and details
        */
       RegimeMixResult runRegimeMixGate(
         const std::shared_ptr<BackTester<Num>>& bt,
         const std::shared_ptr<Security<Num>>& baseSecurity,
-        const DateRange& backtestingDates,
+        const DateRange& oosBacktestingDates,
         double annualizationFactor,
         const Num& requiredReturn,
         std::size_t blockLength,

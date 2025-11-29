@@ -324,6 +324,21 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
                          unsigned int numBootstrapSamples,
                          ValidationInterface* validation)
 {
+    // CRITICAL VALIDATION: Ensure OOS dates occur after in-sample dates
+    const auto& inSampleRange = config->getInsampleDateRange();
+    const auto& oosRange = config->getOosDateRange();
+    
+    if (oosRange.getFirstDateTime() <= inSampleRange.getLastDateTime())
+    {
+        std::ostringstream errorMsg;
+        errorMsg << "FATAL ERROR: Out-of-sample date range must occur AFTER in-sample date range.\n"
+                 << "  In-Sample: " << inSampleRange.getFirstDateTime() << " to " << inSampleRange.getLastDateTime() << "\n"
+                 << "  Out-of-Sample: " << oosRange.getFirstDateTime() << " to " << oosRange.getLastDateTime() << "\n"
+                 << "  The OOS start date (" << oosRange.getFirstDateTime() << ") must be > in-sample end date ("
+                 << inSampleRange.getLastDateTime() << ")";
+        throw std::invalid_argument(errorMsg.str());
+    }
+    
     // Create bootstrap log file and tee to both cout and file
     const std::string bootstrapPath = createBootstrapFileName(
         config->getSecurity()->getSymbol(), validationMethod);
@@ -331,6 +346,9 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     TeeStream bootlog(std::cout, bootstrapFile);
 
     bootlog << "\nApplying performance-based filtering to Monte Carlo surviving strategies..." << std::endl;
+    bootlog << "Date Range Validation: OOS period (" << oosRange.getFirstDateTime() << " to "
+            << oosRange.getLastDateTime() << ") occurs after in-sample period ("
+            << inSampleRange.getFirstDateTime() << " to " << inSampleRange.getLastDateTime() << ")" << std::endl;
 
     // Perform bid/ask spread analysis on out-of-sample data
     [[maybe_unused]] auto [spreadMedian, spreadQn] = computeBidAskSpreadAnalysis<Num>(config, numBootstrapSamples, bootlog);
