@@ -600,9 +600,19 @@ namespace mkc_timeseries
 			 createDecimal("0.51"),
 			 boost::gregorian::from_undelimited_string("19960312"));
 
+      addUnLeveragedETF (std::string("EWY"),
+			 std::string("iShares MSCI South Korea"),
+			 createDecimal("0.51"),
+			 boost::gregorian::from_undelimited_string("20000509"));
+
       addUnLeveragedETF (std::string("EWG"),
 			 std::string("iShares MSCI German ETF"),
 			 createDecimal("0.51"),
+			 boost::gregorian::from_undelimited_string("19960312"));
+
+      addUnLeveragedETF (std::string("EWU"),
+			 std::string("iShares MSCI United Kingdom ETF"),
+			 createDecimal("0.50"),
 			 boost::gregorian::from_undelimited_string("19960312"));
 
       addUnLeveragedETF (std::string("EWA"),
@@ -624,12 +634,6 @@ namespace mkc_timeseries
 			 std::string("iShares MSCI Emerging Markets ETF"),
 			 createDecimal("0.67"),
 			 boost::gregorian::from_undelimited_string("20030407"));
-
-      addUnLeveragedETF (std::string("RSX"),
-			 std::string("VanEck Vectors Russia ETF"),
-			 createDecimal("0.67"),
-			 boost::gregorian::from_undelimited_string("20070430"));
-
     }
 
     /**
