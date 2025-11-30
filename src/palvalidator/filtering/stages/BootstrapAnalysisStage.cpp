@@ -258,11 +258,31 @@ namespace palvalidator::filtering::stages
 					     std::ostream& os) const
   {
     using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
+    using palvalidator::bootstrap_helpers::estimate_left_tail_index_hill;
     using mkc_timeseries::GeoMeanStat;
 
     // Pass rho_m <= 0.0 to enable TailVolStabilityPolicy (tail/vol prior + LB-stability refinement)
     // inside conservative_smallN_lower_bound. We use -1.0 here to make it explicit.
     const double rho_m = -1.0;
+
+    // ------------------------------------------------------------------------
+    // Extra conservative tweak:
+    // For 60 < n <= 80, if the Hill estimator flags very heavy tails (alpha <= 2),
+    // force the resampler choice inside conservative_smallN_lower_bound to use
+    // block resampling (StationaryMaskValueResamplerAdapter), even if the
+    // dependence heuristics might otherwise allow IID.
+    // ------------------------------------------------------------------------
+    std::optional<bool> heavy_tails_override = std::nullopt;
+
+    const std::size_t n = ctx.highResReturns.size();
+    if (n > 60 && n <= 80)
+      {
+	const double tailIndex = estimate_left_tail_index_hill(ctx.highResReturns);
+	if (tailIndex > 0.0 && tailIndex <= 2.0)
+	  {
+	    heavy_tails_override = true; // "always block" inside conservative_smallN_lower_bound
+	  }
+      }
 
     auto smallN = conservative_smallN_lower_bound<Num, GeoMeanStat<Num>>(ctx.highResReturns,
 									 blockLength,
@@ -275,7 +295,7 @@ namespace palvalidator::filtering::stages
 									 &os,
 									 /*stage*/1,
 									 /*fold*/0,
-									 std::nullopt);
+									 heavy_tails_override);
 
     os << "   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):"
        << "  resampler=" << (smallN.resampler_name ? smallN.resampler_name : "n/a")
