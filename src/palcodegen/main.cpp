@@ -61,6 +61,52 @@ string getUserInput(const string& prompt, const string& defaultValue = "") {
 }
 
 /**
+ * @brief Extracts stop loss value from long patterns
+ * @param system The PriceActionLabSystem containing patterns
+ * @param stopValue Output parameter for the extracted stop loss value
+ * @return true if a long pattern with stop loss was found, false otherwise
+ */
+bool extractLongStopLoss(const std::shared_ptr<PriceActionLabSystem>& system,
+                         num::DefaultNumber& stopValue)
+{
+  auto longIt = system->patternLongsBegin();
+  if (longIt != system->patternLongsEnd())
+  {
+    auto pattern = longIt->second;
+    auto stopLoss = pattern->getStopLoss();
+    if (stopLoss)
+    {
+      stopValue = *(stopLoss->getStopLoss());
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * @brief Extracts stop loss value from short patterns
+ * @param system The PriceActionLabSystem containing patterns
+ * @param stopValue Output parameter for the extracted stop loss value
+ * @return true if a short pattern with stop loss was found, false otherwise
+ */
+bool extractShortStopLoss(const std::shared_ptr<PriceActionLabSystem>& system,
+                          num::DefaultNumber& stopValue)
+{
+  auto shortIt = system->patternShortsBegin();
+  if (shortIt != system->patternShortsEnd())
+  {
+    auto pattern = shortIt->second;
+    auto stopLoss = pattern->getStopLoss();
+    if (stopLoss)
+    {
+      stopValue = *(stopLoss->getStopLoss());
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * @brief Validates that a file exists and is readable
  * @param filePath Path to the file to validate
  * @return true if file exists and is readable, false otherwise
@@ -233,44 +279,6 @@ int main(int argc, char* argv[]) {
             return INVALID_INPUT_ERROR;
         }
         
-        // Get class name and stop percentages for WealthLab8
-        string className;
-        num::DefaultNumber longStopPercent = num::fromString<num::DefaultNumber>("2.0");
-        num::DefaultNumber shortStopPercent = num::fromString<num::DefaultNumber>("2.0");
-        if (platform == "WealthLab8") {
-            className = getUserInput("Enter WealthLab8 strategy class name", "GeneratedStrategy");
-            if (className.empty()) {
-                cerr << "Error: Class name cannot be empty for WealthLab8" << endl;
-                return INVALID_INPUT_ERROR;
-            }
-            
-            // Get long side stop percentage
-            string longStopInput = getUserInput("Enter long side stop percentage (will be divided by 100)", "2.0");
-            try {
-                longStopPercent = num::fromString<num::DefaultNumber>(longStopInput);
-                if (longStopPercent < num::fromString<num::DefaultNumber>("0.0")) {
-                    cerr << "Error: Long side stop percentage must be non-negative" << endl;
-                    return INVALID_INPUT_ERROR;
-                }
-            } catch (const std::exception& e) {
-                cerr << "Error: Invalid long side stop percentage: " << longStopInput << " (" << e.what() << ")" << endl;
-                return INVALID_INPUT_ERROR;
-            }
-            
-            // Get short side stop percentage
-            string shortStopInput = getUserInput("Enter short side stop percentage (will be divided by 100)", "2.0");
-            try {
-                shortStopPercent = num::fromString<num::DefaultNumber>(shortStopInput);
-                if (shortStopPercent < num::fromString<num::DefaultNumber>("0.0")) {
-                    cerr << "Error: Short side stop percentage must be non-negative" << endl;
-                    return INVALID_INPUT_ERROR;
-                }
-            } catch (const std::exception& e) {
-                cerr << "Error: Invalid short side stop percentage: " << shortStopInput << " (" << e.what() << ")" << endl;
-                return INVALID_INPUT_ERROR;
-            }
-        }
-        
         // Get output file name (from command line or user input)
         if (outputFileName.empty()) {
             outputFileName = getUserInput("Enter output file name");
@@ -304,6 +312,44 @@ int main(int argc, char* argv[]) {
         if (!system) {
             cerr << "Error: No strategies found in PAL IR file" << endl;
             return PARSING_ERROR;
+        }
+        
+        // Extract stop loss values and class name for WealthLab8
+        string className;
+        num::DefaultNumber longStopPercent = num::fromString<num::DefaultNumber>("2.0");
+        num::DefaultNumber shortStopPercent = num::fromString<num::DefaultNumber>("2.0");
+        
+        if (platform == "WealthLab8") {
+            className = getUserInput("Enter WealthLab8 strategy class name", "GeneratedStrategy");
+            if (className.empty()) {
+                cerr << "Error: Class name cannot be empty for WealthLab8" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+            
+            // Extract stop loss values from patterns using helper functions
+            bool longStopFound = extractLongStopLoss(system, longStopPercent);
+            bool shortStopFound = extractShortStopLoss(system, shortStopPercent);
+            
+            if (longStopFound) {
+                cout << "Extracted long side stop: " << num::toString(longStopPercent) << "%" << endl;
+            }
+            
+            if (shortStopFound) {
+                cout << "Extracted short side stop: " << num::toString(shortStopPercent) << "%" << endl;
+            }
+            
+            // If one side is missing, use the value from the other side
+            if (!longStopFound && shortStopFound) {
+                longStopPercent = shortStopPercent;
+                cout << "No long patterns found, using short side stop for long side: "
+                     << num::toString(longStopPercent) << "%" << endl;
+            } else if (longStopFound && !shortStopFound) {
+                shortStopPercent = longStopPercent;
+                cout << "No short patterns found, using long side stop for short side: "
+                     << num::toString(shortStopPercent) << "%" << endl;
+            } else if (!longStopFound && !shortStopFound) {
+                cerr << "Warning: No patterns found with stop loss values, using default 2.0%" << endl;
+            }
         }
         
         cout << "Generating " << platform << " code..." << endl;
