@@ -1648,7 +1648,7 @@ namespace palvalidator::bootstrap_helpers
     return calculated_rho;
   }
 
-  /**
+/**
    * @brief Executes the "Duel" between m-out-of-n and BCa bootstraps.
    *
    * @details
@@ -1718,6 +1718,7 @@ namespace palvalidator::bootstrap_helpers
 
     auto mnR = mnBoot.run(returns, GeoStat(), mnCrn);
     const Num lbP_mn = mnR.lower;
+    const Num lbA_mn = mkc_timeseries::Annualizer<Num>::annualize_one(lbP_mn, annualizationFactor); // Store annualized LB
 
     r.m_sub = mnR.m_sub;
     r.effB_mn = mnR.effective_B;
@@ -1765,6 +1766,7 @@ namespace palvalidator::bootstrap_helpers
 					     strategy, stageTag, static_cast<int>(L_small), fold);
 
     const Num lbP_bca = bca.getLowerBound();
+    const Num lbA_bca = mkc_timeseries::Annualizer<Num>::annualize_one(lbP_bca, annualizationFactor); // Store annualized LB
     r.effB_bca = B;
 
     // --- Diagnostics for BCa ---
@@ -1792,16 +1794,22 @@ namespace palvalidator::bootstrap_helpers
       }
 
     // ---------------------------------------------------------
-    // 3. Combine (Conservative Minimum)
+    // 3. Combine (Conservative Minimum) & Log Duel Results
     // ---------------------------------------------------------
     r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
-    r.ann_lower = mkc_timeseries::Annualizer<Num>::annualize_one(
-								 r.per_lower, annualizationFactor);
+    r.ann_lower = (lbP_mn < lbP_bca) ? lbA_mn : lbA_bca; // Final LB is min of the two
 
     if (os)
       {
-	(*os) << "   [Bootstrap] SmallNResampler=" << r.resampler_name
-	      << "  (L_small=" << r.L_used << ")\n";
+	// Log the duel results for comparison on one line (as percentages)
+	(*os) << "   [Bootstrap/Duel] LB(ann) Duel: "
+	      << "  m/n = " << std::fixed << std::setprecision(4) << (num::to_double(lbA_mn) * 100.0) << "%"
+	      << "  BCa =" << std::setprecision(4) << (num::to_double(lbA_bca) * 100.0) << "%"
+	      << "  Winner =" << (num::to_double(r.ann_lower) * 100.0) << "%"
+	      << "\n";
+
+	(*os) << "   [Bootstrap] SmallNResampler = " << r.resampler_name
+	      << "  (L_small = " << r.L_used << ")\n";
       }
 
     return r;

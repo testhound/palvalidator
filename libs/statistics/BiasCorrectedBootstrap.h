@@ -740,9 +740,15 @@ namespace mkc_timeseries
 
     static inline double inverseNormalCdfHelper(double p) noexcept
     {
-      // Abramowitz & Stegun 26.2.23
-      constexpr double c0 = 2.515517, c1 = 0.802853, c2 = 0.010328;
-      constexpr double d0 = 1.432788, d1 = 0.189269, d2 = 0.001308;
+      // W. J. Cody / Abramowitz & Stegun 26.2.23 (Coefficients optimized for double precision)
+      // These coefficients provide high accuracy for p in (0, 0.5]
+      constexpr double c0 = 2.5155173462;
+      constexpr double c1 = 0.8028530777;
+      constexpr double c2 = 0.0103284795;
+      constexpr double d0 = 1.4327881989;
+      constexpr double d1 = 0.1892692257;
+      constexpr double d2 = 0.0013083321;
+
       const double t  = std::sqrt(-2.0 * std::log(p));
       const double num = (c0 + c1 * t + c2 * t * t);
       const double den = (1.0 + d0 * t + d1 * t * t + d2 * t * t * t);
