@@ -177,7 +177,8 @@ namespace palvalidator::filtering::stages
    * @return DistributionDiagnostics Struct containing boolean flags for engine execution.
    */
   BootstrapAnalysisStage::DistributionDiagnostics
-  BootstrapAnalysisStage::analyzeDistribution(const StrategyAnalysisContext& ctx, std::ostream& os) const
+  BootstrapAnalysisStage::analyzeDistribution(const StrategyAnalysisContext& ctx,
+					      std::ostream& os) const
   {
     using mkc_timeseries::StatUtils;
     using palvalidator::bootstrap_helpers::has_heavy_tails_wide;
@@ -185,21 +186,29 @@ namespace palvalidator::filtering::stages
 
     const std::size_t n = ctx.highResReturns.size();
 
-    // 1. Global Moments
+    // 1. Global Moments (kept for logging / large-N context)
     const auto [skew, exkurt] =
       StatUtils<Num>::computeSkewAndExcessKurtosis(ctx.highResReturns);
-    const bool heavy_via_moments = has_heavy_tails_wide(skew, exkurt);
 
-    // 2. Hill Estimator (hidden tail risk detector)
+    // 2. Quantile Shape (Bowley skew + tail-span, robust at small N)
+    const auto qShape =
+      StatUtils<Num>::computeQuantileShape(ctx.highResReturns);
+    const bool heavy_via_quantiles =
+      (qShape.hasStrongAsymmetry || qShape.hasHeavyTails);
+
+    // 3. Hill Estimator (hidden tail risk: extreme left-tail heaviness)
     //    Alpha <= 2.0 implies potential infinite-variance behavior.
     const double tailIndex = estimate_left_tail_index_hill(ctx.highResReturns);
-    const bool  valid_hill = (tailIndex > 0.0);
+    const bool  valid_hill   = (tailIndex > 0.0);
     const bool  heavy_via_hill = valid_hill && (tailIndex <= 2.0);
 
-    // 3. Combined Heavy-Tail flag
-    const bool heavy_tails = heavy_via_moments || heavy_via_hill;
+    // 4. Combined Heavy-Tail flag for dispatch
+    //    For consistency with conservative_smallN_lower_bound, we treat
+    //    quantile-based detection as primary, with Hill as a hard override
+    //    for extreme tails. Moment-based detection is informational only.
+    const bool heavy_tails = heavy_via_quantiles || heavy_via_hill;
 
-    // 4. Small-N (m-out-of-n duel)
+    // 5. Small-N (m-out-of-n duel)
     //    Base rule: n <= 40, or (n <= 60 && heavy_tails).
     bool run_mn =
       palvalidator::bootstrap_helpers::should_run_smallN(n, heavy_tails);
@@ -208,31 +217,36 @@ namespace palvalidator::filtering::stages
     // If we are in the upper-medium regime (60 < n <= 80),
     // and Hill alone flags very heavy tails, force the Small-N path.
     if (!run_mn && heavy_via_hill && n > 60 && n <= 80)
-    {
-      run_mn = true;
-    }
+      {
+	run_mn = true;
+      }
 
-    // 5. Percentile-t for small-to-medium N
+    // 6. Percentile-t for small-to-medium N
     bool run_pt = (n <= 80);
 
-    // 6. BCa Geo: only when we are not in the strict Small-N regime
+    // 7. BCa Geo: only when we are not in the strict Small-N regime
     bool run_bca_geo = !run_mn;
 
-    // Logging (including Hill alpha and which detector fired)
+    // 8. Logging (moments + quantile shape + Hill alpha + detector sources)
+
     os << "   [Bootstrap] n=" << n
        << "  skew=" << skew
        << "  exkurt=" << exkurt
+       << "  bowley=" << qShape.bowleySkew
+       << "  tailRatio=" << qShape.tailRatio
        << "  alpha=" << (valid_hill ? std::to_string(tailIndex) : "n/a")
        << "  heavy_tails=" << (heavy_tails ? "yes" : "no")
-       << " (moments=" << heavy_via_moments << ", hill=" << heavy_via_hill << ")"
+       << " (quant=" << heavy_via_quantiles
+       << ", hill=" << heavy_via_hill << ")" // <-- 'moments' flag removed
        << "  [Flags: smallN=" << run_mn
        << ", bcaGeo=" << run_bca_geo
        << ", pt=" << run_pt << "]\n";
-
+    
+    // DistributionDiagnostics still carries skew/exkurt + combined heavy_tails
     return DistributionDiagnostics(skew, exkurt, heavy_tails,
-                                   run_mn, run_pt, run_bca_geo);
+				   run_mn, run_pt, run_bca_geo);
   }
-
+  
   /**
    * @brief Executes the "Conservative Small-N" bootstrap pipeline.
    *
