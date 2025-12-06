@@ -855,10 +855,276 @@ namespace mkc_timeseries
       return {Decimal(mean), Decimal(var)};
     }
 
+    /**
+     * @brief Computes Moors' Kurtosis (K_Moors) and returns the excess.
+     *
+     * @details Moors' Kurtosis is a robust, quantile-based measure of a distribution's peakedness
+     * and tail heaviness, providing an alternative to the traditional (Fisher's) moment-based kurtosis
+     * that is less sensitive to extreme outliers.
+     *
+     * The formula uses the spread between octiles (O1, O3, O5, O7) normalized by the
+     * interquartile range (IQR = Q3 - Q1):
+     * $$K_{Moors} = (O7 - O5) + (O3 - O1) / (Q3 - Q1)$$
+     *
+     * This function returns the **excess Moors' Kurtosis**, which is defined as:
+     * $$K_{Excess} = K_{Moors} - 1.233$$
+     * where $1.233$ is the theoretical value of Moors' Kurtosis for the **Normal distribution**.
+     *
+     * A positive excess kurtosis ($K_{Moors} > 1.233$) indicates **leptokurtosis**
+     * (heavier tails and a more pronounced peak than a Normal distribution), which is common
+     * in financial return series.
+     *
+     * @param v A constant reference to a vector of Decimal values.
+     * @return The excess Moors' Kurtosis ($K_{Moors} - 1.233$) as a Decimal.
+     *         Returns DecimalZero if the sample size is < 7 or the denominator ($Q3-Q1$) is zero.
+     *
+     * @see Moors, J.J.A. (1988). "A quantile alternative for kurtosis". *The Statistician*, 37(1), 25-32.
+     *      (Defines the $K_{Moors}$ statistic and its normal-case value.)
+     */
+    static Decimal getMoorsKurtosis(const std::vector<Decimal>& v)
+    {
+      using Consts = DecimalConstants<Decimal>;
+      
+      // Need at least 7 points for stable octile estimation (N=8 guarantees integer indices for O1/O7).
+      if (v.size() < 7) 
+          return Consts::DecimalZero;
+      
+      // K_Moors for Normal is approx 1.233
+      const Decimal NormalKurtosis = Decimal(1.233);
+      
+      // Quantile function takes a copy and sorts internally. Pass the copy v.
+      
+      // Quartiles (for the denominator)
+      const Decimal q1 = StatUtils<Decimal>::quantile(v, 0.25);
+      const Decimal q3 = StatUtils<Decimal>::quantile(v, 0.75);
+      
+      // Octiles (for the numerator)
+      const Decimal o1 = StatUtils<Decimal>::quantile(v, 0.125);
+      const Decimal o3 = StatUtils<Decimal>::quantile(v, 0.375);
+      const Decimal o5 = StatUtils<Decimal>::quantile(v, 0.625);
+      const Decimal o7 = StatUtils<Decimal>::quantile(v, 0.875);
+      
+      const Decimal denominator = q3 - q1;
+      if (denominator == Consts::DecimalZero)
+          return Consts::DecimalZero;
+          
+      const Decimal numerator   = (o7 - o5) + (o3 - o1);
+      const Decimal moors_kurt = numerator / denominator;
+      
+      // Return EXCESS Moors' Kurtosis: K_Moors - K_Normal (1.233)
+      return moors_kurt - NormalKurtosis;
+    }
+
+    /**
+     * @brief Computes the Bowley (Quartile) Skewness (B).
+     *
+     * @details Bowley Skewness (also known as the Quartile Coefficient of Skewness) is a robust
+     * measure of asymmetry based purely on the quartiles of the data. Since it does not rely
+     * on the mean or higher moments, it is highly **resistant to outliers** and is preferred
+     * for heavy-tailed or highly skewed financial data.
+     *
+     * The formula is:
+     * $$B = (Q_1 + Q_3 - 2 \cdot Q_2) / (Q_3 - Q_1)$$
+     * where $Q_1$, $Q_2$ (median), and $Q_3$ are the 25th, 50th, and 75th percentiles.
+     *
+     * The coefficient ranges from $-1$ to $+1$.
+     * *   **$B > 0$**: Positively skewed (right-skewed); longer/heavier upper tail.
+     * *   **$B < 0$**: Negatively skewed (left-skewed); longer/heavier lower tail (e.g., larger downside moves).
+     * *   **$B \approx 0$**: Symmetric distribution.
+     *
+     * @param v A constant reference to a vector of Decimal values.
+     * @return The Bowley Skewness (B) as a Decimal. Returns DecimalZero if the sample size
+     *         is < 4 or the interquartile range ($Q3-Q1$) is numerically tiny.
+     *
+     * @see Bowley, A. L. (1920). *Elements of Statistics*. P. S. King & Son.
+     *      (One of the early proponents of this measure for descriptive statistics.)
+     */
+    static Decimal getBowleySkewness(const std::vector<Decimal>& v)
+    {
+      using Consts = DecimalConstants<Decimal>;
+
+      const std::size_t n = v.size();
+      if (n < 4)
+        return Consts::DecimalZero;
+
+      const Decimal q1 = StatUtils<Decimal>::quantile(v, 0.25);
+      const Decimal q2 = StatUtils<Decimal>::quantile(v, 0.50);
+      const Decimal q3 = StatUtils<Decimal>::quantile(v, 0.75);
+
+      const Decimal denominator = q3 - q1;
+      if (denominator == Consts::DecimalZero)
+        return Consts::DecimalZero;
+
+      // Optional: small “tiny” guard on the denominator
+      const double dDen = std::fabs(num::to_double(denominator));
+      const double tiny = 1e-12;
+      if (dDen < tiny)
+        return Consts::DecimalZero;
+
+      const Decimal numerator = q1 + q3 - q2 * Decimal(2.0);
+      return numerator / denominator;
+    }
+
+    /**
+     * @brief Measures asymmetry in tail spread between lower and upper sides.
+     *
+     * @details
+     *   Uses 10–50–90% quantiles by default:
+     *
+     *     lowerSpan = Q50 - Q10
+     *     upperSpan = Q90 - Q50
+     *
+     *   Returns:
+     *     tailRatio = max(lowerSpan, upperSpan) / min(lowerSpan, upperSpan)
+     *
+     *   If either span is non-positive or too small: returns 1.0.
+     *
+     *   Interpretation:
+     *     ~1.0  → roughly symmetric tails around the median
+     *     >>1.0 → one side is much more stretched (heavier or more volatile tail)
+     */
+    static double getTailSpanRatio(const std::vector<Decimal>& v,
+				   double pLow  = 0.10,
+				   double pHigh = 0.90)
+    {
+      const std::size_t n = v.size();
+      if (n < 8)
+        return 1.0;  // too small to say much
+
+      const Decimal qLow  = StatUtils<Decimal>::quantile(v, pLow);
+      const Decimal qMed  = StatUtils<Decimal>::quantile(v, 0.50);
+      const Decimal qHigh = StatUtils<Decimal>::quantile(v, pHigh);
+
+      const double dLow  = num::to_double(qLow);
+      const double dMed  = num::to_double(qMed);
+      const double dHigh = num::to_double(qHigh);
+
+      const double lowerSpan = dMed - dLow;
+      const double upperSpan = dHigh - dMed;
+
+      // If either span is non-positive or extremely small, treat as symmetric.
+      const double tiny = 1e-12 * std::max(1.0, std::fabs(dMed));
+      if (lowerSpan <= tiny || upperSpan <= tiny)
+        return 1.0;
+
+      const double lo = std::min(lowerSpan, upperSpan);
+      const double hi = std::max(lowerSpan, upperSpan);
+      return hi / lo;
+    }
+
+    struct QuantileShape
+    {
+      double bowleySkew        {0.0};
+      double tailRatio         {1.0};
+      bool   hasStrongAsymmetry{false};
+      bool   hasHeavyTails     {false};
+    };
+
+    /**
+     * @brief Robust, quantile-based shape summary (Bowley skew + tail span ratio).
+     *
+     * @details This function combines two highly robust, non-moment-based statistics—
+     * **Bowley Skewness** and the **Tail Span Ratio**—to provide a comprehensive summary
+     * of a distribution's shape, specifically its asymmetry and tail heaviness.
+     *
+     * 1.  **Bowley Skew (bowleySkew):** Measures overall asymmetry in the body of the distribution.
+     * 2.  **Tail Span Ratio (tailRatio):** Quantifies tail asymmetry by comparing the
+     *     spread of the lower tail ($Q_{50}-Q_{10}$) to the upper tail ($Q_{90}-Q_{50}$).
+     *     A high ratio (>> 1) indicates that one tail is much more extended/volatile than the other.
+     *
+     * The resulting struct classifies the distribution's shape based on two critical flags:
+     * *   `hasStrongAsymmetry`: True if $| \text{bowleySkew} | >= \text{bowleyThreshold}$.
+     * *   `hasHeavyTails`: True if $\text{tailRatio} >= \text{tailRatioThreshold}$.
+     *
+     * This summary is particularly valuable in finance for assessing the non-Normal characteristics
+     * of returns (e.g., negative skew and high tail risk) without being corrupted by rare, massive outliers.
+     *
+     * @param v A constant reference to a vector of Decimal values.
+     * @param bowleyThreshold Absolute threshold for Bowley Skewness to be considered "strong asymmetry" (default: 0.30).
+     * @param tailRatioThreshold Threshold for the Tail Span Ratio to be considered "heavy tails" (default: 2.50).
+     * @return A `QuantileShape` struct containing the computed statistics and boolean flags.
+     */
+    static inline QuantileShape
+    computeQuantileShape(const std::vector<Decimal>& v,
+			 double bowleyThreshold    = 0.30,
+			 double tailRatioThreshold = 2.50)
+    {
+      QuantileShape out;
+
+      const std::size_t n = v.size();
+      if (n < 8)
+        return out;
+
+      // Bowley skew via standalone helper
+      const Decimal bowleyDec = StatUtils<Decimal>::getBowleySkewness(v);
+      const double  bowley    = num::to_double(bowleyDec);
+      out.bowleySkew          = bowley;
+
+      // Tail span ratio via standalone helper
+      const double tailRatio  = StatUtils<Decimal>::getTailSpanRatio(v, 0.10, 0.90);
+      out.tailRatio           = tailRatio;
+
+      out.hasStrongAsymmetry  = (std::fabs(bowley)   >= bowleyThreshold);
+      out.hasHeavyTails       = (tailRatio           >= tailRatioThreshold);
+
+      return out;
+    }
+
+    /**
+     * @brief Computes robust, quantile-based skewness and excess kurtosis.
+     *
+     * @details This function calculates two non-moment-based measures of distribution shape:
+     * **Bowley Skewness** and **Moors' Excess Kurtosis**.
+     *
+     * Unlike traditional Fisher's moment-based statistics, these quantile-based measures are
+     * highly **robust to extreme outliers** in the data, making them particularly suitable
+     * for analyzing real-world financial returns where catastrophic events can heavily
+     * distort moment-based results.
+     *
+     * 1.  **Skewness (First element):** Calculated using `getBowleySkewness`. This measures the
+     *     asymmetry of the distribution based on quartiles. A negative value indicates a
+     *     heavier left (negative) tail, common in financial losses.
+     * 2.  **Excess Kurtosis (Second element):** Calculated using `getMoorsKurtosis`. This measures
+     *     the heaviness of the tails relative to the Normal distribution (where $K_{Excess} \approx 0$).
+     *     A positive value indicates fatter tails (leptokurtosis).
+     *
+     * **Robustness Note:** The result is always based on the more stable quantile methods
+     * (Bowley/Moors), not the standard Fisher's moments, which are also available in
+     * `computeSkewAndExcessKurtosisFisher`.
+     *
+     * @param v A constant reference to a vector of Decimal values.
+     * @return A `std::pair<double, double>` containing:
+     *         - **First:** Bowley Skewness (B).
+     *         - **Second:** Moors' Excess Kurtosis ($K_{Excess}$).
+     *         Returns $\{0.0, 0.0\}$ if the sample size is less than 7 (the minimum required
+     *         for a stable Moors' Kurtosis calculation).
+     * @see getBowleySkewness
+     * @see getMoorsKurtosis
+     */
+    static inline std::pair<double,double>
+    computeSkewAndExcessKurtosis(const std::vector<Decimal>& v)
+    {
+      const std::size_t n = v.size();
+      
+      // Minimum sample size is n=7 for the octile-based Moors' Kurtosis.
+      if (n < 7) {
+        // Moment-based calculations for N < 7 are highly unstable; return zero.
+	    return {0.0, 0.0};
+      }
+      
+      // 1. Compute Bowley Skewness (B) - Robust Skewness
+      const double skew = StatUtils<Decimal>::getBowleySkewness(v).getAsDouble();
+      
+      // 2. Compute Moors' Excess Kurtosis (K_Moors - K_Normal) - Robust Excess Kurtosis
+      const double exkurt = StatUtils<Decimal>::getMoorsKurtosis(v).getAsDouble();
+
+      return { skew, exkurt };
+    }
+
     // Fisher bias-corrected *sample* skewness and *excess* kurtosis.
     // Returns {skew, exkurt}. For n<4 or zero variance, returns {0,0}.
     static inline std::pair<double,double>
-    computeSkewAndExcessKurtosis(const std::vector<Decimal>& v)
+    computeSkewAndExcessKurtosisFisher(const std::vector<Decimal>& v)
     {
       const std::size_t n = v.size();
       if (n < 4)

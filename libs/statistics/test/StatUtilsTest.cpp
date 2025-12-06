@@ -1289,3 +1289,384 @@ TEST_CASE("StatUtils::computeLogProfitFactorRobust correctness & stability", "[S
         REQUIRE(num::to_double(lpf_robust) <= 0.10); // generous upper cap for this corner
     }
 }
+
+TEST_CASE("StatUtils::getBowleySkewness basic behavior and edge cases", "[StatUtils][BowleySkew]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Returns zero for n < 4") {
+        std::vector<DecimalType> v = {
+            createDecimal("1.0"),
+            createDecimal("2.0"),
+            createDecimal("3.0")
+        };
+        DecimalType bowley = Stat::getBowleySkewness(v);
+        REQUIRE(bowley == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Symmetric distribution yields Bowley skewness ~ 0") {
+        // Symmetric around 0: {-3, -1, 1, 3}
+        std::vector<DecimalType> v = {
+            createDecimal("-3.0"),
+            createDecimal("-1.0"),
+            createDecimal("1.0"),
+            createDecimal("3.0")
+        };
+
+        DecimalType bowley = Stat::getBowleySkewness(v);
+        REQUIRE(num::to_double(bowley) == Catch::Approx(0.0));
+    }
+
+    SECTION("Positively skewed distribution yields positive Bowley skewness") {
+        // Right-skewed: {0, 0, 0, 1, 10}
+        // With the linear quantile interpolation used in StatUtils::quantile,
+        // Bowley skewness for this example is exactly 1.0.
+        std::vector<DecimalType> v = {
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("10.0")
+        };
+
+        DecimalType bowley = Stat::getBowleySkewness(v);
+        REQUIRE(num::to_double(bowley) == Catch::Approx(1.0));
+        REQUIRE(num::to_double(bowley) > 0.0);
+    }
+
+    SECTION("Constant vector returns zero skewness") {
+        std::vector<DecimalType> v = {
+            createDecimal("5.0"),
+            createDecimal("5.0"),
+            createDecimal("5.0"),
+            createDecimal("5.0")
+        };
+
+        DecimalType bowley = Stat::getBowleySkewness(v);
+        REQUIRE(bowley == DecimalConstants<DecimalType>::DecimalZero);
+    }
+}
+
+TEST_CASE("StatUtils::getTailSpanRatio behavior", "[StatUtils][TailSpanRatio]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("n < 8 returns neutral ratio 1.0") {
+        // 7 elements: below the minimum size threshold
+        std::vector<DecimalType> v = {
+            createDecimal("1.0"),
+            createDecimal("2.0"),
+            createDecimal("3.0"),
+            createDecimal("4.0"),
+            createDecimal("5.0"),
+            createDecimal("6.0"),
+            createDecimal("7.0")
+        };
+
+        double ratio = Stat::getTailSpanRatio(v);
+        REQUIRE(ratio == Catch::Approx(1.0));
+    }
+
+    SECTION("Symmetric tails around median give ratio ~ 1.0") {
+        // Symmetric around 0: {-2, -1, 0, 1, 2}
+        std::vector<DecimalType> v = {
+            createDecimal("-2.0"),
+            createDecimal("-1.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("2.0")
+        };
+
+        double ratio = Stat::getTailSpanRatio(v);
+        REQUIRE(ratio == Catch::Approx(1.0));
+    }
+
+    SECTION("Heavier lower tail yields ratio > 1.0") {
+        // Example with a stretched lower tail:
+        // {-10, -5, -1, 0, 1, 2, 3, 4}
+        // With 10–50–90% quantiles, this produces a tail ratio of 2.5.
+        std::vector<DecimalType> v = {
+            createDecimal("-10.0"),
+            createDecimal("-5.0"),
+            createDecimal("-1.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("2.0"),
+            createDecimal("3.0"),
+            createDecimal("4.0")
+        };
+
+        double ratio = Stat::getTailSpanRatio(v);
+        REQUIRE(ratio == Catch::Approx(2.5));
+        REQUIRE(ratio > 1.0);
+    }
+
+    SECTION("Degenerate / nearly constant series falls back to 1.0") {
+        // All values identical → both spans ~0 → should return 1.0
+        std::vector<DecimalType> v = {
+            createDecimal("3.0"),
+            createDecimal("3.0"),
+            createDecimal("3.0"),
+            createDecimal("3.0"),
+            createDecimal("3.0"),
+            createDecimal("3.0"),
+            createDecimal("3.0"),
+            createDecimal("3.0")
+        };
+
+        double ratio = Stat::getTailSpanRatio(v);
+        REQUIRE(ratio == Catch::Approx(1.0));
+    }
+}
+
+TEST_CASE("StatUtils::computeQuantileShape summarizes Bowley skewness and tail span ratio", "[StatUtils][QuantileShape]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("n < 8 returns default QuantileShape") {
+        // 7 elements → below minimum size threshold inside computeQuantileShape.
+        std::vector<DecimalType> v = {
+            createDecimal("1.0"),
+            createDecimal("2.0"),
+            createDecimal("3.0"),
+            createDecimal("4.0"),
+            createDecimal("5.0"),
+            createDecimal("6.0"),
+            createDecimal("7.0")
+        };
+
+        auto shape = Stat::computeQuantileShape(v);
+
+        REQUIRE(shape.bowleySkew == Catch::Approx(0.0));
+        REQUIRE(shape.tailRatio  == Catch::Approx(1.0));
+        REQUIRE(shape.hasStrongAsymmetry == false);
+        REQUIRE(shape.hasHeavyTails      == false);
+    }
+
+    SECTION("Symmetric distribution: bowleySkew ~ 0, tailRatio ~ 1, flags false") {
+        // Build a symmetric distribution around 0 with n >= 8:
+        // {-2, -1, 0, 1, 2, -2, -1, 0, 1, 2}
+        std::vector<DecimalType> v = {
+            createDecimal("-2.0"),
+            createDecimal("-1.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("2.0"),
+            createDecimal("-2.0"),
+            createDecimal("-1.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("2.0")
+        };
+
+        auto shape = Stat::computeQuantileShape(v);
+
+        REQUIRE(shape.bowleySkew == Catch::Approx(0.0));
+        REQUIRE(shape.tailRatio  == Catch::Approx(1.0));
+        REQUIRE(shape.hasStrongAsymmetry == false);
+        REQUIRE(shape.hasHeavyTails      == false);
+    }
+
+    SECTION("Strong skew + heavy tails trigger both flags") {
+        // Right-skewed with a very stretched upper tail:
+        // {0, 0, 0, 0, 1, 10, 10, 10}
+        // Under the StatUtils quantile convention:
+        //   Bowley skewness ≈ 0.9  (|B| >= 0.30 → strong asymmetry)
+        //   tailRatio ≈ 19.0       (>= 2.5     → heavy tails)
+        std::vector<DecimalType> v = {
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("10.0"),
+            createDecimal("10.0"),
+            createDecimal("10.0")
+        };
+
+        auto shape = Stat::computeQuantileShape(v);
+
+        REQUIRE(shape.bowleySkew == Catch::Approx(0.9).margin(1e-12));
+        REQUIRE(shape.tailRatio  == Catch::Approx(19.0).margin(1e-12));
+        REQUIRE(shape.hasStrongAsymmetry == true);
+        REQUIRE(shape.hasHeavyTails      == true);
+    }
+
+    SECTION("Custom thresholds change flag behavior") {
+        // Same skewed / heavy-tailed distribution as above, but with very lax thresholds.
+        std::vector<DecimalType> v = {
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("0.0"),
+            createDecimal("1.0"),
+            createDecimal("10.0"),
+            createDecimal("10.0"),
+            createDecimal("10.0")
+        };
+
+        // Use thresholds larger than the observed values so both flags go false.
+        double bigBowleyThreshold    = 2.0;
+        double bigTailRatioThreshold = 25.0;
+
+        auto shape = Stat::computeQuantileShape(v, bigBowleyThreshold, bigTailRatioThreshold);
+
+        REQUIRE(shape.bowleySkew == Catch::Approx(0.9).margin(1e-12));
+        REQUIRE(shape.tailRatio  == Catch::Approx(19.0).margin(1e-12));
+        REQUIRE(shape.hasStrongAsymmetry == false);
+        REQUIRE(shape.hasHeavyTails      == false);
+    }
+}
+
+TEST_CASE("StatUtils::getMoorsKurtosis behavior and edge cases", "[StatUtils][MoorsKurtosis]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Returns zero for n < 7") {
+        // Minimum stable size for octiles is 7 or 8. We check n < 7.
+        std::vector<DecimalType> v = {
+            createDecimal("1.0"), createDecimal("2.0"), createDecimal("3.0"),
+            createDecimal("4.0"), createDecimal("5.0"), createDecimal("6.0")
+        };
+        DecimalType moors = Stat::getMoorsKurtosis(v);
+        REQUIRE(moors == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    // --------------------------- FIX FOR StatUtilsTest.cpp ---------------------------
+
+    SECTION("Normal distribution yields excess kurtosis ~ 0") {
+        std::vector<DecimalType> v;
+        v.reserve(1000); // Use a larger sample for better approximation of normality
+
+        // --- Use a C++ Normal Distribution Generator ---
+        std::mt19937_64 rng(42); // Seed for deterministic tests
+        std::normal_distribution<> normal_dist(0.0, 1.0); // Mean 0, StdDev 1
+
+        for (int i = 0; i < 1000; ++i) {
+            v.push_back(createDecimal(std::to_string(normal_dist(rng))));
+        }
+        // --------------------------------------------------
+
+        DecimalType moors_exkurt = Stat::getMoorsKurtosis(v);
+        
+        // Expect excess kurtosis (K_Moors - 1.233) to be close to zero.
+        // A margin of 0.1 is safe for a 1000-sample simulation.
+        REQUIRE(num::to_double(moors_exkurt) == Catch::Approx(0.0).margin(0.1));
+    }
+
+    SECTION("Heavy-tailed distribution yields positive excess kurtosis") {
+        // A leptokurtic, heavy-tailed distribution (outliers at both ends)
+        // Values: {-100, -5, -2, 0, 2, 5, 100} plus middle elements to pad N>=8
+        std::vector<DecimalType> v = {
+            createDecimal("-100.0"), createDecimal("100.0"), // Outliers
+            createDecimal("-5.0"), createDecimal("5.0"),
+            createDecimal("-2.0"), createDecimal("2.0"),
+            createDecimal("-1.0"), createDecimal("1.0"), // N=8 minimum
+            createDecimal("0.0"), createDecimal("0.5")   // N=10
+        };
+
+        DecimalType moors_exkurt = Stat::getMoorsKurtosis(v);
+        // Heavy tails must yield positive excess kurtosis
+        REQUIRE(num::to_double(moors_exkurt) > 0.0);
+        REQUIRE(num::to_double(moors_exkurt) == Catch::Approx(1.0).margin(1.0)); // Test against a large positive value (e.g., K_Moors > 2.233)
+    }
+
+    SECTION("Constant vector returns zero excess kurtosis") {
+        std::vector<DecimalType> v(10, createDecimal("5.0"));
+        
+        DecimalType moors_exkurt = Stat::getMoorsKurtosis(v);
+        // Denominator (Q3 - Q1) is zero, so it should return 0.
+        REQUIRE(moors_exkurt == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Calculation of K_Moors for a simple dataset (n=8)") {
+        // Sorted: {1, 2, 3, 4, 5, 6, 7, 8}. n=8
+        std::vector<DecimalType> v = {
+            createDecimal("8"), createDecimal("7"), createDecimal("6"), createDecimal("5"),
+            createDecimal("4"), createDecimal("3"), createDecimal("2"), createDecimal("1")
+        };
+        
+        // Quantiles for this set (using the StatUtils linear interpolation method):
+        // Q1 (0.25): idx=1.75 -> 2 + 0.75*(3-2) = 2.75
+        // Q3 (0.75): idx=5.25 -> 6 + 0.25*(7-6) = 6.25
+        // O1 (0.125): idx=0.875 -> 1 + 0.875*(2-1) = 1.875
+        // O3 (0.375): idx=2.625 -> 3 + 0.625*(4-3) = 3.625
+        // O5 (0.625): idx=4.375 -> 5 + 0.375*(6-5) = 5.375
+        // O7 (0.875): idx=6.125 -> 7 + 0.125*(8-7) = 7.125
+
+        // Denom = Q3 - Q1 = 6.25 - 2.75 = 3.5
+        // Numer = (O7 - O5) + (O3 - O1) = (7.125 - 5.375) + (3.625 - 1.875) = 1.75 + 1.75 = 3.5
+        // K_Moors (Total) = Numer / Denom = 3.5 / 3.5 = 1.0
+        // Excess Kurtosis = 1.0 - 1.233 = -0.233
+
+        DecimalType moors_exkurt = Stat::getMoorsKurtosis(v);
+        REQUIRE(num::to_double(moors_exkurt) == Catch::Approx(-0.233));
+    }
+}
+
+TEST_CASE("StatUtils::computeSkewAndExcessKurtosis (Robust Quantile)", "[StatUtils][RobustStats][SkewKurtosis]") {
+    using Stat = StatUtils<DecimalType>;
+    
+    // Test data for known quantile results: n=8, slightly asymmetric, platykurtic-like
+    // Sorted: {1, 2, 3, 4, 5, 6, 7, 8} (Used in getMoorsKurtosis test)
+    std::vector<DecimalType> v_uniform_like = {
+        createDecimal("8"), createDecimal("7"), createDecimal("6"), createDecimal("5"),
+        createDecimal("4"), createDecimal("3"), createDecimal("2"), createDecimal("1")
+    };
+    
+    // Quantile results for v_uniform_like (n=8):
+    // Q1=2.75, Q2=4.5, Q3=6.25
+    // Bowley Skewness (B) = (2.75 + 6.25 - 2*4.5) / (6.25 - 2.75) = (9.0 - 9.0) / 3.5 = 0.0
+    // Moors' Excess Kurtosis (K_Moors - 1.233) = 1.0 - 1.233 = -0.233
+
+    SECTION("Minimum sample size n < 7 returns {0.0, 0.0}") {
+        std::vector<DecimalType> small_v(6, createDecimal("1.0"));
+        auto [skew, exkurt] = Stat::computeSkewAndExcessKurtosis(small_v);
+        REQUIRE(skew == Catch::Approx(0.0));
+        REQUIRE(exkurt == Catch::Approx(0.0));
+    }
+
+    SECTION("Symmetric, uniform-like distribution returns B=0.0 and negative excess kurtosis") {
+        auto [skew, exkurt] = Stat::computeSkewAndExcessKurtosis(v_uniform_like);
+        
+        // Should match the calculated Bowley Skewness for this uniform-like set (B=0.0)
+        REQUIRE(skew == Catch::Approx(0.0).margin(1e-12)); 
+        
+        // Should match the calculated Moors' Excess Kurtosis (-0.233)
+        REQUIRE(exkurt == Catch::Approx(-0.233).margin(1e-12)); 
+    }
+
+    SECTION("Positively skewed, heavy-tailed distribution (Right Skew + High Kurtosis)") {
+        // Highly right-skewed, heavy-tailed (leptokurtic) distribution:
+        // {-1, 0, 0, 1, 1, 2, 5, 10, 50, 100} (n=10)
+        std::vector<DecimalType> v_heavy_skew = {
+            createDecimal("100.0"), createDecimal("50.0"), createDecimal("10.0"), 
+            createDecimal("5.0"), createDecimal("2.0"), createDecimal("1.0"), 
+            createDecimal("1.0"), createDecimal("0.0"), createDecimal("0.0"), 
+            createDecimal("-1.0") 
+        };
+        
+        // Expected values (calculated manually for n=10):
+        // Q1 (0.25): idx=2.25 -> 0.0 + 0.25*(1.0-0.0) = 0.25
+        // Q2 (0.50): idx=4.5  -> 1.0 + 0.50*(2.0-1.0) = 1.50
+        // Q3 (0.75): idx=6.75 -> 5.0 + 0.75*(10.0-5.0) = 8.75
+        // Bowley Skewness (B) = (0.25 + 8.75 - 2*1.50) / (8.75 - 0.25) = 6.0 / 8.5 ≈ 0.70588
+        
+        // Moors' Kurtosis is difficult to calculate analytically, but it should be strongly positive.
+        
+        auto [skew, exkurt] = Stat::computeSkewAndExcessKurtosis(v_heavy_skew);
+
+        // Skewness must be significantly positive (right-skew)
+        REQUIRE(skew > 0.70);
+        REQUIRE(skew < 0.71);
+        
+        // Excess Kurtosis must be significantly positive (heavy-tailed)
+        REQUIRE(exkurt > 0.5);
+    }
+
+    SECTION("Constant series (degenerate) returns {0.0, 0.0}") {
+        std::vector<DecimalType> v(10, createDecimal("42.0"));
+        auto [skew, exkurt] = Stat::computeSkewAndExcessKurtosis(v);
+        
+        // getBowleySkewness returns 0.0 for degenerate series (Q3-Q1 = 0)
+        // getMoorsKurtosis returns 0.0 for degenerate series (Q3-Q1 = 0)
+        REQUIRE(skew == Catch::Approx(0.0));
+        REQUIRE(exkurt == Catch::Approx(0.0));
+    }
+}
