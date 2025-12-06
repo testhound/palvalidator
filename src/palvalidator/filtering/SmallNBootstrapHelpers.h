@@ -1869,8 +1869,7 @@ namespace palvalidator::bootstrap_helpers
    *
    * @return SmallNConservativeResult containing the annualized/per-period LB and diagnostics.
    */
-  template <typename Num, typename GeoStat, typename StrategyT,
-            typename BootstrapFactoryT = palvalidator::bootstrap_cfg::BootstrapFactory>
+  template <typename Num, typename GeoStat, typename StrategyT, typename BootstrapFactoryT>
   inline SmallNConservativeResult<Num, GeoStat, StrategyT>
   conservative_smallN_lower_bound(const std::vector<Num>& returns,
                                   std::size_t              L,
@@ -1884,37 +1883,50 @@ namespace palvalidator::bootstrap_helpers
                                   int                      stageTag = 3,
                                   int                      fold = 0)
   {
-    const auto [skew, exkurt] =
-      mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
-    const bool heavy = has_heavy_tails_wide(skew, exkurt);
-    const std::optional<bool> heavy_override = heavy ? std::optional<bool>(true)
-      : std::nullopt;
+    using Stat = mkc_timeseries::StatUtils<Num>;
+
+    // Robust, quantile-based shape summary (Bowley skew + tail span ratio).
+    const auto qShape = Stat::computeQuantileShape(returns);
+
+    // For small N, be conservative: if either side screams "non-Gaussian",
+    // we treat this as heavy-tailed for the bootstrap configuration.
+    const bool heavy =
+      (qShape.hasStrongAsymmetry || qShape.hasHeavyTails);
+
+    const std::optional<bool> heavy_override =
+      heavy ? std::optional<bool>(true) : std::nullopt;
 
     return conservative_smallN_lower_bound<Num, GeoStat, StrategyT, BootstrapFactoryT>(
-										       returns,
-										       L,
-										       annualizationFactor,
-										       confLevel,
-										       B,
-										       rho_m,
-										       strategy,
-										       bootstrapFactory,
-										       os,
-										       stageTag,
-										       fold,
-										       heavy_override);
+        returns,
+        L,
+        annualizationFactor,
+        confLevel,
+        B,
+        rho_m,
+        strategy,
+        bootstrapFactory,
+        os,
+        stageTag,
+        fold,
+        heavy_override);
   }
 
-  /**
+/**
    * @brief Core implementation of the conservative small-N lower bound logic.
    *
    * @details
    * This function orchestrates the "Small-N" bootstrap process:
-   * 1. Analyzes distribution (Vol, Skew, Tail Index).
+   * 1. Analyzes distribution (Vol, Shape, Tail Index).
    * 2. Selects the appropriate Resampler (IID or StationaryBlock) based on
-   * data characteristics or overrides.
+   *    data characteristics or overrides.
    * 3. Calculates the optimal m-out-of-n ratio (using `resolve_adaptive_subsample_ratio`).
    * 4. Executes the "Duel" (m/n vs BCa) via `execute_bootstrap_duel`.
+   *
+   * Heavy-tail logic:
+   *   - By default, heavy tails are detected via a **conservative OR** of quantile shape
+   *     and the Hill tail index (alpha <= 2.0). The legacy moment-based check 
+   *     (has_heavy_tails_wide) is explicitly excluded from this decision.
+   *   - If `heavy_tails_override` is provided, it overrides this combined flag.
    *
    * @tparam Num Numeric type.
    * @tparam GeoStat Statistic functor.
@@ -1922,40 +1934,58 @@ namespace palvalidator::bootstrap_helpers
    * @tparam BootstrapFactoryT Factory type.
    */
   template <typename Num, typename GeoStat, typename StrategyT,
-	    typename BootstrapFactoryT>
+            typename BootstrapFactoryT>
   inline SmallNConservativeResult<Num, GeoStat, StrategyT>
   conservative_smallN_lower_bound(
-				  const std::vector<Num>& returns,
-				  std::size_t              L,
-				  double                   annualizationFactor,
-				  double                   confLevel,
-				  std::size_t              B,
-				  double                   rho_m,   // if <=0 → use TailVolStabilityPolicy
-				  StrategyT&               strategy,
-				  BootstrapFactoryT&       bootstrapFactory,
-				  std::ostream* os,       // optional stage logger
-				  int                      stageTag,
-				  int                      fold,
-				  std::optional<bool>      heavy_tails_override)
+      const std::vector<Num>& returns,
+      std::size_t              L,
+      double                   annualizationFactor,
+      double                   confLevel,
+      std::size_t              B,
+      double                   rho_m,   // if <=0 → use TailVolStabilityPolicy
+      StrategyT&               strategy,
+      BootstrapFactoryT&       bootstrapFactory,
+      std::ostream*            os,      // optional stage logger
+      int                      stageTag,
+      int                      fold,
+      std::optional<bool>      heavy_tails_override)
   {
     // ---------------------------------------------------------
     // 1. Setup & Context Analysis
     // ---------------------------------------------------------
     const std::size_t n = returns.size();
 
-    const auto [mean, variance] = mkc_timeseries::StatUtils<Num>::computeMeanAndVarianceFast(returns);
+    const auto [mean, variance] =
+      mkc_timeseries::StatUtils<Num>::computeMeanAndVarianceFast(returns);
+
     const double sigma = std::sqrt(num::to_double(variance));
     double sigmaAnn = sigma;
-    if (annualizationFactor > 0.0) sigmaAnn *= std::sqrt(annualizationFactor);
+    if (annualizationFactor > 0.0)
+      sigmaAnn *= std::sqrt(annualizationFactor);
 
-    const auto [skew, exkurt] = mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
-    const double tailIndex    = estimate_left_tail_index_hill(returns);
-   
-    // Detect Heavy Tails
-    const bool heavy_from_shape = has_heavy_tails_wide(skew, exkurt);
+    // Moment-based shape (kept for logging / context; not used for heavy-tail decision).
+    const auto [skew, exkurt] =
+      mkc_timeseries::StatUtils<Num>::computeSkewAndExcessKurtosis(returns);
+
+    // Quantile-based shape (Bowley skew + tail-span; robust in small N region).
+    const auto qShape =
+      mkc_timeseries::StatUtils<Num>::computeQuantileShape(returns);
+      
+    // Hill Estimator
+    const double tailIndex = estimate_left_tail_index_hill(returns);
+    const bool  valid_hill   = (tailIndex > 0.0);
+    const bool  heavy_via_hill = valid_hill && (tailIndex <= 2.0); // True if alpha <= 2.0
+
+    const bool heavy_from_quantiles =
+      (qShape.hasStrongAsymmetry || qShape.hasHeavyTails);
+    
+    // Combine quantile shape with the Hill estimate
+    const bool heavy_combined = heavy_from_quantiles || heavy_via_hill;
+
+    // The heavy_flag carried in the MNRatioContext is the most conservative view.
     const bool heavy_flag = heavy_tails_override.has_value()
-      ? *heavy_tails_override
-      : heavy_from_shape;
+                              ? *heavy_tails_override
+                              : heavy_combined;
 
     MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIndex, heavy_flag);
 
@@ -1967,63 +1997,65 @@ namespace palvalidator::bootstrap_helpers
 
     if (heavy_tails_override.has_value())
       {
-	use_block = *heavy_tails_override;
+        // Explicit instruction: heavy_tails_override = true → force block;
+        // heavy_tails_override = false → force IID.
+        use_block = *heavy_tails_override;
       }
     else if (n <= N_BLOCK_ALWAYS)
       {
-	use_block = true; // Force block for very small samples
+        // For very small samples, default to block to respect dependence.
+        use_block = true;
       }
     else
       {
-	// Use dependence proxies for larger N
-	const double ratio_pos   = sign_positive_ratio(returns);
-	const std::size_t runlen = longest_sign_run(returns);
-	use_block = choose_block_smallN(ratio_pos, n, runlen);
+        // Use dependence proxies for larger N.
+        const double       ratio_pos = sign_positive_ratio(returns);
+        const std::size_t  runlen    = longest_sign_run(returns);
+        use_block = choose_block_smallN(ratio_pos, n, runlen);
       }
 
     const std::size_t L_small = clamp_smallL(L);
-    const double z = z_from_two_sided_CL(confLevel);
+    const double      z       = z_from_two_sided_CL(confLevel);
 
     // ---------------------------------------------------------
     // 3. Execution Dispatch via Generic Lambda
     // ---------------------------------------------------------
-    // This lambda encapsulates the policy resolution and execution steps.
     auto run_variant = [&](auto& resampler, const char* name)
     {
-      // Use std::decay_t to strip the reference (T&) from decltype(resampler).
-      // This ensures ResamplerT is passed as the pure Value Type (T) to the template,
-      // matching the expectation of std::is_same_v in the tests.
       using ResamplerType = std::decay_t<decltype(resampler)>;
 
       // A. Resolve Ratio (Policy)
-      double final_rho = resolve_adaptive_subsample_ratio<Num, GeoStat>(rho_m,
-									returns,
-									ctx,
-									L_small,
-									confLevel,
-									B,
-									strategy,
-									bootstrapFactory,
-									resampler,
-									os,
-									stageTag,
-									fold);
+      double final_rho =
+        resolve_adaptive_subsample_ratio<Num, GeoStat>(
+            rho_m,
+            returns,
+            ctx,
+            L_small,
+            confLevel,
+            B,
+            strategy,
+            bootstrapFactory,
+            resampler,
+            os,
+            stageTag,
+            fold);
 
       // B. Execute Duel (Kernel)
-      return execute_bootstrap_duel<ResamplerType, Num, GeoStat>(returns,
-								       resampler,
-								       final_rho,
-								       L_small,
-								       annualizationFactor,
-								       confLevel,
-								       B,
-								       z,
-								       strategy,
-								       bootstrapFactory,
-								       stageTag,
-								       fold,
-								       os,
-								       name);
+      return execute_bootstrap_duel<ResamplerType, Num, GeoStat>(
+          returns,
+          resampler,
+          final_rho,
+          L_small,
+          annualizationFactor,
+          confLevel,
+          B,
+          z,
+          strategy,
+          bootstrapFactory,
+          stageTag,
+          fold,
+          os,
+          name);
     };
 
     // ---------------------------------------------------------
@@ -2031,15 +2063,16 @@ namespace palvalidator::bootstrap_helpers
     // ---------------------------------------------------------
     if (use_block)
       {
-	using BlockValueRes = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
-	BlockValueRes resampler(L_small);
-	return run_variant(resampler, "StationaryMaskValueResamplerAdapter");
+        using BlockValueRes =
+          palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+        BlockValueRes resampler(L_small);
+        return run_variant(resampler, "StationaryMaskValueResamplerAdapter");
       }
     else
       {
-	using IIDResampler = mkc_timeseries::IIDResampler<Num>;
-	IIDResampler resampler;
-	return run_variant(resampler, "IIDResampler");
+        using IIDResampler = mkc_timeseries::IIDResampler<Num>;
+        IIDResampler resampler;
+        return run_variant(resampler, "IIDResampler");
       }
   }
 } // namespace palvalidator::bootstrap_helpers
