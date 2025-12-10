@@ -38,6 +38,17 @@ namespace mkc_timeseries
   {
     using DC = DecimalConstants<Decimal>;
 
+    /// \brief Helper to format the statistic for display (as percentage)
+    static double formatForDisplay(double value)
+    {
+      return value * 100.0;
+    }
+
+    static constexpr bool isRatioStatistic() noexcept
+    {
+      return false;
+    }
+
     /// \brief Full constructor with adaptive winsorization controls.
     /// \param clip_ruin       If true, clip 1+r to at least ruin_eps.
     /// \param winsor_small_n  If true, apply winsorization when n < 30.
@@ -470,6 +481,64 @@ namespace mkc_timeseries
 
       return pf;
     }
+
+    /// \brief Robust log-profit-factor statistic on per-period returns.
+    ///
+    /// This functor is a thin adapter around StatUtils::computeLogProfitFactorRobust
+    /// so it can be used as a generic "statistic" in the bootstrap code
+    /// (m-out-of-n, BCa, percentile-t, etc.).
+    ///
+    /// By default it returns the *compressed* form:
+    ///   s = log(1 + PF_robust)
+    ///
+    /// which is monotone in PF and numerically well-behaved. You can disable
+    /// compression (and/or tweak the regularization parameters) via the ctor.
+    struct LogProfitFactorStat
+    {
+      /// \brief Helper to format the statistic for display (exp and subtract 1)
+      static double formatForDisplay(double value)
+      {
+        return std::exp(value) - 1.0;
+      }
+
+      static constexpr bool isRatioStatistic() noexcept
+      {
+	return true;
+      }
+
+      /// \param compressResult  If true, return log(1 + PF_robust); otherwise PF_robust.
+      /// \param ruin_eps        Clamp for (1 + r) <= 0 in the underlying robust LPF.
+      /// \param denom_floor     Floor for the denominator in log-space units.
+      /// \param prior_strength  Multiplier for the median log-loss used as a prior.
+      explicit LogProfitFactorStat(bool   compressResult = true,
+				   double ruin_eps       = 1e-8,
+				   double denom_floor    = 1e-6,
+				   double prior_strength = 1.0)
+	: m_compressResult(compressResult)
+	, m_ruinEps(ruin_eps)
+	, m_denomFloor(denom_floor)
+	, m_priorStrength(prior_strength)
+      {}
+
+      /// \brief Evaluate the robust log profit factor statistic on a return series.
+      ///
+      /// The input is a vector of per-period returns (e.g. daily percent returns
+      /// while in a trade, where 1% = 0.01).
+      Decimal operator()(const std::vector<Decimal>& returns) const
+      {
+	return StatUtils<Decimal>::computeLogProfitFactorRobust(returns,
+								m_compressResult,
+								m_ruinEps,
+								m_denomFloor,
+								m_priorStrength);
+    }
+
+  private:
+    bool   m_compressResult;
+    double m_ruinEps;
+    double m_denomFloor;
+    double m_priorStrength;
+  };
     
     /**
      * @brief Computes the Log Profit Factor from a series of returns.
