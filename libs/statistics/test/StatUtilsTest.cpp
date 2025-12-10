@@ -588,6 +588,102 @@ TEST_CASE("GeoMeanStat works as a statistic in getBootStrappedStatistic", "[Stat
     REQUIRE(num::to_double(true_geo) == Catch::Approx(num::to_double(mean_est)).margin(num::to_double(std_est * DecimalType(3.0))));
 }
 
+TEST_CASE("LogProfitFactorStat basic correctness vs StatUtils::computeLogProfitFactorRobust",
+          "[StatUtils][LogPFStat]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Default-constructed functor matches robust LPF (compressed)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02")
+        };
+
+        typename StatUtils<DecimalType>::LogProfitFactorStat stat; // compressResult=true by default
+
+        DecimalType direct = Stat::computeLogProfitFactorRobust(
+            returns,
+            /*compressResult=*/true
+        );
+        DecimalType via_functor = stat(returns);
+
+        REQUIRE(num::to_double(via_functor) ==
+                Catch::Approx(num::to_double(direct)).epsilon(1e-12));
+    }
+
+    SECTION("Non-compressed functor matches robust LPF with compressResult=false") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        // Explicitly disable compression in the functor
+        typename StatUtils<DecimalType>::LogProfitFactorStat stat(/*compressResult=*/false);
+
+        DecimalType direct = Stat::computeLogProfitFactorRobust(
+            returns,
+            /*compressResult=*/false
+        );
+        DecimalType via_functor = stat(returns);
+
+        REQUIRE(num::to_double(via_functor) ==
+                Catch::Approx(num::to_double(direct)).epsilon(1e-12));
+    }
+
+    SECTION("Empty input returns zero consistently with StatUtils implementation") {
+        std::vector<DecimalType> empty;
+        typename StatUtils<DecimalType>::LogProfitFactorStat stat;
+
+        DecimalType direct = Stat::computeLogProfitFactorRobust(empty);
+        DecimalType via_functor = stat(empty);
+
+        REQUIRE(via_functor == direct);
+        REQUIRE(via_functor == DecimalConstants<DecimalType>::DecimalZero);
+    }
+}
+
+TEST_CASE("LogProfitFactorStat works as a statistic in getBootStrappedStatistic",
+          "[StatUtils][LogPFStat][Bootstrap]") {
+    using Stat = StatUtils<DecimalType>;
+
+    // Use a mixed realistic-looking return series
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+        DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+        DecimalType("0.25")
+    };
+
+    // Statistic functor (compressed robust log PF)
+    typename StatUtils<DecimalType>::LogProfitFactorStat stat;
+
+    // "True" statistic for the original sample
+    DecimalType true_logPF = stat(returns);
+
+    // Run multiple bootstrap medians to form a distribution of estimates
+    constexpr int num_runs = 100;
+    std::vector<DecimalType> boot_medians;
+    boot_medians.reserve(num_runs);
+
+    for (int i = 0; i < num_runs; ++i) {
+        boot_medians.push_back(
+            Stat::getBootStrappedStatistic(
+                returns,
+                stat,         // std::function binds to LogProfitFactorStat::operator()
+                100));        // bootstraps per run
+    }
+
+    DecimalType mean_est = Stat::computeMean(boot_medians);
+    DecimalType std_est  = Stat::computeStdDev(boot_medians, mean_est);
+
+    // As with the GeoMeanStat test: the true value should lie within ~3σ of the
+    // bootstrap distribution mean; this checks both bias and wiring.
+    REQUIRE(num::to_double(true_logPF) ==
+            Catch::Approx(num::to_double(mean_est))
+                .margin(num::to_double(std_est * DecimalType(3.0))));
+}
+
 TEST_CASE("Quantile function with linear interpolation", "[Quantile]") {
 
     SECTION("Empty vector returns zero") {

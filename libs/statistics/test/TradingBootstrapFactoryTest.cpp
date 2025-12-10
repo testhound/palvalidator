@@ -381,3 +381,114 @@ TEST_CASE("TradingBootstrapFactory: makePercentileT responds to tag changes", "[
                        || num::to_double(rf0.upper) != num::to_double(rf1.upper);
     REQUIRE(difffold);
 }
+
+// --- New Test Cases for makeStudentizedT ---
+
+TEST_CASE("TradingBootstrapFactory: makeStudentizedT deterministic with CRN", "[Factory][StudentizedT][CRN][Determinism]") {
+    using D   = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    // Mildly dependent toy returns (same as existing tests)
+    std::vector<D> returns;
+    for (int k = 0; k < 40; ++k) {
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("0.002"));
+    }
+
+    // Mean sampler
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    const uint64_t MASTER_SEED = 0xD1CEACCE550DDC0Dul;
+    const uint64_t strategyId  = 0x4893A0B2C7E5F6D1ull;
+    const uint64_t stageTag    = 2;                     // Studentized T stage tag
+    const unsigned L           = 3;
+    const uint64_t fold        = 0;
+    const unsigned B_OUTER     = 1000;
+    const double   CL          = 0.95;
+
+    TradingBootstrapFactory<Eng> factory(MASTER_SEED);
+
+    // Call 1
+    Resamp sampler(L);
+    auto tboot1 = factory.makeStudentizedT<D, Resamp>(
+        returns, B_OUTER, CL,
+        std::function<D(const std::vector<D>&)>(meanSampler),
+        sampler, strategyId, stageTag, L, fold
+    );
+
+    // Call 2 (identical parameters)
+    auto tboot2 = factory.makeStudentizedT<D, Resamp>(
+        returns, B_OUTER, CL,
+        std::function<D(const std::vector<D>&)>(meanSampler),
+        sampler, strategyId, stageTag, L, fold
+    );
+    
+    // The bounds must be bit-identical due to Common Random Numbers (CRN)
+    REQUIRE(num::to_double(tboot1.getLowerBound()) == Catch::Approx(num::to_double(tboot2.getLowerBound())).epsilon(0));
+    REQUIRE(num::to_double(tboot1.getUpperBound()) == Catch::Approx(num::to_double(tboot2.getUpperBound())).epsilon(0));
+    REQUIRE(num::to_double(tboot1.getStatistic())  == Catch::Approx(num::to_double(tboot2.getStatistic())).epsilon(0));
+}
+
+TEST_CASE("TradingBootstrapFactory: makeStudentizedT responds to tag changes (L, fold)", "[Factory][StudentizedT][CRN][Sensitivity]") {
+    using D   = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    std::vector<D> returns;
+    for (int k = 0; k < 40; ++k) {
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("0.004"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("-0.003"));
+        returns.push_back(createDecimal("0.002"));
+    }
+
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    const uint64_t MASTER_SEED = 0xAAFFBB00CC11DD22ull;
+    const uint64_t strategyId  = 0x33445566778899AAull;
+    const uint64_t stageTag    = 2;
+    const unsigned L3          = 3;
+    const unsigned L4          = 4;
+    const uint64_t fold0       = 0, fold1 = 1;
+    const unsigned B_OUTER     = 1200;
+    const double   CL          = 0.95;
+
+    TradingBootstrapFactory<Eng> factory(MASTER_SEED);
+    
+    // --- L sensitivity (change L) ---
+    auto tboot_L3 = factory.makeStudentizedT<D, Resamp>(
+        returns, B_OUTER, CL, std::function<D(const std::vector<D>&)>(meanSampler),
+        Resamp(L3), strategyId, stageTag, L3, fold0
+    );
+    auto tboot_L4 = factory.makeStudentizedT<D, Resamp>(
+        returns, B_OUTER, CL, std::function<D(const std::vector<D>&)>(meanSampler),
+        Resamp(L4), strategyId, stageTag, L4, fold0
+    );
+
+    // With overwhelming probability, changing L changes the result (statistically and due to CRN tags)
+    const bool diffL = num::to_double(tboot_L3.getLowerBound()) != num::to_double(tboot_L4.getLowerBound());
+    REQUIRE(diffL);
+
+    // --- Fold sensitivity (change fold) ---
+    auto tboot_f0 = factory.makeStudentizedT<D, Resamp>(
+        returns, B_OUTER, CL, std::function<D(const std::vector<D>&)>(meanSampler),
+        Resamp(L3), strategyId, stageTag, L3, fold0
+    );
+    auto tboot_f1 = factory.makeStudentizedT<D, Resamp>(
+        returns, B_OUTER, CL, std::function<D(const std::vector<D>&)>(meanSampler),
+        Resamp(L3), strategyId, stageTag, L3, fold1
+    );
+
+    // Changing fold must change the RNG stream, leading to different bounds
+    const bool difffold = num::to_double(tboot_f0.getLowerBound()) != num::to_double(tboot_f1.getLowerBound());
+    REQUIRE(difffold);
+}

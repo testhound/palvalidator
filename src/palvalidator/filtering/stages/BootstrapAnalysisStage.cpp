@@ -328,6 +328,160 @@ namespace palvalidator::filtering::stages
 			smallN.effB_mn);
   }
 
+    /**
+   * @brief Executes the "Conservative Small-N" bootstrap pipeline for Profit Factor.
+   *
+   * @details
+   * This is a thin wrapper around `conservative_smallN_lower_bound`, using
+   * `LogProfitFactorStat<Num>` as the statistic. It:
+   *
+   * 1. Configures the duel between the m-out-of-n bootstrap and the BCa bootstrap.
+   * 2. Enables the TailVolStabilityPolicy (rho_m = -1.0) to adapt m/n based on
+   *    the stability of the lower bound.
+   * 3. Applies the same extra heavy-tail override used for geometric returns:
+   *    for 60 < n <= 80 and Hill alpha <= 2.0, force block resampling.
+   *
+   * Note: Profit factor is dimensionless, so we do not apply any real
+   *       annualization. The "annualized" bound in SmallNResult is set
+   *       equal to the per-period bound.
+   *
+   * @param highResReturns  Mark-to-market bar-return series (out-of-sample).
+   * @param clonedStrategy  Strategy instance used by the bootstrap engine.
+   * @param confidenceLevel Target confidence level (e.g. 0.95).
+   * @param blockLength     Stationary bootstrap block length L.
+   * @param os              Output stream for logging.
+   *
+   * @return std::optional<SmallNResult>
+   *         Populated on success; std::nullopt if the series is empty.
+   */
+  std::optional<BootstrapAnalysisStage::SmallNResult>
+  BootstrapAnalysisStage::runSmallNProfitFactorBootstrap(
+      const std::vector<Num>& highResReturns,
+      const std::shared_ptr<PalStrategy<Num>>& clonedStrategy,
+      double confidenceLevel,
+      std::size_t blockLength,
+      std::ostream& os) const
+  {
+    using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
+    using palvalidator::bootstrap_helpers::estimate_left_tail_index_hill;
+    using LogProfitFactorStat = mkc_timeseries::StatUtils<Num>::LogProfitFactorStat;
+
+    // Enable TailVolStabilityPolicy inside conservative_smallN_lower_bound
+    const double rho_m = -1.0;
+
+    // Guard: nothing to bootstrap
+    if (highResReturns.empty())
+      {
+        os << "   [Bootstrap] Small-N Profit Factor: empty return series; skipping.\n";
+        return std::nullopt;
+      }
+
+    // ------------------------------------------------------------------------
+    // Extra conservative tweak (same as runSmallNBootstrap for GeoMean):
+    // For 60 < n <= 80, if the Hill estimator flags very heavy tails (alpha <= 2),
+    // force the resampler choice inside conservative_smallN_lower_bound to use
+    // block resampling (StationaryMaskValueResamplerAdapter).
+    // ------------------------------------------------------------------------
+    std::optional<bool> heavy_tails_override = std::nullopt;
+
+    const std::size_t n = highResReturns.size();
+    if (n > 60 && n <= 80)
+      {
+        const double tailIndex = estimate_left_tail_index_hill(highResReturns);
+        if (tailIndex > 0.0 && tailIndex <= 2.0)
+          {
+            // "always block" inside conservative_smallN_lower_bound
+            heavy_tails_override = true;
+          }
+      }
+
+    // Profit factor is dimensionless → no real annualization.
+    // We still pass 1.0 to satisfy the API; per_lower == ann_lower.
+    const double annualizationFactor = 1.0;
+
+    auto smallN =
+      conservative_smallN_lower_bound<Num, LogProfitFactorStat>(
+          highResReturns,
+          blockLength,
+          annualizationFactor,
+          confidenceLevel,
+          mNumResamples,
+          rho_m,                 // adaptive policy enabled
+          *clonedStrategy,
+          mBootstrapFactory,
+          &os,
+          /*stage*/ 1,
+          /*fold*/  0,
+          heavy_tails_override);
+
+    os << "   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N, Profit Factor):"
+       << "  resampler=" << (smallN.resampler_name ? smallN.resampler_name : "n/a")
+       << "  m_sub="     << smallN.m_sub
+       << "  L="         << smallN.L_used
+       << "  effB(mn)="  << smallN.effB_mn
+       << "  LB(stat)="  << smallN.per_lower
+       << "\n";
+
+    // Log the duel ratio if valid
+    if (smallN.duel_ratio_valid)
+    {
+      os << "   [Bootstrap] PF duel m/n vs BCa ratio=" << smallN.duel_ratio << "\n";
+    }
+
+    // Reuse SmallNResult: interpret "period" as the log-PF statistic.
+    const Num lbPer = smallN.per_lower;
+    const Num lbAnn = lbPer;  // no true annualization for PF
+
+    return SmallNResult(
+        lbPer,
+        lbAnn,
+        smallN.resampler_name ? std::string(smallN.resampler_name) : std::string(),
+        smallN.m_sub,
+        static_cast<std::size_t>(smallN.L_used),
+        smallN.effB_mn,
+        smallN.duel_ratio,
+        smallN.duel_ratio_valid);
+  }
+
+  BootstrapAnalysisStage::BCaPFResult
+  BootstrapAnalysisStage::runBCaProfitFactorBootstrap(
+						      const std::vector<Num>& highResReturns,
+						      const std::shared_ptr<PalStrategy<Num>>& clonedStrategy,
+						      double confidenceLevel,
+						      size_t blockLength,
+						      std::ostream& os) const
+  {
+    using BCaResampler = mkc_timeseries::StationaryBlockResampler<Num>;
+    using PFStat       = mkc_timeseries::StatUtils<Num>::LogProfitFactorStat;
+
+    BCaResampler bcaResampler(blockLength);
+
+    std::function<Num(const std::vector<Num>&)> pfFn =
+      [](const std::vector<Num>& r) { return PFStat()(r); };
+
+    auto bcaPF = mBootstrapFactory.template makeBCa<Num, BCaResampler>(
+								       highResReturns,
+								       mNumResamples,
+								       confidenceLevel,
+								       pfFn,
+								       bcaResampler,
+								       *clonedStrategy,
+								       /*stage*/1,
+								       static_cast<uint64_t>(blockLength),
+								       /*fold*/0
+								       );
+
+    const Num lbPF_BCa = bcaPF.getLowerBound();
+
+    os << "   [Bootstrap] BCa (LogPF):"
+       << "  resampler=StationaryBlockResampler"
+       << "  L=" << blockLength
+       << "  effB=" << mNumResamples
+       << "  LB=" << lbPF_BCa << "\n";
+
+    return BCaPFResult(lbPF_BCa);
+  }
+  
   /**
    * @brief Executes the Double Bootstrap (Percentile-t) method for variance stabilization.
    *
@@ -675,6 +829,178 @@ namespace palvalidator::filtering::stages
   }
 
   /**
+   * @brief Validate that context has sufficient data for bootstrap analysis
+   */
+  bool BootstrapAnalysisStage::validateContext(const StrategyAnalysisContext& ctx,
+                                                BootstrapAnalysisResult& result,
+                                                std::ostream& os) const
+  {
+    const std::size_t n = ctx.highResReturns.size();
+    if (n < 2)
+    {
+      result.failureReason = "Insufficient returns (need at least 2, have " + std::to_string(n) + ")";
+      os << "   [Bootstrap] Skipped (" << result.failureReason << ")\n";
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * @brief Compute annualization parameters (block length, bars/year, lambda)
+   */
+  BootstrapAnalysisStage::AnnualizationParams
+  BootstrapAnalysisStage::computeAnnualizationParams(const StrategyAnalysisContext& ctx,
+                                                      std::ostream& os) const
+  {
+    AnnualizationParams params;
+    
+    // Compute block length
+    params.blockLength = computeBlockLength(ctx);
+    
+    // Get median holding period
+    params.medianHoldBars = ctx.backtester
+      ? ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod()
+      : 2;
+    
+    os << "\n" << "Strategy Median holding period = " << params.medianHoldBars << "\n";
+    
+    // Base calendar factor (fallback)
+    params.baseAnnFactor = computeAnnualizationFactor(ctx);
+    
+    // λ = trades/year from backtester (preferred)
+    params.lambdaTradesPerYear = 0.0;
+    if (ctx.backtester)
+    {
+      try
+      {
+        params.lambdaTradesPerYear = ctx.backtester->getEstimatedAnnualizedTrades();
+      }
+      catch (...)
+      {
+        params.lambdaTradesPerYear = 0.0;
+      }
+    }
+    
+    // Annualize M2M bar statistics using bars/year = λ × medianHoldBars
+    params.barsPerYear = params.lambdaTradesPerYear * static_cast<double>(params.medianHoldBars);
+    if (!(params.barsPerYear > 0.0))
+    {
+      params.barsPerYear = params.baseAnnFactor;
+      os << "   [Bootstrap] Warning: trades/year (λ) or medianHoldBars unavailable; "
+         << "falling back to base calendar factor = " << params.baseAnnFactor << "\n";
+    }
+    
+    return params;
+  }
+
+  /**
+   * @brief Execute profit factor bootstrap analysis
+   */
+
+  void BootstrapAnalysisStage::executeProfitFactorBootstrap(
+  					    const StrategyAnalysisContext& ctx,
+  					    const DistributionDiagnostics& diagnostics,
+  					    double confidenceLevel,
+  					    size_t blockLength,
+  					    BootstrapAnalysisResult& result,
+  					    std::ostream& os) const
+  {
+    using mkc_timeseries::DecimalConstants;
+
+    if (!ctx.clonedStrategy)
+      {
+	os << "   [Bootstrap] Profit Factor bootstrap skipped: no clonedStrategy in context.\n";
+	return;
+      }
+
+    // ALWAYS run Small-N PF bootstrap (with duel) for ratio statistics
+    // Ratios are inherently unstable in bootstrap contexts, so we need the
+    // duel ratio to validate reliability regardless of sample size
+    auto pfSmallNResult = runSmallNProfitFactorBootstrap(
+  					ctx.highResReturns,
+  					ctx.clonedStrategy,
+  					confidenceLevel,
+  					blockLength,
+  					os);
+
+    if (!pfSmallNResult)
+      {
+	os << "   [Bootstrap] Profit Factor bootstrap failed to produce result.\n";
+	return;
+      }
+
+    // Extract the chosen PF lower bound (already the minimum from the duel)
+    const Num chosenPF_log = pfSmallNResult->getLowerBoundPeriod();
+    
+    // Convert LPF_stat = log(1 + PF_ratio) back to PF_ratio = exp(LPF_stat) - 1
+    const Num lbProfitFactorNonLog = std::exp(chosenPF_log) - DecimalConstants<Num>::DecimalOne;
+    result.lbProfitFactor = lbProfitFactorNonLog;
+
+    os << "   [Bootstrap] Profit Factor chosen LB(stat)="
+       << lbProfitFactorNonLog
+       << "  [source=SmallN_Duel"
+       << ", raw_log=" << chosenPF_log
+       << "]\n";
+
+    // Attach PF duel ratio to result for pipeline validation
+    result.pfDuelRatioValid = false;
+    result.pfDuelRatio = std::numeric_limits<double>::quiet_NaN();
+    
+    if (pfSmallNResult->hasDuelRatio())
+    {
+      result.pfDuelRatio = pfSmallNResult->getDuelRatio();
+      result.pfDuelRatioValid = true;
+      
+      os << "   [Bootstrap] PF duel ratio (BCa vs m/n) = "
+         << result.pfDuelRatio << "\n";
+    }
+  }
+
+  /**
+   * @brief Assemble final bootstrap results from individual components
+   */
+  void BootstrapAnalysisStage::assembleFinalResults(
+      const std::optional<SmallNResult>& smallNResult,
+      const std::optional<PercentileTResult>& percentileTResult,
+      const std::optional<BCaGeoResult>& bcaGeoResult,
+      const BCaMeanResult& bcaMeanResult,
+      const AnnualizationParams& annParams,
+      BootstrapAnalysisResult& result,
+      std::ostream& os) const
+  {
+    // Store mean bootstrap results
+    result.lbMeanPeriod = bcaMeanResult.getLowerBoundPeriod();
+    result.annualizedLowerBoundMean = bcaMeanResult.getLowerBoundAnnualized();
+    
+    // Combine geometric lower bounds
+    const Num lbGeoPer_neutral = combineGeometricLowerBounds(
+      smallNResult,
+      percentileTResult,
+      bcaGeoResult,
+      os);
+    result.lbGeoPeriod = lbGeoPer_neutral;
+    
+    // Annualize geometric lower bound
+    result.annualizedLowerBoundGeo =
+      mkc_timeseries::Annualizer<Num>::annualize_one(result.lbGeoPeriod, annParams.barsPerYear);
+    
+    // Publish component bounds for downstream refinement
+    result.lbGeoSmallNPeriod = smallNResult.has_value()
+      ? std::optional<Num>(smallNResult->getLowerBoundPeriod())
+      : std::nullopt;
+    result.lbGeoPTPeriod = percentileTResult.has_value()
+      ? std::optional<Num>(percentileTResult->getLowerBoundPeriod())
+      : std::nullopt;
+    
+    // Store annualization metadata
+    result.blockLength = annParams.blockLength;
+    result.medianHoldBars = annParams.medianHoldBars;
+    result.annFactorUsed = annParams.barsPerYear;
+    
+    result.computationSucceeded = true;
+  }
+
+  /**
    * @brief Orchestrates the entire Bootstrap Analysis process.
    *
    * @details
@@ -689,136 +1015,110 @@ namespace palvalidator::filtering::stages
    * @param os Output stream for logging.
    * @return BootstrapAnalysisResult The final object containing all bounds, factors, and status flags.
    */
+// --- BEGIN REGENERATED BootstrapAnalysisStage::execute METHOD ---
+
+  /**
+   * @brief Orchestrates the entire Bootstrap Analysis process.
+   *
+   * @details
+   * This is the main entry point for the stage. The workflow is:
+   * 1. **Setup:** Initialize backtester and validate context
+   * 2. **Parameter Computation:** Compute annualization parameters
+   * 3. **Distribution Analysis:** Profile distribution to decide which methods to run
+   * 4. **Bootstrap Execution:** Run selected bootstrap methods
+   * 5. **Result Assembly:** Combine results into final output
+   *
+   * @param ctx The analysis context.
+   * @param os Output stream for logging.
+   * @return BootstrapAnalysisResult The final object containing all bounds, factors, and status flags.
+   */
   BootstrapAnalysisResult
   BootstrapAnalysisStage::execute(StrategyAnalysisContext& ctx, std::ostream& os) const
   {
-    using mkc_timeseries::DecimalConstants;
+    BootstrapAnalysisResult result;
 
-    BootstrapAnalysisResult R;
-
-    // --- Step 1: Ensure backtester & high-res returns exist ----------------
+    // Step 1: Initialize backtester and validate context
     if (!initializeBacktester(ctx, os))
-      {
-	R.failureReason = "Failed to initialize backtester";
-	return R;
-      }
-
-    const std::size_t n = ctx.highResReturns.size();
-    if (n < 2)
-      {
-	R.failureReason = "Insufficient returns (need at least 2, have " + std::to_string(n) + ")";
-	os << "   [Bootstrap] Skipped (" << R.failureReason << ")\n";
-	return R;
-      }
-
-    // --- Step 2: Compute block length and *bars/year* annualization --------
-    const std::size_t L = computeBlockLength(ctx);
-    R.blockLength = L;
-
-    const unsigned int medianHoldBars =
-      ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod();
-    R.medianHoldBars = medianHoldBars;
-    os << "\n" << "Strategy Median holding period = " << medianHoldBars << "\n";
-
-    // Base calendar factor (e.g., 252 daily, etc.) retained for fallback only
-    const double baseAnnFactor = computeAnnualizationFactor(ctx);
-
-    // λ = trades/year from the backtester (preferred)
-    double lambdaTradesPerYear = 0.0;
-    if (ctx.backtester) {
-      try {
-	lambdaTradesPerYear = ctx.backtester->getEstimatedAnnualizedTrades();
-      } catch (...) {
-	lambdaTradesPerYear = 0.0;
-      }
+    {
+      result.failureReason = "Failed to initialize backtester";
+      return result;
     }
 
-    // New: Annualize M2M bar statistics using bars/year = λ × medianHoldBars.
-    // If λ is unavailable or medianHoldBars == 0, fall back to base calendar factor.
-    double barsPerYear = lambdaTradesPerYear * static_cast<double>(medianHoldBars);
-    if (!(barsPerYear > 0.0)) {
-      barsPerYear = baseAnnFactor;
-      os << "   [Bootstrap] Warning: trades/year (λ) or medianHoldBars unavailable; "
-	"falling back to base calendar factor = " << baseAnnFactor << "\n";
+    if (!validateContext(ctx, result, os))
+    {
+      return result;
     }
 
-    // Publish for downstream stages (interpretation: *bars/year* on M2M series)
-    R.annFactorUsed = barsPerYear;
-
-    const double CL = mConfidenceLevel.getAsDouble();
+    // Step 2: Compute annualization parameters
+    const auto annParams = computeAnnualizationParams(ctx, os);
+    const double confidenceLevel = mConfidenceLevel.getAsDouble();
 
     try
+    {
+      // Step 3: Analyze distribution and determine which methods to run
+      const auto diagnostics = analyzeDistribution(ctx, os);
+      os << "   [Bootstrap] L=" << annParams.blockLength << "\n";
+
+      // Step 4: Run bootstrap methods based on diagnostics
+      std::optional<SmallNResult> smallNResult;
+      if (diagnostics.shouldRunSmallN())
       {
-	// --- Step 3: Analyze distribution and determine which methods to run ----
-	const auto diagnostics = analyzeDistribution(ctx, os);
-	os << "   [Bootstrap] L=" << L << "\n";
-
-	// --- Step 4: Run small-N conservative bootstrap (if applicable) ---------
-	std::optional<SmallNResult> smallNResult;
-	if (diagnostics.shouldRunSmallN())
-	  {
-	    smallNResult = runSmallNBootstrap(ctx, CL, barsPerYear, L, os);
-	  }
-
-	// --- Step 4b: Run BCa Geo bootstrap (New Option B logic) ---------------
-	// Run this if we are NOT running SmallN, but need a partner for Percentile-t
-	std::optional<BCaGeoResult> bcaGeoResult;
-	if (diagnostics.shouldRunBCaGeo())
-	  {
-	     bcaGeoResult = runBCaGeoBootstrap(ctx, CL, L, os);
-	  }
-
-	// --- Step 5: Run percentile-t bootstrap (if applicable) -----------------
-	std::optional<PercentileTResult> percentileTResult;
-	if (diagnostics.shouldRunPercentileT())
-	  {
-	    percentileTResult = runPercentileTBootstrap(ctx, CL, L, os);
-	  }
-
-	// --- Step 6: Run BCa mean bootstrap (always for compatibility) ----------
-	const auto bcaMeanResult = runBCaMeanBootstrap(ctx, CL, barsPerYear, L, os);
-	R.lbMeanPeriod = bcaMeanResult.getLowerBoundPeriod();
-	R.annualizedLowerBoundMean = bcaMeanResult.getLowerBoundAnnualized();
-
-	// --- Step 7: Combine geometric lower bounds (Updated) ------------------
-	// Now passes bcaGeoResult as the third option
-	const Num lbGeoPer_neutral = combineGeometricLowerBounds(
-	    smallNResult,
-	    percentileTResult,
-	    bcaGeoResult,
-	    os);
-	R.lbGeoPeriod = lbGeoPer_neutral;
-
-	// Annualize geometric lower bound using barsPerYear (λ × medianHoldBars)
-	R.annualizedLowerBoundGeo =
-	  mkc_timeseries::Annualizer<Num>::annualize_one(R.lbGeoPeriod, barsPerYear);
-
-	// Publish the parts for downstream near-hurdle refinement
-	R.lbGeoSmallNPeriod = smallNResult.has_value()
-	  ? std::optional<Num>(smallNResult->getLowerBoundPeriod())
-	  : std::nullopt;
-	R.lbGeoPTPeriod = percentileTResult.has_value()
-	  ? std::optional<Num>(percentileTResult->getLowerBoundPeriod())
-	  : std::nullopt;
-
-	// --- Step 8: Log final policy and finish --------------------------------
-	logFinalPolicy(smallNResult, percentileTResult, bcaGeoResult, n, L,
-		       diagnostics.getSkew(), diagnostics.getExcessKurtosis(),
-		       diagnostics.hasHeavyTails(), os);
-
-	os << "   [Bootstrap] Annualization factor (bars/year via λ×medianHoldBars) = "
-	   << barsPerYear
-	   << "  [λ=" << lambdaTradesPerYear
-	   << ", medianHoldBars=" << medianHoldBars << "]\n";
-
-	R.computationSucceeded = true;
-	return R;
+	os << "   [Bootstrap] Executing m/n + BCa geomean duel = " << std::endl << std::endl;
+        smallNResult = runSmallNBootstrap(ctx, confidenceLevel,
+                                          annParams.barsPerYear,
+                                          annParams.blockLength, os);
       }
+
+      std::optional<BCaGeoResult> bcaGeoResult;
+      if (diagnostics.shouldRunBCaGeo())
+      {
+	os << "   [Bootstrap] Executing BCa standalone bootstrap = " << std::endl << std::endl;
+        bcaGeoResult = runBCaGeoBootstrap(ctx, confidenceLevel,
+                                          annParams.blockLength, os);
+      }
+
+      std::optional<PercentileTResult> percentileTResult;
+      if (diagnostics.shouldRunPercentileT())
+      {
+	os << "   [Bootstrap] Executing percentile bootstrap = " << std::endl << std::endl;
+        percentileTResult = runPercentileTBootstrap(ctx, confidenceLevel,
+                                                    annParams.blockLength, os);
+      }
+
+      // Always run BCa mean bootstrap for compatibility
+      const auto bcaMeanResult = runBCaMeanBootstrap(ctx, confidenceLevel,
+                                                     annParams.barsPerYear,
+                                                     annParams.blockLength, os);
+
+      os << "   [Bootstrap] Executing profit factor duel = " << std::endl << std::endl;
+
+      // Step 5: Execute profit factor bootstrap
+      executeProfitFactorBootstrap(ctx, diagnostics, confidenceLevel,
+                                   annParams.blockLength, result, os);
+
+      // Step 6: Assemble final results
+      assembleFinalResults(smallNResult, percentileTResult, bcaGeoResult,
+                          bcaMeanResult, annParams, result, os);
+
+      // Log final policy with actual diagnostics
+      logFinalPolicy(smallNResult, percentileTResult, bcaGeoResult,
+                    ctx.highResReturns.size(), annParams.blockLength,
+                    diagnostics.getSkew(), diagnostics.getExcessKurtosis(),
+                    diagnostics.hasHeavyTails(), os);
+
+      // Log annualization parameters
+      os << "   [Bootstrap] Annualization factor (bars/year via λ×medianHoldBars) = "
+         << annParams.barsPerYear
+         << "  [λ=" << annParams.lambdaTradesPerYear
+         << ", medianHoldBars=" << annParams.medianHoldBars << "]\n";
+
+      return result;
+    }
     catch (const std::exception& e)
-      {
-	R.failureReason = std::string("Bootstrap computation failed: ") + e.what();
-	os << "Warning: BootstrapAnalysisStage " << R.failureReason << "\n";
-	return R;
-      }
+    {
+      result.failureReason = std::string("Bootstrap computation failed: ") + e.what();
+      os << "Warning: BootstrapAnalysisStage " << result.failureReason << "\n";
+      return result;
+    }
   }
 } // namespace palvalidator::filtering::stages
