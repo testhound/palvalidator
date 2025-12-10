@@ -266,6 +266,8 @@ namespace mkc_timeseries
 		      boost::gregorian::from_undelimited_string("19920701"));
       addCommonStock (std::string("ORLY"), std::string("O'Reilly Automotive"),
 		      boost::gregorian::from_undelimited_string("19930422"));
+      addCommonStock (std::string("ORCL"), std::string("Oracle"),
+		      boost::gregorian::from_undelimited_string("19860312"));
       addCommonStock (std::string("AVGO"), std::string("Avago Technologies"),
 		      boost::gregorian::from_undelimited_string("19880417"));
       addCommonStock (std::string("ASML"), std::string("ASML Holding N.V."),
