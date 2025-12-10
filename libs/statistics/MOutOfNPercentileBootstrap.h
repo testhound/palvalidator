@@ -5,10 +5,13 @@
 #include <stdexcept>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include "randutils.hpp"
 #include "RngUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "AdaptiveRatioInternal.h"
+#include "AdaptiveRatioPolicies.h"
 
 namespace palvalidator
 {
@@ -107,151 +110,256 @@ namespace palvalidator
     template <class Decimal,
 	      class Sampler,
 	      class Resampler,
-	      class Rng = std::mt19937_64,
+	      class Rng      = std::mt19937_64,
 	      class Executor = concurrency::SingleThreadExecutor>
     class MOutOfNPercentileBootstrap
     {
     public:
       struct Result
       {
-        Decimal     mean;              // stat on original sample
-        Decimal     lower;             // percentile lower bound
-        Decimal     upper;             // percentile upper bound
-        double      cl;
-        std::size_t B;
-        std::size_t effective_B;
-        std::size_t skipped;
-        std::size_t n;
-        std::size_t m_sub;
-        std::size_t L;
+	Decimal     mean;              // stat on original sample
+	Decimal     lower;             // percentile lower bound
+	Decimal     upper;             // percentile upper bound
+	double      cl;
+	std::size_t B;
+	std::size_t effective_B;
+	std::size_t skipped;
+	std::size_t n;
+	std::size_t m_sub;
+	std::size_t L;
+	double      computed_ratio;    // logical ratio reported to callers
       };
 
     public:
-      /**
-       * @brief Construct an m-out-of-n percentile bootstrap engine.
-       *
-       * @param B
-       *   Number of bootstrap replicates (\f$B \ge 400\f$ recommended for stable quantiles).
-       * @param confidence_level
-       *   Confidence level \f$\mathrm{CL}\in(0.5,1)\f$ (e.g., 0.95).
-       * @param m_ratio
-       *   Subsampling ratio \f$\rho\in(0,1)\f$; the subsample size is \f$m=\lfloor \rho n \rfloor\f$.
-       *   (Clamped to \f$[2, n-1]\f$ inside @ref run.)
-       * @param resampler
-       *   Resampler instance used to generate each length-\f$m\f$ bootstrap sample.
-       *
-       * @throws std::invalid_argument
-       *   If @p B < 400, or @p confidence_level not in (0.5,1), or @p m_ratio not in (0,1).
-       */
+      // ======================================================================
+      // CONSTRUCTOR 1: Fixed Ratio
+      // ======================================================================
       MOutOfNPercentileBootstrap(std::size_t B,
 				 double      confidence_level,
 				 double      m_ratio,
 				 const Resampler& resampler)
-	: m_B(B),
-	  m_CL(confidence_level),
-	  m_ratio(m_ratio),
-	  m_resampler(resampler),
-	  m_exec(std::make_shared<Executor>()),
-	  m_chunkHint(0)
+	: m_B(B)
+	, m_CL(confidence_level)
+	, m_ratio(m_ratio)
+	, m_resampler(resampler)
+	, m_exec(std::make_shared<Executor>())
+	, m_chunkHint(0)
+	, m_ratioPolicy(nullptr)
       {
-        if (m_B < 400)
+	validateParameters();
+	if (!(m_ratio > 0.0 && m_ratio < 1.0))
 	  {
-            throw std::invalid_argument("MOutOfNPercentileBootstrap: B should be >= 400");
-	  }
-        if (!(m_CL > 0.5 && m_CL < 1.0))
-	  {
-            throw std::invalid_argument("MOutOfNPercentileBootstrap: CL must be in (0.5,1)");
-	  }
-        if (!(m_ratio > 0.0 && m_ratio < 1.0))
-	  {
-            throw std::invalid_argument("MOutOfNPercentileBootstrap: m_ratio must be in (0,1)");
+	    throw std::invalid_argument("MOutOfNPercentileBootstrap: m_ratio must be in (0,1)");
 	  }
       }
 
-      /**
-       * @brief Execute the bootstrap and form a percentile confidence interval.
-       *
-       * For each replicate \f$b=1,\dots,B\f$:
-       * 1. Draw a resample of length \f$m = \lfloor \rho n \rfloor\f$ (or @p m_sub_override if set)
-       *    using the injected @p m_resampler.
-       * 2. Compute \f$\theta^\*_b = \mathrm{sampler}(y_b)\f$.
-       * 3. Skip if \f$\theta^\*_b\f$ is non-finite; otherwise retain it.
-       *
-       * After the loop, sort the retained \f$\{\theta^\*_b\}\f$ and take type-7 quantiles at
-       * \f$\alpha/2\f$ and \f$1-\alpha/2\f$ where \f$\alpha = 1-\mathrm{CL}\f$.
-       *
-       * @param x
-       *   Original sample (length \f$n \ge 3\f$).
-       * @param sampler
-       *   Callable that computes the statistic of interest on a series.
-       * @param rng
-       *   Random number generator (forwarded to the resampler).
-       * @param m_sub_override
-       *   Optional explicit subsample size \f$m\in[2,n-1]\f$. If 0 (default), compute from @p m_ratio.
-       *
-       * @return Result
-       *   Struct containing \f$\hat\theta\f$, lower/upper bounds, diagnostics, and bookkeeping.
-       *
-       * @throws std::invalid_argument
-       *   If \f$n<3\f$, or \f$m<2\f$ after clamping, or @p m_sub_override \f\ge n\f.
-       * @throws std::runtime_error
-       *   If fewer than \f$B/2\f$ valid replicates remain (too many degenerates).
-       *
-       * @complexity
-       *   Time: \f$O(B \cdot T_\mathrm{resample} + B \log B)\f$ (sort); Space: \f$O(B)\f$.
-       *
-       * @note
-       *   - This method returns percentile intervals (no bias correction or acceleration).
-       *   - For highly skewed statistics or very small \f$n\f$, consider Studentized (percentile-t)
-       *     intervals or BCa; this class is meant as a conservative, simple alternative,
-       *     especially when used with an “m-out-of-n” (\f$m<n\f$) regime.
-       */
-      Result run(const std::vector<Decimal>& x,
-		 Sampler sampler,
-		 Rng& rng,
-		 std::size_t m_sub_override = 0) const
+      // ======================================================================
+      // CONSTRUCTOR 2: Adaptive Ratio (TailVolatilityAdaptivePolicy)
+      // ======================================================================
+      template<typename BootstrapStatistic>
+      MOutOfNPercentileBootstrap(std::size_t B,
+				 double      confidence_level,
+				 const Resampler& resampler,
+				 typename std::enable_if<
+				 !std::is_floating_point<BootstrapStatistic>::value,
+				 int>::type = 0)
+	: m_B(B)
+	, m_CL(confidence_level)
+	, m_ratio(-1.0)  // sentinel: adaptive mode
+	, m_resampler(resampler)
+	, m_exec(std::make_shared<Executor>())
+	, m_chunkHint(0)
+	, m_ratioPolicy(std::make_shared<
+			TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic>>())
       {
-	// Derive a per-replicate engine from the supplied RNG (works for std engines AND randutils)
+	validateParameters();
+      }
+
+      // ======================================================================
+      // RUN METHODS
+      // ======================================================================
+      Result run(const std::vector<Decimal>& x,
+		 Sampler                      sampler,
+		 Rng&                         rng,
+		 std::size_t                  m_sub_override = 0,
+		 std::ostream*                diagnosticLog  = nullptr) const
+      {
+	// Derive per-replicate engine from supplied RNG
 	auto make_engine = [&rng](std::size_t /*b*/) {
 	  const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
 	  auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
 	  return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
 	};
 
-	return run_core_(x, sampler, m_sub_override, make_engine);
+	return run_core_(x, sampler, m_sub_override, make_engine, diagnosticLog);
       }
 
       template <class Provider>
       Result run(const std::vector<Decimal>& x,
 		 Sampler                      sampler,
 		 const Provider&              provider,
-		 std::size_t                  m_sub_override = 0) const
+		 std::size_t                  m_sub_override = 0,
+		 std::ostream*                diagnosticLog  = nullptr) const
       {
 	auto make_engine = [&provider](std::size_t b) {
-	  return provider.make_engine(b);  // CRN: 1 engine per replicate index
+	  // CRN: 1 engine per replicate index
+	  return provider.make_engine(b);
 	};
-	
-	return run_core_(x, sampler, m_sub_override, make_engine);
+
+	return run_core_(x, sampler, m_sub_override, make_engine, diagnosticLog);
       }
 
-      void setChunkSizeHint(uint32_t c)
+      // ======================================================================
+      // EXECUTION 3: Advanced Refinement (NEW - Two-Tier API)
+      // ======================================================================
+      /**
+       * @brief Execute the bootstrap with adaptive ratio calculation and refinement.
+       *
+       * This method enables the stability-based refinement stage and requires
+       * dependencies for Common Random Numbers (CRN) and probe engine creation.
+       * This will call the policy's computeRatioWithRefinement method.
+       *
+       * @tparam BootstrapStatistic The statistic functor type
+       * @tparam StrategyT Strategy object type for CRN hashing
+       * @tparam BootstrapFactoryT Bootstrap factory type for creating probe engines
+       *
+       * @param x The input data
+       * @param sampler The bootstrap statistic
+       * @param strategy Strategy object for CRN hashing
+       * @param factory Bootstrap factory for creating probe engines
+       * @param stageTag CRN stage identifier
+       * @param fold CRN fold identifier
+       * @param diagnosticLog Optional output stream for diagnostics
+       * @return Result with computed confidence interval and refined ratio
+       */
+      template <typename BootstrapStatistic, typename StrategyT, typename BootstrapFactoryT>
+      Result runWithRefinement(
+			       const std::vector<Decimal>& x,
+			       Sampler sampler,
+			       StrategyT& strategy,
+			       BootstrapFactoryT& factory,
+			       int stageTag,
+			       int fold,
+			       std::ostream* diagnosticLog = nullptr) const
       {
-	m_chunkHint = c;
+	const std::size_t n = x.size();
+	if (n < 3)
+	  {
+	    throw std::invalid_argument("MOutOfNPercentileBootstrap::runWithRefinement: n must be >= 3");
+	  }
+
+	// 1. Compute Statistical Context
+	detail::StatisticalContext<Decimal> ctx(x);
+
+	// 2. Setup Probe Maker (capturing CRN state)
+	// L_small: Use the resampler's block length for probe engines
+	const std::size_t L_small = m_resampler.getL();
+
+	detail::ConcreteProbeEngineMaker<Decimal, BootstrapStatistic,
+					 StrategyT, BootstrapFactoryT, Resampler>
+	  probeMaker(strategy, factory, stageTag, fold,
+		     m_resampler, L_small, m_CL);
+
+	// 3. Resolve Ratio using Refinement Policy
+	//    Note: The policy internally clamps before and after refinement
+	double actual_ratio;
+	
+	if (!m_ratioPolicy)
+	  {
+	    // No policy set, use default TailVolatilityAdaptivePolicy with refinement
+	    TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic> defaultPolicy;
+	    actual_ratio = defaultPolicy.computeRatioWithRefinement(
+								    x, ctx, m_CL, m_B, probeMaker, diagnosticLog);
+	  }
+	else
+	  {
+	    // Use the configured policy
+	    auto policy = std::static_pointer_cast<
+	      IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>>(m_ratioPolicy);
+	    
+	    if (policy)
+	      {
+		actual_ratio = policy->computeRatioWithRefinement(
+								  x, ctx, m_CL, m_B, probeMaker, diagnosticLog);
+	      }
+	    else
+	      {
+		// Fallback to default policy
+		TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic> defaultPolicy;
+		actual_ratio = defaultPolicy.computeRatioWithRefinement(
+									x, ctx, m_CL, m_B, probeMaker, diagnosticLog);
+	      }
+	  }
+
+	// 4. Compute m_sub and clamp to valid range (defensive final check)
+	//    This should be redundant since the policy already clamped, but ensures safety
+	std::size_t m_sub = static_cast<std::size_t>(std::floor(actual_ratio * n));
+	if (m_sub < 2) m_sub = 2;
+	if (m_sub >= n) m_sub = n - 1;
+	actual_ratio = static_cast<double>(m_sub) / static_cast<double>(n);
+
+	// 5. Create CRN provider for main bootstrap execution
+	auto [mainEngine, crnProvider] = factory.template makeMOutOfN<Decimal, BootstrapStatistic, Resampler>(
+													      m_B, m_CL, actual_ratio, m_resampler, strategy, stageTag, static_cast<int>(L_small), fold);
+
+	// 6. Execute main bootstrap with refined ratio
+	auto make_engine = [&crnProvider](std::size_t b) {
+	  return crnProvider.make_engine(b);
+	};
+
+	// Use run_core_ with the computed m_sub
+	return run_core_(x, sampler, m_sub, make_engine, diagnosticLog);
       }
 
-      // Introspection helpers
+      // ======================================================================
+      // POLICY CONFIGURATION
+      // ======================================================================
+      template<typename BootstrapStatistic>
+      void setAdaptiveRatioPolicy(
+				  std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy)
+      {
+	if (!policy)
+	  throw std::invalid_argument("Policy cannot be null");
+
+	m_ratioPolicy = std::static_pointer_cast<void>(policy);
+	m_ratio       = -1.0;  // switch to adaptive mode
+      }
+
+      bool isAdaptiveMode() const { return m_ratio < 0.0; }
+
+      void setChunkSizeHint(uint32_t c) { m_chunkHint = c; }
+
+      // Introspection
       std::size_t B()        const { return m_B; }
       double      CL()       const { return m_CL; }
       double      mratio()   const { return m_ratio; }
       const Resampler& resampler() const { return m_resampler; }
 
     private:
-      // Extracted: unsorted type-7 quantile via two nth_element passes
+      // ======================================================================
+      // INTERNAL HELPERS
+      // ======================================================================
+      void validateParameters() const
+      {
+	if (m_B < 400)
+	  {
+	    throw std::invalid_argument("MOutOfNPercentileBootstrap: B should be >= 400");
+	  }
+	if (!(m_CL > 0.5 && m_CL < 1.0))
+	  {
+	    throw std::invalid_argument("MOutOfNPercentileBootstrap: CL must be in (0.5,1)");
+	  }
+      }
+
+      // Unsorted type-7 quantile via nth_element
       static double quantile_type7_via_nth(const std::vector<double>& s, double p)
       {
-	if (s.empty()) throw std::invalid_argument("quantile_type7_via_nth: empty input");
-	if (p <= 0.0)  return *std::min_element(s.begin(), s.end());
-	if (p >= 1.0)  return *std::max_element(s.begin(), s.end());
+	if (s.empty())
+	  throw std::invalid_argument("quantile_type7_via_nth: empty input");
+	if (p <= 0.0)
+	  return *std::min_element(s.begin(), s.end());
+	if (p >= 1.0)
+	  return *std::max_element(s.begin(), s.end());
 
 	const double nd = static_cast<double>(s.size());
 	const double h  = (nd - 1.0) * p + 1.0;
@@ -261,32 +369,74 @@ namespace palvalidator
 	const double frac = h - static_cast<double>(i1);
 
 	std::vector<double> w0(s.begin(), s.end());
-	std::nth_element(w0.begin(), w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1), w0.end());
+	std::nth_element(w0.begin(),
+			 w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1),
+			 w0.end());
 	const double x0 = w0[i1 - 1];
 
 	std::vector<double> w1(s.begin(), s.end());
-	std::nth_element(w1.begin(), w1.begin() + static_cast<std::ptrdiff_t>(i1), w1.end());
+	std::nth_element(w1.begin(),
+			 w1.begin() + static_cast<std::ptrdiff_t>(i1),
+			 w1.end());
 	const double x1 = w1[i1];
 
 	return x0 + (x1 - x0) * frac;
       }
 
+      // ======================================================================
+      // CORE BOOTSTRAP IMPLEMENTATION
+      // ======================================================================
       template <class EngineMaker>
       Result run_core_(const std::vector<Decimal>& x,
 		       Sampler                      sampler,
 		       std::size_t                  m_sub_override,
-		       EngineMaker&&                make_engine) const
+		       EngineMaker&&                make_engine,
+		       std::ostream*                diagnosticLog = nullptr) const
       {
 	const std::size_t n = x.size();
-	if (n < 3) {
-	  throw std::invalid_argument("MOutOfNPercentileBootstrap: n must be >= 3");
-	}
+	if (n < 3)
+	  {
+	    throw std::invalid_argument("MOutOfNPercentileBootstrap: n must be >= 3");
+	  }
 
-	std::size_t m_sub = (m_sub_override > 0)
-	  ? m_sub_override
-	  : static_cast<std::size_t>(std::floor(m_ratio * static_cast<double>(n)));
-	if (m_sub < 2)  m_sub = 2;
-	if (m_sub >= n) m_sub = n - 1;
+	// Determine m_sub and ratios
+	std::size_t m_sub;
+	double      actual_ratio;    // ratio used internally to derive m_sub
+	double      reported_ratio;  // ratio exposed via Result::computed_ratio
+
+	if (m_sub_override > 0)
+	  {
+	    // Explicit override takes precedence
+	    m_sub         = m_sub_override;
+	    actual_ratio  = static_cast<double>(m_sub) / static_cast<double>(n);
+	    reported_ratio = actual_ratio;  // tests expect override ratio = m_sub/n
+	  }
+	else if (isAdaptiveMode())
+	  {
+	    // Adaptive calculation via policy
+	    if (!m_ratioPolicy)
+	      throw std::runtime_error("Adaptive mode enabled but no policy set");
+
+	    detail::StatisticalContext<Decimal> ctx(x);
+	    actual_ratio = computeAdaptiveRatio(x, ctx, diagnosticLog);
+	    m_sub        = static_cast<std::size_t>(std::floor(actual_ratio * n));
+	    reported_ratio = actual_ratio;  // tests check m_sub == floor(computed_ratio*n)
+	  }
+	else
+	  {
+	    // Fixed ratio mode
+	    m_sub        = static_cast<std::size_t>(std::floor(m_ratio * static_cast<double>(n)));
+	    actual_ratio = static_cast<double>(m_sub) / static_cast<double>(n);
+	    reported_ratio = m_ratio;  // report configured fixed ratio, not m_sub/n
+	  }
+
+	// Clamp to valid range [2, n-1]
+	if (m_sub < 2)
+	  m_sub = 2;
+	if (m_sub >= n)
+	  m_sub = n - 1;
+	// NOTE: we deliberately do NOT alter reported_ratio here; it represents
+	//       the logical target ratio, not necessarily m_sub/n in all modes.
 
 	const Decimal theta_hat = sampler(x);
 
@@ -294,30 +444,38 @@ namespace palvalidator
 	std::vector<double> thetas_d(m_B, std::numeric_limits<double>::quiet_NaN());
 
 	// Parallel over B using the internally default-constructed Executor
-	concurrency::parallel_for_chunked(static_cast<uint32_t>(m_B), *m_exec,
-						    [&](uint32_t b) {
-						      auto rng = make_engine(b);
-						      std::vector<Decimal> y; y.resize(m_sub);
-						      m_resampler(x, y, m_sub, rng);
-						      const double v = num::to_double(sampler(y));
-						      if (std::isfinite(v)) thetas_d[b] = v;
-						    },
-						    /*chunkSizeHint=*/m_chunkHint
-						    );
+	concurrency::parallel_for_chunked(
+					  static_cast<uint32_t>(m_B),
+					  *m_exec,
+					  [&](uint32_t b) {
+					    auto rng = make_engine(b);
+					    std::vector<Decimal> y;
+					    y.resize(m_sub);
+					    m_resampler(x, y, m_sub, rng);
+					    const double v = num::to_double(sampler(y));
+					    if (std::isfinite(v))
+					      thetas_d[b] = v;
+					  },
+					  /*chunkSizeHint=*/m_chunkHint);
 
-	// Compact NaNs and validate effective_B
+	// Compact NaNs and compute skipped count
 	std::size_t skipped = 0;
 	{
-	  auto it = std::remove_if(thetas_d.begin(), thetas_d.end(),
-				   [](double v){ return !std::isfinite(v); });
+	  auto it = std::remove_if(
+				   thetas_d.begin(),
+				   thetas_d.end(),
+				   [](double v) { return !std::isfinite(v); });
 	  skipped = static_cast<std::size_t>(std::distance(it, thetas_d.end()));
 	  thetas_d.erase(it, thetas_d.end());
 	}
-	if (thetas_d.size() < m_B / 2) {
-	  throw std::runtime_error("MOutOfNPercentileBootstrap: too many degenerate replicates");
-	}
 
-		// Percentile CI (type-7) at CL
+	if (thetas_d.size() < m_B / 2)
+	  {
+	    throw std::runtime_error(
+				     "MOutOfNPercentileBootstrap: too many degenerate replicates");
+	  }
+
+	// Percentile CI (type-7) at CL
 	const double alpha = 1.0 - m_CL;
 	const double pl    = alpha / 2.0;
 	const double pu    = 1.0 - alpha / 2.0;
@@ -335,17 +493,44 @@ namespace palvalidator
 	  /*skipped     =*/ skipped,
 	  /*n           =*/ n,
 	  /*m_sub       =*/ m_sub,
-	  /*L           =*/ m_resampler.getL()
+	  /*L           =*/ m_resampler.getL(),
+	  /*computed_ratio =*/ reported_ratio
 	};
       }
-      
+
+      // ======================================================================
+      // ADAPTIVE RATIO DISPATCH
+      // ======================================================================
+      /**
+       * Helper to compute adaptive ratio using type-erased policy.
+       */
+      template<typename BootstrapStatistic = Sampler>
+      double computeAdaptiveRatio(const std::vector<Decimal>&                x,
+				  const detail::StatisticalContext<Decimal>& ctx,
+				  std::ostream*                              diagnosticLog) const
+      {
+	// Try to cast back to the correct policy type
+	auto policy = std::static_pointer_cast<
+	  IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>>(m_ratioPolicy);
+
+	if (policy)
+	  {
+	    return policy->computeRatio(x, ctx, m_CL, m_B, diagnosticLog);
+	  }
+
+	// Fallback: default TailVolatilityAdaptivePolicy
+	TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic> defaultPolicy;
+	return defaultPolicy.computeRatio(x, ctx, m_CL, m_B, diagnosticLog);
+      }
+
     private:
       std::size_t  m_B;
       double       m_CL;
-      double       m_ratio;
+      double       m_ratio;       // -1.0 = adaptive mode, else fixed ratio
       Resampler    m_resampler;
-      mutable std::shared_ptr<Executor> m_exec; 
-      mutable uint32_t m_chunkHint{0};
+      mutable std::shared_ptr<Executor> m_exec;
+      mutable uint32_t           m_chunkHint{0};
+      std::shared_ptr<void>      m_ratioPolicy;  // type-erased policy pointer
     };
   }
 } // namespace palvalidator::analysis
