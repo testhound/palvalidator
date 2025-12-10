@@ -16,6 +16,11 @@ using mkc_timeseries::BCaBootStrap;
 using mkc_timeseries::IIDResampler;
 using mkc_timeseries::StationaryBlockResampler;
 
+namespace palvalidator::analysis {
+    template <class Decimal, class Sampler, class Rng, class Provider>
+    class BCaCompatibleTBootstrap; // As defined above
+}
+
 template<class Engine = randutils::mt19937_rng>
 class TradingBootstrapFactory
 {
@@ -189,6 +194,33 @@ public:
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
+  template<class Decimal, class Resampler>
+  auto makeStudentizedT(const std::vector<Decimal>& returns,
+			unsigned B, double CL,
+			std::function<Decimal(const std::vector<Decimal>&)> statFn,
+			Resampler sampler,
+			uint64_t strategyId,
+			uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> palvalidator::analysis::BCaCompatibleTBootstrap<
+    Decimal, 
+    Resampler, 
+    Engine, 
+    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+  {
+    using PTB = palvalidator::analysis::BCaCompatibleTBootstrap<
+      Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>;
+
+    using Provider = mkc_timeseries::rng_utils::CRNEngineProvider<Engine>;
+    using Key = mkc_timeseries::rng_utils::CRNKey;
+
+    Provider prov(
+		  Key(m_masterSeed)
+		  .with_tag(strategyId)
+		  .with_tags({ stageTag, L, fold })
+		  );
+
+    return PTB(returns, B, CL, std::move(statFn), std::move(sampler), prov);
+  }
 
 private:
   uint64_t m_masterSeed;

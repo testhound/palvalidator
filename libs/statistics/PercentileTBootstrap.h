@@ -36,6 +36,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <functional>
 
 #include "number.h"
 #include "ParallelExecutors.h"
@@ -326,5 +327,71 @@ namespace palvalidator
       double       m_ratio_inner;
     };
 
+    template <class Decimal,
+	      class Sampler, // Sampler here corresponds to Resampler in BCa
+	      class Rng      = std::mt19937_64,
+	      class Provider = void>
+    class BCaCompatibleTBootstrap
+    {
+    public:
+      using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+
+      // Must match the BCaBootStrap constructor signature!
+      template <class P = Provider, std::enable_if_t<!std::is_void_v<P>, int> = 0>
+      BCaCompatibleTBootstrap(const std::vector<Decimal>& returns,
+			      unsigned int num_resamples, // B_outer
+			      double confidence_level,
+			      StatFn statistic,           // Sampler for PTB
+			      Sampler sampler,            // Resampler for PTB
+			      const P& provider)
+	// Use the statistic (which is a StatFn) as the Sampler type in the inner PTB
+	: m_internal_pt(num_resamples, m_B_inner_default, confidence_level, std::move(sampler), 1.0, 1.0)
+	, m_returns(returns)
+	, m_statistic(std::move(statistic))
+	, m_provider(provider)
+      {
+	if (m_returns.empty() || num_resamples < 100u || confidence_level <= 0.0 || confidence_level >= 1.0)
+	  {
+	    throw std::invalid_argument("BCaCompatibleTBootstrap: Invalid construction arguments.");
+	  }
+      }
+
+      // Public BCa-compatible interface
+      Decimal getLowerBound()
+      {
+ ensureCalculated();
+ return m_cached_result.value().lower;
+      }
+
+      Decimal getUpperBound()
+      {
+ ensureCalculated();
+ return m_cached_result.value().upper;
+      }
+    
+      Decimal getStatistic()
+      {
+ ensureCalculated();
+ return m_cached_result.value().mean;
+      }
+
+    private:
+      // Constants and members
+      static constexpr std::size_t m_B_inner_default = 200; // Recommend >100 for stability
+      PercentileTBootstrap<Decimal, StatFn, Sampler, Rng> m_internal_pt;
+      const std::vector<Decimal>& m_returns;
+      StatFn                      m_statistic;
+      Provider                    m_provider;  // Store by value, not reference
+    
+      std::optional<typename PercentileTBootstrap<Decimal, StatFn, Sampler, Rng>::Result> m_cached_result;
+
+      // Lazy calculation
+      void ensureCalculated()
+      {
+ if (!m_cached_result.has_value()) {
+   m_cached_result = m_internal_pt.run(m_returns, m_statistic, m_provider);
+ }
+      }
+    };
   } // namespace analysis
 } // namespace palvalidator
