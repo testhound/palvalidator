@@ -908,14 +908,14 @@ namespace mkc_timeseries
       size_t k = 0;
 
       for (const auto& d : data)
-	{
-	  const long double x = static_cast<long double>(d.getAsDouble());
-	  ++k;
-	  const long double delta  = x - mean;
-	  mean += delta / static_cast<long double>(k);
-	  const long double delta2 = x - mean;
-	  m2 += delta * delta2;
-	}
+ {
+   const long double x = static_cast<long double>(num::to_double(d));
+   ++k;
+   const long double delta  = x - mean;
+   mean += delta / static_cast<long double>(k);
+   const long double delta2 = x - mean;
+   m2 += delta * delta2;
+ }
 
       if (k < 2)
         return {Decimal(mean), DecimalConstants<Decimal>::DecimalZero};
@@ -1182,10 +1182,12 @@ namespace mkc_timeseries
       }
       
       // 1. Compute Bowley Skewness (B) - Robust Skewness
-      const double skew = StatUtils<Decimal>::getBowleySkewness(v).getAsDouble();
+      const Decimal skewDec = StatUtils<Decimal>::getBowleySkewness(v);
+      const double skew = num::to_double(skewDec);
       
       // 2. Compute Moors' Excess Kurtosis (K_Moors - K_Normal) - Robust Excess Kurtosis
-      const double exkurt = StatUtils<Decimal>::getMoorsKurtosis(v).getAsDouble();
+      const Decimal exkurtDec = StatUtils<Decimal>::getMoorsKurtosis(v);
+      const double exkurt = num::to_double(exkurtDec);
 
       return { skew, exkurt };
     }
