@@ -62,6 +62,27 @@ namespace palvalidator::bootstrap_helpers
     struct has_getUpperBound : std::false_type {};
     template <class T>
     struct has_getUpperBound<T, std::void_t<decltype(std::declval<T>().getUpperBound())>> : std::true_type {};
+
+    template <typename Stat, typename = void>
+    struct has_isRatioStatistic : std::false_type {};
+
+    template <typename Stat>
+    struct has_isRatioStatistic<
+        Stat,
+        std::void_t<decltype(Stat::isRatioStatistic())>
+    > : std::true_type {};
+
+    template <typename Stat, bool Has = has_isRatioStatistic<Stat>::value>
+    struct ratio_stat_flag
+    {
+        static constexpr bool value = false;
+    };
+
+    template <typename Stat>
+    struct ratio_stat_flag<Stat, true>
+    {
+        static constexpr bool value = Stat::isRatioStatistic();
+    };
   }
 
   // -----------------------------------------------------------------------------
@@ -491,16 +512,16 @@ namespace palvalidator::bootstrap_helpers
    * the computationally intensive second step.
    *
    * @tparam Num Numeric type.
-   * @tparam GeoStat Statistic functor.
+   * @tparam BootstrapStatistic Statistic functor.
    * @tparam StrategyT Strategy type.
    * @tparam ResamplerT Resampler type.
    * @tparam BootstrapFactoryT Factory type.
    */
   template <typename Num,
-	    typename GeoStat,
-	    typename StrategyT,
-	    typename ResamplerT,
-	    typename BootstrapFactoryT>
+     typename BootstrapStatistic,
+     typename StrategyT,
+     typename ResamplerT,
+     typename BootstrapFactoryT>
   class IRatioRefinementPolicy
   {
   public:
@@ -557,47 +578,57 @@ namespace palvalidator::bootstrap_helpers
    * of the curve). In case of ties, it conservatively prefers the smaller $\rho$.
    *
    * @tparam Num The numeric type (e.g., double, decimal).
-   * @tparam GeoStat The statistic functor type.
+   * @tparam BootstrapStatistic The statistic functor type.
    * @tparam StrategyT The strategy type.
    * @tparam ResamplerT The resampler type (IID or Block).
    * @tparam BootstrapFactoryT The factory used to create bootstrap engines.
    */
   template <typename Num,
-            typename GeoStat,
+            typename BootstrapStatistic,
             typename StrategyT,
             typename ResamplerT,
             typename BootstrapFactoryT>
   class LBStabilityRefinementPolicy
-    : public IRatioRefinementPolicy<Num, GeoStat, StrategyT, ResamplerT, BootstrapFactoryT>
+    : public IRatioRefinementPolicy<Num, BootstrapStatistic, StrategyT, ResamplerT, BootstrapFactoryT>
   {
   public:
-    /**
-     * @brief Constructs the stability refinement policy.
-     *
-     * @param deltas A vector of offsets from the base ratio to probe (e.g., {-0.1, 0.0, 0.1}).
-     * @param minB Minimum bootstrap replicates for the probing phase (default 400).
-     * @param maxB Maximum bootstrap replicates for the probing phase (default 1000).
-     * @param minNForRefine Minimum sample size required to trigger refinement (default 15).
-     * @param maxNForRefine Maximum sample size to allow refinement (default 60).
-     */
-    LBStabilityRefinementPolicy(std::vector<double> deltas,
-                                std::size_t         minB = 400,
-                                std::size_t         maxB = 1000,
-                                std::size_t         minNForRefine = 15,
-                                std::size_t         maxNForRefine = 60)
-      : deltas_(std::move(deltas))
-      , minB_(minB)
-      , maxB_(maxB)
-      , minNForRefine_(minNForRefine)
-      , maxNForRefine_(maxNForRefine)
-    {
-      if (deltas_.empty())
+  /**
+   * @brief Constructs the stability refinement policy.
+   *
+   * @param deltas A vector of offsets from the base ratio to probe (e.g., {-0.1, 0.0, 0.1}).
+   * If empty, defaults to the expanded grid: [-0.25, -0.20, ..., +0.25].
+   * @param minB Minimum bootstrap replicates for the probing phase (default 400).
+   * @param maxB Maximum bootstrap replicates for the probing phase (default 1000).
+   * @param minNForRefine Minimum sample size required to trigger refinement (default 15).
+   * @param maxNForRefine Maximum sample size to allow refinement (default 60).
+   */
+  LBStabilityRefinementPolicy(std::vector<double> deltas,
+                              std::size_t         minB = 400,
+                              std::size_t         maxB = 1000,
+                              std::size_t         minNForRefine = 15,
+                              std::size_t         maxNForRefine = 60)
+    : deltas_(std::move(deltas))
+    , minB_(minB)
+    , maxB_(maxB)
+    , minNForRefine_(minNForRefine)
+    , maxNForRefine_(maxNForRefine)
+  {
+    if (deltas_.empty())
       {
-        deltas_.push_back(-0.10);
-        deltas_.push_back( 0.00);
-        deltas_.push_back(+0.10);
+	// New expanded grid: 11 points from -0.25 to +0.25 in 0.05 increments.
+	deltas_.push_back(-0.25);
+	deltas_.push_back(-0.20);
+	deltas_.push_back(-0.15);
+	deltas_.push_back(-0.10);
+	deltas_.push_back(-0.05);
+	deltas_.push_back( 0.00);
+	deltas_.push_back( 0.05);
+	deltas_.push_back( 0.10);
+	deltas_.push_back( 0.15);
+	deltas_.push_back( 0.20);
+	deltas_.push_back( 0.25);
       }
-    }
+  }
 
     const std::vector<double>& getDeltas() const { return deltas_; }
     std::size_t getMinB() const                  { return minB_; }
@@ -768,10 +799,10 @@ namespace palvalidator::bootstrap_helpers
                                   int                      fold,
                                   std::ostream*            os) const
     {
-      auto [mnBoot, mnCrn] = factory.template makeMOutOfN<Num, GeoStat, ResamplerT>(
+      auto [mnBoot, mnCrn] = factory.template makeMOutOfN<Num, BootstrapStatistic, ResamplerT>(
           B, confLevel, rho, resampler, strategy, stageTag, static_cast<int>(L_small), fold);
 
-      auto mnR = mnBoot.run(returns, GeoStat(), mnCrn);
+      auto mnR = mnBoot.run(returns, BootstrapStatistic(), mnCrn);
       const double lbP = num::to_double(mnR.lower);
 
       double width = 0.0;
@@ -910,12 +941,12 @@ namespace palvalidator::bootstrap_helpers
   };
 
   template <typename Num,
-	    typename GeoStat,
-	    typename StrategyT,
-	    typename ResamplerT,
-	    typename BootstrapFactoryT>
+     typename BootstrapStatistic,
+     typename StrategyT,
+     typename ResamplerT,
+     typename BootstrapFactoryT>
   class NoRefinementPolicy
-    : public IRatioRefinementPolicy<Num, GeoStat, StrategyT, ResamplerT, BootstrapFactoryT>
+    : public IRatioRefinementPolicy<Num, BootstrapStatistic, StrategyT, ResamplerT, BootstrapFactoryT>
   {
   public:
     double refineRatio(const std::vector<Num>&,
@@ -955,18 +986,18 @@ namespace palvalidator::bootstrap_helpers
    * and **Data-Driven** (verifying that the chosen ratio actually produces a stable confidence interval).
    *
    * @tparam Num Numeric type.
-   * @tparam GeoStat Statistic functor.
+   * @tparam BootstrapStatistic Statistic functor.
    * @tparam StrategyT Strategy type.
    * @tparam ResamplerT Resampler type.
    * @tparam BootstrapFactoryT Factory type.
    * @tparam RefinementPolicyT The specific refinement implementation (e.g., `LBStabilityRefinementPolicy`).
    */
   template <typename Num,
-	    typename GeoStat,
-	    typename StrategyT,
-	    typename ResamplerT,
-	    typename BootstrapFactoryT,
-	    typename RefinementPolicyT>
+     typename BootstrapStatistic,
+     typename StrategyT,
+     typename ResamplerT,
+     typename BootstrapFactoryT,
+     typename RefinementPolicyT>
   class TailVolStabilityPolicy
   {
   public:
@@ -1544,7 +1575,7 @@ namespace palvalidator::bootstrap_helpers
    * * Contains the combined lower bound (min of m-out-of-n and BCa) and
    * diagnostic information about which resampler and parameters were used.
    */
-  template <typename Num, typename GeoStat, typename StrategyT>
+  template <typename Num, typename BootstrapStatistic, typename StrategyT>
   struct SmallNConservativeResult {
     Num         per_lower{};       ///< Combined per-period LB (min of engines).
     Num         ann_lower{};       ///< Annualized LB.
@@ -1553,6 +1584,8 @@ namespace palvalidator::bootstrap_helpers
     std::size_t effB_mn{0};        ///< Effective B (non-degenerate) for m-out-of-n.
     std::size_t effB_bca{0};       ///< Effective B for BCa.
     const char* resampler_name{""};///< Name of the chosen resampler (IID or Block).
+    double      duel_ratio{std::numeric_limits<double>::quiet_NaN()};  ///< >= 1.0 if both engines valid; NaN otherwise
+    bool        duel_ratio_valid{false};  ///< true if duel_ratio is meaningful
   };
 
   /**
@@ -1567,7 +1600,7 @@ namespace palvalidator::bootstrap_helpers
    * ratio based on data characteristics.
    *
    * @tparam Num Numeric type.
-   * @tparam GeoStat Statistic functor type.
+   * @tparam BootstrapStatistic Statistic functor type.
    * @tparam StrategyT Strategy type.
    * @tparam ResamplerT The resampler type (IID or Block).
    * @tparam BootstrapFactoryT Factory type.
@@ -1586,8 +1619,8 @@ namespace palvalidator::bootstrap_helpers
    * @param fold CRN fold.
    * @return double The final subsampling ratio to use.
    */
-  template <typename Num, typename GeoStat, typename StrategyT, typename ResamplerT, typename BootstrapFactoryT>
-  double resolve_adaptive_subsample_ratio(
+template <typename Num, typename BootstrapStatistic, typename StrategyT, typename ResamplerT, typename BootstrapFactoryT>
+double resolve_adaptive_subsample_ratio(
 					  double requested_rho,
 					  const std::vector<Num>& returns,
 					  const MNRatioContext& ctx,
@@ -1619,16 +1652,71 @@ namespace palvalidator::bootstrap_helpers
 
     // Case 2: Adaptive TailVolStability Policy
     // Using the heavy-tail/volatility prior and the LB-stability refinement
-    using RefineT = LBStabilityRefinementPolicy<Num, GeoStat, StrategyT, ResamplerT, BootstrapFactoryT>;
+    using RefineT = LBStabilityRefinementPolicy<Num, BootstrapStatistic, StrategyT, ResamplerT, BootstrapFactoryT>;
   
+    // Expanded grid to search for stability plateau (11 points from -0.25 to +0.25)
+    // This addresses the grid search issue.
+    const std::vector<double> expanded_deltas = {
+        -0.25, -0.20, -0.15, -0.10, -0.05,
+         0.00,  0.05,  0.10,  0.15,  0.20,  0.25
+    };
+    
     TailVolPriorPolicy priorPolicy;
-    RefineT refinePolicy({ -0.10, 0.0, +0.10 }); // Search +/- 10% around prior
+    // Instantiate refinement policy using the expanded grid.
+    RefineT refinePolicy(expanded_deltas);
 
-    TailVolStabilityPolicy<Num, GeoStat, StrategyT, ResamplerT, BootstrapFactoryT, RefineT>
+    TailVolStabilityPolicy<Num, BootstrapStatistic, StrategyT, ResamplerT, BootstrapFactoryT, RefineT>
       policy(priorPolicy, refinePolicy);
 
     double calculated_rho = policy.computeRatio(returns, ctx, L_small, confLevel, B,
 						strategy, factory, resampler, os, stageTag, fold);
+
+    // -------------------------------------------------------------------------
+    // NEW LOGIC: Enforce theoretical floor based on n^(2/3) rule (m >= n^(2/3))
+    // This is a general theoretical floor for non-smooth statistics.
+    // -------------------------------------------------------------------------
+    // mn_ratio_from_n returns ceil(n^(2/3)) / n.
+    const double theoretical_min_rho = mn_ratio_from_n(n);
+    const double original_rho = calculated_rho;
+    
+    // Apply the floor if the empirically calculated ratio is smaller than the theoretical minimum.
+    if (calculated_rho < theoretical_min_rho)
+    {
+        if (os)
+        {
+            const double old_m = original_rho * static_cast<double>(n);
+            const double new_m = theoretical_min_rho * static_cast<double>(n);
+
+            (*os) << "   [Bootstrap/mn-ratio-floor] "
+                  << "Theoretical n^(2/3) floor applied (rho=" << std::fixed << std::setprecision(3) << original_rho
+                  << " -> " << theoretical_min_rho
+                  << ", m≈" << std::setprecision(2) << new_m << " from " << std::setprecision(2) << old_m << ").\n";
+        }
+        calculated_rho = theoretical_min_rho;
+    }
+
+    if constexpr (detail::ratio_stat_flag<BootstrapStatistic>::value)
+      {
+        constexpr double RATIO_MIN_RHO = 0.60;
+        constexpr std::size_t N_MIN_FOR_FLOOR = 20;
+
+        if (n >= N_MIN_FOR_FLOOR && calculated_rho < RATIO_MIN_RHO)
+        {
+            if (os)
+            {
+                const double old_m = calculated_rho * static_cast<double>(n);
+                const double new_m = RATIO_MIN_RHO  * static_cast<double>(n);
+
+                (*os) << "   [Bootstrap/mn-ratio-floor] "
+                      << "ratio-statistic floor m/n=" << RATIO_MIN_RHO
+                      << " applied (rho=" << std::fixed << std::setprecision(3) << calculated_rho
+                      << " → " << RATIO_MIN_RHO
+                      << ", m≈" << std::setprecision(2) << old_m << " → " << new_m << ")\n";
+            }
+
+            calculated_rho = RATIO_MIN_RHO;
+        }
+    }
 
     // Logging specific to the adaptive decision
     if (os)
@@ -1660,7 +1748,7 @@ namespace palvalidator::bootstrap_helpers
    *
    * @tparam ResamplerT The specific resampler type (IID or Block).
    * @tparam Num Numeric type.
-   * @tparam GeoStat Statistic functor type.
+   * @tparam BootstrapStatistic Statistic functor type.
    * @tparam StrategyT Strategy type.
    * @tparam BootstrapFactoryT Factory type.
    *
@@ -1680,8 +1768,8 @@ namespace palvalidator::bootstrap_helpers
    * @param resamplerName String name of the resampler for reporting.
    * @return SmallNConservativeResult Combined result struct.
    */
-  template <typename ResamplerT, typename Num, typename GeoStat, typename StrategyT, typename BootstrapFactoryT>
-  SmallNConservativeResult<Num, GeoStat, StrategyT>
+  template <typename ResamplerT, typename Num, typename BootstrapStatistic, typename StrategyT, typename BootstrapFactoryT>
+  SmallNConservativeResult<Num, BootstrapStatistic, StrategyT>
   execute_bootstrap_duel(
 			 const std::vector<Num>& returns,
 			 ResamplerT& resampler,
@@ -1698,7 +1786,7 @@ namespace palvalidator::bootstrap_helpers
 			 std::ostream* os,
 			 const char* resamplerName)
   {
-    SmallNConservativeResult<Num, GeoStat, StrategyT> r{};
+    SmallNConservativeResult<Num, BootstrapStatistic, StrategyT> r{};
     r.L_used = L_small;
     r.resampler_name = resamplerName;
 
@@ -1707,16 +1795,16 @@ namespace palvalidator::bootstrap_helpers
     // ---------------------------------------------------------
     // 1. Run m-out-of-n Bootstrap
     // ---------------------------------------------------------
-    auto [mnBoot, mnCrn] = factory.template makeMOutOfN<Num, GeoStat, ResamplerT>(B,
-										  confLevel,
-										  rho,
-										  resampler,
-										  strategy,
-										  stageTag,
-										  static_cast<int>(L_small),
-										  fold);
+    auto [mnBoot, mnCrn] = factory.template makeMOutOfN<Num, BootstrapStatistic, ResamplerT>(B,
+  							  confLevel,
+  							  rho,
+  							  resampler,
+  							  strategy,
+  							  stageTag,
+  							  static_cast<int>(L_small),
+  							  fold);
 
-    auto mnR = mnBoot.run(returns, GeoStat(), mnCrn);
+    auto mnR = mnBoot.run(returns, BootstrapStatistic(), mnCrn);
     const Num lbP_mn = mnR.lower;
     const Num lbA_mn = mkc_timeseries::Annualizer<Num>::annualize_one(lbP_mn, annualizationFactor); // Store annualized LB
 
@@ -1762,8 +1850,8 @@ namespace palvalidator::bootstrap_helpers
     // 2. Run BCa Bootstrap
     // ---------------------------------------------------------
     auto bca = factory.template makeBCa<Num>(
-					     returns, B, confLevel, GeoStat(), resampler,
-					     strategy, stageTag, static_cast<int>(L_small), fold);
+    	     returns, B, confLevel, BootstrapStatistic(), resampler,
+    	     strategy, stageTag, static_cast<int>(L_small), fold);
 
     const Num lbP_bca = bca.getLowerBound();
     const Num lbA_bca = mkc_timeseries::Annualizer<Num>::annualize_one(lbP_bca, annualizationFactor); // Store annualized LB
@@ -1799,26 +1887,50 @@ namespace palvalidator::bootstrap_helpers
     r.per_lower = (lbP_mn < lbP_bca) ? lbP_mn : lbP_bca;
     r.ann_lower = (lbP_mn < lbP_bca) ? lbA_mn : lbA_bca; // Final LB is min of the two
 
+    // ---------------------------------------------------------
+    // 4. Compute Duel Ratio (for ratio statistics like Profit Factor)
+    // ---------------------------------------------------------
+    double disp_mn  = BootstrapStatistic::formatForDisplay(num::to_double(lbA_mn));
+    double disp_bca = BootstrapStatistic::formatForDisplay(num::to_double(lbA_bca));
+    
+    double duel_ratio     = std::numeric_limits<double>::quiet_NaN();
+    bool   duel_ratio_ok  = false;
+    
+    if (disp_mn > 0.0 && disp_bca > 0.0)
+    {
+      double lo = std::min(disp_mn, disp_bca);
+      double hi = std::max(disp_mn, disp_bca);
+      if (lo > 0.0)
+      {
+        duel_ratio    = hi / lo;  // >= 1
+        duel_ratio_ok = true;
+      }
+    }
+    
+    r.duel_ratio       = duel_ratio;
+    r.duel_ratio_valid = duel_ratio_ok;
+
     if (os)
       {
-	// Log the duel results for comparison on one line (as percentages)
-	(*os) << "   [Bootstrap/Duel] LB(ann) Duel: "
-	      << "  m/n = " << std::fixed << std::setprecision(4) << (num::to_double(lbA_mn) * 100.0) << "%"
-	      << "  BCa =" << std::setprecision(4) << (num::to_double(lbA_bca) * 100.0) << "%"
-	      << "  Winner =" << (num::to_double(r.ann_lower) * 100.0) << "%"
-	      << "\n";
+ // Log the duel results for comparison on one line (formatted appropriately for the statistic type)
+ (*os) << "   [Bootstrap/Duel] LB(ann) Duel: "
+       << "  m/n = " << std::fixed << std::setprecision(4) << BootstrapStatistic::formatForDisplay(num::to_double(lbA_mn)) << "%"
+       << "  BCa =" << std::setprecision(4) << BootstrapStatistic::formatForDisplay(num::to_double(lbA_bca)) << "%"
+       << "  Winner =" << BootstrapStatistic::formatForDisplay(num::to_double(r.ann_lower)) << "%"
+       << (duel_ratio_ok ? ("  ratio=" + std::to_string(duel_ratio)) : "  ratio=n/a")
+       << "\n";
 
-	(*os) << "   [Bootstrap] SmallNResampler = " << r.resampler_name
-	      << "  (L_small = " << r.L_used << ")\n";
+ (*os) << "   [Bootstrap] SmallNResampler = " << r.resampler_name
+       << "  (L_small = " << r.L_used << ")\n";
       }
 
     return r;
   }
 
   // Forward declaration so the 11-arg legacy overload can delegate to it
-  template <typename Num, typename GeoStat, typename StrategyT,
+  template <typename Num, typename BootstrapStatistic, typename StrategyT,
             typename BootstrapFactoryT = palvalidator::bootstrap_cfg::BootstrapFactory>
-  SmallNConservativeResult<Num, GeoStat, StrategyT>
+  SmallNConservativeResult<Num, BootstrapStatistic, StrategyT>
   conservative_smallN_lower_bound(const std::vector<Num>& returns,
                                   std::size_t              L,
                                   double                   annualizationFactor,
@@ -1850,7 +1962,7 @@ namespace palvalidator::bootstrap_helpers
    * 3. Calls the main implementation, passing the detected heavy-tail status as an override.
    *
    * @tparam Num Numeric type (e.g., double, decimal).
-   * @tparam GeoStat Statistic functor type (e.g., GeoMeanStat).
+   * @tparam BootstrapStatistic Statistic functor type (e.g., GeoMeanStat, LogProfitFactorStat).
    * @tparam StrategyT The strategy type (used for CRN hashing).
    * @tparam BootstrapFactoryT The factory type for creating bootstrap engines.
    *
@@ -1869,8 +1981,8 @@ namespace palvalidator::bootstrap_helpers
    *
    * @return SmallNConservativeResult containing the annualized/per-period LB and diagnostics.
    */
-  template <typename Num, typename GeoStat, typename StrategyT, typename BootstrapFactoryT>
-  inline SmallNConservativeResult<Num, GeoStat, StrategyT>
+  template <typename Num, typename BootstrapStatistic, typename StrategyT, typename BootstrapFactoryT>
+  inline SmallNConservativeResult<Num, BootstrapStatistic, StrategyT>
   conservative_smallN_lower_bound(const std::vector<Num>& returns,
                                   std::size_t              L,
                                   double                   annualizationFactor,
@@ -1896,7 +2008,7 @@ namespace palvalidator::bootstrap_helpers
     const std::optional<bool> heavy_override =
       heavy ? std::optional<bool>(true) : std::nullopt;
 
-    return conservative_smallN_lower_bound<Num, GeoStat, StrategyT, BootstrapFactoryT>(
+    return conservative_smallN_lower_bound<Num, BootstrapStatistic, StrategyT, BootstrapFactoryT>(
         returns,
         L,
         annualizationFactor,
@@ -1929,13 +2041,13 @@ namespace palvalidator::bootstrap_helpers
    *   - If `heavy_tails_override` is provided, it overrides this combined flag.
    *
    * @tparam Num Numeric type.
-   * @tparam GeoStat Statistic functor.
+   * @tparam BootstrapStatistic Statistic functor.
    * @tparam StrategyT Strategy type.
    * @tparam BootstrapFactoryT Factory type.
    */
-  template <typename Num, typename GeoStat, typename StrategyT,
+template <typename Num, typename BootstrapStatistic, typename StrategyT,
             typename BootstrapFactoryT>
-  inline SmallNConservativeResult<Num, GeoStat, StrategyT>
+  inline SmallNConservativeResult<Num, BootstrapStatistic, StrategyT>
   conservative_smallN_lower_bound(
       const std::vector<Num>& returns,
       std::size_t              L,
@@ -1945,7 +2057,7 @@ namespace palvalidator::bootstrap_helpers
       double                   rho_m,   // if <=0 → use TailVolStabilityPolicy
       StrategyT&               strategy,
       BootstrapFactoryT&       bootstrapFactory,
-      std::ostream*            os,      // optional stage logger
+      std::ostream* os,      // optional stage logger
       int                      stageTag,
       int                      fold,
       std::optional<bool>      heavy_tails_override)
@@ -1989,31 +2101,6 @@ namespace palvalidator::bootstrap_helpers
 
     MNRatioContext ctx(n, sigmaAnn, skew, exkurt, tailIndex, heavy_flag);
 
-    // ---------------------------------------------------------
-    // 2. Resampler Selection Logic
-    // ---------------------------------------------------------
-    bool use_block = false;
-    constexpr std::size_t N_BLOCK_ALWAYS = 60;
-
-    if (heavy_tails_override.has_value())
-      {
-        // Explicit instruction: heavy_tails_override = true → force block;
-        // heavy_tails_override = false → force IID.
-        use_block = *heavy_tails_override;
-      }
-    else if (n <= N_BLOCK_ALWAYS)
-      {
-        // For very small samples, default to block to respect dependence.
-        use_block = true;
-      }
-    else
-      {
-        // Use dependence proxies for larger N.
-        const double       ratio_pos = sign_positive_ratio(returns);
-        const std::size_t  runlen    = longest_sign_run(returns);
-        use_block = choose_block_smallN(ratio_pos, n, runlen);
-      }
-
     const std::size_t L_small = clamp_smallL(L);
     const double      z       = z_from_two_sided_CL(confLevel);
 
@@ -2026,7 +2113,7 @@ namespace palvalidator::bootstrap_helpers
 
       // A. Resolve Ratio (Policy)
       double final_rho =
-        resolve_adaptive_subsample_ratio<Num, GeoStat>(
+        resolve_adaptive_subsample_ratio<Num, BootstrapStatistic>(
             rho_m,
             returns,
             ctx,
@@ -2041,7 +2128,7 @@ namespace palvalidator::bootstrap_helpers
             fold);
 
       // B. Execute Duel (Kernel)
-      return execute_bootstrap_duel<ResamplerType, Num, GeoStat>(
+      return execute_bootstrap_duel<ResamplerType, Num, BootstrapStatistic>(
           returns,
           resampler,
           final_rho,
@@ -2061,18 +2148,11 @@ namespace palvalidator::bootstrap_helpers
     // ---------------------------------------------------------
     // 4. Branch & Execute
     // ---------------------------------------------------------
-    if (use_block)
-      {
-        using BlockValueRes =
-          palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
-        BlockValueRes resampler(L_small);
-        return run_variant(resampler, "StationaryMaskValueResamplerAdapter");
-      }
-    else
-      {
-        using IIDResampler = mkc_timeseries::IIDResampler<Num>;
-        IIDResampler resampler;
-        return run_variant(resampler, "IIDResampler");
-      }
+    // Conservative default path: Stationary Block Resampler
+    using BlockValueRes =
+      palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
+    BlockValueRes resampler(L_small);
+    return run_variant(resampler, "StationaryMaskValueResamplerAdapter");
+
   }
 } // namespace palvalidator::bootstrap_helpers

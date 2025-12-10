@@ -35,6 +35,12 @@ namespace TestMocks {
         MockGeoStat() = default;
         // The actual Stat type must be callable, or convertible to a callable.
         // We assume it serves as the Sampler/Stat type tag.
+        
+        /// \brief Helper to format the statistic for display (as percentage)
+        static double formatForDisplay(double value)
+        {
+          return value * 100.0;
+        }
     };
 
     // Mock Strategy (must provide a hashCode() as used by the Factory)
@@ -98,6 +104,12 @@ namespace LBStabTestMocks {
 
   struct GeoStat {
     GeoStat() = default;
+    
+    /// \brief Helper to format the statistic for display (as percentage)
+    static double formatForDisplay(double value)
+    {
+      return value * 100.0;
+    }
   };
 
   struct Strategy {
@@ -479,38 +491,12 @@ TEST_CASE("conservative_smallN_lower_bound checks resampler and returns min LB",
     std::size_t B = 2000;
     double ann_factor = 252.0;
 
-    // --- Scenario 1: IID Resampler Chosen, MN is the Minimum ---
-    SECTION("IID chosen (balanced data) & MN LB is minimum") {
-        // Data: large n=120, balanced, short run -> IID
-        std::vector<Decimal> iid_returns(120);
-        for(int i=0; i<120; ++i) iid_returns[i] = (i % 2 == 0) ? D(0.01) : D(-0.01);
-        
-        // Setup Mocks
-        TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{
-            .expect_block = false, // Expect IID
-            .mn_lb_val = 0.0005,   // MN LB is lower (MIN)
-            .bca_lb_val = 0.0007,  // BCa LB is higher
-            .m_sub_used = 96       // Expected m for n=120 (0.8 * 120)
-        };
+    // NOTE: IID resampling has been removed - the function now always uses Block resampling
+    // (StationaryMaskValueResamplerAdapter). The old IID test case has been removed.
 
-        FactoryT factory(0);
-        auto result = conservative_smallN_lower_bound<Decimal, GeoStatT, StrategyT>(
-            iid_returns, /*L=*/5, ann_factor, /*confLevel=*/0.95, B,
-            /*rho_m=*/0.0, strategy, factory, nullptr, 0, 0,
-            /*heavy_tails_override=*/false // Ensures IID logic path
-        );
-        
-        // Assertions
-        REQUIRE(TestMocks::FactoryMockHelper::control.mn_called == true);
-        REQUIRE(TestMocks::FactoryMockHelper::control.bca_called == true);
-        REQUIRE(num::to_double(result.per_lower) == Approx(0.0005)); // Should pick the MIN
-        REQUIRE(std::string(result.resampler_name) == std::string("IIDResampler"));
-        REQUIRE(result.m_sub == 96);
-    }
-
-    // --- Scenario 2: Block Resampler Chosen, BCa is the Minimum ---
-    SECTION("Block chosen (small n, streaky data) & BCa LB is minimum") {
-        // Data: small n=20, streaky (ratio=1.0) -> Block
+    // --- Scenario 1: Block Resampler Chosen, BCa is the Minimum ---
+    SECTION("Block resampler (always used) & BCa LB is minimum") {
+        // Data: small n=20, streaky (ratio=1.0)
         std::vector<Decimal> block_returns(20, D(0.01)); 
         
         // Setup Mocks
@@ -537,36 +523,23 @@ TEST_CASE("conservative_smallN_lower_bound checks resampler and returns min LB",
 }
 
 TEST_CASE("conservative_smallN_lower_bound handles overrides and logging", "[SmallN][conservative][logging]") {
-    // Test logging and heavy_tails_override logic
-    std::vector<Decimal> returns(30, D(0.001)); // n=30, streaky, heavy tails is false by default
+    // Test logging logic
+    std::vector<Decimal> returns(30, D(0.001)); // n=30
     StrategyT strategy;
     std::ostringstream oss;
     
     // Set mocks to allow logging to proceed
     TestMocks::FactoryMockHelper::control = TestMocks::FactoryControl{
-        .expect_block = true, // Default choice for this data
-        .mn_lb_val = 0.0005, 
-        .bca_lb_val = 0.0005, 
+        .expect_block = true, // Always uses Block resampling now
+        .mn_lb_val = 0.0005,
+        .bca_lb_val = 0.0005,
         .m_sub_used = 24       // Expected m for n=30
     };
 
-    // --- Scenario 3: Heavy Tails Override (False) ---
-    SECTION("Override forces IID (false) despite streaky data") {
-        // Data is streaky/imbalanced (ratio=1.0) and small N, would normally choose Block.
-        // Override should force IID.
-        TestMocks::FactoryMockHelper::control.expect_block = false; // Override forces IID
-
-        FactoryT factory(0);
-        auto result = conservative_smallN_lower_bound<Decimal, GeoStatT, StrategyT>(
-            returns, /*L=*/5, 252.0, 0.95, 2000, 0.0, strategy, factory, nullptr, 0, 0,
-            /*heavy_tails_override=*/false
-        );
-        
-        // Assertions
-        REQUIRE(std::string(result.resampler_name) == std::string("IIDResampler"));
-    }
+    // NOTE: The "Override forces IID" test has been removed because IID resampling
+    // is no longer available - the function always uses Block resampling.
     
-    // --- Scenario 4: Logging Check ---
+    // --- Scenario 1: Logging Check ---
     SECTION("Logging includes key diagnostics (m/n, sigma)") {
         // Run with logging stream
         FactoryT factory(0);
@@ -583,28 +556,19 @@ TEST_CASE("conservative_smallN_lower_bound handles overrides and logging", "[Sma
         REQUIRE(log.find("σ(per-period)≈") != std::string::npos);
     }
 
-    // --- Scenario 5: Small N MC Guard Check (n=40, non-streaky, run is borderline) ---
-    SECTION("MC Guard triggers Block for borderline run at n=40") {
-        // Data: n=40, balanced (ratio=0.5), run=2 (short), but override is nullopt
-        // The logic is: choose_block_fast=false, but n<=40, so it hits the MC guard.
-        // We cannot reliably mock the MC result, but we test the code path:
-        // Assume the MC guard is bypassed or returns false, and we check the final state.
-        
-        // To test the logic *inside* conservative_smallN_lower_bound, we rely on the 
-        // deterministic checks. If this data passes the simple checks (it should), 
-        // the final state should be IID (unless the MC hits a border).
-        
-        std::vector<Decimal> borderline_returns(40); // Balanced and short run, will not trigger fast block
+    // --- Scenario 2: Block resampler always used ---
+    SECTION("Block resampler is always used (n=40)") {
+        std::vector<Decimal> borderline_returns(40);
         for(int i=0; i<40; ++i) borderline_returns[i] = (i % 2 == 0) ? D(0.01) : D(-0.01);
 
-        TestMocks::FactoryMockHelper::control.expect_block = true; // Assume MC does NOT trigger block
+        TestMocks::FactoryMockHelper::control.expect_block = true;
 
         FactoryT factory(0);
         auto result = conservative_smallN_lower_bound<Decimal, GeoStatT, StrategyT>(
             borderline_returns, /*L=*/5, 252.0, 0.95, 2000, 0.0, strategy, factory, nullptr, 0, 0, std::nullopt
         );
         
-        // Assert that without explicit streaky/imbalance, the default is IID
+        // Block resampler is always used now
         REQUIRE(std::string(result.resampler_name) == std::string("StationaryMaskValueResamplerAdapter"));
     }
 }

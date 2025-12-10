@@ -80,6 +80,22 @@ namespace palvalidator::filtering::stages
         , mMSub(mSub)
         , mLUsed(lUsed)
         , mEffectiveB(effectiveB)
+        , mDuelRatio(std::numeric_limits<double>::quiet_NaN())
+        , mDuelRatioValid(false)
+      {}
+
+      SmallNResult(const Num& lowerBoundPeriod, const Num& lowerBoundAnnualized,
+                   const std::string& resamplerName, std::size_t mSub,
+                   std::size_t lUsed, std::size_t effectiveB,
+                   double duelRatio, bool duelRatioValid)
+        : mLowerBoundPeriod(lowerBoundPeriod)
+        , mLowerBoundAnnualized(lowerBoundAnnualized)
+        , mResamplerName(resamplerName)
+        , mMSub(mSub)
+        , mLUsed(lUsed)
+        , mEffectiveB(effectiveB)
+        , mDuelRatio(duelRatio)
+        , mDuelRatioValid(duelRatioValid)
       {}
 
       const Num& getLowerBoundPeriod() const { return mLowerBoundPeriod; }
@@ -88,6 +104,8 @@ namespace palvalidator::filtering::stages
       std::size_t getMSub() const { return mMSub; }
       std::size_t getLUsed() const { return mLUsed; }
       std::size_t getEffectiveB() const { return mEffectiveB; }
+      bool hasDuelRatio() const { return mDuelRatioValid; }
+      double getDuelRatio() const { return mDuelRatio; }
 
     private:
       Num mLowerBoundPeriod;
@@ -96,6 +114,8 @@ namespace palvalidator::filtering::stages
       std::size_t mMSub;
       std::size_t mLUsed;
       std::size_t mEffectiveB;
+      double mDuelRatio;
+      bool mDuelRatioValid;
     };
 
     class PercentileTResult
@@ -157,11 +177,67 @@ namespace palvalidator::filtering::stages
       Num mLowerBoundPeriod;
     };
 
+    class BCaPFResult
+    {
+    public:
+      explicit BCaPFResult(const Num& lowerBoundPeriod)
+        : mLowerBoundPeriod(lowerBoundPeriod)
+      {}
+
+      const Num& getLowerBoundPeriod() const { return mLowerBoundPeriod; }
+
+    private:
+      Num mLowerBoundPeriod;
+    };
+
     // Core computation methods
     /**
      * Initialize backtester if not already present in context
      */
     bool initializeBacktester(StrategyAnalysisContext& ctx, std::ostream& os) const;
+
+    /**
+     * Validate that context has sufficient data for bootstrap analysis
+     */
+    bool validateContext(const StrategyAnalysisContext& ctx,
+                         BootstrapAnalysisResult& result,
+                         std::ostream& os) const;
+
+    /**
+     * Compute annualization parameters (block length, bars/year, lambda)
+     */
+    struct AnnualizationParams
+    {
+      size_t blockLength;
+      unsigned int medianHoldBars;
+      double barsPerYear;
+      double lambdaTradesPerYear;
+      double baseAnnFactor;
+    };
+    
+    AnnualizationParams computeAnnualizationParams(const StrategyAnalysisContext& ctx,
+                                                    std::ostream& os) const;
+
+    /**
+     * Execute profit factor bootstrap analysis
+     */
+    void executeProfitFactorBootstrap(const StrategyAnalysisContext& ctx,
+                                       const DistributionDiagnostics& diagnostics,
+                                       double confidenceLevel,
+                                       size_t blockLength,
+                                       BootstrapAnalysisResult& result,
+                                       std::ostream& os) const;
+
+    /**
+     * Assemble final bootstrap results from individual components
+     */
+    void assembleFinalResults(const std::optional<SmallNResult>& smallNResult,
+                              const std::optional<PercentileTResult>& percentileTResult,
+                              const std::optional<BCaGeoResult>& bcaGeoResult,
+                              const BCaMeanResult& bcaMeanResult,
+                              const AnnualizationParams& annParams,
+                              BootstrapAnalysisResult& result,
+                              std::ostream& os) const;
 
     /**
      * Analyze distribution characteristics and determine which bootstrap methods to run
@@ -177,6 +253,21 @@ namespace palvalidator::filtering::stages
                                                     double annualizationFactor,
                                                     size_t blockLength,
                                                     std::ostream& os) const;
+
+    std::optional<BootstrapAnalysisStage::SmallNResult>
+    runSmallNProfitFactorBootstrap(const std::vector<Num>& highResReturns,
+				   const std::shared_ptr<PalStrategy<Num>>& clonedStrategy,
+				   double confidenceLevel,
+				   std::size_t blockLength,
+				   std::ostream& os) const;
+
+    BCaPFResult
+    runBCaProfitFactorBootstrap(const std::vector<Num>& highResReturns,
+				const std::shared_ptr<PalStrategy<Num>>& clonedStrategy,
+				double confidenceLevel,
+				size_t blockLength,
+				std::ostream& os) const;
+
 
     /**
      * Run percentile-t bootstrap

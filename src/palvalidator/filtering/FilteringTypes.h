@@ -322,6 +322,11 @@ namespace palvalidator
       
       std::optional<Num> lbGeoSmallNPeriod;  // min(m/n, BCa) on chosen resampler
       std::optional<Num> lbGeoPTPeriod;      // percentile-t (geo), per-period
+      std::optional<Num> lbProfitFactor;
+
+      // PF duel consistency metadata
+      double pfDuelRatio {std::numeric_limits<double>::quiet_NaN()};  // >= 1.0 when valid, NaN otherwise
+      bool   pfDuelRatioValid {false};  // true if pfDuelRatio is meaningful
 
       double annFactorUsed {0.0};
       bool isValid() const
