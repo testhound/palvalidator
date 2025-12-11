@@ -141,7 +141,60 @@ public:
     Bootstrap mn(B, CL, m_ratio, resampler);  // Executor default-constructed inside
     return std::make_pair(std::move(mn), std::move(crn));
   }
-  
+
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makeAdaptiveMOutOfN(std::size_t B, double CL,
+                           const Resampler& resampler,
+                           const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+                           uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::MOutOfNPercentileBootstrap<
+           Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap =
+      palvalidator::analysis::MOutOfNPercentileBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+
+    // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
+    // via MOutOfNPercentileBootstrap::createAdaptive.
+    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler);
+
+    return std::make_pair(std::move(mn), std::move(crn));
+  }
+
+  // Raw strategyId overload: adaptive m/n (TailVolatilityAdaptivePolicy by default)
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makeAdaptiveMOutOfN(std::size_t B, double CL,
+                           const Resampler& resampler,
+                           uint64_t strategyId,
+                           uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::MOutOfNPercentileBootstrap<
+           Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap =
+      palvalidator::analysis::MOutOfNPercentileBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+
+    // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
+    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler);
+
+    return std::make_pair(std::move(mn), std::move(crn));
+  }
+
   // ===========================================================================
   //                     PercentileTBootstrap
   // ===========================================================================

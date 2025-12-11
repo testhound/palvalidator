@@ -492,3 +492,129 @@ TEST_CASE("TradingBootstrapFactory: makeStudentizedT responds to tag changes (L,
     const bool difffold = num::to_double(tboot_f0.getLowerBound()) != num::to_double(tboot_f1.getLowerBound());
     REQUIRE(difffold);
 }
+
+TEST_CASE("TradingBootstrapFactory: makeAdaptiveMOutOfN produces deterministic results with CRN", "[Factory][MOutOfNAdaptive][CRN][Determinism]") {
+    using D   = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    // Mildly dependent toy series (same pattern as other tests)
+    std::vector<D> x;
+    for (int k = 0; k < 40; ++k) {
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("0.002"));
+    }
+
+    // Parameters
+    const uint64_t MASTER = 0xCAFEBABEDEADBEEFull;
+    const uint64_t sid    = 0xABCDEF0123456789ull;
+    const uint64_t stage  = 1;       // e.g., Bootstrap stage tag
+    const unsigned L      = 3;
+    const uint64_t fold   = 0;
+    const std::size_t B   = 1200;
+    const double CL       = 0.95;
+
+    // Mean sampler (explicit type for template argument)
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    TradingBootstrapFactory<Eng> factory(MASTER);
+
+    // Build two adaptive m-out-of-n bootstraps & CRN RNGs with identical tags
+    auto [mn1, crn1] = factory.makeAdaptiveMOutOfN<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L), sid, stage, L, fold
+    );
+    auto [mn2, crn2] = factory.makeAdaptiveMOutOfN<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L), sid, stage, L, fold
+    );
+
+    // Create engines from CRN providers for deterministic execution
+    auto rng1 = crn1.make_engine(0);
+    auto rng2 = crn2.make_engine(0);
+
+    // Run both — should be bit-identical with CRN even in adaptive mode
+    auto r1 = mn1.run(x, meanSampler, rng1 /*rng*/, /*m_sub_override=*/0);
+    auto r2 = mn2.run(x, meanSampler, rng2 /*rng*/, /*m_sub_override=*/0);
+
+    REQUIRE(num::to_double(r1.lower) == Catch::Approx(num::to_double(r2.lower)).epsilon(0));
+    REQUIRE(num::to_double(r1.upper) == Catch::Approx(num::to_double(r2.upper)).epsilon(0));
+    REQUIRE(num::to_double(r1.mean)  == Catch::Approx(num::to_double(r2.mean)).epsilon(0));
+
+    // Sanity check on the adaptive ratio itself: must be well-defined in (0,1)
+    REQUIRE(r1.computed_ratio == Catch::Approx(r2.computed_ratio).epsilon(0));
+    REQUIRE(r1.computed_ratio > 0.0);
+    REQUIRE(r1.computed_ratio < 1.0);
+}
+
+TEST_CASE("TradingBootstrapFactory: makeAdaptiveMOutOfN responds to tag changes (L, fold)", "[Factory][MOutOfNAdaptive][CRN][Sensitivity]") {
+    using D   = DecimalType;
+    using Eng = std::mt19937_64;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    std::vector<D> x;
+    for (int k = 0; k < 40; ++k) {
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("0.002"));
+    }
+
+    const uint64_t MASTER = 0x0DDC0FFEE1234BEEull;
+    const uint64_t sid    = 0x7777AAAABBBBCCCCull;
+    const uint64_t stage  = 1;
+    const unsigned L3     = 3;
+    const unsigned L4     = 4;
+    const uint64_t fold0  = 0, fold1 = 1;
+    const std::size_t B   = 1000;
+    const double CL       = 0.95;
+
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    TradingBootstrapFactory<Eng> factory(MASTER);
+
+    // --- L sensitivity (change L, keep fold fixed) ---
+    auto [mn_L3, crn_L3] = factory.makeAdaptiveMOutOfN<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L3), sid, stage, L3, fold0
+    );
+    auto [mn_L4, crn_L4] = factory.makeAdaptiveMOutOfN<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L4), sid, stage, L4, fold0
+    );
+
+    auto rng_L3 = crn_L3.make_engine(0);
+    auto rng_L4 = crn_L4.make_engine(0);
+
+    auto rL3 = mn_L3.run(x, meanSampler, rng_L3, 0);
+    auto rL4 = mn_L4.run(x, meanSampler, rng_L4, 0);
+
+    // With overwhelming probability at least one bound differs
+    const bool diffL = num::to_double(rL3.lower) != num::to_double(rL4.lower)
+                    || num::to_double(rL3.upper) != num::to_double(rL4.upper)
+                    || rL3.computed_ratio        != rL4.computed_ratio;
+    REQUIRE(diffL);
+
+    // --- fold sensitivity (change fold, keep L fixed) ---
+    auto [mn_f0, crn_f0] = factory.makeAdaptiveMOutOfN<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L3), sid, stage, L3, fold0
+    );
+    auto [mn_f1, crn_f1] = factory.makeAdaptiveMOutOfN<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L3), sid, stage, L3, fold1
+    );
+
+    auto rng_f0 = crn_f0.make_engine(0);
+    auto rng_f1 = crn_f1.make_engine(0);
+
+    auto rf0 = mn_f0.run(x, meanSampler, rng_f0, 0);
+    auto rf1 = mn_f1.run(x, meanSampler, rng_f1, 0);
+
+    const bool difffold = num::to_double(rf0.lower) != num::to_double(rf1.lower)
+                       || num::to_double(rf0.upper) != num::to_double(rf1.upper)
+                       || rf0.computed_ratio        != rf1.computed_ratio;
+    REQUIRE(difffold);
+}
