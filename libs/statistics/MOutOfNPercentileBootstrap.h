@@ -451,7 +451,8 @@ namespace palvalidator
 					    auto rng = make_engine(b);
 					    std::vector<Decimal> y;
 					    y.resize(m_sub);
-					    m_resampler(x, y, m_sub, rng);
+					    auto rng_copy = rng;
+					    m_resampler(x, y, m_sub, rng_copy);
 					    const double v = num::to_double(sampler(y));
 					    if (std::isfinite(v))
 					      thetas_d[b] = v;
