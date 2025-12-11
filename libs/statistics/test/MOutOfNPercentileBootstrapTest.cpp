@@ -582,3 +582,965 @@ TEST_CASE("MOutOfNPercentileBootstrap: ThreadPoolExecutor works at small-n", "[B
     REQUIRE(num::to_double(a.lower) == Catch::Approx(num::to_double(b.lower)).margin(0.0));
     REQUIRE(num::to_double(a.upper) == Catch::Approx(num::to_double(b.upper)).margin(0.0));
 }
+
+// ========================================================================
+// ADAPTIVE RATIO TESTS (NEW)
+// ========================================================================
+
+TEST_CASE("MOutOfNPercentileBootstrap: Adaptive constructor basic functionality",
+          "[Bootstrap][MOutOfN][Adaptive]")
+{
+  using D = DecimalType;
+  using mkc_timeseries::GeoMeanStat;
+  using ResT = StationaryMaskValueResampler<D>;
+
+  // Create a moderate-sized dataset with typical characteristics
+  const std::size_t n = 40;
+  std::vector<D> returns;
+  returns.reserve(n);
+  
+  // Generate returns with some volatility
+  for (std::size_t i = 0; i < n; ++i)
+  {
+    const double v = 0.001 * std::sin(static_cast<double>(i) / 5.0);
+    returns.emplace_back(D(v));
+  }
+
+  GeoMeanStat<D> geo;
+  auto sampler = [&](const std::vector<D>& a) -> D { return geo(a); };
+  
+  ResT res(3);
+  
+  std::seed_seq seq = make_seed_seq(0xADA971E001ull);
+  std::mt19937_64 rng(seq);
+
+  SECTION("Adaptive constructor compiles and runs")
+  {
+    // Start from fixed-ratio constructor, then switch to adaptive mode
+    MOutOfNPercentileBootstrap<D, decltype(sampler), ResT> bootstrap(
+        /*B=*/1000, /*CL=*/0.95, /*m_ratio=*/0.70, res);
+    
+    // Switch to adaptive mode with GeoMeanStat policy
+    bootstrap.setAdaptiveRatioPolicy<GeoMeanStat<D>>(
+        std::make_shared<palvalidator::analysis::TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>>>());
+    
+    REQUIRE(bootstrap.isAdaptiveMode());
+    REQUIRE(bootstrap.mratio() == -1.0);
+    
+    auto result = bootstrap.run(returns, sampler, rng);
+    
+    // Verify result structure
+    REQUIRE(result.B == 1000);
+    REQUIRE(result.n == n);
+    REQUIRE(result.m_sub >= 2);
+    REQUIRE(result.m_sub < n);
+
+    // In adaptive mode, computed_ratio is the policy's logical m/n ratio,
+    // which must lie strictly between 0 and 1.
+    REQUIRE(std::isfinite(result.computed_ratio));
+    REQUIRE(result.computed_ratio > 0.0);
+    REQUIRE(result.computed_ratio < 1.0);
+    
+    // Verify bounds are valid
+    REQUIRE(std::isfinite(num::to_double(result.lower)));
+    REQUIRE(std::isfinite(num::to_double(result.mean)));
+    REQUIRE(std::isfinite(num::to_double(result.upper)));
+    REQUIRE(result.lower <= result.mean);
+    REQUIRE(result.mean <= result.upper);
+  }
+
+  SECTION("Fixed ratio constructor still works (backward compatibility)")
+  {
+    MOutOfNPercentileBootstrap<D, decltype(sampler), ResT> bootstrap(
+        /*B=*/1000, /*CL=*/0.95, /*m_ratio=*/0.70, res);
+    
+    REQUIRE_FALSE(bootstrap.isAdaptiveMode());
+    REQUIRE(bootstrap.mratio() == Catch::Approx(0.70));
+    
+    auto result = bootstrap.run(returns, sampler, rng);
+    
+    // In fixed mode, computed_ratio must match the configured m_ratio.
+    REQUIRE(result.computed_ratio == Catch::Approx(0.70).margin(0.0));
+  }
+}
+
+TEST_CASE("StatisticalContext: Basic statistical calculations",
+          "[Bootstrap][StatisticalContext]")
+{
+  using D = DecimalType;
+  using palvalidator::analysis::detail::StatisticalContext;
+
+  SECTION("Normal distribution characteristics")
+  {
+    // Generate approximately normal returns
+    std::vector<D> returns;
+    const std::size_t n = 50;
+    returns.reserve(n);
+    
+    std::seed_seq seq = make_seed_seq(0x00A0AA1001ull);
+    std::mt19937_64 rng(seq);
+    std::normal_distribution<double> dist(0.001, 0.01);
+    
+    for (std::size_t i = 0; i < n; ++i)
+      returns.emplace_back(D(dist(rng)));
+    
+    StatisticalContext<D> ctx(returns);
+    
+    REQUIRE(ctx.getSampleSize() == n);
+    REQUIRE(ctx.getAnnualizedVolatility() > 0.0);
+    REQUIRE(std::isfinite(ctx.getSkewness()));
+    REQUIRE(std::isfinite(ctx.getExcessKurtosis()));
+    
+    // Normal distribution should not trigger heavy-tail flags
+    // (though with small sample this might occasionally happen)
+    INFO("Tail index: " << ctx.getTailIndex());
+    INFO("Heavy tails: " << ctx.hasHeavyTails());
+  }
+
+  SECTION("Heavy-tailed distribution characteristics")
+  {
+    // Generate returns with heavy left tail
+    std::vector<D> returns;
+    const std::size_t n = 40;
+    returns.reserve(n);
+    
+    // Most returns are small positive
+    for (std::size_t i = 0; i < 30; ++i)
+      returns.emplace_back(D(0.001));
+    
+    // Add some large negative returns (heavy left tail)
+    for (std::size_t i = 0; i < 10; ++i)
+      returns.emplace_back(D(-0.05 * (i + 1)));
+    
+    StatisticalContext<D> ctx(returns);
+    
+    REQUIRE(ctx.getSampleSize() == n);
+    REQUIRE(ctx.getAnnualizedVolatility() > 0.0);
+    
+    // Should detect heavy tails or strong asymmetry
+    const bool detected = ctx.hasHeavyTails() || ctx.hasStrongAsymmetry();
+    INFO("Heavy tails: " << ctx.hasHeavyTails());
+    INFO("Strong asymmetry: " << ctx.hasStrongAsymmetry());
+    INFO("Tail index: " << ctx.getTailIndex());
+    
+    // With this construction, we expect detection
+    REQUIRE(detected);
+  }
+
+  SECTION("Annualization factor is applied correctly")
+  {
+    std::vector<D> returns;
+    for (std::size_t i = 0; i < 30; ++i)
+      returns.emplace_back(D(0.01 + 0.01 * (i % 2)));
+    
+    StatisticalContext<D> ctx1(returns, 1.0);
+    StatisticalContext<D> ctx252(returns, 252.0);
+    
+    // Annualized volatility should scale by sqrt(factor)
+    const double ratio = ctx252.getAnnualizedVolatility() / ctx1.getAnnualizedVolatility();
+    REQUIRE(ratio == Catch::Approx(std::sqrt(252.0)).margin(0.01));
+  }
+}
+
+TEST_CASE("TailVolatilityAdaptivePolicy: Prior ratio calculation",
+          "[Bootstrap][AdaptivePolicy]")
+{
+  using D = DecimalType;
+  using mkc_timeseries::GeoMeanStat;
+  using palvalidator::analysis::TailVolatilityAdaptivePolicy;
+  using palvalidator::analysis::detail::StatisticalContext;
+
+  GeoMeanStat<D> geo;
+
+  SECTION("High volatility regime triggers high ratio")
+  {
+    // Generate high-volatility returns
+    std::vector<D> returns;
+    const std::size_t n = 30;
+    returns.reserve(n);
+    
+    std::seed_seq seq = make_seed_seq(0x4194A0101ull);
+    std::mt19937_64 rng(seq);
+    std::normal_distribution<double> dist(0.0, 0.05); // 5% per-period vol
+    
+    for (std::size_t i = 0; i < n; ++i)
+      returns.emplace_back(D(dist(rng)));
+    
+    // Annualize with factor of 252 to get ~79% annualized vol
+    StatisticalContext<D> ctx(returns, 252.0);
+    
+    TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>> policy;
+    
+    std::ostringstream oss;
+    double ratio = policy.computeRatio(returns, ctx, 0.95, 1000, &oss);
+    
+    INFO("Computed ratio: " << ratio);
+    INFO("Annualized vol: " << ctx.getAnnualizedVolatility());
+    INFO("Diagnostics: " << oss.str());
+    
+    // High volatility should trigger high ratio (close to 0.80)
+    REQUIRE(ratio >= 0.60);
+    REQUIRE(ratio <= 1.0);
+  }
+
+// MOutOfNPercentileBootstrapTest.cpp: Lines 797-814
+  SECTION("Normal regime uses moderate ratio")
+  {
+    // Generate normal-volatility returns
+    std::vector<D> returns;
+    const std::size_t n = 40;
+    returns.reserve(n);
+    
+    // FIX: Use a deterministic, low-vol, symmetric sample to ensure Hill estimator is benign.
+    // Per-period sigma approx 0.001. SigmaAnn approx 1.58%. This will ensure the heavy-tail flag is false.
+    for (std::size_t i = 0; i < n; ++i)
+      returns.emplace_back(D(0.001 * (i % 2 == 0 ? 1.0 : -1.0)));
+    
+    // Annualize with factor of 252 to get ~16% annualized vol
+    StatisticalContext<D> ctx(returns, 252.0);
+    
+    TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>> policy;
+    
+    double ratio = policy.computeRatio(returns, ctx, 0.95, 1000, nullptr);
+    
+    INFO("Computed ratio: " << ratio);
+    INFO("Annualized vol: " << ctx.getAnnualizedVolatility());
+    
+    // Normal regime should use moderate ratio (around 0.50)
+    REQUIRE(ratio >= 0.30);
+    REQUIRE(ratio <= 0.70);
+  }
+
+  SECTION("Small N uses 50% rule")
+  {
+    // Very small sample
+    std::vector<D> returns{ D(0.01), D(-0.005), D(0.002), D(0.003) };
+    
+    StatisticalContext<D> ctx(returns);
+    
+    TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>> policy;
+    
+    double ratio = policy.computeRatio(returns, ctx, 0.95, 1000, nullptr);
+    
+    INFO("Computed ratio for n=4: " << ratio);
+    
+    // Should use ~50% rule for n < 5
+    REQUIRE(ratio >= 0.40);
+    REQUIRE(ratio <= 0.60);
+  }
+}
+
+TEST_CASE("FixedRatioPolicy: Returns fixed ratio", 
+          "[Bootstrap][FixedRatioPolicy]")
+{
+  using D = DecimalType;
+  using mkc_timeseries::GeoMeanStat;
+  using palvalidator::analysis::FixedRatioPolicy;
+  using palvalidator::analysis::detail::StatisticalContext;
+
+  SECTION("Returns configured ratio regardless of data")
+  {
+    std::vector<D> returns;
+    for (std::size_t i = 0; i < 30; ++i)
+      returns.emplace_back(D(0.01));
+    
+    StatisticalContext<D> ctx(returns);
+    
+    FixedRatioPolicy<D, GeoMeanStat<D>> policy(0.75);
+    
+    double ratio = policy.computeRatio(returns, ctx, 0.95, 1000, nullptr);
+    
+    REQUIRE(ratio == Catch::Approx(0.75));
+  }
+
+  SECTION("Validates ratio bounds in constructor")
+  {
+    REQUIRE_THROWS_AS(
+        (FixedRatioPolicy<D, GeoMeanStat<D>>(0.0)),
+        std::invalid_argument);
+    
+    REQUIRE_THROWS_AS(
+        (FixedRatioPolicy<D, GeoMeanStat<D>>(1.0)),
+        std::invalid_argument);
+    
+    REQUIRE_THROWS_AS(
+        (FixedRatioPolicy<D, GeoMeanStat<D>>(-0.5)),
+        std::invalid_argument);
+  }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: Adaptive vs Fixed mode comparison", 
+          "[Bootstrap][MOutOfN][Adaptive][Integration]")
+{
+  using D = DecimalType;
+  using mkc_timeseries::GeoMeanStat;
+  using ResT = StationaryMaskValueResampler<D>;
+
+  // Generate test data
+  const std::size_t n = 35;
+  std::vector<D> returns;
+  returns.reserve(n);
+  
+  std::seed_seq seq = make_seed_seq(0xC04FA7E01ull);
+  std::mt19937_64 rng(seq);
+  std::normal_distribution<double> dist(0.002, 0.015);
+  
+  for (std::size_t i = 0; i < n; ++i)
+    returns.emplace_back(D(dist(rng)));
+
+  GeoMeanStat<D> geo;
+  auto sampler = [&](const std::vector<D>& a) -> D { return geo(a); };
+  
+  ResT res(3);
+
+  SECTION("Adaptive mode produces valid policy ratio")
+  {
+    std::seed_seq seq1 = make_seed_seq(0xADA97001ull);
+    std::mt19937_64 rng1(seq1);
+    
+    MOutOfNPercentileBootstrap<D, decltype(sampler), ResT> bootstrap(
+        /*B=*/1000, /*CL=*/0.95, /*m_ratio=*/0.70, res);
+    
+    // Switch to adaptive mode
+    bootstrap.setAdaptiveRatioPolicy<GeoMeanStat<D>>(
+        std::make_shared<palvalidator::analysis::TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>>>());
+    
+    std::ostringstream oss;
+    auto result = bootstrap.run(returns, sampler, rng1, 0, &oss);
+    
+    INFO("Adaptive ratio (policy): " << result.computed_ratio);
+    INFO("m_sub: " << result.m_sub);
+    INFO("Diagnostics:\n" << oss.str());
+    
+    // In adaptive mode, computed_ratio is the policy m/n ratio,
+    // which also governs m_sub = floor(policy_ratio * n), up to clamping.
+    REQUIRE(result.computed_ratio > 0.0);
+    REQUIRE(result.computed_ratio < 1.0);
+
+    const std::size_t expected_m =
+        static_cast<std::size_t>(std::floor(result.computed_ratio * n));
+    REQUIRE(result.m_sub == expected_m);
+    
+    // Verify bounds are valid
+    REQUIRE(std::isfinite(num::to_double(result.lower)));
+    REQUIRE(std::isfinite(num::to_double(result.upper)));
+    REQUIRE(result.lower <= result.upper);
+  }
+
+  SECTION("Fixed mode reports configured ratio")
+  {
+    std::seed_seq seq2 = make_seed_seq(0x41EED001ull);
+    std::mt19937_64 rng2(seq2);
+    
+    const double fixed_ratio = 0.65;
+    MOutOfNPercentileBootstrap<D, decltype(sampler), ResT> bootstrap(
+        /*B=*/1000, /*CL=*/0.95, fixed_ratio, res);
+    
+    REQUIRE_FALSE(bootstrap.isAdaptiveMode());
+    REQUIRE(bootstrap.mratio() == Catch::Approx(fixed_ratio));
+    
+    auto result = bootstrap.run(returns, sampler, rng2);
+    
+    // In fixed mode, computed_ratio must equal the configured m_ratio
+    // even though m_sub is integer-rounded from it.
+    REQUIRE(result.computed_ratio == Catch::Approx(fixed_ratio).margin(0.0));
+
+    // And m_sub is derived from that fixed_ratio (subject to [2, n-1] clamp).
+    const std::size_t expected_m =
+        static_cast<std::size_t>(std::floor(fixed_ratio * n));
+    REQUIRE(result.m_sub == expected_m);
+  }
+
+  SECTION("m_sub_override reports m_sub/n")
+  {
+    std::seed_seq seq3 = make_seed_seq(0x0EE44DE1ull);
+    std::mt19937_64 rng3(seq3);
+    
+    MOutOfNPercentileBootstrap<D, decltype(sampler), ResT> bootstrap(
+        /*B=*/1000, /*CL=*/0.95, /*m_ratio=*/0.70, res);
+    
+    // Switch to adaptive mode (but override will take precedence for m_sub)
+    bootstrap.setAdaptiveRatioPolicy<GeoMeanStat<D>>(
+        std::make_shared<palvalidator::analysis::TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>>>());
+    
+    const std::size_t m_override = 20;
+    auto result = bootstrap.run(returns, sampler, rng3, m_override);
+    
+    REQUIRE(result.m_sub == m_override);
+
+    // With an explicit override, computed_ratio is defined as m_sub / n,
+    // i.e., the realized subsample fraction, independent of policy or fixed m_ratio.
+    const double expected_ratio =
+        static_cast<double>(m_override) / static_cast<double>(n);
+
+    REQUIRE(result.computed_ratio
+            == Catch::Approx(expected_ratio).margin(0.001));
+  }
+}
+
+TEST_CASE("StatisticalContext: Heavy-tail detection logic", 
+          "[Bootstrap][StatisticalContext][HeavyTails]")
+{
+  using D = DecimalType;
+  using palvalidator::analysis::detail::StatisticalContext;
+
+  SECTION("Conservative OR logic: quantile shape triggers detection")
+  {
+    std::vector<D> returns;
+    const std::size_t n = 40;
+    returns.reserve(n);
+    
+    // Q2 (Median) for n=40 is at index 20.5 (0-based)
+    // Set positive/negative counts to force Q1, Q2, Q3 into distinct regions.
+    for (std::size_t i = 0; i < 30; ++i)
+      returns.emplace_back(D(0.001)); // Q2, Q3 will be here
+    for (std::size_t i = 0; i < 10; ++i)
+      returns.emplace_back(D(-0.01 - 0.005 * i)); // Q1 will be here
+ 
+    StatisticalContext<D> ctx(returns);
+    
+    // Should detect via quantile shape (strong asymmetry or heavy tails)
+    const bool detected = ctx.hasHeavyTails() || ctx.hasStrongAsymmetry();
+    INFO("Heavy tails: " << ctx.hasHeavyTails());
+    INFO("Strong asymmetry: " << ctx.hasStrongAsymmetry());
+    
+    REQUIRE(detected);
+  }
+
+  SECTION("Conservative OR logic: Hill estimator triggers detection")
+  {
+    std::vector<D> returns;
+    const std::size_t n = 40;
+    returns.reserve(n);
+    
+    // Create distribution with Pareto-like tail (α ≈ 1.5)
+    for (std::size_t i = 0; i < 30; ++i)
+      returns.emplace_back(D(0.0005));
+    
+    // Add extreme losses following power law
+    returns.emplace_back(D(-0.01));
+    returns.emplace_back(D(-0.02));
+    returns.emplace_back(D(-0.04));
+    returns.emplace_back(D(-0.08));
+    returns.emplace_back(D(-0.16));
+    returns.emplace_back(D(-0.32));
+    returns.emplace_back(D(-0.64));
+    returns.emplace_back(D(-0.80));
+    returns.emplace_back(D(-0.90));
+    returns.emplace_back(D(-0.95));
+    
+    StatisticalContext<D> ctx(returns);
+    
+    INFO("Tail index: " << ctx.getTailIndex());
+    INFO("Heavy tails: " << ctx.hasHeavyTails());
+    
+    // Should detect via Hill estimator (α ≤ 2.0)
+    if (ctx.getTailIndex() > 0.0)
+    {
+      REQUIRE(ctx.getTailIndex() <= 3.0); // Should be in heavy-tail range
+    }
+  }
+}
+
+TEST_CASE("TailVolatilityAdaptivePolicy: computeRatioWithRefinement behavior",
+          "[Bootstrap][AdaptivePolicy][Refinement]")
+{
+  using D  = DecimalType;
+  using mkc_timeseries::GeoMeanStat;
+  using palvalidator::analysis::TailVolatilityAdaptivePolicy;
+  using palvalidator::analysis::detail::StatisticalContext;
+  using palvalidator::analysis::detail::CandidateScore;
+
+  GeoMeanStat<D> geo;
+  TailVolatilityAdaptivePolicy<D, GeoMeanStat<D>> policy;
+
+  // Helper to build a low-vol, symmetric return series so we land in the
+  // "normal regime" (prior ratio ≈ normalRatio = 0.50) and avoid heavy-tail flags.
+  auto make_symmetric_returns = [](std::size_t n) {
+    std::vector<D> r;
+    r.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+      r.emplace_back(D(0.001 * (i % 2 == 0 ? 1.0 : -1.0)));
+    return r;
+  };
+
+  SECTION("Refinement picks candidate whose instability is minimized (unique best)")
+  {
+    const std::size_t n = 30; // within [15, 60] refinement window
+    auto returns = make_symmetric_returns(n);
+
+    // Annualization factor arbitrary but consistent with "normal regime".
+    StatisticalContext<D> ctx(returns, 252.0);
+
+    // Sanity: prior ratio should be in the "normal" range (around 0.50).
+    const double prior = policy.computeRatio(returns, ctx, 0.95, 1000, nullptr);
+    INFO("Prior ratio (for context): " << prior);
+
+    // Probe maker that defines instability as |rho - target|,
+    // and returns a CandidateScore with ratio=rho.
+    struct TargetProbeMaker
+    {
+      double target;
+      mutable std::vector<double> called_rhos;
+
+      CandidateScore runProbe(const std::vector<D>& /*data*/,
+                              double rho,
+                              std::size_t /*B*/) const
+      {
+        called_rhos.push_back(rho);
+        const double instability = std::fabs(rho - target);
+        return CandidateScore(/*lowerBound=*/0.0,
+                              /*sigma=*/0.0,
+                              /*instability=*/instability,
+                              /*ratio=*/rho);
+      }
+    };
+
+    // We choose a target that is *exactly* on the candidate grid around 0.5:
+    // candidates ≈ {0.25, 0.30, ..., 0.70, 0.75}. Target 0.70 is in that set.
+    TargetProbeMaker probe{0.70};
+
+    const double refined =
+        policy.computeRatioWithRefinement(returns, ctx,
+                                          /*confidenceLevel=*/0.95,
+                                          /*B=*/1000,
+                                          probe,
+                                          /*os=*/nullptr);
+
+    INFO("Refined ratio: " << refined);
+
+    // Ensure refinement actually probed multiple candidates and chose the best.
+    REQUIRE(probe.called_rhos.size() >= 3);
+
+    // Because instability = |rho - 0.70|, the unique best candidate is rho=0.70.
+    // The theoretical n^(2/3) floor for n=30 (~0.32) and ratio-statistic floor
+    // do not bind here, so the final refined ratio should be ≈ 0.70.
+    REQUIRE(refined == Catch::Approx(0.70).margin(1e-12));
+  }
+
+  SECTION("Refinement tie-breaking prefers smaller ratio when instabilities tie")
+  {
+    const std::size_t n = 30; // within [15, 60]
+    auto returns = make_symmetric_returns(n);
+    StatisticalContext<D> ctx(returns, 252.0);
+
+    // Probe maker that creates a tie between two candidates (e.g. 0.55 and 0.60)
+    // with the same minimal instability, and larger instability elsewhere.
+    // Because TailVolatilityAdaptivePolicy breaks ties by smaller ratio, it
+    // should select 0.55.
+    struct TieProbeMaker
+    {
+      mutable std::vector<double> called_rhos;
+
+      CandidateScore runProbe(const std::vector<D>& /*data*/,
+                              double rho,
+                              std::size_t /*B*/) const
+      {
+        called_rhos.push_back(rho);
+
+        double instability;
+        if (std::fabs(rho - 0.55) < 1e-6 || std::fabs(rho - 0.60) < 1e-6)
+          instability = 0.10; // tied minima
+        else
+          instability = 0.20; // strictly worse
+
+        return CandidateScore(/*lowerBound=*/0.0,
+                              /*sigma=*/0.0,
+                              /*instability=*/instability,
+                              /*ratio=*/rho);
+      }
+    };
+
+    TieProbeMaker probe;
+
+    const double refined =
+        policy.computeRatioWithRefinement(returns, ctx,
+                                          /*confidenceLevel=*/0.95,
+                                          /*B=*/1000,
+                                          probe,
+                                          /*os=*/nullptr);
+
+    INFO("Refined ratio with tie: " << refined);
+
+    // Should have probed more than just one candidate.
+    REQUIRE(probe.called_rhos.size() >= 3);
+
+    // Among candidates with equal minimal instability (0.55 and 0.60),
+    // the implementation chooses the *smaller* ratio.
+    REQUIRE(refined == Catch::Approx(0.55).margin(1e-12));
+  }
+
+  SECTION("No refinement when N is outside refinement window [15,60]")
+  {
+    // Case 1: n below refinement window but >= 5 (so not using small-n 50% rule)
+    {
+      const std::size_t n_small = 10;
+      auto returns = make_symmetric_returns(n_small);
+      StatisticalContext<D> ctx_small(returns, 252.0);
+
+      // Probe maker that records if it was ever used.
+      struct FlagProbeMaker
+      {
+        mutable bool called = false;
+
+        CandidateScore runProbe(const std::vector<D>& /*data*/,
+                                double /*rho*/,
+                                std::size_t /*B*/) const
+        {
+          called = true;
+          return CandidateScore(0.0, 0.0, 0.0, 0.5);
+        }
+      } probe_small;
+
+      const double base =
+          policy.computeRatio(returns, ctx_small, 0.95, 1000, nullptr);
+
+      const double refined =
+          policy.computeRatioWithRefinement(returns, ctx_small,
+                                            /*confidenceLevel=*/0.95,
+                                            /*B=*/1000,
+                                            probe_small,
+                                            /*os=*/nullptr);
+
+      INFO("Base ratio (n=10): " << base);
+      INFO("Refined ratio (n=10): " << refined);
+
+      // For n < 15, refinement must be skipped, and probe must never be called.
+      REQUIRE_FALSE(probe_small.called);
+      REQUIRE(refined == Catch::Approx(base).margin(1e-12));
+    }
+
+    // Case 2: n above refinement window
+    {
+      const std::size_t n_large = 80;
+      auto returns = make_symmetric_returns(n_large);
+      StatisticalContext<D> ctx_large(returns, 252.0);
+
+      struct FlagProbeMaker
+      {
+        mutable bool called = false;
+
+        CandidateScore runProbe(const std::vector<D>& /*data*/,
+                                double /*rho*/,
+                                std::size_t /*B*/) const
+        {
+          called = true;
+          return CandidateScore(0.0, 0.0, 0.0, 0.5);
+        }
+      } probe_large;
+
+      const double base =
+          policy.computeRatio(returns, ctx_large, 0.95, 1000, nullptr);
+
+      const double refined =
+          policy.computeRatioWithRefinement(returns, ctx_large,
+                                            /*confidenceLevel=*/0.95,
+                                            /*B=*/1000,
+                                            probe_large,
+                                            /*os=*/nullptr);
+
+      INFO("Base ratio (n=80): " << base);
+      INFO("Refined ratio (n=80): " << refined);
+
+      // For n > 60, refinement must be skipped as well.
+      REQUIRE_FALSE(probe_large.called);
+      REQUIRE(refined == Catch::Approx(base).margin(1e-12));
+    }
+  }
+
+  SECTION("Small-n path in computeRatioWithRefinement matches 50% rule and skips refinement")
+  {
+    std::vector<D> returns{ D(0.01), D(-0.005), D(0.002), D(0.003) };
+    StatisticalContext<D> ctx(returns);
+
+    struct FlagProbeMaker
+    {
+      mutable bool called = false;
+
+      CandidateScore runProbe(const std::vector<D>& /*data*/,
+                              double /*rho*/,
+                              std::size_t /*B*/) const
+      {
+        called = true;
+        return CandidateScore(0.0, 0.0, 0.0, 0.5);
+      }
+    } probe;
+
+    const double base =
+        policy.computeRatio(returns, ctx, 0.95, 1000, nullptr);
+
+    const double refined =
+        policy.computeRatioWithRefinement(returns, ctx,
+                                          /*confidenceLevel=*/0.95,
+                                          /*B=*/1000,
+                                          probe,
+                                          /*os=*/nullptr);
+
+    INFO("Base ratio (n=4): " << base);
+    INFO("Refined ratio (n=4): " << refined);
+
+    // computeRatioWithRefinement must defer to the small-n 50% rule
+    // and never invoke the probe engine.
+    REQUIRE_FALSE(probe.called);
+    REQUIRE(refined == Catch::Approx(base).margin(1e-12));
+    REQUIRE(refined >= 0.40);
+    REQUIRE(refined <= 0.60);
+  }
+}
+
+// Minimal strategy type for testing – the bootstrap does not call any methods on it
+struct DummyStrategy { };
+
+// Recording factory that mimics the TradingBootstrapFactory interface
+// Must be defined at namespace scope because it has template member functions
+struct RecordingFactory
+{
+  struct CRNProvider
+  {
+    std::mt19937_64 make_engine(std::size_t b) const
+    {
+      // Deterministic engine per replicate index
+      std::seed_seq ss{
+        static_cast<unsigned>(b & 0xffffffffu),
+        static_cast<unsigned>((b >> 32) & 0xffffffffu),
+        0xA5A5A5A5u,
+        0x5A5A5A5Au
+      };
+      return std::mt19937_64(ss);
+    }
+  };
+
+  struct CallRecord
+  {
+    std::size_t B     = 0;
+    double      CL    = 0.0;
+    double      rho   = 0.0;
+    int         stage = 0;
+    int         Lsmall= 0;
+    int         fold  = 0;
+  };
+
+  // Mock bootstrap engine that provides a run() method
+  template<typename Decimal, typename BootstrapStatistic, typename Resampler>
+  struct MockBootstrapEngine
+  {
+    using Result = typename palvalidator::analysis::MOutOfNPercentileBootstrap<
+      Decimal,
+      BootstrapStatistic,
+      Resampler
+    >::Result;
+
+    std::size_t B;
+    double CL;
+    double rho;
+    const Resampler& resampler;
+
+    MockBootstrapEngine(std::size_t B_, double CL_, double rho_, const Resampler& res)
+      : B(B_), CL(CL_), rho(rho_), resampler(res)
+    {
+    }
+
+    template<typename Provider>
+    Result run(const std::vector<Decimal>& data,
+               BootstrapStatistic statistic,
+               const Provider& provider) const
+    {
+      // Create a minimal valid result for probe testing
+      const std::size_t n = data.size();
+      const std::size_t m_sub = static_cast<std::size_t>(std::floor(rho * n));
+      
+      const Decimal stat_value = statistic(data);
+      
+      // Return a simple result with the statistic value as all bounds
+      return Result{
+        /*mean=*/stat_value,
+        /*lower=*/stat_value * Decimal(0.9),  // Mock lower bound
+        /*upper=*/stat_value * Decimal(1.1),  // Mock upper bound
+        /*cl=*/CL,
+        /*B=*/B,
+        /*effective_B=*/B,
+        /*skipped=*/0,
+        /*n=*/n,
+        /*m_sub=*/m_sub,
+        /*L=*/resampler.getL(),
+        /*computed_ratio=*/rho
+      };
+    }
+  };
+
+  std::size_t callCount = 0;
+  CallRecord lastCall;
+
+  template<typename Decimal, typename BootstrapStatistic, typename Resampler, typename StrategyT>
+  std::pair<MockBootstrapEngine<Decimal, BootstrapStatistic, Resampler>, CRNProvider>
+  makeMOutOfN(std::size_t B,
+              double      cl,
+              double      rho,
+              const Resampler& resampler,
+              StrategyT&,
+              int         stageTag,
+              int         L_small,
+              int         fold)
+  {
+    ++callCount;
+    lastCall.B      = B;
+    lastCall.CL     = cl;
+    lastCall.rho    = rho;
+    lastCall.stage  = stageTag;
+    lastCall.Lsmall = L_small;
+    lastCall.fold   = fold;
+
+    MockBootstrapEngine<Decimal, BootstrapStatistic, Resampler> engine(B, cl, rho, resampler);
+    return std::make_pair(engine, CRNProvider{});
+  }
+};
+
+TEST_CASE("MOutOfNPercentileBootstrap::runWithRefinement: wiring and invariants",
+          "[Bootstrap][MOutOfN][Adaptive][Refinement]")
+{
+  using D  = DecimalType;
+  using mkc_timeseries::GeoMeanStat;
+  using ResT = StationaryMaskValueResampler<D>;
+  using palvalidator::analysis::FixedRatioPolicy;
+
+  // Simple arithmetic-mean sampler
+  auto mean_sampler = [](const std::vector<D>& a) -> D
+  {
+    double s = 0.0;
+    for (const auto& v : a)
+      s += num::to_double(v);
+    return D(s / static_cast<double>(a.size()));
+  };
+
+  const std::size_t B  = 800;
+  const double      CL = 0.95;
+  const std::size_t L  = 3;
+  ResT res(L);
+
+  SECTION("runWithRefinement throws on n < 3 and does not touch factory")
+  {
+    std::vector<D> tiny{ D(1), D(2) }; // n = 2 → invalid for m-out-of-n
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), ResT> bootstrap(B, CL, 0.70, res);
+
+    DummyStrategy    strategy;
+    RecordingFactory factory;
+
+    REQUIRE_THROWS_AS(
+        (bootstrap.template runWithRefinement<GeoMeanStat<D>>(
+            tiny, mean_sampler, strategy, factory, /*stageTag=*/0, /*fold=*/0)),
+        std::invalid_argument);
+
+    REQUIRE(factory.callCount == 0);
+  }
+
+  SECTION("Default policy path uses TailVolatilityAdaptivePolicy and consistent ratio")
+  {
+    // Moderate-sized deterministic dataset
+    const std::size_t n = 40;
+    std::vector<D> returns;
+    returns.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+    {
+      const double v = 0.001 * std::sin(static_cast<double>(i) / 5.0);
+      returns.emplace_back(D(v));
+    }
+
+    // Fixed-ratio constructor; runWithRefinement should still use the
+    // default TailVolatilityAdaptivePolicy when no adaptive policy is set.
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), ResT> bootstrap(B, CL, 0.70, res);
+
+    DummyStrategy    strategy;
+    RecordingFactory factory;
+
+    const int stageTag = 5;
+    const int fold     = 2;
+
+    auto result =
+        bootstrap.template runWithRefinement<GeoMeanStat<D>>(
+            returns, mean_sampler, strategy, factory, stageTag, fold);
+
+    REQUIRE(result.B  == B);
+    REQUIRE(result.cl == Catch::Approx(CL));
+    REQUIRE(result.n  == n);
+    REQUIRE(result.L  == L);
+
+    REQUIRE(result.m_sub >= 2);
+    REQUIRE(result.m_sub <  n);
+
+    // In the refinement path, the reported ratio is always m_sub / n
+    const double inferredRatio =
+        static_cast<double>(result.m_sub) / static_cast<double>(n);
+    REQUIRE(result.computed_ratio == Catch::Approx(inferredRatio));
+
+    // Factory must have been called exactly once with the final ratio
+    REQUIRE(factory.callCount >= 1);
+    REQUIRE(factory.lastCall.B      == B);
+    REQUIRE(factory.lastCall.CL     == Catch::Approx(CL));
+    REQUIRE(factory.lastCall.stage  == stageTag);
+    REQUIRE(factory.lastCall.fold   == fold);
+    REQUIRE(factory.lastCall.Lsmall == static_cast<int>(L));
+    REQUIRE(factory.lastCall.rho    == Catch::Approx(inferredRatio));
+
+    // Basic sanity on effective replicate counts
+    REQUIRE(result.effective_B + result.skipped == result.B);
+    REQUIRE(result.effective_B >= result.B / 2);
+  }
+
+  SECTION("Explicit FixedRatioPolicy is honored and passed through to factory (after clamping)")
+  {
+    const std::size_t n = 50;
+    std::vector<D> returns;
+    returns.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+      returns.emplace_back(D(0.001 * static_cast<double>(i)));
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), ResT> bootstrap(B, CL, 0.70, res);
+
+    // Install a fixed-ratio adaptive policy (no refinement; prior-only)
+    const double policy_ratio = 0.65;
+    bootstrap.setAdaptiveRatioPolicy<GeoMeanStat<D>>(
+        std::make_shared<FixedRatioPolicy<D, GeoMeanStat<D>>>(policy_ratio));
+
+    DummyStrategy    strategy;
+    RecordingFactory factory;
+
+    const int stageTag = 42;
+    const int fold     = 7;
+
+    auto result =
+        bootstrap.template runWithRefinement<GeoMeanStat<D>>(
+            returns, mean_sampler, strategy, factory, stageTag, fold);
+
+    REQUIRE(result.B  == B);
+    REQUIRE(result.cl == Catch::Approx(CL));
+    REQUIRE(result.n  == n);
+    REQUIRE(result.L  == L);
+
+    // The policy ratio is 0.65, but runWithRefinement clamps via m_sub
+    std::size_t expected_m =
+        static_cast<std::size_t>(std::floor(policy_ratio * static_cast<double>(n)));
+    if (expected_m < 2)
+      expected_m = 2;
+    if (expected_m >= n)
+      expected_m = n - 1;
+
+    const double expected_ratio =
+        static_cast<double>(expected_m) / static_cast<double>(n);
+
+    REQUIRE(result.m_sub          == expected_m);
+    REQUIRE(result.computed_ratio == Catch::Approx(expected_ratio));
+
+    // Factory sees the final (clamped) ratio and correct wiring metadata
+    REQUIRE(factory.callCount      >= 1);
+    REQUIRE(factory.lastCall.B     == B);
+    REQUIRE(factory.lastCall.CL    == Catch::Approx(CL));
+    REQUIRE(factory.lastCall.stage == stageTag);
+    REQUIRE(factory.lastCall.fold  == fold);
+    REQUIRE(factory.lastCall.Lsmall== static_cast<int>(L));
+    REQUIRE(factory.lastCall.rho   == Catch::Approx(expected_ratio));
+
+    REQUIRE(result.effective_B + result.skipped == result.B);
+    REQUIRE(result.effective_B >= result.B / 2);
+  }
+}

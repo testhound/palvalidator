@@ -11,6 +11,7 @@
 #include "ParallelExecutors.h"
 #include "filtering/BootstrapConfig.h" 
 #include "SmallNBootstrapHelpers.h"
+#include "AdaptiveRatioInternal.h"
 #include "Annualizer.h"
 #include <sstream>
 #include <cmath>
@@ -23,7 +24,8 @@ namespace palvalidator::filtering::stages
   using mkc_timeseries::ClosedPositionHistory;
   using mkc_timeseries::Security;
   using palvalidator::bootstrap_cfg::BootstrapFactory;
-
+  using palvalidator::analysis::detail::estimate_left_tail_index_hill;
+  
   /**
  * @brief Constructs the Bootstrap Analysis Stage.
  *
@@ -182,7 +184,6 @@ namespace palvalidator::filtering::stages
   {
     using mkc_timeseries::StatUtils;
     using palvalidator::bootstrap_helpers::has_heavy_tails_wide;
-    using palvalidator::bootstrap_helpers::estimate_left_tail_index_hill;
 
     const std::size_t n = ctx.highResReturns.size();
 
@@ -272,7 +273,6 @@ namespace palvalidator::filtering::stages
 					     std::ostream& os) const
   {
     using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
-    using palvalidator::bootstrap_helpers::estimate_left_tail_index_hill;
     using mkc_timeseries::GeoMeanStat;
 
     // Pass rho_m <= 0.0 to enable TailVolStabilityPolicy (tail/vol prior + LB-stability refinement)
@@ -363,7 +363,6 @@ namespace palvalidator::filtering::stages
       std::ostream& os) const
   {
     using palvalidator::bootstrap_helpers::conservative_smallN_lower_bound;
-    using palvalidator::bootstrap_helpers::estimate_left_tail_index_hill;
     using LogProfitFactorStat = mkc_timeseries::StatUtils<Num>::LogProfitFactorStat;
 
     // Enable TailVolStabilityPolicy inside conservative_smallN_lower_bound
