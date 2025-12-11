@@ -800,6 +800,8 @@ template <typename Num, typename BootstrapStatistic, typename StrategyT,
     using palvalidator::analysis::MOutOfNPercentileBootstrap;
     using palvalidator::analysis::FixedRatioPolicy;
     using palvalidator::resampling::StationaryMaskValueResamplerAdapter;
+    using palvalidator::analysis::IAdaptiveRatioPolicy;
+    using palvalidator::analysis::TailVolatilityAdaptivePolicy;
     
     // ---------------------------------------------------------
     // 1. Setup & Statistical Analysis (DELEGATED to new infrastructure)
@@ -837,21 +839,22 @@ template <typename Num, typename BootstrapStatistic, typename StrategyT,
     using MNBootstrap = MOutOfNPercentileBootstrap<
         Num, BootstrapStatistic, StationaryMaskValueResamplerAdapter<Num>>;
     
-    // Start with fixed-ratio constructor (always works), then switch to adaptive if needed
-    const double temp_ratio = (rho_m > 0.0) ? rho_m : 0.50;  // Temporary ratio for construction
-    MNBootstrap mnBootstrap(B, confLevel, temp_ratio, resampler);
+    // Choose policy: TailVol adaptive by default, FixedRatio if rho_m > 0
+    std::shared_ptr<IAdaptiveRatioPolicy<Num, BootstrapStatistic>> policy;
+
+    if (rho_m > 0.0)
+      {
+	policy = std::make_shared<FixedRatioPolicy<Num, BootstrapStatistic>>(rho_m);
+      }
+    else
+      {
+	policy = std::make_shared<TailVolatilityAdaptivePolicy<Num, BootstrapStatistic>>();
+      }
+
+    // Build the bootstrap engine in adaptive mode with the chosen policy
+    auto mnBootstrap =
+      MNBootstrap::template createAdaptiveWithPolicy<BootstrapStatistic>(B, confLevel, resampler, policy);
     
-    // If adaptive mode requested (rho_m <= 0.0), switch to adaptive policy
-    if (rho_m <= 0.0)
-    {
-        // Use default TailVolatilityAdaptivePolicy
-        auto adaptivePolicy = std::make_shared<
-            palvalidator::analysis::TailVolatilityAdaptivePolicy<Num, BootstrapStatistic>>();
-        mnBootstrap.template setAdaptiveRatioPolicy<BootstrapStatistic>(adaptivePolicy);
-    }
-    // else: keep the fixed ratio from construction
-    
-    // Run with refinement (uses TailVolatilityAdaptivePolicy internally)
     auto mnResult = mnBootstrap.template runWithRefinement<BootstrapStatistic>(
         returns, BootstrapStatistic(), strategy, bootstrapFactory,
         stageTag, fold, os);
