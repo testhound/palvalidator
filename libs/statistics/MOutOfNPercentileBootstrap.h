@@ -153,26 +153,57 @@ namespace palvalidator
 	  }
       }
 
-      // ======================================================================
-      // CONSTRUCTOR 2: Adaptive Ratio (TailVolatilityAdaptivePolicy)
-      // ======================================================================
-      template<typename BootstrapStatistic>
-      MOutOfNPercentileBootstrap(std::size_t B,
-				 double      confidence_level,
-				 const Resampler& resampler,
-				 typename std::enable_if<
-				 !std::is_floating_point<BootstrapStatistic>::value,
-				 int>::type = 0)
-	: m_B(B)
-	, m_CL(confidence_level)
-	, m_ratio(-1.0)  // sentinel: adaptive mode
-	, m_resampler(resampler)
-	, m_exec(std::make_shared<Executor>())
-	, m_chunkHint(0)
-	, m_ratioPolicy(std::make_shared<
-			TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic>>())
+      /// Fixed-ratio factory (thin wrapper over the existing constructor).
+      static MOutOfNPercentileBootstrap
+      createFixedRatio(std::size_t B,
+		       double      confidence_level,
+		       double      m_ratio,
+		       const Resampler& resampler)
       {
-	validateParameters();
+	return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler);
+      }
+
+      /// Adaptive-ratio factory using a caller-supplied policy.
+      template<typename BootstrapStatistic>
+      static MOutOfNPercentileBootstrap
+      createAdaptiveWithPolicy(
+			       std::size_t B,
+			       double      confidence_level,
+			       const Resampler& resampler,
+			       std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy)
+      {
+	if (!policy)
+	  {
+	    throw std::invalid_argument(
+					"MOutOfNPercentileBootstrap::createAdaptiveWithPolicy: policy cannot be null");
+	  }
+
+	// Start from any valid fixed-ratio instance (ratio is ignored in adaptive mode).
+	MOutOfNPercentileBootstrap instance(
+					    B,
+					    confidence_level,
+					    /*m_ratio=*/0.5,
+					    resampler);
+
+	instance.m_ratio      = -1.0;  // switch to adaptive mode
+	instance.m_ratioPolicy =
+	  std::static_pointer_cast<void>(policy);
+
+	return instance;
+      }
+
+      /// Adaptive-ratio factory using the default TailVolatilityAdaptivePolicy.
+      template<typename BootstrapStatistic>
+      static MOutOfNPercentileBootstrap
+      createAdaptive(std::size_t B,
+		     double      confidence_level,
+		     const Resampler& resampler)
+      {
+	auto defaultPolicy = std::make_shared<
+	  TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic>>();
+
+	return createAdaptiveWithPolicy<BootstrapStatistic>(
+							    B, confidence_level, resampler, defaultPolicy);
       }
 
       // ======================================================================
