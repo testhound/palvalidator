@@ -12,6 +12,7 @@
 #include "RngUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "number.h"
 
 namespace palvalidator
 {
