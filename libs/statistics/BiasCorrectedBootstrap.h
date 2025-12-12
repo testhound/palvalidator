@@ -597,6 +597,30 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Returns the confidence level used for this BCa interval.
+     */
+    double getConfidenceLevel() const
+    {
+      return m_confidence_level;
+    }
+
+    /**
+     * @brief Returns the number of bootstrap resamples B.
+     */
+    unsigned int getNumResamples() const
+    {
+      return m_num_resamples;
+    }
+
+    /**
+     * @brief Returns the original sample size n.
+     */
+    std::size_t getSampleSize() const
+    {
+      return m_returns.size();
+    }
+
+    /**
      * @brief Returns the vector of bootstrap statistics {θ*_b}.
      *
      * The statistics are stored in unsorted form (as generated) so that callers
