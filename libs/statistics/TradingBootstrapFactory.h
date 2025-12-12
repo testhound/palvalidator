@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <vector>
 #include <functional>
+#include "BasicBootstrap.h"
+#include "NormalBootstrap.h"
+#include "PercentileBootstrap.h"
 #include "BiasCorrectedBootstrap.h"
 #include "RngUtils.h"
 #include "StatUtils.h"
@@ -275,6 +278,141 @@ public:
     return PTB(returns, B, CL, std::move(statFn), std::move(sampler), prov);
   }
 
+  // BacktesterStrategy overload
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makeBasic(std::size_t B, double CL,
+                 const Resampler& resampler,
+                 const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+                 uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::BasicBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::BasicBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+
+    Bootstrap bb(B, CL, resampler);
+    return std::make_pair(std::move(bb), std::move(crn));
+  }
+
+  // Raw strategyId overload
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makeBasic(std::size_t B, double CL,
+                 const Resampler& resampler,
+                 uint64_t strategyId,
+                 uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::BasicBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::BasicBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+
+    Bootstrap bb(B, CL, resampler);
+    return std::make_pair(std::move(bb), std::move(crn));
+  }
+
+  // BacktesterStrategy overload for NormalBootstrap
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makeNormal(std::size_t B, double CL,
+                  const Resampler& resampler,
+                  const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+                  uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::NormalBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+
+    Bootstrap nb(B, CL, resampler);
+    return std::make_pair(std::move(nb), std::move(crn));
+  }
+
+  // Raw strategyId overload for NormalBootstrap
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makeNormal(std::size_t B, double CL,
+                  const Resampler& resampler,
+                  uint64_t strategyId,
+                  uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::NormalBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+
+    Bootstrap nb(B, CL, resampler);
+    return std::make_pair(std::move(nb), std::move(crn));
+  }
+
+  // BacktesterStrategy overload for PercentileBootstrap
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makePercentile(std::size_t B, double CL,
+                      const Resampler& resampler,
+                      const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+                      uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::PercentileBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::PercentileBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+
+    Bootstrap pb(B, CL, resampler);
+    return std::make_pair(std::move(pb), std::move(crn));
+  }
+
+  // Raw strategyId overload for PercentileBootstrap
+  template<class Decimal, class Sampler, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
+  auto makePercentile(std::size_t B, double CL,
+                      const Resampler& resampler,
+                      uint64_t strategyId,
+                      uint64_t stageTag, uint64_t L, uint64_t fold)
+    -> std::pair<
+         palvalidator::analysis::PercentileBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         mkc_timeseries::rng_utils::CRNRng<Engine>
+       >
+  {
+    using Bootstrap = palvalidator::analysis::PercentileBootstrap<
+        Decimal, Sampler, Resampler, Engine, Executor>;
+    using mkc_timeseries::rng_utils::CRNRng;
+
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+
+    Bootstrap pb(B, CL, resampler);
+    return std::make_pair(std::move(pb), std::move(crn));
+  }
+  
 private:
   uint64_t m_masterSeed;
 
