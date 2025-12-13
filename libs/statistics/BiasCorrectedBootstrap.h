@@ -758,7 +758,7 @@ namespace mkc_timeseries
       double num_d = 0.0; // Σ d^3
       double den_d = 0.0; // Σ d^2
       for (const auto& th : jk_stats) {
-        const double d  = (jk_avg - th).getAsDouble();
+        const double d  = num::to_double(jk_avg - th);
         const double d2 = d * d;
         den_d += d2;
         num_d += d2 * d;
@@ -776,7 +776,7 @@ namespace mkc_timeseries
       const double z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);
       const double z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);
 
-      const double a_d       = a.getAsDouble();
+      const double a_d       = num::to_double(a);
       const bool   z0_finite = std::isfinite(z0);
 
       const double alpha1 = (!z0_finite || std::abs(a_d) < 1e-12)
