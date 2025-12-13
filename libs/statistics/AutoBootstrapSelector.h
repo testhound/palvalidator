@@ -625,7 +625,7 @@ namespace palvalidator
 
             const double z0       = bca.getZ0();
             const Decimal accelD  = bca.getAcceleration();
-            const double accel    = accelD.getAsDouble();
+            const double accel    = accelD;
 
             const auto& statsD = bca.getBootstrapStatistics();
             if (statsD.size() < 2)
@@ -638,7 +638,7 @@ namespace palvalidator
             std::vector<double> stats;
             stats.reserve(statsD.size());
             for (const auto& d : statsD)
-              stats.push_back(d.getAsDouble());
+              stats.push_back(d);
 
             const std::size_t m = stats.size();
 
