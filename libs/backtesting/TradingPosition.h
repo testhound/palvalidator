@@ -40,6 +40,7 @@
 #include "ProfitTarget.h"
 #include "StopLoss.h"
 #include "DecimalConstants.h"
+#include "number.h"
 #include <atomic>
 
 using namespace boost::gregorian;
@@ -66,7 +67,7 @@ namespace mkc_timeseries
       }
 
     // 2. Convert the decimal to long double for best standard precision
-    long double floatValue = decValue.getAsXDouble();
+    long double floatValue = num::to_long_double(decValue);
 
     // 3. Calculate the natural logarithm using std::logl
     long double logResult = std::log (floatValue);
