@@ -264,6 +264,10 @@ namespace mkc_timeseries
         mClosedTradeHistory(),
         mPortfolio(portfolio)
     {
+      if (!mPortfolio) {
+        throw StrategyBrokerException("StrategyBroker constructor: portfolio cannot be null");
+      }
+      
       mOrderManager.addObserver (*this);
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->beginPortfolio();
 

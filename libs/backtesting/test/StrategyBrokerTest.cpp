@@ -902,3 +902,44 @@ TEST_CASE("Execution Tick Policies", "[StrategyBroker][TickPolicies]")
         REQUIRE(result_futures == baseTickFutures);
     }
 }
+
+TEST_CASE("StrategyBroker constructor validation", "[StrategyBroker][constructor]")
+{
+  SECTION("StrategyBroker constructor throws exception with null portfolio")
+  {
+    // Attempt to create a StrategyBroker with null portfolio
+    std::shared_ptr<Portfolio<DecimalType>> nullPortfolio = nullptr;
+    
+    REQUIRE_THROWS_AS(
+      StrategyBroker<DecimalType>(nullPortfolio),
+      StrategyBrokerException
+    );
+  }
+  
+  SECTION("StrategyBroker constructor succeeds with valid portfolio")
+  {
+    // Create a valid portfolio (minimal setup)
+    DecimalType cornTickValue(createDecimal("0.25"));
+    PALFormatCsvReader<DecimalType> csvFile ("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+    csvFile.readFile();
+
+    std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+
+    std::string futuresSymbol("@C");
+    std::string futuresName("Corn futures");
+    DecimalType cornBigPointValue(createDecimal("50.0"));
+
+    auto corn = std::make_shared<FuturesSecurity<DecimalType>>(futuresSymbol,
+                                                               futuresName,
+                                                               cornBigPointValue,
+                                                               cornTickValue,
+                                                               p);
+
+    std::string portName("Valid Portfolio");
+    auto validPortfolio = std::make_shared<Portfolio<DecimalType>>(portName);
+    validPortfolio->addSecurity(corn);
+    
+    // This should not throw
+    REQUIRE_NOTHROW(StrategyBroker<DecimalType>(validPortfolio));
+  }
+}
