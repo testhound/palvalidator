@@ -1340,3 +1340,70 @@ TEST_CASE("StationaryBlockResampler in-place operator(): size, domain, equivalen
     const double frac_adj = static_cast<double>(adjacent) / static_cast<double>(n - 1);
     REQUIRE(frac_adj > 0.50); // conservative threshold; already covered more tightly elsewhere
 }
+
+TEST_CASE("BCaBootStrap: Efron diagnostics are populated and stable",
+          "[BCaBootStrap][Diagnostics]")
+{
+    using D = DecimalType;
+
+    // Moderately nontrivial dataset (mild skew)
+    std::vector<D> returns = {
+        createDecimal("0.01"),  createDecimal("0.02"),  createDecimal("0.015"),
+        createDecimal("-0.01"), createDecimal("0.03"),  createDecimal("-0.005"),
+        createDecimal("0.025"), createDecimal("0.00"),  createDecimal("-0.02"),
+        createDecimal("0.018"), createDecimal("0.011"), createDecimal("0.027")
+    };
+
+    const unsigned int B  = 2000;
+    const double       cl = 0.95;
+
+    BCaBootStrap<D> bca(returns, B, cl);
+
+    // Access diagnostics (this triggers the computation if not already done)
+    double z0 = bca.getZ0();
+    D      a  = bca.getAcceleration();
+    const auto& boot = bca.getBootstrapStatistics();
+
+    SECTION("Bootstrap statistics vector has expected size and finite values")
+    {
+        REQUIRE(boot.size() == B);
+
+        for (const auto& v : boot) {
+            REQUIRE(std::isfinite(num::to_double(v)));
+        }
+
+        // Non-degenerate for this non-constant data: variance > 0
+        double mean_boot = 0.0;
+        for (const auto& v : boot) {
+            mean_boot += num::to_double(v);
+        }
+        mean_boot /= static_cast<double>(boot.size());
+
+        double var_boot = 0.0;
+        for (const auto& v : boot) {
+            const double d = num::to_double(v) - mean_boot;
+            var_boot += d * d;
+        }
+        var_boot /= static_cast<double>(boot.size());
+        REQUIRE(var_boot > 0.0);
+    }
+
+    SECTION("z0 and acceleration are finite and not extreme")
+    {
+        REQUIRE(std::isfinite(z0));
+        REQUIRE(std::isfinite(num::to_double(a)));
+
+        // Very loose bounds just to catch pathological values
+        REQUIRE(std::fabs(z0) < 10.0);
+        REQUIRE(std::fabs(num::to_double(a)) < 10.0);
+    }
+
+    SECTION("getBootstrapStatistics is stable across repeated calls")
+    {
+        const auto& boot2 = bca.getBootstrapStatistics();
+        REQUIRE(boot2.size() == boot.size());
+        for (std::size_t i = 0; i < boot.size(); ++i) {
+            REQUIRE(boot2[i] == boot[i]);
+        }
+    }
+}

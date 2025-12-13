@@ -34,6 +34,7 @@
 #include "TimeFrame.h"
 #include "StatUtils.h"
 #include "Annualizer.h"
+#include "NormalDistribution.h"
 
 namespace mkc_timeseries
 {
@@ -442,8 +443,6 @@ namespace mkc_timeseries
    * @tparam Sampler The resampling policy class (e.g., `IIDResampler`, `StationaryBlockResampler`).
    * Defaults to `IIDResampler<Decimal>`.
    */
-  // ------------------------------ BCa Bootstrap --------------------------------
-
   /**
    * @class BCaBootStrap
    * @brief Computes a statistic and BCa (Bias-Corrected and Accelerated) confidence interval.
@@ -476,7 +475,9 @@ namespace mkc_timeseries
         m_confidence_level(confidence_level),
         m_statistic(&mkc_timeseries::StatUtils<Decimal>::computeMean),
         m_sampler(Sampler{}),
-        m_is_calculated(false)
+        m_is_calculated(false),
+        m_z0(0.0),
+        m_accel(DecimalConstants<Decimal>::DecimalZero)
     {
       validateConstructorArgs();
     }
@@ -494,7 +495,9 @@ namespace mkc_timeseries
         m_confidence_level(confidence_level),
         m_statistic(std::move(statistic)),
         m_sampler(Sampler{}),
-        m_is_calculated(false)
+        m_is_calculated(false),
+        m_z0(0.0),
+        m_accel(DecimalConstants<Decimal>::DecimalZero)
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -515,7 +518,9 @@ namespace mkc_timeseries
         m_confidence_level(confidence_level),
         m_statistic(std::move(statistic)),
         m_sampler(std::move(sampler)),
-        m_is_calculated(false)
+        m_is_calculated(false),
+        m_z0(0.0),
+        m_accel(DecimalConstants<Decimal>::DecimalZero)
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -539,7 +544,9 @@ namespace mkc_timeseries
         m_statistic(std::move(statistic)),
         m_sampler(std::move(sampler)),
         m_provider(provider),
-        m_is_calculated(false)
+        m_is_calculated(false),
+        m_z0(0.0),
+        m_accel(DecimalConstants<Decimal>::DecimalZero)
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -548,6 +555,7 @@ namespace mkc_timeseries
 
     virtual ~BCaBootStrap() = default;
 
+    // --- Public accessors for BCa interval ---
     Decimal getMean() const
     {
       ensureCalculated();
@@ -568,6 +576,63 @@ namespace mkc_timeseries
       return m_upper_bound;
     }
 
+    // --- New Efron diagnostics getters ---
+
+    /**
+     * @brief Returns the BCa bias-correction parameter z0.
+     */
+    double getZ0() const
+    {
+      ensureCalculated();
+      return m_z0;
+    }
+
+    /**
+     * @brief Returns the BCa acceleration parameter a.
+     */
+    Decimal getAcceleration() const
+    {
+      ensureCalculated();
+      return m_accel;
+    }
+
+    /**
+     * @brief Returns the confidence level used for this BCa interval.
+     */
+    double getConfidenceLevel() const
+    {
+      return m_confidence_level;
+    }
+
+    /**
+     * @brief Returns the number of bootstrap resamples B.
+     */
+    unsigned int getNumResamples() const
+    {
+      return m_num_resamples;
+    }
+
+    /**
+     * @brief Returns the original sample size n.
+     */
+    std::size_t getSampleSize() const
+    {
+      return m_returns.size();
+    }
+
+    /**
+     * @brief Returns the vector of bootstrap statistics {θ*_b}.
+     *
+     * The statistics are stored in unsorted form (as generated) so that callers
+     * can compute arbitrary diagnostics (skewness, kurtosis, etc.) without
+     * relying on any internal ordering.
+     */
+    const std::vector<Decimal>& getBootstrapStatistics() const
+    {
+      ensureCalculated();
+      return m_bootstrapStats;
+    }
+
   protected:
     // Data & config
     const std::vector<Decimal>& m_returns;
@@ -583,6 +648,11 @@ namespace mkc_timeseries
     Decimal m_theta_hat{};
     Decimal m_lower_bound{};
     Decimal m_upper_bound{};
+
+    // Efron/BCa diagnostics
+    double                    m_z0;               // bias-correction
+    Decimal                   m_accel;            // acceleration
+    std::vector<Decimal>      m_bootstrapStats;   // bootstrap θ*'s (unsorted copy)
 
     // Test hooks (kept for mocks)
     void setStatistic(const Decimal& theta) { m_theta_hat = theta; }
@@ -609,6 +679,11 @@ namespace mkc_timeseries
     /**
      * @brief Core BCa computation. Uses legacy thread_local RNG when Provider=void,
      *        otherwise uses provider.make_engine(b) per replicate (CRN-friendly).
+     *
+     * Also populates:
+     *  - m_z0 (bias correction)
+     *  - m_accel (acceleration)
+     *  - m_bootstrapStats (unsorted copy of all θ*_b)
      */
     virtual void calculateBCaBounds()
     {
@@ -653,14 +728,24 @@ namespace mkc_timeseries
         if (!(boot_stats[i] == boot_stats[0])) { all_equal = false; break; }
       }
       if (all_equal) {
-        m_lower_bound = m_upper_bound = boot_stats[0];
-        m_is_calculated = true;
+        // store diagnostics in a benign way for degenerate case
+        m_lower_bound    = boot_stats[0];
+        m_upper_bound    = boot_stats[0];
+        m_theta_hat      = boot_stats[0];
+        m_z0             = 0.0;
+        m_accel          = DecimalConstants<Decimal>::DecimalZero;
+        m_bootstrapStats = boot_stats;
+        m_is_calculated  = true;
         return;
       }
 
+      // Preserve an unsorted copy of bootstrap statistics for diagnostics.
+      m_bootstrapStats = boot_stats;
+
       // (3) Bias-correction z0
       const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
-      const double z0 = inverseNormalCdf(prop_less);
+      const double z0        = NormalDistribution::inverseNormalCdf(prop_less);
+      m_z0                   = z0;
 
       // (4) Acceleration a via jackknife (sampler-provided)
       const std::vector<Decimal> jk_stats = m_sampler.jackknife(m_returns, m_statistic);
@@ -684,22 +769,23 @@ namespace mkc_timeseries
         const double den15 = std::pow(den_d, 1.5);
         if (den15 > 0.0) a = Decimal(num_d / (6.0 * den15));
       }
+      m_accel = a;
 
       // (5) Adjusted percentiles → bounds
       const double alpha      = (1.0 - m_confidence_level) * 0.5;
-      const double z_alpha_lo = inverseNormalCdf(alpha);
-      const double z_alpha_hi = inverseNormalCdf(1.0 - alpha);
+      const double z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);
+      const double z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);
 
-      const double a_d = a.getAsDouble();
-      const bool z0_finite = std::isfinite(z0);
+      const double a_d       = a.getAsDouble();
+      const bool   z0_finite = std::isfinite(z0);
 
       const double alpha1 = (!z0_finite || std::abs(a_d) < 1e-12)
-        ? standardNormalCdf(z0 + z_alpha_lo)
-        : standardNormalCdf(z0 + (z0 + z_alpha_lo) / (1.0 - a_d * (z0 + z_alpha_lo)));
+        ? NormalDistribution::standardNormalCdf(z0 + z_alpha_lo)
+        : NormalDistribution::standardNormalCdf(z0 + (z0 + z_alpha_lo) / (1.0 - a_d * (z0 + z_alpha_lo)));
 
       const double alpha2 = (!z0_finite || std::abs(a_d) < 1e-12)
-        ? standardNormalCdf(z0 + z_alpha_hi)
-        : standardNormalCdf(z0 + (z0 + z_alpha_hi) / (1.0 - a_d * (z0 + z_alpha_hi)));
+        ? NormalDistribution::standardNormalCdf(z0 + z_alpha_hi)
+        : NormalDistribution::standardNormalCdf(z0 + (z0 + z_alpha_hi) / (1.0 - a_d * (z0 + z_alpha_hi)));
 
       const auto clamp01 = [](double v) noexcept {
         return (v <= 0.0) ? std::nextafter(0.0, 1.0)
@@ -710,51 +796,25 @@ namespace mkc_timeseries
       const double a1 = clamp01(alpha1);
       const double a2 = clamp01(alpha2);
 
-      int li = unbiasedIndex(std::min(a1, a2), m_num_resamples);
-      int ui = unbiasedIndex(std::max(a1, a2), m_num_resamples);
+      const int li = unbiasedIndex(std::min(a1, a2), m_num_resamples);
+      const int ui = unbiasedIndex(std::max(a1, a2), m_num_resamples);
+
+      // Work on a local copy so m_bootstrapStats stays as originally generated
+      std::vector<Decimal> work = boot_stats;
 
       // Select order statistics in O(B)
-      std::nth_element(boot_stats.begin(), boot_stats.begin() + li, boot_stats.end());
-      m_lower_bound = boot_stats[li];
+      std::nth_element(work.begin(), work.begin() + li, work.end());
+      m_lower_bound = work[li];
 
-      std::nth_element(boot_stats.begin(), boot_stats.begin() + ui, boot_stats.end());
-      m_upper_bound = boot_stats[ui];
+      std::nth_element(work.begin(), work.begin() + ui, work.end());
+      m_upper_bound = work[ui];
 
       m_is_calculated = true;
     }
 
-    // --- Math helpers (unchanged) ---
-
-    static inline double standardNormalCdf(double x) noexcept
-    {
-      constexpr double INV_SQRT2 = 1.0 / 1.4142135623730950488; // 1/sqrt(2)
-      return 0.5 * (1.0 + std::erf(x * INV_SQRT2));
-    }
-
-    static inline double inverseNormalCdf(double p) noexcept
-    {
-      if (p <= 0.0) return -std::numeric_limits<double>::infinity();
-      if (p >= 1.0) return  std::numeric_limits<double>::infinity();
-      return (p < 0.5) ? -inverseNormalCdfHelper(p) : inverseNormalCdfHelper(1.0 - p);
-    }
-
-    static inline double inverseNormalCdfHelper(double p) noexcept
-    {
-      // W. J. Cody / Abramowitz & Stegun 26.2.23 (Coefficients optimized for double precision)
-      // These coefficients provide high accuracy for p in (0, 0.5]
-      constexpr double c0 = 2.5155173462;
-      constexpr double c1 = 0.8028530777;
-      constexpr double c2 = 0.0103284795;
-      constexpr double d0 = 1.4327881989;
-      constexpr double d1 = 0.1892692257;
-      constexpr double d2 = 0.0013083321;
-
-      const double t  = std::sqrt(-2.0 * std::log(p));
-      const double num = (c0 + c1 * t + c2 * t * t);
-      const double den = (1.0 + d0 * t + d1 * t * t + d2 * t * t * t);
-      return t - num / den;
-    }
-
+    /**
+     * @brief Index function for BCa quantiles (Efron & Tibshirani).
+     */
     static inline int unbiasedIndex(double p, unsigned int B) noexcept
     {
       int idx = static_cast<int>(std::floor(p * (static_cast<double>(B) + 1.0))) - 1;
@@ -764,7 +824,7 @@ namespace mkc_timeseries
       return idx;
     }
   };
-  
+
   // ------------------------------ Annualizer -----------------------------------
 
   /**

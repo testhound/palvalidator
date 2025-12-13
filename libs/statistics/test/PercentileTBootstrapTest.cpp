@@ -560,3 +560,116 @@ TEST_CASE("PercentileTBootstrap runs correctly with ThreadPoolExecutor", "[boots
     REQUIRE(static_cast<double>(R1.lower) <= static_cast<double>(R1.upper));
     REQUIRE(static_cast<double>(R2.lower) <= static_cast<double>(R2.upper));
 }
+
+TEST_CASE("PercentileTBootstrap: diagnostics unavailable before run",
+          "[Bootstrap][PercentileT][Diagnostics]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D
+    {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B_outer = 500;
+    const std::size_t B_inner = 150;
+    const double      CL      = 0.95;
+
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt(B_outer, B_inner, CL, res);
+
+    SECTION("hasDiagnostics is false before any run()")
+    {
+        REQUIRE_FALSE(pt.hasDiagnostics());
+    }
+
+    SECTION("Diagnostic getters throw before run()")
+    {
+        REQUIRE_THROWS_AS(pt.getTStatistics(),         std::logic_error);
+        REQUIRE_THROWS_AS(pt.getThetaStarStatistics(), std::logic_error);
+        REQUIRE_THROWS_AS(pt.getSeHat(),               std::logic_error);
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: diagnostics consistent with Result",
+          "[Bootstrap][PercentileT][Diagnostics]")
+{
+    using D = DecimalType;
+
+    // Simple nontrivial data: 0..19
+    const std::size_t n = 20;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        x.emplace_back(D(static_cast<int>(i)));
+    }
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D
+    {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    StationaryMaskValueResampler<D> res(3);
+
+    const std::size_t B_outer = 500;
+    const std::size_t B_inner = 150;
+    const double      CL      = 0.95;
+
+    randutils::seed_seq_fe128 seed{11u,22u,33u,44u};
+    std::mt19937_64 rng(seed);
+
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt(B_outer, B_inner, CL, res);
+
+    auto out = pt.run(x, mean_sampler, rng);
+
+    REQUIRE(pt.hasDiagnostics());
+
+    const auto& tvals   = pt.getTStatistics();
+    const auto& thetas  = pt.getThetaStarStatistics();
+    const double se_hat = pt.getSeHat();
+
+    SECTION("Diagnostics sizes match effective_B")
+    {
+        REQUIRE(tvals.size()  == out.effective_B);
+        REQUIRE(thetas.size() == out.effective_B);
+        REQUIRE(out.effective_B + out.skipped_outer == out.B_outer);
+    }
+
+    SECTION("se_hat matches recomputation from theta* statistics")
+    {
+        REQUIRE_FALSE(thetas.empty());
+
+        double sum  = 0.0;
+        double sum2 = 0.0;
+        for (double v : thetas) {
+            sum  += v;
+            sum2 += v * v;
+        }
+        const double m   = static_cast<double>(thetas.size());
+        const double var = std::max(0.0, (sum2 / m) - (sum / m) * (sum / m));
+        const double se  = std::sqrt(var);
+
+        REQUIRE(se_hat      == Catch::Approx(se).margin(1e-12));
+        REQUIRE(out.se_hat  == Catch::Approx(se).margin(1e-12));
+    }
+
+    SECTION("t-statistics are finite and non-degenerate")
+    {
+        REQUIRE_FALSE(tvals.empty());
+
+        bool any_nonzero = false;
+        for (double t : tvals) {
+            REQUIRE(std::isfinite(t));
+            if (std::fabs(t) > 1e-15) {
+                any_nonzero = true;
+            }
+        }
+        // For this nontrivial dataset we expect at least some nonzero t-values
+        REQUIRE(any_nonzero);
+    }
+}

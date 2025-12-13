@@ -9,6 +9,20 @@
 #include "TestUtils.h"
 
 using DecimalType = num::DefaultNumber;
+using Decimal = DecimalType; // Add alias for compatibility
+
+// Type aliases for testing
+using Resampler = StationaryBlockResampler<Decimal, randutils::mt19937_rng>;
+
+// Simple mean sampler for testing
+struct MeanSampler {
+    Decimal operator()(const std::vector<Decimal>& x) const {
+        if (x.empty()) return Decimal(0.0);
+        double sum = 0.0;
+        for (const auto& v : x) sum += num::to_double(v);
+        return Decimal(sum / static_cast<double>(x.size()));
+    }
+};
 
 TEST_CASE("TradingBootstrapFactory: deterministic BCa (Stationary blocks)", "[BCaBootStrap][Factory][CRN][Determinism][Stationary]") {
     using D   = DecimalType;
@@ -617,4 +631,511 @@ TEST_CASE("TradingBootstrapFactory: makeAdaptiveMOutOfN responds to tag changes 
                        || num::to_double(rf0.upper) != num::to_double(rf1.upper)
                        || rf0.computed_ratio        != rf1.computed_ratio;
     REQUIRE(difffold);
+}
+
+TEST_CASE("TradingBootstrapFactory: makeBasic creates valid instance", "[TradingBootstrapFactory][Basic]")
+{
+    const uint64_t masterSeed = 12345;
+    TradingBootstrapFactory<> factory(masterSeed);
+
+    // Test Parameters
+    const unsigned B = 1000;
+    const double CL = 0.95;
+    const uint64_t strategyId = 99;
+    const uint64_t stageTag = 1;
+    const uint64_t L = 10;
+    const uint64_t fold = 0;
+    
+    Resampler resampler(5); // Block length 5
+
+    // Call makeBasic (using raw ID overload)
+    // We expect a pair: {BasicBootstrap, CRNRng}
+    auto result = factory.makeBasic<Decimal, MeanSampler>(
+        B, CL, resampler, strategyId, stageTag, L, fold
+    );
+
+    auto& bootstrap = result.first;
+    auto& provider = result.second;
+
+    SECTION("Bootstrap instance has correct configuration")
+    {
+        REQUIRE(bootstrap.B() == B);
+        REQUIRE(bootstrap.CL() == CL);
+        // Verify resampler was copied correctly
+        REQUIRE(bootstrap.resampler().getL() == 5);
+    }
+
+    SECTION("CRN provider is functional")
+    {
+        // Provider should generate a valid engine for a given replicate 'b'
+        auto rng = provider.make_engine(0);
+        // Basic check: generating a number doesn't crash
+        auto value = mkc_timeseries::rng_utils::get_random_value(rng);
+        REQUIRE(value > 0);
+    }
+
+    SECTION("Bootstrap run integration")
+    {
+        // Create dummy data
+        std::vector<Decimal> data(100);
+        for (int i = 0; i < 100; ++i) {
+            data[i] = Decimal(i + 1.0);
+        }
+
+        MeanSampler sampler;
+
+        // Run bootstrap using the provider from the pair
+        // This confirms the type compatibility between the factory-produced
+        // bootstrap class and the factory-produced provider.
+        auto res = bootstrap.run(data, sampler, provider);
+
+        REQUIRE(res.B == B);
+        REQUIRE(res.n == data.size());
+        REQUIRE(num::to_double(res.mean) == Catch::Approx(50.5)); // Mean of 1..100 is 50.5
+        REQUIRE(res.lower < res.mean);
+        REQUIRE(res.upper > res.mean);
+    }
+}
+
+TEST_CASE("TradingBootstrapFactory: makeBasic with ThreadPoolExecutor", "[TradingBootstrapFactory][Basic][Parallel]")
+{
+    // Verify that we can specify the Executor type explicitly via the factory
+    const uint64_t masterSeed = 999;
+    TradingBootstrapFactory<> factory(masterSeed);
+
+    Resampler resampler(3);
+
+    // Request a BasicBootstrap that uses ThreadPoolExecutor<2>
+    auto result = factory.makeBasic<
+        Decimal, 
+        MeanSampler, 
+        Resampler, 
+        concurrency::ThreadPoolExecutor<2>
+    >(500, 0.90, resampler, 101, 2, 5, 0);
+
+    auto& bootstrap = result.first;
+    auto& provider = result.second;
+    
+    // Just verify it runs without crashing (implies executor instantiation worked)
+    std::vector<Decimal> data(50, Decimal(1.0)); // Constant data
+    MeanSampler sampler;
+    
+    auto res = bootstrap.run(data, sampler, provider);
+    REQUIRE(num::to_double(res.mean) == Catch::Approx(1.0));
+    REQUIRE(num::to_double(res.lower) == Catch::Approx(1.0).margin(1e-9)); // Constant data -> no variance
+    REQUIRE(num::to_double(res.upper) == Catch::Approx(1.0).margin(1e-9));
+}
+
+TEST_CASE("TradingBootstrapFactory: makeNormal creates valid instance", "[TradingBootstrapFactory][Normal]")
+{
+    const uint64_t masterSeed = 98765;
+    TradingBootstrapFactory<> factory(masterSeed);
+
+    // Test Parameters
+    const unsigned B = 1000;
+    const double CL = 0.95;
+    const uint64_t strategyId = 199;
+    const uint64_t stageTag = 1;
+    const uint64_t L = 10;
+    const uint64_t fold = 0;
+    
+    Resampler resampler(5); // Block length 5
+
+    // Call makeNormal (using raw ID overload)
+    // We expect a pair: {NormalBootstrap, CRNRng}
+    auto result = factory.makeNormal<Decimal, MeanSampler>(
+        B, CL, resampler, strategyId, stageTag, L, fold
+    );
+
+    auto& bootstrap = result.first;
+    auto& provider = result.second;
+
+    SECTION("Bootstrap instance has correct configuration")
+    {
+        REQUIRE(bootstrap.B() == B);
+        REQUIRE(bootstrap.CL() == CL);
+        // Verify resampler was copied correctly
+        REQUIRE(bootstrap.resampler().getL() == 5);
+    }
+
+    SECTION("CRN provider is functional")
+    {
+        // Provider should generate a valid engine for a given replicate 'b'
+        auto rng = provider.make_engine(0);
+        // Basic check: generating a number doesn't crash
+        auto value = mkc_timeseries::rng_utils::get_random_value(rng);
+        REQUIRE(value > 0);
+    }
+
+    SECTION("Bootstrap run integration")
+    {
+        // Create dummy data
+        std::vector<Decimal> data(100);
+        for (int i = 0; i < 100; ++i) {
+            data[i] = Decimal(i + 1.0);
+        }
+
+        MeanSampler sampler;
+
+        // Run bootstrap using the provider from the pair
+        // This confirms the type compatibility between the factory-produced
+        // bootstrap class and the factory-produced provider.
+        auto res = bootstrap.run(data, sampler, provider);
+
+        REQUIRE(res.B == B);
+        REQUIRE(res.n == data.size());
+        REQUIRE(num::to_double(res.mean) == Catch::Approx(50.5)); // Mean of 1..100 is 50.5
+        REQUIRE(res.lower < res.mean);
+        REQUIRE(res.upper > res.mean);
+        REQUIRE(res.effective_B > B/2); // Most replicates should be valid
+    }
+}
+
+TEST_CASE("TradingBootstrapFactory: makeNormal deterministic with CRN", "[Factory][Normal][CRN][Determinism]") {
+    using D   = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    // Mildly dependent toy series (same pattern as other tests)
+    std::vector<D> x;
+    for (int k = 0; k < 40; ++k) {
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("0.002"));
+    }
+
+    // Parameters
+    const uint64_t MASTER = 0xDEADBEEFCAFEBABEull;
+    const uint64_t sid    = 0x1111222233334444ull;
+    const uint64_t stage  = 1;       // e.g., Bootstrap stage tag
+    const unsigned L      = 3;
+    const uint64_t fold   = 0;
+    const std::size_t B   = 1200;
+    const double CL       = 0.95;
+
+    // Mean sampler
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    TradingBootstrapFactory<Eng> factory(MASTER);
+
+    // Build two NormalBootstrap instances & CRN RNGs with identical tags
+    auto [nb1, crn1] = factory.makeNormal<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L), sid, stage, L, fold
+    );
+    auto [nb2, crn2] = factory.makeNormal<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L), sid, stage, L, fold
+    );
+
+    // Create engines from CRN providers for deterministic execution
+    auto rng1 = crn1.make_engine(0);
+    auto rng2 = crn2.make_engine(0);
+
+    // Run both — should be bit-identical with CRN
+    auto r1 = nb1.run(x, meanSampler, rng1);
+    auto r2 = nb2.run(x, meanSampler, rng2);
+
+    REQUIRE(num::to_double(r1.lower) == Catch::Approx(num::to_double(r2.lower)).epsilon(0));
+    REQUIRE(num::to_double(r1.upper) == Catch::Approx(num::to_double(r2.upper)).epsilon(0));
+    REQUIRE(num::to_double(r1.mean) == Catch::Approx(num::to_double(r2.mean)).epsilon(0));
+    REQUIRE(r1.se_boot == Catch::Approx(r2.se_boot).epsilon(0));
+}
+
+TEST_CASE("TradingBootstrapFactory: makeNormal responds to tag changes (L, fold)", "[Factory][Normal][CRN][Sensitivity]") {
+    using D   = DecimalType;
+    using Eng = std::mt19937_64;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    std::vector<D> x;
+    for (int k = 0; k < 40; ++k) {
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("0.002"));
+    }
+
+    const uint64_t MASTER = 0xBADDCAFE1234C0DEull;
+    const uint64_t sid    = 0x5555AAAAFFFF0000ull;
+    const uint64_t stage  = 1;
+    const unsigned L3     = 3;
+    const unsigned L4     = 4;
+    const uint64_t fold0  = 0, fold1 = 1;
+    const std::size_t B   = 1000;
+    const double CL       = 0.95;
+
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    TradingBootstrapFactory<Eng> factory(MASTER);
+
+    // Change only L
+    auto [nb_L3, crn_L3] = factory.makeNormal<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L3), sid, stage, L3, fold0);
+    auto [nb_L4, crn_L4] = factory.makeNormal<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L4), sid, stage, L4, fold0);
+
+    auto rng_L3 = crn_L3.make_engine(0);
+    auto rng_L4 = crn_L4.make_engine(0);
+
+    auto rL3 = nb_L3.run(x, meanSampler, rng_L3);
+    auto rL4 = nb_L4.run(x, meanSampler, rng_L4);
+
+    // With overwhelming probability at least one bound differs
+    const bool diffL = num::to_double(rL3.lower) != num::to_double(rL4.lower)
+                    || num::to_double(rL3.upper) != num::to_double(rL4.upper);
+    REQUIRE(diffL);
+
+    // Change only fold (same L)
+    auto [nb_f0, crn_f0] = factory.makeNormal<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L3), sid, stage, L3, fold0);
+    auto [nb_f1, crn_f1] = factory.makeNormal<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L3), sid, stage, L3, fold1);
+
+    auto rng_f0 = crn_f0.make_engine(0);
+    auto rng_f1 = crn_f1.make_engine(0);
+
+    auto rf0 = nb_f0.run(x, meanSampler, rng_f0);
+    auto rf1 = nb_f1.run(x, meanSampler, rng_f1);
+
+    const bool difffold = num::to_double(rf0.lower) != num::to_double(rf1.lower)
+                       || num::to_double(rf0.upper) != num::to_double(rf1.upper);
+    REQUIRE(difffold);
+}
+
+TEST_CASE("TradingBootstrapFactory: makeNormal with ThreadPoolExecutor", "[TradingBootstrapFactory][Normal][Parallel]")
+{
+    // Verify that we can specify the Executor type explicitly via the factory
+    const uint64_t masterSeed = 777;
+    TradingBootstrapFactory<> factory(masterSeed);
+
+    Resampler resampler(3);
+
+    // Request a NormalBootstrap that uses ThreadPoolExecutor<2>
+    auto result = factory.makeNormal<
+        Decimal,
+        MeanSampler,
+        Resampler,
+        concurrency::ThreadPoolExecutor<2>
+    >(500, 0.90, resampler, 201, 2, 5, 0);
+
+    auto& bootstrap = result.first;
+    auto& provider = result.second;
+    
+    // Just verify it runs without crashing (implies executor instantiation worked)
+    std::vector<Decimal> data(50, Decimal(1.0)); // Constant data
+    MeanSampler sampler;
+    
+    auto res = bootstrap.run(data, sampler, provider);
+    REQUIRE(num::to_double(res.mean) == Catch::Approx(1.0));
+    REQUIRE(num::to_double(res.lower) <= num::to_double(res.mean));
+    REQUIRE(num::to_double(res.upper) >= num::to_double(res.mean));
+    // Note: For constant data, confidence interval should be quite tight around the mean
+}
+
+TEST_CASE("TradingBootstrapFactory: makePercentile creates valid instance", "[TradingBootstrapFactory][Percentile]")
+{
+    const uint64_t masterSeed = 54321;
+    TradingBootstrapFactory<> factory(masterSeed);
+
+    // Test Parameters
+    const unsigned B = 1000;
+    const double CL = 0.95;
+    const uint64_t strategyId = 299;
+    const uint64_t stageTag = 1;
+    const uint64_t L = 10;
+    const uint64_t fold = 0;
+    
+    Resampler resampler(5); // Block length 5
+
+    // Call makePercentile (using raw ID overload)
+    // We expect a pair: {PercentileBootstrap, CRNRng}
+    auto result = factory.makePercentile<Decimal, MeanSampler>(
+        B, CL, resampler, strategyId, stageTag, L, fold
+    );
+
+    auto& bootstrap = result.first;
+    auto& provider = result.second;
+
+    SECTION("Bootstrap instance has correct configuration")
+    {
+        REQUIRE(bootstrap.B() == B);
+        REQUIRE(bootstrap.CL() == CL);
+        // Verify resampler was copied correctly
+        REQUIRE(bootstrap.resampler().getL() == 5);
+    }
+
+    SECTION("CRN provider is functional")
+    {
+        // Provider should generate a valid engine for a given replicate 'b'
+        auto rng = provider.make_engine(0);
+        // Basic check: generating a number doesn't crash
+        auto value = mkc_timeseries::rng_utils::get_random_value(rng);
+        REQUIRE(value > 0);
+    }
+
+    SECTION("Bootstrap run integration")
+    {
+        // Create dummy data
+        std::vector<Decimal> data(100);
+        for (int i = 0; i < 100; ++i) {
+            data[i] = Decimal(i + 1.0);
+        }
+
+        MeanSampler sampler;
+
+        // Run bootstrap using the provider from the pair
+        // This confirms the type compatibility between the factory-produced
+        // bootstrap class and the factory-produced provider.
+        auto res = bootstrap.run(data, sampler, provider);
+
+        REQUIRE(res.B == B);
+        REQUIRE(res.n == data.size());
+        REQUIRE(num::to_double(res.mean) == Catch::Approx(50.5)); // Mean of 1..100 is 50.5
+        REQUIRE(res.lower < res.mean);
+        REQUIRE(res.upper > res.mean);
+        REQUIRE(res.effective_B > B/2); // Most replicates should be valid
+    }
+}
+
+TEST_CASE("TradingBootstrapFactory: makePercentile deterministic with CRN", "[Factory][Percentile][CRN][Determinism]") {
+    using D   = DecimalType;
+    using Eng = randutils::mt19937_rng;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    // Mildly dependent toy series (same pattern as other tests)
+    std::vector<D> x;
+    for (int k = 0; k < 40; ++k) {
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("0.002"));
+    }
+
+    // Parameters
+    const uint64_t MASTER = 0xCAFEBABEDEADBEEFull;
+    const uint64_t sid    = 0x2222333344445555ull;
+    const uint64_t stage  = 1;       // e.g., Bootstrap stage tag
+    const unsigned L      = 3;
+    const uint64_t fold   = 0;
+    const std::size_t B   = 1200;
+    const double CL       = 0.95;
+
+    // Mean sampler
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    TradingBootstrapFactory<Eng> factory(MASTER);
+
+    // Build two PercentileBootstrap instances & CRN RNGs with identical tags
+    auto [pb1, crn1] = factory.makePercentile<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L), sid, stage, L, fold
+    );
+    auto [pb2, crn2] = factory.makePercentile<D, decltype(meanSampler), Resamp>(
+        B, CL, Resamp(L), sid, stage, L, fold
+    );
+
+    // Create engines from CRN providers for deterministic execution
+    auto rng1 = crn1.make_engine(0);
+    auto rng2 = crn2.make_engine(0);
+
+    // Run both — should be bit-identical with CRN
+    auto r1 = pb1.run(x, meanSampler, rng1);
+    auto r2 = pb2.run(x, meanSampler, rng2);
+
+    REQUIRE(num::to_double(r1.lower) == Catch::Approx(num::to_double(r2.lower)).epsilon(0));
+    REQUIRE(num::to_double(r1.upper) == Catch::Approx(num::to_double(r2.upper)).epsilon(0));
+    REQUIRE(num::to_double(r1.mean) == Catch::Approx(num::to_double(r2.mean)).epsilon(0));
+    REQUIRE(r1.effective_B == r2.effective_B);
+}
+
+TEST_CASE("TradingBootstrapFactory: makePercentile responds to tag changes (L, fold)", "[Factory][Percentile][CRN][Sensitivity]") {
+    using D   = DecimalType;
+    using Eng = std::mt19937_64;
+    using Resamp = StationaryBlockResampler<D, Eng>;
+
+    std::vector<D> x;
+    for (int k = 0; k < 40; ++k) {
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("0.004"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("-0.003"));
+        x.push_back(createDecimal("0.002"));
+    }
+
+    const uint64_t MASTER = 0x1337CAFE1234DEADull;
+    const uint64_t sid    = 0x6666AAAABBBB0000ull;
+    const uint64_t stage  = 1;
+    const unsigned L3     = 3;
+    const unsigned L4     = 4;
+    const uint64_t fold0  = 0, fold1 = 1;
+    const std::size_t B   = 1000;
+    const double CL       = 0.95;
+
+    auto meanSampler = [](const std::vector<D>& v) -> D {
+        return mkc_timeseries::StatUtils<D>::computeMean(v);
+    };
+
+    TradingBootstrapFactory<Eng> factory(MASTER);
+
+    // Change only L
+    auto [pb_L3, crn_L3] = factory.makePercentile<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L3), sid, stage, L3, fold0);
+    auto [pb_L4, crn_L4] = factory.makePercentile<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L4), sid, stage, L4, fold0);
+
+    auto rng_L3 = crn_L3.make_engine(0);
+    auto rng_L4 = crn_L4.make_engine(0);
+
+    auto rL3 = pb_L3.run(x, meanSampler, rng_L3);
+    auto rL4 = pb_L4.run(x, meanSampler, rng_L4);
+
+    // With overwhelming probability at least one bound differs
+    const bool diffL = num::to_double(rL3.lower) != num::to_double(rL4.lower)
+                    || num::to_double(rL3.upper) != num::to_double(rL4.upper);
+    REQUIRE(diffL);
+
+    // Change only fold (same L)
+    auto [pb_f0, crn_f0] = factory.makePercentile<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L3), sid, stage, L3, fold0);
+    auto [pb_f1, crn_f1] = factory.makePercentile<D, decltype(meanSampler), Resamp>(B, CL, Resamp(L3), sid, stage, L3, fold1);
+
+    auto rng_f0 = crn_f0.make_engine(0);
+    auto rng_f1 = crn_f1.make_engine(0);
+
+    auto rf0 = pb_f0.run(x, meanSampler, rng_f0);
+    auto rf1 = pb_f1.run(x, meanSampler, rng_f1);
+
+    const bool difffold = num::to_double(rf0.lower) != num::to_double(rf1.lower)
+                       || num::to_double(rf0.upper) != num::to_double(rf1.upper);
+    REQUIRE(difffold);
+}
+
+TEST_CASE("TradingBootstrapFactory: makePercentile with ThreadPoolExecutor", "[TradingBootstrapFactory][Percentile][Parallel]")
+{
+    // Verify that we can specify the Executor type explicitly via the factory
+    const uint64_t masterSeed = 888;
+    TradingBootstrapFactory<> factory(masterSeed);
+
+    Resampler resampler(3);
+
+    // Request a PercentileBootstrap that uses ThreadPoolExecutor<2>
+    auto result = factory.makePercentile<
+        Decimal,
+        MeanSampler,
+        Resampler,
+        concurrency::ThreadPoolExecutor<2>
+    >(500, 0.90, resampler, 301, 2, 5, 0);
+
+    auto& bootstrap = result.first;
+    auto& provider = result.second;
+    
+    // Just verify it runs without crashing (implies executor instantiation worked)
+    std::vector<Decimal> data(50, Decimal(1.0)); // Constant data
+    MeanSampler sampler;
+    
+    auto res = bootstrap.run(data, sampler, provider);
+    REQUIRE(num::to_double(res.mean) == Catch::Approx(1.0));
+    REQUIRE(num::to_double(res.lower) <= num::to_double(res.mean));
+    REQUIRE(num::to_double(res.upper) >= num::to_double(res.mean));
+    // Note: For constant data, percentile CI should be quite tight around the mean
 }
