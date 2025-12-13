@@ -14,10 +14,20 @@ namespace palvalidator
 {
   namespace analysis
   {
+    /**
+     * @brief Encapsulates the result of the automatic confidence interval selection process.
+     *
+     * This class holds the selected method, the winning candidate object, and the list of
+     * all candidates that were evaluated. It serves as the final report for the
+     * AutoBootstrapSelector.
+     */
     template <class Decimal>
       class AutoCIResult
       {
       public:
+        /**
+         * @brief Identifiers for the supported bootstrap methods.
+         */
         enum class MethodId
         {
           Normal,
@@ -28,10 +38,39 @@ namespace palvalidator
           BCa
         };
 
+        /**
+         * @brief Represents a single bootstrap method's calculation result and its quality metrics.
+         *
+         * A Candidate stores the calculated confidence interval (mean, lower, upper) along
+         * with diagnostic statistics (standard error, skewness) and "penalty" scores used
+         * by the selector to judge its quality.
+         */
         class Candidate
         {
         public:
-          // Constructor enforcing one-time initialization
+          /**
+           * @brief Constructs a Candidate and computes derived stability metrics.
+           *
+           * @param method The bootstrap method identifier.
+           * @param mean The bootstrap estimate of the statistic.
+           * @param lower The lower bound of the confidence interval.
+           * @param upper The upper bound of the confidence interval.
+           * @param cl The confidence level (e.g., 0.95).
+           * @param n The original sample size.
+           * @param B_outer Number of outer loop resamples.
+           * @param B_inner Number of inner loop resamples (for double bootstrap).
+           * @param effective_B Number of valid (non-degenerate) resamples used.
+           * @param skipped_total Number of resamples skipped due to errors/NaNs.
+           * @param se_boot Standard error of the bootstrap distribution.
+           * @param skew_boot Skewness of the bootstrap distribution.
+           * @param center_shift_in_se Shift of the interval center relative to the mean, in units of SE.
+           * @param normalized_length Ratio of interval length to an ideal percentile-based length.
+           * @param ordering_penalty Penalty for misalignment with the raw bootstrap CDF (0.0 for advanced methods).
+           * @param length_penalty Penalty for interval length deviating from the "ideal" band.
+           * @param z0 Bias-correction parameter (BCa only).
+           * @param accel Acceleration parameter (BCa only).
+           * @param score Optional aggregate score for logging/diagnostics.
+           */
           Candidate(MethodId    method,
                     Decimal     mean,
                     Decimal     lower,
@@ -73,16 +112,20 @@ namespace palvalidator
               m_stability_penalty(0.0)
           {
             //
-            // BCa-only stability penalty based on |z0| and |a|.
-            // Interpreted as a diagnostic: large |z0| or |a| =>
-            // potentially unstable BCa geometry.
+            // Calculate BCa-specific stability penalty.
+            // BCa intervals can become geometrically unstable if the bias (z0) or
+            // acceleration (a) parameters are too large.
+            //
+            // Thresholds:
+            // |z0| > 0.5: Implies heavy bias correction.
+            // |a|  > 0.1: Implies extreme skewness sensitivity (approaching singularity).
             //
             if (m_method == MethodId::BCa)
               {
                 const double abs_z0 = std::fabs(m_z0);
                 const double abs_a  = std::fabs(m_accel);
 
-                // Soft thresholds; you can tune these empirically.
+                // Soft thresholds; empirically tuned for financial time series.
                 const double z0_ok = 0.5;
                 const double a_ok  = 0.1;
 
@@ -114,23 +157,36 @@ namespace palvalidator
           double      getCenterShiftInSe() const { return m_center_shift_in_se; }
           double      getNormalizedLength() const { return m_normalized_length; }
 
-          // For simple methods: coverage-alignment penalty in bootstrap CDF space.
-          // For BCa / PercentileT: this is explicitly set to 0.0 (no competition on this axis).
+          /**
+           * @brief Returns the penalty for misalignment with the raw bootstrap CDF.
+           *
+           * For simple methods (Percentile, Normal), this penalizes intervals that don't
+           * cover the target % of the raw bootstrap histogram.
+           * For advanced methods (BCa, PercentileT), this is explicitly 0.0 because
+           * they are designed to correct/shift the interval away from the raw CDF.
+           */
           double      getOrderingPenalty() const { return m_ordering_penalty; }
 
-          // Deviation from a bootstrap-based percentile length band.
+          /**
+           * @brief Returns the penalty for interval length deviations.
+           * Penalizes intervals that are significantly wider or narrower than the
+           * "ideal" length derived from the percentile interval.
+           */
           double      getLengthPenalty() const { return m_length_penalty; }
 
           double      getZ0() const { return m_z0; }
           double      getAccel() const { return m_accel; }
           double      getScore() const { return m_score; }
 
-          // BCa-only stability penalty derived from |z0| and |a|.
+          /**
+           * @brief Returns the BCa stability penalty.
+           * Derived from the magnitude of |z0| and |a|. Zero for non-BCa methods.
+           */
           double      getStabilityPenalty() const { return m_stability_penalty; }
 
           /**
-           * @brief Returns a copy of this Candidate with a specific score.
-           * Used to maintain immutability while updating the score during selection.
+           * @brief Returns a copy of this Candidate with a new diagnostic score.
+           * Used to update the aggregate score during selection without mutating the object.
            */
           Candidate withScore(double newScore) const
           {
@@ -167,7 +223,12 @@ namespace palvalidator
           double      m_stability_penalty;
         };
 
-        // AutoCIResult Constructor
+        /**
+         * @brief Result Constructor.
+         * @param chosenMethod The MethodId of the selected best interval.
+         * @param chosen The Candidate object representing the best interval.
+         * @param candidates The full list of evaluated candidates (for logging/audit).
+         */
         AutoCIResult(MethodId chosenMethod,
                      Candidate chosen,
                      std::vector<Candidate> candidates)
@@ -188,7 +249,15 @@ namespace palvalidator
         std::vector<Candidate> m_candidates;
       };
 
-
+    /**
+     * @brief Automatically selects the optimal bootstrap confidence interval method.
+     *
+     * This class implements a "Hierarchy of Trust" selection logic.
+     * 1. It calculates standardized metrics (penalties) for each method.
+     * 2. It prefers the BCa method if its parameters indicate stability.
+     * 3. If BCa is unstable, it falls back to a tournament selection (Pareto dominance)
+     * among robust alternatives (M-out-of-N, Percentile-T, etc.).
+     */
     template <class Decimal>
       class AutoBootstrapSelector
       {
@@ -219,7 +288,10 @@ namespace palvalidator
           double m_w_length;
         };
 
-        // Utility: empirical CDF of unsorted vector.
+        /**
+         * @brief Computes the empirical CDF of a value x within a collection of statistics.
+         * Used to check how much bootstrap mass lies below a given threshold.
+         */
         template <class Vec>
           static double empiricalCdf(const Vec& stats, double x)
           {
@@ -232,7 +304,9 @@ namespace palvalidator
             return static_cast<double>(c) / static_cast<double>(stats.size());
           }
 
-        // Utility: linear interpolation quantile on sorted vector.
+        /**
+         * @brief Estimates a quantile from a sorted vector using linear interpolation.
+         */
         static double quantileOnSorted(const std::vector<double>& sorted, double p)
         {
           if (sorted.empty()) return std::numeric_limits<double>::quiet_NaN();
@@ -249,9 +323,13 @@ namespace palvalidator
           return v0 * (1.0 - w) + v1 * w;
         }
 
-        // ------------------------------------------------------------------
-        // Percentile-like engines (Normal, Basic, Percentile, MOutOfN, etc.)
-        // ------------------------------------------------------------------
+        /**
+         * @brief Summarizes a simple percentile-like bootstrap engine into a Candidate.
+         *
+         * Applies to: Normal, Basic, Percentile, M-out-of-N.
+         * These methods are penalized if their coverage (CDF width) does not match
+         * the target confidence level (e.g., 95%).
+         */
         template <class BootstrapEngine>
           static Candidate summarizePercentileLike(
                            MethodId                                method,
@@ -275,7 +353,7 @@ namespace palvalidator
             const double mean_boot = engine.getBootstrapMean();
             const double se_boot   = engine.getBootstrapSe();
 
-            // Skewness over θ*
+            // Calculate skewness of the bootstrap distribution
             double skew_boot = 0.0;
             if (m > 2 && se_boot > 0.0)
               {
@@ -304,7 +382,9 @@ namespace palvalidator
               }
 
             //
-            // Coverage-alignment penalty in bootstrap CDF space.
+            // Ordering Penalty:
+            // For simple methods, we penalize deviations from the raw bootstrap CDF.
+            // If the method claims 95% confidence, it should cover 95% of the bootstrap samples.
             //
             const double F_lo = empiricalCdf(stats, lo);
             const double F_hi = empiricalCdf(stats, hi);
@@ -322,8 +402,9 @@ namespace palvalidator
             const double ordering_penalty = cov_pen + center_pen;
 
             //
-            // Bootstrap-length band penalty: compare actual CI length to
-            // the percentile-based bootstrap length band.
+            // Length Penalty:
+            // Compare the interval length to an "ideal" length derived from the
+            // Percentile method (quantiles of the raw bootstrap distribution).
             //
             double length_penalty = 0.0;
             if (len > 0.0)
@@ -344,7 +425,7 @@ namespace palvalidator
                     const double norm_len = len / ideal_len_boot;
                     normalized_length = norm_len;
 
-                    // Soft band: do not penalize moderate deviations.
+                    // Soft band: penalize if length is < 0.8x or > 1.8x the ideal length.
                     const double L_min = 0.8;
                     const double L_max = 1.8;
 
@@ -388,7 +469,7 @@ namespace palvalidator
           }
 
         // ------------------------------------------------------------------
-        // Percentile-t engine
+        // Percentile-t engine summary
         // ------------------------------------------------------------------
         template <class PTBootstrap>
           static Candidate summarizePercentileT(
@@ -438,7 +519,7 @@ namespace palvalidator
                 skew_boot = m3 / (se_boot_calc * se_boot_calc * se_boot_calc);
               }
 
-            // For geometry we prefer se_hat (studentized se), but fall back to se_boot
+            // Prefer the studentized SE estimate (se_hat), fallback to bootstrap SE
             double se_ref = res.se_hat;
             if (!(se_ref > 0.0))
               se_ref = se_boot_calc;
@@ -458,13 +539,15 @@ namespace palvalidator
               }
 
             //
-            // IMPORTANT: For percentile-t, we do NOT penalize coverage alignment
-            // against the raw θ* distribution; pivots live in t-space.
+            // IMPORTANT: Percentile-T corrects for skew/kurtosis by using t-statistics.
+            // Its interval will NOT align with the raw bootstrap CDF.
+            // Therefore, we set ordering_penalty = 0.0 to avoid penalizing its valid corrections.
             //
             const double ordering_penalty = 0.0;
 
             //
-            // Bootstrap-length band penalty relative to θ* percentile length.
+            // Length Penalty:
+            // Ensure the interval length is not absurdly large/small compared to the percentile interval.
             //
             double length_penalty = 0.0;
             if (len > 0.0)
@@ -528,7 +611,7 @@ namespace palvalidator
           }
 
         // ------------------------------------------------------------------
-        // BCa engine
+        // BCa engine summary
         // ------------------------------------------------------------------
         template <class BCaEngine>
           static Candidate summarizeBCa(const BCaEngine& bca)
@@ -603,13 +686,16 @@ namespace palvalidator
               }
 
             //
-            // IMPORTANT: For BCa, we do NOT penalize coverage alignment against
-            // the raw θ* distribution; BCa's coverage is computed in transformed space.
+            // IMPORTANT: For BCa, we do NOT penalize coverage alignment.
+            // BCa corrects bias and skewness, meaning its interval is INTENDED to
+            // deviate from the raw bootstrap CDF. Penalizing it would be incorrect.
             //
             const double ordering_penalty = 0.0;
 
             //
-            // Bootstrap-length band penalty using θ* percentile length.
+            // Length Penalty:
+            // Ensure the BCa interval is not wildly different from the percentile interval.
+            // This acts as a sanity check against exploding parameters.
             //
             double length_penalty = 0.0;
             if (len > 0.0)
@@ -673,8 +759,14 @@ namespace palvalidator
           }
 
         // ------------------------------------------------------------------
-        // Pairwise dominance logic on (ordering, length)
+        // Pairwise dominance logic
         // ------------------------------------------------------------------
+        /**
+         * @brief Checks if candidate 'a' Pareto-dominates candidate 'b'.
+         *
+         * Dominance means 'a' is better or equal in both Ordering and Length penalties,
+         * and strictly better in at least one.
+         */
         static bool dominates(const Candidate& a, const Candidate& b)
         {
           const bool better_or_equal_order  = a.getOrderingPenalty() <= b.getOrderingPenalty();
@@ -686,26 +778,40 @@ namespace palvalidator
           return better_or_equal_order && better_or_equal_length && strictly_better;
         }
 
-        // Preference ranking used only to break ties among non-dominated candidates
+        /**
+         * @brief Static rank preference for tie-breaking.
+         * Used only when candidates are otherwise indistinguishable on penalties.
+         * Preference Order: BCa > PercentileT > MOutOfN > Percentile > Basic > Normal
+         */
         static int methodPreference(MethodId m)
         {
           switch (m)
             {
-            case MethodId::BCa:         return 1;
+            case MethodId::BCa:         return 1; // Highest preference
             case MethodId::PercentileT: return 2;
             case MethodId::MOutOfN:     return 3;
             case MethodId::Percentile:  return 4;
             case MethodId::Basic:       return 5;
-            case MethodId::Normal:      return 6;
+            case MethodId::Normal:      return 6; // Lowest preference
             }
           return 100; // should not happen
         }
 
         // ------------------------------------------------------------------
-        // Selection with BCa-first hierarchy
+        // Selection Logic
         // ------------------------------------------------------------------
-        // NOTE: ScoringWeights is ignored in the selection rule now; it is kept
-        // only for backward compatibility of the interface.
+        /**
+         * @brief Selects the best bootstrap interval from the provided candidates.
+         *
+         * ALGORITHM:
+         * 1. Hierarchy of Trust:
+         * - If BCa is present, check its stability (z0, a) and length.
+         * - If BCa is stable, return it immediately (it is theoretically superior).
+         * 2. Fallback Tournament:
+         * - If BCa is unstable (or absent), filter it out.
+         * - Compare remaining candidates using Pareto dominance on (OrderingPenalty, LengthPenalty).
+         * - Select the non-dominated candidate with the best scores, using method preference as a tie-breaker.
+         */
         static Result select(const std::vector<Candidate>& candidates,
                              const ScoringWeights& = ScoringWeights())
         {
@@ -714,7 +820,7 @@ namespace palvalidator
               throw std::invalid_argument("AutoBootstrapSelector::select: no candidates provided.");
             }
 
-          // 1. Attach a simple scalar score (ordering + length) for diagnostics only.
+          // 1. Enrich candidates with a simple aggregate score for logging/diagnostics.
           std::vector<Candidate> enriched;
           enriched.reserve(candidates.size());
           for (const auto& c : candidates)
@@ -724,9 +830,9 @@ namespace palvalidator
             }
 
           //
-          // 2. BCa-first hierarchy:
-          //    - Find best BCa candidate by stability_penalty, then length_penalty.
-          //    - If stable enough and not crazy-long, choose BCa immediately.
+          // 2. BCa-first hierarchy check.
+          //    We prefer BCa if it is structurally stable (low stability penalty)
+          //    and produces a plausible interval length.
           //
           const double BCa_STABILITY_THRESHOLD       = 0.1;
           const double BCa_LENGTH_PENALTY_THRESHOLD  = 1.0;
@@ -743,6 +849,7 @@ namespace palvalidator
                 }
               else
                 {
+                  // Find the BCa candidate with the lowest stability penalty.
                   const auto& cBest = enriched[bestBcaIdx];
                   const auto& cCur  = enriched[i];
 
@@ -754,6 +861,7 @@ namespace palvalidator
                       bestBcaIdx = static_cast<int>(i);
                       continue;
                     }
+                  // Tie-break on length penalty
                   if (std::fabs(stabCur - stabBest) <= 1e-15)
                     {
                       const double lBest = cBest.getLengthPenalty();
@@ -776,15 +884,16 @@ namespace palvalidator
               if (stab <= BCa_STABILITY_THRESHOLD &&
                   lpen <= BCa_LENGTH_PENALTY_THRESHOLD)
                 {
-                  // BCa is stable and length is reasonable: trust BCa as Efron recommends.
+                  // TRUST: BCa is stable and valid. Return it.
                   return Result(bestBCa.getMethod(), bestBCa, enriched);
                 }
-              // Else: BCa exists but is unstable or absurd-length => fall back to simpler methods.
+              // Else: BCa exists but is unstable. Fall through to robust methods.
             }
 
           //
-          // 3. Fall-back: ignore BCa and apply Pareto selection on remaining methods
-          //    using (ordering_penalty, length_penalty) and methodPreference.
+          // 3. Fallback Tournament:
+          //    Filter out BCa (since it failed the trust check) and select the best
+          //    remaining method using Pareto dominance.
           //
           std::vector<Candidate> filtered;
           filtered.reserve(enriched.size());
@@ -796,17 +905,16 @@ namespace palvalidator
 
           if (filtered.empty())
             {
-              // This edge case would only happen if *all* candidates were BCa
-              // and none passed the stability/length thresholds. In that case,
-              // we fall back to the "best" BCa anyway.
+              // Edge case: Only BCa candidates existed, and all failed checks.
+              // Fall back to the "least bad" BCa.
               const auto& bestBCa = enriched[bestBcaIdx];
               return Result(bestBCa.getMethod(), bestBCa, enriched);
             }
 
+          // Compute Pareto dominance
           const std::size_t K = filtered.size();
           std::vector<bool> isDominated(K, false);
 
-          // Compute Pareto dominance
           for (std::size_t i = 0; i < K; ++i)
             {
               if (isDominated[i]) continue;
@@ -821,7 +929,7 @@ namespace palvalidator
                 }
             }
 
-          // Collect non-dominated candidates
+          // Identify the Pareto Frontier (non-dominated candidates)
           std::vector<std::size_t> frontier;
           for (std::size_t i = 0; i < K; ++i)
             {
@@ -829,8 +937,8 @@ namespace palvalidator
                 frontier.push_back(i);
             }
 
-          // Among the Pareto frontier, choose the one with smallest ordering penalty,
-          // then smallest length penalty, then preferred method rank.
+          // Select winner from frontier:
+          // Priority: Ordering Penalty -> Length Penalty -> Method Preference
           std::size_t bestIdx = frontier[0];
           for (std::size_t idx : frontier)
             {
@@ -858,7 +966,7 @@ namespace palvalidator
                     {
                       const int pBest = methodPreference(cBest.getMethod());
                       const int pCur  = methodPreference(cCur.getMethod());
-                      if (pCur < pBest)
+                      if (pCur < pBest) // Lower rank number = Higher preference
                         {
                           bestIdx = idx;
                           continue;
