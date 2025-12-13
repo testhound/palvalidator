@@ -1544,3 +1544,135 @@ TEST_CASE("MOutOfNPercentileBootstrap::runWithRefinement: wiring and invariants"
     REQUIRE(result.effective_B >= result.B / 2);
   }
 }
+
+TEST_CASE("MOutOfNPercentileBootstrap: diagnostics unavailable before run",
+          "[Bootstrap][MOutOfN][Diagnostics]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D
+    {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 800;
+    const double      CL = 0.95;
+    const double      rho = 0.70;
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon(B, CL, rho, res);
+
+    SECTION("hasDiagnostics is false before any run()")
+    {
+        REQUIRE_FALSE(moon.hasDiagnostics());
+    }
+
+    SECTION("Diagnostic getters throw before run()")
+    {
+        REQUIRE_THROWS_AS(moon.getBootstrapStatistics(), std::logic_error);
+        REQUIRE_THROWS_AS(moon.getBootstrapMean(),       std::logic_error);
+        REQUIRE_THROWS_AS(moon.getBootstrapVariance(),   std::logic_error);
+        REQUIRE_THROWS_AS(moon.getBootstrapSe(),         std::logic_error);
+        REQUIRE_THROWS_AS(moon.getBootstrapSkewness(),   std::logic_error);
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: diagnostics consistent with Result",
+          "[Bootstrap][MOutOfN][Diagnostics]")
+{
+    using D = DecimalType;
+
+    // Simple nontrivial data: 0..59
+    const std::size_t n = 60;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(static_cast<int>(i)));
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D
+    {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t L   = 3;
+    StationaryMaskValueResampler<D> res(L);
+
+    const std::size_t B  = 800;
+    const double      CL = 0.95;
+    const double      rho = 0.70;
+
+    std::seed_seq   seq  = make_seed_seq(0x0000001100000022ull);
+    std::mt19937_64 rng(seq);
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon(B, CL, rho, res);
+
+    auto out = moon.run(x, mean_sampler, rng);
+
+    REQUIRE(moon.hasDiagnostics());
+
+    const auto& stats   = moon.getBootstrapStatistics();
+    const double mean_b = moon.getBootstrapMean();
+    const double var_b  = moon.getBootstrapVariance();
+    const double se_b   = moon.getBootstrapSe();
+    const double skew_b = moon.getBootstrapSkewness();
+
+    SECTION("Bootstrap statistics size and counters match Result")
+    {
+        REQUIRE(stats.size() == out.effective_B);
+        REQUIRE(out.effective_B + out.skipped == out.B);
+        REQUIRE(out.B == B);
+        REQUIRE(out.n == n);
+        REQUIRE(out.L == L);
+    }
+
+    SECTION("Mean/variance/SE/skewness match recomputation from statistics")
+    {
+        REQUIRE_FALSE(stats.empty());
+
+        const std::size_t m = stats.size();
+
+        // Mean
+        double m_re = 0.0;
+        for (double v : stats)
+            m_re += v;
+        m_re /= static_cast<double>(m);
+
+        // Sample variance (m - 1 in denominator) and SE
+        double v_re = 0.0;
+        if (m > 1)
+        {
+            for (double v : stats)
+            {
+                const double d = v - m_re;
+                v_re += d * d;
+            }
+            v_re /= static_cast<double>(m - 1);
+        }
+        const double se_re = std::sqrt(v_re);
+
+        // Skewness: E[(X - mean)^3] / SE^3  with E over m
+        double skew_re = 0.0;
+        if (m > 2 && se_re > 0.0)
+        {
+            double m3 = 0.0;
+            for (double v : stats)
+            {
+                const double d = v - m_re;
+                m3 += d * d * d;
+            }
+            m3 /= static_cast<double>(m);
+            skew_re = m3 / (se_re * se_re * se_re);
+        }
+
+        REQUIRE(mean_b          == Catch::Approx(m_re).margin(1e-12));
+        REQUIRE(var_b           == Catch::Approx(v_re).margin(1e-12));
+        REQUIRE(se_b            == Catch::Approx(se_re).margin(1e-12));
+        REQUIRE(skew_b          == Catch::Approx(skew_re).margin(1e-12));
+        REQUIRE(out.skew_boot   == Catch::Approx(skew_re).margin(1e-12));
+    }
+}
