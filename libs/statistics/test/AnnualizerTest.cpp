@@ -16,12 +16,34 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
-
+#include <memory>
 #include "number.h"               // DecimalType alias (dec::decimal<8>)
 #include "Annualizer.h"           // mkc_timeseries::Annualizer
 
 using DecimalType = num::DefaultNumber;
 using A = mkc_timeseries::Annualizer<DecimalType>;
+
+namespace
+{
+    // Minimal fake time series type used to test
+    // computeAnnualizationFactorForSeries. It only needs to expose
+    // getIntradayTimeFrameDurationInMinutes().
+    struct DummyIntradaySeries
+    {
+        explicit DummyIntradaySeries(int minutesPerBar)
+            : m_minutesPerBar(minutesPerBar)
+        {
+        }
+
+        int getIntradayTimeFrameDurationInMinutes() const
+        {
+            return m_minutesPerBar;
+        }
+
+    private:
+        int m_minutesPerBar;
+    };
+}
 
 static inline double round_to_decimal8(double x)
 {
@@ -132,4 +154,110 @@ TEST_CASE("Annualizer rejects non-positive or non-finite K", "[Annualizer][valid
     // Simulate a non-finite K without relying on platform-specific INFINITY macro
     const double NaN = std::numeric_limits<double>::quiet_NaN();
     REQUIRE_THROWS_AS(A::annualize_one(D(0.01), NaN), std::invalid_argument);
+}
+
+TEST_CASE("computeAnnualizationFactor returns expected factors for standard time frames",
+          "[Annualizer][factor][TimeFrame]")
+{
+    using mkc_timeseries::TimeFrame;
+    using mkc_timeseries::computeAnnualizationFactor;
+
+    // Daily / Weekly / Monthly / Quarterly / Yearly
+    REQUIRE(computeAnnualizationFactor(TimeFrame::DAILY)
+            == Catch::Approx(252.0));
+    REQUIRE(computeAnnualizationFactor(TimeFrame::WEEKLY)
+            == Catch::Approx(52.0));
+    REQUIRE(computeAnnualizationFactor(TimeFrame::MONTHLY)
+            == Catch::Approx(12.0));
+    REQUIRE(computeAnnualizationFactor(TimeFrame::QUARTERLY)
+            == Catch::Approx(4.0));
+    REQUIRE(computeAnnualizationFactor(TimeFrame::YEARLY)
+            == Catch::Approx(1.0));
+
+    // INTRADAY with a concrete minutes-per-bar
+    // Expected: trading_hours_per_day * (60 / minutesPerBar) * trading_days_per_year
+    const int    minutesPerBar = 5;
+    const double expected_intraday =
+        6.5 * (60.0 / static_cast<double>(minutesPerBar)) * 252.0;
+
+    const double got_intraday =
+        computeAnnualizationFactor(TimeFrame::INTRADAY, minutesPerBar);
+
+    REQUIRE(got_intraday == Catch::Approx(expected_intraday).margin(1e-12));
+
+    // INTRADAY with minutesPerBar == 0 should throw
+    REQUIRE_THROWS_AS(
+        computeAnnualizationFactor(TimeFrame::INTRADAY, 0),
+        std::invalid_argument);
+
+    // INTRADAY with non-positive trading_days_per_year or trading_hours_per_day
+    REQUIRE_THROWS_AS(
+        computeAnnualizationFactor(TimeFrame::INTRADAY,
+                                   minutesPerBar,
+                                   0.0,     // trading_days_per_year
+                                   6.5),
+        std::invalid_argument);
+
+    REQUIRE_THROWS_AS(
+        computeAnnualizationFactor(TimeFrame::INTRADAY,
+                                   minutesPerBar,
+                                   252.0,
+                                   0.0),   // trading_hours_per_day
+        std::invalid_argument);
+}
+
+TEST_CASE("computeAnnualizationFactorForSeries uses intraday minutes-per-bar from series",
+          "[Annualizer][factor][TimeSeries][INTRADAY]")
+{
+    using mkc_timeseries::TimeFrame;
+    using mkc_timeseries::computeAnnualizationFactor;
+    using mkc_timeseries::computeAnnualizationFactorForSeries;
+
+    const int minutesPerBar = 15;
+    auto ts = std::make_shared<DummyIntradaySeries>(minutesPerBar);
+
+    const double expected =
+        computeAnnualizationFactor(TimeFrame::INTRADAY, minutesPerBar);
+
+    const double got =
+        computeAnnualizationFactorForSeries(TimeFrame::INTRADAY, ts);
+
+    REQUIRE(got == Catch::Approx(expected).margin(1e-12));
+}
+
+TEST_CASE("computeAnnualizationFactorForSeries falls back to TimeFrame-only variant for non-intraday",
+          "[Annualizer][factor][TimeSeries][non-INTRADAY]")
+{
+    using mkc_timeseries::TimeFrame;
+    using mkc_timeseries::computeAnnualizationFactor;
+    using mkc_timeseries::computeAnnualizationFactorForSeries;
+
+    auto ts = std::make_shared<DummyIntradaySeries>(5);
+
+    // For non-INTRADAY, the series is ignored and the TimeFrame-only
+    // overload is used internally.
+    const double daily_expected  = computeAnnualizationFactor(TimeFrame::DAILY);
+    const double daily_from_ts   = computeAnnualizationFactorForSeries(TimeFrame::DAILY, ts);
+
+    const double monthly_expected = computeAnnualizationFactor(TimeFrame::MONTHLY);
+    const double monthly_from_ts  = computeAnnualizationFactorForSeries(TimeFrame::MONTHLY, ts);
+
+    REQUIRE(daily_from_ts   == Catch::Approx(daily_expected).margin(1e-12));
+    REQUIRE(monthly_from_ts == Catch::Approx(monthly_expected).margin(1e-12));
+}
+
+TEST_CASE("computeAnnualizationFactorForSeries throws for INTRADAY without series",
+          "[Annualizer][factor][TimeSeries][error]")
+{
+    using mkc_timeseries::TimeFrame;
+    using mkc_timeseries::computeAnnualizationFactorForSeries;
+
+    std::shared_ptr<DummyIntradaySeries> nullTs;
+
+    // For INTRADAY and a null series, the helper falls through to the
+    // TimeFrame-only overload with intraday_minutes_per_bar = 0,
+    // which must throw std::invalid_argument.
+    REQUIRE_THROWS_AS(
+        computeAnnualizationFactorForSeries(TimeFrame::INTRADAY, nullTs),
+        std::invalid_argument);
 }

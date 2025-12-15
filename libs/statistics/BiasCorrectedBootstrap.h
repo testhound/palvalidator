@@ -843,34 +843,10 @@ namespace mkc_timeseries
 					     double trading_days_per_year = 252.0,
 					     double trading_hours_per_day = 6.5)
   {
-    switch (timeFrame)
-      {
-      case TimeFrame::DAILY:
-	return trading_days_per_year;
-      case TimeFrame::WEEKLY:
-	return 52.0;
-      case TimeFrame::MONTHLY:
-	return 12.0;
-      case TimeFrame::INTRADAY:
-	{
-	  if (intraday_minutes_per_bar == 0)
-	    {
-	      throw std::invalid_argument("For INTRADAY timeframe, intraday_minutes_per_bar must be specified.");
-	    }
-	  double bars_per_hour = 60.0 / static_cast<double>(intraday_minutes_per_bar);
-	  if (!(bars_per_hour > 0.0) || !(trading_days_per_year > 0.0) || !(trading_hours_per_day > 0.0))
-            {
-                throw std::invalid_argument("Annualization inputs must be positive finite values.");
-            }
-	  return trading_hours_per_day * bars_per_hour * trading_days_per_year;
-	}
-      case TimeFrame::QUARTERLY:
-	return 4.0;
-      case TimeFrame::YEARLY:
-	return 1.0;
-      default:
-	throw std::invalid_argument("Unsupported time frame for annualization.");
-      }
+    return mkc_timeseries::computeAnnualizationFactor(timeFrame,
+						      intraday_minutes_per_bar,
+						      trading_days_per_year,
+						      trading_hours_per_day);
   }
 
   /**
