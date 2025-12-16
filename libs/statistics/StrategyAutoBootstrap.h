@@ -490,35 +490,40 @@ namespace palvalidator
 		  << "  numCandidates="          << diagnostics.getNumCandidates()
 		  << "\n";
 
-	    // 3) Full candidate dump for detailed debugging / analysis
-	    const auto& allCandidates = result.getCandidates();
+	    bool printDetailedDiagnostics = false;
 
-	    (*os) << "   [AutoCI] Candidate diagnostics (one line per method):\n";
-	    for (const auto& c : allCandidates)
+	    if (printDetailedDiagnostics)
 	      {
-		const char* mName = Result::methodIdToString(c.getMethod());
+		// 3) Full candidate dump for detailed debugging / analysis
+		const auto& allCandidates = result.getCandidates();
 
-		(*os) << "      [AutoCI-Candidate] "
-		      << "method="               << mName
-		      << "  mean="               << c.getMean()
-		      << "  LB="                 << c.getLower()
-		      << "  UB="                 << c.getUpper()
-		      << "  n="                  << c.getN()
-		      << "  B_outer="            << c.getBOuter()
-		      << "  B_inner="            << c.getBInner()
-		      << "  B_eff="              << c.getEffectiveB()
-		      << "  skipped="            << c.getSkippedTotal()
-		      << "  se_boot="            << c.getSeBoot()
-		      << "  skew_boot="          << c.getSkewBoot()
-		      << "  center_shift_in_se=" << c.getCenterShiftInSe()
-		      << "  normalized_length="  << c.getNormalizedLength()
-		      << "  ordering_penalty="   << c.getOrderingPenalty()
-		      << "  length_penalty="     << c.getLengthPenalty()
-		      << "  stability_penalty="  << c.getStabilityPenalty()
-		      << "  score="              << c.getScore()
-		      << "  z0="                 << c.getZ0()
-		      << "  a="                  << c.getAccel()
-		      << "\n";
+		(*os) << "   [AutoCI] Candidate diagnostics (one line per method):\n";
+		for (const auto& c : allCandidates)
+		  {
+		    const char* mName = Result::methodIdToString(c.getMethod());
+
+		    (*os) << "      [AutoCI-Candidate] "
+			  << "method="               << mName
+			  << "  mean="               << c.getMean()
+			  << "  LB="                 << c.getLower()
+			  << "  UB="                 << c.getUpper()
+			  << "  n="                  << c.getN()
+			  << "  B_outer="            << c.getBOuter()
+			  << "  B_inner="            << c.getBInner()
+			  << "  B_eff="              << c.getEffectiveB()
+			  << "  skipped="            << c.getSkippedTotal()
+			  << "  se_boot="            << c.getSeBoot()
+			  << "  skew_boot="          << c.getSkewBoot()
+			  << "  center_shift_in_se=" << c.getCenterShiftInSe()
+			  << "  normalized_length="  << c.getNormalizedLength()
+			  << "  ordering_penalty="   << c.getOrderingPenalty()
+			  << "  length_penalty="     << c.getLengthPenalty()
+			  << "  stability_penalty="  << c.getStabilityPenalty()
+			  << "  score="              << c.getScore()
+			  << "  z0="                 << c.getZ0()
+			  << "  a="                  << c.getAccel()
+			  << "\n";
+		  }
 	      }
 	  }
 
