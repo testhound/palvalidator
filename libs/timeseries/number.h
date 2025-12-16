@@ -2,6 +2,8 @@
 #define NUMBER_H
 
 #include <string>
+#include <cmath>
+#include <type_traits>
 #include "decimal.h"
 #include "DecimalConstants.h"
 
@@ -29,6 +31,23 @@ namespace num
    */
   inline std::string toString(const DefaultNumber& d) {
     return dec::toString(d);
+  }
+
+  /**
+   * @brief Generic conversion to string - works for both floating-point and decimal types.
+   * @tparam T The type to convert (can be double, float, or any decimal type with toString()).
+   * @param val The value to convert.
+   * @return A std::string representing the value.
+   * @details This function uses SFINAE to handle both built-in floating-point types
+   *          (which use std::to_string()) and decimal types (which use dec::toString()).
+   */
+  template<typename T>
+  inline std::string toString(const T& val) {
+    if constexpr (std::is_floating_point_v<T>) {
+      return std::to_string(val);
+    } else {
+      return dec::toString(val);
+    }
   }
 
   /**
@@ -60,6 +79,23 @@ namespace num
   }
 
   /**
+   * @brief Generic conversion to long double - works for both floating-point and decimal types.
+   * @tparam T The type to convert (can be double, float, or any decimal type with getAsXDouble()).
+   * @param val The value to convert.
+   * @return A long double representing the value.
+   * @details This function uses SFINAE to handle both built-in floating-point types
+   *          (which are cast directly) and decimal types (which use getAsXDouble()).
+   */
+  template<typename T>
+  inline long double to_long_double(const T& val) {
+    if constexpr (std::is_floating_point_v<T>) {
+      return static_cast<long double>(val);
+    } else {
+      return val.getAsXDouble();
+    }
+  }
+
+  /**
    * @brief Converts a string representation to a decimal type.
    * @tparam N The target decimal type (e.g., DefaultNumber, dec::decimal<P, RP>).
    * @param s The std::string to convert.
@@ -80,7 +116,11 @@ namespace num
    */
   template<typename Decimal>
   inline Decimal abs(const Decimal& d) {
-    return d.abs();
+    if constexpr (std::is_floating_point_v<Decimal>) {
+      return std::abs(d);
+    } else {
+      return d.abs();
+    }
   }
 
   using mkc_timeseries::DecimalConstants;

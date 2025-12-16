@@ -7,9 +7,112 @@
 #include <ostream>
 #include "number.h"
 #include "DecimalConstants.h"
+#include "TimeFrame.h"
 
 namespace mkc_timeseries
 {
+  /**
+   * @brief Centralized annualization factor calculator.
+   *
+   * Mirrors the logic previously implemented in BiasCorrectedBootstrap.h
+   * (calculateAnnualizationFactor), but lives here so it can be reused by
+   * non-BCa modules.
+   *
+   * @param timeFrame The time frame of the data (e.g., DAILY, WEEKLY, INTRADAY).
+   * @param intraday_minutes_per_bar Minutes per bar for INTRADAY data; must be > 0.
+   * @param trading_days_per_year Number of trading days per year (default 252).
+   * @param trading_hours_per_day Number of trading hours per day (default 6.5).
+   */
+  inline double computeAnnualizationFactor(TimeFrame::Duration timeFrame,
+                                           int intraday_minutes_per_bar = 0,
+                                           double trading_days_per_year = 252.0,
+                                           double trading_hours_per_day = 6.5)
+  {
+    switch (timeFrame)
+      {
+      case TimeFrame::DAILY:
+        return trading_days_per_year;
+
+      case TimeFrame::WEEKLY:
+        return 52.0;
+
+      case TimeFrame::MONTHLY:
+        return 12.0;
+
+      case TimeFrame::INTRADAY:
+        {
+          if (intraday_minutes_per_bar == 0)
+            {
+              throw std::invalid_argument(
+					  "computeAnnualizationFactor(INTRADAY): intraday_minutes_per_bar must be specified.");
+            }
+
+          const double bars_per_hour = 60.0 / static_cast<double>(intraday_minutes_per_bar);
+          if (!(bars_per_hour > 0.0) ||
+              !(trading_days_per_year > 0.0) ||
+              !(trading_hours_per_day > 0.0))
+            {
+              throw std::invalid_argument("Annualization inputs must be positive finite values.");
+            }
+
+          return trading_hours_per_day * bars_per_hour * trading_days_per_year;
+        }
+
+      case TimeFrame::QUARTERLY:
+        return 4.0;
+
+      case TimeFrame::YEARLY:
+        return 1.0;
+
+      default:
+        throw std::invalid_argument("Unsupported time frame for annualization.");
+      }
+  }
+
+  /**
+   * @brief Convenience helper: compute annualization factor given a time frame
+   *        and an associated time series object.
+   *
+   * This removes the need for each caller to:
+   *   - check for INTRADAY
+   *   - query getIntradayTimeFrameDurationInMinutes()
+   *   - call the intraday overload explicitly
+   *
+   * @tparam TimeSeriesPtr
+   *   Pointer or smart pointer to a time series type that implements:
+   *     int getIntradayTimeFrameDurationInMinutes() const;
+   */
+  template <typename TimeSeriesPtr>
+  inline double computeAnnualizationFactorForSeries(TimeFrame::Duration timeFrame,
+						    const TimeSeriesPtr& ts,
+						    double trading_days_per_year = 252.0,
+						    double trading_hours_per_day = 6.5)
+  {
+    if (timeFrame == TimeFrame::INTRADAY)
+      {
+        if (ts)
+          {
+            const int minutesPerBar =
+              ts->getIntradayTimeFrameDurationInMinutes();
+
+            return computeAnnualizationFactor(
+					      timeFrame,
+					      minutesPerBar,
+					      trading_days_per_year,
+					      trading_hours_per_day);
+          }
+      }
+
+    // Non-intraday (or missing series): rely on the TimeFrame-only variant.
+    // For non-INTRADAY, intraday_minutes_per_bar is ignored.
+    return computeAnnualizationFactor(
+				      timeFrame,
+				      0,
+				      trading_days_per_year,
+				      trading_hours_per_day);
+  }
+
+
   template <typename NumT>
   inline double computeEffectiveAnnualizationFactor(NumT annualizedTrades,
 						    unsigned int medianHoldBars,
@@ -55,13 +158,13 @@ namespace mkc_timeseries
      *   bump to (-1 + bump) so the result remains > -1 in Decimal quantization.
      */
     static Decimal annualize_one(const Decimal& r, double K,
-                                 double eps = 1e-12,
-                                 long double bump = 1e-7L)
+				 double eps = 1e-12,
+				 long double bump = 1e-7L)
     {
       if (!(K > 0.0) || !std::isfinite(K))
-      {
-        throw std::invalid_argument("Annualizer: K must be positive and finite.");
-      }
+	{
+	  throw std::invalid_argument("Annualizer: K must be positive and finite.");
+	}
 
       const Decimal neg1  = DecimalConstants<Decimal>::DecimalMinusOne;
       const Decimal epsD  = Decimal(eps);
@@ -72,9 +175,9 @@ namespace mkc_timeseries
       long double y = std::exp(KK * lr) - 1.0L;
 
       if (y <= -1.0L)
-      {
-        y = -1.0L + bump;
-      }
+	{
+	  y = -1.0L + bump;
+	}
       return Decimal(static_cast<double>(y));
     }
 
@@ -82,11 +185,11 @@ namespace mkc_timeseries
      * Annualize (lower, mean, upper) together with the same settings.
      */
     static Triplet annualize_triplet(const Decimal& lower,
-                                     const Decimal& mean,
-                                     const Decimal& upper,
-                                     double K,
-                                     double eps = 1e-12,
-                                     long double bump = 1e-7L)
+				     const Decimal& mean,
+				     const Decimal& upper,
+				     double K,
+				     double eps = 1e-12,
+				     long double bump = 1e-7L)
     {
       Triplet t;
       t.lower = annualize_one(lower, K, eps, bump);
