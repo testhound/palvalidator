@@ -65,6 +65,17 @@ using FactoryAlias = typename StrategyAutoBootstrapType::Factory;
 // Dummy strategy alias from your test helper header
 using DummyStrategy = mkc_timeseries::DummyBacktesterStrategy<Decimal>;
 
+// Ratio-style statistic alias (robust log profit factor)
+using LogPFStat =
+    typename mkc_timeseries::StatUtils<Decimal>::LogProfitFactorStat;
+
+// StrategyAutoBootstrap instantiation for ratio statistics
+using RatioStrategyAutoBootstrapType =
+    palvalidator::analysis::StrategyAutoBootstrap<Decimal, LogPFStat, MaskResampler>;
+
+// Factory alias for the ratio-stat StrategyAutoBootstrap
+using RatioFactoryAlias = typename RatioStrategyAutoBootstrapType::Factory;
+
 // -----------------------------------------------------------------------------
 // Helper: construct StrategyAutoBootstrap for tests
 // -----------------------------------------------------------------------------
@@ -162,6 +173,24 @@ static std::vector<Decimal> makeSampleReturns3()
     };
 }
 
+// Strongly profitable series designed to yield a clearly > 1 profit factor.
+// 40 wins of +1% and 20 losses of -0.3% => PF ≈ 6.7
+static std::vector<Decimal> makeStrongProfitFactorReturns()
+{
+    std::vector<Decimal> xs;
+    xs.reserve(60);
+
+    // 40 positive bars
+    for (int i = 0; i < 40; ++i)
+        xs.push_back(Decimal(0.01));   // +1%
+
+    // 20 modest negative bars
+    for (int i = 0; i < 20; ++i)
+        xs.push_back(Decimal(-0.003)); // -0.3%
+
+    return xs;
+}
+
 // -----------------------------------------------------------------------------
 /*              UNIT TESTS: BootstrapConfiguration                          */
 // -----------------------------------------------------------------------------
@@ -181,7 +210,7 @@ TEST_CASE("BootstrapConfiguration: Construction and basic getters",
     {
         REQUIRE(cfg.getNumBootStrapReplications() == B);
         REQUIRE(cfg.getBlockSize()                == L);
-        REQUIRE(cfg.getConfidenceInterval()       == CL);
+        REQUIRE(cfg.getConfidenceLevel()          == CL);
         REQUIRE(cfg.getStageTag()                 == stage);
         REQUIRE(cfg.getFold()                     == fold);
     }
@@ -195,14 +224,14 @@ TEST_CASE("BootstrapConfiguration: Construction and basic getters",
     SECTION("Percentile-t inner replication count uses fixed ratio, at least 1")
     {
         const std::size_t B_outer = cfg.getPercentileTNumOuterReplications();
-        const std::size_t ratio   = cfg.getPercentileTRatioOuterToInner();
+        const double      ratio   = 10.0;
 
-        REQUIRE(ratio == 10); // by design in BootstrapConfiguration
+        double inner = static_cast<double>(B_outer) / ratio;
+        if (inner < 1.0)
+            inner = 1.0;
+        const std::size_t expected_inner = static_cast<std::size_t>(inner);
 
-        const std::size_t expected_inner =
-            (B_outer / ratio == 0) ? std::size_t(1) : (B_outer / ratio);
-
-        REQUIRE(cfg.getPercentileTNumInnerReplications() == expected_inner);
+        REQUIRE(cfg.getPercentileTNumInnerReplications(ratio) == expected_inner);
     }
 }
 
@@ -219,11 +248,17 @@ TEST_CASE("BootstrapConfiguration: Inner B falls back to 1 for tiny B",
     BootstrapConfiguration cfg(B_small, L, CL, stage, fold);
 
     REQUIRE(cfg.getNumBootStrapReplications() == B_small);
-    REQUIRE(cfg.getPercentileTRatioOuterToInner() == 10);
 
-    // B_outer = 5, ratio = 10 → inner = max(1, 5 / 10) = 1
+    const double ratio = 10.0;
+
     REQUIRE(cfg.getPercentileTNumOuterReplications() == B_small);
-    REQUIRE(cfg.getPercentileTNumInnerReplications() == std::size_t(1));
+
+    double inner = static_cast<double>(B_small) / ratio;
+    if (inner < 1.0)
+        inner = 1.0;
+    const std::size_t expected_inner = static_cast<std::size_t>(inner);
+
+    REQUIRE(cfg.getPercentileTNumInnerReplications(ratio) == expected_inner);
 }
 
 // -----------------------------------------------------------------------------
@@ -313,7 +348,7 @@ TEST_CASE("StrategyAutoBootstrap: Type aliases and wiring",
     // Ensure configuration objects are usable with the StrategyAutoBootstrap type
     BootstrapConfiguration cfg(/*numBootStrapReplications*/ 500,
                                /*blockSize*/                10,
-                               /*confidenceInterval*/       0.95,
+                               /*confidenceLevel*/          0.95,
                                /*stageTag*/                 1u,
                                /*fold*/                     0u);
 
@@ -497,3 +532,65 @@ TEST_CASE("StrategyAutoBootstrap integration: Algorithm flags control available 
     REQUIRE(hasPercentile);
     REQUIRE(hasBCa);
 }
+
+TEST_CASE("StrategyAutoBootstrap integration: Ratio stats enforce positive lower bound",
+          "[StrategyAutoBootstrap][Integration][Ratio]")
+{
+    // Sanity: LogPFStat must advertise itself as a ratio statistic
+    STATIC_REQUIRE(LogPFStat::isRatioStatistic());
+
+    // Use a dedicated factory for the ratio-stat SAB
+    RatioFactoryAlias factory(/*masterSeed*/ 424242u);
+
+    const std::size_t  B      = 800;   // plenty of replications for a stable CI
+    const std::size_t  blockL = 4;     // modest stationary block length
+    const double       CL     = 0.95;
+    const std::uint64_t stage = 5;
+    const std::uint64_t fold  = 0;
+
+    auto returns = makeStrongProfitFactorReturns();
+    REQUIRE(returns.size() >= 40);
+
+    // Sanity check: underlying robust log-PF should be positive on this series.
+    // This is *not* strictly required for the test, but it documents intent.
+    {
+        LogPFStat stat;
+        const Decimal s = stat(returns);
+        REQUIRE(num::to_double(s) > 0.0);
+    }
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("DummyStrategy_RatioStat_PositivePF", portfolio, returns);
+
+    BootstrapAlgorithmsConfiguration algos; // all enabled (Normal, Basic, Percentile, M-out-of-N, Percentile-T, BCa)
+
+    // Build a StrategyAutoBootstrap instance wired for the ratio statistic
+    palvalidator::analysis::BootstrapConfiguration cfg(
+        B,
+        blockL,
+        CL,
+        stage,
+        fold
+    );
+
+    RatioStrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
+
+    AutoCIResult result = autoBootstrap.run(returns);
+
+    // There must be at least one candidate
+    REQUIRE(result.getCandidates().size() >= 1);
+
+    const auto& chosen = result.getChosenCandidate();
+
+    // With isRatioStatistic()==true, StrategyAutoBootstrap should have
+    // passed enforcePositive=true into the AutoBootstrapSelector, and
+    // the domain-penalty logic should ensure that the *winning* candidate
+    // has a strictly positive lower bound.
+    //
+    // Because LogPFStat lives on a log-PF scale, LB > 0 here implies
+    // PF_LB > 1.0.
+    const double lb = chosen.getLower();
+    REQUIRE(lb > 0.0);
+}
+
+

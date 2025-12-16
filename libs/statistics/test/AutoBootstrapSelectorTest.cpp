@@ -46,14 +46,24 @@ TEST_CASE("ScoringWeights: Construction and Getters",
         REQUIRE(weights.getCenterShiftWeight() == 1.0);
         REQUIRE(weights.getSkewWeight()        == 0.5);
         REQUIRE(weights.getLengthWeight()      == 0.25);
+        REQUIRE(weights.getStabilityWeight()   == 1.0);
+        REQUIRE(weights.enforcePositive()      == false);
     }
 
-    SECTION("Parameterized constructor sets custom weights")
+    SECTION("Parameterized constructor sets custom weights and enforcePositive flag")
     {
-        ScoringWeights weights(2.0, 0.8, 0.1);
+        // Explicitly provide all 5 parameters to exercise the full constructor
+        ScoringWeights weights(/*wCenterShift*/ 2.0,
+                               /*wSkew*/        0.8,
+                               /*wLength*/      0.1,
+                               /*wStability*/   1.5,
+                               /*enforcePos*/   true);
+
         REQUIRE(weights.getCenterShiftWeight() == 2.0);
         REQUIRE(weights.getSkewWeight()        == 0.8);
         REQUIRE(weights.getLengthWeight()      == 0.1);
+        REQUIRE(weights.getStabilityWeight()   == 1.5);
+        REQUIRE(weights.enforcePositive()      == true);
     }
 }
 
@@ -172,6 +182,44 @@ TEST_CASE("Candidate: Immutability and withScore",
     }
 }
 
+TEST_CASE("SelectionDiagnostics: Construction and Getters",
+          "[AutoBootstrapSelector][SelectionDiagnostics]")
+{
+    const MethodId chosenMethod = MethodId::Percentile;
+    const std::string methodName = Result::methodIdToString(chosenMethod);
+    const double score           = 1.23;
+    const double stabPenalty     = 0.04;
+    const double lengthPenalty   = 0.02;
+    const bool hasBCa            = true;
+    const bool bcaChosen         = false;
+    const bool bcaUnstable       = true;
+    const bool bcaBadLength      = false;
+    const std::size_t numCands   = 3;
+
+    Result::SelectionDiagnostics diag(
+        chosenMethod,
+        methodName,
+        score,
+        stabPenalty,
+        lengthPenalty,
+        hasBCa,
+        bcaChosen,
+        bcaUnstable,
+        bcaBadLength,
+        numCands);
+
+    REQUIRE(diag.getChosenMethod()          == chosenMethod);
+    REQUIRE(diag.getChosenMethodName()      == methodName);
+    REQUIRE(diag.getChosenScore()           == score);
+    REQUIRE(diag.getChosenStabilityPenalty()== stabPenalty);
+    REQUIRE(diag.getChosenLengthPenalty()   == lengthPenalty);
+    REQUIRE(diag.hasBCaCandidate()          == hasBCa);
+    REQUIRE(diag.isBCaChosen()              == bcaChosen);
+    REQUIRE(diag.wasBCaRejectedForInstability() == bcaUnstable);
+    REQUIRE(diag.wasBCaRejectedForLength()      == bcaBadLength);
+    REQUIRE(diag.getNumCandidates()         == numCands);
+}
+
 TEST_CASE("AutoCIResult: Construction and Accessors",
           "[AutoBootstrapSelector][AutoCIResult]")
 {
@@ -203,8 +251,20 @@ TEST_CASE("AutoCIResult: Construction and Accessors",
 
     std::vector<Candidate> candidates = {c1, c2};
 
-    // Simulate selection (assume c2 was chosen)
-    Result result(MethodId::Basic, c2, candidates);
+    // Simulate selection (assume c2 was chosen) with explicit diagnostics
+    Result::SelectionDiagnostics diag(
+        MethodId::Basic,
+        Result::methodIdToString(MethodId::Basic),
+        c2.getScore(),
+        c2.getStabilityPenalty(),
+        c2.getLengthPenalty(),
+        /*hasBCaCandidate*/ false,
+        /*bcaChosen*/ false,
+        /*bcaRejectedForInstability*/ false,
+        /*bcaRejectedForLength*/ false,
+        candidates.size());
+
+    Result result(MethodId::Basic, c2, candidates, diag);
 
     SECTION("Accessors return correct data")
     {
@@ -218,6 +278,17 @@ TEST_CASE("AutoCIResult: Construction and Accessors",
         REQUIRE(list.size() == 2);
         REQUIRE(list[0].getMethod() == MethodId::Normal);
         REQUIRE(list[1].getMethod() == MethodId::Basic);
+    }
+
+    SECTION("Diagnostics are stored and accessible")
+    {
+        const auto& d = result.getDiagnostics();
+        REQUIRE(d.getChosenMethod()     == MethodId::Basic);
+        REQUIRE(d.getChosenMethodName() == std::string("Basic"));
+        REQUIRE(d.getChosenScore()      == Catch::Approx(0.5));
+        REQUIRE(d.hasBCaCandidate()     == false);
+        REQUIRE(d.isBCaChosen()         == false);
+        REQUIRE(d.getNumCandidates()    == candidates.size());
     }
 }
 
@@ -315,6 +386,15 @@ TEST_CASE("AutoBootstrapSelector: Pareto selection",
         {
             REQUIRE(std::isfinite(c.getScore()));
         }
+
+        // Diagnostics should reflect that BCa was chosen and BCa was present
+        const auto& diag = result.getDiagnostics();
+        REQUIRE(diag.getChosenMethod()      == MethodId::BCa);
+        REQUIRE(diag.hasBCaCandidate()      == true);
+        REQUIRE(diag.isBCaChosen()          == true);
+        REQUIRE(diag.getNumCandidates()     == cands.size());
+        REQUIRE(diag.wasBCaRejectedForInstability() == false);
+        REQUIRE(diag.wasBCaRejectedForLength()      == false);
     }
 
     SECTION("Tie-breaking among frontier candidates uses ordering, then length, then method preference")
@@ -344,6 +424,11 @@ TEST_CASE("AutoBootstrapSelector: Pareto selection",
 
         // BCa has higher preference rank than PercentileT, so it should be chosen
         REQUIRE(result.getChosenMethod() == MethodId::BCa);
+
+        const auto& diag = result.getDiagnostics();
+        REQUIRE(diag.hasBCaCandidate()  == true);
+        REQUIRE(diag.isBCaChosen()      == true);
+        REQUIRE(diag.getNumCandidates() == ties.size());
     }
 }
 
@@ -647,6 +732,11 @@ TEST_CASE("AutoBootstrapSelector: select picks best-aligned CI on skewed bootstr
     REQUIRE(chosen.getLower() == Catch::Approx(-0.4));
     REQUIRE(chosen.getUpper() == Catch::Approx(0.2));
 
+    const auto& diag = result.getDiagnostics();
+    REQUIRE(diag.getChosenMethod()   == MethodId::Percentile);
+    REQUIRE(diag.hasBCaCandidate()   == false);
+    REQUIRE(diag.getNumCandidates()  == cands.size());
+
     // Confirm that "good" is not dominated by either of the others,
     // but "bad" is dominated by at least one.
     REQUIRE_FALSE(Selector::dominates(c_narrow, c_good));
@@ -690,7 +780,7 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
     const std::size_t B = 100;
     const std::size_t n = 20;
 
-    // Create reference candidates from previous test
+    // Create reference percentile candidates from previous tests
     MockPercentileEngine::Result goodRes{
         /*mean*/ 0.0,
         /*lower*/ -0.4,
@@ -728,15 +818,19 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
     Candidate c_narrow = Selector::summarizePercentileLike(MethodId::Percentile, engine, narrowRes);
     Candidate c_bad    = Selector::summarizePercentileLike(MethodId::Percentile, engine, badRes);
 
-    SECTION("BCa-first selection overrides ordering/length when BCa stable")
+    SECTION("Stable BCa participates but does not override better-scored methods")
     {
-        // BCa endpoints do not matter; only z0, accel, and length penalty do
+        // BCa is numerically stable (small z0/accel, reasonable length),
+        // but we deliberately give it a terrible ordering penalty to ensure
+        // its overall score is worse than the good percentile candidate.
         Candidate bca(MethodId::BCa,
                       0.0, -0.4, 0.2, CL,
                       n, B, 0, m, 0,
-                      se_boot, 0.1,
-                      0.0, 1.0,
-                      /*ordering*/ 999.0, // huge penalties but irrelevant
+                      se_boot,
+                      /*skew*/ 0.1,
+                      /*center_shift_in_se*/ 0.0,
+                      /*normalized_length*/ 1.0,
+                      /*ordering*/ 999.0,   // huge -> very bad score
                       /*length*/ 0.05,
                       /*z0*/ 0.02,
                       /*accel*/ 0.01);
@@ -745,8 +839,18 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
 
         auto result = Selector::select(cands);
 
-        REQUIRE(result.getChosenMethod() == MethodId::BCa);
-        REQUIRE(result.getChosenCandidate().getStabilityPenalty() <= 0.1);
+        // Under the new egalitarian scoring, BCa should NOT win here:
+        // the good percentile candidate has a much better score.
+        REQUIRE(result.getChosenMethod() == MethodId::Percentile);
+
+        const auto& diag = result.getDiagnostics();
+        REQUIRE(diag.hasBCaCandidate()  == true);
+        REQUIRE(diag.isBCaChosen()      == false);
+
+        // BCa lost purely on score; it should NOT be flagged as rejected for
+        // instability or length according to the BCa diagnostics thresholds.
+        REQUIRE(diag.wasBCaRejectedForInstability() == false);
+        REQUIRE(diag.wasBCaRejectedForLength()      == false);
     }
 
     SECTION("Unstable BCa does NOT win; selector falls back to percentile geometry")
@@ -754,22 +858,160 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
         Candidate unstable_bca(MethodId::BCa,
                                0.0, -0.4, 0.2, CL,
                                n, B, 0, m, 0,
-                               se_boot, 0.1,
-                               0.0, 1.0,
-                               0.0,  // ordering (ignored)
-                               0.0,  // length penalty (ignored at first)
+                               se_boot,
+                               /*skew*/ 0.1,
+                               /*center_shift_in_se*/ 0.0,
+                               /*normalized_length*/ 1.0,
+                               0.0,   // ordering (ignored in old logic; still small here)
+                               0.0,   // length penalty
                                /*z0*/ 1.5,    // very large => unstable
                                /*accel*/ 0.25);
 
-        // Should push BCa stability_penalty >> threshold
+        // Should push BCa stability_penalty >> threshold in the Candidate
         REQUIRE(unstable_bca.getStabilityPenalty() > 0.1);
 
         std::vector<Candidate> cands = {c_good, c_narrow, c_bad, unstable_bca};
 
         auto result = Selector::select(cands);
 
+        // A strongly unstable BCa should lose to a well-behaved percentile CI.
         REQUIRE(result.getChosenMethod() == MethodId::Percentile);
+
+        const auto& diag = result.getDiagnostics();
+        REQUIRE(diag.hasBCaCandidate()  == true);
+        REQUIRE(diag.isBCaChosen()      == false);
+        REQUIRE(diag.wasBCaRejectedForInstability() == true);
+        // length rejection may or may not be true depending on penalty, so we don't assert it
     }
 }
 
+TEST_CASE("AutoBootstrapSelector: enforcePositive penalizes non-positive lower bounds",
+          "[AutoBootstrapSelector][Select][EnforcePositive]")
+{
+    // Two identical candidates except for their lower bounds:
+    //  - pos: strictly positive lower bound
+    //  - neg: non-positive lower bound
+    //
+    // We set all other penalties to zero so the only difference is the
+    // domain penalty injected when enforcePositive() is true.
 
+    Candidate pos(MethodId::PercentileT,
+                  /*mean*/ 1.0,
+                  /*lower*/ 0.10,   // positive LB
+                  /*upper*/ 2.0,
+                  /*cl*/ 0.95,
+                  /*n*/  50,
+                  /*B_outer*/ 500,
+                  /*B_inner*/ 0,
+                  /*effective_B*/ 500,
+                  /*skipped_total*/ 0,
+                  /*se_boot*/ 0.10,
+                  /*skew_boot*/ 0.0,
+                  /*center_shift_in_se*/ 0.0,
+                  /*normalized_length*/ 1.0,
+                  /*ordering_penalty*/ 0.0,
+                  /*length_penalty*/   0.0,
+                  /*z0*/ 0.0,
+                  /*accel*/ 0.0);
+
+    Candidate neg(MethodId::PercentileT,
+                  /*mean*/ 1.0,
+                  /*lower*/ -0.50,  // non-positive LB -> should be penalized
+                  /*upper*/ 2.0,
+                  /*cl*/ 0.95,
+                  /*n*/  50,
+                  /*B_outer*/ 500,
+                  /*B_inner*/ 0,
+                  /*effective_B*/ 500,
+                  /*skipped_total*/ 0,
+                  /*se_boot*/ 0.10,
+                  /*skew_boot*/ 0.0,
+                  /*center_shift_in_se*/ 0.0,
+                  /*normalized_length*/ 1.0,
+                  /*ordering_penalty*/ 0.0,
+                  /*length_penalty*/   0.0,
+                  /*z0*/ 0.0,
+                  /*accel*/ 0.0);
+
+    std::vector<Candidate> cands = {pos, neg};
+
+    SECTION("Without enforcePositive, the selector does not care about sign of LB")
+    {
+        // Give the negative-LB candidate a *slightly* better ordering penalty
+        // so that, absent domain constraints, it should win.
+        Candidate posTweaked = pos.withScore(std::numeric_limits<double>::quiet_NaN());
+        Candidate negTweaked = neg.withScore(std::numeric_limits<double>::quiet_NaN());
+
+        // Rebuild with different ordering penalties
+        posTweaked = Candidate(
+            posTweaked.getMethod(),
+            posTweaked.getMean(),
+            posTweaked.getLower(),
+            posTweaked.getUpper(),
+            posTweaked.getCl(),
+            posTweaked.getN(),
+            posTweaked.getBOuter(),
+            posTweaked.getBInner(),
+            posTweaked.getEffectiveB(),
+            posTweaked.getSkippedTotal(),
+            posTweaked.getSeBoot(),
+            posTweaked.getSkewBoot(),
+            posTweaked.getCenterShiftInSe(),
+            posTweaked.getNormalizedLength(),
+            /*ordering_penalty*/ 0.02,   // slightly worse
+            /*length_penalty*/   0.0,
+            posTweaked.getZ0(),
+            posTweaked.getAccel());
+
+        negTweaked = Candidate(
+            negTweaked.getMethod(),
+            negTweaked.getMean(),
+            negTweaked.getLower(),
+            negTweaked.getUpper(),
+            negTweaked.getCl(),
+            negTweaked.getN(),
+            negTweaked.getBOuter(),
+            negTweaked.getBInner(),
+            negTweaked.getEffectiveB(),
+            negTweaked.getSkippedTotal(),
+            negTweaked.getSeBoot(),
+            negTweaked.getSkewBoot(),
+            negTweaked.getCenterShiftInSe(),
+            negTweaked.getNormalizedLength(),
+            /*ordering_penalty*/ 0.0,    // better ordering
+            /*length_penalty*/   0.0,
+            negTweaked.getZ0(),
+            negTweaked.getAccel());
+
+        std::vector<Candidate> baseCands = {posTweaked, negTweaked};
+
+        // No domain enforcement: the "better ordered" (negative LB) candidate should win.
+        ScoringWeights weightsNoDomain(/*wCenter*/ 1.0,
+                                       /*wSkew*/   0.0,
+                                       /*wLength*/ 0.0,
+                                       /*wStab*/   0.0,
+                                       /*enforcePos*/ false);
+
+        auto result = Selector::select(baseCands, weightsNoDomain);
+        REQUIRE(result.getChosenCandidate().getLower() == Catch::Approx(-0.50));
+    }
+
+    SECTION("With enforcePositive=true, negative-LB candidate is strongly penalized")
+    {
+        ScoringWeights weightsDomain(/*wCenter*/ 0.0,
+                                     /*wSkew*/   0.0,
+                                     /*wLength*/ 0.0,
+                                     /*wStab*/   0.0,
+                                     /*enforcePos*/ true);
+
+        auto result = Selector::select(cands, weightsDomain);
+
+        // The selected candidate should have a strictly positive lower bound.
+        const auto& chosen = result.getChosenCandidate();
+        REQUIRE(chosen.getLower() > 0.0);
+
+        // And in this construction, that means we specifically chose `pos`.
+        REQUIRE(chosen.getLower() == Catch::Approx(0.10));
+        REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
+    }
+}

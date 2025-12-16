@@ -287,54 +287,62 @@ namespace palvalidator
      */
     struct BootstrapAnalysisResult
     {
-      // ---- existing fields (keep yours) ----
-      bool   computationSucceeded { false };
+      bool        computationSucceeded{false};
       std::string failureReason;
 
-      // Per-period lower bounds (for reporting)
-      Num lbGeoPeriod { Num(0) };
-      Num lbMeanPeriod { Num(0) };
+      Num         lbGeoPeriod{0};
+      Num         lbMeanPeriod{0};
 
-      // Annualized bounds (for reporting)
-      Num annualizedLowerBoundGeo { Num(0) };
-      Num annualizedLowerBoundMean { Num(0) };
+      Num         annualizedLowerBoundGeo{0};
+      Num         annualizedLowerBoundMean{0};
 
-      // Diagnostics
-      std::size_t blockLength { 0 };
-      unsigned int medianHoldBars { 0 };
+      std::size_t blockLength{0};
+      unsigned int medianHoldBars{0};
 
-      // ---- NEW: gate metadata (single source of truth) ----
-      // Gate decision result: did the lower bound clear the hurdle?
-      bool gatePassedHurdle { false };
-
-      // True if the comparison was done on annualized scale; false if per-period.
-      bool gateIsAnnualized { true };
-
-      // The exact LB value used in the comparison (same scale as gateIsAnnualized indicates).
-      Num gateComparedLB { Num(0) };
-
-      // The exact hurdle used in the comparison (same scale as gateIsAnnualized indicates).
-      Num gateComparedHurdle { Num(0) };
-
-      // Human-readable short label of the policy applied:
-      // "BCa only", "min-of-LBs (25..29)", "AND-gate (<=24)"
-      std::string gatePolicy;
-      
-      std::optional<Num> lbGeoSmallNPeriod;  // min(m/n, BCa) on chosen resampler
-      std::optional<Num> lbGeoPTPeriod;      // percentile-t (geo), per-period
+      // Optional Profit Factor lower bound (per-period). Disengaged for small trade counts.
       std::optional<Num> lbProfitFactor;
 
-      // PF duel consistency metadata
-      double pfDuelRatio {std::numeric_limits<double>::quiet_NaN()};  // >= 1.0 when valid, NaN otherwise
-      bool   pfDuelRatioValid {false};  // true if pfDuelRatio is meaningful
+      // Legacy duel metadata (still present for now).
+      double pfDuelRatio{std::numeric_limits<double>::quiet_NaN()};
+      bool   pfDuelRatioValid{false};
 
-      double annFactorUsed {0.0};
-      bool isValid() const
-      {
-        // Valid means the computation ran successfully, regardless of whether bounds are positive or negative
-        // Negative bounds are valid - they just indicate the strategy loses money
-        return computationSucceeded && failureReason.empty();
-      }
+      // -------------------------------------------------------------------------
+      // NEW: AutoCI diagnostics for GeoMean and Profit Factor
+      // -------------------------------------------------------------------------
+
+      // Geometric Mean AutoCI diagnostics
+      std::string geoAutoCIChosenMethod;  // e.g. "BCa", "MOutOfN", "PercentileT"
+      double      geoAutoCIChosenScore{std::numeric_limits<double>::quiet_NaN()};
+      double      geoAutoCIStabilityPenalty{std::numeric_limits<double>::quiet_NaN()};
+      double      geoAutoCILengthPenalty{std::numeric_limits<double>::quiet_NaN()};
+      bool        geoAutoCIHasBCaCandidate{false};
+      bool        geoAutoCIBCaChosen{false};
+      bool        geoAutoCIBCaRejectedForInstability{false};
+      bool        geoAutoCIBCaRejectedForLength{false};
+      std::size_t geoAutoCINumCandidates{0};
+
+      // Profit Factor AutoCI diagnostics
+      std::string pfAutoCIChosenMethod;   // empty if PF CI was not computed
+      double      pfAutoCIChosenScore{std::numeric_limits<double>::quiet_NaN()};
+      double      pfAutoCIStabilityPenalty{std::numeric_limits<double>::quiet_NaN()};
+      double      pfAutoCILengthPenalty{std::numeric_limits<double>::quiet_NaN()};
+      bool        pfAutoCIHasBCaCandidate{false};
+      bool        pfAutoCIBCaChosen{false};
+      bool        pfAutoCIBCaRejectedForInstability{false};
+      bool        pfAutoCIBCaRejectedForLength{false};
+      std::size_t pfAutoCINumCandidates{0};
+
+      // -------------------------------------------------------------------------
+      // Gate metadata – already present in your codebase
+      // -------------------------------------------------------------------------
+      bool        gatePassedHurdle{false};
+      Num         gateLBGeo{0};
+      std::optional<Num> gateLBProfitFactor;
+      std::string gatePolicy;
+
+      double annFactorUsed{0.0};
+
+      bool isValid() const { return computationSucceeded; }
     };
     
     /**

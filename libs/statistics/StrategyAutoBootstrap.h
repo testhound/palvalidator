@@ -15,41 +15,29 @@
 #include "BiasCorrectedBootstrap.h"
 #include "BacktesterStrategy.h"
 #include "StatUtils.h"
-#include "StationaryMaskResamplers.h"  // for typical Resampler choice
+#include "StationaryMaskResamplers.h"
+#include "ParallelExecutors.h"
 
 namespace palvalidator
 {
   namespace analysis
   {
     /**
-     * @brief Core numerical / CRN configuration for the strategy bootstrap.
-     *
-     *  - numBootStrapReplications: B for all single-level bootstraps (Normal / Basic /
-     *                              Percentile / (adaptive) M-out-of-N) and also the
-     *                              outer B for Percentile-T.
-     *  - blockSize               : Stationary block bootstrap length L used by resamplers.
-     *  - confidenceInterval      : Confidence level (e.g. 0.95).
-     *  - stageTag / fold         : CRN domain tags (stage, fold) passed into the factory.
-     *
-     * Internally:
-     *  - Percentile-T uses outer B = numBootStrapReplications.
-     *  - Inner B is derived from the fixed ratio percentileTRatioOuterToInner = 10,
-     *    so B_inner = max(1, B_outer / 10).
+     * @brief Immutable configuration of bootstrap parameters for a single strategy/statistic.
      */
     class BootstrapConfiguration
     {
     public:
       BootstrapConfiguration(std::size_t numBootStrapReplications,
                              std::size_t blockSize,
-                             double      confidenceInterval,
+                             double confidenceLevel,
                              std::uint64_t stageTag,
                              std::uint64_t fold)
         : m_numBootStrapReplications(numBootStrapReplications),
-	m_blockSize(blockSize),
-	m_confidenceInterval(confidenceInterval),
-	m_stageTag(stageTag),
-	m_fold(fold),
-	m_percentileTRatioOuterToInner(10u)
+          m_blockSize(blockSize),
+          m_confidenceLevel(confidenceLevel),
+          m_stageTag(stageTag),
+          m_fold(fold)
       {}
 
       std::size_t getNumBootStrapReplications() const
@@ -62,9 +50,9 @@ namespace palvalidator
         return m_blockSize;
       }
 
-      double getConfidenceInterval() const
+      double getConfidenceLevel() const
       {
-        return m_confidenceInterval;
+        return m_confidenceLevel;
       }
 
       std::uint64_t getStageTag() const
@@ -84,31 +72,21 @@ namespace palvalidator
       }
 
       /// Inner B for Percentile-T bootstrap (outer / ratio, at least 1).
-      std::size_t getPercentileTNumInnerReplications() const
+      std::size_t getPercentileTNumInnerReplications(double ratio) const
       {
-        std::size_t outer = getPercentileTNumOuterReplications();
-        std::size_t ratio = m_percentileTRatioOuterToInner;
-        if (ratio == 0)
-          {
-            ratio = 1; // safety: avoid division by zero
-          }
-        std::size_t inner = outer / ratio;
-        return inner == 0 ? std::size_t(1) : inner;
-      }
-
-      /// Ratio "outer / inner" for Percentile-T.
-      std::size_t getPercentileTRatioOuterToInner() const
-      {
-        return m_percentileTRatioOuterToInner;
+        const double outer = static_cast<double>(m_numBootStrapReplications);
+        double inner       = outer / ratio;
+        if (inner < 1.0)
+          inner = 1.0;
+        return static_cast<std::size_t>(inner);
       }
 
     private:
       std::size_t   m_numBootStrapReplications;
       std::size_t   m_blockSize;
-      double        m_confidenceInterval;
+      double        m_confidenceLevel;
       std::uint64_t m_stageTag;
       std::uint64_t m_fold;
-      std::size_t   m_percentileTRatioOuterToInner;
     };
 
     /**
@@ -126,11 +104,11 @@ namespace palvalidator
                                                 bool enablePercentileT = true,
                                                 bool enableBCa        = true)
         : m_enableNormal(enableNormal),
-	  m_enableBasic(enableBasic),
-	  m_enablePercentile(enablePercentile),
-	  m_enableMOutOfN(enableMOutOfN),
-	  m_enablePercentileT(enablePercentileT),
-	  m_enableBCa(enableBCa)
+          m_enableBasic(enableBasic),
+          m_enablePercentile(enablePercentile),
+          m_enableMOutOfN(enableMOutOfN),
+          m_enablePercentileT(enablePercentileT),
+          m_enableBCa(enableBCa)
       {}
 
       bool enableNormal() const
@@ -173,12 +151,11 @@ namespace palvalidator
     };
 
     /**
-     * @brief High-level helper to compute an automatically-selected bootstrap CI
-     *        for a trading strategy, using all available bootstrap engines.
+     * @brief Orchestrates running multiple bootstrap engines for a given strategy/statistic.
      *
-     * The class:
-     *   - Uses TradingBootstrapFactory to construct engines with CRN-safe RNGs.
-     *   - Runs Normal, Basic, Percentile, adaptive M-out-of-N, Percentile-t, and BCa
+     * Responsibilities:
+     *   - Uses a TradingBootstrapFactory to build concrete bootstrap engines:
+     *     Normal, Basic, Percentile, M-out-of-N, Percentile-T, BCa
      *     (subject to BootstrapAlgorithmsConfiguration flags).
      *   - Converts each engine's result into an AutoBootstrapSelector::Candidate.
      *   - Calls AutoBootstrapSelector<Decimal>::select(...) and returns AutoCIResult<Decimal>.
@@ -186,12 +163,9 @@ namespace palvalidator
      * Template parameters:
      *   Decimal   : numeric type (e.g., mkc_timeseries::Decimal)
      *   Sampler   : statistic functor (e.g., mkc_timeseries::GeoMeanStat<Decimal>)
-     *   Resampler : resampling policy for the percentile-like and Percentile-t engines
-     *               (e.g., palvalidator::resampling::StationaryMaskValueResamplerAdapter<Decimal>)
+     *   Resampler : resampling adapter (e.g., StationaryMaskValueResamplerAdapter<Decimal>)
      */
-    template <class Decimal,
-              class Sampler,
-              class Resampler>
+    template <class Decimal, class Sampler, class Resampler>
     class StrategyAutoBootstrap
     {
     public:
@@ -201,6 +175,7 @@ namespace palvalidator
       using MethodId   = typename Result::MethodId;
       using Candidate  = typename Result::Candidate;
       using Factory    = ::TradingBootstrapFactory<>;
+      using Executor   = concurrency::ThreadPoolExecutor<>;
 
       // BCa resampler is always a stationary block bootstrap in the current design.
       using BCaResampler = mkc_timeseries::StationaryBlockResampler<Decimal>;
@@ -210,9 +185,9 @@ namespace palvalidator
                             const BootstrapConfiguration& bootstrapConfiguration,
                             const BootstrapAlgorithmsConfiguration& algorithmsConfiguration)
         : m_factory(factory),
-	  m_strategy(strategy),
-	  m_bootstrapConfiguration(bootstrapConfiguration),
-	  m_algorithmsConfiguration(algorithmsConfiguration)
+          m_strategy(strategy),
+          m_bootstrapConfiguration(bootstrapConfiguration),
+          m_algorithmsConfiguration(algorithmsConfiguration)
       {}
 
       /**
@@ -227,223 +202,329 @@ namespace palvalidator
        */
       Result run(const std::vector<Decimal>& returns, std::ostream* os = nullptr)
       {
-        std::vector<Candidate> candidates;
-        candidates.reserve(6);
+	std::vector<Candidate> candidates;
+	candidates.reserve(6);
 
-        if (returns.size() < 2)
+	if (returns.size() < 2)
+	  {
+	    throw std::invalid_argument(
+					"StrategyAutoBootstrap::run: requires at least 2 returns.");
+	  }
+
+	const std::size_t blockSize         = m_bootstrapConfiguration.getBlockSize();
+	const double      cl                = m_bootstrapConfiguration.getConfidenceLevel();
+	const std::size_t B_single          = m_bootstrapConfiguration.getNumBootStrapReplications();
+	const std::uint64_t stageTag        = m_bootstrapConfiguration.getStageTag();
+	const std::uint64_t fold            = m_bootstrapConfiguration.getFold();
+	const std::size_t B_outer_percentileT =
+	  m_bootstrapConfiguration.getPercentileTNumOuterReplications();
+	const std::size_t B_inner_percentileT =
+	  m_bootstrapConfiguration.getPercentileTNumInnerReplications(10.0);
+
+	// Shared resampler for percentile-like / Percentile-t engines.
+	Resampler resampler(blockSize);
+
+	// 1) Normal bootstrap
+	if (m_algorithmsConfiguration.enableNormal())
+	  {
+	    try
+	      {
+		auto [engine, crn] =
+		  m_factory.template makeNormal<Decimal, Sampler, Resampler, Executor>(
+										       B_single,
+										       cl,
+										       resampler,
+										       m_strategy,
+										       stageTag,
+										       static_cast<uint64_t>(blockSize),
+										       fold);
+
+		auto res = engine.run(returns, Sampler(), crn);
+		candidates.push_back(
+				     Selector::template summarizePercentileLike(
+										MethodId::Normal, engine, res));
+	      }
+	    catch (const std::exception& e)
+	      {
+		if (os)
+		  {
+		    (*os) << "   [AutoCI] NormalBootstrap failed: "
+			  << e.what() << "\n";
+		  }
+	      }
+	  }
+
+	// 2) Basic bootstrap
+	if (m_algorithmsConfiguration.enableBasic())
+	  {
+	    try
+	      {
+		auto [engine, crn] =
+		  m_factory.template makeBasic<Decimal, Sampler, Resampler, Executor>(
+										      B_single,
+										      cl,
+										      resampler,
+										      m_strategy,
+										      stageTag,
+										      static_cast<uint64_t>(blockSize),
+										      fold);
+
+		auto res = engine.run(returns, Sampler(), crn);
+		candidates.push_back(
+				     Selector::template summarizePercentileLike(
+										MethodId::Basic, engine, res));
+	      }
+	    catch (const std::exception& e)
+	      {
+		if (os)
+		  {
+		    (*os) << "   [AutoCI] BasicBootstrap failed: "
+			  << e.what() << "\n";
+		  }
+	      }
+	  }
+
+	// 3) Percentile bootstrap
+	if (m_algorithmsConfiguration.enablePercentile())
+	  {
+	    try
+	      {
+		auto [engine, crn] =
+		  m_factory.template makePercentile<Decimal, Sampler, Resampler, Executor>(
+											   B_single,
+											   cl,
+											   resampler,
+											   m_strategy,
+											   stageTag,
+											   static_cast<uint64_t>(blockSize),
+											   fold);
+
+		auto res = engine.run(returns, Sampler(), crn);
+		candidates.push_back(
+				     Selector::template summarizePercentileLike(
+										MethodId::Percentile, engine, res));
+	      }
+	    catch (const std::exception& e)
+	      {
+		if (os)
+		  {
+		    (*os) << "   [AutoCI] PercentileBootstrap failed: "
+			  << e.what() << "\n";
+		  }
+	      }
+	  }
+
+	// 4) M-out-of-N Percentile bootstrap
+	if (m_algorithmsConfiguration.enableMOutOfN())
+	  {
+	    try
+	      {
+		auto [engine, crn] =
+		  m_factory.template makeAdaptiveMOutOfN<Decimal, Sampler, Resampler, Executor>(
+												B_single,
+												cl,
+												resampler,
+												m_strategy,
+												stageTag,
+												static_cast<uint64_t>(blockSize),
+												fold);
+
+		auto res = engine.run(returns, Sampler(), crn);
+		candidates.push_back(
+				     Selector::template summarizePercentileLike(
+										MethodId::MOutOfN, engine, res));
+	      }
+	    catch (const std::exception& e)
+	      {
+		if (os)
+		  {
+		    (*os) << "   [AutoCI] MOutOfNPercentileBootstrap failed: "
+			  << e.what() << "\n";
+		  }
+	      }
+	  }
+
+	// 5) Percentile-T bootstrap (double bootstrap)
+	if (m_algorithmsConfiguration.enablePercentileT())
+	  {
+	    try
+	      {
+		auto [engine, crn] =
+		  m_factory.template makePercentileT<Decimal, Sampler, Resampler, Executor>(
+											    B_outer_percentileT,
+											    B_inner_percentileT,
+											    cl,
+											    resampler,
+											    m_strategy,
+											    stageTag,
+											    static_cast<uint64_t>(blockSize),
+											    fold);
+
+		auto res = engine.run(returns, Sampler(), crn);
+		candidates.push_back(
+				     Selector::template summarizePercentileT(engine, res));
+	      }
+	    catch (const std::exception& e)
+	      {
+		if (os)
+		  {
+		    (*os) << "   [AutoCI] PercentileTBootstrap failed: "
+			  << e.what() << "\n";
+		  }
+	      }
+	  }
+
+	// 6) BCa (Bias-Corrected and Accelerated)
+	if (m_algorithmsConfiguration.enableBCa())
+	  {
+	    try
+	      {
+		BCaResampler bcaResampler(blockSize);
+
+		// Use the same statistic as Sampler, but expressed as a std::function.
+		std::function<Decimal(const std::vector<Decimal>&)> statFn =
+		  [](const std::vector<Decimal>& r) { return Sampler()(r); };
+
+		auto bcaEngine =
+		  m_factory.template makeBCa<Decimal, BCaResampler>(
+								    returns,
+								    static_cast<unsigned>(B_single),
+								    cl,
+								    statFn,
+								    bcaResampler,
+								    m_strategy,
+								    stageTag,
+								    static_cast<uint64_t>(blockSize),
+								    fold);
+
+		// BCaBootstrap computes its statistics during construction; no run() needed.
+		candidates.push_back(Selector::template summarizeBCa(bcaEngine));
+	      }
+	    catch (const std::exception& e)
+	      {
+		if (os)
+		  {
+		    (*os) << "   [AutoCI] BCaBootstrap failed: "
+			  << e.what() << "\n";
+		  }
+	      }
+	  }
+
+	if (candidates.empty())
+	  {
+	    throw std::runtime_error(
+				     "StrategyAutoBootstrap::run: no bootstrap candidate succeeded.");
+	  }
+
+	// -------------------------------------------------------------------
+        // Choose scoring weights based on whether the statistic is a "ratio"
+        // (e.g., LogProfitFactorStat) or a mean-like statistic (e.g., GeoMeanStat).
+        //
+        // For mean-like stats:
+        //   - center and skew penalties matter more, length a bit less.
+        //
+        // For ratio stats:
+        //   - interval LENGTH and BCa stability are more important;
+        //     center shift is down-weighted because ratio centers are noisy.
+        // -------------------------------------------------------------------
+        typename Selector::ScoringWeights weights;
+
+        const bool isRatioStatistic = Sampler::isRatioStatistic();
+
+        if (isRatioStatistic)
           {
-            throw std::runtime_error(
-              "StrategyAutoBootstrap::run: need at least 2 returns to bootstrap.");
+            // Ratio-based statistic (e.g., profit factor / log PF)
+            //   w_center  ~ 0.25
+            //   w_skew    ~ 0.5
+            //   w_length  ~ 0.75
+            //   w_stab    ~ 1.5
+            weights = typename Selector::ScoringWeights(/*wCenterShift*/ 0.25,
+							/*wSkew*/        0.5,
+							/*wLength*/      0.75,
+							/*wStability*/   1.5,
+							/*enforcePos*/   true);
+          }
+        else
+          {
+            // Mean-like statistic (e.g., geometric mean of returns)
+            //   w_center  ~ 1.0
+            //   w_skew    ~ 0.5
+            //   w_length  ~ 0.25
+            //   w_stab    ~ 1.0
+            weights = typename Selector::ScoringWeights(
+                           /*wCenterShift*/ 1.0,
+                           /*wSkew*/        0.5,
+                           /*wLength*/      0.25,
+                           /*wStability*/   1.0);
           }
 
-        const std::size_t B_single   = m_bootstrapConfiguration.getNumBootStrapReplications();
-        const double      cl         = m_bootstrapConfiguration.getConfidenceInterval();
-        const std::size_t blockSize  = m_bootstrapConfiguration.getBlockSize();
-        const std::uint64_t stageTag = m_bootstrapConfiguration.getStageTag();
-        const std::uint64_t fold     = m_bootstrapConfiguration.getFold();
+        // Let AutoBootstrapSelector perform the selection using the chosen weights.
+        Result result = Selector::select(candidates, weights);
 
-        const std::size_t B_outer = m_bootstrapConfiguration.getPercentileTNumOuterReplications();
-        const std::size_t B_inner = m_bootstrapConfiguration.getPercentileTNumInnerReplications();
+	if (os)
+	  {
+	    const auto& diagnostics = result.getDiagnostics();
+	    const auto& chosen      = result.getChosenCandidate();
 
-        // Shared resampler for percentile-like / Percentile-t engines.
-        Resampler resampler(blockSize);
+	    // 1) Summary line for the selected method
+	    (*os) << "   [AutoCI] Selected method="
+		  << Result::methodIdToString(diagnostics.getChosenMethod())
+		  << "  mean="  << chosen.getMean()
+		  << "  LB="    << chosen.getLower()
+		  << "  UB="    << chosen.getUpper()
+		  << "  n="     << chosen.getN()
+		  << "  B_eff=" << chosen.getEffectiveB()
+		  << "  z0="    << chosen.getZ0()
+		  << "  a="     << chosen.getAccel()
+		  << "\n";
 
-        // 1) Normal bootstrap
-        if (m_algorithmsConfiguration.enableNormal())
-          {
-            try
-              {
-                auto [engine, crn] =
-                  m_factory.template makeNormal<Decimal, Sampler, Resampler>(
-                    B_single,
-                    cl,
-                    resampler,
-                    m_strategy,
-                    stageTag,
-                    static_cast<uint64_t>(blockSize),
-                    fold);
+	    // 2) High-level diagnostics for the chosen method / BCa status
+	    (*os) << "   [AutoCI] Diagnostics: "
+		  << "score="                    << diagnostics.getChosenScore()
+		  << "  stability_penalty="      << diagnostics.getChosenStabilityPenalty()
+		  << "  length_penalty="         << diagnostics.getChosenLengthPenalty()
+		  << "  hasBCa="                 << (diagnostics.hasBCaCandidate() ? "true" : "false")
+		  << "  bcaChosen="              << (diagnostics.isBCaChosen() ? "true" : "false")
+		  << "  bcaRejectedInstability=" << (diagnostics.wasBCaRejectedForInstability() ? "true" : "false")
+		  << "  bcaRejectedLength="      << (diagnostics.wasBCaRejectedForLength() ? "true" : "false")
+		  << "  numCandidates="          << diagnostics.getNumCandidates()
+		  << "\n";
 
-                auto res = engine.run(returns, Sampler(), crn);
-                candidates.push_back(
-                  Selector::template summarizePercentileLike(
-                    MethodId::Normal, engine, res));
-              }
-            catch (const std::exception& e)
-              {
-                if (os)
-                  {
-                    (*os) << "   [AutoCI] NormalBootstrap failed: "
-                          << e.what() << "\n";
-                  }
-              }
-          }
+	    // 3) Full candidate dump for detailed debugging / analysis
+	    const auto& allCandidates = result.getCandidates();
 
-        // 2) Basic bootstrap
-        if (m_algorithmsConfiguration.enableBasic())
-          {
-            try
-              {
-                auto [engine, crn] =
-                  m_factory.template makeBasic<Decimal, Sampler, Resampler>(
-                    B_single,
-                    cl,
-                    resampler,
-                    m_strategy,
-                    stageTag,
-                    static_cast<uint64_t>(blockSize),
-                    fold);
+	    (*os) << "   [AutoCI] Candidate diagnostics (one line per method):\n";
+	    for (const auto& c : allCandidates)
+	      {
+		const char* mName = Result::methodIdToString(c.getMethod());
 
-                auto res = engine.run(returns, Sampler(), crn);
-                candidates.push_back(
-                  Selector::template summarizePercentileLike(
-                    MethodId::Basic, engine, res));
-              }
-            catch (const std::exception& e)
-              {
-                if (os)
-                  {
-                    (*os) << "   [AutoCI] BasicBootstrap failed: "
-                          << e.what() << "\n";
-                  }
-              }
-          }
+		(*os) << "      [AutoCI-Candidate] "
+		      << "method="               << mName
+		      << "  mean="               << c.getMean()
+		      << "  LB="                 << c.getLower()
+		      << "  UB="                 << c.getUpper()
+		      << "  n="                  << c.getN()
+		      << "  B_outer="            << c.getBOuter()
+		      << "  B_inner="            << c.getBInner()
+		      << "  B_eff="              << c.getEffectiveB()
+		      << "  skipped="            << c.getSkippedTotal()
+		      << "  se_boot="            << c.getSeBoot()
+		      << "  skew_boot="          << c.getSkewBoot()
+		      << "  center_shift_in_se=" << c.getCenterShiftInSe()
+		      << "  normalized_length="  << c.getNormalizedLength()
+		      << "  ordering_penalty="   << c.getOrderingPenalty()
+		      << "  length_penalty="     << c.getLengthPenalty()
+		      << "  stability_penalty="  << c.getStabilityPenalty()
+		      << "  score="              << c.getScore()
+		      << "  z0="                 << c.getZ0()
+		      << "  a="                  << c.getAccel()
+		      << "\n";
+	      }
+	  }
 
-        // 3) Percentile bootstrap
-        if (m_algorithmsConfiguration.enablePercentile())
-          {
-            try
-              {
-                auto [engine, crn] =
-                  m_factory.template makePercentile<Decimal, Sampler, Resampler>(
-                    B_single,
-                    cl,
-                    resampler,
-                    m_strategy,
-                    stageTag,
-                    static_cast<uint64_t>(blockSize),
-                    fold);
-
-                auto res = engine.run(returns, Sampler(), crn);
-                candidates.push_back(
-                  Selector::template summarizePercentileLike(
-                    MethodId::Percentile, engine, res));
-              }
-            catch (const std::exception& e)
-              {
-                if (os)
-                  {
-                    (*os) << "   [AutoCI] PercentileBootstrap failed: "
-                          << e.what() << "\n";
-                  }
-              }
-          }
-
-        // 4) Adaptive M-out-of-n Percentile bootstrap
-        if (m_algorithmsConfiguration.enableMOutOfN())
-          {
-            try
-              {
-                auto [engine, crn] =
-                  m_factory.template makeAdaptiveMOutOfN<Decimal, Sampler, Resampler>(
-                    B_single,
-                    cl,
-                    resampler,
-                    m_strategy,
-                    stageTag,
-                    static_cast<uint64_t>(blockSize),
-                    fold);
-
-                auto res = engine.run(returns, Sampler(), crn);
-                candidates.push_back(
-                  Selector::template summarizePercentileLike(
-                    MethodId::MOutOfN, engine, res));
-              }
-            catch (const std::exception& e)
-              {
-                if (os)
-                  {
-                    (*os) << "   [AutoCI] Adaptive MOutOfNPercentileBootstrap failed: "
-                          << e.what() << "\n";
-                  }
-              }
-          }
-
-        // 5) Percentile-t (double bootstrap)
-        if (m_algorithmsConfiguration.enablePercentileT())
-          {
-            try
-              {
-                auto [engine, crn] =
-                  m_factory.template makePercentileT<Decimal, Sampler, Resampler>(
-                    B_outer,
-                    B_inner,
-                    cl,
-                    resampler,
-                    m_strategy,
-                    stageTag,
-                    static_cast<uint64_t>(blockSize),
-                    fold /* use default m_ratio_outer/inner = 1.0 */);
-
-                auto res = engine.run(returns, Sampler(), crn);
-                candidates.push_back(
-                  Selector::template summarizePercentileT(engine, res));
-              }
-            catch (const std::exception& e)
-              {
-                if (os)
-                  {
-                    (*os) << "   [AutoCI] PercentileTBootstrap failed: "
-                          << e.what() << "\n";
-                  }
-              }
-          }
-
-        // 6) BCa (Bias-Corrected and Accelerated)
-        if (m_algorithmsConfiguration.enableBCa())
-          {
-            try
-              {
-                BCaResampler bcaResampler(blockSize);
-
-                // Use the same statistic as Sampler, but expressed as a std::function.
-                std::function<Decimal(const std::vector<Decimal>&)> statFn =
-                  [](const std::vector<Decimal>& r) { return Sampler()(r); };
-
-                auto bcaEngine =
-                  m_factory.template makeBCa<Decimal, BCaResampler>(
-                    returns,
-                    static_cast<unsigned>(B_single),
-                    cl,
-                    statFn,
-                    bcaResampler,
-                    m_strategy,
-                    stageTag,
-                    static_cast<uint64_t>(blockSize),
-                    fold);
-
-                // BCaBootStrap computes its statistics during construction; no run() needed.
-                candidates.push_back(Selector::template summarizeBCa(bcaEngine));
-              }
-            catch (const std::exception& e)
-              {
-                if (os)
-                  {
-                    (*os) << "   [AutoCI] BCaBootstrap failed: "
-                          << e.what() << "\n";
-                  }
-              }
-          }
-
-        if (candidates.empty())
-          {
-            throw std::runtime_error(
-              "StrategyAutoBootstrap::run: no bootstrap candidate succeeded.");
-          }
-
-        // Let AutoBootstrapSelector perform the hierarchy-of-trust selection.
-        return Selector::select(candidates);
+	return result;
       }
-
+      
     private:
       Factory& m_factory;
       const mkc_timeseries::BacktesterStrategy<Decimal>& m_strategy;

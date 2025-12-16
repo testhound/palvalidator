@@ -28,7 +28,7 @@ namespace palvalidator::filtering::stages
      * Compute block length based on median holding period.
      * Made public for pipeline coordinator access.
      */
-    size_t computeBlockLength(const StrategyAnalysisContext& ctx) const;
+    size_t computeBlockLength(const StrategyAnalysisContext& ctx, std::ostream& os) const;
 
     /**
      * Compute annualization factor based on timeframe.
@@ -293,6 +293,18 @@ namespace palvalidator::filtering::stages
                                     double confidenceLevel,
                                     size_t blockLength,
                                     std::ostream& os) const;
+
+    Num runAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
+                          double confidenceLevel,
+                          std::size_t blockLength,
+                          BootstrapAnalysisResult& result,
+                          std::ostream& os) const;
+
+    std::optional<Num> runAutoProfitFactorBootstrap(const StrategyAnalysisContext& ctx,
+                                                  double confidenceLevel,
+                                                  std::size_t blockLength,
+                                                  BootstrapAnalysisResult& result,
+                                                  std::ostream& os) const;
 
     /**
      * Combine geometric lower bounds from multiple bootstrap methods
