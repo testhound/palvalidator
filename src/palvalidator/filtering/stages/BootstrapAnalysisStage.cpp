@@ -338,39 +338,123 @@ namespace palvalidator::filtering::stages
     return lbPer;
   }
 
-  // ---------------------------------------------------------------------------
-  // Auto-bootstrap helper for Profit Factor (log-PF statistic)
-  // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-  // Auto-bootstrap helper for Profit Factor (log-PF statistic)
-  // ---------------------------------------------------------------------------
-
+  /**
+   * @brief Run automatic bootstrap confidence interval selection for profit factor.
+   *
+   * @details
+   * This helper drives a StrategyAutoBootstrap instance configured for a
+   * robust log profit-factor statistic. It uses stationary-block bootstrap
+   * resampling of the strategy’s high-resolution returns and runs a suite
+   * of interval construction methods (Normal, Basic, Percentile, m-out-of-n,
+   * Percentile-t, BCa). The method then selects and records the resulting
+   * confidence intervals and point estimates in the provided
+   * BootstrapAnalysisResult.
+   *
+   * High-level workflow:
+   *   1. Validate the analysis context:
+   *        • Require a non-null clonedStrategy.
+   *        • Require at least two highResReturns; otherwise, log a message
+   *          and return std::nullopt.
+   *
+   *   2. Derive a stop-loss prior for the profit-factor statistic:
+   *        • Attempt a dynamic_pointer_cast to PalStrategy<Decimal>.
+   *        • If successful and a pattern exists, read the pattern stop loss
+   *          as a Decimal (for example 2.55 for 2.55%).
+   *        • Convert that to a decimal fraction using PercentNumber, then to
+   *          a double stopLossPct and pass it into the profit-factor functor.
+   *        • If casting fails or no pattern is available, fall back to a
+   *          zero stopLossPct (no explicit stop-loss prior).
+   *
+   *   3. Configure the bootstrap engine:
+   *        • Build a BootstrapConfiguration with the requested number of
+   *          resamples (mNumResamples), the supplied blockLength, the
+   *          confidenceLevel, and a stageTag/fold identifier.
+   *        • Enable the desired interval algorithms via
+   *          BootstrapAlgorithmsConfiguration (Normal, Basic, Percentile,
+   *          m-out-of-n, Percentile-t, BCa).
+   *        • Construct the profit-factor statistic functor (for example
+   *          StatUtils<Decimal>::LogProfitFactorStat configured with
+   *          compression, ruin_eps, denom_floor, prior_strength, and the
+   *          stopLossPct derived above).
+   *        • Instantiate StrategyAutoBootstrap with the configured statistic
+   *          and a StationaryMaskValueResamplerAdapter as the resampling
+   *          mechanism.
+   *
+   *   4. Execute the auto-bootstrap:
+   *        • Run the auto-bootstrap procedure to obtain an AutoCIResult
+   *          containing candidate intervals for the chosen statistic.
+   *        • Select the preferred interval(s) and populate the output
+   *          BootstrapAnalysisResult structure, including point estimate and
+   *          confidence bounds.
+   *
+   * The method returns the chosen profit-factor point estimate as an
+   * std::optional<Num>. When bootstrapping is skipped due to insufficient
+   * data, it returns std::nullopt and logs a short message to the
+   * provided output stream.
+   *
+   * @param ctx
+   *     StrategyAnalysisContext holding the cloned strategy instance and its
+   *     precomputed high-resolution return series (ctx.highResReturns).
+   *
+   * @param confidenceLevel
+   *     Target confidence level for the intervals (for example 0.90, 0.95).
+   *
+   * @param blockLength
+   *     Stationary-block bootstrap mean block length to use when resampling
+   *     the highResReturns series.
+   *
+   * @param out
+   *     BootstrapAnalysisResult that will be populated with the chosen point
+   *     estimate, confidence intervals, and method diagnostics for the
+   *     profit-factor statistic.
+   *
+   * @param os
+   *     Output stream used for logging progress and any reasons why the
+   *     bootstrap was skipped (for example, too few data points).
+   *
+   * @return
+   *     An optional profit-factor point estimate (Num). On success, this is
+   *     typically the statistic evaluated on the original series. If the
+   *     bootstrap is skipped (for example, ctx.highResReturns.size() < 2),
+   *     returns std::nullopt.
+   */
   std::optional<Num>
   BootstrapAnalysisStage::runAutoProfitFactorBootstrap(
-    const StrategyAnalysisContext& ctx,
-    double                        confidenceLevel,
-    std::size_t                   blockLength,
-    BootstrapAnalysisResult&      out,
-    std::ostream&                 os) const
+						       const StrategyAnalysisContext& ctx,
+						       double                        confidenceLevel,
+						       std::size_t                   blockLength,
+						       BootstrapAnalysisResult&      out,
+						       std::ostream&                 os) const
   {
-    using Decimal   = Num;
-    using PFStat    = typename mkc_timeseries::StatUtils<Decimal>::LogProfitFactorStat;
-    using Resampler = StationaryMaskValueResamplerAdapter<Decimal>;
-    using AutoCI    = AutoCIResult<Decimal>;
-    using Candidate = typename AutoCI::Candidate;
-    using MethodId  = typename AutoCI::MethodId;
+    using Decimal    = Num;
+    using PFStat     = typename mkc_timeseries::StatUtils<Decimal>::LogProfitFactorFromLogBarsStat;
+    using Resampler  = StationaryMaskValueResamplerAdapter<Decimal>;
+    using AutoCI     = AutoCIResult<Decimal>;
+    using Candidate  = typename AutoCI::Candidate;
+    using MethodId   = typename AutoCI::MethodId;
+    using Stat       = mkc_timeseries::StatUtils<Decimal>;
 
     if (!ctx.clonedStrategy)
       {
-        throw std::runtime_error(
-          "runAutoProfitFactorBootstrap: clonedStrategy is null.");
+	throw std::runtime_error(
+				 "runAutoProfitFactorBootstrap: clonedStrategy is null.");
       }
 
     if (ctx.highResReturns.size() < 2)
       {
-        os << "   [Bootstrap] AutoCI (PF): skipped (n < 2).\n";
-        return std::nullopt;
+	os << "   [Bootstrap] AutoCI (PF): skipped (n < 2).\n";
+	return std::nullopt;
       }
+
+    // -----------------------------------------------------------------------
+    // Precompute log-growth series once for the entire bootstrap run
+    // logBars[i] = log( max(1 + r_i, ruin_eps) )
+    // -----------------------------------------------------------------------
+    const double ruin_eps = Stat::DefaultRuinEps;
+    const auto&  rawReturns = ctx.highResReturns;
+
+    std::vector<Decimal> logBars =
+      Stat::makeLogGrowthSeries(rawReturns, ruin_eps);
 
     // -----------------------------------------------------------------------
     // Retrieve Strategy Stop Loss for Robust "Zero-Loss" Handling
@@ -379,22 +463,24 @@ namespace palvalidator::filtering::stages
 
     // Try to cast to PalStrategy to access the single pattern.
     // If it's a PalMetaStrategy, this cast will fail (nullptr), and we default to 0.0.
-    auto palStrategy = std::dynamic_pointer_cast<mkc_timeseries::PalStrategy<Decimal>>(ctx.clonedStrategy);
+    auto palStrategy =
+      std::dynamic_pointer_cast<mkc_timeseries::PalStrategy<Decimal>>(ctx.clonedStrategy);
     if (palStrategy)
       {
-        auto pattern = palStrategy->getPalPattern();
-        if (pattern)
-          {
-            // 1. Get Stop Loss from pattern (e.g., 2.55 for 2.55%)
-            Decimal stopDec = pattern->getStopLossAsDecimal();
+	auto pattern = palStrategy->getPalPattern();
+	if (pattern)
+	  {
+	    // 1. Get Stop Loss from pattern (e.g., 2.55 for 2.55%)
+	    Decimal stopDec = pattern->getStopLossAsDecimal();
 
-            // 2. Use PercentNumber factory to convert to decimal fraction (0.0255).
-            //    This handles the division by 100 internally.
-            auto stopPn = mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
-            
-            // 3. Extract as double for StatUtils
-            stopLossPct = num::to_double(stopPn.getAsPercent());
-          }
+	    // 2. Use PercentNumber factory to convert to decimal fraction (0.0255).
+	    //    This handles the division by 100 internally.
+	    auto stopPn =
+	      mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
+
+	    // 3. Extract as double for StatUtils
+	    stopLossPct = num::to_double(stopPn.getAsPercent());
+	  }
       }
 
     // -----------------------------------------------------------------------
@@ -404,37 +490,41 @@ namespace palvalidator::filtering::stages
     const std::uint64_t fold     = 0;
 
     BootstrapConfiguration cfg(
-      mNumResamples,
-      blockLength,
-      confidenceLevel,
-      stageTag,
-      fold);
+			       mNumResamples,
+			       blockLength,
+			       confidenceLevel,
+			       stageTag,
+			       fold);
 
     BootstrapAlgorithmsConfiguration algos(
-      /*Normal*/      true,
-      /*Basic*/       true,
-      /*Percentile*/  true,
-      /*MOutOfN*/     true,
-      /*PercentileT*/ true,
-      /*BCa*/         true);
+					   /*Normal*/      true,
+					   /*Basic*/       true,
+					   /*Percentile*/  true,
+					   /*MOutOfN*/     true,
+					   /*PercentileT*/ true,
+					   /*BCa*/         true);
 
-    PFStat stat(mkc_timeseries::StatUtils<Decimal>::DefaultCompress,
-                mkc_timeseries::StatUtils<Decimal>::DefaultRuinEps,
-                mkc_timeseries::StatUtils<Decimal>::DefaultDenomFloor,
-                mkc_timeseries::StatUtils<Decimal>::DefaultPriorStrength,
-                stopLossPct);
+    PFStat stat(
+		Stat::DefaultCompress,
+		Stat::DefaultRuinEps,
+		Stat::DefaultDenomFloor,
+		Stat::DefaultPriorStrength,
+		stopLossPct);
 
     // Pass the configured 'stat' object to StrategyAutoBootstrap
-    StrategyAutoBootstrap<Decimal, PFStat, Resampler> autoPF(mBootstrapFactory,
+    StrategyAutoBootstrap<Decimal, PFStat, Resampler> autoPF(
+							     mBootstrapFactory,
 							     *ctx.clonedStrategy,
 							     cfg,
 							     algos,
 							     stat);
 
     os << "   [Bootstrap] AutoCI (PF): running composite bootstrap engines"
+       << " on precomputed log-bars"
        << " (StopLoss assumption=" << (stopLossPct * 100.0) << "%)...\n";
 
-    AutoCI result = autoPF.run(ctx.highResReturns, &os);
+    // NOTE: We now bootstrap the log-growth series (logBars) instead of raw returns.
+    AutoCI result = autoPF.run(logBars, &os);
 
     const Candidate& chosen  = result.getChosenCandidate();
     const Decimal    lbLogPF = chosen.getLower();
@@ -454,11 +544,11 @@ namespace palvalidator::filtering::stages
     bool hasBCa = false;
     for (const auto& c : candidates)
       {
-        if (c.getMethod() == MethodId::BCa)
-          {
-            hasBCa = true;
-            break;
-          }
+	if (c.getMethod() == MethodId::BCa)
+	  {
+	    hasBCa = true;
+	    break;
+	  }
       }
     out.pfAutoCIHasBCaCandidate = hasBCa;
     out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
@@ -480,7 +570,7 @@ namespace palvalidator::filtering::stages
 
     return lbPF;
   }
-
+  
   // ---------------------------------------------------------------------------
   // execute() – top-level stage orchestration
   // ---------------------------------------------------------------------------
