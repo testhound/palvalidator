@@ -2095,3 +2095,109 @@ TEST_CASE("LogProfitFactorFromLogBarsStat works as a statistic in getBootStrappe
             Catch::Approx(num::to_double(mean_est))
                 .margin(num::to_double(std_est * DecimalType(3.0))));
 }
+
+// ---------------------- New Tests: GeoMeanFromLogBarsStat ----------------------
+
+TEST_CASE("GeoMeanFromLogBarsStat basic correctness on log-bars",
+          "[StatUtils][GeoMeanFromLogs]") {
+    constexpr double kGeoTol = 5e-8;
+
+    // Helper: geometric mean from precomputed log(1+r) values (double version)
+    auto expected_from_logs = [](const std::vector<double>& logs) -> double {
+        if (logs.empty()) return 0.0;
+        long double s = 0.0L;
+        for (double x : logs) {
+            s += x;
+        }
+        long double mean_log = s / static_cast<long double>(logs.size());
+        return std::expm1(mean_log); // exp(mean_log) - 1
+    };
+
+    SECTION("Small sample, no winsorization (n < 20)") {
+        // Raw returns, but we manually build log(1+r) here at double precision.
+        std::vector<double> rs   = { 0.10, 0.20, -0.05 };
+        std::vector<double> dlog;
+        dlog.reserve(rs.size());
+        for (double r : rs) {
+            dlog.push_back(std::log1p(r)); // log(1+r)
+        }
+
+        // Build Decimal log-bars for the statistic
+        std::vector<DecimalType> logBars;
+        logBars.reserve(dlog.size());
+        for (double x : dlog) {
+            logBars.emplace_back(x);
+        }
+
+        GeoMeanFromLogBarsStat<DecimalType> stat; // default winsor config
+        DecimalType got = stat(logBars);
+
+        double expected = expected_from_logs(dlog);
+        REQUIRE(num::to_double(got) == Catch::Approx(expected).margin(kGeoTol));
+    }
+
+    SECTION("Empty log-bar vector returns 0") {
+        std::vector<DecimalType> logBars;
+        GeoMeanFromLogBarsStat<DecimalType> stat;
+        DecimalType got = stat(logBars);
+
+        REQUIRE(got == DecimalConstants<DecimalType>::DecimalZero);
+    }
+}
+
+TEST_CASE("GeoMeanFromLogBarsStat matches GeoMeanStat via makeLogGrowthSeries "
+          "when no winsorization is active",
+          "[StatUtils][GeoMeanFromLogs][Equivalence]") {
+    using Stat = StatUtils<DecimalType>;
+    constexpr double kGeoTol = 5e-8;
+
+    // n = 10 -> outside [20, 30], so no winsorization in either path.
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+        DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+        DecimalType("0.25")
+    };
+
+    // Raw-return geometric mean
+    GeoMeanStat<DecimalType> geo_raw; // default: clip_ruin=true, ruin_eps=1e-8
+    DecimalType gm_raw = geo_raw(returns);
+
+    // Precompute log(1+r) once, using the same ruin epsilon as GeoMeanStat default
+    const double ruin_eps = 1e-8;
+    std::vector<DecimalType> logBars =
+        Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+    GeoMeanFromLogBarsStat<DecimalType> geo_from_logs;
+    DecimalType gm_from_logs = geo_from_logs(logBars);
+
+    REQUIRE(num::to_double(gm_from_logs) ==
+            Catch::Approx(num::to_double(gm_raw)).margin(kGeoTol));
+}
+
+TEST_CASE("GeoMeanFromLogBarsStat matches GeoMeanStat in the small-N winsorization band",
+          "[StatUtils][GeoMeanFromLogs][Winsor]") {
+    using D   = DecimalType;
+    using DC  = DecimalConstants<D>;
+    using Stat = StatUtils<D>;
+    constexpr double kGeoTol = 5e-8;
+
+    // n = 30 → both GeoMeanStat and GeoMeanFromLogBarsStat will winsorize (k>=1).
+    std::vector<D> returns(30, D("0.005"));
+    returns[3]  = D("-0.45");  // extreme negative outlier
+    returns[17] = D("0.20");   // extreme positive outlier
+
+    // Raw-return geometric mean with GeoMeanStat (includes winsorization)
+    GeoMeanStat<D> geo_raw;    // default config
+    D gm_raw = geo_raw(returns);
+
+    // Build log-bars in the same way the production code does (ruin-aware).
+    const double ruin_eps = 1e-8;
+    std::vector<D> logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+    GeoMeanFromLogBarsStat<D> geo_from_logs;
+    D gm_from_logs = geo_from_logs(logBars);
+
+    REQUIRE(num::to_double(gm_from_logs) ==
+            Catch::Approx(num::to_double(gm_raw)).margin(kGeoTol));
+}

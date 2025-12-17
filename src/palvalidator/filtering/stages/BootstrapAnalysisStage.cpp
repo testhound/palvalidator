@@ -251,16 +251,16 @@ namespace palvalidator::filtering::stages
   // ---------------------------------------------------------------------------
   // Auto-bootstrap helper for geometric mean (CAGR)
   // ---------------------------------------------------------------------------
-
   Num
   BootstrapAnalysisStage::runAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
-                                              double                        confidenceLevel,
-                                              std::size_t                   blockLength,
-                                              BootstrapAnalysisResult&      out,
-                                              std::ostream&                 os) const
+					      double                        confidenceLevel,
+					      std::size_t                   blockLength,
+					      BootstrapAnalysisResult&      out,
+					      std::ostream&                 os) const
   {
     using Decimal   = Num;
-    using Sampler   = mkc_timeseries::GeoMeanStat<Decimal>;
+    using Stat      = mkc_timeseries::StatUtils<Decimal>;
+    using Sampler   = mkc_timeseries::GeoMeanFromLogBarsStat<Decimal>;
     using Resampler = StationaryMaskValueResamplerAdapter<Decimal>;
     using AutoCI    = AutoCIResult<Decimal>;
     using Candidate = typename AutoCI::Candidate;
@@ -268,55 +268,71 @@ namespace palvalidator::filtering::stages
 
     if (!ctx.clonedStrategy)
       {
-        throw std::runtime_error("runAutoGeoBootstrap: clonedStrategy is null.");
+	throw std::runtime_error("runAutoGeoBootstrap: clonedStrategy is null.");
+      }
+
+    if (ctx.highResReturns.empty())
+      {
+	os << "   [Bootstrap] AutoCI (GeoMean): skipped (n == 0).\n";
+	return mkc_timeseries::DecimalConstants<Decimal>::DecimalZero;
       }
 
     const std::uint64_t stageTag = 1;
     const std::uint64_t fold     = 0;
 
     BootstrapConfiguration cfg(
-      mNumResamples,
-      blockLength,
-      confidenceLevel,
-      stageTag,
-      fold);
+			       mNumResamples,
+			       blockLength,
+			       confidenceLevel,
+			       stageTag,
+			       fold);
 
     BootstrapAlgorithmsConfiguration algos(
-      /*Normal*/      true,
-      /*Basic*/       true,
-      /*Percentile*/  true,
-      /*MOutOfN*/     true,
-      /*PercentileT*/ true,
-      /*BCa*/         true);
+					   /*Normal*/      true,
+					   /*Basic*/       true,
+					   /*Percentile*/  true,
+					   /*MOutOfN*/     true,
+					   /*PercentileT*/ true,
+					   /*BCa*/         true);
 
+    // Precompute log(1 + r) once, with ruin-aware clipping.
+    const double ruin_eps = Stat::DefaultRuinEps;   // or 1e-8 to match GeoMeanStat defaults
+    const auto&  rawReturns = ctx.highResReturns;
+
+    std::vector<Decimal> logBars =
+      Stat::makeLogGrowthSeries(rawReturns, ruin_eps);
+
+    // StrategyAutoBootstrap will default-construct GeoMeanFromLogBarsStat,
+    // which uses the same winsorization defaults as GeoMeanStat.
     StrategyAutoBootstrap<Decimal, Sampler, Resampler> autoGeo(
-      mBootstrapFactory,
-      *ctx.clonedStrategy,
-      cfg,
-      algos);
+							       mBootstrapFactory,
+							       *ctx.clonedStrategy,
+							       cfg,
+							       algos);
 
-    os << "   [Bootstrap] AutoCI (GeoMean): running composite bootstrap engines...\n";
-    AutoCI result = autoGeo.run(ctx.highResReturns, &os);
+    os << "   [Bootstrap] AutoCI (GeoMean): running composite bootstrap engines"
+       << " on precomputed log-bars...\n";
+
+    AutoCI result = autoGeo.run(logBars, &os);
 
     const Candidate& chosen = result.getChosenCandidate();
-    const Decimal   lbPer   = chosen.getLower();
+    const Decimal    lbPer  = chosen.getLower();
 
-    // Populate coarse diagnostics into BootstrapAnalysisResult
+    // Diagnostics into BootstrapAnalysisResult (unchanged)
     out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
     out.geoAutoCIChosenScore       = chosen.getScore();
     out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
     out.geoAutoCILengthPenalty     = chosen.getLengthPenalty();
 
-    // Discover presence of BCa among candidates
     const auto& candidates = result.getCandidates();
     bool hasBCa = false;
     for (const auto& c : candidates)
       {
-        if (c.getMethod() == MethodId::BCa)
-          {
-            hasBCa = true;
-            break;
-          }
+	if (c.getMethod() == MethodId::BCa)
+	  {
+	    hasBCa = true;
+	    break;
+	  }
       }
     out.geoAutoCIHasBCaCandidate = hasBCa;
     out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
