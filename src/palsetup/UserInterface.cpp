@@ -272,7 +272,8 @@ void UserInterface::displaySetupSummary(const SetupConfiguration& config) {
 }
 
 void UserInterface::displaySetupSummary(const SetupConfiguration& config,
-                                       const mkc_timeseries::OHLCTimeSeries<Num>& timeSeries) {
+                                       const mkc_timeseries::OHLCTimeSeries<Num>& timeSeries,
+                                       size_t cleanStartIndex) {
     std::cout << "\n=== Setup Configuration ===" << std::endl;
     std::cout << "Ticker: " << config.getTickerSymbol() << std::endl;
     std::cout << "Time Frame: " << config.getTimeFrameStr();
@@ -287,48 +288,42 @@ void UserInterface::displaySetupSummary(const SetupConfiguration& config,
     if (timeSeries.getNumEntries() > 0) {
         auto entries = timeSeries.getEntriesCopy();
         size_t totalEntries = entries.size();
-        
-        // Calculate split sizes (same logic as in TimeSeriesProcessor::splitTimeSeries)
-        size_t inSampleSize = static_cast<size_t>((config.getInsamplePercent() / 100.0) * totalEntries);
-        size_t outOfSampleSize = static_cast<size_t>((config.getOutOfSamplePercent() / 100.0) * totalEntries);
-        size_t reservedSize = static_cast<size_t>((config.getReservedPercent() / 100.0) * totalEntries);
-        
-        // Ensure we don't exceed total entries
-        if (inSampleSize + outOfSampleSize + reservedSize > totalEntries) {
-            size_t excess = (inSampleSize + outOfSampleSize + reservedSize) - totalEntries;
-            if (reservedSize >= excess) {
-                reservedSize -= excess;
-            } else if (outOfSampleSize >= excess) {
-                outOfSampleSize -= excess;
-            } else {
-                inSampleSize -= excess;
-            }
-        }
+
+        // Compute usable entries after any quantization-aware trim (cleanStartIndex)
+        size_t usableEntries = (cleanStartIndex < totalEntries) ? (totalEntries - cleanStartIndex) : 0;
+
+        // Use the same split logic as TimeSeriesProcessor::splitTimeSeries which
+        // computes in-sample and out-of-sample sizes by flooring the percentage
+        // of the usable bars; whatever remains is reserved.
+        size_t inSampleSize = static_cast<size_t>((config.getInsamplePercent() / 100.0) * usableEntries);
+        size_t outOfSampleSize = static_cast<size_t>((config.getOutOfSamplePercent() / 100.0) * usableEntries);
+        size_t reservedSize = (usableEntries > (inSampleSize + outOfSampleSize)) ?
+            (usableEntries - inSampleSize - outOfSampleSize) : 0;
         
         std::cout << "Data Split: " << config.getInsamplePercent() << "% / "
                   << config.getOutOfSamplePercent() << "% / "
                   << config.getReservedPercent() << "%" << std::endl;
         
         // Display date ranges for each split
-        if (inSampleSize > 0) {
-            auto inSampleStart = entries[0].getDateTime().date();
-            auto inSampleEnd = entries[inSampleSize - 1].getDateTime().date();
+        if (inSampleSize > 0 && cleanStartIndex < totalEntries) {
+            auto inSampleStart = entries[cleanStartIndex].getDateTime().date();
+            auto inSampleEnd = entries[cleanStartIndex + inSampleSize - 1].getDateTime().date();
             std::cout << "  In-Sample:     " << boost::gregorian::to_iso_extended_string(inSampleStart)
                       << " to " << boost::gregorian::to_iso_extended_string(inSampleEnd)
                       << " (" << inSampleSize << " entries)" << std::endl;
         }
         
-        if (outOfSampleSize > 0) {
-            auto outOfSampleStart = entries[inSampleSize].getDateTime().date();
-            auto outOfSampleEnd = entries[inSampleSize + outOfSampleSize - 1].getDateTime().date();
+        if (outOfSampleSize > 0 && (cleanStartIndex + inSampleSize) < totalEntries) {
+            auto outOfSampleStart = entries[cleanStartIndex + inSampleSize].getDateTime().date();
+            auto outOfSampleEnd = entries[cleanStartIndex + inSampleSize + outOfSampleSize - 1].getDateTime().date();
             std::cout << "  Out-of-Sample: " << boost::gregorian::to_iso_extended_string(outOfSampleStart)
                       << " to " << boost::gregorian::to_iso_extended_string(outOfSampleEnd)
                       << " (" << outOfSampleSize << " entries)" << std::endl;
         }
         
-        if (reservedSize > 0) {
-            auto reservedStart = entries[inSampleSize + outOfSampleSize].getDateTime().date();
-            auto reservedEnd = entries[inSampleSize + outOfSampleSize + reservedSize - 1].getDateTime().date();
+        if (reservedSize > 0 && (cleanStartIndex + inSampleSize + outOfSampleSize) < totalEntries) {
+            auto reservedStart = entries[cleanStartIndex + inSampleSize + outOfSampleSize].getDateTime().date();
+            auto reservedEnd = entries[cleanStartIndex + inSampleSize + outOfSampleSize + reservedSize - 1].getDateTime().date();
             std::cout << "  Reserved:      " << boost::gregorian::to_iso_extended_string(reservedStart)
                       << " to " << boost::gregorian::to_iso_extended_string(reservedEnd)
                       << " (" << reservedSize << " entries)" << std::endl;
