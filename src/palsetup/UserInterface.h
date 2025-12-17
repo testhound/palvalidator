@@ -38,7 +38,8 @@ public:
      * @brief Display setup configuration summary with data split date ranges
      */
     void displaySetupSummary(const SetupConfiguration& config,
-                            const mkc_timeseries::OHLCTimeSeries<Num>& timeSeries);
+                            const mkc_timeseries::OHLCTimeSeries<Num>& timeSeries,
+                            size_t cleanStartIndex = 0);
     
     /**
      * @brief Display statistics only without writing files

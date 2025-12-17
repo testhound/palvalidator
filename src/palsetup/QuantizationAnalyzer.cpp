@@ -135,7 +135,7 @@ WindowParameters QuantizationAnalyzer::determineWindowParameters(mkc_timeseries:
                                                                 int intradayMinutes) {
     switch (timeFrame) {
         case mkc_timeseries::TimeFrame::DAILY:
-            return WindowParameters(252, 20);
+            return WindowParameters(252, 5);
 
         case mkc_timeseries::TimeFrame::WEEKLY:
             return WindowParameters(260, 4);

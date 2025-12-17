@@ -50,8 +50,8 @@ int main(int argc, char** argv)
 						     config.getTimeFrame());
     auto timeSeries = tsProcessor.loadTimeSeries(reader);
         
-    // Display setup summary with date ranges
-    ui.displaySetupSummary(config, *timeSeries);
+    // Note: setup summary will be displayed after quantization-aware trim
+    // so that split date ranges reflect the cleanStart index.
         
     // 5. Determine known tick (from CLI or SecurityAttributes)
     std::optional<double> knownTick;
@@ -106,6 +106,10 @@ int main(int argc, char** argv)
 	  std::cout << "[Tick] inferred from data: " << cleanStart.getTick() << std::endl;
       }
         
+    // Display setup summary now that we have the cleanStart index so the
+    // displayed date ranges match the actual splitting logic.
+    ui.displaySetupSummary(config, *timeSeries, cleanStart.getStartIndex());
+
     // 7. Split time series into in-sample, out-of-sample, and reserved
     auto splitData = tsProcessor.splitTimeSeries(*timeSeries, cleanStart, config);
         
