@@ -1900,3 +1900,198 @@ TEST_CASE("LogProfitFactorStat with Strategy Stop Loss (Zero-Loss Handling)", "[
         REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
     }
 }
+
+TEST_CASE("StatUtils::makeLogGrowthSeries basic correctness and ruin clipping",
+          "[StatUtils][LogGrowth]") 
+{
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Simple positive / negative returns") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"),   // +10%
+            DecimalType("-0.05"),  // -5%
+            DecimalType("0.00")    // flat
+        };
+
+        const double ruin_eps = Stat::DefaultRuinEps;
+
+        auto logs = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        REQUIRE(logs.size() == returns.size());
+
+        // Expected: log(1 + r) for each element (no clipping here)
+        REQUIRE(num::to_double(logs[0]) ==
+                Catch::Approx(std::log(1.10)).margin(1e-12));
+        REQUIRE(num::to_double(logs[1]) ==
+                Catch::Approx(std::log(0.95)).margin(1e-12));
+        REQUIRE(num::to_double(logs[2]) ==
+                Catch::Approx(std::log(1.0)).margin(1e-12));
+    }
+
+    SECTION("Ruin handling when 1 + r <= 0") {
+        // These are "ruin" bars: 1+r <= 0
+        std::vector<DecimalType> returns = {
+            DecimalType("-1.0"),   // 1 + r = 0
+            DecimalType("-1.5")    // 1 + r = -0.5
+        };
+
+        const double ruin_eps = 1e-4;
+        auto logs = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        REQUIRE(logs.size() == returns.size());
+
+        const double expected_log = std::log(ruin_eps);
+
+        REQUIRE(num::to_double(logs[0]) ==
+                Catch::Approx(expected_log).margin(1e-12));
+        REQUIRE(num::to_double(logs[1]) ==
+                Catch::Approx(expected_log).margin(1e-12));
+    }
+
+    SECTION("Empty input returns empty log series") {
+        std::vector<DecimalType> returns;
+        const double ruin_eps = Stat::DefaultRuinEps;
+
+        auto logs = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        REQUIRE(logs.empty());
+    }
+}
+
+TEST_CASE("LogProfitFactorFromLogBarsStat basic correctness and edge cases",
+          "[StatUtils][LogPFLogBars]") 
+{
+    using Stat = StatUtils<DecimalType>;
+    using DC   = DecimalConstants<DecimalType>;
+    using LogPFLogBars = typename Stat::LogProfitFactorFromLogBarsStat;
+
+    SECTION("Empty input returns zero") {
+        std::vector<DecimalType> empty;
+        LogPFLogBars stat;  // default parameters
+
+        DecimalType result = stat(empty);
+
+        REQUIRE(result == DC::DecimalZero);
+    }
+
+    SECTION("All-positive logBars behave like pure wins") {
+        // logBars > 0 => all wins, no losses
+        std::vector<DecimalType> logBars = {
+            DecimalType(std::log(1.10)),
+            DecimalType(std::log(1.05))
+        };
+
+        LogPFLogBars stat(/*compress=*/true);
+
+        DecimalType result = stat(logBars);
+
+        // With no losses, denominator is purely the prior,
+        // so the value should be positive and finite.
+        REQUIRE(num::to_double(result) > 0.0);
+        REQUIRE(std::isfinite(num::to_double(result)));
+    }
+}
+
+TEST_CASE("LogProfitFactorFromLogBarsStat matches LogProfitFactorStat on same data",
+          "[StatUtils][LogPFLogBars][Consistency]") 
+{
+    using Stat        = StatUtils<DecimalType>;
+    using LogPF       = typename Stat::LogProfitFactorStat;
+    using LogPFLogBars= typename Stat::LogProfitFactorFromLogBarsStat;
+
+    // Mixed, realistic-looking return series (same style as other tests)
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"),
+        DecimalType("0.20"), DecimalType("-0.10"),
+        DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02")
+    };
+
+    const double ruin_eps       = Stat::DefaultRuinEps;
+    const double denom_floor    = Stat::DefaultDenomFloor;
+    const double prior_strength = Stat::DefaultPriorStrength;
+    const double stop_loss_pct  = 0.0;
+    const bool   compress       = true;
+
+    // 1) Compute log-bars once using the same ruin epsilon.
+    auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+    // 2) "Original" path: robust PF on raw returns (uses computeLogProfitFactorRobust internally).
+    LogPF stat_returns(
+        /*compressResult=*/compress,
+        ruin_eps,
+        denom_floor,
+        prior_strength,
+        stop_loss_pct
+    );
+
+    DecimalType via_returns = stat_returns(returns);
+
+    // 3) New path: robust PF on precomputed log-bars.
+    LogPFLogBars stat_logbars(
+        /*compressResult=*/compress,
+        ruin_eps,
+        denom_floor,
+        prior_strength,
+        stop_loss_pct
+    );
+
+    DecimalType via_logbars = stat_logbars(logBars);
+
+    // 4) They should match to tight tolerance.
+    REQUIRE(num::to_double(via_logbars) ==
+            Catch::Approx(num::to_double(via_returns)).epsilon(1e-12));
+}
+
+TEST_CASE("LogProfitFactorFromLogBarsStat works as a statistic in getBootStrappedStatistic",
+          "[StatUtils][LogPFLogBars][Bootstrap]") 
+{
+    using Stat        = StatUtils<DecimalType>;
+    using LogPFLogBars= typename Stat::LogProfitFactorFromLogBarsStat;
+
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+        DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+        DecimalType("0.25")
+    };
+
+    const double ruin_eps       = Stat::DefaultRuinEps;
+    const double denom_floor    = Stat::DefaultDenomFloor;
+    const double prior_strength = Stat::DefaultPriorStrength;
+    const double stop_loss_pct  = 0.0;
+
+    // Precompute log-bars once (what you'll do in production before BCa).
+    auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+    LogPFLogBars stat(
+        /*compressResult=*/true,
+        ruin_eps,
+        denom_floor,
+        prior_strength,
+        stop_loss_pct
+    );
+
+    // "True" value for the original sample in log-bar space
+    DecimalType true_logPF = stat(logBars);
+
+    // Now bootstrap in the log-bar domain
+    constexpr int num_runs = 50;
+    std::vector<DecimalType> boot_medians;
+    boot_medians.reserve(num_runs);
+
+    for (int i = 0; i < num_runs; ++i) {
+        boot_medians.push_back(
+            Stat::getBootStrappedStatistic(
+                logBars,
+                stat,
+                100));      // bootstraps per run
+    }
+
+    DecimalType mean_est = Stat::computeMean(boot_medians);
+    DecimalType std_est  = Stat::computeStdDev(boot_medians, mean_est);
+
+    REQUIRE(num::to_double(true_logPF) ==
+            Catch::Approx(num::to_double(mean_est))
+                .margin(num::to_double(std_est * DecimalType(3.0))));
+}

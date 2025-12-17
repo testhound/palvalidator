@@ -267,6 +267,61 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Convert a series of percent returns into log-growth values.
+     *
+     * @details
+     * This function takes a vector of per-period returns (expressed as decimals,
+     * where +5% is 0.05) and converts each return into a log-growth value:
+     *
+     *     log_i = log( max(1 + r_i, ruin_eps) )
+     *
+     * The value ruin_eps is used to clamp the growth factor in cases where
+     * 1 + r_i is zero or negative. This prevents undefined logarithms and
+     * represents a severe-loss, "ruin" event in a numerically stable way.
+     *
+     * This function does not apply stop-loss logic or any priors. It strictly
+     * converts returns into valid log-growth values suitable for bootstrap
+     * resampling or use by statistics that operate directly in log space,
+     * such as LogProfitFactorFromLogBarsStat.
+     *
+     * @param returns
+     *     Vector of percentage returns, where +1% = 0.01.
+     *
+     * @param ruin_eps
+     *     A small positive constant used when 1 + r_i <= 0. Must be > 0.
+     *     This value determines how "ruin" is represented in log space.
+     *
+     * @return
+     *     A vector of log-growth values of the same length as the input.
+     *     Each output element is log(max(1 + r_i, ruin_eps)).
+     *
+     * @note
+     * The caller is responsible for using the same ruin_eps here and in the
+     * statistic that consumes the resulting log-bars, ensuring consistent behavior.
+     */
+    static inline std::vector<Decimal>
+    makeLogGrowthSeries(const std::vector<Decimal>& returns,
+                                     double ruin_eps)
+    {
+      using DC = mkc_timeseries::DecimalConstants<Decimal>;
+      const Decimal one  = DC::DecimalOne;
+      const Decimal zero = DC::DecimalZero;
+      const Decimal d_ruin(ruin_eps);
+
+      std::vector<Decimal> logs;
+      logs.reserve(returns.size());
+
+      for (const auto& r : returns)
+	{
+	  Decimal growth = one + r;
+	  if (growth <= zero)
+	    growth = d_ruin;
+	  logs.push_back(std::log(growth));
+	}
+      return logs;
+    }
+
+    /**
        * @brief Computes the mean and variance using a fast, specialized path.
        * @details This method serves as a dispatcher to the most efficient available
        * implementation for computing mean and variance. It delegates the calculation
@@ -373,38 +428,77 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Computes a robust, regularized Profit Factor in logarithmic space.
-     * @details This function calculates a highly stabilized version of the Profit Factor
-     * by transforming returns into log space (`log(1+r)`), which inherently tames
-     * the impact of extreme outliers. It introduces several "tricks" to enhance
-     * its statistical stability and honesty, especially for series with few trades
-     * or catastrophic losses:
+     * @brief Compute a robust, regularized profit factor in log space.
      *
-     * 1.  **Log Transformation**: Mitigates the effect of massive outlier wins/losses.
-     * 2.  **Ruin-Aware Clamping**: Instead of ignoring ruinous trades (r <= -100%),
-     * it clamps them to a small value (`ruin_eps`), ensuring they are heavily
-     * penalized rather than discarded.
-     * 3.  **Bayesian Regularization**: It adds a "pseudo-loss" (a prior) to the
-     * denominator. This prior is based on the median log-loss magnitude, which
-     * prevents the Profit Factor from becoming infinite or unstable when there
-     * are few or no observed losses. This makes the metric more reliable for
-     * short return series.
-     * 4.  **Denominator Floor**: An absolute minimum value for the denominator is
-     * enforced to prevent division by pathologically small numbers.
+     * @details
+     * This function computes a profit-factor-like statistic from a vector of
+     * per-period returns using log(1 + r) internally. The design is intended
+     * to be more stable and conservative than a classic profit factor, especially
+     * for short series, near-ruin losses, and tiny loss denominators.
      *
-     * The resulting metric is less susceptible to distortion and provides a more
-     * conservative and reliable measure of a strategy's profitability.
+     * The computation proceeds in three main stages:
      *
-     * @param xs A vector of returns.
-     * @param compressResult If true (default), applies a final `log(1+x)`
-     * compression to the result to make it more symmetric and easier to compare.
-     * @param ruin_eps A small positive value to clamp the growth factor (1+r) to when
-     * it is <= 0. This prevents undefined logs and penalizes ruinous outcomes.
-     * @param denom_floor An absolute minimum value for the denominator (in log-space
-     * units) to ensure numerical stability.
-     * @param prior_strength A multiplier for the median log-loss used to create the
-     * Bayesian prior. A value of 1.0 represents one "pseudo-loss" of typical magnitude.
-     * @return The robust Log Profit Factor as a Decimal.
+     *   1. Transform returns into log-growth values:
+     *        • For each return r, compute growth = 1 + r.
+     *        • If growth <= 0, clamp to ruin_eps (a small positive constant).
+     *        • Take lr = log(growth).
+     *        • If r > 0, add lr to the numerator (sum of log wins).
+     *        • If r < 0, add lr to the log-loss sum and store its magnitude
+     *          into a loss-magnitudes buffer.
+     *
+     *   2. Build a robust prior for the denominator:
+     *        • If there is at least one loss, compute the median loss magnitude
+     *          from the loss-magnitudes buffer and scale it by prior_strength.
+     *        • If there are no losses, use default_loss_magnitude if it is
+     *          positive; otherwise, derive a fallback magnitude from ruin_eps
+     *          and denom_floor. This acts as a pseudo-loss so the denominator
+     *          does not vanish when the sample has only wins.
+     *
+     *   3. Form the final ratio:
+     *        • Numerator is the sum of log wins.
+     *        • Denominator is the absolute sum of log losses plus the prior.
+     *        • The denominator is floored at denom_floor to avoid division
+     *          by extremely small values.
+     *        • If compressResult is true, the final value is log(1 + PF);
+     *          otherwise the raw PF ratio (numerator / denominator) is returned.
+     *
+     * This function is the core implementation used by LogProfitFactorStat.
+     * When combined with makeLogGrowthSeries and LogProfitFactorFromLogBarsStat,
+     * you can move the log(1 + r) work out of tight resampling loops and reuse
+     * precomputed log-growth series.
+     *
+     * @param xs
+     *     Vector of per-period returns, expressed as decimal fractions
+     *     (for example +1% = 0.01).
+     *
+     * @param compressResult
+     *     If true, return log(1 + PF). If false, return the raw PF ratio.
+     *     The compressed version is usually preferred for inference.
+     *
+     * @param ruin_eps
+     *     Small positive floor for (1 + r) when it would otherwise be zero
+     *     or negative. This ensures log(1 + r) is always defined and heavily
+     *     penalizes ruin-like events.
+     *
+     * @param denom_floor
+     *     Minimum allowed denominator value in log space. This prevents extreme
+     *     PF blow-ups when loss magnitudes are very small.
+     *
+     * @param prior_strength
+     *     Multiplier for the prior loss magnitude. A value of 1.0 behaves like
+     *     adding one extra loss of "typical" size to the denominator.
+     *
+     * @param default_loss_magnitude
+     *     Optional fallback loss magnitude used when there are no losses in
+     *     the sample. If this is greater than zero, it is interpreted as a
+     *     fixed log-loss magnitude (for example derived from a strategy stop
+     *     loss). If it is zero or negative, a ruin-based fallback is derived
+     *     from ruin_eps and denom_floor.
+     *
+     * @return
+     *     Robust profit-factor statistic in either compressed (log(1 + PF))
+     *     or raw PF form, depending on compressResult. Returns zero if xs
+     *     is empty.
      */
     static Decimal computeLogProfitFactorRobust(const std::vector<Decimal>& xs,
                                                 bool   compressResult = DefaultCompress,
@@ -491,23 +585,64 @@ namespace mkc_timeseries
 
       return pf;
     }
-
-    /// \brief Robust log-profit-factor statistic on per-period returns.
-    ///
-    /// This functor is a thin adapter around StatUtils::computeLogProfitFactorRobust
-    /// so it can be used as a generic "statistic" in the bootstrap code
-    /// (m-out-of-n, BCa, percentile-t, etc.).
-    ///
-    /// By default it returns the *compressed* form:
-    ///   s = log(1 + PF_robust)
-    ///
-    /// which is monotone in PF and numerically well-behaved. You can disable
-    /// compression (and/or tweak the regularization parameters) via the ctor.
+    /**
+     * @brief Functor wrapper for the robust log profit-factor on raw returns.
+     *
+     * @details
+     * This struct adapts StatUtils::computeLogProfitFactorRobust into a
+     * callable "statistic" type that can be passed into bootstrap engines
+     * (for example StrategyAutoBootstrap). It expects a vector of per-period
+     * returns and internally computes a robust profit-factor in log space.
+     *
+     * Typical usage:
+     *   • Configure the constructor with compression and prior settings.
+     *   • Call operator() with a vector of returns.
+     *   • Optionally post-process the result using formatForDisplay, which
+     *     maps the log(1 + PF) form back to a linear PF minus one.
+     *
+     * By default, the statistic returns log(1 + PF_robust), which is monotone
+     * in PF and better behaved for confidence intervals and hypothesis tests.
+     */
     struct LogProfitFactorStat
     {
       static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
       static constexpr bool isRatioStatistic() noexcept { return true; }
 
+          /**
+     * @brief Construct a robust log profit-factor statistic on raw returns.
+     *
+     * @details
+     * The configuration parameters here are passed through to
+     * computeLogProfitFactorRobust. They control whether the result is
+     * compressed, how ruin events are handled, how strongly the loss prior
+     * is applied, and what to assume when no losses appear in the sample.
+     *
+     * @param compressResult
+     *     If true, operator() returns log(1 + PF). If false, it returns
+     *     the raw PF ratio. The default is StatUtils::DefaultCompress.
+     *
+     * @param ruin_eps
+     *     Small positive floor for (1 + r) when computing log(1 + r).
+     *     Must be strictly greater than zero. The default is
+     *     StatUtils::DefaultRuinEps.
+     *
+     * @param denom_floor
+     *     Minimum denominator value in log space. This protects against
+     *     extremely large PF values caused by tiny loss magnitudes.
+     *     The default is StatUtils::DefaultDenomFloor.
+     *
+     * @param prior_strength
+     *     Scale factor for the prior loss magnitude used in the denominator.
+     *     A value of 1.0 behaves like adding one additional loss of typical
+     *     size. The default is StatUtils::DefaultPriorStrength.
+     *
+     * @param stop_loss_pct
+     *     Optional stop-loss percentage expressed as a decimal fraction
+     *     (for example 0.025 for 2.5%). If greater than zero, this is
+     *     converted to a fixed log-loss magnitude and used as the default
+     *     prior when the sample contains no losses. If zero, the prior
+     *     falls back to a ruin-based magnitude derived from ruin_eps.
+     */
       explicit LogProfitFactorStat(bool   compressResult = StatUtils::DefaultCompress,
                                    double ruin_eps       = StatUtils::DefaultRuinEps,
                                    double denom_floor    = StatUtils::DefaultDenomFloor,
@@ -525,6 +660,28 @@ namespace mkc_timeseries
 	}
       }
 
+          /**
+     * @brief Evaluate the robust log profit-factor on a return series.
+     *
+     * @details
+     * This method forwards its arguments to computeLogProfitFactorRobust
+     * using the configuration stored in this functor. It takes a vector of
+     * per-period returns, expressed as decimal fractions, and returns a
+     * robust profit-factor statistic in either compressed or raw form.
+     *
+     * The input is assumed to be raw returns r (for example +1% = 0.01),
+     * not precomputed log-growth values. Ruin events, priors, and
+     * denominator flooring are handled as described in
+     * computeLogProfitFactorRobust.
+     *
+     * @param returns
+     *     Vector of per-period returns. May be any length; if empty,
+     *     the result is zero.
+     *
+     * @return
+     *     Robust profit-factor statistic in either log(1 + PF) or raw PF
+     *     form depending on the configuration of this functor.
+     */
       Decimal operator()(const std::vector<Decimal>& returns) const
       {
 	return StatUtils<Decimal>::computeLogProfitFactorRobust(returns,
@@ -543,6 +700,175 @@ namespace mkc_timeseries
       double m_defaultLossMag; 
     };
 
+    /**
+     * @brief Robust, regularized profit-factor statistic using precomputed log-growth bars.
+     *
+     * @details
+     * This statistic computes the same robust profit-factor as LogProfitFactorStat,
+     * but expects the input vector to already contain log-growth values of the form:
+     *
+     *     logBars[i] = log( max(1 + return_i, ruin_eps) )
+     *
+     * This design allows callers to precompute log(1 + r) once and reuse those
+     * values across many bootstrap iterations, dramatically reducing computation
+     * time by avoiding repeated logarithm evaluations.
+     *
+     * Interpretation of log-bars:
+     *   • logBars[i] > 0  → this is a winning bar (return > 0)
+     *   • logBars[i] < 0  → this is a losing bar  (return < 0)
+     *   • logBars[i] = 0  → neutral bar          (return = 0)
+     *
+     * The statistic:
+     *   1. Sums positive log-bars (wins).
+     *   2. Sums negative log-bars (losses).
+     *   3. Computes the median magnitude of losses if any exist.
+     *   4. Applies a prior amount to the denominator to stabilize PF.
+     *   5. Uses a stop-loss magnitude or a ruin-based fallback if no losses exist.
+     *   6. Floors the denominator at denom_floor for numerical stability.
+     *   7. Returns either:
+     *        • rawPF = sum_wins / (sum_loss_magnitudes + prior), or
+     *        • log(1 + rawPF) if compressResult = true.
+     *
+     * When logBars is created using makeLogGrowthSeries with the same ruin_eps,
+     * this statistic will match LogProfitFactorStat to standard numerical tolerance.
+     *
+     * @param compressResult
+     *     If true (default), returns log(1 + PF), which is usually more stable
+     *     for bootstrap inference. If false, returns the raw PF ratio.
+     *
+     * @param ruin_eps
+     *     The ruin clipping constant used when fallback loss magnitude is needed.
+     *     Must match the value used when constructing logBars.
+     *
+     * @param denom_floor
+     *     Minimum denominator value to prevent division by extremely small numbers.
+     *
+     * @param prior_strength
+     *     The amount of prior added to the denominator. A value of 1.0 behaves
+     *     like adding one typical loss magnitude.
+     *
+     * @param stop_loss_pct
+     *     Optional stop-loss percentage expressed as a decimal fraction.
+     *     When > 0, the fallback loss magnitude becomes abs(log(1 - stop_loss_pct)).
+     *     When = 0, the fallback magnitude is derived from ruin_eps.
+     */
+    struct LogProfitFactorFromLogBarsStat
+    {
+      static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
+      static constexpr bool isRatioStatistic() noexcept { return true; }
+
+      explicit LogProfitFactorFromLogBarsStat(bool   compressResult = StatUtils::DefaultCompress,
+					      double ruin_eps       = StatUtils::DefaultRuinEps,
+					      double denom_floor    = StatUtils::DefaultDenomFloor,
+					      double prior_strength = StatUtils::DefaultPriorStrength,
+					      double stop_loss_pct  = 0.0)
+	: m_compressResult(compressResult)
+	, m_ruinEps(ruin_eps)
+	, m_denomFloor(denom_floor)
+	, m_priorStrength(prior_strength)
+      {
+	if (stop_loss_pct > 0.0)
+	  m_defaultLossMag = std::abs(std::log(1.0 - stop_loss_pct));
+	else
+	  m_defaultLossMag = 0.0;
+      }
+
+      /**
+       * @brief Evaluate the robust log profit-factor from a vector of log-bars.
+       *
+       * @details
+       * This function processes each log-growth value to categorize wins and losses,
+       * compute prior-adjusted denominator terms, enforce minimum denominator size,
+       * and produce a profit-factor estimate. The output is either:
+       *
+       *     log(1 + PF)     if compressResult = true
+       *     PF              if compressResult = false
+       *
+       * The function expects each element of logBars to be a valid log-growth value
+       * produced by makeLogGrowthSeries or an equivalent transformation.
+       *
+       * Behavior:
+       *   • Empty input returns zero.
+       *   • Positive log-bars add to the numerator (wins).
+       *   • Negative log-bars contribute to loss magnitudes.
+       *   • Median loss magnitude is used as a Bayesian-style prior if losses exist.
+       *   • A stop-loss or ruin-based fallback magnitude is used if no losses exist.
+       *   • Denominator is floored at denom_floor.
+       *
+       * @param logBars
+       *     Vector of precomputed log-growth values. Must not contain unprocessed
+       *     percent returns. Each element should represent log(max(1 + r_i, ruin_eps)).
+       *
+       * @return
+       *     The profit-factor statistic, either compressed or raw depending on
+       *     the constructor configuration.
+       */
+      Decimal operator()(const std::vector<Decimal>& logBars) const
+      {
+	using DC = DecimalConstants<Decimal>;
+
+	if (logBars.empty())
+	  return DC::DecimalZero;
+
+	boost::container::small_vector<Decimal, 32> loss_mags;
+	Decimal sum_log_wins   = DC::DecimalZero;
+	Decimal sum_log_losses = DC::DecimalZero;
+
+	for (const auto& lr : logBars)
+	  {
+	    if (lr > DC::DecimalZero)
+	      sum_log_wins += lr;
+	    else if (lr < DC::DecimalZero)
+	      {
+		sum_log_losses += lr;
+		loss_mags.push_back(-lr);
+	      }
+	  }
+
+	// identical prior / denom logic as computeLogProfitFactorRobust,
+	// but now we’re already in log-space so no std::log(1+r) calls here.
+	Decimal prior_loss_mag = DC::DecimalZero;
+
+	if (!loss_mags.empty())
+	  {
+	    const std::size_t mid = loss_mags.size() / 2;
+	    std::nth_element(loss_mags.begin(),
+			     loss_mags.begin() + static_cast<std::ptrdiff_t>(mid),
+			     loss_mags.end());
+	    const Decimal med = loss_mags[mid];
+	    prior_loss_mag = med * Decimal(m_priorStrength);
+	  }
+	else
+	  {
+	    Decimal assumed_mag;
+	    if (m_defaultLossMag > 0.0)
+	      assumed_mag = Decimal(m_defaultLossMag);
+	    else
+	      assumed_mag = Decimal(std::max(-std::log(m_ruinEps), m_denomFloor));
+
+	    prior_loss_mag = assumed_mag * Decimal(m_priorStrength);
+	  }
+
+	const Decimal numer = sum_log_wins;
+	Decimal denom       = num::abs(sum_log_losses) + prior_loss_mag;
+
+	const Decimal d_floor(m_denomFloor);
+	if (denom < d_floor) denom = d_floor;
+
+	Decimal pf = (denom > DC::DecimalZero) ? (numer / denom) : DC::DecimalZero;
+	if (m_compressResult)
+	  return std::log(DC::DecimalOne + pf);
+	return pf;
+      }
+
+    private:
+      bool   m_compressResult;
+      double m_ruinEps;
+      double m_denomFloor;
+      double m_priorStrength;
+      double m_defaultLossMag;
+    };
+    
     /**
      * @brief Computes the Log Profit Factor from a series of returns.
      * @details This variant takes the logarithm of each return (plus one) before summing,
