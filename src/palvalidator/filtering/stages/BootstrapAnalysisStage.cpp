@@ -341,6 +341,9 @@ namespace palvalidator::filtering::stages
   // ---------------------------------------------------------------------------
   // Auto-bootstrap helper for Profit Factor (log-PF statistic)
   // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+  // Auto-bootstrap helper for Profit Factor (log-PF statistic)
+  // ---------------------------------------------------------------------------
 
   std::optional<Num>
   BootstrapAnalysisStage::runAutoProfitFactorBootstrap(
@@ -369,6 +372,34 @@ namespace palvalidator::filtering::stages
         return std::nullopt;
       }
 
+    // -----------------------------------------------------------------------
+    // Retrieve Strategy Stop Loss for Robust "Zero-Loss" Handling
+    // -----------------------------------------------------------------------
+    double stopLossPct = 0.0;
+
+    // Try to cast to PalStrategy to access the single pattern.
+    // If it's a PalMetaStrategy, this cast will fail (nullptr), and we default to 0.0.
+    auto palStrategy = std::dynamic_pointer_cast<mkc_timeseries::PalStrategy<Decimal>>(ctx.clonedStrategy);
+    if (palStrategy)
+      {
+        auto pattern = palStrategy->getPalPattern();
+        if (pattern)
+          {
+            // 1. Get Stop Loss from pattern (e.g., 2.55 for 2.55%)
+            Decimal stopDec = pattern->getStopLossAsDecimal();
+
+            // 2. Use PercentNumber factory to convert to decimal fraction (0.0255).
+            //    This handles the division by 100 internally.
+            auto stopPn = mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
+            
+            // 3. Extract as double for StatUtils
+            stopLossPct = num::to_double(stopPn.getAsPercent());
+          }
+      }
+
+    // -----------------------------------------------------------------------
+    // Configure Bootstrap Engines
+    // -----------------------------------------------------------------------
     const std::uint64_t stageTag = 2;
     const std::uint64_t fold     = 0;
 
@@ -387,13 +418,21 @@ namespace palvalidator::filtering::stages
       /*PercentileT*/ true,
       /*BCa*/         true);
 
-    StrategyAutoBootstrap<Decimal, PFStat, Resampler> autoPF(
-      mBootstrapFactory,
-      *ctx.clonedStrategy,
-      cfg,
-      algos);
+    PFStat stat(mkc_timeseries::StatUtils<Decimal>::DefaultCompress,
+                mkc_timeseries::StatUtils<Decimal>::DefaultRuinEps,
+                mkc_timeseries::StatUtils<Decimal>::DefaultDenomFloor,
+                mkc_timeseries::StatUtils<Decimal>::DefaultPriorStrength,
+                stopLossPct);
 
-    os << "   [Bootstrap] AutoCI (PF): running composite bootstrap engines...\n";
+    // Pass the configured 'stat' object to StrategyAutoBootstrap
+    StrategyAutoBootstrap<Decimal, PFStat, Resampler> autoPF(mBootstrapFactory,
+							     *ctx.clonedStrategy,
+							     cfg,
+							     algos,
+							     stat);
+
+    os << "   [Bootstrap] AutoCI (PF): running composite bootstrap engines"
+       << " (StopLoss assumption=" << (stopLossPct * 100.0) << "%)...\n";
 
     AutoCI result = autoPF.run(ctx.highResReturns, &os);
 
