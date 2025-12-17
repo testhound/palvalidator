@@ -153,6 +153,86 @@ namespace mkc_timeseries
     double m_winsorAlpha;
     double m_ruinEps;
   };
+
+  template <typename Decimal>
+struct GeoMeanFromLogBarsStat
+{
+  using DC = DecimalConstants<Decimal>;
+
+  /// Helper so AutoCI can format as percent, same as GeoMeanStat.
+  static double formatForDisplay(double value)
+  {
+    return value * 100.0;
+  }
+
+  static constexpr bool isRatioStatistic() noexcept
+  {
+    return false;
+  }
+
+  /// Constructor: only winsorization knobs are needed here.
+  explicit GeoMeanFromLogBarsStat(bool   winsor_small_n = true,
+                                  double winsor_alpha   = 0.02)
+    : m_winsorSmallN(winsor_small_n)
+    , m_winsorAlpha(winsor_alpha)
+  {}
+
+  /// Compute geometric mean from precomputed log(1 + r) bars.
+  /// logBars[i] is assumed to be log(1 + r_i_clipped).
+  Decimal operator()(const std::vector<Decimal>& logBars) const
+  {
+    const std::size_t n = logBars.size();
+    if (n == 0)
+      return DC::DecimalZero;
+
+    // Copy so we can winsorize in-place without modifying caller’s data.
+    std::vector<Decimal> logs = logBars;
+
+    // Adaptive winsorization in the LOG domain for small-ish n,
+    // mirroring GeoMeanStat semantics: apply when 20 <= n <= 30.
+    if (m_winsorSmallN && (n >= 20 && n <= 30) && m_winsorAlpha > 0.0)
+      {
+	std::size_t k = static_cast<std::size_t>(
+						 std::floor(m_winsorAlpha * static_cast<double>(n)));
+	if (k < 1)
+	  k = 1;
+
+	const std::size_t kmax = (n > 0 ? (n - 1) / 2 : 0);
+	if (k > kmax)
+	  k = kmax;
+
+	if (k > 0)
+	  {
+	    auto sorted = logs;  // small n: full sort is fine
+	    std::sort(sorted.begin(), sorted.end());
+	    const Decimal lo = sorted[k];
+	    const Decimal hi = sorted[n - 1 - k];
+
+	    for (auto& x : logs)
+	      {
+		if (x < lo)      x = lo;
+		else if (x > hi) x = hi;
+	      }
+	  }
+      }
+
+    // Mean of logs
+    Decimal sum = DC::DecimalZero;
+    for (const auto& x : logs)
+      sum += x;
+
+    const Decimal meanLog =
+      sum / Decimal(static_cast<double>(n));
+
+    // Back-transform: exp(meanLog) - 1
+    const Decimal one = DC::DecimalOne;
+    return std::exp(meanLog) - one;
+  }
+
+private:
+  bool   m_winsorSmallN;
+  double m_winsorAlpha;
+  };
   
   /**
    * @brief A generic helper struct for fast mean and variance computation.
