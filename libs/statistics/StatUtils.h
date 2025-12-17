@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <array> 
+#include <boost/container/small_vector.hpp>
 #include "DecimalConstants.h"
 #include "number.h"
 #include "decimal_math.h"
@@ -249,6 +250,11 @@ namespace mkc_timeseries
   struct StatUtils
   {
   public:
+    static constexpr double DefaultRuinEps       = 1e-8;
+    static constexpr double DefaultDenomFloor    = 1e-6;
+    static constexpr double DefaultPriorStrength = 1.0;
+    static constexpr bool   DefaultCompress      = true;
+    
     static inline std::vector<Decimal>
     percentBarsToLogBars(const std::vector<Decimal>& pct)
     {
@@ -401,56 +407,52 @@ namespace mkc_timeseries
      * @return The robust Log Profit Factor as a Decimal.
      */
     static Decimal computeLogProfitFactorRobust(const std::vector<Decimal>& xs,
-						bool   compressResult = true,   // keep compressed scale by default
-						double ruin_eps       = 1e-8,    // clamp for (1+r) <= 0
-						double denom_floor    = 1e-6,    // absolute floor in log-space units
-						double prior_strength = 1.0)     // ~1 “pseudo-loss” of median magnitude
+                                                bool   compressResult = DefaultCompress,
+                                                double ruin_eps       = DefaultRuinEps,
+                                                double denom_floor    = DefaultDenomFloor,
+                                                double prior_strength = DefaultPriorStrength,
+                                                double default_loss_magnitude = 0.0)
     {
       using DC = DecimalConstants<Decimal>;
 
       if (xs.empty())
 	return DC::DecimalZero;
 
-      // --- Step 1: Build log(1+r) stream with ruin-aware clamping ---
-      // Keep everything in Decimal where practical.
+      // ... [Step 1: Build log(1+r) stream - Same as before] ...
+      // (Copy existing loop logic here)
       const Decimal one     = DC::DecimalOne;
       const Decimal zero    = DC::DecimalZero;
       const Decimal d_ruin  = Decimal(ruin_eps);
 
-      std::vector<Decimal> loss_magnitudes;      // store |-log(1+r)| for losses
-      loss_magnitudes.reserve(xs.size());
+      // OPTIMIZATION: Use small_vector with 64 slots of stack storage.
+      // this avoids heap allocation since N is usually less than 64
+      boost::container::small_vector<Decimal, 64> loss_magnitudes;
 
-      Decimal sum_log_wins   = DC::DecimalZero;  // Σ log(1+r) for r>0
-      Decimal sum_log_losses = DC::DecimalZero;  // Σ log(1+r) for r<0 (will be <= 0)
+      //std::vector<Decimal> loss_magnitudes;
+
+      Decimal sum_log_wins   = DC::DecimalZero;
+      Decimal sum_log_losses = DC::DecimalZero;
 
       for (const auto& r : xs)
 	{
-	  // growth = 1 + r, clamped for ruin
 	  Decimal growth = one + r;
-	  if (growth <= zero)
-	    growth = d_ruin;
+	  if (growth <= zero) growth = d_ruin;
+	  const Decimal lr = std::log(growth);
 
-	  const Decimal lr = std::log(growth);     // Decimal-native log
-
-	  // Classify purely by raw return sign (clean & unambiguous):
-	  if (r > zero)               // win: lr > 0 (except r tiny)
-	    {
+	  if (r > zero) {
 	      sum_log_wins += lr;
-	    }
-	  else if (r < zero)          // loss: lr < 0 (except clamped ruin -> large negative)
-	    {
+	  } else if (r < zero) {
 	      sum_log_losses += lr;
-	      loss_magnitudes.push_back(-lr); // store positive magnitude
-	    }
-	  // r == 0 → lr == 0 → ignore (neither win nor loss)
+	      loss_magnitudes.push_back(-lr);
+	  }
 	}
 
       // --- Step 2: Robust prior for the denominator (|Σ losses|) ---
-      // If we observed losses, use median(|log-loss|).
-      // Otherwise, tie prior to ruin model: magnitude ~ -log(ruin_eps).
       Decimal prior_loss_mag = DC::DecimalZero;
+      
       if (!loss_magnitudes.empty())
 	{
+	  // CASE A: Empirical losses exist. Use median of observed losses.
 	  const std::size_t mid = loss_magnitudes.size() / 2;
 	  std::nth_element(loss_magnitudes.begin(),
 			   loss_magnitudes.begin() + static_cast<std::ptrdiff_t>(mid),
@@ -460,22 +462,30 @@ namespace mkc_timeseries
 	}
       else
 	{
-	  const Decimal mag = Decimal(std::max(-std::log(ruin_eps), denom_floor));
-	  prior_loss_mag = mag * Decimal(prior_strength);
+	  // CASE B: Zero losses in sample. Use the Strategy's Stop Loss (if provided).
+	  // This avoids the "Ruin Proxy" spike by using a specific Bayesian prior.
+	  Decimal assumed_mag;
+	  if (default_loss_magnitude > 0.0) 
+	    {
+	      assumed_mag = Decimal(default_loss_magnitude);
+	    } 
+	  else 
+	    {
+	      // Fallback: Ruin proxy
+	      assumed_mag = Decimal(std::max(-std::log(ruin_eps), denom_floor));
+	    }
+	  prior_loss_mag = assumed_mag * Decimal(prior_strength);
 	}
 
-      // --- Step 3: Form stabilized numerator/denominator ---
+      // --- Step 3 & 4: Form numerator/denominator and return ---
       const Decimal numer = sum_log_wins;
       Decimal denom       = num::abs(sum_log_losses) + prior_loss_mag;
 
-      // Absolute floor in log-space units
       const Decimal d_floor = Decimal(denom_floor);
-      if (denom < d_floor)
-	denom = d_floor;
+      if (denom < d_floor) denom = d_floor;
 
       Decimal pf = (denom > DC::DecimalZero) ? (numer / denom) : DC::DecimalZero;
 
-      // --- Step 4: Optional final compression (log(1+pf)) ---
       if (compressResult)
 	return std::log(DC::DecimalOne + pf);
 
@@ -495,51 +505,44 @@ namespace mkc_timeseries
     /// compression (and/or tweak the regularization parameters) via the ctor.
     struct LogProfitFactorStat
     {
-      /// \brief Helper to format the statistic for display (exp and subtract 1)
-      static double formatForDisplay(double value)
-      {
-        return std::exp(value) - 1.0;
-      }
+      static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
+      static constexpr bool isRatioStatistic() noexcept { return true; }
 
-      static constexpr bool isRatioStatistic() noexcept
-      {
-	return true;
-      }
-
-      /// \param compressResult  If true, return log(1 + PF_robust); otherwise PF_robust.
-      /// \param ruin_eps        Clamp for (1 + r) <= 0 in the underlying robust LPF.
-      /// \param denom_floor     Floor for the denominator in log-space units.
-      /// \param prior_strength  Multiplier for the median log-loss used as a prior.
-      explicit LogProfitFactorStat(bool   compressResult = true,
-				   double ruin_eps       = 1e-8,
-				   double denom_floor    = 1e-6,
-				   double prior_strength = 1.0)
+      explicit LogProfitFactorStat(bool   compressResult = StatUtils::DefaultCompress,
+                                   double ruin_eps       = StatUtils::DefaultRuinEps,
+                                   double denom_floor    = StatUtils::DefaultDenomFloor,
+                                   double prior_strength = StatUtils::DefaultPriorStrength,
+                                   double stop_loss_pct  = 0.0)
 	: m_compressResult(compressResult)
 	, m_ruinEps(ruin_eps)
 	, m_denomFloor(denom_floor)
 	, m_priorStrength(prior_strength)
-      {}
+      {
+	if (stop_loss_pct > 0.0) {
+	  m_defaultLossMag = std::abs(std::log(1.0 - stop_loss_pct));
+	} else {
+	  m_defaultLossMag = 0.0;
+	}
+      }
 
-      /// \brief Evaluate the robust log profit factor statistic on a return series.
-      ///
-      /// The input is a vector of per-period returns (e.g. daily percent returns
-      /// while in a trade, where 1% = 0.01).
       Decimal operator()(const std::vector<Decimal>& returns) const
       {
 	return StatUtils<Decimal>::computeLogProfitFactorRobust(returns,
 								m_compressResult,
 								m_ruinEps,
 								m_denomFloor,
-								m_priorStrength);
-    }
+								m_priorStrength,
+								m_defaultLossMag); 
+      }
 
-  private:
-    bool   m_compressResult;
-    double m_ruinEps;
-    double m_denomFloor;
-    double m_priorStrength;
-  };
-    
+    private:
+      bool   m_compressResult;
+      double m_ruinEps;
+      double m_denomFloor;
+      double m_priorStrength;
+      double m_defaultLossMag; 
+    };
+
     /**
      * @brief Computes the Log Profit Factor from a series of returns.
      * @details This variant takes the logarithm of each return (plus one) before summing,

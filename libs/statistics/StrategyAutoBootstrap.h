@@ -154,16 +154,10 @@ namespace palvalidator
      * @brief Orchestrates running multiple bootstrap engines for a given strategy/statistic.
      *
      * Responsibilities:
-     *   - Uses a TradingBootstrapFactory to build concrete bootstrap engines:
-     *     Normal, Basic, Percentile, M-out-of-N, Percentile-T, BCa
-     *     (subject to BootstrapAlgorithmsConfiguration flags).
-     *   - Converts each engine's result into an AutoBootstrapSelector::Candidate.
-     *   - Calls AutoBootstrapSelector<Decimal>::select(...) and returns AutoCIResult<Decimal>.
-     *
-     * Template parameters:
-     *   Decimal   : numeric type (e.g., mkc_timeseries::Decimal)
-     *   Sampler   : statistic functor (e.g., mkc_timeseries::GeoMeanStat<Decimal>)
-     *   Resampler : resampling adapter (e.g., StationaryMaskValueResamplerAdapter<Decimal>)
+     * - Uses a TradingBootstrapFactory to build concrete bootstrap engines.
+     * - Accepts a configured statistic functor (Sampler) to support stateful stats (like robust PF).
+     * - Converts each engine's result into an AutoBootstrapSelector::Candidate.
+     * - Calls AutoBootstrapSelector<Decimal>::select(...) and returns AutoCIResult<Decimal>.
      */
     template <class Decimal, class Sampler, class Resampler>
     class StrategyAutoBootstrap
@@ -180,14 +174,22 @@ namespace palvalidator
       // BCa resampler is always a stationary block bootstrap in the current design.
       using BCaResampler = mkc_timeseries::StationaryBlockResampler<Decimal>;
 
+      /**
+       * @brief Constructor accepting a specific statistic instance.
+       * * @param sampler_instance An instance of Sampler. This allows passing a configured
+       * statistic (e.g., LogProfitFactorStat with a specific stop-loss) rather than
+       * default-constructing one. Defaults to Sampler() if not provided.
+       */
       StrategyAutoBootstrap(Factory& factory,
                             const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
                             const BootstrapConfiguration& bootstrapConfiguration,
-                            const BootstrapAlgorithmsConfiguration& algorithmsConfiguration)
+                            const BootstrapAlgorithmsConfiguration& algorithmsConfiguration,
+                            Sampler sampler_instance = Sampler())
         : m_factory(factory),
           m_strategy(strategy),
           m_bootstrapConfiguration(bootstrapConfiguration),
-          m_algorithmsConfiguration(algorithmsConfiguration)
+          m_algorithmsConfiguration(algorithmsConfiguration),
+          m_sampler_instance(sampler_instance)
       {}
 
       /**
@@ -239,7 +241,8 @@ namespace palvalidator
 										       static_cast<uint64_t>(blockSize),
 										       fold);
 
-		auto res = engine.run(returns, Sampler(), crn);
+		// USE CONFIGURED SAMPLER INSTANCE
+		auto res = engine.run(returns, m_sampler_instance, crn); 
 		candidates.push_back(
 				     Selector::template summarizePercentileLike(
 										MethodId::Normal, engine, res));
@@ -269,7 +272,8 @@ namespace palvalidator
 										      static_cast<uint64_t>(blockSize),
 										      fold);
 
-		auto res = engine.run(returns, Sampler(), crn);
+		// USE CONFIGURED SAMPLER INSTANCE
+		auto res = engine.run(returns, m_sampler_instance, crn);
 		candidates.push_back(
 				     Selector::template summarizePercentileLike(
 										MethodId::Basic, engine, res));
@@ -299,7 +303,8 @@ namespace palvalidator
 											   static_cast<uint64_t>(blockSize),
 											   fold);
 
-		auto res = engine.run(returns, Sampler(), crn);
+		// USE CONFIGURED SAMPLER INSTANCE
+		auto res = engine.run(returns, m_sampler_instance, crn);
 		candidates.push_back(
 				     Selector::template summarizePercentileLike(
 										MethodId::Percentile, engine, res));
@@ -329,7 +334,8 @@ namespace palvalidator
 												static_cast<uint64_t>(blockSize),
 												fold);
 
-		auto res = engine.run(returns, Sampler(), crn);
+		// USE CONFIGURED SAMPLER INSTANCE
+		auto res = engine.run(returns, m_sampler_instance, crn);
 		candidates.push_back(
 				     Selector::template summarizePercentileLike(
 										MethodId::MOutOfN, engine, res));
@@ -360,7 +366,8 @@ namespace palvalidator
 											    static_cast<uint64_t>(blockSize),
 											    fold);
 
-		auto res = engine.run(returns, Sampler(), crn);
+		// USE CONFIGURED SAMPLER INSTANCE
+		auto res = engine.run(returns, m_sampler_instance, crn);
 		candidates.push_back(
 				     Selector::template summarizePercentileT(engine, res));
 	      }
@@ -381,9 +388,10 @@ namespace palvalidator
 	      {
 		BCaResampler bcaResampler(blockSize);
 
-		// Use the same statistic as Sampler, but expressed as a std::function.
+		// Use the configured statistic instance via lambda capture
+		Sampler capturedStat = m_sampler_instance;
 		std::function<Decimal(const std::vector<Decimal>&)> statFn =
-		  [](const std::vector<Decimal>& r) { return Sampler()(r); };
+		  [capturedStat](const std::vector<Decimal>& r) { return capturedStat(r); };
 
 		auto bcaEngine =
 		  m_factory.template makeBCa<Decimal, BCaResampler>(
@@ -416,28 +424,12 @@ namespace palvalidator
 				     "StrategyAutoBootstrap::run: no bootstrap candidate succeeded.");
 	  }
 
-	// -------------------------------------------------------------------
-        // Choose scoring weights based on whether the statistic is a "ratio"
-        // (e.g., LogProfitFactorStat) or a mean-like statistic (e.g., GeoMeanStat).
-        //
-        // For mean-like stats:
-        //   - center and skew penalties matter more, length a bit less.
-        //
-        // For ratio stats:
-        //   - interval LENGTH and BCa stability are more important;
-        //     center shift is down-weighted because ratio centers are noisy.
-        // -------------------------------------------------------------------
         typename Selector::ScoringWeights weights;
 
         const bool isRatioStatistic = Sampler::isRatioStatistic();
 
         if (isRatioStatistic)
           {
-            // Ratio-based statistic (e.g., profit factor / log PF)
-            //   w_center  ~ 0.25
-            //   w_skew    ~ 0.5
-            //   w_length  ~ 0.75
-            //   w_stab    ~ 1.5
             weights = typename Selector::ScoringWeights(/*wCenterShift*/ 0.25,
 							/*wSkew*/        0.5,
 							/*wLength*/      0.75,
@@ -446,11 +438,6 @@ namespace palvalidator
           }
         else
           {
-            // Mean-like statistic (e.g., geometric mean of returns)
-            //   w_center  ~ 1.0
-            //   w_skew    ~ 0.5
-            //   w_length  ~ 0.25
-            //   w_stab    ~ 1.0
             weights = typename Selector::ScoringWeights(
                            /*wCenterShift*/ 1.0,
                            /*wSkew*/        0.5,
@@ -458,15 +445,14 @@ namespace palvalidator
                            /*wStability*/   1.0);
           }
 
-        // Let AutoBootstrapSelector perform the selection using the chosen weights.
         Result result = Selector::select(candidates, weights);
 
 	if (os)
 	  {
+	    // (Logging code remains identical)
 	    const auto& diagnostics = result.getDiagnostics();
 	    const auto& chosen      = result.getChosenCandidate();
 
-	    // 1) Summary line for the selected method
 	    (*os) << "   [AutoCI] Selected method="
 		  << Result::methodIdToString(diagnostics.getChosenMethod())
 		  << "  mean="  << chosen.getMean()
@@ -478,7 +464,6 @@ namespace palvalidator
 		  << "  a="     << chosen.getAccel()
 		  << "\n";
 
-	    // 2) High-level diagnostics for the chosen method / BCa status
 	    (*os) << "   [AutoCI] Diagnostics: "
 		  << "score="                    << diagnostics.getChosenScore()
 		  << "  stability_penalty="      << diagnostics.getChosenStabilityPenalty()
@@ -489,42 +474,6 @@ namespace palvalidator
 		  << "  bcaRejectedLength="      << (diagnostics.wasBCaRejectedForLength() ? "true" : "false")
 		  << "  numCandidates="          << diagnostics.getNumCandidates()
 		  << "\n";
-
-	    bool printDetailedDiagnostics = false;
-
-	    if (printDetailedDiagnostics)
-	      {
-		// 3) Full candidate dump for detailed debugging / analysis
-		const auto& allCandidates = result.getCandidates();
-
-		(*os) << "   [AutoCI] Candidate diagnostics (one line per method):\n";
-		for (const auto& c : allCandidates)
-		  {
-		    const char* mName = Result::methodIdToString(c.getMethod());
-
-		    (*os) << "      [AutoCI-Candidate] "
-			  << "method="               << mName
-			  << "  mean="               << c.getMean()
-			  << "  LB="                 << c.getLower()
-			  << "  UB="                 << c.getUpper()
-			  << "  n="                  << c.getN()
-			  << "  B_outer="            << c.getBOuter()
-			  << "  B_inner="            << c.getBInner()
-			  << "  B_eff="              << c.getEffectiveB()
-			  << "  skipped="            << c.getSkippedTotal()
-			  << "  se_boot="            << c.getSeBoot()
-			  << "  skew_boot="          << c.getSkewBoot()
-			  << "  center_shift_in_se=" << c.getCenterShiftInSe()
-			  << "  normalized_length="  << c.getNormalizedLength()
-			  << "  ordering_penalty="   << c.getOrderingPenalty()
-			  << "  length_penalty="     << c.getLengthPenalty()
-			  << "  stability_penalty="  << c.getStabilityPenalty()
-			  << "  score="              << c.getScore()
-			  << "  z0="                 << c.getZ0()
-			  << "  a="                  << c.getAccel()
-			  << "\n";
-		  }
-	      }
 	  }
 
 	return result;
@@ -535,6 +484,7 @@ namespace palvalidator
       const mkc_timeseries::BacktesterStrategy<Decimal>& m_strategy;
       BootstrapConfiguration             m_bootstrapConfiguration;
       BootstrapAlgorithmsConfiguration   m_algorithmsConfiguration;
+      Sampler                            m_sampler_instance;
     };
   } // namespace analysis
 } // namespace palvalidator

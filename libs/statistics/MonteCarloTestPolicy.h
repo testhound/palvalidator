@@ -11,6 +11,7 @@
 #include <memory>
 #include "number.h"
 #include "DecimalConstants.h"
+#include "PercentNumber.h"
 #include "BackTester.h"
 #include "StatUtils.h"
 #include "BiasCorrectedBootstrap.h"
@@ -132,7 +133,7 @@ namespace mkc_timeseries
   {
   public:
 
-    static Decimal
+static Decimal
     getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
       // Enforce single-strategy invariant
@@ -153,7 +154,37 @@ namespace mkc_timeseries
 
       // If too thin, return a neutral/benign statistic (coherent with your other policies)
       if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired) {
-	return getMinTradeFailureTestStatistic();
+	    return getMinTradeFailureTestStatistic();
+      }
+
+      // -----------------------------------------------------------------------
+      // Retrieve Strategy Stop Loss for Robust "Zero-Loss" Handling
+      // -----------------------------------------------------------------------
+      double defaultLossMagnitude = 0.0;
+
+      // Try to cast to PalStrategy to access the single pattern.
+      auto palStrategy = std::dynamic_pointer_cast<PalStrategy<Decimal>>(strat);
+      if (palStrategy)
+      {
+        auto pattern = palStrategy->getPalPattern();
+        if (pattern)
+        {
+            // 1. Get Stop Loss from pattern (e.g., 2.55 for 2.55%)
+            Decimal stopDec = pattern->getStopLossAsDecimal();
+
+            // 2. Use PercentNumber factory to convert to decimal fraction (0.0255).
+            //    This handles the division by 100 internally.
+            auto stopPn = mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
+            
+            // 3. Extract as double
+            double stopLossPct = num::to_double(stopPn.getAsPercent());
+
+            // 4. Calculate default loss magnitude (absolute log return)
+            if (stopLossPct > 0.0)
+            {
+                defaultLossMagnitude = std::abs(std::log(1.0 - stopLossPct));
+            }
+        }
       }
 
       // Fast, robust statistic for permutation testing:
@@ -162,19 +193,14 @@ namespace mkc_timeseries
       // - conservative prior on losses (prevents explosion at tiny loss counts)
       // - optional final compression (log(1 + pf)) for symmetry
       //
-      // Keep parameters aligned with your StatUtils implementation defaults to remain
-      // consistent across the codebase.
-      constexpr double kRuinEps      = 1e-8;  // clamp for (1+r) <= 0
-      constexpr double kDenomFloor   = 1e-6;  // guard tiny denominators
-      constexpr double kPriorStrength= 1.0;   // ~1 pseudo-loss of median magnitude
 
-      return StatUtils<Decimal>::computeLogProfitFactorRobust(
-							      barSeries,
-							      /*compressResult=*/true,
-							      /*ruin_eps=*/kRuinEps,
-							      /*denom_floor=*/kDenomFloor,
-							      /*prior_strength=*/kPriorStrength);
-    }    
+      return StatUtils<Decimal>::computeLogProfitFactorRobust(barSeries,
+							      StatUtils<Decimal>::DefaultCompress,
+							      StatUtils<Decimal>::DefaultRuinEps,
+							      StatUtils<Decimal>::DefaultDenomFloor,
+							      StatUtils<Decimal>::DefaultPriorStrength,
+							      defaultLossMagnitude);
+    }
 
     /// Minimum number of trades required to attempt this test
     static unsigned int getMinStrategyTrades() { return 5; }

@@ -1766,3 +1766,137 @@ TEST_CASE("StatUtils::computeSkewAndExcessKurtosis (Robust Quantile)", "[StatUti
         REQUIRE(exkurt == Catch::Approx(0.0));
     }
 }
+
+TEST_CASE("LogProfitFactorStat with Strategy Stop Loss (Zero-Loss Handling)", "[StatUtils][LogPFStat][StopLoss]") {
+    using Stat = StatUtils<DecimalType>;
+
+    // Scenario: Only winning trades.
+    // Classic PF would be Infinite (or capped at 100).
+    // Robust PF with Ruin Proxy would be near-zero (assuming catastrophic ruin).
+    // Robust PF with Stop Loss should be "Optimistic but realistic".
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), // +10%
+        DecimalType("0.20")  // +20%
+    };
+
+    // Pre-calculate common values
+    double log_win_1 = std::log(1.10);
+    double log_win_2 = std::log(1.20);
+    double sum_log_wins = log_win_1 + log_win_2; // ~0.27763
+
+    SECTION("Stop Loss provided: uses |ln(1-SL)| as prior when no losses exist") {
+        double stop_loss_pct = 0.05; // 5% stop loss
+        double expected_loss_mag = std::abs(std::log(1.0 - stop_loss_pct)); // |ln(0.95)| ~ 0.051293
+
+        // Construct stat with stop_loss_pct as the LAST argument
+        // defaults: compress=true, ruin=1e-8, floor=1e-6, prior=1.0
+        typename Stat::LogProfitFactorStat stat(
+            /*compress=*/true, 
+            Stat::DefaultRuinEps, 
+            Stat::DefaultDenomFloor, 
+            Stat::DefaultPriorStrength, 
+            stop_loss_pct // <--- Explicit Stop Loss
+        );
+
+        DecimalType result = stat(returns);
+
+        // Math Check:
+        // Numerator = sum_log_wins (~0.2776)
+        // Denominator = 0 (actual losses) + expected_loss_mag (~0.05129)
+        // PF_raw = 0.2776 / 0.05129 ~= 5.41
+        // Result (compressed) = ln(1 + 5.41) ~= 1.858
+
+        double pf_raw = sum_log_wins / expected_loss_mag;
+        double expected_result = std::log(1.0 + pf_raw);
+
+        REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
+        
+        // Sanity check: Result should be much higher than 0, but finite
+        REQUIRE(num::to_double(result) > 1.0);
+    }
+
+    SECTION("Stop Loss provided but Uncompressed result requested") {
+        double stop_loss_pct = 0.05;
+        double expected_loss_mag = std::abs(std::log(1.0 - stop_loss_pct));
+
+        // Disable compression
+        typename Stat::LogProfitFactorStat stat(
+            /*compress=*/false, 
+            Stat::DefaultRuinEps, 
+            Stat::DefaultDenomFloor, 
+            Stat::DefaultPriorStrength, 
+            stop_loss_pct
+        );
+
+        DecimalType result = stat(returns);
+
+        double expected_result = sum_log_wins / expected_loss_mag; // ~5.41
+
+        REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
+    }
+
+    SECTION("Zero Stop Loss (Default): Falls back to Ruin Proxy") {
+        // This confirms the "old" behavior is preserved when no stop is known
+        double stop_loss_pct = 0.0; // Unknown
+
+        typename Stat::LogProfitFactorStat stat(
+            /*compress=*/true, 
+            Stat::DefaultRuinEps, 
+            Stat::DefaultDenomFloor, 
+            Stat::DefaultPriorStrength, 
+            stop_loss_pct // 0.0
+        );
+
+        DecimalType result = stat(returns);
+
+        // Math Check:
+        // Ruin Proxy = max(-ln(1e-8), 1e-6) ~= 18.42
+        // PF_raw = 0.2776 / 18.42 ~= 0.015
+        // Result (compressed) = ln(1 + 0.015) ~= 0.0149
+
+        double ruin_mag = std::max(-std::log(Stat::DefaultRuinEps), Stat::DefaultDenomFloor);
+        double pf_raw = sum_log_wins / ruin_mag;
+        double expected_result = std::log(1.0 + pf_raw);
+
+        REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
+
+        // Crucial comparison: With StopLoss(0.05) we got ~1.85. With RuinProxy we get ~0.015.
+        // This validates that the new logic significantly rescues high-quality/low-N strategies.
+        REQUIRE(num::to_double(result) < 0.1); 
+    }
+
+    SECTION("Stop Loss is ignored if actual losses exist") {
+        // Add a small loss to the series.
+        // The logic should use the median of ACTUAL losses, ignoring the stop loss assumption.
+        std::vector<DecimalType> mixed_returns = {
+            DecimalType("0.10"), 
+            DecimalType("-0.02") // Actual loss
+        };
+
+        double stop_loss_pct = 0.50; // Huge assumed stop (50%) -> Mag ~0.69
+        // Actual loss mag is |ln(0.98)| ~ 0.0202.
+        
+        typename Stat::LogProfitFactorStat stat(
+            /*compress=*/false, 
+            Stat::DefaultRuinEps, 
+            Stat::DefaultDenomFloor, 
+            Stat::DefaultPriorStrength, 
+            stop_loss_pct
+        );
+
+        DecimalType result = stat(mixed_returns);
+
+        double log_win = std::log(1.10);
+        double log_loss = std::abs(std::log(0.98));
+        
+        // Denominator = Actual Loss Sum (log_loss) + Prior (Median of Actual Losses)
+        // Median of {log_loss} is just log_loss.
+        // Denom = log_loss + log_loss * 1.0 = 2 * log_loss
+        
+        double expected_denom = log_loss + log_loss;
+        double expected_result = log_win / expected_denom;
+
+        // Verify result matches actual data, NOT the 50% stop loss
+        REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
+    }
+}
