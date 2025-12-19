@@ -2178,7 +2178,6 @@ TEST_CASE("GeoMeanFromLogBarsStat matches GeoMeanStat via makeLogGrowthSeries "
 TEST_CASE("GeoMeanFromLogBarsStat matches GeoMeanStat in the small-N winsorization band",
           "[StatUtils][GeoMeanFromLogs][Winsor]") {
     using D   = DecimalType;
-    using DC  = DecimalConstants<D>;
     using Stat = StatUtils<D>;
     constexpr double kGeoTol = 5e-8;
 

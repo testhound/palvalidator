@@ -96,7 +96,9 @@ SplitTimeSeriesData TimeSeriesProcessor::splitTimeSeries(
     size_t usableSize = (cleanStartIndex < totalSize) ? (totalSize - cleanStartIndex) : 0;
 
     size_t insampleSize = calculateSplitSize(usableSize, config.getInsamplePercent());
-    size_t oosSize = calculateSplitSize(usableSize, config.getOutOfSamplePercent());
+    size_t reservedSize = calculateSplitSize(usableSize, config.getReservedPercent());
+    size_t oosSize = (usableSize > (insampleSize + reservedSize)) ? 
+                     (usableSize - insampleSize - reservedSize) : 0;
     
     // Split the data
     size_t globalIdx = 0;
