@@ -295,11 +295,12 @@ void UserInterface::displaySetupSummary(const SetupConfiguration& config,
         // Use the same split logic as TimeSeriesProcessor::splitTimeSeries which
         // computes in-sample and out-of-sample sizes by flooring the percentage
         // of the usable bars; whatever remains is reserved.
-        size_t inSampleSize = static_cast<size_t>((config.getInsamplePercent() / 100.0) * usableEntries);
-        size_t outOfSampleSize = static_cast<size_t>((config.getOutOfSamplePercent() / 100.0) * usableEntries);
-        size_t reservedSize = (usableEntries > (inSampleSize + outOfSampleSize)) ?
-            (usableEntries - inSampleSize - outOfSampleSize) : 0;
-        
+
+	size_t inSampleSize = static_cast<size_t>((config.getInsamplePercent() / 100.0) * usableEntries);
+        size_t reservedSize = static_cast<size_t>((config.getReservedPercent() / 100.0) * usableEntries);
+        size_t outOfSampleSize = (usableEntries > (inSampleSize + reservedSize)) ?
+            (usableEntries - inSampleSize - reservedSize) : 0;
+	
         std::cout << "Data Split: " << config.getInsamplePercent() << "% / "
                   << config.getOutOfSamplePercent() << "% / "
                   << config.getReservedPercent() << "%" << std::endl;
