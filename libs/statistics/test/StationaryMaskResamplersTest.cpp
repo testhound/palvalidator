@@ -73,6 +73,71 @@ TEST_CASE("make_restart_mask: basic invariants", "[Resampler][Mask]")
     }
 }
 
+TEST_CASE("make_restart_mask: regression test for initialization bias", "[Resampler][Mask][Regression]")
+{
+    // Use a fixed seed for reproducibility
+    randutils::seed_seq_fe128 seed{100u, 200u, 300u, 400u};
+    randutils::mt19937_rng rng(seed);
+
+    // Parameters for the test
+    const std::size_t m = 100; // Sequence length
+    const double L = 5.0;      // Mean block length (Probability p = 0.2)
+    const int iterations = 10000; // Enough samples for statistical significance
+
+    SECTION("Restart probability at t=1 matches 1/L")
+    {
+        int restarts_at_1 = 0;
+        int restarts_at_2 = 0;
+
+        for (int i = 0; i < iterations; ++i) {
+            auto mask = make_restart_mask(m, L, rng);
+            
+            // mask[0] is always 1 by definition, so we check mask[1]
+            if (mask[1]) restarts_at_1++;
+            
+            // Check mask[2] as a control (it was never buggy)
+            if (mask[2]) restarts_at_2++;
+        }
+
+        double p1 = static_cast<double>(restarts_at_1) / iterations;
+        double p2 = static_cast<double>(restarts_at_2) / iterations;
+        double expected = 1.0 / L; // 0.2
+
+        // The bug caused p1 to be near 1.0. 
+        // With the fix, it should be ~0.2.
+        // Standard error for p=0.2, N=10000 is ~0.004. 5 sigma is ~0.02.
+        REQUIRE(p1 == Catch::Approx(expected).margin(0.02));
+        REQUIRE(p2 == Catch::Approx(expected).margin(0.02));
+    }
+
+    SECTION("First block length follows expected mean L")
+    {
+        double total_first_block_len = 0.0;
+
+        for (int i = 0; i < iterations; ++i) {
+            auto mask = make_restart_mask(m, L, rng);
+
+            // The first block starts at 0. Its length is the index of the NEXT restart.
+            // If no restart occurs in the rest of the vector, we cap length at m.
+            std::size_t first_block_len = m; 
+            for (std::size_t t = 1; t < m; ++t) {
+                if (mask[t]) {
+                    first_block_len = t; // Found the cut point
+                    break;
+                }
+            }
+            total_first_block_len += static_cast<double>(first_block_len);
+        }
+
+        double avg_first_len = total_first_block_len / iterations;
+
+        // PREVIOUS BUG: The first block was almost always length 1.
+        // EXPECTED: The average length should be close to L (geometric mean).
+        // (Note: slightly less than L due to truncation at m, but negligible for L=5, m=100)
+        REQUIRE(avg_first_len == Catch::Approx(L).epsilon(0.1)); // Allow 10% variance
+    }
+}
+
 TEST_CASE("StationaryMaskValueResampler: shape, domain, and contiguity", "[Resampler][Value]")
 {
     using D = DecimalType;
