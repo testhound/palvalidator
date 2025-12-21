@@ -129,6 +129,73 @@ TEST_CASE("Candidate: Construction and Encapsulation",
     }
 }
 
+TEST_CASE("Candidate: BCa Stability Penalty Calculation logic",
+          "[AutoBootstrapSelector][Candidate][Stability]")
+{
+    // Thresholds defined in Candidate private constants:
+    // kBcaZ0SoftThreshold = 0.4
+    // kBcaASoftThreshold  = 0.1
+    
+    // Helper to create a dummy candidate with specific BCa params
+    auto createBCa = [](double z0, double accel) {
+        return Candidate(MethodId::BCa,
+                         0.0, 0.0, 0.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                         0.0, 0.0, 
+                         z0, accel);
+    };
+
+    SECTION("Penalty is zero when parameters are within safe limits")
+    {
+        // z0 = 0.4 (boundary), accel = 0.1 (boundary) -> Excess = 0 -> Penalty = 0
+        Candidate safe = createBCa(0.4, 0.1);
+        REQUIRE(safe.getStabilityPenalty() == 0.0);
+
+        // z0 = -0.3, accel = -0.05 -> |0.3| < 0.4, |0.05| < 0.1 -> Penalty = 0
+        Candidate safeNegative = createBCa(-0.3, -0.05);
+        REQUIRE(safeNegative.getStabilityPenalty() == 0.0);
+    }
+
+    SECTION("Penalty is non-zero when Bias (z0) exceeds threshold")
+    {
+        // z0 = 0.5. Threshold = 0.4. Excess = 0.1.
+        // Penalty = 0.1^2 = 0.01.
+        Candidate highBias = createBCa(0.5, 0.0);
+        
+        REQUIRE(highBias.getStabilityPenalty() == Catch::Approx(0.01));
+        REQUIRE(highBias.getStabilityPenalty() > 0.0);
+    }
+
+    SECTION("Penalty is non-zero when Acceleration (a) exceeds threshold")
+    {
+        // accel = 0.2. Threshold = 0.1. Excess = 0.1.
+        // Penalty = 0.1^2 = 0.01.
+        Candidate highAccel = createBCa(0.0, 0.2);
+        
+        REQUIRE(highAccel.getStabilityPenalty() == Catch::Approx(0.01));
+        REQUIRE(highAccel.getStabilityPenalty() > 0.0);
+    }
+
+    SECTION("Penalty accumulates both excesses")
+    {
+        // z0 = 0.6 (Excess 0.2). accel = 0.3 (Excess 0.2).
+        // Penalty = 0.2^2 + 0.2^2 = 0.04 + 0.04 = 0.08.
+        Candidate bothHigh = createBCa(0.6, 0.3);
+        
+        REQUIRE(bothHigh.getStabilityPenalty() == Catch::Approx(0.08));
+    }
+
+    SECTION("Non-BCa methods always have zero stability penalty")
+    {
+        // Even if we pass high parameters, non-BCa methods should ignore them
+        Candidate percentile(MethodId::Percentile,
+                             0.0, 0.0, 0.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                             0.0, 0.0,
+                             0.6, 0.3); // High z0/accel passed in
+
+        REQUIRE(percentile.getStabilityPenalty() == 0.0);
+    }
+}
+
 TEST_CASE("Candidate: Immutability and withScore",
           "[AutoBootstrapSelector][Candidate]")
 {
@@ -1013,5 +1080,141 @@ TEST_CASE("AutoBootstrapSelector: enforcePositive penalizes non-positive lower b
         // And in this construction, that means we specifically chose `pos`.
         REQUIRE(chosen.getLower() == Catch::Approx(0.10));
         REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
+    }
+}
+
+TEST_CASE("AutoBootstrapSelector: Normalization scales correctly and is not capped",
+          "[AutoBootstrapSelector][Normalization]")
+{
+    // Reference constants from header:
+    // kRefOrderingErrorSq = 0.01 (0.10^2)
+    // kRefStability       = 0.25
+    
+    // 1. Create a candidate with exactly 2x the reference ordering error.
+    // Penalty = 0.02. Ref = 0.01. Expected Norm = 2.0.
+    Candidate highErrorCand(MethodId::Basic,
+                  /*mean*/ 1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ 0.02, 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+
+    // 2. Create a candidate with 0.5x the reference stability.
+    // Penalty = 0.125. Ref = 0.25. Expected Norm = 0.5.
+    Candidate stableCand(MethodId::BCa,
+                  /*mean*/ 1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ 0.0, 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+    // Inject stability penalty via "score" or mock (since stability is calculated in ctor).
+    // Actually, simpler to rely on Breakdowns to verify the math.
+    
+    // Let's rely on the highErrorCand which uses simple passed-in penalties.
+    std::vector<Candidate> cands = { highErrorCand };
+    
+    // Use default weights (Ordering weight is implicit 1.0)
+    ScoringWeights weights;
+    
+    auto result = Selector::select(cands, weights);
+    
+    // Verify the score breakdown
+    const auto& breakdown = result.getDiagnostics().getScoreBreakdowns()[0];
+    
+    // 0.02 / 0.01 = 2.0
+    REQUIRE(breakdown.getOrderingNorm() == Catch::Approx(2.0));
+    
+    // Ensure it wasn't capped at 1.0
+    REQUIRE(breakdown.getOrderingNorm() > 1.0);
+    
+    // Ensure total score reflects this (2.0 * 1.0 weight)
+    REQUIRE(result.getChosenCandidate().getScore() == Catch::Approx(2.0));
+}
+
+TEST_CASE("AutoBootstrapSelector: Robustness against NaN/Infinity penalties",
+          "[AutoBootstrapSelector][Safety]")
+{
+    // Candidate 1: Has a NaN ordering penalty (e.g. from divide-by-zero somewhere)
+    Candidate nanCand(MethodId::Normal,
+                  1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ std::numeric_limits<double>::quiet_NaN(), 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+
+    // Candidate 2: A perfectly valid, decent candidate
+    Candidate validCand(MethodId::Basic,
+                  1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ 0.05, 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+
+    // Put NaN candidate FIRST to test the initialization logic
+    std::vector<Candidate> cands = { nanCand, validCand };
+
+    auto result = Selector::select(cands);
+
+    // The selector should SKIP the NaN candidate and pick the valid one.
+    REQUIRE(result.getChosenMethod() == MethodId::Basic);
+    
+    // Ensure the score is finite
+    REQUIRE(std::isfinite(result.getChosenCandidate().getScore()));
+}
+
+TEST_CASE("AutoBootstrapSelector: BCa stability rejection threshold verification",
+          "[AutoBootstrapSelector][Diagnostics][Threshold]")
+{
+    // We need a "Perfect" candidate to ensure BCa loses the selection.
+    // If BCa wins, the "Rejected" flags are never calculated.
+    Candidate winner(MethodId::Percentile,
+                     0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                     0.0, 0.0, 0.0, 0.0); 
+    // This candidate has 0.0 penalties, so it will score ~0.0.
+
+    // Helper to create BCa with specific bias (z0)
+    // Recall: Excess = |z0| - 0.4. Penalty = Excess^2.
+    auto makeBCa = [](double z0) {
+        return Candidate(MethodId::BCa,
+                         0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                         0.0, // ordering (ignored)
+                         0.0, // length
+                         z0, 0.0);
+    };
+
+    SECTION("Penalty of 0.0025 (below 0.01) does NOT trigger rejection flag")
+    {
+        // z0 = 0.45.
+        // Excess = |0.45| - 0.40 = 0.05.
+        // Penalty = 0.05^2 = 0.0025.
+        // Since 0.0025 < 0.01, this should NOT be flagged as "Rejected for Instability".
+        
+        Candidate stableBCa = makeBCa(0.45);
+        REQUIRE(stableBCa.getStabilityPenalty() == Catch::Approx(0.0025)); // Sanity check
+
+        std::vector<Candidate> cands = {winner, stableBCa};
+        auto result = Selector::select(cands);
+
+        // Verify BCa lost (sanity check)
+        REQUIRE(result.getChosenMethod() != MethodId::BCa);
+        
+        // Verify the diagnostic threshold was NOT tripped
+        REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == false);
+    }
+
+    SECTION("Penalty of 0.0225 (above 0.01) DOES trigger rejection flag")
+    {
+        // z0 = 0.55.
+        // Excess = |0.55| - 0.40 = 0.15.
+        // Penalty = 0.15^2 = 0.0225.
+        // Since 0.0225 > 0.01, this MUST be flagged as "Rejected for Instability".
+
+        Candidate unstableBCa = makeBCa(0.55);
+        REQUIRE(unstableBCa.getStabilityPenalty() == Catch::Approx(0.0225)); // Sanity check
+
+        std::vector<Candidate> cands = {winner, unstableBCa};
+        auto result = Selector::select(cands);
+
+        // Verify BCa lost
+        REQUIRE(result.getChosenMethod() != MethodId::BCa);
+
+        // Verify the diagnostic threshold WAS tripped
+        REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == true);
     }
 }

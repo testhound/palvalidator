@@ -7,6 +7,7 @@
 #include <utility>
 #include <algorithm>
 #include <string>
+#include <iostream>
 
 #include "number.h"
 #include "NormalDistribution.h"
@@ -126,16 +127,12 @@ namespace palvalidator
               const double abs_z0 = std::fabs(m_z0);
               const double abs_a  = std::fabs(m_accel);
 
-              // Soft thresholds; empirically tuned for financial time series.
-              const double z0_ok = 0.5;
-              const double a_ok  = 0.1;
+	      const double z0_excess =
+		(abs_z0 > kBcaZ0SoftThreshold) ? (abs_z0 - kBcaZ0SoftThreshold) : 0.0;
+	      const double a_excess  =
+		(abs_a  > kBcaASoftThreshold)  ? (abs_a  - kBcaASoftThreshold)  : 0.0;
 
-              const double z0_excess =
-                (abs_z0 > z0_ok) ? (abs_z0 - z0_ok) : 0.0;
-              const double a_excess  =
-                (abs_a  > a_ok)  ? (abs_a  - a_ok)  : 0.0;
-
-              m_stability_penalty = z0_excess * z0_excess +
+	       m_stability_penalty = z0_excess * z0_excess +
                 a_excess  * a_excess;
             }
         }
@@ -202,6 +199,12 @@ namespace palvalidator
         }
 
       private:
+	// ------------------------------------------------------------------
+	// BCa stability "soft thresholds"
+	// ------------------------------------------------------------------
+	static constexpr double kBcaZ0SoftThreshold = 0.4;  // |z0| > 0.5 implies heavy bias correction
+	static constexpr double kBcaASoftThreshold  = 0.1;  // |a|  > 0.1 implies extreme skewness sensitivity
+
         MethodId    m_method;
         Decimal     m_mean;
         Decimal     m_lower;
@@ -232,91 +235,182 @@ namespace palvalidator
       class SelectionDiagnostics
       {
       public:
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             std::size_t  numCandidates)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_num_candidates(numCandidates)
-        {}
+	/**
+	 * @brief Immutable per-candidate breakdown of score components.
+	 *
+	 * This is intended for logging / introspection only. It does not affect selection.
+	 */
+	class ScoreBreakdown
+	{
+	public:
+	  ScoreBreakdown(MethodId method,
+			 double orderingRaw,
+			 double lengthRaw,
+			 double stabilityRaw,
+			 double centerSqRaw,
+			 double skewSqRaw,
+			 double domainRaw,
+			 double orderingNorm,
+			 double lengthNorm,
+			 double stabilityNorm,
+			 double centerSqNorm,
+			 double skewSqNorm,
+			 double orderingContrib,
+			 double lengthContrib,
+			 double stabilityContrib,
+			 double centerSqContrib,
+			 double skewSqContrib,
+			 double domainContrib,
+			 double totalScore)
+	    : m_method(method),
+	      m_ordering_raw(orderingRaw),
+	      m_length_raw(lengthRaw),
+	      m_stability_raw(stabilityRaw),
+	      m_center_sq_raw(centerSqRaw),
+	      m_skew_sq_raw(skewSqRaw),
+	      m_domain_raw(domainRaw),
+	      m_ordering_norm(orderingNorm),
+	      m_length_norm(lengthNorm),
+	      m_stability_norm(stabilityNorm),
+	      m_center_sq_norm(centerSqNorm),
+	      m_skew_sq_norm(skewSqNorm),
+	      m_ordering_contrib(orderingContrib),
+	      m_length_contrib(lengthContrib),
+	      m_stability_contrib(stabilityContrib),
+	      m_center_sq_contrib(centerSqContrib),
+	      m_skew_sq_contrib(skewSqContrib),
+	      m_domain_contrib(domainContrib),
+	      m_total_score(totalScore)
+	  {}
 
-        MethodId getChosenMethod() const
-        {
-          return m_chosen_method;
-        }
+	  MethodId getMethod() const { return m_method; }
 
-        const std::string& getChosenMethodName() const
-        {
-          return m_chosen_method_name;
-        }
+	  double getOrderingRaw() const { return m_ordering_raw; }
+	  double getLengthRaw() const { return m_length_raw; }
+	  double getStabilityRaw() const { return m_stability_raw; }
+	  double getCenterSqRaw() const { return m_center_sq_raw; }
+	  double getSkewSqRaw() const { return m_skew_sq_raw; }
+	  double getDomainRaw() const { return m_domain_raw; }
 
-        double getChosenScore() const
-        {
-          return m_chosen_score;
-        }
+	  double getOrderingNorm() const { return m_ordering_norm; }
+	  double getLengthNorm() const { return m_length_norm; }
+	  double getStabilityNorm() const { return m_stability_norm; }
+	  double getCenterSqNorm() const { return m_center_sq_norm; }
+	  double getSkewSqNorm() const { return m_skew_sq_norm; }
 
-        double getChosenStabilityPenalty() const
-        {
-          return m_chosen_stability_penalty;
-        }
+	  double getOrderingContribution() const { return m_ordering_contrib; }
+	  double getLengthContribution() const { return m_length_contrib; }
+	  double getStabilityContribution() const { return m_stability_contrib; }
+	  double getCenterSqContribution() const { return m_center_sq_contrib; }
+	  double getSkewSqContribution() const { return m_skew_sq_contrib; }
+	  double getDomainContribution() const { return m_domain_contrib; }
 
-        double getChosenLengthPenalty() const
-        {
-          return m_chosen_length_penalty;
-        }
+	  double getTotalScore() const { return m_total_score; }
 
-        bool hasBCaCandidate() const
-        {
-          return m_has_bca_candidate;
-        }
+	private:
+	  MethodId m_method;
 
-        bool isBCaChosen() const
-        {
-          return m_bca_chosen;
-        }
+	  double m_ordering_raw;
+	  double m_length_raw;
+	  double m_stability_raw;
+	  double m_center_sq_raw;
+	  double m_skew_sq_raw;
+	  double m_domain_raw;
 
-        bool wasBCaRejectedForInstability() const
-        {
-          return m_bca_rejected_for_instability;
-        }
+	  double m_ordering_norm;
+	  double m_length_norm;
+	  double m_stability_norm;
+	  double m_center_sq_norm;
+	  double m_skew_sq_norm;
 
-        bool wasBCaRejectedForLength() const
-        {
-          return m_bca_rejected_for_length;
-        }
+	  double m_ordering_contrib;
+	  double m_length_contrib;
+	  double m_stability_contrib;
+	  double m_center_sq_contrib;
+	  double m_skew_sq_contrib;
+	  double m_domain_contrib;
 
-        std::size_t getNumCandidates() const
-        {
-          return m_num_candidates;
-        }
+	  double m_total_score;
+	};
+
+	// Existing constructor (kept exactly for backwards compatibility)
+	SelectionDiagnostics(MethodId     chosenMethod,
+			     std::string  chosenMethodName,
+			     double       chosenScore,
+			     double       chosenStabilityPenalty,
+			     double       chosenLengthPenalty,
+			     bool         hasBCaCandidate,
+			     bool         bcaChosen,
+			     bool         bcaRejectedForInstability,
+			     bool         bcaRejectedForLength,
+			     std::size_t  numCandidates)
+	  : m_chosen_method(chosenMethod),
+	    m_chosen_method_name(std::move(chosenMethodName)),
+	    m_chosen_score(chosenScore),
+	    m_chosen_stability_penalty(chosenStabilityPenalty),
+	    m_chosen_length_penalty(chosenLengthPenalty),
+	    m_has_bca_candidate(hasBCaCandidate),
+	    m_bca_chosen(bcaChosen),
+	    m_bca_rejected_for_instability(bcaRejectedForInstability),
+	    m_bca_rejected_for_length(bcaRejectedForLength),
+	    m_num_candidates(numCandidates),
+	    m_score_breakdowns()
+	{}
+
+	// New constructor overload that includes breakdowns
+	SelectionDiagnostics(MethodId     chosenMethod,
+			     std::string  chosenMethodName,
+			     double       chosenScore,
+			     double       chosenStabilityPenalty,
+			     double       chosenLengthPenalty,
+			     bool         hasBCaCandidate,
+			     bool         bcaChosen,
+			     bool         bcaRejectedForInstability,
+			     bool         bcaRejectedForLength,
+			     std::size_t  numCandidates,
+			     std::vector<ScoreBreakdown> scoreBreakdowns)
+	  : m_chosen_method(chosenMethod),
+	    m_chosen_method_name(std::move(chosenMethodName)),
+	    m_chosen_score(chosenScore),
+	    m_chosen_stability_penalty(chosenStabilityPenalty),
+	    m_chosen_length_penalty(chosenLengthPenalty),
+	    m_has_bca_candidate(hasBCaCandidate),
+	    m_bca_chosen(bcaChosen),
+	    m_bca_rejected_for_instability(bcaRejectedForInstability),
+	    m_bca_rejected_for_length(bcaRejectedForLength),
+	    m_num_candidates(numCandidates),
+	    m_score_breakdowns(std::move(scoreBreakdowns))
+	{}
+
+	MethodId getChosenMethod() const { return m_chosen_method; }
+	const std::string& getChosenMethodName() const { return m_chosen_method_name; }
+	double getChosenScore() const { return m_chosen_score; }
+	double getChosenStabilityPenalty() const { return m_chosen_stability_penalty; }
+	double getChosenLengthPenalty() const { return m_chosen_length_penalty; }
+	bool hasBCaCandidate() const { return m_has_bca_candidate; }
+	bool isBCaChosen() const { return m_bca_chosen; }
+	bool wasBCaRejectedForInstability() const { return m_bca_rejected_for_instability; }
+	bool wasBCaRejectedForLength() const { return m_bca_rejected_for_length; }
+	std::size_t getNumCandidates() const { return m_num_candidates; }
+
+	bool hasScoreBreakdowns() const { return !m_score_breakdowns.empty(); }
+	const std::vector<ScoreBreakdown>& getScoreBreakdowns() const { return m_score_breakdowns; }
 
       private:
-        MethodId    m_chosen_method;
-        std::string m_chosen_method_name;
-        double      m_chosen_score;
-        double      m_chosen_stability_penalty;
-        double      m_chosen_length_penalty;
-        bool        m_has_bca_candidate;
-        bool        m_bca_chosen;
-        bool        m_bca_rejected_for_instability;
-        bool        m_bca_rejected_for_length;
-        std::size_t m_num_candidates;
-      };
+	MethodId    m_chosen_method;
+	std::string m_chosen_method_name;
+	double      m_chosen_score;
+	double      m_chosen_stability_penalty;
+	double      m_chosen_length_penalty;
+	bool        m_has_bca_candidate;
+	bool        m_bca_chosen;
+	bool        m_bca_rejected_for_instability;
+	bool        m_bca_rejected_for_length;
+	std::size_t m_num_candidates;
 
+	std::vector<ScoreBreakdown> m_score_breakdowns;
+      };
+    
       /**
        * @brief Result Constructor.
        * @param chosenMethod The MethodId of the selected best interval.
@@ -516,8 +610,14 @@ namespace palvalidator
 	const double width_cdf  = F_hi - F_lo;
 	const double coverage_target = res.cl;
 
-	const double cov_pen = (width_cdf - coverage_target) *
-	  (width_cdf - coverage_target);
+	const double coverage_error = width_cdf - coverage_target;
+
+	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+	const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
+
+	const double cov_pen =
+	  kUnderCoverageMultiplier * under_coverage * under_coverage +
+	  kOverCoverageMultiplier  * over_coverage  * over_coverage;
 
 	const double F_mu       = empiricalCdf(stats, mu);
 	const double center_cdf = 0.5 * (F_lo + F_hi);
@@ -553,8 +653,9 @@ namespace palvalidator
 		// Soft band: penalize if length is < 0.8x or > a method-specific
 		// upper bound. M-out-of-N intervals are naturally wider, so we use
 		// a more generous upper limit for that method only.
-		const double L_min = 0.8;
-		const double L_max = (method == MethodId::MOutOfN ? 3.0 : 1.8);
+
+		const double L_min = kLengthMin;
+		const double L_max = (method == MethodId::MOutOfN ? kLengthMaxMOutOfN : kLengthMaxStandard);
 
 		if (norm_len < L_min)
 		  {
@@ -693,8 +794,8 @@ namespace palvalidator
 		const double norm_len = len / ideal_len_boot;
 		normalized_length = norm_len;
 
-		const double L_min = 0.8;
-		const double L_max = 1.8;
+		const double L_min = kLengthMin;
+		const double L_max = kLengthMaxStandard;
 
 		if (norm_len < L_min)
 		  {
@@ -923,22 +1024,19 @@ namespace palvalidator
         return 100; // should not happen
       }
 
-            // ------------------------------------------------------------------
-      // Selection Logic
-      // ------------------------------------------------------------------
       /**
        * @brief Selects the best bootstrap interval from the provided candidates.
        *
        * ALGORITHM:
-       *   - Compute a unified scalar score for each candidate using:
-       *       score = ordering_penalty
-       *             + w_len   * length_penalty
-       *             + w_stab  * stability_penalty   (BCa only; 0 for others)
-       *             + w_center* center_shift_in_se^2
-       *             + w_skew  * skew_boot^2
-       *   - Choose the candidate with minimum score.
-       *   - If scores tie within epsilon, break ties using methodPreference
-       *     (BCa > PercentileT > MOutOfN > Percentile > Basic > Normal).
+       * - Compute a unified scalar score for each candidate using:
+       * score = ordering_penalty
+       * + w_len   * length_penalty
+       * + w_stab  * stability_penalty   (BCa only; 0 for others)
+       * + w_center* center_shift_in_se^2
+       * + w_skew  * skew_boot^2
+       * - Choose the candidate with minimum score.
+       * - If scores tie within epsilon, break ties using methodPreference
+       * (BCa > PercentileT > MOutOfN > Percentile > Basic > Normal).
        *
        * ScoringWeights controls w_len, w_center, w_skew, and w_stab.
        */
@@ -951,94 +1049,227 @@ namespace palvalidator
           }
 
         // -------------------------------------------------------------------
-        // 1) Compute unified scores for all candidates
+        // Helpers
         // -------------------------------------------------------------------
-        const double w_center = weights.getCenterShiftWeight();
-        const double w_skew   = weights.getSkewWeight();
-        const double w_length = weights.getLengthWeight();
-        const double w_stab   = weights.getStabilityWeight();   // BCa stability weight
+        const auto relativeEpsilon = [](double a, double b) -> double
+        {
+          // Practical tolerance for a score that is a sum of a handful of doubles.
+          const double scale = 1.0 + std::max(std::fabs(a), std::fabs(b));
+          return kRelativeTieEpsilonScale * scale;
+        };
 
-        std::vector<Candidate> enriched;
-        enriched.reserve(candidates.size());
+        const auto scoresAreTied = [&](double a, double b) -> bool
+        {
+          return std::fabs(a - b) <= relativeEpsilon(a, b);
+        };
+
+        // -------------------------------------------------------------------
+        // Phase 1: Compute raw components (no weights, no normalization)
+        // -------------------------------------------------------------------
+        class RawComponents
+        {
+        public:
+          RawComponents(double orderingPenalty,
+                        double lengthPenalty,
+                        double stabilityPenalty,
+                        double centerShiftSq,
+                        double skewSq,
+                        double domainPenalty)
+            : m_ordering_penalty(orderingPenalty),
+              m_length_penalty(lengthPenalty),
+              m_stability_penalty(stabilityPenalty),
+              m_center_shift_sq(centerShiftSq),
+              m_skew_sq(skewSq),
+              m_domain_penalty(domainPenalty)
+          {}
+
+          double getOrderingPenalty() const { return m_ordering_penalty; }
+          double getLengthPenalty() const { return m_length_penalty; }
+          double getStabilityPenalty() const { return m_stability_penalty; }
+          double getCenterShiftSq() const { return m_center_shift_sq; }
+          double getSkewSq() const { return m_skew_sq; }
+          double getDomainPenalty() const { return m_domain_penalty; }
+
+        private:
+          double m_ordering_penalty;
+          double m_length_penalty;
+          double m_stability_penalty;
+          double m_center_shift_sq;
+          double m_skew_sq;
+          double m_domain_penalty;
+        };
+
+        const bool enforcePos = weights.enforcePositive();
+
+        std::vector<RawComponents> raw;
+        raw.reserve(candidates.size());
 
         bool   hasBCaCandidate       = false;
         double bestBCaStabPenalty    = std::numeric_limits<double>::infinity();
         double bestBCaLengthPenalty  = std::numeric_limits<double>::infinity();
 
-	const bool enforcePos = weights.enforcePositive();
         for (const auto& c : candidates)
           {
-            double centerPenalty = c.getCenterShiftInSe();
-            centerPenalty *= centerPenalty; // square to make it quadratic
+            double centerShiftSq = c.getCenterShiftInSe();
+            centerShiftSq *= centerShiftSq;
 
-            double skewPenalty = c.getSkewBoot();
-            skewPenalty *= skewPenalty;     // square; magnitude of skew matters
+            double skewSq = c.getSkewBoot();
+            skewSq *= skewSq;
 
             const double baseOrdering = c.getOrderingPenalty();
             const double baseLength   = c.getLengthPenalty();
-            const double stabPenalty  = c.getStabilityPenalty();  // 0 for non-BCa
+            const double stabPenalty  = c.getStabilityPenalty(); // 0 for non-BCa
 
-	    double domainPenalty = 0.0;
-	    if (enforcePos)
-	      {
-		// If Lower Bound is <= 0, this candidate is invalid for this statistic.
-		// We apply a massive penalty to ensure it loses.
-		// We use num::to_double just to be safe with Decimal types.
-		if (num::to_double(c.getLower()) <= 1e-9) 
-		  {
-		    domainPenalty = 1000.0; 
-		  }
-	      }
+            double domainPenalty = 0.0;
+            if (enforcePos)
+              {
+                // If lower bound is <= 0, candidate is invalid for strictly-positive statistics.
+                if (num::to_double(c.getLower()) <= kPositiveLowerEpsilon)
+                  {
+                    domainPenalty = kDomainViolationPenalty;
+                  }
+              }
 
-            const double score =
-              baseOrdering +
-              w_length * baseLength +
-              w_stab   * stabPenalty +
-              w_center * centerPenalty +
-              w_skew   * skewPenalty +
-	      domainPenalty;
-
-            Candidate withScore = c.withScore(score);
-            enriched.push_back(withScore);
+            raw.emplace_back(baseOrdering,
+                             baseLength,
+                             stabPenalty,
+                             centerShiftSq,
+                             skewSq,
+                             domainPenalty);
 
             if (c.getMethod() == MethodId::BCa)
               {
                 hasBCaCandidate = true;
-                if (stabPenalty < bestBCaStabPenalty)
-                  bestBCaStabPenalty = stabPenalty;
-                if (baseLength < bestBCaLengthPenalty)
-                  bestBCaLengthPenalty = baseLength;
+                bestBCaStabPenalty   = std::min(bestBCaStabPenalty,   stabPenalty);
+                bestBCaLengthPenalty = std::min(bestBCaLengthPenalty, baseLength);
               }
           }
 
         // -------------------------------------------------------------------
-        // 2) Choose winner: minimum score, tie-broken by methodPreference
+        // Phase 2: Normalize/cap components so weights represent "importance"
+        // rather than compensating for different numeric ranges.
+        //
+
+        // We do NOT clamp at 1.0 because a penalty of 10x the reference
+        // should be scored as 10x worse, not capped at "Standard Bad".
+        const auto enforceNonNegative = [](double x) -> double
+        {
+          if (x < 0.0) return 0.0;
+          return x;
+        };
+        
+        // Constants defining "Bad":
+        // If a method has this much error, its normalized penalty = 1.0.
+    
+        // 10% coverage error (e.g. 85% instead of 95%) is "Maximum Bad"
+        const double kRefOrderingErrorSq = 0.10 * 0.10; 
+    
+        // Length deviation of 1.0 (e.g. double the ideal width) is "Maximum Bad"
+        const double kRefLengthErrorSq   = 1.0 * 1.0;   
+    
+        // BCa Stability (z0=0.5, a=0.1) produces roughly 0.25 penalty in your formula
+        const double kRefStability       = 0.25;        
+    
+        // Center shift of 2.0 Standard Errors is "Maximum Bad"
+        const double kRefCenterShiftSq   = 2.0 * 2.0;   
+        
+        // Skewness of 2.0 (highly skewed) is "Maximum Bad"
+        const double kRefSkewSq          = 2.0 * 2.0;
+
         // -------------------------------------------------------------------
-        const double eps = 1e-15;
+        // Phase 3: Aggregate score + enrich candidates + capture breakdowns
+        // -------------------------------------------------------------------
+        const double w_center = weights.getCenterShiftWeight();
+        const double w_skew   = weights.getSkewWeight();
+        const double w_length = weights.getLengthWeight();
+        const double w_stab   = weights.getStabilityWeight();
 
-        std::size_t chosenIdx = 0;
-        double      bestScore = enriched[0].getScore();
+        std::vector<Candidate> enriched;
+        enriched.reserve(candidates.size());
 
-        for (std::size_t i = 1; i < enriched.size(); ++i)
+        std::vector<typename SelectionDiagnostics::ScoreBreakdown> breakdowns;
+        breakdowns.reserve(candidates.size());
+
+        for (std::size_t i = 0; i < candidates.size(); ++i)
           {
-            const auto& c = enriched[i];
-            const double s = c.getScore();
+            const Candidate& c = candidates[i];
+            const RawComponents& r = raw[i];
 
-            if (s < bestScore - eps)
+            //
+            const double orderingNorm  = enforceNonNegative(r.getOrderingPenalty()  / kRefOrderingErrorSq);
+            const double lengthNorm    = enforceNonNegative(r.getLengthPenalty()    / kRefLengthErrorSq);
+            const double stabilityNorm = enforceNonNegative(r.getStabilityPenalty() / kRefStability);
+            const double centerSqNorm  = enforceNonNegative(r.getCenterShiftSq()    / kRefCenterShiftSq);
+            const double skewSqNorm    = enforceNonNegative(r.getSkewSq()           / kRefSkewSq);
+
+            const double orderingContrib  = orderingNorm;              // implicit weight 1.0
+            const double lengthContrib    = w_length * lengthNorm;
+            const double stabilityContrib = w_stab   * stabilityNorm;
+            const double centerSqContrib  = w_center * centerSqNorm;
+            const double skewSqContrib    = w_skew   * skewSqNorm;
+            const double domainContrib    = r.getDomainPenalty();      // intentionally absolute
+
+            const double totalScore =
+              orderingContrib +
+              lengthContrib +
+              stabilityContrib +
+              centerSqContrib +
+              skewSqContrib +
+              domainContrib;
+
+            breakdowns.emplace_back(
+                                    c.getMethod(),
+                                    /* raw */  r.getOrderingPenalty(), r.getLengthPenalty(), r.getStabilityPenalty(), r.getCenterShiftSq(), r.getSkewSq(), r.getDomainPenalty(),
+                                    /* norm */ orderingNorm, lengthNorm, stabilityNorm, centerSqNorm, skewSqNorm,
+                                    /* contrib */ orderingContrib, lengthContrib, stabilityContrib, centerSqContrib, skewSqContrib, domainContrib,
+                                    /* total */ totalScore);
+
+            enriched.push_back(c.withScore(totalScore));
+          }
+
+        // -------------------------------------------------------------------
+        // Phase 4: Choose winner: minimum score, tie-broken by methodPreference
+        // -------------------------------------------------------------------
+        std::size_t chosenIdx = 0;
+        double      bestScore = std::numeric_limits<double>::infinity();
+
+        for (std::size_t i = 0; i < enriched.size(); ++i)
+          {
+            const double s = enriched[i].getScore();
+
+            // Skip invalid scores (NaN/Inf) entirely
+	    if (!std::isfinite(s))
+              {
+                // Optional: Print warning to stderr if this happens
+                std::cerr << "[AutoBootstrapSelector] Warning: Method " 
+                          << Result::methodIdToString(enriched[i].getMethod()) 
+                          << " has non-finite score. Skipping.\n";
+                continue;
+              }
+
+            // Special handling for the first valid score found.
+            // If bestScore is infinite, we cannot use relativeEpsilon (it would be Inf).
+            // We just accept this candidate as the current best.
+            if (std::isinf(bestScore))
+              {
+                bestScore = s;
+                chosenIdx = i;
+                continue; 
+              }
+
+            if (!scoresAreTied(s, bestScore) && s < bestScore)
               {
                 bestScore = s;
                 chosenIdx = i;
               }
-            else if (std::fabs(s - bestScore) <= eps)
+            else if (scoresAreTied(s, bestScore))
               {
-                // Scores effectively tied: use method preference
-                const auto& bestC = enriched[chosenIdx];
-                const int pBest = methodPreference(bestC.getMethod());
-                const int pCur  = methodPreference(c.getMethod());
+                const int pBest = methodPreference(enriched[chosenIdx].getMethod());
+                const int pCur  = methodPreference(enriched[i].getMethod());
                 if (pCur < pBest)
                   {
-                    chosenIdx = i;
                     bestScore = s;
+                    chosenIdx = i;
                   }
               }
           }
@@ -1046,12 +1277,8 @@ namespace palvalidator
         const Candidate& chosen = enriched[chosenIdx];
 
         // -------------------------------------------------------------------
-        // 3) Diagnostics: did BCa exist, and was it "rejected" on stability/length?
+        // Phase 5: Diagnostics: did BCa exist, and was it "rejected" on stability/length?
         // -------------------------------------------------------------------
-        // Keep thresholds only for diagnostics (no gating behavior).
-        const double BCa_STABILITY_THRESHOLD      = 0.1;
-        const double BCa_LENGTH_PENALTY_THRESHOLD = 1.0;
-
         const bool bcaChosen = (chosen.getMethod() == MethodId::BCa);
 
         bool bcaRejectedForInstability = false;
@@ -1059,24 +1286,50 @@ namespace palvalidator
 
         if (hasBCaCandidate && !bcaChosen)
           {
-            bcaRejectedForInstability = (bestBCaStabPenalty   > BCa_STABILITY_THRESHOLD);
-            bcaRejectedForLength      = (bestBCaLengthPenalty > BCa_LENGTH_PENALTY_THRESHOLD);
+            bcaRejectedForInstability = (bestBCaStabPenalty   > kBcaStabilityThreshold);
+            bcaRejectedForLength      = (bestBCaLengthPenalty > kBcaLengthPenaltyThreshold);
           }
 
         SelectionDiagnostics diagnostics(
-          chosen.getMethod(),
-          Result::methodIdToString(chosen.getMethod()),
-          chosen.getScore(),
-          chosen.getStabilityPenalty(),
-          chosen.getLengthPenalty(),
-          hasBCaCandidate,
-          bcaChosen,
-          bcaRejectedForInstability,
-          bcaRejectedForLength,
-          enriched.size());
+                                         chosen.getMethod(),
+                                         Result::methodIdToString(chosen.getMethod()),
+                                         chosen.getScore(),
+                                         chosen.getStabilityPenalty(),
+                                         chosen.getLengthPenalty(),
+                                         hasBCaCandidate,
+                                         bcaChosen,
+                                         bcaRejectedForInstability,
+                                         bcaRejectedForLength,
+                                         enriched.size(),
+                                         std::move(breakdowns));
 
         return Result(chosen.getMethod(), chosen, enriched, diagnostics);
       }
+
+    private:
+      // ------------------------------------------------------------------
+      // Selection & penalty policy constants
+      // ------------------------------------------------------------------
+
+      // Asymmetric coverage penalty multipliers (Percentile-like only)
+      static constexpr double kUnderCoverageMultiplier = 2.0; // you chose 2.0 (mildly stricter on under-coverage)
+      static constexpr double kOverCoverageMultiplier  = 1.0;
+
+      // Length penalty "soft band"
+      static constexpr double kLengthMin           = 0.8;
+      static constexpr double kLengthMaxStandard   = 1.8;
+      static constexpr double kLengthMaxMOutOfN    = 3.0;
+
+      // Domain enforcement for strictly-positive statistics
+      static constexpr double kPositiveLowerEpsilon = 1e-9;
+      static constexpr double kDomainViolationPenalty = 1000.0;
+
+      // BCa “rejection reason” diagnostics thresholds used in select()
+      static constexpr double kBcaStabilityThreshold      = 0.01;
+      static constexpr double kBcaLengthPenaltyThreshold  = 1.0;
+
+      // Floating-point tie tolerance scale used in select()
+      static constexpr double kRelativeTieEpsilonScale = 1e-10;
     };
 
   } // namespace analysis
