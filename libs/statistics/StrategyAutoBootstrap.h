@@ -453,6 +453,38 @@ namespace palvalidator
 	    const auto& diagnostics = result.getDiagnostics();
 	    const auto& chosen      = result.getChosenCandidate();
 
+    if (result.getChosenMethod() == MethodId::MOutOfN)
+      {
+		(*os) << "\n[!] CRITICAL: Safety Valve Triggered (M-out-of-N chosen)\n";
+		(*os) << "--------------------------------------------------------\n";
+    
+		// Find the BCa candidate to see why it failed (it usually wins)
+		for (const auto& cand : result.getCandidates())
+		  {
+            if (cand.getMethod() == MethodId::BCa)
+              {
+			(*os) << "    BCa Stats (REJECTED):\n"
+				  << "    - z0 (Bias): " << cand.getZ0() << "\n"
+				  << "    - a (Accel): " << cand.getAccel() << "\n"
+				  << "    - Stability Penalty: " << cand.getStabilityPenalty() << "\n"
+				  << "    - Normalized Length: " << cand.getNormalizedLength() << "\n";
+                      
+			if (std::abs(cand.getZ0()) > 0.4)
+			  (*os) << "    -> DIAGNOSIS: Excessive Bias (z0 > 0.4)\n";
+			if (std::abs(cand.getAccel()) > 0.1)
+			  (*os) << "    -> DIAGNOSIS: Excessive Skew Sensitivity (a > 0.1)\n";
+		      }
+        
+            if (cand.getMethod() == MethodId::Percentile)
+              {
+			(*os) << "    Percentile Stats:\n"
+				  << "    - Skewness: " << cand.getSkewBoot() << "\n"
+				  << "    - Length Penalty: " << cand.getLengthPenalty() << "\n";
+		      }
+		  }
+		(*os) << "--------------------------------------------------------\n\n";
+	      }
+ 
 	    (*os) << "   [AutoCI] Selected method="
 		  << Result::methodIdToString(diagnostics.getChosenMethod())
 		  << "  mean="  << chosen.getMean()
