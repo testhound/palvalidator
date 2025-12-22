@@ -129,6 +129,73 @@ TEST_CASE("Candidate: Construction and Encapsulation",
     }
 }
 
+TEST_CASE("Candidate: BCa Stability Penalty Calculation logic",
+          "[AutoBootstrapSelector][Candidate][Stability]")
+{
+    // Thresholds defined in Candidate private constants:
+    // kBcaZ0SoftThreshold = 0.4
+    // kBcaASoftThreshold  = 0.1
+    
+    // Helper to create a dummy candidate with specific BCa params
+    auto createBCa = [](double z0, double accel) {
+        return Candidate(MethodId::BCa,
+                         0.0, 0.0, 0.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                         0.0, 0.0, 
+                         z0, accel);
+    };
+
+    SECTION("Penalty is zero when parameters are within safe limits")
+    {
+        // z0 = 0.4 (boundary), accel = 0.1 (boundary) -> Excess = 0 -> Penalty = 0
+        Candidate safe = createBCa(0.4, 0.1);
+        REQUIRE(safe.getStabilityPenalty() == 0.0);
+
+        // z0 = -0.3, accel = -0.05 -> |0.3| < 0.4, |0.05| < 0.1 -> Penalty = 0
+        Candidate safeNegative = createBCa(-0.3, -0.05);
+        REQUIRE(safeNegative.getStabilityPenalty() == 0.0);
+    }
+
+    SECTION("Penalty is non-zero when Bias (z0) exceeds threshold")
+    {
+        // z0 = 0.5. Threshold = 0.4. Excess = 0.1.
+        // Penalty = 0.1^2 = 0.01.
+        Candidate highBias = createBCa(0.5, 0.0);
+        
+        REQUIRE(highBias.getStabilityPenalty() == Catch::Approx(0.01));
+        REQUIRE(highBias.getStabilityPenalty() > 0.0);
+    }
+
+    SECTION("Penalty is non-zero when Acceleration (a) exceeds threshold")
+    {
+        // accel = 0.2. Threshold = 0.1. Excess = 0.1.
+        // Penalty = 0.1^2 = 0.01.
+        Candidate highAccel = createBCa(0.0, 0.2);
+        
+        REQUIRE(highAccel.getStabilityPenalty() == Catch::Approx(0.01));
+        REQUIRE(highAccel.getStabilityPenalty() > 0.0);
+    }
+
+    SECTION("Penalty accumulates both excesses")
+    {
+        // z0 = 0.6 (Excess 0.2). accel = 0.3 (Excess 0.2).
+        // Penalty = 0.2^2 + 0.2^2 = 0.04 + 0.04 = 0.08.
+        Candidate bothHigh = createBCa(0.6, 0.3);
+        
+        REQUIRE(bothHigh.getStabilityPenalty() == Catch::Approx(0.08));
+    }
+
+    SECTION("Non-BCa methods always have zero stability penalty")
+    {
+        // Even if we pass high parameters, non-BCa methods should ignore them
+        Candidate percentile(MethodId::Percentile,
+                             0.0, 0.0, 0.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                             0.0, 0.0,
+                             0.6, 0.3); // High z0/accel passed in
+
+        REQUIRE(percentile.getStabilityPenalty() == 0.0);
+    }
+}
+
 TEST_CASE("Candidate: Immutability and withScore",
           "[AutoBootstrapSelector][Candidate]")
 {
@@ -818,11 +885,14 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
     Candidate c_narrow = Selector::summarizePercentileLike(MethodId::Percentile, engine, narrowRes);
     Candidate c_bad    = Selector::summarizePercentileLike(MethodId::Percentile, engine, badRes);
 
-    SECTION("Stable BCa participates but does not override better-scored methods")
+    SECTION("Stable BCa overrides better-scored methods under strict hierarchy")
     {
         // BCa is numerically stable (small z0/accel, reasonable length),
         // but we deliberately give it a terrible ordering penalty to ensure
         // its overall score is worse than the good percentile candidate.
+        //
+        // Under the new strict hierarchy:
+        // If BCa passes the hard gates, it wins regardless of score.
         Candidate bca(MethodId::BCa,
                       0.0, -0.4, 0.2, CL,
                       n, B, 0, m, 0,
@@ -836,19 +906,16 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
                       /*accel*/ 0.01);
 
         std::vector<Candidate> cands = {c_good, c_narrow, c_bad, bca};
-
         auto result = Selector::select(cands);
 
-        // Under the new egalitarian scoring, BCa should NOT win here:
-        // the good percentile candidate has a much better score.
-        REQUIRE(result.getChosenMethod() == MethodId::Percentile);
+        // Strict hierarchy => stable BCa wins.
+        REQUIRE(result.getChosenMethod() == MethodId::BCa);
 
         const auto& diag = result.getDiagnostics();
         REQUIRE(diag.hasBCaCandidate()  == true);
-        REQUIRE(diag.isBCaChosen()      == false);
+        REQUIRE(diag.isBCaChosen()      == true);
 
-        // BCa lost purely on score; it should NOT be flagged as rejected for
-        // instability or length according to the BCa diagnostics thresholds.
+        // Stable BCa should not be flagged as rejected for instability or length.
         REQUIRE(diag.wasBCaRejectedForInstability() == false);
         REQUIRE(diag.wasBCaRejectedForLength()      == false);
     }
@@ -862,26 +929,26 @@ TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
                                /*skew*/ 0.1,
                                /*center_shift_in_se*/ 0.0,
                                /*normalized_length*/ 1.0,
-                               0.0,   // ordering (ignored in old logic; still small here)
+                               0.0,   // ordering
                                0.0,   // length penalty
-                               /*z0*/ 1.5,    // very large => unstable
-                               /*accel*/ 0.25);
+                               /*z0*/ 1.5,    // violates hard z0 gate
+                               /*accel*/ 0.25 // violates hard accel gate (if enabled)
+                               );
 
-        // Should push BCa stability_penalty >> threshold in the Candidate
+        // Sanity check: the stability penalty should be large
         REQUIRE(unstable_bca.getStabilityPenalty() > 0.1);
 
         std::vector<Candidate> cands = {c_good, c_narrow, c_bad, unstable_bca};
-
         auto result = Selector::select(cands);
 
-        // A strongly unstable BCa should lose to a well-behaved percentile CI.
+        // Unstable BCa should be rejected; percentile wins.
         REQUIRE(result.getChosenMethod() == MethodId::Percentile);
 
         const auto& diag = result.getDiagnostics();
         REQUIRE(diag.hasBCaCandidate()  == true);
         REQUIRE(diag.isBCaChosen()      == false);
         REQUIRE(diag.wasBCaRejectedForInstability() == true);
-        // length rejection may or may not be true depending on penalty, so we don't assert it
+        // length rejection may or may not be true depending on your length penalty model
     }
 }
 
@@ -1013,5 +1080,146 @@ TEST_CASE("AutoBootstrapSelector: enforcePositive penalizes non-positive lower b
         // And in this construction, that means we specifically chose `pos`.
         REQUIRE(chosen.getLower() == Catch::Approx(0.10));
         REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
+    }
+}
+
+TEST_CASE("AutoBootstrapSelector: Normalization scales correctly and is not capped",
+          "[AutoBootstrapSelector][Normalization]")
+{
+    // Reference constants from header:
+    // kRefOrderingErrorSq = 0.01 (0.10^2)
+    // kRefStability       = 0.25
+    
+    // 1. Create a candidate with exactly 2x the reference ordering error.
+    // Penalty = 0.02. Ref = 0.01. Expected Norm = 2.0.
+    Candidate highErrorCand(MethodId::Basic,
+                  /*mean*/ 1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ 0.02, 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+
+    // 2. Create a candidate with 0.5x the reference stability.
+    // Penalty = 0.125. Ref = 0.25. Expected Norm = 0.5.
+    Candidate stableCand(MethodId::BCa,
+                  /*mean*/ 1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ 0.0, 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+    // Inject stability penalty via "score" or mock (since stability is calculated in ctor).
+    // Actually, simpler to rely on Breakdowns to verify the math.
+    
+    // Let's rely on the highErrorCand which uses simple passed-in penalties.
+    std::vector<Candidate> cands = { highErrorCand };
+    
+    // Use default weights (Ordering weight is implicit 1.0)
+    ScoringWeights weights;
+    
+    auto result = Selector::select(cands, weights);
+    
+    // Verify the score breakdown
+    const auto& breakdown = result.getDiagnostics().getScoreBreakdowns()[0];
+    
+    // 0.02 / 0.01 = 2.0
+    REQUIRE(breakdown.getOrderingNorm() == Catch::Approx(2.0));
+    
+    // Ensure it wasn't capped at 1.0
+    REQUIRE(breakdown.getOrderingNorm() > 1.0);
+    
+    // Ensure total score reflects this (2.0 * 1.0 weight)
+    REQUIRE(result.getChosenCandidate().getScore() == Catch::Approx(2.0));
+}
+
+TEST_CASE("AutoBootstrapSelector: Robustness against NaN/Infinity penalties",
+          "[AutoBootstrapSelector][Safety]")
+{
+    // Candidate 1: Has a NaN ordering penalty (e.g. from divide-by-zero somewhere)
+    Candidate nanCand(MethodId::Normal,
+                  1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ std::numeric_limits<double>::quiet_NaN(), 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+
+    // Candidate 2: A perfectly valid, decent candidate
+    Candidate validCand(MethodId::Basic,
+                  1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
+                  /*ordering*/ 0.05, 
+                  /*length*/   0.0,
+                  /*z0*/ 0.0, /*accel*/ 0.0);
+
+    // Put NaN candidate FIRST to test the initialization logic
+    std::vector<Candidate> cands = { nanCand, validCand };
+
+    auto result = Selector::select(cands);
+
+    // The selector should SKIP the NaN candidate and pick the valid one.
+    REQUIRE(result.getChosenMethod() == MethodId::Basic);
+    
+    // Ensure the score is finite
+    REQUIRE(std::isfinite(result.getChosenCandidate().getScore()));
+}
+
+TEST_CASE("AutoBootstrapSelector: BCa stability rejection threshold verification",
+          "[AutoBootstrapSelector][Diagnostics][Threshold]")
+{
+    // Under strict hierarchy, BCa only loses if it fails a hard gate.
+    // So we test directly around the hard z0 limit.
+
+    // "Perfect" fallback candidate (will win if BCa is rejected)
+    Candidate winner(MethodId::Percentile,
+                     0.0, -1.0, 1.0, 0.95,
+                     100, 1000, 0, 1000, 0,
+                     0.1, 0.0, 0.0, 1.0,
+                     0.0, 0.0, 0.0, 0.0);
+
+    // Helper to create BCa with specific z0/accel
+    auto makeBCa = [](double z0, double accel)
+    {
+        return Candidate(MethodId::BCa,
+                         0.0, -1.0, 1.0, 0.95,
+                         100, 1000, 0, 1000, 0,
+                         0.1, 0.0, 0.0, 1.0,
+                         0.0, // ordering
+                         0.0, // length penalty
+                         z0, accel);
+    };
+
+    SECTION("BCa within hard limits is chosen and not flagged as rejected")
+    {
+        // z0=0.49 is within the hard limit |z0|<=0.5
+        // accel=0.0 within any reasonable accel hard limit (e.g., 0.2)
+        Candidate stableBCa = makeBCa(0.49, 0.0);
+
+        std::vector<Candidate> cands = {winner, stableBCa};
+        auto result = Selector::select(cands);
+
+        // Stable BCa wins under strict hierarchy
+        REQUIRE(result.getChosenMethod() == MethodId::BCa);
+
+        const auto& diag = result.getDiagnostics();
+        REQUIRE(diag.hasBCaCandidate() == true);
+        REQUIRE(diag.isBCaChosen()     == true);
+
+        // Not rejected for stability/length
+        REQUIRE(diag.wasBCaRejectedForInstability() == false);
+        REQUIRE(diag.wasBCaRejectedForLength()      == false);
+    }
+
+    SECTION("BCa beyond z0 hard limit is rejected for instability and fallback wins")
+    {
+        // z0=0.51 violates the hard limit |z0|<=0.5
+        Candidate unstableBCa = makeBCa(0.51, 0.0);
+
+        std::vector<Candidate> cands = {winner, unstableBCa};
+        auto result = Selector::select(cands);
+
+        // BCa rejected => fallback candidate selected (Percentile via tournament)
+        REQUIRE(result.getChosenMethod() == MethodId::Percentile);
+
+        const auto& diag = result.getDiagnostics();
+        REQUIRE(diag.hasBCaCandidate() == true);
+        REQUIRE(diag.isBCaChosen()     == false);
+
+        // Rejection reason must be flagged
+        REQUIRE(diag.wasBCaRejectedForInstability() == true);
     }
 }

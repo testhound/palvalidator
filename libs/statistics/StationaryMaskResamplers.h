@@ -45,7 +45,7 @@ namespace palvalidator
      *
      * @see StationaryMaskValueResampler, StationaryMaskIndexResampler
      */
-    // Replace existing make_restart_mask with this run-length version.
+// Corrected Bernoulli version of make_restart_mask
     template <class Rng>
     inline std::vector<uint8_t> make_restart_mask(std::size_t m, double L, Rng& rng)
     {
@@ -54,31 +54,21 @@ namespace palvalidator
       if (!(L >= 1.0) || !std::isfinite(L))
         throw std::invalid_argument("make_restart_mask: L must be finite and >= 1");
 
+      // Stationary Bootstrap definition:
+      // A new block starts at any time t with probability p = 1/L.
+      // mask[0] is always 1 (by convention/necessity).
+      
       const double p = (L <= 1.0) ? 1.0 : (1.0 / L);
+      std::bernoulli_distribution bern(p);
 
-      // geometric_distribution models the number of failures before first success.
-      // We want run lengths in {1,2,...} with mean 1/p = L, so we use (k + 1).
-      std::geometric_distribution<std::size_t> geo(p);
+      std::vector<uint8_t> mask(m);
+      mask[0] = 1u; // Always restart at t=0
 
-      std::vector<uint8_t> mask(m, 0u);
-      std::size_t t = 0;
-
-      // First element must be a restart.
-      mask[t++] = 1u;
-
-      while (t < m)
- {
-   const std::size_t run_len = 1 + geo(mkc_timeseries::rng_utils::get_engine(rng)); // length >= 1
-	  // We mark ONLY the restart at the beginning of the run.
-	  // The continuation positions are zeros; the value/index resampler advances pos.
-	  // Advance t by the run length: next loop iteration will mark a new restart (if any room left).
-	  const std::size_t next = t + run_len;
-	  if (next < m)
-	    {
-	      mask[t] = 1u; // new run starts at t
-	    }
-	  t = next;
-	}
+      // For t=1 to m-1, decide if we restart
+      for (std::size_t t = 1; t < m; ++t) {
+          // get_engine(rng) is available via your existing include "RngUtils.h"
+          mask[t] = bern(mkc_timeseries::rng_utils::get_engine(rng)) ? 1u : 0u;
+      }
 
       return mask;
     }
