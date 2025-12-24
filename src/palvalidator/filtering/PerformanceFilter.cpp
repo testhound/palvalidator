@@ -28,19 +28,22 @@ namespace palvalidator
 
     constexpr std::size_t kRegimeVolWindow = 20;
     PerformanceFilter::PerformanceFilter(const Num& confidenceLevel,
-    	 unsigned int numResamples, uint64_t masterSeed)
+	 unsigned int numResamples, uint64_t masterSeed,
+        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer)
     : mConfidenceLevel(confidenceLevel),
       mNumResamples(numResamples),
       mRobustnessConfig(),
       mFragileEdgePolicy(),
       mFilteringSummary(),
       mApplyFragileAdvice(true),
-      mBootstrapFactory(std::make_unique<BootstrapFactory>(masterSeed))
+      mLSensitivity(),
+      mBootstrapFactory(std::make_unique<BootstrapFactory>(masterSeed)),
+      mObserver(std::move(observer))
     {
     }
 
     PerformanceFilter::PerformanceFilter(const Num& confidenceLevel,
-    	 unsigned int numResamples)
+	 unsigned int numResamples)
       : PerformanceFilter (confidenceLevel, numResamples, palvalidator::config::kDefaultCrnMasterSeed)
     {
     }
@@ -157,7 +160,7 @@ namespace palvalidator
       // In the new design, the TradingHurdleCalculator is simplified and used
       // directly within the pipeline, so we pass it here.
       TradingHurdleCalculator hurdleCalculator;
-      return std::make_unique<FilteringPipeline>(
+       return std::make_unique<FilteringPipeline>(
         hurdleCalculator,
         mConfidenceLevel,
         mNumResamples,
@@ -166,7 +169,8 @@ namespace palvalidator
         mFragileEdgePolicy,
         mApplyFragileAdvice,
         mFilteringSummary,
-	*mBootstrapFactory
+ 	*mBootstrapFactory,
+        mObserver
       );
     }
 

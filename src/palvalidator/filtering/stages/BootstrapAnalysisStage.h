@@ -4,6 +4,9 @@
 #include "filtering/BootstrapConfig.h"
 #include "TradingBootstrapFactory.h"
 #include <ostream>
+#include "AutoBootstrapSelector.h"
+#include "diagnostics/IBootstrapObserver.h"
+#include "diagnostics/IBootstrapObserver.h"
 
 namespace palvalidator::filtering::stages
 {
@@ -15,8 +18,14 @@ namespace palvalidator::filtering::stages
   {
   public:
     BootstrapAnalysisStage(const Num& confidenceLevel,
-  	   unsigned int numResamples,
-  	   BootstrapFactory& bootstrapFactory);
+	   unsigned int numResamples,
+	   BootstrapFactory& bootstrapFactory);
+
+    void reportDiagnostics(const StrategyAnalysisContext& ctx,
+                           palvalidator::diagnostics::MetricType metricType,
+                           const palvalidator::analysis::AutoCIResult<Num>& result) const;
+
+    void setObserver(std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer) { mObserver = observer; }
 
     /**
      * Compute BCa bootstrap bounds and annualize results.
@@ -330,6 +339,7 @@ namespace palvalidator::filtering::stages
     Num mConfidenceLevel;
     unsigned int mNumResamples;
     BootstrapFactory& mBootstrapFactory;
+    std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> mObserver;
   };
 
 } // namespace palvalidator::filtering::stages

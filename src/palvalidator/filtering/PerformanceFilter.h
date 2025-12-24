@@ -15,6 +15,7 @@
 #include "analysis/FragileEdgeAnalyzer.h"
 #include "RegimeMixStress.h"
 #include "filtering/BootstrapConfig.h"
+#include "diagnostics/IBootstrapObserver.h"
 
 namespace palvalidator
 {
@@ -72,7 +73,8 @@ namespace palvalidator
        * @param numResamples Number of bootstrap resamples (e.g., 2000)
        * @param masterSeed A seed for the random number generator.
        */
-      PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples, uint64_t masterSeed);
+      PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples, uint64_t masterSeed,
+                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer = nullptr);
 
       PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples);
 
@@ -152,6 +154,7 @@ namespace palvalidator
       bool mApplyFragileAdvice;                      ///< Whether to apply fragile edge advice
       LSensitivityConfig mLSensitivity;
       std::unique_ptr<BootstrapFactory> mBootstrapFactory;
+      std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> mObserver;
     };
 
   } // namespace filtering

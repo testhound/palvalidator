@@ -91,15 +91,16 @@ namespace palvalidator::filtering
 {
   using mkc_timeseries::DecimalConstants;
 
-  FilteringPipeline::FilteringPipeline(const TradingHurdleCalculator& hurdleCalc,
-                                       const Num& confidenceLevel,
-                                       unsigned int numResamples,
-                                       const RobustnessChecksConfig& robustnessConfig,
-                                       const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
-                                       const FragileEdgePolicy& fragileEdgePolicy,
-                                       bool applyFragileAdvice,
-                                       FilteringSummary& summary,
-                                       BootstrapFactory& bootstrapFactory)
+   FilteringPipeline::FilteringPipeline(const TradingHurdleCalculator& hurdleCalc,
+                                        const Num& confidenceLevel,
+                                        unsigned int numResamples,
+                                        const RobustnessChecksConfig& robustnessConfig,
+                                        const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
+                                        const FragileEdgePolicy& fragileEdgePolicy,
+                                        bool applyFragileAdvice,
+                                        FilteringSummary& summary,
+                                        BootstrapFactory& bootstrapFactory,
+                                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer)
     : mBacktestingStage()
     , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory)
     , mHurdleStage(hurdleCalc)
@@ -111,6 +112,11 @@ namespace palvalidator::filtering
     , mLSensitivityConfig(lSensitivityConfig)
     , mBootstrapFactory(bootstrapFactory)
   {
+    // If an observer is provided, set it on the relevant stage(s)
+    if (observer) {
+      // BootstrapAnalysisStage will need to hold the observer; we set it here
+      mBootstrapStage.setObserver(observer);
+    }
   }
 
   FilterDecision FilteringPipeline::executeForStrategy(StrategyAnalysisContext& ctx,
@@ -164,6 +170,10 @@ namespace palvalidator::filtering
     
     // Stage 2: Bootstrap Analysis
     auto bootstrap = mBootstrapStage.execute(ctx, os);
+    // If the Bootstrap stage created diagnostics (AutoCI results), attempt to report them.
+    // Note: BootstrapAnalysisStage currently stores limited diagnostics in the result struct.
+    // For full AutoCI candidate reporting, the stage exposes reportDiagnostics() which
+    // will be invoked by PerformanceFilter via observer wiring in the stage when available.
     if (!bootstrap.computationSucceeded)
       {
 	std::string reason = bootstrap.failureReason.empty()

@@ -17,6 +17,7 @@ target_include_directories(${LIB_NAME} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/analysis
     ${CMAKE_CURRENT_SOURCE_DIR}/filtering
     ${CMAKE_CURRENT_SOURCE_DIR}/reporting
+    ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics
 )
 target_include_directories(${LIB_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -24,6 +25,7 @@ target_include_directories(${LIB_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/analysis
     ${CMAKE_CURRENT_SOURCE_DIR}/filtering
     ${CMAKE_CURRENT_SOURCE_DIR}/reporting
+    ${CMAKE_CURRENT_SOURCE_DIR}/diagnostics
 )
 target_link_libraries(${LIB_NAME} PRIVATE priceactionlab)
 target_link_libraries(${LIB_NAME} PRIVATE backtesting)

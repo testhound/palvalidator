@@ -65,6 +65,9 @@
 // Reporting modules
 #include "reporting/PerformanceReporter.h"
 #include "reporting/PatternReporter.h"
+#include "diagnostics/CsvBootstrapCollector.h"
+#include "diagnostics/NullBootstrapCollector.h"
+#include "filtering/ConfigSeeds.h"
 
 using namespace mkc_timeseries;
 using namespace palvalidator::utils;
@@ -76,6 +79,8 @@ using Num = num::DefaultNumber;
 
 // Global risk parameters (set once from user input)
 static RiskParameters g_riskParameters;
+// Global flag to control whether BCa bootstrap statistics are collected
+static bool g_enableBcaStats = false;
 
 // Legacy function - now delegated to PerformanceReporter
 void writeBacktestPerformanceReport(std::ofstream& file, std::shared_ptr<BackTester<Num>> backtester)
@@ -165,7 +170,20 @@ filterSurvivingStrategiesByPerformance(
     const Num confidenceLevel = Num("0.95");
     
     // The RiskParameters are no longer needed for PerformanceFilter construction
-    PerformanceFilter filter(confidenceLevel, numResamples);
+    // Create collector and inject into PerformanceFilter. Respect the global
+    // flag g_enableBcaStats which is controlled by the --bcastats CLI switch.
+    std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> collector;
+    if (g_enableBcaStats) {
+        // When enabled, write CSV diagnostics to a file
+        collector = std::make_shared<palvalidator::diagnostics::CsvBootstrapCollector>("/home/collison/bca_validation_stats.csv");
+    } else {
+        // No-op collector to avoid any diagnostic output
+        collector = std::make_shared<palvalidator::diagnostics::NullBootstrapCollector>();
+    }
+
+    PerformanceFilter filter(confidenceLevel, numResamples,
+                             palvalidator::config::kDefaultCrnMasterSeed,
+                             collector);
     return filter.filterByPerformance(survivingStrategies, baseSecurity, inSampleBacktestingDates,
                                       oosBacktestingDates, theTimeFrame, os, oosSpreadStats);
 }
@@ -625,14 +643,26 @@ void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> con
 
 void usage()
 {
-    printf("Usage: PalValidator <config file>\n");
+    printf("Usage: PalValidator [--bcastats] <config file>\n");
+    printf("  --bcastats : Enable writing BCa bootstrap statistics to CSV (default: disabled)\n");
     printf("  All other parameters will be requested via interactive prompts.\n");
 }
 
 int main(int argc, char **argv)
 {
-    if (argc != 2)
-    {
+    // Flexible argument parsing: accept optional --bcastats flag and a config file path
+    std::string configurationFileName;
+    for (int i = 1; i < argc; ++i) {
+        std::string a(argv[i]);
+        if (a == "--bcastats") {
+            g_enableBcaStats = true;
+            continue;
+        }
+        // first non-flag argument is treated as the configuration file
+        if (configurationFileName.empty()) configurationFileName = a;
+    }
+
+    if (configurationFileName.empty()) {
         usage();
         return 1;
     }
@@ -650,7 +680,7 @@ int main(int argc, char **argv)
     }
     
     // -- Configuration File Reading with existence check --
-    std::string configurationFileName = std::string(argv[1]);
+    // configurationFileName was populated from argv parsing above
     std::shared_ptr<ValidatorConfiguration<Num>> config;
     
     // Check if configuration file exists before asking for other inputs
