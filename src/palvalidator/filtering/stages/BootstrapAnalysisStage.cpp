@@ -12,6 +12,8 @@
 #include "Annualizer.h"
 #include "StatUtils.h"
 
+#include "diagnostics/IBootstrapObserver.h"
+
 #include "StationaryMaskResamplers.h"
 #include "StrategyAutoBootstrap.h"   // palvalidator::analysis::StrategyAutoBootstrap
 #include "AutoBootstrapSelector.h"   // palvalidator::analysis::AutoCIResult
@@ -66,6 +68,54 @@ namespace palvalidator::filtering::stages
     , mNumResamples(numResamples)
     , mBootstrapFactory(bootstrapFactory)
   {
+  }
+
+  void BootstrapAnalysisStage::reportDiagnostics(const StrategyAnalysisContext& ctx,
+                                                 palvalidator::diagnostics::MetricType metricType,
+                                                 const AutoCIResult<Num>& result) const
+  {
+    if (!mObserver) return;
+
+    using namespace palvalidator::diagnostics;
+
+    std::string sName = ctx.strategy ? ctx.strategy->getStrategyName() : "Unknown";
+    std::string sym = ctx.baseSecurity ? ctx.baseSecurity->getSymbol() : "Unknown";
+
+    const auto& chosen = result.getChosenCandidate();
+
+    bool bcaAvail = false;
+    double bZ0=0, bAccel=0, bStab=0, bLenPen=0, bRawLen=0;
+
+    for (const auto& c : result.getCandidates()) {
+      using MethodId = typename AutoCIResult<Num>::MethodId;
+      if (c.getMethod() == MethodId::BCa) {
+        bcaAvail = true;
+        // Best-effort extraction - methods may vary; use accessors if available
+        bZ0 = c.getZ0();
+        bAccel = c.getAccel();
+        bStab = c.getStabilityPenalty();
+        bLenPen = c.getLengthPenalty();
+        bRawLen = num::to_double(c.getUpper() - c.getLower());
+        break;
+      }
+    }
+
+    BootstrapDiagnosticRecord record(
+      sName,
+      sym,
+      metricType,
+      AutoCIResult<Num>::methodIdToString(chosen.getMethod()),
+      num::to_double(chosen.getLower()),
+      num::to_double(chosen.getUpper()),
+      chosen.getScore(),
+      chosen.getN(),
+      chosen.getBOuter(),
+      chosen.getSeBoot(),
+      chosen.getSkewBoot(),
+      bcaAvail, bZ0, bAccel, bStab, bLenPen, bRawLen
+    );
+
+    mObserver->onBootstrapResult(record);
   }
 
   // ---------------------------------------------------------------------------
@@ -351,6 +401,15 @@ namespace palvalidator::filtering::stages
        << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
        << "\n";
 
+    // Report diagnostics for GeoMean AutoCI if observer available
+    try {
+      if (mObserver) {
+        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
+      }
+    } catch (...) {
+      // swallow diagnostics errors
+    }
+
     return lbPer;
   }
 
@@ -584,6 +643,15 @@ namespace palvalidator::filtering::stages
        << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
        << "\n";
 
+    // Report diagnostics for PF AutoCI if observer available
+    try {
+      if (mObserver) {
+        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
+      }
+    } catch (...) {
+      // swallow diagnostics errors
+    }
+
     return lbPF;
   }
   
@@ -655,6 +723,22 @@ namespace palvalidator::filtering::stages
            << e.what() << "\n";
         // Leave geometric fields at default; mean and PF (if any) still published.
       }
+
+    // Diagnostics: report AutoCI GeoMean results if observer present
+    try {
+      if (mObserver) {
+        using palvalidator::diagnostics::MetricType;
+        // result.geoAuto... fields were populated by runAutoGeoBootstrap
+        // But we also want to report the AutoCI chosen candidate; we need access to it.
+        // We can rerun a lightweight auto selection? Instead, StrategyAutoBootstrap::run
+        // returned details inside runAutoGeoBootstrap; to keep changes minimal, call
+        // reportDiagnostics only when runAutoGeoBootstrap returned a chosen candidate
+        // by reconstructing an AutoCIResult via the stage's internal API is complex.
+        // As an approximation, we will not attempt to reconstruct AutoCIResult here.
+      }
+    } catch (...) {
+      // swallow diagnostics errors
+    }
 
     // 5) Profit Factor via StrategyAutoBootstrap
     try

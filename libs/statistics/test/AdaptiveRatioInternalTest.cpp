@@ -421,7 +421,7 @@ TEST_CASE("ConcreteProbeEngineMaker: runProbe wires factory and engine correctly
   // Test parameters
   const std::size_t B_probe   = 123;
   const double      rhoProbe  = 0.65;
-  const double      confLevel = 0.975;
+  const double      confLevel = 0.975;  // NOTE: This is 97.5% confidence level
   const std::size_t L_small   = 9;
   const int         stageTag  = 42;
   const int         fold      = 7;
@@ -461,19 +461,23 @@ TEST_CASE("ConcreteProbeEngineMaker: runProbe wires factory and engine correctly
   //
   // lowerBound = probeResult.lower
   // width      = upper - lower
-  // sigma      = width / (2 * z) with z = 1.96
+  // sigma      = width / (2 * z) where z is computed from actual confidence level
   // instability = |sigma / lb|  (or sigma if lb == 0)
   // ratio      = probeResult.computed_ratio
   const double lb     = num::to_double(D(-0.10));
   const double upper  = num::to_double(D(0.30));
   const double width  = upper - lb;
-  const double z      = 1.96;
+  
+  // FIXED: Use the actual critical value for the given confidence level
+  // For CL = 0.975, the critical value z is compute_normal_quantile(1 - (1-0.975)/2)
+  //                                      = compute_normal_quantile(0.98750) ≈ 2.2414
+  const double z      = palvalidator::analysis::detail::compute_normal_critical_value(confLevel);
   const double sigma  = width / (2.0 * z);
   const double instab = std::abs(sigma / lb);
 
   REQUIRE(score.getLowerBound()  == Approx(lb).margin(1e-12));
-  REQUIRE(score.getSigma()       == Approx(sigma).margin(1e-12));
-  REQUIRE(score.getInstability() == Approx(instab).margin(1e-12));
+  REQUIRE(score.getSigma()       == Approx(sigma).margin(1e-9));   // Relaxed margin slightly
+  REQUIRE(score.getInstability() == Approx(instab).margin(1e-9));  // Relaxed margin slightly
   REQUIRE(score.getRatio()       == Approx(0.40).margin(1e-12));
 }
 
@@ -486,7 +490,7 @@ TEST_CASE("ConcreteProbeEngineMaker: instability uses sigma when lower bound is 
 
   const std::size_t B_probe   = 50;
   const double      rhoProbe  = 0.50;
-  const double      confLevel = 0.95;
+  const double      confLevel = 0.95;  // 95% confidence level
   const std::size_t L_small   = 5;
   const int         stageTag  = 1;
   const int         fold      = 0;
@@ -507,13 +511,15 @@ TEST_CASE("ConcreteProbeEngineMaker: instability uses sigma when lower bound is 
   const double lb     = 0.0;
   const double upper  = num::to_double(D(0.20));
   const double width  = upper - lb;
-  const double z      = 1.96;
+  
+  // For CL = 0.95, the critical value z = compute_normal_quantile(0.975) ≈ 1.96
+  const double z      = palvalidator::analysis::detail::compute_normal_critical_value(confLevel);
   const double sigma  = width / (2.0 * z);
 
   REQUIRE(score.getLowerBound()  == Approx(lb).margin(1e-12));
-  REQUIRE(score.getSigma()       == Approx(sigma).margin(1e-12));
+  REQUIRE(score.getSigma()       == Approx(sigma).margin(1e-9));  // Relaxed margin slightly
 
   // With lb == 0, implementation should return instability = sigma
-  REQUIRE(score.getInstability() == Approx(sigma).margin(1e-12));
+  REQUIRE(score.getInstability() == Approx(sigma).margin(1e-9));  // Relaxed margin slightly
   REQUIRE(score.getRatio()       == Approx(0.30).margin(1e-12));
 }

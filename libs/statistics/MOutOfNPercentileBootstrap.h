@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include "randutils.hpp"
 #include "RngUtils.h"
 #include "ParallelExecutors.h"
@@ -96,6 +97,9 @@ namespace palvalidator
      * - **Numerically robust**: Degenerate/NaN replicates are skipped; too many degenerates
      *   raise an error to avoid misleading intervals.
      *
+     * @note Thread safety: Concurrent calls to run() are not supported due to shared
+     *       diagnostic storage. Use separate instances or external synchronization.
+     *
      * @tparam Decimal
      *   Numeric value type (e.g., dec::decimal<8>).
      * @tparam Sampler
@@ -131,6 +135,9 @@ template <class Decimal,
         double      skew_boot;         // skewness of usable bootstrap θ*'s
       };
 
+      /// Configuration constant: maximum allowed fraction of degenerate replicates
+      static constexpr double MAX_DEGENERATE_FRACTION = 0.5;
+
     public:
       // ====================================================================
       // CONSTRUCTOR 1: Fixed Ratio
@@ -146,6 +153,7 @@ template <class Decimal,
         , m_exec(std::make_shared<Executor>())
         , m_chunkHint(0)
         , m_ratioPolicy(nullptr)
+        , m_diagMutex(std::make_unique<std::mutex>())
         , m_diagBootstrapStats()
         , m_diagMeanBoot(0.0)
         , m_diagVarBoot(0.0)
@@ -263,6 +271,7 @@ template <class Decimal,
         const std::size_t n = x.size();
         if (n < 3)
         {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
           m_diagValid = false;
           throw std::invalid_argument("MOutOfNPercentileBootstrap::runWithRefinement: n must be >= 3");
         }
@@ -352,42 +361,49 @@ template <class Decimal,
       // ====================================================================
       bool hasDiagnostics() const noexcept
       {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
         return m_diagValid;
       }
 
       const std::vector<double>& getBootstrapStatistics() const
-      {
-        ensureDiagnosticsAvailable();
-        return m_diagBootstrapStats;
-      }
+        {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
+          ensureDiagnosticsAvailable();
+          return m_diagBootstrapStats;
+        }
 
       double getBootstrapMean() const
-      {
-        ensureDiagnosticsAvailable();
-        return m_diagMeanBoot;
-      }
+        {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
+          ensureDiagnosticsAvailable();
+          return m_diagMeanBoot;
+        }
 
       double getBootstrapVariance() const
-      {
-        ensureDiagnosticsAvailable();
-        return m_diagVarBoot;
-      }
+        {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
+          ensureDiagnosticsAvailable();
+          return m_diagVarBoot;
+        }
 
       double getBootstrapSe() const
-      {
-        ensureDiagnosticsAvailable();
-        return m_diagSeBoot;
-      }
+        {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
+          ensureDiagnosticsAvailable();
+          return m_diagSeBoot;
+        }
 
       double getBootstrapSkewness() const
-      {
-        ensureDiagnosticsAvailable();
-        return m_diagSkewBoot;
-      }
-
+        {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
+          ensureDiagnosticsAvailable();
+          return m_diagSkewBoot;
+        }
+      
     private:
       void ensureDiagnosticsAvailable() const
       {
+        // Note: caller must hold m_diagMutex
         if (!m_diagValid)
         {
           throw std::logic_error(
@@ -400,46 +416,18 @@ template <class Decimal,
       // ====================================================================
       void validateParameters() const
       {
+        if (m_B == 0)
+        {
+          throw std::invalid_argument("MOutOfNPercentileBootstrap: B must be > 0");
+        }
         if (m_B < 400)
         {
-          throw std::invalid_argument("MOutOfNPercentileBootstrap: B should be >= 400");
+          throw std::invalid_argument("MOutOfNPercentileBootstrap: B should be >= 400 for reliable intervals");
         }
         if (!(m_CL > 0.5 && m_CL < 1.0))
         {
           throw std::invalid_argument("MOutOfNPercentileBootstrap: CL must be in (0.5,1)");
         }
-      }
-
-      // Unsorted type-7 quantile via nth_element
-      static double quantile_type7_via_nth(const std::vector<double>& s, double p)
-      {
-        if (s.empty())
-          throw std::invalid_argument("quantile_type7_via_nth: empty input");
-        if (p <= 0.0)
-          return *std::min_element(s.begin(), s.end());
-        if (p >= 1.0)
-          return *std::max_element(s.begin(), s.end());
-
-        const double nd = static_cast<double>(s.size());
-        const double h  = (nd - 1.0) * p + 1.0;
-        std::size_t i1  = static_cast<std::size_t>(std::floor(h));
-        if (i1 < 1)         i1 = 1;
-        if (i1 >= s.size()) i1 = s.size() - 1;
-        const double frac = h - static_cast<double>(i1);
-
-        std::vector<double> w0(s.begin(), s.end());
-        std::nth_element(w0.begin(),
-                         w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1),
-                         w0.end());
-        const double x0 = w0[i1 - 1];
-
-        std::vector<double> w1(s.begin(), s.end());
-        std::nth_element(w1.begin(),
-                         w1.begin() + static_cast<std::ptrdiff_t>(i1),
-                         w1.end());
-        const double x1 = w1[i1];
-
-        return x0 + (x1 - x0) * frac;
       }
 
       // ====================================================================
@@ -455,6 +443,7 @@ template <class Decimal,
         const std::size_t n = x.size();
         if (n < 3)
         {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
           m_diagValid = false;
           throw std::invalid_argument("MOutOfNPercentileBootstrap: n must be >= 3");
         }
@@ -474,6 +463,7 @@ template <class Decimal,
         {
           if (!m_ratioPolicy)
           {
+            std::lock_guard<std::mutex> lock(*m_diagMutex);
             m_diagValid = false;
             throw std::runtime_error("Adaptive mode enabled but no policy set");
           }
@@ -508,8 +498,7 @@ template <class Decimal,
             auto rng = make_engine(b);
             std::vector<Decimal> y;
             y.resize(m_sub);
-            auto rng_copy = rng;
-            m_resampler(x, y, m_sub, rng_copy);
+            m_resampler(x, y, m_sub, rng);
             const double v = num::to_double(sampler(y));
             if (std::isfinite(v))
               thetas_d[b] = v;
@@ -527,11 +516,15 @@ template <class Decimal,
           thetas_d.erase(it, thetas_d.end());
         }
 
-        if (thetas_d.size() < m_B / 2)
+        // Check if too many replicates are degenerate
+        // MAX_DEGENERATE_FRACTION = 0.5 means we require at least 50% valid replicates
+        if (thetas_d.size() < static_cast<std::size_t>(m_B * (1.0 - MAX_DEGENERATE_FRACTION)))
         {
+           std::lock_guard<std::mutex> lock(*m_diagMutex);
           m_diagValid = false;
           throw std::runtime_error(
-            "MOutOfNPercentileBootstrap: too many degenerate replicates");
+            "MOutOfNPercentileBootstrap: too many degenerate replicates (>" + 
+            std::to_string(static_cast<int>(MAX_DEGENERATE_FRACTION * 100)) + "% failed)");
         }
 
         // Diagnostics: mean, variance, se, skewness over usable replicates
@@ -575,21 +568,35 @@ template <class Decimal,
         const double pl    = alpha / 2.0;
         const double pu    = 1.0 - alpha / 2.0;
 
-        const double lb_d = quantile_type7_via_nth(thetas_d, pl);
-        const double ub_d = quantile_type7_via_nth(thetas_d, pu);
+        // Sort once and use efficient sorted quantile function
+        std::sort(thetas_d.begin(), thetas_d.end());
+        
+        // Convert to Decimal vector for quantile function
+        std::vector<Decimal> thetas_sorted;
+        thetas_sorted.reserve(thetas_d.size());
+        for (double v : thetas_d)
+        {
+          thetas_sorted.push_back(Decimal(v));
+        }
 
-        // Store diagnostics for the most recent run
-        m_diagBootstrapStats = thetas_d;
-        m_diagMeanBoot       = mean_boot;
-        m_diagVarBoot        = var_boot;
-        m_diagSeBoot         = se_boot;
-        m_diagSkewBoot       = skew_boot;
-        m_diagValid          = true;
+        const Decimal lb = quantile_type7_sorted(thetas_sorted, pl);
+        const Decimal ub = quantile_type7_sorted(thetas_sorted, pu);
+
+        // Store diagnostics for the most recent run (with thread safety)
+        {
+          std::lock_guard<std::mutex> lock(*m_diagMutex);
+          m_diagBootstrapStats = thetas_d;
+          m_diagMeanBoot       = mean_boot;
+          m_diagVarBoot        = var_boot;
+          m_diagSeBoot         = se_boot;
+          m_diagSkewBoot       = skew_boot;
+          m_diagValid          = true;
+        }
 
         return Result{
           /*mean          =*/ theta_hat,
-          /*lower         =*/ Decimal(lb_d),
-          /*upper         =*/ Decimal(ub_d),
+          /*lower         =*/ lb,
+          /*upper         =*/ ub,
           /*cl            =*/ m_CL,
           /*B             =*/ m_B,
           /*effective_B   =*/ thetas_d.size(),
@@ -631,7 +638,8 @@ template <class Decimal,
       mutable uint32_t           m_chunkHint{0};
       std::shared_ptr<void>      m_ratioPolicy;  // type-erased policy pointer
 
-      // Diagnostics from most recent run(...)
+      // Diagnostics from most recent run (protected by mutex for thread safety)
+      mutable std::unique_ptr<std::mutex> m_diagMutex;
       mutable std::vector<double> m_diagBootstrapStats;
       mutable double              m_diagMeanBoot;
       mutable double              m_diagVarBoot;

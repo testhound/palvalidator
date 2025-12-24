@@ -421,38 +421,33 @@ namespace mkc_timeseries
     mutable std::geometric_distribution<size_t> m_geo;
   };
 
-
-  // ------------------------------ BCa Bootstrap --------------------------------
-
   /**
    * @class BCaBootStrap
-   * @brief Computes a statistic and BCa (Bias-Corrected and Accelerated) confidence interval.
-   *
-   * This class provides a robust and flexible implementation of the BCa bootstrap method.
-   * It is designed with a pluggable architecture, allowing users to:
-   * - Choose a **resampling policy** (`Sampler`) to handle different data types
-   * (e.g., i.i.d. vs. time series).
-   * - Specify a custom **statistic** (`StatFn`) to compute a measure of interest
-   * (e.g., mean, median, standard deviation).
-   *
-   * The BCa method is a second-order accurate bootstrap interval that accounts for
-   * both bias and skewness in the distribution of the statistic. It is generally
-   * considered superior to the standard percentile bootstrap method.
-   *
-   * @tparam Decimal The numeric type for calculations (e.g., `double`, `number`).
-   * @tparam Sampler The resampling policy class (e.g., `IIDResampler`, `StationaryBlockResampler`).
-   * Defaults to `IIDResampler<Decimal>`.
-   */
-  /**
-   * @class BCaBootStrap
-   * @brief Computes a statistic and BCa (Bias-Corrected and Accelerated) confidence interval.
-   *
-   * Backward compatible with the prior template form:
-   *   template<class Decimal, class Sampler = IIDResampler<Decimal>, class Rng = randutils::mt19937_rng>
-   * Now adds a fourth template parameter:
-   *   class Provider = void
-   * If Provider is void (default), legacy behavior is used (thread_local Rng).
-   * If Provider is non-void, the provider must expose:  Rng make_engine(std::size_t replicate) const;
+   * @brief Bias-Corrected and Accelerated (BCa) bootstrap confidence intervals.
+   * 
+   * Implements the BCa method from Efron & Tibshirani (1993), which provides
+   * second-order accurate confidence intervals by correcting for bias (z0) and
+   * skewness (acceleration parameter a).
+   * 
+   * VALIDITY CONSTRAINTS:
+   * BCa assumes the statistic's sampling distribution can be approximated by
+   * an Edgeworth expansion. This assumption breaks down when:
+   * 
+   *   - |z0| > 0.6:  Extreme bias in the bootstrap distribution
+   *   - |a|  > 0.25: Extreme skewness (Hall 1992, Efron 1987)
+   * 
+   * When these thresholds are exceeded, the BCa interval may have poor coverage.
+   * Users should:
+   *   1. Check getZ0() and getAcceleration() after calculation
+   *   2. Consider using PercentileT or MOutOfN bootstrap for extreme cases
+   *   3. Or use AutoBootstrapSelector, which automatically handles these checks
+   * 
+   * @see AutoBootstrapSelector for automatic method selection based on diagnostics
+   * 
+   * References:
+   *   - Efron, B. (1987). JASA 82(397), 171-185
+   *   - Efron & Tibshirani (1993). An Introduction to the Bootstrap, Ch. 14
+   *   - Hall, P. (1992). The Bootstrap and Edgeworth Expansion, Sec. 3.6
    */
   template <class Decimal,
             class Sampler  = IIDResampler<Decimal>,
@@ -743,7 +738,10 @@ namespace mkc_timeseries
       m_bootstrapStats = boot_stats;
 
       // (3) Bias-correction z0
-      const double prop_less = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
+
+      // Clamp prop_less away from exact 0.0 and 1.0
+      const double prop_less_raw = static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
+      const double prop_less = std::max(1e-10, std::min(1.0 - 1e-10, prop_less_raw));
       const double z0        = NormalDistribution::inverseNormalCdf(prop_less);
       m_z0                   = z0;
 
@@ -765,10 +763,13 @@ namespace mkc_timeseries
       }
 
       Decimal a = DecimalConstants<Decimal>::DecimalZero;
-      if (den_d > 0.0) {
-        const double den15 = std::pow(den_d, 1.5);
-        if (den15 > 0.0) a = Decimal(num_d / (6.0 * den15));
-      }
+      if (den_d > 1e-100)
+	{  // Threshold to prevent underflow
+	  const double den15 = std::pow(den_d, 1.5);
+	  if (den15 > 1e-100) // Additional safety
+	    a = Decimal(num_d / (6.0 * den15));
+	}
+
       m_accel = a;
 
       // (5) Adjusted percentiles → bounds
@@ -813,7 +814,12 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Index function for BCa quantiles (Efron & Tibshirani).
+     * @brief Converts a probability p to an array index for the bootstrap distribution.
+     * 
+     * Implements the formula from Efron & Tibshirani (1993), Eq 14.15:
+     *   index = ⌊p(B+1)⌋ - 1
+     * 
+     * Clamps result to [0, B-1] to handle edge cases where p ≈ 0 or p ≈ 1.
      */
     static inline int unbiasedIndex(double p, unsigned int B) noexcept
     {

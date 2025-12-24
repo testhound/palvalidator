@@ -56,11 +56,12 @@ namespace palvalidator::filtering
                           const Num& confidenceLevel,
                           unsigned int numResamples,
                           const RobustnessChecksConfig& robustnessConfig,
-                          const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
-                          const FragileEdgePolicy& fragileEdgePolicy,
-                          bool applyFragileAdvice,
-                          FilteringSummary& summary,
-                          BootstrapFactory& bootstrapFactory);
+                           const PerformanceFilter::LSensitivityConfig& lSensitivityConfig,
+                           const FragileEdgePolicy& fragileEdgePolicy,
+                           bool applyFragileAdvice,
+                           FilteringSummary& summary,
+                           BootstrapFactory& bootstrapFactory,
+                           std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer);
 
     /**
      * @brief Execute complete filtering pipeline for a single strategy

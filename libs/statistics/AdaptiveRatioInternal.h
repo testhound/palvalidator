@@ -6,6 +6,7 @@
 #include <cstddef>
 #include "StatUtils.h"
 #include "number.h"
+#include "NormalQuantile.h"
 
 namespace palvalidator
 {
@@ -298,7 +299,10 @@ namespace palvalidator
           // Calculate sigma from CI width as proxy
           // sigma ≈ (upper - lower) / (2 * z_alpha/2)
           const double width = num::to_double(probeResult.upper - probeResult.lower);
-          const double z = 1.96;  // Approximate for 95% CL
+
+	  // Compute proper quantile based on actual CL
+	  const double z = compute_normal_critical_value(confLevel_);
+
           const double sigma = width / (2.0 * z);
 
           // Instability score: coefficient of variation of the lower bound

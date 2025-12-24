@@ -226,6 +226,27 @@ namespace palvalidator
 	// Shared resampler for percentile-like / Percentile-t engines.
 	Resampler resampler(blockSize);
 
+	        typename Selector::ScoringWeights weights;
+
+        const bool isRatioStatistic = Sampler::isRatioStatistic();
+
+        if (isRatioStatistic)
+          {
+            weights = typename Selector::ScoringWeights(/*wCenterShift*/ 0.25,
+							/*wSkew*/        0.5,
+							/*wLength*/      0.75,
+							/*wStability*/   1.5,
+							/*enforcePos*/   true);
+          }
+        else
+          {
+            weights = typename Selector::ScoringWeights(
+                           /*wCenterShift*/ 1.0,
+                           /*wSkew*/        0.5,
+                           /*wLength*/      0.25,
+                           /*wStability*/   1.0);
+          }
+
 	// 1) Normal bootstrap
 	if (m_algorithmsConfiguration.enableNormal())
 	  {
@@ -405,8 +426,10 @@ namespace palvalidator
 								    static_cast<uint64_t>(blockSize),
 								    fold);
 
-		// BCaBootstrap computes its statistics during construction; no run() needed.
-		candidates.push_back(Selector::template summarizeBCa(bcaEngine));
+        // BCaBootstrap computes its statistics during construction; no run() needed.
+        // Pass through optional logging stream so summarizeBCa may emit debug output
+        // to the caller-provided stream when non-null.
+        candidates.push_back(Selector::template summarizeBCa(bcaEngine, weights, os));
 	      }
 	    catch (const std::exception& e)
 	      {
@@ -424,27 +447,6 @@ namespace palvalidator
 				     "StrategyAutoBootstrap::run: no bootstrap candidate succeeded.");
 	  }
 
-        typename Selector::ScoringWeights weights;
-
-        const bool isRatioStatistic = Sampler::isRatioStatistic();
-
-        if (isRatioStatistic)
-          {
-            weights = typename Selector::ScoringWeights(/*wCenterShift*/ 0.25,
-							/*wSkew*/        0.5,
-							/*wLength*/      0.75,
-							/*wStability*/   1.5,
-							/*enforcePos*/   true);
-          }
-        else
-          {
-            weights = typename Selector::ScoringWeights(
-                           /*wCenterShift*/ 1.0,
-                           /*wSkew*/        0.5,
-                           /*wLength*/      0.25,
-                           /*wStability*/   1.0);
-          }
-
         Result result = Selector::select(candidates, weights);
 
 	if (os)
@@ -453,33 +455,33 @@ namespace palvalidator
 	    const auto& diagnostics = result.getDiagnostics();
 	    const auto& chosen      = result.getChosenCandidate();
 
-    if (result.getChosenMethod() == MethodId::MOutOfN)
-      {
+	    if (result.getChosenMethod() == MethodId::MOutOfN)
+	      {
 		(*os) << "\n[!] CRITICAL: Safety Valve Triggered (M-out-of-N chosen)\n";
 		(*os) << "--------------------------------------------------------\n";
     
 		// Find the BCa candidate to see why it failed (it usually wins)
 		for (const auto& cand : result.getCandidates())
 		  {
-            if (cand.getMethod() == MethodId::BCa)
-              {
+		    if (cand.getMethod() == MethodId::BCa)
+		      {
 			(*os) << "    BCa Stats (REJECTED):\n"
-				  << "    - z0 (Bias): " << cand.getZ0() << "\n"
-				  << "    - a (Accel): " << cand.getAccel() << "\n"
-				  << "    - Stability Penalty: " << cand.getStabilityPenalty() << "\n"
-				  << "    - Normalized Length: " << cand.getNormalizedLength() << "\n";
-                      
+			      << "    - z0 (Bias): " << cand.getZ0() << "\n"
+			      << "    - a (Accel): " << cand.getAccel() << "\n"
+			      << "    - Stability Penalty: " << cand.getStabilityPenalty() << "\n"
+			      << "    - Normalized Length: " << cand.getNormalizedLength() << "\n";
+			
 			if (std::abs(cand.getZ0()) > 0.4)
 			  (*os) << "    -> DIAGNOSIS: Excessive Bias (z0 > 0.4)\n";
 			if (std::abs(cand.getAccel()) > 0.1)
 			  (*os) << "    -> DIAGNOSIS: Excessive Skew Sensitivity (a > 0.1)\n";
 		      }
-        
-            if (cand.getMethod() == MethodId::Percentile)
-              {
+		    
+		    if (cand.getMethod() == MethodId::Percentile)
+		      {
 			(*os) << "    Percentile Stats:\n"
-				  << "    - Skewness: " << cand.getSkewBoot() << "\n"
-				  << "    - Length Penalty: " << cand.getLengthPenalty() << "\n";
+			      << "    - Skewness: " << cand.getSkewBoot() << "\n"
+			      << "    - Length Penalty: " << cand.getLengthPenalty() << "\n";
 		      }
 		  }
 		(*os) << "--------------------------------------------------------\n\n";
