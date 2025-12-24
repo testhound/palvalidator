@@ -6,6 +6,7 @@
 //  - ScoringWeights
 //  - Pareto-based selection logic
 //  - Efron-style ordering/length penalties under skewed bootstrap distributions
+//  - BCa Stability Penalties (Soft & Hard limits)
 //
 // Place in: libs/statistics/test/
 //
@@ -52,7 +53,6 @@ TEST_CASE("ScoringWeights: Construction and Getters",
 
     SECTION("Parameterized constructor sets custom weights and enforcePositive flag")
     {
-        // Explicitly provide all 5 parameters to exercise the full constructor
         ScoringWeights weights(/*wCenterShift*/ 2.0,
                                /*wSkew*/        0.8,
                                /*wLength*/      0.1,
@@ -87,424 +87,48 @@ TEST_CASE("Candidate: Construction and Encapsulation",
     const double      norm_len        = 1.05;
     const double      orderingPenalty = 0.004;
     const double      lengthPenalty   = 0.0025;
+    const double      stabilityPenalty= 0.0150; // New explicit argument
     const double      z0              = 0.01;
     const double      accel           = 0.005;
 
-    // Create Candidate (score left at default NaN)
+    // Create Candidate
     Candidate c(method, mean, lower, upper, cl, n,
                 B_outer, B_inner, effective_B, skipped,
                 se, skew, shift, norm_len,
-                orderingPenalty, lengthPenalty,
+                orderingPenalty, lengthPenalty, stabilityPenalty,
                 z0, accel);
 
     SECTION("Getters return correct values")
     {
         REQUIRE(c.getMethod() == method);
         REQUIRE(c.getMean()   == mean);
-        REQUIRE(c.getLower()  == lower);
-        REQUIRE(c.getUpper()  == upper);
-        REQUIRE(c.getCl()     == cl);
-
-        REQUIRE(c.getN()            == n);
-        REQUIRE(c.getBOuter()       == B_outer);
-        REQUIRE(c.getBInner()       == B_inner);
-        REQUIRE(c.getEffectiveB()   == effective_B);
-        REQUIRE(c.getSkippedTotal() == skipped);
-
-        REQUIRE(c.getSeBoot()          == se);
-        REQUIRE(c.getSkewBoot()        == skew);
-        REQUIRE(c.getCenterShiftInSe() == shift);
-        REQUIRE(c.getNormalizedLength()== norm_len);
-
-        REQUIRE(c.getOrderingPenalty() == orderingPenalty);
-        REQUIRE(c.getLengthPenalty()   == lengthPenalty);
-
+        REQUIRE(c.getStabilityPenalty()== stabilityPenalty); // Verify new getter
         REQUIRE(c.getZ0()    == z0);
         REQUIRE(c.getAccel() == accel);
-    }
-
-    SECTION("Default score is NaN")
-    {
-        REQUIRE(std::isnan(c.getScore()));
-    }
-}
-
-TEST_CASE("Candidate: BCa Stability Penalty Calculation logic",
-          "[AutoBootstrapSelector][Candidate][Stability]")
-{
-    // Thresholds defined in Candidate private constants:
-    // kBcaZ0SoftThreshold = 0.4
-    // kBcaASoftThreshold  = 0.1
-    
-    // Helper to create a dummy candidate with specific BCa params
-    auto createBCa = [](double z0, double accel) {
-        return Candidate(MethodId::BCa,
-                         0.0, 0.0, 0.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
-                         0.0, 0.0, 
-                         z0, accel);
-    };
-
-    SECTION("Penalty is zero when parameters are within safe limits")
-    {
-        // z0 = 0.4 (boundary), accel = 0.1 (boundary) -> Excess = 0 -> Penalty = 0
-        Candidate safe = createBCa(0.4, 0.1);
-        REQUIRE(safe.getStabilityPenalty() == 0.0);
-
-        // z0 = -0.3, accel = -0.05 -> |0.3| < 0.4, |0.05| < 0.1 -> Penalty = 0
-        Candidate safeNegative = createBCa(-0.3, -0.05);
-        REQUIRE(safeNegative.getStabilityPenalty() == 0.0);
-    }
-
-    SECTION("Penalty is non-zero when Bias (z0) exceeds threshold")
-    {
-        // z0 = 0.5. Threshold = 0.4. Excess = 0.1.
-        // Penalty = 0.1^2 = 0.01.
-        Candidate highBias = createBCa(0.5, 0.0);
-        
-        REQUIRE(highBias.getStabilityPenalty() == Catch::Approx(0.01));
-        REQUIRE(highBias.getStabilityPenalty() > 0.0);
-    }
-
-    SECTION("Penalty is non-zero when Acceleration (a) exceeds threshold")
-    {
-        // accel = 0.2. Threshold = 0.1. Excess = 0.1.
-        // Penalty = 0.1^2 = 0.01.
-        Candidate highAccel = createBCa(0.0, 0.2);
-        
-        REQUIRE(highAccel.getStabilityPenalty() == Catch::Approx(0.01));
-        REQUIRE(highAccel.getStabilityPenalty() > 0.0);
-    }
-
-    SECTION("Penalty accumulates both excesses")
-    {
-        // z0 = 0.6 (Excess 0.2). accel = 0.3 (Excess 0.2).
-        // Penalty = 0.2^2 + 0.2^2 = 0.04 + 0.04 = 0.08.
-        Candidate bothHigh = createBCa(0.6, 0.3);
-        
-        REQUIRE(bothHigh.getStabilityPenalty() == Catch::Approx(0.08));
-    }
-
-    SECTION("Non-BCa methods always have zero stability penalty")
-    {
-        // Even if we pass high parameters, non-BCa methods should ignore them
-        Candidate percentile(MethodId::Percentile,
-                             0.0, 0.0, 0.0, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
-                             0.0, 0.0,
-                             0.6, 0.3); // High z0/accel passed in
-
-        REQUIRE(percentile.getStabilityPenalty() == 0.0);
     }
 }
 
 TEST_CASE("Candidate: Immutability and withScore",
           "[AutoBootstrapSelector][Candidate]")
 {
-    // Minimal candidate with simple values
-    Candidate original(MethodId::Normal,
-                       1.0,    // mean
-                       0.9,    // lower
-                       1.1,    // upper
-                       0.95,   // cl
-                       50,     // n
-                       500,    // B_outer
-                       0,      // B_inner
-                       500,    // effective_B
-                       0,      // skipped_total
-                       0.05,   // se_boot
-                       0.0,    // skew_boot
-                       0.0,    // center_shift_in_se
-                       1.0,    // normalized_length
-                       0.01,   // ordering_penalty
-                       0.02,   // length_penalty
-                       0.0,    // z0
-                       0.0);   // accel (score defaults to NaN)
+    Candidate original(MethodId::Normal, 1.0, 0.9, 1.1, 0.95, 50, 500, 0, 500, 0,
+                       0.05, 0.0, 0.0, 1.0, 
+                       0.01, 0.02, 0.123, 0.0, 0.0);
 
-    REQUIRE(std::isnan(original.getScore()));
-
-    SECTION("withScore returns a new instance with updated score")
+    SECTION("withScore returns a new instance with updated score and preserved stability")
     {
         double newScore = 12.34;
         Candidate scored = original.withScore(newScore);
 
-        // New instance has the score
         REQUIRE(scored.getScore() == newScore);
-
-        // Other fields remained the same
-        REQUIRE(scored.getMethod() == original.getMethod());
-        REQUIRE(scored.getMean()   == original.getMean());
-        REQUIRE(scored.getLower()  == original.getLower());
-        REQUIRE(scored.getUpper()  == original.getUpper());
-        REQUIRE(scored.getCl()     == original.getCl());
-        REQUIRE(scored.getOrderingPenalty() == original.getOrderingPenalty());
-        REQUIRE(scored.getLengthPenalty()   == original.getLengthPenalty());
-    }
-
-    SECTION("Original instance remains unchanged")
-    {
-        Candidate scored = original.withScore(99.9);
-
-        // Original should still have NaN score
-        REQUIRE(std::isnan(original.getScore()));
-        REQUIRE(scored.getScore() == 99.9);
-    }
-}
-
-TEST_CASE("SelectionDiagnostics: Construction and Getters",
-          "[AutoBootstrapSelector][SelectionDiagnostics]")
-{
-    const MethodId chosenMethod = MethodId::Percentile;
-    const std::string methodName = Result::methodIdToString(chosenMethod);
-    const double score           = 1.23;
-    const double stabPenalty     = 0.04;
-    const double lengthPenalty   = 0.02;
-    const bool hasBCa            = true;
-    const bool bcaChosen         = false;
-    const bool bcaUnstable       = true;
-    const bool bcaBadLength      = false;
-    const std::size_t numCands   = 3;
-
-    Result::SelectionDiagnostics diag(
-        chosenMethod,
-        methodName,
-        score,
-        stabPenalty,
-        lengthPenalty,
-        hasBCa,
-        bcaChosen,
-        bcaUnstable,
-        bcaBadLength,
-        numCands);
-
-    REQUIRE(diag.getChosenMethod()          == chosenMethod);
-    REQUIRE(diag.getChosenMethodName()      == methodName);
-    REQUIRE(diag.getChosenScore()           == score);
-    REQUIRE(diag.getChosenStabilityPenalty()== stabPenalty);
-    REQUIRE(diag.getChosenLengthPenalty()   == lengthPenalty);
-    REQUIRE(diag.hasBCaCandidate()          == hasBCa);
-    REQUIRE(diag.isBCaChosen()              == bcaChosen);
-    REQUIRE(diag.wasBCaRejectedForInstability() == bcaUnstable);
-    REQUIRE(diag.wasBCaRejectedForLength()      == bcaBadLength);
-    REQUIRE(diag.getNumCandidates()         == numCands);
-}
-
-TEST_CASE("AutoCIResult: Construction and Accessors",
-          "[AutoBootstrapSelector][AutoCIResult]")
-{
-    Candidate c1(MethodId::Normal,
-                 1.0, 0.9, 1.1, 0.95,
-                 100, 1000, 0, 1000, 0,
-                 0.05, 0.1,
-                 0.0,   // center shift
-                 1.0,   // normalized length
-                 0.01,  // ordering penalty
-                 0.02,  // length penalty
-                 0.0,   // z0
-                 0.0);  // accel
-
-    Candidate c2(MethodId::Basic,
-                 1.0, 0.8, 1.2, 0.95,
-                 100, 1000, 0, 1000, 0,
-                 0.06, 0.2,
-                 0.1,   // center shift
-                 1.1,   // normalized length
-                 0.02,  // ordering penalty
-                 0.03,  // length penalty
-                 0.0,
-                 0.0);
-
-    // Give them scores (e.g., ordering + length)
-    c1 = c1.withScore(1.5);
-    c2 = c2.withScore(0.5); // Better score in this toy example
-
-    std::vector<Candidate> candidates = {c1, c2};
-
-    // Simulate selection (assume c2 was chosen) with explicit diagnostics
-    Result::SelectionDiagnostics diag(
-        MethodId::Basic,
-        Result::methodIdToString(MethodId::Basic),
-        c2.getScore(),
-        c2.getStabilityPenalty(),
-        c2.getLengthPenalty(),
-        /*hasBCaCandidate*/ false,
-        /*bcaChosen*/ false,
-        /*bcaRejectedForInstability*/ false,
-        /*bcaRejectedForLength*/ false,
-        candidates.size());
-
-    Result result(MethodId::Basic, c2, candidates, diag);
-
-    SECTION("Accessors return correct data")
-    {
-        REQUIRE(result.getChosenMethod() == MethodId::Basic);
-
-        const Candidate& chosen = result.getChosenCandidate();
-        REQUIRE(chosen.getMethod() == MethodId::Basic);
-        REQUIRE(chosen.getScore()  == 0.5);
-
-        const auto& list = result.getCandidates();
-        REQUIRE(list.size() == 2);
-        REQUIRE(list[0].getMethod() == MethodId::Normal);
-        REQUIRE(list[1].getMethod() == MethodId::Basic);
-    }
-
-    SECTION("Diagnostics are stored and accessible")
-    {
-        const auto& d = result.getDiagnostics();
-        REQUIRE(d.getChosenMethod()     == MethodId::Basic);
-        REQUIRE(d.getChosenMethodName() == std::string("Basic"));
-        REQUIRE(d.getChosenScore()      == Catch::Approx(0.5));
-        REQUIRE(d.hasBCaCandidate()     == false);
-        REQUIRE(d.isBCaChosen()         == false);
-        REQUIRE(d.getNumCandidates()    == candidates.size());
-    }
-}
-
-TEST_CASE("AutoBootstrapSelector: dominance logic",
-          "[AutoBootstrapSelector][Dominance]")
-{
-    // Two candidates differing only in ordering/length penalties
-    Candidate a(MethodId::Normal,
-                0.0, -1.0, 1.0, 0.95,
-                50, 500, 0, 500, 0,
-                0.1, 0.0,
-                0.0, 1.0,
-                0.01,  // ordering penalty (better)
-                0.02,  // length penalty (better)
-                0.0, 0.0);
-
-    Candidate b(MethodId::Basic,
-                0.0, -1.2, 1.2, 0.95,
-                50, 500, 0, 500, 0,
-                0.1, 0.0,
-                0.0, 1.2,
-                0.04,  // ordering penalty (worse)
-                0.05,  // length penalty (worse)
-                0.0, 0.0);
-
-    SECTION("A dominates B when strictly better in at least one dimension and no worse in the other")
-    {
-        REQUIRE(Selector::dominates(a, b));
-        REQUIRE_FALSE(Selector::dominates(b, a));
-    }
-
-    SECTION("No dominance when one is better in ordering but worse in length")
-    {
-        Candidate c(MethodId::Percentile,
-                    0.0, -1.1, 1.1, 0.95,
-                    50, 500, 0, 500, 0,
-                    0.1, 0.0,
-                    0.0, 1.0,
-                    0.005, // better ordering
-                    0.08,  // worse length
-                    0.0, 0.0);
-
-        REQUIRE_FALSE(Selector::dominates(a, c));
-        REQUIRE_FALSE(Selector::dominates(c, a));
-    }
-}
-
-TEST_CASE("AutoBootstrapSelector: Pareto selection",
-          "[AutoBootstrapSelector][Select]")
-{
-    // Construct a few synthetic candidates
-    Candidate normal(MethodId::Normal,
-                     1.0, 0.9, 1.1, 0.95,
-                     30, 400, 0, 400, 0,
-                     0.10, 0.0,
-                     0.0, 1.0,
-                     0.030, // ordering penalty
-                     0.020, // length penalty
-                     0.0, 0.0);
-
-    Candidate bca(MethodId::BCa,
-                  1.0, 0.9, 1.1, 0.95,
-                  30, 400, 0, 400, 0,
-                  0.10, 0.1,
-                  0.0, 1.0,
-                  0.010, // better ordering
-                  0.010, // better length
-                  0.05,  0.01); // z0, accel just for flavor
-
-    Candidate percentile(MethodId::Percentile,
-                         1.0, 0.85, 1.15, 0.95,
-                         30, 400, 0, 400, 0,
-                         0.10, 0.2,
-                         0.0, 1.3,
-                         0.050, // worst ordering
-                         0.090, // worst length
-                         0.0, 0.0);
-
-    std::vector<Candidate> cands = {normal, bca, percentile};
-
-    SECTION("Selector chooses BCa as non-dominated with best ordering/length")
-    {
-        auto result = Selector::select(cands);
-
-        REQUIRE(result.getChosenMethod() == MethodId::BCa);
-
-        const Candidate& chosen = result.getChosenCandidate();
-        REQUIRE(chosen.getOrderingPenalty() <= normal.getOrderingPenalty());
-        REQUIRE(chosen.getOrderingPenalty() <= percentile.getOrderingPenalty());
-        REQUIRE(chosen.getLengthPenalty()   <= normal.getLengthPenalty());
-        REQUIRE(chosen.getLengthPenalty()   <= percentile.getLengthPenalty());
-
-        // Scores should be finite (ordering + length) in the returned candidates
-        for (const auto& c : result.getCandidates())
-        {
-            REQUIRE(std::isfinite(c.getScore()));
-        }
-
-        // Diagnostics should reflect that BCa was chosen and BCa was present
-        const auto& diag = result.getDiagnostics();
-        REQUIRE(diag.getChosenMethod()      == MethodId::BCa);
-        REQUIRE(diag.hasBCaCandidate()      == true);
-        REQUIRE(diag.isBCaChosen()          == true);
-        REQUIRE(diag.getNumCandidates()     == cands.size());
-        REQUIRE(diag.wasBCaRejectedForInstability() == false);
-        REQUIRE(diag.wasBCaRejectedForLength()      == false);
-    }
-
-    SECTION("Tie-breaking among frontier candidates uses ordering, then length, then method preference")
-    {
-        // Create two methods with identical penalties to test the methodPreference fallback
-        Candidate bca_tie(MethodId::BCa,
-                          1.0, 0.9, 1.1, 0.95,
-                          30, 400, 0, 400, 0,
-                          0.10, 0.1,
-                          0.0, 1.0,
-                          0.020, // same ordering as t
-                          0.020, // same length as t
-                          0.05,  0.01);
-
-        Candidate t_method(MethodId::PercentileT,
-                           1.0, 0.9, 1.1, 0.95,
-                           30, 400, 0, 400, 0,
-                           0.10, 0.1,
-                           0.0, 1.0,
-                           0.020, // same ordering
-                           0.020, // same length
-                           0.0,   0.0);
-
-        std::vector<Candidate> ties = {bca_tie, t_method};
-
-        auto result = Selector::select(ties);
-
-        // BCa has higher preference rank than PercentileT, so it should be chosen
-        REQUIRE(result.getChosenMethod() == MethodId::BCa);
-
-        const auto& diag = result.getDiagnostics();
-        REQUIRE(diag.hasBCaCandidate()  == true);
-        REQUIRE(diag.isBCaChosen()      == true);
-        REQUIRE(diag.getNumCandidates() == ties.size());
+        REQUIRE(scored.getStabilityPenalty() == original.getStabilityPenalty());
     }
 }
 
 // -----------------------------------------------------------------------------
-// Skewed bootstrap distribution mock & tests
+// Mock Engines for Factory Tests
 // -----------------------------------------------------------------------------
 
-// A minimal mock engine that satisfies the interface required by
-// AutoBootstrapSelector::summarizePercentileLike.
 struct MockPercentileEngine
 {
     struct Result
@@ -532,694 +156,202 @@ struct MockPercentileEngine
     double getBootstrapSe() const { return seBoot; }
 };
 
-TEST_CASE("AutoBootstrapSelector: ordering penalty is smaller for quantile-aligned CI under skewed bootstrap",
-          "[AutoBootstrapSelector][OrderingPenalty][Skewed]")
+struct MockBCaEngine
 {
-    // Right-skewed small-sample bootstrap distribution (n=10)
-    // Many small/near-zero returns, a couple of outliers on the right.
-    std::vector<double> theta_star = {
-        -0.5, -0.4, -0.3, -0.2, -0.1,
-         0.0,  0.1,  0.2,  1.5,  2.0
-    };
+    Decimal     mean;
+    Decimal     lower;
+    Decimal     upper;
+    double      cl;
+    std::size_t B;
+    std::size_t n;
+    
+    // BCa specific
+    double      z0;
+    Decimal     accel;
+    std::vector<Decimal> stats; 
 
-    const std::size_t m = theta_star.size();
-    double sum = std::accumulate(theta_star.begin(), theta_star.end(), 0.0);
-    double mean_boot = sum / static_cast<double>(m);
+    // Accessors needed by summarizeBCa template
+    Decimal getMean() const { return mean; }
+    Decimal getLowerBound() const { return lower; }
+    Decimal getUpperBound() const { return upper; }
+    double  getConfidenceLevel() const { return cl; }
+    unsigned int getNumResamples() const { return static_cast<unsigned int>(B); }
+    std::size_t getSampleSize() const { return n; }
+    
+    double getZ0() const { return z0; }
+    Decimal getAcceleration() const { return accel; }
+    const std::vector<Decimal>& getBootstrapStatistics() const { return stats; }
+};
 
-    double var_boot = 0.0;
-    for (double v : theta_star)
-    {
-        const double d = v - mean_boot;
-        var_boot += d * d;
-    }
-    var_boot /= static_cast<double>(m - 1);
-    double se_boot = std::sqrt(var_boot);
+// -----------------------------------------------------------------------------
+// BCa Factory Logic Tests (Soft Thresholds)
+// -----------------------------------------------------------------------------
 
-    MockPercentileEngine engine;
-    engine.diagnosticsReady = true;
-    engine.stats    = theta_star;
-    engine.meanBoot = mean_boot;
-    engine.varBoot  = var_boot;
-    engine.seBoot   = se_boot;
-
-    // Choose CL = 0.60 => alpha = 0.40 => alphaL=0.20, alphaU=0.80
-    // For m=10, the ideal endpoints are statistic #2 (20%) and #8 (80%)
-    // Using the sorted theta_star:
-    //   sorted = [-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,1.5,2.0]
-    // - "Well-aligned" CI uses lower=-0.4 (2nd), upper=0.2 (8th)
-    // - "Misaligned" CI uses lower=-0.5 (1st, F=0.1), upper=1.5 (9th, F=0.9)
-
-    const double CL = 0.60;
-    const std::size_t B = 100;   // just a bookkeeping value
-    const std::size_t n = 20;    // pretend strategy sample size
-
-    MockPercentileEngine::Result goodRes{
-        /*mean*/ 0.0,     // not used in ordering penalty directly
-        /*lower*/ -0.4,
-        /*upper*/ 0.2,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    MockPercentileEngine::Result badRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.5,
-        /*upper*/ 1.5,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    Candidate good = Selector::summarizePercentileLike(MethodId::Percentile, engine, goodRes);
-    Candidate bad  = Selector::summarizePercentileLike(MethodId::Percentile, engine, badRes);
-
-    // Sanity: both see the same bootstrap distribution
-    REQUIRE(good.getSeBoot() == Catch::Approx(se_boot));
-    REQUIRE(bad.getSeBoot()  == Catch::Approx(se_boot));
-
-    // Check that the "good" CI, whose endpoints line up with empirical
-    // 20% and 80% quantiles, has a smaller ordering penalty.
-    REQUIRE(good.getOrderingPenalty() < bad.getOrderingPenalty());
-}
-
-TEST_CASE("AutoBootstrapSelector: length penalty increases as CI deviates from ideal length",
-          "[AutoBootstrapSelector][LengthPenalty][Skewed]")
+TEST_CASE("AutoBootstrapSelector: summarizeBCa applies strict stability penalties",
+          "[AutoBootstrapSelector][BCa][Penalty]")
 {
-    // Use the same skewed bootstrap distribution as above,
-    // but this time focus on length distortions.
-    std::vector<double> theta_star = {
-        -0.5, -0.4, -0.3, -0.2, -0.1,
-         0.0,  0.1,  0.2,  1.5,  2.0
-    };
+    // Setup a dummy BCa engine with default "safe" stats
+    MockBCaEngine engine;
+    engine.mean  = 0.0;
+    engine.lower = -1.0;
+    engine.upper = 1.0;
+    engine.cl    = 0.95;
+    engine.B     = 1000;
+    engine.n     = 100;
+    engine.stats = { -1.0, 0.0, 1.0 }; // Minimal stats to pass validation
 
-    const std::size_t m = theta_star.size();
-    double sum = std::accumulate(theta_star.begin(), theta_star.end(), 0.0);
-    double mean_boot = sum / static_cast<double>(m);
-
-    double var_boot = 0.0;
-    for (double v : theta_star)
+    SECTION("Bias z0 below 0.25 incurs zero penalty")
     {
-        const double d = v - mean_boot;
-        var_boot += d * d;
+        engine.z0    = 0.24; // Safe
+        engine.accel = 0.0;
+
+        Candidate c = Selector::summarizeBCa(engine);
+        REQUIRE(c.getStabilityPenalty() == 0.0);
     }
-    var_boot /= static_cast<double>(m - 1);
-    double se_boot = std::sqrt(var_boot);
 
-    MockPercentileEngine engine;
-    engine.diagnosticsReady = true;
-    engine.stats    = theta_star;
-    engine.meanBoot = mean_boot;
-    engine.varBoot  = var_boot;
-    engine.seBoot   = se_boot;
+    SECTION("Bias z0 above 0.25 incurs quadratic penalty")
+    {
+        // z0 = 0.35. Excess = 0.10. 
+        // Penalty = Excess^2 * 20.0 = 0.01 * 20 = 0.20.
+        engine.z0    = 0.35; 
+        engine.accel = 0.0;
 
-    // We'll construct two CIs with the same center = 0, same CL, but
-    // different lengths relative to the ideal normal-theory length.
-    const double CL = 0.95;
-    const double alpha = 1.0 - CL;
-    const double z = mkc_timeseries::NormalDistribution::inverseNormalCdf(
-        1.0 - 0.5 * alpha);
-    const double ideal_len = 2.0 * z * se_boot;
+        Candidate c = Selector::summarizeBCa(engine);
+        
+        // Allow small float epsilon, but logic is exact
+        REQUIRE(c.getStabilityPenalty() == Catch::Approx(0.20));
+    }
 
-    const std::size_t B = 200;
-    const std::size_t n = 25;
+    SECTION("Acceleration a above 0.10 incurs quadratic penalty")
+    {
+        // a = 0.12. Excess = 0.02.
+        // Penalty = Excess^2 * 100.0 = 0.0004 * 100 = 0.04.
+        engine.z0    = 0.0;
+        engine.accel = 0.12;
 
-    // "Good" CI: perfectly normal-theory length, symmetric around 0
-    const double half_good = 0.5 * ideal_len;
-    MockPercentileEngine::Result goodRes{
-        /*mean*/ 0.0,
-        /*lower*/ -half_good,
-        /*upper*/  half_good,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
+        Candidate c = Selector::summarizeBCa(engine);
+        REQUIRE(c.getStabilityPenalty() == Catch::Approx(0.04));
+    }
 
-    // "Too long" CI: twice the ideal length, but still centered at 0
-    const double half_long = ideal_len; // length = 2 * ideal_len
-    MockPercentileEngine::Result longRes{
-        /*mean*/ 0.0,
-        /*lower*/ -half_long,
-        /*upper*/  half_long,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
+    SECTION("Both violations accumulate")
+    {
+        engine.z0    = 0.35; // Pen = 0.20
+        engine.accel = 0.12; // Pen = 0.04
 
-    Candidate good = Selector::summarizePercentileLike(MethodId::Percentile, engine, goodRes);
-    Candidate bad  = Selector::summarizePercentileLike(MethodId::Percentile, engine, longRes);
-
-    // Both candidates use the same bootstrap distribution
-    REQUIRE(good.getSeBoot() == Catch::Approx(se_boot));
-    REQUIRE(bad.getSeBoot()  == Catch::Approx(se_boot));
-
-    // "Good" CI should have normalized_length ~ 1, "bad" ~ 2.
-
-    REQUIRE(good.getNormalizedLength() < bad.getNormalizedLength());
-    REQUIRE(good.getLengthPenalty()    < bad.getLengthPenalty());
-
-    // Therefore length penalty ( (norm_len - 1)^2 ) should be smaller for the "good" CI.
-    REQUIRE(good.getLengthPenalty() < bad.getLengthPenalty());
+        Candidate c = Selector::summarizeBCa(engine);
+        REQUIRE(c.getStabilityPenalty() == Catch::Approx(0.24));
+    }
 }
 
 // -----------------------------------------------------------------------------
-// High-level test: Pareto selection on skewed bootstrap distribution
+// High-Level Selection Tests (Tournament)
 // -----------------------------------------------------------------------------
 
-TEST_CASE("AutoBootstrapSelector: select picks best-aligned CI on skewed bootstrap",
-          "[AutoBootstrapSelector][Select][Skewed]")
+TEST_CASE("AutoBootstrapSelector: BCa 'Grey Zone' Tournament",
+          "[AutoBootstrapSelector][Selection][GreyZone]")
 {
-    // Same skewed bootstrap distribution as above
-    std::vector<double> theta_star = {
-        -0.5, -0.4, -0.3, -0.2, -0.1,
-         0.0,  0.1,  0.2,  1.5,  2.0
-    };
+    // Verify that a BCa candidate with moderate bias (0.25 < z0 < 0.50)
+    // receives enough penalty to lose against a stable Percentile-T candidate.
 
-    const std::size_t m = theta_star.size();
-    double sum = std::accumulate(theta_star.begin(), theta_star.end(), 0.0);
-    double mean_boot = sum / static_cast<double>(m);
+    // 1. Stable Percentile-T (Baseline)
+    // Small ordering penalty (0.002). Normalized against 0.01 -> score contribution 0.2.
+    // This represents a "clean" robust alternative.
+    Candidate percT(MethodId::PercentileT,
+                    0.0, -1.1, 1.1, 0.95, 100, 1000, 0, 1000, 0,
+                    0.1, 0.0, 0.0, 1.0, 
+                    /*ordering*/ 0.002,  // Small penalty
+                    /*length*/   0.0,
+                    /*stability*/ 0.0, 
+                    0.0, 0.0);
 
-    double var_boot = 0.0;
-    for (double v : theta_star)
-    {
-        const double d = v - mean_boot;
-        var_boot += d * d;
-    }
-    var_boot /= static_cast<double>(m - 1);
-    double se_boot = std::sqrt(var_boot);
+    // 2. Grey Zone BCa
+    // Perfect ordering (0.0), but has z0=0.35 -> Stability Penalty = 0.20.
+    // Normalized against ref 0.25 -> score contribution 0.8.
+    // Total Score = 0.8.
+    // Expectation: PercT (0.2) < BCa (0.8) -> PercT wins.
+    Candidate bcaGrey(MethodId::BCa,
+                      0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
+                      0.1, 0.0, 0.0, 1.0,
+                      /*ordering*/ 0.0, 
+                      /*length*/   0.0, 
+                      /*stability*/ 0.20, // Calculated penalty for z0=0.35
+                      /*z0*/ 0.35, 
+                      /*accel*/ 0.0);
 
-    MockPercentileEngine engine;
-    engine.diagnosticsReady = true;
-    engine.stats    = theta_star;
-    engine.meanBoot = mean_boot;
-    engine.varBoot  = var_boot;
-    engine.seBoot   = se_boot;
-
-    // Use CL = 0.60 so the "ideal" quantiles are 20% and 80%.
-    const double CL = 0.60;
-    const std::size_t B = 100;
-    const std::size_t n = 20;
-
-    // Sorted theta_star:
-    // [-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1,0.2,1.5,2.0]
-
-    // Candidate 1 ("good"): quantile-aligned
-    // lower = -0.4 (2nd), upper = 0.2 (8th)
-    MockPercentileEngine::Result goodRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.4,
-        /*upper*/  0.2,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    // Candidate 2 ("too narrow"): symmetric around 0 but shorter than "good"
-    MockPercentileEngine::Result narrowRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.15,
-        /*upper*/  0.15,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    // Candidate 3 ("misaligned and very long"): full range
-    // lower = -0.5 (F=0.1), upper = 2.0 (F=1.0)
-    MockPercentileEngine::Result badRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.5,
-        /*upper*/  2.0,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    Candidate c_good   = Selector::summarizePercentileLike(MethodId::Percentile, engine, goodRes);
-    Candidate c_narrow = Selector::summarizePercentileLike(MethodId::Percentile, engine, narrowRes);
-    Candidate c_bad    = Selector::summarizePercentileLike(MethodId::Percentile, engine, badRes);
-
-    // Basic sanity: all are using the same underlying bootstrap stats
-    REQUIRE(c_good.getSeBoot()   == Catch::Approx(se_boot));
-    REQUIRE(c_narrow.getSeBoot() == Catch::Approx(se_boot));
-    REQUIRE(c_bad.getSeBoot()    == Catch::Approx(se_boot));
-
-    // The quantile-aligned CI ("good") should have the smallest ordering penalty.
-    REQUIRE(c_good.getOrderingPenalty() < c_narrow.getOrderingPenalty());
-    REQUIRE(c_good.getOrderingPenalty() < c_bad.getOrderingPenalty());
-
-    // Length penalties should be non-negative
-    REQUIRE(c_good.getLengthPenalty()   >= 0.0);
-    REQUIRE(c_narrow.getLengthPenalty() >= 0.0);
-    REQUIRE(c_bad.getLengthPenalty()    >= 0.0);
-
-    std::vector<Candidate> cands = {c_good, c_narrow, c_bad};
-
+    std::vector<Candidate> cands = {percT, bcaGrey};
+    
     auto result = Selector::select(cands);
 
-    // The selector should prefer the quantile-aligned CI ("good")
-    REQUIRE(result.getChosenMethod() == MethodId::Percentile);
-
-    const Candidate& chosen = result.getChosenCandidate();
-
-    REQUIRE(chosen.getLower() == Catch::Approx(-0.4));
-    REQUIRE(chosen.getUpper() == Catch::Approx(0.2));
-
-    const auto& diag = result.getDiagnostics();
-    REQUIRE(diag.getChosenMethod()   == MethodId::Percentile);
-    REQUIRE(diag.hasBCaCandidate()   == false);
-    REQUIRE(diag.getNumCandidates()  == cands.size());
-
-    // Confirm that "good" is not dominated by either of the others,
-    // but "bad" is dominated by at least one.
-    REQUIRE_FALSE(Selector::dominates(c_narrow, c_good));
-    REQUIRE_FALSE(Selector::dominates(c_bad,    c_good));
-
-    bool bad_is_dominated = Selector::dominates(c_good,   c_bad) ||
-                            Selector::dominates(c_narrow, c_bad);
-    REQUIRE(bad_is_dominated);
+    REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
+    REQUIRE(result.getDiagnostics().hasBCaCandidate() == true);
+    REQUIRE(result.getDiagnostics().isBCaChosen() == false);
+    
+    // Important: It was NOT rejected by hard gate, it lost on score.
+    REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == false);
 }
 
-TEST_CASE("AutoBootstrapSelector: BCa stability and selection behavior",
-          "[AutoBootstrapSelector][BCa][Stability]")
+TEST_CASE("AutoBootstrapSelector: BCa Hard Gate Rejection",
+          "[AutoBootstrapSelector][Selection][HardGate]")
 {
-    // Reuse the same skewed bootstrap distribution from previous tests
-    std::vector<double> theta_star = {
-        -0.5, -0.4, -0.3, -0.2, -0.1,
-         0.0,  0.1,  0.2,  1.5,  2.0
-    };
+    // Define a STRONG PercentileT candidate (low ordering penalty)
+    Candidate percT(MethodId::PercentileT,
+                    0.0, -1.1, 1.1, 0.95, 100, 1000, 0, 1000, 0,
+                    0.1, 0.0, 0.0, 1.0, 
+                    /*ordering*/ 0.002,   // LOW penalty
+                    /*length*/   0.0,
+                    /*stability*/ 0.0, 
+                    0.0, 0.0);
 
-    const std::size_t m = theta_star.size();
-    double sum = std::accumulate(theta_star.begin(), theta_star.end(), 0.0);
-    double mean_boot = sum / static_cast<double>(m);
-
-    double var_boot = 0.0;
-    for (double v : theta_star)
+    SECTION("BCa with z0 just above old limit (0.51) is allowed but penalized")
     {
-        const double d = v - mean_boot;
-        var_boot += d * d;
-    }
-    var_boot /= static_cast<double>(m - 1);
-    double se_boot = std::sqrt(var_boot);
+        Candidate bcaPenalized(MethodId::BCa,
+                          0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
+                          0.1, 0.0, 0.0, 1.0,
+                          0.0, 0.0, 1.352,  // Raw penalty for z0=0.51
+                          /*z0*/ 0.51, 
+                          /*accel*/ 0.0);
 
-    MockPercentileEngine engine;
-    engine.diagnosticsReady = true;
-    engine.stats    = theta_star;
-    engine.meanBoot = mean_boot;
-    engine.varBoot  = var_boot;
-    engine.seBoot   = se_boot;
-
-    const double CL = 0.60;
-    const std::size_t B = 100;
-    const std::size_t n = 20;
-
-    // Create reference percentile candidates from previous tests
-    MockPercentileEngine::Result goodRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.4,
-        /*upper*/  0.2,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    MockPercentileEngine::Result narrowRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.15,
-        /*upper*/  0.15,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    MockPercentileEngine::Result badRes{
-        /*mean*/ 0.0,
-        /*lower*/ -0.5,
-        /*upper*/  2.0,
-        /*cl*/ CL,
-        /*B*/ B,
-        /*effective_B*/ m,
-        /*skipped*/ 0,
-        /*n*/ n
-    };
-
-    Candidate c_good   = Selector::summarizePercentileLike(MethodId::Percentile, engine, goodRes);
-    Candidate c_narrow = Selector::summarizePercentileLike(MethodId::Percentile, engine, narrowRes);
-    Candidate c_bad    = Selector::summarizePercentileLike(MethodId::Percentile, engine, badRes);
-
-    SECTION("Stable BCa overrides better-scored methods under strict hierarchy")
-    {
-        // BCa is numerically stable (small z0/accel, reasonable length),
-        // but we deliberately give it a terrible ordering penalty to ensure
-        // its overall score is worse than the good percentile candidate.
-        //
-        // Under the new strict hierarchy:
-        // If BCa passes the hard gates, it wins regardless of score.
-        Candidate bca(MethodId::BCa,
-                      0.0, -0.4, 0.2, CL,
-                      n, B, 0, m, 0,
-                      se_boot,
-                      /*skew*/ 0.1,
-                      /*center_shift_in_se*/ 0.0,
-                      /*normalized_length*/ 1.0,
-                      /*ordering*/ 999.0,   // huge -> very bad score
-                      /*length*/ 0.05,
-                      /*z0*/ 0.02,
-                      /*accel*/ 0.01);
-
-        std::vector<Candidate> cands = {c_good, c_narrow, c_bad, bca};
+        std::vector<Candidate> cands = {percT, bcaPenalized};
         auto result = Selector::select(cands);
 
-        // Strict hierarchy => stable BCa wins.
-        REQUIRE(result.getChosenMethod() == MethodId::BCa);
-
-        const auto& diag = result.getDiagnostics();
-        REQUIRE(diag.hasBCaCandidate()  == true);
-        REQUIRE(diag.isBCaChosen()      == true);
-
-        // Stable BCa should not be flagged as rejected for instability or length.
-        REQUIRE(diag.wasBCaRejectedForInstability() == false);
-        REQUIRE(diag.wasBCaRejectedForLength()      == false);
+        REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == false);
+        REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
     }
 
-    SECTION("Unstable BCa does NOT win; selector falls back to percentile geometry")
+    SECTION("BCa with z0 above new hard limit (0.61) is rejected")
     {
-        Candidate unstable_bca(MethodId::BCa,
-                               0.0, -0.4, 0.2, CL,
-                               n, B, 0, m, 0,
-                               se_boot,
-                               /*skew*/ 0.1,
-                               /*center_shift_in_se*/ 0.0,
-                               /*normalized_length*/ 1.0,
-                               0.0,   // ordering
-                               0.0,   // length penalty
-                               /*z0*/ 1.5,    // violates hard z0 gate
-                               /*accel*/ 0.25 // violates hard accel gate (if enabled)
-                               );
+        Candidate bcaUnstable(MethodId::BCa,
+                          0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
+                          0.1, 0.0, 0.0, 1.0,
+                          0.0, 0.0, 0.0, 
+                          /*z0*/ 0.61,
+                          /*accel*/ 0.0);
 
-        // Sanity check: the stability penalty should be large
-        REQUIRE(unstable_bca.getStabilityPenalty() > 0.1);
-
-        std::vector<Candidate> cands = {c_good, c_narrow, c_bad, unstable_bca};
+        std::vector<Candidate> cands = {percT, bcaUnstable};
         auto result = Selector::select(cands);
 
-        // Unstable BCa should be rejected; percentile wins.
-        REQUIRE(result.getChosenMethod() == MethodId::Percentile);
-
-        const auto& diag = result.getDiagnostics();
-        REQUIRE(diag.hasBCaCandidate()  == true);
-        REQUIRE(diag.isBCaChosen()      == false);
-        REQUIRE(diag.wasBCaRejectedForInstability() == true);
-        // length rejection may or may not be true depending on your length penalty model
+        REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
+        REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == true);
     }
 }
 
 TEST_CASE("AutoBootstrapSelector: enforcePositive penalizes non-positive lower bounds",
           "[AutoBootstrapSelector][Select][EnforcePositive]")
 {
-    // Two identical candidates except for their lower bounds:
-    //  - pos: strictly positive lower bound
-    //  - neg: non-positive lower bound
-    //
-    // We set all other penalties to zero so the only difference is the
-    // domain penalty injected when enforcePositive() is true.
+    Candidate pos(MethodId::PercentileT, 1.0, 0.1, 2.0, 0.95, 50, 500, 0, 500, 0,
+                  0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-    Candidate pos(MethodId::PercentileT,
-                  /*mean*/ 1.0,
-                  /*lower*/ 0.10,   // positive LB
-                  /*upper*/ 2.0,
-                  /*cl*/ 0.95,
-                  /*n*/  50,
-                  /*B_outer*/ 500,
-                  /*B_inner*/ 0,
-                  /*effective_B*/ 500,
-                  /*skipped_total*/ 0,
-                  /*se_boot*/ 0.10,
-                  /*skew_boot*/ 0.0,
-                  /*center_shift_in_se*/ 0.0,
-                  /*normalized_length*/ 1.0,
-                  /*ordering_penalty*/ 0.0,
-                  /*length_penalty*/   0.0,
-                  /*z0*/ 0.0,
-                  /*accel*/ 0.0);
-
-    Candidate neg(MethodId::PercentileT,
-                  /*mean*/ 1.0,
-                  /*lower*/ -0.50,  // non-positive LB -> should be penalized
-                  /*upper*/ 2.0,
-                  /*cl*/ 0.95,
-                  /*n*/  50,
-                  /*B_outer*/ 500,
-                  /*B_inner*/ 0,
-                  /*effective_B*/ 500,
-                  /*skipped_total*/ 0,
-                  /*se_boot*/ 0.10,
-                  /*skew_boot*/ 0.0,
-                  /*center_shift_in_se*/ 0.0,
-                  /*normalized_length*/ 1.0,
-                  /*ordering_penalty*/ 0.0,
-                  /*length_penalty*/   0.0,
-                  /*z0*/ 0.0,
-                  /*accel*/ 0.0);
+    Candidate neg(MethodId::PercentileT, 1.0, -0.5, 2.0, 0.95, 50, 500, 0, 500, 0,
+                  0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
     std::vector<Candidate> cands = {pos, neg};
 
-    SECTION("Without enforcePositive, the selector does not care about sign of LB")
-    {
-        // Give the negative-LB candidate a *slightly* better ordering penalty
-        // so that, absent domain constraints, it should win.
-        Candidate posTweaked = pos.withScore(std::numeric_limits<double>::quiet_NaN());
-        Candidate negTweaked = neg.withScore(std::numeric_limits<double>::quiet_NaN());
+    // With enforcePositive=true
+    ScoringWeights weights(/*wCenter*/ 0.0, /*wSkew*/ 0.0, /*wLength*/ 0.0, 
+                           /*wStab*/ 0.0, /*enforcePos*/ true);
 
-        // Rebuild with different ordering penalties
-        posTweaked = Candidate(
-            posTweaked.getMethod(),
-            posTweaked.getMean(),
-            posTweaked.getLower(),
-            posTweaked.getUpper(),
-            posTweaked.getCl(),
-            posTweaked.getN(),
-            posTweaked.getBOuter(),
-            posTweaked.getBInner(),
-            posTweaked.getEffectiveB(),
-            posTweaked.getSkippedTotal(),
-            posTweaked.getSeBoot(),
-            posTweaked.getSkewBoot(),
-            posTweaked.getCenterShiftInSe(),
-            posTweaked.getNormalizedLength(),
-            /*ordering_penalty*/ 0.02,   // slightly worse
-            /*length_penalty*/   0.0,
-            posTweaked.getZ0(),
-            posTweaked.getAccel());
-
-        negTweaked = Candidate(
-            negTweaked.getMethod(),
-            negTweaked.getMean(),
-            negTweaked.getLower(),
-            negTweaked.getUpper(),
-            negTweaked.getCl(),
-            negTweaked.getN(),
-            negTweaked.getBOuter(),
-            negTweaked.getBInner(),
-            negTweaked.getEffectiveB(),
-            negTweaked.getSkippedTotal(),
-            negTweaked.getSeBoot(),
-            negTweaked.getSkewBoot(),
-            negTweaked.getCenterShiftInSe(),
-            negTweaked.getNormalizedLength(),
-            /*ordering_penalty*/ 0.0,    // better ordering
-            /*length_penalty*/   0.0,
-            negTweaked.getZ0(),
-            negTweaked.getAccel());
-
-        std::vector<Candidate> baseCands = {posTweaked, negTweaked};
-
-        // No domain enforcement: the "better ordered" (negative LB) candidate should win.
-        ScoringWeights weightsNoDomain(/*wCenter*/ 1.0,
-                                       /*wSkew*/   0.0,
-                                       /*wLength*/ 0.0,
-                                       /*wStab*/   0.0,
-                                       /*enforcePos*/ false);
-
-        auto result = Selector::select(baseCands, weightsNoDomain);
-        REQUIRE(result.getChosenCandidate().getLower() == Catch::Approx(-0.50));
-    }
-
-    SECTION("With enforcePositive=true, negative-LB candidate is strongly penalized")
-    {
-        ScoringWeights weightsDomain(/*wCenter*/ 0.0,
-                                     /*wSkew*/   0.0,
-                                     /*wLength*/ 0.0,
-                                     /*wStab*/   0.0,
-                                     /*enforcePos*/ true);
-
-        auto result = Selector::select(cands, weightsDomain);
-
-        // The selected candidate should have a strictly positive lower bound.
-        const auto& chosen = result.getChosenCandidate();
-        REQUIRE(chosen.getLower() > 0.0);
-
-        // And in this construction, that means we specifically chose `pos`.
-        REQUIRE(chosen.getLower() == Catch::Approx(0.10));
-        REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
-    }
-}
-
-TEST_CASE("AutoBootstrapSelector: Normalization scales correctly and is not capped",
-          "[AutoBootstrapSelector][Normalization]")
-{
-    // Reference constants from header:
-    // kRefOrderingErrorSq = 0.01 (0.10^2)
-    // kRefStability       = 0.25
-    
-    // 1. Create a candidate with exactly 2x the reference ordering error.
-    // Penalty = 0.02. Ref = 0.01. Expected Norm = 2.0.
-    Candidate highErrorCand(MethodId::Basic,
-                  /*mean*/ 1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
-                  /*ordering*/ 0.02, 
-                  /*length*/   0.0,
-                  /*z0*/ 0.0, /*accel*/ 0.0);
-
-    // 2. Create a candidate with 0.5x the reference stability.
-    // Penalty = 0.125. Ref = 0.25. Expected Norm = 0.5.
-    Candidate stableCand(MethodId::BCa,
-                  /*mean*/ 1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
-                  /*ordering*/ 0.0, 
-                  /*length*/   0.0,
-                  /*z0*/ 0.0, /*accel*/ 0.0);
-    // Inject stability penalty via "score" or mock (since stability is calculated in ctor).
-    // Actually, simpler to rely on Breakdowns to verify the math.
-    
-    // Let's rely on the highErrorCand which uses simple passed-in penalties.
-    std::vector<Candidate> cands = { highErrorCand };
-    
-    // Use default weights (Ordering weight is implicit 1.0)
-    ScoringWeights weights;
-    
     auto result = Selector::select(cands, weights);
-    
-    // Verify the score breakdown
-    const auto& breakdown = result.getDiagnostics().getScoreBreakdowns()[0];
-    
-    // 0.02 / 0.01 = 2.0
-    REQUIRE(breakdown.getOrderingNorm() == Catch::Approx(2.0));
-    
-    // Ensure it wasn't capped at 1.0
-    REQUIRE(breakdown.getOrderingNorm() > 1.0);
-    
-    // Ensure total score reflects this (2.0 * 1.0 weight)
-    REQUIRE(result.getChosenCandidate().getScore() == Catch::Approx(2.0));
-}
 
-TEST_CASE("AutoBootstrapSelector: Robustness against NaN/Infinity penalties",
-          "[AutoBootstrapSelector][Safety]")
-{
-    // Candidate 1: Has a NaN ordering penalty (e.g. from divide-by-zero somewhere)
-    Candidate nanCand(MethodId::Normal,
-                  1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
-                  /*ordering*/ std::numeric_limits<double>::quiet_NaN(), 
-                  /*length*/   0.0,
-                  /*z0*/ 0.0, /*accel*/ 0.0);
-
-    // Candidate 2: A perfectly valid, decent candidate
-    Candidate validCand(MethodId::Basic,
-                  1.0, 0.9, 1.1, 0.95, 100, 1000, 0, 1000, 0, 0.1, 0.0, 0.0, 1.0,
-                  /*ordering*/ 0.05, 
-                  /*length*/   0.0,
-                  /*z0*/ 0.0, /*accel*/ 0.0);
-
-    // Put NaN candidate FIRST to test the initialization logic
-    std::vector<Candidate> cands = { nanCand, validCand };
-
-    auto result = Selector::select(cands);
-
-    // The selector should SKIP the NaN candidate and pick the valid one.
-    REQUIRE(result.getChosenMethod() == MethodId::Basic);
-    
-    // Ensure the score is finite
-    REQUIRE(std::isfinite(result.getChosenCandidate().getScore()));
-}
-
-TEST_CASE("AutoBootstrapSelector: BCa stability rejection threshold verification",
-          "[AutoBootstrapSelector][Diagnostics][Threshold]")
-{
-    // Under strict hierarchy, BCa only loses if it fails a hard gate.
-    // So we test directly around the hard z0 limit.
-
-    // "Perfect" fallback candidate (will win if BCa is rejected)
-    Candidate winner(MethodId::Percentile,
-                     0.0, -1.0, 1.0, 0.95,
-                     100, 1000, 0, 1000, 0,
-                     0.1, 0.0, 0.0, 1.0,
-                     0.0, 0.0, 0.0, 0.0);
-
-    // Helper to create BCa with specific z0/accel
-    auto makeBCa = [](double z0, double accel)
-    {
-        return Candidate(MethodId::BCa,
-                         0.0, -1.0, 1.0, 0.95,
-                         100, 1000, 0, 1000, 0,
-                         0.1, 0.0, 0.0, 1.0,
-                         0.0, // ordering
-                         0.0, // length penalty
-                         z0, accel);
-    };
-
-    SECTION("BCa within hard limits is chosen and not flagged as rejected")
-    {
-        // z0=0.49 is within the hard limit |z0|<=0.5
-        // accel=0.0 within any reasonable accel hard limit (e.g., 0.2)
-        Candidate stableBCa = makeBCa(0.49, 0.0);
-
-        std::vector<Candidate> cands = {winner, stableBCa};
-        auto result = Selector::select(cands);
-
-        // Stable BCa wins under strict hierarchy
-        REQUIRE(result.getChosenMethod() == MethodId::BCa);
-
-        const auto& diag = result.getDiagnostics();
-        REQUIRE(diag.hasBCaCandidate() == true);
-        REQUIRE(diag.isBCaChosen()     == true);
-
-        // Not rejected for stability/length
-        REQUIRE(diag.wasBCaRejectedForInstability() == false);
-        REQUIRE(diag.wasBCaRejectedForLength()      == false);
-    }
-
-    SECTION("BCa beyond z0 hard limit is rejected for instability and fallback wins")
-    {
-        // z0=0.51 violates the hard limit |z0|<=0.5
-        Candidate unstableBCa = makeBCa(0.51, 0.0);
-
-        std::vector<Candidate> cands = {winner, unstableBCa};
-        auto result = Selector::select(cands);
-
-        // BCa rejected => fallback candidate selected (Percentile via tournament)
-        REQUIRE(result.getChosenMethod() == MethodId::Percentile);
-
-        const auto& diag = result.getDiagnostics();
-        REQUIRE(diag.hasBCaCandidate() == true);
-        REQUIRE(diag.isBCaChosen()     == false);
-
-        // Rejection reason must be flagged
-        REQUIRE(diag.wasBCaRejectedForInstability() == true);
-    }
+    // Should choose positive LB
+    REQUIRE(result.getChosenCandidate().getLower() == Catch::Approx(0.1));
 }

@@ -5,11 +5,17 @@
 //
 // Normal Distribution Utility Functions
 // Provides standard normal CDF and inverse CDF (quantile) functions
+//
+// IMPLEMENTATION NOTE (Updated 2024):
+// This implementation now delegates to the high-precision Acklam algorithm
+// (NormalQuantile.h) for improved accuracy while maintaining the original
+// interface for backward compatibility.
 
 #pragma once
 
 #include <cmath>
 #include <limits>
+#include "NormalQuantile.h"
 
 namespace mkc_timeseries
 {
@@ -23,6 +29,11 @@ namespace mkc_timeseries
    *
    * These functions are used throughout the statistics library for bootstrap
    * confidence interval calculations and hypothesis testing.
+   *
+   * IMPLEMENTATION: These functions now wrap the high-precision Acklam algorithm
+   * from NormalQuantile.h, providing ~1e-9 accuracy (100-1000× better than the
+   * previous Abramowitz & Stegun implementation) while maintaining backward
+   * compatibility with existing code.
    */
   struct NormalDistribution
   {
@@ -36,11 +47,13 @@ namespace mkc_timeseries
      *
      * @param x The value at which to evaluate the CDF.
      * @return The cumulative probability P(Z ≤ x).
+     *
+     * @note This function uses std::erf which provides excellent accuracy
+     *       (typically ~1e-15) across the full range of x values.
      */
     static inline double standardNormalCdf(double x) noexcept
     {
-      constexpr double INV_SQRT2 = 1.0 / 1.4142135623730950488; // 1/sqrt(2)
-      return 0.5 * (1.0 + std::erf(x * INV_SQRT2));
+      return palvalidator::analysis::detail::compute_normal_cdf(x);
     }
 
     /**
@@ -51,55 +64,95 @@ namespace mkc_timeseries
      * This is also known as the probit function or normal quantile function.
      * It is used to find critical values for confidence intervals and hypothesis tests.
      *
-     * Implementation uses the Abramowitz & Stegun approximation (26.2.23) with
-     * coefficients optimized for double precision, providing high accuracy for
-     * p in the range (0, 1).
+     * IMPLEMENTATION: Uses Peter Acklam's algorithm (2010) which provides
+     * excellent accuracy with relative error < 1.15e-9 across the full range
+     * of probabilities. This is approximately 100-1000× more accurate than
+     * the previous Abramowitz & Stegun implementation.
      *
-     * @param p The probability value, must be in (0, 1).
+     * The function is noexcept and returns ±∞ for boundary cases rather than
+     * throwing exceptions, maintaining compatibility with legacy code that
+     * expects this behavior.
+     *
+     * @param p The probability value, should be in (0, 1).
      * @return The quantile value x such that Φ(x) = p.
      *         Returns -∞ if p ≤ 0, +∞ if p ≥ 1.
+     *
+     * @see palvalidator::analysis::detail::compute_normal_quantile for the
+     *      underlying high-precision implementation.
      */
     static inline double inverseNormalCdf(double p) noexcept
     {
+      // Handle boundary cases that would cause exceptions in compute_normal_quantile
       if (p <= 0.0) return -std::numeric_limits<double>::infinity();
       if (p >= 1.0) return  std::numeric_limits<double>::infinity();
-      return (p < 0.5) ? -inverseNormalCdfHelper(p) : inverseNormalCdfHelper(1.0 - p);
+
+      // For valid probabilities, use the high-precision Acklam algorithm
+      // wrapped in try-catch for safety (though it should never throw given
+      // the boundary checks above)
+      try {
+        return palvalidator::analysis::detail::compute_normal_quantile(p);
+      }
+      catch (...) {
+        // This should never happen, but provide safe fallback
+        // Return extreme value in the appropriate direction
+        return (p < 0.5) ? -std::numeric_limits<double>::infinity()
+                         :  std::numeric_limits<double>::infinity();
+      }
+    }
+
+    /**
+     * @brief Computes the critical value for a two-tailed confidence interval.
+     *
+     * This is a convenience function that computes the z-value for a symmetric
+     * confidence interval. For a confidence level CL, it returns the z such that
+     * P(-z < Z < z) = CL, where Z ~ N(0,1).
+     *
+     * Equivalent to: inverseNormalCdf(1 - (1-CL)/2)
+     *
+     * @param confidence_level The confidence level in (0, 1), e.g., 0.95 for 95% CI
+     * @return double The critical z-value (always positive).
+     *         Returns +∞ if confidence_level is not in (0, 1).
+     *
+     * @note This function is noexcept and handles invalid inputs by returning
+     *       infinity rather than throwing exceptions.
+     *
+     * @example
+     * double z_95 = criticalValue(0.95);  // Returns ~1.96
+     * double z_99 = criticalValue(0.99);  // Returns ~2.576
+     */
+    static inline double criticalValue(double confidence_level) noexcept
+    {
+      // Validate confidence level
+      if (confidence_level <= 0.0 || confidence_level >= 1.0) {
+        return std::numeric_limits<double>::infinity();
+      }
+
+      // Compute upper tail probability
+      const double alpha = 1.0 - confidence_level;
+      const double p_upper = 1.0 - alpha / 2.0;
+
+      // Use inverseNormalCdf which is already noexcept
+      return inverseNormalCdf(p_upper);
     }
 
   private:
     /**
-     * @brief Helper function for inverse normal CDF computation.
+     * @brief Legacy helper function - no longer used.
      *
-     * Implements the Abramowitz & Stegun approximation (26.2.23) for computing
-     * the inverse normal CDF for probabilities in the range (0, 0.5].
+     * This function previously implemented the Abramowitz & Stegun approximation
+     * but is now deprecated. The implementation has been replaced with delegation
+     * to the high-precision Acklam algorithm.
      *
-     * The approximation uses rational function coefficients optimized for
-     * double precision accuracy:
-     * - Numerator: c₀ + c₁t + c₂t²
-     * - Denominator: 1 + d₀t + d₁t² + d₂t³
-     * where t = √(-2 ln(p))
+     * Kept for potential compatibility with derived classes, but should not be
+     * called directly.
      *
-     * Reference: Abramowitz, M., & Stegun, I. A. (1964). Handbook of
-     * Mathematical Functions. Section 26.2.23.
-     *
-     * @param p The probability value, should be in (0, 0.5] for best accuracy.
-     * @return The quantile value for the given probability.
+     * @deprecated Use inverseNormalCdf instead, which now uses Acklam's algorithm.
      */
+    [[deprecated("Use inverseNormalCdf instead - now uses high-precision Acklam algorithm")]]
     static inline double inverseNormalCdfHelper(double p) noexcept
     {
-      // W. J. Cody / Abramowitz & Stegun 26.2.23 (Coefficients optimized for double precision)
-      // These coefficients provide high accuracy for p in (0, 0.5]
-      constexpr double c0 = 2.5155173462;
-      constexpr double c1 = 0.8028530777;
-      constexpr double c2 = 0.0103284795;
-      constexpr double d0 = 1.4327881989;
-      constexpr double d1 = 0.1892692257;
-      constexpr double d2 = 0.0013083321;
-
-      const double t   = std::sqrt(-2.0 * std::log(p));
-      const double num = (c0 + c1 * t + c2 * t * t);
-      const double den = (1.0 + d0 * t + d1 * t * t + d2 * t * t * t);
-      return t - num / den;
+      // Delegate to the new implementation
+      return inverseNormalCdf(p);
     }
   };
 

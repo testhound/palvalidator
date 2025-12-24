@@ -116,6 +116,33 @@ namespace palvalidator
       }
 
       /**
+       * @brief Computes the standard normal cumulative distribution function.
+       *
+       * Calculates Φ(z) = P(Z ≤ z) where Z ~ N(0,1).
+       *
+       * Uses the error function (erf) for accurate computation:
+       * Φ(z) = 0.5 * (1 + erf(z / √2))
+       *
+       * The error function provides excellent accuracy (typically ~1e-15)
+       * across the full range of z values.
+       *
+       * @param z The value at which to evaluate the CDF.
+       * @return The cumulative probability P(Z ≤ z), always in [0, 1].
+       *
+       * @note This function is noexcept and always returns a valid probability.
+       *
+       * @example
+       * double p = compute_normal_cdf(1.96);   // Returns ~0.975
+       * double p = compute_normal_cdf(-1.96);  // Returns ~0.025
+       * double p = compute_normal_cdf(0.0);    // Returns exactly 0.5
+       */
+      inline double compute_normal_cdf(double z) noexcept
+      {
+        constexpr double INV_SQRT2 = 0.7071067811865475244; // 1/sqrt(2)
+        return 0.5 * (1.0 + std::erf(z * INV_SQRT2));
+      }
+
+      /**
        * @brief Computes the critical value for a two-tailed confidence interval.
        *
        * This is a convenience function that computes the z-value for a symmetric

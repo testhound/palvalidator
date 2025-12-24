@@ -311,20 +311,36 @@ namespace palvalidator
         }
 
         const std::size_t effective_B = t_eff.size();
-        if (effective_B < 16) {
-          m_diagValid = false;
-          throw std::runtime_error("PercentileTBootstrap.run: too few finite studentized pivots");
-        }
 
+	// Require at least 4% of requested outer replicates, with a floor of 16
+	const std::size_t min_effective = std::max(16ul, m_B_outer / 25);
+
+	if (effective_B < min_effective)
+	  {
+	    m_diagValid = false;
+	    throw std::runtime_error(
+				   "PercentileTBootstrap: insufficient valid outer replicates. "
+				   "Got " + std::to_string(effective_B) + " valid out of " + 
+				   std::to_string(m_B_outer) + " (minimum required: " + 
+				   std::to_string(min_effective) + ", i.e., 4% or 16, whichever is larger). "
+				   "The data may be too pathological for Percentile-t bootstrap."
+				   );
+	  }
+	
         // SE_hat = sd(θ*) across valid outer reps
         double se_hat;
-        {
-          double sum = 0.0, sum2 = 0.0;
-          for (double v : theta_eff) { sum += v; sum2 += v*v; }
-          const double m = static_cast<double>(theta_eff.size());
-          const double var = std::max(0.0, (sum2 / m) - (sum / m)*(sum / m));
-          se_hat = std::sqrt(var);
-        }
+	{
+	  double mean = 0.0, m2 = 0.0;
+	  std::size_t count = 0;
+	  for (double v : theta_eff) {
+	    ++count;
+	    const double delta = v - mean;
+	    mean += delta / static_cast<double>(count);
+	    m2 += delta * (v - mean);
+	  }
+	  const double var = (count > 1) ? (m2 / static_cast<double>(count)) : 0.0;
+	  se_hat = std::sqrt(std::max(0.0, var));
+	}
 
         // Type-7 quantiles via nth_element
         auto type7_quantile = [](std::vector<double> v, double p) -> double {
