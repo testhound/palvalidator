@@ -137,7 +137,6 @@ namespace palvalidator::filtering
     if (false)
     // [TEMPORARY] Dump highResReturns for integration testing
     {
-      // Create ticker-specific filename
       const std::string ticker = ctx.baseSecurity ? ctx.baseSecurity->getSymbol() : "UNKNOWN";
       const std::string tempFileName =
 	"/tmp/palvalidator_highres_returns_" + ticker + ".txt";
@@ -151,15 +150,13 @@ namespace palvalidator::filtering
 	  tempFile << "Ticker: " << ticker << "\n";
 	  tempFile << "Returns count: " << ctx.highResReturns.size() << "\n";
 
-	  // Use existing dump function to write detailed analysis to temp file
 	  dumpHighResReturns_(ctx.highResReturns, tempFile);
 
-	  // Add raw data for easy copy/paste into unit tests
 	  tempFile << "   [Raw Data] Returns vector:\n   {";
 	  for (size_t i = 0; i < ctx.highResReturns.size(); ++i)
 	    {
 	      if (i > 0) tempFile << ", ";
-	      if (i % 10 == 0 && i > 0) tempFile << "\n    ";  // line break every 10 values
+	      if (i % 10 == 0 && i > 0) tempFile << "\n    ";
 	      tempFile << ctx.highResReturns[i];
 	    }
 	  tempFile << "}\n";
@@ -170,10 +167,7 @@ namespace palvalidator::filtering
     
     // Stage 2: Bootstrap Analysis
     auto bootstrap = mBootstrapStage.execute(ctx, os);
-    // If the Bootstrap stage created diagnostics (AutoCI results), attempt to report them.
-    // Note: BootstrapAnalysisStage currently stores limited diagnostics in the result struct.
-    // For full AutoCI candidate reporting, the stage exposes reportDiagnostics() which
-    // will be invoked by PerformanceFilter via observer wiring in the stage when available.
+    
     if (!bootstrap.computationSucceeded)
       {
 	std::string reason = bootstrap.failureReason.empty()
@@ -183,7 +177,7 @@ namespace palvalidator::filtering
 	return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason);
       }
 
-    // Make bootstrap AF available to downstream stages for consistent scaling
+    // Make bootstrap AF available to downstream stages
     ctx.annualizationFactor = bootstrap.annFactorUsed;
 
     os << "   [Bootstrap->Pipeline] Using OOS bootstrap annualization: annFactorUsed="
@@ -193,101 +187,95 @@ namespace palvalidator::filtering
     // Stage 3: Hurdle Analysis
     auto hurdle = mHurdleStage.execute(ctx, os);
 
-    // --------------------------------------------------------------------
-    // Gate metadata wiring (introspectable single source of truth)
-    // We define the "primary gate" as annualized Geo LB vs hurdle.finalRequiredReturn.
-    // This is *metadata only*; the veto logic is implemented just below.
-    // --------------------------------------------------------------------
+    // Gate metadata wiring
     {
       const Num lbAnnGeo  = bootstrap.annualizedLowerBoundGeo;
       const Num hurdleAnn = hurdle.finalRequiredReturn;
 
-      // Use existing gate fields: gateLBGeo and gatePassedHurdle + gatePolicy.
       bootstrap.gateLBGeo       = lbAnnGeo;
       bootstrap.gatePassedHurdle = (lbAnnGeo >= hurdleAnn);
       bootstrap.gatePolicy       = "AutoCI GeoLB >= hurdle";
-
-      os << "   [Gate] Policy='" << bootstrap.gatePolicy << "'  "
-	 << (bootstrap.gatePassedHurdle ? "PASSED" : "FAILED")
-	 << "  LB=" << (lbAnnGeo * 100).getAsDouble()
-	 << "% vs Hurdle=" << (hurdleAnn * 100).getAsDouble() << "%\n";
     }
 
-    // Stage 4: Centralized Validation (Gate: LB Geo > 0 AND LB PF > Hurdle, if PF available)
+    // Stage 4: Centralized Validation (Gate: LB Geo > 0 AND Strict PF Validation)
     ValidationPolicy policy(hurdle.finalRequiredReturn);
 
-    // Hurdle 1: Geometric Mean Lower Bound must be positive (per-period)
-    const bool isEdgePositive =
-      (bootstrap.lbGeoPeriod > DecimalConstants<Num>::DecimalZero);
-
-    // Hurdle 2: Profit Factor Lower Bound must clear the minimum threshold
-    // We use 0.95 instead of 1.0 to allow for slight statistical noise in the ratio statistic,
-    // but effectively enforce a profitability check.
-    //
-    // Note: If Percentile-T creates a negative LB, it fails this check (<=0 < 0.95),
-    // acting as a strict quality filter against extreme variance.
-    const Num requiredPFHurdle = DecimalConstants<Num>::createDecimal("0.95");
-    bool isProfitFactorStrong  = false;
-    bool pfUsable              = false;
-
-    if (bootstrap.lbProfitFactor.has_value())
-      {
-        pfUsable = true;
-        const Num lbPF = *bootstrap.lbProfitFactor;
-        
-        // Strict check: LB must be >= 0.95.
-        // A negative or zero LB automatically fails here.
-        isProfitFactorStrong = (lbPF >= requiredPFHurdle);
-
-        // Warn if the interval is degenerate (<= 0), which implies high instability
-        if (lbPF <= DecimalConstants<Num>::DecimalZero)
-          {
-            os << "   [HurdleAnalysis] Warning: PF Lower Bound (" << lbPF 
-               << ") is non-positive (likely due to Percentile-T volatility).\n";
-          }
-      }
-
-    // --- Combined Veto Check ---
-    if (!isEdgePositive)
-      {
-        os << "✗ Strategy filtered out: Per-period geometric lower bound is not positive.\n"
-           << "   ↳ LB(Geo Period) = " << (bootstrap.lbGeoPeriod * 100).getAsDouble() << "%\n";
+    // --- Helper Lambda for Consistent Logging ---
+    auto logGateMetrics = [&](const std::string& status) {
+        os << "   [" << status << "] Gate Validation Metrics:\n"
+           << "      1. Annualized Geo LB: " << (bootstrap.annualizedLowerBoundGeo * 100).getAsDouble() << "%\n";
         
         if (bootstrap.lbProfitFactor.has_value())
-          {
-            os << "   ↳ LB(PF)         = " << *bootstrap.lbProfitFactor << "\n";
-          }
+            os << "      2. Profit Factor LB:  " << *bootstrap.lbProfitFactor << "\n";
         else
-          {
-            os << "   ↳ LB(PF)         = N/A\n";
-          }
+            os << "      2. Profit Factor LB:  N/A\n";
 
+        if (bootstrap.medianProfitFactor.has_value())
+            os << "      3. Profit Factor Med: " << *bootstrap.medianProfitFactor << "\n";
+        else
+            os << "      3. Profit Factor Med: N/A\n";
+    };
+
+    // --- Hurdle 1: Geometric Mean Lower Bound must be positive ---
+    if (bootstrap.lbGeoPeriod <= DecimalConstants<Num>::DecimalZero)
+      {
+        os << "✗ Strategy filtered out: Per-period geometric lower bound is not positive.\n";
+        logGateMetrics("FAIL");
         return FilterDecision::Fail(FilterDecisionType::FailHurdle,
                                     "Per-period geometric LB not > 0");
       }
 
-    // PF veto is applied strictly if computed
-    if (pfUsable && !isProfitFactorStrong)
+    // --- Hurdle 2: Profit Factor Availability ---
+    if (!bootstrap.lbProfitFactor.has_value())
       {
-	const Num currentPF = *bootstrap.lbProfitFactor;
-        os << "✗ Strategy filtered out: Robust Profit Factor lower bound failed to clear hurdle.\n"
-           << "   ↳ LB(PF)         = " << currentPF << " (Required: " << requiredPFHurdle << ")\n"
-           << "   ↳ LB(Geo Period) = " << (bootstrap.lbGeoPeriod * 100).getAsDouble() << "%\n";
+         os << "✗ Strategy filtered out: Profit Factor statistics are unavailable.\n"
+            << "   ↳ Validation strictly requires Profit Factor metrics (likely insufficient trade count).\n";
+         
+         logGateMetrics("FAIL");
+         return FilterDecision::Fail(FilterDecisionType::FailInsufficientData,
+                                     "Profit Factor statistics unavailable");
+      }
 
+    // --- Hurdle 3: Profit Factor Thresholds ---
+    const Num requiredPFHurdle       = DecimalConstants<Num>::createDecimal("0.95");
+    const Num requiredPFMedianHurdle = DecimalConstants<Num>::createDecimal("1.10");
+
+    const Num lbPF = *bootstrap.lbProfitFactor;
+    
+    // Check A: Lower Bound
+    if (lbPF <= DecimalConstants<Num>::DecimalZero)
+      {
+        os << "   [HurdleAnalysis] Warning: PF Lower Bound (" << lbPF 
+           << ") is non-positive.\n";
+      }
+    const bool isProfitFactorStrong = (lbPF >= requiredPFHurdle);
+
+    // Check B: Median
+    bool isMedianPFStrong = false;
+    if (bootstrap.medianProfitFactor.has_value())
+      {
+        isMedianPFStrong = (*bootstrap.medianProfitFactor >= requiredPFMedianHurdle);
+      }
+
+    // Apply PF Veto
+    if (!isProfitFactorStrong || !isMedianPFStrong)
+      {
+	os << "✗ Strategy filtered out: Profit Factor validation failed.\n";
+    
+        if (!isProfitFactorStrong)
+            os << "   ↳ Failure: PF Lower Bound " << lbPF << " < " << requiredPFHurdle << "\n";
+        
+        if (!isMedianPFStrong && bootstrap.medianProfitFactor.has_value())
+            os << "   ↳ Failure: PF Median " << *bootstrap.medianProfitFactor << " < " << requiredPFMedianHurdle << "\n";
+
+        logGateMetrics("FAIL");
 	return FilterDecision::Fail(FilterDecisionType::FailHurdle,
-				    "Robust Profit Factor LB failed hurdle");
+				    "Robust Profit Factor validation failed (LB or Median)");
       }
 
-    if (pfUsable)
-      {
-	os << "✓ Strategy passed primary validation gate (LB Geo > 0 and "
-	   << "LB PF >= " << requiredPFHurdle << ").\n";
-      }
-    else
-      {
-	os << "✓ Strategy passed primary validation gate (LB Geo > 0; "
-	   << "Profit Factor veto not applied).\n";
-      }
+    // Success Path
+    os << "✓ Strategy passed primary validation gate.\n";
+    logGateMetrics("PASS");
 
     // --- Supplemental Analysis Stages (for passed strategies) ---
     if (runAdvisoryStages)

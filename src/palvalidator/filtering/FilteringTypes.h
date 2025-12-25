@@ -302,6 +302,10 @@ namespace palvalidator
       // Optional Profit Factor lower bound (per-period). Disengaged for small trade counts.
       std::optional<Num> lbProfitFactor;
 
+      // Bootstrap medians (optional) for diagnostics and two-stage validation
+      std::optional<Num> medianGeo;                // median of geometric-mean bootstrap
+      std::optional<Num> medianProfitFactor;       // median of profit-factor bootstrap
+
       // Legacy duel metadata (still present for now).
       double pfDuelRatio{std::numeric_limits<double>::quiet_NaN()};
       bool   pfDuelRatioValid{false};

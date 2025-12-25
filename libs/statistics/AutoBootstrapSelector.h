@@ -10,6 +10,7 @@
 #include <iostream>
 #include <optional>
 #include "number.h"
+#include "StatUtils.h"
 #include "NormalDistribution.h"
 
 namespace palvalidator
@@ -49,6 +50,7 @@ namespace palvalidator
                   std::size_t skipped_total,
                   double      se_boot,
                   double      skew_boot,
+                  double      median_boot,
                   double      center_shift_in_se,
                   double      normalized_length,
                   double      ordering_penalty,
@@ -69,6 +71,7 @@ namespace palvalidator
           m_skipped_total(skipped_total),
           m_se_boot(se_boot),
           m_skew_boot(skew_boot),
+          m_median_boot(median_boot),
           m_center_shift_in_se(center_shift_in_se),
           m_normalized_length(normalized_length),
           m_ordering_penalty(ordering_penalty),
@@ -95,6 +98,7 @@ namespace palvalidator
 
         double      getSeBoot() const { return m_se_boot; }
         double      getSkewBoot() const { return m_skew_boot; }
+        double      getMedianBoot() const { return m_median_boot; }
         double      getCenterShiftInSe() const { return m_center_shift_in_se; }
         double      getNormalizedLength() const { return m_normalized_length; }
         double      getOrderingPenalty() const { return m_ordering_penalty; }
@@ -109,7 +113,7 @@ namespace palvalidator
         {
           return Candidate(m_method, m_mean, m_lower, m_upper, m_cl,
                       m_n, m_B_outer, m_B_inner, m_effective_B, m_skipped_total,
-                      m_se_boot, m_skew_boot,
+                      m_se_boot, m_skew_boot, m_median_boot,
                       m_center_shift_in_se, m_normalized_length,
                       m_ordering_penalty, 
                       m_length_penalty,
@@ -131,6 +135,7 @@ namespace palvalidator
         std::size_t m_skipped_total;
         double      m_se_boot;
         double      m_skew_boot;
+        double      m_median_boot;
         double      m_center_shift_in_se;
         double      m_normalized_length;
         double      m_ordering_penalty;
@@ -381,6 +386,7 @@ namespace palvalidator
 
       MethodId                        getChosenMethod() const { return m_chosen_method; }
       const Candidate&                getChosenCandidate() const { return m_chosen; }
+      double                          getBootstrapMedian() const { return m_chosen.getMedianBoot(); }
       const std::vector<Candidate>&   getCandidates() const { return m_candidates; }
       const SelectionDiagnostics&     getDiagnostics() const { return m_diagnostics; }
 
@@ -516,18 +522,8 @@ namespace palvalidator
         const double mean_boot = engine.getBootstrapMean();
         const double se_boot   = engine.getBootstrapSe();
 
-        double skew_boot = 0.0;
-        if (m > 2 && se_boot > 0.0)
-          {
-            double m3 = 0.0;
-            for (double v : stats)
-              {
-                const double d = v - mean_boot;
-                m3 += d * d * d;
-              }
-            m3 /= static_cast<double>(m);
-            skew_boot = m3 / (se_boot * se_boot * se_boot);
-          }
+        // Compute skewness using centralized StatUtils (double overload)
+        const double skew_boot = mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot);
 
         const double mu  = num::to_double(res.mean);
         const double lo  = num::to_double(res.lower);
@@ -565,10 +561,14 @@ namespace palvalidator
         const double ordering_penalty = cov_pen + center_pen;
 
         double length_penalty = 0.0;
+        double median_val = 0.0;
         if (len > 0.0)
           {
             std::vector<double> sorted(stats.begin(), stats.end());
             std::sort(sorted.begin(), sorted.end());
+
+            // Compute median from already-sorted vector
+            median_val = mkc_timeseries::StatUtils<double>::computeMedianSorted(sorted);
 
             const double alpha   = 1.0 - res.cl;
             const double alphaL  = 0.5 * alpha;
@@ -603,27 +603,35 @@ namespace palvalidator
               }
           }
 
+        if (len <= 0.0)
+        {
+          // No sorting path taken above; compute median from unsorted stats
+          median_val = mkc_timeseries::StatUtils<double>::computeMedian(stats);
+        }
+
         return Candidate(
-                         method,
-                         res.mean,
-                         res.lower,
-                         res.upper,
-                         res.cl,
+                          method,
+                          res.mean,
+                          res.lower,
+                          res.upper,
+                          res.cl,
                          res.n,
                          res.B,            // B_outer
                          0,                // B_inner
                          res.effective_B,
                          res.skipped,      // skipped_total
-                         se_boot,
-                         skew_boot,
-                         center_shift_in_se,
-                         normalized_length,
-                         ordering_penalty,
-                         length_penalty,
-                         0.0,              // stability_penalty (Not applicable for Percentile-like)
-                         0.0,              // z0
-                         0.0               // accel
-                         );
+                           se_boot,
+                           skew_boot,
+                           median_val,
+                           /* center_shift_in_se follows */
+                           center_shift_in_se,
+                           normalized_length,
+                           ordering_penalty,
+                           length_penalty,
+                           0.0,              // stability_penalty (Not applicable for Percentile-like)
+                           0.0,              // z0
+                           0.0               // accel
+                           );
       }
       
       template <class PTBootstrap>
@@ -661,18 +669,9 @@ namespace palvalidator
           }
         const double se_boot_calc = std::sqrt(std::max(0.0, var_boot));
 
-        double skew_boot = 0.0;
-        if (m > 2 && se_boot_calc > 0.0)
-          {
-            double m3 = 0.0;
-            for (double v : theta_stats)
-              {
-                const double d = v - mean_boot;
-                m3 += d * d * d;
-              }
-            m3 /= static_cast<double>(m);
-            skew_boot = m3 / (se_boot_calc * se_boot_calc * se_boot_calc);
-          }
+        // Compute skewness using centralized StatUtils and prepare median placeholder
+        const double skew_boot = mkc_timeseries::StatUtils<double>::computeSkewness(theta_stats, mean_boot, se_boot_calc);
+        double median_boot = 0.0;
 
         double se_ref = res.se_hat;
         if (!(se_ref > 0.0))
@@ -692,6 +691,9 @@ namespace palvalidator
           {
             std::vector<double> sorted(theta_stats.begin(), theta_stats.end());
             std::sort(sorted.begin(), sorted.end());
+
+            // Compute median from already-sorted vector to avoid extra work
+            median_boot = mkc_timeseries::StatUtils<double>::computeMedianSorted(sorted);
 
             const double alpha   = 1.0 - res.cl;
             const double alphaL  = 0.5 * alpha;
@@ -726,6 +728,12 @@ namespace palvalidator
               }
           }
 
+        if (len <= 0.0)
+        {
+          // No sorting path taken above; compute median from unsorted theta_stats
+          median_boot = mkc_timeseries::StatUtils<double>::computeMedian(theta_stats);
+        }
+
         return Candidate(
                          MethodId::PercentileT,
                          res.mean,
@@ -739,6 +747,7 @@ namespace palvalidator
                          res.skipped_outer + res.skipped_inner_total,
                          se_ref,
                          skew_boot,
+                         median_boot,
                          center_shift_in_se,
                          normalized_length,
                          ordering_penalty,
@@ -801,18 +810,10 @@ namespace palvalidator
           }
         const double se_boot = std::sqrt(std::max(0.0, var_boot));
 
-        double skew_boot = 0.0;
-        if (m > 2 && se_boot > 0.0)
-          {
-            double m3 = 0.0;
-            for (double v : stats)
-              {
-                const double d = v - mean_boot;
-                m3 += d * d * d;
-              }
-            m3 /= static_cast<double>(m);
-            skew_boot = m3 / (se_boot * se_boot * se_boot);
-          }
+        // Compute skewness using centralized StatUtils (double overload)
+        const double skew_boot = mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot);
+        // Compute median placeholder; may be computed from sorted vector below
+        double median_boot = 0.0;
 
         const double lo  = num::to_double(lower);
         const double hi  = num::to_double(upper);
@@ -834,6 +835,11 @@ namespace palvalidator
           {
             std::vector<double> sorted(stats.begin(), stats.end());
             std::sort(sorted.begin(), sorted.end());
+
+            // ============================================================
+            // FIX: Compute median from already-sorted vector
+            // ============================================================
+            median_boot = mkc_timeseries::StatUtils<double>::computeMedianSorted(sorted);
 
             const double alpha    = 1.0 - cl;
             const double alphaL   = 0.5 * alpha;
@@ -961,29 +967,36 @@ namespace palvalidator
         // BCa does not use ordering penalty, pass 0.0 for that slot.
         const double ordering_penalty = 0.0;
 
+        // If we already sorted above we may have computed median_boot; otherwise compute now
+        if (len <= 0.0)
+        {
+          median_boot = mkc_timeseries::StatUtils<double>::computeMedian(stats);
+        }
+
         return Candidate(
                          MethodId::BCa,
-                         mean,
-                         lower,
-                         upper,
-                         cl,
-                         n,
-                         B,
-                         0,
-                         m,
-                         (B > m) ? (B - m) : 0,
-                         se_boot,
-                         skew_boot,
-                         center_shift_in_se,
-                         normalized_length,
-                         ordering_penalty, 
-                         length_penalty,
-                         stability_penalty, // Explicitly passed
-                         z0,
-                         accel
-                         );
+                          mean,
+                          lower,
+                          upper,
+                          cl,
+                          n,
+                          B,
+                          0,
+                          m,
+                          (B > m) ? (B - m) : 0,
+                          se_boot,
+                          skew_boot,
+                          median_boot,
+                          center_shift_in_se,
+                          normalized_length,
+                          ordering_penalty, 
+                          length_penalty,
+                          stability_penalty, // Explicitly passed
+                          z0,
+                          accel
+                          );
       }
-      
+
       static bool dominates(const Candidate& a, const Candidate& b)
       {
         const bool better_or_equal_order  = a.getOrderingPenalty() <= b.getOrderingPenalty();

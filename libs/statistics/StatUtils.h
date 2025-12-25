@@ -1639,6 +1639,78 @@ private:
       return { static_cast<double>(g1), static_cast<double>(g2) };
     }
 
+    /**
+     * @brief Generic moment-based skewness for a vector of numeric-like values.
+     *
+     * Template T may be `double` or a Decimal-like type that supports basic
+     * arithmetic and comparison. Returns the sample skewness as type T.
+     */
+    template <typename T>
+    static inline T computeSkewness(const std::vector<T>& data, T mean, T se)
+    {
+      const std::size_t n = data.size();
+      if (n < 3) return T(0);
+      if (!(se > T(0))) return T(0);
+
+      T m3 = T(0);
+      for (const auto& v : data)
+      {
+        const T d = v - mean;
+        m3 += d * d * d;
+      }
+
+      m3 /= T(static_cast<double>(n));
+
+      const T denom = se * se * se;
+      if (!(denom > T(0))) return T(0);
+
+      return m3 / denom;
+    }
+
+    /**
+     * @brief Generic median for a vector of numeric-like values.
+     *
+     * Makes a local copy (so caller data is not mutated), sorts, and returns
+     * the median as type T.
+     */
+    template <typename T>
+    static inline T computeMedian(std::vector<T> data)
+    {
+      if (data.empty()) return T(0);
+      std::sort(data.begin(), data.end());
+      const std::size_t n = data.size();
+      if (n % 2 == 0)
+      {
+        const std::size_t mid1 = n / 2 - 1;
+        const std::size_t mid2 = n / 2;
+        return (data[mid1] + data[mid2]) / T(2.0);
+      }
+      else
+      {
+        return data[n / 2];
+      }
+    }
+
+    /**
+     * @brief Median for a vector of numeric-like values that is already sorted.
+     */
+    template <typename T>
+    static inline T computeMedianSorted(const std::vector<T>& sorted_data)
+    {
+      if (sorted_data.empty()) return T(0);
+      const std::size_t n = sorted_data.size();
+      if (n % 2 == 0)
+      {
+        const std::size_t mid1 = n / 2 - 1;
+        const std::size_t mid2 = n / 2;
+        return (sorted_data[mid1] + sorted_data[mid2]) / T(2.0);
+      }
+      else
+      {
+        return sorted_data[n / 2];
+      }
+    }
+
     // Pragmatic heavy-tail detector: |skew| > SKEW_T or exkurt > EXKURT_T.
     static inline bool
     hasHeavyTails(const std::vector<Decimal>& v,

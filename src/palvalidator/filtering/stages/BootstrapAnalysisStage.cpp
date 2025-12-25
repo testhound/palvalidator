@@ -388,6 +388,14 @@ namespace palvalidator::filtering::stages
     out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
     out.geoAutoCINumCandidates   = candidates.size();
 
+    // Store bootstrap median (as Num) for downstream validation
+    try {
+      const double median_boot = result.getBootstrapMedian();
+      out.medianGeo = Num(median_boot);
+    } catch (...) {
+      out.medianGeo = std::nullopt;
+    }
+
     os << "   [Bootstrap] AutoCI (GeoMean):"
        << " method=" << out.geoAutoCIChosenMethod
        << "  LB(per)=" << lbPer
@@ -628,6 +636,15 @@ namespace palvalidator::filtering::stages
     out.pfAutoCIHasBCaCandidate = hasBCa;
     out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
     out.pfAutoCINumCandidates   = candidates.size();
+
+    // Store bootstrap median for Profit Factor: convert from log(1+PF) -> PF
+    try {
+      const double median_logpf = result.getBootstrapMedian();
+      const double median_pf = std::exp(median_logpf) - 1.0;
+      out.medianProfitFactor = Num(median_pf);
+    } catch (...) {
+      out.medianProfitFactor = std::nullopt;
+    }
 
     os << "   [Bootstrap] AutoCI (PF):"
        << " method=" << out.pfAutoCIChosenMethod

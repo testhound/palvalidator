@@ -2200,3 +2200,671 @@ TEST_CASE("GeoMeanFromLogBarsStat matches GeoMeanStat in the small-N winsorizati
     REQUIRE(num::to_double(gm_from_logs) ==
             Catch::Approx(num::to_double(gm_raw)).margin(kGeoTol));
 }
+
+// ============================================================================
+// NEW TESTS: StatUtils::computeSkewness, computeMedian, computeMedianSorted
+// ============================================================================
+// These tests validate the new centralized statistical functions added to
+// StatUtils.h for bootstrap median and skewness calculations.
+// 
+// Add these tests to the end of StatUtilsTest.cpp before the closing brace.
+// ============================================================================
+
+TEST_CASE("StatUtils::computeSkewness with double", "[StatUtils][Skewness]")
+{
+    using Stat = StatUtils<double>;
+    
+    SECTION("Symmetric distribution has zero skewness")
+    {
+        // Perfectly symmetric distribution: {1, 2, 3, 4, 5}
+        std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0};
+        double mean = 3.0;
+        double se = std::sqrt(2.0); // Sample std dev
+        
+        double skew = Stat::computeSkewness(data, mean, se);
+        
+        // Should be very close to zero for symmetric data
+        REQUIRE(skew == Catch::Approx(0.0).margin(1e-6));
+    }
+    
+    SECTION("Right-skewed distribution has positive skewness")
+    {
+        // Right-skewed: {1, 1, 1, 1, 1, 2, 3, 10}
+        // Mean pulled right by outlier
+        std::vector<double> data = {1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 10.0};
+        double sum = std::accumulate(data.begin(), data.end(), 0.0);
+        double mean = sum / data.size(); // ≈ 2.5
+        
+        // Compute sample standard deviation
+        double var = 0.0;
+        for (double v : data) {
+            double d = v - mean;
+            var += d * d;
+        }
+        var /= (data.size() - 1);
+        double se = std::sqrt(var); // ≈ 3.0
+        
+        double skew = Stat::computeSkewness(data, mean, se);
+        
+        // Should be positive for right-skewed
+        REQUIRE(skew > 0.0);
+        REQUIRE(skew > 1.0); // Significantly skewed
+    }
+    
+    SECTION("Left-skewed distribution has negative skewness")
+    {
+        // Left-skewed: {-10, -3, -2, -1, -1, -1, -1, -1}
+        // Mean pulled left by outlier
+        std::vector<double> data = {-10.0, -3.0, -2.0, -1.0, -1.0, -1.0, -1.0, -1.0};
+        double sum = std::accumulate(data.begin(), data.end(), 0.0);
+        double mean = sum / data.size(); // ≈ -2.5
+        
+        double var = 0.0;
+        for (double v : data) {
+            double d = v - mean;
+            var += d * d;
+        }
+        var /= (data.size() - 1);
+        double se = std::sqrt(var); // ≈ 3.0
+        
+        double skew = Stat::computeSkewness(data, mean, se);
+        
+        // Should be negative for left-skewed
+        REQUIRE(skew < 0.0);
+        REQUIRE(skew < -1.0); // Significantly skewed
+    }
+    
+    SECTION("Returns zero for n < 3")
+    {
+        std::vector<double> data = {1.0, 2.0};
+        double skew = Stat::computeSkewness(data, 1.5, 0.5);
+        
+        REQUIRE(skew == 0.0);
+    }
+    
+    SECTION("Returns zero when se = 0")
+    {
+        std::vector<double> data = {1.0, 1.0, 1.0};
+        double skew = Stat::computeSkewness(data, 1.0, 0.0);
+        
+        REQUIRE(skew == 0.0);
+    }
+    
+    SECTION("Returns zero when se is negative")
+    {
+        std::vector<double> data = {1.0, 2.0, 3.0};
+        double skew = Stat::computeSkewness(data, 2.0, -0.5);
+        
+        REQUIRE(skew == 0.0);
+    }
+    
+    SECTION("Handles empty vector")
+    {
+        std::vector<double> data;
+        double skew = Stat::computeSkewness(data, 0.0, 1.0);
+        
+        REQUIRE(skew == 0.0);
+    }
+    
+    SECTION("Matches manual calculation for known distribution")
+    {
+        // Data: {2, 4, 6, 8, 10}
+        std::vector<double> data = {2.0, 4.0, 6.0, 8.0, 10.0};
+        double mean = 6.0;
+        
+        // Compute variance: E[(X-μ)²]
+        double m2 = 0.0;
+        for (double v : data) {
+            double d = v - mean;
+            m2 += d * d;
+        }
+        m2 /= (data.size() - 1); // Sample variance
+        double se = std::sqrt(m2); // ≈ 3.1623
+        
+        // Compute third moment: E[(X-μ)³]
+        double m3 = 0.0;
+        for (double v : data) {
+            double d = v - mean;
+            m3 += d * d * d;
+        }
+        m3 /= data.size(); // Population third moment
+        
+        // Skewness = m3 / σ³
+        double expected_skew = m3 / (se * se * se);
+        
+        double computed_skew = Stat::computeSkewness(data, mean, se);
+        
+        REQUIRE(computed_skew == Catch::Approx(expected_skew).margin(1e-10));
+        REQUIRE(computed_skew == Catch::Approx(0.0).margin(1e-10)); // Symmetric
+    }
+}
+
+TEST_CASE("StatUtils::computeSkewness with DecimalType", "[StatUtils][Skewness][Decimal]")
+{
+    using Stat = StatUtils<DecimalType>;
+    
+    SECTION("Works with decimal type")
+    {
+        std::vector<DecimalType> data = {
+            DecimalType("1.0"),
+            DecimalType("2.0"),
+            DecimalType("3.0"),
+            DecimalType("4.0"),
+            DecimalType("5.0")
+        };
+        DecimalType mean = DecimalType("3.0");
+        DecimalType se = DecimalType("1.41421356"); // sqrt(2)
+        
+        DecimalType skew = Stat::computeSkewness(data, mean, se);
+        
+        // Should be near zero for symmetric data
+        REQUIRE(num::to_double(skew) == Catch::Approx(0.0).margin(1e-6));
+    }
+    
+    SECTION("Right-skewed decimal distribution")
+    {
+        std::vector<DecimalType> data = {
+            DecimalType("0.10"),
+            DecimalType("0.12"),
+            DecimalType("0.15"),
+            DecimalType("0.18"),
+            DecimalType("0.85")  // Outlier
+        };
+        
+        // Compute mean
+        DecimalType sum = DecimalConstants<DecimalType>::DecimalZero;
+        for (const auto& v : data) {
+            sum += v;
+        }
+        DecimalType mean = sum / DecimalType(static_cast<double>(data.size()));
+        
+        // Compute SE
+        DecimalType var = DecimalConstants<DecimalType>::DecimalZero;
+        for (const auto& v : data) {
+            DecimalType d = v - mean;
+            var += d * d;
+        }
+        var /= DecimalType(static_cast<double>(data.size() - 1));
+        double var_d = num::to_double(var);
+        DecimalType se = DecimalType(std::sqrt(var_d));
+        
+        DecimalType skew = Stat::computeSkewness(data, mean, se);
+        
+        // Should be positive for right-skewed
+        REQUIRE(num::to_double(skew) > 0.0);
+    }
+}
+
+TEST_CASE("StatUtils::computeMedian with double", "[StatUtils][Median]")
+{
+    using Stat = StatUtils<double>;
+    
+    SECTION("Odd number of elements returns middle value")
+    {
+        std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 3.0);
+    }
+    
+    SECTION("Even number of elements returns average of two middle values")
+    {
+        std::vector<double> data = {1.0, 2.0, 3.0, 4.0};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 2.5); // (2 + 3) / 2
+    }
+    
+    SECTION("Sorts unsorted data correctly")
+    {
+        std::vector<double> data = {5.0, 2.0, 8.0, 1.0, 9.0, 3.0};
+        double median = Stat::computeMedian(data);
+        
+        // Sorted: {1, 2, 3, 5, 8, 9}
+        // Median: (3 + 5) / 2 = 4.0
+        REQUIRE(median == 4.0);
+    }
+    
+    SECTION("Does not modify input vector")
+    {
+        std::vector<double> data = {5.0, 2.0, 8.0, 1.0};
+        std::vector<double> original = data; // Copy
+        
+        double median = Stat::computeMedian(data);
+        
+        // Verify input unchanged
+        REQUIRE(data == original);
+        REQUIRE(median == 3.5); // (2 + 5) / 2
+    }
+    
+    SECTION("Single element returns that element")
+    {
+        std::vector<double> data = {42.0};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 42.0);
+    }
+    
+    SECTION("Two elements returns average")
+    {
+        std::vector<double> data = {10.0, 20.0};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 15.0);
+    }
+    
+    SECTION("Empty vector returns zero")
+    {
+        std::vector<double> data;
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 0.0);
+    }
+    
+    SECTION("Handles negative values")
+    {
+        std::vector<double> data = {-5.0, -2.0, 0.0, 3.0, 7.0};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 0.0); // Middle of sorted: {-5, -2, 0, 3, 7}
+    }
+    
+    SECTION("Handles duplicate values")
+    {
+        std::vector<double> data = {1.0, 2.0, 2.0, 2.0, 3.0};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == 2.0);
+    }
+    
+    SECTION("Large dataset with known median")
+    {
+        // Create 1000 elements: 1, 2, 3, ..., 1000
+        std::vector<double> data;
+        data.reserve(1000);
+        for (int i = 1; i <= 1000; ++i) {
+            data.push_back(static_cast<double>(i));
+        }
+        
+        double median = Stat::computeMedian(data);
+        
+        // Median of 1...1000 is (500 + 501) / 2 = 500.5
+        REQUIRE(median == 500.5);
+    }
+    
+    SECTION("Bootstrap-like scenario: resampled values")
+    {
+        // Simulates bootstrap statistics from resampling
+        std::vector<double> data = {1.25, 1.18, 1.32, 1.15, 1.28, 1.22, 1.35, 1.20};
+        double median = Stat::computeMedian(data);
+        
+        // Sorted: {1.15, 1.18, 1.20, 1.22, 1.25, 1.28, 1.32, 1.35}
+        // Median: (1.22 + 1.25) / 2 = 1.235
+        REQUIRE(median == Catch::Approx(1.235));
+    }
+}
+
+TEST_CASE("StatUtils::computeMedian with DecimalType", "[StatUtils][Median][Decimal]")
+{
+    using Stat = StatUtils<DecimalType>;
+    
+    SECTION("Works with decimal type")
+    {
+        std::vector<DecimalType> data = {
+            DecimalType("1.0"),
+            DecimalType("2.0"),
+            DecimalType("3.0"),
+            DecimalType("4.0"),
+            DecimalType("5.0")
+        };
+        
+        DecimalType median = Stat::computeMedian(data);
+        
+        REQUIRE(median == DecimalType("3.0"));
+    }
+    
+    SECTION("Even count with decimals")
+    {
+        std::vector<DecimalType> data = {
+            DecimalType("1.25"),
+            DecimalType("1.50"),
+            DecimalType("1.75"),
+            DecimalType("2.00")
+        };
+        
+        DecimalType median = Stat::computeMedian(data);
+        
+        // (1.50 + 1.75) / 2 = 1.625
+        REQUIRE(num::to_double(median) == Catch::Approx(1.625));
+    }
+    
+    SECTION("Bootstrap profit factor scenario")
+    {
+        // Simulates bootstrap profit factor statistics
+        std::vector<DecimalType> data = {
+            DecimalType("1.15"),
+            DecimalType("1.25"),
+            DecimalType("1.10"),
+            DecimalType("1.30"),
+            DecimalType("1.20")
+        };
+        
+        DecimalType median = Stat::computeMedian(data);
+        
+        // Sorted: {1.10, 1.15, 1.20, 1.25, 1.30}
+        // Median: 1.20
+        REQUIRE(median == DecimalType("1.20"));
+    }
+}
+
+TEST_CASE("StatUtils::computeMedianSorted with double", "[StatUtils][Median][Sorted]")
+{
+    using Stat = StatUtils<double>;
+    
+    SECTION("Odd number of elements in sorted vector")
+    {
+        std::vector<double> sorted = {1.0, 2.0, 3.0, 4.0, 5.0};
+        double median = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median == 3.0);
+    }
+    
+    SECTION("Even number of elements in sorted vector")
+    {
+        std::vector<double> sorted = {1.0, 2.0, 3.0, 4.0};
+        double median = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median == 2.5);
+    }
+    
+    SECTION("Does not modify input vector")
+    {
+        std::vector<double> sorted = {1.0, 2.0, 3.0, 4.0};
+        std::vector<double> original = sorted; // Copy
+        
+        double median = Stat::computeMedianSorted(sorted);
+        
+        // Verify input unchanged
+        REQUIRE(sorted == original);
+        REQUIRE(median == 2.5);
+    }
+    
+    SECTION("Single element")
+    {
+        std::vector<double> sorted = {42.0};
+        double median = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median == 42.0);
+    }
+    
+    SECTION("Two elements")
+    {
+        std::vector<double> sorted = {10.0, 20.0};
+        double median = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median == 15.0);
+    }
+    
+    SECTION("Empty vector returns zero")
+    {
+        std::vector<double> sorted;
+        double median = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median == 0.0);
+    }
+    
+    SECTION("Pre-sorted bootstrap statistics")
+    {
+        // Already sorted from quantile calculation
+        std::vector<double> sorted = {0.95, 1.05, 1.12, 1.18, 1.25, 1.32, 1.40, 1.55};
+        double median = Stat::computeMedianSorted(sorted);
+        
+        // (1.18 + 1.25) / 2 = 1.215
+        REQUIRE(median == Catch::Approx(1.215));
+    }
+}
+
+TEST_CASE("StatUtils::computeMedianSorted with DecimalType", "[StatUtils][Median][Sorted][Decimal]")
+{
+    using Stat = StatUtils<DecimalType>;
+    
+    SECTION("Works with decimal type")
+    {
+        std::vector<DecimalType> sorted = {
+            DecimalType("1.0"),
+            DecimalType("2.0"),
+            DecimalType("3.0")
+        };
+        
+        DecimalType median = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median == DecimalType("2.0"));
+    }
+}
+
+TEST_CASE("StatUtils: computeMedian vs computeMedianSorted consistency",
+          "[StatUtils][Median][Consistency]")
+{
+    using Stat = StatUtils<double>;
+    
+    SECTION("Both functions return same result for sorted input")
+    {
+        std::vector<double> sorted = {1.0, 2.0, 3.0, 5.0, 8.0, 9.0};
+        
+        double median1 = Stat::computeMedian(sorted);
+        double median2 = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median1 == median2);
+        REQUIRE(median1 == 4.0); // (3 + 5) / 2
+    }
+    
+    SECTION("computeMedian sorts before computing median")
+    {
+        std::vector<double> unsorted = {5.0, 2.0, 8.0, 1.0, 9.0, 3.0};
+        std::vector<double> sorted   = {1.0, 2.0, 3.0, 5.0, 8.0, 9.0};
+        
+        double median_from_unsorted = Stat::computeMedian(unsorted);
+        double median_from_sorted   = Stat::computeMedianSorted(sorted);
+        
+        REQUIRE(median_from_unsorted == median_from_sorted);
+        REQUIRE(median_from_unsorted == 4.0);
+    }
+    
+    SECTION("Performance test: computeMedianSorted should be faster")
+    {
+        // This is more of a documentation test - we expect computeMedianSorted
+        // to be O(1) vs computeMedian being O(n log n)
+        
+        std::vector<double> large_sorted;
+        large_sorted.reserve(10000);
+        for (int i = 0; i < 10000; ++i) {
+            large_sorted.push_back(static_cast<double>(i));
+        }
+        
+        // Both should give same result
+        double median1 = Stat::computeMedian(large_sorted);
+        double median2 = Stat::computeMedianSorted(large_sorted);
+        
+        REQUIRE(median1 == median2);
+        REQUIRE(median1 == 4999.5); // (4999 + 5000) / 2
+        
+        // computeMedianSorted is preferred when data already sorted
+        // (e.g., after quantile calculation in bootstrap)
+    }
+}
+
+TEST_CASE("StatUtils: Median for bootstrap validation scenario",
+          "[StatUtils][Median][Bootstrap][Integration]")
+{
+    using Stat = StatUtils<double>;
+    
+    SECTION("Bootstrap geometric mean statistics")
+    {
+        // Simulates 1000 bootstrap geometric mean replicates
+        // Values typically between 0.005 and 0.015 (0.5% to 1.5% per period)
+        std::vector<double> bootstrap_stats = {
+            0.0082, 0.0095, 0.0088, 0.0102, 0.0075,
+            0.0091, 0.0098, 0.0085, 0.0093, 0.0089,
+            0.0097, 0.0086, 0.0094, 0.0087, 0.0099
+        };
+        
+        double median = Stat::computeMedian(bootstrap_stats);
+        
+        // Median should be central value
+        REQUIRE(median > 0.008);
+        REQUIRE(median < 0.010);
+        
+        // For validation: if median > 0.008, strategy passes threshold
+        bool passes_threshold = (median > 0.008);
+        REQUIRE(passes_threshold == true);
+    }
+    
+    SECTION("Bootstrap profit factor statistics")
+    {
+        // Simulates bootstrap profit factor replicates
+        // Lower bound might be 1.10, but we want median >= 1.25 for robustness
+        std::vector<double> pf_stats = {
+            1.15, 1.28, 1.22, 1.35, 1.18,
+            1.25, 1.30, 1.20, 1.27, 1.23,
+            1.32, 1.21, 1.29, 1.24, 1.31
+        };
+        
+        double median = Stat::computeMedian(pf_stats);
+        
+        // Median should be around 1.25
+        REQUIRE(median == Catch::Approx(1.25).margin(0.02));
+        
+        // Two-stage validation:
+        // Stage 1: Lower bound >= 1.10 (suppose this passed)
+        // Stage 2: Median >= 1.25 (additional robustness check)
+        double lower_bound = 1.12; // From bootstrap CI
+        bool stage1 = (lower_bound >= 1.10);
+        bool stage2 = (median >= 1.25);
+        
+        REQUIRE(stage1 == true);
+        REQUIRE(stage2 == true);
+    }
+    
+    SECTION("Skewed bootstrap distribution")
+    {
+        // Right-skewed: a few very high values pull the mean up
+        // Median is more robust than mean for validation
+        std::vector<double> skewed_stats = {
+            1.10, 1.15, 1.18, 1.20, 1.22, 1.25, 1.28, 1.30,
+            1.32, 1.35, 1.38, 1.40, 2.50, 3.80, 5.20  // Outliers
+        };
+        
+        // Compute both mean and median
+        double sum = std::accumulate(skewed_stats.begin(), skewed_stats.end(), 0.0);
+        double mean = sum / skewed_stats.size();
+        double median = Stat::computeMedian(skewed_stats);
+        
+        // Mean pulled up by outliers
+        REQUIRE(mean > 1.60);
+        
+        // Median more robust (middle value around 1.30)
+        REQUIRE(median == Catch::Approx(1.30).margin(0.05));
+        
+        // For validation, median is preferred over mean
+        REQUIRE(median < mean);
+    }
+}
+
+TEST_CASE("StatUtils: Edge cases and robustness",
+          "[StatUtils][Median][Skewness][EdgeCases]")
+{
+    using Stat = StatUtils<double>;
+    
+    SECTION("Very small values (near machine epsilon)")
+    {
+        std::vector<double> data = {1e-10, 2e-10, 3e-10, 4e-10, 5e-10};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == Catch::Approx(3e-10).margin(1e-15));
+    }
+    
+    SECTION("Very large values")
+    {
+        std::vector<double> data = {1e10, 2e10, 3e10, 4e10, 5e10};
+        double median = Stat::computeMedian(data);
+        
+        REQUIRE(median == Catch::Approx(3e10).epsilon(1e-10));
+    }
+    
+    SECTION("All identical values")
+    {
+        std::vector<double> data = {42.0, 42.0, 42.0, 42.0, 42.0};
+        
+        double median = Stat::computeMedian(data);
+        REQUIRE(median == 42.0);
+        
+        double skew = Stat::computeSkewness(data, 42.0, 0.0);
+        REQUIRE(skew == 0.0); // Zero skewness (se = 0)
+    }
+    
+    SECTION("Extreme skewness with outlier")
+    {
+	std::vector<double> data = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1000.0};
+        
+        double sum = std::accumulate(data.begin(), data.end(), 0.0);
+        double mean = sum / data.size();
+        
+        double var = 0.0;
+        for (double v : data) {
+            double d = v - mean;
+            var += d * d;
+        }
+        var /= (data.size() - 1);
+        double se = std::sqrt(var);
+        
+        double skew = Stat::computeSkewness(data, mean, se);
+        
+        // Should have very high positive skewness
+        REQUIRE(skew > 2.0);
+        
+        // Median should be 1.0 (robust to outlier)
+        double median = Stat::computeMedian(data);
+        REQUIRE(median == 1.0);
+    }
+}
+
+TEST_CASE("StatUtils: Type compatibility across double and DecimalType",
+          "[StatUtils][Median][Skewness][TypeCompatibility]")
+{
+    SECTION("computeMedian works with both types")
+    {
+        std::vector<double> data_double = {1.0, 2.0, 3.0};
+        double median_double = StatUtils<double>::computeMedian(data_double);
+        
+        std::vector<DecimalType> data_decimal = {
+            DecimalType("1.0"),
+            DecimalType("2.0"),
+            DecimalType("3.0")
+        };
+        DecimalType median_decimal = StatUtils<DecimalType>::computeMedian(data_decimal);
+        
+        REQUIRE(median_double == 2.0);
+        REQUIRE(median_decimal == DecimalType("2.0"));
+        REQUIRE(num::to_double(median_decimal) == median_double);
+    }
+    
+    SECTION("computeSkewness works with both types")
+    {
+        std::vector<double> data_double = {1.0, 2.0, 3.0, 4.0, 5.0};
+        double skew_double = StatUtils<double>::computeSkewness(
+            data_double, 3.0, std::sqrt(2.0));
+        
+        std::vector<DecimalType> data_decimal = {
+            DecimalType("1.0"),
+            DecimalType("2.0"),
+            DecimalType("3.0"),
+            DecimalType("4.0"),
+            DecimalType("5.0")
+        };
+        DecimalType skew_decimal = StatUtils<DecimalType>::computeSkewness(
+            data_decimal, DecimalType("3.0"), DecimalType("1.41421356"));
+        
+        REQUIRE(skew_double == Catch::Approx(0.0).margin(1e-10));
+        REQUIRE(num::to_double(skew_decimal) == Catch::Approx(0.0).margin(1e-6));
+    }
+}
