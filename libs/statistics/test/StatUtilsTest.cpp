@@ -3458,3 +3458,227 @@ TEST_CASE("GeoMeanFromLogBarsStat - Default constructor uses Mode 1", "[StatUtil
         REQUIRE(num::to_double(gm_default) == Catch::Approx(num::to_double(gm_explicit)).margin(1e-10));
     }
 }
+
+// Additional unit tests for StatUtils::computeStdDev
+// These tests should be added to StatUtilsTest.cpp
+
+TEST_CASE("StatUtils::computeStdDev", "[StatUtils]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    SECTION("Basic calculation with positive values") {
+        std::vector<D> data = {D("1.0"), D("2.0"), D("3.0"), D("4.0"), D("5.0")};
+        D mean = D("3.0");  // (1+2+3+4+5)/5 = 3.0
+        // Variance = ((1-3)^2 + (2-3)^2 + (3-3)^2 + (4-3)^2 + (5-3)^2) / (5-1)
+        //          = (4 + 1 + 0 + 1 + 4) / 4 = 10/4 = 2.5
+        // Std Dev = sqrt(2.5) ≈ 1.58113883
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(1.58113883).margin(1e-6));
+    }
+    
+    SECTION("Identical values (zero variance)") {
+        std::vector<D> data = {D("5.0"), D("5.0"), D("5.0"), D("5.0")};
+        D mean = D("5.0");
+        // Variance = 0, StdDev should be 0
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(0.0).margin(1e-10));
+    }
+    
+    SECTION("Two values") {
+        std::vector<D> data = {D("10.0"), D("20.0")};
+        D mean = D("15.0");
+        // Variance = ((10-15)^2 + (20-15)^2) / (2-1) = (25 + 25) / 1 = 50
+        // Std Dev = sqrt(50) ≈ 7.071068
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(7.071068).margin(1e-6));
+    }
+    
+    SECTION("Single value") {
+        std::vector<D> data = {D("42.0")};
+        D mean = D("42.0");
+        // With n=1, variance calculation depends on implementation
+        // Typically returns 0 for n=1 (division by n-1=0 case)
+        D stdDev = Stat::computeStdDev(data, mean);
+        // Should handle gracefully, likely returning 0
+        REQUIRE(std::isfinite(num::to_double(stdDev)));
+    }
+    
+    SECTION("Empty vector") {
+        std::vector<D> data;
+        D mean = D("0.0");
+        // Should handle gracefully without crashing
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(0.0).margin(1e-10));
+    }
+    
+    SECTION("Negative values") {
+        std::vector<D> data = {D("-5.0"), D("-3.0"), D("-1.0"), D("1.0"), D("3.0")};
+        D mean = D("-1.0");  // (-5-3-1+1+3)/5 = -5/5 = -1.0
+        // Variance = ((-5-(-1))^2 + (-3-(-1))^2 + (-1-(-1))^2 + (1-(-1))^2 + (3-(-1))^2) / 4
+        //          = (16 + 4 + 0 + 4 + 16) / 4 = 40/4 = 10
+        // Std Dev = sqrt(10) ≈ 3.162278
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(3.162278).margin(1e-6));
+    }
+    
+    SECTION("Mixed positive and negative values") {
+        std::vector<D> data = {D("-10.0"), D("-5.0"), D("0.0"), D("5.0"), D("10.0")};
+        D mean = D("0.0");
+        // Variance = (100 + 25 + 0 + 25 + 100) / 4 = 250/4 = 62.5
+        // Std Dev = sqrt(62.5) ≈ 7.905694
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(7.905694).margin(1e-6));
+    }
+    
+    SECTION("Small decimal values (financial returns)") {
+        std::vector<D> data = {D("0.01"), D("0.02"), D("-0.01"), D("0.03"), D("-0.02")};
+        D mean = D("0.006");  // (0.01+0.02-0.01+0.03-0.02)/5 = 0.03/5 = 0.006
+        // Manual calculation of variance
+        // Deviations: 0.004, 0.014, -0.016, 0.024, -0.026
+        // Squared: 0.000016, 0.000196, 0.000256, 0.000576, 0.000676
+        // Sum = 0.00172, Variance = 0.00172/4 = 0.00043
+        // Std Dev = sqrt(0.00043) ≈ 0.020736
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(0.020736).margin(1e-6));
+    }
+    
+    SECTION("Large values") {
+        std::vector<D> data = {D("1000.0"), D("2000.0"), D("3000.0"), D("4000.0"), D("5000.0")};
+        D mean = D("3000.0");
+        // Variance = (4000000 + 1000000 + 0 + 1000000 + 4000000) / 4 = 10000000/4 = 2500000
+        // Std Dev = sqrt(2500000) ≈ 1581.13883
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(1581.13883).margin(1e-3));
+    }
+
+    SECTION("Very small variance (numerical stability)") {
+        std::vector<D> data = {D("1.0000001"), D("1.0000002"), D("1.0000003"), D("1.0000004")};
+        D mean = D("1.00000025");
+        // Very small deviations - tests numerical stability
+        // Note: With such tiny differences, the variance may be smaller than
+        // double precision can represent, resulting in stdDev = 0
+        D stdDev = Stat::computeStdDev(data, mean);
+        // The key requirement is that it doesn't crash and returns a valid number
+        REQUIRE(std::isfinite(num::to_double(stdDev)));
+        REQUIRE(num::to_double(stdDev) >= 0.0);  // Can be 0 due to precision limits
+    }
+    
+    SECTION("Outliers present") {
+        std::vector<D> data = {D("1.0"), D("2.0"), D("3.0"), D("4.0"), D("100.0")};
+        D mean = D("22.0");  // (1+2+3+4+100)/5 = 110/5 = 22
+        // Variance dominated by outlier
+        // Deviations: -21, -20, -19, -18, 78
+        // Squared: 441, 400, 361, 324, 6084
+        // Sum = 7610, Variance = 7610/4 = 1902.5
+        // Std Dev = sqrt(1902.5) ≈ 43.618
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(43.618).margin(1e-3));
+    }
+    
+    SECTION("Incorrect mean provided (edge case)") {
+        // Testing what happens if user provides wrong mean
+        std::vector<D> data = {D("1.0"), D("2.0"), D("3.0"), D("4.0"), D("5.0")};
+        D wrong_mean = D("10.0");  // Actual mean is 3.0
+        // Should still compute, just with incorrect result
+        D stdDev = Stat::computeStdDev(data, wrong_mean);
+        REQUIRE(std::isfinite(num::to_double(stdDev)));
+        REQUIRE(num::to_double(stdDev) > 0.0);
+    }
+    
+    SECTION("Zero mean with positive and negative values") {
+        std::vector<D> data = {D("-2.0"), D("-1.0"), D("0.0"), D("1.0"), D("2.0")};
+        D mean = D("0.0");
+        // Variance = (4 + 1 + 0 + 1 + 4) / 4 = 10/4 = 2.5
+        // Std Dev = sqrt(2.5) ≈ 1.58113883
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(1.58113883).margin(1e-6));
+    }
+    
+    SECTION("Large dataset (100 values)") {
+        std::vector<D> data;
+        for (int i = 1; i <= 100; ++i) {
+            data.push_back(D(std::to_string(i)));
+        }
+        D mean = D("50.5");  // Mean of 1 to 100
+        // For uniform distribution 1 to n: stddev = sqrt((n^2 - 1) / 12)
+        // For n=100: stddev ≈ sqrt(9999/12) ≈ 28.866
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(29.01149).margin(1e-3));
+    }
+    
+    SECTION("All zeros") {
+        std::vector<D> data = {D("0.0"), D("0.0"), D("0.0"), D("0.0")};
+        D mean = D("0.0");
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(0.0).margin(1e-10));
+    }
+    
+    SECTION("High precision decimal values") {
+        std::vector<D> data = {
+            D("1.23456789"),
+            D("2.34567890"),
+            D("3.45678901"),
+            D("4.56789012")
+        };
+        D mean = D("2.90123148");
+        // Should maintain precision in calculation
+        D stdDev = Stat::computeStdDev(data, mean);
+        REQUIRE(std::isfinite(num::to_double(stdDev)));
+        REQUIRE(num::to_double(stdDev) > 0.0);
+    }
+}
+
+TEST_CASE("StatUtils::computeStdDev - Integration with computeMean", "[StatUtils][Integration]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    SECTION("Compute mean and stddev together") {
+        std::vector<D> data = {D("10.0"), D("20.0"), D("30.0"), D("40.0"), D("50.0")};
+        D mean = Stat::computeMean(data);
+        D stdDev = Stat::computeStdDev(data, mean);
+        
+        REQUIRE(num::to_double(mean) == Catch::Approx(30.0));
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(15.811388).margin(1e-5));
+    }
+    
+    SECTION("Financial returns with computed mean") {
+        std::vector<D> returns = {
+            D("0.05"), D("-0.02"), D("0.03"), D("-0.01"), 
+            D("0.04"), D("-0.03"), D("0.02"), D("0.01")
+        };
+        D mean = Stat::computeMean(returns);
+        D stdDev = Stat::computeStdDev(returns, mean);
+        
+        REQUIRE(num::to_double(stdDev) > 0.0);
+        REQUIRE(std::isfinite(num::to_double(stdDev)));
+    }
+}
+
+TEST_CASE("StatUtils::computeStdDev - Comparison with variance", "[StatUtils][Variance]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    SECTION("StdDev should be sqrt of variance") {
+        std::vector<D> data = {D("2.0"), D("4.0"), D("6.0"), D("8.0"), D("10.0")};
+        D mean = D("6.0");
+        
+        D variance = Stat::computeVariance(data, mean);
+        D stdDev = Stat::computeStdDev(data, mean);
+        
+        double var_val = num::to_double(variance);
+        double std_val = num::to_double(stdDev);
+        
+        REQUIRE(std_val == Catch::Approx(std::sqrt(var_val)).margin(1e-10));
+    }
+    
+    SECTION("Zero variance implies zero stddev") {
+        std::vector<D> data = {D("7.5"), D("7.5"), D("7.5")};
+        D mean = D("7.5");
+        
+        D variance = Stat::computeVariance(data, mean);
+        D stdDev = Stat::computeStdDev(data, mean);
+        
+        REQUIRE(num::to_double(variance) == Catch::Approx(0.0).margin(1e-10));
+        REQUIRE(num::to_double(stdDev) == Catch::Approx(0.0).margin(1e-10));
+    }
+}

@@ -7,6 +7,7 @@
 #include <numeric> // Required for std::accumulate
 #include <algorithm>
 #include <cstddef>
+#include <type_traits>
 #include <array> 
 #include <boost/container/small_vector.hpp>
 #include "DecimalConstants.h"
@@ -1499,6 +1500,64 @@ namespace mkc_timeseries
       return sum / Decimal(data.size());
     }
 
+    /**
+     * @brief Computes the sample standard deviation using Welford's algorithm.
+     * @tparam T Numeric type supporting arithmetic operations and std::sqrt
+     * @param data Vector of numeric values
+     * @return Standard deviation, or T(0) if n < 2 or variance ≈ 0
+     * @note Uses Bessel's correction (n-1 denominator) for unbiased estimation
+     * @note Time complexity: O(n), Space complexity: O(1)
+     * @warning Returns T(0) for insufficient data; consider using optional<T> version
+     */
+    template <typename T>
+    static T computeStdDev(const std::vector<T>& data)
+    {
+      static_assert(std::is_arithmetic_v<T>, "T must be a numeric type");
+  
+      const size_t n = data.size();
+      if (n < 2)
+	return T(0);
+
+      // Welford's online algorithm for numerical stability
+      T mean = T(0);
+      T M2 = T(0);
+  
+      for (size_t i = 0; i < n; ++i) {
+	const T& x = data[i];
+    
+	// Validate input
+	if (!std::isfinite(x))
+	  throw std::invalid_argument("Input contains non-finite values");
+    
+	const T delta = x - mean;
+	mean += delta / static_cast<T>(i + 1);
+	const T delta2 = x - mean;
+	M2 += delta * delta2;
+      }
+  
+      const T variance = M2 / static_cast<T>(n - 1);
+  
+      if (variance <= T(0))
+	return T(0);
+    
+      return std::sqrt(variance);
+    }
+
+    /**
+     * @brief Computes the standard error of the mean (SEM).
+     * @note SEM = StdDev / sqrt(n)
+     */
+    template <typename T>
+    static T computeStandardError(const std::vector<T>& data)
+    {
+      const size_t n = data.size();
+      if (n < 2)
+	return T(0);
+    
+      const T stddev = computeStdDev(data);
+      return stddev / std::sqrt(static_cast<T>(n));
+    }
+      
     /**
      * @brief Computes the (unbiased) sample variance given a precomputed mean.
      *        Returns 0 when data.size() < 2.
