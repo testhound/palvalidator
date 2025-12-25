@@ -536,7 +536,7 @@ TEST_CASE("GeoMeanStat: auto winsorization at small N", "[StatUtils][GeoMean][Wi
         v[5]  = D("-0.45");
         v[22] = D("0.20");
 
-        GeoMeanStat<D> stat;
+        GeoMeanStat<D> stat(true, true, 0.02, 1e-8, 0);
         D got  = stat(v);            // no winsorization for N>=50
         D expd = raw_geom(v);
 
@@ -2866,5 +2866,595 @@ TEST_CASE("StatUtils: Type compatibility across double and DecimalType",
         
         REQUIRE(skew_double == Catch::Approx(0.0).margin(1e-10));
         REQUIRE(num::to_double(skew_decimal) == Catch::Approx(0.0).margin(1e-6));
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer::computeK - Mode 0 (Legacy)", "[StatUtils][Winsorizer][Mode0]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;
+    
+    // Mode 0: Legacy hard cutoff at n=30
+    Winsorizer winsor(0.02, 0);  // alpha=0.02, mode=0
+    
+    SECTION("n < 20: No winsorization") {
+        REQUIRE(winsor.computeK(15) == 0);
+        REQUIRE(winsor.computeK(19) == 0);
+    }
+    
+    SECTION("n in [20, 30]: Winsorize with k >= 1") {
+        // For alpha=0.02, floor(0.02*n) < 1 for all n <= 50
+        // So k should always be forced to 1
+        REQUIRE(winsor.computeK(20) == 1);
+        REQUIRE(winsor.computeK(25) == 1);
+        REQUIRE(winsor.computeK(26) == 1);  // Median of user's data
+        REQUIRE(winsor.computeK(30) == 1);
+    }
+    
+    SECTION("n > 30: No winsorization (original discontinuity)") {
+        REQUIRE(winsor.computeK(31) == 0);  // ← Discontinuity!
+        REQUIRE(winsor.computeK(35) == 0);
+        REQUIRE(winsor.computeK(50) == 0);
+        REQUIRE(winsor.computeK(100) == 0);
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer::computeK - Mode 1 (Smooth Fade)", "[StatUtils][Winsorizer][Mode1]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;;
+    
+    // Mode 1: Smooth fade (default, recommended)
+    Winsorizer winsor(0.02, 1);  // alpha=0.02, mode=1
+    
+    SECTION("n < 20: No winsorization") {
+        REQUIRE(winsor.computeK(15) == 0);
+        REQUIRE(winsor.computeK(19) == 0);
+    }
+    
+    SECTION("n in [20, 30]: Full protection (k >= 1)") {
+        REQUIRE(winsor.computeK(20) == 1);
+        REQUIRE(winsor.computeK(25) == 1);
+        REQUIRE(winsor.computeK(26) == 1);  // Median
+        REQUIRE(winsor.computeK(30) == 1);
+    }
+    
+    SECTION("n in [31, 50]: Still protected (k >= 1, NO discontinuity!)") {
+        // This is the KEY improvement: no cliff at n=31
+        REQUIRE(winsor.computeK(31) == 1);  // ← SMOOTH! (not 0)
+        REQUIRE(winsor.computeK(35) == 1);
+        REQUIRE(winsor.computeK(40) == 1);
+        REQUIRE(winsor.computeK(50) == 1);  // Covers 94% of user's data
+    }
+    
+    SECTION("n in [51, 100]: Gradual fade") {
+        // After n=50, k can drop to 0 (smooth transition)
+        REQUIRE(winsor.computeK(51) == 0);  // First n where k=0
+        REQUIRE(winsor.computeK(60) == 0);
+        REQUIRE(winsor.computeK(80) == 0);
+        REQUIRE(winsor.computeK(100) == 0);
+    }
+    
+    SECTION("n > 100: Uses raw alpha") {
+        // For large n, k = floor(alpha * n)
+        REQUIRE(winsor.computeK(150) == 3);  // floor(0.02 * 150) = 3
+        REQUIRE(winsor.computeK(200) == 4);  // floor(0.02 * 200) = 4
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer::computeK - Mode 2 (Always On)", "[StatUtils][Winsorizer][Mode2]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;;
+    
+    // Mode 2: Always on (constant alpha)
+    Winsorizer winsor(0.02, 2);  // alpha=0.02, mode=2
+    
+    SECTION("n < 20: No winsorization") {
+        REQUIRE(winsor.computeK(15) == 0);
+        REQUIRE(winsor.computeK(19) == 0);
+    }
+    
+    SECTION("n >= 20: Always apply with k >= 1") {
+        REQUIRE(winsor.computeK(20) == 1);
+        REQUIRE(winsor.computeK(30) == 1);
+        REQUIRE(winsor.computeK(31) == 1);  // No discontinuity
+        REQUIRE(winsor.computeK(50) == 1);
+        REQUIRE(winsor.computeK(60) == 1);  // Still k=1 (unlike Mode 1)
+        REQUIRE(winsor.computeK(100) == 2); // floor(0.02 * 100) = 2
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer::computeK - Alpha scaling", "[StatUtils][Winsorizer][Alpha]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;;
+    
+    SECTION("Larger alpha increases k for large n") {
+        Winsorizer winsor_2pct(0.02, 1);
+        Winsorizer winsor_5pct(0.05, 1);
+        
+        // For small n (< 50), both enforce k >= 1
+        REQUIRE(winsor_2pct.computeK(30) == 1);
+        REQUIRE(winsor_5pct.computeK(30) == 1);
+        
+        // For large n, alpha matters
+        REQUIRE(winsor_2pct.computeK(200) == 4);  // floor(0.02 * 200)
+        REQUIRE(winsor_5pct.computeK(200) == 10); // floor(0.05 * 200)
+    }
+    
+    SECTION("Alpha = 0 disables winsorization") {
+        Winsorizer winsor(0.0, 1);
+        REQUIRE(winsor.computeK(30) == 0);
+        REQUIRE(winsor.computeK(100) == 0);
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer::computeK - kmax capping", "[StatUtils][Winsorizer][Kmax]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;
+    
+    SECTION("k capped at (n-1)/2 to avoid clipping > half the data") {
+        // Very large alpha that would exceed kmax
+        Winsorizer winsor(0.4, 2);  // 40% per tail (unrealistic but tests capping)
+        
+        // n=10: kmax = 4, alpha*n = 4.0 → k = min(4, 4) = 4
+        REQUIRE(winsor.computeK(10) <= 4);
+        
+        // n=20: kmax = 9, alpha*n = 8.0 → k = min(8, 9) = 8
+        REQUIRE(winsor.computeK(20) <= 9);
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer::apply - Winsorization mechanics", "[StatUtils][Winsorizer][Apply]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;
+    
+    constexpr double tol = 1e-10;
+    
+    SECTION("k=0: No-op (no winsorization)") {
+        Winsorizer winsor(0.02, 0);  // Mode 0, n=15 → k=0
+        
+        std::vector<D> logs = {D("-0.15"), D("-0.08"), D("0.05"), D("0.10"), D("0.20")};
+        auto original = logs;
+        
+        winsor.apply(logs);
+        
+        // Should be unchanged
+        REQUIRE(logs.size() == original.size());
+        for (size_t i = 0; i < logs.size(); ++i) {
+            REQUIRE(logs[i] == original[i]);
+        }
+    }
+    
+    SECTION("k=1: Clip 1 value per tail (requires n>=20)") {
+        Winsorizer winsor(0.02, 1);  // Mode 1
+
+        // The Winsorizer disables itself for n < 20. 
+        // We construct a vector of size 20 to force k=1.
+        //
+        // Target Sorted Tails:
+        //   Index 0 (Min):        -0.15  -> Should clip to -0.08
+        //   Index 1 (Lo Boundary): -0.08  -> Should stay -0.08
+        //   ... middle zeros ...
+        //   Index 18 (Hi Boundary): 0.10  -> Should stay 0.10
+        //   Index 19 (Max):         0.20  -> Should clip to 0.10
+
+        std::vector<D> logs;
+        logs.reserve(20);
+
+        // Push specific test values (unsorted)
+        logs.push_back(D("0.20"));   // Index 0: Max
+        logs.push_back(D("-0.15"));  // Index 1: Min
+        logs.push_back(D("0.10"));   // Index 2: Hi Boundary
+        logs.push_back(D("-0.08"));  // Index 3: Lo Boundary
+
+        // Pad with 16 zeros to reach n=20
+        for(int i = 0; i < 16; ++i) {
+            logs.push_back(D("0.0"));
+        }
+
+        winsor.apply(logs);
+
+        // Verification
+        
+        // 1. Max (0.20) at index 0 should be clipped to Hi Boundary (0.10)
+        REQUIRE(num::to_double(logs[0]) == Catch::Approx(0.10).margin(tol));
+
+        // 2. Min (-0.15) at index 1 should be clipped to Lo Boundary (-0.08)
+        REQUIRE(num::to_double(logs[1]) == Catch::Approx(-0.08).margin(tol));
+
+        // 3. Boundaries should remain unchanged
+        REQUIRE(num::to_double(logs[2]) == Catch::Approx(0.10).margin(tol));
+        REQUIRE(num::to_double(logs[3]) == Catch::Approx(-0.08).margin(tol));
+    }
+    
+    SECTION("k=2: Clip 2 values per tail") {
+        // Larger n to get k=2
+        // n=50, alpha=0.05 => k = floor(2.5) = 2
+        Winsorizer winsor(0.05, 2);  // 5% alpha, always on
+        
+        // Initialize with a neutral bulk value (0.0)
+        std::vector<D> logs(50, D("0.00"));
+
+        // --- Set up Lower Tail ---
+        // Sorted Index 0: Extreme Min
+        logs[0] = D("-0.50");
+        // Sorted Index 1: 2nd Min (Should be clipped)
+        logs[1] = D("-0.30");
+        // Sorted Index 2: Lower Boundary (Should NOT be clipped, sets the floor)
+        logs[2] = D("-0.10");
+
+        // --- Set up Upper Tail ---
+        // Sorted Index 47: Upper Boundary (Should NOT be clipped, sets the ceiling)
+        logs[47] = D("0.10");
+        // Sorted Index 48: 2nd Max (Should be clipped)
+        logs[48] = D("0.30");
+        // Sorted Index 49: Extreme Max
+        logs[49] = D("0.50");
+
+        winsor.apply(logs);
+        
+        // Verification:
+        // With k=2, the values at indices 0 and 1 should be clipped to the value at index 2 (-0.10).
+        // The values at indices 48 and 49 should be clipped to the value at index 47 (0.10).
+
+        // 1. Verify Lower Tail Clipping
+        REQUIRE(num::to_double(logs[0]) == Catch::Approx(-0.10).margin(tol)); // Clipped
+        REQUIRE(num::to_double(logs[1]) == Catch::Approx(-0.10).margin(tol)); // Clipped
+        REQUIRE(num::to_double(logs[2]) == Catch::Approx(-0.10).margin(tol)); // Boundary preserved
+
+        // 2. Verify Upper Tail Clipping
+        REQUIRE(num::to_double(logs[47]) == Catch::Approx(0.10).margin(tol)); // Boundary preserved
+        REQUIRE(num::to_double(logs[48]) == Catch::Approx(0.10).margin(tol)); // Clipped
+        REQUIRE(num::to_double(logs[49]) == Catch::Approx(0.10).margin(tol)); // Clipped
+    }
+
+    SECTION("Empty vector: Safe no-op") {
+        Winsorizer winsor(0.02, 1);
+        std::vector<D> logs;
+        
+        winsor.apply(logs);  // Should not crash
+        
+        REQUIRE(logs.empty());
+    }
+    
+    SECTION("Single value: No winsorization possible") {
+        Winsorizer winsor(0.02, 1);
+        std::vector<D> logs = {D("0.05")};
+        
+        winsor.apply(logs);
+        
+        REQUIRE(logs.size() == 1);
+        REQUIRE(logs[0] == D("0.05"));
+    }
+}
+
+TEST_CASE("GeoMeanStat - Mode 0 (Legacy) matches original behavior", "[StatUtils][GeoMean][Mode0]") {
+    using D = DecimalType;
+    using DC = DecimalConstants<D>;
+    
+    constexpr double kGeoTol = 5e-8;
+    
+    // Helper: manual winsorization (k=1) in log domain
+    auto manual_winsor1 = [](const std::vector<D>& returns) {
+        std::vector<D> logs;
+        logs.reserve(returns.size());
+        const D one = DC::DecimalOne;
+        for (const auto& r : returns) {
+            D growth = one + r;
+            if (growth <= D("1e-8")) growth = D("1e-8");
+            logs.push_back(std::log(growth));
+        }
+        
+        auto sorted = logs;
+        std::sort(sorted.begin(), sorted.end());
+        const size_t n = sorted.size();
+        const size_t k = 1;
+        const D lo = sorted[k];
+        const D hi = sorted[n - 1 - k];
+        
+        for (auto& x : logs) {
+            if (x < lo) x = lo;
+            else if (x > hi) x = hi;
+        }
+        
+        D sum = DC::DecimalZero;
+        for (const auto& x : logs) sum += x;
+        return std::exp(sum / D(static_cast<double>(n))) - one;
+    };
+    
+    SECTION("n=30: Winsorization ON (matches original)") {
+        std::vector<D> returns(30, D("0.005"));
+        returns[3] = D("-0.45");   // Outlier
+        returns[17] = D("0.20");   // Outlier
+        
+        GeoMeanStat<D> stat_mode0(true, true, 0.02, 1e-8, 0);  // Mode 0
+        D gm = stat_mode0(returns);
+        D expected = manual_winsor1(returns);
+        
+        REQUIRE(num::to_double(gm) == Catch::Approx(num::to_double(expected)).margin(kGeoTol));
+    }
+    
+    SECTION("n=31: Winsorization OFF (original discontinuity)") {
+        std::vector<D> returns(31, D("0.005"));
+        returns[3] = D("-0.45");
+        returns[17] = D("0.20");
+        
+        GeoMeanStat<D> stat_mode0(true, true, 0.02, 1e-8, 0);  // Mode 0
+        D gm = stat_mode0(returns);
+        
+        // Should use raw geometric mean (no winsorization)
+        // NOT equal to manual_winsor1 (which would clip)
+        D with_winsor = manual_winsor1(returns);
+        
+        REQUIRE(num::to_double(gm) != Catch::Approx(num::to_double(with_winsor)).margin(kGeoTol));
+    }
+}
+
+TEST_CASE("GeoMeanStat - Mode 1 (Smooth Fade) eliminates discontinuity", "[StatUtils][GeoMean][Mode1]") {
+    using D = DecimalType;
+    
+    SECTION("n=30 and n=31: Smooth transition (both winsorized)") {
+        // Create two very similar datasets
+        std::vector<D> returns_30(30, D("0.005"));
+        returns_30[3] = D("-0.45");
+        returns_30[17] = D("0.20");
+        
+        std::vector<D> returns_31 = returns_30;
+        returns_31.push_back(D("0.005"));  // Add one average return
+        
+        GeoMeanStat<D> stat(true, true, 0.02, 1e-8, 1);  // Mode 1
+        
+        D gm_30 = stat(returns_30);
+        D gm_31 = stat(returns_31);
+        
+        // Should be VERY close (both have k=1, smooth transition)
+        double diff = std::abs(num::to_double(gm_30 - gm_31));
+        REQUIRE(diff < 0.002);  // Within 0.2% (smooth!)
+        
+        // Compare to Mode 0 which would show discontinuity
+        GeoMeanStat<D> stat_legacy(true, true, 0.02, 1e-8, 0);
+        D gm_30_legacy = stat_legacy(returns_30);
+        D gm_31_legacy = stat_legacy(returns_31);
+        
+        double diff_legacy = std::abs(num::to_double(gm_30_legacy - gm_31_legacy));
+        // Legacy should have LARGER jump (discontinuity)
+        REQUIRE(diff_legacy > diff);
+    }
+    
+    SECTION("n in [31, 50]: All get k>=1 protection") {
+        for (size_t n = 31; n <= 50; ++n) {
+            std::vector<D> returns(n, D("0.005"));
+            returns[2] = D("-0.30");
+            returns[n-2] = D("0.18");
+            
+            GeoMeanStat<D> stat(true, true, 0.02, 1e-8, 1);  // Mode 1
+            D gm = stat(returns);
+            
+            // All should apply winsorization (verify by checking result is reasonable)
+            REQUIRE(num::to_double(gm) > -0.30);  // Not dominated by outlier
+            REQUIRE(num::to_double(gm) < 0.18);   // Not dominated by outlier
+        }
+    }
+}
+
+TEST_CASE("GeoMeanStat - Mode 2 (Always On) applies uniformly", "[StatUtils][GeoMean][Mode2]") {
+    using D = DecimalType;
+    
+    SECTION("All n >= 20 get winsorization") {
+        std::vector<size_t> sample_sizes = {20, 30, 50, 100};
+        
+        for (size_t n : sample_sizes) {
+            std::vector<D> returns(n, D("0.01"));
+            returns[0] = D("-0.40");     // Outlier
+            returns[n-1] = D("0.25");    // Outlier
+            
+            GeoMeanStat<D> stat(true, true, 0.02, 1e-8, 2);  // Mode 2
+            D gm = stat(returns);
+            
+            // All should be winsorized (no discontinuities)
+            REQUIRE(num::to_double(gm) > -0.40);
+            REQUIRE(num::to_double(gm) < 0.25);
+        }
+    }
+}
+
+TEST_CASE("GeoMeanFromLogBarsStat - Mode consistency with GeoMeanStat", "[StatUtils][GeoMeanFromLogs][Modes]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    constexpr double kGeoTol = 5e-8;
+    const double ruin_eps = 1e-8;
+    
+    SECTION("Mode 0: Both structs produce identical results") {
+        std::vector<D> returns(30, D("0.01"));
+        returns[5] = D("-0.35");
+        returns[22] = D("0.18");
+        
+        GeoMeanStat<D> stat1(true, true, 0.02, ruin_eps, 0);  // Mode 0
+        D gm1 = stat1(returns);
+        
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+        GeoMeanFromLogBarsStat<D> stat2(true, 0.02, 0);  // Mode 0
+        D gm2 = stat2(logBars);
+        
+        REQUIRE(num::to_double(gm1) == Catch::Approx(num::to_double(gm2)).margin(kGeoTol));
+    }
+    
+    SECTION("Mode 1: Both structs produce identical results") {
+        std::vector<D> returns(35, D("0.01"));  // n=35 to test [31,50] range
+        returns[5] = D("-0.35");
+        returns[28] = D("0.18");
+        
+        GeoMeanStat<D> stat1(true, true, 0.02, ruin_eps, 1);  // Mode 1
+        D gm1 = stat1(returns);
+        
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+        GeoMeanFromLogBarsStat<D> stat2(true, 0.02, 1);  // Mode 1
+        D gm2 = stat2(logBars);
+        
+        REQUIRE(num::to_double(gm1) == Catch::Approx(num::to_double(gm2)).margin(kGeoTol));
+    }
+    
+    SECTION("Mode 2: Both structs produce identical results") {
+        std::vector<D> returns(60, D("0.01"));
+        returns[10] = D("-0.35");
+        returns[50] = D("0.18");
+        
+        GeoMeanStat<D> stat1(true, true, 0.02, ruin_eps, 2);  // Mode 2
+        D gm1 = stat1(returns);
+        
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+        GeoMeanFromLogBarsStat<D> stat2(true, 0.02, 2);  // Mode 2
+        D gm2 = stat2(logBars);
+        
+        REQUIRE(num::to_double(gm1) == Catch::Approx(num::to_double(gm2)).margin(kGeoTol));
+    }
+}
+
+TEST_CASE("GeoMeanFromLogBarsStat - Mode 1 eliminates discontinuity", "[StatUtils][GeoMeanFromLogs][Mode1]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    const double ruin_eps = 1e-8;
+    
+    SECTION("n=30 vs n=31: Smooth transition") {
+        // Base returns
+        std::vector<D> returns_30(30, D("0.005"));
+        returns_30[3] = D("-0.40");
+        returns_30[25] = D("0.22");
+        
+        std::vector<D> returns_31 = returns_30;
+        returns_31.push_back(D("0.005"));
+        
+        // Convert to log-bars
+        auto logBars_30 = Stat::makeLogGrowthSeries(returns_30, ruin_eps);
+        auto logBars_31 = Stat::makeLogGrowthSeries(returns_31, ruin_eps);
+        
+        GeoMeanFromLogBarsStat<D> stat(true, 0.02, 1);  // Mode 1
+        
+        D gm_30 = stat(logBars_30);
+        D gm_31 = stat(logBars_31);
+        
+        // Should be very close (smooth transition)
+        double diff = std::abs(num::to_double(gm_30 - gm_31));
+        REQUIRE(diff < 0.002);
+    }
+}
+
+TEST_CASE("GeoMeanStat - User data profile (min=20, median=26, 94% <= 50)", "[StatUtils][GeoMean][UserData]") {
+    using D = DecimalType;
+    
+    SECTION("Mode 1 protects 94% of user data (n <= 50)") {
+        // Test coverage across user's actual data range
+        std::vector<size_t> sizes = {20, 26, 30, 35, 40, 50};  // All <= 50
+        
+        for (size_t n : sizes) {
+            std::vector<D> returns(n, D("0.01"));
+            returns[2] = D("-0.30");      // Outlier
+            returns[n-3] = D("0.20");     // Outlier
+            
+            GeoMeanStat<D> stat(true, true, 0.02, 1e-8, 1);  // Mode 1
+            D gm = stat(returns);
+            
+            // All these sizes should get k >= 1 protection
+            // Verify by checking result is dampened (not dominated by outliers)
+            REQUIRE(num::to_double(gm) > -0.25);  // Outlier dampened
+            REQUIRE(num::to_double(gm) < 0.15);   // Outlier dampened
+            REQUIRE(std::isfinite(num::to_double(gm)));
+        }
+    }
+    
+    SECTION("Mode 0 vs Mode 1: Difference for n in [31, 50]") {
+        // This range represents ~40% of user's data that benefits from Mode 1
+        size_t n = 35;  // Example: median + Qn ≈ 26 + 7 = 33-35
+        
+        std::vector<D> returns(n, D("0.01"));
+        returns[5] = D("-0.40");  // Massive loss
+        returns[28] = D("0.25");
+        
+        GeoMeanStat<D> stat_mode0(true, true, 0.02, 1e-8, 0);  // Legacy
+        GeoMeanStat<D> stat_mode1(true, true, 0.02, 1e-8, 1);  // Smooth
+        
+        D gm_mode0 = stat_mode0(returns);
+        D gm_mode1 = stat_mode1(returns);
+        
+        // Mode 0: No winsorization. The -40% loss crashes the mean.
+        // Mode 1: Winsorization active. The -40% is clipped, preserving the mean.
+        
+        // 1. Mode 1 should be significantly HIGHER than Mode 0 (better performance)
+        REQUIRE(num::to_double(gm_mode1) > num::to_double(gm_mode0));
+        
+        // 2. Mode 1 should remain close to the bulk return (0.01)
+        //    (Allowing small deviation due to the net effect of clipping)
+        REQUIRE(num::to_double(gm_mode1) == Catch::Approx(0.01).margin(0.005));
+
+        // 3. Mode 0 should be significantly dragged down
+        //    (It dropped to ~0.001 in your failure log)
+        REQUIRE(num::to_double(gm_mode0) < 0.005); 
+    }
+}
+
+TEST_CASE("AdaptiveWinsorizer - Getters", "[StatUtils][Winsorizer][Getters]") {
+    using D = DecimalType;
+    using Winsorizer = AdaptiveWinsorizer<D>;
+    
+    SECTION("getAlpha returns constructor value") {
+        Winsorizer winsor1(0.02, 1);
+        REQUIRE(winsor1.getAlpha() == 0.02);
+        
+        Winsorizer winsor2(0.05, 1);
+        REQUIRE(winsor2.getAlpha() == 0.05);
+    }
+    
+    SECTION("getAdaptiveMode returns constructor value") {
+        Winsorizer winsor0(0.02, 0);
+        REQUIRE(winsor0.getAdaptiveMode() == 0);
+        
+        Winsorizer winsor1(0.02, 1);
+        REQUIRE(winsor1.getAdaptiveMode() == 1);
+        
+        Winsorizer winsor2(0.02, 2);
+        REQUIRE(winsor2.getAdaptiveMode() == 2);
+    }
+}
+
+TEST_CASE("GeoMeanStat - Default constructor uses Mode 1", "[StatUtils][GeoMean][Default]") {
+    using D = DecimalType;
+    
+    SECTION("Default constructor should use smooth fade (mode=1)") {
+        std::vector<D> returns(35, D("0.01"));  // n=35 in [31,50] range
+        returns[5] = D("-0.30");
+        returns[28] = D("0.20");
+        
+        GeoMeanStat<D> stat_default;  // Default constructor
+        D gm_default = stat_default(returns);
+        
+        GeoMeanStat<D> stat_explicit(true, true, 0.02, 1e-8, 1);  // Explicit Mode 1
+        D gm_explicit = stat_explicit(returns);
+        
+        // Should be identical
+        REQUIRE(num::to_double(gm_default) == Catch::Approx(num::to_double(gm_explicit)).margin(1e-10));
+    }
+}
+
+TEST_CASE("GeoMeanFromLogBarsStat - Default constructor uses Mode 1", "[StatUtils][GeoMeanFromLogs][Default]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    const double ruin_eps = 1e-8;
+    
+    SECTION("Default constructor should use smooth fade (mode=1)") {
+        std::vector<D> returns(35, D("0.01"));
+        returns[5] = D("-0.30");
+        returns[28] = D("0.20");
+        
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+        
+        GeoMeanFromLogBarsStat<D> stat_default;  // Default constructor
+        D gm_default = stat_default(logBars);
+        
+        GeoMeanFromLogBarsStat<D> stat_explicit(true, 0.02, 1);  // Explicit Mode 1
+        D gm_explicit = stat_explicit(logBars);
+        
+        // Should be identical
+        REQUIRE(num::to_double(gm_default) == Catch::Approx(num::to_double(gm_explicit)).margin(1e-10));
     }
 }
