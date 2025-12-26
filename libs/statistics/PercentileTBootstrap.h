@@ -30,6 +30,9 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -67,6 +70,7 @@ namespace palvalidator
         std::size_t effective_B;        // usable outer reps (finite pivots)
         std::size_t skipped_outer;      // outer reps skipped (degenerate θ* / SE*)
         std::size_t skipped_inner_total;// total degenerate inner reps
+        std::size_t inner_attempted_total;// total inner attempts across all outer reps where the inner loop was entered (diagnostic)
         std::size_t n;                  // original sample size
         std::size_t m_outer;            // outer subsample size
         std::size_t m_inner;            // inner subsample size
@@ -219,6 +223,7 @@ namespace palvalidator
         // Diagnostics
         std::atomic<std::size_t> skipped_outer{0};
         std::atomic<std::size_t> skipped_inner_total{0};
+        std::atomic<std::size_t> inner_attempted_total{0};
 
         const std::size_t Ldiag = m_resampler.getL();
 
@@ -262,6 +267,7 @@ namespace palvalidator
                                             double last_se = std::numeric_limits<double>::infinity();
 
                                             for (std::size_t j = 0; j < m_B_inner; ++j) {
+                                              inner_attempted_total.fetch_add(1, std::memory_order_relaxed);
                                               m_resampler(y_outer, y_inner, m_inner, rng_b);
                                               const double v = num::to_double(sampler(y_inner));
                                               if (!std::isfinite(v)) {
@@ -384,6 +390,7 @@ namespace palvalidator
         R.effective_B         = effective_B;
         R.skipped_outer       = skipped_outer.load(std::memory_order_relaxed);
         R.skipped_inner_total = skipped_inner_total.load(std::memory_order_relaxed);
+        R.inner_attempted_total = inner_attempted_total.load(std::memory_order_relaxed);
         R.n                   = n;
         R.m_outer             = m_outer;
         R.m_inner             = m_inner;

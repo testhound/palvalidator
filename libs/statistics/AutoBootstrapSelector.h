@@ -1061,9 +1061,12 @@ namespace palvalidator
 	const double mean_boot = engine.getBootstrapMean();
 	const double se_boot   = engine.getBootstrapSe();
 
-	// Compute skewness using centralized StatUtils (double overload)
-	const double skew_boot = mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot);
-
+	// Guard against degenerate distribution in skewness computation
+	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
+	const double skew_boot = (se_boot > 0.0)
+	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
+	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
+	
 	const double mu  = num::to_double(res.mean);
 	const double lo  = num::to_double(res.lower);
 	const double hi  = num::to_double(res.upper);
@@ -1137,11 +1140,92 @@ namespace palvalidator
 			 0.0               // accel (N/A)
 			 );
       }
+
+      /**
+       * @brief Compute stability penalty for Percentile-T based on resample quality.
+       *
+       * Penalizes:
+       * - High outer resample failure rate (>10%)
+       * - High inner SE estimation failure rate (>5%) [uses true attempted inner count]
+       * - Low effective bootstrap sample count (<70% of B_outer)
+       *
+       * This prevents Percentile-T from winning when the double-bootstrap
+       * procedure is struggling (e.g., small n, heavy tails, degeneracies).
+       */
+      template <class Result>
+      static double computePercentileTStability(const Result& res)
+      {
+	const double B_outer = static_cast<double>(res.B_outer);
+	const double B_inner = static_cast<double>(res.B_inner); // still useful for sanity checks / diagnostics
+	const double skipped_outer = static_cast<double>(res.skipped_outer);
+	const double skipped_inner = static_cast<double>(res.skipped_inner_total);
+	const double effective_B = static_cast<double>(res.effective_B);
+
+	// New: exact inner attempts (accounts for early stopping)
+	const double inner_attempted_total = static_cast<double>(res.inner_attempted_total);
+
+	// Guard against division by zero / nonsense
+	if (B_outer < 1.0 || B_inner < 1.0) {
+	  return std::numeric_limits<double>::infinity();
+	}
+
+	double penalty = 0.0;
+
+	// 1) OUTER RESAMPLE FAILURE RATE
+	// Threshold: >10% outer failures indicates the statistic is unstable
+	const double outer_failure_rate = skipped_outer / B_outer;
+	const double kOuterThreshold = 0.10;
+
+	if (outer_failure_rate > kOuterThreshold) {
+	  const double excess = outer_failure_rate - kOuterThreshold;
+	  penalty += excess * excess * 100.0;
+	  // Example: 20% failure rate → 10% excess → penalty += 1.0
+	}
+
+	// 2) INNER SE FAILURE RATE
+	// Threshold: >5% inner failures indicates SE* estimation is unreliable
+	// Uses the *actual* number of attempted inner draws across all outers.
+	const double kInnerThreshold = 0.05;
+
+	if (inner_attempted_total <= 0.0) {
+	  // No inner attempts at all -> PT is unusable in this run.
+	  return std::numeric_limits<double>::infinity();
+	}
+
+	// Clamp to [0,1] for safety (in case counters ever drift)
+	double inner_failure_rate = skipped_inner / inner_attempted_total;
+	if (inner_failure_rate < 0.0)
+	  inner_failure_rate = 0.0;
+	if (inner_failure_rate > 1.0)
+	  inner_failure_rate = 1.0;
+
+	if (inner_failure_rate > kInnerThreshold)
+	  {
+	    const double excess = inner_failure_rate - kInnerThreshold;
+	    penalty += excess * excess * 200.0;
+	    // Example: 10% failure rate → 5% excess → penalty += 0.5
+	  }
+
+	// 3) EFFECTIVE SAMPLE SIZE
+	// We want effective_B ≥ 70% of B_outer for reliable quantile estimation
+	const double kMinEffectiveFraction = 0.70;
+	const double min_effective = kMinEffectiveFraction * B_outer;
+
+	if (effective_B < min_effective)
+	  {
+	    const double deficit_fraction = (min_effective - effective_B) / B_outer;
+	    penalty += deficit_fraction * deficit_fraction * 50.0;
+	    // Example: effective_B = 60% of B_outer → 10% deficit → penalty += 0.5
+	  }
+
+	return penalty;
+      }
       
       template <class PTBootstrap>
       static Candidate summarizePercentileT(
 					    const PTBootstrap&                  engine,
-					    const typename PTBootstrap::Result& res)
+					    const typename PTBootstrap::Result& res,
+					    std::ostream* os = nullptr)
       {
 	if (!engine.hasDiagnostics())
 	  {
@@ -1177,11 +1261,11 @@ namespace palvalidator
 	// not what we need for confidence interval construction.
 	const double se_boot_calc = mkc_timeseries::StatUtils<double>::computeStdDev(theta_stats);
 
-	// Compute skewness using centralized StatUtils
-	const double skew_boot = mkc_timeseries::StatUtils<double>::computeSkewness(theta_stats,
-										    mean_boot,
-										    se_boot_calc);
-
+	// Guard against degenerate distribution in skewness computation
+	const double skew_boot = (se_boot_calc > 0.0)
+	  ? mkc_timeseries::StatUtils<double>::computeSkewness(theta_stats, mean_boot, se_boot_calc)
+	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
+	
 	// Use SE_hat from engine, fall back to calculated SE if invalid
 	double se_ref = res.se_hat;
 	if (!(se_ref > 0.0))
@@ -1191,9 +1275,23 @@ namespace palvalidator
 	const double hi  = num::to_double(res.upper);
 	const double len = hi - lo;
 
+	// CENTER SHIFT PENALTY: NOT COMPUTED FOR PERCENTILE-T
+	//
+	// Rationale: Percentile-T achieves coverage via the pivotal quantity T* = (θ* - θ)/SE*.
+	// Correctness depends on the distribution of T*, not on whether the CI is symmetric
+	// around the point estimate. The studentization inherently adapts to asymmetry.
+	// Penalizing center shift would incorrectly penalize this method's fundamental property.
 	double center_shift_in_se = 0.0;
 
-	// Percentile-T achieves coverage via pivotal property, no ordering penalty needed
+	// ORDERING PENALTY: Not computed for Percentile-T (currently).
+	// 
+	// Rationale: Percentile-T achieves coverage via the pivotal quantity T* = (θ*-θ)/SE*.
+	// In theory, this should yield exact nominal coverage. However, in finite samples
+	// with challenging distributions, coverage errors can occur.
+	//
+	// Future consideration: Computing ordering penalty would detect such errors and
+	// could improve method discrimination, at the cost of slightly weakening PT's
+	// theoretical advantage.
 	const double ordering_penalty = 0.0;
 
 	double normalized_length = 1.0;
@@ -1207,6 +1305,13 @@ namespace palvalidator
 							   normalized_length,
 							   median_boot
 							   );
+
+	auto stability_penalty = computePercentileTStability(res);
+
+	if (os && (stability_penalty > 0.0))
+	  {
+	    (*os) << "summarizePercentileT: stability penalty is > 0 and has value " << stability_penalty << std::endl;
+	  }
 
 	return Candidate(
 			 MethodId::PercentileT,
@@ -1226,7 +1331,7 @@ namespace palvalidator
 			 normalized_length,
 			 ordering_penalty, // ← Correctly 0.0
 			 length_penalty,
-			 0.0,              // stability_penalty (N/A)
+			 stability_penalty,
 			 0.0,              // z0 (N/A)
 			 0.0               // accel (N/A)
 			 );
@@ -1288,16 +1393,28 @@ namespace palvalidator
 	// not what we need for confidence interval construction.
 	const double se_boot = mkc_timeseries::StatUtils<double>::computeStdDev(stats);
 
-	// Compute skewness using centralized StatUtils (double overload)
-	const double skew_boot = mkc_timeseries::StatUtils<double>::computeSkewness(stats,
-										    mean_boot,
-										    se_boot);
+	// Guard against degenerate distribution in skewness computation
+	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
+	const double skew_boot = (se_boot > 0.0)
+	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
+	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
 
 	const double lo  = num::to_double(lower);
 	const double hi  = num::to_double(upper);
 	const double len = hi - lo;
 
-	// ... (Rest of summarizeBCa unchanged) ...
+	// CENTER SHIFT PENALTY: NOT COMPUTED FOR BCa
+	// 
+	// Rationale: BCa is designed to produce asymmetric intervals when appropriate.
+	// The bias-correction (z0) and acceleration (a) parameters exist precisely to
+	// adjust for skewness and rate-of-change of SE. Penalizing center shift would:
+	// 
+	//   1. Punish BCa for doing what it's designed to do (adapt to asymmetry)
+	//   2. Double-penalize pathological cases already caught by stability_penalty
+	//   3. Favor less sophisticated methods on skewed data
+	// 
+	// The stability_penalty (via z0 and a thresholds) already guards against
+	// pathological asymmetry. Center shift is irrelevant for BCa validity.
 	double center_shift_in_se = 0.0;
 
 	// ====================================================================
@@ -1393,6 +1510,11 @@ namespace palvalidator
 	      }
 	  }
 
+	if (os && (stability_penalty > 0.0))
+	  {
+	    (*os) << "summarizeBCa: stability penalty is > 0 and has value " << stability_penalty << std::endl;
+	  }
+	
 	// BCa does not use ordering penalty, pass 0.0 for that slot.
 	const double ordering_penalty = 0.0;
 
@@ -1446,331 +1568,329 @@ namespace palvalidator
       }
 
       static Result select(const std::vector<Candidate>& candidates,
-                           const ScoringWeights& weights = ScoringWeights())
+			   const ScoringWeights& weights = ScoringWeights())
       {
-        if (candidates.empty())
-          {
-            throw std::invalid_argument("AutoBootstrapSelector::select: no candidates provided.");
-          }
+	if (candidates.empty())
+	  {
+	    throw std::invalid_argument("AutoBootstrapSelector::select: no candidates provided.");
+	  }
 
-        const auto relativeEpsilon = [](double a, double b) -> double
-        {
-          const double scale = 1.0 + std::max(std::fabs(a), std::fabs(b));
-          return kRelativeTieEpsilonScale * scale;
-        };
+	const auto relativeEpsilon = [](double a, double b) -> double
+	{
+	  const double scale = 1.0 + std::max(std::fabs(a), std::fabs(b));
+	  return kRelativeTieEpsilonScale * scale;
+	};
 
-        const auto scoresAreTied = [&](double a, double b) -> bool
-        {
-          return std::fabs(a - b) <= relativeEpsilon(a, b);
-        };
+	const auto enforceNonNegative = [](double x) -> double
+	{
+	  return (x < 0.0) ? 0.0 : x;
+	};
 
-        const auto enforceNonNegative = [](double x) -> double
-        {
-          return (x < 0.0) ? 0.0 : x;
-        };
+	class RawComponents
+	{
+	public:
+	  RawComponents(double orderingPenalty,
+			double lengthPenalty,
+			double stabilityPenalty,
+			double centerShiftSq,
+			double skewSq,
+			double domainPenalty)
+	    : m_ordering_penalty(orderingPenalty),
+	      m_length_penalty(lengthPenalty),
+	      m_stability_penalty(stabilityPenalty),
+	      m_center_shift_sq(centerShiftSq),
+	      m_skew_sq(skewSq),
+	      m_domain_penalty(domainPenalty)
+	  {}
 
-        class RawComponents
-        {
-        public:
-          RawComponents(double orderingPenalty,
-                        double lengthPenalty,
-                        double stabilityPenalty,
-                        double centerShiftSq,
-                        double skewSq,
-                        double domainPenalty)
-            : m_ordering_penalty(orderingPenalty),
-              m_length_penalty(lengthPenalty),
-              m_stability_penalty(stabilityPenalty),
-              m_center_shift_sq(centerShiftSq),
-              m_skew_sq(skewSq),
-              m_domain_penalty(domainPenalty)
-          {}
+	  double getOrderingPenalty() const { return m_ordering_penalty; }
+	  double getLengthPenalty() const { return m_length_penalty; }
+	  double getStabilityPenalty() const { return m_stability_penalty; }
+	  double getCenterShiftSq() const { return m_center_shift_sq; }
+	  double getSkewSq() const { return m_skew_sq; }
+	  double getDomainPenalty() const { return m_domain_penalty; }
 
-          double getOrderingPenalty() const { return m_ordering_penalty; }
-          double getLengthPenalty() const { return m_length_penalty; }
-          double getStabilityPenalty() const { return m_stability_penalty; }
-          double getCenterShiftSq() const { return m_center_shift_sq; }
-          double getSkewSq() const { return m_skew_sq; }
-          double getDomainPenalty() const { return m_domain_penalty; }
+	private:
+	  double m_ordering_penalty;
+	  double m_length_penalty;
+	  double m_stability_penalty;
+	  double m_center_shift_sq;
+	  double m_skew_sq;
+	  double m_domain_penalty;
+	};
 
-        private:
-          double m_ordering_penalty;
-          double m_length_penalty;
-          double m_stability_penalty;
-          double m_center_shift_sq;
-          double m_skew_sq;
-          double m_domain_penalty;
-        };
+	const bool enforcePos = weights.enforcePositive();
 
-        const bool enforcePos = weights.enforcePositive();
+	std::vector<RawComponents> raw;
+	raw.reserve(candidates.size());
 
-        std::vector<RawComponents> raw;
-        raw.reserve(candidates.size());
+	bool hasBCaCandidate = false;
 
-        bool hasBCaCandidate = false;
+	bool bcaRejectedForInstability = false;
+	bool bcaRejectedForLength      = false;
+	bool bcaRejectedForDomain      = false;
+	bool bcaRejectedForNonFinite   = false;
 
-        bool bcaRejectedForInstability = false;
-        bool bcaRejectedForLength      = false;
-        bool bcaRejectedForDomain      = false;
-        bool bcaRejectedForNonFinite   = false;
+	for (const auto& c : candidates)
+	  {
+	    // ------------------------------------------------------------
+	    // Robustify cosmetic metrics: if they are non-finite, treat as neutral.
+	    // This prevents rejecting otherwise-usable candidates due to NaN skewness
+	    // in degenerate bootstrap distributions (sd == 0, etc.).
+	    // ------------------------------------------------------------
+	    double centerShift = c.getCenterShiftInSe();
+	    if (!std::isfinite(centerShift))
+	      centerShift = 0.0;
+	    double centerShiftSq = centerShift * centerShift;
 
-        for (const auto& c : candidates)
-          {
-            double centerShiftSq = c.getCenterShiftInSe();
-            centerShiftSq *= centerShiftSq;
+	    double skew = c.getSkewBoot();
+	    if (!std::isfinite(skew))
+	      skew = 0.0;
+	    double skewSq = skew * skew;
 
-            double skewSq = c.getSkewBoot();
-            skewSq *= skewSq;
+	    const double baseOrdering = c.getOrderingPenalty();
+	    const double baseLength   = c.getLengthPenalty();
+	    const double stabPenalty  = c.getStabilityPenalty();
 
-            const double baseOrdering = c.getOrderingPenalty();
-            const double baseLength   = c.getLengthPenalty();
-            const double stabPenalty  = c.getStabilityPenalty(); 
+	    double domainPenalty = 0.0;
+	    if (enforcePos)
+	      {
+		if (num::to_double(c.getLower()) <= kPositiveLowerEpsilon)
+		  {
+		    domainPenalty = kDomainViolationPenalty;
+		  }
+	      }
 
-            double domainPenalty = 0.0;
-            if (enforcePos)
-              {
-                if (num::to_double(c.getLower()) <= kPositiveLowerEpsilon)
-                  {
-                    domainPenalty = kDomainViolationPenalty;
-                  }
-              }
+	    raw.emplace_back(baseOrdering,
+			     baseLength,
+			     stabPenalty,
+			     centerShiftSq,
+			     skewSq,
+			     domainPenalty);
 
-            raw.emplace_back(baseOrdering,
-                             baseLength,
-                             stabPenalty,
-                             centerShiftSq,
-                             skewSq,
-                             domainPenalty);
+	    if (c.getMethod() == MethodId::BCa)
+	      {
+		hasBCaCandidate = true;
+	      }
+	  }
 
-            if (c.getMethod() == MethodId::BCa)
-              {
-                hasBCaCandidate = true;
-              }
-          }
+	const double kRefOrderingErrorSq = 0.10 * 0.10;
+	const double kRefLengthErrorSq   = 1.0 * 1.0;
+	const double kRefStability       = 0.25;
+	const double kRefCenterShiftSq   = 2.0 * 2.0;
+	const double kRefSkewSq          = 2.0 * 2.0;
 
-        const double kRefOrderingErrorSq = 0.10 * 0.10;
-        const double kRefLengthErrorSq   = 1.0 * 1.0;
-        const double kRefStability       = 0.25;
-        const double kRefCenterShiftSq   = 2.0 * 2.0;
-        const double kRefSkewSq          = 2.0 * 2.0;
+	// Weights: ordering is intentionally left at 1.0 (dominant) for now.
+	// If you later want it configurable, add it to ScoringWeights.
+	const double w_order  = 1.0;
+	const double w_center = weights.getCenterShiftWeight();
+	const double w_skew   = weights.getSkewWeight();
+	const double w_length = weights.getLengthWeight();
+	const double w_stab   = weights.getStabilityWeight();
 
-        const double w_center = weights.getCenterShiftWeight();
-        const double w_skew   = weights.getSkewWeight();
-        const double w_length = weights.getLengthWeight();
-        const double w_stab   = weights.getStabilityWeight();
+	std::vector<Candidate> enriched;
+	enriched.reserve(candidates.size());
 
-        std::vector<Candidate> enriched;
-        enriched.reserve(candidates.size());
+	std::vector<typename SelectionDiagnostics::ScoreBreakdown> breakdowns;
+	breakdowns.reserve(candidates.size());
 
-        std::vector<typename SelectionDiagnostics::ScoreBreakdown> breakdowns;
-        breakdowns.reserve(candidates.size());
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	  {
+	    const Candidate& c = candidates[i];
+	    const RawComponents& r = raw[i];
 
-        for (std::size_t i = 0; i < candidates.size(); ++i)
-          {
-            const Candidate& c = candidates[i];
-            const RawComponents& r = raw[i];
-
-            const double orderingNorm  = enforceNonNegative(r.getOrderingPenalty()  / kRefOrderingErrorSq);
-            const double lengthNorm    = enforceNonNegative(r.getLengthPenalty()    / kRefLengthErrorSq);
-            const double stabilityNorm = enforceNonNegative(r.getStabilityPenalty() / kRefStability);
-            const double centerSqNorm  = enforceNonNegative(r.getCenterShiftSq()    / kRefCenterShiftSq);
-            const double skewSqNorm    = enforceNonNegative(r.getSkewSq()           / kRefSkewSq);
+	    const double orderingNorm  = enforceNonNegative(r.getOrderingPenalty()  / kRefOrderingErrorSq);
+	    const double lengthNorm    = enforceNonNegative(r.getLengthPenalty()    / kRefLengthErrorSq);
+	    const double stabilityNorm = enforceNonNegative(r.getStabilityPenalty() / kRefStability);
+	    const double centerSqNorm  = enforceNonNegative(r.getCenterShiftSq()    / kRefCenterShiftSq);
+	    const double skewSqNorm    = enforceNonNegative(r.getSkewSq()           / kRefSkewSq);
 
 #ifdef DEBUG_BOOTSTRAP_SELECTION
-            if (orderingNorm > 5.0 || lengthNorm > 5.0 || stabilityNorm > 5.0) {
-              std::cerr << "[AutoCI WARNING] Method "
-                        << Result::methodIdToString(c.getMethod())
-                        << " extreme penalty: ord=" << orderingNorm
-                        << " len=" << lengthNorm
-                        << " stab=" << stabilityNorm << "\n";
-            }
+	    if (orderingNorm > 5.0 || lengthNorm > 5.0 || stabilityNorm > 5.0) {
+	      std::cerr << "[AutoCI WARNING] Method "
+			<< Result::methodIdToString(c.getMethod())
+			<< " extreme penalty: ord=" << orderingNorm
+			<< " len=" << lengthNorm
+			<< " stab=" << stabilityNorm << "\n";
+	    }
 #endif
 
-            const double orderingContrib  = orderingNorm; // implicit weight 1.0
-            const double lengthContrib    = w_length * lengthNorm;
-            const double stabilityContrib = w_stab   * stabilityNorm;
-            const double centerSqContrib  = w_center * centerSqNorm;
-            const double skewSqContrib    = w_skew   * skewSqNorm;
-            const double domainContrib    = r.getDomainPenalty();
+	    const double orderingContrib  = w_order  * orderingNorm;
+	    const double lengthContrib    = w_length * lengthNorm;
+	    const double stabilityContrib = w_stab   * stabilityNorm;
+	    const double centerSqContrib  = w_center * centerSqNorm;
+	    const double skewSqContrib    = w_skew   * skewSqNorm;
 
-            const double totalScore =
-              orderingContrib +
-              lengthContrib +
-              stabilityContrib +
-              centerSqContrib +
-              skewSqContrib +
-              domainContrib;
+	    // Note: domainPenalty is already used as a hard gate (below). Including it
+	    // in the score is therefore redundant, but we keep it for diagnostic clarity.
+	    const double domainContrib    = r.getDomainPenalty();
 
-            breakdowns.emplace_back(
-                                    c.getMethod(),
-                                    /* raw */     r.getOrderingPenalty(), r.getLengthPenalty(), r.getStabilityPenalty(),
-                                    r.getCenterShiftSq(), r.getSkewSq(), r.getDomainPenalty(),
-                                    /* norm */    orderingNorm, lengthNorm, stabilityNorm, centerSqNorm, skewSqNorm,
-                                    /* contrib */ orderingContrib, lengthContrib, stabilityContrib,
-                                    centerSqContrib, skewSqContrib, domainContrib,
-                                    /* total */   totalScore);
+	    const double totalScore =
+	      orderingContrib +
+	      lengthContrib +
+	      stabilityContrib +
+	      centerSqContrib +
+	      skewSqContrib +
+	      domainContrib;
 
-            enriched.push_back(c.withScore(totalScore));
-          }
+	    breakdowns.emplace_back(
+				    c.getMethod(),
+				    /* raw */     r.getOrderingPenalty(), r.getLengthPenalty(), r.getStabilityPenalty(),
+				    r.getCenterShiftSq(), r.getSkewSq(), r.getDomainPenalty(),
+				    /* norm */    orderingNorm, lengthNorm, stabilityNorm, centerSqNorm, skewSqNorm,
+				    /* contrib */ orderingContrib, lengthContrib, stabilityContrib,
+				    centerSqContrib, skewSqContrib, domainContrib,
+				    /* total */   totalScore);
 
-        const auto commonCandidateOk = [&](std::size_t i) -> bool
-        {
-          if (!std::isfinite(enriched[i].getScore()))
-            return false;
-          if (enforcePos && raw[i].getDomainPenalty() > 0.0)
-            return false;
+	    enriched.push_back(c.withScore(totalScore));
+	  }
 
-          return true;
-        };
+	const auto commonCandidateOk = [&](std::size_t i) -> bool
+	{
+	  if (!std::isfinite(enriched[i].getScore()))
+	    return false;
+	  if (enforcePos && raw[i].getDomainPenalty() > 0.0)
+	    return false;
+	  return true;
+	};
 
-        // BCa hard gate checks
-        const auto bcaCandidateOk = [&](std::size_t i) -> bool
-        {
-          if (!commonCandidateOk(i)) return false;
+	const auto bcaCandidateOk = [&](std::size_t i) -> bool
+	{
+	  if (!commonCandidateOk(i)) return false;
 
-          const Candidate& c = enriched[i];
+	  const Candidate& c = enriched[i];
 
-          if (!std::isfinite(c.getZ0()) || !std::isfinite(c.getAccel()))
-            return false;
+	  if (!std::isfinite(c.getZ0()) || !std::isfinite(c.getAccel()))
+	    return false;
 
-          if (std::fabs(c.getZ0()) > kBcaZ0HardLimit)
-            return false;
+	  if (std::fabs(c.getZ0()) > kBcaZ0HardLimit)
+	    return false;
 
-          if (std::fabs(c.getAccel()) > kBcaAHardLimit)
-            return false;
+	  if (std::fabs(c.getAccel()) > kBcaAHardLimit)
+	    return false;
 
-          if (c.getLengthPenalty() > kBcaLengthPenaltyThreshold)
-            return false;
+	  if (c.getLengthPenalty() > kBcaLengthPenaltyThreshold)
+	    return false;
 
-          return true;
-        };
+	  return true;
+	};
 
-        std::optional<std::size_t> chosenIdxOpt;
+	std::optional<std::size_t> chosenIdxOpt;
 
-        // -------------------------------------------------------------------
-        // UPDATED SELECTION LOGIC: Score-Based Tournament with BCa Preference
-        // -------------------------------------------------------------------
-        
-        // 1. Identify valid candidates (BCa must pass hard gates; others pass common)
-        bool foundAny = false;
-        double bestScore = std::numeric_limits<double>::infinity();
+	// -------------------------------------------------------------------
+	// Score-Based Tournament with BCa Preference (tie-break only)
+	// -------------------------------------------------------------------
+	bool foundAny = false;
+	double bestScore = std::numeric_limits<double>::infinity();
 
-        for (std::size_t i = 0; i < enriched.size(); ++i)
-        {
-            const MethodId m = enriched[i].getMethod();
-            bool isOk = false;
+	for (std::size_t i = 0; i < enriched.size(); ++i)
+	  {
+	    const MethodId m = enriched[i].getMethod();
+	    const bool isOk = (m == MethodId::BCa) ? bcaCandidateOk(i) : commonCandidateOk(i);
+	    if (!isOk) continue;
 
-            if (m == MethodId::BCa) {
-                isOk = bcaCandidateOk(i);
-            } else {
-                isOk = commonCandidateOk(i);
-            }
+	    const double s = enriched[i].getScore();
 
-            if (!isOk) continue;
+	    if (!foundAny)
+	      {
+		foundAny = true;
+		bestScore = s;
+		chosenIdxOpt = i;
+		continue;
+	      }
 
-            const double s = enriched[i].getScore();
+	    const double eps = relativeEpsilon(s, bestScore);
 
-            if (!foundAny)
-            {
-                foundAny = true;
-                bestScore = s;
-                chosenIdxOpt = i;
-                continue;
-            }
+	    if (s < bestScore - eps)
+	      {
+		bestScore = s;
+		chosenIdxOpt = i;
+	      }
+	    else if (std::fabs(s - bestScore) <= eps)
+	      {
+		// Tie: use method preference (BCa > PercentileT > ...)
+		const int pBest = methodPreference(enriched[*chosenIdxOpt].getMethod());
+		const int pCur  = methodPreference(enriched[i].getMethod());
+		if (pCur < pBest)
+		  {
+		    // Same score within epsilon, but method preference wins.
+		    bestScore = s;
+		    chosenIdxOpt = i;
+		  }
+	      }
+	  }
 
-            if (!scoresAreTied(s, bestScore) && s < bestScore)
-            {
-                bestScore = s;
-                chosenIdxOpt = i;
-            }
-            else if (scoresAreTied(s, bestScore))
-            {
-                // If scores are tied, use method preference (BCa > PercentileT > ...)
-                const int pBest = methodPreference(enriched[*chosenIdxOpt].getMethod());
-                const int pCur  = methodPreference(enriched[i].getMethod());
-                if (pCur < pBest)
-                {
-                    bestScore = s; // Technically same score, but we switch index
-                    chosenIdxOpt = i;
-                }
-            }
-        }
+	// Diagnostics: If BCa existed but wasn't chosen, record why.
+	if (hasBCaCandidate && chosenIdxOpt)
+	  {
+	    const Candidate& winner = enriched[*chosenIdxOpt];
 
-        // 2. Diagnostics: If BCa existed but wasn't chosen, record why.
-        if (hasBCaCandidate && chosenIdxOpt)
-        {
-            const Candidate& winner = enriched[*chosenIdxOpt];
-            
-            // If winner is NOT BCa, check if BCa was rejected for hard limits 
-            // or simply lost the tournament.
-            if (winner.getMethod() != MethodId::BCa)
-            {
-                for (std::size_t i = 0; i < enriched.size(); ++i)
-                {
-                    if (enriched[i].getMethod() != MethodId::BCa) continue;
+	    if (winner.getMethod() != MethodId::BCa)
+	      {
+		for (std::size_t i = 0; i < enriched.size(); ++i)
+		  {
+		    if (enriched[i].getMethod() != MethodId::BCa) continue;
 
-                    // Check Hard Gates
-                    if (!std::isfinite(enriched[i].getScore())) { bcaRejectedForNonFinite = true; }
-                    if (enforcePos && raw[i].getDomainPenalty() > 0.0) { bcaRejectedForDomain = true; }
+		    if (!std::isfinite(enriched[i].getScore())) { bcaRejectedForNonFinite = true; }
+		    if (enforcePos && raw[i].getDomainPenalty() > 0.0) { bcaRejectedForDomain = true; }
 
-                    if (!std::isfinite(enriched[i].getZ0()) || !std::isfinite(enriched[i].getAccel()))
-                    {
-                        bcaRejectedForInstability = true;
-                    }
-                    else
-                    {
-                        if (std::fabs(enriched[i].getZ0()) > kBcaZ0HardLimit) { bcaRejectedForInstability = true; }
-                        if (std::fabs(enriched[i].getAccel()) > kBcaAHardLimit) { bcaRejectedForInstability = true; }
-                    }
+		    if (!std::isfinite(enriched[i].getZ0()) || !std::isfinite(enriched[i].getAccel()))
+		      {
+			bcaRejectedForInstability = true;
+		      }
+		    else
+		      {
+			if (std::fabs(enriched[i].getZ0()) > kBcaZ0HardLimit) { bcaRejectedForInstability = true; }
+			if (std::fabs(enriched[i].getAccel()) > kBcaAHardLimit) { bcaRejectedForInstability = true; }
+		      }
 
-                    if (enriched[i].getLengthPenalty() > kBcaLengthPenaltyThreshold) { bcaRejectedForLength = true; }
+		    if (enriched[i].getLengthPenalty() > kBcaLengthPenaltyThreshold) { bcaRejectedForLength = true; }
 
-                    // If it passed hard gates but still lost, it implies it lost on Score.
-                    break;
-                }
-            }
-        }
+		    break; // BCa is unique in this design
+		  }
+	      }
+	  }
 
-        if (!chosenIdxOpt)
-          {
-            throw std::runtime_error(
-                         "AutoBootstrapSelector::select: no valid candidate (all scores non-finite or domain-violating).");
-          }
+	if (!chosenIdxOpt)
+	  {
+	    throw std::runtime_error(
+				     "AutoBootstrapSelector::select: no valid candidate (all scores non-finite or domain-violating).");
+	  }
 
-        const std::size_t chosenIdx = *chosenIdxOpt;
-        const Candidate& chosen = enriched[chosenIdx];
+	const std::size_t chosenIdx = *chosenIdxOpt;
+	const Candidate& chosen = enriched[chosenIdx];
 
-        const bool bcaChosen = (chosen.getMethod() == MethodId::BCa);
+	const bool bcaChosen = (chosen.getMethod() == MethodId::BCa);
 
-        bool bcaRejectedForInstabilityPublic = false;
-        bool bcaRejectedForLengthPublic      = false;
-        bool bcaRejectedForDomainPublic      = false;
-        bool bcaRejectedForNonFinitePublic   = false;
+	bool bcaRejectedForInstabilityPublic = false;
+	bool bcaRejectedForLengthPublic      = false;
+	bool bcaRejectedForDomainPublic      = false;
+	bool bcaRejectedForNonFinitePublic   = false;
 
-        if (hasBCaCandidate && !bcaChosen)
-          {
-            bcaRejectedForInstabilityPublic = bcaRejectedForInstability;
-            bcaRejectedForLengthPublic      = bcaRejectedForLength;
-            bcaRejectedForDomainPublic      = bcaRejectedForDomain;
-            bcaRejectedForNonFinitePublic   = bcaRejectedForNonFinite;
-          }
+	if (hasBCaCandidate && !bcaChosen)
+	  {
+	    bcaRejectedForInstabilityPublic = bcaRejectedForInstability;
+	    bcaRejectedForLengthPublic      = bcaRejectedForLength;
+	    bcaRejectedForDomainPublic      = bcaRejectedForDomain;
+	    bcaRejectedForNonFinitePublic   = bcaRejectedForNonFinite;
+	  }
 
-        SelectionDiagnostics diagnostics(
-                             chosen.getMethod(),
-                             Result::methodIdToString(chosen.getMethod()),
-                             chosen.getScore(),
-                             chosen.getStabilityPenalty(), // soft stability penalty still shown
-                             chosen.getLengthPenalty(),
-                             hasBCaCandidate,
-                             bcaChosen,
-                             bcaRejectedForInstabilityPublic,
-                             bcaRejectedForLengthPublic,
-                             bcaRejectedForDomainPublic,
-                             bcaRejectedForNonFinitePublic,
-                             enriched.size(),
-                             std::move(breakdowns));
+	SelectionDiagnostics diagnostics(
+					 chosen.getMethod(),
+					 Result::methodIdToString(chosen.getMethod()),
+					 chosen.getScore(),
+					 chosen.getStabilityPenalty(),
+					 chosen.getLengthPenalty(),
+					 hasBCaCandidate,
+					 bcaChosen,
+					 bcaRejectedForInstabilityPublic,
+					 bcaRejectedForLengthPublic,
+					 bcaRejectedForDomainPublic,
+					 bcaRejectedForNonFinitePublic,
+					 enriched.size(),
+					 std::move(breakdowns));
 
-        return Result(chosen.getMethod(), chosen, enriched, diagnostics);
+	return Result(chosen.getMethod(), chosen, enriched, diagnostics);
       }
       
     private:
