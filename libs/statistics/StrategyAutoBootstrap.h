@@ -390,7 +390,7 @@ namespace palvalidator
 		// USE CONFIGURED SAMPLER INSTANCE
 		auto res = engine.run(returns, m_sampler_instance, crn);
 		candidates.push_back(
-				     Selector::template summarizePercentileT(engine, res));
+				     Selector::template summarizePercentileT(engine, res, os));
 	      }
 	    catch (const std::exception& e)
 	      {
