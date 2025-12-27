@@ -12,6 +12,9 @@
 #include "number.h"
 #include "StatUtils.h"
 #include "NormalDistribution.h"
+#include "AutoBootstrapConfiguration.h"
+
+// Include the bootstrap constants
 
 namespace palvalidator
 {
@@ -58,6 +61,7 @@ namespace palvalidator
                   double      stability_penalty, 
                   double      z0,
                   double      accel,
+		  double      inner_failure_rate,
                   double      score = std::numeric_limits<double>::quiet_NaN())
         : m_method(method),
           m_mean(mean),
@@ -79,6 +83,7 @@ namespace palvalidator
           m_stability_penalty(stability_penalty), 
           m_z0(z0),
           m_accel(accel),
+	  m_inner_failure_rate(inner_failure_rate),
           m_score(score)
         {
         }
@@ -108,7 +113,8 @@ namespace palvalidator
         double      getAccel() const { return m_accel; }
         double      getScore() const { return m_score; }
         double      getStabilityPenalty() const { return m_stability_penalty; }
-
+	double getInnerFailureRate() const { return m_inner_failure_rate; }
+	
         Candidate withScore(double newScore) const
         {
           return Candidate(m_method, m_mean, m_lower, m_upper, m_cl,
@@ -118,7 +124,7 @@ namespace palvalidator
                       m_ordering_penalty, 
                       m_length_penalty,
                       m_stability_penalty, 
-                      m_z0, m_accel, newScore);
+			   m_z0, m_accel, m_inner_failure_rate, newScore);
         }
     public:
 
@@ -143,6 +149,7 @@ namespace palvalidator
         double      m_stability_penalty; 
         double      m_z0;
         double      m_accel;
+	double      m_inner_failure_rate;
         double      m_score;
       };
 
@@ -1019,10 +1026,10 @@ namespace palvalidator
 	normalized_length = actual_length / ideal_len_boot;
   
 	// Select appropriate L_max based on method
-	const double L_min = kLengthMin;
-	const double L_max = (method == MethodId::MOutOfN) 
-	  ? kLengthMaxMOutOfN 
-	  : kLengthMaxStandard;
+	const double L_min = AutoBootstrapConfiguration::kLengthMin;
+	const double L_max = (method == MethodId::MOutOfN)
+	  ? AutoBootstrapConfiguration::kLengthMaxMOutOfN
+	  : AutoBootstrapConfiguration::kLengthMaxStandard;
   
 	// Quadratic penalty outside acceptable bounds
 	if (normalized_length < L_min) {
@@ -1096,8 +1103,8 @@ namespace palvalidator
 	const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
 
 	const double cov_pen =
-	  kUnderCoverageMultiplier * under_coverage * under_coverage +
-	  kOverCoverageMultiplier  * over_coverage  * over_coverage;
+	  AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
+	  AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
 
 	const double F_mu       = empiricalCdf(stats, mu);
 	const double center_cdf = 0.5 * (F_lo + F_hi);
@@ -1137,7 +1144,8 @@ namespace palvalidator
 			 length_penalty,
 			 0.0,              // stability_penalty (N/A for Percentile-like)
 			 0.0,              // z0 (N/A)
-			 0.0               // accel (N/A)
+			 0.0,               // accel (N/A)
+			 0.0
 			 );
       }
 
@@ -1174,18 +1182,18 @@ namespace palvalidator
 	// 1) OUTER RESAMPLE FAILURE RATE
 	// Threshold: >10% outer failures indicates the statistic is unstable
 	const double outer_failure_rate = skipped_outer / B_outer;
-	const double kOuterThreshold = 0.10;
+	const double kOuterThreshold = AutoBootstrapConfiguration::kPercentileTOuterFailThreshold;
 
 	if (outer_failure_rate > kOuterThreshold) {
 	  const double excess = outer_failure_rate - kOuterThreshold;
-	  penalty += excess * excess * 100.0;
+	  penalty += excess * excess * AutoBootstrapConfiguration::kPercentileTOuterPenaltyScale;
 	  // Example: 20% failure rate → 10% excess → penalty += 1.0
 	}
 
 	// 2) INNER SE FAILURE RATE
 	// Threshold: >5% inner failures indicates SE* estimation is unreliable
 	// Uses the *actual* number of attempted inner draws across all outers.
-	const double kInnerThreshold = 0.05;
+	const double kInnerThreshold = AutoBootstrapConfiguration::kPercentileTInnerFailThreshold;
 
 	if (inner_attempted_total <= 0.0) {
 	  // No inner attempts at all -> PT is unusable in this run.
@@ -1202,19 +1210,19 @@ namespace palvalidator
 	if (inner_failure_rate > kInnerThreshold)
 	  {
 	    const double excess = inner_failure_rate - kInnerThreshold;
-	    penalty += excess * excess * 200.0;
+	    penalty += excess * excess * AutoBootstrapConfiguration::kPercentileTInnerPenaltyScale;
 	    // Example: 10% failure rate → 5% excess → penalty += 0.5
 	  }
 
 	// 3) EFFECTIVE SAMPLE SIZE
 	// We want effective_B ≥ 70% of B_outer for reliable quantile estimation
-	const double kMinEffectiveFraction = 0.70;
+	const double kMinEffectiveFraction = AutoBootstrapConfiguration::kPercentileTMinEffectiveFraction;
 	const double min_effective = kMinEffectiveFraction * B_outer;
 
 	if (effective_B < min_effective)
 	  {
 	    const double deficit_fraction = (min_effective - effective_B) / B_outer;
-	    penalty += deficit_fraction * deficit_fraction * 50.0;
+	    penalty += deficit_fraction * deficit_fraction * AutoBootstrapConfiguration::kPercentileTEffectiveBPenaltyScale;
 	    // Example: effective_B = 60% of B_outer → 10% deficit → penalty += 0.5
 	  }
 
@@ -1313,6 +1321,13 @@ namespace palvalidator
 	    (*os) << "summarizePercentileT: stability penalty is > 0 and has value " << stability_penalty << std::endl;
 	  }
 
+	double inner_failure_rate = 0.0;
+	if (res.inner_attempted_total > 0)
+	  {
+	    inner_failure_rate = static_cast<double>(res.skipped_inner_total) / 
+	      static_cast<double>(res.inner_attempted_total);
+	  }
+
 	return Candidate(
 			 MethodId::PercentileT,
 			 res.mean,
@@ -1324,16 +1339,17 @@ namespace palvalidator
 			 res.B_inner,
 			 res.effective_B,
 			 res.skipped_outer + res.skipped_inner_total,
-			 se_ref,           // ← Your robust SE with fallback
+			 se_ref,
 			 skew_boot,
-			 median_boot,      // ← Always populated by computeLengthPenalty
+			 median_boot,
 			 center_shift_in_se,
 			 normalized_length,
 			 ordering_penalty, // ← Correctly 0.0
 			 length_penalty,
 			 stability_penalty,
 			 0.0,              // z0 (N/A)
-			 0.0               // accel (N/A)
+			 0.0,               // accel (N/A)
+			 inner_failure_rate
 			 );
       }
 
@@ -1438,10 +1454,10 @@ namespace palvalidator
 	double stability_penalty = 0.0;
 
 	// A. Bias (z0) Check
-	const double Z0_THRESHOLD = kBcaZ0SoftThreshold;
+	const double Z0_THRESHOLD = AutoBootstrapConfiguration::kBcaZ0SoftThreshold;
 
 	// Adaptive acceleration threshold based on distribution skewness.
-	const double base_accel_threshold = kBcaASoftThreshold;  // 0.10
+	const double base_accel_threshold = AutoBootstrapConfiguration::kBcaASoftThreshold;  // 0.10
 	const double ACCEL_THRESHOLD = (std::abs(skew_boot) > 3.0) 
 	  ? 0.08   // Stricter when skew > 3.0
 	  : base_accel_threshold;
@@ -1489,8 +1505,8 @@ namespace palvalidator
 	    stability_penalty = std::numeric_limits<double>::infinity();
 	  }
 
-	const double SKEW_THRESHOLD = kBcaSkewThreshold;        // Beyond this, BCa approximation strains
-	const double SKEW_PENALTY_SCALE = kBcaSkewPenaltyScale; // Aggressive scaling
+	const double SKEW_THRESHOLD = AutoBootstrapConfiguration::kBcaSkewThreshold;        // Beyond this, BCa approximation strains
+	const double SKEW_PENALTY_SCALE = AutoBootstrapConfiguration::kBcaSkewPenaltyScale; // Aggressive scaling
 
 	// ============================================================
 	// NEW: Skewness penalty for BCa
@@ -1538,7 +1554,8 @@ namespace palvalidator
 			 length_penalty,
 			 stability_penalty, // Explicitly passed
 			 z0,
-			 accel
+			 accel,
+			 0.0
 			 );
       }
       
@@ -1578,7 +1595,7 @@ namespace palvalidator
 	const auto relativeEpsilon = [](double a, double b) -> double
 	{
 	  const double scale = 1.0 + std::max(std::fabs(a), std::fabs(b));
-	  return kRelativeTieEpsilonScale * scale;
+	  return AutoBootstrapConfiguration::kRelativeTieEpsilonScale * scale;
 	};
 
 	const auto enforceNonNegative = [](double x) -> double
@@ -1655,9 +1672,9 @@ namespace palvalidator
 	    double domainPenalty = 0.0;
 	    if (enforcePos)
 	      {
-		if (num::to_double(c.getLower()) <= kPositiveLowerEpsilon)
+		if (num::to_double(c.getLower()) <= AutoBootstrapConfiguration::kPositiveLowerEpsilon)
 		  {
-		    domainPenalty = kDomainViolationPenalty;
+		    domainPenalty = AutoBootstrapConfiguration::kDomainViolationPenalty;
 		  }
 	      }
 
@@ -1763,13 +1780,13 @@ namespace palvalidator
 	  if (!std::isfinite(c.getZ0()) || !std::isfinite(c.getAccel()))
 	    return false;
 
-	  if (std::fabs(c.getZ0()) > kBcaZ0HardLimit)
+	  if (std::fabs(c.getZ0()) > AutoBootstrapConfiguration::kBcaZ0HardLimit)
 	    return false;
 
-	  if (std::fabs(c.getAccel()) > kBcaAHardLimit)
+	  if (std::fabs(c.getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
 	    return false;
 
-	  if (c.getLengthPenalty() > kBcaLengthPenaltyThreshold)
+	  if (c.getLengthPenalty() > AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold)
 	    return false;
 
 	  return true;
@@ -1840,11 +1857,20 @@ namespace palvalidator
 		      }
 		    else
 		      {
-			if (std::fabs(enriched[i].getZ0()) > kBcaZ0HardLimit) { bcaRejectedForInstability = true; }
-			if (std::fabs(enriched[i].getAccel()) > kBcaAHardLimit) { bcaRejectedForInstability = true; }
+			if (std::fabs(enriched[i].getZ0()) > AutoBootstrapConfiguration::kBcaZ0HardLimit)
+			  {
+			    bcaRejectedForInstability = true;
+			  }
+			if (std::fabs(enriched[i].getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
+			  {
+			    bcaRejectedForInstability = true;
+			  }
 		      }
 
-		    if (enriched[i].getLengthPenalty() > kBcaLengthPenaltyThreshold) { bcaRejectedForLength = true; }
+		    if (enriched[i].getLengthPenalty() > AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold)
+		      {
+			bcaRejectedForLength = true;
+		      }
 
 		    break; // BCa is unique in this design
 		  }
@@ -1894,48 +1920,6 @@ namespace palvalidator
       }
       
     private:
-      // ------------------------------------------------------------------
-      // Selection & penalty policy constants
-      // ------------------------------------------------------------------
-
-      // Coverage penalty multipliers (Percentile-specific)
-      static constexpr double kUnderCoverageMultiplier = 2.0; ///< Under-coverage penalized 2× more than over
-      static constexpr double kOverCoverageMultiplier  = 1.0; ///< Base penalty for exceeding nominal coverage
-
-      // Length bounds (normalized to ideal bootstrap interval length)
-      static constexpr double kLengthMin           = 0.8;  ///< Minimum 80% of ideal (anti-conservative cutoff)
-      static constexpr double kLengthMaxStandard   = 1.8;  ///< Max 1.8× ideal for BCa/Percentile-T
-      static constexpr double kLengthMaxMOutOfN    = 6.0;  ///< Max 6× ideal for M-out-of-N (wider allowed)
-
-      // Domain enforcement for strictly-positive statistics
-      static constexpr double kPositiveLowerEpsilon = 1e-9;
-      static constexpr double kDomainViolationPenalty = 1000.0;
-
-       // BCa “rejection reason” diagnostics thresholds used in select()
-
-       // Hard limits -- relaxed slightly to add safety headroom (see code review)
-       static constexpr double kBcaZ0HardLimit = 0.6;   ///< Hard rejection at |z0| > 0.6 (Efron 1987)
-       static constexpr double kBcaAHardLimit  = 0.25;  // relaxed from 0.2 -> 0.25
-
-       // Soft thresholds: beyond these values soft penalties start to apply
-       static constexpr double kBcaZ0SoftThreshold = 0.25;
-       static constexpr double kBcaASoftThreshold  = 0.10;
-
-       // Penalty scaling defaults (can be overridden via ScoringWeights)
-       static constexpr double kBcaZ0PenaltyScale = 20.0;
-       static constexpr double kBcaAPenaltyScale  = 100.0;
-
-       // Calculate the penalty threshold dynamically based on the hard limit and
-       // the soft-threshold. Threshold = (HardLimit - SoftThreshold)^2
-       static constexpr double kBcaStabilityThreshold =
-         (kBcaZ0HardLimit - kBcaZ0SoftThreshold) * (kBcaZ0HardLimit - kBcaZ0SoftThreshold);
-
-       static constexpr double kBcaLengthPenaltyThreshold  = 1.0;
-
-       // Floating-point tie tolerance scale used in select()
-       static constexpr double kRelativeTieEpsilonScale = 1e-10;
-      static constexpr double kBcaSkewThreshold = 2.0;    // Start penalizing beyond this
-      static constexpr double kBcaSkewPenaltyScale = 5.0; // Quadratic scaling factor
     };
 
   } // namespace analysis
