@@ -100,7 +100,7 @@ TEST_CASE("Candidate: Construction and Encapsulation",
                 median,           // ← NEW: median_boot (position 13)
                 shift, norm_len,
                 orderingPenalty, lengthPenalty, stabilityPenalty,
-                z0, accel);
+                z0, accel, 0.0);
 
     SECTION("Getters return correct values")
     {
@@ -120,7 +120,7 @@ TEST_CASE("Candidate: Immutability and withScore",
                        0.05, 0.0,
                        0.95,  // median_boot
                        0.0, 1.0, 
-                       0.01, 0.02, 0.123, 0.0, 0.0);
+                       0.01, 0.02, 0.123, 0.0, 0.0, 0.0);
 
     SECTION("withScore returns a new instance with updated score and preserved stability and median")
     {
@@ -148,7 +148,7 @@ TEST_CASE("Candidate: Bootstrap Median Storage and Retrieval",
                     0.10, 0.15,
                     expected_median,  // median_boot
                     0.02, 1.05,
-                    0.001, 0.002, 0.05, 0.01, 0.005);
+                    0.001, 0.002, 0.05, 0.01, 0.005, 0.0);
         
         REQUIRE(c.getMedianBoot() == expected_median);
     }
@@ -159,7 +159,7 @@ TEST_CASE("Candidate: Bootstrap Median Storage and Retrieval",
                     0.08, 0.0,
                     0.0,  // median_boot = 0.0 (valid value)
                     0.0, 1.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0);
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         
         REQUIRE(c.getMedianBoot() == 0.0);
     }
@@ -170,7 +170,7 @@ TEST_CASE("Candidate: Bootstrap Median Storage and Retrieval",
                     0.06, -0.5,
                     -0.08,  // median_boot = negative (valid)
                     0.01, 1.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0);
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         
         REQUIRE(c.getMedianBoot() == Catch::Approx(-0.08));
     }
@@ -188,7 +188,7 @@ TEST_CASE("AutoCIResult: getBootstrapMedian extracts median from chosen candidat
                      0.12, 0.1,
                      expected_median,  // median_boot
                      0.0, 1.0,
-                     0.0, 0.0, 0.0, 0.0, 0.0);
+                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         
         std::vector<Candidate> candidates = {c1};
         
@@ -208,7 +208,7 @@ TEST_CASE("AutoCIResult: getBootstrapMedian extracts median from chosen candidat
                       bca_median,  // BCa median
                       0.0, 1.0,
                       0.001,  // Very low ordering penalty
-                      0.0, 0.0, 0.01, 0.005);
+                      0.0, 0.0, 0.01, 0.005, 0.0);
         
         // Create Percentile candidate with worse score (higher penalty)
         Candidate perc(MethodId::Percentile, 2.15, 1.95, 2.35, 0.95, 100, 1000, 0, 1000, 0,
@@ -216,7 +216,7 @@ TEST_CASE("AutoCIResult: getBootstrapMedian extracts median from chosen candidat
                        perc_median,  // Percentile median
                        0.0, 1.0,
                        0.050,  // Higher ordering penalty
-                       0.0, 0.0, 0.0, 0.0);
+                       0.0, 0.0, 0.0, 0.0, 0.0);
         
         std::vector<Candidate> candidates = {bca, perc};
         
@@ -234,19 +234,19 @@ TEST_CASE("AutoCIResult: getBootstrapMedian extracts median from chosen candidat
                      0.08, 0.0,
                      0.95,  // median
                      0.0, 1.0,
-                     0.05, 0.0, 0.0, 0.0, 0.0);  // High ordering penalty
+                     0.05, 0.0, 0.0, 0.0, 0.0, 0.0);  // High ordering penalty
         
         Candidate c2(MethodId::Percentile, 1.1, 0.9, 1.3, 0.95, 50, 500, 0, 500, 0,
                      0.08, 0.0,
                      1.05,  // median (this should win)
                      0.0, 1.0,
-                     0.001, 0.0, 0.0, 0.0, 0.0);  // Low ordering penalty
+                     0.001, 0.0, 0.0, 0.0, 0.0, 0.0);  // Low ordering penalty
         
         Candidate c3(MethodId::MOutOfN, 1.15, 0.95, 1.35, 0.95, 50, 500, 0, 500, 0,
                      0.08, 0.0,
                      1.10,  // median
                      0.0, 1.0,
-                     0.03, 0.0, 0.0, 0.0, 0.0);  // Medium ordering penalty
+                     0.03, 0.0, 0.0, 0.0, 0.0, 0.0);  // Medium ordering penalty
         
         std::vector<Candidate> candidates = {c1, c2, c3};
         
@@ -274,7 +274,7 @@ TEST_CASE("AutoCIResult: Median ordering relative to lower bound",
                     0.10, 0.0,
                     median,
                     0.0, 1.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0);
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         
         REQUIRE(c.getMedianBoot() >= c.getLower());
     }
@@ -292,7 +292,7 @@ TEST_CASE("AutoCIResult: Median ordering relative to lower bound",
                     0.15, 1.5,  // High skewness
                     median,
                     0.0, 1.0,
-                    0.0, 0.0, 0.0, 0.05, 0.01);
+                    0.0, 0.0, 0.0, 0.05, 0.01, 0.0);
         
         // This is valid - just checking it's stored correctly
         REQUIRE(c.getMedianBoot() == median);
@@ -492,7 +492,7 @@ TEST_CASE("AutoBootstrapSelector: BCa 'Grey Zone' Tournament",
                     /*ordering*/ 0.002,  // Small penalty
                     /*length*/   0.0,
                     /*stability*/ 0.0, 
-                    0.0, 0.0);
+                    0.0, 0.0, 0.0);
 
     // 2. Grey Zone BCa
     // Perfect ordering (0.0), but has z0=0.35 -> Stability Penalty = 0.20.
@@ -508,7 +508,8 @@ TEST_CASE("AutoBootstrapSelector: BCa 'Grey Zone' Tournament",
                       /*length*/   0.0, 
                       /*stability*/ 0.20, // Calculated penalty for z0=0.35
                       /*z0*/ 0.35, 
-                      /*accel*/ 0.0);
+                      /*accel*/ 0.0,
+		      0.0);
 
     std::vector<Candidate> cands = {percT, bcaGrey};
     
@@ -535,18 +536,19 @@ TEST_CASE("AutoBootstrapSelector: BCa Hard Gate Rejection",
                     /*ordering*/ 0.002,   // LOW penalty
                     /*length*/   0.0,
                     /*stability*/ 0.0, 
-                    0.0, 0.0);
+                    0.0, 0.0, 0.0);
 
     SECTION("BCa with z0 just above old limit (0.51) is allowed but penalized")
     {
         Candidate bcaPenalized(MethodId::BCa,
-                          0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
-                          0.1, 0.0,
-                          0.02,  // median_boot
-                          0.0, 1.0,
-                          0.0, 0.0, 1.352,  // Raw penalty for z0=0.51
-                          /*z0*/ 0.51, 
-                          /*accel*/ 0.0);
+			       0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
+			       0.1, 0.0,
+			       0.02,  // median_boot
+			       0.0, 1.0,
+			       0.0, 0.0, 1.352,  // Raw penalty for z0=0.51
+			       /*z0*/ 0.51, 
+			       /*accel*/ 0.0,
+			       0.0);
 
         std::vector<Candidate> cands = {percT, bcaPenalized};
         auto result = Selector::select(cands);
@@ -559,13 +561,13 @@ TEST_CASE("AutoBootstrapSelector: BCa Hard Gate Rejection",
     SECTION("BCa with z0 above new hard limit (0.61) is rejected")
     {
         Candidate bcaUnstable(MethodId::BCa,
-                          0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
-                          0.1, 0.0,
-                          0.01,  // median_boot
-                          0.0, 1.0,
-                          0.0, 0.0, 0.0, 
-                          /*z0*/ 0.61,
-                          /*accel*/ 0.0);
+			      0.0, -1.0, 1.0, 0.95, 100, 1000, 0, 1000, 0,
+			      0.1, 0.0,
+			      0.01,  // median_boot
+			      0.0, 1.0,
+			      0.0, 0.0, 0.0, 
+			      /*z0*/ 0.61,
+			      /*accel*/ 0.0, 0.0);
 
         std::vector<Candidate> cands = {percT, bcaUnstable};
         auto result = Selector::select(cands);
@@ -583,13 +585,13 @@ TEST_CASE("AutoBootstrapSelector: enforcePositive penalizes non-positive lower b
                   0.1, 0.0,
                   0.95,  // median_boot
                   0.0, 1.0,
-                  0.0, 0.0, 0.0, 0.0, 0.0);
+                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
     Candidate neg(MethodId::PercentileT, 1.0, -0.5, 2.0, 0.95, 50, 500, 0, 500, 0,
                   0.1, 0.0,
                   0.85,  // median_boot
                   0.0, 1.0,
-                  0.0, 0.0, 0.0, 0.0, 0.0);
+                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
     std::vector<Candidate> cands = {pos, neg};
 
@@ -621,14 +623,14 @@ TEST_CASE("AutoBootstrapSelector: Median propagates through selection pipeline",
                       0.10, 0.0,
                       1.18,  // median for Percentile
                       0.0, 1.0,
-                      0.05, 0.0, 0.0, 0.0, 0.0));  // High penalty
+                      0.05, 0.0, 0.0, 0.0, 0.0, 0.0));  // High penalty
         
         candidates.push_back(
             Candidate(MethodId::MOutOfN, 1.25, 1.05, 1.45, 0.95, 100, 1000, 0, 1000, 0,
                       0.10, 0.0,
                       1.22,  // median for MOutOfN (should win)
                       0.0, 1.0,
-                      0.001, 0.0, 0.0, 0.0, 0.0));  // Low penalty
+                      0.001, 0.0, 0.0, 0.0, 0.0, 0.0));  // Low penalty
         
         auto result = Selector::select(candidates);
         
@@ -647,7 +649,7 @@ TEST_CASE("AutoBootstrapSelector: Median propagates through selection pipeline",
                       0.12, 0.2,
                       1.28,  // BCa median (won't be used)
                       0.0, 1.0,
-                      0.0, 0.0, 0.5, 0.3, 0.1));  // High stability penalty
+                      0.0, 0.0, 0.5, 0.3, 0.1, 0.0));  // High stability penalty
         
         // PercentileT with low penalty (should win)
         candidates.push_back(
@@ -655,7 +657,7 @@ TEST_CASE("AutoBootstrapSelector: Median propagates through selection pipeline",
                       0.11, 0.1,
                       1.25,  // PercentileT median (should be returned)
                       0.0, 1.0,
-                      0.01, 0.0, 0.0, 0.0, 0.0));  // Low penalty
+                      0.01, 0.0, 0.0, 0.0, 0.0, 0.0));  // Low penalty
         
         auto result = Selector::select(candidates);
         
@@ -678,7 +680,7 @@ TEST_CASE("AutoBootstrapSelector: Median values are sensible relative to bounds"
                     0.10, 0.05,  // Low skewness
                     median,
                     0.0, 1.0,
-                    0.0, 0.0, 0.0, 0.0, 0.0);
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         
         // For symmetric distribution: median ≈ mean
         REQUIRE(std::abs(c.getMedianBoot() - c.getMean()) < 0.05);
@@ -695,7 +697,7 @@ TEST_CASE("AutoBootstrapSelector: Median values are sensible relative to bounds"
                     0.12, 1.5,  // High positive skewness
                     median,
                     0.0, 1.0,
-                    0.0, 0.0, 0.0, 0.01, 0.005);
+                    0.0, 0.0, 0.0, 0.01, 0.005, 0.0);
         
         // For right-skewed: median < mean (outliers pull mean up)
         REQUIRE(c.getMedianBoot() < c.getMean());
