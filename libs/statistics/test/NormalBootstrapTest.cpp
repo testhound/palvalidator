@@ -340,3 +340,157 @@ TEST_CASE("NormalBootstrap: diagnostics consistent with Result", "[Bootstrap][No
         REQUIRE(out.se_boot == Catch::Approx(se_boot).margin(1e-12));
     }
 }
+
+TEST_CASE("NormalBootstrap: copy constructor", "[Bootstrap][Normal][CopyConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 500;
+    const double      CL = 0.95;
+
+    NormalBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        nb_original(B, CL, res);
+
+    SECTION("Copy constructor creates independent object")
+    {
+        auto nb_copy = nb_original;  // Copy constructor
+
+        // Basic properties should match
+        REQUIRE(nb_copy.B() == nb_original.B());
+        REQUIRE(nb_copy.CL() == nb_original.CL());
+
+        // Diagnostics should not be available on copy (fresh state)
+        REQUIRE_FALSE(nb_copy.hasDiagnostics());
+        REQUIRE_FALSE(nb_original.hasDiagnostics());
+
+        // Run on original
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        auto result_orig = nb_original.run(x, mean_sampler, rng);
+        
+        // Original should have diagnostics now, copy should not
+        REQUIRE(nb_original.hasDiagnostics());
+        REQUIRE_FALSE(nb_copy.hasDiagnostics());
+    }
+}
+
+TEST_CASE("NormalBootstrap: move constructor", "[Bootstrap][Normal][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 500;
+    const double      CL = 0.95;
+
+    SECTION("Move constructor transfers state correctly")
+    {
+        NormalBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            nb_original(B, CL, res);
+
+        // Run once to populate diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        auto result_orig = nb_original.run(x, mean_sampler, rng);
+        REQUIRE(nb_original.hasDiagnostics());
+        
+        // Move construct
+        auto nb_moved = std::move(nb_original);
+        
+        // Basic properties should be transferred
+        REQUIRE(nb_moved.B() == B);
+        REQUIRE(nb_moved.CL() == CL);
+        
+        // Diagnostics should be transferred, moved-from object should have validity reset
+        REQUIRE(nb_moved.hasDiagnostics());
+        // Note: We don't test nb_original state after move since it's in unspecified state
+    }
+}
+
+TEST_CASE("NormalBootstrap: copy assignment operator", "[Bootstrap][Normal][CopyAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 500;
+    const std::size_t B2 = 600;
+    const double      CL = 0.95;
+
+    NormalBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        nb_source(B1, CL, res);
+    NormalBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        nb_dest(B2, CL, res);
+
+    SECTION("Copy assignment replaces configuration")
+    {
+        REQUIRE(nb_dest.B() == B2);  // Initial state
+        
+        nb_dest = nb_source;  // Copy assignment
+        
+        REQUIRE(nb_dest.B() == B1);  // Should match source
+        REQUIRE(nb_dest.CL() == CL);
+        REQUIRE_FALSE(nb_dest.hasDiagnostics());  // Should be clear state
+    }
+}
+
+TEST_CASE("NormalBootstrap: move assignment operator", "[Bootstrap][Normal][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 500;
+    const std::size_t B2 = 600;
+    const double      CL = 0.95;
+
+    SECTION("Move assignment transfers state correctly")
+    {
+        NormalBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            nb_source(B1, CL, res);
+        NormalBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            nb_dest(B2, CL, res);
+
+        // Run on source to get diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        auto result_orig = nb_source.run(x, mean_sampler, rng);
+        REQUIRE(nb_source.hasDiagnostics());
+        REQUIRE(nb_dest.B() == B2);  // Initial dest state
+        
+        // Move assign
+        nb_dest = std::move(nb_source);
+        
+        REQUIRE(nb_dest.B() == B1);  // Should match moved source
+        REQUIRE(nb_dest.CL() == CL);
+        REQUIRE(nb_dest.hasDiagnostics());  // Should transfer diagnostics
+    }
+}

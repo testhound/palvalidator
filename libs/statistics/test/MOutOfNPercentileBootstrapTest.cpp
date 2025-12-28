@@ -1835,3 +1835,169 @@ TEST_CASE("MOutOfNPercentileBootstrap: Edge case - moderate skipped rate (race c
         REQUIRE(std::isfinite(num::to_double(out.upper)));
     }
 }
+
+TEST_CASE("MOutOfNPercentileBootstrap: copy constructor", "[Bootstrap][MOutOfN][CopyConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 800;
+    const double      CL = 0.95;
+    const double      rho = 0.70;
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon_original(B, CL, rho, res);
+
+    SECTION("Copy constructor creates independent object")
+    {
+        auto moon_copy = moon_original;  // Copy constructor
+
+        // Basic properties should match
+        REQUIRE(moon_copy.B() == moon_original.B());
+        REQUIRE(moon_copy.CL() == moon_original.CL());
+        REQUIRE(moon_copy.mratio() == moon_original.mratio());
+
+        // Diagnostics should not be available on copy (fresh state)
+        REQUIRE_FALSE(moon_copy.hasDiagnostics());
+        REQUIRE_FALSE(moon_original.hasDiagnostics());
+
+        // Run on original
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        std::seed_seq seq = make_seed_seq(0x123456789ABCDEFull);
+        std::mt19937_64 rng(seq);
+        
+        (void)moon_original.run(x, mean_sampler, rng);
+        
+        // Original should have diagnostics now, copy should not
+        REQUIRE(moon_original.hasDiagnostics());
+        REQUIRE_FALSE(moon_copy.hasDiagnostics());
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: move constructor", "[Bootstrap][MOutOfN][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 800;
+    const double      CL = 0.95;
+    const double      rho = 0.70;
+
+    SECTION("Move constructor transfers state correctly")
+    {
+        MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            moon_original(B, CL, rho, res);
+
+        // Run once to populate diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        std::seed_seq seq = make_seed_seq(0x123456789ABCDEFull);
+        std::mt19937_64 rng(seq);
+        
+        (void)moon_original.run(x, mean_sampler, rng);
+        REQUIRE(moon_original.hasDiagnostics());
+        
+        // Move construct
+        auto moon_moved = std::move(moon_original);
+        
+        // Basic properties should be transferred
+        REQUIRE(moon_moved.B() == B);
+        REQUIRE(moon_moved.CL() == CL);
+        REQUIRE(moon_moved.mratio() == rho);
+        
+        // Diagnostics should be transferred, moved-from object should have validity reset
+        REQUIRE(moon_moved.hasDiagnostics());
+        // Note: We don't test moon_original state after move since it's in unspecified state
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: copy assignment operator", "[Bootstrap][MOutOfN][CopyAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 800;
+    const std::size_t B2 = 900;
+    const double      CL = 0.95;
+    const double      rho1 = 0.70;
+    const double      rho2 = 0.80;
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon_source(B1, CL, rho1, res);
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon_dest(B2, CL, rho2, res);
+
+    SECTION("Copy assignment replaces configuration")
+    {
+        REQUIRE(moon_dest.B() == B2);      // Initial state
+        REQUIRE(moon_dest.mratio() == rho2);
+        
+        moon_dest = moon_source;  // Copy assignment
+        
+        REQUIRE(moon_dest.B() == B1);      // Should match source
+        REQUIRE(moon_dest.CL() == CL);
+        REQUIRE(moon_dest.mratio() == rho1);
+        REQUIRE_FALSE(moon_dest.hasDiagnostics());  // Should be clear state
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: move assignment operator", "[Bootstrap][MOutOfN][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 800;
+    const std::size_t B2 = 900;
+    const double      CL = 0.95;
+    const double      rho1 = 0.70;
+    const double      rho2 = 0.80;
+
+    SECTION("Move assignment transfers state correctly")
+    {
+        MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            moon_source(B1, CL, rho1, res);
+        MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            moon_dest(B2, CL, rho2, res);
+
+        // Run on source to get diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        std::seed_seq seq = make_seed_seq(0x123456789ABCDEFull);
+        std::mt19937_64 rng(seq);
+        
+        (void)moon_source.run(x, mean_sampler, rng);
+        REQUIRE(moon_source.hasDiagnostics());
+        REQUIRE(moon_dest.B() == B2);          // Initial dest state
+        REQUIRE(moon_dest.mratio() == rho2);
+        
+        // Move assign
+        moon_dest = std::move(moon_source);
+        
+        REQUIRE(moon_dest.B() == B1);      // Should match moved source
+        REQUIRE(moon_dest.CL() == CL);
+        REQUIRE(moon_dest.mratio() == rho1);
+        REQUIRE(moon_dest.hasDiagnostics());  // Should transfer diagnostics
+    }
+}

@@ -1441,3 +1441,148 @@ TEST_CASE("PercentileTBootstrap: Minimum inner replicate threshold",
         REQUIRE(out.effective_B + out.skipped_outer == out.B_outer);
     }
 }
+
+TEST_CASE("PercentileTBootstrap: copy constructor", "[Bootstrap][PercentileT][CopyConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B_outer = 400;
+    const std::size_t B_inner = 100;
+    const double      CL = 0.95;
+
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt_original(B_outer, B_inner, CL, res);
+
+    SECTION("Copy constructor creates independent object")
+    {
+        auto pt_copy = pt_original;  // Copy constructor
+
+        // Diagnostics should not be available on copy (fresh state)
+        REQUIRE_FALSE(pt_copy.hasDiagnostics());
+        REQUIRE_FALSE(pt_original.hasDiagnostics());
+
+        // Run on original
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        (void)pt_original.run(x, mean_sampler, rng);
+        
+        // Original should have diagnostics now, copy should not
+        REQUIRE(pt_original.hasDiagnostics());
+        REQUIRE_FALSE(pt_copy.hasDiagnostics());
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: move constructor", "[Bootstrap][PercentileT][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B_outer = 400;
+    const std::size_t B_inner = 100;
+    const double      CL = 0.95;
+
+    SECTION("Move constructor transfers state correctly")
+    {
+        PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            pt_original(B_outer, B_inner, CL, res);
+
+        // Run once to populate diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        (void)pt_original.run(x, mean_sampler, rng);
+        REQUIRE(pt_original.hasDiagnostics());
+        
+        // Move construct
+        auto pt_moved = std::move(pt_original);
+        
+        // Diagnostics should be transferred, moved-from object should have validity reset
+        REQUIRE(pt_moved.hasDiagnostics());
+        // Note: We don't test pt_original state after move since it's in unspecified state
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: copy assignment operator", "[Bootstrap][PercentileT][CopyAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B_outer1 = 400;
+    const std::size_t B_inner1 = 100;
+    const std::size_t B_outer2 = 500;
+    const std::size_t B_inner2 = 120;
+    const double      CL = 0.95;
+
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt_source(B_outer1, B_inner1, CL, res);
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt_dest(B_outer2, B_inner2, CL, res);
+
+    SECTION("Copy assignment replaces configuration")
+    {
+        pt_dest = pt_source;  // Copy assignment
+        
+        REQUIRE_FALSE(pt_dest.hasDiagnostics());  // Should be clear state
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: move assignment operator", "[Bootstrap][PercentileT][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B_outer1 = 400;
+    const std::size_t B_inner1 = 100;
+    const std::size_t B_outer2 = 500;
+    const std::size_t B_inner2 = 120;
+    const double      CL = 0.95;
+
+    SECTION("Move assignment transfers state correctly")
+    {
+        PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            pt_source(B_outer1, B_inner1, CL, res);
+        PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            pt_dest(B_outer2, B_inner2, CL, res);
+
+        // Run on source to get diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        (void)pt_source.run(x, mean_sampler, rng);
+        REQUIRE(pt_source.hasDiagnostics());
+        
+        // Move assign
+        pt_dest = std::move(pt_source);
+        
+        REQUIRE(pt_dest.hasDiagnostics());  // Should transfer diagnostics
+    }
+}

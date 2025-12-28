@@ -335,3 +335,260 @@ TEST_CASE("BasicBootstrap: diagnostics consistent with Result",
         REQUIRE(se_boot   == Catch::Approx(se).margin(1e-12));
     }
 }
+
+TEST_CASE("BasicBootstrap: move constructor", "[Bootstrap][Basic][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+    
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B = 500;
+    const double CL = 0.95;
+
+    // Create original bootstrap instance
+    BasicBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        original(B, CL, res);
+
+    // Check original properties
+    REQUIRE(original.B() == B);
+    REQUIRE(original.CL() == CL);
+    REQUIRE_FALSE(original.hasDiagnostics());
+
+    // Move construct
+    auto moved = std::move(original);
+
+    SECTION("Moved-to object has original properties")
+    {
+        REQUIRE(moved.B() == B);
+        REQUIRE(moved.CL() == CL);
+        REQUIRE_FALSE(moved.hasDiagnostics());
+    }
+
+    SECTION("Moved-to object is functional")
+    {
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u, 2u, 3u, 4u};
+        std::mt19937_64 rng(seed);
+
+        auto result = moved.run(x, mean_sampler, rng);
+
+        REQUIRE(result.B == B);
+        REQUIRE(result.cl == Catch::Approx(CL).margin(1e-12));
+        REQUIRE(std::isfinite(num::to_double(result.mean)));
+        REQUIRE(std::isfinite(num::to_double(result.lower)));
+        REQUIRE(std::isfinite(num::to_double(result.upper)));
+        REQUIRE(result.lower <= result.upper);
+        REQUIRE(moved.hasDiagnostics());
+    }
+}
+
+TEST_CASE("BasicBootstrap: move constructor with diagnostics", "[Bootstrap][Basic][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+    
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B = 500;
+    const double CL = 0.95;
+
+    // Create and run bootstrap to populate diagnostics
+    BasicBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        original(B, CL, res);
+
+    std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+    randutils::seed_seq_fe128 seed{1u, 2u, 3u, 4u};
+    std::mt19937_64 rng(seed);
+
+    auto result = original.run(x, mean_sampler, rng);
+    REQUIRE(original.hasDiagnostics());
+    
+    // Verify the run was successful
+    REQUIRE(result.B == B);
+    REQUIRE(std::isfinite(num::to_double(result.mean)));
+
+    // Store original diagnostics
+    auto original_stats = original.getBootstrapStatistics();
+    double original_mean = original.getBootstrapMean();
+    double original_var = original.getBootstrapVariance();
+    double original_se = original.getBootstrapSe();
+
+    // Move construct
+    auto moved = std::move(original);
+
+    SECTION("Moved object preserves diagnostics")
+    {
+        REQUIRE(moved.hasDiagnostics());
+        
+        auto moved_stats = moved.getBootstrapStatistics();
+        double moved_mean = moved.getBootstrapMean();
+        double moved_var = moved.getBootstrapVariance();
+        double moved_se = moved.getBootstrapSe();
+
+        REQUIRE(moved_stats.size() == original_stats.size());
+        REQUIRE(moved_mean == Catch::Approx(original_mean).margin(1e-12));
+        REQUIRE(moved_var == Catch::Approx(original_var).margin(1e-12));
+        REQUIRE(moved_se == Catch::Approx(original_se).margin(1e-12));
+
+        // Compare individual bootstrap statistics
+        for (size_t i = 0; i < moved_stats.size(); ++i) {
+            REQUIRE(moved_stats[i] == Catch::Approx(original_stats[i]).margin(1e-12));
+        }
+    }
+}
+
+TEST_CASE("BasicBootstrap: move assignment operator", "[Bootstrap][Basic][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+    
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 500;
+    const std::size_t B2 = 600;
+    const double CL1 = 0.95;
+    const double CL2 = 0.90;
+
+    // Create two different bootstrap instances
+    BasicBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        source(B1, CL1, res);
+    BasicBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        target(B2, CL2, res);
+
+    // Run bootstrap on source to populate diagnostics
+    std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+    randutils::seed_seq_fe128 seed{1u, 2u, 3u, 4u};
+    std::mt19937_64 rng(seed);
+
+    auto result = source.run(x, mean_sampler, rng);
+    REQUIRE(source.hasDiagnostics());
+    
+    // Verify the run was successful
+    REQUIRE(result.B == B1);
+    REQUIRE(std::isfinite(num::to_double(result.mean)));
+
+    // Store source diagnostics
+    auto source_stats = source.getBootstrapStatistics();
+    double source_mean = source.getBootstrapMean();
+    double source_var = source.getBootstrapVariance();
+    double source_se = source.getBootstrapSe();
+
+    // Move assign
+    target = std::move(source);
+
+    SECTION("Target acquires source properties")
+    {
+        REQUIRE(target.B() == B1);  // Should have source's B, not original target's B2
+        REQUIRE(target.CL() == CL1); // Should have source's CL, not original target's CL2
+        REQUIRE(target.hasDiagnostics());
+        
+        auto target_stats = target.getBootstrapStatistics();
+        double target_mean = target.getBootstrapMean();
+        double target_var = target.getBootstrapVariance();
+        double target_se = target.getBootstrapSe();
+
+        REQUIRE(target_stats.size() == source_stats.size());
+        REQUIRE(target_mean == Catch::Approx(source_mean).margin(1e-12));
+        REQUIRE(target_var == Catch::Approx(source_var).margin(1e-12));
+        REQUIRE(target_se == Catch::Approx(source_se).margin(1e-12));
+    }
+
+    SECTION("Target is functional after move assignment")
+    {
+        std::vector<D> x2{D(10), D(20), D(30), D(40), D(50)};
+        randutils::seed_seq_fe128 seed2{5u, 6u, 7u, 8u};
+        std::mt19937_64 rng2(seed2);
+
+        auto result2 = target.run(x2, mean_sampler, rng2);
+
+        REQUIRE(result2.B == B1); // Should use source's parameters
+        REQUIRE(result2.cl == Catch::Approx(CL1).margin(1e-12));
+        REQUIRE(std::isfinite(num::to_double(result2.mean)));
+        REQUIRE(std::isfinite(num::to_double(result2.lower)));
+        REQUIRE(std::isfinite(num::to_double(result2.upper)));
+        REQUIRE(result2.lower <= result2.upper);
+    }
+}
+
+TEST_CASE("BasicBootstrap: copy constructor deleted", "[Bootstrap][Basic][CopyConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+    
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    using BootstrapType = BasicBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>;
+    
+    // Verify copy constructor is deleted at compile time
+    STATIC_REQUIRE_FALSE(std::is_copy_constructible_v<BootstrapType>);
+    
+    // Verify copy assignment is deleted at compile time
+    STATIC_REQUIRE_FALSE(std::is_copy_assignable_v<BootstrapType>);
+    
+    // Verify move constructor is available
+    STATIC_REQUIRE(std::is_move_constructible_v<BootstrapType>);
+    
+    // Verify move assignment is available
+    STATIC_REQUIRE(std::is_move_assignable_v<BootstrapType>);
+}
+
+TEST_CASE("BasicBootstrap: self move assignment", "[Bootstrap][Basic][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+    
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B = 500;
+    const double CL = 0.95;
+
+    BasicBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        bb(B, CL, res);
+
+    // Self move assignment should be safe
+    // Suppress intentional self-move warning for this test case
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wself-move"
+    bb = std::move(bb);
+#pragma GCC diagnostic pop
+
+    SECTION("Object remains valid after self move assignment")
+    {
+        REQUIRE(bb.B() == B);
+        REQUIRE(bb.CL() == CL);
+        REQUIRE_FALSE(bb.hasDiagnostics());
+
+        // Should still be functional
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u, 2u, 3u, 4u};
+        std::mt19937_64 rng(seed);
+
+        auto result = bb.run(x, mean_sampler, rng);
+
+        REQUIRE(result.B == B);
+        REQUIRE(result.cl == Catch::Approx(CL).margin(1e-12));
+        REQUIRE(std::isfinite(num::to_double(result.mean)));
+        REQUIRE(bb.hasDiagnostics());
+    }
+}

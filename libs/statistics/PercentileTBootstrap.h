@@ -99,9 +99,42 @@ namespace palvalidator
         if (!(m_ratio_inner > 0.0 && m_ratio_inner <= 1.0)) throw std::invalid_argument("m_ratio_inner must be in (0,1]");
       }
 
-      // Disable copy constructor and copy assignment operator
-      PercentileTBootstrap(const PercentileTBootstrap&) = delete;
-      PercentileTBootstrap& operator=(const PercentileTBootstrap&) = delete;
+      // Copy constructor
+      PercentileTBootstrap(const PercentileTBootstrap& other)
+        : m_B_outer(other.m_B_outer)
+        , m_B_inner(other.m_B_inner)
+        , m_CL(other.m_CL)
+        , m_resampler(other.m_resampler)
+        , m_ratio_outer(other.m_ratio_outer)
+        , m_ratio_inner(other.m_ratio_inner)
+        , m_diagMutex()
+        , m_diagTValues()
+        , m_diagThetaStars()
+        , m_diagSeHat(0.0)
+        , m_diagValid(false)
+      {
+      }
+
+      // Copy assignment operator
+      PercentileTBootstrap& operator=(const PercentileTBootstrap& other)
+      {
+        if (this != &other) {
+          const_cast<std::size_t&>(m_B_outer) = other.m_B_outer;
+          const_cast<std::size_t&>(m_B_inner) = other.m_B_inner;
+          const_cast<double&>(m_CL) = other.m_CL;
+          const_cast<Resampler&>(m_resampler) = other.m_resampler;
+          const_cast<double&>(m_ratio_outer) = other.m_ratio_outer;
+          const_cast<double&>(m_ratio_inner) = other.m_ratio_inner;
+          
+          // Clear diagnostic data
+          std::lock_guard<std::mutex> lock(m_diagMutex);
+          m_diagTValues.clear();
+          m_diagThetaStars.clear();
+          m_diagSeHat = 0.0;
+          m_diagValid = false;
+        }
+        return *this;
+      }
 
       // Enable move constructor
       PercentileTBootstrap(PercentileTBootstrap&& other) noexcept

@@ -109,6 +109,100 @@ template <class Decimal,
         }
       }
 
+      // Copy constructor
+      MOutOfNPercentileBootstrap(const MOutOfNPercentileBootstrap& other)
+        : m_B(other.m_B)
+        , m_CL(other.m_CL)
+        , m_ratio(other.m_ratio)
+        , m_resampler(other.m_resampler)
+        , m_exec(std::make_shared<Executor>())
+        , m_chunkHint(0)
+        , m_ratioPolicy(other.m_ratioPolicy)
+        , m_diagMutex(std::make_unique<std::mutex>())
+        , m_diagBootstrapStats()
+        , m_diagMeanBoot(0.0)
+        , m_diagVarBoot(0.0)
+        , m_diagSeBoot(0.0)
+        , m_diagSkewBoot(0.0)
+        , m_diagValid(false)
+      {
+      }
+
+      // Move constructor
+      MOutOfNPercentileBootstrap(MOutOfNPercentileBootstrap&& other) noexcept
+        : m_B(other.m_B)
+        , m_CL(other.m_CL)
+        , m_ratio(other.m_ratio)
+        , m_resampler(std::move(other.m_resampler))
+        , m_exec(std::move(other.m_exec))
+        , m_chunkHint(other.m_chunkHint)
+        , m_ratioPolicy(std::move(other.m_ratioPolicy))
+        , m_diagMutex(std::move(other.m_diagMutex))
+        , m_diagBootstrapStats(std::move(other.m_diagBootstrapStats))
+        , m_diagMeanBoot(other.m_diagMeanBoot)
+        , m_diagVarBoot(other.m_diagVarBoot)
+        , m_diagSeBoot(other.m_diagSeBoot)
+        , m_diagSkewBoot(other.m_diagSkewBoot)
+        , m_diagValid(other.m_diagValid)
+      {
+        // Reset moved-from object
+        other.m_diagValid = false;
+      }
+
+      // Copy assignment operator
+      MOutOfNPercentileBootstrap& operator=(const MOutOfNPercentileBootstrap& other)
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_ratio = other.m_ratio;
+          m_resampler = other.m_resampler;
+          m_exec = std::make_shared<Executor>();
+          m_chunkHint = 0;
+          m_ratioPolicy = other.m_ratioPolicy;
+          m_diagMutex = std::make_unique<std::mutex>();
+
+          // Clear diagnostic data
+          if (m_diagMutex) {
+            std::lock_guard<std::mutex> lock(*m_diagMutex);
+            m_diagBootstrapStats.clear();
+            m_diagMeanBoot = 0.0;
+            m_diagVarBoot = 0.0;
+            m_diagSeBoot = 0.0;
+            m_diagSkewBoot = 0.0;
+            m_diagValid = false;
+          }
+        }
+        return *this;
+      }
+
+      // Move assignment operator
+      MOutOfNPercentileBootstrap& operator=(MOutOfNPercentileBootstrap&& other) noexcept
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_ratio = other.m_ratio;
+          m_resampler = std::move(other.m_resampler);
+          m_exec = std::move(other.m_exec);
+          m_chunkHint = other.m_chunkHint;
+          m_ratioPolicy = std::move(other.m_ratioPolicy);
+          m_diagMutex = std::move(other.m_diagMutex);
+
+          // Transfer diagnostic data
+          m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
+          m_diagMeanBoot = other.m_diagMeanBoot;
+          m_diagVarBoot = other.m_diagVarBoot;
+          m_diagSeBoot = other.m_diagSeBoot;
+          m_diagSkewBoot = other.m_diagSkewBoot;
+          m_diagValid = other.m_diagValid;
+
+          // Reset moved-from object
+          other.m_diagValid = false;
+        }
+        return *this;
+      }
+
       /// Fixed-ratio factory (thin wrapper over the existing constructor).
       static MOutOfNPercentileBootstrap
       createFixedRatio(std::size_t B,

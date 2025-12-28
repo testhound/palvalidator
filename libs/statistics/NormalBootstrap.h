@@ -8,6 +8,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <mutex>
 
 #include "randutils.hpp"
 #include "RngUtils.h"
@@ -32,6 +33,10 @@ namespace palvalidator
      *
      * Degenerate (non-finite) replicates are skipped. If fewer than B/2 usable
      * replicates remain, an exception is thrown.
+     *
+     * Thread-safety: This class uses internal mutexes to protect mutable state.
+     * Multiple threads can safely call run() concurrently on the same instance,
+     * and diagnostic getters are protected against concurrent modification.
      *
      * @tparam Decimal
      *   Numeric value type.
@@ -86,7 +91,9 @@ namespace palvalidator
           m_diagMeanBoot(0.0),
           m_diagVarBoot(0.0),
           m_diagSeBoot(0.0),
-          m_diagValid(false)
+          m_diagValid(false),
+          m_diagMutex(),
+          m_chunkMutex()
       {
         if (m_B < 400) {
           throw std::invalid_argument("NormalBootstrap: B should be >= 400");
@@ -96,11 +103,96 @@ namespace palvalidator
         }
       }
 
+      // Copy constructor
+      NormalBootstrap(const NormalBootstrap& other)
+        : m_B(other.m_B),
+          m_CL(other.m_CL),
+          m_resampler(other.m_resampler),
+          m_exec(std::make_shared<Executor>()),
+          m_chunkHint(0),
+          m_diagBootstrapStats(),
+          m_diagMeanBoot(0.0),
+          m_diagVarBoot(0.0),
+          m_diagSeBoot(0.0),
+          m_diagValid(false),
+          m_diagMutex(),
+          m_chunkMutex()
+      {
+      }
+
+      // Move constructor
+      NormalBootstrap(NormalBootstrap&& other) noexcept
+        : m_B(other.m_B),
+          m_CL(other.m_CL),
+          m_resampler(std::move(other.m_resampler)),
+          m_exec(std::move(other.m_exec)),
+          m_chunkHint(other.m_chunkHint),
+          m_diagBootstrapStats(std::move(other.m_diagBootstrapStats)),
+          m_diagMeanBoot(other.m_diagMeanBoot),
+          m_diagVarBoot(other.m_diagVarBoot),
+          m_diagSeBoot(other.m_diagSeBoot),
+          m_diagValid(other.m_diagValid),
+          m_diagMutex(),
+          m_chunkMutex()
+      {
+        // Reset moved-from object
+        other.m_diagValid = false;
+      }
+
+      // Copy assignment operator
+      NormalBootstrap& operator=(const NormalBootstrap& other)
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_resampler = other.m_resampler;
+          m_exec = std::make_shared<Executor>();
+          m_chunkHint = 0;
+          
+          // Clear diagnostic data
+          std::lock_guard<std::mutex> lock(m_diagMutex);
+          m_diagBootstrapStats.clear();
+          m_diagMeanBoot = 0.0;
+          m_diagVarBoot = 0.0;
+          m_diagSeBoot = 0.0;
+          m_diagValid = false;
+        }
+        return *this;
+      }
+
+      // Move assignment operator
+      NormalBootstrap& operator=(NormalBootstrap&& other) noexcept
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_resampler = std::move(other.m_resampler);
+          m_exec = std::move(other.m_exec);
+          m_chunkHint = other.m_chunkHint;
+          
+          // Transfer diagnostic data
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
+            m_diagMeanBoot = other.m_diagMeanBoot;
+            m_diagVarBoot = other.m_diagVarBoot;
+            m_diagSeBoot = other.m_diagSeBoot;
+            m_diagValid = other.m_diagValid;
+          }
+          
+          // Reset moved-from object
+          other.m_diagValid = false;
+        }
+        return *this;
+      }
+
       /**
        * @brief Run the normal-bootstrap CI using a caller-supplied RNG.
        *
        * After this call, diagnostic getters (getBootstrapStatistics, getBootstrapMean,
        * getBootstrapVariance, getBootstrapSe) will refer to this run's results.
+       *
+       * Thread-safe: Multiple threads can call run() concurrently on the same instance.
        */
       Result run(const std::vector<Decimal>& x,
                  Sampler                      sampler,
@@ -120,6 +212,8 @@ namespace palvalidator
        *
        * After this call, diagnostic getters (getBootstrapStatistics, getBootstrapMean,
        * getBootstrapVariance, getBootstrapSe) will refer to this run's results.
+       *
+       * Thread-safe: Multiple threads can call run() concurrently on the same instance.
        */
       template<class Provider>
       Result run(const std::vector<Decimal>& x,
@@ -133,9 +227,14 @@ namespace palvalidator
         return run_core_(x, sampler, make_engine);
       }
 
-      /// Hint for chunk size in parallel_for_chunked.
+      /**
+       * @brief Hint for chunk size in parallel_for_chunked.
+       *
+       * Thread-safe: Can be called concurrently with run() and other methods.
+       */
       void setChunkSizeHint(uint32_t c) const
       {
+        std::lock_guard<std::mutex> lock(m_chunkMutex);
         m_chunkHint = c;
       }
 
@@ -152,9 +251,12 @@ namespace palvalidator
        *
        * The diagnostics below (bootstrap stats, mean, variance, se) all refer to
        * the *most recent* successful call to run(...) on this instance.
+       *
+       * Thread-safe: Protected by mutex.
        */
       bool hasDiagnostics() const noexcept
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagValid;
       }
 
@@ -164,10 +266,13 @@ namespace palvalidator
        * Values are stored after removal of non-finite replicates. The size of
        * this vector equals the effective_B of the last Result.
        *
+       * Thread-safe: Returns a copy of the diagnostic data protected by mutex.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
-      const std::vector<double>& getBootstrapStatistics() const
+      std::vector<double> getBootstrapStatistics() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagBootstrapStats;
       }
@@ -175,10 +280,13 @@ namespace palvalidator
       /**
        * @brief Returns the bootstrap mean of θ* from the last run.
        *
+       * Thread-safe: Protected by mutex.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
       double getBootstrapMean() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagMeanBoot;
       }
@@ -186,10 +294,13 @@ namespace palvalidator
       /**
        * @brief Returns the bootstrap variance of θ* from the last run.
        *
+       * Thread-safe: Protected by mutex.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
       double getBootstrapVariance() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagVarBoot;
       }
@@ -199,10 +310,13 @@ namespace palvalidator
        *
        * Equivalent to the se_boot field in the last Result.
        *
+       * Thread-safe: Protected by mutex.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
       double getBootstrapSe() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagSeBoot;
       }
@@ -210,6 +324,7 @@ namespace palvalidator
     private:
       void ensureDiagnosticsAvailable() const
       {
+        // NOTE: This method must be called while holding m_diagMutex
         if (!m_diagValid) {
           throw std::logic_error(
             "NormalBootstrap diagnostics are not available: run() has not been called on this instance.");
@@ -231,6 +346,13 @@ namespace palvalidator
         // Pre-allocate; NaN marks skipped/invalid replicates
         std::vector<double> thetas_d(m_B, std::numeric_limits<double>::quiet_NaN());
 
+        // Read chunk hint under lock
+        uint32_t chunkHint;
+        {
+          std::lock_guard<std::mutex> lock(m_chunkMutex);
+          chunkHint = m_chunkHint;
+        }
+
         // Parallel over B using the internally constructed Executor
         concurrency::parallel_for_chunked(
           static_cast<uint32_t>(m_B),
@@ -246,7 +368,7 @@ namespace palvalidator
               thetas_d[b] = v;
             }
           },
-          /*chunkSizeHint=*/m_chunkHint
+          /*chunkSizeHint=*/chunkHint
         );
 
         // Compact away NaNs and count skipped
@@ -261,7 +383,10 @@ namespace palvalidator
 
         if (thetas_d.size() < m_B / 2) {
           // Invalidate diagnostics in case of error
-          m_diagValid = false;
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_diagValid = false;
+          }
           throw std::runtime_error("NormalBootstrap: too many degenerate replicates");
         }
 
@@ -291,12 +416,15 @@ namespace palvalidator
         const double lb_d    = center - z * se_boot;
         const double ub_d    = center + z * se_boot;
 
-        // Store diagnostics for the most recent run
-        m_diagBootstrapStats = thetas_d;
-        m_diagMeanBoot       = mean_boot;
-        m_diagVarBoot        = var_boot;
-        m_diagSeBoot         = se_boot;
-        m_diagValid          = true;
+        // Store diagnostics for the most recent run (protected by mutex)
+        {
+          std::lock_guard<std::mutex> lock(m_diagMutex);
+          m_diagBootstrapStats = thetas_d;
+          m_diagMeanBoot       = mean_boot;
+          m_diagVarBoot        = var_boot;
+          m_diagSeBoot         = se_boot;
+          m_diagValid          = true;
+        }
 
         return Result{
           /*mean        =*/ theta_hat,
@@ -325,6 +453,10 @@ namespace palvalidator
       mutable double              m_diagVarBoot;
       mutable double              m_diagSeBoot;
       mutable bool                m_diagValid;
+
+      // Mutexes for thread-safety
+      mutable std::mutex m_diagMutex;   // Protects all diagnostic members
+      mutable std::mutex m_chunkMutex;  // Protects m_chunkHint
     };
 
   } // namespace analysis
