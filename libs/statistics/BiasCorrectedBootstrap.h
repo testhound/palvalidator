@@ -813,13 +813,18 @@ namespace mkc_timeseries
       m_is_calculated = true;
     }
 
+  public:
     /**
      * @brief Converts a probability p to an array index for the bootstrap distribution.
-     * 
+     *
      * Implements the formula from Efron & Tibshirani (1993), Eq 14.15:
      *   index = ⌊p(B+1)⌋ - 1
-     * 
+     *
      * Clamps result to [0, B-1] to handle edge cases where p ≈ 0 or p ≈ 1.
+     *
+     * @param p The probability (should be in [0, 1]).
+     * @param B The number of bootstrap resamples.
+     * @return The corresponding array index in [0, B-1].
      */
     static inline int unbiasedIndex(double p, unsigned int B) noexcept
     {
