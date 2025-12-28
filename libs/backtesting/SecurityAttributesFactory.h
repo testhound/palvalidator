@@ -290,7 +290,7 @@ namespace mkc_timeseries
       addCommonStock (std::string("COST"), std::string("Costco"),
 		      boost::gregorian::from_undelimited_string("19851205"));
       addCommonStock (std::string("APP"), std::string("AppLovin"),
-		      boost::gregorian::from_undelimited_string("20010415"));
+		      boost::gregorian::from_undelimited_string("20210415"));
 
       addCommonStock (std::string("PLTR"), std::string("Palantir Technologies"),
 		      boost::gregorian::from_undelimited_string("20200930"));
@@ -1000,12 +1000,6 @@ namespace mkc_timeseries
 		       DecimalConstants<Decimal>::DecimalMinusThree,
 		       boost::gregorian::from_undelimited_string("20091203"));
 
-      addLeveragedETF (std::string("GASL"),
-		       std::string("Direxion Daily Natural Gas Related Bull 3X Shares"),
-		       createDecimal("1.04"),
-		       DecimalConstants<Decimal>::DecimalThree,
-		       boost::gregorian::from_undelimited_string("20100714"));
-
       addLeveragedETF (std::string("GUSH"),
 		       std::string("Direxion Daily S&P Oil & Gas Exp. & Prod. Bull 3X Shares"),
 		       createDecimal("1.17"),
@@ -1041,31 +1035,6 @@ namespace mkc_timeseries
 		       createDecimal("1.10"),
 		       DecimalConstants<Decimal>::DecimalMinusThree,
 		       boost::gregorian::from_undelimited_string("20081217"));
-
-      addLeveragedETF (std::string("UWTI"),
-		       std::string("VelocityShares 3x Long Crude ETN"),
-		       createDecimal("1.35"),
-		       DecimalConstants<Decimal>::DecimalThree,
-		       boost::gregorian::from_undelimited_string("20120207"));
-
-      addLeveragedETF (std::string("DWTI"),
-		       std::string("VelocityShares 3x Inverse Crude ETN"),
-		       createDecimal("1.35"),
-		       DecimalConstants<Decimal>::DecimalMinusThree,
-		       boost::gregorian::from_undelimited_string("20120207"));
-
-      addLeveragedETF (std::string("UGAZ"),
-		       std::string("VelocityShares 3x Long Natural Gas"),
-		       createDecimal("1.65"),
-		       DecimalConstants<Decimal>::DecimalThree,
-		       boost::gregorian::from_undelimited_string("20120207"));
-
-      addLeveragedETF (std::string("DGAZ"),
-		       std::string("VelocityShares 3x Inverse Natural Gas"),
-		       createDecimal("1.65"),
-		       DecimalConstants<Decimal>::DecimalMinusThree,
-		       boost::gregorian::from_undelimited_string("20120207"));
-
     }
 
     void initializeStockIndexFuturesAttributes()
