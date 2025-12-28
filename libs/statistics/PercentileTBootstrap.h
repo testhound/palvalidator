@@ -27,6 +27,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -111,19 +112,27 @@ namespace palvalidator
                  std::size_t                  m_outer_override = 0,
                  std::size_t                  m_inner_override = 0) const
       {
-        auto engine_maker = [&](std::size_t /*b*/) -> Rng {
-          // Derive per-outer engines deterministically from the caller RNG.
-          // Use two 64-bit draws → seed_seq (must be lvalue in ctor).
+        // IMPORTANT: run_impl parallelizes the outer loop, so we must not touch the
+        // caller-provided RNG from inside the parallel region (std::* RNGs are not thread-safe).
+        // Precompute per-outer replicate seeds deterministically in the calling thread.
+        std::vector<std::array<uint32_t, 4>> per_outer_seed_words(m_B_outer);
+        for (std::size_t b = 0; b < m_B_outer; ++b) {
           const uint64_t s1 = mkc_timeseries::rng_utils::get_random_value(rng);
           const uint64_t s2 = mkc_timeseries::rng_utils::get_random_value(rng);
-          std::seed_seq seq{
+          per_outer_seed_words[b] = {
             static_cast<uint32_t>(s1),
             static_cast<uint32_t>(s1 >> 32),
             static_cast<uint32_t>(s2),
             static_cast<uint32_t>(s2 >> 32)
           };
+        }
+
+        auto engine_maker = [&](std::size_t b) -> Rng {
+          const auto& w = per_outer_seed_words[b];
+          std::seed_seq seq{w[0], w[1], w[2], w[3]};
           return Rng(seq);
         };
+
         return run_impl(x, std::move(sampler), m_outer_override, m_inner_override, engine_maker);
       }
 
@@ -231,7 +240,7 @@ namespace palvalidator
         // Parallelize outer loop only
         Executor exec{};
         concurrency::parallel_for_chunked(static_cast<uint32_t>(m_B_outer), exec,
-                                          [&](uint32_t b32)
+                                          [&, sampler](uint32_t b32) // Copy sampler per-thread for safety
                                           {
                                             const std::size_t b = static_cast<std::size_t>(b32);
                                             Rng rng_b = make_engine(b); // fresh engine per outer replicate
