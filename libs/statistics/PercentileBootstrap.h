@@ -12,6 +12,7 @@
 #include "RngUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "StatUtils.h"
 
 namespace palvalidator
 {
@@ -355,8 +356,8 @@ namespace palvalidator
         const double pl    = alpha / 2.0;
         const double pu    = 1.0 - alpha / 2.0;
 
-        const double lb_d = quantile_type7_via_nth(thetas_d, pl);
-        const double ub_d = quantile_type7_via_nth(thetas_d, pu);
+	const double lb_d = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pl);
+        const double ub_d = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pu);
 
         // Store diagnostics for the most recent run
         m_diagBootstrapStats = thetas_d;

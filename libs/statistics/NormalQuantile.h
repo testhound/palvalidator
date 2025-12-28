@@ -170,6 +170,98 @@ namespace palvalidator
         return compute_normal_quantile(1.0 - alpha / 2.0);
       }
 
+      /**
+       * @brief Computes the empirical cumulative distribution function (ECDF) at a point.
+       *
+       * The empirical CDF at value x is defined as:
+       *   F_n(x) = (# of samples ≤ x) / n
+       *
+       * This is a non-parametric estimate of the cumulative distribution function
+       * from sample data. It is commonly used in bootstrap methods, goodness-of-fit
+       * tests (e.g., Kolmogorov-Smirnov), and quantile estimation.
+       *
+       * Properties:
+       * - Returns values in [0, 1] of type ValueType
+       * - Non-decreasing function of x
+       * - Right-continuous (includes ties at x)
+       * - Returns ValueType(0) for empty containers
+       *
+       * @tparam Container A container type supporting iteration (e.g., std::vector,
+       *                   std::array, std::list). Elements must be comparable with
+       *                   the query value using operator<=, support operator+ and
+       *                   division by std::size_t.
+       *
+       * @param data The sample data container. Can be unsorted.
+       * @param x The value at which to evaluate the ECDF. Must be comparable with
+       *          container elements using operator<=.
+       *
+       * @return The proportion of values in data that are less than or equal to x,
+       *         returned as the same type as the container elements.
+       *         Returns ValueType(0) if data is empty.
+       *
+       * @note Time complexity: O(n) where n is the size of the data container.
+       * @note This implementation does not require the data to be sorted.
+       * @note Works with any numeric type that supports comparison, addition, and
+       *       division by size_t, including double, float, int, and custom types
+       *       like dec::decimal<N>.
+       *
+       * @example
+       * // Basic usage with doubles
+       * std::vector<double> samples = {1.5, 2.3, 1.8, 3.1, 2.0};
+       * double F_2 = compute_empirical_cdf(samples, 2.0);  // Returns 0.6 (3 out of 5)
+       *
+       * @example
+       * // Bootstrap bias correction (computing z0)
+       * std::vector<double> bootstrap_stats = {...};
+       * double theta_hat = 10.5;
+       * double prop = compute_empirical_cdf(bootstrap_stats, theta_hat);
+       * double z0 = compute_normal_quantile(prop);
+       *
+       * @example
+       * // Works with integers
+       * std::vector<int> int_data = {1, 5, 3, 8, 2, 5};
+       * int F_5 = compute_empirical_cdf(int_data, 5);  // Returns 0 (integer division: 4/6)
+       *
+       * @example
+       * // Works with floats
+       * std::vector<float> float_data = {1.0f, 2.0f, 3.0f};
+       * float F = compute_empirical_cdf(float_data, 2.5f);  // Returns 0.666...f (2 out of 3)
+       *
+       * @example
+       * // Works with decimal types
+       * using dec::decimal;
+       * std::vector<decimal<2>> prices = {decimal<2>(100), decimal<2>(150), decimal<2>(200)};
+       * decimal<2> F = compute_empirical_cdf(prices, decimal<2>(150)); // Returns 0.66 (2 out of 3)
+       *
+       * @see compute_normal_quantile for converting ECDF values to z-scores
+       * @see https://en.wikipedia.org/wiki/Empirical_distribution_function
+       */
+      template <typename Container, typename QueryType>
+      inline auto compute_empirical_cdf(const Container& data, const QueryType& x)
+        -> typename Container::value_type
+      {
+        using ValueType = typename Container::value_type;
+        
+        if (data.empty())
+        {
+          return ValueType(0);
+        }
+
+        std::size_t count = 0;
+        for (const auto& value : data)
+        {
+          if (value <= x)
+          {
+            ++count;
+          }
+        }
+
+        // Create numerator and denominator as ValueType to maintain precision
+        ValueType numerator(static_cast<int>(count));
+        ValueType denominator(static_cast<int>(data.size()));
+        
+        return numerator / denominator;
+      }
     } // namespace detail
   } // namespace analysis
 } // namespace palvalidator

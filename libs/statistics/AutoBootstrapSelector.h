@@ -11,6 +11,7 @@
 #include <optional>
 #include "number.h"
 #include "StatUtils.h"
+#include "NormalQuantile.h"
 #include "NormalDistribution.h"
 #include "AutoBootstrapConfiguration.h"
 
@@ -21,7 +22,11 @@ namespace palvalidator
   namespace analysis
   {
     /**
-     * @brief Encapsulates the result of the automatic confidence interval selection process.
+     * @brief Encapsulates the complete result of the automatic confidence interval selection process.
+     *
+     * This class acts as the container for the "winner" of the bootstrap tournament, 
+     * the full list of "contestants" (Candidates), and detailed diagnostics explaining 
+     * the selection decision (SelectionDiagnostics).
      */
     template <class Decimal>
     class AutoCIResult
@@ -37,10 +42,42 @@ namespace palvalidator
           BCa
         };
 
+      /**
+       * @brief Represents the performance and scoring metrics for a single bootstrap method.
+       *
+       * A Candidate stores the calculated confidence interval bounds, the raw bootstrap 
+       * statistics (SE, skewness), and the calculated penalty scores (length, stability, ordering)
+       * used during the selection tournament.
+       */
       class Candidate
       {
       public:
-        // Refactored Constructor: Explicit stability_penalty argument
+        /**
+         * @brief Constructs a Candidate with all calculated metrics and penalties.
+         *
+         * @param method The identifier of the bootstrap method.
+         * @param mean The point estimate of the statistic.
+         * @param lower The lower bound of the confidence interval.
+         * @param upper The upper bound of the confidence interval.
+         * @param cl The confidence level (e.g., 0.95).
+         * @param n The original sample size.
+         * @param B_outer Number of outer bootstrap resamples.
+         * @param B_inner Number of inner bootstrap resamples (for Percentile-T).
+         * @param effective_B Count of valid (non-NaN/Inf) resamples.
+         * @param skipped_total Total number of invalid resamples skipped.
+         * @param se_boot Estimated standard error from the bootstrap distribution.
+         * @param skew_boot Estimated skewness of the bootstrap distribution.
+         * @param median_boot Median value of the bootstrap distribution.
+         * @param center_shift_in_se Deviation of the interval center from the point estimate (normalized by SE).
+         * @param normalized_length Ratio of actual interval length to the ideal length derived from quantiles.
+         * @param ordering_penalty Score component penalizing coverage errors (based on empirical CDF).
+         * @param length_penalty Score component penalizing intervals that are too wide or too narrow.
+         * @param stability_penalty Score component penalizing instability (e.g., extreme z0/accel in BCa).
+         * @param z0 Bias-correction parameter (BCa only).
+         * @param accel Acceleration parameter (BCa only).
+         * @param inner_failure_rate Rate of inner loop failures (Percentile-T only).
+         * @param score Final computed tournament score (lower is better).
+         */
         Candidate(MethodId    method,
                   Decimal     mean,
                   Decimal     lower,
@@ -114,7 +151,11 @@ namespace palvalidator
         double      getScore() const { return m_score; }
         double      getStabilityPenalty() const { return m_stability_penalty; }
 	double getInnerFailureRate() const { return m_inner_failure_rate; }
-	
+
+	/**
+         * @brief Returns a copy of this candidate with an updated total score.
+         * Used during the final scoring phase to attach the computed weighted score.
+         */
         Candidate withScore(double newScore) const
         {
           return Candidate(m_method, m_mean, m_lower, m_upper, m_cl,
@@ -153,12 +194,44 @@ namespace palvalidator
         double      m_score;
       };
 
+      /**
+       * @brief Provides detailed diagnostic information about the selection process.
+       *
+       * Stores reasoning for why the winning method was chosen and why others (specifically BCa)
+       * might have been rejected (e.g., due to instability or invalid parameters).
+       */
       class SelectionDiagnostics
       {
       public:
+	/**
+         * @brief Breakdown of the specific penalty components that contributed to a method's total score.
+         * Useful for debugging why a specific method lost the tournament.
+         */
         class ScoreBreakdown
         {
         public:
+	  /**
+	   * @brief Constructs a breakdown of raw and normalized penalty components.
+	   * * @param method The method being scored.
+	   * @param orderingRaw Raw ordering/coverage penalty.
+	   * @param lengthRaw Raw length efficiency penalty.
+	   * @param stabilityRaw Raw stability penalty.
+	   * @param centerSqRaw Squared center shift raw value.
+	   * @param skewSqRaw Squared skewness fidelity raw value.
+	   * @param domainRaw Penalty for violating domain constraints (e.g., negative values).
+	   * @param orderingNorm Normalized ordering penalty (0-1 scale relative to reference).
+	   * @param lengthNorm Normalized length penalty.
+	   * @param stabilityNorm Normalized stability penalty.
+	   * @param centerSqNorm Normalized center shift penalty.
+	   * @param skewSqNorm Normalized skewness penalty.
+	   * @param orderingContrib Weighted contribution of ordering to total score.
+	   * @param lengthContrib Weighted contribution of length to total score.
+	   * @param stabilityContrib Weighted contribution of stability to total score.
+	   * @param centerSqContrib Weighted contribution of center shift to total score.
+	   * @param skewSqContrib Weighted contribution of skewness to total score.
+	   * @param domainContrib Weighted contribution of domain violations.
+	   * @param totalScore The final summed score.
+	   */
           ScoreBreakdown(MethodId method,
                          double orderingRaw,
                          double lengthRaw,
@@ -347,14 +420,41 @@ namespace palvalidator
             m_score_breakdowns(std::move(scoreBreakdowns))
         {}
 
-        MethodId getChosenMethod() const { return m_chosen_method; }
-        const std::string& getChosenMethodName() const { return m_chosen_method_name; }
+	/**
+         * @brief Returns the ID of the winning method.
+         */
+        MethodId getChosenMethod() const
+	{
+	  return m_chosen_method;
+	}
+
+	/**
+         * @brief Returns a human-readable string name of the winning method.
+         */
+        const std::string& getChosenMethodName() const
+	{
+	  return m_chosen_method_name;
+	}
+	
         double getChosenScore() const { return m_chosen_score; }
         double getChosenStabilityPenalty() const { return m_chosen_stability_penalty; }
         double getChosenLengthPenalty() const { return m_chosen_length_penalty; }
+
+	/**
+         * @brief Returns true if a BCa candidate was generated during the process.
+         */
         bool hasBCaCandidate() const { return m_has_bca_candidate; }
         bool isBCaChosen() const { return m_bca_chosen; }
-        bool wasBCaRejectedForInstability() const { return m_bca_rejected_for_instability; }
+
+	/**
+         * @brief Returns true if BCa was rejected specifically due to numerical instability checks.
+         * Checks include |z0| > 0.6, |accel| > 0.25, or non-finite parameters.
+         */
+        bool wasBCaRejectedForInstability() const
+	{
+	  return m_bca_rejected_for_instability;
+	}
+
         bool wasBCaRejectedForLength() const { return m_bca_rejected_for_length; }
         bool wasBCaRejectedForDomain() const { return m_bca_rejected_for_domain; }
         bool wasBCaRejectedForNonFiniteParameters() const { return m_bca_rejected_for_non_finite; }
@@ -391,12 +491,46 @@ namespace palvalidator
       {
       }
 
-      MethodId                        getChosenMethod() const { return m_chosen_method; }
-      const Candidate&                getChosenCandidate() const { return m_chosen; }
-      double                          getBootstrapMedian() const { return m_chosen.getMedianBoot(); }
-      const std::vector<Candidate>&   getCandidates() const { return m_candidates; }
-      const SelectionDiagnostics&     getDiagnostics() const { return m_diagnostics; }
+      /**
+       * @brief Returns the method ID of the winner.
+       */
+      MethodId                        getChosenMethod() const
+      {
+	return m_chosen_method;
+      }
 
+      /**
+       * @brief Returns the full Candidate object of the winner.
+       */
+      const Candidate&                getChosenCandidate() const
+      {
+	return m_chosen;
+      }
+
+      /**
+       * @brief Returns the median of the bootstrap distribution from the winning method.
+       */
+      double                          getBootstrapMedian() const
+      {
+	return m_chosen.getMedianBoot();
+      }
+
+      /**
+       * @brief Returns the vector of all candidates considered in the tournament.
+       */
+      const std::vector<Candidate>&   getCandidates() const
+      {
+	return m_candidates;
+      }
+
+      const SelectionDiagnostics&     getDiagnostics() const
+      {
+	return m_diagnostics;
+      }
+
+      /**
+       * @brief Converts a MethodId enum to a string representation.
+       */
       static const char* methodIdToString(MethodId m)
       {
         switch (m)
@@ -906,9 +1040,27 @@ namespace palvalidator
       using Candidate = typename Result::Candidate;
       using SelectionDiagnostics = typename Result::SelectionDiagnostics;
 
+      /**
+       * @brief Configuration for the scoring algorithm weights and penalties.
+       *
+       * Defines how much importance is placed on different aspects of interval quality
+       * (Center Shift, Skewness Match, Length Efficiency, Stability) when calculating
+       * the total penalty score.
+       */
       class ScoringWeights
       {
       public:
+	/**
+         * @brief Constructs a weight profile.
+         *
+         * @param wCenterShift Weight for the center shift penalty (default 1.0).
+         * @param wSkew Weight for skewness fidelity (default 0.5).
+         * @param wLength Weight for length efficiency (default 0.25).
+         * @param wStability Weight for numerical stability (default 1.0).
+         * @param enforcePos If true, penalizes intervals with lower bounds < 0 (default false).
+         * @param bcaZ0Scale Scaling factor for BCa bias penalty (default 20.0).
+         * @param bcaAScale Scaling factor for BCa acceleration penalty (default 100.0).
+         */
       ScoringWeights(double wCenterShift = 1.0,
                      double wSkew        = 0.5,
                      double wLength      = 0.25,
@@ -944,34 +1096,6 @@ namespace palvalidator
         double m_bca_z0_scale;
         double m_bca_a_scale;
       };
-
-      template <class Vec>
-      static double empiricalCdf(const Vec& stats, double x)
-      {
-        std::size_t c = 0;
-        for (double v : stats)
-          {
-            if (v <= x) ++c;
-          }
-        if (stats.empty()) return 0.0;
-        return static_cast<double>(c) / static_cast<double>(stats.size());
-      }
-
-      static double quantileOnSorted(const std::vector<double>& sorted, double p)
-      {
-        if (sorted.empty()) return std::numeric_limits<double>::quiet_NaN();
-        if (p <= 0.0) return sorted.front();
-        if (p >= 1.0) return sorted.back();
-
-        const double idx = p * static_cast<double>(sorted.size() - 1);
-        const std::size_t i0 = static_cast<std::size_t>(std::floor(idx));
-        const std::size_t i1 = static_cast<std::size_t>(std::ceil(idx));
-        const double w = idx - static_cast<double>(i0);
-
-        const double v0 = sorted[i0];
-        const double v1 = sorted[i1];
-        return v0 * (1.0 - w) + v1 * w;
-      }
 
       /**
        * @brief Computes length penalty for a bootstrap interval.
@@ -1013,8 +1137,8 @@ namespace palvalidator
 	const double alphaL = 0.5 * alpha;
 	const double alphaU = 1.0 - 0.5 * alpha;
   
-	const double qL = quantileOnSorted(sorted, alphaL);
-	const double qU = quantileOnSorted(sorted, alphaU);
+	const double qL = mkc_timeseries::StatUtils<double>::quantileType7Sorted(sorted, alphaL);
+	const double qU = mkc_timeseries::StatUtils<double>::quantileType7Sorted(sorted, alphaU);
 	const double ideal_len_boot = qU - qL;
   
 	if (ideal_len_boot <= 0.0) {
@@ -1045,6 +1169,19 @@ namespace palvalidator
 	}
       }
 
+      /**
+       * @brief Creates a Candidate summary for "simple" percentile-like methods.
+       *
+       * Handles Normal, Basic, Percentile, and MOutOfN methods. It computes standard
+       * metrics (ordering penalty, length penalty) but assumes no complex stability
+       * parameters (like z0 or accel) are needed.
+       *
+       * @param method The method ID (e.g., MethodId::Percentile).
+       * @param engine The bootstrap engine instance used to generate results.
+       * @param res The result structure from the engine.
+       * @return A populated Candidate object.
+       * @throws std::logic_error If diagnostics are missing or bootstrap stats are insufficient.
+       */
       template <class BootstrapEngine>
       static Candidate summarizePercentileLike(
 					       MethodId                                method,
@@ -1092,8 +1229,10 @@ namespace palvalidator
 	// ====================================================================
 	// ORDERING PENALTY (coverage accuracy)
 	// ====================================================================
-	const double F_lo = empiricalCdf(stats, lo);
-	const double F_hi = empiricalCdf(stats, hi);
+	using palvalidator::analysis::detail::compute_empirical_cdf;
+	
+	const double F_lo = compute_empirical_cdf(stats, lo);
+	const double F_hi = compute_empirical_cdf(stats, hi);
 	const double width_cdf = F_hi - F_lo;
 	const double coverage_target = res.cl;
 
@@ -1106,7 +1245,7 @@ namespace palvalidator
 	  AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
 	  AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
 
-	const double F_mu       = empiricalCdf(stats, mu);
+	const double F_mu       = compute_empirical_cdf(stats, mu);
 	const double center_cdf = 0.5 * (F_lo + F_hi);
 	const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
 
@@ -1228,7 +1367,199 @@ namespace palvalidator
 
 	return penalty;
       }
-      
+
+      /**
+       * @brief Computes stability penalty for BCa bootstrap intervals.
+       *
+       * The BCa (bias-corrected and accelerated) bootstrap method uses two correction
+       * parameters: z0 (bias correction) and a (acceleration). This function penalizes
+       * intervals where these parameters indicate instability or where the bootstrap
+       * distribution shows extreme skewness that challenges BCa assumptions.
+       *
+       * Three types of instability are penalized:
+       *
+       * 1. **Excessive Bias (z0)**: When |z0| exceeds a threshold, it indicates
+       *    significant bias in the bootstrap distribution. The penalty is quadratic
+       *    in the excess: penalty ∝ (|z0| - threshold)²
+       *
+       * 2. **Excessive Acceleration (a)**: When |a| exceeds a threshold (which adapts
+       *    based on skewness), it indicates the standard error is changing too rapidly.
+       *    The threshold becomes stricter (0.08 vs 0.10) when skewness exceeds 3.0.
+       *
+       * 3. **Extreme Skewness**: When the bootstrap distribution's skewness exceeds
+       *    a threshold, BCa's normal approximation becomes questionable. This is
+       *    particularly important because BCa assumes mild asymmetry.
+       *
+       * Penalty scaling adapts to skewness:
+       *   - For |skew| > 2.0: All penalty scales are multiplied by 1.5
+       *   - For |skew| > 3.0: Acceleration threshold tightens from 0.10 to 0.08
+       *
+       * @param z0 Bias-correction parameter from BCa (typically in range [-1, 1])
+       * @param accel Acceleration parameter from BCa (typically in range [-0.5, 0.5])
+       * @param skew_boot Skewness of the bootstrap distribution
+       * @param weights ScoringWeights containing base penalty scales (getBcaZ0Scale, getBcaAScale)
+       * @param os Optional output stream for debug logging (logs when skew > 2.0 or penalty > 0)
+       *
+       * @return Stability penalty >= 0. Returns infinity if z0 or accel are non-finite.
+       *
+       * @note The penalty is always non-negative and increases quadratically with
+       *       parameter excess, making it sensitive to outliers.
+       *
+       * @see AutoBootstrapConfiguration for threshold constants:
+       *      - kBcaZ0SoftThreshold
+       *      - kBcaASoftThreshold
+       *      - kBcaSkewThreshold
+       *      - kBcaSkewPenaltyScale
+       */
+      static double computeBCaStabilityPenalty(double z0,
+					       double accel,
+					       double skew_boot,
+					       const ScoringWeights& weights = ScoringWeights(),
+					       std::ostream* os = nullptr)
+      {
+          // ====================================================================
+          // 0. NON-FINITE CHECK
+          // ====================================================================
+          // Non-finite parameters indicate catastrophic failure in BCa computation.
+          // This should disqualify the candidate immediately.
+          if (!std::isfinite(z0) || !std::isfinite(accel)) {
+              if (os) {
+                  (*os) << "[BCa] Non-finite parameters detected: "
+                        << "z0=" << z0 << " accel=" << accel << "\n";
+              }
+              return std::numeric_limits<double>::infinity();
+          }
+
+          double stability_penalty = 0.0;
+
+          // ====================================================================
+          // 1. BIAS (z0) PENALTY
+          // ====================================================================
+          // The z0 parameter corrects for bias in the bootstrap distribution.
+          // Large |z0| indicates the bootstrap median is far from the original
+          // estimate, suggesting either:
+          //   - Poor convergence of the bootstrap
+          //   - Inappropriate statistic for the data
+          //   - Extreme outliers affecting the estimate
+          //
+          // Penalty is quadratic in excess over threshold.
+          const double Z0_THRESHOLD = AutoBootstrapConfiguration::kBcaZ0SoftThreshold;
+          
+          // Adaptive scaling: high skewness makes bias harder to correct reliably
+          const double skew_multiplier = (std::abs(skew_boot) > 2.0) ? 1.5 : 1.0;
+          const double Z0_SCALE = weights.getBcaZ0Scale() * skew_multiplier;
+
+          const double z0_abs = std::abs(z0);
+          if (z0_abs > Z0_THRESHOLD) {
+              const double diff = z0_abs - Z0_THRESHOLD;
+              const double z0_penalty = (diff * diff) * Z0_SCALE;
+              stability_penalty += z0_penalty;
+
+              if (os && z0_penalty > 0.01) {
+                  (*os) << "[BCa] z0 penalty: |z0|=" << z0_abs
+                        << " threshold=" << Z0_THRESHOLD
+                        << " penalty=" << z0_penalty << "\n";
+              }
+          }
+
+          // ====================================================================
+          // 2. ACCELERATION (a) PENALTY
+          // ====================================================================
+          // The acceleration parameter 'a' measures the rate of change of SE.
+          // Large |a| indicates the standard error is highly variable across
+          // different bootstrap samples, suggesting:
+          //   - Unstable estimation
+          //   - Small sample size
+          //   - Heavy-tailed distribution
+          //
+          // The threshold adapts: stricter when skewness is extreme.
+          const double base_accel_threshold = AutoBootstrapConfiguration::kBcaASoftThreshold;  // 0.10
+          
+          // Stricter threshold (0.08) when distribution is highly skewed
+          // because BCa's acceleration correction becomes less reliable
+          const double ACCEL_THRESHOLD = (std::abs(skew_boot) > 3.0) 
+              ? 0.08   // Stricter for extreme skewness
+              : base_accel_threshold;
+
+          const double ACCEL_SCALE = weights.getBcaAScale() * skew_multiplier;
+
+          const double accel_abs = std::abs(accel);
+          if (accel_abs > ACCEL_THRESHOLD) {
+              const double diff = accel_abs - ACCEL_THRESHOLD;
+              const double accel_penalty = (diff * diff) * ACCEL_SCALE;
+              stability_penalty += accel_penalty;
+
+              if (os && accel_penalty > 0.01) {
+                  (*os) << "[BCa] acceleration penalty: |a|=" << accel_abs
+                        << " threshold=" << ACCEL_THRESHOLD
+                        << " penalty=" << accel_penalty << "\n";
+              }
+          }
+
+          // ====================================================================
+          // 3. SKEWNESS PENALTY
+          // ====================================================================
+          // BCa assumes the bootstrap distribution is approximately normal or
+          // mildly skewed. Extreme skewness (|skew| > threshold) indicates:
+          //   - BCa's normal approximation breaks down
+          //   - Percentile or percentile-t might be more appropriate
+          //   - The statistic may not be suitable for BCa
+          //
+          // This penalty directly guards against using BCa when its mathematical
+          // assumptions are violated.
+          const double SKEW_THRESHOLD = AutoBootstrapConfiguration::kBcaSkewThreshold;
+          const double SKEW_PENALTY_SCALE = AutoBootstrapConfiguration::kBcaSkewPenaltyScale;
+
+          if (std::abs(skew_boot) > SKEW_THRESHOLD) {
+              const double skew_excess = std::abs(skew_boot) - SKEW_THRESHOLD;
+              const double skew_penalty = skew_excess * skew_excess * SKEW_PENALTY_SCALE;
+              stability_penalty += skew_penalty;
+
+              // Log significant skew penalties
+              if (os && (skew_penalty > 0.1)) {
+                  (*os) << "[BCa] Skew penalty applied: skew_boot=" << skew_boot
+                        << " threshold=" << SKEW_THRESHOLD
+                        << " excess=" << skew_excess
+                        << " penalty=" << skew_penalty 
+                        << " total_stability=" << stability_penalty << "\n";
+              }
+          }
+
+          // ====================================================================
+          // 4. DEBUG LOGGING
+          // ====================================================================
+          // Log detailed diagnostics when skewness is elevated, which helps
+          // understand why BCa might be rejected or heavily penalized.
+          if (os && (std::abs(skew_boot) > 2.0)) {
+              (*os) << "[BCa DEBUG] High skew detected:\n"
+                    << "  skew_boot=" << skew_boot << "\n"
+                    << "  skew_multiplier=" << skew_multiplier << "\n"
+                    << "  Z0_THRESHOLD=" << Z0_THRESHOLD << "\n"
+                    << "  ACCEL_THRESHOLD=" << ACCEL_THRESHOLD << "\n"
+                    << "  Z0_SCALE=" << Z0_SCALE << "\n"
+                    << "  ACCEL_SCALE=" << ACCEL_SCALE << "\n"
+                    << "  z0=" << z0 << " (|z0|=" << z0_abs << ")\n"
+                    << "  accel=" << accel << " (|a|=" << accel_abs << ")\n";
+          }
+
+          if (os && (stability_penalty > 0.0)) {
+              (*os) << "[BCa] Total stability penalty: " << stability_penalty << "\n";
+          }
+
+          return stability_penalty;
+      }
+
+      /**
+       * @brief Computes stability penalty for Percentile-T based on resample quality.
+       *
+       * Evaluates the reliability of the double-bootstrap procedure by checking:
+       * - Outer resample failure rate (must be <= 10%).
+       * - Inner SE estimation failure rate (must be <= 5%).
+       * - Effective sample size (must be >= 70% of total outer samples).
+       *
+       * @param res The result structure from the Percentile-T engine.
+       * @return A penalty score (0.0 if stable, increasing values for instability).
+       */
       template <class PTBootstrap>
       static Candidate summarizePercentileT(
 					    const PTBootstrap&                  engine,
@@ -1353,9 +1684,19 @@ namespace palvalidator
 			 );
       }
 
-      // ------------------------------------------------------------------
-      // BCa engine summary (Enhanced with strict stability checks)
-      // ------------------------------------------------------------------
+      /**
+       * @brief Creates a Candidate summary specifically for the BCa method.
+       *
+       * Calculates BCa-specific stability penalties based on the bias-correction (z0)
+       * and acceleration (a) parameters. Applies soft penalties for parameters exceeding
+       * theoretical safety thresholds (e.g., |z0| > 0.3) to prevent selection when the
+       * Edgeworth expansion approximation is likely unstable.
+       *
+       * @param bca The BCa engine instance.
+       * @param weights The scoring weights configuration (for scaling penalties).
+       * @param os Optional output stream for debug logging.
+       * @return A populated Candidate object for BCa.
+       */
       template <class BCaEngine>
       static Candidate summarizeBCa(const BCaEngine& bca,
 				    const ScoringWeights& weights = ScoringWeights(),
@@ -1373,19 +1714,17 @@ namespace palvalidator
 	const double  accel   = num::to_double(accelD);
 
 	const auto& statsD = bca.getBootstrapStatistics();
-	if (statsD.size() < 2)
-	  {
-	    throw std::logic_error(
-				   "AutoBootstrapSelector: need at least 2 bootstrap stats for BCa engine.");
-	  }
+	if (statsD.size() < 2) {
+	  throw std::logic_error(
+				 "AutoBootstrapSelector: need at least 2 bootstrap stats for BCa engine.");
+	}
 
 	// Convert to doubles for diagnostics/selection metrics
 	std::vector<double> stats;
 	stats.reserve(statsD.size());
-	for (const auto& d : statsD)
-	  {
-	    stats.push_back(num::to_double(d));
-	  }
+	for (const auto& d : statsD) {
+	  stats.push_back(num::to_double(d));
+	}
 
 	const std::size_t m = stats.size();
 
@@ -1410,7 +1749,6 @@ namespace palvalidator
 	const double se_boot = mkc_timeseries::StatUtils<double>::computeStdDev(stats);
 
 	// Guard against degenerate distribution in skewness computation
-	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
 	const double skew_boot = (se_boot > 0.0)
 	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
 	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
@@ -1448,90 +1786,18 @@ namespace palvalidator
 							   median_boot
 							   );
 
+	const double stability_penalty = computeBCaStabilityPenalty(
+								    z0,
+								    accel,
+								    skew_boot,
+								    weights,
+								    os
+								    );
+
 	// ====================================================================
-	// 2. STABILITY PENALTY (Your existing logic - UNCHANGED)
+	// 3. BUILD CANDIDATE
 	// ====================================================================
-	double stability_penalty = 0.0;
-
-	// A. Bias (z0) Check
-	const double Z0_THRESHOLD = AutoBootstrapConfiguration::kBcaZ0SoftThreshold;
-
-	// Adaptive acceleration threshold based on distribution skewness.
-	const double base_accel_threshold = AutoBootstrapConfiguration::kBcaASoftThreshold;  // 0.10
-	const double ACCEL_THRESHOLD = (std::abs(skew_boot) > 3.0) 
-	  ? 0.08   // Stricter when skew > 3.0
-	  : base_accel_threshold;
-
-	// Allow penalty scales to be overridden via ScoringWeights (and adapt by skewness)
-	const double base_z0_scale = weights.getBcaZ0Scale();
-	const double base_a_scale  = weights.getBcaAScale();
-
-	const double skew_multiplier = (std::abs(skew_boot) > 2.0) ? 1.5 : 1.0;
-	const double Z0_SCALE    = base_z0_scale * skew_multiplier;
-	const double ACCEL_SCALE = base_a_scale  * skew_multiplier;
-
-	if (std::abs(skew_boot) > 2.0 || std::abs(skew_boot) > 3.0)
-	  {
-	    if (os)
-	      {
-		(*os) << "[BCa DEBUG] High skew detected:\n"
-		      << "  skew_boot=" << skew_boot << "\n"
-		      << "  skew_multiplier=" << skew_multiplier << "\n"
-		      << "  ACCEL_THRESHOLD=" << ACCEL_THRESHOLD << "\n"
-		      << "  Z0_SCALE=" << Z0_SCALE << "\n"
-		      << "  ACCEL_SCALE=" << ACCEL_SCALE << "\n"
-		      << "  z0=" << z0 << " accel=" << accel << "\n";
-	      }
-	  }
-
-	const double z0_abs = std::abs(z0);
-	if (z0_abs > Z0_THRESHOLD)
-	  {
-	    const double diff = z0_abs - Z0_THRESHOLD;
-	    stability_penalty += (diff * diff) * Z0_SCALE;
-	  }
-
-	// B. Acceleration (a) Check
-	const double accel_abs = std::abs(accel);
-	if (accel_abs > ACCEL_THRESHOLD)
-	  {
-	    const double diff = accel_abs - ACCEL_THRESHOLD;
-	    stability_penalty += (diff * diff) * ACCEL_SCALE;
-	  }
-
-	// 3. Finite Check
-	if (!std::isfinite(z0) || !std::isfinite(accel))
-	  {
-	    stability_penalty = std::numeric_limits<double>::infinity();
-	  }
-
-	const double SKEW_THRESHOLD = AutoBootstrapConfiguration::kBcaSkewThreshold;        // Beyond this, BCa approximation strains
-	const double SKEW_PENALTY_SCALE = AutoBootstrapConfiguration::kBcaSkewPenaltyScale; // Aggressive scaling
-
-	// ============================================================
-	// NEW: Skewness penalty for BCa
-	// ============================================================
-	if (std::abs(skew_boot) > SKEW_THRESHOLD)
-	  {
-	    const double skew_excess = std::abs(skew_boot) - SKEW_THRESHOLD;
-	    const double skew_penalty = skew_excess * skew_excess * SKEW_PENALTY_SCALE;
-	    stability_penalty += skew_penalty;
-
-	    // Optional: Log when this triggers
-	    if (os && (skew_penalty > 0.1))
-	      {  // Only log significant penalties
-		(*os) << "[BCa] Skew penalty applied: skew_boot=" << skew_boot
-		      << " penalty=" << skew_penalty 
-		      << " total_stab=" << stability_penalty << "\n";
-	      }
-	  }
-
-	if (os && (stability_penalty > 0.0))
-	  {
-	    (*os) << "summarizeBCa: stability penalty is > 0 and has value " << stability_penalty << std::endl;
-	  }
-	
-	// BCa does not use ordering penalty, pass 0.0 for that slot.
+	// BCa does not use ordering penalty
 	const double ordering_penalty = 0.0;
 
 	return Candidate(
@@ -1542,23 +1808,29 @@ namespace palvalidator
 			 cl,
 			 n,
 			 B,
-			 0,
-			 m,
-			 (B > m) ? (B - m) : 0,
+			 0,           // B_inner (not used by BCa)
+			 m,           // effective_B
+			 (B > m) ? (B - m) : 0,  // skipped
 			 se_boot,
 			 skew_boot,
-			 median_boot,       // ← Now always populated by computeLengthPenalty
+			 median_boot,
 			 center_shift_in_se,
 			 normalized_length,
 			 ordering_penalty, 
 			 length_penalty,
-			 stability_penalty, // Explicitly passed
+			 stability_penalty,  // ← Now computed by dedicated method
 			 z0,
 			 accel,
-			 0.0
+			 0.0  // inner_failure_rate (not applicable to BCa)
 			 );
       }
-      
+
+      /**
+       * @brief Determines if Candidate 'a' strictly dominates Candidate 'b'.
+       * * A candidate dominates another if it has equal or better scores in all 
+       * primary categories (ordering, length) and is strictly better in at least one.
+       * * @note Used for internal pairwise comparisons.
+       */
       static bool dominates(const Candidate& a, const Candidate& b)
       {
         const bool better_or_equal_order  = a.getOrderingPenalty() <= b.getOrderingPenalty();
@@ -1570,6 +1842,11 @@ namespace palvalidator
         return better_or_equal_order && better_or_equal_length && strictly_better;
       }
 
+      /**
+       * @brief Returns the tie-breaking priority for a method (lower is better).
+       *
+       * Preference order: BCa (1) > PercentileT (2) > MOutOfN (3) > Percentile (4) > Basic (5) > Normal (6).
+       */
       static int methodPreference(MethodId m)
       {
         switch (m)
@@ -1584,6 +1861,21 @@ namespace palvalidator
         return 100; // should not happen
       }
 
+      /**
+       * @brief Executes the selection tournament to find the best bootstrap method.
+       *
+       * This is the core logic that:
+       * 1. Normalizes raw penalties for all candidates.
+       * 2. Computes the weighted total score for each candidate.
+       * 3. Applies hard rejection gates (e.g., BCa |z0| > 0.6).
+       * 4. Selects the winner with the lowest score.
+       * 5. Resolves ties using `methodPreference`.
+       *
+       * @param candidates A list of Candidate objects generated by the summarize methods.
+       * @param weights Configuration for scoring weights.
+       * @return An AutoCIResult containing the winner and full diagnostics.
+       * @throws std::runtime_error If no valid candidates remain after hard gating.
+       */
       static Result select(const std::vector<Candidate>& candidates,
 			   const ScoringWeights& weights = ScoringWeights())
       {

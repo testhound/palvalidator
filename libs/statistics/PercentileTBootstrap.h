@@ -45,6 +45,7 @@
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 #include "RngUtils.h"
+#include "StatUtils.h"
 
 namespace palvalidator
 {
@@ -332,44 +333,12 @@ namespace palvalidator
 				   "The data may be too pathological for Percentile-t bootstrap."
 				   );
 	  }
-	
-        // SE_hat = sd(θ*) across valid outer reps
-        double se_hat;
-	{
-	  double mean = 0.0, m2 = 0.0;
-	  std::size_t count = 0;
-	  for (double v : theta_eff) {
-	    ++count;
-	    const double delta = v - mean;
-	    mean += delta / static_cast<double>(count);
-	    m2 += delta * (v - mean);
-	  }
-	  const double var = (count > 1) ? (m2 / static_cast<double>(count)) : 0.0;
-	  se_hat = std::sqrt(std::max(0.0, var));
-	}
 
-        // Type-7 quantiles via nth_element
-        auto type7_quantile = [](std::vector<double> v, double p) -> double {
-          const std::size_t m = v.size();
-          if (m == 0) return std::numeric_limits<double>::quiet_NaN();
-          if (m == 1) return v[0];
-
-          const double h = (m - 1) * p;
-          const std::size_t k = static_cast<std::size_t>(std::floor(h));
-          const double frac = h - static_cast<double>(k);
-
-          std::nth_element(v.begin(), v.begin() + k, v.end());
-          const double vk = v[k];
-          if (frac == 0.0 || k + 1 == m) return vk;
-
-          std::nth_element(v.begin() + k + 1, v.begin() + k + 1, v.end());
-          const double vkp1 = v[k + 1];
-          return vk + frac * (vkp1 - vk);
-        };
+	const double se_hat = mkc_timeseries::StatUtils<double>::computeStdDev(theta_eff);
 
         const double alpha = 1.0 - m_CL;
-        const double t_lo  = type7_quantile(t_eff, alpha / 2.0);
-        const double t_hi  = type7_quantile(t_eff, 1.0 - alpha / 2.0);
+        const double t_lo  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, alpha / 2.0);
+        const double t_hi  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, 1.0 - alpha / 2.0);
 
         const double lower_d = theta_hat_d - t_hi * se_hat;
         const double upper_d = theta_hat_d - t_lo * se_hat;

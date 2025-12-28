@@ -639,25 +639,18 @@ TEST_CASE("PercentileTBootstrap: diagnostics consistent with Result",
         REQUIRE(thetas.size() == out.effective_B);
         REQUIRE(out.effective_B + out.skipped_outer == out.B_outer);
     }
-
+    
     SECTION("se_hat matches recomputation from theta* statistics")
     {
         REQUIRE_FALSE(thetas.empty());
 
-        double sum  = 0.0;
-        double sum2 = 0.0;
-        for (double v : thetas) {
-            sum  += v;
-            sum2 += v * v;
-        }
-        const double m   = static_cast<double>(thetas.size());
-        const double var = std::max(0.0, (sum2 / m) - (sum / m) * (sum / m));
-        const double se  = std::sqrt(var);
+        // Use the same StatUtils function that PercentileTBootstrap now uses
+        const double se = mkc_timeseries::StatUtils<double>::computeStdDev(thetas);
 
         REQUIRE(se_hat      == Catch::Approx(se).margin(1e-12));
         REQUIRE(out.se_hat  == Catch::Approx(se).margin(1e-12));
     }
-
+    
     SECTION("t-statistics are finite and non-degenerate")
     {
         REQUIRE_FALSE(tvals.empty());

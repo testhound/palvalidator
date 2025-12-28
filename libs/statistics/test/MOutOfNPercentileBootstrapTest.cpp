@@ -15,7 +15,6 @@
 #include "BiasCorrectedBootstrap.h"
 #include "RngUtils.h"
 
-using palvalidator::analysis::quantile_type7_sorted;
 using palvalidator::analysis::MOutOfNPercentileBootstrap;
 using palvalidator::resampling::StationaryMaskValueResampler;
 using mkc_timeseries::rng_utils::make_seed_seq;
@@ -55,54 +54,6 @@ static inline double annualize_expect(double r_per_period, long double K)
     return static_cast<double>(a);
 }
 
-// -----------------------------
-// quantile_type7_sorted tests
-// -----------------------------
-TEST_CASE("quantile_type7_sorted: basic properties and edges", "[Quantile][Type7]")
-{
-    using D = DecimalType;
-
-    SECTION("Throws on empty input")
-    {
-        std::vector<D> empty;
-        REQUIRE_THROWS_AS(quantile_type7_sorted(empty, 0.5), std::invalid_argument);
-    }
-
-    SECTION("p <= 0 returns front; p >= 1 returns back")
-    {
-        std::vector<D> v{ D(1), D(3), D(5), D(7) };
-        REQUIRE(num::to_double(quantile_type7_sorted(v, -0.1)) == Catch::Approx(1.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.0))  == Catch::Approx(1.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 1.0))  == Catch::Approx(7.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 1.1))  == Catch::Approx(7.0));
-    }
-
-    SECTION("Matches integer order stats at exact plotting positions")
-    {
-        // For type-7: h = (n-1)p + 1; when h is integer, we return x[h]
-        std::vector<D> v{ D(10), D(20), D(30), D(40), D(50) }; // n=5, 0-based indices 0..4
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.0)) == Catch::Approx(10.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.5)) == Catch::Approx(30.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 1.0)) == Catch::Approx(50.0));
-    }
-
-    SECTION("Linear interpolation between adjacent points")
-    {
-        // v = [0, 10, 20, 30], n=4
-        // p=0.25: h=(3)*0.25+1=1.75 -> i=1, frac=0.75 → 7.5
-        std::vector<D> v{ D(0), D(10), D(20), D(30) };
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.25)) == Catch::Approx(7.5));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.75)) == Catch::Approx(22.5));
-    }
-
-    SECTION("Monotonic in p")
-    {
-        std::vector<D> v{ D(1), D(2), D(3), D(4), D(5), D(6) };
-        const double q1 = num::to_double(quantile_type7_sorted(v, 0.2));
-        const double q2 = num::to_double(quantile_type7_sorted(v, 0.8));
-        REQUIRE(q1 <= q2);
-    }
-}
 
 // -----------------------------------------
 // MOutOfNPercentileBootstrap basic behavior

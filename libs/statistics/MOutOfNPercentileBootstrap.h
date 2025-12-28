@@ -9,6 +9,7 @@
 #include <mutex>
 #include "randutils.hpp"
 #include "RngUtils.h"
+#include "StatUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 #include "AdaptiveRatioInternal.h"
@@ -18,66 +19,6 @@ namespace palvalidator
 {
   namespace analysis
   {
-    /**
-     * @brief Hyndman–Fan type-7 empirical quantile on a pre-sorted vector.
-     *
-     * Implements the default quantile definition used by many statistical packages
-     * (R's type-7): for a sorted sample \f$x_{(1)} \le \dots \le x_{(n)}\f$ and
-     * probability \f$p \in [0,1]\f$,
-     * \f[
-     *   h = (n-1)p + 1,\quad i = \lfloor h \rfloor,\quad \gamma = h - i,
-     * \f]
-     * and the quantile is
-     * \f[
-     *   Q_7(p) =
-     *   \begin{cases}
-     *     x_{(1)} & p \le 0,\\
-     *     x_{(n)} & p \ge 1,\\
-     *     (1-\gamma)\,x_{(i)} + \gamma\,x_{(i+1)} & \text{otherwise.}
-     *   \end{cases}
-     * \f]
-     *
-     * @tparam Decimal
-     *   Numeric value type (e.g., dec::decimal<8>, double). Must support
-     *   +, -, * by a double/Decimal and copying.
-     *
-     * @param sorted
-     *   Input data sorted in ascending order. Must not be empty when @p p is in (0,1).
-     * @param p
-     *   Quantile in \f$[0,1]\f$. Values \f$\le 0\f$ clamp to the first element;
-     *   values \f$\ge 1\f$ clamp to the last.
-     *
-     * @return Decimal
-     *   The type-7 quantile at probability @p p.
-     *
-     * @throws std::invalid_argument
-     *   If @p sorted is empty.
-     *
-     * @complexity
-     *   \f$O(1)\f$ time and space (assuming random access).
-     */
-    template <class Decimal>
-    inline Decimal quantile_type7_sorted(const std::vector<Decimal>& sorted, double p)
-    {
-      if (sorted.empty())
-	{
-	  throw std::invalid_argument("quantile_type7_sorted: empty input");
-	}
-      if (p <= 0.0) return sorted.front();
-      if (p >= 1.0) return sorted.back();
-
-      const double n = static_cast<double>(sorted.size());
-      const double h = (n - 1.0) * p + 1.0;               // 1-based
-      const std::size_t i = static_cast<std::size_t>(std::floor(h));  // 1..n-1 for p in (0,1)
-      const double frac = h - static_cast<double>(i);     // in [0,1)
-
-      // With p in (0,1), h is in (1, n), so i is in {1, ..., n-1}; no early return needed.
-      // Interpolate between x[i-1] and x[i] (0-based indices).
-      const Decimal x0 = sorted[i - 1];
-      const Decimal x1 = sorted[i];
-      return x0 + (x1 - x0) * Decimal(frac);
-    }
-
     /**
      * @brief m-out-of-n percentile bootstrap (stationary-block resampling aware).
      *
@@ -579,8 +520,8 @@ template <class Decimal,
           thetas_sorted.push_back(Decimal(v));
         }
 
-        const Decimal lb = quantile_type7_sorted(thetas_sorted, pl);
-        const Decimal ub = quantile_type7_sorted(thetas_sorted, pu);
+        const Decimal lb = mkc_timeseries::StatUtils<Decimal>::quantileType7Sorted(thetas_sorted, pl);
+        const Decimal ub = mkc_timeseries::StatUtils<Decimal>::quantileType7Sorted(thetas_sorted, pu);
 
         // Store diagnostics for the most recent run (with thread safety)
         {

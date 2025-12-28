@@ -13,6 +13,7 @@
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 #include "number.h"
+#include "StatUtils.h"
 
 namespace palvalidator
 {
@@ -208,38 +209,6 @@ namespace palvalidator
         }
       }
 
-      // Hyndman–Fan type-7 quantile using two nth_element passes (unsorted input).
-      static double quantile_type7_via_nth(const std::vector<double>& s, double p)
-      {
-        if (s.empty())
-          throw std::invalid_argument("quantile_type7_via_nth: empty input");
-        if (p <= 0.0)
-          return *std::min_element(s.begin(), s.end());
-        if (p >= 1.0)
-          return *std::max_element(s.begin(), s.end());
-
-        const double nd = static_cast<double>(s.size());
-        const double h  = (nd - 1.0) * p + 1.0;
-        std::size_t  i1 = static_cast<std::size_t>(std::floor(h));
-        if (i1 < 1)         i1 = 1;
-        if (i1 >= s.size()) i1 = s.size() - 1;
-        const double frac = h - static_cast<double>(i1);
-
-        std::vector<double> w0(s.begin(), s.end());
-        std::nth_element(w0.begin(),
-                         w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1),
-                         w0.end());
-        const double x0 = w0[i1 - 1];
-
-        std::vector<double> w1(s.begin(), s.end());
-        std::nth_element(w1.begin(),
-                         w1.begin() + static_cast<std::ptrdiff_t>(i1),
-                         w1.end());
-        const double x1 = w1[i1];
-
-        return x0 + (x1 - x0) * frac;
-      }
-
       template<class EngineMaker>
       Result run_core_(const std::vector<Decimal>& x,
                        Sampler                      sampler,
@@ -310,8 +279,8 @@ namespace palvalidator
         const double pl    = alpha / 2.0;
         const double pu    = 1.0 - alpha / 2.0;
 
-        const double q_lo = quantile_type7_via_nth(thetas_d, pl);
-        const double q_hi = quantile_type7_via_nth(thetas_d, pu);
+        const double q_lo = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pl);
+        const double q_hi = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pu);
 
         const double center = num::to_double(theta_hat);
         const double lb_d   = 2.0 * center - q_hi; // 2θ̂ - q_{1-α/2}
