@@ -7,11 +7,13 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <mutex>
 
 #include "randutils.hpp"
 #include "RngUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "StatUtils.h"
 
 namespace palvalidator
 {
@@ -32,6 +34,9 @@ namespace palvalidator
      *
      * Degenerate / non-finite replicates are skipped; if fewer than B/2 usable
      * replicates remain, an exception is thrown to avoid misleading intervals.
+     *
+     * Thread safety: This class is thread-safe for concurrent calls to run().
+     * All mutable state is protected by internal mutexes.
      *
      * @tparam Decimal
      *   Numeric value type (e.g., dec::decimal<8>).
@@ -110,6 +115,91 @@ namespace palvalidator
         }
       }
 
+      // Copy constructor
+      PercentileBootstrap(const PercentileBootstrap& other)
+        : m_B(other.m_B),
+          m_CL(other.m_CL),
+          m_resampler(other.m_resampler),
+          m_exec(std::make_shared<Executor>()),
+          m_chunkHint(0),
+          m_chunkHintMutex(),
+          m_diagBootstrapStats(),
+          m_diagMeanBoot(0.0),
+          m_diagVarBoot(0.0),
+          m_diagSeBoot(0.0),
+          m_diagValid(false),
+          m_diagMutex(),
+          m_rngMutex()
+      {
+      }
+
+      // Move constructor
+      PercentileBootstrap(PercentileBootstrap&& other) noexcept
+        : m_B(other.m_B),
+          m_CL(other.m_CL),
+          m_resampler(std::move(other.m_resampler)),
+          m_exec(std::move(other.m_exec)),
+          m_chunkHint(other.m_chunkHint),
+          m_chunkHintMutex(),
+          m_diagBootstrapStats(std::move(other.m_diagBootstrapStats)),
+          m_diagMeanBoot(other.m_diagMeanBoot),
+          m_diagVarBoot(other.m_diagVarBoot),
+          m_diagSeBoot(other.m_diagSeBoot),
+          m_diagValid(other.m_diagValid),
+          m_diagMutex(),
+          m_rngMutex()
+      {
+        // Reset moved-from object
+        other.m_diagValid = false;
+      }
+
+      // Copy assignment operator
+      PercentileBootstrap& operator=(const PercentileBootstrap& other)
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_resampler = other.m_resampler;
+          m_exec = std::make_shared<Executor>();
+          m_chunkHint = 0;
+          
+          // Clear diagnostic data
+          std::lock_guard<std::mutex> lock(m_diagMutex);
+          m_diagBootstrapStats.clear();
+          m_diagMeanBoot = 0.0;
+          m_diagVarBoot = 0.0;
+          m_diagSeBoot = 0.0;
+          m_diagValid = false;
+        }
+        return *this;
+      }
+
+      // Move assignment operator
+      PercentileBootstrap& operator=(PercentileBootstrap&& other) noexcept
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_resampler = std::move(other.m_resampler);
+          m_exec = std::move(other.m_exec);
+          m_chunkHint = other.m_chunkHint;
+          
+          // Transfer diagnostic data
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
+            m_diagMeanBoot = other.m_diagMeanBoot;
+            m_diagVarBoot = other.m_diagVarBoot;
+            m_diagSeBoot = other.m_diagSeBoot;
+            m_diagValid = other.m_diagValid;
+          }
+          
+          // Reset moved-from object
+          other.m_diagValid = false;
+        }
+        return *this;
+      }
+
       /**
        * @brief Run the percentile bootstrap using a caller-supplied RNG.
        *
@@ -118,6 +208,9 @@ namespace palvalidator
        *   2. Draw y_b of length n using the resampler (m = n),
        *   3. Compute θ*_b = sampler(y_b),
        *   4. Skip non-finite θ*_b.
+       *
+       * Thread safety: The supplied RNG is protected by an internal mutex.
+       * Multiple threads can safely call run() concurrently on the same instance.
        *
        * @param x
        *   Original sample (size n >= 3).
@@ -136,9 +229,14 @@ namespace palvalidator
                  Rng&                         rng) const
       {
         // Derive per-replicate engines from the supplied RNG.
-        auto make_engine = [&rng](std::size_t /*b*/) {
-          const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
-          auto           seq  = mkc_timeseries::rng_utils::make_seed_seq(seed);
+        // Protect RNG access with mutex to prevent data races.
+        auto make_engine = [&rng, this](std::size_t /*b*/) {
+          uint64_t seed;
+          {
+            std::lock_guard<std::mutex> lock(m_rngMutex);
+            seed = mkc_timeseries::rng_utils::get_random_value(rng);
+          }
+          auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
           return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
         };
 
@@ -151,6 +249,9 @@ namespace palvalidator
        * The provider is expected to offer `Rng make_engine(std::size_t b) const`,
        * returning a deterministic engine for each replicate index b. This allows
        * common random numbers across multiple strategies.
+       *
+       * Thread safety: Multiple threads can safely call run() concurrently on the
+       * same instance as long as the provider is thread-safe.
        *
        * @tparam Provider
        *   Type with `Rng make_engine(std::size_t) const`.
@@ -171,8 +272,10 @@ namespace palvalidator
       }
 
       /// Hint for chunk size in parallel_for_chunked.
+      /// Thread-safe: can be called concurrently with other methods.
       void setChunkSizeHint(uint32_t c) const
       {
+        std::lock_guard<std::mutex> lock(m_chunkHintMutex);
         m_chunkHint = c;
       }
 
@@ -186,11 +289,51 @@ namespace palvalidator
       // ------------------------------------------------------------------
 
       /**
+       * @brief Diagnostic data structure for atomic retrieval.
+       */
+      struct DiagnosticData
+      {
+        std::vector<double> bootstrapStats;
+        double meanBoot;
+        double varBoot;
+        double seBoot;
+        bool valid;
+      };
+
+      /**
        * @brief Returns true if this instance has diagnostics from a previous run().
+       *
+       * Thread-safe: can be called concurrently with other methods.
        */
       bool hasDiagnostics() const noexcept
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagValid;
+      }
+
+      /**
+       * @brief Atomically retrieve all diagnostic data in a single lock.
+       *
+       * This method ensures that all diagnostic values are from the same
+       * bootstrap run, preventing inconsistencies that could occur when
+       * calling individual getter methods separately under concurrent access.
+       *
+       * Thread-safe: can be called concurrently with other methods.
+       *
+       * @throws std::logic_error if run(...) has not been called yet.
+       */
+      DiagnosticData getAllDiagnostics() const
+      {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        ensureDiagnosticsAvailable();
+        
+        return DiagnosticData{
+          m_diagBootstrapStats,  // Copy the vector
+          m_diagMeanBoot,
+          m_diagVarBoot,
+          m_diagSeBoot,
+          m_diagValid
+        };
       }
 
       /**
@@ -199,10 +342,13 @@ namespace palvalidator
        * Values are stored after removal of non-finite replicates. The size of
        * this vector equals the effective_B of the last Result.
        *
+       * Thread-safe: can be called concurrently with other methods.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
-      const std::vector<double>& getBootstrapStatistics() const
+      std::vector<double> getBootstrapStatistics() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagBootstrapStats;
       }
@@ -210,10 +356,13 @@ namespace palvalidator
       /**
        * @brief Returns the bootstrap mean of θ* from the last run.
        *
+       * Thread-safe: can be called concurrently with other methods.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
       double getBootstrapMean() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagMeanBoot;
       }
@@ -221,10 +370,13 @@ namespace palvalidator
       /**
        * @brief Returns the bootstrap variance of θ* from the last run.
        *
+       * Thread-safe: can be called concurrently with other methods.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
       double getBootstrapVariance() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagVarBoot;
       }
@@ -232,10 +384,13 @@ namespace palvalidator
       /**
        * @brief Returns the bootstrap standard error (sqrt(variance)) from the last run.
        *
+       * Thread-safe: can be called concurrently with other methods.
+       *
        * @throws std::logic_error if run(...) has not been called yet.
        */
       double getBootstrapSe() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagSeBoot;
       }
@@ -243,6 +398,7 @@ namespace palvalidator
     private:
       void ensureDiagnosticsAvailable() const
       {
+        // Caller must hold m_diagMutex
         if (!m_diagValid) {
           throw std::logic_error(
             "PercentileBootstrap diagnostics are not available: run() has not been called on this instance.");
@@ -288,7 +444,11 @@ namespace palvalidator
       {
         const std::size_t n = x.size();
         if (n < 3) {
-          m_diagValid = false;
+          // Update diagnostics validity under lock
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_diagValid = false;
+          }
           throw std::invalid_argument("PercentileBootstrap: n must be >= 3");
         }
 
@@ -296,6 +456,13 @@ namespace palvalidator
 
         // Pre-allocate; NaN marks skipped/invalid replicates
         std::vector<double> thetas_d(m_B, std::numeric_limits<double>::quiet_NaN());
+
+        // Get chunk hint under lock
+        uint32_t chunkHint;
+        {
+          std::lock_guard<std::mutex> lock(m_chunkHintMutex);
+          chunkHint = m_chunkHint;
+        }
 
         // Parallel over B using the internally constructed Executor
         concurrency::parallel_for_chunked(
@@ -312,7 +479,7 @@ namespace palvalidator
               thetas_d[b] = v;
             }
           },
-          /*chunkSizeHint=*/m_chunkHint
+          /*chunkSizeHint=*/chunkHint
         );
 
         // Compact away NaNs and count skipped
@@ -326,7 +493,11 @@ namespace palvalidator
         }
 
         if (thetas_d.size() < m_B / 2) {
-          m_diagValid = false;
+          // Update diagnostics validity under lock
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            m_diagValid = false;
+          }
           throw std::runtime_error("PercentileBootstrap: too many degenerate replicates");
         }
 
@@ -355,15 +526,18 @@ namespace palvalidator
         const double pl    = alpha / 2.0;
         const double pu    = 1.0 - alpha / 2.0;
 
-        const double lb_d = quantile_type7_via_nth(thetas_d, pl);
-        const double ub_d = quantile_type7_via_nth(thetas_d, pu);
+	const double lb_d = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pl);
+        const double ub_d = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pu);
 
-        // Store diagnostics for the most recent run
-        m_diagBootstrapStats = thetas_d;
-        m_diagMeanBoot       = mean_boot;
-        m_diagVarBoot        = var_boot;
-        m_diagSeBoot         = se_boot;
-        m_diagValid          = true;
+        // Store diagnostics for the most recent run (protected by mutex)
+        {
+          std::lock_guard<std::mutex> lock(m_diagMutex);
+          m_diagBootstrapStats = thetas_d;
+          m_diagMeanBoot       = mean_boot;
+          m_diagVarBoot        = var_boot;
+          m_diagSeBoot         = se_boot;
+          m_diagValid          = true;
+        }
 
         return Result{
           /*mean        =*/ theta_hat,
@@ -384,6 +558,7 @@ namespace palvalidator
       Resampler                         m_resampler;
       mutable std::shared_ptr<Executor> m_exec;
       mutable uint32_t                  m_chunkHint;
+      mutable std::mutex                m_chunkHintMutex;
 
       // Diagnostics from most recent run(...)
       mutable std::vector<double> m_diagBootstrapStats;
@@ -391,6 +566,10 @@ namespace palvalidator
       mutable double              m_diagVarBoot;
       mutable double              m_diagSeBoot;
       mutable bool                m_diagValid;
+      mutable std::mutex          m_diagMutex;
+
+      // Mutex to protect RNG access in run() with caller-supplied RNG
+      mutable std::mutex          m_rngMutex;
     };
 
   } // namespace analysis

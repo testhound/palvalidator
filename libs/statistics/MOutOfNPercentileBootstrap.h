@@ -9,6 +9,7 @@
 #include <mutex>
 #include "randutils.hpp"
 #include "RngUtils.h"
+#include "StatUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 #include "AdaptiveRatioInternal.h"
@@ -18,66 +19,6 @@ namespace palvalidator
 {
   namespace analysis
   {
-    /**
-     * @brief Hyndman–Fan type-7 empirical quantile on a pre-sorted vector.
-     *
-     * Implements the default quantile definition used by many statistical packages
-     * (R's type-7): for a sorted sample \f$x_{(1)} \le \dots \le x_{(n)}\f$ and
-     * probability \f$p \in [0,1]\f$,
-     * \f[
-     *   h = (n-1)p + 1,\quad i = \lfloor h \rfloor,\quad \gamma = h - i,
-     * \f]
-     * and the quantile is
-     * \f[
-     *   Q_7(p) =
-     *   \begin{cases}
-     *     x_{(1)} & p \le 0,\\
-     *     x_{(n)} & p \ge 1,\\
-     *     (1-\gamma)\,x_{(i)} + \gamma\,x_{(i+1)} & \text{otherwise.}
-     *   \end{cases}
-     * \f]
-     *
-     * @tparam Decimal
-     *   Numeric value type (e.g., dec::decimal<8>, double). Must support
-     *   +, -, * by a double/Decimal and copying.
-     *
-     * @param sorted
-     *   Input data sorted in ascending order. Must not be empty when @p p is in (0,1).
-     * @param p
-     *   Quantile in \f$[0,1]\f$. Values \f$\le 0\f$ clamp to the first element;
-     *   values \f$\ge 1\f$ clamp to the last.
-     *
-     * @return Decimal
-     *   The type-7 quantile at probability @p p.
-     *
-     * @throws std::invalid_argument
-     *   If @p sorted is empty.
-     *
-     * @complexity
-     *   \f$O(1)\f$ time and space (assuming random access).
-     */
-    template <class Decimal>
-    inline Decimal quantile_type7_sorted(const std::vector<Decimal>& sorted, double p)
-    {
-      if (sorted.empty())
-	{
-	  throw std::invalid_argument("quantile_type7_sorted: empty input");
-	}
-      if (p <= 0.0) return sorted.front();
-      if (p >= 1.0) return sorted.back();
-
-      const double n = static_cast<double>(sorted.size());
-      const double h = (n - 1.0) * p + 1.0;               // 1-based
-      const std::size_t i = static_cast<std::size_t>(std::floor(h));  // 1..n-1 for p in (0,1)
-      const double frac = h - static_cast<double>(i);     // in [0,1)
-
-      // With p in (0,1), h is in (1, n), so i is in {1, ..., n-1}; no early return needed.
-      // Interpolate between x[i-1] and x[i] (0-based indices).
-      const Decimal x0 = sorted[i - 1];
-      const Decimal x1 = sorted[i];
-      return x0 + (x1 - x0) * Decimal(frac);
-    }
-
     /**
      * @brief m-out-of-n percentile bootstrap (stationary-block resampling aware).
      *
@@ -168,6 +109,100 @@ template <class Decimal,
         }
       }
 
+      // Copy constructor
+      MOutOfNPercentileBootstrap(const MOutOfNPercentileBootstrap& other)
+        : m_B(other.m_B)
+        , m_CL(other.m_CL)
+        , m_ratio(other.m_ratio)
+        , m_resampler(other.m_resampler)
+        , m_exec(std::make_shared<Executor>())
+        , m_chunkHint(0)
+        , m_ratioPolicy(other.m_ratioPolicy)
+        , m_diagMutex(std::make_unique<std::mutex>())
+        , m_diagBootstrapStats()
+        , m_diagMeanBoot(0.0)
+        , m_diagVarBoot(0.0)
+        , m_diagSeBoot(0.0)
+        , m_diagSkewBoot(0.0)
+        , m_diagValid(false)
+      {
+      }
+
+      // Move constructor
+      MOutOfNPercentileBootstrap(MOutOfNPercentileBootstrap&& other) noexcept
+        : m_B(other.m_B)
+        , m_CL(other.m_CL)
+        , m_ratio(other.m_ratio)
+        , m_resampler(std::move(other.m_resampler))
+        , m_exec(std::move(other.m_exec))
+        , m_chunkHint(other.m_chunkHint)
+        , m_ratioPolicy(std::move(other.m_ratioPolicy))
+        , m_diagMutex(std::move(other.m_diagMutex))
+        , m_diagBootstrapStats(std::move(other.m_diagBootstrapStats))
+        , m_diagMeanBoot(other.m_diagMeanBoot)
+        , m_diagVarBoot(other.m_diagVarBoot)
+        , m_diagSeBoot(other.m_diagSeBoot)
+        , m_diagSkewBoot(other.m_diagSkewBoot)
+        , m_diagValid(other.m_diagValid)
+      {
+        // Reset moved-from object
+        other.m_diagValid = false;
+      }
+
+      // Copy assignment operator
+      MOutOfNPercentileBootstrap& operator=(const MOutOfNPercentileBootstrap& other)
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_ratio = other.m_ratio;
+          m_resampler = other.m_resampler;
+          m_exec = std::make_shared<Executor>();
+          m_chunkHint = 0;
+          m_ratioPolicy = other.m_ratioPolicy;
+          m_diagMutex = std::make_unique<std::mutex>();
+
+          // Clear diagnostic data
+          if (m_diagMutex) {
+            std::lock_guard<std::mutex> lock(*m_diagMutex);
+            m_diagBootstrapStats.clear();
+            m_diagMeanBoot = 0.0;
+            m_diagVarBoot = 0.0;
+            m_diagSeBoot = 0.0;
+            m_diagSkewBoot = 0.0;
+            m_diagValid = false;
+          }
+        }
+        return *this;
+      }
+
+      // Move assignment operator
+      MOutOfNPercentileBootstrap& operator=(MOutOfNPercentileBootstrap&& other) noexcept
+      {
+        if (this != &other) {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_ratio = other.m_ratio;
+          m_resampler = std::move(other.m_resampler);
+          m_exec = std::move(other.m_exec);
+          m_chunkHint = other.m_chunkHint;
+          m_ratioPolicy = std::move(other.m_ratioPolicy);
+          m_diagMutex = std::move(other.m_diagMutex);
+
+          // Transfer diagnostic data
+          m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
+          m_diagMeanBoot = other.m_diagMeanBoot;
+          m_diagVarBoot = other.m_diagVarBoot;
+          m_diagSeBoot = other.m_diagSeBoot;
+          m_diagSkewBoot = other.m_diagSkewBoot;
+          m_diagValid = other.m_diagValid;
+
+          // Reset moved-from object
+          other.m_diagValid = false;
+        }
+        return *this;
+      }
+
       /// Fixed-ratio factory (thin wrapper over the existing constructor).
       static MOutOfNPercentileBootstrap
       createFixedRatio(std::size_t B,
@@ -230,10 +265,16 @@ template <class Decimal,
                  std::size_t                  m_sub_override = 0,
                  std::ostream*                diagnosticLog  = nullptr) const
       {
-        // Derive per-replicate engine from supplied RNG
-        auto make_engine = [&rng](std::size_t /*b*/) {
-          const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
-          auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
+        // IMPORTANT: run_core_ parallelizes the loop, so we must not touch the
+        // caller-provided RNG from inside the parallel region (std::* RNGs are not thread-safe).
+        // Precompute per-replicate seeds deterministically in the calling thread.
+        std::vector<uint64_t> per_replicate_seeds(m_B);
+        for (std::size_t b = 0; b < m_B; ++b) {
+          per_replicate_seeds[b] = mkc_timeseries::rng_utils::get_random_value(rng);
+        }
+
+        auto make_engine = [&per_replicate_seeds](std::size_t b) {
+          auto seq = mkc_timeseries::rng_utils::make_seed_seq(per_replicate_seeds[b]);
           return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
         };
 
@@ -579,8 +620,8 @@ template <class Decimal,
           thetas_sorted.push_back(Decimal(v));
         }
 
-        const Decimal lb = quantile_type7_sorted(thetas_sorted, pl);
-        const Decimal ub = quantile_type7_sorted(thetas_sorted, pu);
+        const Decimal lb = mkc_timeseries::StatUtils<Decimal>::quantileType7Sorted(thetas_sorted, pl);
+        const Decimal ub = mkc_timeseries::StatUtils<Decimal>::quantileType7Sorted(thetas_sorted, pu);
 
         // Store diagnostics for the most recent run (with thread safety)
         {

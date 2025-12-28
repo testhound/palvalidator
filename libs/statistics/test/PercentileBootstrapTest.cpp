@@ -346,3 +346,157 @@ TEST_CASE("PercentileBootstrap: diagnostics consistent with Result",
         REQUIRE(se_boot   == Catch::Approx(se).margin(1e-12));
     }
 }
+
+TEST_CASE("PercentileBootstrap: copy constructor", "[Bootstrap][Percentile][CopyConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 500;
+    const double      CL = 0.95;
+
+    PercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pb_original(B, CL, res);
+
+    SECTION("Copy constructor creates independent object")
+    {
+        auto pb_copy = pb_original;  // Copy constructor
+
+        // Basic properties should match
+        REQUIRE(pb_copy.B() == pb_original.B());
+        REQUIRE(pb_copy.CL() == pb_original.CL());
+
+        // Diagnostics should not be available on copy (fresh state)
+        REQUIRE_FALSE(pb_copy.hasDiagnostics());
+        REQUIRE_FALSE(pb_original.hasDiagnostics());
+
+        // Run on original
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        (void)pb_original.run(x, mean_sampler, rng);
+        
+        // Original should have diagnostics now, copy should not
+        REQUIRE(pb_original.hasDiagnostics());
+        REQUIRE_FALSE(pb_copy.hasDiagnostics());
+    }
+}
+
+TEST_CASE("PercentileBootstrap: move constructor", "[Bootstrap][Percentile][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 500;
+    const double      CL = 0.95;
+
+    SECTION("Move constructor transfers state correctly")
+    {
+        PercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            pb_original(B, CL, res);
+
+        // Run once to populate diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        (void)pb_original.run(x, mean_sampler, rng);
+        REQUIRE(pb_original.hasDiagnostics());
+        
+        // Move construct
+        auto pb_moved = std::move(pb_original);
+        
+        // Basic properties should be transferred
+        REQUIRE(pb_moved.B() == B);
+        REQUIRE(pb_moved.CL() == CL);
+        
+        // Diagnostics should be transferred, moved-from object should have validity reset
+        REQUIRE(pb_moved.hasDiagnostics());
+        // Note: We don't test pb_original state after move since it's in unspecified state
+    }
+}
+
+TEST_CASE("PercentileBootstrap: copy assignment operator", "[Bootstrap][Percentile][CopyAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 500;
+    const std::size_t B2 = 600;
+    const double      CL = 0.95;
+
+    PercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pb_source(B1, CL, res);
+    PercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pb_dest(B2, CL, res);
+
+    SECTION("Copy assignment replaces configuration")
+    {
+        REQUIRE(pb_dest.B() == B2);  // Initial state
+        
+        pb_dest = pb_source;  // Copy assignment
+        
+        REQUIRE(pb_dest.B() == B1);  // Should match source
+        REQUIRE(pb_dest.CL() == CL);
+        REQUIRE_FALSE(pb_dest.hasDiagnostics());  // Should be clear state
+    }
+}
+
+TEST_CASE("PercentileBootstrap: move assignment operator", "[Bootstrap][Percentile][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 500;
+    const std::size_t B2 = 600;
+    const double      CL = 0.95;
+
+    SECTION("Move assignment transfers state correctly")
+    {
+        PercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            pb_source(B1, CL, res);
+        PercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            pb_dest(B2, CL, res);
+
+        // Run on source to get diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
+        std::mt19937_64 rng(seed);
+        
+        (void)pb_source.run(x, mean_sampler, rng);
+        REQUIRE(pb_source.hasDiagnostics());
+        REQUIRE(pb_dest.B() == B2);  // Initial dest state
+        
+        // Move assign
+        pb_dest = std::move(pb_source);
+        
+        REQUIRE(pb_dest.B() == B1);  // Should match moved source
+        REQUIRE(pb_dest.CL() == CL);
+        REQUIRE(pb_dest.hasDiagnostics());  // Should transfer diagnostics
+    }
+}

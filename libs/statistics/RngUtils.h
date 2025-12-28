@@ -249,6 +249,13 @@ namespace mkc_timeseries
 	: m_provider(std::move(key))
       {}
 
+      // Default copy and move constructors should work fine
+      // (CRNKey is copyable/movable, CRNEngineProvider is copyable/movable)
+      CRNRng(const CRNRng&) = default;
+      CRNRng& operator=(const CRNRng&) = default;
+      CRNRng(CRNRng&&) = default;
+      CRNRng& operator=(CRNRng&&) = default;
+
       // Fluent methods to extend the tag sequence (return a new CRNRng)
       CRNRng with_tag(uint64_t tag) const
       {

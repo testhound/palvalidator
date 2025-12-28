@@ -7,12 +7,15 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <mutex>
+#include <atomic>
 
 #include "randutils.hpp"
 #include "RngUtils.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 #include "number.h"
+#include "StatUtils.h"
 
 namespace palvalidator
 {
@@ -46,6 +49,13 @@ namespace palvalidator
      *   Random-number generator type. Defaults to `std::mt19937_64`.
      * @tparam Executor
      *   Parallel executor type used by `concurrency::parallel_for_chunked`.
+     *
+     * @note Thread Safety:
+     *   - The run() methods are NOT thread-safe when called concurrently on the
+     *     same instance because they update diagnostic member variables.
+     *   - Multiple threads may safely call run() on different instances.
+     *   - setChunkSizeHint() may be called concurrently with run() as it uses
+     *     an atomic variable.
      */
     template<
       class Decimal,
@@ -93,19 +103,69 @@ namespace palvalidator
         }
       }
 
+      // Move constructor
+      BasicBootstrap(BasicBootstrap&& other) noexcept
+        : m_B(other.m_B),
+          m_CL(other.m_CL),
+          m_resampler(std::move(other.m_resampler)),
+          m_exec(std::move(other.m_exec)),
+          m_chunkHint(static_cast<uint32_t>(other.m_chunkHint.load())),
+          m_diagBootstrapStats(std::move(other.m_diagBootstrapStats)),
+          m_diagMeanBoot(other.m_diagMeanBoot),
+          m_diagVarBoot(other.m_diagVarBoot),
+          m_diagSeBoot(other.m_diagSeBoot),
+          m_diagValid(other.m_diagValid)
+      {
+      }
+
+      // Move assignment operator
+      BasicBootstrap& operator=(BasicBootstrap&& other) noexcept
+      {
+        if (this != &other)
+        {
+          m_B = other.m_B;
+          m_CL = other.m_CL;
+          m_resampler = std::move(other.m_resampler);
+          m_exec = std::move(other.m_exec);
+          m_chunkHint.store(static_cast<uint32_t>(other.m_chunkHint.load()));
+          m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
+          m_diagMeanBoot = other.m_diagMeanBoot;
+          m_diagVarBoot = other.m_diagVarBoot;
+          m_diagSeBoot = other.m_diagSeBoot;
+          m_diagValid = other.m_diagValid;
+        }
+        return *this;
+      }
+
+      // Delete copy constructor and copy assignment operator
+      BasicBootstrap(const BasicBootstrap&) = delete;
+      BasicBootstrap& operator=(const BasicBootstrap&) = delete;
+
       /**
        * @brief Run the basic-bootstrap CI using a caller-supplied RNG.
        *
        * After this call, diagnostic getters (getBootstrapStatistics,
        * getBootstrapMean/Variance/Se) refer to this run's results.
+       *
+       * @note This method is NOT thread-safe when called concurrently on the
+       *       same instance. The RNG is protected by a mutex for use within
+       *       parallel bootstrap iterations, but diagnostic members are updated
+       *       without synchronization.
        */
       Result run(const std::vector<Decimal>& x,
                  Sampler                      sampler,
-                 Rng&                         rng) const
+                 Rng&                         rng)
       {
-        auto make_engine = [&rng](std::size_t /*b*/) {
-          const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
-          auto           seq  = mkc_timeseries::rng_utils::make_seed_seq(seed);
+        // Local mutex to protect RNG access across parallel iterations
+        std::mutex rng_mutex;
+        
+        auto make_engine = [&rng, &rng_mutex](std::size_t /*b*/) {
+          uint64_t seed;
+          {
+            std::lock_guard<std::mutex> lock(rng_mutex);
+            seed = mkc_timeseries::rng_utils::get_random_value(rng);
+          }
+          auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
           return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
         };
 
@@ -117,11 +177,14 @@ namespace palvalidator
        *
        * After this call, diagnostic getters (getBootstrapStatistics,
        * getBootstrapMean/Variance/Se) refer to this run's results.
+       *
+       * @note This method is NOT thread-safe when called concurrently on the
+       *       same instance due to updates to diagnostic members.
        */
       template<class Provider>
       Result run(const std::vector<Decimal>& x,
                  Sampler                      sampler,
-                 const Provider&              provider) const
+                 const Provider&              provider)
       {
         auto make_engine = [&provider](std::size_t b) {
           return provider.make_engine(b);
@@ -130,10 +193,14 @@ namespace palvalidator
         return run_core_(x, sampler, make_engine);
       }
 
-      /// Hint for chunk size in parallel_for_chunked.
+      /**
+       * @brief Hint for chunk size in parallel_for_chunked.
+       *
+       * @note This method is thread-safe and may be called concurrently with run().
+       */
       void setChunkSizeHint(uint32_t c) const
       {
-        m_chunkHint = c;
+        m_chunkHint.store(c, std::memory_order_relaxed);
       }
 
       std::size_t      B()         const { return m_B; }
@@ -208,42 +275,10 @@ namespace palvalidator
         }
       }
 
-      // Hyndman–Fan type-7 quantile using two nth_element passes (unsorted input).
-      static double quantile_type7_via_nth(const std::vector<double>& s, double p)
-      {
-        if (s.empty())
-          throw std::invalid_argument("quantile_type7_via_nth: empty input");
-        if (p <= 0.0)
-          return *std::min_element(s.begin(), s.end());
-        if (p >= 1.0)
-          return *std::max_element(s.begin(), s.end());
-
-        const double nd = static_cast<double>(s.size());
-        const double h  = (nd - 1.0) * p + 1.0;
-        std::size_t  i1 = static_cast<std::size_t>(std::floor(h));
-        if (i1 < 1)         i1 = 1;
-        if (i1 >= s.size()) i1 = s.size() - 1;
-        const double frac = h - static_cast<double>(i1);
-
-        std::vector<double> w0(s.begin(), s.end());
-        std::nth_element(w0.begin(),
-                         w0.begin() + static_cast<std::ptrdiff_t>(i1 - 1),
-                         w0.end());
-        const double x0 = w0[i1 - 1];
-
-        std::vector<double> w1(s.begin(), s.end());
-        std::nth_element(w1.begin(),
-                         w1.begin() + static_cast<std::ptrdiff_t>(i1),
-                         w1.end());
-        const double x1 = w1[i1];
-
-        return x0 + (x1 - x0) * frac;
-      }
-
       template<class EngineMaker>
       Result run_core_(const std::vector<Decimal>& x,
                        Sampler                      sampler,
-                       EngineMaker&&                make_engine) const
+                       EngineMaker&&                make_engine)
       {
         const std::size_t n = x.size();
         if (n < 3) {
@@ -254,6 +289,9 @@ namespace palvalidator
         const Decimal theta_hat = sampler(x);
 
         std::vector<double> thetas_d(m_B, std::numeric_limits<double>::quiet_NaN());
+
+        // Load chunk hint once before parallel region
+        const uint32_t chunk_hint = m_chunkHint.load(std::memory_order_relaxed);
 
         concurrency::parallel_for_chunked(
           static_cast<uint32_t>(m_B),
@@ -269,7 +307,7 @@ namespace palvalidator
               thetas_d[b] = v;
             }
           },
-          /*chunkSizeHint=*/m_chunkHint
+          /*chunkSizeHint=*/chunk_hint
         );
 
         std::size_t skipped = 0;
@@ -310,8 +348,8 @@ namespace palvalidator
         const double pl    = alpha / 2.0;
         const double pu    = 1.0 - alpha / 2.0;
 
-        const double q_lo = quantile_type7_via_nth(thetas_d, pl);
-        const double q_hi = quantile_type7_via_nth(thetas_d, pu);
+        const double q_lo = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pl);
+        const double q_hi = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pu);
 
         const double center = num::to_double(theta_hat);
         const double lb_d   = 2.0 * center - q_hi; // 2θ̂ - q_{1-α/2}
@@ -342,14 +380,16 @@ namespace palvalidator
       double                            m_CL;
       Resampler                         m_resampler;
       mutable std::shared_ptr<Executor> m_exec;
-      mutable uint32_t                  m_chunkHint;
+      mutable std::atomic<uint32_t>     m_chunkHint;
 
       // Diagnostics from most recent run(...)
-      mutable std::vector<double> m_diagBootstrapStats;
-      mutable double              m_diagMeanBoot;
-      mutable double              m_diagVarBoot;
-      mutable double              m_diagSeBoot;
-      mutable bool                m_diagValid;
+      // Note: These are updated without synchronization, so run() methods
+      // are not thread-safe when called concurrently on the same instance.
+      std::vector<double> m_diagBootstrapStats;
+      double              m_diagMeanBoot;
+      double              m_diagVarBoot;
+      double              m_diagSeBoot;
+      bool                m_diagValid;
     };
 
   } // namespace analysis

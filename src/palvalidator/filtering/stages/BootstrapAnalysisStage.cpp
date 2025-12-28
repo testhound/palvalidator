@@ -71,53 +71,68 @@ namespace palvalidator::filtering::stages
   }
 
   void BootstrapAnalysisStage::reportDiagnostics(const StrategyAnalysisContext& ctx,
-                                                 palvalidator::diagnostics::MetricType metricType,
-                                                 const AutoCIResult<Num>& result) const
+						 palvalidator::diagnostics::MetricType metricType,
+						 const AutoCIResult<Num>& result) const
   {
-    if (!mObserver) return;
+    if (!mObserver)
+      return;
 
     using namespace palvalidator::diagnostics;
+
+    // 1. Get the median from the result object once
+    double bootMedian = 0.0;
+    try {
+        bootMedian = num::to_double(result.getBootstrapMedian());
+    } catch (...) {
+        bootMedian = 0.0; // Fallback if calculation failed
+    }
 
     std::string sName = ctx.strategy ? ctx.strategy->getStrategyName() : "Unknown";
     std::string sym = ctx.baseSecurity ? ctx.baseSecurity->getSymbol() : "Unknown";
 
     const auto& chosen = result.getChosenCandidate();
+    const auto& candidates = result.getCandidates();
 
-    bool bcaAvail = false;
-    double bZ0=0, bAccel=0, bStab=0, bLenPen=0, bRawLen=0;
+    // Loop through ALL candidates (PercentileT, BCa, Normal, etc.)
+    for (const auto& c : candidates)
+      {
+	bool isThisRowChosen = (c.getMethod() == chosen.getMethod());
 
-    for (const auto& c : result.getCandidates()) {
-      using MethodId = typename AutoCIResult<Num>::MethodId;
-      if (c.getMethod() == MethodId::BCa) {
-        bcaAvail = true;
-        // Best-effort extraction - methods may vary; use accessors if available
-        bZ0 = c.getZ0();
-        bAccel = c.getAccel();
-        bStab = c.getStabilityPenalty();
-        bLenPen = c.getLengthPenalty();
-        bRawLen = num::to_double(c.getUpper() - c.getLower());
-        break;
-      }
+	// BCa specific logic (only relevant if THIS candidate is BCa)
+	bool bcaAvail = (c.getMethod() == AutoCIResult<Num>::MethodId::BCa);
+	double bZ0 = bcaAvail ? c.getZ0() : 0.0;
+	double bAccel = bcaAvail ? c.getAccel() : 0.0;
+	double bStab = bcaAvail ? c.getStabilityPenalty() : 0.0;
+	double bLenPen = bcaAvail ? c.getLengthPenalty() : 0.0;
+	double bRawLen = num::to_double(c.getUpper() - c.getLower());
+
+	// Retrieve Inner Bootstrap health metrics
+	// (Assuming these getters exist on Candidate based on your question)
+	double effB = c.getEffectiveB(); 
+	double innerFail = c.getInnerFailureRate(); 
+	auto strategyUniqueID = ctx.strategy->hashCode();
+	BootstrapDiagnosticRecord record(strategyUniqueID,
+					 sName,
+					 sym,
+					 metricType,
+					 AutoCIResult<Num>::methodIdToString(c.getMethod()), // Method Name
+					 num::to_double(c.getLower()),
+					 num::to_double(c.getUpper()),
+					 c.getScore(),
+					 c.getN(),
+					 c.getBOuter(),  // Num Resamples
+					 c.getSeBoot(),
+					 c.getSkewBoot(),
+					 bcaAvail, bZ0, bAccel, bStab, bLenPen, bRawLen,
+					 isThisRowChosen,
+					 bootMedian,
+					 effB,
+					 innerFail);
+
+	mObserver->onBootstrapResult(record);
     }
-
-    BootstrapDiagnosticRecord record(
-      sName,
-      sym,
-      metricType,
-      AutoCIResult<Num>::methodIdToString(chosen.getMethod()),
-      num::to_double(chosen.getLower()),
-      num::to_double(chosen.getUpper()),
-      chosen.getScore(),
-      chosen.getN(),
-      chosen.getBOuter(),
-      chosen.getSeBoot(),
-      chosen.getSkewBoot(),
-      bcaAvail, bZ0, bAccel, bStab, bLenPen, bRawLen
-    );
-
-    mObserver->onBootstrapResult(record);
   }
-
+  
   // ---------------------------------------------------------------------------
   // Helper: computeBlockLength
   // ---------------------------------------------------------------------------

@@ -2091,6 +2091,143 @@ namespace mkc_timeseries
       return vlo + (vhi - vlo) * w;
     }
 
+    /**
+     * @brief Hyndman–Fan type-7 quantile on pre-sorted data.
+     *
+     * @details
+     * Implements the Hyndman–Fan type-7 quantile definition, which is the default
+     * in many statistical packages including R, NumPy, and Excel. This is the most
+     * commonly used quantile definition for continuous distributions.
+     *
+     * For a sorted sample x₍₁₎ ≤ ... ≤ x₍ₙ₎ and probability p ∈ [0,1]:
+     *   h = (n-1)×p + 1    (1-based position)
+     *   i = ⌊h⌋            (lower index)
+     *   γ = h - i          (interpolation fraction)
+     *
+     * The quantile is computed as:
+     *   Q₇(p) = (1-γ)×x₍ᵢ₎ + γ×x₍ᵢ₊₁₎
+     *
+     * Edge cases:
+     *   - p ≤ 0: returns minimum (first element)
+     *   - p ≥ 1: returns maximum (last element)
+     *   - Empty vector: throws std::invalid_argument
+     *
+     * Reference:
+     *   Hyndman, R.J. and Fan, Y. (1996). Sample quantiles in statistical packages.
+     *   American Statistician, 50(4), 361-365.
+     *
+     * @tparam T Numeric type (e.g., double, Decimal). Must support arithmetic operations.
+     *
+     * @param sorted Pre-sorted vector in ascending order. Must not be empty.
+     * @param p Quantile probability in [0,1]. Values outside this range are clamped.
+     *
+     * @return The type-7 quantile at probability p.
+     *
+     * @throws std::invalid_argument if sorted is empty.
+     *
+     * @complexity O(1) time, O(1) space (requires data to already be sorted).
+     *
+     * @note This function assumes the input is already sorted. For unsorted data,
+     *       use quantileType7Unsorted() instead.
+     */
+    static Decimal quantileType7Sorted(const std::vector<Decimal>& sorted, double p)
+    {
+      // Validate input
+      if (sorted.empty()) {
+        throw std::invalid_argument("quantileType7Sorted: input vector must not be empty");
+      }
+
+      // Handle edge cases at boundaries
+      if (p <= 0.0) return sorted.front();
+      if (p >= 1.0) return sorted.back();
+
+      // Compute the continuous 1-based position using Hyndman-Fan type-7 formula
+      const double n = static_cast<double>(sorted.size());
+      const double h = (n - 1.0) * p + 1.0;  // h ∈ (1, n) for p ∈ (0, 1)
+
+      // Convert to 0-based indices
+      const std::size_t i = static_cast<std::size_t>(std::floor(h));  // i ∈ {1, ..., n-1}
+      const double frac = h - static_cast<double>(i);                 // frac ∈ [0, 1)
+
+      // For p ∈ (0, 1), we have i ∈ {1, ..., n-1}, so both i-1 and i are valid 0-based indices
+      const Decimal x0 = sorted[i - 1];  // x₍ᵢ₎   (0-based: i-1)
+      const Decimal x1 = sorted[i];      // x₍ᵢ₊₁₎ (0-based: i)
+
+      // Linear interpolation: (1-γ)×x₀ + γ×x₁ = x₀ + γ×(x₁ - x₀)
+      return x0 + (x1 - x0) * Decimal(frac);
+    }
+
+    /**
+     * @brief Hyndman–Fan type-7 quantile on unsorted data.
+     *
+     * @details
+     * Computes the Hyndman–Fan type-7 quantile (same definition as quantileType7Sorted)
+     * but accepts unsorted input data. Uses std::nth_element for efficient O(n) partial
+     * sorting to find the required elements.
+     *
+     * This function is suitable when:
+     *   - The input data is not sorted
+     *   - You need a single quantile (or a few quantiles)
+     *   - You don't want to modify the original vector
+     *
+     * For multiple quantiles on the same dataset, consider sorting once and using
+     * quantileType7Sorted() repeatedly for better performance.
+     *
+     * @tparam T Numeric type (e.g., double, Decimal). Must support arithmetic operations.
+     *
+     * @param data Unsorted vector. The input is passed by const reference and copied
+     *             internally, so the original vector is not modified.
+     * @param p Quantile probability in [0,1]. Values outside this range are clamped.
+     *
+     * @return The type-7 quantile at probability p.
+     *
+     * @throws std::invalid_argument if data is empty.
+     *
+     * @complexity O(n) average time, O(n) space (creates a copy of the input).
+     *
+     * @note For pre-sorted data, use quantileType7Sorted() for better performance.
+     */
+    static Decimal quantileType7Unsorted(const std::vector<Decimal>& data, double p)
+    {
+      // Validate input
+      if (data.empty()) {
+        throw std::invalid_argument("quantileType7Unsorted: input vector must not be empty");
+      }
+
+      // Handle edge cases at boundaries
+      if (p <= 0.0) return *std::min_element(data.begin(), data.end());
+      if (p >= 1.0) return *std::max_element(data.begin(), data.end());
+
+      // Compute the continuous 1-based position using Hyndman-Fan type-7 formula
+      const double n = static_cast<double>(data.size());
+      const double h = (n - 1.0) * p + 1.0;  // h ∈ (1, n) for p ∈ (0, 1)
+
+      // Convert to 0-based indices
+      std::size_t i1 = static_cast<std::size_t>(std::floor(h));  // i1 ∈ {1, ..., n-1}
+      if (i1 < 1)              i1 = 1;          // Clamp to valid range
+      if (i1 >= data.size())   i1 = data.size() - 1;
+
+      const double frac = h - static_cast<double>(i1);
+
+      // Use two nth_element passes to find the two values we need for interpolation
+      // First pass: find x₍ᵢ₎ at position i1-1 (0-based)
+      std::vector<Decimal> work0(data.begin(), data.end());
+      std::nth_element(work0.begin(),
+                       work0.begin() + static_cast<std::ptrdiff_t>(i1 - 1),
+                       work0.end());
+      const Decimal x0 = work0[i1 - 1];
+
+      // Second pass: find x₍ᵢ₊₁₎ at position i1 (0-based)
+      std::vector<Decimal> work1(data.begin(), data.end());
+      std::nth_element(work1.begin(),
+                       work1.begin() + static_cast<std::ptrdiff_t>(i1),
+                       work1.end());
+      const Decimal x1 = work1[i1];
+
+      // Linear interpolation: x₀ + γ×(x₁ - x₀)
+      return x0 + (x1 - x0) * Decimal(frac);
+    }
+    
   private:
     /**
      * @brief A private helper function to compute a factor from gains and losses.

@@ -15,7 +15,6 @@
 #include "BiasCorrectedBootstrap.h"
 #include "RngUtils.h"
 
-using palvalidator::analysis::quantile_type7_sorted;
 using palvalidator::analysis::MOutOfNPercentileBootstrap;
 using palvalidator::resampling::StationaryMaskValueResampler;
 using mkc_timeseries::rng_utils::make_seed_seq;
@@ -55,54 +54,6 @@ static inline double annualize_expect(double r_per_period, long double K)
     return static_cast<double>(a);
 }
 
-// -----------------------------
-// quantile_type7_sorted tests
-// -----------------------------
-TEST_CASE("quantile_type7_sorted: basic properties and edges", "[Quantile][Type7]")
-{
-    using D = DecimalType;
-
-    SECTION("Throws on empty input")
-    {
-        std::vector<D> empty;
-        REQUIRE_THROWS_AS(quantile_type7_sorted(empty, 0.5), std::invalid_argument);
-    }
-
-    SECTION("p <= 0 returns front; p >= 1 returns back")
-    {
-        std::vector<D> v{ D(1), D(3), D(5), D(7) };
-        REQUIRE(num::to_double(quantile_type7_sorted(v, -0.1)) == Catch::Approx(1.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.0))  == Catch::Approx(1.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 1.0))  == Catch::Approx(7.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 1.1))  == Catch::Approx(7.0));
-    }
-
-    SECTION("Matches integer order stats at exact plotting positions")
-    {
-        // For type-7: h = (n-1)p + 1; when h is integer, we return x[h]
-        std::vector<D> v{ D(10), D(20), D(30), D(40), D(50) }; // n=5, 0-based indices 0..4
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.0)) == Catch::Approx(10.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.5)) == Catch::Approx(30.0));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 1.0)) == Catch::Approx(50.0));
-    }
-
-    SECTION("Linear interpolation between adjacent points")
-    {
-        // v = [0, 10, 20, 30], n=4
-        // p=0.25: h=(3)*0.25+1=1.75 -> i=1, frac=0.75 → 7.5
-        std::vector<D> v{ D(0), D(10), D(20), D(30) };
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.25)) == Catch::Approx(7.5));
-        REQUIRE(num::to_double(quantile_type7_sorted(v, 0.75)) == Catch::Approx(22.5));
-    }
-
-    SECTION("Monotonic in p")
-    {
-        std::vector<D> v{ D(1), D(2), D(3), D(4), D(5), D(6) };
-        const double q1 = num::to_double(quantile_type7_sorted(v, 0.2));
-        const double q2 = num::to_double(quantile_type7_sorted(v, 0.8));
-        REQUIRE(q1 <= q2);
-    }
-}
 
 // -----------------------------------------
 // MOutOfNPercentileBootstrap basic behavior
@@ -1674,5 +1625,379 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics consistent with Result",
         REQUIRE(se_b            == Catch::Approx(se_re).margin(1e-12));
         REQUIRE(skew_b          == Catch::Approx(skew_re).margin(1e-12));
         REQUIRE(out.skew_boot   == Catch::Approx(skew_re).margin(1e-12));
+    }
+}
+
+// ============================================================================
+// RACE CONDITION DETECTION TESTS
+// These tests use deterministic degenerate samplers that fail based on
+// the sum of resampled data. If the race condition exists, many replicates
+// will get identical seeds → identical resamples → identical sums → all pass
+// or all fail together. This causes skipped count to be 0 instead of > 0.
+// ============================================================================
+
+// Degenerate sampler that returns NaN based on data characteristics
+// This is deterministic and thread-safe (no mutable state)
+struct DegenerateSamplerMOutOfN
+{
+    template <typename Decimal>
+    double
+    operator()(const std::vector<Decimal>& x) const
+    {
+        if (x.empty()) return 0.0;
+        
+        // Compute mean
+        long double sum = 0.0L;
+        for (auto& v : x) sum += static_cast<long double>(num::to_double(v));
+        const double mean = static_cast<double>(sum / static_cast<long double>(x.size()));
+        
+        // Use the sum of elements modulo operation to create variability
+        // This ensures different resamples have different failure patterns
+        long double int_sum = 0.0L;
+        for (auto& v : x) int_sum += std::floor(static_cast<long double>(num::to_double(v)));
+        const int sum_mod = static_cast<int>(int_sum) % 10;
+        
+	// Fail if sum_mod is 0 (10% of cases)
+        if (sum_mod == 0) {
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+        
+        // Otherwise return the computed mean
+        return mean;
+    }
+};
+
+TEST_CASE("MOutOfNPercentileBootstrap: Handles degenerate sampler outputs (race condition detection)",
+          "[Bootstrap][MOutOfN][Degenerate][RaceCondition]")
+{
+    // Use double as the Decimal type for this test since we need to preserve NaN values.
+    // The decimal<8> fixed-point type cannot represent NaN (it truncates to a finite value).
+    using D = double;
+    
+    const std::size_t n = 50;
+    std::vector<D> x;
+    x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        x.emplace_back(static_cast<double>(i));
+    }
+    
+    DegenerateSamplerMOutOfN sampler;  // Returns NaN frequently based on sum
+    StationaryMaskValueResampler<D> res(3);
+    
+    const std::size_t B = 500;
+    const double CL = 0.95;
+    const double m_ratio = 0.7;
+    
+    randutils::seed_seq_fe128 seed{555u, 666u};
+    std::mt19937_64 rng(seed);
+    
+    MOutOfNPercentileBootstrap<D, DegenerateSamplerMOutOfN, StationaryMaskValueResampler<D>>
+        moon(B, CL, m_ratio, res);
+    
+    SECTION("Gracefully skips non-finite samples")
+    {
+        auto out = moon.run(x, sampler, rng);
+        
+        // With 20% NaN rate, we should get some skipped replicates
+        // This is probabilistic, so be conservative
+        
+        // We should definitely have some skipped replicates due to NaN
+        REQUIRE(out.skipped > 0);
+        
+        // Should verify the counts add up correctly
+        REQUIRE(out.effective_B + out.skipped == B);
+        
+        // Should still have enough valid results (at least 50% valid)
+        REQUIRE(out.effective_B >= B / 2);
+        REQUIRE(out.effective_B < B);  // But not all should be valid
+        
+        // Final outputs should be finite
+        REQUIRE(std::isfinite(num::to_double(out.mean)));
+        REQUIRE(std::isfinite(num::to_double(out.lower)));
+        REQUIRE(std::isfinite(num::to_double(out.upper)));
+    }
+    
+    SECTION("Diagnostic counts are consistent")
+    {
+        auto out = moon.run(x, sampler, rng);
+        
+        // Verify diagnostics are available
+        REQUIRE(moon.hasDiagnostics());
+        
+        // Bootstrap statistics size should match effective_B
+        const auto& stats = moon.getBootstrapStatistics();
+        REQUIRE(stats.size() == out.effective_B);
+        
+        // All statistics in the diagnostic vector should be finite
+        for (double v : stats) {
+            REQUIRE(std::isfinite(v));
+        }
+        
+        // Diagnostic summary statistics should be finite
+        REQUIRE(std::isfinite(moon.getBootstrapMean()));
+        REQUIRE(std::isfinite(moon.getBootstrapVariance()));
+        REQUIRE(std::isfinite(moon.getBootstrapSe()));
+        REQUIRE(std::isfinite(moon.getBootstrapSkewness()));
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: Edge case - moderate skipped rate (race condition detection)",
+          "[Bootstrap][MOutOfN][EdgeCase][RaceCondition]")
+{
+    // Use double as the Decimal type for this test since we need to preserve NaN values.
+    // The decimal<8> fixed-point type cannot represent NaN (it truncates to a finite value).
+    using D = double;
+    
+    // Create varied data (not constant, to avoid other issues)
+    std::vector<D> x;
+    for (int i = 0; i < 50; ++i) {
+        x.push_back(static_cast<double>(i % 10));  // Some variation
+    }
+    
+    // Sampler that returns degenerate values based on hash
+    struct FlakySamplerMOutOfN {
+        mutable std::mt19937_64 rng{12345u}; // Deterministic seed for reproducible failures
+        
+        double operator()(const std::vector<D>& a) const {
+            if (a.empty()) return 0.0;
+            
+            // Compute mean
+            double s = 0.0;
+            for (const auto& v : a) s += num::to_double(v);
+            const double mean = s / static_cast<double>(a.size());
+            
+            // Use deterministic RNG based on data characteristics to create controlled failure rate
+            // Hash the size and first few elements to create reproducible but varied seed
+            uint64_t data_hash = static_cast<uint64_t>(a.size());
+            if (a.size() >= 3) {
+                data_hash ^= static_cast<uint64_t>(std::round(num::to_double(a[0]) * 1000.0));
+                data_hash ^= static_cast<uint64_t>(std::round(num::to_double(a[1]) * 1000.0)) << 16;
+                data_hash ^= static_cast<uint64_t>(std::round(num::to_double(a[2]) * 1000.0)) << 32;
+            }
+            
+            // Reset RNG with data-dependent seed for deterministic but varied results
+            rng.seed(static_cast<unsigned>(data_hash));
+            
+            // Fail approximately 5% of the time (much less than 50% threshold)
+            std::uniform_int_distribution<int> dist(0, 19);
+            if (dist(rng) == 0) {
+                return std::numeric_limits<double>::quiet_NaN();
+            }
+            
+            return mean;
+        }
+    };
+    
+    FlakySamplerMOutOfN flaky_sampler;
+    
+    // Use IID resampler for simpler behavior
+    struct IIDResamplerForMOutOfN {
+        std::size_t getL() const noexcept { return 0; }
+        
+        void operator()(const std::vector<D>& x,
+                       std::vector<D>&       y,
+                       std::size_t           m,
+                       std::mt19937_64&      rng) const
+        {
+            std::uniform_int_distribution<std::size_t> dist(0, x.size() - 1);
+            for (std::size_t i = 0; i < m; ++i) {
+                y[i] = x[dist(rng)];
+            }
+        }
+    };
+    
+    IIDResamplerForMOutOfN res;
+    
+    const std::size_t B = 400;
+    const double CL = 0.95;
+    const double m_ratio = 0.7;
+    
+    MOutOfNPercentileBootstrap<D, FlakySamplerMOutOfN, IIDResamplerForMOutOfN>
+        moon(B, CL, m_ratio, res);
+    
+    randutils::seed_seq_fe128 seed{31415u};
+    std::mt19937_64 rng(seed);
+    
+    SECTION("Skip rate is reported correctly")
+    {
+        auto out = moon.run(x, flaky_sampler, rng);
+        
+        // Should have some skipping due to NaN values
+        const double skip_rate = static_cast<double>(out.skipped) / 
+                                 static_cast<double>(out.B);
+        
+        // With 5% failure rate in sampler calls, we should get some skips
+        REQUIRE(skip_rate > 0.01);  // At least 1% skipped (conservative threshold)
+        
+        // Should still produce valid results
+        REQUIRE(out.effective_B >= B / 2);  // At least 50% valid
+        REQUIRE(std::isfinite(num::to_double(out.lower)));
+        REQUIRE(std::isfinite(num::to_double(out.upper)));
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: copy constructor", "[Bootstrap][MOutOfN][CopyConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 800;
+    const double      CL = 0.95;
+    const double      rho = 0.70;
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon_original(B, CL, rho, res);
+
+    SECTION("Copy constructor creates independent object")
+    {
+        auto moon_copy = moon_original;  // Copy constructor
+
+        // Basic properties should match
+        REQUIRE(moon_copy.B() == moon_original.B());
+        REQUIRE(moon_copy.CL() == moon_original.CL());
+        REQUIRE(moon_copy.mratio() == moon_original.mratio());
+
+        // Diagnostics should not be available on copy (fresh state)
+        REQUIRE_FALSE(moon_copy.hasDiagnostics());
+        REQUIRE_FALSE(moon_original.hasDiagnostics());
+
+        // Run on original
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        std::seed_seq seq = make_seed_seq(0x123456789ABCDEFull);
+        std::mt19937_64 rng(seq);
+        
+        (void)moon_original.run(x, mean_sampler, rng);
+        
+        // Original should have diagnostics now, copy should not
+        REQUIRE(moon_original.hasDiagnostics());
+        REQUIRE_FALSE(moon_copy.hasDiagnostics());
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: move constructor", "[Bootstrap][MOutOfN][MoveConstructor]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B  = 800;
+    const double      CL = 0.95;
+    const double      rho = 0.70;
+
+    SECTION("Move constructor transfers state correctly")
+    {
+        MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            moon_original(B, CL, rho, res);
+
+        // Run once to populate diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        std::seed_seq seq = make_seed_seq(0x123456789ABCDEFull);
+        std::mt19937_64 rng(seq);
+        
+        (void)moon_original.run(x, mean_sampler, rng);
+        REQUIRE(moon_original.hasDiagnostics());
+        
+        // Move construct
+        auto moon_moved = std::move(moon_original);
+        
+        // Basic properties should be transferred
+        REQUIRE(moon_moved.B() == B);
+        REQUIRE(moon_moved.CL() == CL);
+        REQUIRE(moon_moved.mratio() == rho);
+        
+        // Diagnostics should be transferred, moved-from object should have validity reset
+        REQUIRE(moon_moved.hasDiagnostics());
+        // Note: We don't test moon_original state after move since it's in unspecified state
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: copy assignment operator", "[Bootstrap][MOutOfN][CopyAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 800;
+    const std::size_t B2 = 900;
+    const double      CL = 0.95;
+    const double      rho1 = 0.70;
+    const double      rho2 = 0.80;
+
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon_source(B1, CL, rho1, res);
+    MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        moon_dest(B2, CL, rho2, res);
+
+    SECTION("Copy assignment replaces configuration")
+    {
+        REQUIRE(moon_dest.B() == B2);      // Initial state
+        REQUIRE(moon_dest.mratio() == rho2);
+        
+        moon_dest = moon_source;  // Copy assignment
+        
+        REQUIRE(moon_dest.B() == B1);      // Should match source
+        REQUIRE(moon_dest.CL() == CL);
+        REQUIRE(moon_dest.mratio() == rho1);
+        REQUIRE_FALSE(moon_dest.hasDiagnostics());  // Should be clear state
+    }
+}
+
+TEST_CASE("MOutOfNPercentileBootstrap: move assignment operator", "[Bootstrap][MOutOfN][MoveAssignment]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    const std::size_t B1 = 800;
+    const std::size_t B2 = 900;
+    const double      CL = 0.95;
+    const double      rho1 = 0.70;
+    const double      rho2 = 0.80;
+
+    SECTION("Move assignment transfers state correctly")
+    {
+        MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            moon_source(B1, CL, rho1, res);
+        MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+            moon_dest(B2, CL, rho2, res);
+
+        // Run on source to get diagnostics
+        std::vector<D> x{D(1), D(2), D(3), D(4), D(5)};
+        std::seed_seq seq = make_seed_seq(0x123456789ABCDEFull);
+        std::mt19937_64 rng(seq);
+        
+        (void)moon_source.run(x, mean_sampler, rng);
+        REQUIRE(moon_source.hasDiagnostics());
+        REQUIRE(moon_dest.B() == B2);          // Initial dest state
+        REQUIRE(moon_dest.mratio() == rho2);
+        
+        // Move assign
+        moon_dest = std::move(moon_source);
+        
+        REQUIRE(moon_dest.B() == B1);      // Should match moved source
+        REQUIRE(moon_dest.CL() == CL);
+        REQUIRE(moon_dest.mratio() == rho1);
+        REQUIRE(moon_dest.hasDiagnostics());  // Should transfer diagnostics
     }
 }

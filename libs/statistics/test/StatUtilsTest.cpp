@@ -3682,3 +3682,417 @@ TEST_CASE("StatUtils::computeStdDev - Comparison with variance", "[StatUtils][Va
         REQUIRE(num::to_double(stdDev) == Catch::Approx(0.0).margin(1e-10));
     }
 }
+
+// =============================================================================
+// Quantile Type-7 Tests
+// =============================================================================
+// These tests validate the new quantileType7Sorted and quantileType7Unsorted
+// functions that implement the Hyndman-Fan Type 7 quantile definition.
+// This is the default quantile method in R, NumPy, and Excel.
+//
+// Reference: Hyndman, R.J. and Fan, Y. (1996). Sample quantiles in statistical 
+// packages. American Statistician, 50(4), 361-365.
+// =============================================================================
+
+TEST_CASE("StatUtils::quantileType7Sorted - Edge Cases", "[StatUtils][Quantile]") {
+    SECTION("Empty vector throws exception") {
+        std::vector<double> empty;
+        REQUIRE_THROWS_AS(StatUtils<double>::quantileType7Sorted(empty, 0.5), std::invalid_argument);
+    }
+    
+    SECTION("Single element returns that element for any probability") {
+        std::vector<double> data = {42.0};
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.0) == 42.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.25) == 42.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.5) == 42.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.75) == 42.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 1.0) == 42.0);
+    }
+    
+    SECTION("Two elements - exact interpolation") {
+        std::vector<double> data = {1.0, 3.0};
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.0) == 1.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.5) == 2.0);  // midpoint
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 1.0) == 3.0);
+    }
+    
+    SECTION("Identical values") {
+        std::vector<double> data = {5.0, 5.0, 5.0, 5.0, 5.0};
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.0) == 5.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.25) == 5.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.5) == 5.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.75) == 5.0);
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 1.0) == 5.0);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - Boundary Probabilities", "[StatUtils][Quantile]") {
+    std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    
+    SECTION("Probability = 0.0 returns minimum") {
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.0) == 1.0);
+    }
+    
+    SECTION("Probability = 1.0 returns maximum") {
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 1.0) == 10.0);
+    }
+    
+    SECTION("Negative probability clamped to minimum") {
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, -0.5) == 1.0);
+    }
+    
+    SECTION("Probability > 1.0 clamped to maximum") {
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 1.5) == 10.0);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - Standard Percentiles", "[StatUtils][Quantile]") {
+    // Dataset: 1, 2, 3, ..., 10
+    std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    
+    SECTION("Median (p=0.5)") {
+        // For n=10, p=0.5: h = (10-1)*0.5 + 1 = 5.5
+        // i = 5 (1-based), interpolate between x[4]=5 and x[5]=6
+        // Result: 5 + 0.5*(6-5) = 5.5
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.5) == 5.5);
+    }
+    
+    SECTION("First quartile (p=0.25)") {
+        // For n=10, p=0.25: h = (10-1)*0.25 + 1 = 3.25
+        // i = 3 (1-based), interpolate between x[2]=3 and x[3]=4
+        // Result: 3 + 0.25*(4-3) = 3.25
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.25) == 3.25);
+    }
+    
+    SECTION("Third quartile (p=0.75)") {
+        // For n=10, p=0.75: h = (10-1)*0.75 + 1 = 7.75
+        // i = 7 (1-based), interpolate between x[6]=7 and x[7]=8
+        // Result: 7 + 0.75*(8-7) = 7.75
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.75) == 7.75);
+    }
+    
+    SECTION("95th percentile (p=0.95)") {
+      // For n=10, p=0.95: h = (10-1)*0.95 + 1 = 9.55
+      // i = 9 (1-based), interpolate between x[8]=9 and x[9]=10
+      // Result: 9 + 0.55*(10-9) = 9.55
+      REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.95) == Catch::Approx(9.55));
+    }
+    
+    SECTION("99th percentile (p=0.99)") {
+      // For n=10, p=0.99: h = (10-1)*0.99 + 1 = 9.91
+      // i = 9 (1-based), interpolate between x[8]=9 and x[9]=10
+      // Result: 9 + 0.91*(10-9) = 9.91
+      REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.99) == Catch::Approx(9.91));
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - R Compatibility", "[StatUtils][Quantile]") {
+    // Test data verified with R: quantile(1:10, type=7)
+    std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+    
+    SECTION("Compare with R quantile(type=7) results") {
+        // R command: quantile(1:10, probs=c(0, 0.1, 0.25, 0.5, 0.75, 0.9, 1), type=7)
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.00) == Catch::Approx(1.00));
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.10) == Catch::Approx(1.90));
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.25) == Catch::Approx(3.25));
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.50) == Catch::Approx(5.50));
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.75) == Catch::Approx(7.75));
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.90) == Catch::Approx(9.10));
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 1.00) == Catch::Approx(10.00));
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - Special Values", "[StatUtils][Quantile]") {
+    SECTION("Negative values") {
+        std::vector<double> data = {-5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0};
+        // For n=7, p=0.5: h = (7-1)*0.5 + 1 = 4.0
+        // i = 4 (1-based), frac=0.0 => x[3] (0-based) = 0.0
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.5) == 0.0);
+    }
+    
+    SECTION("Very small values (near machine epsilon)") {
+        std::vector<double> data = {1e-15, 2e-15, 3e-15, 4e-15, 5e-15};
+        // For n=5, p=0.5: h = (5-1)*0.5 + 1 = 3.0
+        // i = 3 (1-based), frac=0.0 => x[2] (0-based) = 3e-15
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.5) == 3e-15);
+    }
+    
+    SECTION("Very large values") {
+        std::vector<double> data = {1e15, 2e15, 3e15, 4e15, 5e15};
+        // For n=5, p=0.75: h = (5-1)*0.75 + 1 = 4.0
+        // i = 4 (1-based), frac=0.0 => x[3] (0-based) = 4e15
+        REQUIRE(StatUtils<double>::quantileType7Sorted(data, 0.75) == 4e15);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - Decimal Type Support", "[StatUtils][Quantile]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+
+    SECTION("Works with Decimal type") {
+        std::vector<D> data = {
+            D("1.0"), D("2.0"), D("3.0"), D("4.0"), D("5.0")
+        };
+        
+        D result = Stat::quantileType7Sorted(data, 0.5);
+        // For n=5, p=0.5: h = (5-1)*0.5 + 1 = 3.0
+        // i = 3 (1-based), frac=0.0 => x[2] = 3.0
+        REQUIRE(num::to_double(result) == Catch::Approx(3.0));
+    }
+    
+    SECTION("Decimal precision maintained during interpolation") {
+        std::vector<D> data = {
+            D("1.123456789"), D("2.234567890"), D("3.345678901"), 
+            D("4.456789012"), D("5.567890123")
+        };
+        
+        D result = Stat::quantileType7Sorted(data, 0.75);
+        // Should preserve decimal precision
+        REQUIRE(std::isfinite(num::to_double(result)));
+        REQUIRE(num::to_double(result) > num::to_double(data[2]));
+        REQUIRE(num::to_double(result) <= num::to_double(data[4]));
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - Large Dataset", "[StatUtils][Quantile]") {
+    SECTION("Dataset of 1000 elements") {
+        std::vector<double> data(1000);
+        for (size_t i = 0; i < data.size(); ++i) {
+            data[i] = static_cast<double>(i + 1);
+        }
+        
+        // Median
+        double median = StatUtils<double>::quantileType7Sorted(data, 0.5);
+        // For n=1000, p=0.5: h = (1000-1)*0.5 + 1 = 500.5
+        // i = 500, interpolate between x[499]=500 and x[500]=501
+        // Result: 500 + 0.5*(501-500) = 500.5
+        REQUIRE(median == 500.5);
+        
+        // 90th percentile
+        double p90 = StatUtils<double>::quantileType7Sorted(data, 0.9);
+        // For n=1000, p=0.9: h = (1000-1)*0.9 + 1 = 900.1
+        // i = 900, interpolate between x[899]=900 and x[900]=901
+        // Result: 900 + 0.1*(901-900) = 900.1
+        REQUIRE(p90 == 900.1);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Sorted - Interpolation Accuracy", "[StatUtils][Quantile]") {
+    SECTION("Fine-grained interpolation between [0, 1]") {
+        std::vector<double> data = {0.0, 1.0};
+        
+        // Test 101 points from p=0.00 to p=1.00
+        for (int i = 0; i <= 100; ++i) {
+            double p = i / 100.0;
+            double result = StatUtils<double>::quantileType7Sorted(data, p);
+            // For [0, 1], quantile at p should equal p
+            REQUIRE(result == Catch::Approx(p).margin(1e-12));
+        }
+    }
+}
+
+// =============================================================================
+// quantileType7Unsorted Tests
+// =============================================================================
+
+TEST_CASE("StatUtils::quantileType7Unsorted - Edge Cases", "[StatUtils][Quantile]") {
+    SECTION("Empty vector throws exception") {
+        std::vector<double> empty;
+        REQUIRE_THROWS_AS(StatUtils<double>::quantileType7Unsorted(empty, 0.5), std::invalid_argument);
+    }
+    
+    SECTION("Single element returns that element") {
+        std::vector<double> data = {42.0};
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.0) == 42.0);
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.5) == 42.0);
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 1.0) == 42.0);
+    }
+    
+    SECTION("Two elements (unsorted)") {
+        std::vector<double> data = {3.0, 1.0};  // reversed order
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.0) == 1.0);
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.5) == 2.0);
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 1.0) == 3.0);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Unsorted - Does Not Modify Input", "[StatUtils][Quantile]") {
+    SECTION("Input vector remains unchanged") {
+        std::vector<double> data = {5.0, 2.0, 8.0, 1.0, 9.0};
+        std::vector<double> original = data;
+        
+        StatUtils<double>::quantileType7Unsorted(data, 0.5);
+        
+        REQUIRE(data == original);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Unsorted - Equivalence with Sorted", "[StatUtils][Quantile]") {
+    SECTION("Unsorted gives same results as sorted") {
+        std::vector<double> unsorted = {7.3, 2.1, 9.5, 1.8, 5.4, 3.2, 8.7, 4.6, 10.2, 6.9};
+        std::vector<double> sorted = unsorted;
+        std::sort(sorted.begin(), sorted.end());
+        
+        std::vector<double> probabilities = {0.0, 0.1, 0.25, 0.333, 0.5, 0.667, 0.75, 0.9, 0.95, 1.0};
+        
+        for (double p : probabilities) {
+            double result_sorted = StatUtils<double>::quantileType7Sorted(sorted, p);
+            double result_unsorted = StatUtils<double>::quantileType7Unsorted(unsorted, p);
+            
+            REQUIRE(result_sorted == Catch::Approx(result_unsorted).margin(1e-9));
+        }
+    }
+    
+    SECTION("Random ordering produces same results") {
+        std::vector<double> data1 = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
+        std::vector<double> data2 = {5.0, 2.0, 8.0, 1.0, 9.0, 3.0, 7.0, 4.0, 10.0, 6.0};
+        std::vector<double> data3 = {10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0};
+        
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data1, 0.5) == 
+                StatUtils<double>::quantileType7Unsorted(data2, 0.5));
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data1, 0.5) == 
+                StatUtils<double>::quantileType7Unsorted(data3, 0.5));
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data1, 0.75) == 
+                StatUtils<double>::quantileType7Unsorted(data2, 0.75));
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Unsorted - Standard Percentiles", "[StatUtils][Quantile]") {
+    // Unsorted dataset
+    std::vector<double> data = {7.0, 3.0, 9.0, 1.0, 5.0, 2.0, 8.0, 4.0, 10.0, 6.0};
+    
+    SECTION("Median (p=0.5)") {
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.5) == 5.5);
+    }
+    
+    SECTION("First quartile (p=0.25)") {
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.25) == 3.25);
+    }
+    
+    SECTION("Third quartile (p=0.75)") {
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.75) == 7.75);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Unsorted - Decimal Type Support", "[StatUtils][Quantile]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+    
+    SECTION("Works with Decimal type on unsorted data") {
+        std::vector<D> data = {
+            D("5.0"), D("2.0"), D("4.0"), D("1.0"), D("3.0")
+        };
+        
+        D result = Stat::quantileType7Unsorted(data, 0.75);
+        // When sorted: [1, 2, 3, 4, 5]
+        // For n=5, p=0.75: h = 4.0, x[3] = 4.0
+        REQUIRE(num::to_double(result) == Catch::Approx(4.0));
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7Unsorted - Boundary Conditions", "[StatUtils][Quantile]") {
+    std::vector<double> data = {5.0, 2.0, 8.0, 1.0, 9.0, 3.0, 7.0, 4.0, 10.0, 6.0};
+    
+    SECTION("p=0.0 returns minimum") {
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 0.0) == 1.0);
+    }
+    
+    SECTION("p=1.0 returns maximum") {
+        REQUIRE(StatUtils<double>::quantileType7Unsorted(data, 1.0) == 10.0);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7 - Performance Comparison", "[StatUtils][Quantile][Performance]") {
+    SECTION("Sorted version is O(1) for pre-sorted data") {
+        std::vector<double> data(1000);
+        for (size_t i = 0; i < data.size(); ++i) {
+            data[i] = static_cast<double>(i);
+        }
+        
+        // Should be instant on sorted data
+        double result = StatUtils<double>::quantileType7Sorted(data, 0.5);
+        REQUIRE(std::isfinite(result));
+    }
+    
+    SECTION("Unsorted version handles unsorted data correctly") {
+        std::vector<double> unsorted(100);
+        for (size_t i = 0; i < unsorted.size(); ++i) {
+            unsorted[i] = static_cast<double>(100 - i);  // Reverse order
+        }
+        
+        double result = StatUtils<double>::quantileType7Unsorted(unsorted, 0.5);
+        REQUIRE(result == Catch::Approx(50.5));
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7 - Bootstrap Use Case", "[StatUtils][Quantile][Bootstrap]") {
+    SECTION("Typical bootstrap replicate distribution") {
+        // Simulate bootstrap statistics (slightly skewed)
+        std::vector<double> bootstrap_stats = {
+            0.85, 0.92, 0.88, 0.95, 0.87, 0.91, 0.89, 0.93, 0.86, 0.94,
+            0.90, 0.88, 0.92, 0.91, 0.89, 0.87, 0.93, 0.90, 0.88, 0.95
+        };
+        
+        // Compute 95% CI using Type 7 quantiles (as in PercentileBootstrap)
+        std::vector<double> sorted_stats = bootstrap_stats;
+        std::sort(sorted_stats.begin(), sorted_stats.end());
+        
+        double lower = StatUtils<double>::quantileType7Sorted(sorted_stats, 0.025);
+        double upper = StatUtils<double>::quantileType7Sorted(sorted_stats, 0.975);
+        
+        REQUIRE(lower < upper);
+        REQUIRE(lower >= sorted_stats.front());
+        REQUIRE(upper <= sorted_stats.back());
+    }
+    
+    SECTION("Handles degenerate cases in bootstrap") {
+        // All bootstrap replicates identical (can happen with small samples)
+        std::vector<double> degenerate = {1.5, 1.5, 1.5, 1.5, 1.5};
+        
+        double q25 = StatUtils<double>::quantileType7Sorted(degenerate, 0.25);
+        double q50 = StatUtils<double>::quantileType7Sorted(degenerate, 0.50);
+        double q75 = StatUtils<double>::quantileType7Sorted(degenerate, 0.75);
+        
+        REQUIRE(q25 == 1.5);
+        REQUIRE(q50 == 1.5);
+        REQUIRE(q75 == 1.5);
+    }
+}
+
+TEST_CASE("StatUtils::quantileType7 - Financial Data Use Case", "[StatUtils][Quantile][Finance]") {
+    using D = DecimalType;
+    using Stat = StatUtils<D>;
+
+    SECTION("VaR calculation (Value at Risk)") {
+        // Daily returns (percent)
+        std::vector<D> returns = {
+            D("0.015"), D("-0.023"), D("0.008"), D("-0.012"), D("0.019"),
+            D("-0.005"), D("0.011"), D("-0.018"), D("0.007"), D("-0.009"),
+            D("0.014"), D("-0.021"), D("0.006"), D("-0.015"), D("0.013")
+        };
+        
+        std::vector<D> sorted_returns = returns;
+        std::sort(sorted_returns.begin(), sorted_returns.end());
+        
+        // 95% VaR is the 5th percentile
+        D var_95 = Stat::quantileType7Sorted(sorted_returns, 0.05);
+        
+        // VaR should be negative (a loss)
+        REQUIRE(num::to_double(var_95) < 0.0);
+    }
+    
+    SECTION("Percentile rank for performance benchmarking") {
+        std::vector<D> strategy_returns = {
+            D("0.08"), D("0.12"), D("0.15"), D("0.09"), D("0.11"),
+            D("0.14"), D("0.10"), D("0.13"), D("0.16"), D("0.07")
+        };
+        
+        std::vector<D> sorted = strategy_returns;
+        std::sort(sorted.begin(), sorted.end());
+        
+        // What return do you need to be in top quartile?
+        D top_quartile_threshold = Stat::quantileType7Sorted(sorted, 0.75);
+        
+        REQUIRE(num::to_double(top_quartile_threshold) > num::to_double(D("0.10")));
+    }
+}
