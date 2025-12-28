@@ -3,27 +3,18 @@
 //  (1) caller-supplied RNG reference
 //  (2) CRN/engine-provider supplying a deterministic engine per outer replicate
 //
-// Shared core is factored in run_impl(... EngineMaker ...).
+// Thread-safety hardening:
+// - The caller RNG is never touched inside the parallel region (seeds precomputed).
+// - The sampler is copied into each parallel task (safe even if sampler has state).
+// - The resampler is also copied into each parallel task (safe even if resampler has state).
+// - “Last run diagnostics” are stored behind a mutex, and getters return COPIES
+//   (so a concurrent run() can’t invalidate references).
 //
-// CI construction (per-period scale):
-//   1) θ̂ = sampler(x)
-//   2) Outer reps b = 1..B_outer:
-//        y_outer ~ resampler(x, m_outer, rng_b)
-//        θ*_b    = sampler(y_outer)
-//        Inner reps j = 1..B_inner:
-//          y_inner ~ resampler(y_outer, m_inner, rng_b)
-//          θ°_bj   = sampler(y_inner)
-//        SE*_b = sd({θ°_bj})
-//        t_b  = (θ*_b − θ̂)/SE*_b
-//      Keep finite t_b and θ*_b with SE*_b>0
-//   3) SE_hat = sd({θ*_b}) over valid outer reps
-//   4) t_lo, t_hi = type-7 quantiles of {t_b} at α/2 and 1−α/2 (α=1−CL)
-//   5) CI = [θ̂ − t_hi*SE_hat,  θ̂ − t_lo*SE_hat]
-//
-// Notes:
-// - Default RNG is std::mt19937_64 (aligns with your CRN classes).
-// - The provider overload expects an object with:  Rng make_engine(std::size_t b) const;
-//
+// IMPORTANT behavioral note if the same PercentileTBootstrap instance is used concurrently:
+// - It is safe (no data races).
+// - “Last run diagnostics” are inherently racy in meaning: whichever run finishes last
+//   becomes “the last run”. This is expected; the goal here is memory safety.
+
 #pragma once
 
 #include <algorithm>
@@ -32,15 +23,16 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
-#include <string>
+#include <functional>
 #include <limits>
+#include <mutex>
+#include <optional>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <functional>
 
 #include "number.h"
 #include "ParallelExecutors.h"
@@ -60,33 +52,35 @@ namespace palvalidator
       class Rng = std::mt19937_64,
       class Executor = concurrency::SingleThreadExecutor
       >
-    class PercentileTBootstrap {
+    class PercentileTBootstrap
+    {
     public:
-      struct Result {
-        Decimal     mean;               // θ̂ on original sample
-        Decimal     lower;              // lower CI (per-period)
-        Decimal     upper;              // upper CI (per-period)
-        double      cl;                 // confidence level
-        std::size_t B_outer;            // requested outer reps
-        std::size_t B_inner;            // requested inner reps
-        std::size_t effective_B;        // usable outer reps (finite pivots)
-        std::size_t skipped_outer;      // outer reps skipped (degenerate θ* / SE*)
-        std::size_t skipped_inner_total;// total degenerate inner reps
-        std::size_t inner_attempted_total;// total inner attempts across all outer reps where the inner loop was entered (diagnostic)
-        std::size_t n;                  // original sample size
-        std::size_t m_outer;            // outer subsample size
-        std::size_t m_inner;            // inner subsample size
-        std::size_t L;                  // resampler L (diagnostic)
-        double      se_hat;             // sd(θ*) over effective outer reps
+      struct Result
+      {
+        Decimal     mean;                  // θ̂ on original sample
+        Decimal     lower;                 // lower CI (per-period)
+        Decimal     upper;                 // upper CI (per-period)
+        double      cl;                    // confidence level
+        std::size_t B_outer;               // requested outer reps
+        std::size_t B_inner;               // requested inner reps
+        std::size_t effective_B;           // usable outer reps (finite pivots)
+        std::size_t skipped_outer;         // outer reps skipped (degenerate θ* / SE*)
+        std::size_t skipped_inner_total;   // total degenerate inner reps
+        std::size_t inner_attempted_total; // total inner attempts across all outer reps (diagnostic)
+        std::size_t n;                     // original sample size
+        std::size_t m_outer;               // outer subsample size
+        std::size_t m_inner;               // inner subsample size
+        std::size_t L;                     // resampler L (diagnostic)
+        double      se_hat;                // sd(θ*) over effective outer reps
       };
 
     public:
-      PercentileTBootstrap(std::size_t B_outer,
-                           std::size_t B_inner,
-                           double      confidence_level,
+      PercentileTBootstrap(std::size_t      B_outer,
+                           std::size_t      B_inner,
+                           double           confidence_level,
                            const Resampler& resampler,
-                           double      m_ratio_outer = 1.0,
-                           double      m_ratio_inner = 1.0)
+                           double           m_ratio_outer = 1.0,
+                           double           m_ratio_inner = 1.0)
         : m_B_outer(B_outer)
         , m_B_inner(B_inner)
         , m_CL(confidence_level)
@@ -103,6 +97,52 @@ namespace palvalidator
         if (!(m_CL > 0.5 && m_CL < 1.0)) throw std::invalid_argument("PercentileTBootstrap: CL must be in (0.5,1)");
         if (!(m_ratio_outer > 0.0 && m_ratio_outer <= 1.0)) throw std::invalid_argument("m_ratio_outer must be in (0,1]");
         if (!(m_ratio_inner > 0.0 && m_ratio_inner <= 1.0)) throw std::invalid_argument("m_ratio_inner must be in (0,1]");
+      }
+
+      // Disable copy constructor and copy assignment operator
+      PercentileTBootstrap(const PercentileTBootstrap&) = delete;
+      PercentileTBootstrap& operator=(const PercentileTBootstrap&) = delete;
+
+      // Enable move constructor
+      PercentileTBootstrap(PercentileTBootstrap&& other) noexcept
+        : m_B_outer(other.m_B_outer)
+        , m_B_inner(other.m_B_inner)
+        , m_CL(other.m_CL)
+        , m_resampler(std::move(other.m_resampler))
+        , m_ratio_outer(other.m_ratio_outer)
+        , m_ratio_inner(other.m_ratio_inner)
+        , m_diagTValues(std::move(other.m_diagTValues))
+        , m_diagThetaStars(std::move(other.m_diagThetaStars))
+        , m_diagSeHat(other.m_diagSeHat)
+        , m_diagValid(other.m_diagValid)
+      {
+        // Note: m_diagMutex will be default-constructed in the new object
+        // The moved-from object's mutex state is undefined, but that's ok
+        // since the moved-from object should not be used after move
+      }
+
+      // Enable move assignment operator
+      PercentileTBootstrap& operator=(PercentileTBootstrap&& other) noexcept
+      {
+        if (this != &other)
+        {
+          // We cannot move mutexes, but we can move the data under lock protection
+          std::lock_guard<std::mutex> lock_this(m_diagMutex);
+          std::lock_guard<std::mutex> lock_other(other.m_diagMutex);
+          
+          const_cast<std::size_t&>(m_B_outer) = other.m_B_outer;
+          const_cast<std::size_t&>(m_B_inner) = other.m_B_inner;
+          const_cast<double&>(m_CL) = other.m_CL;
+          const_cast<Resampler&>(m_resampler) = std::move(other.m_resampler);
+          const_cast<double&>(m_ratio_outer) = other.m_ratio_outer;
+          const_cast<double&>(m_ratio_inner) = other.m_ratio_inner;
+          
+          m_diagTValues = std::move(other.m_diagTValues);
+          m_diagThetaStars = std::move(other.m_diagThetaStars);
+          m_diagSeHat = other.m_diagSeHat;
+          m_diagValid = other.m_diagValid;
+        }
+        return *this;
       }
 
       // (A) Run with caller-provided RNG (non-CRN path)
@@ -127,17 +167,20 @@ namespace palvalidator
           };
         }
 
-        auto engine_maker = [&](std::size_t b) -> Rng {
+        auto engine_maker = [per_outer_seed_words = std::move(per_outer_seed_words)](std::size_t b) -> Rng {
           const auto& w = per_outer_seed_words[b];
           std::seed_seq seq{w[0], w[1], w[2], w[3]};
           return Rng(seq);
         };
 
-        return run_impl(x, std::move(sampler), m_outer_override, m_inner_override, engine_maker);
+        return run_impl(x, std::move(sampler), m_outer_override, m_inner_override, std::move(engine_maker));
       }
 
       // (B) Run with a CRN/engine-provider (order/thread independent)
       // Provider concept:  Rng make_engine(std::size_t b) const;
+      //
+      // Note: Provider thread-safety is the provider's responsibility. We only call
+      // a const method; if Provider has internal mutable state, it must synchronize.
       template<class Provider>
       Result run(const std::vector<Decimal>& x,
                  Sampler                      sampler,
@@ -145,55 +188,62 @@ namespace palvalidator
                  std::size_t                  m_outer_override = 0,
                  std::size_t                  m_inner_override = 0) const
       {
-        auto engine_maker = [&](std::size_t b) -> Rng {
+        auto engine_maker = [&provider](std::size_t b) -> Rng {
           return provider.make_engine(b); // by value
         };
-        return run_impl(x, std::move(sampler), m_outer_override, m_inner_override, engine_maker);
+
+        return run_impl(x, std::move(sampler), m_outer_override, m_inner_override, std::move(engine_maker));
       }
 
       // ------------------------------------------------------------------
-      // Diagnostics for AutoBootstrapSelector
+      // Diagnostics for AutoBootstrapSelector (thread-safe)
       // ------------------------------------------------------------------
 
-      /// True if a successful run(...) has populated diagnostics on this instance.
       bool hasDiagnostics() const noexcept
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagValid;
       }
 
-      /// Effective t-values {t_b} from the last run (finite pivots only).
-      /// Size equals effective_B from the last Result.
-      /// Throws std::logic_error if run(...) has not been called successfully.
-      const std::vector<double>& getTStatistics() const
+      // Return COPIES to avoid returning references that could be invalidated by a concurrent run().
+      std::vector<double> getTStatistics() const
       {
         ensureDiagnosticsAvailable();
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagTValues;
       }
 
-      /// Effective θ*_b values (outer bootstrap statistics) from the last run.
-      /// Size equals effective_B from the last Result.
-      /// Throws std::logic_error if run(...) has not been called successfully.
-      const std::vector<double>& getThetaStarStatistics() const
+      std::vector<double> getThetaStarStatistics() const
       {
         ensureDiagnosticsAvailable();
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagThetaStars;
       }
 
-      /// se_hat (sd(θ*)) from the last run.
-      /// Throws std::logic_error if run(...) has not been called successfully.
       double getSeHat() const
       {
         ensureDiagnosticsAvailable();
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagSeHat;
       }
 
     private:
       void ensureDiagnosticsAvailable() const
       {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
         if (!m_diagValid) {
           throw std::logic_error(
-            "PercentileTBootstrap diagnostics are not available: run() has not been called on this instance.");
+            "PercentileTBootstrap diagnostics are not available: run() has not been called successfully on this instance.");
         }
+      }
+
+      void clearDiagnostics_unsafe() const noexcept
+      {
+        // Caller must hold m_diagMutex.
+        m_diagTValues.clear();
+        m_diagThetaStars.clear();
+        m_diagSeHat = 0.0;
+        m_diagValid = false;
       }
 
       template<class EngineMaker>
@@ -201,11 +251,14 @@ namespace palvalidator
                       Sampler                      sampler,
                       std::size_t                  m_outer_override,
                       std::size_t                  m_inner_override,
-                      EngineMaker&&                make_engine) const
+                      EngineMaker                  make_engine) const
       {
         const std::size_t n = x.size();
         if (n < 3) {
-          m_diagValid = false;
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            clearDiagnostics_unsafe();
+          }
           throw std::invalid_argument("PercentileTBootstrap.run: n must be >= 3");
         }
 
@@ -230,88 +283,99 @@ namespace palvalidator
         std::vector<double> theta_star_ds(m_B_outer, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> tvals         (m_B_outer, std::numeric_limits<double>::quiet_NaN());
 
-        // Diagnostics
+        // Diagnostics (counters)
         std::atomic<std::size_t> skipped_outer{0};
         std::atomic<std::size_t> skipped_inner_total{0};
         std::atomic<std::size_t> inner_attempted_total{0};
 
         const std::size_t Ldiag = m_resampler.getL();
 
+        // If Resampler has any internal mutable state, copying it per task avoids shared mutation.
+        // This also makes concurrent run() calls on the same PTB instance safe w.r.t. resampler internals.
+        const Resampler resampler_base_copy = m_resampler;
+
         // Parallelize outer loop only
         Executor exec{};
-        concurrency::parallel_for_chunked(static_cast<uint32_t>(m_B_outer), exec,
-                                          [&, sampler](uint32_t b32) // Copy sampler per-thread for safety
-                                          {
-                                            const std::size_t b = static_cast<std::size_t>(b32);
-                                            Rng rng_b = make_engine(b); // fresh engine per outer replicate
+        concurrency::parallel_for_chunked(
+          static_cast<uint32_t>(m_B_outer),
+          exec,
+          [&, sampler, make_engine, resampler_base_copy](uint32_t b32)
+          {
+            // Copy resampler per task for maximum safety (in case resampler has mutable state).
+            Resampler resampler_local = resampler_base_copy;
 
-                                            std::vector<Decimal> y_outer(m_outer);
-                                            std::vector<Decimal> y_inner(m_inner);
+            const std::size_t b = static_cast<std::size_t>(b32);
+            Rng rng_b = make_engine(b); // fresh engine per outer replicate
 
-                                            // OUTER resample
-                                            m_resampler(x, y_outer, m_outer, rng_b);
+            std::vector<Decimal> y_outer(m_outer);
+            std::vector<Decimal> y_inner(m_inner);
 
-                                            // θ* on OUTER
-                                            const Decimal theta_star   = sampler(y_outer);
-                                            const double  theta_star_d = num::to_double(theta_star);
-                                            if (!std::isfinite(theta_star_d)) {
-                                              skipped_outer.fetch_add(1, std::memory_order_relaxed);
-                                              return;
-                                            }
+            // OUTER resample
+            resampler_local(x, y_outer, m_outer, rng_b);
 
-                                            // Inner loop: SE* with adaptive stabilization
-                                            double mean = 0.0, m2 = 0.0;
-                                            std::size_t eff_inner = 0;
+            // θ* on OUTER
+            const Decimal theta_star   = sampler(y_outer);
+            const double  theta_star_d = num::to_double(theta_star);
+            if (!std::isfinite(theta_star_d)) {
+              skipped_outer.fetch_add(1, std::memory_order_relaxed);
+              return;
+            }
 
-                                            auto push_inner = [&](double v) noexcept {
-                                              ++eff_inner;
-                                              const double delta = v - mean;
-                                              mean += delta / static_cast<double>(eff_inner);
-                                              m2   += delta * (v - mean);
-                                            };
+            // Inner loop: SE* with adaptive stabilization
+            double mean = 0.0, m2 = 0.0;
+            std::size_t eff_inner = 0;
 
-                                            constexpr std::size_t MIN_INNER   = 100;
-                                            constexpr std::size_t CHECK_EVERY = 16;
-                                            constexpr double      REL_EPS     = 0.015;
+            auto push_inner = [&](double v) noexcept {
+              ++eff_inner;
+              const double delta = v - mean;
+              mean += delta / static_cast<double>(eff_inner);
+              m2   += delta * (v - mean);
+            };
 
-                                            double last_se = std::numeric_limits<double>::infinity();
+            constexpr std::size_t MIN_INNER   = 100;
+            constexpr std::size_t CHECK_EVERY = 16;
+            constexpr double      REL_EPS     = 0.015;
 
-                                            for (std::size_t j = 0; j < m_B_inner; ++j) {
-                                              inner_attempted_total.fetch_add(1, std::memory_order_relaxed);
-                                              m_resampler(y_outer, y_inner, m_inner, rng_b);
-                                              const double v = num::to_double(sampler(y_inner));
-                                              if (!std::isfinite(v)) {
-                                                skipped_inner_total.fetch_add(1, std::memory_order_relaxed);
-                                                continue;
-                                              }
-                                              push_inner(v);
+            double last_se = std::numeric_limits<double>::infinity();
 
-                                              if (eff_inner >= MIN_INNER && ((eff_inner % CHECK_EVERY) == 0)) {
-                                                const double se_now = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
-                                                if (std::isfinite(se_now) &&
-                                                    std::fabs(se_now - last_se) <= REL_EPS * std::max(se_now, 1e-300)) {
-                                                  break; // stabilized
-                                                }
-                                                last_se = se_now;
-                                              }
-                                            }
+            for (std::size_t j = 0; j < m_B_inner; ++j) {
+              inner_attempted_total.fetch_add(1, std::memory_order_relaxed);
 
-                                            if (eff_inner < MIN_INNER) {
-                                              skipped_outer.fetch_add(1, std::memory_order_relaxed);
-                                              return;
-                                            }
+              resampler_local(y_outer, y_inner, m_inner, rng_b);
 
-                                            const double se_star = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
-                                            if (!(se_star > 0.0) || !std::isfinite(se_star)) {
-                                              skipped_outer.fetch_add(1, std::memory_order_relaxed);
-                                              return;
-                                            }
+              const double v = num::to_double(sampler(y_inner));
+              if (!std::isfinite(v)) {
+                skipped_inner_total.fetch_add(1, std::memory_order_relaxed);
+                continue;
+              }
+              push_inner(v);
 
-                                            const double t_b = (theta_star_d - theta_hat_d) / se_star;
+              if (eff_inner >= MIN_INNER && ((eff_inner % CHECK_EVERY) == 0)) {
+                const double se_now = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
+                if (std::isfinite(se_now) &&
+                    std::fabs(se_now - last_se) <= REL_EPS * std::max(se_now, 1e-300)) {
+                  break; // stabilized
+                }
+                last_se = se_now;
+              }
+            }
 
-                                            theta_star_ds[b] = theta_star_d;
-                                            tvals[b]         = t_b;
-                                          });
+            if (eff_inner < MIN_INNER) {
+              skipped_outer.fetch_add(1, std::memory_order_relaxed);
+              return;
+            }
+
+            const double se_star = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
+            if (!(se_star > 0.0) || !std::isfinite(se_star)) {
+              skipped_outer.fetch_add(1, std::memory_order_relaxed);
+              return;
+            }
+
+            const double t_b = (theta_star_d - theta_hat_d) / se_star;
+
+            theta_star_ds[b] = theta_star_d;
+            tvals[b]         = t_b;
+          });
 
         // Collect effective outer replicates
         std::vector<double> t_eff;     t_eff.reserve(m_B_outer);
@@ -328,22 +392,22 @@ namespace palvalidator
 
         const std::size_t effective_B = t_eff.size();
 
-	// Require at least 4% of requested outer replicates, with a floor of 16
-	const std::size_t min_effective = std::max(16ul, m_B_outer / 25);
+        // Require at least 4% of requested outer replicates, with a floor of 16
+        const std::size_t min_effective = std::max<std::size_t>(16u, m_B_outer / 25u);
+        if (effective_B < min_effective) {
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            clearDiagnostics_unsafe();
+          }
+          throw std::runtime_error(
+            "PercentileTBootstrap: insufficient valid outer replicates. "
+            "Got " + std::to_string(effective_B) + " valid out of " +
+            std::to_string(m_B_outer) + " (minimum required: " +
+            std::to_string(min_effective) + ", i.e., 4% or 16, whichever is larger). "
+            "The data may be too pathological for Percentile-t bootstrap.");
+        }
 
-	if (effective_B < min_effective)
-	  {
-	    m_diagValid = false;
-	    throw std::runtime_error(
-				   "PercentileTBootstrap: insufficient valid outer replicates. "
-				   "Got " + std::to_string(effective_B) + " valid out of " + 
-				   std::to_string(m_B_outer) + " (minimum required: " + 
-				   std::to_string(min_effective) + ", i.e., 4% or 16, whichever is larger). "
-				   "The data may be too pathological for Percentile-t bootstrap."
-				   );
-	  }
-
-	const double se_hat = mkc_timeseries::StatUtils<double>::computeStdDev(theta_eff);
+        const double se_hat = mkc_timeseries::StatUtils<double>::computeStdDev(theta_eff);
 
         const double alpha = 1.0 - m_CL;
         const double t_lo  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, alpha / 2.0);
@@ -352,50 +416,63 @@ namespace palvalidator
         const double lower_d = theta_hat_d - t_hi * se_hat;
         const double upper_d = theta_hat_d - t_lo * se_hat;
 
-        // Store diagnostics for the most recent run
-        m_diagTValues    = t_eff;
-        m_diagThetaStars = theta_eff;
-        m_diagSeHat      = se_hat;
-        m_diagValid      = true;
+        // Store diagnostics for the most recent successful run (thread-safe; getters return copies)
+        {
+          std::lock_guard<std::mutex> lock(m_diagMutex);
+          m_diagTValues    = t_eff;
+          m_diagThetaStars = theta_eff;
+          m_diagSeHat      = se_hat;
+          m_diagValid      = true;
+        }
 
         Result R;
-        R.mean                = theta_hat;
-        R.lower               = Decimal(lower_d);
-        R.upper               = Decimal(upper_d);
-        R.cl                  = m_CL;
-        R.B_outer             = m_B_outer;
-        R.B_inner             = m_B_inner;
-        R.effective_B         = effective_B;
-        R.skipped_outer       = skipped_outer.load(std::memory_order_relaxed);
-        R.skipped_inner_total = skipped_inner_total.load(std::memory_order_relaxed);
+        R.mean                  = theta_hat;
+        R.lower                 = Decimal(lower_d);
+        R.upper                 = Decimal(upper_d);
+        R.cl                    = m_CL;
+        R.B_outer               = m_B_outer;
+        R.B_inner               = m_B_inner;
+        R.effective_B           = effective_B;
+        R.skipped_outer         = skipped_outer.load(std::memory_order_relaxed);
+        R.skipped_inner_total   = skipped_inner_total.load(std::memory_order_relaxed);
         R.inner_attempted_total = inner_attempted_total.load(std::memory_order_relaxed);
-        R.n                   = n;
-        R.m_outer             = m_outer;
-        R.m_inner             = m_inner;
-        R.L                   = Ldiag;
-        R.se_hat              = se_hat;
+        R.n                     = n;
+        R.m_outer               = m_outer;
+        R.m_inner               = m_inner;
+        R.L                     = Ldiag;
+        R.se_hat                = se_hat;
         return R;
       }
 
     private:
-      std::size_t  m_B_outer;
-      std::size_t  m_B_inner;
-      double       m_CL;
-      Resampler    m_resampler;
-      double       m_ratio_outer;
-      double       m_ratio_inner;
+      // Immutable configuration after construction
+      const std::size_t  m_B_outer;
+      const std::size_t  m_B_inner;
+      const double       m_CL;
+      const Resampler    m_resampler;
+      const double       m_ratio_outer;
+      const double       m_ratio_inner;
 
-      // Diagnostics for most recent run(...)
+      // Diagnostics for most recent successful run(...)
+      // Protected by m_diagMutex. Getters return copies to avoid reference invalidation.
+      mutable std::mutex        m_diagMutex;
       mutable std::vector<double> m_diagTValues;
       mutable std::vector<double> m_diagThetaStars;
       mutable double              m_diagSeHat;
       mutable bool                m_diagValid;
     };
 
+
+    // --------------------------------------------------------------------------
+    // BCa-compatible wrapper
+    //
+    // Thread-safety hardening:
+    // - If used concurrently, cached_result access is protected by a mutex.
+    // --------------------------------------------------------------------------
     template <class Decimal,
-	      class Sampler, // Sampler here corresponds to Resampler in BCa
-	      class Rng      = std::mt19937_64,
-	      class Provider = void>
+              class Sampler, // Sampler here corresponds to Resampler in BCa
+              class Rng      = std::mt19937_64,
+              class Provider = void>
     class BCaCompatibleTBootstrap
     {
     public:
@@ -404,58 +481,73 @@ namespace palvalidator
       // Must match the BCaBootStrap constructor signature!
       template <class P = Provider, std::enable_if_t<!std::is_void_v<P>, int> = 0>
       BCaCompatibleTBootstrap(const std::vector<Decimal>& returns,
-			      unsigned int num_resamples, // B_outer
-			      double confidence_level,
-			      StatFn statistic,           // Sampler for PTB
-			      Sampler sampler,            // Resampler for PTB
-			      const P& provider)
-	// Use the statistic (which is a StatFn) as the Sampler type in the inner PTB
-	: m_internal_pt(num_resamples, m_B_inner_default, confidence_level, std::move(sampler), 1.0, 1.0)
-	, m_returns(returns)
-	, m_statistic(std::move(statistic))
-	, m_provider(provider)
+                              unsigned int              num_resamples, // B_outer
+                              double                    confidence_level,
+                              StatFn                    statistic,     // Sampler for PTB
+                              Sampler                   sampler,       // Resampler for PTB
+                              const P&                  provider)
+        : m_internal_pt(num_resamples, m_B_inner_default, confidence_level, std::move(sampler), 1.0, 1.0)
+        , m_returns(returns)
+        , m_statistic(std::move(statistic))
+        , m_provider(provider) // store by value
+        , m_cached_result()
       {
-	if (m_returns.empty() || num_resamples < 100u || confidence_level <= 0.0 || confidence_level >= 1.0)
-	  {
-	    throw std::invalid_argument("BCaCompatibleTBootstrap: Invalid construction arguments.");
-	  }
+        if (m_returns.empty() || num_resamples < 100u || confidence_level <= 0.0 || confidence_level >= 1.0) {
+          throw std::invalid_argument("BCaCompatibleTBootstrap: Invalid construction arguments.");
+        }
       }
 
-      // Public BCa-compatible interface
       Decimal getLowerBound()
       {
-	ensureCalculated();
-	return m_cached_result.value().lower;
+        ensureCalculated();
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_cached_result.value().lower;
       }
 
       Decimal getUpperBound()
       {
-	ensureCalculated();
-	return m_cached_result.value().upper;
+        ensureCalculated();
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_cached_result.value().upper;
       }
-    
+
       Decimal getStatistic()
       {
-	ensureCalculated();
-	return m_cached_result.value().mean;
+        ensureCalculated();
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_cached_result.value().mean;
       }
 
     private:
-      // Constants and members
-      static constexpr std::size_t m_B_inner_default = 200; // Recommend >100 for stability
+      static constexpr std::size_t m_B_inner_default = 200;
+
       PercentileTBootstrap<Decimal, StatFn, Sampler, Rng> m_internal_pt;
-      const std::vector<Decimal>& m_returns;
-      StatFn                      m_statistic;
-      Provider                    m_provider;  // Store by value, not reference
-    
+      const std::vector<Decimal>&                         m_returns;
+      StatFn                                              m_statistic;
+      Provider                                            m_provider;
+
+      mutable std::mutex                                  m_cacheMutex;
       std::optional<typename PercentileTBootstrap<Decimal, StatFn, Sampler, Rng>::Result> m_cached_result;
 
-      // Lazy calculation
       void ensureCalculated()
       {
-	if (!m_cached_result.has_value()) {
-	  m_cached_result = m_internal_pt.run(m_returns, m_statistic, m_provider);
-	}
+        // Double-checked style with mutex: cheap fast-path when already computed.
+        {
+          std::lock_guard<std::mutex> lock(m_cacheMutex);
+          if (m_cached_result.has_value()) {
+            return;
+          }
+        }
+
+        // Compute outside lock to avoid holding mutex during heavy work.
+        auto computed = m_internal_pt.run(m_returns, m_statistic, m_provider);
+
+        {
+          std::lock_guard<std::mutex> lock(m_cacheMutex);
+          if (!m_cached_result.has_value()) {
+            m_cached_result = std::move(computed);
+          }
+        }
       }
     };
 
