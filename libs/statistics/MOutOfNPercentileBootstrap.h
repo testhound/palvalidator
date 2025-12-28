@@ -171,10 +171,16 @@ template <class Decimal,
                  std::size_t                  m_sub_override = 0,
                  std::ostream*                diagnosticLog  = nullptr) const
       {
-        // Derive per-replicate engine from supplied RNG
-        auto make_engine = [&rng](std::size_t /*b*/) {
-          const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
-          auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
+        // IMPORTANT: run_core_ parallelizes the loop, so we must not touch the
+        // caller-provided RNG from inside the parallel region (std::* RNGs are not thread-safe).
+        // Precompute per-replicate seeds deterministically in the calling thread.
+        std::vector<uint64_t> per_replicate_seeds(m_B);
+        for (std::size_t b = 0; b < m_B; ++b) {
+          per_replicate_seeds[b] = mkc_timeseries::rng_utils::get_random_value(rng);
+        }
+
+        auto make_engine = [&per_replicate_seeds](std::size_t b) {
+          auto seq = mkc_timeseries::rng_utils::make_seed_seq(per_replicate_seeds[b]);
           return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
         };
 
