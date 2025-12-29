@@ -58,16 +58,32 @@ namespace palvalidator
       // A new block starts at any time t with probability p = 1/L.
       // mask[0] is always 1 (by convention/necessity).
       
+      // Handle edge cases for numerical stability
       const double p = (L <= 1.0) ? 1.0 : (1.0 / L);
-      std::bernoulli_distribution bern(p);
+      
+      // For very large L (p very small), probability may underflow.
+      // Set a minimum threshold: if p < epsilon, treat as "one long block"
+      constexpr double min_p = std::numeric_limits<double>::epsilon() * 10.0;
+      const bool effectively_infinite_L = (p < min_p && L > 1.0);
 
       std::vector<uint8_t> mask(m);
       mask[0] = 1u; // Always restart at t=0
 
-      // For t=1 to m-1, decide if we restart
-      for (std::size_t t = 1; t < m; ++t) {
-          // get_engine(rng) is available via your existing include "RngUtils.h"
-          mask[t] = bern(mkc_timeseries::rng_utils::get_engine(rng)) ? 1u : 0u;
+      if (effectively_infinite_L)
+      {
+          // L is so large that p ≈ 0. Just make one block (no restarts after t=0).
+          // This avoids underflow issues with bernoulli_distribution.
+          std::fill(mask.begin() + 1, mask.end(), 0u);
+      }
+      else
+      {
+          std::bernoulli_distribution bern(p);
+          
+          // For t=1 to m-1, decide if we restart
+          for (std::size_t t = 1; t < m; ++t) {
+              // get_engine(rng) is available via your existing include "RngUtils.h"
+              mask[t] = bern(mkc_timeseries::rng_utils::get_engine(rng)) ? 1u : 0u;
+          }
       }
 
       return mask;
@@ -78,8 +94,13 @@ namespace palvalidator
     {
     public:
       explicit StationaryBlockValueResampler(std::size_t L)
-	: m_L(L < 1 ? 1 : L)
-      {}
+	: m_L(L)
+      {
+	if (m_L < 1)
+	  {
+	    throw std::invalid_argument("StationaryBlockValueResampler: L must be >= 1");
+	  }
+      }
 
       std::size_t getL() const
       {
@@ -119,12 +140,18 @@ namespace palvalidator
         std::size_t wrote = 0;
 
         while (wrote < m)
-   {
+	  {
             const std::size_t start = ustart(mkc_timeseries::rng_utils::get_engine(rng));
             const std::size_t run   = 1 + geo(mkc_timeseries::rng_utils::get_engine(rng));      // length ≥ 1
-            const std::size_t take  = std::min(run, m - wrote);
+            
+            // CRITICAL FIX: Allow blocks to extend beyond n by using the doubled buffer
+            // The doubled buffer allows reading up to n contiguous elements from any start in [0, n-1]
+            // But we can actually read more if the block wraps - up to 2*n total is safe
+            // For blocks that need to wrap multiple times, we limit to what we can safely copy
+            const std::size_t max_from_start = (n * 2) - start;
+            const std::size_t take  = std::min({run, m - wrote, max_from_start});
 
-            // Copy from doubled buffer; always contiguous
+            // Copy from doubled buffer; always contiguous and safe
             std::copy_n(x2.begin() + static_cast<std::ptrdiff_t>(start),
                         static_cast<std::ptrdiff_t>(take),
                         y.begin() + static_cast<std::ptrdiff_t>(wrote));
@@ -387,9 +414,9 @@ namespace palvalidator
       operator()(const std::vector<Decimal>& x, std::size_t n, Rng& rng) const
       {
         if (x.empty())
-   {
+	  {
             throw std::invalid_argument("StationaryMaskValueResamplerAdapter: empty sample.");
-   }
+	  }
         std::vector<Decimal> y;
         y.resize(n);
         m_inner(x, y, n, rng); // fill-by-reference
