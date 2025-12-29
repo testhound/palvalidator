@@ -375,7 +375,7 @@ TEST_CASE("NormalBootstrap: copy constructor", "[Bootstrap][Normal][CopyConstruc
         randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
         std::mt19937_64 rng(seed);
         
-        auto result_orig = nb_original.run(x, mean_sampler, rng);
+        [[maybe_unused]] auto result_orig = nb_original.run(x, mean_sampler, rng);
         
         // Original should have diagnostics now, copy should not
         REQUIRE(nb_original.hasDiagnostics());
@@ -407,7 +407,7 @@ TEST_CASE("NormalBootstrap: move constructor", "[Bootstrap][Normal][MoveConstruc
         randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
         std::mt19937_64 rng(seed);
         
-        auto result_orig = nb_original.run(x, mean_sampler, rng);
+        [[maybe_unused]] auto result_orig = nb_original.run(x, mean_sampler, rng);
         REQUIRE(nb_original.hasDiagnostics());
         
         // Move construct
@@ -482,7 +482,7 @@ TEST_CASE("NormalBootstrap: move assignment operator", "[Bootstrap][Normal][Move
         randutils::seed_seq_fe128 seed{1u,2u,3u,4u};
         std::mt19937_64 rng(seed);
         
-        auto result_orig = nb_source.run(x, mean_sampler, rng);
+        [[maybe_unused]] auto result_orig = nb_source.run(x, mean_sampler, rng);
         REQUIRE(nb_source.hasDiagnostics());
         REQUIRE(nb_dest.B() == B2);  // Initial dest state
         
