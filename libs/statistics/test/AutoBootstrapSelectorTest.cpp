@@ -113,6 +113,94 @@ TEST_CASE("Candidate: Construction and Encapsulation",
     }
 }
 
+TEST_CASE("SelectionDiagnostics: Default parameters work correctly",
+          "[AutoBootstrapSelector][SelectionDiagnostics]")
+{
+    SECTION("Minimal construction using default parameters")
+    {
+        // Test using minimal constructor (omitting last 4 params)
+        using SelectionDiagnostics = palvalidator::analysis::AutoBootstrapSelector<double>::Result::SelectionDiagnostics;
+        
+        SelectionDiagnostics diag(
+            MethodId::Percentile,       // chosenMethod
+            "Percentile",               // chosenMethodName
+            0.5,                        // chosenScore
+            0.1,                        // chosenStabilityPenalty
+            0.05,                       // chosenLengthPenalty
+            false,                      // hasBCaCandidate
+            false,                      // bcaChosen
+            false,                      // bcaRejectedForInstability
+            false);                     // bcaRejectedForLength
+            // Defaults: bcaRejectedForDomain=false, bcaRejectedForNonFinite=false,
+            //           numCandidates=0, scoreBreakdowns=empty
+        
+        REQUIRE(diag.wasBCaRejectedForDomain() == false);
+        REQUIRE(diag.wasBCaRejectedForNonFiniteParameters() == false);
+        REQUIRE(diag.getNumCandidates() == 0);
+        REQUIRE(diag.getScoreBreakdowns().empty());
+    }
+    
+    SECTION("Full construction with all parameters explicit")
+    {
+        using SelectionDiagnostics = palvalidator::analysis::AutoBootstrapSelector<double>::Result::SelectionDiagnostics;
+        using ScoreBreakdown = SelectionDiagnostics::ScoreBreakdown;
+        
+        std::vector<ScoreBreakdown> breakdowns;
+        breakdowns.emplace_back(
+            MethodId::BCa,              // method
+            0.001, 0.002, 0.05,         // raw ordering, length, stability
+            0.01, 0.25, 0.0,            // raw center, skew, domain
+            0.1, 0.2, 0.2,              // norm ordering, length, stability
+            0.25, 0.625,                // norm center, skew (no norm domain)
+            0.1, 0.05, 0.2, 0.125, 0.3125, 0.0,  // contributions (ordering, length, stability, center, skew, domain)
+            0.8625);                    // total score
+        
+        SelectionDiagnostics diag(
+            MethodId::BCa,              // chosenMethod
+            "BCa",                      // chosenMethodName
+            0.8625,                     // chosenScore
+            0.2,                        // chosenStabilityPenalty
+            0.05,                       // chosenLengthPenalty
+            true,                       // hasBCaCandidate
+            true,                       // bcaChosen
+            false,                      // bcaRejectedForInstability
+            false,                      // bcaRejectedForLength
+            true,                       // bcaRejectedForDomain
+            false,                      // bcaRejectedForNonFinite
+            3,                          // numCandidates
+            std::move(breakdowns));     // scoreBreakdowns
+        
+        REQUIRE(diag.wasBCaRejectedForDomain() == true);
+        REQUIRE(diag.wasBCaRejectedForNonFiniteParameters() == false);
+        REQUIRE(diag.getNumCandidates() == 3);
+        REQUIRE(diag.getScoreBreakdowns().size() == 1);
+    }
+    
+    SECTION("Mix default and explicit parameters")
+    {
+        using SelectionDiagnostics = palvalidator::analysis::AutoBootstrapSelector<double>::Result::SelectionDiagnostics;
+        
+        // Specify domain=true but use defaults for nonFinite, numCandidates, scoreBreakdowns
+        SelectionDiagnostics diag(
+            MethodId::PercentileT,      // chosenMethod
+            "PercentileT",              // chosenMethodName
+            0.25,                       // chosenScore
+            0.0,                        // chosenStabilityPenalty
+            0.02,                       // chosenLengthPenalty
+            true,                       // hasBCaCandidate
+            false,                      // bcaChosen
+            true,                       // bcaRejectedForInstability
+            false,                      // bcaRejectedForLength
+            true);                      // bcaRejectedForDomain (explicit)
+            // Defaults: bcaRejectedForNonFinite=false, numCandidates=0, scoreBreakdowns=empty
+        
+        REQUIRE(diag.wasBCaRejectedForDomain() == true);      // explicit
+        REQUIRE(diag.wasBCaRejectedForNonFiniteParameters() == false); // default
+        REQUIRE(diag.getNumCandidates() == 0);               // default
+        REQUIRE(diag.getScoreBreakdowns().empty());          // default
+    }
+}
+
 TEST_CASE("Candidate: Immutability and withScore",
           "[AutoBootstrapSelector][Candidate]")
 {

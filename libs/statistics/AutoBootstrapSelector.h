@@ -314,6 +314,28 @@ namespace palvalidator
           double m_total_score;
         };
 
+        /**
+         * @brief Constructs comprehensive selection diagnostics.
+         *
+         * @param chosenMethod The selected bootstrap method
+         * @param chosenMethodName Human-readable name of the chosen method
+         * @param chosenScore The final tournament score of the winner
+         * @param chosenStabilityPenalty Stability penalty component of winner's score
+         * @param chosenLengthPenalty Length penalty component of winner's score
+         * @param hasBCaCandidate True if BCa was a candidate in the tournament
+         * @param bcaChosen True if BCa was ultimately selected
+         * @param bcaRejectedForInstability True if BCa was rejected due to |z0| or |accel| limits
+         * @param bcaRejectedForLength True if BCa was rejected due to excessive interval length
+         * @param bcaRejectedForDomain [Optional] True if BCa violated domain constraints
+         *                             (default: false)
+         * @param bcaRejectedForNonFinite [Optional] True if BCa had non-finite parameters
+         *                                (default: false)
+         * @param numCandidates [Optional] Total number of candidates evaluated (default: 0)
+         * @param scoreBreakdowns [Optional] Detailed score decomposition for all candidates
+         *                        (default: empty vector)
+         *
+         * @note The last 4 parameters have defaults and may be omitted for simpler use cases.
+         */
         SelectionDiagnostics(MethodId     chosenMethod,
                              std::string  chosenMethodName,
                              double       chosenScore,
@@ -323,88 +345,10 @@ namespace palvalidator
                              bool         bcaChosen,
                              bool         bcaRejectedForInstability,
                              bool         bcaRejectedForLength,
-                             std::size_t  numCandidates)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_bca_rejected_for_domain(false),
-            m_bca_rejected_for_non_finite(false),
-            m_num_candidates(numCandidates),
-            m_score_breakdowns()
-        {}
-
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             std::size_t  numCandidates,
-                             std::vector<ScoreBreakdown> scoreBreakdowns)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_bca_rejected_for_domain(false),
-            m_bca_rejected_for_non_finite(false),
-            m_num_candidates(numCandidates),
-            m_score_breakdowns(std::move(scoreBreakdowns))
-        {}
-
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             bool         bcaRejectedForDomain,
-                             bool         bcaRejectedForNonFinite,
-                             std::size_t  numCandidates)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_bca_rejected_for_domain(bcaRejectedForDomain),
-            m_bca_rejected_for_non_finite(bcaRejectedForNonFinite),
-            m_num_candidates(numCandidates),
-            m_score_breakdowns()
-        {}
-
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             bool         bcaRejectedForDomain,
-                             bool         bcaRejectedForNonFinite,
-                             std::size_t  numCandidates,
-                             std::vector<ScoreBreakdown> scoreBreakdowns)
+                             bool         bcaRejectedForDomain      = false,
+                             bool         bcaRejectedForNonFinite   = false,
+                             std::size_t  numCandidates             = 0,
+                             std::vector<ScoreBreakdown> scoreBreakdowns = std::vector<ScoreBreakdown>())
           : m_chosen_method(chosenMethod),
             m_chosen_method_name(std::move(chosenMethodName)),
             m_chosen_score(chosenScore),
