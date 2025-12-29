@@ -102,7 +102,8 @@ public:
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
 		   const Resampler& resampler,
 		   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-		   uint64_t stageTag, uint64_t L, uint64_t fold)
+		   uint64_t stageTag, uint64_t L, uint64_t fold,
+		   bool rescale_to_n = false)
     -> std::pair<
     palvalidator::analysis::MOutOfNPercentileBootstrap<
       Decimal, Sampler, Resampler, Engine, Executor>,
@@ -117,7 +118,7 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler);  // Executor default-constructed inside
+    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
@@ -127,7 +128,8 @@ public:
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
 		   const Resampler& resampler,
 		   uint64_t strategyId,
-		   uint64_t stageTag, uint64_t L, uint64_t fold)
+		   uint64_t stageTag, uint64_t L, uint64_t fold,
+		   bool rescale_to_n = false)
     -> std::pair<
     palvalidator::analysis::MOutOfNPercentileBootstrap<
       Decimal, Sampler, Resampler, Engine, Executor>,
@@ -141,7 +143,7 @@ public:
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler);  // Executor default-constructed inside
+    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
@@ -150,7 +152,8 @@ public:
   auto makeAdaptiveMOutOfN(std::size_t B, double CL,
                            const Resampler& resampler,
                            const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-                           uint64_t stageTag, uint64_t L, uint64_t fold)
+                           uint64_t stageTag, uint64_t L, uint64_t fold,
+                           bool rescale_to_n = false)
     -> std::pair<
          palvalidator::analysis::MOutOfNPercentileBootstrap<
            Decimal, Sampler, Resampler, Engine, Executor>,
@@ -167,7 +170,7 @@ public:
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
     // via MOutOfNPercentileBootstrap::createAdaptive.
-    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler);
+    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n);
 
     return std::make_pair(std::move(mn), std::move(crn));
   }
@@ -178,7 +181,8 @@ public:
   auto makeAdaptiveMOutOfN(std::size_t B, double CL,
                            const Resampler& resampler,
                            uint64_t strategyId,
-                           uint64_t stageTag, uint64_t L, uint64_t fold)
+                           uint64_t stageTag, uint64_t L, uint64_t fold,
+                           bool rescale_to_n = false)
     -> std::pair<
          palvalidator::analysis::MOutOfNPercentileBootstrap<
            Decimal, Sampler, Resampler, Engine, Executor>,
@@ -193,7 +197,7 @@ public:
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
-    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler);
+    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n);
 
     return std::make_pair(std::move(mn), std::move(crn));
   }

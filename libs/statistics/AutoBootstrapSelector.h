@@ -1127,110 +1127,113 @@ namespace palvalidator
        * @throws std::logic_error If diagnostics are missing or bootstrap stats are insufficient.
        */
       template <class BootstrapEngine>
-      static Candidate summarizePercentileLike(
-					       MethodId                                method,
-					       const BootstrapEngine&                  engine,
-					       const typename BootstrapEngine::Result& res)
-      {
-	if (!engine.hasDiagnostics())
-	  {
-	    throw std::logic_error(
-				   "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
-	  }
-
-	const auto& stats = engine.getBootstrapStatistics();
-	const std::size_t m = stats.size();
-	if (m < 2)
-	  {
-	    throw std::logic_error(
-				   "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
-	  }
-
-	const double mean_boot = engine.getBootstrapMean();
-	const double se_boot   = engine.getBootstrapSe();
-
-	// Guard against degenerate distribution in skewness computation
-	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
-	const double skew_boot = (se_boot > 0.0)
-	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
-	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
-	
-	const double mu  = num::to_double(res.mean);
-	const double lo  = num::to_double(res.lower);
-	const double hi  = num::to_double(res.upper);
-	const double len = hi - lo;
-
-	// ====================================================================
-	// CENTER SHIFT PENALTY
-	// ====================================================================
-	double center_shift_in_se = 0.0;
-	if (se_boot > 0.0 && len > 0.0)
-	  {
-	    const double center = 0.5 * (lo + hi);
-	    center_shift_in_se = std::fabs(center - mu) / se_boot;
-	  }
-
-	// ====================================================================
-	// ORDERING PENALTY (coverage accuracy)
-	// ====================================================================
-	using palvalidator::analysis::detail::compute_empirical_cdf;
-	
-	const double F_lo = compute_empirical_cdf(stats, lo);
-	const double F_hi = compute_empirical_cdf(stats, hi);
-	const double width_cdf = F_hi - F_lo;
-	const double coverage_target = res.cl;
-
-	const double coverage_error = width_cdf - coverage_target;
-
-	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
-	const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
-
-	const double cov_pen =
-	  AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
-	  AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
-
-	const double F_mu       = compute_empirical_cdf(stats, mu);
-	const double center_cdf = 0.5 * (F_lo + F_hi);
-	const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
-
-	const double ordering_penalty = cov_pen + center_pen;
-
-	double normalized_length = 1.0;
-	double median_val = 0.0;
-
-	const double length_penalty = computeLengthPenalty(
-							   len,           // actual_length
-							   stats,         // boot_stats
-							   res.cl,        // confidence_level
-							   method,        // method (handles MOutOfN vs. standard L_max)
-							   normalized_length,  // output
-							   median_val     // output (always computed, even if len <= 0)
-							   );
-
-	return Candidate(
-			 method,
-			 res.mean,
-			 res.lower,
-			 res.upper,
-			 res.cl,
-			 res.n,
-			 res.B,            // B_outer
-			 0,                // B_inner (N/A for percentile-like)
-			 res.effective_B,
-			 res.skipped,      // skipped_total
-			 se_boot,
-			 skew_boot,
-			 median_val,       // ← Always populated by computeLengthPenalty
-			 center_shift_in_se,
-			 normalized_length,
-			 ordering_penalty,
-			 length_penalty,
-			 0.0,              // stability_penalty (N/A for Percentile-like)
-			 0.0,              // z0 (N/A)
-			 0.0,               // accel (N/A)
-			 0.0
-			 );
-      }
+static Candidate summarizePercentileLike(
+    MethodId                                method,
+    const BootstrapEngine&                  engine,
+    const typename BootstrapEngine::Result& res)
+{
+    if (!engine.hasDiagnostics())
+    {
+        throw std::logic_error(
+            "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
+    }
+    const auto& stats = engine.getBootstrapStatistics();
+    const std::size_t m = stats.size();
+    if (m < 2)
+    {
+        throw std::logic_error(
+            "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
+    }
+    const double mean_boot = engine.getBootstrapMean();
+    const double se_boot   = engine.getBootstrapSe();
+    // Guard against degenerate distribution in skewness computation
+    // If se_boot = 0, all bootstrap statistics are identical (degenerate case)
+    const double skew_boot = (se_boot > 0.0)
+        ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
+        : 0.0;  // Degenerate: all theta* identical → neutral skewness
+    
+    const double mu  = num::to_double(res.mean);
+    const double lo  = num::to_double(res.lower);
+    const double hi  = num::to_double(res.upper);
+    const double len = hi - lo;
+    
+    // ====================================================================
+    // CENTER SHIFT PENALTY
+    // ====================================================================
+    double center_shift_in_se = 0.0;
+    if (se_boot > 0.0 && len > 0.0)
+    {
+        const double center = 0.5 * (lo + hi);
+        center_shift_in_se = std::fabs(center - mu) / se_boot;
+    }
+    
+    // ====================================================================
+    // ORDERING PENALTY (coverage accuracy)
+    // ====================================================================
+    // NOTE: Basic bootstrap uses reflection (2*theta_hat - quantiles) to
+    // construct its interval, which is DESIGNED to deviate from the bootstrap
+    // distribution when bias/skewness exists. Penalizing this deviation is
+    // methodologically incorrect, similar to BCa and Percentile-T.
+    // Therefore, we skip the ordering penalty for Basic bootstrap.
+    // ====================================================================
+    double ordering_penalty = 0.0;
+    
+    if (method != MethodId::Basic)
+    {
+        using palvalidator::analysis::detail::compute_empirical_cdf;
+        
+        const double F_lo = compute_empirical_cdf(stats, lo);
+        const double F_hi = compute_empirical_cdf(stats, hi);
+        const double width_cdf = F_hi - F_lo;
+        const double coverage_target = res.cl;
+        const double coverage_error = width_cdf - coverage_target;
+        const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+        const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
+        const double cov_pen =
+            AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
+            AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
+        const double F_mu       = compute_empirical_cdf(stats, mu);
+        const double center_cdf = 0.5 * (F_lo + F_hi);
+        const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
+        ordering_penalty = cov_pen + center_pen;
+    }
+    // else: ordering_penalty remains 0.0 for Basic bootstrap
+    
+    double normalized_length = 1.0;
+    double median_val = 0.0;
+    const double length_penalty = computeLengthPenalty(
+        len,           // actual_length
+        stats,         // boot_stats
+        res.cl,        // confidence_level
+        method,        // method (handles MOutOfN vs. standard L_max)
+        normalized_length,  // output
+        median_val     // output (always computed, even if len <= 0)
+    );
+    
+    return Candidate(
+        method,
+        res.mean,
+        res.lower,
+        res.upper,
+        res.cl,
+        res.n,
+        res.B,            // B_outer
+        0,                // B_inner (N/A for percentile-like)
+        res.effective_B,
+        res.skipped,      // skipped_total
+        se_boot,
+        skew_boot,
+        median_val,       // ← Always populated by computeLengthPenalty
+        center_shift_in_se,
+        normalized_length,
+        ordering_penalty,
+        length_penalty,
+        0.0,              // stability_penalty (N/A for Percentile-like)
+        0.0,              // z0 (N/A)
+        0.0,              // accel (N/A)
+        0.0
+    );
+}
 
       /**
        * @brief Compute stability penalty for Percentile-T based on resample quality.

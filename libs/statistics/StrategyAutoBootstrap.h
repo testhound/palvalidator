@@ -32,12 +32,14 @@ namespace palvalidator
                              std::size_t blockSize,
                              double confidenceLevel,
                              std::uint64_t stageTag,
-                             std::uint64_t fold)
+                             std::uint64_t fold,
+                             bool rescaleMOutOfN = true)
         : m_numBootStrapReplications(numBootStrapReplications),
           m_blockSize(blockSize),
           m_confidenceLevel(confidenceLevel),
           m_stageTag(stageTag),
-          m_fold(fold)
+          m_fold(fold),
+          m_rescaleMOutOfN(rescaleMOutOfN)
       {}
 
       std::size_t getNumBootStrapReplications() const
@@ -65,6 +67,11 @@ namespace palvalidator
         return m_fold;
       }
 
+      bool getRescaleMOutOfN() const
+      {
+        return m_rescaleMOutOfN;
+      }
+
       /// Outer B for Percentile-T bootstrap.
       std::size_t getPercentileTNumOuterReplications() const
       {
@@ -87,6 +94,7 @@ namespace palvalidator
       double        m_confidenceLevel;
       std::uint64_t m_stageTag;
       std::uint64_t m_fold;
+      bool          m_rescaleMOutOfN;
     };
 
     /**
@@ -345,6 +353,9 @@ namespace palvalidator
 	  {
 	    try
 	      {
+		// Extract rescaling flag from configuration
+		const bool rescaleMOutOfN = m_bootstrapConfiguration.getRescaleMOutOfN();
+		
 		auto [engine, crn] =
 		  m_factory.template makeAdaptiveMOutOfN<Decimal, Sampler, Resampler, Executor>(
 												B_single,
@@ -353,7 +364,8 @@ namespace palvalidator
 												m_strategy,
 												stageTag,
 												static_cast<uint64_t>(blockSize),
-												fold);
+												fold,
+												rescaleMOutOfN);
 
 		// USE CONFIGURED SAMPLER INSTANCE
 		auto res = engine.run(returns, m_sampler_instance, crn);
