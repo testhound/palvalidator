@@ -314,6 +314,28 @@ namespace palvalidator
           double m_total_score;
         };
 
+        /**
+         * @brief Constructs comprehensive selection diagnostics.
+         *
+         * @param chosenMethod The selected bootstrap method
+         * @param chosenMethodName Human-readable name of the chosen method
+         * @param chosenScore The final tournament score of the winner
+         * @param chosenStabilityPenalty Stability penalty component of winner's score
+         * @param chosenLengthPenalty Length penalty component of winner's score
+         * @param hasBCaCandidate True if BCa was a candidate in the tournament
+         * @param bcaChosen True if BCa was ultimately selected
+         * @param bcaRejectedForInstability True if BCa was rejected due to |z0| or |accel| limits
+         * @param bcaRejectedForLength True if BCa was rejected due to excessive interval length
+         * @param bcaRejectedForDomain [Optional] True if BCa violated domain constraints
+         *                             (default: false)
+         * @param bcaRejectedForNonFinite [Optional] True if BCa had non-finite parameters
+         *                                (default: false)
+         * @param numCandidates [Optional] Total number of candidates evaluated (default: 0)
+         * @param scoreBreakdowns [Optional] Detailed score decomposition for all candidates
+         *                        (default: empty vector)
+         *
+         * @note The last 4 parameters have defaults and may be omitted for simpler use cases.
+         */
         SelectionDiagnostics(MethodId     chosenMethod,
                              std::string  chosenMethodName,
                              double       chosenScore,
@@ -323,88 +345,10 @@ namespace palvalidator
                              bool         bcaChosen,
                              bool         bcaRejectedForInstability,
                              bool         bcaRejectedForLength,
-                             std::size_t  numCandidates)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_bca_rejected_for_domain(false),
-            m_bca_rejected_for_non_finite(false),
-            m_num_candidates(numCandidates),
-            m_score_breakdowns()
-        {}
-
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             std::size_t  numCandidates,
-                             std::vector<ScoreBreakdown> scoreBreakdowns)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_bca_rejected_for_domain(false),
-            m_bca_rejected_for_non_finite(false),
-            m_num_candidates(numCandidates),
-            m_score_breakdowns(std::move(scoreBreakdowns))
-        {}
-
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             bool         bcaRejectedForDomain,
-                             bool         bcaRejectedForNonFinite,
-                             std::size_t  numCandidates)
-          : m_chosen_method(chosenMethod),
-            m_chosen_method_name(std::move(chosenMethodName)),
-            m_chosen_score(chosenScore),
-            m_chosen_stability_penalty(chosenStabilityPenalty),
-            m_chosen_length_penalty(chosenLengthPenalty),
-            m_has_bca_candidate(hasBCaCandidate),
-            m_bca_chosen(bcaChosen),
-            m_bca_rejected_for_instability(bcaRejectedForInstability),
-            m_bca_rejected_for_length(bcaRejectedForLength),
-            m_bca_rejected_for_domain(bcaRejectedForDomain),
-            m_bca_rejected_for_non_finite(bcaRejectedForNonFinite),
-            m_num_candidates(numCandidates),
-            m_score_breakdowns()
-        {}
-
-        SelectionDiagnostics(MethodId     chosenMethod,
-                             std::string  chosenMethodName,
-                             double       chosenScore,
-                             double       chosenStabilityPenalty,
-                             double       chosenLengthPenalty,
-                             bool         hasBCaCandidate,
-                             bool         bcaChosen,
-                             bool         bcaRejectedForInstability,
-                             bool         bcaRejectedForLength,
-                             bool         bcaRejectedForDomain,
-                             bool         bcaRejectedForNonFinite,
-                             std::size_t  numCandidates,
-                             std::vector<ScoreBreakdown> scoreBreakdowns)
+                             bool         bcaRejectedForDomain      = false,
+                             bool         bcaRejectedForNonFinite   = false,
+                             std::size_t  numCandidates             = 0,
+                             std::vector<ScoreBreakdown> scoreBreakdowns = std::vector<ScoreBreakdown>())
           : m_chosen_method(chosenMethod),
             m_chosen_method_name(std::move(chosenMethodName)),
             m_chosen_score(chosenScore),
@@ -1183,110 +1127,113 @@ namespace palvalidator
        * @throws std::logic_error If diagnostics are missing or bootstrap stats are insufficient.
        */
       template <class BootstrapEngine>
-      static Candidate summarizePercentileLike(
-					       MethodId                                method,
-					       const BootstrapEngine&                  engine,
-					       const typename BootstrapEngine::Result& res)
-      {
-	if (!engine.hasDiagnostics())
-	  {
-	    throw std::logic_error(
-				   "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
-	  }
-
-	const auto& stats = engine.getBootstrapStatistics();
-	const std::size_t m = stats.size();
-	if (m < 2)
-	  {
-	    throw std::logic_error(
-				   "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
-	  }
-
-	const double mean_boot = engine.getBootstrapMean();
-	const double se_boot   = engine.getBootstrapSe();
-
-	// Guard against degenerate distribution in skewness computation
-	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
-	const double skew_boot = (se_boot > 0.0)
-	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
-	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
-	
-	const double mu  = num::to_double(res.mean);
-	const double lo  = num::to_double(res.lower);
-	const double hi  = num::to_double(res.upper);
-	const double len = hi - lo;
-
-	// ====================================================================
-	// CENTER SHIFT PENALTY
-	// ====================================================================
-	double center_shift_in_se = 0.0;
-	if (se_boot > 0.0 && len > 0.0)
-	  {
-	    const double center = 0.5 * (lo + hi);
-	    center_shift_in_se = std::fabs(center - mu) / se_boot;
-	  }
-
-	// ====================================================================
-	// ORDERING PENALTY (coverage accuracy)
-	// ====================================================================
-	using palvalidator::analysis::detail::compute_empirical_cdf;
-	
-	const double F_lo = compute_empirical_cdf(stats, lo);
-	const double F_hi = compute_empirical_cdf(stats, hi);
-	const double width_cdf = F_hi - F_lo;
-	const double coverage_target = res.cl;
-
-	const double coverage_error = width_cdf - coverage_target;
-
-	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
-	const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
-
-	const double cov_pen =
-	  AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
-	  AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
-
-	const double F_mu       = compute_empirical_cdf(stats, mu);
-	const double center_cdf = 0.5 * (F_lo + F_hi);
-	const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
-
-	const double ordering_penalty = cov_pen + center_pen;
-
-	double normalized_length = 1.0;
-	double median_val = 0.0;
-
-	const double length_penalty = computeLengthPenalty(
-							   len,           // actual_length
-							   stats,         // boot_stats
-							   res.cl,        // confidence_level
-							   method,        // method (handles MOutOfN vs. standard L_max)
-							   normalized_length,  // output
-							   median_val     // output (always computed, even if len <= 0)
-							   );
-
-	return Candidate(
-			 method,
-			 res.mean,
-			 res.lower,
-			 res.upper,
-			 res.cl,
-			 res.n,
-			 res.B,            // B_outer
-			 0,                // B_inner (N/A for percentile-like)
-			 res.effective_B,
-			 res.skipped,      // skipped_total
-			 se_boot,
-			 skew_boot,
-			 median_val,       // ← Always populated by computeLengthPenalty
-			 center_shift_in_se,
-			 normalized_length,
-			 ordering_penalty,
-			 length_penalty,
-			 0.0,              // stability_penalty (N/A for Percentile-like)
-			 0.0,              // z0 (N/A)
-			 0.0,               // accel (N/A)
-			 0.0
-			 );
-      }
+static Candidate summarizePercentileLike(
+    MethodId                                method,
+    const BootstrapEngine&                  engine,
+    const typename BootstrapEngine::Result& res)
+{
+    if (!engine.hasDiagnostics())
+    {
+        throw std::logic_error(
+            "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
+    }
+    const auto& stats = engine.getBootstrapStatistics();
+    const std::size_t m = stats.size();
+    if (m < 2)
+    {
+        throw std::logic_error(
+            "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
+    }
+    const double mean_boot = engine.getBootstrapMean();
+    const double se_boot   = engine.getBootstrapSe();
+    // Guard against degenerate distribution in skewness computation
+    // If se_boot = 0, all bootstrap statistics are identical (degenerate case)
+    const double skew_boot = (se_boot > 0.0)
+        ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
+        : 0.0;  // Degenerate: all theta* identical → neutral skewness
+    
+    const double mu  = num::to_double(res.mean);
+    const double lo  = num::to_double(res.lower);
+    const double hi  = num::to_double(res.upper);
+    const double len = hi - lo;
+    
+    // ====================================================================
+    // CENTER SHIFT PENALTY
+    // ====================================================================
+    double center_shift_in_se = 0.0;
+    if (se_boot > 0.0 && len > 0.0)
+    {
+        const double center = 0.5 * (lo + hi);
+        center_shift_in_se = std::fabs(center - mu) / se_boot;
+    }
+    
+    // ====================================================================
+    // ORDERING PENALTY (coverage accuracy)
+    // ====================================================================
+    // NOTE: Basic bootstrap uses reflection (2*theta_hat - quantiles) to
+    // construct its interval, which is DESIGNED to deviate from the bootstrap
+    // distribution when bias/skewness exists. Penalizing this deviation is
+    // methodologically incorrect, similar to BCa and Percentile-T.
+    // Therefore, we skip the ordering penalty for Basic bootstrap.
+    // ====================================================================
+    double ordering_penalty = 0.0;
+    
+    if (method != MethodId::Basic)
+    {
+        using palvalidator::analysis::detail::compute_empirical_cdf;
+        
+        const double F_lo = compute_empirical_cdf(stats, lo);
+        const double F_hi = compute_empirical_cdf(stats, hi);
+        const double width_cdf = F_hi - F_lo;
+        const double coverage_target = res.cl;
+        const double coverage_error = width_cdf - coverage_target;
+        const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+        const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
+        const double cov_pen =
+            AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
+            AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
+        const double F_mu       = compute_empirical_cdf(stats, mu);
+        const double center_cdf = 0.5 * (F_lo + F_hi);
+        const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
+        ordering_penalty = cov_pen + center_pen;
+    }
+    // else: ordering_penalty remains 0.0 for Basic bootstrap
+    
+    double normalized_length = 1.0;
+    double median_val = 0.0;
+    const double length_penalty = computeLengthPenalty(
+        len,           // actual_length
+        stats,         // boot_stats
+        res.cl,        // confidence_level
+        method,        // method (handles MOutOfN vs. standard L_max)
+        normalized_length,  // output
+        median_val     // output (always computed, even if len <= 0)
+    );
+    
+    return Candidate(
+        method,
+        res.mean,
+        res.lower,
+        res.upper,
+        res.cl,
+        res.n,
+        res.B,            // B_outer
+        0,                // B_inner (N/A for percentile-like)
+        res.effective_B,
+        res.skipped,      // skipped_total
+        se_boot,
+        skew_boot,
+        median_val,       // ← Always populated by computeLengthPenalty
+        center_shift_in_se,
+        normalized_length,
+        ordering_penalty,
+        length_penalty,
+        0.0,              // stability_penalty (N/A for Percentile-like)
+        0.0,              // z0 (N/A)
+        0.0,              // accel (N/A)
+        0.0
+    );
+}
 
       /**
        * @brief Compute stability penalty for Percentile-T based on resample quality.

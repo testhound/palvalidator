@@ -35,6 +35,9 @@ namespace palvalidator
      *   enabling dependence-aware draws and synchronized resampling across strategies.
      * - **Small-n friendly**: Picking \f$m < n\f$ often improves coverage for small samples
      *   by reducing the influence of single outliers.
+     * - **Rescaling mode**: Optional rescaling of CI bounds and diagnostics to target
+     *   sample size n (rescale_to_n=true), providing theoretically correct M-out-of-N
+     *   inference, or conservative subsample-based inference (rescale_to_n=false, default).
      * - **Numerically robust**: Degenerate/NaN replicates are skipped; too many degenerates
      *   raise an error to avoid misleading intervals.
      *
@@ -83,14 +86,27 @@ template <class Decimal,
       // ====================================================================
       // CONSTRUCTOR 1: Fixed Ratio
       // ====================================================================
+      /**
+       * @brief Constructs an M-out-of-N bootstrap with fixed subsample ratio.
+       *
+       * @param B Number of bootstrap replicates (must be >= 400).
+       * @param confidence_level Confidence level (must be in [0.90, 0.999]).
+       * @param m_ratio Subsample ratio m/n (must be in (0, 1)).
+       * @param resampler Resampling strategy.
+       * @param rescale_to_n If true, rescale CI bounds and diagnostics to target
+       *        sample size n (theoretically correct M-out-of-N). If false (default),
+       *        provide conservative subsample-based inference.
+       */
       MOutOfNPercentileBootstrap(std::size_t B,
                                  double      confidence_level,
                                  double      m_ratio,
-                                 const Resampler& resampler)
+                                 const Resampler& resampler,
+                                 bool        rescale_to_n = false)
         : m_B(B)
         , m_CL(confidence_level)
         , m_ratio(m_ratio)
         , m_resampler(resampler)
+        , m_rescale_to_n(rescale_to_n)
         , m_exec(std::make_shared<Executor>())
         , m_chunkHint(0)
         , m_ratioPolicy(nullptr)
@@ -115,6 +131,7 @@ template <class Decimal,
         , m_CL(other.m_CL)
         , m_ratio(other.m_ratio)
         , m_resampler(other.m_resampler)
+        , m_rescale_to_n(other.m_rescale_to_n)
         , m_exec(std::make_shared<Executor>())
         , m_chunkHint(0)
         , m_ratioPolicy(other.m_ratioPolicy)
@@ -134,6 +151,7 @@ template <class Decimal,
         , m_CL(other.m_CL)
         , m_ratio(other.m_ratio)
         , m_resampler(std::move(other.m_resampler))
+        , m_rescale_to_n(other.m_rescale_to_n)
         , m_exec(std::move(other.m_exec))
         , m_chunkHint(other.m_chunkHint)
         , m_ratioPolicy(std::move(other.m_ratioPolicy))
@@ -157,6 +175,7 @@ template <class Decimal,
           m_CL = other.m_CL;
           m_ratio = other.m_ratio;
           m_resampler = other.m_resampler;
+          m_rescale_to_n = other.m_rescale_to_n;
           m_exec = std::make_shared<Executor>();
           m_chunkHint = 0;
           m_ratioPolicy = other.m_ratioPolicy;
@@ -184,6 +203,7 @@ template <class Decimal,
           m_CL = other.m_CL;
           m_ratio = other.m_ratio;
           m_resampler = std::move(other.m_resampler);
+          m_rescale_to_n = other.m_rescale_to_n;
           m_exec = std::move(other.m_exec);
           m_chunkHint = other.m_chunkHint;
           m_ratioPolicy = std::move(other.m_ratioPolicy);
@@ -208,9 +228,10 @@ template <class Decimal,
       createFixedRatio(std::size_t B,
                        double      confidence_level,
                        double      m_ratio,
-                       const Resampler& resampler)
+                       const Resampler& resampler,
+                       bool        rescale_to_n = false)
       {
-        return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler);
+        return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler, rescale_to_n);
       }
 
       /// Adaptive-ratio factory using a caller-supplied policy.
@@ -220,7 +241,8 @@ template <class Decimal,
         std::size_t B,
         double      confidence_level,
         const Resampler& resampler,
-        std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy)
+        std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy,
+        bool        rescale_to_n = false)
       {
         if (!policy)
         {
@@ -233,7 +255,8 @@ template <class Decimal,
           B,
           confidence_level,
           /*m_ratio=*/0.5,
-          resampler);
+          resampler,
+          rescale_to_n);
 
         instance.m_ratio      = -1.0;  // switch to adaptive mode
         instance.m_ratioPolicy =
@@ -247,13 +270,14 @@ template <class Decimal,
       static MOutOfNPercentileBootstrap
       createAdaptive(std::size_t B,
                      double      confidence_level,
-                     const Resampler& resampler)
+                     const Resampler& resampler,
+                     bool        rescale_to_n = false)
       {
         auto defaultPolicy = std::make_shared<
           TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic>>();
 
         return createAdaptiveWithPolicy<BootstrapStatistic>(
-          B, confidence_level, resampler, defaultPolicy);
+          B, confidence_level, resampler, defaultPolicy, rescale_to_n);
       }
 
       // ====================================================================
@@ -388,6 +412,8 @@ template <class Decimal,
       }
 
       bool isAdaptiveMode() const { return m_ratio < 0.0; }
+
+      bool rescalesToN() const { return m_rescale_to_n; }
 
       void setChunkSizeHint(uint32_t c) { m_chunkHint = c; }
 
@@ -604,6 +630,65 @@ template <class Decimal,
           skew_boot = m3 / (se_boot * se_boot * se_boot);
         }
 
+        // ====================================================================
+        // RESCALING LOGIC (NEW)
+        // ====================================================================
+        // If rescale_to_n is enabled, we rescale the bootstrap statistics from
+        // subsample size m_sub to target sample size n. This provides theoretically
+        // correct M-out-of-N inference (coverage for size n) rather than conservative
+        // subsample-based inference (coverage for size m_sub).
+        //
+        // The rescaling factor sqrt(n/m_sub) adjusts the standard error from
+        // SE(θ̂_m) to SE(θ̂_n), assuming the variance scales as 1/sample_size.
+        //
+        // Note: Skewness is a scale-invariant statistic, so it doesn't change.
+        // ====================================================================
+        if (m_rescale_to_n)
+        {
+          const double scale_factor = std::sqrt(static_cast<double>(n) / static_cast<double>(m_sub));
+          const double theta_hat_d = num::to_double(theta_hat);
+          
+          if (diagnosticLog)
+          {
+            (*diagnosticLog) << "[M-out-of-N Rescaling] n=" << n << ", m_sub=" << m_sub 
+                           << ", scale_factor=" << scale_factor << "\n";
+            (*diagnosticLog) << "  Before rescaling: mean_boot=" << mean_boot 
+                           << ", se_boot=" << se_boot << "\n";
+          }
+          
+          // Rescale all statistics: center at theta_hat and scale by sqrt(n/m_sub)
+          for (double& v : thetas_d)
+          {
+            double centered = v - mean_boot;
+            v = theta_hat_d + centered * scale_factor;
+          }
+          
+          // Recompute mean and variance on rescaled data
+          mean_boot = 0.0;
+          for (double v : thetas_d) mean_boot += v;
+          mean_boot /= static_cast<double>(m);
+          
+          var_boot = 0.0;
+          if (m > 1)
+          {
+            for (double v : thetas_d)
+            {
+              const double d = v - mean_boot;
+              var_boot += d * d;
+            }
+            var_boot /= static_cast<double>(m - 1);
+          }
+          
+          if (diagnosticLog)
+          {
+            (*diagnosticLog) << "  After rescaling: mean_boot=" << mean_boot 
+                           << ", se_boot=" << std::sqrt(var_boot) << "\n";
+          }
+          
+          // Note: skewness remains unchanged (scale-invariant)
+          // We don't need to recompute it
+        }
+
         // Percentile CI (type-7) at CL
         const double alpha = 1.0 - m_CL;
         const double pl    = alpha / 2.0;
@@ -629,7 +714,7 @@ template <class Decimal,
           m_diagBootstrapStats = thetas_d;
           m_diagMeanBoot       = mean_boot;
           m_diagVarBoot        = var_boot;
-          m_diagSeBoot         = se_boot;
+          m_diagSeBoot         = std::sqrt(var_boot);
           m_diagSkewBoot       = skew_boot;
           m_diagValid          = true;
         }
@@ -675,6 +760,7 @@ template <class Decimal,
       double       m_CL;
       double       m_ratio;       // -1.0 = adaptive mode, else fixed ratio
       Resampler    m_resampler;
+      bool         m_rescale_to_n; // NEW: rescaling mode flag
       mutable std::shared_ptr<Executor> m_exec;
       mutable uint32_t           m_chunkHint{0};
       std::shared_ptr<void>      m_ratioPolicy;  // type-erased policy pointer
