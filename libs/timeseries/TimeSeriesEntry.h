@@ -90,6 +90,26 @@ namespace mkc_timeseries
       return *this;
     }
 
+    NumericTimeSeriesEntry(NumericTimeSeriesEntry&& rhs) noexcept
+      : mDateTime(std::move(rhs.mDateTime)),
+	mDate(std::move(rhs.mDate)),
+	mTime(std::move(rhs.mTime)),
+	mEntryValue(std::move(rhs.mEntryValue)),
+	mTimeFrame(rhs.mTimeFrame)
+    {}
+
+    NumericTimeSeriesEntry& operator=(NumericTimeSeriesEntry&& rhs) noexcept
+    {
+      if (this != &rhs) {
+	mDateTime = std::move(rhs.mDateTime);
+	mDate = std::move(rhs.mDate);
+	mTime = std::move(rhs.mTime);
+	mEntryValue = std::move(rhs.mEntryValue);
+	mTimeFrame = rhs.mTimeFrame;
+      }
+      return *this;
+    }
+
     const boost::gregorian::date& getDate() const
     {
       return mDate;
@@ -240,6 +260,30 @@ namespace mkc_timeseries
       return *this;
     }
 
+    OHLCTimeSeriesEntry(OHLCTimeSeriesEntry&& rhs) noexcept
+      : mDateTime(std::move(rhs.mDateTime)),
+	mOpen(std::move(rhs.mOpen)),
+	mHigh(std::move(rhs.mHigh)),
+	mLow(std::move(rhs.mLow)),
+	mClose(std::move(rhs.mClose)),
+	mVolume(std::move(rhs.mVolume)),
+	mTimeFrame(rhs.mTimeFrame)
+    {}
+
+    OHLCTimeSeriesEntry& operator=(OHLCTimeSeriesEntry&& rhs) noexcept
+    {
+      if (this != &rhs) {
+	mDateTime = std::move(rhs.mDateTime);
+	mOpen = std::move(rhs.mOpen);
+	mHigh = std::move(rhs.mHigh);
+	mLow = std::move(rhs.mLow);
+	mClose = std::move(rhs.mClose);
+	mVolume = std::move(rhs.mVolume);
+	mTimeFrame = rhs.mTimeFrame;
+      }
+      return *this;
+    }
+    
     TimeFrame::Duration getTimeFrame() const
     {
       return mTimeFrame;
