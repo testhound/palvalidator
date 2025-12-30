@@ -132,16 +132,19 @@ namespace mkc_timeseries
        */
       void addSecurity (std::shared_ptr<Security<Decimal>> security)
       {
-	ConstPortfolioIterator pos = 
-	  mPortfolioSecurities.find(security->getSymbol()) ;
+ if (!security)
+   throw PortfolioException("addSecurity - security cannot be null");
 
-	if (pos == endPortfolio())
-	  {
-	    mPortfolioSecurities.insert(std::make_pair(security->getSymbol(),
-						       security));
-	  }
-	else
-	  throw PortfolioException ("addSecurity - security " +security->getSymbol() + " already exists in portfolio");
+ ConstPortfolioIterator pos =
+   mPortfolioSecurities.find(security->getSymbol()) ;
+
+ if (pos == endPortfolio())
+   {
+     mPortfolioSecurities.insert(std::make_pair(security->getSymbol(),
+             security));
+   }
+ else
+   throw PortfolioException ("addSecurity - security " +security->getSymbol() + " already exists in portfolio");
       }
 
       /**
