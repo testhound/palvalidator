@@ -1073,3 +1073,374 @@ TEST_CASE("Facade default (N1) vs explicit N0: both valid; N0 preserves day-unit
     REQUIRE(e.getLowValue()  <= e.getCloseValue());
   }
 }
+
+// ===== Masters-Style EOD Unit Tests =====
+// These tests implement the Masters permutation testing validation requirements
+// as outlined in the test recommendation document.
+
+TEST_CASE("EOD N1 Masters Test A1: Gap factors are a permutation (excluding anchor day)", "[SyntheticTimeSeries][EOD][Masters]")
+{
+  using DT = DecimalType;
+  OHLCTimeSeries<DT> sampleSeries = createSampleTimeSeries();
+  DT tick = DecimalConstants<DT>::EquityTick;
+  DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Helper function to extract gap factors (Open[i] / Close[i-1]) from EOD series
+  auto extractGapFactors = [](const OHLCTimeSeries<DT>& series) {
+    std::vector<DT> gaps;
+    DT prevClose;
+    bool isFirst = true;
+    
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+      if (isFirst) {
+        prevClose = it->getCloseValue();
+        isFirst = false;
+        continue; // Skip first day (anchor)
+      }
+      gaps.push_back(it->getOpenValue() / prevClose);
+      prevClose = it->getCloseValue();
+    }
+    return gaps;
+  };
+
+  // Extract original gap factors
+  auto originalGaps = extractGapFactors(sampleSeries);
+  REQUIRE(originalGaps.size() > 0);
+  
+  // Create synthetic series using default N1 model
+  SyntheticTimeSeries<DT> syntheticSeries(sampleSeries, tick, tickDiv2);
+  syntheticSeries.createSyntheticSeries();
+  auto syntheticSeriesPtr = syntheticSeries.getSyntheticTimeSeries();
+  REQUIRE(syntheticSeriesPtr != nullptr);
+  
+  // Extract synthetic gap factors
+  auto syntheticGaps = extractGapFactors(*syntheticSeriesPtr);
+  REQUIRE(syntheticGaps.size() == originalGaps.size());
+  
+  // Verify that synthetic gaps are a permutation of original gaps
+  auto sortedOriginal = originalGaps;
+  auto sortedSynthetic = syntheticGaps;
+  std::sort(sortedOriginal.begin(), sortedOriginal.end());
+  std::sort(sortedSynthetic.begin(), sortedSynthetic.end());
+  
+  // Use appropriate tolerance for decimal comparison
+  DT tolerance = DecimalConstants<DT>::EquityTick;
+  for (size_t i = 0; i < sortedOriginal.size(); ++i) {
+    DT diff = num::abs(sortedOriginal[i] - sortedSynthetic[i]);
+    REQUIRE(diff <= tolerance);
+  }
+}
+
+TEST_CASE("EOD N1 Masters Test A2: Intraday shape tuples (H/O, L/O, C/O) are permuted as tuples", "[SyntheticTimeSeries][EOD][Masters]")
+{
+  using DT = DecimalType;
+  OHLCTimeSeries<DT> sampleSeries = createSampleTimeSeries();
+  DT tick = DecimalConstants<DT>::EquityTick;
+  DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Helper function to extract intraday shape tuples (H/O, L/O, C/O)
+  auto extractIntradayShapes = [](const OHLCTimeSeries<DT>& series) {
+    std::vector<std::tuple<DT, DT, DT>> shapes;
+    
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+      DT open = it->getOpenValue();
+      DT high = it->getHighValue();
+      DT low = it->getLowValue();
+      DT close = it->getCloseValue();
+      
+      // Normalize relative to open
+      DT h_o = high / open;
+      DT l_o = low / open;
+      DT c_o = close / open;
+      
+      shapes.emplace_back(h_o, l_o, c_o);
+    }
+    return shapes;
+  };
+
+  // Extract original intraday shapes
+  auto originalShapes = extractIntradayShapes(sampleSeries);
+  REQUIRE(originalShapes.size() > 0);
+  
+  // Create synthetic series using default N1 model
+  SyntheticTimeSeries<DT> syntheticSeries(sampleSeries, tick, tickDiv2);
+  syntheticSeries.createSyntheticSeries();
+  auto syntheticSeriesPtr = syntheticSeries.getSyntheticTimeSeries();
+  REQUIRE(syntheticSeriesPtr != nullptr);
+  
+  // Extract synthetic intraday shapes
+  auto syntheticShapes = extractIntradayShapes(*syntheticSeriesPtr);
+  REQUIRE(syntheticShapes.size() == originalShapes.size());
+  
+  // Sort both vectors to compare as multisets
+  std::sort(originalShapes.begin(), originalShapes.end());
+  std::sort(syntheticShapes.begin(), syntheticShapes.end());
+  
+  // Verify that synthetic shapes are a permutation of original shapes
+  DT tolerance = DecimalConstants<DT>::EquityTick;
+  for (size_t i = 0; i < originalShapes.size(); ++i) {
+    DT h_diff = num::abs(std::get<0>(originalShapes[i]) - std::get<0>(syntheticShapes[i]));
+    DT l_diff = num::abs(std::get<1>(originalShapes[i]) - std::get<1>(syntheticShapes[i]));
+    DT c_diff = num::abs(std::get<2>(originalShapes[i]) - std::get<2>(syntheticShapes[i]));
+    
+    REQUIRE(h_diff <= tolerance);
+    REQUIRE(l_diff <= tolerance);
+    REQUIRE(c_diff <= tolerance);
+  }
+}
+
+TEST_CASE("EOD N1 Masters Test B: Joint day tuples should NOT be preserved (independence sanity check)", "[SyntheticTimeSeries][EOD][Masters]")
+{
+  using DT = DecimalType;
+  OHLCTimeSeries<DT> sampleSeries = createSampleTimeSeries();
+  DT tick = DecimalConstants<DT>::EquityTick;
+  DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Helper function to extract joint day tuples (gap, h/o, l/o, c/o)
+  auto extractJointDayTuples = [](const OHLCTimeSeries<DT>& series) {
+    std::vector<std::tuple<DT, DT, DT, DT>> jointTuples;
+    DT prevClose;
+    bool isFirst = true;
+    
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+      DT open = it->getOpenValue();
+      DT high = it->getHighValue();
+      DT low = it->getLowValue();
+      DT close = it->getCloseValue();
+      
+      if (isFirst) {
+        prevClose = close;
+        isFirst = false;
+        continue; // Skip first day (no gap)
+      }
+      
+      // Calculate gap and intraday shape
+      DT gap = open / prevClose;
+      DT h_o = high / open;
+      DT l_o = low / open;
+      DT c_o = close / open;
+      
+      jointTuples.emplace_back(gap, h_o, l_o, c_o);
+      prevClose = close;
+    }
+    return jointTuples;
+  };
+
+  // Extract original joint day tuples
+  auto originalJointTuples = extractJointDayTuples(sampleSeries);
+  REQUIRE(originalJointTuples.size() > 0);
+  
+  // Sort original for comparison
+  auto sortedOriginalJoint = originalJointTuples;
+  std::sort(sortedOriginalJoint.begin(), sortedOriginalJoint.end());
+  
+  // Run multiple synthetic generations to test independence
+  bool foundDifference = false;
+  const int numRuns = 50; // Sufficient to catch lack of independence
+  
+  for (int run = 0; run < numRuns; ++run) {
+    SyntheticTimeSeries<DT> syntheticSeries(sampleSeries, tick, tickDiv2);
+    syntheticSeries.createSyntheticSeries();
+    auto syntheticSeriesPtr = syntheticSeries.getSyntheticTimeSeries();
+    REQUIRE(syntheticSeriesPtr != nullptr);
+    
+    auto syntheticJointTuples = extractJointDayTuples(*syntheticSeriesPtr);
+    REQUIRE(syntheticJointTuples.size() == originalJointTuples.size());
+    
+    // Sort synthetic for comparison
+    auto sortedSyntheticJoint = syntheticJointTuples;
+    std::sort(sortedSyntheticJoint.begin(), sortedSyntheticJoint.end());
+    
+    // Check if this run differs from original
+    DT tolerance = DecimalConstants<DT>::EquityTick;
+    bool thisRunDiffers = false;
+    
+    for (size_t i = 0; i < sortedOriginalJoint.size() && !thisRunDiffers; ++i) {
+      if (num::abs(std::get<0>(sortedOriginalJoint[i]) - std::get<0>(sortedSyntheticJoint[i])) > tolerance ||
+          num::abs(std::get<1>(sortedOriginalJoint[i]) - std::get<1>(sortedSyntheticJoint[i])) > tolerance ||
+          num::abs(std::get<2>(sortedOriginalJoint[i]) - std::get<2>(sortedSyntheticJoint[i])) > tolerance ||
+          num::abs(std::get<3>(sortedOriginalJoint[i]) - std::get<3>(sortedSyntheticJoint[i])) > tolerance) {
+        thisRunDiffers = true;
+      }
+    }
+    
+    if (thisRunDiffers) {
+      foundDifference = true;
+      break;
+    }
+  }
+  
+  // Under N1, we should typically observe differences in joint tuples across runs
+  // This verifies that gaps and shapes are independently permuted
+  REQUIRE(foundDifference);
+}
+
+
+TEST_CASE("Intraday Masters Test D: Normalized bar tuples are preserved as multiset (excluding basis day)", "[SyntheticTimeSeries][Intraday][Masters]")
+{
+  using DT = DecimalType;
+  auto intradaySeriesPtr = getIntradaySeries("SSO_RAD_Hourly.txt");
+  if (!intradaySeriesPtr || intradaySeriesPtr->getNumEntries() == 0) {
+    WARN("SSO_RAD_Hourly.txt is empty or could not be read, skipping Masters Test D.");
+    return;
+  }
+  
+  const auto& intradaySeries = *intradaySeriesPtr;
+  DT tick = DecimalConstants<DT>::EquityTick;
+  DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+
+  // Helper function to extract normalized bar tuples (normO, normH, normL, normC)
+  // excluding the basis day
+  auto extractNormalizedBarTuples = [](const OHLCTimeSeries<DT>& series) {
+    std::vector<std::tuple<DT, DT, DT, DT>> normalizedTuples;
+    boost::gregorian::date basisDate;
+    bool foundBasisDate = false;
+    
+    // Find the basis date (first date)
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+      if (!foundBasisDate) {
+        basisDate = it->getDateTime().date();
+        foundBasisDate = true;
+        break;
+      }
+    }
+    
+    if (!foundBasisDate) return normalizedTuples;
+    
+    // Group bars by date to get day opens
+    std::map<boost::gregorian::date, DT> dayOpens;
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+      boost::gregorian::date barDate = it->getDateTime().date();
+      if (dayOpens.find(barDate) == dayOpens.end()) {
+        dayOpens[barDate] = it->getOpenValue(); // First bar of the day
+      }
+    }
+    
+    // Extract normalized tuples for all bars except basis day
+    DT zero = DecimalConstants<DT>::DecimalZero;
+    for (auto it = series.beginSortedAccess(); it != series.endSortedAccess(); ++it) {
+      boost::gregorian::date barDate = it->getDateTime().date();
+      if (barDate == basisDate) continue; // Skip basis day
+      
+      DT dayOpen = dayOpens[barDate];
+      if (dayOpen == zero) continue; // Skip if day open is zero
+      
+      DT normO = it->getOpenValue() / dayOpen;
+      DT normH = it->getHighValue() / dayOpen;
+      DT normL = it->getLowValue() / dayOpen;
+      DT normC = it->getCloseValue() / dayOpen;
+      
+      normalizedTuples.emplace_back(normO, normH, normL, normC);
+    }
+    return normalizedTuples;
+  };
+
+  // Extract original normalized bar tuples
+  auto originalNormalizedTuples = extractNormalizedBarTuples(intradaySeries);
+  if (originalNormalizedTuples.empty()) {
+    WARN("No normalized bar tuples found (series may have only basis day), skipping Masters Test D.");
+    return;
+  }
+  
+  // Create synthetic intraday series
+  SyntheticTimeSeries<DT> syntheticSeries(intradaySeries, tick, tickDiv2);
+  syntheticSeries.createSyntheticSeries();
+  auto syntheticSeriesPtr = syntheticSeries.getSyntheticTimeSeries();
+  REQUIRE(syntheticSeriesPtr != nullptr);
+  
+  // Extract synthetic normalized bar tuples
+  auto syntheticNormalizedTuples = extractNormalizedBarTuples(*syntheticSeriesPtr);
+  REQUIRE(syntheticNormalizedTuples.size() == originalNormalizedTuples.size());
+  
+  // Sort both for multiset comparison
+  std::sort(originalNormalizedTuples.begin(), originalNormalizedTuples.end());
+  std::sort(syntheticNormalizedTuples.begin(), syntheticNormalizedTuples.end());
+  
+  // Verify that synthetic normalized tuples are a permutation of original (within epsilon)
+  DT tolerance = DecimalConstants<DT>::EquityTick;
+  for (size_t i = 0; i < originalNormalizedTuples.size(); ++i) {
+    DT diff_o = num::abs(std::get<0>(originalNormalizedTuples[i]) - std::get<0>(syntheticNormalizedTuples[i]));
+    DT diff_h = num::abs(std::get<1>(originalNormalizedTuples[i]) - std::get<1>(syntheticNormalizedTuples[i]));
+    DT diff_l = num::abs(std::get<2>(originalNormalizedTuples[i]) - std::get<2>(syntheticNormalizedTuples[i]));
+    DT diff_c = num::abs(std::get<3>(originalNormalizedTuples[i]) - std::get<3>(syntheticNormalizedTuples[i]));
+    
+    REQUIRE(diff_o <= tolerance);
+    REQUIRE(diff_h <= tolerance);
+    REQUIRE(diff_l <= tolerance);
+    REQUIRE(diff_c <= tolerance);
+  }
+}
+
+// Masters-style validation test to ensure OHLC invariants are preserved in synthetic data
+TEST_CASE("Masters OHLC Invariants: Synthetic series preserves basic market constraints", "[SyntheticTimeSeries][EOD][Intraday][Masters]")
+{
+  using DT = DecimalType;
+  
+  SECTION("EOD OHLC Invariants") {
+    OHLCTimeSeries<DT> sampleSeries = createSampleTimeSeries();
+    DT tick = DecimalConstants<DT>::EquityTick;
+    DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+    
+    SyntheticTimeSeries<DT> syntheticSeries(sampleSeries, tick, tickDiv2);
+    syntheticSeries.createSyntheticSeries();
+    auto syntheticSeriesPtr = syntheticSeries.getSyntheticTimeSeries();
+    REQUIRE(syntheticSeriesPtr != nullptr);
+    
+    // Verify OHLC invariants for every bar
+    for (auto it = syntheticSeriesPtr->beginSortedAccess(); it != syntheticSeriesPtr->endSortedAccess(); ++it) {
+      DT open = it->getOpenValue();
+      DT high = it->getHighValue();
+      DT low = it->getLowValue();
+      DT close = it->getCloseValue();
+      
+      // Masters requirement: "We must never let the open or close be outside the range defined by the high and low"
+      REQUIRE(high >= open);
+      REQUIRE(high >= close);
+      REQUIRE(low <= open);
+      REQUIRE(low <= close);
+      
+      // Additional sanity checks
+      REQUIRE(open > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(high > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(low > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(close > DecimalConstants<DT>::DecimalZero);
+    }
+  }
+  
+  SECTION("Intraday OHLC Invariants") {
+    auto intradaySeriesPtr = getIntradaySeries("SSO_RAD_Hourly.txt");
+    if (!intradaySeriesPtr || intradaySeriesPtr->getNumEntries() == 0) {
+      WARN("SSO_RAD_Hourly.txt is empty or could not be read, skipping Intraday OHLC Invariants.");
+      return;
+    }
+    
+    const auto& intradaySeries = *intradaySeriesPtr;
+    DT tick = DecimalConstants<DT>::EquityTick;
+    DT tickDiv2 = tick / DecimalConstants<DT>::DecimalTwo;
+    
+    SyntheticTimeSeries<DT> syntheticSeries(intradaySeries, tick, tickDiv2);
+    syntheticSeries.createSyntheticSeries();
+    auto syntheticSeriesPtr = syntheticSeries.getSyntheticTimeSeries();
+    REQUIRE(syntheticSeriesPtr != nullptr);
+    
+    // Verify OHLC invariants for every intraday bar
+    for (auto it = syntheticSeriesPtr->beginSortedAccess(); it != syntheticSeriesPtr->endSortedAccess(); ++it) {
+      DT open = it->getOpenValue();
+      DT high = it->getHighValue();
+      DT low = it->getLowValue();
+      DT close = it->getCloseValue();
+      
+      // Masters requirement: "We must never let the open or close be outside the range defined by the high and low"
+      REQUIRE(high >= open);
+      REQUIRE(high >= close);
+      REQUIRE(low <= open);
+      REQUIRE(low <= close);
+      
+      // Additional sanity checks
+      REQUIRE(open > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(high > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(low > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(close > DecimalConstants<DT>::DecimalZero);
+    }
+  }
+}

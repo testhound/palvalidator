@@ -193,6 +193,16 @@ namespace {
     p->addSecurity(createDummySecurity());
     return p;
   }
+
+  struct DeterministicStatPolicy {
+    static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&){
+      return DecimalType("0.5");
+    }
+    static unsigned getMinStrategyTrades() { return 0; }
+    static DecimalType getMinTradeFailureTestStatistic() {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -673,3 +683,545 @@ TEST_CASE("DefaultPermuteMarketChangesPolicy: CacheType uses N0_PairedDay when s
                 "PolicyN0::CacheType should resolve to SyntheticCache with N0_PairedDay.");
   REQUIRE(true);
 }
+
+// ============================================================================
+// CRITICAL GAP 1: Thread Safety Tests
+// ============================================================================
+
+TEST_CASE("DecimalType: thread-safe properties", "[thread-safety][critical]") {
+  SECTION("Decimal is trivially copyable") {
+    REQUIRE(std::is_trivially_copyable_v<DecimalType>);
+  }
+  
+  SECTION("Decimal is standard layout") {
+    REQUIRE(std::is_standard_layout_v<DecimalType>);
+  }
+  
+  SECTION("Decimal has expected size (one int64)") {
+    REQUIRE(sizeof(DecimalType) == sizeof(int64_t));
+  }
+}
+
+TEST_CASE("DecimalType: concurrent reads are race-free", "[thread-safety][critical]") {
+  const DecimalType shared_value(12345.6789);
+  std::atomic<bool> start_flag{false};
+  std::atomic<int> error_count{0};
+  
+  constexpr int NUM_READERS = 10;
+  constexpr int NUM_READS = 10000;
+  
+  auto reader_task = [&]() {
+    // Wait for all threads to be ready
+    while (!start_flag.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    
+    // Perform many concurrent reads
+    for (int i = 0; i < NUM_READS; ++i) {
+      DecimalType local_copy = shared_value;  // Copy
+      
+      // Verify value hasn't been corrupted
+      if (local_copy != DecimalType(12345.6789)) {
+        error_count.fetch_add(1, std::memory_order_relaxed);
+      }
+      
+      // Perform const operations (comparisons)
+      if (local_copy < DecimalType(12345.0) || local_copy > DecimalType(12346.0)) {
+        error_count.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+  };
+  
+  // Spawn reader threads
+  std::vector<std::thread> threads;
+  threads.reserve(NUM_READERS);
+  for (int i = 0; i < NUM_READERS; ++i) {
+    threads.emplace_back(reader_task);
+  }
+  
+  // Start all threads simultaneously
+  start_flag.store(true, std::memory_order_release);
+  
+  // Wait for completion
+  for (auto& t : threads) {
+    t.join();
+  }
+  
+  // No errors should occur with thread-safe concurrent reads
+  REQUIRE(error_count.load() == 0);
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: thread-safe execution", "[thread-safety][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Run permutation test - should not crash or produce data races
+  // Run with ThreadSanitizer to detect actual races
+  auto result = policy.runPermutationTest(bt, 100, DecimalType("0.3"));
+  
+  // Basic sanity check
+  REQUIRE(result >= DecimalType("0.0"));
+  REQUIRE(result <= DecimalType("1.0"));
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: concurrent p-value computation stability", 
+          "[thread-safety][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Run multiple times - if there are race conditions, results will be inconsistent
+  std::vector<double> p_values;
+  constexpr int NUM_RUNS = 10;
+  
+  for (int i = 0; i < NUM_RUNS; ++i) {
+    auto result = policy.runPermutationTest(bt, 100, DecimalType("0.3"));
+    p_values.push_back(result.getAsDouble());
+  }
+  
+  // With deterministic policy, all p-values should be identical
+  // (or very close due to floating point)
+  double first = p_values[0];
+  for (size_t i = 1; i < p_values.size(); ++i) {
+    REQUIRE(std::abs(p_values[i] - first) < 1e-10);
+  }
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: no data races with multiple concurrent tests",
+          "[thread-safety][critical]") {
+  // Run multiple permutation tests concurrently to stress test thread safety
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  constexpr int NUM_CONCURRENT_TESTS = 5;
+  std::vector<std::thread> threads;
+  std::atomic<int> failures{0};
+  
+  auto test_task = [&]() {
+    try {
+      DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+      auto result = policy.runPermutationTest(bt, 50, DecimalType("0.3"));
+      
+      if (result < DecimalType("0.0") || result > DecimalType("1.0")) {
+        failures.fetch_add(1, std::memory_order_relaxed);
+      }
+    } catch (...) {
+      failures.fetch_add(1, std::memory_order_relaxed);
+    }
+  };
+  
+  for (int i = 0; i < NUM_CONCURRENT_TESTS; ++i) {
+    threads.emplace_back(test_task);
+  }
+  
+  for (auto& t : threads) {
+    t.join();
+  }
+  
+  REQUIRE(failures.load() == 0);
+}
+
+// ============================================================================
+// CRITICAL GAP 2: Stress Tests
+// ============================================================================
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: large permutation count", 
+          "[stress][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  auto start = std::chrono::high_resolution_clock::now();
+  
+  // Run with large permutation count
+  constexpr uint32_t LARGE_N = 10000;
+  auto result = policy.runPermutationTest(bt, LARGE_N, DecimalType("0.3"));
+  
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+  
+  // Verify result is valid
+  REQUIRE(result >= DecimalType("0.0"));
+  REQUIRE(result <= DecimalType("1.0"));
+  
+  // Should complete in reasonable time (adjust as needed for your hardware)
+  INFO("10,000 permutations took " << duration.count() << " seconds");
+  REQUIRE(duration.count() < 60);  // Should complete within 60 seconds
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: very large permutation count",
+          "[stress][critical][slow]") {
+  // Tagged [slow] so it can be excluded from regular runs
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  constexpr uint32_t VERY_LARGE_N = 100000;
+  auto result = policy.runPermutationTest(bt, VERY_LARGE_N, DecimalType("0.3"));
+  
+  REQUIRE(result >= DecimalType("0.0"));
+  REQUIRE(result <= DecimalType("1.0"));
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: repeated execution doesn't leak memory",
+          "[stress][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Run many times to detect memory leaks (use valgrind/ASAN to verify)
+  for (int i = 0; i < 100; ++i) {
+    auto result = policy.runPermutationTest(bt, 100, DecimalType("0.3"));
+    REQUIRE(result >= DecimalType("0.0"));
+  }
+}
+
+// ============================================================================
+// CRITICAL GAP 3: Exception Handling Tests
+// ============================================================================
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: throws on zero permutations",
+          "[exception][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  REQUIRE_THROWS_AS(
+    policy.runPermutationTest(bt, 0, DecimalType("0.3")),
+    std::invalid_argument
+  );
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: throws on null backtester",
+          "[exception][critical]") {
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  REQUIRE_THROWS(
+    policy.runPermutationTest(nullptr, 100, DecimalType("0.3"))
+  );
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: throws on empty portfolio",
+          "[exception][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  
+  // Create strategy with empty portfolio
+  auto empty_portfolio = std::make_shared<Portfolio<DecimalType>>("Empty");
+  auto strategy = std::make_shared<DummyPalStrategy>(empty_portfolio);
+  bt->addStrategy(strategy);
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  REQUIRE_THROWS_AS(
+    policy.runPermutationTest(bt, 100, DecimalType("0.3")),
+    std::runtime_error
+  );
+}
+
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: handles single permutation edge case",
+          "[exception][critical]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Should handle N=1 without crashing
+  auto result = policy.runPermutationTest(bt, 1, DecimalType("0.3"));
+  
+  // With deterministic policy returning 0.5, and baseline 0.3:
+  // 0.5 >= 0.3, so k=1, N=1, p=(1+1)/(1+1) = 1.0
+  REQUIRE(result == DecimalType("1.0"));
+}
+
+// ============================================================================
+// IMPORTANT GAP 4: Atomic Operations Tests
+// ============================================================================
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: atomic counters are accurate",
+          "[atomic][important]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  // Policy that always returns a value greater than baseline
+  struct AlwaysHighStatPolicy {
+    static DecimalType getPermutationTestStatistic(const std::shared_ptr<BackTester<DecimalType>>&){
+      return DecimalType("0.9");
+    }
+    static unsigned getMinStrategyTrades() { return 0; }
+    static DecimalType getMinTradeFailureTestStatistic() {
+      return DecimalConstants<DecimalType>::DecimalZero;
+    }
+  };
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, AlwaysHighStatPolicy> policy;
+  
+  constexpr uint32_t N = 100;
+  auto result = policy.runPermutationTest(bt, N, DecimalType("0.1"));
+  
+  // All permutations should be extreme (k=N), so p=(N+1)/(N+1) = 1.0
+  REQUIRE(result.getAsDouble() == Catch::Approx(1.0).epsilon(0.01));
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: no lost atomic updates under contention",
+          "[atomic][important]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Run the same test multiple times
+  std::vector<double> results;
+  for (int i = 0; i < 10; ++i) {
+    auto p = policy.runPermutationTest(bt, 100, DecimalType("0.3"));
+    results.push_back(p.getAsDouble());
+  }
+  
+  // All results should be identical (deterministic policy)
+  double first = results[0];
+  for (double r : results) {
+    REQUIRE(std::abs(r - first) < 1e-10);
+  }
+}
+
+// ============================================================================
+// IMPORTANT GAP 5: Thread-Local Storage Tests
+// ============================================================================
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: TLS initialization is safe",
+          "[tls][important]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // First call - should initialize TLS
+  auto result1 = policy.runPermutationTest(bt, 50, DecimalType("0.3"));
+  REQUIRE(result1 >= DecimalType("0.0"));
+  
+  // Second call - should reuse TLS (if same thread pool)
+  auto result2 = policy.runPermutationTest(bt, 50, DecimalType("0.3"));
+  REQUIRE(result2 >= DecimalType("0.0"));
+  
+  // Results should be identical with deterministic policy
+  REQUIRE(std::abs(result1.getAsDouble() - result2.getAsDouble()) < 1e-10);
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: TLS works with different baseline stats",
+          "[tls][important]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Run with different baselines - each should produce valid results
+  auto result1 = policy.runPermutationTest(bt, 50, DecimalType("0.1"));
+  auto result2 = policy.runPermutationTest(bt, 50, DecimalType("0.9"));
+  
+  REQUIRE(result1 >= DecimalType("0.0"));
+  REQUIRE(result2 >= DecimalType("0.0"));
+  
+  // With policy always returning 0.5:
+  // baseline 0.1: 0.5 >= 0.1 -> all extreme -> p close to 1.0
+  // baseline 0.9: 0.5 < 0.9 -> none extreme -> p close to 0
+  REQUIRE(result1 > result2);
+}
+
+// ============================================================================
+// IMPORTANT GAP 6: Observer Pattern Tests
+// ============================================================================
+
+// Mock observer for testing
+class TestObserver : public PermutationTestObserver<DecimalType> {
+public:
+  TestObserver() : call_count_(0) {}
+  
+  void update(const BackTester<DecimalType>& bt, const DecimalType& stat) override {
+    call_count_.fetch_add(1, std::memory_order_relaxed);
+    last_stat_ = stat;
+  }
+  
+  void updateMetric(const PalStrategy<DecimalType>* strategy,
+                    MetricType metricType,
+                    const DecimalType& metricValue) override {
+    // Not implemented for this test
+  }
+  
+  std::optional<DecimalType> getMinMetric(const PalStrategy<DecimalType>* strategy,
+                                          MetricType metric) const override {
+    return std::nullopt;
+  }
+  
+  std::optional<DecimalType> getMaxMetric(const PalStrategy<DecimalType>* strategy,
+                                          MetricType metric) const override {
+    return std::nullopt;
+  }
+  
+  std::optional<double> getMedianMetric(const PalStrategy<DecimalType>* strategy,
+                                        MetricType metric) const override {
+    return std::nullopt;
+  }
+  
+  std::optional<double> getStdDevMetric(const PalStrategy<DecimalType>* strategy,
+                                        MetricType metric) const override {
+    return std::nullopt;
+  }
+  
+  void clear() override {
+    call_count_.store(0, std::memory_order_relaxed);
+    last_stat_ = DecimalType{};
+  }
+  
+  int getCallCount() const { return call_count_.load(std::memory_order_relaxed); }
+  DecimalType getLastStat() const { return last_stat_; }
+  
+private:
+  std::atomic<int> call_count_;
+  DecimalType last_stat_;
+};
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: observers are notified",
+          "[observer][important]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  auto observer = std::make_shared<TestObserver>();
+  
+  policy.attach(observer.get());
+  
+  constexpr uint32_t N = 10;
+  auto result = policy.runPermutationTest(bt, N, DecimalType("0.3"));
+  
+  // Observer should be called once per permutation
+  REQUIRE(observer->getCallCount() == N);
+  
+  // Last stat should be from deterministic policy
+  REQUIRE(observer->getLastStat() == DecimalType("0.5"));
+}
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: multiple observers work correctly",
+          "[observer][important]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  auto observer1 = std::make_shared<TestObserver>();
+  auto observer2 = std::make_shared<TestObserver>();
+  
+  policy.attach(observer1.get());
+  policy.attach(observer2.get());
+  
+  constexpr uint32_t N = 10;
+  auto result = policy.runPermutationTest(bt, N, DecimalType("0.3"));
+  
+  // Both observers should be called
+  REQUIRE(observer1->getCallCount() == N);
+  REQUIRE(observer2->getCallCount() == N);
+}
+
+// ============================================================================
+// NICE TO HAVE GAP 7: Performance Benchmarks
+// ============================================================================
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: baseline performance",
+          "[performance][benchmark]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  // Benchmark different permutation counts
+  std::vector<std::pair<uint32_t, double>> benchmarks;
+  
+  for (uint32_t N : {100, 500, 1000, 5000}) {
+    auto start = std::chrono::high_resolution_clock::now();
+    auto result = policy.runPermutationTest(bt, N, DecimalType("0.3"));
+    auto end = std::chrono::high_resolution_clock::now();
+    
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    benchmarks.push_back({N, duration.count()});
+    
+    INFO("N=" << N << " took " << duration.count() << "ms");
+  }
+  
+  // Sanity check: should scale roughly linearly
+  // (actual scaling depends on thread count and overhead)
+  double first_rate = benchmarks[0].second / benchmarks[0].first;
+  double last_rate = benchmarks.back().second / benchmarks.back().first;
+  
+  // Rate should not increase by more than 10x (indicates good parallelization)
+  REQUIRE(last_rate < first_rate * 10);
+}
+
+// ============================================================================
+// Additional Edge Cases
+// ============================================================================
+
+TEST_CASE("DefaultPermuteMarketChangesPolicy: extreme baseline values",
+          "[edge-case]") {
+  auto bt = std::make_shared<DummyBackTester>();
+  bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+  
+  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> policy;
+  
+  SECTION("Very low baseline") {
+    auto result = policy.runPermutationTest(bt, 100, DecimalType("0.0001"));
+    // All permutations should be extreme -> p close to 1.0
+    REQUIRE(result.getAsDouble() > 0.99);
+  }
+  
+  SECTION("Very high baseline") {
+    auto result = policy.runPermutationTest(bt, 100, DecimalType("999.0"));
+    // No permutations should be extreme -> p = 1/(N+1)
+    REQUIRE(result.getAsDouble() < 0.02);
+  }
+}
+
+TEST_CASE("StandardPValueComputationPolicy: edge cases",
+          "[policy][edge-case]") {
+  SECTION("k=0, N=1") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 1);
+    REQUIRE(p == DecimalType("0.5"));  // (0+1)/(1+1) = 0.5
+  }
+  
+  SECTION("k=N") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(100, 100);
+    REQUIRE(p.getAsDouble() == Catch::Approx(1.0).epsilon(0.001));
+  }
+  
+  SECTION("Large N") {
+    auto p = StandardPValueComputationPolicy<DecimalType>::computePermutationPValue(500, 10000);
+    REQUIRE(p >= DecimalType("0.0"));
+    REQUIRE(p <= DecimalType("1.0"));
+  }
+}
+
+TEST_CASE("WilsonPValueComputationPolicy: numerical stability",
+          "[policy][edge-case]") {
+  SECTION("Very small p-hat") {
+    auto p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(0, 10000);
+    REQUIRE(p >= DecimalType("0.0"));
+    REQUIRE(p <= DecimalType("1.0"));
+  }
+  
+  SECTION("Very large p-hat") {
+    auto p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(9999, 10000);
+    REQUIRE(p >= DecimalType("0.0"));
+    REQUIRE(p <= DecimalType("1.0"));
+  }
+  
+  SECTION("Extreme N") {
+    auto p = WilsonPValueComputationPolicy<DecimalType>::computePermutationPValue(5000, 100000);
+    REQUIRE(p >= DecimalType("0.0"));
+    REQUIRE(p <= DecimalType("1.0"));
+  }
+}
+

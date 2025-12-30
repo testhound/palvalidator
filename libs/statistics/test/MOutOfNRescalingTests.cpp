@@ -245,7 +245,7 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics are rescaled", "[Bootstrap][M
         std::seed_seq seqF = make_seed_seq(0xCAFEBABECAFEBABEull);
         std::mt19937_64 rngE(seqE), rngF(seqF);
         
-        auto result_no = moon_no_rescale.run(x, mean_sampler, rngE);
+        moon_no_rescale.run(x, mean_sampler, rngE);
         auto result_yes = moon_rescale.run(x, mean_sampler, rngF);
         
         const double mean_no_rescale = moon_no_rescale.getBootstrapMean();

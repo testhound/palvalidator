@@ -15,6 +15,7 @@
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
 typedef num::DefaultNumber EquityType;
+typedef num::DefaultNumber DecimalType;
 
 using boost::posix_time::ptime;
 using boost::posix_time::hours;
@@ -1664,5 +1665,816 @@ TEST_CASE("Intraday Time Frame Duration In Minutes Tests", "[TimeSeries][Intrada
       // Verify consistency with time_duration method
       auto duration = series.getIntradayTimeFrameDuration();
       REQUIRE(durationMinutes == duration.total_seconds() / 60);
+    }
+}
+
+TEST_CASE("OHLCTimeSeries Comprehensive Coverage Tests", "[OHLCTimeSeries][Coverage]")
+{
+    SECTION("Constructor - Range-based constructor")
+    {
+        // Create a vector of entries
+        std::vector<OHLCTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        // Test range-based constructor
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES, 
+                                           entries.begin(), entries.end());
+        
+        REQUIRE(series.getNumEntries() == 3);
+        REQUIRE(series.getTimeFrame() == TimeFrame::DAILY);
+        REQUIRE(series.getVolumeUnits() == TradingVolume::SHARES);
+        
+        // Verify entries are sorted and accessible
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("103.0"));
+        
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("106.0"));
+        
+        auto entry3 = series.getTimeSeriesEntry(d3);
+        REQUIRE(entry3.getCloseValue() == DecimalType("109.0"));
+    }
+    
+    SECTION("Constructor - Range-based with unsorted entries")
+    {
+        std::vector<OHLCTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        // Add entries out of order
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES,
+                                           entries.begin(), entries.end());
+        
+        // Should be sorted after construction
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d3);
+    }
+    
+    SECTION("Constructor - Range-based with mismatched timeframe throws")
+    {
+        std::vector<OHLCTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, hours(9)),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::INTRADAY)); // Wrong timeframe
+        
+        REQUIRE_THROWS_AS(
+            OHLCTimeSeries<DecimalType>(TimeFrame::DAILY, TradingVolume::SHARES,
+                                        entries.begin(), entries.end()),
+            TimeSeriesException);
+    }
+    
+    SECTION("Copy constructor")
+    {
+        OHLCTimeSeries<DecimalType> original(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        original.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        original.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        // Copy construct
+        OHLCTimeSeries<DecimalType> copy(original);
+        
+        REQUIRE(copy.getNumEntries() == original.getNumEntries());
+        REQUIRE(copy.getTimeFrame() == original.getTimeFrame());
+        REQUIRE(copy.getVolumeUnits() == original.getVolumeUnits());
+        
+        // Verify deep copy - entries are independent
+        auto origEntry = original.getTimeSeriesEntry(d1);
+        auto copyEntry = copy.getTimeSeriesEntry(d1);
+        REQUIRE(origEntry == copyEntry);
+    }
+    
+    SECTION("Copy assignment operator")
+    {
+        OHLCTimeSeries<DecimalType> original(TimeFrame::DAILY, TradingVolume::SHARES);
+        OHLCTimeSeries<DecimalType> copy(TimeFrame::WEEKLY, TradingVolume::CONTRACTS);
+        
+        date d1(2021, Apr, 5);
+        
+        original.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        // Copy assign
+        copy = original;
+        
+        REQUIRE(copy.getNumEntries() == original.getNumEntries());
+        REQUIRE(copy.getTimeFrame() == TimeFrame::DAILY); // Should be copied
+        REQUIRE(copy.getVolumeUnits() == TradingVolume::SHARES); // Should be copied
+        
+        auto entry = copy.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getCloseValue() == DecimalType("103.0"));
+    }
+    
+    SECTION("Move constructor")
+    {
+        OHLCTimeSeries<DecimalType> original(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        
+        original.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        // Move construct
+        OHLCTimeSeries<DecimalType> moved(std::move(original));
+        
+        REQUIRE(moved.getNumEntries() == 1);
+        REQUIRE(moved.getTimeFrame() == TimeFrame::DAILY);
+        REQUIRE(moved.getVolumeUnits() == TradingVolume::SHARES);
+        
+        auto entry = moved.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getCloseValue() == DecimalType("103.0"));
+    }
+    
+    SECTION("Move assignment operator")
+    {
+        OHLCTimeSeries<DecimalType> original(TimeFrame::DAILY, TradingVolume::SHARES);
+        OHLCTimeSeries<DecimalType> moved(TimeFrame::WEEKLY, TradingVolume::CONTRACTS);
+        
+        date d1(2021, Apr, 5);
+        
+        original.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        // Move assign
+        moved = std::move(original);
+        
+        REQUIRE(moved.getNumEntries() == 1);
+        REQUIRE(moved.getTimeFrame() == TimeFrame::DAILY);
+        REQUIRE(moved.getVolumeUnits() == TradingVolume::SHARES);
+    }
+    
+    SECTION("getTimeSeriesEntry with offset - positive offsets")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        date d4(2021, Apr, 8);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d4, getDefaultBarTime()),
+            DecimalType("109.0"), DecimalType("112.0"), DecimalType("108.0"), DecimalType("111.0"),
+            DecimalType("2500"), TimeFrame::DAILY));
+        
+        // Test offset 0 (same entry)
+        auto entry0 = series.getTimeSeriesEntry(d4, 0);
+        REQUIRE(entry0.getCloseValue() == DecimalType("111.0"));
+        REQUIRE(entry0.getDateValue() == d4);
+        
+        // Test offset 1 (one bar ago)
+        auto entry1 = series.getTimeSeriesEntry(d4, 1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("109.0"));
+        REQUIRE(entry1.getDateValue() == d3);
+        
+        // Test offset 2 (two bars ago)
+        auto entry2 = series.getTimeSeriesEntry(d4, 2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("106.0"));
+        REQUIRE(entry2.getDateValue() == d2);
+        
+        // Test offset 3 (three bars ago - first entry)
+        auto entry3 = series.getTimeSeriesEntry(d4, 3);
+        REQUIRE(entry3.getCloseValue() == DecimalType("103.0"));
+        REQUIRE(entry3.getDateValue() == d1);
+        
+        // Test with ptime overload
+        ptime pt4(d4, getDefaultBarTime());
+        auto entryPt = series.getTimeSeriesEntry(pt4, 2);
+        REQUIRE(entryPt.getCloseValue() == DecimalType("106.0"));
+    }
+    
+    SECTION("getTimeSeriesEntry with offset - negative offsets (forward in time)")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        date d4(2021, Apr, 8);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d4, getDefaultBarTime()),
+            DecimalType("109.0"), DecimalType("112.0"), DecimalType("108.0"), DecimalType("111.0"),
+            DecimalType("2500"), TimeFrame::DAILY));
+        
+        // Test negative offset -1 (one bar forward)
+        auto entry1 = series.getTimeSeriesEntry(d1, -1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("106.0"));
+        REQUIRE(entry1.getDateValue() == d2);
+        
+        // Test negative offset -2 (two bars forward)
+        auto entry2 = series.getTimeSeriesEntry(d1, -2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("109.0"));
+        REQUIRE(entry2.getDateValue() == d3);
+        
+        // Test negative offset -3 (three bars forward - last entry)
+        auto entry3 = series.getTimeSeriesEntry(d1, -3);
+        REQUIRE(entry3.getCloseValue() == DecimalType("111.0"));
+        REQUIRE(entry3.getDateValue() == d4);
+    }
+    
+    SECTION("getTimeSeriesEntry with offset - out of bounds exceptions")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        // Test offset beyond start
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, 1), TimeSeriesOffsetOutOfRangeException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d2, 2), TimeSeriesOffsetOutOfRangeException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, 10), TimeSeriesOffsetOutOfRangeException);
+        
+        // Test negative offset beyond end
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d3, -1), TimeSeriesOffsetOutOfRangeException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d2, -2), TimeSeriesOffsetOutOfRangeException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, -10), TimeSeriesOffsetOutOfRangeException);
+    }
+    
+    SECTION("getTimeSeriesEntry with offset - base date not found")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date nonExistent(2021, Apr, 10);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(nonExistent, 0), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(nonExistent, 1), TimeSeriesDataNotFoundException);
+    }
+    
+    SECTION("Boundary methods - getFirstDate/getLastDate")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d3);
+    }
+    
+    SECTION("Boundary methods - getFirstDateTime/getLastDateTime")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        ptime pt1(d1, getDefaultBarTime());
+        ptime pt2(d2, getDefaultBarTime());
+        ptime pt3(d3, getDefaultBarTime());
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt2, DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt1, DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt3, DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getFirstDateTime() == pt1);
+        REQUIRE(series.getLastDateTime() == pt3);
+    }
+    
+    SECTION("Boundary methods - empty series throws")
+    {
+        OHLCTimeSeries<DecimalType> emptySeries(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        REQUIRE_THROWS_AS(emptySeries.getFirstDate(), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(emptySeries.getLastDate(), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(emptySeries.getFirstDateTime(), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(emptySeries.getLastDateTime(), TimeSeriesDataNotFoundException);
+    }
+    
+    SECTION("isDateFound - date overload")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date nonExistent(2021, Apr, 10);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        REQUIRE(series.isDateFound(d1) == true);
+        REQUIRE(series.isDateFound(d2) == true);
+        REQUIRE(series.isDateFound(nonExistent) == false);
+    }
+    
+    SECTION("isDateFound - ptime overload")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+        
+        ptime pt1(date(2021, Apr, 5), hours(9));
+        ptime pt2(date(2021, Apr, 5), hours(10));
+        ptime nonExistent(date(2021, Apr, 5), hours(15));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt1, DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::INTRADAY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt2, DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::INTRADAY));
+        
+        REQUIRE(series.isDateFound(pt1) == true);
+        REQUIRE(series.isDateFound(pt2) == true);
+        REQUIRE(series.isDateFound(nonExistent) == false);
+    }
+    
+    SECTION("deleteEntryByDate - ptime overload")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::INTRADAY, TradingVolume::SHARES);
+        
+        ptime pt1(date(2021, Apr, 5), hours(9));
+        ptime pt2(date(2021, Apr, 5), hours(10));
+        ptime pt3(date(2021, Apr, 5), hours(11));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt1, DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::INTRADAY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt2, DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::INTRADAY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            pt3, DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::INTRADAY));
+        
+        REQUIRE(series.getNumEntries() == 3);
+        
+        // Delete middle entry
+        series.deleteEntryByDate(pt2);
+        
+        REQUIRE(series.getNumEntries() == 2);
+        REQUIRE(series.isDateFound(pt1) == true);
+        REQUIRE(series.isDateFound(pt2) == false);
+        REQUIRE(series.isDateFound(pt3) == true);
+    }
+    
+    SECTION("deleteEntryByDate - date overload")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getNumEntries() == 3);
+        
+        // Delete first entry
+        series.deleteEntryByDate(d1);
+        
+        REQUIRE(series.getNumEntries() == 2);
+        REQUIRE(series.isDateFound(d1) == false);
+        REQUIRE(series.isDateFound(d2) == true);
+        REQUIRE(series.getFirstDate() == d2);
+    }
+    
+    SECTION("Comparison operators - equality")
+    {
+        OHLCTimeSeries<DecimalType> series1(TimeFrame::DAILY, TradingVolume::SHARES);
+        OHLCTimeSeries<DecimalType> series2(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        auto entry1 = OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY);
+        
+        auto entry2 = OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY);
+        
+        series1.addEntry(entry1);
+        series1.addEntry(entry2);
+        
+        series2.addEntry(entry1);
+        series2.addEntry(entry2);
+        
+        REQUIRE(series1 == series2);
+        REQUIRE_FALSE(series1 != series2);
+    }
+    
+    SECTION("Comparison operators - inequality by different entries")
+    {
+        OHLCTimeSeries<DecimalType> series1(TimeFrame::DAILY, TradingVolume::SHARES);
+        OHLCTimeSeries<DecimalType> series2(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        series1.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series2.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        REQUIRE(series1 != series2);
+        REQUIRE_FALSE(series1 == series2);
+    }
+    
+    SECTION("Comparison operators - inequality by timeframe")
+    {
+        OHLCTimeSeries<DecimalType> series1(TimeFrame::DAILY, TradingVolume::SHARES);
+        OHLCTimeSeries<DecimalType> series2(TimeFrame::WEEKLY, TradingVolume::SHARES);
+        
+        REQUIRE(series1 != series2);
+        REQUIRE_FALSE(series1 == series2);
+    }
+    
+    SECTION("Comparison operators - inequality by volume units")
+    {
+        OHLCTimeSeries<DecimalType> series1(TimeFrame::DAILY, TradingVolume::SHARES);
+        OHLCTimeSeries<DecimalType> series2(TimeFrame::DAILY, TradingVolume::CONTRACTS);
+        
+        REQUIRE(series1 != series2);
+        REQUIRE_FALSE(series1 == series2);
+    }
+    
+    SECTION("Stream output operator")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        std::ostringstream oss;
+        oss << series;
+        
+        std::string output = oss.str();
+        
+        // Check that output contains header and data
+        REQUIRE(output.find("DateTime,Open,High,Low,Close,Volume") != std::string::npos);
+        REQUIRE(output.find("100") != std::string::npos);
+        REQUIRE(output.find("105") != std::string::npos);
+        REQUIRE(output.find("103") != std::string::npos);
+    }
+    
+    SECTION("Duplicate timestamp handling")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        // Attempt to add duplicate
+        REQUIRE_THROWS_AS(
+            series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+                ptime(d1, getDefaultBarTime()),
+                DecimalType("101.0"), DecimalType("106.0"), DecimalType("100.0"), DecimalType("104.0"),
+                DecimalType("1100"), TimeFrame::DAILY)),
+            TimeSeriesException);
+    }
+    
+    SECTION("Single entry series operations")
+    {
+        OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getNumEntries() == 1);
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d1);
+        REQUIRE(series.isDateFound(d1) == true);
+        
+        auto entry = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getCloseValue() == DecimalType("103.0"));
+        
+        // Offset 0 should work
+        auto entryOffset0 = series.getTimeSeriesEntry(d1, 0);
+        REQUIRE(entryOffset0.getCloseValue() == DecimalType("103.0"));
+        
+        // Any non-zero offset should throw
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, 1), TimeSeriesOffsetOutOfRangeException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, -1), TimeSeriesOffsetOutOfRangeException);
+    }
+}
+
+TEST_CASE("OHLCTimeSeries with HashedLookupPolicy", "[OHLCTimeSeries][HashedPolicy]")
+{
+    using HashedOHLCTimeSeries = OHLCTimeSeries<DecimalType, HashedLookupPolicy<DecimalType>>;
+    
+    SECTION("Basic operations with hashed policy")
+    {
+        HashedOHLCTimeSeries series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        // Test lookups work with hashed policy
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("103.0"));
+        
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("106.0"));
+        
+        auto entry3 = series.getTimeSeriesEntry(d3);
+        REQUIRE(entry3.getCloseValue() == DecimalType("109.0"));
+    }
+    
+    SECTION("Index invalidation after addEntry")
+    {
+        HashedOHLCTimeSeries series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        // Access to build index
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("103.0"));
+        
+        // Add new entry (should invalidate index)
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        // Should still work (index rebuilt)
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("106.0"));
+        
+        // Original entry should still be accessible
+        auto entry1Again = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1Again.getCloseValue() == DecimalType("103.0"));
+    }
+    
+    SECTION("Index invalidation after deleteEntryByDate")
+    {
+        HashedOHLCTimeSeries series(TimeFrame::DAILY, TradingVolume::SHARES);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        series.addEntry(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()),
+            DecimalType("106.0"), DecimalType("110.0"), DecimalType("105.0"), DecimalType("109.0"),
+            DecimalType("2000"), TimeFrame::DAILY));
+        
+        // Access to build index
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("106.0"));
+        
+        // Delete entry (should invalidate index)
+        series.deleteEntryByDate(d2);
+        
+        // Should still work with remaining entries
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("103.0"));
+        
+        auto entry3 = series.getTimeSeriesEntry(d3);
+        REQUIRE(entry3.getCloseValue() == DecimalType("109.0"));
+        
+        // Deleted entry should not be found
+        REQUIRE(series.isDateFound(d2) == false);
+    }
+    
+    SECTION("Range-based constructor builds index")
+    {
+        std::vector<OHLCTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()),
+            DecimalType("100.0"), DecimalType("105.0"), DecimalType("99.0"), DecimalType("103.0"),
+            DecimalType("1000"), TimeFrame::DAILY));
+        
+        entries.push_back(OHLCTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()),
+            DecimalType("103.0"), DecimalType("108.0"), DecimalType("102.0"), DecimalType("106.0"),
+            DecimalType("1500"), TimeFrame::DAILY));
+        
+        HashedOHLCTimeSeries series(TimeFrame::DAILY, TradingVolume::SHARES,
+                                    entries.begin(), entries.end());
+        
+        // Index should be built during construction
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getCloseValue() == DecimalType("103.0"));
+        
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getCloseValue() == DecimalType("106.0"));
     }
 }

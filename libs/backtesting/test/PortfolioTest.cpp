@@ -129,3 +129,14 @@ TEST_CASE ("Portfolio operations", "[Portfolio]")
       REQUIRE (it->second->getSymbol() == futuresSymbol);
     }
 }
+
+TEST_CASE("Portfolio: throws on null security", "[Portfolio][exception]") {
+  // Test that Portfolio properly rejects null securities at the addSecurity level
+  std::string portName("Test Portfolio");
+  Portfolio<DecimalType> portfolio(portName);
+  
+  REQUIRE_THROWS_AS(
+    portfolio.addSecurity(nullptr),
+    PortfolioException
+  );
+}
