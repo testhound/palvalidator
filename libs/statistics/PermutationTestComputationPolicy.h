@@ -292,12 +292,16 @@ namespace mkc_timeseries
      */
     ReturnType
     runPermutationTest(std::shared_ptr<BackTester<Decimal>> theBackTester,
-		       uint32_t numPermutations,
-		       const Decimal& baseLineTestStat)
+         uint32_t numPermutations,
+         const Decimal& baseLineTestStat)
     {
       if (numPermutations == 0)
-	throw std::invalid_argument(
-				    "DefaultPermuteMarketChangesPolicy::runPermutationTest: numPermutations must be > 0");
+ throw std::invalid_argument(
+       "DefaultPermuteMarketChangesPolicy::runPermutationTest: numPermutations must be > 0");
+
+      if (!theBackTester)
+ throw std::invalid_argument(
+       "DefaultPermuteMarketChangesPolicy::runPermutationTest: theBackTester cannot be null");
 
       // Grab the baseline strategy and its security/portfolio ONCE (before parallel work)
       auto aStrategy = *(theBackTester->beginStrategies());
