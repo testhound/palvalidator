@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <numeric>
 #include <memory>
+#include <mutex> 
 #include <boost/thread/mutex.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include "TimeSeries.h" // OHLCTimeSeries is policy-based
@@ -25,7 +26,11 @@
 namespace mkc_timeseries
 {
 
-  // Null model selector for synthetic resampling
+  /**
+   * @enum SyntheticNullModel
+   * @brief Defines the randomization strategy used to generate the synthetic series.
+   * * These models determine how much of the original market structure is destroyed.
+   */
   enum class SyntheticNullModel {
     N1_MaxDestruction = 0,  // current behavior (independent shuffles)
     N0_PairedDay      = 1,  // shuffle day-units intact: (gap, H/L/C[, Volume]) together
@@ -47,15 +52,20 @@ namespace mkc_timeseries
 	    template<class> class RoundingPolicy = NoRounding>
   class IntradaySyntheticTimeSeriesImpl;
 
-/**
- * @interface ISyntheticTimeSeriesImpl
- * @brief Defines the interface for synthetic time series generator implementations.
- *
- * @tparam Decimal The numeric type for price and factor data.
- * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
- */
+  /**
+   * @interface ISyntheticTimeSeriesImpl
+   * @brief Abstract base class (Interface) for synthetic time series generator implementations.
+   *
+   * This interface abstracts the specific logic used to shuffle and reconstruct 
+   * End-of-Day (EOD) vs. Intraday data, allowing the main SyntheticTimeSeries 
+   * class to use the Pimpl idiom.
+   *
+   * @tparam Decimal The numeric type for price and factor data (e.g. double, float).
+   * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
+   */
   template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
-  class ISyntheticTimeSeriesImpl {
+  class ISyntheticTimeSeriesImpl
+  {
   public:
     virtual ~ISyntheticTimeSeriesImpl() = default;
     virtual void shuffleFactors(RandomMersenne& randGenerator) = 0;
@@ -72,10 +82,20 @@ namespace mkc_timeseries
     virtual std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> clone() const = 0;
   };
 
-
-  // ================================
-  // N0: Paired-day EOD implementation
-  // ================================
+  /**
+   * @class EodSyntheticTimeSeriesImpl_N0
+   * @brief Implements the "Paired-Day" (N0) Null Model for EOD data.
+   *
+   * @details
+   * In this model, the specific data of a single trading day (Open, High, Low, Close, Volume)
+   * is treated as an atomic unit. The algorithm shuffles the *order* in which these days appear
+   * but does not alter the intraday relationship (e.g., a massive gap down followed by a rally
+   * stays intact).
+   *
+   * Logic:
+   * 1. Generate a permutation of day indices.
+   * 2. Reorder all relative factor arrays (Open, High, Low, Close) using this single permutation.
+   */
   template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
   class EodSyntheticTimeSeriesImpl_N0
     : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>
@@ -97,6 +117,9 @@ namespace mkc_timeseries
     }
 
     EodSyntheticTimeSeriesImpl_N0(const EodSyntheticTimeSeriesImpl_N0& other) = default;
+    EodSyntheticTimeSeriesImpl_N0& operator=(const EodSyntheticTimeSeriesImpl_N0& other) = default;
+    EodSyntheticTimeSeriesImpl_N0(EodSyntheticTimeSeriesImpl_N0&& other) noexcept = default;
+    EodSyntheticTimeSeriesImpl_N0& operator=(EodSyntheticTimeSeriesImpl_N0&& other) noexcept = default;
 
     // Paired-day shuffle: permute indices {1..n-1} once and apply to all day-factor arrays
     void shuffleFactors(RandomMersenne& randGenerator) override
@@ -317,12 +340,18 @@ namespace mkc_timeseries
 #endif
   };
 
-/**
- * @class EodSyntheticTimeSeriesImpl
- * @brief Implements EOD synthetic time series generation.
- * @tparam Decimal The numeric type for price and factor data.
- * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
- */
+  /**
+   * @class EodSyntheticTimeSeriesImpl
+   * @brief Implements the "Max Destruction" (N1) Null Model for EOD data.
+   *
+   * @details
+   * This model performs independent shuffling of:
+   * 1. Overnight Gaps (Relative Open)
+   * 2. Intraday Volatility (Relative High/Low/Close)
+   *
+   * By breaking the link between the overnight gap and the subsequent trading day's
+   * behavior, this creates the most rigorous test for a strategy.
+   */
   template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
   class EodSyntheticTimeSeriesImpl : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> {
 public:
@@ -342,6 +371,9 @@ public:
     }
 
     EodSyntheticTimeSeriesImpl(const EodSyntheticTimeSeriesImpl& other) = default;
+    EodSyntheticTimeSeriesImpl& operator=(const EodSyntheticTimeSeriesImpl& other) = default;
+    EodSyntheticTimeSeriesImpl(EodSyntheticTimeSeriesImpl&& other) noexcept = default;
+    EodSyntheticTimeSeriesImpl& operator=(EodSyntheticTimeSeriesImpl&& other) noexcept = default;
 
     void shuffleFactors(RandomMersenne& randGenerator) override {
         shuffleOverNightChangesInternal(randGenerator);
@@ -539,12 +571,17 @@ private:
 #endif
 };
 
-/**
- * @class IntradaySyntheticTimeSeriesImpl
- * @brief Implements Intraday synthetic time series generation.
- * @tparam Decimal The numeric type for price and factor data.
- * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
- */
+  /**
+   * @class IntradaySyntheticTimeSeriesImpl
+   * @brief Implements Intraday synthetic time series generation.
+   * * @details
+   * This implementation performs a hierarchical "Deep Shuffle" suitable for intraday data:
+   * 1. Shuffles the order of trading days.
+   * 2. Shuffles the overnight gaps between days.
+   * 3. Shuffles the order of intraday bars WITHIN each day.
+   * * This effectively destroys both intraday serial correlation (trends within the day)
+   * and inter-day correlation (trends across days).
+   */
   template <class Decimal, class LookupPolicy, template<class> class RoundingPolicy>
   class IntradaySyntheticTimeSeriesImpl : public ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy> {
 public:
@@ -560,6 +597,9 @@ public:
     }
 
     IntradaySyntheticTimeSeriesImpl(const IntradaySyntheticTimeSeriesImpl& other) = default;
+    IntradaySyntheticTimeSeriesImpl& operator=(const IntradaySyntheticTimeSeriesImpl& other) = default;
+    IntradaySyntheticTimeSeriesImpl(IntradaySyntheticTimeSeriesImpl&& other) noexcept = default;
+    IntradaySyntheticTimeSeriesImpl& operator=(IntradaySyntheticTimeSeriesImpl&& other) noexcept = default;
 
     void shuffleFactors(RandomMersenne& randGenerator) override {
         for (auto& dayBars : mDailyNormalizedBars) {
@@ -799,19 +839,27 @@ private:
 };
 
 
-/**
- * @class SyntheticTimeSeries
- * @brief Public-facing class for generating synthetic OHLC time series.
- * @tparam Decimal The numeric type for price and factor data.
- * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated by this instance.
- */
+  /**
+   * @class SyntheticTimeSeries
+   * @brief Main public wrapper for generating synthetic OHLC time series.
+   * * @details
+   * This class uses the Pimpl (Pointer to Implementation) idiom to select the correct 
+   * shuffling algorithm (EOD vs. Intraday) based on the source data time frame and the 
+   * selected Null Model.
+   * * @note Implements algorithms described by Timothy Masters for Monte Carlo 
+   * Permutation Testing of trading strategies.
+   * * @tparam Decimal The numeric type for price and factor data.
+   * @tparam LookupPolicy The lookup policy for the OHLCTimeSeries to be generated.
+   * @tparam RoundingPolicy The policy to enforce tick-size validity.
+   * @tparam NullModel The destruction strategy (default: N1_MaxDestruction).
+   */
   template <class Decimal,
 	    class LookupPolicy = mkc_timeseries::LogNLookupPolicy<Decimal>,
 	    template<class> class RoundingPolicy = NoRounding,
 	    SyntheticNullModel NullModel = SyntheticNullModel::N1_MaxDestruction>
-class SyntheticTimeSeries
-{
-public:
+  class SyntheticTimeSeries
+  {
+  public:
     explicit SyntheticTimeSeries(const OHLCTimeSeries<Decimal, LookupPolicy>& aTimeSeries, 
                                  const Decimal& minimumTick,
                                  const Decimal& minimumTickDiv2)
@@ -827,10 +875,10 @@ public:
 	  // EOD: choose implementation by NullModel at compile time
 	  if constexpr (NullModel == SyntheticNullModel::N0_PairedDay)
 	    {
-	    mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl_N0<Decimal, LookupPolicy, RoundingPolicy>>(mSourceTimeSeriesCopy,
-													    mMinimumTick,
-													    mMinimumTickDiv2);
-	  }
+	      mPimpl = std::make_unique<EodSyntheticTimeSeriesImpl_N0<Decimal, LookupPolicy, RoundingPolicy>>(mSourceTimeSeriesCopy,
+													      mMinimumTick,
+													      mMinimumTickDiv2);
+	    }
 	  else
 	    {
 	      // N1 (current) or N2 (defer to N1 for now)
@@ -850,119 +898,144 @@ public:
 
     ~SyntheticTimeSeries() = default;
 
-  SyntheticTimeSeries(const SyntheticTimeSeries<Decimal, LookupPolicy, RoundingPolicy>& rhs)
+    SyntheticTimeSeries(const SyntheticTimeSeries& rhs)
       : mSourceTimeSeriesCopy(rhs.mSourceTimeSeriesCopy),
-        mMinimumTick(rhs.mMinimumTick),
-        mMinimumTickDiv2(rhs.mMinimumTickDiv2),
-        mRandGenerator(rhs.mRandGenerator),
-        mPimpl(rhs.mPimpl ? rhs.mPimpl->clone() : nullptr)
+	mMinimumTick(rhs.mMinimumTick),
+	mMinimumTickDiv2(rhs.mMinimumTickDiv2),
+	mRandGenerator(rhs.mRandGenerator),
+	mPimpl(rhs.mPimpl ? rhs.mPimpl->clone() : nullptr),
+	mSyntheticTimeSeries(rhs.mSyntheticTimeSeries
+			     ? std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(*rhs.mSyntheticTimeSeries)
+			     : nullptr)
+    {}
+
+    SyntheticTimeSeries& operator=(const SyntheticTimeSeries& rhs) {
+      if (this == &rhs) return *this;
+      std::scoped_lock lock(mMutex, rhs.mMutex); // only if you truly need thread-safe copying
+      mSourceTimeSeriesCopy = rhs.mSourceTimeSeriesCopy;
+      mMinimumTick = rhs.mMinimumTick;
+      mMinimumTickDiv2 = rhs.mMinimumTickDiv2;
+      mRandGenerator = rhs.mRandGenerator;
+      mPimpl = rhs.mPimpl ? rhs.mPimpl->clone() : nullptr;
+      mSyntheticTimeSeries = rhs.mSyntheticTimeSeries
+	? std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(*rhs.mSyntheticTimeSeries)
+	: nullptr;
+      return *this;
+    }
+  
+    SyntheticTimeSeries(SyntheticTimeSeries&& rhs) noexcept
+      : mSourceTimeSeriesCopy(std::move(rhs.mSourceTimeSeriesCopy)),
+	mMinimumTick(std::move(rhs.mMinimumTick)),
+	mMinimumTickDiv2(std::move(rhs.mMinimumTickDiv2)),
+	mRandGenerator(std::move(rhs.mRandGenerator)),
+	mPimpl(std::move(rhs.mPimpl)),
+	mSyntheticTimeSeries(std::move(rhs.mSyntheticTimeSeries))
     {
-        if (rhs.mSyntheticTimeSeries) {
-             mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(*rhs.mSyntheticTimeSeries);
-        }
+      // mMutex is default-constructed (cannot be moved)
     }
 
-    SyntheticTimeSeries& operator=(const SyntheticTimeSeries<Decimal, LookupPolicy, RoundingPolicy>& rhs)
+    SyntheticTimeSeries& operator=(SyntheticTimeSeries&& rhs) noexcept
     {
-        if (this != &rhs) {
-            boost::mutex::scoped_lock current_lock(mMutex);
-            mSourceTimeSeriesCopy = rhs.mSourceTimeSeriesCopy;
-            mMinimumTick          = rhs.mMinimumTick;
-            mMinimumTickDiv2      = rhs.mMinimumTickDiv2;
-            mRandGenerator        = rhs.mRandGenerator;
-            mPimpl                = rhs.mPimpl ? rhs.mPimpl->clone() : nullptr;
-            if (rhs.mSyntheticTimeSeries) {
-                 mSyntheticTimeSeries = std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(*rhs.mSyntheticTimeSeries);
-            } else {
-                 mSyntheticTimeSeries.reset();
-            }
-        }
-        return *this;
+      if (this == &rhs) return *this;
+
+      boost::unique_lock<boost::mutex> lock1(mMutex, boost::defer_lock);
+      boost::unique_lock<boost::mutex> lock2(rhs.mMutex, boost::defer_lock);
+      std::lock(lock1, lock2);
+
+      mSourceTimeSeriesCopy = std::move(rhs.mSourceTimeSeriesCopy);
+      mMinimumTick          = std::move(rhs.mMinimumTick);
+      mMinimumTickDiv2      = std::move(rhs.mMinimumTickDiv2);
+      mRandGenerator        = std::move(rhs.mRandGenerator);
+      mPimpl                = std::move(rhs.mPimpl);
+      mSyntheticTimeSeries  = std::move(rhs.mSyntheticTimeSeries);
+
+      return *this;
     }
-    
-    SyntheticTimeSeries(SyntheticTimeSeries&& rhs) noexcept = default;
-    SyntheticTimeSeries& operator=(SyntheticTimeSeries&& rhs) noexcept = default;
 
-
+    /**
+     * @brief Generates a new synthetic series.
+     * * Triggers the shuffling process via the implementation pointer and
+     * stores the result in mSyntheticTimeSeries. Thread-safe.
+     */
     void createSyntheticSeries()
     {
-        boost::mutex::scoped_lock lock(mMutex);
-        if (!mPimpl) return; 
+      boost::mutex::scoped_lock lock(mMutex);
+      if (!mPimpl) return; 
 
-        mPimpl->shuffleFactors(mRandGenerator); 
-        mSyntheticTimeSeries = mPimpl->buildSeries();
+      mPimpl->shuffleFactors(mRandGenerator); 
+      mSyntheticTimeSeries = mPimpl->buildSeries();
     }
 
     void reseedRNG() {
-        boost::mutex::scoped_lock lock(mMutex);
-        mRandGenerator.seed();
+      boost::mutex::scoped_lock lock(mMutex);
+      mRandGenerator.seed();
     }
 
     std::shared_ptr<const OHLCTimeSeries<Decimal, LookupPolicy>> getSyntheticTimeSeries() const
     {
-        std::shared_ptr<const OHLCTimeSeries<Decimal, LookupPolicy>> result;
-        {
-            boost::mutex::scoped_lock lock(mMutex);
-            result = mSyntheticTimeSeries;
-        } // Lock is released here before returning
-        return result;
+      std::shared_ptr<const OHLCTimeSeries<Decimal, LookupPolicy>> result;
+      {
+	boost::mutex::scoped_lock lock(mMutex);
+	result = mSyntheticTimeSeries;
+      } // Lock is released here before returning
+      return result;
     }
 
     Decimal getFirstOpen() const { 
-        return mPimpl ? mPimpl->getFirstOpen() : DecimalConstants<Decimal>::DecimalZero; 
+      return mPimpl ? mPimpl->getFirstOpen() : DecimalConstants<Decimal>::DecimalZero; 
     } 
 
     unsigned long getNumElements() const { 
-        return mPimpl ? mPimpl->getNumOriginalElements() : 0;
+      return mPimpl ? mPimpl->getNumOriginalElements() : 0;
     } 
 
     const Decimal& getTick() const { return mMinimumTick; }
     const Decimal& getTickDiv2() const { return mMinimumTickDiv2; }
     
     std::vector<Decimal> getRelativeOpen()  const {
-        std::vector<Decimal> result;
-        {
-            boost::mutex::scoped_lock lk(mMutex);
-            result = mPimpl ? mPimpl->getRelativeOpenFactors() : std::vector<Decimal>();
-        }
-        return result;
+      std::vector<Decimal> result;
+      {
+	boost::mutex::scoped_lock lk(mMutex);
+	result = mPimpl ? mPimpl->getRelativeOpenFactors() : std::vector<Decimal>();
+      }
+      return result;
     }
     std::vector<Decimal> getRelativeHigh()  const {
-        std::vector<Decimal> result;
-        {
-            boost::mutex::scoped_lock lk(mMutex);
-            result = mPimpl ? mPimpl->getRelativeHighFactors() : std::vector<Decimal>();
-        }
-        return result;
+      std::vector<Decimal> result;
+      {
+	boost::mutex::scoped_lock lk(mMutex);
+	result = mPimpl ? mPimpl->getRelativeHighFactors() : std::vector<Decimal>();
+      }
+      return result;
     }
     std::vector<Decimal> getRelativeLow()   const {
-        std::vector<Decimal> result;
-        {
-            boost::mutex::scoped_lock lk(mMutex);
-            result = mPimpl ? mPimpl->getRelativeLowFactors() : std::vector<Decimal>();
-        }
-        return result;
+      std::vector<Decimal> result;
+      {
+	boost::mutex::scoped_lock lk(mMutex);
+	result = mPimpl ? mPimpl->getRelativeLowFactors() : std::vector<Decimal>();
+      }
+      return result;
     }
     std::vector<Decimal> getRelativeClose() const {
-        std::vector<Decimal> result;
-        {
-            boost::mutex::scoped_lock lk(mMutex);
-            result = mPimpl ? mPimpl->getRelativeCloseFactors() : std::vector<Decimal>();
-        }
-        return result;
+      std::vector<Decimal> result;
+      {
+	boost::mutex::scoped_lock lk(mMutex);
+	result = mPimpl ? mPimpl->getRelativeCloseFactors() : std::vector<Decimal>();
+      }
+      return result;
     }
 #ifdef SYNTHETIC_VOLUME
     std::vector<Decimal> getRelativeVolume()const {
-        std::vector<Decimal> result;
-        {
-            boost::mutex::scoped_lock lk(mMutex);
-            result = mPimpl ? mPimpl->getRelativeVolumeFactors() : std::vector<Decimal>();
-        }
-        return result;
+      std::vector<Decimal> result;
+      {
+	boost::mutex::scoped_lock lk(mMutex);
+	result = mPimpl ? mPimpl->getRelativeVolumeFactors() : std::vector<Decimal>();
+      }
+      return result;
     }
 #endif
 
-private:
+  private:
     OHLCTimeSeries<Decimal, LookupPolicy> mSourceTimeSeriesCopy;
     Decimal                           mMinimumTick;
     Decimal                           mMinimumTickDiv2;
@@ -970,8 +1043,7 @@ private:
     std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>> mPimpl;
     std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> mSyntheticTimeSeries;
     mutable boost::mutex              mMutex;
-};
-
+  };
 } // namespace mkc_timeseries
 
 #endif // __SYNTHETIC_TIME_SERIES_H
