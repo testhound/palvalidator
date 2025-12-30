@@ -264,3 +264,647 @@ TEST_CASE("NumericTimeSeries New Interface Comprehensive Tests", "[NumericTimeSe
         }
     }
 }
+
+TEST_CASE("NumericTimeSeries Additional Coverage Tests", "[NumericTimeSeries][Coverage]")
+{
+    SECTION("Constructor - range-based constructor")
+    {
+        std::vector<NumericTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY, entries.begin(), entries.end());
+        
+        REQUIRE(series.getNumEntries() == 3);
+        REQUIRE(series.getTimeFrame() == TimeFrame::DAILY);
+        
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getValue() == DecimalType("100.0"));
+        
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getValue() == DecimalType("101.0"));
+        
+        auto entry3 = series.getTimeSeriesEntry(d3);
+        REQUIRE(entry3.getValue() == DecimalType("102.0"));
+    }
+    
+    SECTION("Constructor - range-based with unsorted entries")
+    {
+        std::vector<NumericTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        // Add entries out of order
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY, entries.begin(), entries.end());
+        
+        // Should be sorted after construction
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d3);
+    }
+    
+    SECTION("Constructor - range-based with mismatched timeframe throws")
+    {
+        std::vector<NumericTimeSeriesEntry<DecimalType>> entries;
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        entries.push_back(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, hours(9)), DecimalType("101.0"), TimeFrame::INTRADAY)); // Wrong timeframe
+        
+        REQUIRE_THROWS_AS(
+            NumericTimeSeries<DecimalType>(TimeFrame::DAILY, entries.begin(), entries.end()),
+            TimeSeriesException);
+    }
+    
+    SECTION("Constructor - with reserve count")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY, 100);
+        
+        REQUIRE(series.getNumEntries() == 0);
+        REQUIRE(series.getTimeFrame() == TimeFrame::DAILY);
+        
+        // Should be able to add entries
+        date d1(2021, Apr, 5);
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getNumEntries() == 1);
+    }
+    
+    SECTION("Copy constructor")
+    {
+        NumericTimeSeries<DecimalType> original(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        original.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        original.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        
+        NumericTimeSeries<DecimalType> copy(original);
+        
+        REQUIRE(copy.getNumEntries() == original.getNumEntries());
+        REQUIRE(copy.getTimeFrame() == original.getTimeFrame());
+        
+        auto origEntry = original.getTimeSeriesEntry(d1);
+        auto copyEntry = copy.getTimeSeriesEntry(d1);
+        REQUIRE(origEntry == copyEntry);
+    }
+    
+    SECTION("Copy assignment operator")
+    {
+        NumericTimeSeries<DecimalType> original(TimeFrame::DAILY);
+        NumericTimeSeries<DecimalType> copy(TimeFrame::WEEKLY);
+        
+        date d1(2021, Apr, 5);
+        
+        original.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        copy = original;
+        
+        REQUIRE(copy.getNumEntries() == original.getNumEntries());
+        REQUIRE(copy.getTimeFrame() == TimeFrame::DAILY); // Should be copied
+        
+        auto entry = copy.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getValue() == DecimalType("100.0"));
+    }
+    
+    SECTION("Copy assignment - self-assignment")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        // Self-assignment should be safe
+        series = series;
+        
+        REQUIRE(series.getNumEntries() == 1);
+        auto entry = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getValue() == DecimalType("100.0"));
+    }
+    
+    SECTION("Move constructor")
+    {
+        NumericTimeSeries<DecimalType> original(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        original.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        NumericTimeSeries<DecimalType> moved(std::move(original));
+        
+        REQUIRE(moved.getNumEntries() == 1);
+        REQUIRE(moved.getTimeFrame() == TimeFrame::DAILY);
+        
+        auto entry = moved.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getValue() == DecimalType("100.0"));
+    }
+    
+    SECTION("Move assignment operator")
+    {
+        NumericTimeSeries<DecimalType> original(TimeFrame::DAILY);
+        NumericTimeSeries<DecimalType> moved(TimeFrame::WEEKLY);
+        
+        date d1(2021, Apr, 5);
+        original.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        moved = std::move(original);
+        
+        REQUIRE(moved.getNumEntries() == 1);
+        REQUIRE(moved.getTimeFrame() == TimeFrame::DAILY);
+    }
+    
+    SECTION("Move assignment - self-assignment")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        // Test self-move-assignment protection by creating a reference and moving through it
+        // This avoids the direct self-move which triggers compiler warnings
+        NumericTimeSeries<DecimalType>& seriesRef = series;
+        series = std::move(seriesRef);
+        
+        REQUIRE(series.getNumEntries() == 1);
+    }
+    
+    SECTION("getDateValue with ptime and offset")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        
+        ptime baseTime = ptime(d3, getDefaultBarTime());
+        
+        // Test offset 0
+        REQUIRE(series.getDateValue(baseTime, 0) == d3);
+        
+        // Test offset 1
+        REQUIRE(series.getDateValue(baseTime, 1) == d2);
+        
+        // Test offset 2
+        REQUIRE(series.getDateValue(baseTime, 2) == d1);
+    }
+    
+    SECTION("getDateValue with date and offset")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        
+        // Test offset 0
+        REQUIRE(series.getDateValue(d3, 0) == d3);
+        
+        // Test offset 1
+        REQUIRE(series.getDateValue(d3, 1) == d2);
+        
+        // Test offset 2
+        REQUIRE(series.getDateValue(d3, 2) == d1);
+    }
+    
+    SECTION("getDateTimeValue with ptime and offset")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::INTRADAY);
+        
+        ptime pt1(date(2021, Apr, 5), hours(9));
+        ptime pt2(date(2021, Apr, 5), hours(10));
+        ptime pt3(date(2021, Apr, 5), hours(11));
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+        
+        // Test offset 0
+        REQUIRE(series.getDateTimeValue(pt3, 0) == pt3);
+        
+        // Test offset 1
+        REQUIRE(series.getDateTimeValue(pt3, 1) == pt2);
+        
+        // Test offset 2
+        REQUIRE(series.getDateTimeValue(pt3, 2) == pt1);
+    }
+    
+    SECTION("getDateTimeValue with date and offset")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        ptime pt1(d1, getDefaultBarTime());
+        ptime pt2(d2, getDefaultBarTime());
+        ptime pt3(d3, getDefaultBarTime());
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt2, DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt3, DecimalType("102.0"), TimeFrame::DAILY));
+        
+        // Test offset 0
+        REQUIRE(series.getDateTimeValue(d3, 0) == pt3);
+        
+        // Test offset 1
+        REQUIRE(series.getDateTimeValue(d3, 1) == pt2);
+        
+        // Test offset 2
+        REQUIRE(series.getDateTimeValue(d3, 2) == pt1);
+    }
+    
+    SECTION("Boundary methods - comprehensive testing")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        ptime pt1(d1, getDefaultBarTime());
+        ptime pt2(d2, getDefaultBarTime());
+        ptime pt3(d3, getDefaultBarTime());
+        
+        // Add entries out of order
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt2, DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt3, DecimalType("102.0"), TimeFrame::DAILY));
+        
+        // Should be sorted, so first is d1, last is d3
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d3);
+        REQUIRE(series.getFirstDateTime() == pt1);
+        REQUIRE(series.getLastDateTime() == pt3);
+    }
+    
+    SECTION("Boundary methods - empty series throws")
+    {
+        NumericTimeSeries<DecimalType> emptySeries(TimeFrame::DAILY);
+        
+        REQUIRE_THROWS_AS(emptySeries.getFirstDate(), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(emptySeries.getLastDate(), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(emptySeries.getFirstDateTime(), TimeSeriesDataNotFoundException);
+        REQUIRE_THROWS_AS(emptySeries.getLastDateTime(), TimeSeriesDataNotFoundException);
+    }
+    
+    SECTION("Comparison operators - equality")
+    {
+        NumericTimeSeries<DecimalType> series1(TimeFrame::DAILY);
+        NumericTimeSeries<DecimalType> series2(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        auto entry1 = NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY);
+        auto entry2 = NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY);
+        
+        series1.addEntry(entry1);
+        series1.addEntry(entry2);
+        
+        series2.addEntry(entry1);
+        series2.addEntry(entry2);
+        
+        REQUIRE(series1 == series2);
+        REQUIRE_FALSE(series1 != series2);
+    }
+    
+    SECTION("Comparison operators - inequality by different entries")
+    {
+        NumericTimeSeries<DecimalType> series1(TimeFrame::DAILY);
+        NumericTimeSeries<DecimalType> series2(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        series1.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        
+        series2.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        
+        REQUIRE(series1 != series2);
+        REQUIRE_FALSE(series1 == series2);
+    }
+    
+    SECTION("Comparison operators - inequality by timeframe")
+    {
+        NumericTimeSeries<DecimalType> series1(TimeFrame::DAILY);
+        NumericTimeSeries<DecimalType> series2(TimeFrame::WEEKLY);
+        
+        REQUIRE(series1 != series2);
+        REQUIRE_FALSE(series1 == series2);
+    }
+    
+    SECTION("Comparison operators - empty series equality")
+    {
+        NumericTimeSeries<DecimalType> series1(TimeFrame::DAILY);
+        NumericTimeSeries<DecimalType> series2(TimeFrame::DAILY);
+        
+        REQUIRE(series1 == series2);
+    }
+    
+    SECTION("deleteEntryByDate - ptime overload")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::INTRADAY);
+        
+        ptime pt1(date(2021, Apr, 5), hours(9));
+        ptime pt2(date(2021, Apr, 5), hours(10));
+        ptime pt3(date(2021, Apr, 5), hours(11));
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+        
+        REQUIRE(series.getNumEntries() == 3);
+        
+        // Delete middle entry
+        series.deleteEntryByDate(pt2);
+        
+        REQUIRE(series.getNumEntries() == 2);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(pt2), TimeSeriesDataNotFoundException);
+        REQUIRE_NOTHROW(series.getTimeSeriesEntry(pt1));
+        REQUIRE_NOTHROW(series.getTimeSeriesEntry(pt3));
+    }
+    
+    SECTION("deleteEntryByDate - date overload")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getNumEntries() == 3);
+        
+        // Delete first entry
+        series.deleteEntryByDate(d1);
+        
+        REQUIRE(series.getNumEntries() == 2);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1), TimeSeriesDataNotFoundException);
+        REQUIRE(series.getFirstDate() == d2);
+    }
+    
+    SECTION("Duplicate timestamp handling")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        ptime pt1(d1, getDefaultBarTime());
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::DAILY));
+        
+        // Attempt to add duplicate
+        REQUIRE_THROWS_AS(
+            series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("101.0"), TimeFrame::DAILY)),
+            TimeSeriesException);
+    }
+    
+    SECTION("Single entry series operations")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        ptime pt1(d1, getDefaultBarTime());
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::DAILY));
+        
+        REQUIRE(series.getNumEntries() == 1);
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d1);
+        REQUIRE(series.getFirstDateTime() == pt1);
+        REQUIRE(series.getLastDateTime() == pt1);
+        
+        auto entry = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry.getValue() == DecimalType("100.0"));
+        
+        // Offset 0 should work
+        auto entryOffset0 = series.getTimeSeriesEntry(d1, 0);
+        REQUIRE(entryOffset0.getValue() == DecimalType("100.0"));
+        
+        // Any non-zero offset should throw
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, 1), TimeSeriesOffsetOutOfRangeException);
+        REQUIRE_THROWS_AS(series.getTimeSeriesEntry(d1, -1), TimeSeriesOffsetOutOfRangeException);
+    }
+    
+    SECTION("getTimeSeriesAsVector")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        
+        auto values = series.getTimeSeriesAsVector();
+        
+        REQUIRE(values.size() == 3);
+        REQUIRE(values[0] == DecimalType("100.0"));
+        REQUIRE(values[1] == DecimalType("101.0"));
+        REQUIRE(values[2] == DecimalType("102.0"));
+    }
+    
+    SECTION("getEntriesCopy")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        
+        auto entries = series.getEntriesCopy();
+        
+        REQUIRE(entries.size() == 2);
+        REQUIRE(entries[0].getValue() == DecimalType("100.0"));
+        REQUIRE(entries[0].getDate() == d1);
+        REQUIRE(entries[1].getValue() == DecimalType("101.0"));
+        REQUIRE(entries[1].getDate() == d2);
+    }
+}
+
+TEST_CASE("NumericTimeSeries with NumericLogNLookupPolicy", "[NumericTimeSeries][LogNPolicy]")
+{
+    using LogNNumericSeries = NumericTimeSeries<DecimalType, NumericLogNLookupPolicy<DecimalType>>;
+    
+    SECTION("Basic operations with LogN policy")
+    {
+        LogNNumericSeries series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        
+        auto entry1 = series.getTimeSeriesEntry(d1);
+        REQUIRE(entry1.getValue() == DecimalType("100.0"));
+        
+        auto entry2 = series.getTimeSeriesEntry(d2);
+        REQUIRE(entry2.getValue() == DecimalType("101.0"));
+        
+        auto entry3 = series.getTimeSeriesEntry(d3);
+        REQUIRE(entry3.getValue() == DecimalType("102.0"));
+    }
+    
+    SECTION("Sorted insertion maintains order")
+    {
+        LogNNumericSeries series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        
+        // Add out of order
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        
+        // Verify sorted order
+        REQUIRE(series.getFirstDate() == d1);
+        REQUIRE(series.getLastDate() == d3);
+        
+        auto it = series.beginSortedAccess();
+        REQUIRE(it->getValue() == DecimalType("100.0"));
+        ++it;
+        REQUIRE(it->getValue() == DecimalType("101.0"));
+        ++it;
+        REQUIRE(it->getValue() == DecimalType("102.0"));
+    }
+}
+
+TEST_CASE("NumericTimeSeries negative offset comprehensive", "[NumericTimeSeries][NegativeOffset]")
+{
+    SECTION("Negative offsets with intraday data")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::INTRADAY);
+        
+        ptime pt1(date(2021, Apr, 5), hours(9));
+        ptime pt2(date(2021, Apr, 5), hours(10));
+        ptime pt3(date(2021, Apr, 5), hours(11));
+        ptime pt4(date(2021, Apr, 5), hours(12));
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt1, DecimalType("100.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt2, DecimalType("101.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt3, DecimalType("102.0"), TimeFrame::INTRADAY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(pt4, DecimalType("103.0"), TimeFrame::INTRADAY));
+        
+        // From first entry, look forward
+        auto entry1 = series.getTimeSeriesEntry(pt1, -1);
+        REQUIRE(entry1.getValue() == DecimalType("101.0"));
+        REQUIRE(entry1.getDateTime() == pt2);
+        
+        auto entry2 = series.getTimeSeriesEntry(pt1, -2);
+        REQUIRE(entry2.getValue() == DecimalType("102.0"));
+        REQUIRE(entry2.getDateTime() == pt3);
+        
+        auto entry3 = series.getTimeSeriesEntry(pt1, -3);
+        REQUIRE(entry3.getValue() == DecimalType("103.0"));
+        REQUIRE(entry3.getDateTime() == pt4);
+        
+        // From middle entry, look forward
+        auto entry4 = series.getTimeSeriesEntry(pt2, -1);
+        REQUIRE(entry4.getValue() == DecimalType("102.0"));
+        
+        auto entry5 = series.getTimeSeriesEntry(pt2, -2);
+        REQUIRE(entry5.getValue() == DecimalType("103.0"));
+    }
+    
+    SECTION("Mixed positive and negative offsets")
+    {
+        NumericTimeSeries<DecimalType> series(TimeFrame::DAILY);
+        
+        date d1(2021, Apr, 5);
+        date d2(2021, Apr, 6);
+        date d3(2021, Apr, 7);
+        date d4(2021, Apr, 8);
+        date d5(2021, Apr, 9);
+        
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d1, getDefaultBarTime()), DecimalType("100.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d2, getDefaultBarTime()), DecimalType("101.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d3, getDefaultBarTime()), DecimalType("102.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d4, getDefaultBarTime()), DecimalType("103.0"), TimeFrame::DAILY));
+        series.addEntry(NumericTimeSeriesEntry<DecimalType>(
+            ptime(d5, getDefaultBarTime()), DecimalType("104.0"), TimeFrame::DAILY));
+        
+        // From middle, go backward and forward
+        REQUIRE(series.getValue(d3, 0) == DecimalType("102.0"));  // Middle entry
+        REQUIRE(series.getValue(d3, 1) == DecimalType("101.0"));  // One back
+        REQUIRE(series.getValue(d3, 2) == DecimalType("100.0"));  // Two back
+        REQUIRE(series.getValue(d3, -1) == DecimalType("103.0")); // One forward
+        REQUIRE(series.getValue(d3, -2) == DecimalType("104.0")); // Two forward
+    }
+}
