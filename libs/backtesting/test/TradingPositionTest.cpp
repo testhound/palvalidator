@@ -617,3 +617,961 @@ SECTION("TradingPositionShort intraday ptime close and getters", "[TradingPositi
  }
 }
 
+// ============================================================================
+// TEST SUITE 1: Log Return Calculations
+// ============================================================================
+
+TEST_CASE("Log return calculations", "[TradingPosition][LogReturn]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Long position log return with price increase")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "102.0", "120.0", "100.0", "120.0", "1000");
+    pos.addBar(*bar2);
+    
+    // Log return = ln(120/100) = ln(1.2) ≈ 0.1823
+    DecimalType expectedLogReturn = calculateLogTradeReturn(
+      createDecimal("100.0"),
+      createDecimal("120.0")
+    );
+    
+    REQUIRE(pos.getLogTradeReturn() == expectedLogReturn);
+  }
+
+  SECTION("Long position log return with price decrease")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "102.0", "102.0", "80.0", "80.0", "1000");
+    pos.addBar(*bar2);
+    
+    // Log return = ln(80/100) = ln(0.8) ≈ -0.2231
+    DecimalType expectedLogReturn = calculateLogTradeReturn(
+      createDecimal("100.0"),
+      createDecimal("80.0")
+    );
+    
+    REQUIRE(pos.getLogTradeReturn() == expectedLogReturn);
+  }
+
+  SECTION("Short position log return with price decrease (winning)")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "102.0", "102.0", "80.0", "80.0", "1000");
+    pos.addBar(*bar2);
+    
+    // Log return for short = -ln(80/100) = -ln(0.8) ≈ 0.2231 (positive, winning)
+    DecimalType expectedLogReturn = -calculateLogTradeReturn(
+      createDecimal("100.0"),
+      createDecimal("80.0")
+    );
+    
+    REQUIRE(pos.getLogTradeReturn() == expectedLogReturn);
+  }
+
+  SECTION("Short position log return with price increase (losing)")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "102.0", "120.0", "100.0", "120.0", "1000");
+    pos.addBar(*bar2);
+    
+    // Log return for short = -ln(120/100) = -ln(1.2) ≈ -0.1823 (negative, losing)
+    DecimalType expectedLogReturn = -calculateLogTradeReturn(
+      createDecimal("100.0"),
+      createDecimal("120.0")
+    );
+    
+    REQUIRE(pos.getLogTradeReturn() == expectedLogReturn);
+  }
+
+  SECTION("Closed long position log return")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    // Log return = ln(110/100) = ln(1.1)
+    DecimalType expectedLogReturn = calculateLogTradeReturn(
+      createDecimal("100.0"),
+      createDecimal("110.0")
+    );
+    
+    REQUIRE(pos.getLogTradeReturn() == expectedLogReturn);
+  }
+
+  SECTION("Closed short position log return")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("90.0"));
+    
+    // Log return for short = -ln(90/100) = -ln(0.9)
+    DecimalType expectedLogReturn = -calculateLogTradeReturn(
+      createDecimal("100.0"),
+      createDecimal("90.0")
+    );
+    
+    REQUIRE(pos.getLogTradeReturn() == expectedLogReturn);
+  }
+}
+
+TEST_CASE("Log return error handling", "[TradingPosition][LogReturn][Error]")
+{
+  SECTION("calculateLogTradeReturn with zero reference price")
+  {
+    REQUIRE_THROWS_AS(
+      calculateLogTradeReturn(
+        DecimalConstants<DecimalType>::DecimalZero,
+        createDecimal("100.0")
+      ),
+      std::domain_error
+    );
+  }
+
+  SECTION("calculateLogTradeReturn with negative reference price")
+  {
+    REQUIRE_THROWS_AS(
+      calculateLogTradeReturn(
+        createDecimal("-50.0"),
+        createDecimal("100.0")
+      ),
+      std::domain_error
+    );
+  }
+
+  SECTION("calculateLogTradeReturn with zero second price")
+  {
+    REQUIRE_THROWS_AS(
+      calculateLogTradeReturn(
+        createDecimal("100.0"),
+        DecimalConstants<DecimalType>::DecimalZero
+      ),
+      std::domain_error
+    );
+  }
+
+  SECTION("calculateLogTradeReturn with negative second price")
+  {
+    REQUIRE_THROWS_AS(
+      calculateLogTradeReturn(
+        createDecimal("100.0"),
+        createDecimal("-50.0")
+      ),
+      std::domain_error
+    );
+  }
+
+  SECTION("calculateNaturalLog with zero")
+  {
+    REQUIRE_THROWS_AS(
+      calculateNaturalLog(DecimalConstants<DecimalType>::DecimalZero),
+      std::domain_error
+    );
+  }
+
+  SECTION("calculateNaturalLog with negative number")
+  {
+    REQUIRE_THROWS_AS(
+      calculateNaturalLog(createDecimal("-10.0")),
+      std::domain_error
+    );
+  }
+}
+
+// ============================================================================
+// TEST SUITE 2: R-Multiple Calculations (Extended)
+// ============================================================================
+
+TEST_CASE("R-multiple calculations - extensive", "[TradingPosition][RMultiple]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "100.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Long position R-multiple for winning trade")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("95.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    // R = (exit - entry) / (entry - stop) = (110 - 100) / (100 - 95) = 10 / 5 = 2.0
+    DecimalType expectedR = createDecimal("2.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Long position R-multiple stopped out exactly at stop")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("95.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("95.0"));
+    
+    // When exited exactly at stop, R = -1.0
+    // Formula: (95 - 100) / (100 - 95) = -5 / 5 = -1.0
+    DecimalType expectedR = createDecimal("-1.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Long position R-multiple for small losing trade")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("95.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("97.0"));
+    
+    // R = (97 - 100) / (100 - 95) = -3 / 5 = -0.6
+    DecimalType expectedR = createDecimal("-0.6");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Long position R-multiple for large losing trade past stop")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("95.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("90.0"));
+    
+    // R = (90 - 100) / (100 - 95) = -10 / 5 = -2.0
+    DecimalType expectedR = createDecimal("-2.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Short position R-multiple for winning trade")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("105.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("90.0"));
+    
+    // R = (entry - exit) / (stop - entry) = (100 - 90) / (105 - 100) = 10 / 5 = 2.0
+    DecimalType expectedR = createDecimal("2.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Short position R-multiple stopped out exactly")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("105.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("105.0"));
+    
+    // R = (100 - 105) / (105 - 100) = -5 / 5 = -1.0
+    DecimalType expectedR = createDecimal("-1.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Short position R-multiple for small losing trade")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("105.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("103.0"));
+    
+    // R = (100 - 103) / (105 - 100) = -3 / 5 = -0.6
+    DecimalType expectedR = createDecimal("-0.6");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Short position R-multiple for large losing trade")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("105.0"));
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    // R = (100 - 110) / (105 - 100) = -10 / 5 = -2.0
+    DecimalType expectedR = createDecimal("-2.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("Cannot get R-multiple on open position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("95.0"));
+    
+    REQUIRE_THROWS_AS(pos.getRMultiple(), TradingPositionException);
+  }
+
+  SECTION("Cannot get R-multiple when stop not set")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    REQUIRE_THROWS_AS(pos.getRMultiple(), TradingPositionException);
+  }
+
+  SECTION("R-multiple with very tight stop")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("99.5"));  // Very tight stop
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("105.0"));
+    
+    // R = (105 - 100) / (100 - 99.5) = 5 / 0.5 = 10.0
+    DecimalType expectedR = createDecimal("10.0");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+
+  SECTION("R-multiple with wide stop")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setRMultipleStop(createDecimal("50.0"));  // Wide stop (50% down)
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    // R = (110 - 100) / (100 - 50) = 10 / 50 = 0.2
+    DecimalType expectedR = createDecimal("0.2");
+    REQUIRE(pos.getRMultiple() == expectedR);
+  }
+}
+
+// ============================================================================
+// TEST SUITE 3: Double-Close and Invalid State Operations
+// ============================================================================
+
+TEST_CASE("Invalid operations on closed positions", "[TradingPosition][Error]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  auto bar2 = createTimeSeriesEntry("20250102", "102.0", "110.0", "100.0", "108.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Cannot close an already closed long position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    date exitDate1(2025, Jan, 5);
+    DecimalType exitPrice1(createDecimal("110.0"));
+    pos.ClosePosition(exitDate1, exitPrice1);
+    
+    REQUIRE(pos.isPositionClosed());
+    
+    // Try to close again
+    date exitDate2(2025, Jan, 6);
+    DecimalType exitPrice2(createDecimal("115.0"));
+    
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(exitDate2, exitPrice2),
+      TradingPositionException
+    );
+  }
+
+  SECTION("Cannot close an already closed short position")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    date exitDate1(2025, Jan, 5);
+    DecimalType exitPrice1(createDecimal("90.0"));
+    pos.ClosePosition(exitDate1, exitPrice1);
+    
+    REQUIRE(pos.isPositionClosed());
+    
+    // Try to close again with ptime overload
+    ptime exitDateTime2 = time_from_string("2025-01-06 14:30:00");
+    DecimalType exitPrice2(createDecimal("85.0"));
+    
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(exitDateTime2, exitPrice2),
+      TradingPositionException
+    );
+  }
+
+  SECTION("Cannot add bar to closed long position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    REQUIRE(pos.isPositionClosed());
+    
+    REQUIRE_THROWS_AS(
+      pos.addBar(*bar2),
+      TradingPositionException
+    );
+  }
+
+  SECTION("Cannot add bar to closed short position")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("90.0"));
+    
+    REQUIRE(pos.isPositionClosed());
+    
+    REQUIRE_THROWS_AS(
+      pos.addBar(*bar2),
+      TradingPositionException
+    );
+  }
+}
+
+// ============================================================================
+// TEST SUITE 4: Exit Price Validation
+// ============================================================================
+
+TEST_CASE("Exit price validation", "[TradingPosition][Validation]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Closing long position with zero exit price throws")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(date(2025, Jan, 5), DecimalConstants<DecimalType>::DecimalZero),
+      TradingPositionException
+    );
+  }
+
+  SECTION("Closing long position with negative exit price throws")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(date(2025, Jan, 5), createDecimal("-10.0")),
+      TradingPositionException
+    );
+  }
+
+  SECTION("Closing short position with zero exit price throws")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(date(2025, Jan, 5), DecimalConstants<DecimalType>::DecimalZero),
+      TradingPositionException
+    );
+  }
+
+  SECTION("Closing short position with negative exit price throws")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    REQUIRE_THROWS_AS(
+      pos.ClosePosition(date(2025, Jan, 5), createDecimal("-5.0")),
+      TradingPositionException
+    );
+  }
+}
+
+// ============================================================================
+// TEST SUITE 5: OpenPositionHistory Edge Cases
+// ============================================================================
+
+TEST_CASE("New OpenPositionHistory operations", "[OpenPositionHistory2]")
+{
+  auto entry1 = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  auto entry2 = createTimeSeriesEntry("20250102", "102.0", "108.0", "100.0", "106.0", "1000");
+  auto entry3 = createTimeSeriesEntry("20250103", "106.0", "110.0", "104.0", "108.0", "1000");
+
+  SECTION("Single bar position - first and last are same")
+  {
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TradingPositionLong<DecimalType> pos("TEST", createDecimal("100.0"), *entry1, oneContract);
+    
+    REQUIRE(pos.getNumBarsInPosition() == 1);
+    REQUIRE(pos.getEntryDate() == date(2025, Jan, 1));
+    
+    // First and last bar should be the same
+    auto it = pos.beginPositionBarHistory();
+    REQUIRE(it->first.date() == date(2025, Jan, 1));
+  }
+
+  SECTION("Bars stored in chronological order")
+  {
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TradingPositionLong<DecimalType> pos("TEST", createDecimal("100.0"), *entry1, oneContract);
+    
+    // Add bars in order
+    pos.addBar(*entry2);
+    pos.addBar(*entry3);
+    
+    REQUIRE(pos.getNumBarsInPosition() == 3);
+    
+    // Verify chronological order
+    auto it = pos.beginPositionBarHistory();
+    REQUIRE(it->first.date() == date(2025, Jan, 1));
+    ++it;
+    REQUIRE(it->first.date() == date(2025, Jan, 2));
+    ++it;
+    REQUIRE(it->first.date() == date(2025, Jan, 3));
+  }
+
+  SECTION("numBarsSinceEntry increments correctly")
+  {
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TradingPositionLong<DecimalType> pos("TEST", createDecimal("100.0"), *entry1, oneContract);
+    
+    REQUIRE(pos.getNumBarsSinceEntry() == 0);  // Entry bar
+    
+    pos.addBar(*entry2);
+    REQUIRE(pos.getNumBarsSinceEntry() == 1);
+    
+    pos.addBar(*entry3);
+    REQUIRE(pos.getNumBarsSinceEntry() == 2);
+  }
+}
+
+// ============================================================================
+// TEST SUITE 6: Copy Semantics
+// ============================================================================
+
+TEST_CASE("Position copy operations", "[TradingPosition][Copy]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  auto bar2 = createTimeSeriesEntry("20250102", "102.0", "108.0", "100.0", "106.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Long position copy constructor")
+  {
+    TradingPositionLong<DecimalType> original(symbol, createDecimal("100.0"), *entry, oneContract);
+    original.addBar(*bar2);
+    original.setProfitTarget(createDecimal("120.0"));
+    original.setStopLoss(createDecimal("95.0"));
+    
+    TradingPositionLong<DecimalType> copy(original);
+    
+    REQUIRE(copy.getTradingSymbol() == original.getTradingSymbol());
+    REQUIRE(copy.getEntryPrice() == original.getEntryPrice());
+    REQUIRE(copy.getEntryDate() == original.getEntryDate());
+    REQUIRE(copy.getNumBarsInPosition() == original.getNumBarsInPosition());
+    REQUIRE(copy.getTradingUnits() == original.getTradingUnits());
+    REQUIRE(copy.getProfitTarget() == original.getProfitTarget());
+    REQUIRE(copy.getStopLoss() == original.getStopLoss());
+    REQUIRE(copy.isPositionOpen() == original.isPositionOpen());
+    
+    // Position ID behavior - documents current behavior
+    REQUIRE(copy.getPositionID() == original.getPositionID());
+  }
+
+  SECTION("Short position copy constructor")
+  {
+    TradingPositionShort<DecimalType> original(symbol, createDecimal("100.0"), *entry, oneContract);
+    original.addBar(*bar2);
+    
+    TradingPositionShort<DecimalType> copy(original);
+    
+    REQUIRE(copy.getTradingSymbol() == original.getTradingSymbol());
+    REQUIRE(copy.getEntryPrice() == original.getEntryPrice());
+    REQUIRE(copy.getNumBarsInPosition() == original.getNumBarsInPosition());
+  }
+
+  SECTION("Position assignment operator")
+  {
+    TradingPositionLong<DecimalType> pos1(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos1.addBar(*bar2);
+    
+    auto entry2 = createTimeSeriesEntry("20250110", "200.0", "205.0", "195.0", "202.0", "1000");
+    TradingPositionLong<DecimalType> pos2("OTHER", createDecimal("200.0"), *entry2, oneContract);
+    
+    pos2 = pos1;  // Assignment
+    
+    REQUIRE(pos2.getTradingSymbol() == pos1.getTradingSymbol());
+    REQUIRE(pos2.getEntryPrice() == pos1.getEntryPrice());
+    REQUIRE(pos2.getNumBarsInPosition() == pos1.getNumBarsInPosition());
+  }
+
+  SECTION("Self-assignment")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.addBar(*bar2);
+    
+    pos = pos;  // Self-assignment
+    
+    // Should still be valid
+    REQUIRE(pos.getTradingSymbol() == symbol);
+    REQUIRE(pos.getNumBarsInPosition() == 2);
+  }
+
+  SECTION("Copy of closed position")
+  {
+    TradingPositionLong<DecimalType> original(symbol, createDecimal("100.0"), *entry, oneContract);
+    original.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    TradingPositionLong<DecimalType> copy(original);
+    
+    REQUIRE(copy.isPositionClosed());
+    REQUIRE(copy.getExitPrice() == original.getExitPrice());
+    REQUIRE(copy.getExitDate() == original.getExitDate());
+    REQUIRE(copy.getPercentReturn() == original.getPercentReturn());
+  }
+}
+
+// ============================================================================
+// TEST SUITE 7: Multiple Observers
+// ============================================================================
+
+TEST_CASE("Multiple observers notification", "[TradingPosition][Observer]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Multiple observers all notified on long position close")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    TestTradingPositionObserver<DecimalType> obs1;
+    TestTradingPositionObserver<DecimalType> obs2;
+    TestTradingPositionObserver<DecimalType> obs3;
+    
+    pos.addObserver(obs1);
+    pos.addObserver(obs2);
+    pos.addObserver(obs3);
+    
+    REQUIRE_FALSE(obs1.isPositionClosed());
+    REQUIRE_FALSE(obs2.isPositionClosed());
+    REQUIRE_FALSE(obs3.isPositionClosed());
+    
+    date exitDate(2025, Jan, 5);
+    DecimalType exitPrice(createDecimal("110.0"));
+    pos.ClosePosition(exitDate, exitPrice);
+    
+    REQUIRE(obs1.isPositionClosed());
+    REQUIRE(obs2.isPositionClosed());
+    REQUIRE(obs3.isPositionClosed());
+    
+    REQUIRE(obs1.getExitPrice() == exitPrice);
+    REQUIRE(obs2.getExitPrice() == exitPrice);
+    REQUIRE(obs3.getExitPrice() == exitPrice);
+    
+    REQUIRE(obs1.getExitDate() == exitDate);
+    REQUIRE(obs2.getExitDate() == exitDate);
+    REQUIRE(obs3.getExitDate() == exitDate);
+  }
+
+  SECTION("Multiple observers all notified on short position close")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    TestTradingPositionObserver<DecimalType> obs1;
+    TestTradingPositionObserver<DecimalType> obs2;
+    
+    pos.addObserver(obs1);
+    pos.addObserver(obs2);
+    
+    date exitDate(2025, Jan, 5);
+    DecimalType exitPrice(createDecimal("90.0"));
+    pos.ClosePosition(exitDate, exitPrice);
+    
+    REQUIRE(obs1.isPositionClosed());
+    REQUIRE(obs2.isPositionClosed());
+  }
+}
+
+// ============================================================================
+// TEST SUITE 8: Position ID Uniqueness
+// ============================================================================
+
+TEST_CASE("Position ID management", "[TradingPosition][ID]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Position IDs are unique across different positions")
+  {
+    TradingPositionLong<DecimalType> pos1(symbol, createDecimal("100.0"), *entry, oneContract);
+    TradingPositionLong<DecimalType> pos2(symbol, createDecimal("100.0"), *entry, oneContract);
+    TradingPositionShort<DecimalType> pos3(symbol, createDecimal("100.0"), *entry, oneContract);
+    TradingPositionShort<DecimalType> pos4(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    REQUIRE(pos1.getPositionID() != pos2.getPositionID());
+    REQUIRE(pos2.getPositionID() != pos3.getPositionID());
+    REQUIRE(pos3.getPositionID() != pos4.getPositionID());
+    REQUIRE(pos1.getPositionID() != pos3.getPositionID());
+  }
+
+  SECTION("Position IDs increment sequentially")
+  {
+    TradingPositionLong<DecimalType> pos1(symbol, createDecimal("100.0"), *entry, oneContract);
+    uint32_t id1 = pos1.getPositionID();
+    
+    TradingPositionLong<DecimalType> pos2(symbol, createDecimal("100.0"), *entry, oneContract);
+    uint32_t id2 = pos2.getPositionID();
+    
+    TradingPositionLong<DecimalType> pos3(symbol, createDecimal("100.0"), *entry, oneContract);
+    uint32_t id3 = pos3.getPositionID();
+    
+    REQUIRE(id2 == id1 + 1);
+    REQUIRE(id3 == id2 + 1);
+  }
+
+  SECTION("Copied position has same ID as original (documents current behavior)")
+  {
+    TradingPositionLong<DecimalType> original(symbol, createDecimal("100.0"), *entry, oneContract);
+    uint32_t originalID = original.getPositionID();
+    
+    TradingPositionLong<DecimalType> copy(original);
+    
+    // Current behavior: copy has same ID
+    // This may be a design decision or a bug
+    REQUIRE(copy.getPositionID() == originalID);
+  }
+}
+
+// ============================================================================
+// TEST SUITE 9: OpenPositionBar Operations
+// ============================================================================
+
+TEST_CASE("New OpenPositionBar operations", "[OpenPositionBar2]")
+{
+  SECTION("OpenPositionBar equality with same data")
+  {
+    auto bar1 = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+    auto bar2 = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+    
+    OpenPositionBar<DecimalType> opb1(*bar1);
+    OpenPositionBar<DecimalType> opb2(*bar2);
+    
+    REQUIRE(opb1 == opb2);
+    REQUIRE_FALSE(opb1 != opb2);
+  }
+
+  SECTION("OpenPositionBar inequality with different data")
+  {
+    auto bar1 = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+    auto bar2 = createTimeSeriesEntry("20250102", "102.0", "108.0", "100.0", "106.0", "1000");
+    
+    OpenPositionBar<DecimalType> opb1(*bar1);
+    OpenPositionBar<DecimalType> opb2(*bar2);
+    
+    REQUIRE(opb1 != opb2);
+    REQUIRE_FALSE(opb1 == opb2);
+  }
+
+  SECTION("OpenPositionBar copy constructor")
+  {
+    auto bar = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+    OpenPositionBar<DecimalType> original(*bar);
+    
+    OpenPositionBar<DecimalType> copy(original);
+    
+    REQUIRE(copy == original);
+    REQUIRE(copy.getDate() == original.getDate());
+    REQUIRE(copy.getOpenValue() == original.getOpenValue());
+    REQUIRE(copy.getCloseValue() == original.getCloseValue());
+  }
+
+  SECTION("OpenPositionBar assignment operator")
+  {
+    auto bar1 = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+    auto bar2 = createTimeSeriesEntry("20250102", "102.0", "108.0", "100.0", "106.0", "1000");
+    
+    OpenPositionBar<DecimalType> opb1(*bar1);
+    OpenPositionBar<DecimalType> opb2(*bar2);
+    
+    REQUIRE(opb1 != opb2);
+    
+    opb1 = opb2;
+    
+    REQUIRE(opb1 == opb2);
+  }
+
+  SECTION("OpenPositionBar accessor methods")
+  {
+    auto bar = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+    OpenPositionBar<DecimalType> opb(*bar);
+    
+    REQUIRE(opb.getDate() == date(2025, Jan, 1));
+    REQUIRE(opb.getOpenValue() == createDecimal("100.0"));
+    REQUIRE(opb.getHighValue() == createDecimal("105.0"));
+    REQUIRE(opb.getLowValue() == createDecimal("95.0"));
+    REQUIRE(opb.getCloseValue() == createDecimal("102.0"));
+    REQUIRE(opb.getVolumeValue() == createDecimal("1000"));
+  }
+}
+
+// ============================================================================
+// TEST SUITE 10: Boundary Cases and Edge Conditions
+// ============================================================================
+
+TEST_CASE("Position calculations with extreme values", "[TradingPosition][Boundary]")
+{
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Very small prices")
+  {
+    auto entry = createTimeSeriesEntry("20250101", "0.0001", "0.00012", "0.00009", "0.00011", "1000");
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("0.0001"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "0.00011", "0.00015", "0.0001", "0.00015", "1000");
+    pos.addBar(*bar2);
+    
+    // Return = (0.00015 - 0.0001) / 0.0001 = 0.5 = 50%
+    DecimalType expectedReturn = createDecimal("0.5");
+    REQUIRE(pos.getTradeReturn() == expectedReturn);
+  }
+
+  SECTION("Very large prices")
+  {
+    auto entry = createTimeSeriesEntry("20250101", "1000000.0", "1050000.0", "950000.0", "1020000.0", "1000");
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("1000000.0"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "1020000.0", "1200000.0", "1000000.0", "1200000.0", "1000");
+    pos.addBar(*bar2);
+    
+    // Return = (1200000 - 1000000) / 1000000 = 0.2 = 20%
+    DecimalType expectedReturn = createDecimal("0.2");
+    REQUIRE(pos.getTradeReturn() == expectedReturn);
+  }
+
+  SECTION("Very small price difference")
+  {
+    auto entry = createTimeSeriesEntry("20250101", "100.0", "100.05", "99.95", "100.0", "1000");
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    auto bar2 = createTimeSeriesEntry("20250102", "100.0", "100.01", "99.99", "100.001", "1000");
+    pos.addBar(*bar2);
+    
+    // Very small positive return
+    REQUIRE(pos.getTradeReturn() > DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(pos.getTradeReturn() < createDecimal("0.01"));
+  }
+
+  SECTION("Extreme percentage gain")
+  {
+    auto entry = createTimeSeriesEntry("20250101", "1.0", "1.2", "0.9", "1.0", "1000");
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("1.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("10.0"));
+    
+    // 900% return
+    DecimalType expectedReturn = createDecimal("9.0");
+    REQUIRE(pos.getTradeReturn() == expectedReturn);
+    
+    DecimalType expectedPercent = createDecimal("900.0");
+    REQUIRE(pos.getPercentReturn() == expectedPercent);
+  }
+
+  SECTION("Extreme percentage loss")
+  {
+    auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "100.0", "1000");
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("1.0"));
+    
+    // 99% loss
+    DecimalType expectedReturn = createDecimal("-0.99");
+    REQUIRE(pos.getTradeReturn() == expectedReturn);
+    
+    DecimalType expectedPercent = createDecimal("-99.0");
+    REQUIRE(pos.getPercentReturn() == expectedPercent);
+  }
+}
+
+TEST_CASE("ClosedPosition equality operators", "[ClosedPosition][Equality]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Two identical closed long positions are equal")
+  {
+    TradingPositionLong<DecimalType> pos1(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos1.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    TradingPositionLong<DecimalType> pos2(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos2.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    // Note: This tests the state objects themselves via a workaround
+    // Direct comparison of TradingPosition isn't possible without accessing state
+    REQUIRE(pos1.getEntryPrice() == pos2.getEntryPrice());
+    REQUIRE(pos1.getExitPrice() == pos2.getExitPrice());
+    REQUIRE(pos1.getEntryDate() == pos2.getEntryDate());
+    REQUIRE(pos1.getExitDate() == pos2.getExitDate());
+  }
+
+  SECTION("Closed long and short positions with same prices are not equal")
+  {
+    TradingPositionLong<DecimalType> longPos(symbol, createDecimal("100.0"), *entry, oneContract);
+    longPos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    TradingPositionShort<DecimalType> shortPos(symbol, createDecimal("100.0"), *entry, oneContract);
+    shortPos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    
+    // Long and short are different types, so returns will differ
+    REQUIRE(longPos.getPercentReturn() != shortPos.getPercentReturn());
+  }
+}
+
+// ============================================================================
+// TEST SUITE 11: Zero Profit Target and Stop Loss Edge Cases
+// ============================================================================
+
+TEST_CASE("Zero profit target and stop loss", "[TradingPosition][Validation]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Setting zero profit target")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    // Current implementation allows zero (>= comparison)
+    REQUIRE_NOTHROW(pos.setProfitTarget(DecimalConstants<DecimalType>::DecimalZero));
+    REQUIRE(pos.getProfitTarget() == DecimalConstants<DecimalType>::DecimalZero);
+  }
+
+  SECTION("Setting zero stop loss")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    // Current implementation allows zero (>= comparison)
+    REQUIRE_NOTHROW(pos.setStopLoss(DecimalConstants<DecimalType>::DecimalZero));
+    REQUIRE(pos.getStopLoss() == DecimalConstants<DecimalType>::DecimalZero);
+  }
+}
+
+// ============================================================================
+// TEST SUITE 12: Miscellaneous Edge Cases
+// ============================================================================
+
+TEST_CASE("Miscellaneous edge cases", "[TradingPosition][Edge]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Position with no price movement (entry == exit)")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("100.0"));
+    
+    REQUIRE(pos.getTradeReturn() == DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE(pos.getPercentReturn() == DecimalConstants<DecimalType>::DecimalZero);
+    REQUIRE_FALSE(pos.isWinningPosition());
+    REQUIRE(pos.isLosingPosition());  // Zero return is considered losing
+  }
+
+  SECTION("RMultipleStopSet flag behavior")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    REQUIRE_FALSE(pos.RMultipleStopSet());
+    
+    pos.setRMultipleStop(createDecimal("95.0"));
+    REQUIRE(pos.RMultipleStopSet());
+  }
+
+  SECTION("Trading symbol stored correctly")
+  {
+    std::string longSymbol("AAPL");
+    TradingPositionLong<DecimalType> longPos(longSymbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE(longPos.getTradingSymbol() == longSymbol);
+    
+    std::string shortSymbol("MSFT");
+    TradingPositionShort<DecimalType> shortPos(shortSymbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE(shortPos.getTradingSymbol() == shortSymbol);
+  }
+
+  SECTION("Trading units preserved through position lifecycle")
+  {
+    TradingVolume fiveContracts(5, TradingVolume::CONTRACTS);
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    
+    // Recreate with different units
+    TradingPositionLong<DecimalType> pos2(symbol, createDecimal("100.0"), *entry, fiveContracts);
+    REQUIRE(pos2.getTradingUnits() == fiveContracts);
+    
+    pos2.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+    REQUIRE(pos2.getTradingUnits() == fiveContracts);  // Still the same after close
+  }
+}

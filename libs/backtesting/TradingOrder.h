@@ -199,6 +199,32 @@ namespace mkc_timeseries
       return *this;
     }
 
+    // Move constructor
+    TradingOrder(TradingOrder<Decimal>&& rhs) noexcept
+      : mTradingSymbol(std::move(rhs.mTradingSymbol)),
+	mUnitsInOrder(std::move(rhs.mUnitsInOrder)),
+	mOrderDateTime(std::move(rhs.mOrderDateTime)),
+	mOrderState(std::move(rhs.mOrderState)),
+	mOrderID(rhs.mOrderID),  // Plain copy for uint32_t
+	mObservers(std::move(rhs.mObservers))
+    {}
+
+    // Move assignment operator
+    TradingOrder<Decimal>& operator=(TradingOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+    
+      mTradingSymbol = std::move(rhs.mTradingSymbol);
+      mUnitsInOrder = std::move(rhs.mUnitsInOrder);
+      mOrderDateTime = std::move(rhs.mOrderDateTime);
+      mOrderState = std::move(rhs.mOrderState);
+      mOrderID = rhs.mOrderID;
+      mObservers = std::move(rhs.mObservers);
+  
+      return *this;
+    }
+
     const std::string& getTradingSymbol() const { return mTradingSymbol; }
     const TradingVolume& getUnitsInOrder() const { return mUnitsInOrder; }
 
@@ -338,6 +364,17 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      MarketOrder(MarketOrder<Decimal>&& rhs) noexcept
+        : TradingOrder<Decimal>(std::move(rhs)) {}
+    
+      MarketOrder<Decimal>& operator=(MarketOrder<Decimal>&& rhs) noexcept
+      {
+        if (this == &rhs)
+	  return *this;
+        TradingOrder<Decimal>::operator=(std::move(rhs));
+        return *this;
+      }
+      
       bool isMarketOrder() const
       {
 	return true;
@@ -422,6 +459,22 @@ namespace mkc_timeseries
       return *this;
     }
 
+    MarketEntryOrder(MarketEntryOrder<Decimal>&& rhs) noexcept
+        : MarketOrder<Decimal>(std::move(rhs)),
+          mStopLoss(std::move(rhs.mStopLoss)),
+          mProfitTarget(std::move(rhs.mProfitTarget)) {}
+    
+    MarketEntryOrder<Decimal>& operator=(MarketEntryOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+      
+      MarketOrder<Decimal>::operator=(std::move(rhs));
+      mStopLoss = std::move(rhs.mStopLoss);
+      mProfitTarget = std::move(rhs.mProfitTarget);
+      return *this;
+    }
+    
     bool isEntryOrder() const
     {
       return true;
@@ -492,6 +545,19 @@ namespace mkc_timeseries
       return *this;
     }
 
+    MarketOnOpenLongOrder(MarketOnOpenLongOrder<Decimal>&& rhs) noexcept
+      : MarketEntryOrder<Decimal>(std::move(rhs))
+    {}
+
+    MarketOnOpenLongOrder<Decimal>& operator=(MarketOnOpenLongOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      MarketEntryOrder<Decimal>::operator=(std::move(rhs));
+      return *this;
+    }
+    
     ~MarketOnOpenLongOrder()
     {}
 
@@ -572,6 +638,19 @@ namespace mkc_timeseries
       return *this;
     }
 
+    MarketOnOpenShortOrder(MarketOnOpenShortOrder<Decimal>&& rhs) noexcept
+      : MarketEntryOrder<Decimal>(std::move(rhs))
+    {}
+
+    MarketOnOpenShortOrder<Decimal>& operator=(MarketOnOpenShortOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      MarketEntryOrder<Decimal>::operator=(std::move(rhs));
+      return *this;
+    }
+    
     ~MarketOnOpenShortOrder()
     {}
 
@@ -619,46 +698,60 @@ namespace mkc_timeseries
   template <class Decimal> class MarketExitOrder : public MarketOrder<Decimal>
   {
   public:
-      MarketExitOrder(const std::string& tradingSymbol,
-		      const TradingVolume& unitsInOrder,
-		      const ptime& orderDate)
+    MarketExitOrder(const std::string& tradingSymbol,
+		    const TradingVolume& unitsInOrder,
+		    const ptime& orderDate)
       : MarketOrder<Decimal> (tradingSymbol, unitsInOrder, orderDate)
-      {}
+    {}
 
     MarketExitOrder(const std::string& tradingSymbol, 
-		      const TradingVolume& unitsInOrder,
-		      const date& orderDate)
+		    const TradingVolume& unitsInOrder,
+		    const date& orderDate)
       : MarketExitOrder<Decimal> (tradingSymbol,
 				  unitsInOrder,
 				  ptime(orderDate, getDefaultBarTime()))
-      {}
+    {}
 
-      virtual ~MarketExitOrder()
-      {}
+    virtual ~MarketExitOrder()
+    {}
 
-      MarketExitOrder (const MarketExitOrder<Decimal>& rhs)
+    MarketExitOrder (const MarketExitOrder<Decimal>& rhs)
       : MarketOrder<Decimal> (rhs)
-      {}
+    {}
 
-      MarketExitOrder<Decimal>& 
-      operator=(const MarketExitOrder<Decimal> &rhs)
-      {
-	if (this == &rhs)
-	  return *this;
-	
-	MarketOrder<Decimal>::operator=(rhs);
+    MarketExitOrder<Decimal>& 
+    operator=(const MarketExitOrder<Decimal> &rhs)
+    {
+      if (this == &rhs)
 	return *this;
-      }
+	
+      MarketOrder<Decimal>::operator=(rhs);
+      return *this;
+    }
 
-      bool isEntryOrder() const
-      {
-	return false;
-      }
+    MarketExitOrder(MarketExitOrder<Decimal>&& rhs) noexcept
+      : MarketOrder<Decimal>(std::move(rhs))
+    {}
 
-      bool isExitOrder() const
-      {
-	return true;
-      }
+    // Move assignment operator
+    MarketExitOrder<Decimal>& operator=(MarketExitOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+        
+      MarketOrder<Decimal>::operator=(std::move(rhs));
+      return *this;
+    }
+    
+    bool isEntryOrder() const
+    {
+      return false;
+    }
+
+    bool isExitOrder() const
+    {
+      return true;
+    }
   };
 
   /**
@@ -752,6 +845,10 @@ namespace mkc_timeseries
       : MarketOnOpenCoverOrder<Decimal>(tradingSymbol, unitsInOrder, ptime(orderDate, getDefaultBarTime()))
     {}
 
+    MarketOnOpenCoverOrder(const MarketOnOpenCoverOrder<Decimal>& rhs)
+      : MarketExitOrder<Decimal>(rhs)
+    {}
+    
     MarketOnOpenCoverOrder<Decimal>& 
     operator=(const MarketOnOpenCoverOrder<Decimal> &rhs)
     {
@@ -762,6 +859,19 @@ namespace mkc_timeseries
       return *this;
     }
 
+    MarketOnOpenCoverOrder(MarketOnOpenCoverOrder<Decimal>&& rhs) noexcept
+      : MarketExitOrder<Decimal>(std::move(rhs))
+    {}
+
+    MarketOnOpenCoverOrder<Decimal>& operator=(MarketOnOpenCoverOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      MarketExitOrder<Decimal>::operator=(std::move(rhs));
+      return *this;
+    }
+    
     ~MarketOnOpenCoverOrder()
     {}
 
@@ -844,6 +954,20 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      LimitOrder(LimitOrder<Decimal>&& rhs) noexcept
+        : TradingOrder<Decimal>(std::move(rhs)),
+          mLimitPrice(std::move(rhs.mLimitPrice)) {}
+    
+      LimitOrder<Decimal>& operator=(LimitOrder<Decimal>&& rhs) noexcept
+      {
+        if (this == &rhs)
+	  return *this;
+
+        TradingOrder<Decimal>::operator=(std::move(rhs));
+        mLimitPrice = std::move(rhs.mLimitPrice);
+        return *this;
+      }
+
       const Decimal& getLimitPrice() const
       {
 	return mLimitPrice;
@@ -909,6 +1033,19 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      LimitExitOrder(LimitExitOrder<Decimal>&& rhs) noexcept
+        : LimitOrder<Decimal>(std::move(rhs))
+      {}
+
+      LimitExitOrder<Decimal>& operator=(LimitExitOrder<Decimal>&& rhs) noexcept
+      {
+        if (this == &rhs)
+          return *this;
+        
+        LimitOrder<Decimal>::operator=(std::move(rhs));
+        return *this;
+      }
+      
       bool isEntryOrder() const
       {
 	return false;
@@ -951,6 +1088,7 @@ namespace mkc_timeseries
 				   limitPrice)
     {}
 
+
     ~SellAtLimitOrder()
     {}
 
@@ -965,6 +1103,19 @@ namespace mkc_timeseries
 	return *this;
 	
       LimitExitOrder<Decimal>::operator=(rhs);
+      return *this;
+    }
+
+    SellAtLimitOrder(SellAtLimitOrder<Decimal>&& rhs) noexcept
+      : LimitExitOrder<Decimal>(std::move(rhs))
+    {}
+
+    SellAtLimitOrder<Decimal>& operator=(SellAtLimitOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      LimitExitOrder<Decimal>::operator=(std::move(rhs));
       return *this;
     }
 
@@ -1054,6 +1205,19 @@ namespace mkc_timeseries
       return *this;
     }
 
+    CoverAtLimitOrder(CoverAtLimitOrder<Decimal>&& rhs) noexcept
+      : LimitExitOrder<Decimal>(std::move(rhs))
+    {}
+
+    CoverAtLimitOrder<Decimal>& operator=(CoverAtLimitOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      LimitExitOrder<Decimal>::operator=(std::move(rhs));
+      return *this;
+    }
+
     void ValidateOrderExecution(const ptime& /* fillDateTime */, const Decimal& fillPrice) const override
     {
       if (fillPrice > this->getLimitPrice())
@@ -1105,7 +1269,7 @@ namespace mkc_timeseries
   template <class Decimal> class StopOrder : public TradingOrder<Decimal>
     {
     public:
-StopOrder(const std::string& tradingSymbol,
+      StopOrder(const std::string& tradingSymbol,
                 const TradingVolume& unitsInOrder,
                 const ptime& orderDateTime,
                 const Decimal& stopPrice)
@@ -1142,6 +1306,21 @@ StopOrder(const std::string& tradingSymbol,
 	return *this;
       }
 
+      StopOrder(StopOrder<Decimal>&& rhs) noexcept
+        : TradingOrder<Decimal>(std::move(rhs)),
+          mStopPrice(std::move(rhs.mStopPrice))
+      {}
+    
+      StopOrder<Decimal>& operator=(StopOrder<Decimal>&& rhs) noexcept
+      {
+        if (this == &rhs)
+	  return *this;
+
+        TradingOrder<Decimal>::operator=(std::move(rhs));
+        mStopPrice = std::move(rhs.mStopPrice);
+        return *this;
+      }
+      
       const Decimal& getStopPrice() const
       {
 	return mStopPrice;
@@ -1208,6 +1387,19 @@ StopOrder(const std::string& tradingSymbol,
 	return *this;
       }
 
+      StopExitOrder(StopExitOrder<Decimal>&& rhs) noexcept
+        : StopOrder<Decimal>(std::move(rhs))
+      {}
+
+      StopExitOrder<Decimal>& operator=(StopExitOrder<Decimal>&& rhs) noexcept
+      {
+        if (this == &rhs)
+          return *this;
+        
+        StopOrder<Decimal>::operator=(std::move(rhs));
+        return *this;
+      }
+
       bool isEntryOrder() const
       {
 	return false;
@@ -1264,6 +1456,20 @@ StopOrder(const std::string& tradingSymbol,
 	return *this;
 	
       StopExitOrder<Decimal>::operator=(rhs);
+      return *this;
+    }
+
+    SellAtStopOrder(SellAtStopOrder<Decimal>&& rhs) noexcept
+      : StopExitOrder<Decimal>(std::move(rhs))
+    {}
+
+    // Move assignment operator
+    SellAtStopOrder<Decimal>& operator=(SellAtStopOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      StopExitOrder<Decimal>::operator=(std::move(rhs));
       return *this;
     }
 
@@ -1347,6 +1553,20 @@ StopOrder(const std::string& tradingSymbol,
 	return *this;
 	
       StopExitOrder<Decimal>::operator=(rhs);
+      return *this;
+    }
+
+    CoverAtStopOrder(CoverAtStopOrder<Decimal>&& rhs) noexcept
+      : StopExitOrder<Decimal>(std::move(rhs))
+    {}
+
+    // Move assignment operator
+    CoverAtStopOrder<Decimal>& operator=(CoverAtStopOrder<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+      
+      StopExitOrder<Decimal>::operator=(std::move(rhs));
       return *this;
     }
 

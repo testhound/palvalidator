@@ -3,8 +3,7 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
-#ifndef __POSITION_MANAGER_H
-#define __POSITION_MANAGER_H 1
+#pragma once
 
 #include <exception>
 #include <memory>
@@ -70,8 +69,8 @@ namespace mkc_timeseries
       : mPositions(),
         mSumWinners(DecimalConstants<Decimal>::DecimalZero),
         mSumLosers(DecimalConstants<Decimal>::DecimalZero),
- mLogSumWinners(DecimalConstants<Decimal>::DecimalZero),
- mLogSumLosers(DecimalConstants<Decimal>::DecimalZero),
+	mLogSumWinners(DecimalConstants<Decimal>::DecimalZero),
+	mLogSumLosers(DecimalConstants<Decimal>::DecimalZero),
         mNumWinners(0),
         mNumLosers(0),
         mNumBarsInMarket(0),
@@ -90,8 +89,8 @@ namespace mkc_timeseries
       : mPositions(rhs.mPositions),
         mSumWinners(rhs.mSumWinners),
         mSumLosers(rhs.mSumLosers),
- mLogSumWinners(rhs.mLogSumWinners),
- mLogSumLosers(rhs.mLogSumLosers),
+	mLogSumWinners(rhs.mLogSumWinners),
+	mLogSumLosers(rhs.mLogSumLosers),
         mNumWinners(rhs.mNumWinners),
         mNumLosers(rhs.mNumLosers),
         mNumBarsInMarket(rhs.mNumBarsInMarket),
@@ -133,6 +132,81 @@ namespace mkc_timeseries
       return *this;
     }
 
+    ClosedPositionHistory(ClosedPositionHistory<Decimal>&& rhs) noexcept
+      : mPositions(std::move(rhs.mPositions)),
+	mSumWinners(std::move(rhs.mSumWinners)),
+	mSumLosers(std::move(rhs.mSumLosers)),
+	mLogSumWinners(std::move(rhs.mLogSumWinners)),
+	mLogSumLosers(std::move(rhs.mLogSumLosers)),
+	mNumWinners(rhs.mNumWinners),
+	mNumLosers(rhs.mNumLosers),
+	mNumBarsInMarket(rhs.mNumBarsInMarket),
+	mRMultipleSum(std::move(rhs.mRMultipleSum)),
+	mWinnersStats(std::move(rhs.mWinnersStats)),
+	mLosersStats(std::move(rhs.mLosersStats)),
+	mWinnersVect(std::move(rhs.mWinnersVect)),
+	mLosersVect(std::move(rhs.mLosersVect)),
+	mBarsPerPosition(std::move(rhs.mBarsPerPosition)),
+	mBarsPerWinningPosition(std::move(rhs.mBarsPerWinningPosition)),
+	mBarsPerLosingPosition(std::move(rhs.mBarsPerLosingPosition)),
+	mNumConsecutiveLosses(rhs.mNumConsecutiveLosses)
+    {
+      // Reset rhs to valid empty state
+      rhs.mNumWinners = 0;
+      rhs.mNumLosers = 0;
+      rhs.mNumBarsInMarket = 0;
+      rhs.mNumConsecutiveLosses = 0;
+      rhs.mSumWinners = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mSumLosers = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mLogSumWinners = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mLogSumLosers = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mRMultipleSum = DecimalConstants<Decimal>::DecimalZero;
+    }
+
+    // ============================================================================
+    // MOVE ASSIGNMENT OPERATOR
+    // ============================================================================
+    // Add this after the copy assignment operator (around line 134)
+
+    ClosedPositionHistory<Decimal>&
+    operator=(ClosedPositionHistory<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+
+      // Move all member variables
+      mPositions = std::move(rhs.mPositions);
+      mSumWinners = std::move(rhs.mSumWinners);
+      mSumLosers = std::move(rhs.mSumLosers);
+      mLogSumWinners = std::move(rhs.mLogSumWinners);
+      mLogSumLosers = std::move(rhs.mLogSumLosers);
+      mNumWinners = rhs.mNumWinners;
+      mNumLosers = rhs.mNumLosers;
+      mNumBarsInMarket = rhs.mNumBarsInMarket;
+      mRMultipleSum = std::move(rhs.mRMultipleSum);
+      mWinnersStats = std::move(rhs.mWinnersStats);
+      mLosersStats = std::move(rhs.mLosersStats);
+      mWinnersVect = std::move(rhs.mWinnersVect);
+      mLosersVect = std::move(rhs.mLosersVect);
+      mBarsPerPosition = std::move(rhs.mBarsPerPosition);
+      mBarsPerWinningPosition = std::move(rhs.mBarsPerWinningPosition);
+      mBarsPerLosingPosition = std::move(rhs.mBarsPerLosingPosition);
+      mNumConsecutiveLosses = rhs.mNumConsecutiveLosses;
+
+      // Reset rhs to valid empty state
+      rhs.mNumWinners = 0;
+      rhs.mNumLosers = 0;
+      rhs.mNumBarsInMarket = 0;
+      rhs.mNumConsecutiveLosses = 0;
+      rhs.mSumWinners = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mSumLosers = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mLogSumWinners = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mLogSumLosers = DecimalConstants<Decimal>::DecimalZero;
+      rhs.mRMultipleSum = DecimalConstants<Decimal>::DecimalZero;
+
+      return *this;
+    }
+    
     ~ClosedPositionHistory()
     {}
 
@@ -519,7 +593,23 @@ namespace mkc_timeseries
     Decimal getMedianWinningTrade() const
     {
       if (mNumWinners >= 1)
-        return (Decimal(median (mWinnersStats)));
+      {
+        // Use the vector data for a more reliable median calculation
+        std::vector<double> sortedWinners = mWinnersVect;
+        std::sort(sortedWinners.begin(), sortedWinners.end());
+        
+        size_t n = sortedWinners.size();
+        if (n % 2 == 1)
+        {
+          // Odd number of elements: return middle element
+          return Decimal(sortedWinners[n/2]);
+        }
+        else
+        {
+          // Even number of elements: return average of two middle elements
+          return Decimal((sortedWinners[n/2 - 1] + sortedWinners[n/2]) / 2.0);
+        }
+      }
       else
         return (DecimalConstants<Decimal>::DecimalZero);
     }
@@ -543,7 +633,28 @@ namespace mkc_timeseries
     Decimal getMedianLosingTrade() const
     {
       if (mNumLosers >= 1)
-        return (Decimal(median (mLosersStats)));
+      {
+        // Use the vector data for a more reliable median calculation
+        // Note: mLosersVect contains absolute values, but we need to return negative values for losses
+        std::vector<double> sortedLosers = mLosersVect;
+        std::sort(sortedLosers.begin(), sortedLosers.end());
+        
+        size_t n = sortedLosers.size();
+        double medianValue;
+        if (n % 2 == 1)
+        {
+          // Odd number of elements: return middle element
+          medianValue = sortedLosers[n/2];
+        }
+        else
+        {
+          // Even number of elements: return average of two middle elements
+          medianValue = (sortedLosers[n/2 - 1] + sortedLosers[n/2]) / 2.0;
+        }
+        
+        // Return as negative since these are losses and mLosersVect stores absolute values
+        return Decimal(-medianValue);
+      }
       else
         return (DecimalConstants<Decimal>::DecimalZero);
     }
@@ -952,4 +1063,4 @@ namespace mkc_timeseries
     unsigned int mNumConsecutiveLosses;
   };
 }
-#endif
+

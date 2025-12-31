@@ -8,18 +8,33 @@ namespace mkc_timeseries
 {
 
   /**
-   * @brief Per-thread cache to build synthetic series cheaply across permutations.
+   * @brief Per-thread cache for efficient synthetic time series generation.
    *
-   * Chooses the correct synthetic implementation (EOD vs Intraday) automatically
-   * from the base time series, mirroring SyntheticTimeSeries' behavior.
+   * This cache maintains a single Security object and swaps its time series
+   * pointer on each shuffle, avoiding repeated allocations. Automatically
+   * selects the appropriate implementation (EOD vs Intraday) based on the
+   * base time series TimeFrame.
    *
-   * Keep one instance per worker thread. Not thread-safe.
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber)
+   * @tparam LookupPolicy Time series lookup policy
+   * @tparam RoundingPolicy Tick rounding policy (default: NoRounding)
+   * @tparam NullModel Synthetic null model strategy (default: N1_MaxDestruction)
    *
-   * Template params:
-   *  Decimal        : numeric type
-   *  LookupPolicy   : OHLCTimeSeries lookup policy
-   *  RoundingPolicy : tick rounding policy
-   *  NullModel      : synthetic null model (defaults to legacy N1 behavior)
+   * @note This class is NOT thread-safe. Use one instance per worker thread.
+   * @note The returned Security reference remains valid until the next
+   *       shuffleAndRebuild() call or cache destruction.
+   *
+   * @par Usage Example:
+   * @code
+   * auto baseSec = createSecurityFromData();
+   * SyntheticCache<DecimalType, LogNLookupPolicy<DecimalType>, NoRounding> cache(baseSec);
+   *
+   * RandomMersenne rng;
+   * for (int i = 0; i < numPermutations; ++i) {
+   *   auto& syntheticSec = cache.shuffleAndRebuild(rng);
+   *   // Use syntheticSec for testing...
+   * }
+   * @endcode
    */
   template<
     class Decimal,
@@ -46,16 +61,26 @@ namespace mkc_timeseries
      * @brief Shuffle factors (this permutation), rebuild series, and swap into reusable Security.
      * @return Reference to the reusable Security configured with the new synthetic series.
      */
-    template <class Rng>
-    SecPtr& shuffleAndRebuild(Rng& rng)
+    SecPtr& shuffleAndRebuild(RandomMersenne& rng)
     {
-      m_impl->shuffleFactors(rng);                    // permute overnight/day factors
-      auto synSeries = m_impl->buildSeries();         // build a new OHLCTimeSeries from those factors
-      m_sec->resetTimeSeries(std::move(synSeries));   // swap series pointer into the reusable Security
+      m_impl->shuffleFactors(rng);
+      auto synSeries = m_impl->buildSeries();
+      m_sec->resetTimeSeries(std::move(synSeries));
       return m_sec;
     }
-
-    /// Re-initialize from a different base security (same symbol/tick shape expected).
+    
+    /**
+     * @brief Re-initialize from a different base security.
+     *
+     * Replaces the internal implementation and resets the cached Security's
+     * time series to match the new base. The new base security should have
+     * the same symbol and tick parameters for consistent behavior.
+     *
+     * @param baseSec New base security to use for future shuffles
+     *
+     * @note This resets internal state; previous permutations are discarded.
+     * @note The Security object is reused but its time series is replaced.
+     */
     void resetFromBase(const SecPtr& baseSec)
     {
       initImplFrom(*baseSec->getTimeSeries(), baseSec->getTick(), baseSec->getTickDiv2());
@@ -142,20 +167,21 @@ namespace mkc_timeseries
 
     void initImplFrom(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
     {
-      // Decide EOD vs Intraday from the base series, same as SyntheticTimeSeries does.
       const auto tf = base.getTimeFrame();
-      if (tf == TimeFrame::DAILY) {
-        if constexpr (NullModel == SyntheticNullModel::N0_PairedDay) {
-          m_impl = std::make_unique<EodImplN0>(base, tick, tickDiv2); // N0: paired-day
-        } else {
-          // N1 (legacy) and N2 (until implemented) both fall back to N1 here
-          m_impl = std::make_unique<EodImpl>(base, tick, tickDiv2);   // N1: current behavior
-        }
-      } else {
-        m_impl = std::make_unique<IntradayImpl>(base, tick, tickDiv2);
-      }
+      if (tf != TimeFrame::INTRADAY)
+	{
+	  if constexpr (NullModel == SyntheticNullModel::N0_PairedDay)
+	    m_impl = std::make_unique<EodImplN0>(base, tick, tickDiv2);
+	  else if constexpr (NullModel == SyntheticNullModel::N2_BlockDays)
+	    throw std::logic_error("SyntheticCache: N2_BlockDays not yet implemented");
+	  else
+	    m_impl = std::make_unique<EodImpl>(base, tick, tickDiv2);
+	}
+      else
+	{
+	  m_impl = std::make_unique<IntradayImpl>(base, tick, tickDiv2);
+	}
     }
-
   private:
     std::unique_ptr<ImplIface> m_impl;  // chosen at runtime (EOD or Intraday)
     SecPtr                      m_sec;  // one reusable Security; series swapped per permutation
