@@ -451,18 +451,18 @@ namespace mkc_timeseries
 
     void setProfitTarget(const Decimal& profitTarget)
       {
-	if (profitTarget >= DecimalConstants<Decimal>::DecimalZero)
-	  mProfitTarget = profitTarget;
-	else
-	  throw TradingPositionException (std::string("OpenPosition::setProfitTarget - profit target must be > 0"));
+ if (profitTarget >= DecimalConstants<Decimal>::DecimalZero)
+   mProfitTarget = profitTarget;
+ else
+   throw TradingPositionException (std::string("OpenPosition::setProfitTarget - profit target must be >= 0"));
       }
 
     void setStopLoss(const Decimal& stopLoss)
       {
-	if (stopLoss >= DecimalConstants<Decimal>::DecimalZero)
-	  mStopLoss = stopLoss;
-	else
-	  throw TradingPositionException (std::string("OpenPosition::setStopLoss - stopLoss must be > 0"));
+ if (stopLoss >= DecimalConstants<Decimal>::DecimalZero)
+   mStopLoss = stopLoss;
+ else
+   throw TradingPositionException (std::string("OpenPosition::setStopLoss - stopLoss must be >= 0"));
       }
 
     bool isPositionOpen() const
@@ -835,12 +835,12 @@ namespace mkc_timeseries
 
     void setProfitTarget(const Decimal& /* profitTarget */)
       {
- throw TradingPositionException (std::string("ClosedPosition::setProfitTarget - Cannot set profit target of closed position"));
+	throw TradingPositionException (std::string("ClosedPosition::setProfitTarget - Cannot set profit target of closed position"));
       }
 
     void setStopLoss(const Decimal& /* stopLoss */)
       {
- throw TradingPositionException (std::string("OpenPosition::setStopLoss - Cannot set profit target of closed position"));
+	throw TradingPositionException (std::string("ClosedPosition::setStopLoss - Cannot set profit target of closed position"));
       }
 
     void addBar (const OHLCTimeSeriesEntry<Decimal>& /* entryBar */)
@@ -1443,10 +1443,7 @@ namespace mkc_timeseries
 	}
       else
 	{
-	  if (exit == this->getRMultipleStop())
-	    return -exit/this->getRMultipleStop();
-	  else
-	    return -this->getRMultipleStop() / exit;
+	  return ((exit - entry) / (entry - this->getRMultipleStop()));
 	}
     }
   };
@@ -1506,7 +1503,7 @@ namespace mkc_timeseries
 	  return ((entry - exit)/(this->getRMultipleStop() - entry));
 	}
       else
-	return -exit/this->getRMultipleStop();
+	return ((entry - exit) / (this->getRMultipleStop() - entry));
     }
   };
 

@@ -85,6 +85,15 @@ createTimeSeriesEntry (const std::string& dateString,
 		       mkc_timeseries::volume_t vol);
 
 std::shared_ptr<EntryType>
+createTimeSeriesEntry (const std::string& dateString,
+		       const std::string& openPrice,
+		       const std::string& highPrice,
+		       const std::string& lowPrice,
+		       const std::string& closePrice,
+		       mkc_timeseries::volume_t vol,
+		       mkc_timeseries::TimeFrame::Duration timeFrame);
+
+std::shared_ptr<EntryType>
 createTimeSeriesEntry (const mkc_timeseries::TimeSeriesDate& aDate,
 			const DecimalType& openPrice,
 			const DecimalType& highPrice,
@@ -99,6 +108,15 @@ createEquityEntry (const std::string& dateString,
 		   const std::string& lowPrice,
 		   const std::string& closePrice,
 		   mkc_timeseries::volume_t vol);
+
+std::shared_ptr<mkc_timeseries::OHLCTimeSeriesEntry<DecimalType>>
+createEquityEntry (const std::string& dateString,
+		   const std::string& openPrice,
+		   const std::string& highPrice,
+		   const std::string& lowPrice,
+		   const std::string& closePrice,
+		   mkc_timeseries::volume_t vol,
+		   mkc_timeseries::TimeFrame::Duration timeFrame);
 
 
 

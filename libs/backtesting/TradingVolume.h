@@ -4,11 +4,12 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
-#ifndef __TRADING_VOLUME_H
-#define __TRADING_VOLUME_H 1
+#ifndef TRADING_VOLUME_H
+#define TRADING_VOLUME_H 1
 
 #include <memory>
 #include <exception>
+#include <utility>
 
 namespace mkc_timeseries
 {
@@ -25,12 +26,20 @@ namespace mkc_timeseries
       mVolume(volume), mVolumeUnits(units)
     {}
 
+    // Copy constructor
     TradingVolume (const TradingVolume& rhs)
       : mVolume(rhs.mVolume),
 	mVolumeUnits(rhs.mVolumeUnits)
     {}
 
-    TradingVolume& 
+    // Move constructor
+    TradingVolume (TradingVolume&& rhs) noexcept
+      : mVolume(rhs.mVolume),
+	mVolumeUnits(rhs.mVolumeUnits)
+    {}
+
+    // Copy assignment operator
+    TradingVolume&
     operator=(const TradingVolume &rhs)
     {
       if (this == &rhs)
@@ -38,7 +47,24 @@ namespace mkc_timeseries
 
       mVolume = rhs.mVolume;
       mVolumeUnits = rhs.mVolumeUnits;
+      return *this;
     }
+
+    // Move assignment operator
+    TradingVolume&
+    operator=(TradingVolume&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+
+      mVolume = rhs.mVolume;
+      mVolumeUnits = rhs.mVolumeUnits;
+      
+      return *this;
+    }
+
+    // Destructor
+    ~TradingVolume() = default;
 
     volume_t getTradingVolume() const
     {
