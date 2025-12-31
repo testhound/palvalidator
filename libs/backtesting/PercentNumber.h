@@ -45,16 +45,16 @@ namespace mkc_timeseries
      */
     static const PercentNumber<Decimal> createPercentNumber (const Decimal& number)
     {
-      boost::mutex::scoped_lock Lock(mNumberCacheMutex);
+      boost::mutex::scoped_lock Lock(getNumberCacheMutex());
 
-      typename map<Decimal, shared_ptr<PercentNumber>>::iterator it = mNumberCache.find (number);
+      typename map<Decimal, shared_ptr<PercentNumber>>::iterator it = getNumberCache().find (number);
 
-      if (it != mNumberCache.end())
+      if (it != getNumberCache().end())
 	return *(it->second);
       else
 	{
 	  std::shared_ptr<PercentNumber> p (new PercentNumber(number));
-	  mNumberCache.insert(std::make_pair (number, p));
+	  getNumberCache().insert(std::make_pair (number, p));
 	  return *p;
 	}
     }
@@ -62,13 +62,20 @@ namespace mkc_timeseries
     /**
      * @brief Factory method to create a PercentNumber from a string representation.
      *
-     * Converts the input string to a Decimal value and then calls the
-     * createPercentNumber(const Decimal&) factory method.
-     * The input string 'numberString' is treated as a percentage (e.g., "50.0" for 50%).
+     * The string is parsed using partial parsing semantics:
+     * - Valid numeric portion is parsed until first invalid character
+     * - Whitespace is trimmed
+     * - Completely invalid strings return 0
+     * - No exceptions are thrown for invalid input
+     *
+     * Examples:
+     *   "50.0"     → 50.0
+     *   "  50.0  " → 50.0 (whitespace trimmed)
+     *   "50.0xyz"  → 50.0 (stops at 'x')
+     *   "abc"      → 0.0  (no valid numeric portion)
      *
      * @param numberString A string representing the percentage value.
      * @return A const PercentNumber object.
-     * @throw std::runtime_error if the string cannot be converted to Decimal via num::fromString.
      */
     static const PercentNumber<Decimal> createPercentNumber (const std::string& numberString)
     {
@@ -86,6 +93,29 @@ namespace mkc_timeseries
     const Decimal& getAsPercent() const
     {
       return mPercentNumber;
+    }
+
+    /**
+     * @brief Clears the internal cache of PercentNumber instances.
+     *
+     * This method is thread-safe and can be used to free memory in long-running applications.
+     * After calling this method, subsequent calls to createPercentNumber will rebuild the cache.
+     */
+    static void clearCache()
+    {
+      boost::mutex::scoped_lock Lock(getNumberCacheMutex());
+      getNumberCache().clear();
+    }
+
+    /**
+     * @brief Returns the current size of the cache.
+     *
+     * @return The number of cached PercentNumber instances.
+     */
+    static size_t getCacheSize()
+    {
+      boost::mutex::scoped_lock Lock(getNumberCacheMutex());
+      return getNumberCache().size();
     }
 
     /**
@@ -122,10 +152,35 @@ namespace mkc_timeseries
       : mPercentNumber (number / DecimalConstants<Decimal>::DecimalOneHundred)
     {}
 
-  private:
-    static boost::mutex  mNumberCacheMutex;
-    static std::map<Decimal, std::shared_ptr<PercentNumber>> mNumberCache;
+    /**
+     * @brief Meyer's Singleton for thread-safe mutex access.
+     *
+     * Returns a reference to a static mutex instance. This ensures thread-safe
+     * initialization and provides a single mutex instance per template instantiation.
+     *
+     * @return Reference to the static mutex for cache synchronization.
+     */
+    static boost::mutex& getNumberCacheMutex()
+    {
+      static boost::mutex mutex;
+      return mutex;
+    }
 
+    /**
+     * @brief Meyer's Singleton for thread-safe cache access.
+     *
+     * Returns a reference to a static cache map. This ensures thread-safe
+     * initialization and provides a single cache instance per template instantiation.
+     *
+     * @return Reference to the static cache map.
+     */
+    static std::map<Decimal, std::shared_ptr<PercentNumber>>& getNumberCache()
+    {
+      static std::map<Decimal, std::shared_ptr<PercentNumber>> cache;
+      return cache;
+    }
+
+  private:
     Decimal mPercentNumber;
   };
 
@@ -196,12 +251,6 @@ namespace mkc_timeseries
   bool operator!=(const PercentNumber<Decimal>& lhs, const PercentNumber<Decimal>& rhs)
   { return !(lhs == rhs); }
 
-  template <class Decimal>
-  boost::mutex PercentNumber<Decimal>::mNumberCacheMutex;
-
-  template <class Decimal>
-  std::map<Decimal, std::shared_ptr<PercentNumber<Decimal>>> PercentNumber<Decimal>::mNumberCache;
-
   /**
    * @brief Utility function to create a PercentNumber from a string.
    *
@@ -221,7 +270,4 @@ namespace mkc_timeseries
     return PercentNumber<Decimal>::createPercentNumber (createADecimal<Decimal>(numStr));
   }
 }
-
-
-
 #endif
