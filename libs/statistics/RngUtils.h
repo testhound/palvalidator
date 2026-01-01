@@ -168,8 +168,166 @@ namespace mkc_timeseries
       return h;
     }
 
-    // Domain-agnostic "key": just a master seed + immutable vector of 64-bit tags.
-    // No knowledge of what those tags *mean*.
+    /**
+     * @brief Domain-agnostic Common Random Number (CRN) key for reproducible random streams.
+     *
+     * @section overview Overview
+     * 
+     * CRNKey provides a hierarchical tagging system for creating deterministic, independent
+     * random number streams. This is essential for statistical bootstrap procedures where
+     * you need:
+     * - **Reproducibility**: Same inputs always produce the same random sequence
+     * - **Independence**: Different analysis contexts use uncorrelated random streams
+     * - **Synchronization**: Comparable analyses use synchronized randomness (Common Random Numbers)
+     *
+     * @section hierarchy Hierarchical Tag Structure
+     *
+     * The CRN system uses a hierarchical key structure where each level adds specificity:
+     *
+     * @code
+     * masterSeed → strategyId → stageTag → parameterTag(s) → fold → replicate
+     *     │            │            │              │            │         │
+     *     │            │            │              │            │         └─ Bootstrap iteration [0, B)
+     *     │            │            │              │            └─────────── Cross-validation fold or NO_FOLD
+     *     │            │            │              └──────────────────────── Algorithm parameters (e.g., blockLength)
+     *     │            │            └─────────────────────────────────────── Metric type (mean, geo, PF, etc.)
+     *     │            └──────────────────────────────────────────────────── Strategy identifier
+     *     └───────────────────────────────────────────────────────────────── Global randomness source
+     * @endcode
+     *
+     * @section levels Tag Level Semantics
+     *
+     * **Level 1: masterSeed** (Construction parameter)
+     * - Global randomness source for the entire application
+     * - Typically set once at application startup
+     * - Controls reproducibility across all analyses
+     * - Example: 0x123456789ABCDEF0
+     *
+     * **Level 2: strategyId** (First tag)
+     * - Unique identifier for each trading strategy being analyzed
+     * - Ensures different strategies use independent random streams
+     * - Typically derived from strategy.hashCode()
+     * - Example: hash("MyMomentumStrategy_v2.3")
+     *
+     * **Level 3: stageTag** (Second tag)
+     * - Identifies which statistical metric is being bootstrapped
+     * - Ensures different metrics (mean, geometric mean, profit factor) are independent
+     * - See BootstrapStages constants (BCA_MEAN=0, GEO_MEAN=1, PROFIT_FACTOR=2)
+     * - Critical: prevents artificial correlation between different metrics
+     *
+     * **Level 4: parameterTag(s)** (Additional tags)
+     * - Algorithm-specific parameters that affect the analysis
+     * - Common example: blockLength for stationary block bootstrap
+     * - Allows comparing results with different parameter values
+     * - Multiple parameter tags can be added in sequence
+     *
+     * **Level 5: fold** (Additional tag)
+     * - Cross-validation fold identifier
+     * - Use BootstrapStages::NO_FOLD (0) for single full-sample analysis
+     * - Use BootstrapStages::FOLD_1 (1), FOLD_2 (2), etc. for k-fold CV
+     * - Ensures each fold uses independent but synchronized randomness
+     *
+     * **Level 6: replicate** (Implicit in make_seed_for())
+     * - Bootstrap iteration index [0, B) where B = number of resamples
+     * - Each replicate gets a unique but deterministic seed
+     * - This is the "leaf" level in the hierarchy
+     *
+     * @section usage Usage Examples
+     *
+     * @subsection ex_basic Basic Usage (Single Metric, No CV)
+     * @code
+     * // Application setup
+     * const uint64_t masterSeed = 0x123456789ABCDEF0;
+     * 
+     * // Strategy-specific setup
+     * const uint64_t strategyId = myStrategy.hashCode();
+     * CRNKey baseKey(masterSeed);
+     * CRNKey strategyKey = baseKey.with_tag(strategyId);
+     * 
+     * // Metric-specific setup (e.g., geometric mean with blockLength=5)
+     * CRNKey geoKey = strategyKey.with_tags({
+     *     BootstrapStages::GEO_MEAN,  // metric type
+     *     5,                            // blockLength
+     *     BootstrapStages::NO_FOLD      // no cross-validation
+     * });
+     * 
+     * // Generate seeds for 1000 bootstrap replicates
+     * for (size_t b = 0; b < 1000; ++b) {
+     *     uint64_t seed = geoKey.make_seed_for(b);
+     *     // Use seed to initialize RNG for this replicate
+     * }
+     * @endcode
+     *
+     * @subsection ex_multi Multiple Metrics (Same Strategy)
+     * @code
+     * // All metrics share the same strategy key
+     * CRNKey strategyKey(masterSeed, {strategyId});
+     * 
+     * // Geometric mean bootstrap
+     * CRNKey geoKey = strategyKey.with_tags({
+     *     BootstrapStages::GEO_MEAN, 5, BootstrapStages::NO_FOLD
+     * });
+     * 
+     * // Profit factor bootstrap (independent stream)
+     * CRNKey pfKey = strategyKey.with_tags({
+     *     BootstrapStages::PROFIT_FACTOR, 5, BootstrapStages::NO_FOLD
+     * });
+     * 
+     * // These use independent random streams (no correlation)
+     * uint64_t geoSeed = geoKey.make_seed_for(0);
+     * uint64_t pfSeed = pfKey.make_seed_for(0);
+     * @endcode
+     *
+     * @subsection ex_cv Cross-Validation
+     * @code
+     * const int numFolds = 5;
+     * CRNKey strategyKey(masterSeed, {strategyId, BootstrapStages::GEO_MEAN, 5});
+     * 
+     * for (int fold = 0; fold < numFolds; ++fold) {
+     *     CRNKey foldKey = strategyKey.with_tag(BootstrapStages::FOLD_1 + fold);
+     *     
+     *     // Each fold uses synchronized but independent randomness
+     *     for (size_t b = 0; b < 1000; ++b) {
+     *         uint64_t seed = foldKey.make_seed_for(b);
+     *         // Bootstrap replicate b in fold
+     *     }
+     * }
+     * @endcode
+     *
+     * @subsection ex_comparison Parameter Comparison (Common Random Numbers)
+     * @code
+     * // Compare results with different block lengths using synchronized randomness
+     * CRNKey strategyKey(masterSeed, {strategyId, BootstrapStages::GEO_MEAN});
+     * 
+     * CRNKey key_L5 = strategyKey.with_tags({5, BootstrapStages::NO_FOLD});
+     * CRNKey key_L10 = strategyKey.with_tags({10, BootstrapStages::NO_FOLD});
+     * 
+     * // These share strategyId and metric, differing only by blockLength
+     * // Variance reduction when comparing results
+     * @endcode
+     *
+     * @section crn_benefits Benefits of Hierarchical CRN
+     *
+     * 1. **Reproducibility**: Same CRNKey always produces the same random sequence
+     * 2. **Independence**: Different metrics/strategies use uncorrelated streams
+     * 3. **Variance Reduction**: Comparisons use synchronized randomness where appropriate
+     * 4. **Debugging**: Can replay any specific replicate by reconstructing its key
+     * 5. **Parallel Safety**: Each thread can safely use its own key-derived RNG
+     * 6. **Auditability**: The tag hierarchy documents what each random stream represents
+     *
+     * @section implementation Implementation Notes
+     *
+     * - Tags are combined using cryptographic-quality hashing (splitmix64)
+     * - Hash avalanche ensures small tag changes produce completely different streams
+     * - Tag order matters: {A, B} produces different seeds than {B, A}
+     * - CRNKey is immutable and cheap to copy (small vector of uint64_t)
+     * - with_tag() and with_tags() return new keys (fluent API)
+     *
+     * @see CRNEngineProvider for automatic RNG construction from CRNKey
+     * @see CRNRng for a higher-level wrapper combining CRNKey and engine creation
+     * @see TradingBootstrapFactory::makeCRNKey() for domain-specific key construction
+     * @see BootstrapStages namespace for standard stageTag and fold constants
+     */
     class CRNKey
     {
     public:
