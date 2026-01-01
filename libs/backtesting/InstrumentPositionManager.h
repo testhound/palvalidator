@@ -4,13 +4,13 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
-#ifndef __INSTRUMENT_POSITION_MANAGER_H
-#define __INSTRUMENT_POSITION_MANAGER_H 1
+#pragma once
 
 #include <memory>
 #include <map>
 #include <vector>
 #include <cstdint>
+#include <utility>  // for std::move, std::swap
 #include "ThrowAssert.hpp"
 #include "InstrumentPositionManagerException.h"
 #include "InstrumentPosition.h"
@@ -81,6 +81,18 @@ namespace mkc_timeseries
     {}
 
     /**
+     * @brief Move constructor.
+     * @param rhs The InstrumentPositionManager to move from.
+     * 
+     * Transfers ownership of resources from rhs to this object.
+     * After the move, rhs is left in a valid but unspecified state.
+     */
+    InstrumentPositionManager (InstrumentPositionManager<Decimal>&& rhs) noexcept
+      : mInstrumentPositions(std::move(rhs.mInstrumentPositions)),
+	mBindings(std::move(rhs.mBindings))
+    {}
+
+    /**
      * @brief Assignment operator.
      * @param rhs The InstrumentPositionManager to assign from.
      * @return A reference to this manager.
@@ -98,10 +110,43 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Move assignment operator.
+     * @param rhs The InstrumentPositionManager to move from.
+     * @return A reference to this manager.
+     * 
+     * Transfers ownership of resources from rhs to this object.
+     * After the move, rhs is left in a valid but unspecified state.
+     */
+    InstrumentPositionManager<Decimal>& 
+    operator=(InstrumentPositionManager<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+	return *this;
+
+      mInstrumentPositions = std::move(rhs.mInstrumentPositions);
+      mBindings = std::move(rhs.mBindings);
+
+      return *this;
+    }
+
+    /**
      * @brief Destructor.
      */
     ~InstrumentPositionManager()
       {}
+
+    /**
+     * @brief Swaps the contents of this manager with another.
+     * @param other The InstrumentPositionManager to swap with.
+     * 
+     * This is a noexcept operation that enables exception-safe assignment.
+     */
+    void swap(InstrumentPositionManager<Decimal>& other) noexcept
+    {
+      using std::swap;
+      swap(mInstrumentPositions, other.mInstrumentPositions);
+      swap(mBindings, other.mBindings);
+    }
 
     /**
      * @brief Gets the total trading volume for all open units of a specific instrument.
@@ -458,7 +503,7 @@ namespace mkc_timeseries
      * @throws InstrumentPositionManagerException if the trading symbol is not found (via findExistingSymbol).
      */
     const std::shared_ptr<InstrumentPosition<Decimal>>& 
-    findExistingInstrumentPosition (const std::string symbol) const
+    findExistingInstrumentPosition (const std::string& symbol) const
     {
       ConstInstrumentPositionIterator pos = findExistingSymbol (symbol);
       return pos->second;
@@ -482,6 +527,18 @@ namespace mkc_timeseries
     std::map<std::string, std::shared_ptr<InstrumentPosition<Decimal>>> mInstrumentPositions;
     std::vector<std::pair<InstrumentPosition<Decimal>*, Security<Decimal>*>> mBindings;
   };
+
+  /**
+   * @brief Non-member swap function for InstrumentPositionManager.
+   * @param lhs First InstrumentPositionManager to swap.
+   * @param rhs Second InstrumentPositionManager to swap.
+   * 
+   * Enables ADL (Argument-Dependent Lookup) and supports generic algorithms.
+   */
+  template <class Decimal>
+  void swap(InstrumentPositionManager<Decimal>& lhs, InstrumentPositionManager<Decimal>& rhs) noexcept
+  {
+    lhs.swap(rhs);
+  }
 }
 
-#endif

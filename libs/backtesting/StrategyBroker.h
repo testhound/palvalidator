@@ -258,15 +258,12 @@ namespace mkc_timeseries
     StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio)
       : TradingOrderObserver<Decimal>(),
         TradingPositionObserver<Decimal>(),
-        mOrderManager(portfolio),
+        mOrderManager(validateAndGetPortfolio(portfolio)),
         mInstrumentPositionManager(),
         mStrategyTrades(),
         mClosedTradeHistory(),
         mPortfolio(portfolio)
     {
-      if (!mPortfolio) {
-        throw StrategyBrokerException("StrategyBroker constructor: portfolio cannot be null");
-      }
       
       mOrderManager.addObserver (*this);
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->beginPortfolio();
@@ -1930,6 +1927,24 @@ namespace mkc_timeseries
       
       // Order not found - it was likely already processed
       return false;
+    }
+
+  private:
+    /**
+     * @brief Validates that a portfolio is not null and returns it.
+     * This helper function is used in the member initializer list to ensure
+     * we throw the expected StrategyBrokerException rather than allowing
+     * TradingOrderManager to throw its own exception.
+     * @param portfolio The portfolio to validate.
+     * @return The same portfolio pointer if it's valid.
+     * @throws StrategyBrokerException if portfolio is null.
+     */
+    static std::shared_ptr<Portfolio<Decimal>> validateAndGetPortfolio(std::shared_ptr<Portfolio<Decimal>> portfolio)
+    {
+      if (!portfolio) {
+        throw StrategyBrokerException("StrategyBroker constructor: portfolio cannot be null");
+      }
+      return portfolio;
     }
 
     TradingOrderManager<Decimal>       mOrderManager;

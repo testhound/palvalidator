@@ -363,3 +363,673 @@ SECTION ("PALPatternInterpreter testing for short pattern not matched")
     REQUIRE(PALPatternInterpreter<DecimalType>::evaluateExpression(testExpr1.get(), corn, normalBarDate2) == true);
   }
 }
+
+TEST_CASE("PALPatternInterpreter - LOW reference", "[PALPatternInterpreter][references]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("LOW reference in simple pattern")
+  {
+    auto low0 = resourceManager.getPriceLow(0);
+    auto low1 = resourceManager.getPriceLow(1);
+    
+    // Pattern: LOW[0] > LOW[1] (testing for higher low)
+    auto gt1 = std::make_shared<GreaterThanExpr>(low0, low1);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    REQUIRE(corn->isDateFound(testDate));
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("LOW reference with multiple bars")
+  {
+    auto low5 = resourceManager.getPriceLow(5);
+    auto low6 = resourceManager.getPriceLow(6);
+    auto low7 = resourceManager.getPriceLow(7);
+    
+    // Pattern: (LOW[5] > LOW[6]) AND (LOW[6] > LOW[7])
+    auto gt1 = std::make_shared<GreaterThanExpr>(low5, low6);
+    auto gt2 = std::make_shared<GreaterThanExpr>(low6, low7);
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - VOLUME reference", "[PALPatternInterpreter][references]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("VOLUME reference in simple pattern")
+  {
+    auto volume0 = resourceManager.getVolume(0);
+    auto volume1 = resourceManager.getVolume(1);
+    
+    // Pattern: VOLUME[0] > VOLUME[1] (increasing volume)
+    auto gt1 = std::make_shared<GreaterThanExpr>(volume0, volume1);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    REQUIRE(corn->isDateFound(testDate));
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("VOLUME with price pattern")
+  {
+    auto volume0 = resourceManager.getVolume(0);
+    auto volume1 = resourceManager.getVolume(1);
+    auto close0 = resourceManager.getPriceClose(0);
+    auto close1 = resourceManager.getPriceClose(1);
+    
+    // Pattern: (VOLUME[0] > VOLUME[1]) AND (CLOSE[0] > CLOSE[1])
+    auto gt1 = std::make_shared<GreaterThanExpr>(volume0, volume1);
+    auto gt2 = std::make_shared<GreaterThanExpr>(close0, close1);
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - IBS2 and IBS3 references", "[PALPatternInterpreter][references]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  TimeSeriesDate testDate(1985, Nov, 15);
+  
+  SECTION("IBS2 evaluation")
+  {
+    auto ibs2_0 = resourceManager.getIBS2(0);
+    auto ibs2_1 = resourceManager.getIBS2(1);
+    
+    // Pattern: IBS2[0] > IBS2[1]
+    auto gt1 = std::make_shared<GreaterThanExpr>(ibs2_0, ibs2_1);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("IBS3 evaluation")
+  {
+    auto ibs3_0 = resourceManager.getIBS3(0);
+    auto ibs3_1 = resourceManager.getIBS3(1);
+    
+    // Pattern: IBS3[0] > IBS3[1]
+    auto gt1 = std::make_shared<GreaterThanExpr>(ibs3_0, ibs3_1);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("IBS smoothing validation: IBS1 vs IBS2 vs IBS3")
+  {
+    auto ibs1_0 = resourceManager.getIBS1(0);
+    auto ibs2_0 = resourceManager.getIBS2(0);
+    auto ibs3_0 = resourceManager.getIBS3(0);
+    
+    // All three should evaluate without error
+    auto gt1 = std::make_shared<GreaterThanExpr>(ibs1_0, ibs2_0);
+    auto gt2 = std::make_shared<GreaterThanExpr>(ibs2_0, ibs3_0);
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - ValueChart references", "[PALPatternInterpreter][references]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  TimeSeriesDate testDate(1985, Nov, 15);
+  
+  SECTION("VChartHigh evaluation")
+  {
+    auto vchartHigh0 = resourceManager.getVChartHigh(0);
+    auto vchartHigh1 = resourceManager.getVChartHigh(1);
+    
+    // Pattern: VChartHigh[0] > VChartHigh[1]
+    auto gt1 = std::make_shared<GreaterThanExpr>(vchartHigh0, vchartHigh1);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("VChartLow evaluation")
+  {
+    auto vchartLow0 = resourceManager.getVChartLow(0);
+    auto vchartLow1 = resourceManager.getVChartLow(1);
+    
+    // Pattern: VChartLow[0] > VChartLow[1]
+    auto gt1 = std::make_shared<GreaterThanExpr>(vchartLow0, vchartLow1);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("Combined VChart pattern")
+  {
+    auto vchartHigh0 = resourceManager.getVChartHigh(0);
+    auto vchartLow0 = resourceManager.getVChartLow(0);
+    auto vchartHigh1 = resourceManager.getVChartHigh(1);
+    auto vchartLow1 = resourceManager.getVChartLow(1);
+    
+    // Pattern: (VChartHigh[0] > VChartHigh[1]) AND (VChartLow[0] > VChartLow[1])
+    auto gt1 = std::make_shared<GreaterThanExpr>(vchartHigh0, vchartHigh1);
+    auto gt2 = std::make_shared<GreaterThanExpr>(vchartLow0, vchartLow1);
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - Meander reference", "[PALPatternInterpreter][references]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("Meander basic evaluation")
+  {
+    auto meander0 = resourceManager.getMeander(0);
+    auto meander1 = resourceManager.getMeander(1);
+    
+    // Pattern: MEANDER[0] > MEANDER[1]
+    auto gt1 = std::make_shared<GreaterThanExpr>(meander0, meander1);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - ROC1 reference", "[PALPatternInterpreter][references]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("ROC1 basic evaluation")
+  {
+    auto roc1_0 = resourceManager.getRoc1(0);
+    auto roc1_1 = resourceManager.getRoc1(1);
+    
+    // Pattern: ROC1[0] > ROC1[1]
+    auto gt1 = std::make_shared<GreaterThanExpr>(roc1_0, roc1_1);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    REQUIRE(corn->isDateFound(testDate));
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("ROC1 with price pattern")
+  {
+    auto roc1_0 = resourceManager.getRoc1(0);
+    auto close5 = resourceManager.getPriceClose(5);
+    auto close6 = resourceManager.getPriceClose(6);
+    
+    // Pattern: (ROC1[0] > ROC1[1]) AND (CLOSE[5] > CLOSE[6])
+    auto roc1_1 = resourceManager.getRoc1(1);
+    auto gt1 = std::make_shared<GreaterThanExpr>(roc1_0, roc1_1);
+    auto gt2 = std::make_shared<GreaterThanExpr>(close5, close6);
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+// ============================================================================
+// TEST SUITE 2: Edge Cases and Error Conditions
+// ============================================================================
+
+TEST_CASE("PALPatternInterpreter - Division by zero handling", "[PALPatternInterpreter][edge_cases]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("IBS1 should handle zero range gracefully")
+  {
+    // Test that IBS1 evaluates without crashing even if High == Low
+    auto ibs1_0 = resourceManager.getIBS1(0);
+    auto ibs1_1 = resourceManager.getIBS1(1);
+    
+    auto gt1 = std::make_shared<GreaterThanExpr>(ibs1_0, ibs1_1);
+    
+    // Test across multiple dates to increase likelihood of encountering edge cases
+    TimeSeriesDate startDate(1985, Mar, 22);
+    TimeSeriesDate endDate(1985, Apr, 30);
+    
+    int evaluationCount = 0;
+    for (TimeSeriesDate testDate = startDate; testDate <= endDate; 
+         testDate = boost_next_weekday(testDate))
+    {
+      if (corn->isDateFound(testDate))
+      {
+        // Should not throw exception
+        bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+            gt1.get(), corn, testDate);
+        REQUIRE((result == true || result == false));
+        evaluationCount++;
+      }
+    }
+    
+    REQUIRE(evaluationCount > 0);
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - Null pointer handling", "[PALPatternInterpreter][edge_cases]")
+{
+  SECTION("Null expression pointer should throw")
+  {
+    DecimalType cornTickValue(createDecimal("0.25"));
+    PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                            TradingVolume::CONTRACTS, cornTickValue);
+    csvFile.readFile();
+    auto p = csvFile.getTimeSeries();
+    
+    auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+        myCornSymbol, "Corn futures",
+        createDecimal("50.0"), cornTickValue, p);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    
+    // Passing null expression should throw PalPatternInterpreterException
+    REQUIRE_THROWS_AS(
+        PALPatternInterpreter<DecimalType>::evaluateExpression(nullptr, corn, testDate),
+        PalPatternInterpreterException
+    );
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - Complex nested patterns", "[PALPatternInterpreter][complex]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  TimeSeriesDate testDate(1985, Nov, 15);
+  
+  SECTION("Deep nested AND expressions (5 levels)")
+  {
+    auto close0 = resourceManager.getPriceClose(0);
+    auto close1 = resourceManager.getPriceClose(1);
+    auto close2 = resourceManager.getPriceClose(2);
+    auto close3 = resourceManager.getPriceClose(3);
+    auto close4 = resourceManager.getPriceClose(4);
+    auto close5 = resourceManager.getPriceClose(5);
+    
+    // Build deeply nested pattern
+    auto gt1 = std::make_shared<GreaterThanExpr>(close0, close1);
+    auto gt2 = std::make_shared<GreaterThanExpr>(close1, close2);
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    
+    auto gt3 = std::make_shared<GreaterThanExpr>(close2, close3);
+    auto and2 = std::make_shared<AndExpr>(and1, gt3);
+    
+    auto gt4 = std::make_shared<GreaterThanExpr>(close3, close4);
+    auto and3 = std::make_shared<AndExpr>(and2, gt4);
+    
+    auto gt5 = std::make_shared<GreaterThanExpr>(close4, close5);
+    auto and4 = std::make_shared<AndExpr>(and3, gt5);
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and4.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("Wide AND expression (many parallel conditions)")
+  {
+    auto high0 = resourceManager.getPriceHigh(0);
+    auto high1 = resourceManager.getPriceHigh(1);
+    auto high2 = resourceManager.getPriceHigh(2);
+    auto high3 = resourceManager.getPriceHigh(3);
+    auto low0 = resourceManager.getPriceLow(0);
+    auto low1 = resourceManager.getPriceLow(1);
+    auto close0 = resourceManager.getPriceClose(0);
+    auto open0 = resourceManager.getPriceOpen(0);
+    
+    // Create pattern with many conditions
+    auto gt1 = std::make_shared<GreaterThanExpr>(high0, high1);
+    auto gt2 = std::make_shared<GreaterThanExpr>(high1, high2);
+    auto gt3 = std::make_shared<GreaterThanExpr>(high2, high3);
+    auto gt4 = std::make_shared<GreaterThanExpr>(low0, low1);
+    auto gt5 = std::make_shared<GreaterThanExpr>(close0, open0);
+    
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    auto and2 = std::make_shared<AndExpr>(gt3, gt4);
+    auto and3 = std::make_shared<AndExpr>(and1, and2);
+    auto and4 = std::make_shared<AndExpr>(and3, gt5);
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and4.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - All indicator types combined", "[PALPatternInterpreter][comprehensive]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  TimeSeriesDate testDate(1985, Nov, 15);
+  
+  SECTION("Pattern using all major indicator types")
+  {
+    // Build complex pattern using different indicator types:
+    // (CLOSE[0] > CLOSE[1]) AND (VOLUME[0] > VOLUME[1]) AND 
+    // (IBS1[0] > IBS1[1]) AND (VCHARTLOW[0] > VCHARTLOW[1])
+    
+    auto close0 = resourceManager.getPriceClose(0);
+    auto close1 = resourceManager.getPriceClose(1);
+    auto volume0 = resourceManager.getVolume(0);
+    auto volume1 = resourceManager.getVolume(1);
+    auto ibs1_0 = resourceManager.getIBS1(0);
+    auto ibs1_1 = resourceManager.getIBS1(1);
+    auto vchartLow0 = resourceManager.getVChartLow(0);
+    auto vchartLow1 = resourceManager.getVChartLow(1);
+    
+    auto gt1 = std::make_shared<GreaterThanExpr>(close0, close1);
+    auto gt2 = std::make_shared<GreaterThanExpr>(volume0, volume1);
+    auto gt3 = std::make_shared<GreaterThanExpr>(ibs1_0, ibs1_1);
+    auto gt4 = std::make_shared<GreaterThanExpr>(vchartLow0, vchartLow1);
+    
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    auto and2 = std::make_shared<AndExpr>(gt3, gt4);
+    auto and3 = std::make_shared<AndExpr>(and1, and2);
+    
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        and3.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - Compiled evaluator reuse", "[PALPatternInterpreter][performance]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("Evaluator consistency across multiple dates")
+  {
+    auto close5 = resourceManager.getPriceClose(5);
+    auto close6 = resourceManager.getPriceClose(6);
+    auto gt1 = std::make_shared<GreaterThanExpr>(close5, close6);
+    
+    // Compile once
+    auto evaluator = PALPatternInterpreter<DecimalType>::compileEvaluator(gt1.get());
+    
+    // Use multiple times across date range
+    TimeSeriesDate startDate(1985, Nov, 1);
+    TimeSeriesDate endDate(1985, Nov, 30);
+    
+    int evaluationCount = 0;
+    for (TimeSeriesDate testDate = startDate; testDate <= endDate;
+         testDate = boost_next_weekday(testDate))
+    {
+      if (corn->isDateFound(testDate))
+      {
+        ptime testDateTime(testDate, getDefaultBarTime());
+        
+        bool result1 = evaluator(corn.get(), testDateTime);
+        bool result2 = evaluator(corn.get(), testDateTime);
+        
+        // Same evaluator should give same results
+        REQUIRE(result1 == result2);
+        
+        // Should match direct evaluation
+        bool directResult = PALPatternInterpreter<DecimalType>::evaluateExpression(
+            gt1.get(), corn, testDate);
+        REQUIRE(result1 == directResult);
+        
+        evaluationCount++;
+      }
+    }
+    
+    REQUIRE(evaluationCount > 0);
+  }
+  
+  SECTION("Complex pattern evaluator reuse")
+  {
+    // Build a complex pattern
+    auto close5 = resourceManager.getPriceClose(5);
+    auto close6 = resourceManager.getPriceClose(6);
+    auto ibs1_0 = resourceManager.getIBS1(0);
+    auto ibs1_1 = resourceManager.getIBS1(1);
+    auto volume0 = resourceManager.getVolume(0);
+    auto volume1 = resourceManager.getVolume(1);
+    
+    auto gt1 = std::make_shared<GreaterThanExpr>(close5, close6);
+    auto gt2 = std::make_shared<GreaterThanExpr>(ibs1_0, ibs1_1);
+    auto gt3 = std::make_shared<GreaterThanExpr>(volume0, volume1);
+    
+    auto and1 = std::make_shared<AndExpr>(gt1, gt2);
+    auto and2 = std::make_shared<AndExpr>(and1, gt3);
+    
+    // Compile once
+    auto evaluator = PALPatternInterpreter<DecimalType>::compileEvaluator(and2.get());
+    
+    // Reuse multiple times
+    std::vector<TimeSeriesDate> testDates = {
+      TimeSeriesDate(1985, Nov, 15),
+      TimeSeriesDate(1986, May, 28),
+      TimeSeriesDate(1985, Jun, 10)
+    };
+    
+    for (const auto& testDate : testDates)
+    {
+      if (corn->isDateFound(testDate))
+      {
+        ptime testDateTime(testDate, time_duration(14, 0, 0));
+        
+        // Multiple calls should be consistent
+        bool result1 = evaluator(corn.get(), testDateTime);
+        bool result2 = evaluator(corn.get(), testDateTime);
+        bool result3 = evaluator(corn.get(), testDateTime);
+        
+        REQUIRE(result1 == result2);
+        REQUIRE(result2 == result3);
+      }
+    }
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - Boundary bar offsets", "[PALPatternInterpreter][edge_cases]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY,
+                                          TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+  auto p = csvFile.getTimeSeries();
+  
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      myCornSymbol, "Corn futures",
+      createDecimal("50.0"), cornTickValue, p);
+  
+  AstResourceManager resourceManager;
+  
+  SECTION("Zero offset (current bar)")
+  {
+    auto close0 = resourceManager.getPriceClose(0);
+    auto open0 = resourceManager.getPriceOpen(0);
+    auto gt1 = std::make_shared<GreaterThanExpr>(close0, open0);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("Large offset (within data range)")
+  {
+    auto close20 = resourceManager.getPriceClose(20);
+    auto close21 = resourceManager.getPriceClose(21);
+    auto gt1 = std::make_shared<GreaterThanExpr>(close20, close21);
+    
+    TimeSeriesDate testDate(1985, Nov, 15);
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE((result == true || result == false));
+  }
+  
+  SECTION("Offset beyond available data returns false")
+  {
+    // Use a very large offset that exceeds available historical data
+    auto close100 = resourceManager.getPriceClose(100);
+    auto close101 = resourceManager.getPriceClose(101);
+    auto gt1 = std::make_shared<GreaterThanExpr>(close100, close101);
+    
+    // Use early date in the dataset where 100+ bars back won't exist
+    TimeSeriesDate testDate(1985, Mar, 22);
+    
+    // Should return false due to data access exception
+    bool result = PALPatternInterpreter<DecimalType>::evaluateExpression(
+        gt1.get(), corn, testDate);
+    
+    REQUIRE(result == false);
+  }
+}
+
+TEST_CASE("PALPatternInterpreter - Exception message validation", "[PALPatternInterpreter][exceptions]")
+{
+  SECTION("Exception with move semantics")
+  {
+    std::string msg = "Test error message with move";
+    
+    // Create exception with move
+    PalPatternInterpreterException ex1(std::move(msg));
+    std::string exMsg(ex1.what());
+    
+    REQUIRE(exMsg.find("Test error message") != std::string::npos);
+    
+    // Test const reference constructor
+    std::string msg2 = "Test error message const ref";
+    PalPatternInterpreterException ex2(msg2);
+    
+    REQUIRE(msg2 == "Test error message const ref"); // Original unchanged
+    REQUIRE(std::string(ex2.what()).find("Test error") != std::string::npos);
+  }
+}

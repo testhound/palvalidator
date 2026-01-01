@@ -66,6 +66,18 @@ decimal<Prec, RoundPolicy> min(const decimal<Prec, RoundPolicy>& a, const decima
     return (a < b) ? a : b;
 }
 
+// Floor function
+template<int Prec, class RoundPolicy>
+decimal<Prec, RoundPolicy> floor(const decimal<Prec, RoundPolicy>& value) {
+    return decimal<Prec, RoundPolicy>(std::floor(value.getAsDouble()));
+}
+
+// Ceiling function
+template<int Prec, class RoundPolicy>
+decimal<Prec, RoundPolicy> ceil(const decimal<Prec, RoundPolicy>& value) {
+    return decimal<Prec, RoundPolicy>(std::ceil(value.getAsDouble()));
+}
+
 } // namespace DEC_NAMESPACE
 
 // Provide std namespace overloads for compatibility
@@ -114,9 +126,19 @@ DEC_NAMESPACE::decimal<Prec, RoundPolicy> max(const DEC_NAMESPACE::decimal<Prec,
 }
 
 template<int Prec, class RoundPolicy>
-DEC_NAMESPACE::decimal<Prec, RoundPolicy> min(const DEC_NAMESPACE::decimal<Prec, RoundPolicy>& a, 
+DEC_NAMESPACE::decimal<Prec, RoundPolicy> min(const DEC_NAMESPACE::decimal<Prec, RoundPolicy>& a,
                                               const DEC_NAMESPACE::decimal<Prec, RoundPolicy>& b) {
     return DEC_NAMESPACE::min(a, b);
+}
+
+template<int Prec, class RoundPolicy>
+DEC_NAMESPACE::decimal<Prec, RoundPolicy> floor(const DEC_NAMESPACE::decimal<Prec, RoundPolicy>& value) {
+    return DEC_NAMESPACE::floor(value);
+}
+
+template<int Prec, class RoundPolicy>
+DEC_NAMESPACE::decimal<Prec, RoundPolicy> ceil(const DEC_NAMESPACE::decimal<Prec, RoundPolicy>& value) {
+    return DEC_NAMESPACE::ceil(value);
 }
 
 } // namespace std

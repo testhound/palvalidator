@@ -4,8 +4,7 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
-#ifndef __TRADING_ORDER_MANAGER_H
-#define __TRADING_ORDER_MANAGER_H 1
+#pragma once
 
 #include <memory>
 #include <functional>
@@ -349,7 +348,10 @@ namespace mkc_timeseries
 	mObservers(),
 	mPendingOrders(),
 	mPendingOrdersUpToDate(false)
-      {}
+      {
+	if (!portfolio)
+	  throw TradingOrderManagerException("TradingOrderManager: portfolio is null");
+      }
 
     /**
      * @brief Copy constructor.
@@ -709,7 +711,7 @@ namespace mkc_timeseries
      * @param positions Const reference to InstrumentPositionManager for position status checks.
      */
     template <typename T>
-    void ProcessingPendingOrders(const boost::posix_time::ptime& processingDateTime, 
+    void ProcessingPendingOrders(const boost::posix_time::ptime& processingDateTime,
 				 std::vector<std::shared_ptr<T>>& vectorContainer,
 				 const InstrumentPositionManager<Decimal>& positions)
     {
@@ -732,6 +734,10 @@ namespace mkc_timeseries
 	    {
 	      order->MarkOrderCanceled();
 	      NotifyOrderCanceled(order);
+
+	      // We are mutating the underlying order vectors, so invalidate cached pending-order map
+	      mPendingOrdersUpToDate = false;
+
 	      it = vectorContainer.erase(it);
 	      continue;
 	    }
@@ -740,7 +746,7 @@ namespace mkc_timeseries
 	  // 2) Otherwise, only consider pending orders whose orderDate is strictly
 	  //    before processingDate.
 	  //
-	  if (order->isOrderPending() 
+	  if (order->isOrderPending()
 	      && (processingDateTime > order->getOrderDateTime()))
 	    {
 	      auto symbolIt = mPortfolio->findSecurity(order->getTradingSymbol());
@@ -750,30 +756,33 @@ namespace mkc_timeseries
 		  try
 		    {
 		      auto entry = aSecurity->getTimeSeriesEntry(processingDateTime);
-		      
+
 		      // If it's an exit and position already flat, cancel
 		      if (order->isExitOrder()
-		   && positions.isFlatPosition(order->getTradingSymbol()))
-		 {
-		   order->MarkOrderCanceled();
-		   NotifyOrderCanceled(order);
-		 }
+			  && positions.isFlatPosition(order->getTradingSymbol()))
+			{
+			  order->MarkOrderCanceled();
+			  NotifyOrderCanceled(order);
+			}
 		      else
-		 {
-		   // Attempt execution via visitor
-		   ProcessOrderVisitor<Decimal> visitor(entry);
-		   visitor.visit(order.get());
+			{
+			  // Attempt execution via visitor
+			  ProcessOrderVisitor<Decimal> visitor(entry);
+			  visitor.visit(order.get());
 
-		   if (order->isOrderExecuted())
-		                          NotifyOrderExecuted(order);
-		   else
-		     {
-		       order->MarkOrderCanceled();
-		       NotifyOrderCanceled(order);
-		     }
-		 }
+			  if (order->isOrderExecuted())
+			    NotifyOrderExecuted(order);
+			  else
+			    {
+			      order->MarkOrderCanceled();
+			      NotifyOrderCanceled(order);
+			    }
+			}
 
 		      // Erase the processed order and advance iterator
+		      // We are mutating the underlying order vectors, so invalidate cached pending-order map
+		      mPendingOrdersUpToDate = false;
+
 		      it = vectorContainer.erase(it);
 		      continue;
 		    }
@@ -789,7 +798,7 @@ namespace mkc_timeseries
 	  ++it;
 	}
     }
-
+    
     /** @brief Processes pending MarketOnOpenSellOrders and MarketOnOpenCoverOrders. */
     void ProcessPendingMarketExitOrders(const boost::posix_time::ptime& processingDateTime,
 					const InstrumentPositionManager<Decimal>& positions)
@@ -864,6 +873,9 @@ namespace mkc_timeseries
      */
     void ValidateNewOrder (const std::shared_ptr<TradingOrder<Decimal>>& order) const
     {
+      if (!order)
+	throw TradingOrderManagerException("Attempt to add null trading order");
+
       if (order->isOrderExecuted())
 	throw TradingOrderManagerException ("Attempt to add executed trading order");
 
@@ -962,4 +974,3 @@ namespace mkc_timeseries
  };
 }
 
-#endif

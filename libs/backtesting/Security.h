@@ -133,6 +133,28 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      Security(Security<Decimal>&& rhs) noexcept
+	: mSecuritySymbol(std::move(rhs.mSecuritySymbol)),
+	  mSecurityName(std::move(rhs.mSecurityName)),
+	  mBigPointValue(std::move(rhs.mBigPointValue)),
+	  mTick(std::move(rhs.mTick)),
+	  mSecurityTimeSeries(std::move(rhs.mSecurityTimeSeries)),
+	  mTickDiv2(std::move(rhs.mTickDiv2))
+      {}
+
+      Security<Decimal>& operator=(Security<Decimal>&& rhs) noexcept
+      {
+	if (this != &rhs) {
+	  mSecuritySymbol = std::move(rhs.mSecuritySymbol);
+	  mSecurityName = std::move(rhs.mSecurityName);
+	  mBigPointValue = std::move(rhs.mBigPointValue);
+	  mTick = std::move(rhs.mTick);
+	  mSecurityTimeSeries = std::move(rhs.mSecurityTimeSeries);
+	  mTickDiv2 = std::move(rhs.mTickDiv2);
+	}
+	return *this;
+      }
+      
       virtual ~Security()
       {}
 
@@ -533,6 +555,20 @@ namespace mkc_timeseries
       return *this;
     }
 
+    EquitySecurity(EquitySecurity<Decimal>&& rhs) noexcept
+      : Security<Decimal>(std::move(rhs))
+    {}
+
+    // Move assignment operator
+    EquitySecurity<Decimal>& operator=(EquitySecurity<Decimal>&& rhs) noexcept
+    {
+      if (this != &rhs)
+	{
+	  Security<Decimal>::operator=(std::move(rhs));
+	}
+      return *this;
+    }
+
     /**
      * @brief Identifies this security as an equity.
      * @return `true`.
@@ -614,6 +650,20 @@ namespace mkc_timeseries
 	return *this;
 
       Security<Decimal>::operator=(rhs);
+      return *this;
+    }
+
+    FuturesSecurity(FuturesSecurity<Decimal>&& rhs) noexcept
+      : Security<Decimal>(std::move(rhs))
+    {}
+    
+    // Move assignment operator
+    FuturesSecurity<Decimal>& operator=(FuturesSecurity<Decimal>&& rhs) noexcept
+    {
+      if (this != &rhs)
+	{
+	  Security<Decimal>::operator=(std::move(rhs));
+	}
       return *this;
     }
 
