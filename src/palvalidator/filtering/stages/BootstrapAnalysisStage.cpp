@@ -495,9 +495,9 @@ namespace palvalidator::filtering::stages
                                      meanFn,
                                      bcaResampler,
                                      *ctx.clonedStrategy,
-                                     /*stage*/ 1,
+                                     BootstrapStages::BCA_MEAN,
                                      blockLength,
-                                     /*fold*/ 0);
+                                     BootstrapStages::NO_FOLD);
 
     const Num lbMean_BCa = bcaMean.getLowerBound();
     const Num annualizedLB =
@@ -514,9 +514,136 @@ namespace palvalidator::filtering::stages
     return BCaMeanResult(lbMean_BCa, annualizedLB);
   }
 
-  // ---------------------------------------------------------------------------
-  // Auto-bootstrap helper for geometric mean (CAGR)
-  // ---------------------------------------------------------------------------
+  /**
+   * @brief Run automatic bootstrap confidence interval selection for geometric mean (CAGR).
+   *
+   * @details
+   * This helper drives a StrategyAutoBootstrap instance configured for a
+   * geometric mean statistic computed from log-transformed returns. It uses
+   * stationary-block bootstrap resampling of the strategy's high-resolution
+   * returns and runs a suite of interval construction methods (Normal, Basic,
+   * Percentile, m-out-of-n, Percentile-t, BCa). The method then selects and
+   * records the resulting confidence intervals and point estimates in the
+   * provided BootstrapAnalysisResult.
+   *
+   * High-level workflow:
+   *   1. Validate the analysis context:
+   *        • Require a non-null clonedStrategy.
+   *        • Require at least one highResReturn; otherwise, log a message
+   *          and return zero.
+   *
+   *   2. Transform returns to log-growth space:
+   *        • Compute log(1 + r) for each return r in ctx.highResReturns.
+   *        • Apply ruin-aware clipping to prevent log(0) or log(negative)
+   *          using StatUtils<Decimal>::makeLogGrowthSeries() with a small
+   *          epsilon (DefaultRuinEps, typically 1e-8).
+   *        • This transformation enables stable geometric mean estimation
+   *          via arithmetic mean in log-space: exp(mean(log(1+r))) - 1.
+   *
+   *   3. Configure the bootstrap engine:
+   *        • Build a BootstrapConfiguration with the requested number of
+   *          resamples (mNumResamples), the supplied blockLength, the
+   *          confidenceLevel, and a stageTag/fold identifier for CRN stream
+   *          differentiation (typically BootstrapStages::GEO_MEAN and NO_FOLD).
+   *        • Enable the desired interval algorithms via
+   *          BootstrapAlgorithmsConfiguration (Normal, Basic, Percentile,
+   *          m-out-of-n, Percentile-t, BCa).
+   *        • Construct the geometric mean statistic functor:
+   *          GeoMeanFromLogBarsStat<Decimal>, which computes the geometric
+   *          mean by taking the arithmetic mean of log-bars and exponentiating.
+   *          This statistic uses the same winsorization defaults as GeoMeanStat.
+   *        • Instantiate StrategyAutoBootstrap with the configured statistic
+   *          and a StationaryMaskValueResamplerAdapter as the resampling
+   *          mechanism.
+   *
+   *   4. Execute the auto-bootstrap:
+   *        • Run the auto-bootstrap procedure on the log-transformed series
+   *          to obtain an AutoCIResult containing candidate intervals.
+   *        • The AutoBootstrapSelector evaluates each candidate (Normal,
+   *          Basic, Percentile, m-out-of-n, Percentile-t, BCa) using a
+   *          scoring system that penalizes instability, excessive skewness,
+   *          and unusually wide intervals.
+   *        • Select the preferred interval and populate the output
+   *          BootstrapAnalysisResult structure with:
+   *          - Chosen method name (e.g., "BCa", "PercentileT", "MOutOfN")
+   *          - Chosen method's score and penalties
+   *          - Lower bound in per-period terms (not yet annualized)
+   *          - Method diagnostics (hasBCa, BCaChosen, numCandidates, etc.)
+   *          - Bootstrap median for the geometric mean
+   *
+   *   5. Report diagnostics:
+   *        • If an observer is registered, call reportDiagnostics() to log
+   *          detailed per-candidate information for analysis and debugging.
+   *
+   * The method returns the per-period lower bound for geometric mean as a Num.
+   * This value is typically annualized by the caller using the appropriate
+   * bars-per-year factor. When bootstrapping is skipped due to insufficient
+   * data (n == 0), the method returns zero and logs a short message to the
+   * provided output stream.
+   *
+   * @note Why log-transformation?
+   * Computing geometric mean via bootstrap is numerically challenging because:
+   * - Direct product of (1+r) terms can overflow or underflow
+   * - Geometric mean is highly sensitive to outliers and extreme returns
+   * - Standard bootstrap resampling can produce degenerate samples (all negative)
+   *
+   * Log-transformation solves these issues:
+   * - Converts products to sums: prod(1+r) = exp(sum(log(1+r)))
+   * - Makes the problem numerically stable (log-space arithmetic)
+   * - Enables standard bootstrap theory (CLT applies to arithmetic means)
+   * - Ruin clipping prevents log(0) or log(negative) from catastrophic losses
+   *
+   * @param ctx
+   *     StrategyAnalysisContext holding the cloned strategy instance and its
+   *     precomputed high-resolution return series (ctx.highResReturns). These
+   *     returns are typically mark-to-market returns at the strategy's native
+   *     frequency (e.g., daily bars for a daily strategy).
+   *
+   * @param confidenceLevel
+   *     Target confidence level for the intervals (for example 0.90, 0.95, 0.99).
+   *     Common values are 0.95 (95% CI) or 0.90 (90% CI).
+   *
+   * @param blockLength
+   *     Stationary-block bootstrap mean block length to use when resampling
+   *     the highResReturns series. Typically computed as max(median_hold_period,
+   *     n^(1/3)) to balance capturing temporal dependence with asymptotic
+   *     validity. See computeBlockLength() for the exact formula.
+   *
+   * @param out
+   *     BootstrapAnalysisResult that will be populated with the chosen geometric
+   *     mean point estimate, confidence intervals, and method diagnostics. The
+   *     following fields are set:
+   *     - geoAutoCIChosenMethod: Name of the selected bootstrap method
+   *     - geoAutoCIChosenScore: Composite score of the selected method
+   *     - geoAutoCIStabilityPenalty: Stability penalty component of score
+   *     - geoAutoCILengthPenalty: Length penalty component of score
+   *     - geoAutoCIHasBCaCandidate: Whether BCa was successfully computed
+   *     - geoAutoCIBCaChosen: Whether BCa was the selected method
+   *     - geoAutoCINumCandidates: Total number of candidate methods evaluated
+   *     - medianGeo: Bootstrap median of the geometric mean (as std::optional<Num>)
+   *
+   * @param os
+   *     Output stream used for logging progress and any reasons why the
+   *     bootstrap was skipped (for example, n == 0). Logs include method
+   *     selection, confidence bounds, and diagnostic information.
+   *
+   * @return
+   *     The per-period lower bound for geometric mean (Num). This is the lower
+   *     confidence bound for the average per-bar growth rate. The caller should
+   *     annualize this value using:
+   *     annualizedLB = Annualizer<Num>::annualize_one(lbGeoPer, barsPerYear)
+   *     
+   *     If the bootstrap is skipped (for example, ctx.highResReturns.empty()),
+   *     returns DecimalConstants<Decimal>::DecimalZero.
+   *
+   * @throws std::runtime_error if ctx.clonedStrategy is null.
+   *
+   * @see runAutoProfitFactorBootstrap() for a similar auto-bootstrap for profit factor
+   * @see StrategyAutoBootstrap for the auto-selection bootstrap orchestrator
+   * @see AutoBootstrapSelector for the candidate scoring and selection logic
+   * @see GeoMeanFromLogBarsStat for the geometric mean statistic implementation
+   * @see StatUtils<Decimal>::makeLogGrowthSeries() for log-transformation details
+   */
   Num
   BootstrapAnalysisStage::runAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
 					      double                        confidenceLevel,
@@ -543,8 +670,8 @@ namespace palvalidator::filtering::stages
 	return mkc_timeseries::DecimalConstants<Decimal>::DecimalZero;
       }
 
-    const std::uint64_t stageTag = 1;
-    const std::uint64_t fold     = 0;
+    const std::uint64_t stageTag = BootstrapStages::GEO_MEAN;
+    const std::uint64_t fold     = BootstrapStages::NO_FOLD;
 
     BootstrapConfiguration cfg(
 			       mNumResamples,
@@ -785,8 +912,8 @@ namespace palvalidator::filtering::stages
     // -----------------------------------------------------------------------
     // Configure Bootstrap Engines
     // -----------------------------------------------------------------------
-    const std::uint64_t stageTag = 2;
-    const std::uint64_t fold     = 0;
+    const std::uint64_t stageTag = BootstrapStages::PROFIT_FACTOR;
+    const std::uint64_t fold     = BootstrapStages::NO_FOLD;
 
     BootstrapConfiguration cfg(
 			       mNumResamples,

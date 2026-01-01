@@ -14,6 +14,45 @@ namespace palvalidator::filtering::stages
 
   using palvalidator::bootstrap_cfg::BootstrapFactory;
 
+  /**
+   * @brief Stage tag and fold constants for Common Random Number (CRN) stream differentiation.
+   *
+   * These constants are used as stageTag and fold parameters when creating bootstrap engines
+   * to ensure that different statistical metrics and cross-validation folds draw from
+   * independent random number streams. This is critical for proper bootstrap variance
+   * estimation - each metric should have its own random stream to avoid artificial
+   * correlation in the results.
+   *
+   * The hierarchical CRN key structure is:
+   *   masterSeed -> strategyId -> stageTag -> blockLength -> fold -> replicate
+   *
+   * Stage tags differentiate between different statistical metrics (mean, geometric mean,
+   * profit factor, etc.). Fold values differentiate between cross-validation folds or
+   * other analysis subdivisions within the same metric.
+   *
+   * @see TradingBootstrapFactory::makeCRNKey()
+   * @see mkc_timeseries::rng_utils::CRNKey
+   */
+  namespace BootstrapStages
+  {
+    /// BCa bootstrap for arithmetic mean (used in runBCaMeanBootstrap)
+    constexpr std::uint64_t BCA_MEAN = 0;
+    
+    /// Auto-selection bootstrap for geometric mean / CAGR (used in runAutoGeoBootstrap)
+    constexpr std::uint64_t GEO_MEAN = 1;
+    
+    /// Auto-selection bootstrap for profit factor (used in runAutoProfitFactorBootstrap)
+    constexpr std::uint64_t PROFIT_FACTOR = 2;
+
+    // ========== Fold Values (Cross-Validation or Analysis Subdivision) ==========
+    
+    /// No cross-validation; single full-sample bootstrap analysis
+    constexpr std::uint64_t NO_FOLD = 0;
+    
+    /// First fold in cross-validation (use NO_FOLD + 1, NO_FOLD + 2, etc. for additional folds)
+    constexpr std::uint64_t FOLD_1 = 1;
+  }
+  
   class BootstrapAnalysisStage
   {
   public:
