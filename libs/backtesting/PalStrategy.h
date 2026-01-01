@@ -943,44 +943,92 @@ namespace mkc_timeseries
 
     /**
      * @brief Evaluate and submit exit orders for long positions on this bar.
+     *
+     * @details
+     * Called before entry each bar. For long trades, submits:
+     * - Market exit at max holding period (highest priority)
+     * - A limit exit at the profit-target price
+     * - A stop-loss exit at the stop price
+     * - Records the exit bar's P&L in the high-res series
+     *
+     * FIXED: Now checks each unit individually for max holding period,
+     * not just the newest unit. Each unit exits independently when it
+     * reaches max holding period.
+     *
+     * @param aSecurity          Security to exit
+     * @param instrPos           InstrumentPosition for the current bar
+     * @param processingDateTime Date/Time of this bar
      */
     void eventExitOrders (Security<Decimal>* aSecurity,
-                          const InstrumentPosition<Decimal>& instrPos,
-                          const ptime& processingDateTime) override
+			  const InstrumentPosition<Decimal>& instrPos,
+			  const ptime& processingDateTime) override
     {
       if (this->isLongPosition (aSecurity->getSymbol()))
-      {
-        // NEW: Check for 8-bar exit rule first (takes priority)
-        uint32_t numUnits = instrPos.getNumPositionUnits();
-        if (numUnits > 0)
-        {
-          auto it = instrPos.getInstrumentPosition(numUnits);
-          auto pos = *it;
-
+	{
+	  std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
+    
+	  Decimal target = pattern->getProfitTargetAsDecimal();
+	  PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
+	  Decimal stop = pattern->getStopLossAsDecimal();
+	  PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
+    
+	  // Get number of open position units
+	  uint32_t numUnits = instrPos.getNumPositionUnits();
+    
+	  // Check each unit for max holding period (iterate newest to oldest for safety)
 	  unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
-	  
-          if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
-          {
-            this->ExitLongAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
-            return; // Don't place other exit orders
-          }
-        }
-
-        // EXISTING: Profit target and stop loss logic
-        std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
-
-        Decimal target = pattern->getProfitTargetAsDecimal();
-        PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-        Decimal stop = pattern->getStopLossAsDecimal();
-        PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
-        Decimal fillPrice = instrPos.getFillPrice();
-
-        this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
-                                      fillPrice, targetAsPercent);
-        this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
-                                     fillPrice, stopAsPercent);
-        instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
-      }
+    
+	  if (maxHold > 0)
+	    {
+	      // Check each unit individually
+	      for (uint32_t unitNum = numUnits; unitNum >= 1; --unitNum)
+		{
+		  auto it = instrPos.getInstrumentPosition(unitNum);
+		  if (it == instrPos.endInstrumentPosition())
+		    continue; // Unit doesn't exist (shouldn't happen, but be safe)
+        
+		  auto pos = *it;
+        
+		  // If THIS unit has reached max holding period, exit it at market
+		  if (pos->getNumBarsSinceEntry() >= maxHold)
+		    {
+		      this->ExitLongUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
+		      // Note: We don't return here - continue checking other units
+		      // Also don't place profit/stop orders for this unit since it's exiting at market
+		      continue;
+		    }
+        
+		  // Unit hasn't reached max holding - place normal profit/stop orders
+		  Decimal fillPrice = pos->getEntryPrice();
+        
+		  // Place profit target for this unit
+		  this->ExitLongUnitAtLimit(aSecurity->getSymbol(), processingDateTime,
+					    fillPrice, targetAsPercent, unitNum);
+        
+		  // Place stop loss for this unit (if stop > 0)
+		  if (stopAsPercent.getAsPercent() > DecimalConstants<Decimal>::DecimalZero)
+		    {
+		      this->ExitLongUnitAtStop(aSecurity->getSymbol(), processingDateTime,
+					       fillPrice, stopAsPercent, unitNum);
+		    }
+        
+		  // Update R-multiple tracking for this unit
+		  instrPos.setRMultipleStop(LongStopLoss<Decimal>(fillPrice, stopAsPercent).getStopLoss(), unitNum);
+		}
+	    }
+	  else
+	    {
+	      // No max holding period - place profit/stop for all units
+	      // Use the simplified "all units" methods
+	      Decimal fillPrice = instrPos.getFillPrice();
+      
+	      this->ExitLongAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
+					    fillPrice, targetAsPercent);
+	      this->ExitLongAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
+					   fillPrice, stopAsPercent);
+	      instrPos.setRMultipleStop (LongStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+	    }
+	}
     }
 
     /**
@@ -1107,55 +1155,92 @@ namespace mkc_timeseries
      * @brief Evaluate and submit exit orders for short positions on this bar.
      *
      * @details
-     * Called before entry each bar.  For short trades, submits:
-     * - A limit‐to‐cover at the profit‐target price.
-     * - A stop‐to‐cover at the stop‐loss price.
-     * - Records the exit bar’s P&L in the high‐res series.
+     * Called before entry each bar. For short trades, submits:
+     * - Market exit at max holding period (highest priority)
+     * - A limit-to-cover at the profit-target price
+     * - A stop-to-cover at the stop-loss price
+     * - Records the exit bar's P&L in the high-res series
      *
-     * @param aSecurity			Security to exit.
-     * @param instrPos			InstrumentPosition for the current bar.
-     * @param processingDateTime	Date/Time of this bar.
-       */
-
+     * FIXED: Now checks each unit individually for max holding period,
+     * not just the newest unit. Each unit exits independently when it
+     * reaches max holding period.
+     *
+     * @param aSecurity          Security to exit
+     * @param instrPos           InstrumentPosition for the current bar
+     * @param processingDateTime Date/Time of this bar
+     */
     void eventExitOrders (Security<Decimal>* aSecurity,
-                          const InstrumentPosition<Decimal>& instrPos,
-                          const ptime& processingDateTime) override
+			  const InstrumentPosition<Decimal>& instrPos,
+			  const ptime& processingDateTime) override
     {
       if (this->isShortPosition (aSecurity->getSymbol()))
-      {
-        // NEW: Check for 8-bar exit rule first (takes priority)
-        uint32_t numUnits = instrPos.getNumPositionUnits();
-        if (numUnits > 0)
-        {
-          auto it = instrPos.getInstrumentPosition(numUnits);
-          auto pos = *it;
-
+	{
+	  std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
+    
+	  Decimal target = pattern->getProfitTargetAsDecimal();
+	  PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
+	  Decimal stop = pattern->getStopLossAsDecimal();
+	  PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
+    
+	  // Get number of open position units
+	  uint32_t numUnits = instrPos.getNumPositionUnits();
+    
+	  // Check each unit for max holding period (iterate newest to oldest for safety)
 	  unsigned int maxHold = this->getStrategyOptions().getMaxHoldingPeriod();
-          if (maxHold > 0 && pos->getNumBarsSinceEntry() >= maxHold)
-          {
-            // Exit all units at market after maxHold bars
-            this->ExitShortAllUnitsAtOpen(aSecurity->getSymbol(), processingDateTime);
-            return; // Don't place other exit orders
-          }
-        }
-
-        // EXISTING: Profit target and stop loss logic
-        std::shared_ptr<PriceActionLabPattern> pattern = this->getPalPattern();
-
-        Decimal target = pattern->getProfitTargetAsDecimal();
-        PercentNumber<Decimal> targetAsPercent = PercentNumber<Decimal>::createPercentNumber (target);
-        Decimal stop = pattern->getStopLossAsDecimal();
-        PercentNumber<Decimal> stopAsPercent = PercentNumber<Decimal>::createPercentNumber (stop);
-        Decimal fillPrice = instrPos.getFillPrice();
-
-        this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
-                                       fillPrice, targetAsPercent);
-        this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
-                                      fillPrice, stopAsPercent);
-        instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
-      }
+    
+	  if (maxHold > 0)
+	    {
+	      // Check each unit individually
+	      for (uint32_t unitNum = numUnits; unitNum >= 1; --unitNum)
+		{
+		  auto it = instrPos.getInstrumentPosition(unitNum);
+		  if (it == instrPos.endInstrumentPosition())
+		    continue; // Unit doesn't exist (shouldn't happen, but be safe)
+        
+		  auto pos = *it;
+        
+		  // If THIS unit has reached max holding period, exit it at market
+		  if (pos->getNumBarsSinceEntry() >= maxHold)
+		    {
+		      this->ExitShortUnitOnOpen(aSecurity->getSymbol(), processingDateTime, unitNum);
+		      // Note: We don't return here - continue checking other units
+		      // Also don't place profit/stop orders for this unit since it's exiting at market
+		      continue;
+		    }
+        
+		  // Unit hasn't reached max holding - place normal profit/stop orders
+		  Decimal fillPrice = pos->getEntryPrice();
+        
+		  // Place profit target for this unit
+		  this->ExitShortUnitAtLimit(aSecurity->getSymbol(), processingDateTime,
+					     fillPrice, targetAsPercent, unitNum);
+        
+		  // Place stop loss for this unit (if stop > 0)
+		  if (stopAsPercent.getAsPercent() > DecimalConstants<Decimal>::DecimalZero)
+		    {
+		      this->ExitShortUnitAtStop(aSecurity->getSymbol(), processingDateTime,
+						fillPrice, stopAsPercent, unitNum);
+		    }
+        
+		  // Update R-multiple tracking for this unit
+		  instrPos.setRMultipleStop(ShortStopLoss<Decimal>(fillPrice, stopAsPercent).getStopLoss(), unitNum);
+		}
+	    }
+	  else
+	    {
+	      // No max holding period - place profit/stop for all units
+	      // Use the simplified "all units" methods
+	      Decimal fillPrice = instrPos.getFillPrice();
+      
+	      this->ExitShortAllUnitsAtLimit(aSecurity->getSymbol(), processingDateTime,
+					     fillPrice, targetAsPercent);
+	      this->ExitShortAllUnitsAtStop(aSecurity->getSymbol(), processingDateTime,
+					    fillPrice, stopAsPercent);
+	      instrPos.setRMultipleStop (ShortStopLoss<Decimal> (fillPrice, stopAsPercent).getStopLoss());
+	    }
+	}
     }
-
+    
     /**
      * @brief Evaluate and submit new short‐entry orders based on the pattern.
      *
