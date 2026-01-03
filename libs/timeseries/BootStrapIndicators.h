@@ -8,9 +8,10 @@
 #define __BOOTSTRAPPED_INDICATORS_H
 
 #include <functional>
-#include <cmath> 
+#include <cmath>
 #include <stdexcept>
 #include <algorithm>
+#include <iostream>
 
 // Include your two existing headers
 #include "TimeSeriesIndicators.h"
@@ -335,31 +336,73 @@ namespace mkc_timeseries
       const size_t n = rocVec.size();
       size_t L;
       
+      std::cout << "[BootStrapIndicators] Block Length Calculation for n=" << n << " observations:" << std::endl;
+      
       // Use ACF-based block length calculation for larger series (n >= 100)
       if (n >= 100) {
+        std::cout << "  Method: ACF-based (n >= 100)" << std::endl;
         try {
           // Compute ACF with reasonable parameters
           const std::size_t maxACFLag = std::min<std::size_t>(20, n - 1);
           const unsigned int minACFL = 2;
           const unsigned int maxACFL = 12;
           
-          // Convert percent returns to log returns for ACF calculation
-          auto logReturns = StatUtils<Decimal>::percentBarsToLogBars(rocVec);
+	  std::vector<Decimal> decimalReturns;
+	  decimalReturns.reserve(rocVec.size());
+	  const Decimal hundred = DecimalConstants<Decimal>::createDecimal("100.0");
+	  for (const auto& roc_pct : rocVec) {
+	    decimalReturns.push_back(roc_pct / hundred);
+	  }
+	  
+	  // Convert decimal returns to log returns
+	  auto logReturns = StatUtils<Decimal>::percentBarsToLogBars(decimalReturns);
           
           // Compute ACF and suggest block length
           const auto acf = StatUtils<Decimal>::computeACF(logReturns, maxACFLag);
-          unsigned int L_acf = StatUtils<Decimal>::suggestStationaryBlockLengthFromACF(
-              acf, n, minACFL, maxACFL);
           
-          L = static_cast<std::size_t>(L_acf);
+          // Compute both thresholds
+	  double stat_thresh = 2.0 / std::sqrt(static_cast<double>(n));
+	  double prac_thresh = std::min(0.05, 2.5 / std::sqrt(static_cast<double>(n)));
+	  double threshold = std::max(stat_thresh, prac_thresh);
+
+	  // Find last significant lag using hybrid threshold
+	  unsigned int L_acf = minACFL;
+	  for (std::size_t k = 1; k < acf.size(); ++k) {
+	    if (std::fabs(acf[k].getAsDouble()) > threshold) {
+	      L_acf = static_cast<unsigned int>(k);
+	    }
+	  }
+	  L_acf = std::max(minACFL, std::min(maxACFL, L_acf));
+	  L = static_cast<std::size_t>(L_acf);
+
+	  std::cout << "  Statistical threshold: " << stat_thresh << std::endl;
+	  std::cout << "  Practical threshold: " << prac_thresh << std::endl;
+	  std::cout << "  Using threshold: " << threshold << std::endl;
+          
+          // Print ACF diagnostic information
+          std::cout << "  ACF analysis: maxLag=" << maxACFLag << ", range=[" << minACFL << "," << maxACFL << "]" << std::endl;
+          std::cout << "  ACF values: ";
+          for (std::size_t i = 0; i < std::min<std::size_t>(acf.size(), 10); ++i) {
+            std::cout << "ρ[" << i << "]=" << acf[i] << " ";
+          }
+          if (acf.size() > 10) std::cout << "...";
+          std::cout << std::endl;
+          std::cout << "  ACF-suggested block length: L=" << L << std::endl;
+          
         } catch (const std::exception& e) {
           // Fallback to n^(1/3) heuristic if ACF calculation fails
           L = std::max<size_t>(2, static_cast<size_t>(std::pow(static_cast<double>(n), 1.0/3.0)));
+          std::cout << "  ACF calculation failed (" << e.what() << ")" << std::endl;
+          std::cout << "  Fallback to n^(1/3) heuristic: L=" << L << std::endl;
         }
       } else {
+        std::cout << "  Method: n^(1/3) heuristic (n < 100)" << std::endl;
         // Use original n^(1/3) heuristic for smaller series
         L = std::max<size_t>(2, static_cast<size_t>(std::pow(static_cast<double>(n), 1.0/3.0)));
+        std::cout << "  Calculated block length: L=" << L << std::endl;
       }
+      
+      std::cout << "  Final block length used: L=" << L << std::endl << std::endl;
       
       StationaryBlockResampler<Decimal> blockSampler(L);
 
