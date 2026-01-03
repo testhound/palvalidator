@@ -463,11 +463,11 @@ TEST_CASE ("StrategyBroker operations", "[StrategyBroker]")
 
   // -------------------- Exception Tests: Short Side --------------------
 
-  SECTION("StrategyBroker does nothing on ExitShortAllUnitsOnOpen when flat")
+  SECTION("StrategyBroker throws on ExitShortAllUnitsOnOpen when flat")
     {
-      // Currently this method does not throw; ensure no orders are queued
-      aBroker.ExitShortAllUnitsOnOpen(futuresSymbol, {1986, May, 28});
-      REQUIRE(aBroker.beginPendingOrders() == aBroker.endPendingOrders());
+      REQUIRE_THROWS_AS(
+        aBroker.ExitShortAllUnitsOnOpen(futuresSymbol, {1986, May, 28}),
+        StrategyBrokerException);
     }
 
   SECTION("StrategyBroker throws on ExitShortAllUnitsAtLimit when flat")
@@ -941,5 +941,432 @@ TEST_CASE("StrategyBroker constructor validation", "[StrategyBroker][constructor
     
     // This should not throw
     REQUIRE_NOTHROW(StrategyBroker<DecimalType>(validPortfolio));
+  }
+}
+
+TEST_CASE("Copy constructor re-registers observer - CRITICAL BUG TEST", "[StrategyBroker][copy][critical]")
+{
+  // Setup: Create a portfolio and original broker
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+  std::string futuresName("Corn futures");
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, futuresName, cornBigPointValue, cornTickValue, p
+  );
+
+  std::string portName("Test Portfolio");
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>(portName);
+  portfolio->addSecurity(corn);
+
+  // Create original broker
+  StrategyBroker<DecimalType> broker1(portfolio);
+  
+  SECTION("Copied broker receives order execution notifications")
+  {
+    // Create a copy of the broker
+    StrategyBroker<DecimalType> broker2(broker1);  // COPY CONSTRUCTOR
+    
+    // Both brokers should be flat initially
+    REQUIRE(broker1.isFlatPosition(futuresSymbol));
+    REQUIRE(broker2.isFlatPosition(futuresSymbol));
+    
+    // Add an order to broker2 (the copy)
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate orderDate(1985, Nov, 14);
+    broker2.EnterLongOnOpen(futuresSymbol, orderDate, oneContract);
+    
+    // Verify order is pending
+    REQUIRE_FALSE(broker2.beginPendingOrders() == broker2.endPendingOrders());
+    
+    // Process the order
+    TimeSeriesDate executionDate(1985, Nov, 15);
+    broker2.ProcessPendingOrders(executionDate);
+    
+    // CRITICAL TEST: If observer was registered, position should be long
+    // If observer was NOT registered, position will still be flat (BUG!)
+    REQUIRE(broker2.isLongPosition(futuresSymbol));
+    
+    // Also verify the transaction was created
+    REQUIRE(broker2.getTotalTrades() == 1);
+    REQUIRE(broker2.getOpenTrades() == 1);
+    
+    // Verify broker1 is unaffected
+    REQUIRE(broker1.isFlatPosition(futuresSymbol));
+    REQUIRE(broker1.getTotalTrades() == 0);
+  }
+}
+
+// ============================================================================
+// CRITICAL TEST 2: Complementary Order Cancellation
+// ============================================================================
+
+TEST_CASE("Complementary orders are canceled when one executes", "[StrategyBroker][orders][critical]")
+{
+  // Setup
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+  std::string futuresName("Corn futures");
+  DecimalType cornBigPointValue(createDecimal("50.0"));
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, futuresName, cornBigPointValue, cornTickValue, p
+  );
+
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test Portfolio");
+  portfolio->addSecurity(corn);
+  StrategyBroker<DecimalType> broker(portfolio);
+
+  SECTION("Limit order execution cancels stop order")
+  {
+    // Enter a long position
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate entryDate(1985, Nov, 14);
+    broker.EnterLongOnOpen(futuresSymbol, entryDate, oneContract);
+    
+    // Execute the entry
+    TimeSeriesDate entryExecDate(1985, Nov, 15);
+    broker.ProcessPendingOrders(entryExecDate);
+    REQUIRE(broker.isLongPosition(futuresSymbol));
+    
+    // Get entry price for calculating stop
+    auto instrPos = broker.getInstrumentPosition(futuresSymbol);
+    auto posIterator = instrPos.getInstrumentPosition(1);
+    DecimalType entryPrice = (*posIterator)->getEntryPrice();
+    
+    // Place BOTH limit (profit target) and stop (stop loss) orders
+    TimeSeriesDate exitOrderDate(1985, Nov, 18);
+    DecimalType limitPrice = entryPrice + createDecimal("5.00");  // Above entry
+    DecimalType stopPrice = entryPrice - createDecimal("2.00");   // Below entry
+    
+    broker.ExitLongAllUnitsAtLimit(futuresSymbol, exitOrderDate, limitPrice);
+    broker.ExitLongAllUnitsAtStop(futuresSymbol, exitOrderDate, stopPrice);
+    
+    // Verify both orders are pending
+    int pendingCount = 0;
+    for (auto it = broker.beginPendingOrders(); it != broker.endPendingOrders(); ++it) {
+      pendingCount++;
+    }
+    REQUIRE(pendingCount == 2);  // Both limit and stop should be pending
+    
+    // Process a bar where the limit order triggers (price goes UP)
+    TimeSeriesDate limitExecDate(1985, Nov, 19);
+    
+    // The limit should execute when this bar processes
+    // After execution, the stop order should be automatically canceled
+    broker.ProcessPendingOrders(limitExecDate);
+    
+    // CRITICAL TEST: Position should be flat (exited via limit)
+    REQUIRE(broker.isFlatPosition(futuresSymbol));
+    
+    // CRITICAL TEST: No more pending orders (stop was canceled)
+    REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+    
+    // Verify trade is closed
+    REQUIRE(broker.getClosedTrades() == 1);
+    REQUIRE(broker.getOpenTrades() == 0);
+  }
+  
+  SECTION("Stop order execution cancels limit order")
+  {
+    // Enter a long position
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate entryDate(1985, Nov, 14);
+    broker.EnterLongOnOpen(futuresSymbol, entryDate, oneContract);
+    
+    // Execute the entry
+    TimeSeriesDate entryExecDate(1985, Nov, 15);
+    broker.ProcessPendingOrders(entryExecDate);
+    REQUIRE(broker.isLongPosition(futuresSymbol));
+    
+    // Get entry price
+    auto instrPos = broker.getInstrumentPosition(futuresSymbol);
+    auto posIterator = instrPos.getInstrumentPosition(1);
+    DecimalType entryPrice = (*posIterator)->getEntryPrice();
+    
+    // Place BOTH limit and stop orders
+    TimeSeriesDate exitOrderDate(1985, Nov, 18);
+    DecimalType limitPrice = entryPrice + createDecimal("5.00");
+    DecimalType stopPrice = entryPrice - createDecimal("2.00");
+    
+    broker.ExitLongAllUnitsAtLimit(futuresSymbol, exitOrderDate, limitPrice);
+    broker.ExitLongAllUnitsAtStop(futuresSymbol, exitOrderDate, stopPrice);
+    
+    // This time, process a bar where price goes DOWN (stop triggers, limit doesn't)
+    TimeSeriesDate stopExecDate(1985, Nov, 19);
+    broker.ProcessPendingOrders(stopExecDate);
+    
+    // CRITICAL TEST: Position should be flat (exited via stop)
+    REQUIRE(broker.isFlatPosition(futuresSymbol));
+    
+    // CRITICAL TEST: No more pending orders (limit was canceled)
+    REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+    
+    // Verify trade is closed
+    REQUIRE(broker.getClosedTrades() == 1);
+  }
+}
+
+// ============================================================================
+// CRITICAL TEST 3: Copy Assignment Re-registers Observer
+// ============================================================================
+
+TEST_CASE("Copy assignment re-registers observer", "[StrategyBroker][copy][assignment]")
+{
+  // Setup two portfolios
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, "Corn", createDecimal("50.0"), cornTickValue, p
+  );
+
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Portfolio");
+  portfolio->addSecurity(corn);
+
+  StrategyBroker<DecimalType> broker1(portfolio);
+  StrategyBroker<DecimalType> broker2(portfolio);
+
+  SECTION("Assignment operator copies state and re-registers observer")
+  {
+    // Add order to broker1
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate orderDate(1985, Nov, 14);
+    broker1.EnterLongOnOpen(futuresSymbol, orderDate, oneContract);
+    
+    // Assign broker1 to broker2
+    broker2 = broker1;  // COPY ASSIGNMENT
+    
+    // Process orders on broker2
+    TimeSeriesDate execDate(1985, Nov, 15);
+    broker2.ProcessPendingOrders(execDate);
+    
+    // CRITICAL: If observer was registered, position should update
+    REQUIRE(broker2.isLongPosition(futuresSymbol));
+    REQUIRE(broker2.getTotalTrades() == 1);
+  }
+  
+  SECTION("Self-assignment is safe")
+  {
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate orderDate(1985, Nov, 14);
+    broker1.EnterLongOnOpen(futuresSymbol, orderDate, oneContract);
+    
+    // Self-assignment should not crash or corrupt state
+    broker1 = broker1;
+    
+    // Broker should still work
+    TimeSeriesDate execDate(1985, Nov, 15);
+    broker1.ProcessPendingOrders(execDate);
+    REQUIRE(broker1.isLongPosition(futuresSymbol));
+  }
+}
+
+// ============================================================================
+// CRITICAL TEST 4: Move Semantics
+// ============================================================================
+
+TEST_CASE("Move constructor transfers state", "[StrategyBroker][move]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, "Corn", createDecimal("50.0"), cornTickValue, p
+  );
+
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Portfolio");
+  portfolio->addSecurity(corn);
+
+  SECTION("Move constructor transfers orders and positions")
+  {
+    StrategyBroker<DecimalType> broker1(portfolio);
+    
+    // Add order to broker1
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate orderDate(1985, Nov, 14);
+    broker1.EnterLongOnOpen(futuresSymbol, orderDate, oneContract);
+    
+    // Move broker1 to broker2
+    StrategyBroker<DecimalType> broker2(std::move(broker1));
+    
+    // broker2 should have the order
+    REQUIRE_FALSE(broker2.beginPendingOrders() == broker2.endPendingOrders());
+    
+    // Process and verify broker2 works
+    TimeSeriesDate execDate(1985, Nov, 15);
+    broker2.ProcessPendingOrders(execDate);
+    REQUIRE(broker2.isLongPosition(futuresSymbol));
+  }
+}
+
+TEST_CASE("Move assignment transfers state", "[StrategyBroker][move]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, "Corn", createDecimal("50.0"), cornTickValue, p
+  );
+
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Portfolio");
+  portfolio->addSecurity(corn);
+
+  SECTION("Move assignment operator works correctly")
+  {
+    StrategyBroker<DecimalType> broker1(portfolio);
+    StrategyBroker<DecimalType> broker2(portfolio);
+    
+    // Add order to broker1
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate orderDate(1985, Nov, 14);
+    broker1.EnterLongOnOpen(futuresSymbol, orderDate, oneContract);
+    
+    // Move-assign broker1 to broker2
+    broker2 = std::move(broker1);
+    
+    // broker2 should have the order
+    REQUIRE_FALSE(broker2.beginPendingOrders() == broker2.endPendingOrders());
+    
+    // Process and verify
+    TimeSeriesDate execDate(1985, Nov, 15);
+    broker2.ProcessPendingOrders(execDate);
+    REQUIRE(broker2.isLongPosition(futuresSymbol));
+  }
+}
+
+// ============================================================================
+// HIGH PRIORITY TEST: Exception Handling
+// ============================================================================
+
+TEST_CASE("Exception handling for invalid operations", "[StrategyBroker][exceptions]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, "Corn", createDecimal("50.0"), cornTickValue, p
+  );
+
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Portfolio");
+  portfolio->addSecurity(corn);
+  StrategyBroker<DecimalType> broker(portfolio);
+
+  SECTION("Exiting non-existent long position throws exception")
+  {
+    TimeSeriesDate exitDate(1985, Nov, 14);
+    
+    // Try to exit a position that doesn't exist
+    REQUIRE_THROWS_AS(
+      broker.ExitLongAllUnitsOnOpen(futuresSymbol, exitDate),  // REMOVED oneContract
+      StrategyBrokerException
+    );
+  }
+  
+  SECTION("Exiting wrong direction throws exception")
+  {
+    // Enter a LONG position
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate entryDate(1985, Nov, 14);
+    broker.EnterLongOnOpen(futuresSymbol, entryDate, oneContract);
+    
+    TimeSeriesDate execDate(1985, Nov, 15);
+    broker.ProcessPendingOrders(execDate);
+    REQUIRE(broker.isLongPosition(futuresSymbol));
+    
+    // Try to exit as if it were a SHORT position
+    TimeSeriesDate exitDate(1985, Nov, 16);
+    REQUIRE_THROWS_AS(
+      broker.ExitShortAllUnitsOnOpen(futuresSymbol, exitDate),  // REMOVED oneContract
+      StrategyBrokerException
+    );
+  }
+}
+
+// ============================================================================
+// INTEGRATION TEST: Copy Independence
+// ============================================================================
+
+TEST_CASE("Copied brokers are truly independent", "[StrategyBroker][copy][integration]")
+{
+  DecimalType cornTickValue(createDecimal("0.25"));
+  PALFormatCsvReader<DecimalType> csvFile("C2_122AR.txt", TimeFrame::DAILY, TradingVolume::CONTRACTS, cornTickValue);
+  csvFile.readFile();
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> p = csvFile.getTimeSeries();
+  std::string futuresSymbol("@C");
+
+  auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+    futuresSymbol, "Corn", createDecimal("50.0"), cornTickValue, p
+  );
+
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Portfolio");
+  portfolio->addSecurity(corn);
+
+  SECTION("Operations on copied broker don't affect original")
+  {
+    StrategyBroker<DecimalType> broker1(portfolio);
+    
+    // Enter position in broker1
+    TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+    TimeSeriesDate date1(1985, Nov, 14);
+    broker1.EnterLongOnOpen(futuresSymbol, date1, oneContract);
+    broker1.ProcessPendingOrders(TimeSeriesDate(1985, Nov, 15));
+    
+    REQUIRE(broker1.isLongPosition(futuresSymbol));
+    REQUIRE(broker1.getTotalTrades() == 1);
+    
+    // Copy broker1 to broker2
+    StrategyBroker<DecimalType> broker2(broker1);
+    
+    // broker2 should have same state initially
+    REQUIRE(broker2.isLongPosition(futuresSymbol));
+    REQUIRE(broker2.getTotalTrades() == 1);
+    
+    // First exit the long position in broker2, then enter a new short position
+    TimeSeriesDate exitDate(1985, Nov, 17);
+    broker2.ExitLongAllUnitsOnOpen(futuresSymbol, exitDate);
+    broker2.ProcessPendingOrders(TimeSeriesDate(1985, Nov, 18));
+    
+    // Verify broker2 is now flat
+    REQUIRE(broker2.isFlatPosition(futuresSymbol));
+    REQUIRE(broker2.getClosedTrades() == 1);
+    
+    // Now enter a NEW short position in broker2
+    TimeSeriesDate date2(1985, Nov, 19);
+    broker2.EnterShortOnOpen(futuresSymbol, date2, oneContract);
+    broker2.ProcessPendingOrders(TimeSeriesDate(1985, Nov, 20));
+    
+    // broker2 should now have 2 trades
+    REQUIRE(broker2.getTotalTrades() == 2);
+    
+    // broker1 should still have only 1 trade
+    REQUIRE(broker1.getTotalTrades() == 1);
+    REQUIRE(broker1.isLongPosition(futuresSymbol));
   }
 }

@@ -80,6 +80,32 @@ createBasicShortTransaction(const std::string& symbol, const std::string& dateSt
   return std::make_shared<StrategyTransaction<Decimal>>(entryOrder, position);
 }
 
+// NEW: Helper function to complete a long transaction
+template <class Decimal>
+void completeTransaction(std::shared_ptr<StrategyTransaction<Decimal>>& transaction,
+                        const std::string& symbol,
+                        const std::string& exitDate,
+                        const std::string& exitPrice)
+{
+  auto exitOrder = std::make_shared<MarketOnOpenSellOrder<Decimal>>(
+    symbol, createShareVolume(1), createDate(exitDate));
+  exitOrder->MarkOrderExecuted(createDate(exitDate), createDecimal(exitPrice));
+  transaction->completeTransaction(exitOrder);
+}
+
+// NEW: Helper function to complete a short transaction
+template <class Decimal>
+void completeShortTransaction(std::shared_ptr<StrategyTransaction<Decimal>>& transaction,
+                              const std::string& symbol,
+                              const std::string& exitDate,
+                              const std::string& exitPrice)
+{
+  auto exitOrder = std::make_shared<MarketOnOpenCoverOrder<Decimal>>(
+    symbol, createShareVolume(1), createDate(exitDate));
+  exitOrder->MarkOrderExecuted(createDate(exitDate), createDecimal(exitPrice));
+  transaction->completeTransaction(exitOrder);
+}
+
 TEST_CASE("StrategyTransaction Operations", "[StrategyTransaction]")
 {
   std::string equitySymbol("SPY");
@@ -537,4 +563,426 @@ TEST_CASE("StrategyTransaction Thread Safety", "[StrategyTransaction][threading]
   INFO("2. Using std::atomic for state if applicable");
   INFO("3. Protecting observer list with mutex");
   INFO("4. Document thread-safety guarantees");
+}
+
+TEST_CASE("StrategyTransaction clearObservers", "[StrategyTransaction][observer][lifetime]")
+{
+  auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+  TransactionObserver<DecimalType> observer1;
+  TransactionObserver<DecimalType> observer2;
+  TransactionObserver<DecimalType> observer3;
+  
+  SECTION("clearObservers removes all observers")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer2);
+    transaction->addObserver(observer3);
+    
+    transaction->clearObservers();
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    // No observers should be notified
+    REQUIRE(observer1.getNumClosedTransactions() == 0);
+    REQUIRE(observer2.getNumClosedTransactions() == 0);
+    REQUIRE(observer3.getNumClosedTransactions() == 0);
+  }
+  
+  SECTION("clearObservers on empty observer list is safe")
+  {
+    REQUIRE_NOTHROW(transaction->clearObservers());
+    transaction->clearObservers(); // Call twice
+    REQUIRE_NOTHROW(transaction->clearObservers());
+  }
+  
+  SECTION("clearObservers allows adding new observers afterwards")
+  {
+    transaction->addObserver(observer1);
+    transaction->clearObservers();
+    transaction->addObserver(observer2);
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 0);
+    REQUIRE(observer2.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("clearObservers removes duplicate observer registrations")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer1);
+    
+    transaction->clearObservers();
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 0);
+  }
+  
+  SECTION("clearObservers after completion has no effect on completed state")
+  {
+    transaction->addObserver(observer1);
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+    
+    transaction->clearObservers();
+    
+    REQUIRE(transaction->isTransactionComplete());
+    REQUIRE_FALSE(transaction->isTransactionOpen());
+  }
+}
+
+TEST_CASE("StrategyTransaction removeObserver", "[StrategyTransaction][observer][lifetime]")
+{
+  auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+  TransactionObserver<DecimalType> observer1;
+  TransactionObserver<DecimalType> observer2;
+  TransactionObserver<DecimalType> observer3;
+  
+  SECTION("removeObserver removes specific observer")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer2);
+    transaction->addObserver(observer3);
+    
+    transaction->removeObserver(observer2);
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+    REQUIRE(observer2.getNumClosedTransactions() == 0); // Removed
+    REQUIRE(observer3.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("removeObserver on non-existent observer is safe")
+  {
+    transaction->addObserver(observer1);
+    
+    REQUIRE_NOTHROW(transaction->removeObserver(observer2));
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("removeObserver on empty observer list is safe")
+  {
+    REQUIRE_NOTHROW(transaction->removeObserver(observer1));
+  }
+  
+  SECTION("removeObserver with duplicate observers removes all instances")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer1);
+    
+    transaction->removeObserver(observer1);
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    // All instances removed
+    REQUIRE(observer1.getNumClosedTransactions() == 0);
+  }
+  
+  SECTION("removeObserver can be called multiple times on same observer")
+  {
+    transaction->addObserver(observer1);
+    transaction->removeObserver(observer1);
+    REQUIRE_NOTHROW(transaction->removeObserver(observer1));
+    REQUIRE_NOTHROW(transaction->removeObserver(observer1));
+  }
+  
+  SECTION("Observer can be re-added after removal")
+  {
+    transaction->addObserver(observer1);
+    transaction->removeObserver(observer1);
+    transaction->addObserver(observer1);
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("Removing middle observer from three observers")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer2);
+    transaction->addObserver(observer3);
+    
+    REQUIRE(transaction->hasObserver(observer1));
+    REQUIRE(transaction->hasObserver(observer2));
+    REQUIRE(transaction->hasObserver(observer3));
+    
+    transaction->removeObserver(observer2);
+    
+    REQUIRE(transaction->hasObserver(observer1));
+    REQUIRE_FALSE(transaction->hasObserver(observer2));
+    REQUIRE(transaction->hasObserver(observer3));
+  }
+}
+
+TEST_CASE("StrategyTransaction hasObserver", "[StrategyTransaction][observer][lifetime]")
+{
+  auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+  TransactionObserver<DecimalType> observer1;
+  TransactionObserver<DecimalType> observer2;
+  
+  SECTION("hasObserver returns false for empty observer list")
+  {
+    REQUIRE_FALSE(transaction->hasObserver(observer1));
+  }
+  
+  SECTION("hasObserver returns true after adding observer")
+  {
+    transaction->addObserver(observer1);
+    REQUIRE(transaction->hasObserver(observer1));
+  }
+  
+  SECTION("hasObserver returns false for non-added observer")
+  {
+    transaction->addObserver(observer1);
+    REQUIRE_FALSE(transaction->hasObserver(observer2));
+  }
+  
+  SECTION("hasObserver returns false after removing observer")
+  {
+    transaction->addObserver(observer1);
+    transaction->removeObserver(observer1);
+    REQUIRE_FALSE(transaction->hasObserver(observer1));
+  }
+  
+  SECTION("hasObserver returns false after clearing observers")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer2);
+    transaction->clearObservers();
+    
+    REQUIRE_FALSE(transaction->hasObserver(observer1));
+    REQUIRE_FALSE(transaction->hasObserver(observer2));
+  }
+  
+  SECTION("hasObserver with duplicate observers")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer1);
+    transaction->addObserver(observer1);
+    
+    REQUIRE(transaction->hasObserver(observer1));
+  }
+  
+  SECTION("hasObserver after transaction completion")
+  {
+    transaction->addObserver(observer1);
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(transaction->hasObserver(observer1));
+  }
+}
+
+TEST_CASE("StrategyTransaction addObserverUnique", "[StrategyTransaction][observer][lifetime]")
+{
+  auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+  TransactionObserver<DecimalType> observer1;
+  TransactionObserver<DecimalType> observer2;
+  
+  SECTION("addObserverUnique adds observer if not present")
+  {
+    transaction->addObserverUnique(observer1);
+    REQUIRE(transaction->hasObserver(observer1));
+  }
+  
+  SECTION("addObserverUnique does not add duplicate")
+  {
+    transaction->addObserverUnique(observer1);
+    transaction->addObserverUnique(observer1);
+    transaction->addObserverUnique(observer1);
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    // Observer should only be notified once
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("addObserverUnique adds multiple different observers")
+  {
+    transaction->addObserverUnique(observer1);
+    transaction->addObserverUnique(observer2);
+    
+    REQUIRE(transaction->hasObserver(observer1));
+    REQUIRE(transaction->hasObserver(observer2));
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+    REQUIRE(observer2.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("addObserverUnique after removeObserver adds the observer")
+  {
+    transaction->addObserverUnique(observer1);
+    transaction->removeObserver(observer1);
+    transaction->addObserverUnique(observer1);
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("Mixing addObserver and addObserverUnique")
+  {
+    transaction->addObserver(observer1);
+    transaction->addObserverUnique(observer1); // Should not add duplicate
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    // Should only notify once (addObserverUnique prevented duplicate)
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("addObserverUnique idempotency")
+  {
+    for (int i = 0; i < 10; ++i)
+    {
+      transaction->addObserverUnique(observer1);
+    }
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 1);
+  }
+}
+
+TEST_CASE("StrategyTransaction Observer Lifetime Complex Scenarios", "[StrategyTransaction][observer][lifetime][complex]")
+{
+  SECTION("Multiple operations on observer list")
+  {
+    auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    TransactionObserver<DecimalType> observer1;
+    TransactionObserver<DecimalType> observer2;
+    TransactionObserver<DecimalType> observer3;
+    
+    // Complex sequence of operations
+    transaction->addObserver(observer1);
+    transaction->addObserverUnique(observer2);
+    transaction->addObserver(observer3);
+    transaction->addObserver(observer1); // Duplicate
+    transaction->removeObserver(observer2);
+    transaction->addObserverUnique(observer3); // Should not duplicate
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer1.getNumClosedTransactions() == 2); // Added twice
+    REQUIRE(observer2.getNumClosedTransactions() == 0); // Removed
+    REQUIRE(observer3.getNumClosedTransactions() == 1); // Unique
+  }
+  
+  SECTION("Observer operations on completed transaction")
+  {
+    auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    TransactionObserver<DecimalType> observer1;
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    // Adding observer after completion should be safe but won't receive notifications
+    REQUIRE_NOTHROW(transaction->addObserver(observer1));
+    REQUIRE_NOTHROW(transaction->removeObserver(observer1));
+    REQUIRE_NOTHROW(transaction->clearObservers());
+  }
+  
+  SECTION("Interleaved add and remove operations")
+  {
+    auto transaction = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    TransactionObserver<DecimalType> observer;
+    
+    transaction->addObserver(observer);
+    REQUIRE(transaction->hasObserver(observer));
+    
+    transaction->removeObserver(observer);
+    REQUIRE_FALSE(transaction->hasObserver(observer));
+    
+    transaction->addObserverUnique(observer);
+    REQUIRE(transaction->hasObserver(observer));
+    
+    transaction->addObserverUnique(observer);
+    REQUIRE(transaction->hasObserver(observer));
+    
+    completeTransaction(transaction, "SPY", "20151222", "205.00");
+    
+    REQUIRE(observer.getNumClosedTransactions() == 1);
+  }
+}
+
+TEST_CASE("StrategyTransaction Observer with Copy/Move Operations", "[StrategyTransaction][observer][copy][move]")
+{
+  SECTION("Copy constructor does not copy observers")
+  {
+    auto original = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    TransactionObserver<DecimalType> observer;
+    
+    original->addObserver(observer);
+    
+    StrategyTransaction<DecimalType> copy(*original);
+    
+    REQUIRE(original->hasObserver(observer));
+    REQUIRE_FALSE(copy.hasObserver(observer));
+    
+    completeTransaction(original, "SPY", "20151222", "205.00");
+    
+    // Only original notifies
+    REQUIRE(observer.getNumClosedTransactions() == 1);
+  }
+  
+  SECTION("Move constructor does not move observers")
+  {
+    auto original = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    TransactionObserver<DecimalType> observer;
+    
+    original->addObserver(observer);
+    
+    StrategyTransaction<DecimalType> moved(std::move(*original));
+    
+    // Moved transaction should have no observers
+    REQUIRE_FALSE(moved.hasObserver(observer));
+  }
+  
+  SECTION("Copy assignment clears target observers and does not copy source observers")
+  {
+    auto source = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    auto target = createBasicLongTransaction<DecimalType>("QQQ", "20151221", "100.00");
+    
+    TransactionObserver<DecimalType> sourceObserver;
+    TransactionObserver<DecimalType> targetObserver;
+    
+    source->addObserver(sourceObserver);
+    target->addObserver(targetObserver);
+    
+    *target = *source;
+    
+    REQUIRE_FALSE(target->hasObserver(targetObserver));
+    REQUIRE_FALSE(target->hasObserver(sourceObserver));
+    
+    completeTransaction(target, "SPY", "20151222", "205.00");
+    
+    REQUIRE(sourceObserver.getNumClosedTransactions() == 0);
+    REQUIRE(targetObserver.getNumClosedTransactions() == 0);
+  }
+  
+  SECTION("Move assignment clears observers")
+  {
+    auto source = createBasicLongTransaction<DecimalType>("SPY", "20151221", "201.41");
+    auto target = createBasicLongTransaction<DecimalType>("QQQ", "20151221", "100.00");
+    
+    TransactionObserver<DecimalType> sourceObserver;
+    TransactionObserver<DecimalType> targetObserver;
+    
+    source->addObserver(sourceObserver);
+    target->addObserver(targetObserver);
+    
+    *target = std::move(*source);
+    
+    REQUIRE_FALSE(target->hasObserver(targetObserver));
+    REQUIRE_FALSE(target->hasObserver(sourceObserver));
+  }
 }

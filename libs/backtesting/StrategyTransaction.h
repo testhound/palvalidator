@@ -37,6 +37,7 @@ namespace mkc_timeseries
   template <class Decimal> class StrategyTransaction;
   template <class Decimal> class StrategyTransactionState;
   template <class Decimal> class StrategyTransactionStateOpen;
+  template <class Decimal> class StrategyTransactionStateComplete;
 
   /**
    * @interface StrategyTransactionObserver
@@ -63,7 +64,7 @@ namespace mkc_timeseries
     {}
 
     StrategyTransactionObserver (const StrategyTransactionObserver<Decimal>& rhs)
-      {}
+    {}
 
     virtual ~StrategyTransactionObserver()
     {}
@@ -102,7 +103,6 @@ namespace mkc_timeseries
    * - Fixed memory leak in constructor (use make_shared)
    * - Added null pointer validation
    * - Changed observer copying behavior (observers not copied)
-   * - Added swap function for exception-safe assignment
    * - Added equality operators
    * - Restored getTradingPositionPtr() for compatibility
    * - Improved exception safety in observer notifications
@@ -151,12 +151,17 @@ namespace mkc_timeseries
      * but has its own state management and no observers (observers are not copied).
      * This allows the copy to transition through states independently.
      */
-    StrategyTransaction (const StrategyTransaction<Decimal>& rhs)
+    StrategyTransaction(const StrategyTransaction& rhs)
       : mEntryOrder(rhs.mEntryOrder),
-        mPosition(rhs.mPosition),
-        mTransactionState(rhs.mTransactionState),
-        mObservers()  // Don't copy observers - each transaction manages its own
-    {}
+	mPosition(rhs.mPosition),
+	mTransactionState(/* NEW state based on rhs */),
+	mObservers()
+    {
+      if (rhs.isTransactionOpen())
+	mTransactionState = std::make_shared<StrategyTransactionStateOpen<Decimal>>();
+      else
+	mTransactionState = std::make_shared<StrategyTransactionStateComplete<Decimal>>(rhs.getExitTradingOrder());
+    }
 
     /**
      * @brief Move constructor - transfers ownership efficiently.
@@ -166,7 +171,7 @@ namespace mkc_timeseries
       : mEntryOrder(std::move(rhs.mEntryOrder)),
         mPosition(std::move(rhs.mPosition)),
         mTransactionState(std::move(rhs.mTransactionState)),
-        mObservers(std::move(rhs.mObservers))
+        mObservers() // IMPORTANT: observers are wiring; never move them
     {}
 
     /**
@@ -174,10 +179,67 @@ namespace mkc_timeseries
      * @param rhs The transaction to copy from.
      * @return Reference to this transaction.
      */
-    StrategyTransaction<Decimal>& operator=(StrategyTransaction<Decimal> rhs)
+    StrategyTransaction<Decimal>&
+    operator=(const StrategyTransaction<Decimal>& rhs)
     {
-      swap(rhs);
+      if (this == &rhs)
+	return *this;
+      
+      // Copy the shared "identity" parts (you chose to share these)
+      mEntryOrder = rhs.mEntryOrder;
+      mPosition   = rhs.mPosition;
+
+      // Rebuild independent state (do NOT share the state object)
+      if (rhs.isTransactionOpen())
+	{
+	  mTransactionState = std::make_shared<StrategyTransactionStateOpen<Decimal>>();
+	}
+      else
+	{
+	  // rhs is complete; capture its exit order to preserve completed state
+	  // This will throw if rhs is open, but we are in the 'else' branch.
+	  mTransactionState =
+	    std::make_shared<StrategyTransactionStateComplete<Decimal>>(rhs.getExitTradingOrder());
+	}
+      
+      // Observers are wiring; never copy them
+      mObservers.clear();
+      
       return *this;
+    }
+
+    void clearObservers() noexcept
+    {
+      mObservers.clear();
+    }
+
+    void removeObserver(StrategyTransactionObserver<Decimal>& observer)
+    {
+      StrategyTransactionObserver<Decimal>* target = &observer;
+
+      mObservers.remove_if(
+			   [target](const std::reference_wrapper<StrategyTransactionObserver<Decimal>>& wrapped) -> bool
+			   {
+			     return &wrapped.get() == target;
+			   });
+    }
+
+    bool hasObserver(StrategyTransactionObserver<Decimal>& observer) const
+    {
+      StrategyTransactionObserver<Decimal>* target = &observer;
+
+      for (const auto& wrapped : mObservers)
+	{
+	  if (&wrapped.get() == target)
+	    return true;
+	}
+      return false;
+    }
+
+    void addObserverUnique(StrategyTransactionObserver<Decimal>& observer)
+    {
+      if (!hasObserver(observer))
+	mObservers.push_back(observer);
     }
 
     /**
@@ -188,29 +250,18 @@ namespace mkc_timeseries
     StrategyTransaction<Decimal>& operator=(StrategyTransaction<Decimal>&& rhs) noexcept
     {
       if (this != &rhs)
-      {
-        mEntryOrder = std::move(rhs.mEntryOrder);
-        mPosition = std::move(rhs.mPosition);
-        mTransactionState = std::move(rhs.mTransactionState);
-        mObservers = std::move(rhs.mObservers);
-      }
+	{
+	  mEntryOrder = std::move(rhs.mEntryOrder);
+	  mPosition = std::move(rhs.mPosition);
+	  mTransactionState = std::move(rhs.mTransactionState);
+	  
+	  // IMPORTANT: observers are wiring; never move them
+	  mObservers.clear();
+	}
       return *this;
     }
 
     ~StrategyTransaction() noexcept = default;
-
-    /**
-     * @brief Swaps the contents of this transaction with another.
-     * @param other The transaction to swap with.
-     */
-    void swap(StrategyTransaction<Decimal>& other) noexcept
-    {
-      using std::swap;
-      swap(mEntryOrder, other.mEntryOrder);
-      swap(mPosition, other.mPosition);
-      swap(mTransactionState, other.mTransactionState);
-      swap(mObservers, other.mObservers);
-    }
 
     /**
      * @brief Equality comparison based on entry order and position.
@@ -327,18 +378,18 @@ namespace mkc_timeseries
       std::exception_ptr firstException;
       
       for (auto& observer : mObservers)
-      {
-        try {
-          observer.get().TransactionComplete(this);
-        }
-        catch (...)
-        {
-          if (!firstException) {
-            firstException = std::current_exception();
-          }
-          // Continue notifying other observers
-        }
-      }
+	{
+	  try {
+	    observer.get().TransactionComplete(this);
+	  }
+	  catch (...)
+	    {
+	      if (!firstException) {
+		firstException = std::current_exception();
+	      }
+	      // Continue notifying other observers
+	    }
+	}
       
       // Rethrow first exception if any occurred
       if (firstException) {
@@ -354,17 +405,6 @@ namespace mkc_timeseries
 
     friend class StrategyTransactionStateOpen<Decimal>;
   };
-
-  /**
-   * @brief Non-member swap function for StrategyTransaction.
-   * @param lhs First transaction to swap.
-   * @param rhs Second transaction to swap.
-   */
-  template <class Decimal>
-  void swap(StrategyTransaction<Decimal>& lhs, StrategyTransaction<Decimal>& rhs) noexcept
-  {
-    lhs.swap(rhs);
-  }
 
   /**
    * @class StrategyTransactionState
@@ -517,7 +557,7 @@ namespace mkc_timeseries
      * @throws StrategyTransactionException always.
      */
     void completeTransaction (StrategyTransaction<Decimal> * /* transaction */,
-         std::shared_ptr<TradingOrder<Decimal>> /* exitOrder */)
+			      std::shared_ptr<TradingOrder<Decimal>> /* exitOrder */)
     {
       throw StrategyTransactionException ("StrategyTransactionStateComplete::completeTransaction - transaction already complete");
     }
@@ -632,7 +672,7 @@ namespace mkc_timeseries
 
   template <class Decimal>
   inline StrategyTransaction<Decimal>::StrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> entryOrder,
-                                                             std::shared_ptr<TradingPosition<Decimal>> aPosition)
+							    std::shared_ptr<TradingPosition<Decimal>> aPosition)
     : mEntryOrder (entryOrder),
       mPosition(aPosition),
       mTransactionState(std::make_shared<StrategyTransactionStateOpen<Decimal>>()),  // FIXED: use make_shared
@@ -647,11 +687,11 @@ namespace mkc_timeseries
 
     // Existing validation
     if (entryOrder->getTradingSymbol() != aPosition->getTradingSymbol())
-    {
-      std::string orderSymbol(entryOrder->getTradingSymbol());
-      std::string positionSymbol(aPosition->getTradingSymbol());
-      throw StrategyTransactionException ("StrategyTransaction constructor - trading symbols for order " +orderSymbol +" differs from position symbol " +positionSymbol);
-    }
+      {
+	std::string orderSymbol(entryOrder->getTradingSymbol());
+	std::string positionSymbol(aPosition->getTradingSymbol());
+	throw StrategyTransactionException ("StrategyTransaction constructor - trading symbols for order " +orderSymbol +" differs from position symbol " +positionSymbol);
+      }
 
     if ((entryOrder->isLongOrder() == aPosition->isLongPosition()) ||
         (entryOrder->isShortOrder() == aPosition->isShortPosition()))

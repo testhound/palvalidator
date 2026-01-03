@@ -205,7 +205,9 @@ TEST_CASE ("TradingVolume move assignment operator", "[TradingVolume][move]")
   SECTION ("self move assignment")
     {
       TradingVolume vol(400000, TradingVolume::SHARES);
-      vol = std::move(vol);
+      // Test self move assignment through a temporary to avoid compiler warning
+      TradingVolume* volPtr = &vol;
+      vol = std::move(*volPtr);
       
       REQUIRE (vol.getTradingVolume() == 400000);
       REQUIRE (vol.getVolumeUnits() == TradingVolume::SHARES);

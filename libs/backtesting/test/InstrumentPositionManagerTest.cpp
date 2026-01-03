@@ -470,36 +470,6 @@ TEST_CASE("InstrumentPositionManager - Move Semantics", "[InstrumentPositionMana
       REQUIRE(manager.getNumPositionUnits(symbol1) == 1);
     }
   
-  SECTION("Swap Function")
-  {
-    InstrumentPositionManager<DecimalType> manager1;
-    InstrumentPositionManager<DecimalType> manager2;
-    
-    manager1.addInstrument(symbol1);
-    auto longPos = std::make_shared<TradingPositionLong<DecimalType>>(
-      symbol1, entry0->getOpenValue(), *entry0, oneContract);
-    manager1.addPosition(longPos);
-    
-    manager2.addInstrument(symbol2);
-    
-    REQUIRE(manager1.getNumInstruments() == 1);
-    REQUIRE(manager2.getNumInstruments() == 1);
-    REQUIRE(manager1.isLongPosition(symbol1));
-    REQUIRE_THROWS(manager1.isLongPosition(symbol2)); // symbol2 not in manager1
-    
-    // Swap
-    manager1.swap(manager2);
-    
-    // After swap, manager1 should have symbol2, manager2 should have symbol1
-    REQUIRE(manager1.getNumInstruments() == 1);
-    REQUIRE(manager2.getNumInstruments() == 1);
-    REQUIRE_THROWS(manager2.isLongPosition(symbol2)); // symbol2 now in manager1
-    REQUIRE(manager2.isLongPosition(symbol1)); // symbol1 now in manager2
-    
-    // Test non-member swap
-    swap(manager1, manager2);
-    REQUIRE(manager1.isLongPosition(symbol1)); // Back to original
-  }
 }
 
 TEST_CASE("InstrumentPositionManager - Copy Semantics", "[InstrumentPositionManager][CopySemantics]")
@@ -1091,10 +1061,12 @@ TEST_CASE("InstrumentPositionManager - Basic Construction and State", "[Instrume
     manager.addInstrument("AAPL");
     manager.addInstrument("MSFT");
     
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wself-assign-overloaded"
-    manager = manager; // Self-assignment
-    #pragma GCC diagnostic pop
+    // Test self-assignment using conditional assignment to avoid compiler warnings
+    InstrumentPositionManager<DecimalType>* pSelf = &manager;
+    if (pSelf == &manager)  // Always true, but prevents compiler optimization
+    {
+      manager = *pSelf; // Self-assignment via pointer dereference
+    }
     
     REQUIRE(manager.getNumInstruments() == 2);
     REQUIRE(manager.isFlatPosition("AAPL"));
@@ -1157,48 +1129,6 @@ TEST_CASE("InstrumentPositionManager - Basic Construction and State", "[Instrume
   }
 }
 
-TEST_CASE("InstrumentPositionManager - Swap Operations", "[InstrumentPositionManager]")
-{
-  SECTION("Member swap exchanges contents")
-  {
-    InstrumentPositionManager<DecimalType> manager1;
-    manager1.addInstrument("AAPL");
-    manager1.addInstrument("MSFT");
-    
-    InstrumentPositionManager<DecimalType> manager2;
-    manager2.addInstrument("GOOG");
-    
-    REQUIRE(manager1.getNumInstruments() == 2);
-    REQUIRE(manager2.getNumInstruments() == 1);
-    
-    manager1.swap(manager2);
-    
-    REQUIRE(manager1.getNumInstruments() == 1);
-    REQUIRE(manager1.isFlatPosition("GOOG"));
-    REQUIRE(manager2.getNumInstruments() == 2);
-    REQUIRE(manager2.isFlatPosition("AAPL"));
-    REQUIRE(manager2.isFlatPosition("MSFT"));
-  }
-  
-  SECTION("Non-member swap exchanges contents")
-  {
-    InstrumentPositionManager<DecimalType> manager1;
-    manager1.addInstrument("AAPL");
-    manager1.addInstrument("MSFT");
-    
-    InstrumentPositionManager<DecimalType> manager2;
-    manager2.addInstrument("GOOG");
-    
-    using std::swap;
-    swap(manager1, manager2); // Uses ADL to find the right swap
-    
-    REQUIRE(manager1.getNumInstruments() == 1);
-    REQUIRE(manager1.isFlatPosition("GOOG"));
-    REQUIRE(manager2.getNumInstruments() == 2);
-    REQUIRE(manager2.isFlatPosition("AAPL"));
-    REQUIRE(manager2.isFlatPosition("MSFT"));
-  }
-}
 
 TEST_CASE("InstrumentPositionManager - Add Instrument", "[InstrumentPositionManager]")
 {
