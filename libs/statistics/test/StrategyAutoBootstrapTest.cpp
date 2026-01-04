@@ -332,7 +332,6 @@ TEST_CASE("StrategyAutoBootstrap: Type aliases and wiring",
     using ResultType   = typename SAB::Result;
     using CandidateType= typename SAB::Candidate;
     using MethodIdType = typename SAB::MethodId;
-    using BCaResampler = typename SAB::BCaResampler;
 
     // Basic alias sanity: ResultType should match AutoCIResult<Decimal>
     STATIC_REQUIRE(std::is_same<ResultType, AutoCIResult>::value);
@@ -341,9 +340,8 @@ TEST_CASE("StrategyAutoBootstrap: Type aliases and wiring",
     STATIC_REQUIRE(std::is_same<CandidateType, typename AutoCIResult::Candidate>::value);
     STATIC_REQUIRE(std::is_same<MethodIdType,  typename AutoCIResult::MethodId>::value);
 
-    // BCaResampler is fixed to mkc_timeseries::StationaryBlockResampler<Decimal>
-    STATIC_REQUIRE(std::is_same<BCaResampler,
-                                mkc_timeseries::StationaryBlockResampler<Decimal>>::value);
+    // Note: BCaResampler is no longer hardcoded - it now uses the same Resampler
+    // template parameter as other bootstrap methods for consistency in tournaments
 
     // Ensure configuration objects are usable with the StrategyAutoBootstrap type
     BootstrapConfiguration cfg(/*numBootStrapReplications*/ 500,

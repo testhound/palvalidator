@@ -181,8 +181,8 @@ namespace palvalidator
       using Factory    = ::TradingBootstrapFactory<>;
       using Executor   = concurrency::ThreadPoolExecutor<>;
 
-      // BCa resampler is always a stationary block bootstrap in the current design.
-      using BCaResampler = mkc_timeseries::StationaryBlockResampler<Decimal>;
+      // BCa resampler uses the same resampler as other methods for consistency in bootstrap tournaments.
+      // Previously hardcoded to StationaryBlockResampler but now uses generic template parameter.
 
       /**
        * @brief Constructor accepting a specific statistic instance.
@@ -420,20 +420,18 @@ namespace palvalidator
 	  {
 	    try
 	      {
-		BCaResampler bcaResampler(blockSize);
-
 		// Use the configured statistic instance via lambda capture
 		Sampler capturedStat = m_sampler_instance;
 		std::function<Decimal(const std::vector<Decimal>&)> statFn =
 		  [capturedStat](const std::vector<Decimal>& r) { return capturedStat(r); };
 
 		auto bcaEngine =
-		  m_factory.template makeBCa<Decimal, BCaResampler>(
+		  m_factory.template makeBCa<Decimal, Resampler>(
 								    returns,
 								    static_cast<unsigned>(B_single),
 								    cl,
 								    statFn,
-								    bcaResampler,
+								    resampler,
 								    m_strategy,
 								    stageTag,
 								    static_cast<uint64_t>(blockSize),

@@ -102,7 +102,9 @@ static std::shared_ptr<mkc_timeseries::Portfolio<Decimal>> createTestPortfolio()
 
 static std::vector<Decimal> makeSimpleReturns()
 {
-    return {0.01, -0.01, 0.02, -0.02, 0.015, -0.015, 0.025, -0.005};
+    // Expanded from 8 to 16 elements to support larger block sizes in tests
+    return {0.01, -0.01, 0.02, -0.02, 0.015, -0.015, 0.025, -0.005,
+            0.012, -0.008, 0.018, -0.012, 0.022, -0.018, 0.008, 0.005};
 }
 
 static std::vector<Decimal> makeMinimalReturns()
