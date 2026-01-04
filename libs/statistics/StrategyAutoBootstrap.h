@@ -22,6 +22,8 @@ namespace palvalidator
 {
   namespace analysis
   {
+    // Forward declarations
+    using mkc_timeseries::StatisticSupport;
     /**
      * @brief Immutable configuration of bootstrap parameters for a single strategy/statistic.
      */
@@ -243,8 +245,7 @@ namespace palvalidator
             weights = typename Selector::ScoringWeights(/*wCenterShift*/ 0.25,
 							/*wSkew*/        0.5,
 							/*wLength*/      0.75,
-							/*wStability*/   1.5,
-							/*enforcePos*/   true);
+							/*wStability*/   1.5);
           }
         else
           {
@@ -459,7 +460,8 @@ namespace palvalidator
 				     "StrategyAutoBootstrap::run: no bootstrap candidate succeeded.");
 	  }
 
-        Result result = Selector::select(candidates, weights);
+	const StatisticSupport support = m_sampler_instance.support();
+	Result result = Selector::select(candidates, weights, support);
 
 	if (os)
 	  {

@@ -21,6 +21,8 @@ namespace palvalidator
 {
   namespace analysis
   {
+    // Forward declarations
+    using mkc_timeseries::StatisticSupport;
     /**
      * @brief Encapsulates the complete result of the automatic confidence interval selection process.
      *
@@ -1041,6 +1043,158 @@ namespace palvalidator
         double m_bca_a_scale;
       };
 
+      // -----------------------------------------------------------------------------
+      // Empirical under-coverage penalty for Percentile-T Bootstrap (soft gate)
+      //
+      // CRITICAL DESIGN NOTE:
+      //   Percentile-T intervals are constructed using quantiles of the STUDENTIZED
+      //   t-statistics: t_b = (θ*_b - θ̂) / SE*_b
+      //   
+      //   Therefore, we must check coverage in T-SPACE (the distribution of t-statistics),
+      //   not in the raw θ* space. Otherwise we're measuring something the method doesn't
+      //   actually use.
+      //
+      // Idea:
+      //   1. Transform the interval [lo, hi] from θ-space to t-space
+      //   2. Compute the empirical CDF mass of bootstrap t-statistics inside this range
+      //   3. If that "bootstrap-world coverage" is BELOW the nominal cl, penalize
+      //   4. If it is ABOVE cl, do NOT penalize (we only punish under-coverage)
+      //
+      // This is intentionally lightweight: it removes Percentile-T's "free pass" on 
+      // ordering without trying to fully re-test frequentist coverage (which would 
+      // require double-bootstrap or bootstrap calibration).
+      //
+      // Math refresher for the interval construction:
+      //   Given: θ̂ (point estimate), se_hat (SD of θ* over outer reps)
+      //   Quantiles: t_lo = quantile(t_stats, α/2), t_hi = quantile(t_stats, 1-α/2)
+      //   Interval:  [θ̂ - t_hi * se_hat,  θ̂ - t_lo * se_hat]
+      //              └─────── lo ────────┘  └─────── hi ────────┘
+      //
+      // To invert this for coverage checking:
+      //   lo = θ̂ - t_hi * se_hat  =>  t_hi = (θ̂ - lo) / se_hat
+      //   hi = θ̂ - t_lo * se_hat  =>  t_lo = (θ̂ - hi) / se_hat
+      //
+      // Note the sign flip: the UPPER bound in θ-space (hi) corresponds to the 
+      // LOWER quantile in t-space (t_lo), and vice versa.
+      // -----------------------------------------------------------------------------
+
+      static double computeEmpiricalUnderCoveragePenalty_PercentileT(
+								     const std::vector<double>& t_stats,   // Bootstrap t-statistics (NOT raw θ*)
+								     double theta_hat,                      // Point estimate θ̂
+								     double se_hat,                         // Standard error: SD(θ*)
+								     double lo,                             // Lower CI bound (in θ-space)
+								     double hi,                             // Upper CI bound (in θ-space)
+								     double cl)                             // Nominal confidence level
+      {
+	// -------------------------------------------------------------------------
+	// Guard clauses: ensure inputs are valid
+	// -------------------------------------------------------------------------
+	if (t_stats.size() < 2) return 0.0;
+  
+	if (!std::isfinite(theta_hat)) return 0.0;
+  
+	if (!std::isfinite(se_hat) || !(se_hat > 0.0)) return 0.0;
+  
+	if (!std::isfinite(lo) || !std::isfinite(hi) || !(hi > lo)) return 0.0;
+  
+	if (!(cl > 0.0 && cl < 1.0)) return 0.0;
+
+	// -------------------------------------------------------------------------
+	// Transform interval bounds from θ-space to t-space
+	// -------------------------------------------------------------------------
+	// lo = θ̂ - t_hi * se  =>  t_hi = (θ̂ - lo) / se
+	// hi = θ̂ - t_lo * se  =>  t_lo = (θ̂ - hi) / se
+	//
+	// Because of the sign flip in the percentile-t formula:
+	//   - The UPPER θ-bound (hi) maps to the LOWER t-quantile
+	//   - The LOWER θ-bound (lo) maps to the UPPER t-quantile
+  
+	const double t_at_lower_theta_bound = (theta_hat - hi) / se_hat;  // t_lo
+	const double t_at_upper_theta_bound = (theta_hat - lo) / se_hat;  // t_hi
+  
+	// Sanity check: t_at_lower should be < t_at_upper in t-space
+	// (If not, something is wrong with the interval construction)
+	if (!(t_at_lower_theta_bound < t_at_upper_theta_bound)) {
+	  // This shouldn't happen with a properly constructed percentile-t interval,
+	  // but if it does, we can't reliably compute coverage.
+	  return 0.0;
+	}
+
+	// -------------------------------------------------------------------------
+	// Compute empirical CDF mass of t-statistics inside [t_lo, t_hi]
+	// -------------------------------------------------------------------------
+	using palvalidator::analysis::detail::compute_empirical_cdf;
+  
+	const double F_t_lo = compute_empirical_cdf(t_stats, t_at_lower_theta_bound);
+	const double F_t_hi = compute_empirical_cdf(t_stats, t_at_upper_theta_bound);
+  
+	// The "bootstrap-world coverage" is the CDF width
+	// Clamp for safety (empirical CDF should already be in [0,1])
+	const double width_cdf = std::max(0.0, std::min(1.0, F_t_hi - F_t_lo));
+
+	// -------------------------------------------------------------------------
+	// Compute under-coverage penalty (asymmetric: only penalize if too narrow)
+	// -------------------------------------------------------------------------
+	// coverage_error < 0  =>  under-coverage (interval too narrow in t-space)
+	// coverage_error > 0  =>  over-coverage  (interval too wide in t-space) - NOT penalized
+	const double coverage_error = width_cdf - cl;
+	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+  
+	// Quadratic penalty: gentle for small deviations, severe for large ones
+	// Reuse existing multiplier for consistency with overall scoring framework
+	return AutoBootstrapConfiguration::kUnderCoverageMultiplier *
+	  under_coverage * under_coverage;
+      }
+
+      static double computeEmpiricalUnderCoveragePenalty(const std::vector<double>& t_stats,
+							 double theta_hat,
+							 double se_hat,
+							 double lo,
+							 double hi,
+							 double cl)
+      {
+	return computeEmpiricalUnderCoveragePenalty_PercentileT(t_stats, theta_hat, se_hat, lo, hi, cl);
+      }
+
+      // -----------------------------------------------------------------------------
+      // Empirical under-coverage penalty (soft gate)
+      //
+      // Idea:
+      //   Compute the empirical CDF mass of bootstrap theta* that lies inside [lo, hi].
+      //   If that "bootstrap-world coverage" is BELOW the nominal cl, penalize.
+      //   If it is ABOVE cl, do NOT penalize (we only punish under-coverage).
+      //
+      // This is intentionally lightweight: it removes BCa/PT's "free pass" on ordering
+      // without trying to fully re-test frequentist coverage (which would require
+      // double-bootstrap or a bootstrap calibration).
+      // -----------------------------------------------------------------------------
+      static double computeEmpiricalUnderCoveragePenalty(const std::vector<double>& boot_stats,
+							 double lo,
+							 double hi,
+							 double cl)
+      {
+	if (boot_stats.size() < 2) return 0.0;
+	if (!std::isfinite(lo) || !std::isfinite(hi) || !(hi > lo)) return 0.0;
+	if (!(cl > 0.0 && cl < 1.0)) return 0.0;
+
+	using palvalidator::analysis::detail::compute_empirical_cdf;
+
+	const double F_lo = compute_empirical_cdf(boot_stats, lo);
+	const double F_hi = compute_empirical_cdf(boot_stats, hi);
+
+	// Clamp for safety; empirical CDF should already be in [0,1].
+	const double width_cdf = std::max(0.0, std::min(1.0, F_hi - F_lo));
+
+	// Under-coverage only (too narrow in CDF space)
+	const double coverage_error = width_cdf - cl;
+	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+
+	// Reuse existing multiplier used elsewhere in ordering penalty
+	// (keeps scaling consistent with the selector’s existing design).
+	return AutoBootstrapConfiguration::kUnderCoverageMultiplier *
+	  under_coverage * under_coverage;
+      }
+
       /**
        * @brief Computes length penalty for a bootstrap interval.
        * 
@@ -1127,113 +1281,113 @@ namespace palvalidator
        * @throws std::logic_error If diagnostics are missing or bootstrap stats are insufficient.
        */
       template <class BootstrapEngine>
-static Candidate summarizePercentileLike(
-    MethodId                                method,
-    const BootstrapEngine&                  engine,
-    const typename BootstrapEngine::Result& res)
-{
-    if (!engine.hasDiagnostics())
-    {
-        throw std::logic_error(
-            "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
-    }
-    const auto& stats = engine.getBootstrapStatistics();
-    const std::size_t m = stats.size();
-    if (m < 2)
-    {
-        throw std::logic_error(
-            "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
-    }
-    const double mean_boot = engine.getBootstrapMean();
-    const double se_boot   = engine.getBootstrapSe();
-    // Guard against degenerate distribution in skewness computation
-    // If se_boot = 0, all bootstrap statistics are identical (degenerate case)
-    const double skew_boot = (se_boot > 0.0)
-        ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
-        : 0.0;  // Degenerate: all theta* identical → neutral skewness
+      static Candidate summarizePercentileLike(
+					       MethodId                                method,
+					       const BootstrapEngine&                  engine,
+					       const typename BootstrapEngine::Result& res)
+      {
+	if (!engine.hasDiagnostics())
+	  {
+	    throw std::logic_error(
+				   "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
+	  }
+	const auto& stats = engine.getBootstrapStatistics();
+	const std::size_t m = stats.size();
+	if (m < 2)
+	  {
+	    throw std::logic_error(
+				   "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
+	  }
+	const double mean_boot = engine.getBootstrapMean();
+	const double se_boot   = engine.getBootstrapSe();
+	// Guard against degenerate distribution in skewness computation
+	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
+	const double skew_boot = (se_boot > 0.0)
+	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
+	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
     
-    const double mu  = num::to_double(res.mean);
-    const double lo  = num::to_double(res.lower);
-    const double hi  = num::to_double(res.upper);
-    const double len = hi - lo;
+	const double mu  = num::to_double(res.mean);
+	const double lo  = num::to_double(res.lower);
+	const double hi  = num::to_double(res.upper);
+	const double len = hi - lo;
     
-    // ====================================================================
-    // CENTER SHIFT PENALTY
-    // ====================================================================
-    double center_shift_in_se = 0.0;
-    if (se_boot > 0.0 && len > 0.0)
-    {
-        const double center = 0.5 * (lo + hi);
-        center_shift_in_se = std::fabs(center - mu) / se_boot;
-    }
+	// ====================================================================
+	// CENTER SHIFT PENALTY
+	// ====================================================================
+	double center_shift_in_se = 0.0;
+	if (se_boot > 0.0 && len > 0.0)
+	  {
+	    const double center = 0.5 * (lo + hi);
+	    center_shift_in_se = std::fabs(center - mu) / se_boot;
+	  }
     
-    // ====================================================================
-    // ORDERING PENALTY (coverage accuracy)
-    // ====================================================================
-    // NOTE: Basic bootstrap uses reflection (2*theta_hat - quantiles) to
-    // construct its interval, which is DESIGNED to deviate from the bootstrap
-    // distribution when bias/skewness exists. Penalizing this deviation is
-    // methodologically incorrect, similar to BCa and Percentile-T.
-    // Therefore, we skip the ordering penalty for Basic bootstrap.
-    // ====================================================================
-    double ordering_penalty = 0.0;
+	// ====================================================================
+	// ORDERING PENALTY (coverage accuracy)
+	// ====================================================================
+	// NOTE: Basic bootstrap uses reflection (2*theta_hat - quantiles) to
+	// construct its interval, which is DESIGNED to deviate from the bootstrap
+	// distribution when bias/skewness exists. Penalizing this deviation is
+	// methodologically incorrect, similar to BCa and Percentile-T.
+	// Therefore, we skip the ordering penalty for Basic bootstrap.
+	// ====================================================================
+	double ordering_penalty = 0.0;
     
-    if (method != MethodId::Basic)
-    {
-        using palvalidator::analysis::detail::compute_empirical_cdf;
+	if (method != MethodId::Basic)
+	  {
+	    using palvalidator::analysis::detail::compute_empirical_cdf;
         
-        const double F_lo = compute_empirical_cdf(stats, lo);
-        const double F_hi = compute_empirical_cdf(stats, hi);
-        const double width_cdf = F_hi - F_lo;
-        const double coverage_target = res.cl;
-        const double coverage_error = width_cdf - coverage_target;
-        const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
-        const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
-        const double cov_pen =
-            AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
-            AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
-        const double F_mu       = compute_empirical_cdf(stats, mu);
-        const double center_cdf = 0.5 * (F_lo + F_hi);
-        const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
-        ordering_penalty = cov_pen + center_pen;
-    }
-    // else: ordering_penalty remains 0.0 for Basic bootstrap
+	    const double F_lo = compute_empirical_cdf(stats, lo);
+	    const double F_hi = compute_empirical_cdf(stats, hi);
+	    const double width_cdf = F_hi - F_lo;
+	    const double coverage_target = res.cl;
+	    const double coverage_error = width_cdf - coverage_target;
+	    const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+	    const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
+	    const double cov_pen =
+	      AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
+	      AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
+	    const double F_mu       = compute_empirical_cdf(stats, mu);
+	    const double center_cdf = 0.5 * (F_lo + F_hi);
+	    const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
+	    ordering_penalty = cov_pen + center_pen;
+	  }
+	// else: ordering_penalty remains 0.0 for Basic bootstrap
     
-    double normalized_length = 1.0;
-    double median_val = 0.0;
-    const double length_penalty = computeLengthPenalty(
-        len,           // actual_length
-        stats,         // boot_stats
-        res.cl,        // confidence_level
-        method,        // method (handles MOutOfN vs. standard L_max)
-        normalized_length,  // output
-        median_val     // output (always computed, even if len <= 0)
-    );
+	double normalized_length = 1.0;
+	double median_val = 0.0;
+	const double length_penalty = computeLengthPenalty(
+							   len,           // actual_length
+							   stats,         // boot_stats
+							   res.cl,        // confidence_level
+							   method,        // method (handles MOutOfN vs. standard L_max)
+							   normalized_length,  // output
+							   median_val     // output (always computed, even if len <= 0)
+							   );
     
-    return Candidate(
-        method,
-        res.mean,
-        res.lower,
-        res.upper,
-        res.cl,
-        res.n,
-        res.B,            // B_outer
-        0,                // B_inner (N/A for percentile-like)
-        res.effective_B,
-        res.skipped,      // skipped_total
-        se_boot,
-        skew_boot,
-        median_val,       // ← Always populated by computeLengthPenalty
-        center_shift_in_se,
-        normalized_length,
-        ordering_penalty,
-        length_penalty,
-        0.0,              // stability_penalty (N/A for Percentile-like)
-        0.0,              // z0 (N/A)
-        0.0,              // accel (N/A)
-        0.0
-    );
-}
+	return Candidate(
+			 method,
+			 res.mean,
+			 res.lower,
+			 res.upper,
+			 res.cl,
+			 res.n,
+			 res.B,            // B_outer
+			 0,                // B_inner (N/A for percentile-like)
+			 res.effective_B,
+			 res.skipped,      // skipped_total
+			 se_boot,
+			 skew_boot,
+			 median_val,       // ← Always populated by computeLengthPenalty
+			 center_shift_in_se,
+			 normalized_length,
+			 ordering_penalty,
+			 length_penalty,
+			 0.0,              // stability_penalty (N/A for Percentile-like)
+			 0.0,              // z0 (N/A)
+			 0.0,              // accel (N/A)
+			 0.0
+			 );
+      }
 
       /**
        * @brief Compute stability penalty for Percentile-T based on resample quality.
@@ -1569,16 +1723,33 @@ static Candidate summarizePercentileLike(
 	// Penalizing center shift would incorrectly penalize this method's fundamental property.
 	double center_shift_in_se = 0.0;
 
-	// ORDERING PENALTY: Not computed for Percentile-T (currently).
+	// ORDERING PENALTY:
 	// 
 	// Rationale: Percentile-T achieves coverage via the pivotal quantity T* = (θ*-θ)/SE*.
 	// In theory, this should yield exact nominal coverage. However, in finite samples
 	// with challenging distributions, coverage errors can occur.
 	//
-	// Future consideration: Computing ordering penalty would detect such errors and
-	// could improve method discrimination, at the cost of slightly weakening PT's
-	// theoretical advantage.
-	const double ordering_penalty = 0.0;
+
+	const auto& t_stats = engine.getTStatistics();
+	const double theta_hat_d = num::to_double(res.mean);
+
+	// ORDERING PENALTY (soft under-coverage only)
+        // 
+        // Percentile-T achieves coverage via the pivotal quantity T* = (θ* - θ)/SE*.
+        // While this should theoretically yield nominal coverage, in finite samples with
+        // challenging distributions (heavy tails, high inner failure rates, extreme skewness),
+        // the method can produce intervals that are too narrow.
+        //
+        // We penalize empirical under-coverage in t-space (the distribution actually used
+        // to construct the interval), but NOT over-coverage. This removes PT's "free pass"
+        // without discarding its theoretical advantages.
+	const double ordering_penalty = computeEmpiricalUnderCoveragePenalty(t_stats,      // t-statistics (NOT theta_stats)
+									     theta_hat_d,  // Point estimate
+									     se_ref,       // Standard error (already validated > 0)
+									     lo,           // Lower bound
+									     hi,           // Upper bound
+									     res.cl        // Confidence level
+									     );
 
 	double normalized_length = 1.0;
 	double median_boot = 0.0;
@@ -1622,7 +1793,7 @@ static Candidate summarizePercentileLike(
 			 median_boot,
 			 center_shift_in_se,
 			 normalized_length,
-			 ordering_penalty, // ← Correctly 0.0
+			 ordering_penalty,
 			 length_penalty,
 			 stability_penalty,
 			 0.0,              // z0 (N/A)
@@ -1741,12 +1912,20 @@ static Candidate summarizePercentileLike(
 								    os
 								    );
 
-	// ====================================================================
-	// 3. BUILD CANDIDATE
-	// ====================================================================
-	// BCa does not use ordering penalty
-	const double ordering_penalty = 0.0;
-
+	// ORDERING PENALTY (soft under-coverage only)
+        //
+        // BCa constructs intervals directly from the bootstrap distribution using
+        // bias-corrected percentiles. We penalize if the empirical coverage of the
+        // bootstrap distribution within [lo, hi] falls below the nominal level.
+        //
+        // Unlike center shift, this is a valid diagnostic: BCa can produce asymmetric
+        // intervals (which is correct), but it shouldn't produce intervals that are
+        // systematically too narrow in bootstrap-space.
+	const double ordering_penalty = computeEmpiricalUnderCoveragePenalty(stats,  // Raw θ* statistics (correct for BCa)
+									     lo,     // Lower bound
+									     hi,     // Upper bound
+									     cl      // Confidence level
+									     );
 	return Candidate(
 			 MethodId::BCa,
 			 mean,
@@ -1806,9 +1985,9 @@ static Candidate summarizePercentileLike(
           case MethodId::Normal:      return 6; // Lowest preference
           }
         return 100; // should not happen
-      }
-
-      /**
+             }
+       
+             /**
        * @brief Executes the selection tournament to find the best bootstrap method.
        *
        * This is the core logic that:
@@ -1824,7 +2003,8 @@ static Candidate summarizePercentileLike(
        * @throws std::runtime_error If no valid candidates remain after hard gating.
        */
       static Result select(const std::vector<Candidate>& candidates,
-			   const ScoringWeights& weights = ScoringWeights())
+			   const ScoringWeights& weights = ScoringWeights(),
+			   const StatisticSupport& support = StatisticSupport::unbounded())
       {
 	if (candidates.empty())
 	  {
@@ -1875,8 +2055,6 @@ static Candidate summarizePercentileLike(
 	  double m_domain_penalty;
 	};
 
-	const bool enforcePos = weights.enforcePositive();
-
 	std::vector<RawComponents> raw;
 	raw.reserve(candidates.size());
 
@@ -1899,23 +2077,25 @@ static Candidate summarizePercentileLike(
 	      centerShift = 0.0;
 	    double centerShiftSq = centerShift * centerShift;
 
-	    double skew = c.getSkewBoot();
-	    if (!std::isfinite(skew))
-	      skew = 0.0;
-	    double skewSq = skew * skew;
+	    const double skew = std::isfinite(c.getSkewBoot()) ? c.getSkewBoot() : 0.0;
+	    const double skewAbs = std::fabs(skew);
+	    constexpr double kSkewThreshold = 1.0;  // tune: 0.75–1.5
+	    const double skewExcess = std::max(0.0, skewAbs - kSkewThreshold);
+	    const double skewSq = skewExcess * skewExcess;
 
 	    const double baseOrdering = c.getOrderingPenalty();
 	    const double baseLength   = c.getLengthPenalty();
 	    const double stabPenalty  = c.getStabilityPenalty();
 
+	    // Domain penalty is driven by StatisticSupport, not by "ratio-ness".
 	    double domainPenalty = 0.0;
-	    if (enforcePos)
-	      {
-		if (num::to_double(c.getLower()) <= AutoBootstrapConfiguration::kPositiveLowerEpsilon)
-		  {
-		    domainPenalty = AutoBootstrapConfiguration::kDomainViolationPenalty;
-		  }
-	      }
+	    {
+	      const double lower = num::to_double(c.getLower());
+	      if (support.violatesLowerBound(lower))
+		{
+		  domainPenalty = AutoBootstrapConfiguration::kDomainViolationPenalty;
+		}
+	    }
 
 	    raw.emplace_back(baseOrdering,
 			     baseLength,
@@ -2005,8 +2185,12 @@ static Candidate summarizePercentileLike(
 	{
 	  if (!std::isfinite(enriched[i].getScore()))
 	    return false;
-	  if (enforcePos && raw[i].getDomainPenalty() > 0.0)
+
+	  // Domain violations are always disqualifying when support is provided.
+	  // (If support == unbounded(), domain penalty is always zero.)
+	  if (raw[i].getDomainPenalty() > 0.0)
 	    return false;
+
 	  return true;
 	};
 
@@ -2069,7 +2253,6 @@ static Candidate summarizePercentileLike(
 		const int pCur  = methodPreference(enriched[i].getMethod());
 		if (pCur < pBest)
 		  {
-		    // Same score within epsilon, but method preference wins.
 		    bestScore = s;
 		    chosenIdxOpt = i;
 		  }
@@ -2088,7 +2271,7 @@ static Candidate summarizePercentileLike(
 		    if (enriched[i].getMethod() != MethodId::BCa) continue;
 
 		    if (!std::isfinite(enriched[i].getScore())) { bcaRejectedForNonFinite = true; }
-		    if (enforcePos && raw[i].getDomainPenalty() > 0.0) { bcaRejectedForDomain = true; }
+		    if (raw[i].getDomainPenalty() > 0.0)        { bcaRejectedForDomain  = true; }
 
 		    if (!std::isfinite(enriched[i].getZ0()) || !std::isfinite(enriched[i].getAccel()))
 		      {
@@ -2156,8 +2339,7 @@ static Candidate summarizePercentileLike(
 					 std::move(breakdowns));
 
 	return Result(chosen.getMethod(), chosen, enriched, diagnostics);
-      }
-      
+      }      
     private:
     };
 
