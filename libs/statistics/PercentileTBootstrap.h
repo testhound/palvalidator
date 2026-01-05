@@ -44,6 +44,19 @@ namespace palvalidator
 {
   namespace analysis
   {
+    // PercentileT Bootstrap Constants
+    // These constants are available to client code without requiring template instantiation
+    namespace percentile_t_constants
+    {
+      /// Minimum inner bootstrap replications required for stable standard error estimation
+      constexpr std::size_t MIN_INNER   = 100;
+      
+      /// Check stabilization every N inner replications during adaptive stopping
+      constexpr std::size_t CHECK_EVERY = 16;
+      
+      /// Relative epsilon for SE* stabilization (1.5%) - stop when change is less than this
+      constexpr double      REL_EPS     = 0.015;
+    }
 
     template<
       class Decimal,
@@ -73,6 +86,11 @@ namespace palvalidator
         std::size_t L;                     // resampler L (diagnostic)
         double      se_hat;                // sd(θ*) over effective outer reps
       };
+
+      // For backward compatibility, expose constants as class static members
+      static constexpr std::size_t MIN_INNER   = percentile_t_constants::MIN_INNER;
+      static constexpr std::size_t CHECK_EVERY = percentile_t_constants::CHECK_EVERY;
+      static constexpr double      REL_EPS     = percentile_t_constants::REL_EPS;
 
     public:
       PercentileTBootstrap(std::size_t      B_outer,
@@ -365,9 +383,8 @@ namespace palvalidator
               m2   += delta * (v - mean);
             };
 
-            constexpr std::size_t MIN_INNER   = 100;
-            constexpr std::size_t CHECK_EVERY = 16;
-            constexpr double      REL_EPS     = 0.015;
+            // Use class constants instead of local ones
+            // (constants are now publicly accessible for client code)
 
             double last_se = std::numeric_limits<double>::infinity();
 

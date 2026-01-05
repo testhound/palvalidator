@@ -48,5 +48,5 @@ namespace AutoBootstrapConfiguration
   constexpr double kPercentileTOuterPenaltyScale = 100.0;      ///< Penalty scale for outer failures
   constexpr double kPercentileTInnerPenaltyScale = 200.0;      ///< Penalty scale for inner failures
   constexpr double kPercentileTEffectiveBPenaltyScale = 50.0;  ///< Penalty scale for low effective B
-
+  constexpr double kBcaLengthOverflowScale = 2.0;
 } // namespace AutoBootstrapConfiguration

@@ -1043,6 +1043,42 @@ namespace palvalidator
         double m_bca_a_scale;
       };
 
+      struct EmpiricalMassResult
+      {
+	double mass_inclusive = 0.0;
+	std::size_t effective_sample_count = 0;
+      };
+
+      static EmpiricalMassResult compute_empirical_mass_inclusive(const std::vector<double>& xs,
+								  double lo, double hi)
+      {
+	std::size_t n = 0, inside = 0;
+	
+	for (double v : xs)
+	  {
+	    if (!std::isfinite(v))
+	      continue;
+	    
+	    ++n;
+	    if (v >= lo && v <= hi)
+	      ++inside;
+	  }
+	
+	EmpiricalMassResult result;
+	result.effective_sample_count = n;
+	result.mass_inclusive = (n == 0) ? 0.0 : static_cast<double>(inside) / static_cast<double>(n);
+	return result;
+      }
+
+      static double compute_under_coverage_with_half_step_tolerance(double width_cdf,
+								    double cl,
+								    std::size_t B_eff)
+      {
+	const double step = (B_eff > 0) ? (1.0 / static_cast<double>(B_eff)) : 1.0;
+	const double tol  = 0.5 * step;
+	return std::max(0.0, (cl - width_cdf) - tol);
+      }
+
       // -----------------------------------------------------------------------------
       // Empirical under-coverage penalty for Percentile-T Bootstrap (soft gate)
       //
@@ -1081,67 +1117,54 @@ namespace palvalidator
       static double computeEmpiricalUnderCoveragePenalty_PercentileT(
 								     const std::vector<double>& t_stats,   // Bootstrap t-statistics (NOT raw θ*)
 								     double theta_hat,                      // Point estimate θ̂
-								     double se_hat,                         // Standard error: SD(θ*)
+								     double se_hat,                         // Standard error used for t: SD(θ*) (or your chosen SE)
 								     double lo,                             // Lower CI bound (in θ-space)
 								     double hi,                             // Upper CI bound (in θ-space)
 								     double cl)                             // Nominal confidence level
       {
 	// -------------------------------------------------------------------------
-	// Guard clauses: ensure inputs are valid
+	// Guard clauses
 	// -------------------------------------------------------------------------
 	if (t_stats.size() < 2) return 0.0;
-  
 	if (!std::isfinite(theta_hat)) return 0.0;
-  
 	if (!std::isfinite(se_hat) || !(se_hat > 0.0)) return 0.0;
-  
 	if (!std::isfinite(lo) || !std::isfinite(hi) || !(hi > lo)) return 0.0;
-  
 	if (!(cl > 0.0 && cl < 1.0)) return 0.0;
 
 	// -------------------------------------------------------------------------
-	// Transform interval bounds from θ-space to t-space
-	// -------------------------------------------------------------------------
-	// lo = θ̂ - t_hi * se  =>  t_hi = (θ̂ - lo) / se
-	// hi = θ̂ - t_lo * se  =>  t_lo = (θ̂ - hi) / se
+	// Transform θ-space interval [lo, hi] to t-space interval [t_lo, t_hi]
 	//
-	// Because of the sign flip in the percentile-t formula:
-	//   - The UPPER θ-bound (hi) maps to the LOWER t-quantile
-	//   - The LOWER θ-bound (lo) maps to the UPPER t-quantile
-  
-	const double t_at_lower_theta_bound = (theta_hat - hi) / se_hat;  // t_lo
-	const double t_at_upper_theta_bound = (theta_hat - lo) / se_hat;  // t_hi
-  
-	// Sanity check: t_at_lower should be < t_at_upper in t-space
-	// (If not, something is wrong with the interval construction)
-	if (!(t_at_lower_theta_bound < t_at_upper_theta_bound)) {
-	  // This shouldn't happen with a properly constructed percentile-t interval,
-	  // but if it does, we can't reliably compute coverage.
-	  return 0.0;
-	}
+	// Percentile-t typically uses: CI = [ θ̂ - t_hi * SE , θ̂ - t_lo * SE ]
+	// which implies:
+	//   t at upper θ bound (hi) corresponds to LOWER t-quantile
+	//   t at lower θ bound (lo) corresponds to UPPER t-quantile
+	//
+	// Solve:
+	//   hi = θ̂ - t_lo * SE  => t_lo = (θ̂ - hi) / SE
+	//   lo = θ̂ - t_hi * SE  => t_hi = (θ̂ - lo) / SE
+	// -------------------------------------------------------------------------
+	const double t_lo = (theta_hat - hi) / se_hat;
+	const double t_hi = (theta_hat - lo) / se_hat;
+
+	if (!std::isfinite(t_lo) || !std::isfinite(t_hi)) return 0.0;
+	if (!(t_lo < t_hi)) return 0.0;
 
 	// -------------------------------------------------------------------------
-	// Compute empirical CDF mass of t-statistics inside [t_lo, t_hi]
+	// Empirical inclusive mass of t_stats inside [t_lo, t_hi]
 	// -------------------------------------------------------------------------
-	using palvalidator::analysis::detail::compute_empirical_cdf;
-  
-	const double F_t_lo = compute_empirical_cdf(t_stats, t_at_lower_theta_bound);
-	const double F_t_hi = compute_empirical_cdf(t_stats, t_at_upper_theta_bound);
-  
-	// The "bootstrap-world coverage" is the CDF width
-	// Clamp for safety (empirical CDF should already be in [0,1])
-	const double width_cdf = std::max(0.0, std::min(1.0, F_t_hi - F_t_lo));
+	const EmpiricalMassResult mass_result = compute_empirical_mass_inclusive(t_stats, t_lo, t_hi);
+
+	const std::size_t B_eff = mass_result.effective_sample_count;
+	if (B_eff < 2) return 0.0;
+
+	const double width_cdf = std::clamp(mass_result.mass_inclusive, 0.0, 1.0);
 
 	// -------------------------------------------------------------------------
-	// Compute under-coverage penalty (asymmetric: only penalize if too narrow)
+	// Under-coverage only, with half-step tolerance for finite B
 	// -------------------------------------------------------------------------
-	// coverage_error < 0  =>  under-coverage (interval too narrow in t-space)
-	// coverage_error > 0  =>  over-coverage  (interval too wide in t-space) - NOT penalized
-	const double coverage_error = width_cdf - cl;
-	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
-  
-	// Quadratic penalty: gentle for small deviations, severe for large ones
-	// Reuse existing multiplier for consistency with overall scoring framework
+	const double under_coverage =
+	  compute_under_coverage_with_half_step_tolerance(width_cdf, cl, B_eff);
+
 	return AutoBootstrapConfiguration::kUnderCoverageMultiplier *
 	  under_coverage * under_coverage;
       }
@@ -1177,20 +1200,16 @@ namespace palvalidator
 	if (!std::isfinite(lo) || !std::isfinite(hi) || !(hi > lo)) return 0.0;
 	if (!(cl > 0.0 && cl < 1.0)) return 0.0;
 
-	using palvalidator::analysis::detail::compute_empirical_cdf;
+	const EmpiricalMassResult mass_result = compute_empirical_mass_inclusive(boot_stats, lo, hi);
 
-	const double F_lo = compute_empirical_cdf(boot_stats, lo);
-	const double F_hi = compute_empirical_cdf(boot_stats, hi);
+	const std::size_t B_eff = mass_result.effective_sample_count;
+	if (B_eff < 2) return 0.0;
 
-	// Clamp for safety; empirical CDF should already be in [0,1].
-	const double width_cdf = std::max(0.0, std::min(1.0, F_hi - F_lo));
+	const double width_cdf = std::clamp(mass_result.mass_inclusive, 0.0, 1.0);
 
-	// Under-coverage only (too narrow in CDF space)
-	const double coverage_error = width_cdf - cl;
-	const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
+	const double under_coverage =
+	  compute_under_coverage_with_half_step_tolerance(width_cdf, cl, B_eff);
 
-	// Reuse existing multiplier used elsewhere in ordering penalty
-	// (keeps scaling consistent with the selector’s existing design).
 	return AutoBootstrapConfiguration::kUnderCoverageMultiplier *
 	  under_coverage * under_coverage;
       }
@@ -1207,13 +1226,12 @@ namespace palvalidator
        * 
        * @return Length penalty (0.0 if within bounds, >0.0 if outside)
        */
-      static double computeLengthPenalty(
-					 double actual_length,
-					 const std::vector<double>& boot_stats,
-					 double confidence_level,
-					 MethodId method,
-					 double& normalized_length,  // output
-					 double& median_val)          // output
+      static double computeLengthPenalty_Percentile(double actual_length,
+						    const std::vector<double>& boot_stats,
+						    double confidence_level,
+						    MethodId method,
+						    double& normalized_length,  // output
+						    double& median_val)          // output
       {
 	// Initialize outputs
 	normalized_length = 1.0;
@@ -1267,6 +1285,96 @@ namespace palvalidator
 	}
       }
 
+      static double computeLengthPenalty_Normal(
+						double actual_length,
+						double se_boot,
+						double confidence_level,
+						double& normalized_length,
+						double& median_val_placeholder)  // Not meaningful; set to 0
+      {
+	median_val_placeholder = 0.0;  // Normal doesn't use bootstrap median
+    
+	if (actual_length <= 0.0 || se_boot <= 0.0) {
+	  normalized_length = 1.0;
+	  return 0.0;
+	}
+    
+	// Normal's theoretical ideal: θ̂ ± z_{α/2} * SE
+	// Width = 2 * z_{α/2} * SE
+	const double alpha = 1.0 - confidence_level;
+	const double z_alpha_2 = detail::compute_normal_quantile(1.0 - 0.5 * alpha);;
+	const double ideal_len = 2.0 * z_alpha_2 * se_boot;
+    
+	if (ideal_len <= 0.0)
+	  {
+	    normalized_length = 1.0;
+	    return 0.0;
+	  }
+    
+	normalized_length = actual_length / ideal_len;
+    
+	// Standard bounds for Normal
+	const double L_min = AutoBootstrapConfiguration::kLengthMin;
+	const double L_max = AutoBootstrapConfiguration::kLengthMaxStandard;
+    
+	if (normalized_length < L_min) {
+	  const double deficit = L_min - normalized_length;
+	  return deficit * deficit;
+	}
+	else if (normalized_length > L_max) {
+	  const double excess = normalized_length - L_max;
+	  return excess * excess;
+	}
+	return 0.0;
+      }
+
+      static double computeLengthPenalty_PercentileT(
+						     double actual_length,
+						     const std::vector<double>& t_star_stats,  // T* distribution
+						     double se_hat,                             // SE used in interval construction
+						     double confidence_level,
+						     double& normalized_length,
+						     double& median_val)
+      {
+	if (actual_length <= 0.0 || t_star_stats.size() < 2 || se_hat <= 0.0) {
+	  normalized_length = 1.0;
+	  median_val = 0.0;
+	  return 0.0;
+	}
+    
+	// Compute median of T* distribution (for diagnostics)
+	std::vector<double> sorted(t_star_stats.begin(), t_star_stats.end());
+	std::sort(sorted.begin(), sorted.end());
+	median_val =  mkc_timeseries::StatUtils<double>::computeMedianSorted(sorted);
+    
+	// Percentile-T's theoretical ideal:
+	// CI = θ̂ - t_hi*SE_hat to θ̂ - t_lo*SE_hat
+	// Width = (t_hi - t_lo) * SE_hat
+	const double alpha = 1.0 - confidence_level;
+	const double t_lo =  mkc_timeseries::StatUtils<double>::quantileType7Sorted(sorted, 0.5 * alpha);
+	const double t_hi =  mkc_timeseries::StatUtils<double>::quantileType7Sorted(sorted, 1.0 - 0.5 * alpha);
+    
+	const double ideal_len = (t_hi - t_lo) * se_hat;  // ← PT's actual construction formula
+    
+	if (ideal_len <= 0.0) return 0.0;
+    
+	normalized_length = actual_length / ideal_len;
+    
+	// Standard bounds for Percentile-T
+	const double L_min = AutoBootstrapConfiguration::kLengthMin;
+	const double L_max = AutoBootstrapConfiguration::kLengthMaxStandard;
+    
+	if (normalized_length < L_min) {
+	  const double deficit = L_min - normalized_length;
+	  return deficit * deficit;
+	}
+	else if (normalized_length > L_max) {
+	  const double excess = normalized_length - L_max;
+	  return excess * excess;
+	}
+	return 0.0;
+      }
+
       /**
        * @brief Creates a Candidate summary for "simple" percentile-like methods.
        *
@@ -1291,6 +1399,7 @@ namespace palvalidator
 	    throw std::logic_error(
 				   "AutoBootstrapSelector: diagnostics not available for percentile-like engine (run() not called?).");
 	  }
+
 	const auto& stats = engine.getBootstrapStatistics();
 	const std::size_t m = stats.size();
 	if (m < 2)
@@ -1298,19 +1407,21 @@ namespace palvalidator
 	    throw std::logic_error(
 				   "AutoBootstrapSelector: need at least 2 bootstrap statistics for percentile-like engine.");
 	  }
+
 	const double mean_boot = engine.getBootstrapMean();
 	const double se_boot   = engine.getBootstrapSe();
+
 	// Guard against degenerate distribution in skewness computation
 	// If se_boot = 0, all bootstrap statistics are identical (degenerate case)
 	const double skew_boot = (se_boot > 0.0)
 	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
-	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
-    
+	  : 0.0;
+
 	const double mu  = num::to_double(res.mean);
 	const double lo  = num::to_double(res.lower);
 	const double hi  = num::to_double(res.upper);
 	const double len = hi - lo;
-    
+
 	// ====================================================================
 	// CENTER SHIFT PENALTY
 	// ====================================================================
@@ -1320,10 +1431,10 @@ namespace palvalidator
 	    const double center = 0.5 * (lo + hi);
 	    center_shift_in_se = std::fabs(center - mu) / se_boot;
 	  }
-    
+
 	// ====================================================================
 	// ORDERING PENALTY (coverage accuracy)
-	// ====================================================================
+	//
 	// NOTE: Basic bootstrap uses reflection (2*theta_hat - quantiles) to
 	// construct its interval, which is DESIGNED to deviate from the bootstrap
 	// distribution when bias/skewness exists. Penalizing this deviation is
@@ -1331,39 +1442,66 @@ namespace palvalidator
 	// Therefore, we skip the ordering penalty for Basic bootstrap.
 	// ====================================================================
 	double ordering_penalty = 0.0;
-    
+
 	if (method != MethodId::Basic)
 	  {
 	    using palvalidator::analysis::detail::compute_empirical_cdf;
-        
+
+	    const double coverage_target = res.cl;
+
+	    // Empirical CDF values at the interval endpoints (still used for center_pen)
 	    const double F_lo = compute_empirical_cdf(stats, lo);
 	    const double F_hi = compute_empirical_cdf(stats, hi);
-	    const double width_cdf = F_hi - F_lo;
-	    const double coverage_target = res.cl;
-	    const double coverage_error = width_cdf - coverage_target;
-	    const double under_coverage = (coverage_error < 0.0) ? -coverage_error : 0.0;
-	    const double over_coverage  = (coverage_error > 0.0) ?  coverage_error : 0.0;
-	    const double cov_pen =
-	      AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
-	      AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
-	    const double F_mu       = compute_empirical_cdf(stats, mu);
-	    const double center_cdf = 0.5 * (F_lo + F_hi);
-	    const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
-	    ordering_penalty = cov_pen + center_pen;
+
+	    // Inclusive mass inside [lo, hi] (tie-safe), plus effective sample size
+	    const EmpiricalMassResult mass_result = compute_empirical_mass_inclusive(stats, lo, hi);
+	    const std::size_t B_eff = mass_result.effective_sample_count;
+
+	    if (B_eff >= 2)
+	      {
+		const double width_cdf = std::clamp(mass_result.mass_inclusive, 0.0, 1.0);
+
+		// Under-coverage with half-step tolerance (finite-B granularity)
+		const double under_coverage =
+		  compute_under_coverage_with_half_step_tolerance(width_cdf, coverage_target, B_eff);
+
+		// Symmetric tolerance for over-coverage as well
+		const double step = (B_eff > 0) ? (1.0 / static_cast<double>(B_eff)) : 1.0;
+		const double tol  = 0.5 * step;
+		const double over_coverage = std::max(0.0, (width_cdf - coverage_target) - tol);
+
+		const double cov_pen =
+		  AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
+		  AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
+
+		const double F_mu       = compute_empirical_cdf(stats, mu);
+		const double center_cdf = 0.5 * (F_lo + F_hi);
+		const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
+
+		ordering_penalty = cov_pen + center_pen;
+	      }
+	    else
+	      {
+		ordering_penalty = 0.0;
+	      }
 	  }
 	// else: ordering_penalty remains 0.0 for Basic bootstrap
-    
+
 	double normalized_length = 1.0;
 	double median_val = 0.0;
-	const double length_penalty = computeLengthPenalty(
-							   len,           // actual_length
-							   stats,         // boot_stats
-							   res.cl,        // confidence_level
-							   method,        // method (handles MOutOfN vs. standard L_max)
-							   normalized_length,  // output
-							   median_val     // output (always computed, even if len <= 0)
-							   );
-    
+
+	double length_penalty = 0.0;
+	if (method == MethodId::Normal)
+	  {
+	    // Use SE-based ideal for Normal
+	    length_penalty = computeLengthPenalty_Normal(len, se_boot, res.cl, normalized_length, median_val);
+	  }
+	else
+	  {
+	    // Use percentile quantile ideal for Percentile, BCa, Basic, MOutOfN
+	    length_penalty = computeLengthPenalty_Percentile(len, stats, res.cl, method, normalized_length, median_val);
+	  }
+
 	return Candidate(
 			 method,
 			 res.mean,
@@ -1377,7 +1515,7 @@ namespace palvalidator
 			 res.skipped,      // skipped_total
 			 se_boot,
 			 skew_boot,
-			 median_val,       // ← Always populated by computeLengthPenalty
+			 median_val,       // Always populated by computeLengthPenalty
 			 center_shift_in_se,
 			 normalized_length,
 			 ordering_penalty,
@@ -1388,7 +1526,7 @@ namespace palvalidator
 			 0.0
 			 );
       }
-
+      
       /**
        * @brief Compute stability penalty for Percentile-T based on resample quality.
        *
@@ -1404,66 +1542,81 @@ namespace palvalidator
       static double computePercentileTStability(const Result& res)
       {
 	const double B_outer = static_cast<double>(res.B_outer);
-	const double B_inner = static_cast<double>(res.B_inner); // still useful for sanity checks / diagnostics
+	const double B_inner = static_cast<double>(res.B_inner);
+
 	const double skipped_outer = static_cast<double>(res.skipped_outer);
 	const double skipped_inner = static_cast<double>(res.skipped_inner_total);
-	const double effective_B = static_cast<double>(res.effective_B);
+	const double effective_B   = static_cast<double>(res.effective_B);
 
-	// New: exact inner attempts (accounts for early stopping)
+	// Exact inner attempts (accounts for early stopping)
 	const double inner_attempted_total = static_cast<double>(res.inner_attempted_total);
 
-	// Guard against division by zero / nonsense
-	if (B_outer < 1.0 || B_inner < 1.0) {
-	  return std::numeric_limits<double>::infinity();
-	}
+	// -------------------------------------------------------------------------
+	// Guard against non-finite / division by zero / nonsense
+	// -------------------------------------------------------------------------
+	if (!std::isfinite(B_outer) || !std::isfinite(B_inner) ||
+	    !std::isfinite(skipped_outer) || !std::isfinite(skipped_inner) ||
+	    !std::isfinite(effective_B) || !std::isfinite(inner_attempted_total))
+	  {
+	    return std::numeric_limits<double>::infinity();
+	  }
+
+	if (B_outer < 1.0 || B_inner < 1.0)
+	  {
+	    return std::numeric_limits<double>::infinity();
+	  }
+
+	// If no inner attempts at all -> PT is unusable in this run.
+	if (inner_attempted_total <= 0.0)
+	  {
+	    return std::numeric_limits<double>::infinity();
+	  }
 
 	double penalty = 0.0;
 
+	// -------------------------------------------------------------------------
 	// 1) OUTER RESAMPLE FAILURE RATE
+	// -------------------------------------------------------------------------
 	// Threshold: >10% outer failures indicates the statistic is unstable
-	const double outer_failure_rate = skipped_outer / B_outer;
+	double outer_failure_rate = skipped_outer / B_outer;
+	outer_failure_rate = std::clamp(outer_failure_rate, 0.0, 1.0);
+
 	const double kOuterThreshold = AutoBootstrapConfiguration::kPercentileTOuterFailThreshold;
 
-	if (outer_failure_rate > kOuterThreshold) {
-	  const double excess = outer_failure_rate - kOuterThreshold;
-	  penalty += excess * excess * AutoBootstrapConfiguration::kPercentileTOuterPenaltyScale;
-	  // Example: 20% failure rate → 10% excess → penalty += 1.0
-	}
+	if (outer_failure_rate > kOuterThreshold)
+	  {
+	    const double excess = outer_failure_rate - kOuterThreshold;
+	    penalty += excess * excess * AutoBootstrapConfiguration::kPercentileTOuterPenaltyScale;
+	  }
 
+	// -------------------------------------------------------------------------
 	// 2) INNER SE FAILURE RATE
-	// Threshold: >5% inner failures indicates SE* estimation is unreliable
-	// Uses the *actual* number of attempted inner draws across all outers.
-	const double kInnerThreshold = AutoBootstrapConfiguration::kPercentileTInnerFailThreshold;
-
-	if (inner_attempted_total <= 0.0) {
-	  // No inner attempts at all -> PT is unusable in this run.
-	  return std::numeric_limits<double>::infinity();
-	}
-
-	// Clamp to [0,1] for safety (in case counters ever drift)
+	// -------------------------------------------------------------------------
+	// Threshold: >5% inner failures indicates SE* estimation is unreliable.
+	// Uses the actual number of attempted inner draws across all outers.
 	double inner_failure_rate = skipped_inner / inner_attempted_total;
-	if (inner_failure_rate < 0.0)
-	  inner_failure_rate = 0.0;
-	if (inner_failure_rate > 1.0)
-	  inner_failure_rate = 1.0;
+	inner_failure_rate = std::clamp(inner_failure_rate, 0.0, 1.0);
+
+	const double kInnerThreshold = AutoBootstrapConfiguration::kPercentileTInnerFailThreshold;
 
 	if (inner_failure_rate > kInnerThreshold)
 	  {
 	    const double excess = inner_failure_rate - kInnerThreshold;
 	    penalty += excess * excess * AutoBootstrapConfiguration::kPercentileTInnerPenaltyScale;
-	    // Example: 10% failure rate → 5% excess → penalty += 0.5
 	  }
 
+	// -------------------------------------------------------------------------
 	// 3) EFFECTIVE SAMPLE SIZE
-	// We want effective_B ≥ 70% of B_outer for reliable quantile estimation
+	// -------------------------------------------------------------------------
+	// We want effective_B ≥ 70% of B_outer for reliable quantile estimation.
 	const double kMinEffectiveFraction = AutoBootstrapConfiguration::kPercentileTMinEffectiveFraction;
 	const double min_effective = kMinEffectiveFraction * B_outer;
 
 	if (effective_B < min_effective)
 	  {
 	    const double deficit_fraction = (min_effective - effective_B) / B_outer;
-	    penalty += deficit_fraction * deficit_fraction * AutoBootstrapConfiguration::kPercentileTEffectiveBPenaltyScale;
-	    // Example: effective_B = 60% of B_outer → 10% deficit → penalty += 0.5
+	    penalty += deficit_fraction * deficit_fraction *
+	      AutoBootstrapConfiguration::kPercentileTEffectiveBPenaltyScale;
 	  }
 
 	return penalty;
@@ -1518,136 +1671,123 @@ namespace palvalidator
 					       const ScoringWeights& weights = ScoringWeights(),
 					       std::ostream* os = nullptr)
       {
-          // ====================================================================
-          // 0. NON-FINITE CHECK
-          // ====================================================================
-          // Non-finite parameters indicate catastrophic failure in BCa computation.
-          // This should disqualify the candidate immediately.
-          if (!std::isfinite(z0) || !std::isfinite(accel)) {
-              if (os) {
-                  (*os) << "[BCa] Non-finite parameters detected: "
-                        << "z0=" << z0 << " accel=" << accel << "\n";
-              }
-              return std::numeric_limits<double>::infinity();
-          }
+	// ====================================================================
+	// 0. NON-FINITE CHECK
+	// ====================================================================
+	// Non-finite parameters indicate catastrophic failure in BCa computation.
+	// This should disqualify the candidate immediately.
+	if (!std::isfinite(z0) || !std::isfinite(accel) || !std::isfinite(skew_boot))
+	  {
+	    if (os)
+	      {
+		(*os) << "[BCa] Non-finite parameters detected: "
+		      << "z0=" << z0 << " accel=" << accel << " skew_boot=" << skew_boot << "\n";
+	      }
+	    return std::numeric_limits<double>::infinity();
+	  }
 
-          double stability_penalty = 0.0;
+	double stability_penalty = 0.0;
 
-          // ====================================================================
-          // 1. BIAS (z0) PENALTY
-          // ====================================================================
-          // The z0 parameter corrects for bias in the bootstrap distribution.
-          // Large |z0| indicates the bootstrap median is far from the original
-          // estimate, suggesting either:
-          //   - Poor convergence of the bootstrap
-          //   - Inappropriate statistic for the data
-          //   - Extreme outliers affecting the estimate
-          //
-          // Penalty is quadratic in excess over threshold.
-          const double Z0_THRESHOLD = AutoBootstrapConfiguration::kBcaZ0SoftThreshold;
-          
-          // Adaptive scaling: high skewness makes bias harder to correct reliably
-          const double skew_multiplier = (std::abs(skew_boot) > 2.0) ? 1.5 : 1.0;
-          const double Z0_SCALE = weights.getBcaZ0Scale() * skew_multiplier;
+	// ====================================================================
+	// 1. BIAS (z0) PENALTY
+	// ====================================================================
+	const double Z0_THRESHOLD = AutoBootstrapConfiguration::kBcaZ0SoftThreshold;
 
-          const double z0_abs = std::abs(z0);
-          if (z0_abs > Z0_THRESHOLD) {
-              const double diff = z0_abs - Z0_THRESHOLD;
-              const double z0_penalty = (diff * diff) * Z0_SCALE;
-              stability_penalty += z0_penalty;
+	// Adaptive scaling: high skewness makes bias harder to correct reliably
+	const double skew_multiplier = (std::abs(skew_boot) > 2.0) ? 1.5 : 1.0;
+	const double Z0_SCALE = weights.getBcaZ0Scale() * skew_multiplier;
 
-              if (os && z0_penalty > 0.01) {
-                  (*os) << "[BCa] z0 penalty: |z0|=" << z0_abs
-                        << " threshold=" << Z0_THRESHOLD
-                        << " penalty=" << z0_penalty << "\n";
-              }
-          }
+	const double z0_abs = std::abs(z0);
+	if (z0_abs > Z0_THRESHOLD)
+	  {
+	    const double diff = z0_abs - Z0_THRESHOLD;
+	    const double z0_penalty = (diff * diff) * Z0_SCALE;
+	    stability_penalty += z0_penalty;
 
-          // ====================================================================
-          // 2. ACCELERATION (a) PENALTY
-          // ====================================================================
-          // The acceleration parameter 'a' measures the rate of change of SE.
-          // Large |a| indicates the standard error is highly variable across
-          // different bootstrap samples, suggesting:
-          //   - Unstable estimation
-          //   - Small sample size
-          //   - Heavy-tailed distribution
-          //
-          // The threshold adapts: stricter when skewness is extreme.
-          const double base_accel_threshold = AutoBootstrapConfiguration::kBcaASoftThreshold;  // 0.10
-          
-          // Stricter threshold (0.08) when distribution is highly skewed
-          // because BCa's acceleration correction becomes less reliable
-          const double ACCEL_THRESHOLD = (std::abs(skew_boot) > 3.0) 
-              ? 0.08   // Stricter for extreme skewness
-              : base_accel_threshold;
+	    if (os && z0_penalty > 0.01)
+	      {
+		(*os) << "[BCa] z0 penalty: |z0|=" << z0_abs
+		      << " threshold=" << Z0_THRESHOLD
+		      << " penalty=" << z0_penalty << "\n";
+	      }
+	  }
 
-          const double ACCEL_SCALE = weights.getBcaAScale() * skew_multiplier;
+	// ====================================================================
+	// 2. ACCELERATION (a) PENALTY
+	// ====================================================================
+	const double base_accel_threshold = AutoBootstrapConfiguration::kBcaASoftThreshold;
 
-          const double accel_abs = std::abs(accel);
-          if (accel_abs > ACCEL_THRESHOLD) {
-              const double diff = accel_abs - ACCEL_THRESHOLD;
-              const double accel_penalty = (diff * diff) * ACCEL_SCALE;
-              stability_penalty += accel_penalty;
+	// Avoid magic constant: if you can, prefer a config constant.
+	// If you don't have one yet, this local named constant at least documents intent.
+	const double strict_accel_threshold_for_extreme_skew = 0.08;
 
-              if (os && accel_penalty > 0.01) {
-                  (*os) << "[BCa] acceleration penalty: |a|=" << accel_abs
-                        << " threshold=" << ACCEL_THRESHOLD
-                        << " penalty=" << accel_penalty << "\n";
-              }
-          }
+	// Stricter threshold when distribution is highly skewed
+	const double ACCEL_THRESHOLD = (std::abs(skew_boot) > 3.0)
+	  ? strict_accel_threshold_for_extreme_skew
+	  : base_accel_threshold;
 
-          // ====================================================================
-          // 3. SKEWNESS PENALTY
-          // ====================================================================
-          // BCa assumes the bootstrap distribution is approximately normal or
-          // mildly skewed. Extreme skewness (|skew| > threshold) indicates:
-          //   - BCa's normal approximation breaks down
-          //   - Percentile or percentile-t might be more appropriate
-          //   - The statistic may not be suitable for BCa
-          //
-          // This penalty directly guards against using BCa when its mathematical
-          // assumptions are violated.
-          const double SKEW_THRESHOLD = AutoBootstrapConfiguration::kBcaSkewThreshold;
-          const double SKEW_PENALTY_SCALE = AutoBootstrapConfiguration::kBcaSkewPenaltyScale;
+	const double ACCEL_SCALE = weights.getBcaAScale() * skew_multiplier;
 
-          if (std::abs(skew_boot) > SKEW_THRESHOLD) {
-              const double skew_excess = std::abs(skew_boot) - SKEW_THRESHOLD;
-              const double skew_penalty = skew_excess * skew_excess * SKEW_PENALTY_SCALE;
-              stability_penalty += skew_penalty;
+	const double accel_abs = std::abs(accel);
+	if (accel_abs > ACCEL_THRESHOLD)
+	  {
+	    const double diff = accel_abs - ACCEL_THRESHOLD;
+	    const double accel_penalty = (diff * diff) * ACCEL_SCALE;
+	    stability_penalty += accel_penalty;
 
-              // Log significant skew penalties
-              if (os && (skew_penalty > 0.1)) {
-                  (*os) << "[BCa] Skew penalty applied: skew_boot=" << skew_boot
-                        << " threshold=" << SKEW_THRESHOLD
-                        << " excess=" << skew_excess
-                        << " penalty=" << skew_penalty 
-                        << " total_stability=" << stability_penalty << "\n";
-              }
-          }
+	    if (os && accel_penalty > 0.01)
+	      {
+		(*os) << "[BCa] acceleration penalty: |a|=" << accel_abs
+		      << " threshold=" << ACCEL_THRESHOLD
+		      << " penalty=" << accel_penalty << "\n";
+	      }
+	  }
 
-          // ====================================================================
-          // 4. DEBUG LOGGING
-          // ====================================================================
-          // Log detailed diagnostics when skewness is elevated, which helps
-          // understand why BCa might be rejected or heavily penalized.
-          if (os && (std::abs(skew_boot) > 2.0)) {
-              (*os) << "[BCa DEBUG] High skew detected:\n"
-                    << "  skew_boot=" << skew_boot << "\n"
-                    << "  skew_multiplier=" << skew_multiplier << "\n"
-                    << "  Z0_THRESHOLD=" << Z0_THRESHOLD << "\n"
-                    << "  ACCEL_THRESHOLD=" << ACCEL_THRESHOLD << "\n"
-                    << "  Z0_SCALE=" << Z0_SCALE << "\n"
-                    << "  ACCEL_SCALE=" << ACCEL_SCALE << "\n"
-                    << "  z0=" << z0 << " (|z0|=" << z0_abs << ")\n"
-                    << "  accel=" << accel << " (|a|=" << accel_abs << ")\n";
-          }
+	// ====================================================================
+	// 3. SKEWNESS PENALTY
+	// ====================================================================
+	const double SKEW_THRESHOLD = AutoBootstrapConfiguration::kBcaSkewThreshold;
+	const double SKEW_PENALTY_SCALE = AutoBootstrapConfiguration::kBcaSkewPenaltyScale;
 
-          if (os && (stability_penalty > 0.0)) {
-              (*os) << "[BCa] Total stability penalty: " << stability_penalty << "\n";
-          }
+	const double skew_abs = std::abs(skew_boot);
+	if (skew_abs > SKEW_THRESHOLD)
+	  {
+	    const double skew_excess = skew_abs - SKEW_THRESHOLD;
+	    const double skew_penalty = skew_excess * skew_excess * SKEW_PENALTY_SCALE;
+	    stability_penalty += skew_penalty;
 
-          return stability_penalty;
+	    if (os && (skew_penalty > 0.1))
+	      {
+		(*os) << "[BCa] Skew penalty applied: skew_boot=" << skew_boot
+		      << " threshold=" << SKEW_THRESHOLD
+		      << " excess=" << skew_excess
+		      << " penalty=" << skew_penalty
+		      << " total_stability=" << stability_penalty << "\n";
+	      }
+	  }
+
+	// ====================================================================
+	// 4. DEBUG LOGGING
+	// ====================================================================
+	if (os && (std::abs(skew_boot) > 2.0))
+	  {
+	    (*os) << "[BCa DEBUG] High skew detected:\n"
+		  << "  skew_boot=" << skew_boot << "\n"
+		  << "  skew_multiplier=" << skew_multiplier << "\n"
+		  << "  Z0_THRESHOLD=" << Z0_THRESHOLD << "\n"
+		  << "  ACCEL_THRESHOLD=" << ACCEL_THRESHOLD << "\n"
+		  << "  Z0_SCALE=" << Z0_SCALE << "\n"
+		  << "  ACCEL_SCALE=" << ACCEL_SCALE << "\n"
+		  << "  z0=" << z0 << " (|z0|=" << z0_abs << ")\n"
+		  << "  accel=" << accel << " (|a|=" << accel_abs << ")\n";
+	  }
+
+	if (os && (stability_penalty > 0.0))
+	  {
+	    (*os) << "[BCa] Total stability penalty: " << stability_penalty << "\n";
+	  }
+
+	return stability_penalty;
       }
 
       /**
@@ -1662,8 +1802,7 @@ namespace palvalidator
        * @return A penalty score (0.0 if stable, increasing values for instability).
        */
       template <class PTBootstrap>
-      static Candidate summarizePercentileT(
-					    const PTBootstrap&                  engine,
+      static Candidate summarizePercentileT(const PTBootstrap& engine,
 					    const typename PTBootstrap::Result& res,
 					    std::ostream* os = nullptr)
       {
@@ -1673,107 +1812,105 @@ namespace palvalidator
 				   "AutoBootstrapSelector: percentile-t diagnostics not available (run() not called?).");
 	  }
 
-	const auto& theta_stats = engine.getThetaStarStatistics();
-	const std::size_t m = theta_stats.size();
-	if (m < 2)
+	// -------------------------------------------------------------------------
+	// θ* (finite-only)
+	// -------------------------------------------------------------------------
+	const auto& theta_stats_all = engine.getThetaStarStatistics();
+	std::vector<double> theta_stats;
+	theta_stats.reserve(theta_stats_all.size());
+	for (double v : theta_stats_all)
+	  {
+	    if (std::isfinite(v)) theta_stats.push_back(v);
+	  }
+
+	if (theta_stats.size() < 2)
 	  {
 	    throw std::logic_error(
-				   "AutoBootstrapSelector: need at least 2 theta* statistics for percentile-t.");
+				   "AutoBootstrapSelector: need at least 2 finite theta* statistics for percentile-t.");
 	  }
 
 	double sum = 0.0;
 	for (double v : theta_stats) sum += v;
-	const double mean_boot = sum / static_cast<double>(m);
+	const double mean_boot = sum / static_cast<double>(theta_stats.size());
 
-	// Bootstrap Standard Error Estimation:
-	// 
-	// The standard deviation of the bootstrap statistics provides an estimate
-	// of the standard error of the original estimator. This works because:
-	//
-	// 1. We generate B bootstrap samples from the original data
-	// 2. Each bootstrap sample yields a statistic θ*
-	// 3. The distribution of {θ₁*, θ₂*, ..., θ_B*} approximates the sampling
-	//    distribution of θ̂
-	// 4. Therefore, sd({θ*}) ≈ SE(θ̂)
-	//
-	// Note: We compute sd(θ*), NOT se(θ*) = sd(θ*)/√B. The latter would be
-	// the standard error of the *mean* of bootstrap statistics, which is
-	// not what we need for confidence interval construction.
 	const double se_boot_calc = mkc_timeseries::StatUtils<double>::computeStdDev(theta_stats);
 
-	// Guard against degenerate distribution in skewness computation
-	const double skew_boot = (se_boot_calc > 0.0)
-	  ? mkc_timeseries::StatUtils<double>::computeSkewness(theta_stats, mean_boot, se_boot_calc)
-	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
-	
-	// Use SE_hat from engine, fall back to calculated SE if invalid
 	double se_ref = res.se_hat;
 	if (!(se_ref > 0.0))
 	  se_ref = se_boot_calc;
+
+	const double skew_boot = (se_boot_calc > 0.0)
+	  ? mkc_timeseries::StatUtils<double>::computeSkewness(theta_stats, mean_boot, se_boot_calc)
+	  : 0.0;
 
 	const double lo  = num::to_double(res.lower);
 	const double hi  = num::to_double(res.upper);
 	const double len = hi - lo;
 
-	// CENTER SHIFT PENALTY: NOT COMPUTED FOR PERCENTILE-T
-	//
-	// Rationale: Percentile-T achieves coverage via the pivotal quantity T* = (θ* - θ)/SE*.
-	// Correctness depends on the distribution of T*, not on whether the CI is symmetric
-	// around the point estimate. The studentization inherently adapts to asymmetry.
-	// Penalizing center shift would incorrectly penalize this method's fundamental property.
-	double center_shift_in_se = 0.0;
+	const double center_shift_in_se = 0.0; // intentionally not used for PT
 
-	// ORDERING PENALTY:
-	// 
-	// Rationale: Percentile-T achieves coverage via the pivotal quantity T* = (θ*-θ)/SE*.
-	// In theory, this should yield exact nominal coverage. However, in finite samples
-	// with challenging distributions, coverage errors can occur.
-	//
+	// -------------------------------------------------------------------------
+	// T* (finite-only)
+	// -------------------------------------------------------------------------
+	const auto& t_stats_all = engine.getTStatistics();
+	std::vector<double> t_stats;
+	t_stats.reserve(t_stats_all.size());
+	for (double v : t_stats_all)
+	  {
+	    if (std::isfinite(v)) t_stats.push_back(v);
+	  }
 
-	const auto& t_stats = engine.getTStatistics();
 	const double theta_hat_d = num::to_double(res.mean);
 
-	// ORDERING PENALTY (soft under-coverage only)
-        // 
-        // Percentile-T achieves coverage via the pivotal quantity T* = (θ* - θ)/SE*.
-        // While this should theoretically yield nominal coverage, in finite samples with
-        // challenging distributions (heavy tails, high inner failure rates, extreme skewness),
-        // the method can produce intervals that are too narrow.
-        //
-        // We penalize empirical under-coverage in t-space (the distribution actually used
-        // to construct the interval), but NOT over-coverage. This removes PT's "free pass"
-        // without discarding its theoretical advantages.
-	const double ordering_penalty = computeEmpiricalUnderCoveragePenalty(t_stats,      // t-statistics (NOT theta_stats)
-									     theta_hat_d,  // Point estimate
-									     se_ref,       // Standard error (already validated > 0)
-									     lo,           // Lower bound
-									     hi,           // Upper bound
-									     res.cl        // Confidence level
-									     );
-
+	double ordering_penalty = 0.0;
+	double length_penalty = 0.0;
 	double normalized_length = 1.0;
 	double median_boot = 0.0;
 
-	const double length_penalty = computeLengthPenalty(
-							   len,
-							   theta_stats,
-							   res.cl,
-							   MethodId::PercentileT,
-							   normalized_length,
-							   median_boot
-							   );
+	// Compute median from theta_stats (the actual statistic values)
+	if (theta_stats.size() >= 2)
+	  {
+	    std::vector<double> theta_sorted(theta_stats.begin(), theta_stats.end());
+	    std::sort(theta_sorted.begin(), theta_sorted.end());
+	    median_boot = mkc_timeseries::StatUtils<double>::computeMedianSorted(theta_sorted);
+	  }
+	
+	if (t_stats.size() >= 2)
+	  {
+	    ordering_penalty =
+	      computeEmpiricalUnderCoveragePenalty(
+						   t_stats,
+						   theta_hat_d,
+						   se_ref,
+						   lo,
+						   hi,
+						   res.cl
+						   );
+
+	    double median_t_dummy = 0.0;
+	    length_penalty =
+	      computeLengthPenalty_PercentileT(len,
+					       t_stats,
+					       se_ref,
+					       res.cl,
+					       normalized_length,
+					       median_t_dummy
+					       );
+	  }
 
 	auto stability_penalty = computePercentileTStability(res);
 
 	if (os && (stability_penalty > 0.0))
 	  {
-	    (*os) << "summarizePercentileT: stability penalty is > 0 and has value " << stability_penalty << std::endl;
+	    (*os) << "summarizePercentileT: stability penalty is > 0 and has value "
+		  << stability_penalty << std::endl;
 	  }
 
 	double inner_failure_rate = 0.0;
 	if (res.inner_attempted_total > 0)
 	  {
-	    inner_failure_rate = static_cast<double>(res.skipped_inner_total) / 
+	    inner_failure_rate =
+	      static_cast<double>(res.skipped_inner_total) /
 	      static_cast<double>(res.inner_attempted_total);
 	  }
 
@@ -1797,7 +1934,7 @@ namespace palvalidator
 			 length_penalty,
 			 stability_penalty,
 			 0.0,              // z0 (N/A)
-			 0.0,               // accel (N/A)
+			 0.0,              // accel (N/A)
 			 inner_failure_rate
 			 );
       }
@@ -1832,78 +1969,68 @@ namespace palvalidator
 	const double  accel   = num::to_double(accelD);
 
 	const auto& statsD = bca.getBootstrapStatistics();
-	if (statsD.size() < 2) {
-	  throw std::logic_error(
-				 "AutoBootstrapSelector: need at least 2 bootstrap stats for BCa engine.");
-	}
+	if (statsD.size() < 2)
+	  {
+	    throw std::logic_error(
+				   "AutoBootstrapSelector: need at least 2 bootstrap stats for BCa engine.");
+	  }
 
-	// Convert to doubles for diagnostics/selection metrics
+	// Convert to doubles for diagnostics/selection metrics, keeping only finite values.
 	std::vector<double> stats;
 	stats.reserve(statsD.size());
-	for (const auto& d : statsD) {
-	  stats.push_back(num::to_double(d));
-	}
+	for (const auto& d : statsD)
+	  {
+	    const double v = num::to_double(d);
+	    if (std::isfinite(v))
+	      stats.push_back(v);
+	  }
 
 	const std::size_t m = stats.size();
+	if (m < 2)
+	  {
+	    throw std::logic_error(
+				   "AutoBootstrapSelector: need at least 2 finite bootstrap stats for BCa engine.");
+	  }
 
 	double sum = 0.0;
 	for (double v : stats) sum += v;
 	const double mean_boot = sum / static_cast<double>(m);
 
 	// Bootstrap Standard Error Estimation:
-	// 
-	// The standard deviation of the bootstrap statistics provides an estimate
-	// of the standard error of the original estimator. This works because:
-	//
-	// 1. We generate B bootstrap samples from the original data
-	// 2. Each bootstrap sample yields a statistic θ*
-	// 3. The distribution of {θ₁*, θ₂*, ..., θ_B*} approximates the sampling
-	//    distribution of θ̂
-	// 4. Therefore, sd({θ*}) ≈ SE(θ̂)
-	//
-	// Note: We compute sd(θ*), NOT se(θ*) = sd(θ*)/√B. The latter would be
-	// the standard error of the *mean* of bootstrap statistics, which is
-	// not what we need for confidence interval construction.
+	// sd({θ*}) ≈ SE(θ̂). We compute SD of θ*, not SD/sqrt(B).
 	const double se_boot = mkc_timeseries::StatUtils<double>::computeStdDev(stats);
 
 	// Guard against degenerate distribution in skewness computation
 	const double skew_boot = (se_boot > 0.0)
 	  ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
-	  : 0.0;  // Degenerate: all theta* identical → neutral skewness
+	  : 0.0;
 
 	const double lo  = num::to_double(lower);
 	const double hi  = num::to_double(upper);
 	const double len = hi - lo;
 
 	// CENTER SHIFT PENALTY: NOT COMPUTED FOR BCa
-	// 
-	// Rationale: BCa is designed to produce asymmetric intervals when appropriate.
-	// The bias-correction (z0) and acceleration (a) parameters exist precisely to
-	// adjust for skewness and rate-of-change of SE. Penalizing center shift would:
-	// 
-	//   1. Punish BCa for doing what it's designed to do (adapt to asymmetry)
-	//   2. Double-penalize pathological cases already caught by stability_penalty
-	//   3. Favor less sophisticated methods on skewed data
-	// 
-	// The stability_penalty (via z0 and a thresholds) already guards against
-	// pathological asymmetry. Center shift is irrelevant for BCa validity.
-	double center_shift_in_se = 0.0;
+	// (BCa intentionally produces asymmetric intervals when appropriate.)
+	const double center_shift_in_se = 0.0;
 
 	// ====================================================================
-	// 1. LENGTH PENALTY (via refactored helper)
+	// LENGTH PENALTY
 	// ====================================================================
 	double normalized_length = 1.0;
 	double median_boot = 0.0;
 
-	const double length_penalty = computeLengthPenalty(
-							   len,
-							   stats,
-							   cl,
-							   MethodId::BCa,
-							   normalized_length,
-							   median_boot
-							   );
+	const double length_penalty = computeLengthPenalty_Percentile(
+								      len,
+								      stats,
+								      cl,
+								      MethodId::BCa,
+								      normalized_length,
+								      median_boot
+								      );
 
+	// ====================================================================
+	// STABILITY PENALTY (z0 / accel / skew thresholds etc.)
+	// ====================================================================
 	const double stability_penalty = computeBCaStabilityPenalty(
 								    z0,
 								    accel,
@@ -1912,20 +2039,22 @@ namespace palvalidator
 								    os
 								    );
 
+	// ====================================================================
 	// ORDERING PENALTY (soft under-coverage only)
-        //
-        // BCa constructs intervals directly from the bootstrap distribution using
-        // bias-corrected percentiles. We penalize if the empirical coverage of the
-        // bootstrap distribution within [lo, hi] falls below the nominal level.
-        //
-        // Unlike center shift, this is a valid diagnostic: BCa can produce asymmetric
-        // intervals (which is correct), but it shouldn't produce intervals that are
-        // systematically too narrow in bootstrap-space.
-	const double ordering_penalty = computeEmpiricalUnderCoveragePenalty(stats,  // Raw θ* statistics (correct for BCa)
-									     lo,     // Lower bound
-									     hi,     // Upper bound
-									     cl      // Confidence level
+	// ====================================================================
+	const double ordering_penalty = computeEmpiricalUnderCoveragePenalty(
+									     stats,  // θ* statistics
+									     lo,
+									     hi,
+									     cl
 									     );
+
+	// effective_B should correspond to the stats we actually used (finite-only)
+	const std::size_t effective_B = m;
+
+	// "skipped" is how many outer resamples did not produce a usable statistic
+	const std::size_t skipped = (B > effective_B) ? (B - effective_B) : 0;
+
 	return Candidate(
 			 MethodId::BCa,
 			 mean,
@@ -1934,23 +2063,23 @@ namespace palvalidator
 			 cl,
 			 n,
 			 B,
-			 0,           // B_inner (not used by BCa)
-			 m,           // effective_B
-			 (B > m) ? (B - m) : 0,  // skipped
+			 0,             // B_inner (not used by BCa)
+			 effective_B,
+			 skipped,
 			 se_boot,
 			 skew_boot,
 			 median_boot,
 			 center_shift_in_se,
 			 normalized_length,
-			 ordering_penalty, 
+			 ordering_penalty,
 			 length_penalty,
-			 stability_penalty,  // ← Now computed by dedicated method
+			 stability_penalty,
 			 z0,
 			 accel,
-			 0.0  // inner_failure_rate (not applicable to BCa)
+			 0.0            // inner_failure_rate (not applicable to BCa)
 			 );
       }
-
+      
       /**
        * @brief Determines if Candidate 'a' strictly dominates Candidate 'b'.
        * * A candidate dominates another if it has equal or better scores in all 
@@ -2161,13 +2290,29 @@ namespace palvalidator
 	    // in the score is therefore redundant, but we keep it for diagnostic clarity.
 	    const double domainContrib    = r.getDomainPenalty();
 
+	    double bcaLengthOverflowPenalty = 0.0;
+
+	    if (c.getMethod() == MethodId::BCa)
+	      {
+		const double threshold = AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
+		const double lengthPenalty = c.getLengthPenalty();
+		
+		if (std::isfinite(lengthPenalty) && lengthPenalty > threshold)
+		  {
+		    const double overflow = lengthPenalty - threshold;
+		    
+		    bcaLengthOverflowPenalty = AutoBootstrapConfiguration::kBcaLengthOverflowScale * (overflow * overflow);
+		  }
+	      }
+	    
 	    const double totalScore =
 	      orderingContrib +
 	      lengthContrib +
 	      stabilityContrib +
 	      centerSqContrib +
 	      skewSqContrib +
-	      domainContrib;
+	      domainContrib +
+	      bcaLengthOverflowPenalty;
 
 	    breakdowns.emplace_back(
 				    c.getMethod(),
@@ -2181,6 +2326,62 @@ namespace palvalidator
 	    enriched.push_back(c.withScore(totalScore));
 	  }
 
+	// -------------------------------------------------------------------
+	// Minimum effective_B gate (hard reliability filter)
+	//
+	// Rationale:
+	//   In small samples and/or with failure-prone methods (Percentile-T inner SE,
+	//   degenerate stats, etc.), a candidate may request B reps but produce far fewer
+	//   usable draws. Quantiles/diagnostics become unreliable when effective_B is too low.
+	//   This gate disqualifies such candidates before scoring/tie-breaking.
+	// -------------------------------------------------------------------
+	const auto requestedOuterReplications = [](const Candidate& c) -> std::size_t
+	{
+	  // For all methods, Candidate::m_B_outer is the requested outer count.
+	  // Percentile-like methods store their B in B_outer as well.
+	  return c.getBOuter();
+	};
+
+	const auto minEffectiveFractionForMethod = [](MethodId m) -> double
+	{
+	  switch (m)
+	    {
+	    case MethodId::PercentileT:
+	      // Keep consistent with PT stability logic already in config
+	      return AutoBootstrapConfiguration::kPercentileTMinEffectiveFraction;
+
+	      // BCa: can occasionally have more invalid draws depending on stat/resampler,
+	      // but generally should still be high when healthy.
+	    case MethodId::BCa:
+	      return 0.90;
+
+	      // Percentile / Basic / Normal / MOutOfN should typically succeed at very high rates.
+	    default:
+	      return 0.90;
+	    }
+	};
+
+	const auto passesEffectiveBGate = [&](const Candidate& c) -> bool
+	{
+	  const std::size_t requested = requestedOuterReplications(c);
+	  const std::size_t effective = c.getEffectiveB();
+
+	  if (requested < 2)
+	    return false;
+
+	  // Absolute floor: even if fraction passes, enforce a minimum sample size for
+	  // quantiles and penalty estimates to be meaningful.
+	  constexpr std::size_t kMinEffectiveAbsolute = 200;
+
+	  const double min_frac = minEffectiveFractionForMethod(c.getMethod());
+	  const std::size_t required_by_frac =
+	    static_cast<std::size_t>(std::ceil(min_frac * static_cast<double>(requested)));
+
+	  const std::size_t required = std::max(kMinEffectiveAbsolute, required_by_frac);
+
+	  return effective >= required;
+	};
+ 
 	const auto commonCandidateOk = [&](std::size_t i) -> bool
 	{
 	  if (!std::isfinite(enriched[i].getScore()))
@@ -2189,6 +2390,10 @@ namespace palvalidator
 	  // Domain violations are always disqualifying when support is provided.
 	  // (If support == unbounded(), domain penalty is always zero.)
 	  if (raw[i].getDomainPenalty() > 0.0)
+	    return false;
+
+	  // Hard gate: candidate must have enough usable bootstrap draws.
+	  if (!passesEffectiveBGate(enriched[i]))
 	    return false;
 
 	  return true;
@@ -2207,9 +2412,6 @@ namespace palvalidator
 	    return false;
 
 	  if (std::fabs(c.getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
-	    return false;
-
-	  if (c.getLengthPenalty() > AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold)
 	    return false;
 
 	  return true;

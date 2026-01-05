@@ -957,7 +957,7 @@ TEST_CASE("PercentileTBootstrap: Handles degenerate sampler outputs",
         auto out = pt.run(x, sampler, rng);
         
         REQUIRE(out.effective_B + out.skipped_outer == B_outer);
-        REQUIRE(out.inner_attempted_total >= out.effective_B * 100);  // At least MIN_INNER per effective
+        REQUIRE(out.inner_attempted_total >= out.effective_B * palvalidator::analysis::percentile_t_constants::MIN_INNER);  // At least MIN_INNER per effective
     }
 }
 
@@ -1173,8 +1173,8 @@ TEST_CASE("PercentileTBootstrap: Inner loop early stopping",
         
         REQUIRE(out.inner_attempted_total < max_possible);
         
-        // But we should have attempted at least MIN_INNER (100) per effective outer
-        REQUIRE(out.inner_attempted_total >= out.effective_B * 100);
+        // But we should have attempted at least MIN_INNER per effective outer
+        REQUIRE(out.inner_attempted_total >= out.effective_B * palvalidator::analysis::percentile_t_constants::MIN_INNER);
     }
 }
 

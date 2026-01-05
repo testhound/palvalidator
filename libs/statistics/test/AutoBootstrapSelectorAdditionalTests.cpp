@@ -1091,10 +1091,21 @@ TEST_CASE("BCa UnderCoveragePenalty: Under-coverage produces penalty",
         
         double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo, hi, cl);
-        
-        // Expected: 10.0 * (0.05)^2 = 10.0 * 0.0025 = 0.025
-        REQUIRE(penalty > 0.0);
-        REQUIRE(penalty == Catch::Approx(0.025).epsilon(0.01)); // Allow 1% error for discretization
+
+	const std::size_t B_eff = boot_stats.size();
+	std::size_t inside = 0;
+	for (double v : boot_stats)
+	  {
+	    if (std::isfinite(v) && v >= lo && v <= hi) ++inside;
+	  }
+
+	const double width_cdf = (B_eff > 0) ? (static_cast<double>(inside) / static_cast<double>(B_eff)) : 0.0;
+	const double tol = (B_eff > 0) ? (0.5 / static_cast<double>(B_eff)) : 0.5;
+	const double under = std::max(0.0, (cl - width_cdf) - tol);
+	const double expected = AutoBootstrapConfiguration::kUnderCoverageMultiplier * under * under;
+
+	REQUIRE(penalty > 0.0);
+	REQUIRE(penalty == Catch::Approx(expected).margin(1e-12));
     }
     
     SECTION("10% under-coverage")
@@ -1499,28 +1510,50 @@ TEST_CASE("UnderCoveragePenalty: Verify multiplier scaling",
 TEST_CASE("UnderCoveragePenalty: Integration with different confidence levels",
           "[AutoBootstrapSelector][UnderCoverage][Integration]")
 {
-    SECTION("90% confidence level")
+  SECTION("90% confidence level")
     {
         std::vector<double> boot_stats = createUniformBootstrapDist(0.0, 10.0, 1000);
-        
+
         // 90% CL but only 85% coverage (5% shortfall)
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
-            boot_stats, 0.75, 9.25, 0.90);
-        
+        const double lo = 0.75;
+        const double hi = 9.25;
+        const double cl = 0.90;
+        const double penalty = Selector::computeEmpiricalUnderCoveragePenalty(boot_stats, lo, hi, cl);
+
+        // Expected penalty uses half-step tolerance: under = max(0, (cl - width_cdf) - 0.5/B_eff)
+        const std::size_t B_eff = boot_stats.size();
+        std::size_t inside = 0;
+        for (double v : boot_stats) { if (std::isfinite(v) && v >= lo && v <= hi) ++inside; }
+        const double width_cdf = (B_eff > 0) ? (static_cast<double>(inside) / static_cast<double>(B_eff)) : 0.0;
+        const double tol = (B_eff > 0) ? (0.5 / static_cast<double>(B_eff)) : 0.5;
+        const double under = std::max(0.0, (cl - width_cdf) - tol);
+        const double expected = AutoBootstrapConfiguration::kUnderCoverageMultiplier * under * under;
+
         REQUIRE(penalty > 0.0);
-        REQUIRE(penalty == Catch::Approx(0.025).epsilon(0.01));
+        REQUIRE(penalty == Catch::Approx(expected).margin(1e-12));
     }
-    
-    SECTION("99% confidence level")
+
+  SECTION("99% confidence level")
     {
         std::vector<double> boot_stats = createUniformBootstrapDist(0.0, 10.0, 1000);
-        
+
         // 99% CL but only 95% coverage (4% shortfall)
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
-            boot_stats, 0.25, 9.75, 0.99);
-        
+        const double lo = 0.25;
+        const double hi = 9.75;
+        const double cl = 0.99;
+        const double penalty = Selector::computeEmpiricalUnderCoveragePenalty(boot_stats, lo, hi, cl);
+
+        // Expected penalty uses half-step tolerance: under = max(0, (cl - width_cdf) - 0.5/B_eff)
+        const std::size_t B_eff = boot_stats.size();
+        std::size_t inside = 0;
+        for (double v : boot_stats) { if (std::isfinite(v) && v >= lo && v <= hi) ++inside; }
+        const double width_cdf = (B_eff > 0) ? (static_cast<double>(inside) / static_cast<double>(B_eff)) : 0.0;
+        const double tol = (B_eff > 0) ? (0.5 / static_cast<double>(B_eff)) : 0.5;
+        const double under = std::max(0.0, (cl - width_cdf) - tol);
+        const double expected = AutoBootstrapConfiguration::kUnderCoverageMultiplier * under * under;
+
         REQUIRE(penalty > 0.0);
-        REQUIRE(penalty == Catch::Approx(0.016).epsilon(0.01));
+        REQUIRE(penalty == Catch::Approx(expected).margin(1e-12));
     }
 }
 

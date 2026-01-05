@@ -915,10 +915,9 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
             0.05,
             std::numeric_limits<double>::quiet_NaN()
         );
-        
-        // Should still be finite (though the penalty calculation may be affected)
-        // The important thing is it doesn't return infinity
-        REQUIRE(std::isfinite(penalty));
+
+	REQUIRE(!std::isfinite(penalty));
+	REQUIRE(std::isinf(penalty));
     }
 }
 

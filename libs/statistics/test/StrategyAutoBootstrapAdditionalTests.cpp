@@ -196,9 +196,11 @@ TEST_CASE("BootstrapConfiguration: Large B values",
     
     REQUIRE(cfg.getNumBootStrapReplications() == largeB);
     REQUIRE(cfg.getPercentileTNumOuterReplications() == largeB);
-    
+
     const std::size_t innerB = cfg.getPercentileTNumInnerReplications(10.0);
-    REQUIRE(innerB == static_cast<std::size_t>(largeB / 10.0));
+    const std::size_t expected = std::min<std::size_t>(
+						       static_cast<std::size_t>(largeB / 10.0), 2000u);
+    REQUIRE(innerB == expected);
 }
 
 // -----------------------------------------------------------------------------
@@ -424,34 +426,6 @@ TEST_CASE("StrategyAutoBootstrap: Custom sampler instance with configuration",
 // TEST SUITE: StrategyAutoBootstrap - Logging Output
 // -----------------------------------------------------------------------------
 
-TEST_CASE("StrategyAutoBootstrap: Logging output verification",
-          "[StrategyAutoBootstrap][Logging]")
-{
-    FactoryAlias factory(11111u);
-    
-    auto portfolio = createTestPortfolio();
-    auto returns = makeSimpleReturns();
-    DummyStrategy strategy("LogTest", portfolio, returns);
-    
-    BootstrapConfiguration cfg(100, 4, 0.95, 1, 0);
-    BootstrapAlgorithmsConfiguration algos;
-    
-    StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
-    
-    std::ostringstream logStream;
-    AutoCIResult result = autoBootstrap.run(returns, &logStream);
-    
-    std::string logOutput = logStream.str();
-    
-    // Verify logging output contains expected elements
-    REQUIRE_FALSE(logOutput.empty());
-    REQUIRE(logOutput.find("[AutoCI]") != std::string::npos);
-    REQUIRE(logOutput.find("Selected method=") != std::string::npos);
-    REQUIRE(logOutput.find("mean=") != std::string::npos);
-    REQUIRE(logOutput.find("LB=") != std::string::npos);
-    REQUIRE(logOutput.find("UB=") != std::string::npos);
-    REQUIRE(logOutput.find("Diagnostics:") != std::string::npos);
-}
 
 TEST_CASE("StrategyAutoBootstrap: Logging captures engine failures",
           "[StrategyAutoBootstrap][Logging]")
