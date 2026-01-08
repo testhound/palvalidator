@@ -25,6 +25,24 @@ namespace palvalidator::analysis {
 }
 
 /**
+ * @brief Bootstrap method identifiers for CRN hierarchy.
+ *
+ * These constants are used as tags in the CRN hierarchy to ensure each
+ * bootstrap algorithm (Basic, Percentile, BCa, etc.) receives independent
+ * random streams, even when analyzing the same strategy with the same
+ * parameters. This is essential for tournament-style method selection where
+ * each algorithm should be independently validated on different resamples.
+ */
+namespace BootstrapMethods {
+    constexpr uint64_t BASIC        = 0;
+    constexpr uint64_t NORMAL       = 1;
+    constexpr uint64_t PERCENTILE   = 2;
+    constexpr uint64_t MOUTOFN      = 3;
+    constexpr uint64_t PERCENTILE_T = 4;
+    constexpr uint64_t BCA          = 5;
+}
+
+/**
  * @brief Factory for creating bootstrap engines with hierarchical Common Random Numbers (CRN).
  *
  * @section overview Overview
@@ -39,14 +57,15 @@ namespace palvalidator::analysis {
  * This factory implements the following CRN key hierarchy for trading strategy bootstrap:
  *
  * @code
- * masterSeed → strategyId → stageTag → blockLength → fold → replicate
- *     │            │            │            │          │         │
- *     │            │            │            │          │         └─ Bootstrap iteration [0, B)
- *     │            │            │            │          └─────────── CV fold or NO_FOLD (0)
- *     │            │            │            └────────────────────── Block length parameter
- *     │            │            └─────────────────────────────────── Metric type (see below)
- *     │            └──────────────────────────────────────────────── Strategy hash
- *     └───────────────────────────────────────────────────────────── Factory's master seed
+ * masterSeed → strategyId → stageTag → methodId → blockLength → fold → replicate
+ *     │            │            │          │            │          │         │
+ *     │            │            │          │            │          │         └─ Bootstrap iteration [0, B)
+ *     │            │            │          │            │          └─────────── CV fold or NO_FOLD (0)
+ *     │            │            │          │            └────────────────────── Block length parameter
+ *     │            │            │          └─────────────────────────────────── Bootstrap method (Basic, BCa, etc)
+ *     │            │            └────────────────────────────────────────────── Metric type (see below)
+ *     │            └─────────────────────────────────────────────────────────── Strategy hash
+ *     └──────────────────────────────────────────────────────────────────────── Factory's master seed
  * @endcode
  *
  * @subsection tag_semantics Tag Level Semantics
@@ -62,6 +81,18 @@ namespace palvalidator::analysis {
  * - `GEO_MEAN = 1`: Geometric mean / CAGR bootstrap
  * - `PROFIT_FACTOR = 2`: Profit factor bootstrap
  * - Additional values can be added for new metrics
+ *
+ * **methodId**: Identifies the bootstrap algorithm. Values from `BootstrapMethods`:
+ * - `BASIC = 0`: Basic bootstrap
+ * - `NORMAL = 1`: Normal approximation bootstrap
+ * - `PERCENTILE = 2`: Percentile bootstrap
+ * - `MOUTOFN = 3`: M-out-of-N percentile bootstrap
+ * - `PERCENTILE_T = 4`: Percentile-T (double bootstrap)
+ * - `BCA = 5`: Bias-corrected and accelerated bootstrap
+ *
+ * This ensures each bootstrap method receives independent random streams, which is
+ * essential for tournament-style method selection where algorithms should be validated
+ * independently rather than on synchronized resamples.
  *
  * **blockLength (L)**: The block size parameter for stationary block bootstrap. Typically
  * computed as max(median_hold_period, n^(1/3)).
@@ -147,8 +178,31 @@ namespace palvalidator::analysis {
  *     BootstrapStages::GEO_MEAN, 10, BootstrapStages::NO_FOLD
  * );
  * 
- * // These share masterSeed, strategyId, stageTag, and fold
+ * // These share masterSeed, strategyId, stageTag, methodId, and fold
  * // Only blockLength differs → variance reduction when comparing
+ * @endcode
+ *
+ * @subsection ex_tournament Bootstrap Tournament (Independent Method Validation)
+ * @code
+ * // When running multiple bootstrap methods as a tournament, each method
+ * // gets independent random draws via the methodId tag. This ensures:
+ * // 1. Each method is independently validated
+ * // 2. Methods don't all fail on the same pathological resamples
+ * // 3. True robustness testing for method selection
+ * 
+ * TradingBootstrapFactory<> factory(masterSeed);
+ * 
+ * // BCa gets BootstrapMethods::BCA → unique resamples
+ * auto bcaEngine = factory.makeBCa(...);
+ * 
+ * // Percentile gets BootstrapMethods::PERCENTILE → different resamples
+ * auto [pEngine, pCRN] = factory.makePercentile(...);
+ * 
+ * // Basic gets BootstrapMethods::BASIC → different resamples
+ * auto [bEngine, bCRN] = factory.makeBasic(...);
+ * 
+ * // Even though all methods analyze the same strategy with same parameters,
+ * // they each validate on independent bootstrap draws
  * @endcode
  *
  * @section methods Factory Methods
@@ -192,10 +246,13 @@ namespace palvalidator::analysis {
  * 3. **Metric Independence**: Always use different stageTag values for different
  *    statistical metrics to prevent artificial correlation.
  *
- * 4. **Document Custom Tags**: If adding new metric types, document them in the
+ * 4. **Method Independence**: The factory automatically assigns unique methodId values
+ *    to each bootstrap algorithm, ensuring independent validation in tournament scenarios.
+ *
+ * 5. **Document Custom Tags**: If adding new metric types, document them in the
  *    BootstrapStages namespace with clear semantic meaning.
  *
- * 5. **CV Fold Numbering**: Start cross-validation folds at FOLD_1, reserving NO_FOLD
+ * 6. **CV Fold Numbering**: Start cross-validation folds at FOLD_1, reserving NO_FOLD
  *    for non-CV analyses.
  *
  * @tparam Engine The random number engine type (default: randutils::mt19937_rng).
@@ -204,6 +261,7 @@ namespace palvalidator::analysis {
  * @see mkc_timeseries::rng_utils::CRNKey for low-level CRN key documentation
  * @see mkc_timeseries::rng_utils::CRNEngineProvider for engine construction
  * @see BootstrapStages namespace in BootstrapAnalysisStage.h for standard tag constants
+ * @see BootstrapMethods namespace for bootstrap algorithm identifiers
  */
 template<class Engine = randutils::mt19937_rng>
 class TradingBootstrapFactory
@@ -297,7 +355,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
-    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
     return std::make_pair(std::move(mn), std::move(crn));
@@ -322,7 +380,7 @@ public:
 	Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
     return std::make_pair(std::move(mn), std::move(crn));
@@ -347,7 +405,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
-    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
     // via MOutOfNPercentileBootstrap::createAdaptive.
@@ -375,7 +433,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
     auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n);
@@ -406,7 +464,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
-    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
 
     PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
     return std::make_pair(std::move(pt), std::move(crn));
@@ -430,7 +488,7 @@ public:
     using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
     PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
     return std::make_pair(std::move(pt), std::move(crn));
   }
@@ -457,7 +515,7 @@ public:
     Provider prov(
 		  Key(m_masterSeed)
 		  .with_tag(strategyId)
-		  .with_tags({ stageTag, L, fold })
+		  .with_tags({ stageTag, BootstrapMethods::PERCENTILE_T, L, fold })
 		  );
 
     return PTB(returns, B, CL, std::move(statFn), std::move(sampler), prov);
@@ -480,7 +538,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
-    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::BASIC, L, fold) );
 
     Bootstrap bb(B, CL, resampler);
     return std::make_pair(std::move(bb), std::move(crn));
@@ -502,7 +560,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::BASIC, L, fold) );
 
     Bootstrap bb(B, CL, resampler);
     return std::make_pair(std::move(bb), std::move(crn));
@@ -525,7 +583,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
-    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::NORMAL, L, fold) );
 
     Bootstrap nb(B, CL, resampler);
     return std::make_pair(std::move(nb), std::move(crn));
@@ -547,7 +605,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::NORMAL, L, fold) );
 
     Bootstrap nb(B, CL, resampler);
     return std::make_pair(std::move(nb), std::move(crn));
@@ -570,7 +628,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
-    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::PERCENTILE, L, fold) );
 
     Bootstrap pb(B, CL, resampler);
     return std::make_pair(std::move(pb), std::move(crn));
@@ -592,7 +650,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, L, fold) );
+    CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::PERCENTILE, L, fold) );
 
     Bootstrap pb(B, CL, resampler);
     return std::make_pair(std::move(pb), std::move(crn));
@@ -617,7 +675,7 @@ private:
     Provider prov(
       Key(m_masterSeed)
         .with_tag(strategyHash)
-        .with_tags({ stageTag, L, fold })
+        .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
     );
 
     return BCaBootStrap<Decimal, Resampler, Engine, Provider>(
@@ -627,12 +685,13 @@ private:
 
   // Build a CRNKey from domain tags (handy if you compose CRN outside)
   inline mkc_timeseries::rng_utils::CRNKey
-  makeCRNKey(uint64_t strategyId, uint64_t stageTag, uint64_t L, uint64_t fold) const
+  makeCRNKey(uint64_t strategyId, uint64_t stageTag, uint64_t methodId, 
+             uint64_t L, uint64_t fold) const
   {
     using mkc_timeseries::rng_utils::CRNKey;
 
     return CRNKey(m_masterSeed)
               .with_tag(strategyId)
-              .with_tags({ stageTag, L, fold });
+              .with_tags({ stageTag, methodId, L, fold });
   }
 };
