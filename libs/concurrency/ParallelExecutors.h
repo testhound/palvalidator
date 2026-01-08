@@ -9,6 +9,8 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <stdexcept>
+#include <exception>
 #include "runner.hpp"  // for BoostRunnerExecutor
 
 /**
@@ -104,26 +106,23 @@ namespace concurrency
     {
       runner::ensure_initialized(getNCpus());
 
-      // post to the Boost runner
-      auto boostFut = runner::instance().post(std::move(task));
+      auto prom = std::make_shared<std::promise<void>>();
+      auto fut  = prom->get_future();
 
-      // Wrap boost::unique_future into a std::future via std::promise + watcher thread
-      std::promise<void> prom;
-      auto stdFut = prom.get_future();
-
-      std::thread([bf = std::move(boostFut), p = std::move(prom)]() mutable {
+      runner::instance().post([task = std::move(task), prom]() {
 	try {
-	  bf.get();  // propagate exceptions from the task
-	  p.set_value();
-	} catch (...) {
-	  p.set_exception(std::current_exception());
+	  task();
+	  prom->set_value();
 	}
-      }).detach();
+	catch (...) {
+	  prom->set_exception(std::current_exception());
+	}
+      });
 
-      return stdFut;
+      return fut;
     }
   };
-
+  
   /**
    * @brief Fixed-size thread pool executor.
    * Tasks submitted are queued and executed by a pool of worker threads.
@@ -135,33 +134,45 @@ namespace concurrency
   template <std::size_t N = 0>
   class ThreadPoolExecutor : public IParallelExecutor {
   public:
-    ThreadPoolExecutor()
-      : stop_(false)
+    // Explicitly delete copy and move
+    ThreadPoolExecutor(const ThreadPoolExecutor&) = delete;
+    ThreadPoolExecutor& operator=(const ThreadPoolExecutor&) = delete;
+    ThreadPoolExecutor(ThreadPoolExecutor&&) = delete;
+    ThreadPoolExecutor& operator=(ThreadPoolExecutor&&) = delete;
+    
+    ThreadPoolExecutor() : stop_(false)
     {
       const std::size_t threads =
-	N > 0
-	? N
-	: (std::thread::hardware_concurrency() > 0
-	   ? std::thread::hardware_concurrency()
-	   : 2);
+	N > 0 ? N : (std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : 2);
 
-      for (std::size_t i = 0; i < threads; ++i) {
-	workers_.emplace_back([this] {
-	  for (;;) {
-	    std::function<void()> task;
-	    {
-	      std::unique_lock<std::mutex> lock(tasksMutex_);
-	      condition_.wait(lock, [this] {
-		return stop_ || !tasks_.empty();
-	      });
-	      if (stop_ && tasks_.empty())
-		return;
-	      task = std::move(tasks_.front());
-	      tasks_.pop();
-	    }
-	    task();
-	  }
-	});
+      try {
+	for (std::size_t i = 0; i < threads; ++i) {
+	  workers_.emplace_back([this] { workerLoop(); });
+	}
+      }
+      catch (...) {
+	{
+	  std::lock_guard<std::mutex> lock(tasksMutex_);
+	  stop_ = true;
+	}
+	condition_.notify_all();
+	for (auto& w : workers_) if (w.joinable()) w.join();
+	throw;
+      }
+    }
+
+    void workerLoop()
+    {
+      for (;;) {
+	std::function<void()> task;
+	{
+	  std::unique_lock<std::mutex> lock(tasksMutex_);
+	  condition_.wait(lock, [this]{ return stop_ || !tasks_.empty(); });
+	  if (stop_ && tasks_.empty()) return;
+	  task = std::move(tasks_.front());
+	  tasks_.pop();
+	}
+	task();
       }
     }
 
