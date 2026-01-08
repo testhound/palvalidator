@@ -4205,3 +4205,526 @@ TEST_CASE("StatisticSupport::violatesLowerBound", "[StatisticSupport]")
     REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()));
   }
 }
+
+TEST_CASE("GeoMeanStat::isRatioStatistic", "[StatUtils][GeoMeanStat]") {
+    SECTION("Returns false (geometric mean is not a ratio statistic)") {
+        // The geometric mean represents average growth rate, not a ratio
+        REQUIRE(GeoMeanStat<DecimalType>::isRatioStatistic() == false);
+    }
+}
+
+TEST_CASE("GeoMeanStat::support", "[StatUtils][GeoMeanStat]") {
+    SECTION("Clip ruin mode enabled - non-strict lower bound") {
+        const double ruinEps = 1e-8;
+        GeoMeanStat<DecimalType> stat(true, true, 0.02, ruinEps, 1);
+        
+        auto support = stat.support();
+        
+        // Should have a lower bound
+        REQUIRE(support.hasLowerBound() == true);
+        
+        // Should be non-strict mode (lo >= bound)
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        
+        // Lower bound should be ruinEps - 1.0
+        REQUIRE(support.lowerBound() == Catch::Approx(ruinEps - 1.0));
+        
+        // Check epsilon
+        REQUIRE(support.epsilon() == Catch::Approx(1e-12));
+    }
+    
+    SECTION("Clip ruin mode enabled - with different ruin epsilon") {
+        const double ruinEps = 1e-6;
+        GeoMeanStat<DecimalType> stat(true, true, 0.02, ruinEps, 1);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(ruinEps - 1.0));
+    }
+    
+    SECTION("Clip ruin mode disabled - strict lower bound at -1") {
+        GeoMeanStat<DecimalType> stat(false, true, 0.02, 1e-8, 1);
+        
+        auto support = stat.support();
+        
+        // Should have a lower bound
+        REQUIRE(support.hasLowerBound() == true);
+        
+        // Should be strict mode (lo > bound)
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::Strict);
+        
+        // Lower bound should be -1.0 (growth factor must be > 0, i.e., 1+r > 0)
+        REQUIRE(support.lowerBound() == Catch::Approx(-1.0));
+        
+        // Check epsilon
+        REQUIRE(support.epsilon() == Catch::Approx(1e-12));
+    }
+    
+    SECTION("Backward compatible constructor") {
+        const double ruinEps = 1e-7;
+        GeoMeanStat<DecimalType> stat(true, ruinEps);
+        
+        auto support = stat.support();
+        
+        // Should use clip ruin mode with non-strict bound
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(ruinEps - 1.0));
+    }
+    
+    SECTION("Support violation check - clip ruin enabled") {
+        const double ruinEps = 1e-8;
+        GeoMeanStat<DecimalType> stat(true, true, 0.02, ruinEps, 1);
+        auto support = stat.support();
+        
+        // Value just below the bound should violate
+        REQUIRE(support.violatesLowerBound(ruinEps - 1.0 - 1e-10) == true);
+        
+        // Value at the bound should not violate (non-strict)
+        REQUIRE(support.violatesLowerBound(ruinEps - 1.0) == false);
+        
+        // Value above the bound should not violate
+        REQUIRE(support.violatesLowerBound(ruinEps - 1.0 + 1e-10) == false);
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        
+        // Non-finite values should violate
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()) == true);
+    }
+    
+    SECTION("Support violation check - clip ruin disabled") {
+        GeoMeanStat<DecimalType> stat(false, true, 0.02, 1e-8, 1);
+        auto support = stat.support();
+        
+        // Strict mode: lo > bound + eps
+        // Value at the bound should violate (strict mode)
+        REQUIRE(support.violatesLowerBound(-1.0) == true);
+        
+        // Value just above bound + eps should not violate
+        REQUIRE(support.violatesLowerBound(-1.0 + 2e-12) == false);
+        
+        // Value well above the bound should not violate
+        REQUIRE(support.violatesLowerBound(-0.5) == false);
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        
+        // Non-finite values should violate
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()) == true);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: GeoMeanFromLogBarsStat
+// =============================================================================
+
+TEST_CASE("GeoMeanFromLogBarsStat::isRatioStatistic", "[StatUtils][GeoMeanFromLogBarsStat]") {
+    SECTION("Returns false (geometric mean is not a ratio statistic)") {
+        // The geometric mean from log bars represents average growth rate, not a ratio
+        REQUIRE(GeoMeanFromLogBarsStat<DecimalType>::isRatioStatistic() == false);
+    }
+}
+
+TEST_CASE("GeoMeanFromLogBarsStat::support", "[StatUtils][GeoMeanFromLogBarsStat]") {
+    SECTION("Default construction - non-strict lower bound") {
+        const double ruinEps = 1e-8;
+        GeoMeanFromLogBarsStat<DecimalType> stat(true, 0.02, 1, ruinEps);
+        
+        auto support = stat.support();
+        
+        // Should have a lower bound
+        REQUIRE(support.hasLowerBound() == true);
+        
+        // Should be non-strict mode (lo >= bound)
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        
+        // Lower bound should be ruinEps - 1.0
+        REQUIRE(support.lowerBound() == Catch::Approx(ruinEps - 1.0));
+        
+        // Check epsilon
+        REQUIRE(support.epsilon() == Catch::Approx(1e-12));
+    }
+    
+    SECTION("Custom ruin epsilon") {
+        const double ruinEps = 1e-6;
+        GeoMeanFromLogBarsStat<DecimalType> stat(true, 0.02, 1, ruinEps);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(ruinEps - 1.0));
+    }
+    
+    SECTION("Different winsorization modes preserve support behavior") {
+        const double ruinEps = 1e-8;
+        
+        // Mode 0: Legacy
+        GeoMeanFromLogBarsStat<DecimalType> stat0(true, 0.02, 0, ruinEps);
+        auto support0 = stat0.support();
+        REQUIRE(support0.lowerBound() == Catch::Approx(ruinEps - 1.0));
+        
+        // Mode 1: Smooth fade
+        GeoMeanFromLogBarsStat<DecimalType> stat1(true, 0.02, 1, ruinEps);
+        auto support1 = stat1.support();
+        REQUIRE(support1.lowerBound() == Catch::Approx(ruinEps - 1.0));
+        
+        // Mode 2: Always on
+        GeoMeanFromLogBarsStat<DecimalType> stat2(true, 0.02, 2, ruinEps);
+        auto support2 = stat2.support();
+        REQUIRE(support2.lowerBound() == Catch::Approx(ruinEps - 1.0));
+        
+        // All should have same support characteristics
+        REQUIRE(support0.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support1.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support2.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+    }
+    
+    SECTION("Support violation check") {
+        const double ruinEps = 1e-8;
+        GeoMeanFromLogBarsStat<DecimalType> stat(true, 0.02, 1, ruinEps);
+        auto support = stat.support();
+        
+        const double bound = ruinEps - 1.0;
+        
+        // Value just below the bound should violate
+        REQUIRE(support.violatesLowerBound(bound - 1e-10) == true);
+        
+        // Value at the bound should not violate (non-strict)
+        REQUIRE(support.violatesLowerBound(bound) == false);
+        
+        // Value above the bound should not violate
+        REQUIRE(support.violatesLowerBound(bound + 1e-10) == false);
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        
+        // Non-finite values should violate
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()) == true);
+    }
+    
+    SECTION("Winsorization disabled preserves support") {
+        const double ruinEps = 1e-8;
+        GeoMeanFromLogBarsStat<DecimalType> stat(false, 0.02, 1, ruinEps);
+        
+        auto support = stat.support();
+        
+        // Support should be the same regardless of winsorization setting
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(ruinEps - 1.0));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: LogProfitFactorStat
+// =============================================================================
+
+TEST_CASE("LogProfitFactorStat::isRatioStatistic", "[StatUtils][LogProfitFactorStat]") {
+    SECTION("Returns true (profit factor is a ratio statistic)") {
+        // Profit factor is a ratio of gains to losses
+        REQUIRE(StatUtils<DecimalType>::LogProfitFactorStat::isRatioStatistic() == true);
+    }
+}
+
+TEST_CASE("LogProfitFactorStat::support", "[StatUtils][LogProfitFactorStat]") {
+    SECTION("Default construction - non-strict lower bound at 0") {
+        StatUtils<DecimalType>::LogProfitFactorStat stat;
+        
+        auto support = stat.support();
+        
+        // Should have a lower bound
+        REQUIRE(support.hasLowerBound() == true);
+        
+        // Should be non-strict mode (lo >= bound)
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        
+        // Lower bound should be 0.0 (both raw PF and log(1+PF) are >= 0)
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+        
+        // Check epsilon
+        REQUIRE(support.epsilon() == Catch::Approx(1e-12));
+    }
+    
+    SECTION("Compressed result mode") {
+        StatUtils<DecimalType>::LogProfitFactorStat stat(true);
+        
+        auto support = stat.support();
+        
+        // Support should be the same for compressed and uncompressed
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    }
+    
+    SECTION("Uncompressed result mode") {
+        StatUtils<DecimalType>::LogProfitFactorStat stat(false);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    }
+    
+    SECTION("Different parameter combinations preserve support") {
+        // Various constructor parameter combinations
+        StatUtils<DecimalType>::LogProfitFactorStat stat1(true, 1e-8, 1e-6, 1.0, 0.0);
+        StatUtils<DecimalType>::LogProfitFactorStat stat2(false, 1e-7, 1e-5, 0.5, 0.025);
+        StatUtils<DecimalType>::LogProfitFactorStat stat3(true, 1e-6, 1e-4, 2.0, 0.05);
+        
+        // All should have the same support characteristics
+        REQUIRE(stat1.support().lowerBound() == Catch::Approx(0.0));
+        REQUIRE(stat2.support().lowerBound() == Catch::Approx(0.0));
+        REQUIRE(stat3.support().lowerBound() == Catch::Approx(0.0));
+        
+        REQUIRE(stat1.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(stat2.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(stat3.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+    }
+    
+    SECTION("Support violation check") {
+        StatUtils<DecimalType>::LogProfitFactorStat stat;
+        auto support = stat.support();
+        
+        // Negative values should violate
+        REQUIRE(support.violatesLowerBound(-1e-10) == true);
+        REQUIRE(support.violatesLowerBound(-0.5) == true);
+        REQUIRE(support.violatesLowerBound(-1.0) == true);
+        
+        // Value at the bound should not violate (non-strict)
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        
+        // Positive values should not violate
+        REQUIRE(support.violatesLowerBound(1e-10) == false);
+        REQUIRE(support.violatesLowerBound(0.5) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        REQUIRE(support.violatesLowerBound(10.0) == false);
+        
+        // Non-finite values should violate
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()) == true);
+    }
+    
+    SECTION("Support with stop-loss percentage") {
+        // Stop-loss percentage affects internal calculations but not support
+        StatUtils<DecimalType>::LogProfitFactorStat stat(true, 1e-8, 1e-6, 1.0, 0.025);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: LogProfitFactorFromLogBarsStat
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat::isRatioStatistic", "[StatUtils][LogProfitFactorFromLogBarsStat]") {
+    SECTION("Returns true (profit factor is a ratio statistic)") {
+        // Profit factor from log bars is also a ratio of gains to losses
+        REQUIRE(StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat::isRatioStatistic() == true);
+    }
+}
+
+TEST_CASE("LogProfitFactorFromLogBarsStat::support", "[StatUtils][LogProfitFactorFromLogBarsStat]") {
+    SECTION("Default construction - non-strict lower bound at 0") {
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat;
+        
+        auto support = stat.support();
+        
+        // Should have a lower bound
+        REQUIRE(support.hasLowerBound() == true);
+        
+        // Should be non-strict mode (lo >= bound)
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        
+        // Lower bound should be 0.0
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+        
+        // Check epsilon
+        REQUIRE(support.epsilon() == Catch::Approx(1e-12));
+    }
+    
+    SECTION("Compressed result mode") {
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat(true);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    }
+    
+    SECTION("Uncompressed result mode") {
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat(false);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    }
+    
+    SECTION("Different parameter combinations preserve support") {
+        // Various constructor parameter combinations
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat1(true, 1e-8, 1e-6, 1.0, 0.0);
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat2(false, 1e-7, 1e-5, 0.5, 0.025);
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat3(true, 1e-6, 1e-4, 2.0, 0.05);
+        
+        // All should have the same support characteristics
+        REQUIRE(stat1.support().lowerBound() == Catch::Approx(0.0));
+        REQUIRE(stat2.support().lowerBound() == Catch::Approx(0.0));
+        REQUIRE(stat3.support().lowerBound() == Catch::Approx(0.0));
+        
+        REQUIRE(stat1.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(stat2.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(stat3.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+    }
+    
+    SECTION("Support violation check") {
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat;
+        auto support = stat.support();
+        
+        // Negative values should violate
+        REQUIRE(support.violatesLowerBound(-1e-10) == true);
+        REQUIRE(support.violatesLowerBound(-0.5) == true);
+        REQUIRE(support.violatesLowerBound(-1.0) == true);
+        
+        // Value at the bound should not violate (non-strict)
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        
+        // Positive values should not violate
+        REQUIRE(support.violatesLowerBound(1e-10) == false);
+        REQUIRE(support.violatesLowerBound(0.5) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        REQUIRE(support.violatesLowerBound(10.0) == false);
+        
+        // Non-finite values should violate
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()) == true);
+        REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()) == true);
+    }
+    
+    SECTION("Support with stop-loss percentage") {
+        // Stop-loss percentage affects internal calculations but not support
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat(true, 1e-8, 1e-6, 1.0, 0.025);
+        
+        auto support = stat.support();
+        
+        REQUIRE(support.hasLowerBound() == true);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+        REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    }
+    
+    SECTION("Consistency with LogProfitFactorStat support") {
+        // Both LogProfitFactorStat and LogProfitFactorFromLogBarsStat should have identical support
+        StatUtils<DecimalType>::LogProfitFactorStat stat1(true, 1e-8, 1e-6, 1.0, 0.025);
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat2(true, 1e-8, 1e-6, 1.0, 0.025);
+        
+        auto support1 = stat1.support();
+        auto support2 = stat2.support();
+        
+        REQUIRE(support1.lowerBound() == support2.lowerBound());
+        REQUIRE(support1.lowerBoundMode() == support2.lowerBoundMode());
+        REQUIRE(support1.epsilon() == support2.epsilon());
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Cross-Struct Consistency Tests
+// =============================================================================
+
+TEST_CASE("Cross-struct consistency", "[StatUtils][Consistency]") {
+    SECTION("GeoMean structs have consistent isRatioStatistic behavior") {
+        REQUIRE(GeoMeanStat<DecimalType>::isRatioStatistic() ==
+                GeoMeanFromLogBarsStat<DecimalType>::isRatioStatistic());
+    }
+    
+    SECTION("LogProfitFactor structs have consistent isRatioStatistic behavior") {
+        REQUIRE(StatUtils<DecimalType>::LogProfitFactorStat::isRatioStatistic() == 
+                StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat::isRatioStatistic());
+    }
+    
+    SECTION("Ratio statistics are correctly identified") {
+        // GeoMean variants should not be ratio statistics
+        REQUIRE(GeoMeanStat<DecimalType>::isRatioStatistic() == false);
+        REQUIRE(GeoMeanFromLogBarsStat<DecimalType>::isRatioStatistic() == false);
+        
+        // LogProfitFactor variants should be ratio statistics
+        REQUIRE(StatUtils<DecimalType>::LogProfitFactorStat::isRatioStatistic() == true);
+        REQUIRE(StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat::isRatioStatistic() == true);
+    }
+    
+    SECTION("GeoMean variants with same ruin_eps have consistent support") {
+        const double ruinEps = 1e-8;
+        
+        GeoMeanStat<DecimalType> stat1(true, true, 0.02, ruinEps, 1);
+        GeoMeanFromLogBarsStat<DecimalType> stat2(true, 0.02, 1, ruinEps);
+        
+        auto support1 = stat1.support();
+        auto support2 = stat2.support();
+        
+        // Both should have the same lower bound
+        REQUIRE(support1.lowerBound() == Catch::Approx(support2.lowerBound()));
+        REQUIRE(support1.lowerBoundMode() == support2.lowerBoundMode());
+    }
+    
+    SECTION("LogProfitFactor variants have identical support") {
+        StatUtils<DecimalType>::LogProfitFactorStat stat1;
+        StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat stat2;
+        
+        auto support1 = stat1.support();
+        auto support2 = stat2.support();
+        
+        REQUIRE(support1.lowerBound() == Catch::Approx(support2.lowerBound()));
+        REQUIRE(support1.lowerBoundMode() == support2.lowerBoundMode());
+        REQUIRE(support1.epsilon() == Catch::Approx(support2.epsilon()));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: StatisticSupport Edge Cases
+// =============================================================================
+
+TEST_CASE("StatisticSupport edge cases", "[StatUtils][StatisticSupport]") {
+    SECTION("Very small epsilon values") {
+        GeoMeanStat<DecimalType> stat(true, true, 0.02, 1e-15, 1);
+        auto support = stat.support();
+        
+        // Should handle very small ruin epsilon values
+        REQUIRE(support.lowerBound() == Catch::Approx(1e-15 - 1.0));
+        REQUIRE(support.hasLowerBound() == true);
+    }
+    
+    SECTION("Epsilon tolerance in violation checks") {
+        StatUtils<DecimalType>::LogProfitFactorStat stat;
+        auto support = stat.support();
+        
+        const double eps = 1e-12;
+        
+        // Value just below bound - eps should violate
+        REQUIRE(support.violatesLowerBound(-eps - 1e-13) == true);
+        
+        // Value at bound - eps should not violate (within tolerance)
+        REQUIRE(support.violatesLowerBound(-eps) == false);
+    }
+    
+    SECTION("Support properties are constexpr compatible") {
+        // Verify that isRatioStatistic can be used in compile-time contexts
+        constexpr bool geoMeanIsRatio = GeoMeanStat<DecimalType>::isRatioStatistic();
+        constexpr bool pfIsRatio = StatUtils<DecimalType>::LogProfitFactorStat::isRatioStatistic();
+        
+        REQUIRE(geoMeanIsRatio == false);
+        REQUIRE(pfIsRatio == true);
+    }
+}
