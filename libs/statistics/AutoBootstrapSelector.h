@@ -2334,23 +2334,6 @@ namespace palvalidator
       }
       
       /**
-       * @brief Determines if Candidate 'a' strictly dominates Candidate 'b'.
-       * * A candidate dominates another if it has equal or better scores in all 
-       * primary categories (ordering, length) and is strictly better in at least one.
-       * * @note Used for internal pairwise comparisons.
-       */
-      static bool dominates(const Candidate& a, const Candidate& b)
-      {
-        const bool better_or_equal_order  = a.getOrderingPenalty() <= b.getOrderingPenalty();
-        const bool better_or_equal_length = a.getLengthPenalty()   <= b.getLengthPenalty();
-        const bool strictly_better =
-          (a.getOrderingPenalty() < b.getOrderingPenalty()) ||
-          (a.getLengthPenalty()   < b.getLengthPenalty());
-
-        return better_or_equal_order && better_or_equal_length && strictly_better;
-      }
-
-      /**
        * @brief Returns the tie-breaking priority for a method (lower is better).
        *
        * Preference order: BCa (1) > PercentileT (2) > MOutOfN (3) > Percentile (4) > Basic (5) > Normal (6).

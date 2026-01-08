@@ -7,7 +7,6 @@
 //  - computePercentileTStability method (not tested in existing tests)
 //  - select() method edge cases and integration scenarios
 //  - methodPreference() tie-breaking logic
-//  - dominates() method for Pareto comparison
 //  - SelectionDiagnostics class constructors and getters
 //  - ScoreBreakdown class
 //  - AutoCIResult integration tests
@@ -448,76 +447,6 @@ TEST_CASE("methodPreference: Correct preference ordering",
     }
 }
 
-// -----------------------------------------------------------------------------
-// Tests for dominates method
-// -----------------------------------------------------------------------------
-
-TEST_CASE("dominates: Basic domination logic",
-          "[AutoBootstrapSelector][Dominates]")
-{
-    SECTION("Candidate with lower penalties in all dimensions dominates")
-    {
-        Candidate better = createSimpleCandidate(
-            MethodId::BCa, 1.0, 0.9, 1.1,
-            0.001,  // ordering_penalty
-            0.001,  // length_penalty
-            0.0);
-        
-        Candidate worse = createSimpleCandidate(
-            MethodId::Percentile, 1.0, 0.9, 1.1,
-            0.01,   // ordering_penalty (10x worse)
-            0.01,   // length_penalty (10x worse)
-            0.0);
-        
-        REQUIRE(Selector::dominates(better, worse) == true);
-        REQUIRE(Selector::dominates(worse, better) == false);
-    }
-    
-    SECTION("Candidate strictly better in one dimension but equal in other dominates")
-    {
-        Candidate a = createSimpleCandidate(
-            MethodId::BCa, 1.0, 0.9, 1.1,
-            0.01,   // ordering_penalty
-            0.001); // length_penalty (better)
-        
-        Candidate b = createSimpleCandidate(
-            MethodId::Percentile, 1.0, 0.9, 1.1,
-            0.01,   // ordering_penalty (equal)
-            0.01);  // length_penalty (worse)
-        
-        REQUIRE(Selector::dominates(a, b) == true);
-    }
-    
-    SECTION("Equal candidates do not dominate each other")
-    {
-        Candidate a = createSimpleCandidate(
-            MethodId::BCa, 1.0, 0.9, 1.1,
-            0.01, 0.01);
-        
-        Candidate b = createSimpleCandidate(
-            MethodId::Percentile, 1.0, 0.9, 1.1,
-            0.01, 0.01);
-        
-        REQUIRE(Selector::dominates(a, b) == false);
-        REQUIRE(Selector::dominates(b, a) == false);
-    }
-    
-    SECTION("Trade-offs prevent domination (Pareto frontier)")
-    {
-        Candidate a = createSimpleCandidate(
-            MethodId::BCa, 1.0, 0.9, 1.1,
-            0.001,  // Better ordering
-            0.01);  // Worse length
-        
-        Candidate b = createSimpleCandidate(
-            MethodId::Percentile, 1.0, 0.9, 1.1,
-            0.01,   // Worse ordering
-            0.001); // Better length
-        
-        REQUIRE(Selector::dominates(a, b) == false);
-        REQUIRE(Selector::dominates(b, a) == false);
-    }
-}
 
 // -----------------------------------------------------------------------------
 // Tests for select() method
