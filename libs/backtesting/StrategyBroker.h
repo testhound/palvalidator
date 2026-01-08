@@ -234,6 +234,40 @@ namespace mkc_timeseries
    *
    * - `Portfolio`: Provides access to security information, such as tick size and historical price data,
    * necessary for order processing and position valuation.
+   * @details
+   * ## Observer wiring + lifetime rules
+   *
+   * StrategyBroker participates in an observer relationship with its internal TradingOrderManager:
+   *
+   * - StrategyBroker registers itself as a TradingOrderObserver with mOrderManager.
+   * - TradingOrderManager stores observers as non-owning references (std::reference_wrapper).
+   *
+   * Because observer storage is non-owning, observer registration is considered *wiring* rather than state.
+   * This class follows the "Option A" rule:
+   *
+   * ### Option A (implemented): Observers are wiring -> do NOT copy/move observer lists
+   * - TradingOrderManager does NOT copy or move its observer list.
+   * - After any StrategyBroker copy/move/assignment that copies/moves mOrderManager, the broker must
+   *   re-establish wiring so the *new* StrategyBroker instance receives callbacks.
+   * - This is done via rewireObservers()/rewireObserversFrom(rhs) (called from special members).
+   *
+   * ### Consequences for clients
+   * - If you attach additional observers (e.g., logging/metrics) to the broker’s mOrderManager,
+   *   those observers will NOT automatically "follow" across StrategyBroker copies/moves.
+   *   The owning/wiring layer must re-register any additional observers after the copy/move/assignment.
+   *
+   * ### Lifetime requirement
+   * - Any observer registered with TradingOrderManager must outlive the manager (or be removed).
+   *   If an observer is destroyed while still registered, callbacks will dereference a dangling reference
+   *   and behavior is undefined.
+   *
+   * ### Modification during notification
+   * - Observers should not add/remove observers during an OrderExecuted/OrderCanceled callback unless
+   *   TradingOrderManager explicitly guarantees safe iteration (e.g., by iterating over a snapshot).
+   *
+   * Thread-safety:
+   * - StrategyBroker and TradingOrderManager are not thread-safe. External synchronization is required.
+   *
    */
   template <class Decimal,
             template<class> class FractionPolicy   = NoFractions,
@@ -258,15 +292,12 @@ namespace mkc_timeseries
     StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio)
       : TradingOrderObserver<Decimal>(),
         TradingPositionObserver<Decimal>(),
-        mOrderManager(portfolio),
+        mOrderManager(validateAndGetPortfolio(portfolio)),
         mInstrumentPositionManager(),
         mStrategyTrades(),
         mClosedTradeHistory(),
         mPortfolio(portfolio)
     {
-      if (!mPortfolio) {
-        throw StrategyBrokerException("StrategyBroker constructor: portfolio cannot be null");
-      }
       
       mOrderManager.addObserver (*this);
       typename Portfolio<Decimal>::ConstPortfolioIterator symbolIterator = mPortfolio->beginPortfolio();
@@ -275,24 +306,55 @@ namespace mkc_timeseries
         mInstrumentPositionManager.addInstrument(symbolIterator->second->getSymbol());
     }
 
-    ~StrategyBroker() {}
-
-    StrategyBroker(const StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted> &rhs)
-      : TradingOrderObserver<Decimal>(rhs),
-        TradingPositionObserver<Decimal>(rhs),
-        mOrderManager(rhs.mOrderManager),
-        mInstrumentPositionManager(rhs.mInstrumentPositionManager),
-        mStrategyTrades(rhs.mStrategyTrades),
-        mClosedTradeHistory(rhs.mClosedTradeHistory),
-        mPortfolio(rhs.mPortfolio)
+    ~StrategyBroker() noexcept
     {}
 
-    StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted>&
-    operator=(const StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted> &rhs)
+    StrategyBroker(const StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted>& rhs)
+      : TradingOrderObserver<Decimal>(rhs),
+	TradingPositionObserver<Decimal>(rhs),
+	mOrderManager(rhs.mOrderManager),
+	mInstrumentPositionManager(rhs.mInstrumentPositionManager),
+	mStrategyTrades(rhs.mStrategyTrades),
+	mClosedTradeHistory(rhs.mClosedTradeHistory),
+	mPortfolio(rhs.mPortfolio),
+	mUnitExitOrders(rhs.mUnitExitOrders),
+	mPositionToOrders(rhs.mPositionToOrders)
+    {
+      // Preserve any existing non-broker observers if present, and ensure this broker is registered once.
+      rewireObservers();
+    }
+
+    /**
+     * @brief Move constructor.
+     * Transfers ownership of resources from rhs to this object.
+     * @param rhs The StrategyBroker to move from.
+     * 
+     * After the move:
+     * - This object becomes fully functional
+     * - rhs is left in a valid but unspecified state
+     * - rhs will not receive observer notifications (this object will)
+     */
+    StrategyBroker(StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted>&& rhs)
+      : TradingOrderObserver<Decimal>(std::move(rhs)),
+	TradingPositionObserver<Decimal>(std::move(rhs)),
+	mOrderManager(std::move(rhs.mOrderManager)),
+	mInstrumentPositionManager(std::move(rhs.mInstrumentPositionManager)),
+	mStrategyTrades(std::move(rhs.mStrategyTrades)),
+	mClosedTradeHistory(std::move(rhs.mClosedTradeHistory)),
+	mPortfolio(std::move(rhs.mPortfolio)),
+	mUnitExitOrders(std::move(rhs.mUnitExitOrders)),
+	mPositionToOrders(std::move(rhs.mPositionToOrders))
+    {
+      // Replace rhs broker observer with this broker, preserving any other observers (e.g., logging/metrics).
+      rewireObserversFrom(rhs);
+    }
+
+    StrategyBroker& operator=(const StrategyBroker& rhs)
     {
       if (this == &rhs)
-        return *this;
+	return *this;
 
+      // If these bases ever gain state, we want correct assignment.
       TradingOrderObserver<Decimal>::operator=(rhs);
       TradingPositionObserver<Decimal>::operator=(rhs);
 
@@ -301,11 +363,45 @@ namespace mkc_timeseries
       mStrategyTrades = rhs.mStrategyTrades;
       mClosedTradeHistory = rhs.mClosedTradeHistory;
       mPortfolio = rhs.mPortfolio;
+      mUnitExitOrders = rhs.mUnitExitOrders;
+      mPositionToOrders = rhs.mPositionToOrders;
+
+      // Ensure this broker is registered once; do not wipe other observers.
+      rewireObservers();
 
       return *this;
     }
 
-     /**
+    /**
+     * @brief Move assignment operator.
+     * Transfers ownership of resources from rhs to this object.
+     * @param rhs The StrategyBroker to move from.
+     * @return Reference to this object.
+     * 
+     */
+    StrategyBroker& operator=(StrategyBroker&& rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      TradingOrderObserver<Decimal>::operator=(std::move(rhs));
+      TradingPositionObserver<Decimal>::operator=(std::move(rhs));
+
+      mOrderManager = std::move(rhs.mOrderManager);
+      mInstrumentPositionManager = std::move(rhs.mInstrumentPositionManager);
+      mStrategyTrades = std::move(rhs.mStrategyTrades);
+      mClosedTradeHistory = std::move(rhs.mClosedTradeHistory);
+      mPortfolio = std::move(rhs.mPortfolio);
+      mUnitExitOrders = std::move(rhs.mUnitExitOrders);
+      mPositionToOrders = std::move(rhs.mPositionToOrders);
+      
+      // Replace rhs broker observer with this broker, preserving any other observers.
+      rewireObserversFrom(rhs);
+      
+      return *this;
+    }
+
+    /**
      * @brief Returns a constant iterator to the beginning of sorted strategy transactions.
      *
      * A `StrategyTransaction` encapsulates the entire lifecycle of a single trade,
@@ -633,8 +729,8 @@ namespace mkc_timeseries
                                                                        orderDateTime); // Use ptime
         mOrderManager.addTradingOrder (order);
       } else {
-        StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtOpen - no short position for " + tradingSymbol +
-                                " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
+        throw StrategyBrokerException("StrategyBroker::ExitShortAllUnitsAtOpen - no short position for " + tradingSymbol +
+                                     " with order datetime: " + boost::posix_time::to_simple_string(orderDateTime));
       }
     }
 
@@ -1513,6 +1609,50 @@ namespace mkc_timeseries
     }
 
   private:
+    /**
+     * @brief Ensures this StrategyBroker is registered as an observer of mOrderManager.
+     *
+     * @details
+     * TradingOrderManager observers are *wiring* (non-owning references). Copies/moves of
+     * TradingOrderManager intentionally do not copy/move observers (Option A), so any
+     * StrategyBroker copy/move/assignment must re-establish observer wiring.
+     *
+     * This method does NOT clear the observer list. It preserves any existing observers
+     * (e.g., logging/metrics) and only guarantees that *this broker* is registered.
+     *
+     * Requirements / lifetime:
+     * - TradingOrderManager stores observers as non-owning references; observers must outlive
+     *   the manager (or must be removed before destruction).
+     * - Clients that wire external observers are responsible for their lifetimes.
+     */
+    void rewireObservers()
+    {
+      mOrderManager.addObserverUnique(*this);
+    }
+
+    /**
+     * @brief Rewires broker observer registration after a move, replacing the moved-from broker.
+     *
+     * @details
+     * After move construction/assignment of StrategyBroker, mOrderManager state is transferred,
+     * but observer wiring must be updated so callbacks target the new broker instance.
+     *
+     * This method preserves all existing observers, but removes the moved-from broker instance
+     * (to avoid a dangling non-owning reference) and then registers *this broker*.
+     *
+     * @param movedFromBroker The broker instance that previously owned the wiring (typically rhs in a move).
+     *
+     * Requirements / lifetime:
+     * - movedFromBroker must be the exact instance that was previously registered with mOrderManager.
+     * - movedFromBroker is expected to be in a “moved-from” state and should not continue receiving callbacks.
+     */
+    void rewireObserversFrom(StrategyBroker& movedFromBroker)
+    {
+      // Preserve other observers; only replace the broker instance.
+      mOrderManager.removeObserver(movedFromBroker);
+      mOrderManager.addObserverUnique(*this);
+    }
+
     // -------------------
     // Entry bar retrieval
     // -------------------
@@ -1932,6 +2072,24 @@ namespace mkc_timeseries
       return false;
     }
 
+  private:
+    /**
+     * @brief Validates that a portfolio is not null and returns it.
+     * This helper function is used in the member initializer list to ensure
+     * we throw the expected StrategyBrokerException rather than allowing
+     * TradingOrderManager to throw its own exception.
+     * @param portfolio The portfolio to validate.
+     * @return The same portfolio pointer if it's valid.
+     * @throws StrategyBrokerException if portfolio is null.
+     */
+    static std::shared_ptr<Portfolio<Decimal>> validateAndGetPortfolio(std::shared_ptr<Portfolio<Decimal>> portfolio)
+    {
+      if (!portfolio) {
+        throw StrategyBrokerException("StrategyBroker constructor: portfolio cannot be null");
+      }
+      return portfolio;
+    }
+
     TradingOrderManager<Decimal>       mOrderManager;
     InstrumentPositionManager<Decimal> mInstrumentPositionManager;
     StrategyTransactionManager<Decimal> mStrategyTrades;
@@ -1944,6 +2102,5 @@ namespace mkc_timeseries
     // Reverse mapping to track which orders target each position ID: PositionID -> set of OrderIDs
     std::unordered_map<uint32_t, std::set<uint32_t>> mPositionToOrders;
   };
-
 } // namespace mkc_timeseries
 #endif

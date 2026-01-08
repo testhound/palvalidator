@@ -177,6 +177,8 @@ namespace mkc_timeseries
       : TradingOrder<Decimal>(tradingSymbol, unitsInOrder, ptime(orderDate, getDefaultBarTime()))
     {}
 
+    virtual ~TradingOrder() = default;
+
     TradingOrder(const TradingOrder<Decimal>& rhs)
       : mTradingSymbol(rhs.mTradingSymbol),
 	mUnitsInOrder(rhs.mUnitsInOrder),

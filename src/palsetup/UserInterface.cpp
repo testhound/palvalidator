@@ -12,7 +12,8 @@
 #include <stdexcept>
 #include <sstream>
 #include <iomanip>
-#include <limits> 
+#include <limits>
+#include <cmath>
 #include <boost/date_time/gregorian/gregorian.hpp>
 
 namespace fs = std::filesystem;
@@ -465,13 +466,13 @@ std::tuple<double, double, double> UserInterface::getDataSplitInput() {
             "Enter percent of data to reserve (0-100, default 0%): ", 
             0.0, 0.0, 100.0);
         
-        // Validate that total doesn't exceed 100%
+        // Validate that total equals 100%
         if (validatePercentages(insamplePercent, outOfSamplePercent, reservedPercent)) {
             validPercentages = true;
         } else {
             double totalPercent = insamplePercent + outOfSamplePercent + reservedPercent;
             std::cerr << "Error: Total percentage (" << totalPercent
-                      << "%) exceeds 100%. Please enter the percentages again." << std::endl;
+                      << "%) must equal 100%. Please enter the percentages again." << std::endl;
         }
     }
     
@@ -532,7 +533,13 @@ double UserInterface::getValidatedDoubleInput(const std::string& prompt, double 
 
 bool UserInterface::validatePercentages(double inSample, double outOfSample, double reserved) {
     double total = inSample + outOfSample + reserved;
-    return total <= 100.0 && inSample >= 0.0 && outOfSample >= 0.0 && reserved >= 0.0;
+    constexpr double epsilon = 1e-9; // Tolerance for floating-point precision
+    
+    // Check that all percentages are non-negative and total equals 100%
+    return inSample >= 0.0 &&
+           outOfSample >= 0.0 &&
+           reserved >= 0.0 &&
+           std::abs(total - 100.0) < epsilon;
 }
 
 void UserInterface::displayUsage() {

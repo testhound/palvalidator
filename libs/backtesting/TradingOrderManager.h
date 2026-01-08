@@ -4,8 +4,7 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
-#ifndef __TRADING_ORDER_MANAGER_H
-#define __TRADING_ORDER_MANAGER_H 1
+#pragma once
 
 #include <memory>
 #include <functional>
@@ -49,6 +48,42 @@ namespace mkc_timeseries
    * - Used by `TradingOrderManager::processPendingOrders()` to attempt to fill pending orders.
    * - Operates on `TradingOrder` objects and their derived classes.
    * - Requires an `OHLCTimeSeriesEntry` (trading bar data) to make execution decisions.
+   * @details
+   * ## Observer model and copy/move semantics
+   *
+   * TradingOrderManager supports multiple TradingOrderObserver instances.
+   * Observers are stored as non-owning references (std::reference_wrapper).
+   *
+   * Because observers are non-owning, they are treated as *wiring* rather than state.
+   * This class follows the "Option A" rule:
+   *
+   * ### Option A (implemented): Observers are wiring -> do NOT copy/move observers
+   * - Copy construction/assignment:
+   *   - Order state (portfolio pointer, pending order containers, etc.) is copied.
+   *   - The observer list is NOT copied (new manager starts with an empty observer list).
+   * - Move construction/assignment:
+   *   - Order state is moved.
+   *   - The observer list is NOT moved (new manager starts with an empty observer list).
+   *
+   * ### Rationale
+   * Copying/moving a list of reference_wrapper observers is unsafe because it can easily
+   * produce dangling references in the new object if any observer does not outlive it.
+   *
+   * ### Client responsibilities
+   * - The owning "wiring" layer must register observers after copy/move/assignment.
+   *   Example: StrategyBroker calls rewireObservers() after copying/moving mOrderManager.
+   *
+   * ### Lifetime requirement (critical)
+   * - Any observer registered with this manager must outlive the manager (or be removed).
+   *   Destroying an observer while still registered causes undefined behavior on the next callback.
+   *
+   * ### Modifying observers during callbacks
+   * - Observers should not add/remove observers from within OrderExecuted/OrderCanceled callbacks unless
+   *   this manager explicitly guarantees safe iteration (e.g., iterating over a snapshot list).
+   *
+   * Thread-safety:
+   * - Not thread-safe. External synchronization required.
+   *
    */
   template <class Decimal> class ProcessOrderVisitor : public TradingOrderVisitor<Decimal>
   {
@@ -349,59 +384,121 @@ namespace mkc_timeseries
 	mObservers(),
 	mPendingOrders(),
 	mPendingOrdersUpToDate(false)
-      {}
+      {
+	if (!portfolio)
+	  throw TradingOrderManagerException("TradingOrderManager: portfolio is null");
+      }
 
     /**
      * @brief Copy constructor.
-     * @param rhs The TradingOrderManager to copy.
+     * @details Copies the “source of truth” order containers and portfolio,
+     * but DOES NOT copy observers (wiring) and DOES NOT copy the pending-order cache.
+     * The cache is rebuilt lazily on demand.
      */
     TradingOrderManager (const TradingOrderManager<Decimal>& rhs)
-      :  mPortfolio(rhs.mPortfolio),
-	 mMarketSellOrders(rhs.mMarketSellOrders),
-	 mMarketCoverOrders(rhs.mMarketCoverOrders),
-	 mMarketLongOrders(rhs.mMarketLongOrders),
-	 mMarketShortOrders(rhs.mMarketShortOrders),
-	 mLimitSellOrders(rhs.mLimitSellOrders),
-	 mLimitCoverOrders(rhs.mLimitCoverOrders),
-	 mStopSellOrders(rhs.mStopSellOrders),
-	 mStopCoverOrders(rhs.mStopCoverOrders),
-	 mObservers(rhs.mObservers),
-	 mPendingOrders(rhs.mPendingOrders),
-	 mPendingOrdersUpToDate(rhs.mPendingOrdersUpToDate)
+      : mPortfolio(rhs.mPortfolio),
+	mMarketSellOrders(rhs.mMarketSellOrders),
+	mMarketCoverOrders(rhs.mMarketCoverOrders),
+	mMarketLongOrders(rhs.mMarketLongOrders),
+	mMarketShortOrders(rhs.mMarketShortOrders),
+	mLimitSellOrders(rhs.mLimitSellOrders),
+	mLimitCoverOrders(rhs.mLimitCoverOrders),
+	mStopSellOrders(rhs.mStopSellOrders),
+	mStopCoverOrders(rhs.mStopCoverOrders),
+	mObservers(),                 // observers are wiring; do not copy
+	mPendingOrders(),             // cache: do not copy
+	mPendingOrdersUpToDate(false) // cache must be rebuilt from vectors
+    {}
+    
+    /**
+     * @brief Move constructor.
+     * @details Moves the “source of truth” order containers and portfolio,
+     * but DOES NOT move observers (wiring) and DOES NOT move the pending-order cache.
+     * The cache is rebuilt lazily on demand.
+     *
+     * @note Not marked noexcept because member moves may throw depending on allocators.
+     */
+    TradingOrderManager(TradingOrderManager<Decimal>&& rhs)
+      : mPortfolio(std::move(rhs.mPortfolio)),
+	mMarketSellOrders(std::move(rhs.mMarketSellOrders)),
+	mMarketCoverOrders(std::move(rhs.mMarketCoverOrders)),
+	mMarketLongOrders(std::move(rhs.mMarketLongOrders)),
+	mMarketShortOrders(std::move(rhs.mMarketShortOrders)),
+	mLimitSellOrders(std::move(rhs.mLimitSellOrders)),
+	mLimitCoverOrders(std::move(rhs.mLimitCoverOrders)),
+	mStopSellOrders(std::move(rhs.mStopSellOrders)),
+	mStopCoverOrders(std::move(rhs.mStopCoverOrders)),
+	mObservers(),                 // observers are wiring; do not move
+	mPendingOrders(),             // cache: do not move
+	mPendingOrdersUpToDate(false) // cache must be rebuilt from vectors
     {}
 
     /**
-     * @brief Destructor.
+     * @brief Copy assignment operator.
+     * @details Copies “source of truth” state, clears observers (wiring),
+     * and clears/resets the pending-order cache.
      */
-    ~TradingOrderManager()
-      {}
-
-    /**
-     * @brief Assignment operator.
-     * @param rhs The TradingOrderManager to assign from.
-     * @return A reference to this manager.
-     */
-    TradingOrderManager<Decimal>& 
-    operator=(const TradingOrderManager<Decimal> &rhs)
+    TradingOrderManager<Decimal>& operator=(const TradingOrderManager<Decimal>& rhs)
     {
       if (this == &rhs)
 	return *this;
 
       mPortfolio = rhs.mPortfolio;
 
-      mMarketSellOrders = rhs.mMarketSellOrders;
+      mMarketSellOrders  = rhs.mMarketSellOrders;
       mMarketCoverOrders = rhs.mMarketCoverOrders;
-      mMarketLongOrders = rhs.mMarketLongOrders;
+      mMarketLongOrders  = rhs.mMarketLongOrders;
       mMarketShortOrders = rhs.mMarketShortOrders;
-      mLimitSellOrders = rhs.mLimitSellOrders;
-      mLimitCoverOrders = rhs.mLimitCoverOrders;
-      mStopSellOrders = rhs.mStopSellOrders;
-      mStopCoverOrders = rhs.mStopCoverOrders;
-      mObservers = rhs.mObservers;
-      mPendingOrders = rhs.mPendingOrders;
-      mPendingOrdersUpToDate = rhs.mPendingOrdersUpToDate;
+      mLimitSellOrders   = rhs.mLimitSellOrders;
+      mLimitCoverOrders  = rhs.mLimitCoverOrders;
+      mStopSellOrders    = rhs.mStopSellOrders;
+      mStopCoverOrders   = rhs.mStopCoverOrders;
+
+      // observers are wiring; never copy
+      mObservers.clear();
+
+      // cache is derived; never copy
+      mPendingOrders.clear();
+      mPendingOrdersUpToDate = false;
+
       return *this;
     }
+
+    /**
+     * @brief Move assignment operator.
+     * @details Moves “source of truth” state, clears observers (wiring),
+     * and clears/resets the pending-order cache.
+     */
+    TradingOrderManager<Decimal>& operator=(TradingOrderManager<Decimal>&& rhs)
+    {
+      if (this == &rhs)
+	return *this;
+
+      mPortfolio = std::move(rhs.mPortfolio);
+
+      mMarketSellOrders  = std::move(rhs.mMarketSellOrders);
+      mMarketCoverOrders = std::move(rhs.mMarketCoverOrders);
+      mMarketLongOrders  = std::move(rhs.mMarketLongOrders);
+      mMarketShortOrders = std::move(rhs.mMarketShortOrders);
+      mLimitSellOrders   = std::move(rhs.mLimitSellOrders);
+      mLimitCoverOrders  = std::move(rhs.mLimitCoverOrders);
+      mStopSellOrders    = std::move(rhs.mStopSellOrders);
+      mStopCoverOrders   = std::move(rhs.mStopCoverOrders);
+
+      // observers are wiring; never move
+      mObservers.clear();
+
+      // cache is derived; never move
+      mPendingOrders.clear();
+      mPendingOrdersUpToDate = false;
+
+      return *this;
+    }
+    
+    /**
+     * @brief Destructor.
+     */
+    ~TradingOrderManager() = default;
 
     /**
      * @brief Adds a MarketOnOpenCoverOrder to the pending orders.
@@ -646,13 +743,59 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Registers an observer for order events.
+     *
+     * @warning Lifetime: observer must outlive this TradingOrderManager (or be removed via removeObserver()).
+     * TradingOrderManager stores a non-owning reference; no ownership is taken.
+     *
+     * @note Copy/move: observers are treated as wiring and are not copied/moved.
+     * After copying/moving this manager, observers must be re-registered by the wiring layer.
+     *
+     * @note Re-entrancy: observers should not add/remove observers during notification unless
+     * iteration safety is explicitly guaranteed.
+     */
+    /**
      * @brief Adds an observer to be notified of order events (execution, cancellation).
      * Typically, a `StrategyBroker` instance would be an observer.
      * @param observer A reference wrapper to the TradingOrderObserver.
      */
     void addObserver (std::reference_wrapper<TradingOrderObserver<Decimal>> observer)
     {
-      mObservers.push_back(observer);
+      addObserverUnique(observer.get());
+    }
+
+    void clearObservers() noexcept
+    {
+      mObservers.clear();
+    }
+
+    void removeObserver(TradingOrderObserver<Decimal>& observer)
+    {
+      const TradingOrderObserver<Decimal>* target = &observer;
+
+      mObservers.remove_if(
+      [target](const std::reference_wrapper<TradingOrderObserver<Decimal>>& wrapped) -> bool
+      {
+        return &wrapped.get() == target;
+      });
+    }
+
+    bool hasObserver(const TradingOrderObserver<Decimal>& observer) const
+    {
+      const TradingOrderObserver<Decimal>* target = &observer;
+
+      for (const auto& wrapped : mObservers)
+ {
+   if (&wrapped.get() == target)
+     return true;
+ }
+      return false;
+    }
+
+    void addObserverUnique(TradingOrderObserver<Decimal>& observer)
+    {
+      if (!hasObserver(observer))
+	mObservers.push_back(observer);
     }
 
     /**
@@ -709,7 +852,7 @@ namespace mkc_timeseries
      * @param positions Const reference to InstrumentPositionManager for position status checks.
      */
     template <typename T>
-    void ProcessingPendingOrders(const boost::posix_time::ptime& processingDateTime, 
+    void ProcessingPendingOrders(const boost::posix_time::ptime& processingDateTime,
 				 std::vector<std::shared_ptr<T>>& vectorContainer,
 				 const InstrumentPositionManager<Decimal>& positions)
     {
@@ -732,6 +875,10 @@ namespace mkc_timeseries
 	    {
 	      order->MarkOrderCanceled();
 	      NotifyOrderCanceled(order);
+
+	      // We are mutating the underlying order vectors, so invalidate cached pending-order map
+	      mPendingOrdersUpToDate = false;
+
 	      it = vectorContainer.erase(it);
 	      continue;
 	    }
@@ -740,7 +887,7 @@ namespace mkc_timeseries
 	  // 2) Otherwise, only consider pending orders whose orderDate is strictly
 	  //    before processingDate.
 	  //
-	  if (order->isOrderPending() 
+	  if (order->isOrderPending()
 	      && (processingDateTime > order->getOrderDateTime()))
 	    {
 	      auto symbolIt = mPortfolio->findSecurity(order->getTradingSymbol());
@@ -750,30 +897,33 @@ namespace mkc_timeseries
 		  try
 		    {
 		      auto entry = aSecurity->getTimeSeriesEntry(processingDateTime);
-		      
+
 		      // If it's an exit and position already flat, cancel
 		      if (order->isExitOrder()
-		   && positions.isFlatPosition(order->getTradingSymbol()))
-		 {
-		   order->MarkOrderCanceled();
-		   NotifyOrderCanceled(order);
-		 }
+			  && positions.isFlatPosition(order->getTradingSymbol()))
+			{
+			  order->MarkOrderCanceled();
+			  NotifyOrderCanceled(order);
+			}
 		      else
-		 {
-		   // Attempt execution via visitor
-		   ProcessOrderVisitor<Decimal> visitor(entry);
-		   visitor.visit(order.get());
+			{
+			  // Attempt execution via visitor
+			  ProcessOrderVisitor<Decimal> visitor(entry);
+			  visitor.visit(order.get());
 
-		   if (order->isOrderExecuted())
-		                          NotifyOrderExecuted(order);
-		   else
-		     {
-		       order->MarkOrderCanceled();
-		       NotifyOrderCanceled(order);
-		     }
-		 }
+			  if (order->isOrderExecuted())
+			    NotifyOrderExecuted(order);
+			  else
+			    {
+			      order->MarkOrderCanceled();
+			      NotifyOrderCanceled(order);
+			    }
+			}
 
 		      // Erase the processed order and advance iterator
+		      // We are mutating the underlying order vectors, so invalidate cached pending-order map
+		      mPendingOrdersUpToDate = false;
+
 		      it = vectorContainer.erase(it);
 		      continue;
 		    }
@@ -789,7 +939,7 @@ namespace mkc_timeseries
 	  ++it;
 	}
     }
-
+    
     /** @brief Processes pending MarketOnOpenSellOrders and MarketOnOpenCoverOrders. */
     void ProcessPendingMarketExitOrders(const boost::posix_time::ptime& processingDateTime,
 					const InstrumentPositionManager<Decimal>& positions)
@@ -864,6 +1014,9 @@ namespace mkc_timeseries
      */
     void ValidateNewOrder (const std::shared_ptr<TradingOrder<Decimal>>& order) const
     {
+      if (!order)
+	throw TradingOrderManagerException("Attempt to add null trading order");
+
       if (order->isOrderExecuted())
 	throw TradingOrderManagerException ("Attempt to add executed trading order");
 
@@ -962,4 +1115,3 @@ namespace mkc_timeseries
  };
 }
 
-#endif

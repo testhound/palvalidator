@@ -4,14 +4,13 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
-#ifndef __INSTRUMENT_POSITION_MANAGER_H
-#define __INSTRUMENT_POSITION_MANAGER_H 1
+#pragma once
 
 #include <memory>
 #include <map>
 #include <vector>
 #include <cstdint>
-#include "ThrowAssert.hpp"
+#include <utility>  // for std::move, std::swap
 #include "InstrumentPositionManagerException.h"
 #include "InstrumentPosition.h"
 #include "Portfolio.h"
@@ -38,24 +37,15 @@ namespace mkc_timeseries
    * - Facilitating the closure of positions, either individual units or all units for an instrument.
    * - Providing query methods to determine if an instrument is long, short, or flat, and its total volume.
    *
-   * In a Backtesting Context:
-   * - The `StrategyBroker` relies heavily on the `InstrumentPositionManager` to:
-   * - Determine current position states before placing new orders.
-   * - Add new `TradingPosition` objects when entry orders are filled.
-   * - Instruct the manager to close positions when exit orders are filled.
-   * - The `TradingOrderManager` may also query position states via the `StrategyBroker` to validate
-   * or process certain order types (e.g., ensuring an exit order corresponds to an existing position).
-   * - The `addBarForOpenPosition` method is typically called by the `StrategyBroker`
-   * (e.g., within its `ProcessPendingOrders` method)
-   * at each step of the backtest to update all open positions with the latest market data. This is crucial for
-   * mark-to-market calculations, and for checking if stop-loss or profit-target levels within individual `TradingPosition`
-   * units have been hit by the current bar's high or low prices.
-   *
-   * Collaboration:
-   * - Manages `InstrumentPosition<Decimal>` objects.
-   * - `InstrumentPosition<Decimal>` objects, in turn, manage one or more `TradingPosition<Decimal>` units.
-   * - Receives new `TradingPosition<Decimal>` objects from components like `StrategyBroker`.
-   * - Uses `Portfolio<Decimal>` to fetch security data for updating positions with new bars.
+   * Binding Optimization Note:
+   * - `addBarForOpenPosition` uses an internal binding cache (mBindings) that pairs InstrumentPosition* with
+   *   Security* to avoid repeated map lookups on every bar.
+   * - The cache is rebuilt when:
+   *     - instruments are added (bindings become "dirty"), or
+   *     - the portfolio pointer changes, or
+   *     - bindings are empty.
+   * - If the portfolio contents change (e.g., new Security added) without changing the portfolio pointer,
+   *   callers may invoke rebindToPortfolio(...) to force a rebuild.
    */
   template <class Decimal> class InstrumentPositionManager
   {
@@ -68,7 +58,9 @@ namespace mkc_timeseries
      */
     InstrumentPositionManager()
       : mInstrumentPositions(),
-	mBindings()
+        mBindings(),
+        mBoundPortfolio(nullptr),
+        mBindingsDirty(true)
       {}
 
     /**
@@ -76,23 +68,93 @@ namespace mkc_timeseries
      * @param rhs The InstrumentPositionManager to copy.
      */
     InstrumentPositionManager (const InstrumentPositionManager<Decimal>& rhs)
-      : mInstrumentPositions(rhs.mInstrumentPositions),
-	mBindings(rhs.mBindings)
-    {}
+      : mInstrumentPositions(),
+        mBindings(),
+        mBoundPortfolio(rhs.mBoundPortfolio),
+        mBindingsDirty(true)
+    {
+      // Deep copy of InstrumentPosition objects
+      for (const auto& pair : rhs.mInstrumentPositions)
+      {
+        auto instrumentCopy = std::make_shared<InstrumentPosition<Decimal>>(*pair.second);
+        mInstrumentPositions[pair.first] = instrumentCopy;
+      }
+      // Note: mBindings will be rebuilt on first use since mBindingsDirty = true
+    }
+
+    /**
+     * @brief Move constructor.
+     * @param rhs The InstrumentPositionManager to move from.
+     *
+     * Transfers ownership of resources from rhs to this object.
+     * After the move, rhs is left in a valid but unspecified state.
+     */
+    InstrumentPositionManager (InstrumentPositionManager<Decimal>&& rhs) noexcept
+      : mInstrumentPositions(std::move(rhs.mInstrumentPositions)),
+        mBindings(std::move(rhs.mBindings)),
+        mBoundPortfolio(rhs.mBoundPortfolio),
+        mBindingsDirty(rhs.mBindingsDirty)
+    {
+      rhs.mBoundPortfolio = nullptr;
+      rhs.mBindingsDirty = true;
+    }
 
     /**
      * @brief Assignment operator.
      * @param rhs The InstrumentPositionManager to assign from.
      * @return A reference to this manager.
      */
-    InstrumentPositionManager<Decimal>& 
+    InstrumentPositionManager<Decimal>&
     operator=(const InstrumentPositionManager<Decimal> &rhs)
     {
       if (this == &rhs)
 	return *this;
 
-      mInstrumentPositions = rhs.mInstrumentPositions;
-      mBindings = rhs.mBindings;
+      // Deep copy InstrumentPosition objects (match copy ctor semantics)
+      mInstrumentPositions.clear();
+      for (const auto& pair : rhs.mInstrumentPositions)
+	{
+	  if (pair.second)
+	    {
+	      auto instrumentCopy = std::make_shared<InstrumentPosition<Decimal>>(*pair.second);
+	      mInstrumentPositions[pair.first] = instrumentCopy;
+	    }
+	  else
+	    {
+	      mInstrumentPositions[pair.first] = nullptr;
+	    }
+	}
+
+      // Never copy raw pointer bindings across managers; rebuild lazily.
+      mBindings.clear();
+      
+      mBoundPortfolio = rhs.mBoundPortfolio;
+      mBindingsDirty = true;
+      
+      return *this;
+    }
+    
+    /**
+     * @brief Move assignment operator.
+     * @param rhs The InstrumentPositionManager to move from.
+     * @return A reference to this manager.
+     *
+     * Transfers ownership of resources from rhs to this object.
+     * After the move, rhs is left in a valid but unspecified state.
+     */
+    InstrumentPositionManager<Decimal>&
+    operator=(InstrumentPositionManager<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+
+      mInstrumentPositions = std::move(rhs.mInstrumentPositions);
+      mBindings = std::move(rhs.mBindings);
+      mBoundPortfolio = rhs.mBoundPortfolio;
+      mBindingsDirty = rhs.mBindingsDirty;
+
+      rhs.mBoundPortfolio = nullptr;
+      rhs.mBindingsDirty = true;
 
       return *this;
     }
@@ -209,14 +271,17 @@ namespace mkc_timeseries
     void addInstrument (const std::string& tradingSymbol)
     {
       ConstInstrumentPositionIterator pos = mInstrumentPositions.find (tradingSymbol);
-      
+
       if (pos == endInstrumentPositions())
-	{
-	  auto instrPos = std::make_shared<InstrumentPosition<Decimal>>(tradingSymbol);
-	  mInstrumentPositions.insert(std::make_pair(tradingSymbol, instrPos));
-	}
+        {
+          auto instrPos = std::make_shared<InstrumentPosition<Decimal>>(tradingSymbol);
+          mInstrumentPositions.insert(std::make_pair(tradingSymbol, instrPos));
+
+          // New instrument => cached bindings are now stale/incomplete.
+          mBindingsDirty = true;
+        }
       else
-	throw InstrumentPositionManagerException("InstrumentPositionManager::addInstrument - trading symbol already exists");
+        throw InstrumentPositionManagerException("InstrumentPositionManager::addInstrument - trading symbol already exists");
     }
 
     /**
@@ -235,105 +300,101 @@ namespace mkc_timeseries
       getInstrumentPositionPtr (position->getTradingSymbol())->addPosition(position);
     }
 
-   /**
+    /**
      * @brief Adds a new bar's data to all open trading position units for a specific instrument using date.
      * This is used to update an open position with new market data as the simulation progresses.
      * @param tradingSymbol The symbol of the instrument whose positions should be updated.
      * @param entryBar The OHLCTimeSeriesEntry (bar data) to add.
      * @throws InstrumentPositionManagerException if the trading symbol is not found.
      * @throws InstrumentPositionException if the instrument is flat (delegated from InstrumentPosition).
-     */ 
+     */
     void addBar (const std::string& tradingSymbol,
-		 const OHLCTimeSeriesEntry<Decimal>& entryBar)
+                 const OHLCTimeSeriesEntry<Decimal>& entryBar)
     {
       getInstrumentPositionPtr (tradingSymbol)->addBar (entryBar);
     }
 
     /**
      * @brief Adds a new bar's data to all open positions based on date.
-     * This overload uses only the date portion of the `ptime` object to fetch and add bar data.
-     * It iterates all managed instruments and updates their positions if they are open
-     * and have a corresponding bar in the portfolio for the given date.
-     * 
-     * @note This method is distinct from the overload that uses `ptime` as its parameter. 
-     *       While the `ptime` overload considers both date and time, this method focuses solely on the date.
-     * 
-     * @param openPositionDate The date for which to fetch and add bar data.
-     * @param portfolioOfSecurities A pointer to the Portfolio containing security data.
      */
     void addBarForOpenPosition (const boost::gregorian::date openPositionDate,
-				Portfolio<Decimal>* portfolioOfSecurities)
+                                Portfolio<Decimal>* portfolioOfSecurities)
     {
-        this->addBarForOpenPosition(ptime(openPositionDate, getDefaultBarTime()), portfolioOfSecurities);
+      this->addBarForOpenPosition(ptime(openPositionDate, getDefaultBarTime()), portfolioOfSecurities);
     }
 
     /**
      * @brief Adds a new bar's data to all open positions based on ptime.
      * This version iterates all managed instruments and updates their positions if they are open
      * and have a corresponding bar in the portfolio for the given ptime.
-     * @param openPositionDateTime The ptime for which to fetch and add bar data.
-     * @param portfolioOfSecurities A pointer to the Portfolio containing security data.
      */
     void addBarForOpenPosition (const ptime openPositionDateTime,
-				Portfolio<Decimal>* portfolioOfSecurities)
+                                Portfolio<Decimal>* portfolioOfSecurities)
     {
-      // bind once on first bar
-      if (mBindings.empty())
+      if (portfolioOfSecurities == nullptr)
       {
-	    bindToPortfolio(portfolioOfSecurities);
+        throw InstrumentPositionManagerException("InstrumentPositionManager::addBarForOpenPosition - portfolioOfSecurities is null");
       }
-      
+
+      ensureBindingsUpToDate(portfolioOfSecurities);
+
       for (auto& binding : mBindings)
         {
-	  auto* position = binding.first;
-	  auto* security = binding.second;
-	  
-	  // only add if the position is currently open
-	  if (position->isFlatPosition())
-	  {
-	    continue;
-	  }
-	  
-	  // pull the bar from the OHLCTimeSeries
-	         try
-	         {
-	           auto entry = security->getTimeSeriesEntry(openPositionDateTime);
-	           position->addBar(entry);
-	         }
-	         catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
-	         {
-	           // No data available for this date/time, skip this position update
-	           continue;
-	         }
+          auto* position = binding.first;
+          auto* security = binding.second;
+
+          // only add if the position is currently open
+          if (position->isFlatPosition())
+            {
+              continue;
+            }
+
+          // pull the bar from the OHLCTimeSeries
+          try
+            {
+              auto entry = security->getTimeSeriesEntry(openPositionDateTime);
+              position->addBar(entry);
+            }
+          catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
+            {
+              // No data available for this date/time, skip this position update
+              continue;
+            }
         }
     }
 
     /**
+     * @brief Forces a binding rebuild against the given portfolio.
+     *
+     * Useful when:
+     * - the portfolio pointer stays the same but portfolio contents change (e.g., security added later), or
+     * - the caller wants to pay the rebind cost explicitly at a controlled point.
+     */
+    void rebindToPortfolio(Portfolio<Decimal>* portfolioOfSecurities)
+    {
+      if (portfolioOfSecurities == nullptr)
+      {
+        throw InstrumentPositionManagerException("InstrumentPositionManager::rebindToPortfolio - portfolioOfSecurities is null");
+      }
+      bindToPortfolio(portfolioOfSecurities);
+    }
+
+    /**
      * @brief Closes all open trading position units for a specific instrument using date.
-     * @param tradingSymbol The symbol of the instrument whose positions are to be closed.
-     * @param exitDate The date of the exit.
-     * @param exitPrice The price at which the positions are exited.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
-     * @throws InstrumentPositionException if the instrument is already flat (delegated from InstrumentPosition).
      */
     void closeAllPositions(const std::string& tradingSymbol,
-			   const boost::gregorian::date exitDate,
-			   const Decimal& exitPrice)
+                           const boost::gregorian::date exitDate,
+                           const Decimal& exitPrice)
     {
       this->closeAllPositions(tradingSymbol, ptime(exitDate, getDefaultBarTime()), exitPrice);
     }
 
     /**
      * @brief Closes all open trading position units for a specific instrument using ptime.
-     * @param tradingSymbol The symbol of the instrument whose positions are to be closed.
-     * @param exitDateTime The ptime of the exit.
-     * @param exitPrice The price at which the positions are exited.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
-     * @throws InstrumentPositionException if the instrument is already flat (delegated from InstrumentPosition).
      */
     void closeAllPositions(const std::string& tradingSymbol,
-			   const ptime exitDateTime,
-			   const Decimal& exitPrice)
+                           const ptime exitDateTime,
+                           const Decimal& exitPrice)
     {
       std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
       pos->closeAllPositions(exitDateTime, exitPrice);
@@ -341,50 +402,29 @@ namespace mkc_timeseries
 
     /**
      * @brief Closes a specific trading position unit for an instrument using date.
-     * This is used when pyramiding and exiting only a part of the total position.
-     * @param tradingSymbol The symbol of the instrument.
-     * @param exitDate The date of the exit.
-     * @param exitPrice The price at which the unit is exited.
-     * @param unitNumber The specific unit number of the TradingPosition to close (1-based index).
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
-     * @throws InstrumentPositionException if the unit number is invalid or the unit cannot be
-     * closed (delegated from InstrumentPosition).
      */
     void closeUnitPosition(const std::string& tradingSymbol,
-			   const boost::gregorian::date exitDate,
-			   const Decimal& exitPrice,
-			   uint32_t unitNumber)
+                           const boost::gregorian::date exitDate,
+                           const Decimal& exitPrice,
+                           uint32_t unitNumber)
     {
       this->closeUnitPosition(tradingSymbol, ptime(exitDate, getDefaultBarTime()), exitPrice, unitNumber);
     }
 
     /**
      * @brief Closes a specific trading position unit for an instrument using ptime.
-     * This is used when pyramiding and exiting only a part of the total position.
-     * @param tradingSymbol The symbol of the instrument.
-     * @param exitDateTime The ptime of the exit.
-     * @param exitPrice The price at which the unit is exited.
-     * @param unitNumber The specific unit number of the TradingPosition to close (1-based index).
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
-     * @throws InstrumentPositionException if the unit number is invalid or the unit cannot be
-     * closed (delegated from InstrumentPosition).
      */
     void closeUnitPosition(const std::string& tradingSymbol,
-			   const ptime exitDateTime,
-			   const Decimal& exitPrice,
-			   uint32_t unitNumber)
+                           const ptime exitDateTime,
+                           const Decimal& exitPrice,
+                           uint32_t unitNumber)
     {
       std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (tradingSymbol);
       pos->closeUnitPosition(exitDateTime, exitPrice, unitNumber);
     }
 
-
     /**
      * @brief Gets the number of open trading position units for a specific instrument.
-     * Useful for strategies that allow pyramiding.
-     * @param symbol The trading symbol of the instrument.
-     * @return The number of open units.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
      */
     uint32_t getNumPositionUnits(const std::string& symbol) const
     {
@@ -392,73 +432,77 @@ namespace mkc_timeseries
       return pos->getNumPositionUnits ();
     }
 
-     /**
+    /**
      * @brief Retrieves a specific trading position unit for an instrument.
-     * @param symbol The trading symbol of the instrument.
-     * @param unitNumber The 1-based index of the trading position unit to retrieve.
-     * @return A shared pointer to the specified TradingPosition unit.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
-     * @throws InstrumentPositionException if the unit number is out of range (delegated from InstrumentPosition).
      */
     std::shared_ptr<TradingPosition<Decimal>>
     getTradingPosition (const std::string& symbol, uint32_t unitNumber) const
     {
       std::shared_ptr<InstrumentPosition<Decimal>> pos = findExistingInstrumentPosition (symbol);
-      
       return *(pos->getInstrumentPosition(unitNumber));
     }
 
-    
   private:
+    void ensureBindingsUpToDate(Portfolio<Decimal>* portfolioOfSecurities)
+    {
+      // Rebuild if:
+      // - never built, or
+      // - instrument set changed since last bind, or
+      // - portfolio pointer changed.
+      if (mBindings.empty() || mBindingsDirty || (portfolioOfSecurities != mBoundPortfolio))
+        {
+          bindToPortfolio(portfolioOfSecurities);
+        }
+    }
+
     void bindToPortfolio(Portfolio<Decimal>* portfolioOfSecurities)
     {
       mBindings.clear();
       mBindings.reserve(mInstrumentPositions.size());
 
       for (auto itPos = beginInstrumentPositions();
-	   itPos != endInstrumentPositions();
-	   ++itPos)
+           itPos != endInstrumentPositions();
+           ++itPos)
         {
-	  InstrumentPosition<Decimal>* position = itPos->second.get();
-	  // look up the matching security in the portfolio
-	  auto secIt = portfolioOfSecurities
-	    ->findSecurity(position->getInstrumentSymbol());
-	  if (secIt != portfolioOfSecurities->endPortfolio())
+          InstrumentPosition<Decimal>* position = itPos->second.get();
+
+          // look up the matching security in the portfolio
+          auto secIt = portfolioOfSecurities
+            ->findSecurity(position->getInstrumentSymbol());
+
+          if (secIt != portfolioOfSecurities->endPortfolio())
             {
-	      // capture raw pointers—no shared_ptr copies
-	      mBindings.emplace_back(position, secIt->second.get());
+              // capture raw pointers—no shared_ptr copies
+              mBindings.emplace_back(position, secIt->second.get());
             }
         }
+
+      // Cache is now consistent with current instruments and this portfolio pointer.
+      mBoundPortfolio = portfolioOfSecurities;
+      mBindingsDirty = false;
     }
 
     /**
      * @brief Finds an existing instrument by symbol and returns an iterator to it.
-     * @param symbol The trading symbol to find.
-     * @return A ConstInstrumentPositionIterator to the found instrument.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found.
      */
     ConstInstrumentPositionIterator findExistingSymbol (const std::string& symbol) const
     {
       ConstInstrumentPositionIterator pos = mInstrumentPositions.find (symbol);
       if (pos != endInstrumentPositions())
-      {
-	return pos;
-      }
+        {
+          return pos;
+        }
       else
-      {
-	throw InstrumentPositionManagerException("InstrumentPositionManager::findExistingSymbol - trading symbol '" + symbol + "' not found");
-      }
+        {
+          throw InstrumentPositionManagerException("InstrumentPositionManager::findExistingSymbol - trading symbol '" + symbol + "' not found");
+        }
     }
 
     /**
      * @brief Finds an existing InstrumentPosition by symbol and returns a const shared pointer to it.
-     * Internal helper method.
-     * @param symbol The trading symbol to find.
-     * @return A const shared_ptr to the InstrumentPosition.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found (via findExistingSymbol).
      */
-    const std::shared_ptr<InstrumentPosition<Decimal>>& 
-    findExistingInstrumentPosition (const std::string symbol) const
+    const std::shared_ptr<InstrumentPosition<Decimal>>&
+    findExistingInstrumentPosition (const std::string& symbol) const
     {
       ConstInstrumentPositionIterator pos = findExistingSymbol (symbol);
       return pos->second;
@@ -466,10 +510,6 @@ namespace mkc_timeseries
 
     /**
      * @brief Retrieves a const shared pointer to the InstrumentPosition for a given trading symbol.
-     * Internal helper method that ensures the symbol exists.
-     * @param tradingSymbol The symbol of the instrument.
-     * @return A const shared_ptr to the InstrumentPosition.
-     * @throws InstrumentPositionManagerException if the trading symbol is not found (via findExistingSymbol).
      */
     const std::shared_ptr<InstrumentPosition<Decimal>>&
     getInstrumentPositionPtr(const std::string& tradingSymbol) const
@@ -480,8 +520,14 @@ namespace mkc_timeseries
 
   private:
     std::map<std::string, std::shared_ptr<InstrumentPosition<Decimal>>> mInstrumentPositions;
+
+    // Cached bindings to avoid repeated lookups on every bar update.
     std::vector<std::pair<InstrumentPosition<Decimal>*, Security<Decimal>*>> mBindings;
+
+    // Portfolio pointer used to build mBindings (non-owning).
+    Portfolio<Decimal>* mBoundPortfolio;
+
+    // True if instruments changed since last bind (e.g., addInstrument).
+    bool mBindingsDirty;
   };
 }
-
-#endif

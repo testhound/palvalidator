@@ -38,11 +38,14 @@ namespace mkc_timeseries
     virtual ~ProfitTarget()
     {}
 
-    virtual const Decimal& getProfitTarget() = 0;
+    const Decimal& getProfitTarget() const
+    {
+      return mProfitTarget;
+    }
 
-    virtual bool isNullProfitTarget() = 0;
-    virtual bool isLongProfitTarget() = 0;
-    virtual bool isShortProfitTarget() = 0;
+    virtual bool isNullProfitTarget() const = 0;
+    virtual bool isLongProfitTarget() const = 0;
+    virtual bool isShortProfitTarget() const = 0;
 
   protected:
    ProfitTarget()
@@ -52,12 +55,6 @@ namespace mkc_timeseries
   private:
     Decimal mProfitTarget;
   };
-
-  template <class Decimal>
-  const Decimal& ProfitTarget<Decimal>::getProfitTarget()
-    {
-      return mProfitTarget;
-    }
 
   template <class Decimal> 
   class LongProfitTarget  : public ProfitTarget<Decimal>
@@ -89,22 +86,17 @@ namespace mkc_timeseries
     ~LongProfitTarget()
     {}
 
-    const Decimal& getProfitTarget()
-    {
-      return ProfitTarget<Decimal>::getProfitTarget();
-    }
-
-    bool isNullProfitTarget()
+    bool isNullProfitTarget() const
     {
       return false;
     }
 
-    bool isLongProfitTarget()
+    bool isLongProfitTarget() const
     {
       return true;
     }
 
-    bool isShortProfitTarget()
+    bool isShortProfitTarget() const
     {
       return false;
     }
@@ -149,22 +141,17 @@ namespace mkc_timeseries
     ~ShortProfitTarget()
     {}
 
-    const Decimal& getProfitTarget()
-    {
-      return ProfitTarget<Decimal>::getProfitTarget();
-    }
-
-    bool isNullProfitTarget()
+    bool isNullProfitTarget() const
     {
       return false;
     }
 
-    bool isLongProfitTarget()
+    bool isLongProfitTarget() const
     {
       return false;
     }
 
-    bool isShortProfitTarget()
+    bool isShortProfitTarget() const
     {
       return true;
     }
@@ -204,22 +191,17 @@ namespace mkc_timeseries
     ~NullProfitTarget()
     {}
 
-    const Decimal& getProfitTarget()
-    {
-      throw std::domain_error(std::string("NullProfitTarget::getProfiTarget has no meaning"));
-    }
-
-    bool isNullProfitTarget()
+    bool isNullProfitTarget() const
     {
       return true;
     }
 
-    bool isLongProfitTarget()
+    bool isLongProfitTarget() const
     {
       return false;
     }
 
-    bool isShortProfitTarget()
+    bool isShortProfitTarget() const
     {
       return false;
     }

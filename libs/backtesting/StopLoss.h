@@ -38,26 +38,23 @@ namespace mkc_timeseries
     virtual ~StopLoss()
     {}
 
-    virtual const Decimal& getStopLoss() const = 0;
+    const Decimal& getStopLoss() const
+    {
+      return mStopLoss;
+    }
 
     virtual bool isNullStopLoss() const = 0;
     virtual bool isLongStopLoss() const = 0;
     virtual bool isShortStopLoss() const = 0;
 
   protected:
-   StopLoss()
+    StopLoss()
       : mStopLoss(DecimalConstants<Decimal>::DecimalZero)
     {}
 
   private:
     Decimal mStopLoss;
   };
-
-  template <class Decimal>
-  const Decimal& StopLoss<Decimal>::getStopLoss() const
-    {
-      return mStopLoss;
-    }
 
   template <class Decimal> 
   class LongStopLoss  : public StopLoss<Decimal>
@@ -88,11 +85,6 @@ namespace mkc_timeseries
 
     ~LongStopLoss()
     {}
-
-    const Decimal& getStopLoss() const
-    {
-      return StopLoss<Decimal>::getStopLoss();
-    }
 
     bool isNullStopLoss() const
     {
@@ -149,11 +141,6 @@ namespace mkc_timeseries
     ~ShortStopLoss()
     {}
 
-    const Decimal& getStopLoss() const
-    {
-      return StopLoss<Decimal>::getStopLoss();
-    }
-
     bool isNullStopLoss() const
     {
       return false;
@@ -204,11 +191,6 @@ namespace mkc_timeseries
     ~NullStopLoss()
     {}
 
-    const Decimal& getStopLoss() const
-    {
-      throw std::domain_error(std::string("NullStopLoss::getStopLoss has no meaning"));
-    }
-
     bool isNullStopLoss() const
     {
       return true;
@@ -223,8 +205,6 @@ namespace mkc_timeseries
     {
       return false;
     }
-
-
   };
 }
  

@@ -78,6 +78,20 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      Portfolio(Portfolio<Decimal>&& rhs) noexcept
+	: mPortfolioName(std::move(rhs.mPortfolioName)),
+	  mPortfolioSecurities(std::move(rhs.mPortfolioSecurities))
+      {}
+
+      Portfolio<Decimal>& operator=(Portfolio<Decimal>&& rhs) noexcept
+      {
+	if (this != &rhs) {
+	  mPortfolioName = std::move(rhs.mPortfolioName);
+	  mPortfolioSecurities = std::move(rhs.mPortfolioSecurities);
+	}
+	return *this;
+      }
+
       /**
        * @brief Create a clone of this Portfolio (empty, same name).
        *
@@ -132,19 +146,19 @@ namespace mkc_timeseries
        */
       void addSecurity (std::shared_ptr<Security<Decimal>> security)
       {
- if (!security)
-   throw PortfolioException("addSecurity - security cannot be null");
+	if (!security)
+	  throw PortfolioException("addSecurity - security cannot be null");
 
- ConstPortfolioIterator pos =
-   mPortfolioSecurities.find(security->getSymbol()) ;
+	ConstPortfolioIterator pos =
+	  mPortfolioSecurities.find(security->getSymbol()) ;
 
- if (pos == endPortfolio())
-   {
-     mPortfolioSecurities.insert(std::make_pair(security->getSymbol(),
-             security));
-   }
- else
-   throw PortfolioException ("addSecurity - security " +security->getSymbol() + " already exists in portfolio");
+	if (pos == endPortfolio())
+	  {
+	    mPortfolioSecurities.insert(std::make_pair(security->getSymbol(),
+						       security));
+	  }
+	else
+	  throw PortfolioException ("addSecurity - security " +security->getSymbol() + " already exists in portfolio");
       }
 
       /**
@@ -157,7 +171,19 @@ namespace mkc_timeseries
       {
 	return mPortfolioSecurities.find (tradingSymbol);
       }
-      
+
+      // Check if portfolio is empty
+      bool empty() const { return mPortfolioSecurities.empty(); }
+
+      // Clear all securities
+      void clear() { mPortfolioSecurities.clear(); }
+
+      // Check if security exists (convenience method)
+      bool contains(const std::string& tradingSymbol) const
+      {
+	return mPortfolioSecurities.find(tradingSymbol) != mPortfolioSecurities.end();
+      }
+ 
       /**
        * @brief Remove a security by symbol if it exists. No-op if absent.
        */
@@ -173,8 +199,9 @@ namespace mkc_timeseries
        */
       void replaceSecurity(std::shared_ptr<Security<Decimal>> security)
       {
+	if (!security)
+	  throw PortfolioException("replaceSecurity - security cannot be null");
 	auto sym = security->getSymbol();
-
 	mPortfolioSecurities.insert_or_assign(sym, std::move(security));
       }
 
@@ -184,6 +211,8 @@ namespace mkc_timeseries
       void replaceSecurity(const std::string& tradingSymbol,
 			   std::shared_ptr<Security<Decimal>> security)
       {
+	if (!security)
+	  throw PortfolioException("replaceSecurity - security cannot be null");
 	mPortfolioSecurities.insert_or_assign(tradingSymbol, std::move(security));
       }
       

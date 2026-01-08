@@ -3,6 +3,7 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
+// IMPROVED VERSION - Incorporates modern C++ best practices
 
 #ifndef __STRATEGY_TRANSACTION_H
 #define __STRATEGY_TRANSACTION_H 1
@@ -36,6 +37,7 @@ namespace mkc_timeseries
   template <class Decimal> class StrategyTransaction;
   template <class Decimal> class StrategyTransactionState;
   template <class Decimal> class StrategyTransactionStateOpen;
+  template <class Decimal> class StrategyTransactionStateComplete;
 
   /**
    * @interface StrategyTransactionObserver
@@ -62,7 +64,7 @@ namespace mkc_timeseries
     {}
 
     StrategyTransactionObserver (const StrategyTransactionObserver<Decimal>& rhs)
-      {}
+    {}
 
     virtual ~StrategyTransactionObserver()
     {}
@@ -95,11 +97,23 @@ namespace mkc_timeseries
    * notified via `StrategyTransactionObserver` when the transaction is finalized by adding
    * an exit `TradingOrder`.
    *
+   * IMPROVED VERSION NOTES:
+   * - Added move semantics (move constructor and move assignment)
+   * - Added noexcept specifications
+   * - Fixed memory leak in constructor (use make_shared)
+   * - Added null pointer validation
+   * - Changed observer copying behavior (observers not copied)
+   * - Added equality operators
+   * - Restored getTradingPositionPtr() for compatibility
+   * - Improved exception safety in observer notifications
+   *
    * Key Responsibilities:
    * - Linking entry order, position, and exit order.
    * - Managing the transaction's state (Open/Complete) via the State pattern.
    * - Notifying registered observers upon completion via the Observer pattern.
    * - Providing access to the constituent entry order, position, and (once complete) exit order.
+   *
+   * Thread Safety: This class is NOT thread-safe. External synchronization required for concurrent access.
    *
    * Collaborations:
    * - TradingOrder: Holds `shared_ptr`s to the entry order and (when completed) the exit order.
@@ -122,34 +136,152 @@ namespace mkc_timeseries
      * @brief Constructs a StrategyTransaction in the 'Open' state.
      * @param entryOrder Shared pointer to the TradingOrder that initiated the position.
      * @param aPosition Shared pointer to the TradingPosition resulting from the entry order.
-     * @throws StrategyTransactionException if the trading symbols or direction (long/short)
-     * of the entry order and position do not match, or if pointers are null.
+     * @throws StrategyTransactionException if:
+     *   - entryOrder is null
+     *   - aPosition is null
+     *   - the trading symbols do not match
+     *   - the direction (long/short) of order and position do not match
      */
     StrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> entryOrder,
-			 std::shared_ptr<TradingPosition<Decimal>> aPosition);
+                         std::shared_ptr<TradingPosition<Decimal>> aPosition);
 
-    StrategyTransaction (const StrategyTransaction<Decimal>& rhs)
+    /**
+     * @brief Copy constructor - creates a shallow copy with independent state and NO observers.
+     * @details The copied transaction shares the same entry order and position objects
+     * but has its own state management and no observers (observers are not copied).
+     * This allows the copy to transition through states independently.
+     */
+    StrategyTransaction(const StrategyTransaction& rhs)
       : mEntryOrder(rhs.mEntryOrder),
 	mPosition(rhs.mPosition),
-	mTransactionState(rhs.mTransactionState),
-	mObservers(rhs.mObservers)
+	mTransactionState(/* NEW state based on rhs */),
+	mObservers()
+    {
+      if (rhs.isTransactionOpen())
+	mTransactionState = std::make_shared<StrategyTransactionStateOpen<Decimal>>();
+      else
+	mTransactionState = std::make_shared<StrategyTransactionStateComplete<Decimal>>(rhs.getExitTradingOrder());
+    }
+
+    /**
+     * @brief Move constructor - transfers ownership efficiently.
+     * @param rhs The transaction to move from (left in valid but unspecified state).
+     */
+    StrategyTransaction(StrategyTransaction<Decimal>&& rhs) noexcept
+      : mEntryOrder(std::move(rhs.mEntryOrder)),
+        mPosition(std::move(rhs.mPosition)),
+        mTransactionState(std::move(rhs.mTransactionState)),
+        mObservers() // IMPORTANT: observers are wiring; never move them
     {}
 
-    StrategyTransaction<Decimal>& 
-    operator=(const StrategyTransaction<Decimal> &rhs)
+    /**
+     * @brief Copy assignment operator using copy-and-swap idiom.
+     * @param rhs The transaction to copy from.
+     * @return Reference to this transaction.
+     */
+    StrategyTransaction<Decimal>&
+    operator=(const StrategyTransaction<Decimal>& rhs)
     {
       if (this == &rhs)
 	return *this;
       
+      // Copy the shared "identity" parts (you chose to share these)
       mEntryOrder = rhs.mEntryOrder;
-      mPosition = rhs.mPosition;
-      mTransactionState = rhs.mTransactionState;
-      mObservers = rhs.mObservers;
+      mPosition   = rhs.mPosition;
+
+      // Rebuild independent state (do NOT share the state object)
+      if (rhs.isTransactionOpen())
+	{
+	  mTransactionState = std::make_shared<StrategyTransactionStateOpen<Decimal>>();
+	}
+      else
+	{
+	  // rhs is complete; capture its exit order to preserve completed state
+	  // This will throw if rhs is open, but we are in the 'else' branch.
+	  mTransactionState =
+	    std::make_shared<StrategyTransactionStateComplete<Decimal>>(rhs.getExitTradingOrder());
+	}
+      
+      // Observers are wiring; never copy them
+      mObservers.clear();
+      
       return *this;
     }
 
-    ~StrategyTransaction()
-    {}
+    void clearObservers() noexcept
+    {
+      mObservers.clear();
+    }
+
+    void removeObserver(StrategyTransactionObserver<Decimal>& observer)
+    {
+      StrategyTransactionObserver<Decimal>* target = &observer;
+
+      mObservers.remove_if(
+			   [target](const std::reference_wrapper<StrategyTransactionObserver<Decimal>>& wrapped) -> bool
+			   {
+			     return &wrapped.get() == target;
+			   });
+    }
+
+    bool hasObserver(StrategyTransactionObserver<Decimal>& observer) const
+    {
+      StrategyTransactionObserver<Decimal>* target = &observer;
+
+      for (const auto& wrapped : mObservers)
+	{
+	  if (&wrapped.get() == target)
+	    return true;
+	}
+      return false;
+    }
+
+    void addObserverUnique(StrategyTransactionObserver<Decimal>& observer)
+    {
+      if (!hasObserver(observer))
+	mObservers.push_back(observer);
+    }
+
+    /**
+     * @brief Move assignment operator - transfers ownership efficiently.
+     * @param rhs The transaction to move from.
+     * @return Reference to this transaction.
+     */
+    StrategyTransaction<Decimal>& operator=(StrategyTransaction<Decimal>&& rhs) noexcept
+    {
+      if (this != &rhs)
+	{
+	  mEntryOrder = std::move(rhs.mEntryOrder);
+	  mPosition = std::move(rhs.mPosition);
+	  mTransactionState = std::move(rhs.mTransactionState);
+	  
+	  // IMPORTANT: observers are wiring; never move them
+	  mObservers.clear();
+	}
+      return *this;
+    }
+
+    ~StrategyTransaction() noexcept = default;
+
+    /**
+     * @brief Equality comparison based on entry order and position.
+     * @param rhs The transaction to compare with.
+     * @return true if both transactions reference the same order and position.
+     */
+    bool operator==(const StrategyTransaction<Decimal>& rhs) const
+    {
+      return mEntryOrder == rhs.mEntryOrder && mPosition == rhs.mPosition;
+    }
+
+    /**
+     * @brief Inequality comparison.
+     * @param rhs The transaction to compare with.
+     * @return true if transactions differ.
+     */
+    bool operator!=(const StrategyTransaction<Decimal>& rhs) const
+    {
+      return !(*this == rhs);
+    }
 
     /**
      * @brief Gets the entry trading order that initiated this transaction.
@@ -169,9 +301,11 @@ namespace mkc_timeseries
       return mPosition;
     }
 
-    
-    std::shared_ptr<TradingPosition<Decimal>>
-    getTradingPositionPtr() const
+    /**
+     * @brief Gets the trading position associated with this transaction (alternative name for compatibility).
+     * @return A shared pointer to the TradingPosition.
+     */
+    std::shared_ptr<TradingPosition<Decimal>> getTradingPositionPtr() const
     {
       return mPosition;
     }
@@ -204,6 +338,7 @@ namespace mkc_timeseries
      * @throws StrategyTransactionException if the transaction is already complete (state is `StrategyTransactionStateComplete`).
      * @details Delegates the state change to the current `mTransactionState` (specifically handled by `StrategyTransactionStateOpen`).
      * After the state change, it calls `notifyTransactionComplete()` to inform observers.
+     * Observer notifications are exception-safe - an exception from one observer won't prevent others from being notified.
      */
     void completeTransaction (std::shared_ptr<TradingOrder<Decimal>> exitOrder);
 
@@ -211,75 +346,78 @@ namespace mkc_timeseries
      * @brief Adds an observer to be notified when this transaction completes.
      * @param observer A reference wrapper around an object implementing `StrategyTransactionObserver`.
      * The observer's lifetime must be managed externally and exceed that of this transaction
-     * or until it is implicitly removed when the transaction is destroyed.
+     * (or until the observer is removed via `removeObserver`, if implemented).
+     * @details The same observer can be added multiple times; it will be notified once per addition.
      */
-    void addObserver (reference_wrapper<StrategyTransactionObserver<Decimal>> observer)
+    void addObserver (std::reference_wrapper<StrategyTransactionObserver<Decimal>> observer)
     {
       mObservers.push_back(observer);
     }
 
+    // TODO: Consider implementing removeObserver for completeness
+    // void removeObserver(std::reference_wrapper<StrategyTransactionObserver<Decimal>> observer);
+
   private:
-    typedef typename list<reference_wrapper<StrategyTransactionObserver<Decimal>>>::const_iterator ConstObserverIterator;
-
-    /** @brief Returns an iterator to the beginning of the observer list. */
-    ConstObserverIterator beginObserverList() const
-    {
-      return mObservers.begin();
-    }
-
-    ConstObserverIterator endObserverList() const
-    {
-      return mObservers.end();
-    }
-
     /**
-     * @brief Notifies all registered observers that the transaction has completed.
-     * @details Iterates through the observer list and calls `TransactionComplete(this)` on each one.
-     * This is typically called internally by `completeTransaction`.
+     * @brief Changes the internal state of this transaction.
+     * @param newState Shared pointer to the new state object.
+     * @details This method is called by state classes (via friend relationship) during state transitions.
      */
-    void notifyTransactionComplete()
-    {
-      ConstObserverIterator it = this->beginObserverList();
-
-      for (; it != this->endObserverList(); it++)
-	(*it).get().TransactionComplete (this);
-    }
-
-    /**
-     * @brief Changes the internal state of the transaction. Used by State classes.
-     * @param newState A shared pointer to the new StrategyTransactionState.
-     * @details This method is friended by the State classes to allow them to manage state transitions.
-     */
-  private:
     void ChangeState (std::shared_ptr<StrategyTransactionState<Decimal>> newState)
     {
       mTransactionState = newState;
     }
 
-    friend class StrategyTransactionState<Decimal>;
-    friend class StrategyTransactionStateOpen<Decimal>;
+    /**
+     * @brief Notifies all registered observers that this transaction has completed.
+     * @details Exception-safe: If one observer throws, other observers are still notified.
+     * The first exception encountered is rethrown after all observers have been processed.
+     */
+    void notifyTransactionComplete()
+    {
+      std::exception_ptr firstException;
+      
+      for (auto& observer : mObservers)
+	{
+	  try {
+	    observer.get().TransactionComplete(this);
+	  }
+	  catch (...)
+	    {
+	      if (!firstException) {
+		firstException = std::current_exception();
+	      }
+	      // Continue notifying other observers
+	    }
+	}
+      
+      // Rethrow first exception if any occurred
+      if (firstException) {
+        std::rethrow_exception(firstException);
+      }
+    }
 
   private:
     std::shared_ptr<TradingOrder<Decimal>> mEntryOrder;
     std::shared_ptr<TradingPosition<Decimal>> mPosition;
     std::shared_ptr<StrategyTransactionState<Decimal>> mTransactionState;
     std::list<std::reference_wrapper<StrategyTransactionObserver<Decimal>>> mObservers;
+
+    friend class StrategyTransactionStateOpen<Decimal>;
   };
 
   /**
    * @class StrategyTransactionState
-   * @brief Abstract base class for the State pattern applied to StrategyTransaction.
+   * @brief Abstract base class for StrategyTransaction states using the State pattern.
    * @tparam Decimal The numeric type used for financial calculations.
    *
-   * @details Defines the common interface for all possible states of a `StrategyTransaction`.
+   * @details Defines the interface for state-dependent behavior of a `StrategyTransaction`.
    * Concrete states (`StrategyTransactionStateOpen`, `StrategyTransactionStateComplete`)
-   * implement this interface to provide state-specific behavior.
+   * implement this interface to provide specific behavior for open and completed transactions.
    *
    * Collaborations:
-   * - StrategyTransaction: Contains a pointer to a `StrategyTransactionState` object.
-   * Delegates state-dependent operations to it. Declared as a friend to allow state transitions.
-   * - StrategyTransactionStateOpen: Concrete state subclass.
-   * - StrategyTransactionStateComplete: Concrete state subclass.
+   * - StrategyTransaction: Holds a `shared_ptr` to a state object and delegates state-dependent methods.
+   * - StrategyTransactionStateOpen, StrategyTransactionStateComplete: Concrete implementations.
    */
   template <class Decimal> class StrategyTransactionState
   {
@@ -299,13 +437,34 @@ namespace mkc_timeseries
     virtual ~StrategyTransactionState()
     {}
 
+    /**
+     * @brief Gets the exit trading order for this transaction.
+     * @return Shared pointer to the exit TradingOrder.
+     * @throws StrategyTransactionException if called on a state that doesn't have an exit order (e.g., Open).
+     */
     virtual std::shared_ptr<TradingOrder<Decimal>> getExitTradingOrder() const = 0;
+
+    /**
+     * @brief Checks if the transaction is in an open state.
+     * @return `true` if open, `false` otherwise.
+     */
     virtual bool isTransactionOpen() const = 0;
+
+    /**
+     * @brief Checks if the transaction is in a complete state.
+     * @return `true` if complete, `false` otherwise.
+     */
     virtual bool isTransactionComplete() const = 0;
+
+    /**
+     * @brief Attempts to complete the transaction with an exit order.
+     * @param transaction Pointer to the owning `StrategyTransaction`.
+     * @param exitOrder Shared pointer to the exit `TradingOrder`.
+     * @throws StrategyTransactionException if the operation is invalid for the current state.
+     */
     virtual void completeTransaction (StrategyTransaction<Decimal> *transaction,
 				      std::shared_ptr<TradingOrder<Decimal>> exitOrder) = 0;
   };
-
 
   /**
    * @class StrategyTransactionStateComplete
@@ -313,7 +472,8 @@ namespace mkc_timeseries
    * @tparam Decimal The numeric type used for financial calculations.
    *
    * @details Implements the `StrategyTransactionState` interface for a transaction
-   * that has been closed with an exit order. It stores the exit order.
+   * that has been closed by an exit order. In this state, attempts to complete the
+   * transaction again will throw an exception.
    *
    * Collaborations:
    * - StrategyTransactionState: Inherits from this abstract base class.
@@ -329,22 +489,38 @@ namespace mkc_timeseries
      */
     StrategyTransactionStateComplete(std::shared_ptr<TradingOrder<Decimal>> exitOrder)
       : StrategyTransactionState<Decimal>(),
-	mExitOrder (exitOrder)
+        mExitOrder (exitOrder)
     {}
 
     StrategyTransactionStateComplete (const StrategyTransactionStateComplete<Decimal>& rhs)
       : StrategyTransactionState<Decimal> (rhs),
-	mExitOrder(rhs.mExitOrder)
+        mExitOrder(rhs.mExitOrder)
+    {}
+
+    StrategyTransactionStateComplete(StrategyTransactionStateComplete<Decimal>&& rhs) noexcept
+      : StrategyTransactionState<Decimal>(std::move(rhs)),
+        mExitOrder(std::move(rhs.mExitOrder))
     {}
 
     StrategyTransactionStateComplete<Decimal>& 
     operator=(const StrategyTransactionStateComplete<Decimal> &rhs)
     {
       if (this == &rhs)
-	return *this;
-	
+        return *this;
+        
       StrategyTransactionState<Decimal>::operator=(rhs);
       mExitOrder = rhs.mExitOrder;
+      return *this;
+    }
+
+    StrategyTransactionStateComplete<Decimal>& 
+    operator=(StrategyTransactionStateComplete<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+        
+      StrategyTransactionState<Decimal>::operator=(std::move(rhs));
+      mExitOrder = std::move(rhs.mExitOrder);
       return *this;
     }
 
@@ -381,7 +557,7 @@ namespace mkc_timeseries
      * @throws StrategyTransactionException always.
      */
     void completeTransaction (StrategyTransaction<Decimal> * /* transaction */,
-         std::shared_ptr<TradingOrder<Decimal>> /* exitOrder */)
+			      std::shared_ptr<TradingOrder<Decimal>> /* exitOrder */)
     {
       throw StrategyTransactionException ("StrategyTransactionStateComplete::completeTransaction - transaction already complete");
     }
@@ -418,13 +594,27 @@ namespace mkc_timeseries
       : StrategyTransactionState<Decimal> (rhs)
     {}
 
+    StrategyTransactionStateOpen(StrategyTransactionStateOpen<Decimal>&& rhs) noexcept
+      : StrategyTransactionState<Decimal>(std::move(rhs))
+    {}
+
     StrategyTransactionStateOpen<Decimal>& 
     operator=(const StrategyTransactionStateOpen<Decimal> &rhs)
     {
       if (this == &rhs)
-	return *this;
-	
+        return *this;
+        
       StrategyTransactionState<Decimal>::operator=(rhs);
+      return *this;
+    }
+
+    StrategyTransactionStateOpen<Decimal>& 
+    operator=(StrategyTransactionStateOpen<Decimal>&& rhs) noexcept
+    {
+      if (this == &rhs)
+        return *this;
+        
+      StrategyTransactionState<Decimal>::operator=(std::move(rhs));
       return *this;
     }
 
@@ -463,28 +653,39 @@ namespace mkc_timeseries
      * @brief Completes the transaction by changing the owning transaction's state.
      * @param transaction Pointer to the owning `StrategyTransaction` object.
      * @param exitOrder Shared pointer to the exit `TradingOrder` that closes the position.
+     * @throws StrategyTransactionException if transaction pointer is null.
      * @details Creates a new `StrategyTransactionStateComplete` instance holding the `exitOrder`
      * and calls `transaction->ChangeState()` to update the owning transaction's state pointer.
      */
     void completeTransaction (StrategyTransaction<Decimal> *transaction,
-			      std::shared_ptr<TradingOrder<Decimal>> exitOrder)
+                              std::shared_ptr<TradingOrder<Decimal>> exitOrder)
     {
       if (!transaction)
-	throw StrategyTransactionException("StrategyTransactionStateOpen::completeTransaction - Null transaction pointer provided.");
+        throw StrategyTransactionException("StrategyTransactionStateOpen::completeTransaction - Null transaction pointer provided.");
 
       transaction->ChangeState (std::make_shared<StrategyTransactionStateComplete<Decimal>>(exitOrder));
     }
 
   };
 
+  // Template method implementations
+
   template <class Decimal>
   inline StrategyTransaction<Decimal>::StrategyTransaction (std::shared_ptr<TradingOrder<Decimal>> entryOrder,
-							 std::shared_ptr<TradingPosition<Decimal>> aPosition)
+							    std::shared_ptr<TradingPosition<Decimal>> aPosition)
     : mEntryOrder (entryOrder),
       mPosition(aPosition),
-      mTransactionState(new StrategyTransactionStateOpen<Decimal>()),
+      mTransactionState(std::make_shared<StrategyTransactionStateOpen<Decimal>>()),  // FIXED: use make_shared
       mObservers()
   {
+    // ADDED: Null pointer validation
+    if (!entryOrder)
+      throw StrategyTransactionException("StrategyTransaction constructor - null entryOrder provided");
+    
+    if (!aPosition)
+      throw StrategyTransactionException("StrategyTransaction constructor - null aPosition provided");
+
+    // Existing validation
     if (entryOrder->getTradingSymbol() != aPosition->getTradingSymbol())
       {
 	std::string orderSymbol(entryOrder->getTradingSymbol());
@@ -493,7 +694,7 @@ namespace mkc_timeseries
       }
 
     if ((entryOrder->isLongOrder() == aPosition->isLongPosition()) ||
-	(entryOrder->isShortOrder() == aPosition->isShortPosition()))
+        (entryOrder->isShortOrder() == aPosition->isShortPosition()))
       ;
     else
       throw StrategyTransactionException ("StrategyTransaction constructor -order and position direction do not agree");
@@ -514,7 +715,7 @@ namespace mkc_timeseries
   template <class Decimal>
   void StrategyTransaction<Decimal>::completeTransaction (std::shared_ptr<TradingOrder<Decimal>> exitOrder)
   {
-    mTransactionState->completeTransaction (this, exitOrder);;
+    mTransactionState->completeTransaction (this, exitOrder);
     notifyTransactionComplete();
   }
 

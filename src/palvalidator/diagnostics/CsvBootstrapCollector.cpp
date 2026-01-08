@@ -65,13 +65,6 @@ namespace palvalidator::diagnostics
         os << std::setprecision(17) << x;
       // else empty field
     }
-
-    static void writeSizeOrEmpty(std::ostream& os, std::size_t x, bool emptyIfZero = false)
-    {
-      if (emptyIfZero && x == 0)
-        return;
-      os << x;
-    }
   }
 
   CsvBootstrapCollector::CsvBootstrapCollector(const std::string& tournamentRunsPath,
