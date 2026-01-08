@@ -95,8 +95,11 @@ namespace concurrency
     std::vector<std::future<void>> futures;
     for (uint32_t start = 0; start < total; start += chunkSize) {
       uint32_t end = std::min(total, start + chunkSize);
+      // FIXED: Capture body by value for robustness
+      // Previously: [&, start, end]() which captured body by reference (fragile)
+      // Now: [=, &container]() which captures body by value (robust)
       futures.emplace_back(
-        exec.submit([&, start, end]() {
+        exec.submit([=, &container]() {
           for (uint32_t p = start; p < end; ++p) {
             body(container[p]);
           }
@@ -105,7 +108,6 @@ namespace concurrency
     }
     exec.waitAll(futures);
   }
-
   /**
    * @brief Executes a for-loop in parallel using many small, dynamically-scheduled chunks for better load balancing.
    *
