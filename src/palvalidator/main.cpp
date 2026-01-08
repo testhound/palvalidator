@@ -175,7 +175,8 @@ filterSurvivingStrategiesByPerformance(
     std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> collector;
     if (g_enableBcaStats) {
         // When enabled, write CSV diagnostics to a file
-        collector = std::make_shared<palvalidator::diagnostics::CsvBootstrapCollector>("/home/collison/bca_validation_stats.csv");
+      collector = std::make_shared<palvalidator::diagnostics::CsvBootstrapCollector>("/home/collison/tournament_runs.csv",
+										     "/home/collison/candidates.csv");
     } else {
         // No-op collector to avoid any diagnostic output
         collector = std::make_shared<palvalidator::diagnostics::NullBootstrapCollector>();
