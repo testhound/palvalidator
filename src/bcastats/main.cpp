@@ -430,6 +430,7 @@ namespace
   // Approximate tie-break preference order used only for downstream reporting.
   // This is NOT used by the production selector; it exists to help interpret cases
   // where "Rank" (score sort) disagrees with "IsChosen" (tournament winner).
+#if 0
   static int preferenceRank(const std::string& method)
   {
     if (method == "BCa") return 0;
@@ -440,21 +441,7 @@ namespace
     if (method == "MOutOfN") return 5;
     return 100;
   }
-
-  static bool tournamentLess(const CandidateRow& a, const CandidateRow& b, double tieEpsilon)
-  {
-    const bool af = std::isfinite(a.finalScore);
-    const bool bf = std::isfinite(b.finalScore);
-    if (af != bf) return af; // finite scores first
-    if (!af) return false;   // both non-finite -> stable (treat equal)
-
-    const double diff = a.finalScore - b.finalScore;
-    if (std::fabs(diff) > tieEpsilon)
-      return diff < 0.0;
-
-    // Tie within epsilon: apply preference order
-    return preferenceRank(a.method) < preferenceRank(b.method);
-  }
+#endif
 
   static std::string lossDriver(const CandidateRow& loser, const CandidateRow& winner)
   {
