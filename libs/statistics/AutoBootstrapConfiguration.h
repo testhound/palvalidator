@@ -3,7 +3,7 @@
 namespace AutoBootstrapConfiguration
 {
   // Coverage penalty multipliers (Percentile-specific)
-  constexpr double kUnderCoverageMultiplier = 2.0; ///< Under-coverage penalized 2× more than over
+  constexpr double kUnderCoverageMultiplier = 10.0; ///< Under-coverage penalized 2× more than over
   constexpr double kOverCoverageMultiplier  = 1.0; ///< Base penalty for exceeding nominal coverage
   
   // Length bounds (normalized to ideal bootstrap interval length)
@@ -48,5 +48,5 @@ namespace AutoBootstrapConfiguration
   constexpr double kPercentileTOuterPenaltyScale = 100.0;      ///< Penalty scale for outer failures
   constexpr double kPercentileTInnerPenaltyScale = 200.0;      ///< Penalty scale for inner failures
   constexpr double kPercentileTEffectiveBPenaltyScale = 50.0;  ///< Penalty scale for low effective B
-
+  constexpr double kBcaLengthOverflowScale = 2.0;
 } // namespace AutoBootstrapConfiguration

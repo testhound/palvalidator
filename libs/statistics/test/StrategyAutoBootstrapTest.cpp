@@ -235,10 +235,10 @@ TEST_CASE("BootstrapConfiguration: Construction and basic getters",
     }
 }
 
-TEST_CASE("BootstrapConfiguration: Inner B falls back to 1 for tiny B",
+TEST_CASE("BootstrapConfiguration: Inner B falls back to MIN_INNER for tiny B",
           "[StrategyAutoBootstrap][BootstrapConfiguration]")
 {
-    // Use very small B to exercise the max(1, B_outer / ratio) logic.
+    // Use very small B to exercise the clamp(MIN_INNER, B_outer / ratio, MAX_INNER) logic.
     const std::size_t  B_small = 5;
     const std::size_t  L       = 4;
     const double       CL      = 0.90;
@@ -253,10 +253,15 @@ TEST_CASE("BootstrapConfiguration: Inner B falls back to 1 for tiny B",
 
     REQUIRE(cfg.getPercentileTNumOuterReplications() == B_small);
 
-    double inner = static_cast<double>(B_small) / ratio;
-    if (inner < 1.0)
-        inner = 1.0;
-    const std::size_t expected_inner = static_cast<std::size_t>(inner);
+    constexpr std::size_t kMinInnerReplications = palvalidator::analysis::percentile_t_constants::MIN_INNER;
+    constexpr std::size_t kMaxInnerReplications = 2000; // must match getPercentileTNumInnerReplications cap
+
+    const std::size_t ideal_inner =
+        static_cast<std::size_t>(static_cast<double>(B_small) / ratio);
+
+    const std::size_t expected_inner =
+        std::min<std::size_t>(std::max<std::size_t>(ideal_inner, kMinInnerReplications),
+                              kMaxInnerReplications);
 
     REQUIRE(cfg.getPercentileTNumInnerReplications(ratio) == expected_inner);
 }
@@ -332,7 +337,6 @@ TEST_CASE("StrategyAutoBootstrap: Type aliases and wiring",
     using ResultType   = typename SAB::Result;
     using CandidateType= typename SAB::Candidate;
     using MethodIdType = typename SAB::MethodId;
-    using BCaResampler = typename SAB::BCaResampler;
 
     // Basic alias sanity: ResultType should match AutoCIResult<Decimal>
     STATIC_REQUIRE(std::is_same<ResultType, AutoCIResult>::value);
@@ -341,9 +345,8 @@ TEST_CASE("StrategyAutoBootstrap: Type aliases and wiring",
     STATIC_REQUIRE(std::is_same<CandidateType, typename AutoCIResult::Candidate>::value);
     STATIC_REQUIRE(std::is_same<MethodIdType,  typename AutoCIResult::MethodId>::value);
 
-    // BCaResampler is fixed to mkc_timeseries::StationaryBlockResampler<Decimal>
-    STATIC_REQUIRE(std::is_same<BCaResampler,
-                                mkc_timeseries::StationaryBlockResampler<Decimal>>::value);
+    // Note: BCaResampler is no longer hardcoded - it now uses the same Resampler
+    // template parameter as other bootstrap methods for consistency in tournaments
 
     // Ensure configuration objects are usable with the StrategyAutoBootstrap type
     BootstrapConfiguration cfg(/*numBootStrapReplications*/ 500,

@@ -4,7 +4,7 @@
 #include <limits>
 #include <optional>
 #include <sstream>
-
+#include <atomic>
 #include "BackTester.h"
 #include "ClosedPositionHistory.h"
 #include "PalStrategy.h"
@@ -15,8 +15,13 @@
 #include "diagnostics/IBootstrapObserver.h"
 
 #include "StationaryMaskResamplers.h"
-#include "StrategyAutoBootstrap.h"   // palvalidator::analysis::StrategyAutoBootstrap
-#include "AutoBootstrapSelector.h"   // palvalidator::analysis::AutoCIResult
+#include "StrategyAutoBootstrap.h"
+#include "CandidateReject.h"
+#include "AutoBootstrapSelector.h"
+
+namespace {
+    std::atomic<uint64_t> g_nextRunID{1};
+}
 
 namespace palvalidator::filtering::stages
 {
@@ -70,7 +75,8 @@ namespace palvalidator::filtering::stages
   {
   }
 
-  void BootstrapAnalysisStage::reportDiagnostics(const StrategyAnalysisContext& ctx,
+  void BootstrapAnalysisStage::reportDiagnostics(
+						 const StrategyAnalysisContext& ctx,
 						 palvalidator::diagnostics::MetricType metricType,
 						 const AutoCIResult<Num>& result) const
   {
@@ -78,59 +84,254 @@ namespace palvalidator::filtering::stages
       return;
 
     using namespace palvalidator::diagnostics;
+    using Record = BootstrapDiagnosticRecord;
 
-    // 1. Get the median from the result object once
-    double bootMedian = 0.0;
-    try {
-        bootMedian = num::to_double(result.getBootstrapMedian());
-    } catch (...) {
-        bootMedian = 0.0; // Fallback if calculation failed
-    }
+    // -------------------------------------------------------------------------
+    // Unique runID per tournament
+    // -------------------------------------------------------------------------
+    const std::uint64_t runID = g_nextRunID.fetch_add(1, std::memory_order_relaxed);
 
-    std::string sName = ctx.strategy ? ctx.strategy->getStrategyName() : "Unknown";
-    std::string sym = ctx.baseSecurity ? ctx.baseSecurity->getSymbol() : "Unknown";
+    // -------------------------------------------------------------------------
+    // Tournament-level context (true invariants only)
+    // -------------------------------------------------------------------------
+    const std::string strategyName   = (ctx.strategy)     ? ctx.strategy->getStrategyName() : "Unknown";
+    const std::string symbol        = (ctx.baseSecurity) ? ctx.baseSecurity->getSymbol()   : "Unknown";
+    const std::uint64_t strategyUID = (ctx.strategy)     ? ctx.strategy->hashCode()        : 0;
 
-    const auto& chosen = result.getChosenCandidate();
-    const auto& candidates = result.getCandidates();
+    const auto& candidates   = result.getCandidates();
+    const auto& diagnostics  = result.getDiagnostics();
+    const auto& breakdowns   = diagnostics.getScoreBreakdowns();
 
-    // Loop through ALL candidates (PercentileT, BCa, Normal, etc.)
+    if (candidates.empty())
+      return;
+
+    const double confidenceLevel = candidates.front().getCl();
+    const std::size_t sampleSize = candidates.front().getN();
+    const std::size_t numCandidates = candidates.size();
+    const double tieEpsilon = diagnostics.getTieEpsilon();
+
+    Record::TournamentContext tournament(
+					 runID,
+					 strategyUID,
+					 strategyName,
+					 symbol,
+					 metricType,
+					 confidenceLevel,
+					 sampleSize,
+					 numCandidates,
+					 tieEpsilon
+					 );
+
+    // -------------------------------------------------------------------------
+    // Helper: find ScoreBreakdown by method (robust to candidate sorting)
+    // -------------------------------------------------------------------------
+    auto findBreakdownForMethod =
+      [&](typename AutoCIResult<Num>::MethodId m)
+      -> const typename AutoCIResult<Num>::SelectionDiagnostics::ScoreBreakdown*
+      {
+	for (const auto& b : breakdowns)
+	  {
+	    if (b.getMethod() == m)
+	      return &b;
+	  }
+	return nullptr;
+      };
+
+    // -------------------------------------------------------------------------
+    // Emit one record per candidate
+    // -------------------------------------------------------------------------
     for (const auto& c : candidates)
       {
-	bool isThisRowChosen = (c.getMethod() == chosen.getMethod());
+	const auto* breakdown = findBreakdownForMethod(c.getMethod());
 
-	// BCa specific logic (only relevant if THIS candidate is BCa)
-	bool bcaAvail = (c.getMethod() == AutoCIResult<Num>::MethodId::BCa);
-	double bZ0 = bcaAvail ? c.getZ0() : 0.0;
-	double bAccel = bcaAvail ? c.getAccel() : 0.0;
-	double bStab = bcaAvail ? c.getStabilityPenalty() : 0.0;
-	double bLenPen = bcaAvail ? c.getLengthPenalty() : 0.0;
-	double bRawLen = num::to_double(c.getUpper() - c.getLower());
+	// --------------------------
+	// CandidateIdentity
+	// --------------------------
+	Record::CandidateIdentity identity(
+					   c.getCandidateId(),
+					   AutoCIResult<Num>::methodIdToString(c.getMethod()),
+					   c.isChosen(),
+					   c.getRank()
+					   );
 
-	// Retrieve Inner Bootstrap health metrics
-	// (Assuming these getters exist on Candidate based on your question)
-	double effB = c.getEffectiveB(); 
-	double innerFail = c.getInnerFailureRate(); 
-	auto strategyUniqueID = ctx.strategy->hashCode();
-	BootstrapDiagnosticRecord record(strategyUniqueID,
-					 sName,
-					 sym,
-					 metricType,
-					 AutoCIResult<Num>::methodIdToString(c.getMethod()), // Method Name
-					 num::to_double(c.getLower()),
-					 num::to_double(c.getUpper()),
-					 c.getScore(),
-					 c.getN(),
-					 c.getBOuter(),  // Num Resamples
-					 c.getSeBoot(),
-					 c.getSkewBoot(),
-					 bcaAvail, bZ0, bAccel, bStab, bLenPen, bRawLen,
-					 isThisRowChosen,
-					 bootMedian,
-					 effB,
-					 innerFail);
+	// --------------------------
+	// CandidateDistributionStats (candidate-level)
+	// --------------------------
+	Record::CandidateDistributionStats stats(
+						 c.getBOuter(),
+						 c.getBInner(),
+						 c.getEffectiveB(),
+						 c.getSkippedTotal(),
+						 c.getSeBoot(),
+						 c.getSkewBoot(),
+						 c.getMedianBoot(),
+						 c.getCenterShiftInSe(),
+						 c.getNormalizedLength()
+						 );
+
+	// --------------------------
+	// IntervalAndScore
+	// --------------------------
+	const double lowerBound = num::to_double(c.getLower());
+	const double upperBound = num::to_double(c.getUpper());
+
+	Record::IntervalAndScore interval(
+					  lowerBound,
+					  upperBound,
+					  c.getScore()
+					  );
+
+	// --------------------------
+	// RejectionInfo + SupportValidation
+	// --------------------------
+	CandidateReject rejectionMask = CandidateReject::None;
+	std::string rejectionText;
+	bool passedGates = true;
+
+	bool violatesSupport = false;
+	double supportLower = std::numeric_limits<double>::quiet_NaN();
+	double supportUpper = std::numeric_limits<double>::quiet_NaN();
+
+	if (breakdown)
+	  {
+	    rejectionMask = breakdown->getRejectionMask();
+	    rejectionText = breakdown->getRejectionText();
+	    passedGates   = breakdown->passedGates();
+
+	    violatesSupport = breakdown->violatesSupport();
+	    supportLower    = breakdown->getSupportLowerBound();
+	    supportUpper    = breakdown->getSupportUpperBound();
+	  }
+
+	Record::RejectionInfo rejection(
+					rejectionMask,
+					rejectionText,
+					passedGates
+					);
+
+	Record::SupportValidation support(
+					  violatesSupport,
+					  supportLower,
+					  supportUpper
+					  );
+
+	// --------------------------
+	// PenaltyBreakdown (7 components now)
+	// --------------------------
+	auto makePenalty = [](double raw, double norm, double contrib) -> Record::PenaltyComponents {
+	  return Record::PenaltyComponents(raw, norm, contrib);
+	};
+
+	// Default to NaNs so missing data becomes empty in CSV (your collector does that)
+	const double NaN = std::numeric_limits<double>::quiet_NaN();
+
+	Record::PenaltyComponents ordering    = makePenalty(NaN, NaN, NaN);
+	Record::PenaltyComponents length      = makePenalty(NaN, NaN, NaN);
+	Record::PenaltyComponents stability   = makePenalty(NaN, NaN, NaN);
+	Record::PenaltyComponents domain      = makePenalty(NaN, NaN, NaN);
+	Record::PenaltyComponents centerShift = makePenalty(NaN, NaN, NaN);
+	Record::PenaltyComponents skew        = makePenalty(NaN, NaN, NaN);
+	Record::PenaltyComponents bcaOverflow = makePenalty(NaN, NaN, NaN);
+
+	if (breakdown)
+	  {
+	    ordering  = makePenalty(breakdown->getOrderingRaw(),  breakdown->getOrderingNorm(),  breakdown->getOrderingContribution());
+	    length    = makePenalty(breakdown->getLengthRaw(),    breakdown->getLengthNorm(),    breakdown->getLengthContribution());
+	    stability = makePenalty(breakdown->getStabilityRaw(), breakdown->getStabilityNorm(), breakdown->getStabilityContribution());
+	    domain    = makePenalty(breakdown->getDomainRaw(),    NaN,                           breakdown->getDomainContribution());
+
+	    // These are your existing “center shift sq” and “skew sq” score components.
+	    // If you later rename them, update here accordingly.
+	    centerShift = makePenalty(breakdown->getCenterSqRaw(), breakdown->getCenterSqNorm(), breakdown->getCenterSqContribution());
+	    skew        = makePenalty(breakdown->getSkewSqRaw(),   breakdown->getSkewSqNorm(),   breakdown->getSkewSqContribution());
+
+	    // If/when you add explicit overflow penalty to ScoreBreakdown, wire it here.
+	    // For now, keep it empty.
+	    bcaOverflow = makePenalty(NaN, NaN, NaN);
+	  }
+
+	Record::PenaltyBreakdown penalties(
+					   ordering,
+					   length,
+					   stability,
+					   domain,
+					   centerShift,
+					   skew,
+					   bcaOverflow
+					   );
+
+	// --------------------------
+	// BCa diagnostics
+	// --------------------------
+	Record::BcaDiagnostics bca = Record::BcaDiagnostics::notAvailable();
+	if (c.getMethod() == AutoCIResult<Num>::MethodId::BCa)
+	  {
+	    const double z0    = c.getZ0();
+	    const double accel = c.getAccel();
+
+	    const bool z0Exceeds =
+	      std::isfinite(z0) && (std::fabs(z0) > AutoBootstrapConfiguration::kBcaZ0HardLimit);
+	    const bool accelExceeds =
+	      std::isfinite(accel) && (std::fabs(accel) > AutoBootstrapConfiguration::kBcaAHardLimit);
+
+	    const double rawLength = upperBound - lowerBound;
+
+	    bca = Record::BcaDiagnostics(z0, accel, z0Exceeds, accelExceeds, rawLength);
+	  }
+
+	// --------------------------
+	// Percentile-T diagnostics (now includes innerFailRate)
+	// --------------------------
+	Record::PercentileTDiagnostics percentileT = Record::PercentileTDiagnostics::notAvailable();
+	if (c.getMethod() == AutoCIResult<Num>::MethodId::PercentileT)
+	  {
+	    const std::size_t B_outer   = c.getBOuter();
+	    const std::size_t B_inner   = c.getBInner();
+	    const std::size_t effective = c.getEffectiveB();
+
+	    const std::size_t outerFailCount = (B_outer > effective) ? (B_outer - effective) : 0;
+
+	    const double innerFailRate = c.getInnerFailureRate();
+
+	    std::size_t innerFailCount = 0;
+	    if (std::isfinite(innerFailRate) && innerFailRate > 0.0 && B_outer > 0 && B_inner > 0)
+	      {
+		const double totalInner = static_cast<double>(B_outer) * static_cast<double>(B_inner);
+		const double estFails   = innerFailRate * totalInner;
+
+		const double capped = std::max(0.0, std::min(estFails, totalInner));
+		innerFailCount = static_cast<std::size_t>(std::llround(capped));
+	      }
+
+	    const double effectiveB = static_cast<double>(effective);
+
+	    percentileT = Record::PercentileTDiagnostics(
+							 B_outer,
+							 B_inner,
+							 outerFailCount,
+							 innerFailCount,
+							 innerFailRate,
+							 effectiveB
+							 );
+	  }
+
+	// --------------------------
+	// Emit record
+	// --------------------------
+	BootstrapDiagnosticRecord record(
+					 tournament,
+					 identity,
+					 stats,
+					 interval,
+					 rejection,
+					 support,
+					 penalties,
+					 bca,
+					 percentileT
+					 );
 
 	mObserver->onBootstrapResult(record);
-    }
+      }
   }
   
   // ---------------------------------------------------------------------------

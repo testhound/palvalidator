@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <type_traits>
 #include <array> 
+#include <cstdint>
 #include <boost/container/small_vector.hpp>
 #include "DecimalConstants.h"
 #include "number.h"
@@ -20,6 +21,73 @@ namespace mkc_timeseries
 {
   // Forward declare StatUtils so ComputeFast can reference it
   template <class Decimal> struct StatUtils;
+
+  class StatisticSupport final
+  {
+  public:
+    enum class LowerBoundMode : std::uint8_t
+      {
+	None,       // No lower-bound constraint
+	NonStrict,  // Require lo >= bound (with epsilon tolerance)
+	Strict      // Require lo >  bound (by epsilon)
+      };
+
+    // Factory: no constraint
+    static constexpr StatisticSupport unbounded() noexcept
+    {
+      return StatisticSupport(LowerBoundMode::None, 0.0, 1e-12);
+    }
+
+    // Factory: lo >= bound (tolerant)
+    static constexpr StatisticSupport nonStrictLowerBound(double bound,
+							  double eps = 1e-12) noexcept
+    {
+      return StatisticSupport(LowerBoundMode::NonStrict, bound, eps);
+    }
+
+    // Factory: lo > bound (tolerant)
+    static constexpr StatisticSupport strictLowerBound(double bound,
+						       double eps = 1e-12) noexcept
+    {
+      return StatisticSupport(LowerBoundMode::Strict, bound, eps);
+    }
+
+    // Observers
+    constexpr LowerBoundMode lowerBoundMode() const noexcept { return lower_bound_mode_; }
+    constexpr bool hasLowerBound() const noexcept { return lower_bound_mode_ != LowerBoundMode::None; }
+    constexpr double lowerBound() const noexcept { return lower_bound_; }
+    constexpr double epsilon() const noexcept { return epsilon_; }
+
+    // Convenience: does a candidate lower endpoint violate this support constraint?
+    bool violatesLowerBound(double lo) const noexcept
+    {
+      if (lower_bound_mode_ == LowerBoundMode::None)
+	return false;
+
+      if (!std::isfinite(lo))
+	return true;
+
+      if (lower_bound_mode_ == LowerBoundMode::Strict)
+	{
+	  // Require lo > bound + eps
+	  return !(lo > lower_bound_ + epsilon_);
+	}
+
+      // NonStrict: require lo >= bound - eps
+      return !(lo >= lower_bound_ - epsilon_);
+    }
+
+  private:
+    constexpr StatisticSupport(LowerBoundMode mode, double bound, double eps) noexcept
+      : lower_bound_mode_(mode),
+	lower_bound_(bound),
+	epsilon_(eps)
+    {}
+
+    LowerBoundMode lower_bound_mode_;
+    double lower_bound_;
+    double epsilon_;
+  };
 
   /**
      * @brief Shared winsorization logic for geometric mean calculations.
@@ -238,6 +306,19 @@ namespace mkc_timeseries
         return false;
       }
 
+      StatisticSupport support() const noexcept
+      {
+	if (m_clipRuin)
+	  {
+	    // Because we clip growth at ruin_eps: growth >= ruin_eps
+	    // => exp(meanLog) - 1 >= ruin_eps - 1 (equality possible)
+	    return StatisticSupport::nonStrictLowerBound(m_ruinEps - 1.0, 1e-12);
+	  }
+	
+	// Strict mode: input must already satisfy 1+r > 0, but support is still (-1, +inf).
+	return StatisticSupport::strictLowerBound(-1.0, 1e-12);
+      }
+      
       /**
        * @brief Full constructor with adaptive winsorization controls.
        *
@@ -388,6 +469,13 @@ namespace mkc_timeseries
         return false;
       }
 
+      StatisticSupport support() const noexcept
+      {
+	// With new makeLogGrowthSeries: growth >= ruin_eps for every bar,
+	// hence exp(meanLog) - 1 >= ruin_eps - 1.
+	return StatisticSupport::nonStrictLowerBound(m_ruinEps - 1.0, 1e-12);
+      }
+      
       /**
        * @brief Constructor with adaptive winsorization controls.
        *
@@ -401,9 +489,11 @@ namespace mkc_timeseries
        */
       explicit GeoMeanFromLogBarsStat(bool   winsor_small_n = true,
                                       double winsor_alpha   = 0.02,
-                                      int    adaptive_mode  = 1)
-        : m_winsorSmallN(winsor_small_n)
-        , m_winsorizer(winsor_alpha, adaptive_mode)
+                                      int    adaptive_mode  = 1,
+				      double ruin_eps       = 1e-8)
+        : m_winsorSmallN(winsor_small_n),
+	  m_winsorizer(winsor_alpha, adaptive_mode),
+	  m_ruinEps(ruin_eps)
       {}
 
       /**
@@ -451,6 +541,7 @@ namespace mkc_timeseries
     private:
       bool               m_winsorSmallN;
       AdaptiveWinsorizer<Decimal> m_winsorizer;
+      double m_ruinEps;
     };
     
   /**
@@ -600,26 +691,32 @@ namespace mkc_timeseries
      */
     static inline std::vector<Decimal>
     makeLogGrowthSeries(const std::vector<Decimal>& returns,
-                                     double ruin_eps)
+			double ruin_eps)
     {
       using DC = mkc_timeseries::DecimalConstants<Decimal>;
       const Decimal one  = DC::DecimalOne;
-      const Decimal zero = DC::DecimalZero;
       const Decimal d_ruin(ruin_eps);
-
+      
       std::vector<Decimal> logs;
       logs.reserve(returns.size());
-
+      
       for (const auto& r : returns)
 	{
 	  Decimal growth = one + r;
-	  if (growth <= zero)
+	  
+	  // Recommended change:
+	  // Clip *all* growth values at ruin_eps, not only non-positive growth.
+	  // This ensures growth >= ruin_eps, which stabilizes log-growth
+	  // and gives you a clean downstream lower bound: exp(meanLog) - 1 >= ruin_eps - 1.
+	  if (growth <= d_ruin)
 	    growth = d_ruin;
+	  
 	  logs.push_back(std::log(growth));
 	}
+
       return logs;
     }
-
+    
     /**
        * @brief Computes the mean and variance using a fast, specialized path.
        * @details This method serves as a dispatcher to the most efficient available
@@ -905,8 +1002,16 @@ namespace mkc_timeseries
     struct LogProfitFactorStat
     {
       static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
-      static constexpr bool isRatioStatistic() noexcept { return true; }
+      static constexpr bool isRatioStatistic() noexcept
+      {
+	return true;
+      }
 
+      StatisticSupport support() const noexcept
+      {
+	// Both raw PF and log(1+PF) are >= 0 with this implementation.
+	return StatisticSupport::nonStrictLowerBound(0.0, 1e-12);
+      }
           /**
      * @brief Construct a robust log profit-factor statistic on raw returns.
      *
@@ -1055,6 +1160,12 @@ namespace mkc_timeseries
     {
       static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
       static constexpr bool isRatioStatistic() noexcept { return true; }
+
+      StatisticSupport support() const noexcept
+      {
+	// Both raw PF and log(1+PF) are >= 0 with this implementation.
+	return StatisticSupport::nonStrictLowerBound(0.0, 1e-12);
+      }
 
       explicit LogProfitFactorFromLogBarsStat(bool   compressResult = StatUtils::DefaultCompress,
 					      double ruin_eps       = StatUtils::DefaultRuinEps,

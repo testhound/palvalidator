@@ -4,6 +4,7 @@
 #include <optional>
 #include <ostream>
 #include <stdexcept>
+#include <cmath>
 
 #include "TradingBootstrapFactory.h"
 #include "AutoBootstrapSelector.h"
@@ -22,6 +23,8 @@ namespace palvalidator
 {
   namespace analysis
   {
+    // Forward declarations
+    using mkc_timeseries::StatisticSupport;
     /**
      * @brief Immutable configuration of bootstrap parameters for a single strategy/statistic.
      */
@@ -78,14 +81,34 @@ namespace palvalidator
         return m_numBootStrapReplications;
       }
 
-      /// Inner B for Percentile-T bootstrap (outer / ratio, at least 1).
       std::size_t getPercentileTNumInnerReplications(double ratio) const
       {
-        const double outer = static_cast<double>(m_numBootStrapReplications);
-        double inner       = outer / ratio;
-        if (inner < 1.0)
-          inner = 1.0;
-        return static_cast<std::size_t>(inner);
+ const std::size_t outer_replications = m_numBootStrapReplications;
+
+ // Use the publicly accessible constant from PercentileTBootstrap
+ constexpr std::size_t kMinInnerReplications = percentile_t_constants::MIN_INNER;
+
+ // Practical cap: diminishing returns beyond this because the PT engine
+ // already has early stopping in the inner loop.
+ constexpr std::size_t kMaxInnerReplications = 2000;
+
+	// If ratio is nonsensical, fall back to the minimum workable inner size.
+	if (!(std::isfinite(ratio)) || !(ratio > 0.0))
+	  {
+	    return std::min<std::size_t>(std::max<std::size_t>(kMinInnerReplications, 1),
+					 kMaxInnerReplications);
+	  }
+
+	const double outer = static_cast<double>(outer_replications);
+	double inner_d = outer / ratio;
+
+	// Clamp inner draws to a sane / usable range
+	if (inner_d < static_cast<double>(kMinInnerReplications))
+	  inner_d = static_cast<double>(kMinInnerReplications);
+	if (inner_d > static_cast<double>(kMaxInnerReplications))
+	  inner_d = static_cast<double>(kMaxInnerReplications);
+
+	return static_cast<std::size_t>(inner_d);
       }
 
     private:
@@ -179,8 +202,8 @@ namespace palvalidator
       using Factory    = ::TradingBootstrapFactory<>;
       using Executor   = concurrency::ThreadPoolExecutor<>;
 
-      // BCa resampler is always a stationary block bootstrap in the current design.
-      using BCaResampler = mkc_timeseries::StationaryBlockResampler<Decimal>;
+      // BCa resampler uses the same resampler as other methods for consistency in bootstrap tournaments.
+      // Previously hardcoded to StationaryBlockResampler but now uses generic template parameter.
 
       /**
        * @brief Constructor accepting a specific statistic instance.
@@ -243,8 +266,7 @@ namespace palvalidator
             weights = typename Selector::ScoringWeights(/*wCenterShift*/ 0.25,
 							/*wSkew*/        0.5,
 							/*wLength*/      0.75,
-							/*wStability*/   1.5,
-							/*enforcePos*/   true);
+							/*wStability*/   1.5);
           }
         else
           {
@@ -419,20 +441,18 @@ namespace palvalidator
 	  {
 	    try
 	      {
-		BCaResampler bcaResampler(blockSize);
-
 		// Use the configured statistic instance via lambda capture
 		Sampler capturedStat = m_sampler_instance;
 		std::function<Decimal(const std::vector<Decimal>&)> statFn =
 		  [capturedStat](const std::vector<Decimal>& r) { return capturedStat(r); };
 
 		auto bcaEngine =
-		  m_factory.template makeBCa<Decimal, BCaResampler>(
+		  m_factory.template makeBCa<Decimal, Resampler>(
 								    returns,
 								    static_cast<unsigned>(B_single),
 								    cl,
 								    statFn,
-								    bcaResampler,
+								    resampler,
 								    m_strategy,
 								    stageTag,
 								    static_cast<uint64_t>(blockSize),
@@ -459,7 +479,8 @@ namespace palvalidator
 				     "StrategyAutoBootstrap::run: no bootstrap candidate succeeded.");
 	  }
 
-        Result result = Selector::select(candidates, weights);
+	const StatisticSupport support = m_sampler_instance.support();
+	Result result = Selector::select(candidates, weights, support);
 
 	if (os)
 	  {

@@ -4096,3 +4096,112 @@ TEST_CASE("StatUtils::quantileType7 - Financial Data Use Case", "[StatUtils][Qua
         REQUIRE(num::to_double(top_quartile_threshold) > num::to_double(D("0.10")));
     }
 }
+
+TEST_CASE("StatisticSupport: factories and observers", "[StatisticSupport]")
+{
+  SECTION("unbounded() creates a support with no lower bound")
+  {
+    const StatisticSupport support = StatisticSupport::unbounded();
+
+    REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+    REQUIRE_FALSE(support.hasLowerBound());
+
+    // The stored bound/eps are still accessible (implementation detail),
+    // but there should be no enforcement.
+    REQUIRE(support.lowerBound() == Catch::Approx(0.0));
+    REQUIRE(support.epsilon() == Catch::Approx(1e-12));
+  }
+
+  SECTION("nonStrictLowerBound() stores bound and epsilon")
+  {
+    const StatisticSupport support = StatisticSupport::nonStrictLowerBound(2.5, 1e-6);
+
+    REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::NonStrict);
+    REQUIRE(support.hasLowerBound());
+    REQUIRE(support.lowerBound() == Catch::Approx(2.5));
+    REQUIRE(support.epsilon() == Catch::Approx(1e-6));
+  }
+
+  SECTION("strictLowerBound() stores bound and epsilon")
+  {
+    const StatisticSupport support = StatisticSupport::strictLowerBound(-1.0, 1e-9);
+
+    REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::Strict);
+    REQUIRE(support.hasLowerBound());
+    REQUIRE(support.lowerBound() == Catch::Approx(-1.0));
+    REQUIRE(support.epsilon() == Catch::Approx(1e-9));
+  }
+
+  SECTION("factories use the documented default epsilon when not provided")
+  {
+    const StatisticSupport nonStrictDefault = StatisticSupport::nonStrictLowerBound(0.0);
+    const StatisticSupport strictDefault    = StatisticSupport::strictLowerBound(0.0);
+
+    REQUIRE(nonStrictDefault.epsilon() == Catch::Approx(1e-12));
+    REQUIRE(strictDefault.epsilon()    == Catch::Approx(1e-12));
+  }
+}
+
+TEST_CASE("StatisticSupport::violatesLowerBound", "[StatisticSupport]")
+{
+  SECTION("unbounded() never violates, even for negative or non-finite values")
+  {
+    const StatisticSupport support = StatisticSupport::unbounded();
+
+    REQUIRE_FALSE(support.violatesLowerBound(-1e9));
+    REQUIRE_FALSE(support.violatesLowerBound(0.0));
+    REQUIRE_FALSE(support.violatesLowerBound(42.0));
+
+    // Note: Current implementation returns false for non-finite when mode == None,
+    // because it early-returns before checking std::isfinite(lo).
+    REQUIRE_FALSE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()));
+    REQUIRE_FALSE(support.violatesLowerBound(std::numeric_limits<double>::infinity()));
+    REQUIRE_FALSE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()));
+  }
+
+  SECTION("nonStrictLowerBound: allows lo >= bound - eps")
+  {
+    const double bound = 0.0;
+    const double eps   = 1e-6;
+    const StatisticSupport support = StatisticSupport::nonStrictLowerBound(bound, eps);
+
+    // Exactly at the bound should pass
+    REQUIRE_FALSE(support.violatesLowerBound(0.0));
+
+    // Slightly below bound but within tolerance should pass: lo >= bound - eps
+    REQUIRE_FALSE(support.violatesLowerBound(-0.5e-6));
+
+    // Just beyond tolerance should fail
+    REQUIRE(support.violatesLowerBound(-2.0e-6));
+
+    // Non-finite is always a violation for bounded modes
+    REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()));
+    REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()));
+    REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()));
+  }
+
+  SECTION("strictLowerBound: requires lo > bound + eps")
+  {
+    const double bound = -1.0;
+    const double eps   = 1e-6;
+    const StatisticSupport support = StatisticSupport::strictLowerBound(bound, eps);
+
+    // Exactly at the bound fails (strict)
+    REQUIRE(support.violatesLowerBound(-1.0));
+
+    // Even slightly above bound but not above bound+eps still fails
+    // bound + eps = -0.999999
+    REQUIRE(support.violatesLowerBound(-0.9999995));
+
+    // Above bound+eps passes
+    REQUIRE_FALSE(support.violatesLowerBound(-0.999998));
+
+    // Clearly below fails
+    REQUIRE(support.violatesLowerBound(-1.1));
+
+    // Non-finite is always a violation for bounded modes
+    REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::quiet_NaN()));
+    REQUIRE(support.violatesLowerBound(std::numeric_limits<double>::infinity()));
+    REQUIRE(support.violatesLowerBound(-std::numeric_limits<double>::infinity()));
+  }
+}

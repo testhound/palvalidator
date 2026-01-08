@@ -124,29 +124,41 @@ public:
         std::size_t inner_attempted_total;
         double se_hat;
     };
-
+    
     MockPercentileTEngine() : m_has_diagnostics(false) {}
-
+    
     // Configure the mock with test data
     void setThetaStarStatistics(const std::vector<double>& stats)
     {
         m_theta_star_stats = stats;
         m_has_diagnostics = true;
     }
-
+    
+    // ADD THIS METHOD: Configure t-statistics for testing
+    void setTStatistics(const std::vector<double>& t_stats)
+    {
+        m_t_stats = t_stats;
+    }
+    
     void setResult(const Result& res)
     {
         m_result = res;
     }
-
+    
     // Required interface methods
     bool hasDiagnostics() const { return m_has_diagnostics; }
+    
     const std::vector<double>& getThetaStarStatistics() const { return m_theta_star_stats; }
+    
+    // ADD THIS METHOD: Return t-statistics (required by new undercoverage penalty)
+    const std::vector<double>& getTStatistics() const { return m_t_stats; }
+    
     const Result& getResult() const { return m_result; }
-
+    
 private:
     bool m_has_diagnostics;
     std::vector<double> m_theta_star_stats;
+    std::vector<double> m_t_stats;  // ADD THIS MEMBER
     Result m_result;
 };
 
