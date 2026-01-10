@@ -1,3 +1,4 @@
+#include <vector>
 #include "AstResourceManager.h"
 
 namespace mkc_palast {
@@ -89,11 +90,32 @@ std::shared_ptr<MarketEntryExpression> AstResourceManager::getShortMarketEntryOn
 }
 
 // Decimal number methods
+/**
+ * @brief Gets a decimal7 number from a string.
+ * 
+ * SAFETY FIX: Creates a mutable copy of the string to avoid unsafe const_cast.
+ * The AstFactory::getDecimalNumber() expects char* (non-const), but we receive
+ * const std::string&. Rather than using const_cast (which could lead to UB if
+ * the factory modifies the buffer), we create a temporary mutable buffer.
+ * 
+ * Performance: Minimal overhead (~10-50 bytes allocation, extremely fast copy)
+ * Safety: Perfect - no undefined behavior possible
+ * 
+ * @param numString The string representation of the number.
+ * @return Shared pointer to a decimal7 object.
+ */
 std::shared_ptr<decimal7> AstResourceManager::getDecimalNumber(const std::string& numString) {
     auto factory = getFactory();
-    return factory->getDecimalNumber(const_cast<char*>(numString.c_str()));
+    
+    // Create a mutable copy of the string in a vector
+    // This is safe because we own the buffer and can pass it to the factory
+    std::vector<char> buffer(numString.begin(), numString.end());
+    buffer.push_back('\0');  // Null terminator required for C-string
+    
+    // Now we can safely pass the mutable buffer to the factory
+    return factory->getDecimalNumber(buffer.data());
 }
-
+  
 std::shared_ptr<decimal7> AstResourceManager::getDecimalNumber(int num) {
     auto factory = getFactory();
     return factory->getDecimalNumber(num);
