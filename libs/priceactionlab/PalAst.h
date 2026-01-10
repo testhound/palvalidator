@@ -1595,6 +1595,18 @@ public:
   PatternDescription(const char *fileName, unsigned int patternIndex,
       unsigned long indexDate, std::shared_ptr<decimal7> percentLong, std::shared_ptr<decimal7> percentShort,
       unsigned int numTrades, unsigned int consecutiveLosses);
+
+  /**
+   * @brief Convenience overload accepting std::string for filename to simplify
+   *        construction from std::string expressions (e.g. "pattern" + std::to_string(i) + ".txt").
+   *
+   * Delegates to the existing const char* constructor.
+   */
+  PatternDescription(const std::string &fileName, unsigned int patternIndex,
+      unsigned long indexDate, std::shared_ptr<decimal7> percentLong, std::shared_ptr<decimal7> percentShort,
+      unsigned int numTrades, unsigned int consecutiveLosses)
+    : PatternDescription(fileName.c_str(), patternIndex, indexDate, percentLong, percentShort, numTrades, consecutiveLosses)
+  {}
   /**
    * @brief Copy constructor.
    * @param rhs The PatternDescription object to copy.
