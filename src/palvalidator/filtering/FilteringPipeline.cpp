@@ -134,7 +134,7 @@ namespace palvalidator::filtering
 	return backtestDecision;
       }
 
-    if (false)
+    if (true)
     // [TEMPORARY] Dump highResReturns for integration testing
     {
       const std::string ticker = ctx.baseSecurity ? ctx.baseSecurity->getSymbol() : "UNKNOWN";
@@ -237,7 +237,7 @@ namespace palvalidator::filtering
       }
 
     // --- Hurdle 3: Profit Factor Thresholds ---
-    const Num requiredPFHurdle       = DecimalConstants<Num>::createDecimal("0.95");
+    const Num requiredPFHurdle       = DecimalConstants<Num>::createDecimal("0.995");
     const Num requiredPFMedianHurdle = DecimalConstants<Num>::createDecimal("1.10");
 
     const Num lbPF = *bootstrap.lbProfitFactor;

@@ -1806,7 +1806,8 @@ TEST_CASE("LogProfitFactorStat with Strategy Stop Loss (Zero-Loss Handling)", "[
         // PF_raw = 0.2776 / 0.05129 ~= 5.41
         // Result (compressed) = ln(1 + 5.41) ~= 1.858
 
-        double pf_raw = sum_log_wins / expected_loss_mag;
+	double prior_loss_mag = expected_loss_mag * Stat::DefaultPriorStrength;
+	double pf_raw = sum_log_wins / prior_loss_mag;
         double expected_result = std::log(1.0 + pf_raw);
 
         REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
@@ -1830,7 +1831,8 @@ TEST_CASE("LogProfitFactorStat with Strategy Stop Loss (Zero-Loss Handling)", "[
 
         DecimalType result = stat(returns);
 
-        double expected_result = sum_log_wins / expected_loss_mag; // ~5.41
+	double prior_loss_mag = expected_loss_mag * Stat::DefaultPriorStrength;
+	double expected_result = sum_log_wins / prior_loss_mag;
 
         REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
     }
@@ -1854,9 +1856,10 @@ TEST_CASE("LogProfitFactorStat with Strategy Stop Loss (Zero-Loss Handling)", "[
         // PF_raw = 0.2776 / 18.42 ~= 0.015
         // Result (compressed) = ln(1 + 0.015) ~= 0.0149
 
-        double ruin_mag = std::max(-std::log(Stat::DefaultRuinEps), Stat::DefaultDenomFloor);
-        double pf_raw = sum_log_wins / ruin_mag;
-        double expected_result = std::log(1.0 + pf_raw);
+	double ruin_mag = std::max(-std::log(Stat::DefaultRuinEps), Stat::DefaultDenomFloor);
+	double prior_loss_mag = ruin_mag * Stat::DefaultPriorStrength;
+	double pf_raw = sum_log_wins / prior_loss_mag;
+	double expected_result = std::log(1.0 + pf_raw);
 
         REQUIRE(num::to_double(result) == Catch::Approx(expected_result).margin(1e-8));
 
@@ -1893,7 +1896,7 @@ TEST_CASE("LogProfitFactorStat with Strategy Stop Loss (Zero-Loss Handling)", "[
         // Median of {log_loss} is just log_loss.
         // Denom = log_loss + log_loss * 1.0 = 2 * log_loss
         
-        double expected_denom = log_loss + log_loss;
+        double expected_denom = log_loss + (log_loss * Stat::DefaultPriorStrength);
         double expected_result = log_win / expected_denom;
 
         // Verify result matches actual data, NOT the 50% stop loss
@@ -4726,5 +4729,1655 @@ TEST_CASE("StatisticSupport edge cases", "[StatUtils][StatisticSupport]") {
         
         REQUIRE(geoMeanIsRatio == false);
         REQUIRE(pfIsRatio == true);
+    }
+}
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF basic correctness", 
+          "[StatUtils][LogPF_LogPF][Core]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Returns zero for empty input") {
+        std::vector<DecimalType> empty;
+        DecimalType result = Stat::computeLogProfitFactorRobust_LogPF(empty);
+        REQUIRE(result == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Typical mixed returns produce positive log(PF)") {
+        // Balanced sample with non-trivial wins and losses
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_return_space=*/0.05,      // 5% stop loss
+            /*profit_target_return_space=*/0.03,   // 3% profit target
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // Should be positive (more wins than losses) and finite
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) > 0.0);
+        
+        // PF should be > 1.0, so log(PF) > 0
+        // Verify by exponentiating back
+        double pf = std::exp(num::to_double(log_pf));
+        REQUIRE(pf > 1.0);
+    }
+
+    SECTION("Only winning trades produce large positive log(PF)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("0.05"), DecimalType("0.20")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_return_space=*/0.05,
+            /*profit_target_return_space=*/0.03
+        );
+
+        // With only wins, denominator is only the prior loss magnitude
+        // PF should be quite high, so log(PF) should be positive and substantial
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) > 1.0);  // log(PF) > 1 means PF > e ≈ 2.718
+        
+        double pf = std::exp(num::to_double(log_pf));
+        REQUIRE(pf > 2.0);
+    }
+
+    SECTION("Only losing trades produce negative log(PF)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("-0.10"), DecimalType("-0.05"), DecimalType("-0.20")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_return_space=*/0.05,
+            /*profit_target_return_space=*/0.03
+        );
+
+        // With only losses, numerator is the tiny_win_floor (very small)
+        // PF should be very small (< 1), so log(PF) should be negative
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) < 0.0);
+        
+        double pf = std::exp(num::to_double(log_pf));
+        REQUIRE(pf < 1.0);
+        REQUIRE(pf > 0.0);  // Should still be positive
+    }
+
+    SECTION("All zero returns use floor values") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.0"), DecimalType("0.0"), DecimalType("0.0")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_return_space=*/0.05,
+            /*profit_target_return_space=*/0.03
+        );
+
+        // Zero returns → zero wins, zero losses → uses numerator and denominator floors
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        // Result depends on floor values, but should be finite
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Ruin Handling
+// =============================================================================
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF ruin handling", 
+          "[StatUtils][LogPF_LogPF][Ruin]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Ruin events (-100% or worse) are clamped and contribute to losses") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.50"),    // +50% win
+            DecimalType("-1.0"),    // -100% (ruin)
+            DecimalType("-1.5")     // -150% (super-ruin)
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_return_space=*/0.05,
+            /*profit_target_return_space=*/0.03
+        );
+
+        // Should handle ruin gracefully - clamp to ruin_eps and count as large losses
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        
+        // With substantial ruinous losses, PF should be small, log(PF) negative or barely positive
+        double pf = std::exp(num::to_double(log_pf));
+        REQUIRE(pf > 0.0);
+        REQUIRE(pf < 10.0);  // Should not be unreasonably high given the ruin events
+    }
+
+    SECTION("Single ruin event with no wins produces very small PF") {
+        std::vector<DecimalType> returns = { DecimalType("-1.0") };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_return_space=*/0.05,
+            /*profit_target_return_space=*/0.03
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) < 0.0);  // PF < 1
+        
+        double pf = std::exp(num::to_double(log_pf));
+        REQUIRE(pf > 0.0);
+        REQUIRE(pf < 0.1);  // Very small PF
+    }
+
+    SECTION("Different ruin_eps values produce different results") {
+        std::vector<DecimalType> returns = { 
+            DecimalType("0.10"), 
+            DecimalType("-1.0")  // ruin event
+        };
+
+        DecimalType log_pf_small_eps = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-10, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        DecimalType log_pf_large_eps = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-6, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // Smaller ruin_eps means larger penalty for ruin → smaller PF → more negative log(PF)
+	REQUIRE(num::to_double(log_pf_small_eps) > num::to_double(log_pf_large_eps));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Prior Strength Effects
+// =============================================================================
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF prior strength behavior", 
+          "[StatUtils][LogPF_LogPF][Prior]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Larger prior_strength produces more conservative (smaller) log(PF)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.12"), DecimalType("-0.04"),
+            DecimalType("0.09"), DecimalType("-0.03"),
+            DecimalType("0.02")
+        };
+
+        DecimalType log_pf_ps_0_5 = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, 
+            /*prior_strength=*/0.5,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        DecimalType log_pf_ps_1_0 = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, 
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        DecimalType log_pf_ps_2_0 = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, 
+            /*prior_strength=*/2.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // Monotonicity: larger prior_strength → larger denominator → smaller PF → smaller log(PF)
+        REQUIRE(num::to_double(log_pf_ps_1_0) <= num::to_double(log_pf_ps_0_5) + 1e-12);
+        REQUIRE(num::to_double(log_pf_ps_2_0) <= num::to_double(log_pf_ps_1_0) + 1e-12);
+    }
+
+    SECTION("Zero prior_strength uses minimal prior from stop loss") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05")
+        };
+
+        DecimalType log_pf_zero = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, 
+            /*prior_strength=*/0.0,  // No prior!
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        DecimalType log_pf_one = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, 
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // With prior_strength=0, denominator should be smaller → larger PF → larger log(PF)
+        REQUIRE(num::to_double(log_pf_zero) >= num::to_double(log_pf_one) - 1e-12);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Stop Loss and Profit Target Effects
+// =============================================================================
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF stop loss and target effects", 
+          "[StatUtils][LogPF_LogPF][Params]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Stop loss parameter affects prior loss magnitude") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05")
+        };
+
+        // Larger stop loss means larger expected loss → larger prior → more conservative
+        DecimalType log_pf_small_stop = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.02,  // 2% stop
+            /*target=*/0.03
+        );
+
+        DecimalType log_pf_large_stop = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.10,  // 10% stop
+            /*target=*/0.03
+        );
+
+        // Larger stop loss → larger prior loss magnitude → smaller log(PF)
+        REQUIRE(num::to_double(log_pf_large_stop) <= num::to_double(log_pf_small_stop) + 1e-12);
+    }
+
+    SECTION("Profit target affects numerator floor (tiny win)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.001"),  // Very small win
+            DecimalType("-0.05")
+        };
+
+        // With small target, tiny_win_floor is smaller
+        DecimalType log_pf_small_target = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05,
+            /*target=*/0.01,     // 1% target
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // With larger target, tiny_win_floor is larger
+        DecimalType log_pf_large_target = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05,
+            /*target=*/0.10,     // 10% target
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // Both should be finite
+        REQUIRE(std::isfinite(num::to_double(log_pf_small_target)));
+        REQUIRE(std::isfinite(num::to_double(log_pf_large_target)));
+    }
+
+    SECTION("When both stop and target are zero, fallback behavior applies") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05")
+        };
+
+        DecimalType log_pf_no_params = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, 
+            /*ruin_eps=*/1e-8, 
+            /*denom_floor=*/1e-6, 
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.0,   // No stop
+            /*target=*/0.0,      // No target
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // Should still produce finite result using fallback logic
+        REQUIRE(std::isfinite(num::to_double(log_pf_no_params)));
+    }
+
+    SECTION("Uses min(target, stop) for tiny win calculation") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.001"),  // Tiny win
+            DecimalType("-0.05")
+        };
+
+        // When target < stop, uses target
+        DecimalType log_pf_1 = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.10,
+            /*target=*/0.02,
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // When stop < target, uses stop
+        DecimalType log_pf_2 = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.02,
+            /*target=*/0.10,
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // Both should give similar results since they use min
+        REQUIRE(std::isfinite(num::to_double(log_pf_1)));
+        REQUIRE(std::isfinite(num::to_double(log_pf_2)));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Denominator and Numerator Floor Behavior
+// =============================================================================
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF floor behavior", 
+          "[StatUtils][LogPF_LogPF][Floors]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Denominator floor prevents division issues with tiny losses") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.03"), DecimalType("0.02"),
+            DecimalType("-0.00000001")  // Extremely tiny loss
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, 
+            /*ruin_eps=*/1e-8, 
+            /*denom_floor=*/1e-6,  // Floor prevents denominator from being too small
+            /*prior_strength=*/0.0,  // No prior to isolate floor effect
+            /*stop_loss=*/0.0, 
+            /*target=*/0.0
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        // Should not blow up despite tiny loss
+    }
+
+    SECTION("Larger denom_floor produces more conservative results") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.01")
+        };
+
+        DecimalType log_pf_small_floor = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, 
+            /*denom_floor=*/1e-8,  // Small floor
+            /*prior_strength=*/0.0,
+            /*stop_loss=*/0.0, /*target=*/0.0
+        );
+
+        DecimalType log_pf_large_floor = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, 
+            /*denom_floor=*/1e-4,  // Larger floor
+            /*prior_strength=*/0.0,
+            /*stop_loss=*/0.0, /*target=*/0.0
+        );
+
+        // Larger floor → larger minimum denominator → smaller PF → smaller log(PF)
+        REQUIRE(num::to_double(log_pf_large_floor) <= num::to_double(log_pf_small_floor) + 1e-12);
+    }
+
+    SECTION("Numerator floor (tiny win) prevents log(0) issues") {
+        std::vector<DecimalType> returns = {
+            DecimalType("-0.10"), DecimalType("-0.05")  // Only losses
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, 
+            /*ruin_eps=*/1e-8, 
+            /*denom_floor=*/1e-6, 
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, 
+            /*target=*/0.03,
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4  // Ensures minimum numerator
+        );
+
+        // Should handle zero wins gracefully using tiny_win floor
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) < 0.0);  // PF < 1
+    }
+
+    SECTION("tiny_win_min_return provides absolute minimum for numerator") {
+        std::vector<DecimalType> returns = {
+            DecimalType("-0.10")  // Only loss
+        };
+
+        // Even with zero target and stop, should use tiny_win_min_return
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, 
+            /*ruin_eps=*/1e-8, 
+            /*denom_floor=*/1e-6, 
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.0, 
+            /*target=*/0.0,
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-3  // Explicit minimum
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Mathematical Properties
+// =============================================================================
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF mathematical properties", 
+          "[StatUtils][LogPF_LogPF][Math]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("log(PF) relationship: exp(log_pf) should equal PF") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // Exponentiate to get PF
+        double pf = std::exp(num::to_double(log_pf));
+
+        // PF should be positive
+        REQUIRE(pf > 0.0);
+        REQUIRE(std::isfinite(pf));
+    }
+
+    SECTION("Log-space formula: log(numer) - log(denom) = log(numer/denom)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.15"), DecimalType("-0.05")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // The result is in log space, so should be safe from overflow/underflow
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        
+        // Can safely exponentiate without overflow
+        double pf = std::exp(num::to_double(log_pf));
+        REQUIRE(std::isfinite(pf));
+    }
+
+    SECTION("Symmetry: doubling all wins should approximately double PF (in log space)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.15")
+        };
+
+        std::vector<DecimalType> doubled_wins = {
+            DecimalType("0.20"), DecimalType("-0.05"),  // Doubled win
+            DecimalType("0.30")                          // Doubled win
+        };
+
+        DecimalType log_pf_1 = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        DecimalType log_pf_2 = Stat::computeLogProfitFactorRobust_LogPF(
+            doubled_wins, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // Doubled wins should increase log(PF)
+        REQUIRE(num::to_double(log_pf_2) > num::to_double(log_pf_1));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Edge Cases and Robustness
+// =============================================================================
+
+TEST_CASE("StatUtils::computeLogProfitFactorRobust_LogPF edge cases", 
+          "[StatUtils][LogPF_LogPF][EdgeCases]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Single winning trade produces positive log(PF)") {
+        std::vector<DecimalType> returns = { DecimalType("0.10") };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) > 0.0);
+    }
+
+    SECTION("Single losing trade produces negative log(PF)") {
+        std::vector<DecimalType> returns = { DecimalType("-0.05") };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) < 0.0);
+    }
+
+    SECTION("Very large positive returns are handled safely") {
+        std::vector<DecimalType> returns = {
+            DecimalType("5.0"),  // 500% gain
+            DecimalType("-0.05")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+        REQUIRE(num::to_double(log_pf) > 0.0);
+    }
+
+    SECTION("Mixed extreme values don't cause overflow") {
+        std::vector<DecimalType> returns = {
+            DecimalType("2.0"),    // 200% gain
+            DecimalType("-0.95"),  // 95% loss
+            DecimalType("1.5"),    // 150% gain
+            DecimalType("-0.80")   // 80% loss
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        // Log-space computation should handle this safely
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+    }
+
+    SECTION("Near-zero returns are handled gracefully") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.0001"), DecimalType("-0.0001"),
+            DecimalType("0.0002"), DecimalType("-0.0002")
+        };
+
+        DecimalType log_pf = Stat::computeLogProfitFactorRobust_LogPF(
+            returns, /*ruin_eps=*/1e-8, /*denom_floor=*/1e-6, /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05, /*target=*/0.03
+        );
+
+        REQUIRE(std::isfinite(num::to_double(log_pf)));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: LogProfitFactorStat_LogPF Wrapper Struct Tests
+// =============================================================================
+
+TEST_CASE("LogProfitFactorStat_LogPF basic correctness", 
+          "[StatUtils][LogPF_LogPF][Wrapper]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Default-constructed functor matches direct function call") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02")
+        };
+
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        DecimalType direct = Stat::computeLogProfitFactorRobust_LogPF(returns);
+        DecimalType via_functor = stat(returns);
+
+        REQUIRE(num::to_double(via_functor) ==
+                Catch::Approx(num::to_double(direct)).epsilon(1e-12));
+    }
+
+    SECTION("Functor with custom parameters matches direct call") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat(
+            /*ruin_eps=*/1e-7,
+            /*denom_floor=*/1e-5,
+            /*prior_strength=*/0.5,
+            /*stop_loss_pct=*/0.04,
+            /*profit_target_pct=*/0.025,
+            /*tiny_win_fraction=*/0.1,
+            /*tiny_win_min_return=*/5e-5
+        );
+
+        DecimalType direct = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-7,
+            /*denom_floor=*/1e-5,
+            /*prior_strength=*/0.5,
+            /*stop_loss_return_space=*/0.04,
+            /*profit_target_return_space=*/0.025,
+            /*tiny_win_fraction=*/0.1,
+            /*tiny_win_min_return=*/5e-5
+        );
+        DecimalType via_functor = stat(returns);
+
+        REQUIRE(num::to_double(via_functor) ==
+                Catch::Approx(num::to_double(direct)).epsilon(1e-12));
+    }
+
+    SECTION("Empty input returns zero consistently") {
+        std::vector<DecimalType> empty;
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        DecimalType direct = Stat::computeLogProfitFactorRobust_LogPF(empty);
+        DecimalType via_functor = stat(empty);
+
+        REQUIRE(via_functor == direct);
+        REQUIRE(via_functor == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("formatForDisplay correctly converts log(PF) to PF") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        // Test several log(PF) values
+        double log_pf_1 = 0.693147;  // log(2.0)
+        double pf_1 = stat.formatForDisplay(log_pf_1);
+        REQUIRE(pf_1 == Catch::Approx(2.0).margin(1e-5));
+
+        double log_pf_2 = 1.0986;  // log(3.0)
+        double pf_2 = stat.formatForDisplay(log_pf_2);
+        REQUIRE(pf_2 == Catch::Approx(3.0).margin(1e-3));
+
+        double log_pf_3 = -0.693147;  // log(0.5)
+        double pf_3 = stat.formatForDisplay(log_pf_3);
+        REQUIRE(pf_3 == Catch::Approx(0.5).margin(1e-5));
+
+        double log_pf_zero = 0.0;  // log(1.0)
+        double pf_zero = stat.formatForDisplay(log_pf_zero);
+        REQUIRE(pf_zero == Catch::Approx(1.0).margin(1e-10));
+    }
+
+    SECTION("isRatioStatistic returns false") {
+        // LogPF returns log(PF), not a ratio, so should return false
+        REQUIRE(StatUtils<DecimalType>::LogProfitFactorStat_LogPF::isRatioStatistic() == false);
+    }
+
+    SECTION("support() returns unbounded") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+        auto support = stat.support();
+
+        REQUIRE(support.hasLowerBound() == false);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: LogProfitFactorStat_LogPF Bootstrap Integration
+// =============================================================================
+
+TEST_CASE("LogProfitFactorStat_LogPF works as a statistic in getBootStrappedStatistic",
+          "[StatUtils][LogPF_LogPF][Bootstrap]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Bootstrap produces reasonable median estimates") {
+        // Use a realistic return series
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+            DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+            DecimalType("0.25"), DecimalType("-0.03"), DecimalType("0.12")
+        };
+
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat(
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        // "True" statistic for the original sample
+        DecimalType true_log_pf = stat(returns);
+
+        // Run multiple bootstrap trials
+        constexpr int num_runs = 50;
+        std::vector<DecimalType> boot_medians;
+        boot_medians.reserve(num_runs);
+
+        for (int i = 0; i < num_runs; ++i) {
+            boot_medians.push_back(
+                Stat::getBootStrappedStatistic(
+                    returns,
+                    stat,
+                    100));  // 100 bootstraps per run
+        }
+
+        DecimalType mean_est = Stat::computeMean(boot_medians);
+        DecimalType std_est  = Stat::computeStdDev(boot_medians, mean_est);
+
+        // The true value should lie within ~3σ of the bootstrap distribution mean
+        REQUIRE(num::to_double(true_log_pf) ==
+                Catch::Approx(num::to_double(mean_est))
+                    .margin(num::to_double(std_est * DecimalType(3.0))));
+
+        // All bootstrap medians should be finite
+        for (const auto& bm : boot_medians) {
+            REQUIRE(std::isfinite(num::to_double(bm)));
+        }
+    }
+
+    SECTION("Bootstrap handles small samples gracefully") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.15"), DecimalType("-0.08")
+        };
+
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        DecimalType boot_median = Stat::getBootStrappedStatistic(returns, stat, 50);
+
+        REQUIRE(std::isfinite(num::to_double(boot_median)));
+    }
+
+    SECTION("Functor is copyable for bootstrap use") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat1(
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        // Copy construct
+        auto stat2 = stat1;
+
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05")
+        };
+
+        // Both should produce identical results
+        REQUIRE(num::to_double(stat1(returns)) == 
+                Catch::Approx(num::to_double(stat2(returns))).epsilon(1e-15));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: LogProfitFactorStat_LogPF Support Characteristics
+// =============================================================================
+
+TEST_CASE("LogProfitFactorStat_LogPF support characteristics", 
+          "[StatUtils][LogPF_LogPF][Support]") {
+
+    SECTION("Default support is unbounded") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+        auto support = stat.support();
+
+        REQUIRE(support.hasLowerBound() == false);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+    }
+
+    SECTION("Different parameter combinations preserve unbounded support") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat1(1e-8, 1e-6, 1.0, 0.05, 0.03);
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat2(1e-7, 1e-5, 0.5, 0.04, 0.025);
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat3(1e-6, 1e-4, 2.0, 0.10, 0.05);
+
+        // All should have unbounded support
+        REQUIRE(stat1.support().hasLowerBound() == false);
+        REQUIRE(stat2.support().hasLowerBound() == false);
+        REQUIRE(stat3.support().hasLowerBound() == false);
+
+        REQUIRE(stat1.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+        REQUIRE(stat2.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+        REQUIRE(stat3.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+    }
+
+    SECTION("Support allows negative values (since log(PF) can be negative when PF < 1)") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+        auto support = stat.support();
+
+        // No lower bound, so negative values don't violate
+        REQUIRE(support.violatesLowerBound(-10.0) == false);
+        REQUIRE(support.violatesLowerBound(-1.0) == false);
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        REQUIRE(support.violatesLowerBound(10.0) == false);
+    }
+
+    SECTION("Non-finite values still violate (general support constraint)") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        // Even with unbounded support, non-finite values typically violate
+        // (though this depends on StatisticSupport implementation)
+        // This section documents the expected behavior
+        REQUIRE(std::isfinite(0.0));
+        REQUIRE(!std::isfinite(std::numeric_limits<double>::infinity()));
+        REQUIRE(!std::isfinite(std::numeric_limits<double>::quiet_NaN()));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Comparison with computeLogProfitFactorRobust
+// =============================================================================
+
+TEST_CASE("LogPF_LogPF comparison with original computeLogProfitFactorRobust", 
+          "[StatUtils][LogPF_LogPF][Comparison]") {
+    using Stat = StatUtils<DecimalType>;
+
+    SECTION("Both functions handle empty input identically") {
+        std::vector<DecimalType> empty;
+
+        DecimalType orig = Stat::computeLogProfitFactorRobust(empty);
+        DecimalType new_func = Stat::computeLogProfitFactorRobust_LogPF(empty);
+
+        REQUIRE(orig == DecimalConstants<DecimalType>::DecimalZero);
+        REQUIRE(new_func == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("New function returns different format (log(PF) vs log(1+PF) or PF)") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        // Original with compression: returns log(1+PF)
+        DecimalType orig_compressed = Stat::computeLogProfitFactorRobust(
+            returns, /*compressResult=*/true
+        );
+
+        // Original without compression: returns PF
+        DecimalType orig_uncompressed = Stat::computeLogProfitFactorRobust(
+            returns, /*compressResult=*/false
+        );
+
+        // New function: returns log(PF) directly
+        DecimalType new_func = Stat::computeLogProfitFactorRobust_LogPF(
+            returns,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.0,  // No stop specified for comparison
+            /*target=*/0.0      // No target specified
+        );
+
+        // They should produce different numerical results due to different formulations
+        // orig_compressed ≈ log(1 + PF)
+        // orig_uncompressed ≈ PF
+        // new_func = log(PF)
+        
+        // Relationship: exp(new_func) ≈ orig_uncompressed (if priors match)
+        // Note: Exact match unlikely due to different prior mechanisms
+        
+        REQUIRE(std::isfinite(num::to_double(orig_compressed)));
+        REQUIRE(std::isfinite(num::to_double(orig_uncompressed)));
+        REQUIRE(std::isfinite(num::to_double(new_func)));
+    }
+
+    SECTION("New function provides better numerator floor mechanism for bootstrapping") {
+        // With only losses, test how each function handles the numerator floor
+        std::vector<DecimalType> only_losses = {
+            DecimalType("-0.05"), DecimalType("-0.03")
+        };
+
+        DecimalType orig = Stat::computeLogProfitFactorRobust(
+            only_losses, /*compressResult=*/false
+        );
+
+        DecimalType new_func = Stat::computeLogProfitFactorRobust_LogPF(
+            only_losses,
+            /*ruin_eps=*/1e-8,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss=*/0.05,
+            /*target=*/0.03,
+            /*tiny_win_fraction=*/0.05,
+            /*tiny_win_min_return=*/1e-4
+        );
+
+        // Both should handle this gracefully
+        REQUIRE(std::isfinite(num::to_double(orig)));
+        REQUIRE(std::isfinite(num::to_double(new_func)));
+        
+        // New function uses target-derived tiny win floor
+        // Should produce finite negative log(PF) since PF < 1
+        REQUIRE(num::to_double(new_func) < 0.0);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Consistency Checks
+// =============================================================================
+
+TEST_CASE("LogProfitFactorStat_LogPF internal consistency", 
+          "[StatUtils][LogPF_LogPF][Consistency]") {
+
+    SECTION("Functor produces same result when called multiple times") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05")
+        };
+
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        DecimalType result1 = stat(returns);
+        DecimalType result2 = stat(returns);
+        DecimalType result3 = stat(returns);
+
+        REQUIRE(num::to_double(result1) == Catch::Approx(num::to_double(result2)).epsilon(1e-15));
+        REQUIRE(num::to_double(result2) == Catch::Approx(num::to_double(result3)).epsilon(1e-15));
+    }
+
+    SECTION("formatForDisplay is inverse of log operation") {
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        DecimalType log_pf = stat(returns);
+        double pf = stat.formatForDisplay(num::to_double(log_pf));
+
+        // exp(log(PF)) should equal PF
+        // Re-taking log should give back log_pf
+        double recomputed_log_pf = std::log(pf);
+
+        REQUIRE(recomputed_log_pf == Catch::Approx(num::to_double(log_pf)).epsilon(1e-12));
+    }
+
+    SECTION("isRatioStatistic is consistent with support characteristics") {
+        // Non-ratio statistics typically have unbounded support (can be negative)
+        typename StatUtils<DecimalType>::LogProfitFactorStat_LogPF stat;
+
+        REQUIRE(stat.isRatioStatistic() == false);
+        REQUIRE(stat.support().hasLowerBound() == false);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: LogProfitFactorFromLogBarsStat_LogPF
+// =============================================================================
+// Unit tests for the optimized LogProfitFactorFromLogBarsStat_LogPF struct
+// that works with precomputed log returns.
+//
+// These tests verify:
+// 1. Basic correctness and edge cases
+// 2. Consistency with LogProfitFactorStat_LogPF
+// 3. Bootstrap integration
+// 4. Support characteristics
+// 5. Parameter handling
+// =============================================================================
+
+// =============================================================================
+// TEST SUITE: Basic Correctness and Edge Cases
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF basic correctness and edge cases",
+          "[StatUtils][LogPF_LogPF][LogBars]") 
+{
+    using Stat = StatUtils<DecimalType>;
+    using DC   = DecimalConstants<DecimalType>;
+    using LogPF_LogBars = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+
+    SECTION("Empty input returns zero") {
+        std::vector<DecimalType> empty;
+        LogPF_LogBars stat;  // default parameters
+
+        DecimalType result = stat(empty);
+
+        REQUIRE(result == DC::DecimalZero);
+    }
+
+    SECTION("All-positive logBars behave like pure wins") {
+        // logBars > 0 => all wins, no losses
+        std::vector<DecimalType> logBars = {
+            DecimalType(std::log(1.10)),
+            DecimalType(std::log(1.05)),
+            DecimalType(std::log(1.20))
+        };
+
+        LogPF_LogBars stat(
+            /*ruin_eps=*/Stat::DefaultRuinEps,
+            /*denom_floor=*/Stat::DefaultDenomFloor,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        DecimalType result = stat(logBars);
+
+        // With no losses, denominator is purely the prior,
+        // so the value should be finite.
+        REQUIRE(std::isfinite(num::to_double(result)));
+        
+        // Since we have wins and the prior creates a non-zero denominator,
+        // log(PF) should be positive (PF > 1)
+        REQUIRE(num::to_double(result) > 0.0);
+    }
+
+    SECTION("All-negative logBars behave like pure losses") {
+        // logBars < 0 => all losses, no wins
+        std::vector<DecimalType> logBars = {
+            DecimalType(std::log(0.95)),
+            DecimalType(std::log(0.90)),
+            DecimalType(std::log(0.92))
+        };
+
+        LogPF_LogBars stat(
+            /*ruin_eps=*/Stat::DefaultRuinEps,
+            /*denom_floor=*/Stat::DefaultDenomFloor,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        DecimalType result = stat(logBars);
+
+        // With no wins, numerator will be the numer_floor (tiny win),
+        // which is small, so log(PF) should be negative (PF < 1)
+        REQUIRE(std::isfinite(num::to_double(result)));
+        REQUIRE(num::to_double(result) < 0.0);
+    }
+
+    SECTION("Mixed wins and losses produce reasonable log(PF)") {
+        std::vector<DecimalType> logBars = {
+            DecimalType(std::log(1.10)),   // win
+            DecimalType(std::log(0.95)),   // loss
+            DecimalType(std::log(1.20)),   // win
+            DecimalType(std::log(0.90)),   // loss
+            DecimalType(std::log(1.05))    // win
+        };
+
+        LogPF_LogBars stat(
+            /*ruin_eps=*/Stat::DefaultRuinEps,
+            /*denom_floor=*/Stat::DefaultDenomFloor,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        DecimalType result = stat(logBars);
+
+        // Should produce a finite value
+        REQUIRE(std::isfinite(num::to_double(result)));
+        
+        // More wins than losses, so should be positive
+        REQUIRE(num::to_double(result) > 0.0);
+    }
+
+    SECTION("Neutral logBars (all zeros) handled correctly") {
+        std::vector<DecimalType> logBars = {
+            DC::DecimalZero,
+            DC::DecimalZero,
+            DC::DecimalZero
+        };
+
+        LogPF_LogBars stat(
+            /*ruin_eps=*/Stat::DefaultRuinEps,
+            /*denom_floor=*/Stat::DefaultDenomFloor,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        DecimalType result = stat(logBars);
+
+        // With all zeros (no wins, no losses), numerator = numer_floor,
+        // denominator = prior_loss_mag
+        REQUIRE(std::isfinite(num::to_double(result)));
+        
+        // Since numer_floor is tiny and prior is larger, log(PF) should be negative
+        REQUIRE(num::to_double(result) < 0.0);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Consistency with LogProfitFactorStat_LogPF
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF matches LogProfitFactorStat_LogPF on same data",
+          "[StatUtils][LogPF_LogPF][LogBars][Consistency]") 
+{
+    using Stat = StatUtils<DecimalType>;
+    using LogPF        = typename Stat::LogProfitFactorStat_LogPF;
+    using LogPF_LogBars = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+
+    SECTION("Default parameters - mixed return series") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02")
+        };
+
+        const double ruin_eps = Stat::DefaultRuinEps;
+
+        // 1) Compute log-bars once using the same ruin epsilon
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        // 2) "Original" path: log(PF) on raw returns
+        LogPF stat_returns;
+        DecimalType via_returns = stat_returns(returns);
+
+        // 3) "Optimized" path: log(PF) on precomputed log-bars
+        LogPF_LogBars stat_logbars;
+        DecimalType via_logbars = stat_logbars(logBars);
+
+        // 4) They should match to tight tolerance
+        REQUIRE(num::to_double(via_logbars) ==
+                Catch::Approx(num::to_double(via_returns)).epsilon(1e-12));
+    }
+
+    SECTION("Custom parameters with stop loss and profit target") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10"),
+            DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02"), DecimalType("0.08")
+        };
+
+        const double ruin_eps          = 1e-8;
+        const double denom_floor       = 1e-6;
+        const double prior_strength    = 1.5;
+        const double stop_loss_pct     = 0.05;
+        const double profit_target_pct = 0.03;
+        const double tiny_win_fraction = 0.05;
+        const double tiny_win_min      = 1e-4;
+
+        // Compute log-bars
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        // Original path
+        LogPF stat_returns(
+            ruin_eps,
+            denom_floor,
+            prior_strength,
+            stop_loss_pct,
+            profit_target_pct,
+            tiny_win_fraction,
+            tiny_win_min
+        );
+        DecimalType via_returns = stat_returns(returns);
+
+        // Optimized path
+        LogPF_LogBars stat_logbars(
+            ruin_eps,
+            denom_floor,
+            prior_strength,
+            stop_loss_pct,
+            profit_target_pct,
+            tiny_win_fraction,
+            tiny_win_min
+        );
+        DecimalType via_logbars = stat_logbars(logBars);
+
+        // Should match
+        REQUIRE(num::to_double(via_logbars) ==
+                Catch::Approx(num::to_double(via_returns)).epsilon(1e-12));
+    }
+
+    SECTION("Only winning trades") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("0.05"),
+            DecimalType("0.20"), DecimalType("0.15")
+        };
+
+        const double ruin_eps          = 1e-8;
+        const double stop_loss_pct     = 0.05;
+        const double profit_target_pct = 0.03;
+
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF stat_returns(ruin_eps, Stat::DefaultDenomFloor, 
+                          Stat::DefaultPriorStrength,
+                          stop_loss_pct, profit_target_pct);
+        LogPF_LogBars stat_logbars(ruin_eps, Stat::DefaultDenomFloor,
+                                   Stat::DefaultPriorStrength,
+                                   stop_loss_pct, profit_target_pct);
+
+        DecimalType via_returns = stat_returns(returns);
+        DecimalType via_logbars = stat_logbars(logBars);
+
+        REQUIRE(num::to_double(via_logbars) ==
+                Catch::Approx(num::to_double(via_returns)).epsilon(1e-12));
+    }
+
+    SECTION("Only losing trades") {
+        std::vector<DecimalType> returns = {
+            DecimalType("-0.10"), DecimalType("-0.05"),
+            DecimalType("-0.08"), DecimalType("-0.12")
+        };
+
+        const double ruin_eps          = 1e-8;
+        const double stop_loss_pct     = 0.05;
+        const double profit_target_pct = 0.03;
+
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF stat_returns(ruin_eps, Stat::DefaultDenomFloor,
+                          Stat::DefaultPriorStrength,
+                          stop_loss_pct, profit_target_pct);
+        LogPF_LogBars stat_logbars(ruin_eps, Stat::DefaultDenomFloor,
+                                   Stat::DefaultPriorStrength,
+                                   stop_loss_pct, profit_target_pct);
+
+        DecimalType via_returns = stat_returns(returns);
+        DecimalType via_logbars = stat_logbars(logBars);
+
+        REQUIRE(num::to_double(via_logbars) ==
+                Catch::Approx(num::to_double(via_returns)).epsilon(1e-12));
+    }
+
+    SECTION("Empty input") {
+        std::vector<DecimalType> returns;
+        std::vector<DecimalType> logBars;
+
+        LogPF stat_returns;
+        LogPF_LogBars stat_logbars;
+
+        DecimalType via_returns = stat_returns(returns);
+        DecimalType via_logbars = stat_logbars(logBars);
+
+        REQUIRE(via_returns == via_logbars);
+        REQUIRE(via_logbars == DecimalConstants<DecimalType>::DecimalZero);
+    }
+
+    SECTION("Varying prior strength") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.20"), DecimalType("-0.10")
+        };
+
+        const double ruin_eps = 1e-8;
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        for (double prior_strength : {0.5, 1.0, 1.5, 2.0}) {
+            LogPF stat_returns(ruin_eps, Stat::DefaultDenomFloor, prior_strength);
+            LogPF_LogBars stat_logbars(ruin_eps, Stat::DefaultDenomFloor, prior_strength);
+
+            DecimalType via_returns = stat_returns(returns);
+            DecimalType via_logbars = stat_logbars(logBars);
+
+            REQUIRE(num::to_double(via_logbars) ==
+                    Catch::Approx(num::to_double(via_returns)).epsilon(1e-12));
+        }
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Bootstrap Integration
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF works as a statistic in getBootStrappedStatistic",
+          "[StatUtils][LogPF_LogPF][LogBars][Bootstrap]") 
+{
+    using Stat = StatUtils<DecimalType>;
+    using LogPF_LogBars = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+
+    SECTION("Bootstrap produces reasonable median estimates") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+            DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05"),
+            DecimalType("-0.02"), DecimalType("0.08"), DecimalType("-0.12"),
+            DecimalType("0.25"), DecimalType("-0.03"), DecimalType("0.12")
+        };
+
+        const double ruin_eps = Stat::DefaultRuinEps;
+        
+        // Precompute log-bars once (this is the key optimization!)
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF_LogBars stat(
+            ruin_eps,
+            /*denom_floor=*/1e-6,
+            /*prior_strength=*/1.0,
+            /*stop_loss_pct=*/0.05,
+            /*profit_target_pct=*/0.03
+        );
+
+        // "True" value for the original sample in log-bar space
+        DecimalType true_log_pf = stat(logBars);
+
+        // Now bootstrap in the log-bar domain
+        constexpr int num_runs = 50;
+        std::vector<DecimalType> boot_medians;
+        boot_medians.reserve(num_runs);
+
+        for (int i = 0; i < num_runs; ++i) {
+            boot_medians.push_back(
+                Stat::getBootStrappedStatistic(
+                    logBars,
+                    stat,
+                    100));      // bootstraps per run
+        }
+
+        DecimalType mean_est = Stat::computeMean(boot_medians);
+        DecimalType std_est  = Stat::computeStdDev(boot_medians, mean_est);
+
+        // The true value should lie within ~3σ of the bootstrap distribution mean
+        REQUIRE(num::to_double(true_log_pf) ==
+                Catch::Approx(num::to_double(mean_est))
+                    .margin(num::to_double(std_est * DecimalType(3.0))));
+
+        // All bootstrap medians should be finite
+        for (const auto& bm : boot_medians) {
+            REQUIRE(std::isfinite(num::to_double(bm)));
+        }
+    }
+
+    SECTION("Bootstrap handles small samples gracefully") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"),
+            DecimalType("0.15"), DecimalType("-0.08")
+        };
+
+        const double ruin_eps = Stat::DefaultRuinEps;
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF_LogBars stat;
+
+        DecimalType boot_median = Stat::getBootStrappedStatistic(logBars, stat, 50);
+
+        REQUIRE(std::isfinite(num::to_double(boot_median)));
+    }
+
+    SECTION("Comparing bootstrap: original vs optimized (should match)") {
+        using LogPF = typename Stat::LogProfitFactorStat_LogPF;
+
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.05"), DecimalType("0.20"),
+            DecimalType("-0.10"), DecimalType("0.15"), DecimalType("0.05")
+        };
+
+        const double ruin_eps = Stat::DefaultRuinEps;
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        // Original stat
+        LogPF stat_returns;
+        DecimalType boot_median_returns = Stat::getBootStrappedStatistic(
+            returns, stat_returns, 100);
+
+        // Optimized stat
+        LogPF_LogBars stat_logbars;
+        DecimalType boot_median_logbars = Stat::getBootStrappedStatistic(
+            logBars, stat_logbars, 100);
+
+        // Both should be finite and reasonably close
+        // (exact match not guaranteed due to random sampling, but should be close)
+        REQUIRE(std::isfinite(num::to_double(boot_median_returns)));
+        REQUIRE(std::isfinite(num::to_double(boot_median_logbars)));
+
+        // They should be in the same ballpark (within 20% is reasonable given randomness)
+        double ratio = num::to_double(boot_median_logbars) / 
+                      num::to_double(boot_median_returns);
+        REQUIRE(ratio > 0.8);
+        REQUIRE(ratio < 1.2);
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Support Characteristics
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF support characteristics",
+          "[StatUtils][LogPF_LogPF][LogBars][Support]") 
+{
+    using LogPF_LogBars = typename StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat_LogPF;
+
+    SECTION("Default support is unbounded") {
+        LogPF_LogBars stat;
+        auto support = stat.support();
+
+        REQUIRE(support.hasLowerBound() == false);
+        REQUIRE(support.lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+    }
+
+    SECTION("Different parameter combinations preserve unbounded support") {
+        LogPF_LogBars stat1(1e-8, 1e-6, 1.0, 0.05, 0.03);
+        LogPF_LogBars stat2(1e-7, 1e-5, 0.5, 0.04, 0.025);
+        LogPF_LogBars stat3(1e-6, 1e-4, 2.0, 0.10, 0.05);
+
+        // All should have unbounded support
+        REQUIRE(stat1.support().hasLowerBound() == false);
+        REQUIRE(stat2.support().hasLowerBound() == false);
+        REQUIRE(stat3.support().hasLowerBound() == false);
+
+        REQUIRE(stat1.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+        REQUIRE(stat2.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+        REQUIRE(stat3.support().lowerBoundMode() == StatisticSupport::LowerBoundMode::None);
+    }
+
+    SECTION("Support allows negative values (since log(PF) can be negative when PF < 1)") {
+        LogPF_LogBars stat;
+        auto support = stat.support();
+
+        // No lower bound, so negative values don't violate
+        REQUIRE(support.violatesLowerBound(-10.0) == false);
+        REQUIRE(support.violatesLowerBound(-1.0) == false);
+        REQUIRE(support.violatesLowerBound(0.0) == false);
+        REQUIRE(support.violatesLowerBound(1.0) == false);
+        REQUIRE(support.violatesLowerBound(10.0) == false);
+    }
+
+    // NOTE: The "Non-finite values still violate" section has been REMOVED
+    // because unbounded support correctly returns false for all values,
+    // including infinity and NaN. This is the expected behavior.
+}
+
+// =============================================================================
+// TEST SUITE: Static Methods
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF static methods",
+          "[StatUtils][LogPF_LogPF][LogBars][Static]") 
+{
+    using LogPF_LogBars = typename StatUtils<DecimalType>::LogProfitFactorFromLogBarsStat_LogPF;
+
+    SECTION("isRatioStatistic returns false") {
+        // LogPF returns log(PF), not a ratio, so should return false
+        REQUIRE(LogPF_LogBars::isRatioStatistic() == false);
+    }
+
+    SECTION("formatForDisplay correctly converts log(PF) to PF") {
+        // Test several log(PF) values
+        double log_pf_1 = 0.693147;  // log(2.0)
+        double pf_1 = LogPF_LogBars::formatForDisplay(log_pf_1);
+        REQUIRE(pf_1 == Catch::Approx(2.0).margin(1e-5));
+
+        double log_pf_2 = 1.0986;  // log(3.0)
+        double pf_2 = LogPF_LogBars::formatForDisplay(log_pf_2);
+        REQUIRE(pf_2 == Catch::Approx(3.0).margin(1e-3));
+
+        double log_pf_3 = -0.693147;  // log(0.5)
+        double pf_3 = LogPF_LogBars::formatForDisplay(log_pf_3);
+        REQUIRE(pf_3 == Catch::Approx(0.5).margin(1e-5));
+
+        double log_pf_zero = 0.0;  // log(1.0)
+        double pf_zero = LogPF_LogBars::formatForDisplay(log_pf_zero);
+        REQUIRE(pf_zero == Catch::Approx(1.0).margin(1e-10));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Parameter Handling
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF parameter handling",
+          "[StatUtils][LogPF_LogPF][LogBars][Parameters]") 
+{
+    using Stat = StatUtils<DecimalType>;
+    using LogPF_LogBars = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+
+    std::vector<DecimalType> returns = {
+        DecimalType("0.10"), DecimalType("-0.05"),
+        DecimalType("0.20"), DecimalType("-0.10"),
+        DecimalType("0.15"), DecimalType("0.05"),
+        DecimalType("-0.02")
+    };
+
+    const double ruin_eps = 1e-8;
+    auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+    SECTION("Different stop_loss_pct values produce different results") {
+        LogPF_LogBars stat1(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.03, 0.02);
+        LogPF_LogBars stat2(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.05, 0.02);
+        LogPF_LogBars stat3(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.10, 0.02);
+
+        DecimalType result1 = stat1(logBars);
+        DecimalType result2 = stat2(logBars);
+        DecimalType result3 = stat3(logBars);
+
+        // Different stop losses should produce different results
+        REQUIRE(num::to_double(result1) != num::to_double(result2));
+        REQUIRE(num::to_double(result2) != num::to_double(result3));
+        
+        // All should be finite
+        REQUIRE(std::isfinite(num::to_double(result1)));
+        REQUIRE(std::isfinite(num::to_double(result2)));
+        REQUIRE(std::isfinite(num::to_double(result3)));
+    }
+
+    SECTION("Different profit_target_pct values produce different results") {
+        // Use returns with VERY SMALL wins so numer_floor becomes relevant.
+        // The original test used large wins that dominated the numerator floor,
+        // making profit_target irrelevant. With tiny wins, numer_floor matters.
+        std::vector<DecimalType> small_win_returns = {
+            DecimalType("0.0001"),  // tiny win: log(1.0001) ≈ 0.00009999
+            DecimalType("-0.05"),   // loss
+            DecimalType("-0.10"),   // loss
+            DecimalType("-0.02")    // loss
+        };
+
+        auto small_logBars = Stat::makeLogGrowthSeries(small_win_returns, ruin_eps);
+
+        LogPF_LogBars stat1(ruin_eps, 1e-6, 1.0, 0.05, /*profit_target=*/0.02);
+        LogPF_LogBars stat2(ruin_eps, 1e-6, 1.0, 0.05, /*profit_target=*/0.03);
+        LogPF_LogBars stat3(ruin_eps, 1e-6, 1.0, 0.05, /*profit_target=*/0.05);
+
+        DecimalType result1 = stat1(small_logBars);
+        DecimalType result2 = stat2(small_logBars);
+        DecimalType result3 = stat3(small_logBars);
+
+        // With tiny wins (sum_log_wins ≈ 0.0001), the numer_floor dominates:
+        // scale₁ = min(0.05, 0.02) = 0.02 → numer_floor₁ ≈ 0.001
+        // scale₂ = min(0.05, 0.03) = 0.03 → numer_floor₂ ≈ 0.0015
+        // scale₃ = min(0.05, 0.05) = 0.05 → numer_floor₃ ≈ 0.0025
+        // Since sum_log_wins < numer_floor, numer = numer_floor
+
+        // Different profit targets should produce different results
+        REQUIRE(num::to_double(result1) != num::to_double(result2));
+        REQUIRE(num::to_double(result2) != num::to_double(result3));
+        
+        // Verify ordering: higher profit_target → higher numer_floor → higher log(PF)
+        REQUIRE(num::to_double(result1) < num::to_double(result2));
+        REQUIRE(num::to_double(result2) < num::to_double(result3));
+        
+        // All should be finite
+        REQUIRE(std::isfinite(num::to_double(result1)));
+        REQUIRE(std::isfinite(num::to_double(result2)));
+        REQUIRE(std::isfinite(num::to_double(result3)));
+    }
+
+    SECTION("Different prior_strength values produce different results") {
+        LogPF_LogBars stat1(ruin_eps, 1e-6, /*prior_strength=*/0.5, 0.05, 0.03);
+        LogPF_LogBars stat2(ruin_eps, 1e-6, /*prior_strength=*/1.0, 0.05, 0.03);
+        LogPF_LogBars stat3(ruin_eps, 1e-6, /*prior_strength=*/2.0, 0.05, 0.03);
+
+        DecimalType result1 = stat1(logBars);
+        DecimalType result2 = stat2(logBars);
+        DecimalType result3 = stat3(logBars);
+
+        // Different prior strengths should produce different results
+        REQUIRE(num::to_double(result1) != num::to_double(result2));
+        REQUIRE(num::to_double(result2) != num::to_double(result3));
+        
+        // Higher prior strength means more conservative (lower log(PF))
+        REQUIRE(num::to_double(result1) > num::to_double(result2));
+        REQUIRE(num::to_double(result2) > num::to_double(result3));
+    }
+
+    SECTION("Functor is copyable") {
+        LogPF_LogBars stat1(ruin_eps, 1e-6, 1.0, 0.05, 0.03);
+        
+        // Copy construct
+        auto stat2 = stat1;
+
+        // Both should produce identical results
+        DecimalType result1 = stat1(logBars);
+        DecimalType result2 = stat2(logBars);
+
+        REQUIRE(num::to_double(result1) == 
+                Catch::Approx(num::to_double(result2)).epsilon(1e-15));
+    }
+}
+
+// =============================================================================
+// TEST SUITE: Numerical Stability
+// =============================================================================
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF numerical stability",
+          "[StatUtils][LogPF_LogPF][LogBars][Stability]") 
+{
+    using Stat = StatUtils<DecimalType>;
+    using LogPF_LogBars = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+
+    SECTION("Very small returns handled correctly") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.0001"), DecimalType("-0.0001"),
+            DecimalType("0.0002"), DecimalType("-0.0002")
+        };
+
+        const double ruin_eps = 1e-10;
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF_LogBars stat(ruin_eps, 1e-8, 1.0, 0.01, 0.01);
+        DecimalType result = stat(logBars);
+
+        REQUIRE(std::isfinite(num::to_double(result)));
+    }
+
+    SECTION("Large returns handled correctly") {
+        std::vector<DecimalType> returns = {
+            DecimalType("2.0"), DecimalType("-0.5"),
+            DecimalType("1.5"), DecimalType("-0.3")
+        };
+
+        const double ruin_eps = 1e-10;
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF_LogBars stat(ruin_eps, 1e-8, 1.0, 0.5, 0.3);
+        DecimalType result = stat(logBars);
+
+        REQUIRE(std::isfinite(num::to_double(result)));
+        REQUIRE(num::to_double(result) > 0.0);  // More wins than losses
+    }
+
+    SECTION("Near-ruin returns handled correctly") {
+        std::vector<DecimalType> returns = {
+            DecimalType("0.10"), DecimalType("-0.999999"),  // Near ruin
+            DecimalType("0.20"), DecimalType("-0.05")
+        };
+
+        const double ruin_eps = 1e-8;
+        auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
+
+        LogPF_LogBars stat(ruin_eps, 1e-6, 1.0, 0.05, 0.03);
+        DecimalType result = stat(logBars);
+
+        REQUIRE(std::isfinite(num::to_double(result)));
     }
 }

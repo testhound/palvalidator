@@ -853,7 +853,7 @@ namespace palvalidator::filtering::stages
 						       std::ostream&                 os) const
   {
     using Decimal    = Num;
-    using PFStat     = typename mkc_timeseries::StatUtils<Decimal>::LogProfitFactorFromLogBarsStat;
+    using PFStat     = typename mkc_timeseries::StatUtils<Decimal>:: LogProfitFactorFromLogBarsStat_LogPF;
     using Resampler  = StationaryMaskValueResamplerAdapter<Decimal>;
     using AutoCI     = AutoCIResult<Decimal>;
     using Candidate  = typename AutoCI::Candidate;
@@ -886,7 +886,8 @@ namespace palvalidator::filtering::stages
     // Retrieve Strategy Stop Loss for Robust "Zero-Loss" Handling
     // -----------------------------------------------------------------------
     double stopLossPct = 0.0;
-
+    double profitTargetPct = 0.0;
+    
     // Try to cast to PalStrategy to access the single pattern.
     // If it's a PalMetaStrategy, this cast will fail (nullptr), and we default to 0.0.
     auto palStrategy =
@@ -906,6 +907,13 @@ namespace palvalidator::filtering::stages
 
 	    // 3. Extract as double for StatUtils
 	    stopLossPct = num::to_double(stopPn.getAsPercent());
+
+	    Decimal profitTargetDec = pattern->getProfitTargetAsDecimal();
+
+	    auto profitTargetPercent =
+	      mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(profitTargetDec);
+
+	    profitTargetPct = num::to_double(profitTargetPercent.getAsPercent());
 	  }
       }
 
@@ -930,12 +938,12 @@ namespace palvalidator::filtering::stages
 					   /*PercentileT*/ true,
 					   /*BCa*/         true);
 
-    PFStat stat(
-		Stat::DefaultCompress,
-		Stat::DefaultRuinEps,
+    os << "   [Bootstrap] AutoCI (PF): passing stop loss of " << stopLossPct << " to PFStat\n";
+    PFStat stat(Stat::DefaultRuinEps,
 		Stat::DefaultDenomFloor,
 		Stat::DefaultPriorStrength,
-		stopLossPct);
+		stopLossPct,
+		profitTargetPct);
 
     // Pass the configured 'stat' object to StrategyAutoBootstrap
     StrategyAutoBootstrap<Decimal, PFStat, Resampler> autoPF(
@@ -955,10 +963,9 @@ namespace palvalidator::filtering::stages
     const Candidate& chosen  = result.getChosenCandidate();
     const Decimal    lbLogPF = chosen.getLower();
 
-    // Convert LPF_stat = log(1 + PF_ratio) back to PF_ratio = exp(LPF_stat) - 1
+    // Convert LPF_stat = log(PF) back to PF = exp(LPF_stat)
     using mkc_timeseries::DecimalConstants;
-    const Decimal lbPF =
-      std::exp(lbLogPF) - DecimalConstants<Decimal>::DecimalOne;
+    const Decimal lbPF = std::exp(lbLogPF);
 
     // Populate PF AutoCI diagnostics
     out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
@@ -980,10 +987,10 @@ namespace palvalidator::filtering::stages
     out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
     out.pfAutoCINumCandidates   = candidates.size();
 
-    // Store bootstrap median for Profit Factor: convert from log(1+PF) -> PF
+    // Store bootstrap median for Profit Factor: convert from log(PF) -> PF
     try {
       const double median_logpf = result.getBootstrapMedian();
-      const double median_pf = std::exp(median_logpf) - 1.0;
+      const double median_pf = std::exp(median_logpf);
       out.medianProfitFactor = Num(median_pf);
     } catch (...) {
       out.medianProfitFactor = std::nullopt;
