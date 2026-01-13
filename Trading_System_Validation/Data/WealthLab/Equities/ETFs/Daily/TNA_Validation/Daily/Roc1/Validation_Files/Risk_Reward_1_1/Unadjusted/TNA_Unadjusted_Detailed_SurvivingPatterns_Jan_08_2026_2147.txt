@@ -1,0 +1,2767 @@
+=== VALIDATION SUMMARY ===
+Security Ticker: TNA
+Validation Method: Unadjusted
+Computation Policy: GatedPerformanceScaledPalPolicy
+Out-of-Sample Range: 2019-Feb-21 15:00:00 to 2025-Dec-26 15:00:00
+Number of Permutations: 10000
+P-Value Threshold: 0.05000000
+Total Surviving Strategies (Performance Filtered): 90
+===========================
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 18  Index DATE: 20180820  PL: 78.26000000%  PS: 21.74000000%  Trades: 23  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 29
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 4.96496596
+High Resolution Profit Factor: 2.12572019
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 65.51724946
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 128  Index DATE: 20180821  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 4.67126841
+High Resolution Profit Factor: 2.58086710
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 66.66666512
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 54  Index DATE: 20190117  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 24
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.58149638
+PAL Profitability: 94.85302600%
+High Resolution Profitability: 66.66666938
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 21  Index DATE: 20180815  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 2 }
+
+IF HIGH OF 7 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 36
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 8.68062633
+High Resolution Profit Factor: 3.24652544
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 75.00000687
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 27  Index DATE: 20181023  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 1 }
+
+IF CLOSE OF 6 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 36
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 4.90111240
+High Resolution Profit Factor: 2.37009128
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 63.88888890
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 102  Index DATE: 20180814  PL: 75.00000000%  PS: 25.00000000%  Trades: 24  CL: 2 }
+
+IF HIGH OF 7 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 34
+Number of Winning Trades: 24
+Number of Losing Trades: 10
+Total Bars in Market: 119
+Percent Winners: 70.58823500%
+Percent Losers: 29.41176500%
+Profit Factor: 2.95542802
+High Resolution Profit Factor: 2.07805625
+PAL Profitability: 70.58823500%
+High Resolution Profitability: 62.18487999
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 8  Index DATE: 20180622  PL: 77.27000000%  PS: 22.73000000%  Trades: 22  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 13
+Number of Losing Trades: 3
+Total Bars in Market: 46
+Percent Winners: 81.25000000%
+Percent Losers: 18.75000000%
+Profit Factor: 3.85257485
+High Resolution Profit Factor: 2.17000859
+PAL Profitability: 81.25000000%
+High Resolution Profitability: 67.39130427
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 17  Index DATE: 20180926  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 9 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 10
+Number of Losing Trades: 0
+Total Bars in Market: 24
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 6.48849948
+PAL Profitability: 96.18350000%
+High Resolution Profitability: 74.99999766
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 146  Index DATE: 20180716  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 1 }
+
+IF LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 22
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 12.57340363
+High Resolution Profit Factor: 10.53858977
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 77.27273400
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 64  Index DATE: 20170719  PL: 78.57000000%  PS: 21.43000000%  Trades: 14  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 28
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 43.09672181
+High Resolution Profit Factor: 2.71345106
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 64.28572588
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 9  Index DATE: 20190102  PL: 84.62000000%  PS: 15.38000000%  Trades: 13  CL: 1 }
+
+IF LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 6
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 5.70675907
+High Resolution Profit Factor: 2.89109240
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 66.66666774
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 25  Index DATE: 20180727  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 22
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 7.34902926
+High Resolution Profit Factor: 3.04376813
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 68.18181784
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 80  Index DATE: 20170918  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 17
+Number of Winning Trades: 14
+Number of Losing Trades: 3
+Total Bars in Market: 52
+Percent Winners: 82.35294100%
+Percent Losers: 17.64705900%
+Profit Factor: 4.15408126
+High Resolution Profit Factor: 2.34432210
+PAL Profitability: 82.35294100%
+High Resolution Profitability: 65.38461757
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 23  Index DATE: 20180108  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 2 }
+
+IF CLOSE OF 0 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 21
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.79536963
+PAL Profitability: 95.91329200%
+High Resolution Profitability: 76.19048046
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 50  Index DATE: 20190107  PL: 75.00000000%  PS: 25.00000000%  Trades: 32  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 3.69350524
+High Resolution Profit Factor: 2.33921011
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 59.25925942
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 56  Index DATE: 20180629  PL: 73.68000000%  PS: 26.32000000%  Trades: 38  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > OPEN OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 26
+Number of Winning Trades: 19
+Number of Losing Trades: 7
+Total Bars in Market: 73
+Percent Winners: 73.07692300%
+Percent Losers: 26.92307700%
+Profit Factor: 2.59268880
+High Resolution Profit Factor: 1.87828649
+PAL Profitability: 73.07692300%
+High Resolution Profitability: 63.01370170
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 19  Index DATE: 20181213  PL: 81.25000000%  PS: 18.75000000%  Trades: 16  CL: 1 }
+
+IF CLOSE OF 6 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 23
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 4.27401357
+High Resolution Profit Factor: 2.96884497
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 69.56522284
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 3  Index DATE: 20181022  PL: 82.35000000%  PS: 17.65000000%  Trades: 17  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 9.88298316
+High Resolution Profit Factor: 4.47286013
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 60.86956226
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 57  Index DATE: 20180626  PL: 77.78000000%  PS: 22.22000000%  Trades: 18  CL: 2 }
+
+IF OPEN OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 31
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 5.73728618
+High Resolution Profit Factor: 3.53705500
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 67.74193762
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 78  Index DATE: 20180516  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 29
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 8.82385569
+High Resolution Profit Factor: 2.79817718
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 65.51723788
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 61  Index DATE: 20180820  PL: 78.26000000%  PS: 21.74000000%  Trades: 23  CL: 2 }
+
+IF CLOSE OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 29
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 4.96496596
+High Resolution Profit Factor: 2.12572019
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 65.51724946
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 32  Index DATE: 20181207  PL: 100.00000000%  PS: 0.00000000%  Trades: 11  CL: 0 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 21
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.37047278
+PAL Profitability: 95.35974400%
+High Resolution Profitability: 80.95238555
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 61  Index DATE: 20181023  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 6.41759304
+High Resolution Profit Factor: 3.39359419
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 69.99999957
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 3  Index DATE: 20180213  PL: 85.71000000%  PS: 14.29000000%  Trades: 14  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 26
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.74704492
+PAL Profitability: 95.05370400%
+High Resolution Profitability: 65.38460942
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 7  Index DATE: 20190201  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 11 BARS AGO
+AND OPEN OF 11 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 11
+Number of Losing Trades: 2
+Total Bars in Market: 47
+Percent Winners: 84.61538500%
+Percent Losers: 15.38461500%
+Profit Factor: 4.39189134
+High Resolution Profit Factor: 2.37925302
+PAL Profitability: 84.61538500%
+High Resolution Profitability: 63.82979508
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 12  Index DATE: 20181231  PL: 78.13000000%  PS: 21.87000000%  Trades: 32  CL: 3 }
+
+IF HIGH OF 11 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 13
+Number of Losing Trades: 3
+Total Bars in Market: 47
+Percent Winners: 81.25000000%
+Percent Losers: 18.75000000%
+Profit Factor: 3.73768228
+High Resolution Profit Factor: 2.04222500
+PAL Profitability: 81.25000000%
+High Resolution Profitability: 63.82978590
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 49  Index DATE: 20181010  PL: 78.57000000%  PS: 21.43000000%  Trades: 14  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 5.48835267
+High Resolution Profit Factor: 3.29657131
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 74.07407238
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 59  Index DATE: 20180820  PL: 74.29000000%  PS: 25.71000000%  Trades: 35  CL: 1 }
+
+IF HIGH OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 12
+Number of Losing Trades: 2
+Total Bars in Market: 50
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.12647965
+High Resolution Profit Factor: 2.34494449
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 66.00000533
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 16  Index DATE: 20190211  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 25
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 5.74029079
+High Resolution Profit Factor: 2.47528272
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 55.99999739
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 84  Index DATE: 20190211  PL: 75.86000000%  PS: 24.14000000%  Trades: 29  CL: 3 }
+
+IF CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 29
+Number of Winning Trades: 23
+Number of Losing Trades: 6
+Total Bars in Market: 95
+Percent Winners: 79.31034500%
+Percent Losers: 20.68965500%
+Profit Factor: 2.78720735
+High Resolution Profit Factor: 1.87112713
+PAL Profitability: 79.31034500%
+High Resolution Profitability: 64.89361304
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 34  Index DATE: 20181024  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 11 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+AND LOW OF 13 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 21
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 6.74247079
+High Resolution Profit Factor: 5.09736021
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 80.95237559
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 13  Index DATE: 20190115  PL: 74.07000000%  PS: 25.93000000%  Trades: 27  CL: 2 }
+
+IF CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 23
+Number of Winning Trades: 17
+Number of Losing Trades: 6
+Total Bars in Market: 62
+Percent Winners: 73.91304300%
+Percent Losers: 26.08695700%
+Profit Factor: 2.55356998
+High Resolution Profit Factor: 1.99759449
+PAL Profitability: 73.91304400%
+High Resolution Profitability: 58.06451244
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 18  Index DATE: 20190123  PL: 75.86000000%  PS: 24.14000000%  Trades: 29  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 19
+Number of Winning Trades: 14
+Number of Losing Trades: 5
+Total Bars in Market: 53
+Percent Winners: 73.68421100%
+Percent Losers: 26.31578900%
+Profit Factor: 3.21292046
+High Resolution Profit Factor: 2.33712924
+PAL Profitability: 73.68421100%
+High Resolution Profitability: 56.60378118
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 39  Index DATE: 20180302  PL: 77.42000000%  PS: 22.58000000%  Trades: 31  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 14
+Number of Losing Trades: 2
+Total Bars in Market: 39
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 6.61185626
+High Resolution Profit Factor: 3.26754037
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 69.23077223
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 14  Index DATE: 20180626  PL: 84.21000000%  PS: 15.79000000%  Trades: 19  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 33
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 9.92139419
+High Resolution Profit Factor: 3.81684802
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 75.75757856
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 1  Index DATE: 20180626  PL: 77.78000000%  PS: 22.22000000%  Trades: 18  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 31
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 5.73728618
+High Resolution Profit Factor: 3.53705500
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 67.74193762
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 49  Index DATE: 20181228  PL: 82.35000000%  PS: 17.65000000%  Trades: 17  CL: 2 }
+
+IF HIGH OF 13 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+AND LOW OF 13 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 5.38560381
+High Resolution Profit Factor: 3.14529576
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 66.66666667
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 81  Index DATE: 20180726  PL: 100.00000000%  PS: 0.00000000%  Trades: 16  CL: 0 }
+
+IF OPEN OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 27
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 6.66755813
+High Resolution Profit Factor: 2.98824939
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 74.07407530
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 30  Index DATE: 20180627  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 1 }
+
+IF HIGH OF 9 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 20
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 5.77205710
+High Resolution Profit Factor: 3.46849222
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 65.00000228
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 5  Index DATE: 20180605  PL: 85.71000000%  PS: 14.29000000%  Trades: 14  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 11 BARS AGO
+AND OPEN OF 11 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > OPEN OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 9
+Number of Losing Trades: 0
+Total Bars in Market: 31
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.90992944
+PAL Profitability: 95.75919100%
+High Resolution Profitability: 77.41934755
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 29  Index DATE: 20180517  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 2 }
+
+IF HIGH OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 3.80600920 %
+AND STOP LOSS AT ENTRY PRICE - 5.31012300 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 10.91270323
+High Resolution Profit Factor: 4.96972052
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 78.26086750
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 26  Index DATE: 20181001  PL: 31.25000000%  PS: 68.75000000%  Trades: 16  CL: 3 }
+
+IF CLOSE OF 7 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 27
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.85653674
+High Resolution Profit Factor: 2.93899089
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 62.96296418
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 28  Index DATE: 20181003  PL: 30.77000000%  PS: 69.23000000%  Trades: 13  CL: 1 }
+
+IF CLOSE OF 7 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 6.55791904
+High Resolution Profit Factor: 2.60111624
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 55.55555712
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 62  Index DATE: 20181121  PL: 20.00000000%  PS: 80.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 12 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 21
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 8.80818642
+High Resolution Profit Factor: 3.06158089
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 71.42857353
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 18  Index DATE: 20180904  PL: 25.00000000%  PS: 75.00000000%  Trades: 24  CL: 1 }
+
+IF OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > OPEN OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 29
+Number of Winning Trades: 21
+Number of Losing Trades: 8
+Total Bars in Market: 93
+Percent Winners: 72.41379300%
+Percent Losers: 27.58620700%
+Profit Factor: 3.32759400
+High Resolution Profit Factor: 2.22267627
+PAL Profitability: 72.41379300%
+High Resolution Profitability: 56.98924139
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 21  Index DATE: 20180824  PL: 27.78000000%  PS: 72.22000000%  Trades: 18  CL: 2 }
+
+IF CLOSE OF 1 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 5
+Number of Winning Trades: 5
+Number of Losing Trades: 0
+Total Bars in Market: 24
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 2.86311293
+PAL Profitability: 95.72502700%
+High Resolution Profitability: 62.49999533
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 49  Index DATE: 20180813  PL: 26.32000000%  PS: 73.68000000%  Trades: 19  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 8
+Number of Losing Trades: 3
+Total Bars in Market: 26
+Percent Winners: 72.72727300%
+Percent Losers: 27.27272700%
+Profit Factor: 2.85610539
+High Resolution Profit Factor: 2.42360941
+PAL Profitability: 72.72727300%
+High Resolution Profitability: 61.53845890
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 38  Index DATE: 20181015  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 10 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 6.16943235
+High Resolution Profit Factor: 2.44891738
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 49.99999847
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 83  Index DATE: 20181012  PL: 29.17000000%  PS: 70.83000000%  Trades: 24  CL: 3 }
+
+IF OPEN OF 6 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 17
+Number of Winning Trades: 13
+Number of Losing Trades: 4
+Total Bars in Market: 51
+Percent Winners: 76.47058800%
+Percent Losers: 23.52941200%
+Profit Factor: 3.20284548
+High Resolution Profit Factor: 2.12613087
+PAL Profitability: 76.47058800%
+High Resolution Profitability: 60.78430809
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 54  Index DATE: 20181228  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 2 }
+
+IF CLOSE OF 9 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 34
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 5.69178605
+High Resolution Profit Factor: 2.80068325
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 67.64706171
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 41  Index DATE: 20180618  PL: 16.67000000%  PS: 83.33000000%  Trades: 12  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 26
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 8.27616136
+High Resolution Profit Factor: 4.30473801
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 80.76922867
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 145  Index DATE: 20170821  PL: 27.27000000%  PS: 72.73000000%  Trades: 22  CL: 2 }
+
+IF LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > CLOSE OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 11
+Number of Losing Trades: 5
+Total Bars in Market: 39
+Percent Winners: 68.75000000%
+Percent Losers: 31.25000000%
+Profit Factor: 2.74113682
+High Resolution Profit Factor: 2.44736168
+PAL Profitability: 68.75000000%
+High Resolution Profitability: 56.41025389
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 7  Index DATE: 20180130  PL: 26.67000000%  PS: 73.33000000%  Trades: 15  CL: 2 }
+
+IF HIGH OF 12 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 9.11990981
+High Resolution Profit Factor: 5.63845187
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 73.91303802
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 39  Index DATE: 20190107  PL: 31.25000000%  PS: 68.75000000%  Trades: 16  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 12 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 39
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.57663965
+High Resolution Profit Factor: 1.87264517
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 53.84615217
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 16  Index DATE: 20190207  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > OPEN OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 22
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 6.25579260
+High Resolution Profit Factor: 3.98672703
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 59.09091662
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 3  Index DATE: 20181031  PL: 18.75000000%  PS: 81.25000000%  Trades: 16  CL: 1 }
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 5
+Number of Winning Trades: 5
+Number of Losing Trades: 0
+Total Bars in Market: 24
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.44655461
+PAL Profitability: 95.05570600%
+High Resolution Profitability: 66.66667511
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 84  Index DATE: 20190214  PL: 30.00000000%  PS: 70.00000000%  Trades: 20  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 13 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 7
+Number of Losing Trades: 3
+Total Bars in Market: 29
+Percent Winners: 70.00000000%
+Percent Losers: 30.00000000%
+Profit Factor: 2.98363893
+High Resolution Profit Factor: 2.06669160
+PAL Profitability: 70.00000000%
+High Resolution Profitability: 55.17240856
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 4  Index DATE: 20190103  PL: 18.18000000%  PS: 81.82000000%  Trades: 11  CL: 1 }
+
+IF OPEN OF 2 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 6 BARS AGO
+AND OPEN OF 6 BARS AGO > OPEN OF 7 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 5
+Number of Winning Trades: 4
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 7.86024691
+High Resolution Profit Factor: 3.69761324
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 70.00000382
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 67  Index DATE: 20190116  PL: 30.00000000%  PS: 70.00000000%  Trades: 10  CL: 1 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 27
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.69399551
+High Resolution Profit Factor: 2.56812481
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 55.55555878
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 57  Index DATE: 20180823  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 38
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.33830946
+High Resolution Profit Factor: 2.69199244
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 57.89474535
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 129  Index DATE: 20180419  PL: 22.22000000%  PS: 77.78000000%  Trades: 18  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 11 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 21
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 3.56151234
+High Resolution Profit Factor: 3.33714341
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 71.42857134
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 109  Index DATE: 20180711  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 3 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 9
+Number of Losing Trades: 0
+Total Bars in Market: 26
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.91940655
+PAL Profitability: 95.55908900%
+High Resolution Profitability: 73.07691462
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 82  Index DATE: 20190108  PL: 30.00000000%  PS: 70.00000000%  Trades: 10  CL: 2 }
+
+IF HIGH OF 3 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 11 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 19
+Number of Winning Trades: 14
+Number of Losing Trades: 5
+Total Bars in Market: 65
+Percent Winners: 73.68421100%
+Percent Losers: 26.31578900%
+Profit Factor: 3.36649664
+High Resolution Profit Factor: 2.45586042
+PAL Profitability: 73.68421100%
+High Resolution Profitability: 66.15385304
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 129  Index DATE: 20181129  PL: 18.18000000%  PS: 81.82000000%  Trades: 11  CL: 1 }
+
+IF HIGH OF 10 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 44
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 3.44390755
+High Resolution Profit Factor: 2.24495440
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 61.36364336
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 25  Index DATE: 20190206  PL: 29.63000000%  PS: 70.37000000%  Trades: 27  CL: 2 }
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > OPEN OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 24
+Number of Winning Trades: 17
+Number of Losing Trades: 7
+Total Bars in Market: 97
+Percent Winners: 70.83333300%
+Percent Losers: 29.16666700%
+Profit Factor: 2.57122040
+High Resolution Profit Factor: 1.76129919
+PAL Profitability: 70.83333300%
+High Resolution Profitability: 54.63917252
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 80  Index DATE: 20190107  PL: 29.03000000%  PS: 70.97000000%  Trades: 31  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 12 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 18
+Number of Winning Trades: 14
+Number of Losing Trades: 4
+Total Bars in Market: 49
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 3.51850717
+High Resolution Profit Factor: 2.88040840
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 65.30612930
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 23  Index DATE: 20180807  PL: 8.33000000%  PS: 91.67000000%  Trades: 12  CL: 1 }
+
+IF OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 24
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.33507497
+High Resolution Profit Factor: 3.63717874
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 75.00000577
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 62  Index DATE: 20180420  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 2 }
+
+IF CLOSE OF 8 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 12 BARS AGO
+AND CLOSE OF 12 BARS AGO > CLOSE OF 13 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 7.97206257
+High Resolution Profit Factor: 4.72361135
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 75.00000580
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 60  Index DATE: 20180501  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 24
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 3.71415933
+High Resolution Profit Factor: 2.57014926
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 70.83333654
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 72  Index DATE: 20181130  PL: 25.71000000%  PS: 74.29000000%  Trades: 35  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 11 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 11
+Number of Losing Trades: 4
+Total Bars in Market: 44
+Percent Winners: 73.33333300%
+Percent Losers: 26.66666700%
+Profit Factor: 3.16429946
+High Resolution Profit Factor: 2.48619700
+PAL Profitability: 73.33333300%
+High Resolution Profitability: 61.36363101
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 9  Index DATE: 20170814  PL: 21.43000000%  PS: 78.57000000%  Trades: 14  CL: 1 }
+
+IF OPEN OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 32
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 3.83404881
+High Resolution Profit Factor: 2.39765162
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 65.62500060
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 33  Index DATE: 20181217  PL: 25.00000000%  PS: 75.00000000%  Trades: 16  CL: 2 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 35
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.51637891
+High Resolution Profit Factor: 2.26776590
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 65.71428074
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 21  Index DATE: 20190201  PL: 31.82000000%  PS: 68.18000000%  Trades: 22  CL: 2 }
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 12
+Number of Losing Trades: 4
+Total Bars in Market: 64
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.42312157
+High Resolution Profit Factor: 2.14548841
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 57.81250230
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 59  Index DATE: 20171005  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 2 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 25
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 8.35466452
+High Resolution Profit Factor: 5.05457448
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 67.99999840
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 59  Index DATE: 20180608  PL: 27.78000000%  PS: 72.22000000%  Trades: 18  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 5
+Number of Winning Trades: 5
+Number of Losing Trades: 0
+Total Bars in Market: 21
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.86603938
+PAL Profitability: 95.87334000%
+High Resolution Profitability: 66.66667345
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 54  Index DATE: 20181212  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 31
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 9.01237829
+High Resolution Profit Factor: 3.27569644
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 67.74193685
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 126  Index DATE: 20190130  PL: 26.67000000%  PS: 73.33000000%  Trades: 15  CL: 1 }
+
+IF CLOSE OF 1 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 39
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.84872962
+High Resolution Profit Factor: 3.27489378
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 64.10255892
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 17  Index DATE: 20180823  PL: 30.00000000%  PS: 70.00000000%  Trades: 10  CL: 2 }
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > OPEN OF 7 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 5
+Number of Winning Trades: 4
+Number of Losing Trades: 1
+Total Bars in Market: 22
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 22.43395634
+High Resolution Profit Factor: 3.32676312
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 63.63635885
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 19  Index DATE: 20190116  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 10
+Number of Losing Trades: 1
+Total Bars in Market: 31
+Percent Winners: 90.90909100%
+Percent Losers: 9.09090900%
+Profit Factor: 10.84457316
+High Resolution Profit Factor: 4.06540053
+PAL Profitability: 90.90909100%
+High Resolution Profitability: 67.74192684
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 126  Index DATE: 20171005  PL: 30.00000000%  PS: 70.00000000%  Trades: 10  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 5
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 5.13097876
+High Resolution Profit Factor: 2.58249257
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 47.82608148
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 64  Index DATE: 20180904  PL: 32.00000000%  PS: 68.00000000%  Trades: 25  CL: 3 }
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 11 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 35
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 4.37016012
+High Resolution Profit Factor: 3.12727331
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 57.14286448
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 50  Index DATE: 20181108  PL: 30.43000000%  PS: 69.57000000%  Trades: 23  CL: 2 }
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 45
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 5.51239346
+High Resolution Profit Factor: 2.91713826
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 66.66666575
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 8  Index DATE: 20180821  PL: 30.77000000%  PS: 69.23000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 7.23294819
+High Resolution Profit Factor: 4.54408070
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 70.00000558
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 78  Index DATE: 20181029  PL: 23.08000000%  PS: 76.92000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 1 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 26
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.14734831
+High Resolution Profit Factor: 2.90323215
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 61.53846772
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 66  Index DATE: 20181105  PL: 32.14000000%  PS: 67.86000000%  Trades: 28  CL: 3 }
+
+IF CLOSE OF 3 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 40
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 6.02452681
+High Resolution Profit Factor: 2.76370669
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 60.00000465
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 56  Index DATE: 20190124  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 2 }
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 12 BARS AGO
+AND CLOSE OF 12 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 27
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 9.76609397
+High Resolution Profit Factor: 5.50757643
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 62.96295541
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 54  Index DATE: 20190213  PL: 21.43000000%  PS: 78.57000000%  Trades: 14  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 12 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 8
+Number of Losing Trades: 3
+Total Bars in Market: 45
+Percent Winners: 72.72727300%
+Percent Losers: 27.27272700%
+Profit Factor: 4.66697088
+High Resolution Profit Factor: 2.28107816
+PAL Profitability: 72.72727300%
+High Resolution Profitability: 53.33333907
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 62  Index DATE: 20181227  PL: 29.41000000%  PS: 70.59000000%  Trades: 17  CL: 2 }
+
+IF HIGH OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 22
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.31378086
+High Resolution Profit Factor: 3.46697221
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 68.18181690
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 15  Index DATE: 20181207  PL: 16.67000000%  PS: 83.33000000%  Trades: 12  CL: 1 }
+
+IF OPEN OF 2 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 30
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.53518973
+High Resolution Profit Factor: 2.36177493
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 66.66666356
+===================================
+
+
+
+Surviving Pattern:
+
+{File:TNA_IS.txt  Index: 32  Index DATE: 20181113  PL: 20.00000000%  PS: 80.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 4.46662360 %
+AND STOP LOSS AT ENTRY PRICE + 4.51446540 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 34
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 7.08246596
+High Resolution Profit Factor: 1.91320969
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 61.76470296
+===================================
+
+
+

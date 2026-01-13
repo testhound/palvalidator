@@ -1,0 +1,168 @@
+=== VALIDATION SUMMARY ===
+Security Ticker: UNG
+Validation Method: Unadjusted
+Computation Policy: GatedPerformanceScaledPalPolicy
+Out-of-Sample Range: 2018-May-03 15:00:00 to 2025-Aug-28 15:00:00
+Number of Permutations: 10000
+P-Value Threshold: 0.05000000
+Total Surviving Strategies (Performance Filtered): 5
+===========================
+
+Surviving Pattern:
+
+{File:UNG_IS.txt  Index: 41  Index DATE: 20180416  PL: 84.62000000%  PS: 15.38000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.92573120 %
+AND STOP LOSS AT ENTRY PRICE - 3.32340600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 12
+Number of Losing Trades: 1
+Total Bars in Market: 30
+Percent Winners: 92.30769200%
+Percent Losers: 7.69230800%
+Profit Factor: 13.11107559
+High Resolution Profit Factor: 5.28434859
+PAL Profitability: 92.30769200%
+High Resolution Profitability: 67.85714329
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UNG_IS.txt  Index: 25  Index DATE: 20170413  PL: 81.25000000%  PS: 18.75000000%  Trades: 16  CL: 1 }
+
+IF HIGH OF 6 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.92573120 %
+AND STOP LOSS AT ENTRY PRICE - 3.32340600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 9
+Number of Losing Trades: 0
+Total Bars in Market: 29
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.68162251
+PAL Profitability: 96.32750500%
+High Resolution Profitability: 71.42857202
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UNG_IS.txt  Index: 99  Index DATE: 20180416  PL: 84.62000000%  PS: 15.38000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.92573120 %
+AND STOP LOSS AT ENTRY PRICE - 3.32340600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 12
+Number of Losing Trades: 1
+Total Bars in Market: 30
+Percent Winners: 92.30769200%
+Percent Losers: 7.69230800%
+Profit Factor: 13.11107559
+High Resolution Profit Factor: 5.28434859
+PAL Profitability: 92.30769200%
+High Resolution Profitability: 67.85714329
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UNG_IS.txt  Index: 46  Index DATE: 20170810  PL: 70.00000000%  PS: 30.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > LOW OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.92573120 %
+AND STOP LOSS AT ENTRY PRICE - 3.32340600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 14
+Number of Losing Trades: 1
+Total Bars in Market: 35
+Percent Winners: 93.33333300%
+Percent Losers: 6.66666700%
+Profit Factor: 17.48700954
+High Resolution Profit Factor: 3.89801038
+PAL Profitability: 93.33333300%
+High Resolution Profitability: 74.99999875
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UNG_IS.txt  Index: 75  Index DATE: 20171229  PL: 27.27000000%  PS: 72.73000000%  Trades: 11  CL: 3 }
+
+IF HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.92444840 %
+AND STOP LOSS AT ENTRY PRICE + 3.40267650 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 30
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 7.50204445
+PAL Profitability: 95.94296400%
+High Resolution Profitability: 75.86206615
+===================================
+
+
+

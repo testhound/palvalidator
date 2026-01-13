@@ -1,0 +1,653 @@
+Strategy Median holding period = 2
+   [Bootstrap] n=25  skew=1.52699  exkurt=4.40334  heavy_tails=yes
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=20  L=3  effB(mn)=25000  LB(per)=0.00635913  LB(ann)=3.94030467
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=25  m_inner=23  L=3  effB=25000  LB=0.00264797
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=25 L=3  skew=1.527 exkurt=4.403  heavy_tails=yes  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     210.29296700%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=394.03046700% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=562.71700200%, rel=0.588); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 1781 baseline (L=3): per-period Geo LB=0.66869900%, annualized Geo LB=436.29397000%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=0.74470000%, ann=548.62906300%;  L=3 (base);   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=0.58163000%, ann=331.22575400%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.396 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=25 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-1.46587800%, ES05=-2.14964300%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 2.19× your conservative per-period edge; average of bad days (ES05) ≈ 3.21×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=25 => L_cap=4
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=2
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=25000  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+        L=2 [SmallN: StationaryMaskValueResamplerAdapter(small L), m_sub=20, L_small=2] → Ann GM LB = 495.43786500%
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+        L=3 [SmallN: StationaryMaskValueResamplerAdapter(small L), m_sub=20, L_small=3] → Ann GM LB = 430.93477600%
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+        L=4 [SmallN: StationaryMaskValueResamplerAdapter(small L), m_sub=20, L_small=3] → Ann GM LB = 430.93477600%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 495.43786500%  (PASS)
+        L=3: Ann GM LB = 430.93477600%  (PASS)
+        L=4: Ann GM LB = 430.93477600%  (PASS)
+        → pass fraction = 100.000%, min LB at L=3, min LB = 430.93477600%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=3, min LB=430.93477600% (hurdle=8.00000000%), relVar=0.005, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 687.12957700% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 1098.25916700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 2676.37257800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 962.50641300% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 730.24060800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 71467.64759800% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 319560.29988700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 13205.29145000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 72500.96012500% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 71467.64759800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 95450.64 bps | flips=0 | max |ΔLB| = 318462.04%
+   [ADVISORY/FragileEdge] action=Downweight (policy=Downweight), n=25, Q05=-1.46587800% , ES05_raw=-2.14964300% , ES05_smooth=-1.87613700% , λ=0.40, relVar=0.00, lbAnn=210.29296700% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Advisory downweight: severe tails (ES05/Q05); small sample
+✓ Strategy passed: PAL Long Strategy 1781 (Lower Bound = 210.29296700% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 210.29296700%, Mean = 956.74746900%
+
+Strategy Median holding period = 2
+   [Bootstrap] n=34  skew=0.10  exkurt=-0.39  heavy_tails=no
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.004  var≈ 0.002  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=28  L=3  effB(mn)=25000  LB(per)=0.01308899  LB(ann)=25.49684011
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=34  m_inner=32  L=3  effB=25000  LB=0.01414157
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=34 L=3  skew=0.104 exkurt=-0.393  heavy_tails=no  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     2920.18467300%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=2549.68401100% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=967.37379500%, rel=0.275); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.004  var≈ 0.002  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 2532 baseline (L=3): per-period Geo LB=1.32701600%, annualized Geo LB=2671.81224900%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=1.26770900%, ann=2291.59815300%;  L=3 (base);   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=1.28862900%, ann=2419.38519100%;
+   [ROBUST] L-sensitivity PASS (relVar=0.142)
+   [ROBUST] Split-sample SKIP (n=34 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-2.24519300%, ES05=-3.67762800%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 1.69× your conservative per-period edge; average of bad days (ES05) ≈ 2.77×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=34 => L_cap=4
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=2
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=2)
+        L=2 [SmallN: IIDResampler, m_sub=28, L_small=2] → Ann GM LB = 1569.06823600%
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=3 [SmallN: IIDResampler, m_sub=28, L_small=3] → Ann GM LB = 1659.88334800%
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=4 [SmallN: IIDResampler, m_sub=28, L_small=3] → Ann GM LB = 1659.88334800%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 1569.06823600%  (PASS)
+        L=3: Ann GM LB = 1659.88334800%  (PASS)
+        L=4: Ann GM LB = 1659.88334800%  (PASS)
+        → pass fraction = 100.000%, min LB at L=2, min LB = 1569.06823600%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=2, min LB=1569.06823600% (hurdle=8.00000000%), relVar=0.001, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 3751.05162300% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 1828.68374600% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 7837.17733500% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 3540.05389400% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 3913.25648200% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 5811.11313100% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 3092.62198100% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 9268.76039800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 5033.84827400% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 5586.97081800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 374305.16 bps | flips=0 | max |ΔLB| = 2060.06%
+   [ADVISORY/FragileEdge] action=Keep (policy=Keep), n=34, Q05=-2.24519300% , ES05_raw=-3.67762800% , ES05_smooth=-3.62033100% , λ=0.04, relVar=0.00, lbAnn=2920.18467300% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Robust enough to keep at full weight
+✓ Strategy passed: PAL Long Strategy 2532 (Lower Bound = 2920.18467300% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 2920.18467300%, Mean = 3517.05780600%
+
+Strategy Median holding period = 2
+   [Bootstrap] n=26  skew=0.21  exkurt=-0.44  heavy_tails=no
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.001  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.003  var≈ 0.001  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=21  L=3  effB(mn)=25000  LB(per)=0.01174259  LB(ann)=17.95169858
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=26  m_inner=24  L=3  effB=25000  LB=0.01268401
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=26 L=3  skew=0.214 exkurt=-0.438  heavy_tails=no  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     2030.85519200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=2295.72004300% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=220.90663300%, rel=0.088); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.003  var≈ 0.001  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 2390 baseline (L=3): per-period Geo LB=1.18329400%, annualized Geo LB=1838.30021300%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.002  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.004  var≈ 0.001  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=1.09705300%, ann=1463.51118500%;  L=3 (base);   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.001  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.003  var≈ 0.001  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=1.18690700%, ann=1855.81998100%;
+   [ROBUST] L-sensitivity PASS (relVar=0.211)
+   [ROBUST] Split-sample SKIP (n=26 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-1.75764400%, ES05=-2.23772300%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 1.49× your conservative per-period edge; average of bad days (ES05) ≈ 1.89×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=26 => L_cap=4
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=2
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=2)
+        L=2 [SmallN: IIDResampler, m_sub=21, L_small=2] → Ann GM LB = 832.59509000%
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=3 [SmallN: IIDResampler, m_sub=21, L_small=3] → Ann GM LB = 817.90352400%
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=4 [SmallN: IIDResampler, m_sub=21, L_small=3] → Ann GM LB = 817.90352400%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 832.59509000%  (PASS)
+        L=3: Ann GM LB = 817.90352400%  (PASS)
+        L=4: Ann GM LB = 817.90352400%  (PASS)
+        → pass fraction = 100.000%, min LB at L=3, min LB = 817.90352400%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=3, min LB=817.90352400% (hurdle=8.00000000%), relVar=0.000, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 219.85663500% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 383.21306200% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 706.75600800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 162.32090500% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 268.37681500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 3245.72802600% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 3436.32100100% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 3255.76208200% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 3273.73129100% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 3178.76519200% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 26037.68 bps | flips=0 | max |ΔLB| = 3111.41%
+   [ADVISORY/FragileEdge] action=Downweight (policy=Downweight), n=26, Q05=-1.75764400% , ES05_raw=-2.23772300% , ES05_smooth=-2.06489500% , λ=0.36, relVar=0.00, lbAnn=2030.85519200% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Advisory downweight: small sample
+✓ Strategy passed: PAL Long Strategy 2390 (Lower Bound = 2030.85519200% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 2030.85519200%, Mean = 2516.62667600%
+
+Strategy Median holding period = 2
+   [Bootstrap] n=22  skew=-0.00  exkurt=0.69  heavy_tails=no
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=18  L=3  effB(mn)=25000  LB(per)=0.01013082  LB(ann)=11.68121163
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=22  m_inner=18  L=3  effB=25000  LB=0.01043774
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=22 L=3  skew=-0.001 exkurt=0.691  heavy_tails=no  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     1217.60747000%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=1168.12116300% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=349.37475500%, rel=0.230); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 1802 baseline (L=3): per-period Geo LB=1.07316100%, annualized Geo LB=1373.10514700%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=0.76024600%, ann=574.34667600%;  L=3 (base);   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.003  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=1.01478600%, ann=1173.52339200%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.582 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=22 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-2.08321600%, ES05=-4.73978700%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 1.94× your conservative per-period edge; average of bad days (ES05) ≈ 4.42×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=22 => L_cap=4
+   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.005  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=2
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=2)
+        L=2 [SmallN: IIDResampler, m_sub=18, L_small=2] → Ann GM LB = 502.35051600%
+   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.005  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.007  var≈ 0.005  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=3 [SmallN: IIDResampler, m_sub=18, L_small=3] → Ann GM LB = 466.27223900%
+   [Bootstrap] m_sub=18  n=22  m/n=0.818  shrink=0.182
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.005  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.007  var≈ 0.005  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=4 [SmallN: IIDResampler, m_sub=18, L_small=3] → Ann GM LB = 466.27223900%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 502.35051600%  (PASS)
+        L=3: Ann GM LB = 466.27223900%  (PASS)
+        L=4: Ann GM LB = 466.27223900%  (PASS)
+        → pass fraction = 100.000%, min LB at L=3, min LB = 466.27223900%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=3, min LB=466.27223900% (hurdle=8.00000000%), relVar=0.001, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 281.53184700% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 118.59689300% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 417.72883000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 297.60153300% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 316.01294800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 8249.75352200% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 4239.51107400% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 5805.28258800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 5949.35876600% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 8661.46866500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 28960.15 bps | flips=0 | max |ΔLB| = 8345.46%
+   [ADVISORY/FragileEdge] action=Downweight (policy=Downweight), n=22, Q05=-2.08321600% , ES05_raw=-4.73978700% , ES05_smooth=-3.35837000% , λ=0.52, relVar=0.00, lbAnn=1217.60747000% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Advisory downweight: severe tails (ES05/Q05); small sample
+✓ Strategy passed: PAL Long Strategy 1802 (Lower Bound = 1217.60747000% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 1217.60747000%, Mean = 1517.49591800%
+
+================================================================================
+META-STRATEGY ANALYSIS
+================================================================================
+
+[Meta] Building unified PalMetaStrategy from 23 survivors...
+
+[Meta] Building unified PalMetaStrategy from 23 survivors...
+
+[Meta] Pyramid Level 0 (No Pyramiding):
+      (Using block length L=3 based on ACF [maxLag=20, maxL=12], n=487 >= 100)
+      Per-period point estimates (pre-annualization): Arithmetic mean =2.00035200%, Geometric mean =1.92170300%
+      Per-period BCa lower bounds (pre-annualization): Geo=1.55064900%, Mean=1.62345900%
+      (Meta uses block resampling with L=3)
+         Estimated annualized trades: 32.33307384 /yr
+      [CostHurdle/Meta]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=9.69992300%, +1·Qn=8.00000000%
+         LB (%):     4731.04660500%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [MetaSel] Selection-aware bootstrap (date-aligned): Ann GM LB=5896.2140000000% (PASS) vs Base=9.6999230000%, +1·Qn=8.0000000000% @ CL=95.0000000000%, B=2000, L~3
+      Multi-split bootstrap: K=4, L=3, n=487
+         Estimated annualized trades: 32.33307384 /yr
+      [Slices] LBs (ann, %): 979.72617200, 1345.43914400, 2455.97712200, 4380.98096900      [CostHurdle/Slices]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=9.69992300%, +1·Qn=8.00000000%
+         LB (%):     2455.97712200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [Slices] ✓ PASS (median slice LB > hurdle)
+
+      (Using block length L=4 based on n^(1/3) heuristic, n=73 < 100)
+
+      === Future Monthly Return Bound (Monitoring) ===
+      Lower Bound (monthly, 99% confidence): -8.42061000%    [Block length L = 4]
+      What this means: With about 99% confidence, any future month is expected to be no worse than -8.42061000%.
+      How we estimated it: We used a block bootstrap with L = 4 to respect typical month-to-month dependence.
+      We then looked at the 5th percentile of monthly returns and applied a BCa confidence interval.
+      The number shown above is the **lower endpoint** of that interval (a conservative bound).
+      Data used: 73 monthly returns  |  Bootstrap resamples: 25000  |  Confidence level: 99%
+      Interpretation guide:
+       • If this bound is well above 0%, downside months are usually mild.
+       • If it’s near/below 0%, expect occasional negative months of that size.
+       • Larger L assumes stronger serial dependence; smaller L assumes less.
+      Losing-streak bound @ 95.00000000% CL: observed=2, upper bound=3 (trades)
+
+      Annualized Lower Bound (GeoMean, compounded): 4731.04660500%
+      Annualized Lower Bound (Mean, compounded):    5687.36959300%
+      Required Return (max(cost,riskfree)): 9.69992300%
+      Max Consecutive Losing Trades (Upper Bound): 3 trades
+      Gates → Regular: PASS, Multi-split: PASS
+
+      RESULT: ✓ Pyramid Level 0 PASSES
+      Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 199 trades):
+        Point estimate (q=95.00000000%ile): 22.55130500%
+        Two-sided 95.00000000% CI for that percentile: [18.18310400%, 27.40515800%]
+        95.00000000% one-sided upper bound: 27.40515800%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+[Meta] Pyramid Level 1 (1 Additional Position):
+      (Using block length L=6 based on ACF [maxLag=20, maxL=12], n=594 >= 100)
+      Per-period point estimates (pre-annualization): Arithmetic mean =1.98017800%, Geometric mean =1.89951700%
+      Per-period BCa lower bounds (pre-annualization): Geo=1.54717400%, Mean=1.63144900%
+      (Meta uses block resampling with L=6)
+         Estimated annualized trades: 39.31961744 /yr
+      [CostHurdle/Meta]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=11.79588500%, +1·Qn=8.00000000%
+         LB (%):     4689.56552100%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [MetaSel] Selection-aware bootstrap (date-aligned): Ann GM LB=5303.2841450000% (PASS) vs Base=11.7958850000%, +1·Qn=8.0000000000% @ CL=95.0000000000%, B=2000, L~6
+      Multi-split bootstrap: K=4, L=6, n=594
+         Estimated annualized trades: 39.31961744 /yr
+      [Slices] LBs (ann, %): 863.17994200, 2049.81376400, 2414.21930900, 4186.82819100      [CostHurdle/Slices]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=11.79588500%, +1·Qn=8.00000000%
+         LB (%):     2414.21930900%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [Slices] ✓ PASS (median slice LB > hurdle)
+
+      (Using block length L=4 based on n^(1/3) heuristic, n=73 < 100)
+
+      === Future Monthly Return Bound (Monitoring) ===
+      Lower Bound (monthly, 99% confidence): -14.03435400%    [Block length L = 4]
+      What this means: With about 99% confidence, any future month is expected to be no worse than -14.03435400%.
+      How we estimated it: We used a block bootstrap with L = 4 to respect typical month-to-month dependence.
+      We then looked at the 5th percentile of monthly returns and applied a BCa confidence interval.
+      The number shown above is the **lower endpoint** of that interval (a conservative bound).
+      Data used: 73 monthly returns  |  Bootstrap resamples: 25000  |  Confidence level: 99%
+      Interpretation guide:
+       • If this bound is well above 0%, downside months are usually mild.
+       • If it’s near/below 0%, expect occasional negative months of that size.
+       • Larger L assumes stronger serial dependence; smaller L assumes less.
+      Losing-streak bound @ 95.00000000% CL: observed=2, upper bound=4 (trades)
+
+      Annualized Lower Bound (GeoMean, compounded): 4689.56552100%
+      Annualized Lower Bound (Mean, compounded):    5803.17445600%
+      Required Return (max(cost,riskfree)): 11.79588500%
+      Max Consecutive Losing Trades (Upper Bound): 4 trades
+      Gates → Regular: PASS, Multi-split: PASS
+
+      RESULT: ✓ Pyramid Level 1 PASSES
+      Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 242 trades):
+        Point estimate (q=95.00000000%ile): 28.71030100%
+        Two-sided 95.00000000% CI for that percentile: [20.47496300%, 38.22615400%]
+        95.00000000% one-sided upper bound: 38.22615400%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+[Meta] Pyramid Level 2 (2 Additional Positions):
+      (Using block length L=12 based on ACF [maxLag=20, maxL=12], n=605 >= 100)
+      Per-period point estimates (pre-annualization): Arithmetic mean =1.99638900%, Geometric mean =1.91658000%
+      Per-period BCa lower bounds (pre-annualization): Geo=1.56145600%, Mean=1.63697600%
+      (Meta uses block resampling with L=12)
+         Estimated annualized trades: 39.96952847 /yr
+      [CostHurdle/Meta]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=11.99085900%, +1·Qn=8.00000000%
+         LB (%):     4862.35038200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [MetaSel] Selection-aware bootstrap (date-aligned): Ann GM LB=5310.0565830000% (PASS) vs Base=11.9908590000%, +1·Qn=8.0000000000% @ CL=95.0000000000%, B=2000, L~12
+      Multi-split bootstrap: K=4, L=12, n=605
+         Estimated annualized trades: 39.96952847 /yr
+      [Slices] LBs (ann, %): 885.16948900, 2235.85419600, 2903.52390500, 4108.37945700      [CostHurdle/Slices]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=11.99085900%, +1·Qn=8.00000000%
+         LB (%):     2903.52390500%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [Slices] ✓ PASS (median slice LB > hurdle)
+
+      (Using block length L=4 based on n^(1/3) heuristic, n=73 < 100)
+
+      === Future Monthly Return Bound (Monitoring) ===
+      Lower Bound (monthly, 99% confidence): -14.03435400%    [Block length L = 4]
+      What this means: With about 99% confidence, any future month is expected to be no worse than -14.03435400%.
+      How we estimated it: We used a block bootstrap with L = 4 to respect typical month-to-month dependence.
+      We then looked at the 5th percentile of monthly returns and applied a BCa confidence interval.
+      The number shown above is the **lower endpoint** of that interval (a conservative bound).
+      Data used: 73 monthly returns  |  Bootstrap resamples: 25000  |  Confidence level: 99%
+      Interpretation guide:
+       • If this bound is well above 0%, downside months are usually mild.
+       • If it’s near/below 0%, expect occasional negative months of that size.
+       • Larger L assumes stronger serial dependence; smaller L assumes less.
+      Losing-streak bound @ 95.00000000% CL: observed=2, upper bound=4 (trades)
+
+      Annualized Lower Bound (GeoMean, compounded): 4862.35038200%
+      Annualized Lower Bound (Mean, compounded):    5884.62892200%
+      Required Return (max(cost,riskfree)): 11.99085900%
+      Max Consecutive Losing Trades (Upper Bound): 4 trades
+      Gates → Regular: PASS, Multi-split: PASS
+
+      RESULT: ✓ Pyramid Level 2 PASSES
+      Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 246 trades):
+        Point estimate (q=95.00000000%ile): 29.06289900%
+        Two-sided 95.00000000% CI for that percentile: [20.95702600%, 38.90946700%]
+        95.00000000% one-sided upper bound: 38.90946700%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+[Meta] Pyramid Level 3 (3 Additional Positions):
+      (Using block length L=12 based on ACF [maxLag=20, maxL=12], n=605 >= 100)
+      Per-period point estimates (pre-annualization): Arithmetic mean =1.99638900%, Geometric mean =1.91658000%
+      Per-period BCa lower bounds (pre-annualization): Geo=1.56125100%, Mean=1.63082100%
+      (Meta uses block resampling with L=12)
+         Estimated annualized trades: 39.96952847 /yr
+      [CostHurdle/Meta]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=11.99085900%, +1·Qn=8.00000000%
+         LB (%):     4859.82688400%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [MetaSel] Selection-aware bootstrap (date-aligned): Ann GM LB=5315.6955450000% (PASS) vs Base=11.9908590000%, +1·Qn=8.0000000000% @ CL=95.0000000000%, B=2000, L~12
+      Multi-split bootstrap: K=4, L=12, n=605
+         Estimated annualized trades: 39.96952847 /yr
+      [Slices] LBs (ann, %): 926.50971100, 2306.63059100, 2913.14974900, 4299.20101900      [CostHurdle/Slices]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=11.99085900%, +1·Qn=8.00000000%
+         LB (%):     2913.14974900%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [Slices] ✓ PASS (median slice LB > hurdle)
+
+      (Using block length L=4 based on n^(1/3) heuristic, n=73 < 100)
+
+      === Future Monthly Return Bound (Monitoring) ===
+      Lower Bound (monthly, 99% confidence): -14.03435400%    [Block length L = 4]
+      What this means: With about 99% confidence, any future month is expected to be no worse than -14.03435400%.
+      How we estimated it: We used a block bootstrap with L = 4 to respect typical month-to-month dependence.
+      We then looked at the 5th percentile of monthly returns and applied a BCa confidence interval.
+      The number shown above is the **lower endpoint** of that interval (a conservative bound).
+      Data used: 73 monthly returns  |  Bootstrap resamples: 25000  |  Confidence level: 99%
+      Interpretation guide:
+       • If this bound is well above 0%, downside months are usually mild.
+       • If it’s near/below 0%, expect occasional negative months of that size.
+       • Larger L assumes stronger serial dependence; smaller L assumes less.
+      Losing-streak bound @ 95.00000000% CL: observed=2, upper bound=4 (trades)
+
+      Annualized Lower Bound (GeoMean, compounded): 4859.82688400%
+      Annualized Lower Bound (Mean, compounded):    5793.98941800%
+      Required Return (max(cost,riskfree)): 11.99085900%
+      Max Consecutive Losing Trades (Upper Bound): 4 trades
+      Gates → Regular: PASS, Multi-split: PASS
+
+      RESULT: ✓ Pyramid Level 3 PASSES
+      Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 246 trades):
+        Point estimate (q=95.00000000%ile): 28.33503600%
+        Two-sided 95.00000000% CI for that percentile: [19.88939700%, 37.48387300%]
+        95.00000000% one-sided upper bound: 37.48387300%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+[Meta] Pyramid Level 4 (Volatility Filter):
+      (Using block length L=12 based on ACF [maxLag=20, maxL=12], n=378 >= 100)
+      Per-period point estimates (pre-annualization): Arithmetic mean =1.64573500%, Geometric mean =1.58407000%
+      Per-period BCa lower bounds (pre-annualization): Geo=1.20045900%, Mean=1.25365100%
+      (Meta uses block resampling with L=12)
+         Estimated annualized trades: 24.20918594 /yr
+      [CostHurdle/Meta]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     1922.95179000%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      [MetaSel] Selection-aware bootstrap (date-aligned): Ann GM LB=5192.4942580000% (PASS) vs Base=8.0000000000%, +1·Qn=8.0000000000% @ CL=95.0000000000%, B=2000, L~12
+      Multi-split bootstrap: K=4, L=12, n=378
+         Estimated annualized trades: 24.20918594 /yr
+      [Slices] LBs (ann, %): 185.43690300, 662.80338300, 1048.10977900, 3080.66161100      [CostHurdle/Slices]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     1048.10977900%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      [Slices] ✓ PASS (median slice LB > hurdle)
+
+      (Using block length L=3 based on n^(1/3) heuristic, n=59 < 100)
+
+      === Future Monthly Return Bound (Monitoring) ===
+      Lower Bound (monthly, 99% confidence): -8.42061000%    [Block length L = 3]
+      What this means: With about 99% confidence, any future month is expected to be no worse than -8.42061000%.
+      How we estimated it: We used a block bootstrap with L = 3 to respect typical month-to-month dependence.
+      We then looked at the 5th percentile of monthly returns and applied a BCa confidence interval.
+      The number shown above is the **lower endpoint** of that interval (a conservative bound).
+      Data used: 59 monthly returns  |  Bootstrap resamples: 25000  |  Confidence level: 99%
+      Interpretation guide:
+       • If this bound is well above 0%, downside months are usually mild.
+       • If it’s near/below 0%, expect occasional negative months of that size.
+       • Larger L assumes stronger serial dependence; smaller L assumes less.
+      Losing-streak bound @ 95.00000000% CL: observed=2, upper bound=3 (trades)
+
+      Annualized Lower Bound (GeoMean, compounded): 1922.95179000%
+      Annualized Lower Bound (Mean, compounded):    2209.37451700%
+      Required Return (max(cost,riskfree)): 8.00000000%
+      Max Consecutive Losing Trades (Upper Bound): 3 trades
+      Gates → Regular: PASS, Multi-split: PASS
+
+      RESULT: ✓ Pyramid Level 4 PASSES
+      Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 149 trades):
+        Point estimate (q=95.00000000%ile): 21.21833100%
+        Two-sided 95.00000000% CI for that percentile: [17.35487900%, 25.94054000%]
+        95.00000000% one-sided upper bound: 25.94054000%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+[Meta] Pyramid Level 5 (Breakeven Stop):
+      Exit policy tuning completed. Breakeven activation bars: 0
+      (Using block length L=11 based on ACF [maxLag=20, maxL=12], n=451 >= 100)
+      Per-period point estimates (pre-annualization): Arithmetic mean =1.60387600%, Geometric mean =1.51644800%
+      Per-period BCa lower bounds (pre-annualization): Geo=1.14439800%, Mean=1.23304200%
+      (Meta uses block resampling with L=11)
+         Estimated annualized trades: 33.30794039 /yr
+      [CostHurdle/Meta]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=9.99238200%, +1·Qn=8.00000000%
+         LB (%):     1659.30904200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [MetaSel] Selection-aware bootstrap (date-aligned): Ann GM LB=5102.4418950000% (PASS) vs Base=9.9923820000%, +1·Qn=8.0000000000% @ CL=95.0000000000%, B=2000, L~11
+      Multi-split bootstrap: K=4, L=11, n=451
+         Estimated annualized trades: 33.30794039 /yr
+      [Slices] LBs (ann, %): 423.91447800, 500.41542900, 817.20217700, 1497.06183200      [CostHurdle/Slices]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=9.99238200%, +1·Qn=8.00000000%
+         LB (%):     817.20217700%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Costs (cost-based dominates)  [RF=8.00000000%]
+      [Slices] ✓ PASS (median slice LB > hurdle)
+
+      (Using block length L=4 based on n^(1/3) heuristic, n=73 < 100)
+
+      === Future Monthly Return Bound (Monitoring) ===
+      Lower Bound (monthly, 99% confidence): -8.42061000%    [Block length L = 4]
+      What this means: With about 99% confidence, any future month is expected to be no worse than -8.42061000%.
+      How we estimated it: We used a block bootstrap with L = 4 to respect typical month-to-month dependence.
+      We then looked at the 5th percentile of monthly returns and applied a BCa confidence interval.
+      The number shown above is the **lower endpoint** of that interval (a conservative bound).
+      Data used: 73 monthly returns  |  Bootstrap resamples: 25000  |  Confidence level: 99%
+      Interpretation guide:
+       • If this bound is well above 0%, downside months are usually mild.
+       • If it’s near/below 0%, expect occasional negative months of that size.
+       • Larger L assumes stronger serial dependence; smaller L assumes less.
+      Losing-streak bound @ 95.00000000% CL: observed=3, upper bound=4 (trades)
+
+      Annualized Lower Bound (GeoMean, compounded): 1659.30904200%
+      Annualized Lower Bound (Mean, compounded):    2093.89792000%
+      Required Return (max(cost,riskfree)): 9.99238200%
+      Max Consecutive Losing Trades (Upper Bound): 4 trades
+      Gates → Regular: PASS, Multi-split: PASS
+
+      RESULT: ✓ Pyramid Level 5 PASSES
+      Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 205 trades):
+        Point estimate (q=95.00000000%ile): 29.03166500%
+        Two-sided 95.00000000% CI for that percentile: [23.65946500%, 35.91020500%]
+        95.00000000% one-sided upper bound: 35.91020500%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+      Exit bar analysis completed and written to performance file.
+
+      Comprehensive pyramiding analysis written to: Unadjusted/SOXL_Unadjusted_UnifiedMetaStrategy_Performance_Nov_14_2025_1525.txt
+
+[Meta] Pyramid Analysis Summary:
+      Level | Description              |      MAR | Ann. Lower Bound | Future Ret LB | Max Loss Streak UB | Drawdown UB | Required Return | Pass/Fail
+      ------|--------------------------|----------|------------------|---------------|---------------------|-------------|-----------------|----------
+          0 | No Pyramiding            |   172.63 |         4731.05% |        -8.42% |                  3 |      27.41% |           9.70% | PASS     
+          1 | 1 Additional Position    |   122.68 |         4689.57% |       -14.03% |                  4 |      38.23% |          11.80% | PASS     
+          2 | 2 Additional Positions   |   124.97 |         4862.35% |       -14.03% |                  4 |      38.91% |          11.99% | PASS     
+          3 | 3 Additional Positions   |   129.65 |         4859.83% |       -14.03% |                  4 |      37.48% |          11.99% | PASS     
+          4 | Volatility Filter        |    74.13 |         1922.95% |        -8.42% |                  3 |      25.94% |           8.00% | PASS     
+          5 | Breakeven Stop           |    46.21 |         1659.31% |        -8.42% |                  4 |      35.91% |           9.99% | PASS     
+
+      Best Performance: Pyramid Level 0 (MAR ratio: 172.63)
+      Recommended Configuration: No Pyramiding
+      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).
+      [Meta] Chosen configuration → Level 0 (“No Pyramiding”), Ann LB=4731.04660500%, Required=9.69992300%, MAR=172.63
+================================================================================
+Performance filtering results: 23 passed, 206 filtered out
+Bootstrap details written to: Unadjusted/SOXL_Unadjusted_Bootstrap_Results_Nov_14_2025_1521.txt

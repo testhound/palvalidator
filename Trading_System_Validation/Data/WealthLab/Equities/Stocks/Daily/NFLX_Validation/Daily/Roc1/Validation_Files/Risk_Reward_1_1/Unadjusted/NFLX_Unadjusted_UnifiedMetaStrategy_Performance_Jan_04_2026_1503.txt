@@ -1,0 +1,135 @@
+=== Unified Meta-Strategy Pyramiding Analysis ===
+Generated: Jan_04_2026_1503
+Patterns: 4 pyramid levels analyzed
+
+=== Pyramid Level 0 (No Pyramiding) ===
+=== Backtest Performance Report ===
+Total Closed Positions: 191
+Number of Winning Trades: 154
+Number of Losing Trades: 37
+Total Bars in Market: 754
+Percent Winners: 80.62827200%
+Percent Losers: 19.37172800%
+Profit Factor: 5.04063967
+High Resolution Profit Factor: 2.51004868
+PAL Profitability: 80.62827200%
+High Resolution Profitability: 63.79309638
+===================================
+
+
+--- Statistical Analysis Summary ---
+Annualized Lower Bound (GeoMean): 47.45100500%
+Required Return: 8.08374900%
+Annualized Trades: 26.94582851
+Total Trades: 191
+Max Consecutive Losing Trades (Upper Bound): 4 trades
+Result: PASS
+
+--- Drawdown Analysis ---
+Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 191 trades):
+  Point estimate (q=95.00000000%ile): 14.83690800%
+  Two-sided 95.00000000% CI for that percentile: [12.43499400%, 17.81570800%]
+  95.00000000% one-sided upper bound: 17.81570800%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+=== Exit Bar Analysis ===
+Failure to perform exit bar: 5
+Breakeven bar: 2
+===========================
+
+=== Pyramid Level 1 (1 Additional Position) ===
+=== Backtest Performance Report ===
+Total Closed Positions: 257
+Number of Winning Trades: 209
+Number of Losing Trades: 48
+Total Bars in Market: 1068
+Percent Winners: 81.32295700%
+Percent Losers: 18.67704300%
+Profit Factor: 5.25330279
+High Resolution Profit Factor: 2.44368133
+PAL Profitability: 81.32295700%
+High Resolution Profitability: 63.32082219
+===================================
+
+
+--- Statistical Analysis Summary ---
+Annualized Lower Bound (GeoMean): 64.14644300%
+Required Return: 10.87708500%
+Annualized Trades: 36.25695249
+Total Trades: 257
+Max Consecutive Losing Trades (Upper Bound): 5 trades
+Result: PASS
+
+--- Drawdown Analysis ---
+Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 257 trades):
+  Point estimate (q=95.00000000%ile): 15.17718500%
+  Two-sided 95.00000000% CI for that percentile: [13.01105900%, 17.78561700%]
+  95.00000000% one-sided upper bound: 17.78561700%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+=== Pyramid Level 2 (2 Additional Positions) ===
+=== Backtest Performance Report ===
+Total Closed Positions: 279
+Number of Winning Trades: 229
+Number of Losing Trades: 50
+Total Bars in Market: 1181
+Percent Winners: 82.07885300%
+Percent Losers: 17.92114700%
+Profit Factor: 5.55708279
+High Resolution Profit Factor: 2.47821700
+PAL Profitability: 82.07885300%
+High Resolution Profitability: 63.52840694
+===================================
+
+
+--- Statistical Analysis Summary ---
+Annualized Lower Bound (GeoMean): 72.92962200%
+Required Return: 11.80819800%
+Annualized Trades: 39.36066049
+Total Trades: 279
+Max Consecutive Losing Trades (Upper Bound): 5 trades
+Result: PASS
+
+--- Drawdown Analysis ---
+Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 279 trades):
+  Point estimate (q=95.00000000%ile): 15.02871000%
+  Two-sided 95.00000000% CI for that percentile: [13.01688000%, 17.58685700%]
+  95.00000000% one-sided upper bound: 17.58685700%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+=== Pyramid Level 3 (3 Additional Positions) ===
+=== Backtest Performance Report ===
+Total Closed Positions: 288
+Number of Winning Trades: 237
+Number of Losing Trades: 51
+Total Bars in Market: 1213
+Percent Winners: 82.29166700%
+Percent Losers: 17.70833300%
+Profit Factor: 5.62182115
+High Resolution Profit Factor: 2.50913113
+PAL Profitability: 82.29166700%
+High Resolution Profitability: 63.83155156
+===================================
+
+
+--- Statistical Analysis Summary ---
+Annualized Lower Bound (GeoMean): 76.95853600%
+Required Return: 12.18910800%
+Annualized Trades: 40.63035921
+Total Trades: 288
+Max Consecutive Losing Trades (Upper Bound): 5 trades
+Result: PASS
+
+--- Drawdown Analysis ---
+Drawdown Analysis (BCa on q=95.00000000% percentile of max drawdown over 288 trades):
+  Point estimate (q=95.00000000%ile): 14.77476100%
+  Two-sided 95.00000000% CI for that percentile: [12.72993000%, 17.16127200%]
+  95.00000000% one-sided upper bound: 17.16127200%  (i.e., with 95.00000000% confidence, the q=95.00000000%ile drawdown does not exceed this value)
+
+=== Pyramid Comparison Summary ===
+Level | Description              | Ann. Lower Bound | Future Ret LB | Max Loss Streak UB | Required Return | Pass/Fail | Trades/Year
+------|--------------------------|------------------|---------------|---------------------|-----------------|-----------|------------
+    0 | No Pyramiding            |           47.45% |        -3.46% |                  4 |           8.08% |      PASS |      26.95
+    1 | 1 Additional Position    |           64.15% |        -9.95% |                  5 |          10.88% |      PASS |      36.26
+    2 | 2 Additional Positions   |           72.93% |        -9.95% |                  5 |          11.81% |      PASS |      39.36
+    3 | 3 Additional Positions   |           76.96% |        -9.95% |                  5 |          12.19% |      PASS |      40.63
+
+Best Performance: Pyramid Level 3 (76.95853600% annualized lower bound)
+Recommended Configuration: 3 Additional Positions

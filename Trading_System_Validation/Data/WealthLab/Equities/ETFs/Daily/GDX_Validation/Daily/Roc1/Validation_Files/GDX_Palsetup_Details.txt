@@ -1,0 +1,32 @@
+In-sample% = 59%
+Out-of-sample% = 40%
+Reserved% = 1%
+
+=== Long Position Statistics ===
+Long Profit Target = 2.82841823
+Long Stop = 3.61445800
+Long Pos Median = 1.54157200
+Long Pos Qn = 1.28684623
+Long Pos Skew = 0.24738698
+Long Neg Median = -1.51030500
+Long Neg Skew = -0.26879990
+Long Pos Count = 1417
+Long Neg Count = 1422
+
+=== Short Position Statistics ===
+Short Profit Target = 2.76294876
+Short Stop = 3.57383700
+Short Neg Median = -1.51030500
+Short Neg Qn = 1.25264376
+Short Neg Skew = -0.26879990
+Short Pos Median = 1.54157200
+Short Pos Skew = 0.24738698
+Short Neg Count = 1422
+Short Pos Count = 1417
+
+=== Clean Start Information ===
+CleanStartIndex = 20
+InferredTick   = 0.01
+RelTick        = 0.000257069
+ZeroFrac       = 0.0159363
+TickSource     = SecurityAttributes_or_CLI
