@@ -1,0 +1,254 @@
+=== VALIDATION SUMMARY ===
+Security Ticker: SOXS
+Validation Method: Unadjusted
+Computation Policy: BootStrappedLogProfitFactorPolicy
+Out-of-Sample Range: 2019-Jul-03 15:00:00 to 2025-Aug-28 15:00:00
+Number of Permutations: 10000
+P-Value Threshold: 0.05000000
+Total Surviving Strategies (Performance Filtered): 8
+===========================
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 112  Index DATE: 20190411  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 12 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 28
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 11.18664573
+High Resolution Profit Factor: 2.55183524
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 75.00000213
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 8  Index DATE: 20190228  PL: 70.00000000%  PS: 30.00000000%  Trades: 20  CL: 3 }
+
+IF OPEN OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 22
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.66229005
+High Resolution Profit Factor: 4.13620497
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 59.09090004
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 18  Index DATE: 20190125  PL: 68.75000000%  PS: 31.25000000%  Trades: 16  CL: 2 }
+
+IF OPEN OF 5 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 25
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 7.96672752
+High Resolution Profit Factor: 3.79629631
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 72.00000483
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 134  Index DATE: 20180517  PL: 69.23000000%  PS: 30.77000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 10 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > CLOSE OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 25
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 6.87680448
+High Resolution Profit Factor: 3.52370224
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 72.00000072
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 128  Index DATE: 20190402  PL: 67.50000000%  PS: 32.50000000%  Trades: 40  CL: 3 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 19
+Number of Winning Trades: 14
+Number of Losing Trades: 5
+Total Bars in Market: 45
+Percent Winners: 73.68421100%
+Percent Losers: 26.31578900%
+Profit Factor: 3.12839463
+High Resolution Profit Factor: 2.43185872
+PAL Profitability: 73.68421000%
+High Resolution Profitability: 66.66666996
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 18  Index DATE: 20181206  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 9
+Number of Losing Trades: 5
+Total Bars in Market: 29
+Percent Winners: 64.28571400%
+Percent Losers: 35.71428600%
+Profit Factor: 3.12663422
+High Resolution Profit Factor: 2.67913182
+PAL Profitability: 64.28571400%
+High Resolution Profitability: 58.62069213
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 126  Index DATE: 20181030  PL: 67.86000000%  PS: 32.14000000%  Trades: 28  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > CLOSE OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 11
+Number of Losing Trades: 5
+Total Bars in Market: 34
+Percent Winners: 68.75000000%
+Percent Losers: 31.25000000%
+Profit Factor: 2.80272143
+High Resolution Profit Factor: 2.38453288
+PAL Profitability: 68.75000000%
+High Resolution Profitability: 58.82353008
+===================================
+
+
+
+Surviving Pattern:
+
+{File:SOXS_IS.txt  Index: 71  Index DATE: 20190423  PL: 69.23000000%  PS: 30.77000000%  Trades: 26  CL: 2 }
+
+IF HIGH OF 9 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 5.26358500 %
+AND STOP LOSS AT ENTRY PRICE - 5.45942600 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 11
+Number of Losing Trades: 4
+Total Bars in Market: 42
+Percent Winners: 73.33333300%
+Percent Losers: 26.66666700%
+Profit Factor: 3.26300466
+High Resolution Profit Factor: 2.15665625
+PAL Profitability: 73.33333300%
+High Resolution Profitability: 57.14286346
+===================================
+
+
+

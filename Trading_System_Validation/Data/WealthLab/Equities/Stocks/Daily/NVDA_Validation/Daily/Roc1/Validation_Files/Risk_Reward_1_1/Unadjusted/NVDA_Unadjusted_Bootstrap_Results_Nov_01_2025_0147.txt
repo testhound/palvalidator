@@ -1,0 +1,1382 @@
+
+Applying performance-based filtering to Monte Carlo surviving strategies...
+
+=== Bid/Ask Spread Analysis ===
+Out-of-sample period: 2018-Sep-28 15:00:00 to 2025-Jun-24 15:00:00
+Out-of-sample entries: 1692
+Calculated 1691 bid/ask spread measurements
+Raw spread statistics:
+  Mean: 0.00092189
+  Median: 0.00055735
+  Robust Qn: 0.00053281
+Results in percentage terms:
+  Mean: 0.09218900%
+  Median: 0.05573500%
+  Robust Qn: 0.05328100%
+  (Current slippage estimate assumption: 0.10%)
+=== End Bid/Ask Spread Analysis ===
+
+Filtering 426 surviving strategies by BCa performance...
+Filter 1 (Statistical Viability): Annualized Lower Bound > 0
+Filter 2 (Economic Significance): Annualized Lower Bound > (Annualized Cost Hurdle * 1.50000000)
+Filter 3 (Risk-Adjusted Return): Annualized Lower Bound > (Risk-Free Rate + Risk Premium ( 0.05000000) )
+  - Cost assumptions: $0 commission; slippage/spread per side uses configured floor and may be calibrated by OOS spreads when available.
+  - Risk-Free Rate assumption: 3.00000000%.
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00056400, Mean (BCa)=0.00087335
+   [Bootstrap] Annualization factor = 252
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.15267800, GeoMean (conservative)=0.15267800, Mean (BCa)=0.24606197
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     15.26780000%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=15.26780000% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=9.33839700%, rel=0.379514); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_88_20180830 baseline (L=3): per-period Geo LB=0.02268800%, annualized Geo LB=5.88329100%
+   [ROBUST] L-sensitivity:  L=2 → per=0.14609200%, ann=44.46732600%;  L=3 → per=0.06515200%, ann=17.83670000%;  L=4 → per=0.01113200%, ann=2.84482100%;
+   [ROBUST] L-sensitivity FAIL: LB below hurdle/zero at some L.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=14 L=3 effB=25000 LB=-0.00272018
+   [Bootstrap] Percentile-t: m_outer=20 m_inner=17 L=3 effB=25000 LB=-0.00329108
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00199271, GeoMean (m/n)=-0.00272018, GeoMean (t)=-0.00329108, Mean (BCa)=-0.00115533
+   [Bootstrap] Annualization factor = 252
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.39508294, GeoMean (m/n)=-0.49662476, GeoMean (t)=-0.56426451, GeoMean (conservative)=-0.56426451, Mean (BCa)=-0.25271712
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -56.42645100%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=0.00194608
+   [Bootstrap] Percentile-t: m_outer=23 m_inner=19 L=3 effB=25000 LB=0.00213296
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00296297, GeoMean (m/n)=0.00194608, GeoMean (t)=0.00213296, Mean (BCa)=0.00302046
+   [Bootstrap] Annualization factor = 252
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=1.10763073, GeoMean (m/n)=0.63221108, GeoMean (t)=0.71075278, GeoMean (conservative)=0.63221108, Mean (BCa)=1.13829484
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     63.22110800%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=63.22110800% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=50.60837600%, rel=0.444598); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_16_20180925: small sample (23). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_16_20180925 baseline (L=3): per-period Geo LB=0.29266700%, annualized Geo LB=108.84949800%
+   [ROBUST] L-sensitivity:  L=2 → per=0.23039200%, ann=78.58956500%;  L=3 → per=0.25741900%, ann=91.14505000%;  L=4 → per=0.33280700%, ann=131.00776700%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.400115 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=23 < 40)
+   [ROBUST] Tail risk: q05=-2.38045800%, ES05=-2.44022900%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 8.13× your conservative per-period edge; average of bad days (ES05) ≈ 8.34×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 68.22211700%  (PASS)
+        L=3: Ann GM LB = 106.02033400%  (PASS)
+        L=4: Ann GM LB = 145.01571400%  (PASS)
+        L=5: Ann GM LB = 172.24552600%  (PASS)
+        L=6: Ann GM LB = 192.54345700%  (PASS)
+        L=8: Ann GM LB = 175.04712000%  (PASS)
+        L=10: Ann GM LB = 164.48576100%  (PASS)
+        → pass fraction = 1e+02%, min LB at L=2, min LB = 68.22211700%
+      [L-grid] pass fraction = 1e+02%, min LB at L=2, min LB = 68.22211700%, relVar = 0.078 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 24.32822400% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 87.96801000% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 124.49527900% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 33.44119700% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 25.33491800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 410.79038100% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 453.30739300% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 409.41486600% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 405.35849900% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 407.06324200% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 2544.12 bps | flips=0 | max |ΔLB| = 386.46%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_16_20180925 (Lower Bound = 63.22110800% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 63.22110800%, Mean = 113.82948400%
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=0.00068396
+   [Bootstrap] Percentile-t: m_outer=24 m_inner=20 L=3 effB=25000 LB=0.00245902
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00173661, GeoMean (m/n)=0.00068396, GeoMean (t)=0.00245902, Mean (BCa)=0.00194071
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.54843720, GeoMean (m/n)=0.18803301, GeoMean (t)=0.85690736, GeoMean (conservative)=0.18803301, Mean (BCa)=0.63000808
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     18.80330100%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=18.80330100% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=44.19750700%, rel=0.70); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_63_20180410: small sample (24). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_63_20180410 baseline (L=3): per-period Geo LB=0.19199400%, annualized Geo LB=62.15151900%
+   [ROBUST] L-sensitivity:  L=2 → per=0.15826200%, ann=48.95960600%;  L=3 → per=0.17714300%, ann=56.20599700%;  L=4 → per=0.20320900%, ann=66.79028900%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.27 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=24 < 40)
+   [ROBUST] Tail risk: q05=-1.51849400%, ES05=-1.92870200%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 7.91× your conservative per-period edge; average of bad days (ES05) ≈ 10.05×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 37.55523900%  (PASS)
+        L=3: Ann GM LB = 57.89048800%  (PASS)
+        L=4: Ann GM LB = 76.07981100%  (PASS)
+        L=5: Ann GM LB = 80.52666100%  (PASS)
+        L=6: Ann GM LB = 95.76008600%  (PASS)
+        L=8: Ann GM LB = 114.32861100%  (PASS)
+        L=10: Ann GM LB = 104.37601000%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 37.55523900%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 37.55523900%, relVar = 0.09 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 56.73145400% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 39.22949400% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 75.79581000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 56.68020900% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 53.26870500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 214.52656800% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 177.98066500% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 142.42936900% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 213.17081000% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 213.17081000% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 4868.02 bps | flips=0 | max |ΔLB| = 159.90%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_63_20180410 (Lower Bound = 18.80330100% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 18.80330100%, Mean = 63.00080800%
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=-0.00038727
+   [Bootstrap] Percentile-t: m_outer=24 m_inner=20 L=3 effB=25000 LB=-0.00167703
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00102695, GeoMean (m/n)=-0.00038727, GeoMean (t)=-0.00167703, Mean (BCa)=0.00150581
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.22811860, GeoMean (m/n)=-0.09299829, GeoMean (t)=-0.34489931, GeoMean (conservative)=-0.34489931, Mean (BCa)=0.46108412
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -34.48993100%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00075057, Mean (BCa)=0.00094972
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.20812877, GeoMean (conservative)=0.20812877, Mean (BCa)=0.27025271
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     20.81287700%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=20.81287700% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=6.21239400%, rel=0.23); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_16_20180416 baseline (L=4): per-period Geo LB=0.06034900%, annualized Geo LB=16.41993600%
+   [ROBUST] L-sensitivity:  L=3 → per=0.04853700%, ann=13.00745100%;  L=4 → per=0.10060900%, ann=28.84078400%;  L=5 → per=0.09810700%, ann=28.03179500%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.55 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample: H1 per=0.11627500% (ann=34.02320600%), H2 per=-0.32557200% (ann=-56.03515800%)
+   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00259167, Mean (BCa)=-0.00229184
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.48001152, GeoMean (conservative)=-0.48001152, Mean (BCa)=-0.43909656
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -48.00115200%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=-0.01039963
+   [Bootstrap] Percentile-t: m_outer=24 m_inner=20 L=3 effB=25000 LB=-0.00965327
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00866675, GeoMean (m/n)=-0.01039963, GeoMean (t)=-0.00965327, Mean (BCa)=-0.00771994
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.88847876, GeoMean (m/n)=-0.92824008, GeoMean (t)=-0.91322542, GeoMean (conservative)=-0.92824008, Mean (BCa)=-0.85814829
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -92.82400800%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=14 L=3 effB=25000 LB=0.00424370
+   [Bootstrap] Percentile-t: m_outer=21 m_inner=17 L=3 effB=25000 LB=0.00684713
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00516269, GeoMean (m/n)=0.00424370, GeoMean (t)=0.00684713, Mean (BCa)=0.00627756
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=2.66068786, GeoMean (m/n)=1.90708153, GeoMean (t)=4.58227448, GeoMean (conservative)=1.90708153, Mean (BCa)=3.84041483
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     190.70815300%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=190.70815300% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=193.33333000%, rel=0.50); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_74_20171025: small sample (21). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_74_20171025 baseline (L=3): per-period Geo LB=0.54708400%, annualized Geo LB=295.46582500%
+   [ROBUST] L-sensitivity:  L=2 → per=0.34806900%, ann=140.03412100%;  L=3 → per=0.37510400%, ann=156.89407200%;  L=4 → per=0.61192300%, ann=365.22317600%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.62 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=21 < 40)
+   [ROBUST] Tail risk: q05=-2.58481400%, ES05=-3.45561400%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 4.72× your conservative per-period edge; average of bad days (ES05) ≈ 6.32×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 196.15808600%  (PASS)
+        L=3: Ann GM LB = 268.59298200%  (PASS)
+        L=4: Ann GM LB = 397.40180900%  (PASS)
+        L=5: Ann GM LB = 385.95928100%  (PASS)
+        L=6: Ann GM LB = 435.47969900%  (PASS)
+        L=8: Ann GM LB = 434.45389200%  (PASS)
+        L=10: Ann GM LB = 474.53026300%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 196.15808600%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 196.15808600%, relVar = 0.06 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 20.86643200% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 133.33556300% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 66.81042400% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 9.43157900% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 34.09946800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 94.24712800% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 431.52922400% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 245.56731500% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 126.12749300% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 103.87999000% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 2609.95 bps | flips=0 | max |ΔLB| = 298.19%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_74_20171025 (Lower Bound = 190.70815300% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 190.70815300%, Mean = 384.04148300%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00366394, Mean (BCa)=0.00384597
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=1.51337261, GeoMean (conservative)=1.51337261, Mean (BCa)=1.63089864
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     151.33726100%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=151.33726100% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=11.75260300%, rel=0.07); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_24_20180123 baseline (L=4): per-period Geo LB=0.36613100%, annualized Geo LB=151.17134700%
+   [ROBUST] L-sensitivity:  L=3 → per=0.36201000%, ann=148.58581400%;  L=4 → per=0.39251900%, ann=168.37408200%;  L=5 → per=0.35062000%, ann=141.57674900%;
+   [ROBUST] L-sensitivity PASS (relVar=0.16)
+   [ROBUST] Split-sample: H1 per=0.08138500% (ann=22.75334000%), H2 per=0.26542100% (ann=95.02836800%)
+   [ROBUST] Split-sample PASS
+   [ROBUST] Tail risk: q05=-2.08965500%, ES05=-2.71550500%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 5.71× your conservative per-period edge; average of bad days (ES05) ≈ 7.42×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 168.37610300%  (PASS)
+        L=3: Ann GM LB = 154.19305900%  (PASS)
+        L=4: Ann GM LB = 146.05274000%  (PASS)
+        L=5: Ann GM LB = 138.32168600%  (PASS)
+        L=6: Ann GM LB = 139.03977000%  (PASS)
+        L=8: Ann GM LB = 123.92813000%  (PASS)
+        L=10: Ann GM LB = 127.74978700%  (PASS)
+        → pass fraction = 100.00%, min LB at L=8, min LB = 123.92813000%
+      [L-grid] pass fraction = 100.00%, min LB at L=8, min LB = 123.92813000%, relVar = 0.01 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 123.38878200% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 34.35590300% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 474.67550000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 147.83668000% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 106.32599400% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 559.88122000% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 951.24267700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 27.60156900% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 369.51451000% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 439.38785300% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 11538.88 bps | flips=0 | max |ΔLB| = 916.89%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_24_20180123 (Lower Bound = 151.33726100% > Required Return = 8.00000000%)  [Block L=4]
+   ↳ Lower bounds (annualized): GeoMean = 151.33726100%, Mean = 163.08986400%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00449532, Mean (BCa)=0.00471596
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=2.09652975, GeoMean (conservative)=2.09652975, Mean (BCa)=2.27274285
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     209.65297500%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=209.65297500% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=17.62131000%, rel=0.08); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_66_20180827 baseline (L=4): per-period Geo LB=0.46083700%, annualized Geo LB=218.56028900%
+   [ROBUST] L-sensitivity:  L=3 → per=0.45430300%, ann=213.38142700%;  L=4 → per=0.38721900%, ann=164.82724400%;  L=5 → per=0.47349600%, ann=228.83762600%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.28 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample: H1 per=0.40600500% (ann=177.61393000%), H2 per=-0.26284500% (ann=-48.48212900%)
+   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=-0.00541938
+   [Bootstrap] Percentile-t: m_outer=24 m_inner=20 L=3 effB=25000 LB=-0.00400039
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00410844, GeoMean (m/n)=-0.00541938, GeoMean (t)=-0.00400039, Mean (BCa)=-0.00401939
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.64564623, GeoMean (m/n)=-0.74573996, GeoMean (t)=-0.63582475, GeoMean (conservative)=-0.74573996, Mean (BCa)=-0.63757124
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -74.57399600%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00677941, Mean (BCa)=-0.00667343
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.81989741, GeoMean (conservative)=-0.81989741, Mean (BCa)=-0.81498915
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -81.98974100%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00074729, Mean (BCa)=0.00120305
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.20713134, GeoMean (conservative)=0.20713134, Mean (BCa)=0.35389603
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     20.71313400%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=20.71313400% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=14.67646900%, rel=0.41); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_24_20180927 baseline (L=4): per-period Geo LB=0.07694300%, annualized Geo LB=21.38799500%
+   [ROBUST] L-sensitivity:  L=3 → per=0.13562000%, ann=40.71000200%;  L=4 → per=0.12174800%, ann=35.88222700%;  L=5 → per=0.12516500%, ann=37.05588400%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.47 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample: H1 per=-0.86350600% (ann=-88.75767700%), H2 per=0.50926700% (ann=259.69851900%)
+   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=27 m_inner=25 L=3 effB=25000 LB=-0.00001058
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00010242, GeoMean (t)=-0.00001058, Mean (BCa)=0.00033989
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.02548090, GeoMean (t)=-0.00266262, GeoMean (conservative)=-0.02548090, Mean (BCa)=0.08941159
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -2.54809000%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=27 m_inner=25 L=3 effB=25000 LB=0.00316664
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00679283, GeoMean (t)=0.00316664, Mean (BCa)=0.00647932
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=4.50691952, GeoMean (t)=1.21828076, GeoMean (conservative)=1.21828076, Mean (BCa)=4.09124144
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     121.82807600%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=121.82807600% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=287.29606800%, rel=0.70); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_32_20170703: small sample (27). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_32_20170703 baseline (L=3): per-period Geo LB=0.62658000%, annualized Geo LB=382.61805400%
+   [ROBUST] L-sensitivity:  L=2 → per=0.72844900%, ann=522.78908900%;  L=3 → per=0.63157000%, ann=388.68677900%;  L=4 → per=0.63003900%, ann=386.81677300%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.27 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=27 < 40)
+   [ROBUST] Tail risk: q05=-2.62581300%, ES05=-3.51435100%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 4.19× your conservative per-period edge; average of bad days (ES05) ≈ 5.61×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 475.02220200%  (PASS)
+        L=3: Ann GM LB = 425.73947100%  (PASS)
+        L=4: Ann GM LB = 419.70278000%  (PASS)
+        L=5: Ann GM LB = 450.08166600%  (PASS)
+        L=6: Ann GM LB = 437.54931100%  (PASS)
+        L=8: Ann GM LB = 427.43609900%  (PASS)
+        L=10: Ann GM LB = 408.48844800%  (PASS)
+        → pass fraction = 100.00%, min LB at L=10, min LB = 408.48844800%
+      [L-grid] pass fraction = 100.00%, min LB at L=10, min LB = 408.48844800%, relVar = 0.00 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 174.72353900% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 322.51574600% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 368.37523000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 164.88242700% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 128.76572400% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 2756.32268400% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 3156.48053100% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 1952.37967100% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 2788.82330100% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 2779.06326600% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 16672.35 bps | flips=0 | max |ΔLB| = 2833.96%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_32_20170703 (Lower Bound = 121.82807600% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 121.82807600%, Mean = 409.12414400%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00109487, Mean (BCa)=-0.00078725
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.24123138, GeoMean (conservative)=-0.24123138, Mean (BCa)=-0.18001164
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -24.12313800%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=26 m_inner=24 L=3 effB=25000 LB=0.00047990
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00053741, GeoMean (t)=0.00047990, Mean (BCa)=0.00164395
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.14498432, GeoMean (t)=0.12851859, GeoMean (conservative)=0.12851859, Mean (BCa)=0.51275917
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     12.85185900%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=12.85185900% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=38.42405800%, rel=0.75); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_26_20180517: small sample (26). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_26_20180517 baseline (L=3): per-period Geo LB=0.06843900%, annualized Geo LB=18.81616600%
+   [ROBUST] L-sensitivity:  L=2 → per=-0.00652100%, ann=-1.62991600%;  L=3 → per=0.02226400%, ann=5.77024300%;  L=4 → per=0.08259600%, ann=23.12821300%;
+   [ROBUST] L-sensitivity FAIL: LB below hurdle/zero at some L.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=28 m_inner=26 L=3 effB=25000 LB=-0.00175451
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00203209, GeoMean (t)=-0.00175451, Mean (BCa)=-0.00054424
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.40106829, GeoMean (t)=-0.35758762, GeoMean (conservative)=-0.40106829, Mean (BCa)=-0.12819178
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -40.10682900%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=27 m_inner=25 L=3 effB=25000 LB=-0.00542619
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00505291, GeoMean (t)=-0.00542619, Mean (BCa)=-0.00470945
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.72100494, GeoMean (t)=-0.74617830, GeoMean (conservative)=-0.74617830, Mean (BCa)=-0.69565238
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -74.61783000%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00563334, Mean (BCa)=0.00594964
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=3.11903159, GeoMean (conservative)=3.11903159, Mean (BCa)=3.45874224
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     311.90315900%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=311.90315900% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=33.97106500%, rel=0.10); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_130_20180305: small sample (32). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_130_20180305 baseline (L=3): per-period Geo LB=0.53598900%, annualized Geo LB=284.61989800%
+   [ROBUST] L-sensitivity:  L=2 → per=0.44192200%, ann=203.79712700%;  L=3 → per=0.52648900%, ann=275.56894900%;  L=4 → per=0.56375300%, ann=312.33586900%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.35 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=32 < 40)
+   [ROBUST] Tail risk: q05=-3.86222200%, ES05=-4.22853600%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 7.21× your conservative per-period edge; average of bad days (ES05) ≈ 7.89×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 212.64331400%  (PASS)
+        L=3: Ann GM LB = 297.37738700%  (PASS)
+        L=4: Ann GM LB = 299.92108200%  (PASS)
+        L=5: Ann GM LB = 329.17461800%  (PASS)
+        L=6: Ann GM LB = 385.03526900%  (PASS)
+        L=8: Ann GM LB = 429.60068100%  (PASS)
+        L=10: Ann GM LB = 429.96672600%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 212.64331400%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 212.64331400%, relVar = 0.05 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 304.02720100% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 306.08275000% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 256.08408700% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 294.49568300% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 301.18191300% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 3065.72274000% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 1638.69292700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 2389.22890100% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 1490.44783300% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 2501.94443000% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 29318.19 bps | flips=0 | max |ΔLB| = 2761.70%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_130_20180305 (Lower Bound = 311.90315900% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 311.90315900%, Mean = 345.87422400%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00238682, Mean (BCa)=0.00266639
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.82350773, GeoMean (conservative)=0.82350773, Mean (BCa)=0.95626307
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     82.35077300%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=82.35077300% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=13.27553400%, rel=0.14); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_18_20171027: small sample (36). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_18_20171027 baseline (L=3): per-period Geo LB=0.23741700%, annualized Geo LB=81.77177700%
+   [ROBUST] L-sensitivity:  L=2 → per=0.23015300%, ann=78.48228300%;  L=3 → per=0.24908900%, ann=87.18435600%;  L=4 → per=0.24708600%, ann=86.24423800%;
+   [ROBUST] L-sensitivity PASS (relVar=0.10)
+   [ROBUST] Split-sample SKIP (n=36 < 40)
+   [ROBUST] Tail risk: q05=-2.48556800%, ES05=-3.40846200%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 10.47× your conservative per-period edge; average of bad days (ES05) ≈ 14.36×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 63.63090600%  (PASS)
+        L=3: Ann GM LB = 85.99346300%  (PASS)
+        L=4: Ann GM LB = 105.59471900%  (PASS)
+        L=5: Ann GM LB = 120.94770600%  (PASS)
+        L=6: Ann GM LB = 131.26958900%  (PASS)
+        L=8: Ann GM LB = 152.27295700%  (PASS)
+        L=10: Ann GM LB = 156.69872500%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 63.63090600%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 63.63090600%, relVar = 0.07 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = -27.38939500% (FAIL)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = -37.88610400% (FAIL)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 103.19666300% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = -28.81853900% (FAIL)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 1.16744700% (FAIL)
+        → regime-mix pass fraction = 20.00%, decision: FAIL
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 35.90685400% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 26.93224300% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 158.36033400% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 55.26888800% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 22.39624500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=FAIL fixed-L=PASS | stationary median over hurdle = -3538.94 bps | flips=4 | max |ΔLB| = 84.09%
+   ✗ Regime-mix sensitivity FAIL (AND gate). Reason: stationary veto.
+     Failing mixes (stationary): Equal(0.33,0.33,0.33), MidVolFav(0.25,0.50,0.25), EvenMinusHV(0.35,0.35,0.30), LongRun(0.34,0.33,0.33)
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=-0.01195990
+   [Bootstrap] Percentile-t: m_outer=23 m_inner=19 L=3 effB=25000 LB=-0.01131667
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.01052152, GeoMean (m/n)=-0.01195990, GeoMean (t)=-0.01131667, Mean (BCa)=-0.01064246
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.93043336, GeoMean (m/n)=-0.95178392, GeoMean (t)=-0.94319097, GeoMean (conservative)=-0.95178392, Mean (BCa)=-0.93254354
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -95.17839200%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=-0.00139202
+   [Bootstrap] Percentile-t: m_outer=23 m_inner=19 L=3 effB=25000 LB=0.00050899
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00022379, GeoMean (m/n)=-0.00139202, GeoMean (t)=0.00050899, Mean (BCa)=-0.00004018
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.05484032, GeoMean (m/n)=-0.29603977, GeoMean (t)=0.13681768, GeoMean (conservative)=-0.29603977, Mean (BCa)=-0.01007447
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -29.60397700%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00338449, Mean (BCa)=0.00374462
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=1.34304514, GeoMean (conservative)=1.34304514, Mean (BCa)=1.56480344
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     134.30451400%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=134.30451400% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=22.17583000%, rel=0.14); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_26_20180425 baseline (L=4): per-period Geo LB=0.36115700%, annualized Geo LB=148.05395900%
+   [ROBUST] L-sensitivity:  L=3 → per=0.30337000%, ann=114.54195300%;  L=4 → per=0.33168100%, ann=130.35537100%;  L=5 → per=0.39054000%, ann=167.04420400%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.31 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample: H1 per=0.02361000% (ann=6.12953400%), H2 per=0.17443800% (ann=55.14668000%)
+   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 3
+   [Bootstrap] Percentile-t: m_outer=26 m_inner=24 L=3 effB=25000 LB=-0.00512959
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00381258, GeoMean (t)=-0.00512959, Mean (BCa)=-0.00176080
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.61810376, GeoMean (t)=-0.72637137, GeoMean (conservative)=-0.72637137, Mean (BCa)=-0.35860688
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -72.63713700%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00556272, Mean (BCa)=0.00581067
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=3.04677761, GeoMean (conservative)=3.04677761, Mean (BCa)=3.30617913
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     304.67776100%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=304.67776100% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=25.94015200%, rel=0.08); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_145_20170711: small sample (36). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_145_20170711 baseline (L=3): per-period Geo LB=0.51784400%, annualized Geo LB=267.51709700%
+   [ROBUST] L-sensitivity:  L=2 → per=0.47553500%, ann=230.52361300%;  L=3 → per=0.53476700%, ann=283.44359300%;  L=4 → per=0.59140700%, ann=341.91878500%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.33 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=36 < 40)
+   [ROBUST] Tail risk: q05=-2.82479600%, ES05=-3.29569900%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 5.45× your conservative per-period edge; average of bad days (ES05) ≈ 6.36×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 245.94620600%  (PASS)
+        L=3: Ann GM LB = 301.09344500%  (PASS)
+        L=4: Ann GM LB = 357.98663400%  (PASS)
+        L=5: Ann GM LB = 385.39615500%  (PASS)
+        L=6: Ann GM LB = 413.68111300%  (PASS)
+        L=8: Ann GM LB = 483.75049800%  (PASS)
+        L=10: Ann GM LB = 541.56772900%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 245.94620600%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 245.94620600%, relVar = 0.06 → decision: PASS
+   [RegimeMix] Skipped (labels length 33 != returns length 36).
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_145_20170711 (Lower Bound = 304.67776100% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 304.67776100%, Mean = 330.61791300%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00251961, Mean (BCa)=0.00262972
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.88540595, GeoMean (conservative)=0.88540595, Mean (BCa)=0.93831613
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     88.54059500%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=88.54059500% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=5.29101800%, rel=0.06); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_22_20180831 baseline (L=4): per-period Geo LB=0.24489600%, annualized Geo LB=85.22173300%
+   [ROBUST] L-sensitivity:  L=3 → per=0.24796500%, ann=86.65622100%;  L=4 → per=0.23387500%, ann=80.16031100%;  L=5 → per=0.18761400%, ann=60.37495000%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.30 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample: H1 per=-0.46998900% (ann=-69.49148100%), H2 per=0.56668600% (ann=315.37754400%)
+   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=26 m_inner=24 L=3 effB=25000 LB=-0.00358179
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00413566, GeoMean (t)=-0.00358179, Mean (BCa)=-0.00355239
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.64807857, GeoMean (t)=-0.59514708, GeoMean (conservative)=-0.64807857, Mean (BCa)=-0.59212565
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -64.80785700%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=27 m_inner=25 L=3 effB=25000 LB=-0.00447858
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00359553, GeoMean (t)=-0.00447858, Mean (BCa)=-0.00231592
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.59655148, GeoMean (t)=-0.67733382, GeoMean (conservative)=-0.67733382, Mean (BCa)=-0.44249772
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -67.73338200%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00329460, Mean (BCa)=-0.00273296
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.56465213, GeoMean (conservative)=-0.56465213, Mean (BCa)=-0.49824772
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -56.46521300%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 3
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=0.00039193
+   [Bootstrap] Percentile-t: m_outer=23 m_inner=19 L=3 effB=25000 LB=0.00123938
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00170338, GeoMean (m/n)=0.00039193, GeoMean (t)=0.00123938, Mean (BCa)=0.00189959
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.53554687, GeoMean (m/n)=0.10378702, GeoMean (t)=0.36633282, GeoMean (conservative)=0.10378702, Mean (BCa)=0.61323679
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     10.37870200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=10.37870200% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=50.94497700%, rel=0.83); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_55_20180828: small sample (23). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_55_20180828 baseline (L=3): per-period Geo LB=0.15374600%, annualized Geo LB=47.27661800%
+   [ROBUST] L-sensitivity:  L=2 → per=0.12282100%, ann=36.24969400%;  L=3 → per=0.13712100%, ann=41.24252000%;  L=4 → per=0.16036500%, ann=49.74985900%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.27 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=23 < 40)
+   [ROBUST] Tail risk: q05=-1.51520700%, ES05=-1.55790400%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 9.86× your conservative per-period edge; average of bad days (ES05) ≈ 10.13×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 42.67503700%  (PASS)
+        L=3: Ann GM LB = 49.50328100%  (PASS)
+        L=4: Ann GM LB = 62.03818000%  (PASS)
+        L=5: Ann GM LB = 78.55903400%  (PASS)
+        L=6: Ann GM LB = 81.76994900%  (PASS)
+        L=8: Ann GM LB = 97.80806300%  (PASS)
+        L=10: Ann GM LB = 87.34299200%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 42.67503700%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 42.67503700%, relVar = 0.07 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 175.28469900% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = -10.76141200% (FAIL)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 215.29046400% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 182.42782100% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 181.61600100% (PASS)
+        → regime-mix pass fraction = 80.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 267.96515500% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 25.32671300% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 280.72934200% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 285.66733700% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 280.66254300% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 17361.60 bps | flips=1 | max |ΔLB| = 103.24%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_55_20180828 (Lower Bound = 10.37870200% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 10.37870200%, Mean = 61.32367900%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00254822, Mean (BCa)=0.00264513
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.89901372, GeoMean (conservative)=0.89901372, Mean (BCa)=0.94583799
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     89.90137200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=89.90137200% vs Hurdle=8.00000000% → PASS
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 72.50166200%  (PASS)
+        L=3: Ann GM LB = 78.62773500%  (PASS)
+        L=4: Ann GM LB = 82.69445900%  (PASS)
+        L=5: Ann GM LB = 99.30155800%  (PASS)
+        L=6: Ann GM LB = 112.75450600%  (PASS)
+        L=8: Ann GM LB = 133.13405500%  (PASS)
+        L=10: Ann GM LB = 157.06697800%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 72.50166200%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 72.50166200%, relVar = 0.08 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 113.10438000% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 213.70548800% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 116.80520800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 120.82341200% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 110.73342100% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 559.56440100% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 860.12978500% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 456.80554200% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 561.28397400% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 553.05878200% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 10880.52 bps | flips=0 | max |ΔLB| = 646.42%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_29_20180614 (Lower Bound = 89.90137200% > Required Return = 8.00000000%)  [Block L=4]
+   ↳ Lower bounds (annualized): GeoMean = 89.90137200%, Mean = 94.58379900%
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=25 m_inner=23 L=3 effB=25000 LB=-0.00916329
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00869674, GeoMean (t)=-0.00916329, Mean (BCa)=-0.00780120
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.88932573, GeoMean (t)=-0.90170615, GeoMean (conservative)=-0.90170615, Mean (BCa)=-0.86104577
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -90.17061500%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=0.00103622
+   [Bootstrap] Percentile-t: m_outer=23 m_inner=19 L=3 effB=25000 LB=0.00413116
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00256768, GeoMean (m/n)=0.00103622, GeoMean (t)=0.00413116, Mean (BCa)=0.00235128
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.90832532, GeoMean (m/n)=0.29821759, GeoMean (t)=1.82612876, GeoMean (conservative)=0.29821759, Mean (BCa)=0.80728742
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     29.82175900%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=29.82175900% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=50.90698300%, rel=0.63); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_35_20180628: small sample (23). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_35_20180628 baseline (L=3): per-period Geo LB=0.20277600%, annualized Geo LB=66.60876100%
+   [ROBUST] L-sensitivity:  L=2 → per=0.18472700%, ann=59.21457000%;  L=3 → per=0.24697600%, ann=86.19274600%;  L=4 → per=0.30318600%, ann=114.44279800%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.48 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=23 < 40)
+   [ROBUST] Tail risk: q05=-3.11994600%, ES05=-4.46079600%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 15.39× your conservative per-period edge; average of bad days (ES05) ≈ 22.00×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 32.84331300%  (PASS)
+        L=3: Ann GM LB = 80.34928700%  (PASS)
+        L=4: Ann GM LB = 124.54660100%  (PASS)
+        L=5: Ann GM LB = 146.28886800%  (PASS)
+        L=6: Ann GM LB = 159.91126400%  (PASS)
+        L=8: Ann GM LB = 175.33445100%  (PASS)
+        L=10: Ann GM LB = 173.96403300%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 32.84331300%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 32.84331300%, relVar = 0.15 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = -27.94823500% (FAIL)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = -9.15085400% (FAIL)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = -15.49435900% (FAIL)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = -41.60757500% (FAIL)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = -33.70326300% (FAIL)
+        → regime-mix pass fraction = 0.00%, decision: FAIL
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 164.12681400% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 476.50486700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 119.61905100% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 86.13705600% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 167.79334100% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=FAIL fixed-L=PASS | stationary median over hurdle = -3594.82 bps | flips=5 | max |ΔLB| = 485.66%
+   ✗ Regime-mix sensitivity FAIL (AND gate). Reason: stationary veto.
+     Failing mixes (stationary): Equal(0.33,0.33,0.33), MidVolFav(0.25,0.50,0.25), LowVolFav(0.50,0.35,0.15), EvenMinusHV(0.35,0.35,0.30), LongRun(0.34,0.33,0.33)
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00108631, Mean (BCa)=0.00126794
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.31469084, GeoMean (conservative)=0.31469084, Mean (BCa)=0.37618955
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     31.46908400%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=31.46908400% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=6.14987100%, rel=0.16); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_25_20180803: small sample (34). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_25_20180803 baseline (L=3): per-period Geo LB=0.12011000%, annualized Geo LB=35.32316900%
+   [ROBUST] L-sensitivity:  L=2 → per=0.04824800%, ann=12.92521900%;  L=3 → per=0.10863500%, ann=31.47040800%;  L=4 → per=0.16577500%, ann=51.80204000%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.75 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=34 < 40)
+   [ROBUST] Tail risk: q05=-2.38623000%, ES05=-2.60678400%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 19.87× your conservative per-period edge; average of bad days (ES05) ≈ 21.70×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 19.28234900%  (PASS)
+        L=3: Ann GM LB = 28.11143400%  (PASS)
+        L=4: Ann GM LB = 36.34986600%  (PASS)
+        L=5: Ann GM LB = 44.11622200%  (PASS)
+        L=6: Ann GM LB = 46.83149700%  (PASS)
+        L=8: Ann GM LB = 69.50072300%  (PASS)
+        L=10: Ann GM LB = 69.20303600%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 19.28234900%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 19.28234900%, relVar = 0.16 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 31.94451000% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 50.02741500% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 92.06683500% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 35.69357000% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 34.79659400% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 508.76403200% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 560.74995000% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 548.84813200% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 493.79377100% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 514.15978500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 2769.36 bps | flips=0 | max |ΔLB| = 510.72%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_25_20180803 (Lower Bound = 31.46908400% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 31.46908400%, Mean = 37.61895500%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00085717, Mean (BCa)=0.00122734
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.24099604, GeoMean (conservative)=0.24099604, Mean (BCa)=0.36219863
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     24.09960400%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=24.09960400% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=12.12025900%, rel=0.33); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_74_20180808: small sample (38). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_74_20180808 baseline (L=3): per-period Geo LB=0.05079700%, annualized Geo LB=13.65256600%
+   [ROBUST] L-sensitivity:  L=2 → per=0.06191400%, ann=16.87969800%;  L=3 → per=0.09852900%, ann=28.16788800%;  L=4 → per=0.08470500%, ann=23.78379200%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.52 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=38 < 40)
+   [ROBUST] Tail risk: q05=-2.73413800%, ES05=-2.90753500%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 53.82× your conservative per-period edge; average of bad days (ES05) ≈ 57.24×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 21.96461200%  (PASS)
+        L=3: Ann GM LB = 27.96573500%  (PASS)
+        L=4: Ann GM LB = 24.95870100%  (PASS)
+        L=5: Ann GM LB = 32.71229700%  (PASS)
+        L=6: Ann GM LB = 32.27539700%  (PASS)
+        L=8: Ann GM LB = 33.64422700%  (PASS)
+        L=10: Ann GM LB = 36.78157800%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 21.96461200%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 21.96461200%, relVar = 0.03 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 194.54842400% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 282.93452700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 527.22815800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 260.85020700% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 194.38143700% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 980.36515600% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 262.47419500% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 168.36128200% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 465.73111900% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 1022.57714700% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 25285.02 bps | flips=0 | max |ΔLB| = 828.20%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_74_20180808 (Lower Bound = 24.09960400% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 24.09960400%, Mean = 36.21986300%
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=25 m_inner=23 L=3 effB=25000 LB=0.00148047
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00302032, GeoMean (t)=0.00148047, Mean (BCa)=0.00295182
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=1.13821963, GeoMean (t)=0.45179765, GeoMean (conservative)=0.45179765, Mean (BCa)=1.10173444
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     45.17976500%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=45.17976500% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=64.99367900%, rel=0.59); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_27_20180514: small sample (25). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_27_20180514 baseline (L=3): per-period Geo LB=0.31318500%, annualized Geo LB=119.89784400%
+   [ROBUST] L-sensitivity:  L=2 → per=0.25883100%, ann=91.82464400%;  L=3 → per=0.29297200%, ann=109.00961200%;  L=4 → per=0.29114900%, ann=108.05441600%;
+   [ROBUST] L-sensitivity PASS (relVar=0.23)
+   [ROBUST] Split-sample SKIP (n=25 < 40)
+   [ROBUST] Tail risk: q05=-1.21721000%, ES05=-1.59652100%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 3.89× your conservative per-period edge; average of bad days (ES05) ≈ 5.10×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 123.35960400%  (PASS)
+        L=3: Ann GM LB = 116.97684800%  (PASS)
+        L=4: Ann GM LB = 122.36367100%  (PASS)
+        L=5: Ann GM LB = 116.96104000%  (PASS)
+        L=6: Ann GM LB = 121.57523100%  (PASS)
+        L=8: Ann GM LB = 115.43424200%  (PASS)
+        L=10: Ann GM LB = 107.52395100%  (PASS)
+        → pass fraction = 100.00%, min LB at L=10, min LB = 107.52395100%
+      [L-grid] pass fraction = 100.00%, min LB at L=10, min LB = 107.52395100%, relVar = 0.00 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 97.94432300% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 74.30021600% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 267.30340000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 119.38524800% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 87.15518500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 943.90392000% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 932.37512700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 952.49005800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 944.29232500% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 943.69283300% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 8994.43 bps | flips=0 | max |ΔLB| = 858.07%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_27_20180514 (Lower Bound = 45.17976500% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 45.17976500%, Mean = 110.17344400%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00341748, Mean (BCa)=0.00366442
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=1.36253862, GeoMean (conservative)=1.36253862, Mean (BCa)=1.51367553
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     136.25386200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=136.25386200% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=15.11369100%, rel=0.10); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_144_20180911 baseline (L=4): per-period Geo LB=0.34325400%, annualized Geo LB=137.14910600%
+   [ROBUST] L-sensitivity:  L=3 → per=0.28373600%, ann=104.21481300%;  L=4 → per=0.33338700%, ann=131.34453200%;  L=5 → per=0.30726800%, ann=116.65329700%;
+   [ROBUST] L-sensitivity PASS (relVar=0.24)
+   [ROBUST] Split-sample: H1 per=0.04760400% (ann=12.74219200%), H2 per=0.11038300% (ann=32.05017100%)
+   [ROBUST] Split-sample PASS
+   [ROBUST] Tail risk: q05=-4.05547200%, ES05=-4.46774000%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 11.81× your conservative per-period edge; average of bad days (ES05) ≈ 13.02×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 108.13180100%  (PASS)
+        L=3: Ann GM LB = 124.38646900%  (PASS)
+        L=4: Ann GM LB = 131.60149900%  (PASS)
+        L=5: Ann GM LB = 134.31863800%  (PASS)
+        L=6: Ann GM LB = 143.33142100%  (PASS)
+        L=8: Ann GM LB = 149.93140800%  (PASS)
+        L=10: Ann GM LB = 157.61678600%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 108.13180100%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 108.13180100%, relVar = 0.01 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 56.36718600% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 70.91618000% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 87.60454000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 33.60252000% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 46.74359400% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 499.90335500% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 515.39951000% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 515.92321700% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 487.15816000% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 493.17153800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 4836.72 bps | flips=0 | max |ΔLB| = 453.56%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_144_20180911 (Lower Bound = 136.25386200% > Required Return = 8.00000000%)  [Block L=4]
+   ↳ Lower bounds (annualized): GeoMean = 136.25386200%, Mean = 151.36755300%
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=14 L=3 effB=25000 LB=-0.00110434
+   [Bootstrap] Percentile-t: m_outer=20 m_inner=17 L=3 effB=25000 LB=0.00032648
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00039840, GeoMean (m/n)=-0.00110434, GeoMean (t)=0.00032648, Mean (BCa)=0.00034590
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.09553964, GeoMean (m/n)=-0.24304196, GeoMean (t)=0.08573756, GeoMean (conservative)=-0.24304196, Mean (BCa)=0.09106221
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -24.30419600%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 3
+   [Bootstrap] Percentile-t: m_outer=28 m_inner=26 L=3 effB=25000 LB=-0.00103699
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00047176, GeoMean (t)=-0.00103699, Mean (BCa)=-0.00075367
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.11211369, GeoMean (t)=-0.23007107, GeoMean (conservative)=-0.23007107, Mean (BCa)=-0.17303793
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -23.00710700%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00119683, Mean (BCa)=0.00138739
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.35177808, GeoMean (conservative)=0.35177808, Mean (BCa)=0.41818796
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     35.17780800%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=35.17780800% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=6.64098800%, rel=0.16); running robustness checks...
+   [ROBUST] PalLongStrategy_NVDA_11_20180823 baseline (L=4): per-period Geo LB=0.12796400%, annualized Geo LB=38.02479200%
+   [ROBUST] L-sensitivity:  L=3 → per=0.12754300%, ann=37.87862300%;  L=4 → per=0.10650700%, ann=30.76803100%;  L=5 → per=0.13160900%, ann=39.29678700%;
+   [ROBUST] L-sensitivity PASS (relVar=0.22)
+   [ROBUST] Split-sample: H1 per=-0.08500300% (ann=-19.28927000%), H2 per=-0.03544700% (ann=-8.54675000%)
+   [ROBUST] Split-sample FAIL: a half falls to ≤ 0 or ≤ hurdle.
+   [FLAG] Robustness checks FAILED → excluding strategy.
+
+Strategy Median holding period = 3
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00097043, Mean (BCa)=-0.00082386
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.21703485, GeoMean (conservative)=-0.21703485, Mean (BCa)=-0.18754787
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -21.70348500%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=15 L=3 effB=25000 LB=-0.01619614
+   [Bootstrap] Percentile-t: m_outer=22 m_inner=18 L=3 effB=25000 LB=-0.00940399
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.01119207, GeoMean (m/n)=-0.01619614, GeoMean (t)=-0.00940399, Mean (BCa)=-0.01445984
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.94135796, GeoMean (m/n)=-0.98367145, GeoMean (t)=-0.90754365, GeoMean (conservative)=-0.98367145, Mean (BCa)=-0.97453579
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -98.36714500%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00015655, Mean (BCa)=0.00054473
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.04023590, GeoMean (conservative)=0.04023590, Mean (BCa)=0.14709721
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     4.02359000%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] m-out-of-n percentile: m_sub=16 L=3 effB=25000 LB=-0.00829662
+   [Bootstrap] Percentile-t: m_outer=23 m_inner=19 L=3 effB=25000 LB=-0.00830049
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=-0.00644481, GeoMean (m/n)=-0.00829662, GeoMean (t)=-0.00830049, Mean (BCa)=-0.00610409
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=-0.80394268, GeoMean (m/n)=-0.87747860, GeoMean (t)=-0.87759903, GeoMean (conservative)=-0.87759903, Mean (BCa)=-0.78624924
+   [Bootstrap] Conservative LB construction policy = conservative LB built from BCa ∧ (m/n, t) components (<=24)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     -87.75990300%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Percentile-t: m_outer=28 m_inner=26 L=3 effB=25000 LB=0.00564852
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00477992, GeoMean (t)=0.00564852, Mean (BCa)=0.00268818
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=2.32566675, GeoMean (t)=3.13472982, GeoMean (conservative)=2.32566675, Mean (BCa)=0.96700577
+   [Bootstrap] Conservative LB construction policy = conservative LB = min(BCa, t) (25..29)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     232.56667500%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=232.56667500% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=135.86609800%, rel=0.58); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_84_20180406: small sample (28). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_84_20180406 baseline (L=3): per-period Geo LB=0.43937800%, annualized Geo LB=201.86424000%
+   [ROBUST] L-sensitivity:  L=2 → per=0.27689600%, ann=100.73463800%;  L=3 → per=0.43172600%, ann=196.12390500%;  L=4 → per=0.60421800%, ann=356.33080300%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.72 > 0.25 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=28 < 40)
+   [ROBUST] Tail risk: q05=-3.98938900%, ES05=-7.16568000%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 9.08× your conservative per-period edge; average of bad days (ES05) ≈ 16.31×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-grid] Tested L = 2, 3, 4, 5, 6, 8, 10
+        L=2: Ann GM LB = 102.22981100%  (PASS)
+        L=3: Ann GM LB = 214.13782500%  (PASS)
+        L=4: Ann GM LB = 324.05784600%  (PASS)
+        L=5: Ann GM LB = 376.92768600%  (PASS)
+        L=6: Ann GM LB = 418.90970400%  (PASS)
+        L=8: Ann GM LB = 458.16877000%  (PASS)
+        L=10: Ann GM LB = 448.95104700%  (PASS)
+        → pass fraction = 100.00%, min LB at L=2, min LB = 102.22981100%
+      [L-grid] pass fraction = 100.00%, min LB at L=2, min LB = 102.22981100%, relVar = 0.13 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.34, 0.33, 0.33)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 494.02263200% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 513.51322600% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 553.62748600% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 488.71323800% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 481.62307900% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 487.81970800% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 457.20147100% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 379.96155400% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 425.79343700% (PASS)
+      [RegimeMix] LongRun(0.34,0.33,0.33) → Ann GM LB = 497.86239500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 48602.26 bps | flips=0 | max |ΔLB| = 173.67%
+   [ADVISORY] Fragile edge assessment: action=Downweight, weight×=0.50 — Advisory downweight: severe tails; small sample; 
+   [ADVISORY] Apply=ON → (not implemented here) would downweight this strategy in meta.
+✓ Strategy passed: PalLongStrategy_NVDA_84_20180406 (Lower Bound = 232.56667500% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 232.56667500%, Mean = 96.70057700%
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00027667, Mean (BCa)=0.00045066
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.07219848, GeoMean (conservative)=0.07219848, Mean (BCa)=0.12023752
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     7.21984800%
+         Gate:       FAIL (LB ≤ Base or ≤ +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: FAIL vs cost-stressed hurdles.
+
+Strategy Median holding period = 2
+   [Bootstrap] Per-period bounds: GeoMean (BCa)=0.00076408, Mean (BCa)=0.00098121
+   [Bootstrap] Annualization factor = 252.00
+   [Bootstrap] Annualized bounds: GeoMean (BCa)=0.21224576, GeoMean (conservative)=0.21224576, Mean (BCa)=0.28036307
+   [Bootstrap] Conservative LB construction policy = conservative LB from BCa only (>=30)
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.05573500%, Qn=0.05328100%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     21.22457600%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized): GeoLB=21.22457600% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=6.81173100%, rel=0.24); running robustness checks (also triggered by small-sample)...
+   [ROBUST] PalLongStrategy_NVDA_19_20180926: small sample (39). Will SKIP split-sample; running L-sensitivity and tail-risk only.
+   [ROBUST] PalLongStrategy_NVDA_19_20180926 baseline (L=3): per-period Geo LB=0.07818700%, annualized Geo LB=21.76883300%
+   [ROBUST] L-sensitivity:  L=2 → per=0.09341100%, ann=26.52703900%;  L=3 → per=0.08931300%, ann=25.22830300%;  L=4 → per=0.08102700%, ann=22.64273600%;
+   [ROBUST] L-sensitivity PASS (relVar=0.18)
+   [ROBUST] Split-sample SKIP (n=39 < 40)
+   [ROBUST] Tail risk: q05=-3.08985700%, ES05=-3.62845200%, severe=yes, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 39.52× your conservative per-period edge; average of bad days (ES05) ≈ 46.41×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All 

@@ -1,0 +1,17 @@
+
+Applying performance-based filtering to Monte Carlo surviving strategies...
+
+=== Bid/Ask Spread Analysis ===
+Out-of-sample period: 2018-Sep-28 15:00:00 to 2025-Jun-24 15:00:00
+Out-of-sample entries: 1692
+Calculated 1691 bid/ask spread measurements
+Raw spread statistics:
+  Mean: 0.00092189
+  Median: 0.00055735
+  Robust Qn: 0.00053281
+Results in percentage terms:
+  Mean: 0.09218900%
+  Median: 0.05573500%
+  Robust Qn: 0.05328100%
+  (Current slippage estimate assumption: 0.10%)
+=== End Bid/Ask Spread Analysis ===

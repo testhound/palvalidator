@@ -1,0 +1,3960 @@
+=== VALIDATION SUMMARY ===
+Security Ticker: LQD
+Validation Method: Unadjusted
+Computation Policy: GatedPerformanceScaledPalPolicy
+Out-of-Sample Range: 2018-Sep-04 15:00:00 to 2025-Aug-26 15:00:00
+Number of Permutations: 10000
+P-Value Threshold: 0.05000000
+Total Surviving Strategies (Performance Filtered): 128
+===========================
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 47  Index DATE: 20180214  PL: 73.08000000%  PS: 26.92000000%  Trades: 26  CL: 2 }
+
+IF HIGH OF 7 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 23
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 4.11229966
+High Resolution Profit Factor: 2.71694894
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 65.21733111
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 52  Index DATE: 20170714  PL: 75.68000000%  PS: 24.32000000%  Trades: 37  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > OPEN OF 6 BARS AGO
+AND OPEN OF 6 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 13
+Number of Losing Trades: 3
+Total Bars in Market: 48
+Percent Winners: 81.25000000%
+Percent Losers: 18.75000000%
+Profit Factor: 4.62679115
+High Resolution Profit Factor: 3.07829753
+PAL Profitability: 81.25000000%
+High Resolution Profitability: 60.86958105
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 81  Index DATE: 20180828  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 7.75262368
+High Resolution Profit Factor: 3.74190197
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 64.99993509
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 22  Index DATE: 20180322  PL: 75.00000000%  PS: 25.00000000%  Trades: 16  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 31
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 8.61162664
+High Resolution Profit Factor: 2.83475495
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 66.66661642
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 148  Index DATE: 20180116  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF CLOSE OF 2 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 35
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.84123473
+High Resolution Profit Factor: 2.03678379
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 62.85714243
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 51  Index DATE: 20180629  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 35
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 4.01084933
+High Resolution Profit Factor: 2.38332671
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 60.00001531
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 83  Index DATE: 20180713  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 30
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.78537694
+High Resolution Profit Factor: 2.58442532
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 60.00001690
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 66  Index DATE: 20180821  PL: 79.59000000%  PS: 20.41000000%  Trades: 49  CL: 2 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 17
+Number of Winning Trades: 14
+Number of Losing Trades: 3
+Total Bars in Market: 62
+Percent Winners: 82.35294100%
+Percent Losers: 17.64705900%
+Profit Factor: 4.74929469
+High Resolution Profit Factor: 2.35998823
+PAL Profitability: 82.35294100%
+High Resolution Profitability: 67.21310807
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 6  Index DATE: 20161115  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 2 }
+
+IF CLOSE OF 12 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > OPEN OF 11 BARS AGO
+AND OPEN OF 11 BARS AGO > OPEN OF 12 BARS AGO
+AND OPEN OF 12 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 20
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.11568625
+PAL Profitability: 99.53522600%
+High Resolution Profitability: 74.99997172
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 54  Index DATE: 20180823  PL: 74.36000000%  PS: 25.64000000%  Trades: 78  CL: 4 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 36
+Number of Winning Trades: 27
+Number of Losing Trades: 9
+Total Bars in Market: 110
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.41809321
+High Resolution Profit Factor: 1.69668733
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 59.09094922
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 84  Index DATE: 20180420  PL: 76.00000000%  PS: 24.00000000%  Trades: 25  CL: 2 }
+
+IF HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 11
+Number of Losing Trades: 2
+Total Bars in Market: 33
+Percent Winners: 84.61538500%
+Percent Losers: 15.38461500%
+Profit Factor: 9.14789454
+High Resolution Profit Factor: 4.56086446
+PAL Profitability: 84.61538500%
+High Resolution Profitability: 66.66663578
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 62  Index DATE: 20180823  PL: 81.82000000%  PS: 18.18000000%  Trades: 22  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 21
+Number of Winning Trades: 16
+Number of Losing Trades: 5
+Total Bars in Market: 68
+Percent Winners: 76.19047600%
+Percent Losers: 23.80952400%
+Profit Factor: 3.33406933
+High Resolution Profit Factor: 2.13972834
+PAL Profitability: 76.19047600%
+High Resolution Profitability: 62.12124643
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 40  Index DATE: 20180711  PL: 73.33000000%  PS: 26.67000000%  Trades: 30  CL: 2 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 11
+Number of Losing Trades: 4
+Total Bars in Market: 42
+Percent Winners: 73.33333300%
+Percent Losers: 26.66666700%
+Profit Factor: 3.63242281
+High Resolution Profit Factor: 2.23954100
+PAL Profitability: 73.33333300%
+High Resolution Profitability: 64.28572470
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 85  Index DATE: 20180626  PL: 80.95000000%  PS: 19.05000000%  Trades: 21  CL: 1 }
+
+IF CLOSE OF 2 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 23
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 4.85854979
+High Resolution Profit Factor: 3.47837072
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 59.09084370
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 102  Index DATE: 20170605  PL: 84.62000000%  PS: 15.38000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 30
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.34418250
+High Resolution Profit Factor: 2.15382136
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 73.33332228
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 117  Index DATE: 20180820  PL: 82.35000000%  PS: 17.65000000%  Trades: 17  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 43
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.51568086
+High Resolution Profit Factor: 2.09341712
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 64.28564206
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 3  Index DATE: 20180731  PL: 80.95000000%  PS: 19.05000000%  Trades: 21  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > OPEN OF 9 BARS AGO
+AND OPEN OF 9 BARS AGO > CLOSE OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 22
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 9.32523291
+High Resolution Profit Factor: 4.35539008
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 68.18186505
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 96  Index DATE: 20160928  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 5
+Number of Winning Trades: 5
+Number of Losing Trades: 0
+Total Bars in Market: 24
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 2.92586252
+PAL Profitability: 99.56279400%
+High Resolution Profitability: 69.56520619
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 20  Index DATE: 20170619  PL: 82.35000000%  PS: 17.65000000%  Trades: 17  CL: 1 }
+
+IF OPEN OF 7 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > OPEN OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 7.03501606
+High Resolution Profit Factor: 3.78604121
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 78.26089842
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 129  Index DATE: 20180827  PL: 77.19000000%  PS: 22.81000000%  Trades: 57  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 25
+Number of Winning Trades: 20
+Number of Losing Trades: 5
+Total Bars in Market: 80
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 3.43174175
+High Resolution Profit Factor: 2.27120404
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 58.22787868
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 98  Index DATE: 20170606  PL: 78.95000000%  PS: 21.05000000%  Trades: 19  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 25
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.32392140
+PAL Profitability: 99.56032400%
+High Resolution Profitability: 70.83327352
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 50  Index DATE: 20171229  PL: 75.00000000%  PS: 25.00000000%  Trades: 12  CL: 2 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 5
+Number of Losing Trades: 1
+Total Bars in Market: 33
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 15.30296700
+High Resolution Profit Factor: 1.99034464
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 60.60601237
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 137  Index DATE: 20180713  PL: 72.73000000%  PS: 27.27000000%  Trades: 11  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 28
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 6.42173204
+High Resolution Profit Factor: 4.23729550
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 71.42865379
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 148  Index DATE: 20171031  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 26
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 5.42579848
+High Resolution Profit Factor: 2.66533604
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 73.07698297
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 112  Index DATE: 20180705  PL: 82.35000000%  PS: 17.65000000%  Trades: 17  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.13635902
+PAL Profitability: 99.54729000%
+High Resolution Profitability: 86.36359419
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 110  Index DATE: 20171218  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 2 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.44502879
+PAL Profitability: 99.58183300%
+High Resolution Profitability: 81.81815929
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 129  Index DATE: 20180711  PL: 81.82000000%  PS: 18.18000000%  Trades: 11  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 13 BARS AGO
+AND LOW OF 13 BARS AGO > LOW OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 22
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 9.22653155
+High Resolution Profit Factor: 5.75942099
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 77.27270540
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 92  Index DATE: 20170911  PL: 85.71000000%  PS: 14.29000000%  Trades: 21  CL: 1 }
+
+IF LOW OF 7 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 43
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 9.57006896
+High Resolution Profit Factor: 2.63485543
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 65.11626128
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 18  Index DATE: 20170215  PL: 91.67000000%  PS: 8.33000000%  Trades: 12  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 40
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 4.41723712
+High Resolution Profit Factor: 2.31326723
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 57.49991444
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 14  Index DATE: 20180710  PL: 72.73000000%  PS: 27.27000000%  Trades: 33  CL: 3 }
+
+IF CLOSE OF 3 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 12
+Number of Losing Trades: 4
+Total Bars in Market: 47
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.01871555
+High Resolution Profit Factor: 2.22491883
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 63.82977747
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 106  Index DATE: 20180626  PL: 77.78000000%  PS: 22.22000000%  Trades: 18  CL: 3 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 37
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 4.36275449
+High Resolution Profit Factor: 2.12590307
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 59.45947203
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 10  Index DATE: 20170717  PL: 76.19000000%  PS: 23.81000000%  Trades: 21  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 27
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.60653648
+PAL Profitability: 99.56043600%
+High Resolution Profitability: 66.66655021
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 68  Index DATE: 20180208  PL: 75.00000000%  PS: 25.00000000%  Trades: 12  CL: 2 }
+
+IF CLOSE OF 10 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 6 BARS AGO
+AND OPEN OF 6 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 21
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 7.19249930
+High Resolution Profit Factor: 3.68192730
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 66.66664892
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 132  Index DATE: 20171130  PL: 78.79000000%  PS: 21.21000000%  Trades: 33  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 28
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 4.76562397
+High Resolution Profit Factor: 2.71823267
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 57.14288468
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 72  Index DATE: 20180821  PL: 76.47000000%  PS: 23.53000000%  Trades: 34  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 26
+Number of Winning Trades: 19
+Number of Losing Trades: 7
+Total Bars in Market: 74
+Percent Winners: 73.07692300%
+Percent Losers: 26.92307700%
+Profit Factor: 2.44770332
+High Resolution Profit Factor: 1.83456765
+PAL Profitability: 73.07692300%
+High Resolution Profitability: 58.33336661
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 44  Index DATE: 20180830  PL: 81.25000000%  PS: 18.75000000%  Trades: 16  CL: 1 }
+
+IF HIGH OF 9 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 8
+Number of Losing Trades: 3
+Total Bars in Market: 31
+Percent Winners: 72.72727300%
+Percent Losers: 27.27272700%
+Profit Factor: 2.99782525
+High Resolution Profit Factor: 2.55049996
+PAL Profitability: 72.72727300%
+High Resolution Profitability: 64.51607384
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 57  Index DATE: 20180508  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 12 BARS AGO > CLOSE OF 13 BARS AGO
+AND CLOSE OF 13 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 20
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 13.56390684
+PAL Profitability: 98.83369300%
+High Resolution Profitability: 64.99990738
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 57  Index DATE: 20170724  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 13
+Number of Losing Trades: 2
+Total Bars in Market: 59
+Percent Winners: 86.66666700%
+Percent Losers: 13.33333300%
+Profit Factor: 9.35598818
+High Resolution Profit Factor: 2.34298769
+PAL Profitability: 86.66666700%
+High Resolution Profitability: 61.01700416
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 26  Index DATE: 20180702  PL: 78.26000000%  PS: 21.74000000%  Trades: 23  CL: 2 }
+
+IF OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 12
+Number of Losing Trades: 4
+Total Bars in Market: 50
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.73941901
+High Resolution Profit Factor: 2.22271730
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 59.99992296
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 127  Index DATE: 20180223  PL: 81.82000000%  PS: 18.18000000%  Trades: 11  CL: 1 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > HIGH OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 25
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.30348349
+PAL Profitability: 99.52623900%
+High Resolution Profitability: 67.99994607
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 144  Index DATE: 20180126  PL: 75.47000000%  PS: 24.53000000%  Trades: 53  CL: 2 }
+
+IF CLOSE OF 4 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 41
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 3.28081154
+High Resolution Profit Factor: 1.91790277
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 58.53654610
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 7  Index DATE: 20180308  PL: 75.00000000%  PS: 25.00000000%  Trades: 32  CL: 2 }
+
+IF LOW OF 5 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 38
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 9.39443446
+High Resolution Profit Factor: 3.03031962
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 65.78942330
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 83  Index DATE: 20160915  PL: 76.47000000%  PS: 23.53000000%  Trades: 34  CL: 2 }
+
+IF HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 27
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.80957674
+High Resolution Profit Factor: 2.67131756
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 70.37038554
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 19  Index DATE: 20170608  PL: 75.00000000%  PS: 25.00000000%  Trades: 16  CL: 2 }
+
+IF OPEN OF 5 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > OPEN OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 12
+Number of Losing Trades: 1
+Total Bars in Market: 37
+Percent Winners: 92.30769200%
+Percent Losers: 7.69230800%
+Profit Factor: 9.91567324
+High Resolution Profit Factor: 3.56739978
+PAL Profitability: 92.30769200%
+High Resolution Profitability: 72.97295891
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 6  Index DATE: 20180807  PL: 75.86000000%  PS: 24.14000000%  Trades: 29  CL: 3 }
+
+IF HIGH OF 12 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 32
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 32.68060687
+High Resolution Profit Factor: 2.79747868
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 74.19359114
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 20  Index DATE: 20170616  PL: 73.33000000%  PS: 26.67000000%  Trades: 15  CL: 2 }
+
+IF CLOSE OF 4 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 39
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 5.30228864
+High Resolution Profit Factor: 2.34407462
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 61.53850189
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 38  Index DATE: 20180712  PL: 73.81000000%  PS: 26.19000000%  Trades: 42  CL: 3 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 12 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 34
+Number of Winning Trades: 24
+Number of Losing Trades: 10
+Total Bars in Market: 109
+Percent Winners: 70.58823500%
+Percent Losers: 29.41176500%
+Profit Factor: 2.80703642
+High Resolution Profit Factor: 2.03350362
+PAL Profitability: 70.58823500%
+High Resolution Profitability: 58.87848610
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 65  Index DATE: 20180402  PL: 73.33000000%  PS: 26.67000000%  Trades: 30  CL: 2 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 11
+Number of Losing Trades: 2
+Total Bars in Market: 37
+Percent Winners: 84.61538500%
+Percent Losers: 15.38461500%
+Profit Factor: 5.22963695
+High Resolution Profit Factor: 2.63149463
+PAL Profitability: 84.61538500%
+High Resolution Profitability: 72.97302176
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 11  Index DATE: 20180627  PL: 80.00000000%  PS: 20.00000000%  Trades: 20  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 12
+Number of Losing Trades: 2
+Total Bars in Market: 38
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.21436487
+High Resolution Profit Factor: 3.11334737
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 63.15792829
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 5  Index DATE: 20170103  PL: 90.91000000%  PS: 9.09000000%  Trades: 11  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 30
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.11324776
+PAL Profitability: 99.53744400%
+High Resolution Profitability: 60.00011363
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 54  Index DATE: 20171229  PL: 81.25000000%  PS: 18.75000000%  Trades: 16  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 12 BARS AGO
+AND CLOSE OF 12 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 8.04443344
+High Resolution Profit Factor: 5.61053941
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 82.60865334
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 84  Index DATE: 20171211  PL: 86.67000000%  PS: 13.33000000%  Trades: 15  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 30
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 3.59152246
+High Resolution Profit Factor: 2.68969310
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 69.99999716
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 32  Index DATE: 20180823  PL: 72.73000000%  PS: 27.27000000%  Trades: 11  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 12 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 26
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 6.91593127
+PAL Profitability: 99.27207400%
+High Resolution Profitability: 80.76921042
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 60  Index DATE: 20180703  PL: 80.00000000%  PS: 20.00000000%  Trades: 25  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 10
+Number of Losing Trades: 1
+Total Bars in Market: 36
+Percent Winners: 90.90909100%
+Percent Losers: 9.09090900%
+Profit Factor: 8.51071184
+High Resolution Profit Factor: 2.29771433
+PAL Profitability: 90.90909100%
+High Resolution Profitability: 62.85716841
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 38  Index DATE: 20170717  PL: 77.78000000%  PS: 22.22000000%  Trades: 18  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 43
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 4.38099372
+High Resolution Profit Factor: 2.53092780
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 65.11629982
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 62  Index DATE: 20180829  PL: 73.68000000%  PS: 26.32000000%  Trades: 38  CL: 3 }
+
+IF HIGH OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 20
+Number of Winning Trades: 15
+Number of Losing Trades: 5
+Total Bars in Market: 55
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.58106409
+High Resolution Profit Factor: 2.97696986
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 64.15095479
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 32  Index DATE: 20170809  PL: 78.95000000%  PS: 21.05000000%  Trades: 38  CL: 2 }
+
+IF CLOSE OF 9 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 51
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 5.07091340
+High Resolution Profit Factor: 2.75026080
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 62.74512996
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 150  Index DATE: 20170601  PL: 81.25000000%  PS: 18.75000000%  Trades: 16  CL: 1 }
+
+IF CLOSE OF 0 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 35
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.84123473
+High Resolution Profit Factor: 2.03678379
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 62.85714243
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 22  Index DATE: 20170822  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 1 }
+
+IF OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > OPEN OF 6 BARS AGO
+AND OPEN OF 6 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 23
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 3.60354414
+High Resolution Profit Factor: 2.63982802
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 60.86956716
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 146  Index DATE: 20170922  PL: 74.07000000%  PS: 25.93000000%  Trades: 54  CL: 2 }
+
+IF CLOSE OF 2 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 40
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 9.06527719
+High Resolution Profit Factor: 3.04725316
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 67.49999336
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 22  Index DATE: 20170327  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 2 }
+
+IF CLOSE OF 0 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 50
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.53890444
+High Resolution Profit Factor: 1.63130676
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 55.10207256
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 48  Index DATE: 20180813  PL: 78.57000000%  PS: 21.43000000%  Trades: 14  CL: 2 }
+
+IF CLOSE OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > OPEN OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 37
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 6.21328908
+High Resolution Profit Factor: 2.18577498
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 52.77766172
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 25  Index DATE: 20180828  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF HIGH OF 7 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 25
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.84728268
+PAL Profitability: 99.56319100%
+High Resolution Profitability: 71.99992868
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 35  Index DATE: 20180411  PL: 86.67000000%  PS: 13.33000000%  Trades: 15  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 29
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.61021418
+High Resolution Profit Factor: 2.03848270
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 58.62078313
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 135  Index DATE: 20180716  PL: 73.53000000%  PS: 26.47000000%  Trades: 34  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 20
+Number of Winning Trades: 16
+Number of Losing Trades: 4
+Total Bars in Market: 74
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 3.58543272
+High Resolution Profit Factor: 2.20174437
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 63.01367459
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 8  Index DATE: 20170412  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 2 }
+
+IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 26
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 8.29954326
+High Resolution Profit Factor: 4.33976328
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 84.61539219
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 46  Index DATE: 20180820  PL: 73.08000000%  PS: 26.92000000%  Trades: 52  CL: 3 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 36
+Number of Winning Trades: 27
+Number of Losing Trades: 9
+Total Bars in Market: 113
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.09718534
+High Resolution Profit Factor: 1.65997863
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 60.71428948
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 10  Index DATE: 20180620  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 35
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.04335290
+High Resolution Profit Factor: 2.36270233
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 68.57141334
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 57  Index DATE: 20180822  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > LOW OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 21
+Number of Winning Trades: 18
+Number of Losing Trades: 3
+Total Bars in Market: 68
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 4.55731685
+High Resolution Profit Factor: 2.33743229
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 65.67158987
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 80  Index DATE: 20180514  PL: 90.00000000%  PS: 10.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 13 BARS AGO
+AND LOW OF 13 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.21819360
+PAL Profitability: 99.58315600%
+High Resolution Profitability: 68.18174971
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 79  Index DATE: 20180531  PL: 73.33000000%  PS: 26.67000000%  Trades: 15  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 31
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 6.74692535
+High Resolution Profit Factor: 2.17333197
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 64.51615400
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 54  Index DATE: 20180416  PL: 75.00000000%  PS: 25.00000000%  Trades: 24  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 11
+Number of Losing Trades: 2
+Total Bars in Market: 35
+Percent Winners: 84.61538500%
+Percent Losers: 15.38461500%
+Profit Factor: 5.81587542
+High Resolution Profit Factor: 3.12966921
+PAL Profitability: 84.61538500%
+High Resolution Profitability: 68.57148553
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 46  Index DATE: 20180423  PL: 82.35000000%  PS: 17.65000000%  Trades: 17  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 34
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 5.16879410
+High Resolution Profit Factor: 2.73823296
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 66.66663859
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 42  Index DATE: 20180817  PL: 73.91000000%  PS: 26.09000000%  Trades: 46  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 11 BARS AGO
+AND HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 12 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 22
+Number of Winning Trades: 15
+Number of Losing Trades: 7
+Total Bars in Market: 73
+Percent Winners: 68.18181800%
+Percent Losers: 31.81818200%
+Profit Factor: 2.65953262
+High Resolution Profit Factor: 2.02412244
+PAL Profitability: 68.18181800%
+High Resolution Profitability: 56.94444909
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 25  Index DATE: 20180410  PL: 92.86000000%  PS: 7.14000000%  Trades: 14  CL: 1 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 29
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 2.87706138
+High Resolution Profit Factor: 2.33076685
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 62.06897559
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 37  Index DATE: 20180424  PL: 78.57000000%  PS: 21.43000000%  Trades: 14  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 11
+Number of Losing Trades: 3
+Total Bars in Market: 34
+Percent Winners: 78.57142900%
+Percent Losers: 21.42857100%
+Profit Factor: 5.30856576
+High Resolution Profit Factor: 2.94952314
+PAL Profitability: 78.57142800%
+High Resolution Profitability: 70.58825548
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 74  Index DATE: 20180830  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 3 }
+
+IF HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 3 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 13
+Number of Losing Trades: 2
+Total Bars in Market: 45
+Percent Winners: 86.66666700%
+Percent Losers: 13.33333300%
+Profit Factor: 5.28933818
+High Resolution Profit Factor: 2.19623370
+PAL Profitability: 86.66666700%
+High Resolution Profitability: 68.18181395
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 149  Index DATE: 20170531  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF CLOSE OF 1 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 35
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 5.84123473
+High Resolution Profit Factor: 2.03678379
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 62.85714243
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 19  Index DATE: 20171218  PL: 73.08000000%  PS: 26.92000000%  Trades: 26  CL: 2 }
+
+IF CLOSE OF 4 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 32
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.13016603
+High Resolution Profit Factor: 2.25255987
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 54.83874525
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 21  Index DATE: 20180525  PL: 77.27000000%  PS: 22.73000000%  Trades: 22  CL: 1 }
+
+IF CLOSE OF 0 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 21
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.84086119
+PAL Profitability: 99.44142300%
+High Resolution Profitability: 84.99999369
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 18  Index DATE: 20180405  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 2 }
+
+IF CLOSE OF 10 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 13 BARS AGO
+AND OPEN OF 13 BARS AGO > CLOSE OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 43
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 4.25759445
+High Resolution Profit Factor: 2.07288439
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 58.53664090
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 60  Index DATE: 20180710  PL: 84.21000000%  PS: 15.79000000%  Trades: 19  CL: 1 }
+
+IF CLOSE OF 0 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 30
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 6.97398376
+High Resolution Profit Factor: 2.35961421
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 66.66661666
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 59  Index DATE: 20180319  PL: 78.57000000%  PS: 21.43000000%  Trades: 14  CL: 1 }
+
+IF CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 13 BARS AGO
+AND CLOSE OF 13 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 21
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 10.28493352
+High Resolution Profit Factor: 5.67817378
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 71.42856237
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 74  Index DATE: 20180823  PL: 83.87000000%  PS: 16.13000000%  Trades: 31  CL: 3 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 12 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 27
+Number of Winning Trades: 20
+Number of Losing Trades: 7
+Total Bars in Market: 81
+Percent Winners: 74.07407400%
+Percent Losers: 25.92592600%
+Profit Factor: 2.98671614
+High Resolution Profit Factor: 2.05925537
+PAL Profitability: 74.07407400%
+High Resolution Profitability: 62.02535371
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 80  Index DATE: 20180313  PL: 72.97000000%  PS: 27.03000000%  Trades: 37  CL: 3 }
+
+IF OPEN OF 0 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 11
+Number of Losing Trades: 3
+Total Bars in Market: 30
+Percent Winners: 78.57142900%
+Percent Losers: 21.42857100%
+Profit Factor: 3.41814203
+High Resolution Profit Factor: 3.27624420
+PAL Profitability: 78.57142900%
+High Resolution Profitability: 80.00001133
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 24  Index DATE: 20170830  PL: 78.95000000%  PS: 21.05000000%  Trades: 19  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.40805460 %
+AND STOP LOSS AT ENTRY PRICE - 0.54141050 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.76851834
+PAL Profitability: 99.57030900%
+High Resolution Profitability: 81.81823363
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 86  Index DATE: 20180821  PL: 28.57000000%  PS: 71.43000000%  Trades: 21  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 35
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 4.29450030
+High Resolution Profit Factor: 2.85656988
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 61.76470592
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 30  Index DATE: 20171218  PL: 30.77000000%  PS: 69.23000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 21
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.61525032
+High Resolution Profit Factor: 3.60281067
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 66.66668980
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 20  Index DATE: 20180418  PL: 29.41000000%  PS: 70.59000000%  Trades: 17  CL: 1 }
+
+IF OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 6
+Number of Losing Trades: 2
+Total Bars in Market: 30
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 4.95342293
+High Resolution Profit Factor: 2.70175753
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 63.33331837
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 11  Index DATE: 20180725  PL: 24.14000000%  PS: 75.86000000%  Trades: 29  CL: 2 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 26
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.84121772
+PAL Profitability: 99.46375100%
+High Resolution Profitability: 61.53850152
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 56  Index DATE: 20170710  PL: 30.77000000%  PS: 69.23000000%  Trades: 13  CL: 2 }
+
+IF CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 13
+Number of Losing Trades: 2
+Total Bars in Market: 34
+Percent Winners: 86.66666700%
+Percent Losers: 13.33333300%
+Profit Factor: 6.68747737
+High Resolution Profit Factor: 5.14187176
+PAL Profitability: 86.66666700%
+High Resolution Profitability: 88.23531640
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 49  Index DATE: 20180205  PL: 26.67000000%  PS: 73.33000000%  Trades: 15  CL: 3 }
+
+IF HIGH OF 11 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 32
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 4.02363010
+High Resolution Profit Factor: 2.49323428
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 67.74192166
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 42  Index DATE: 20170601  PL: 23.53000000%  PS: 76.47000000%  Trades: 17  CL: 2 }
+
+IF HIGH OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 7
+Number of Losing Trades: 0
+Total Bars in Market: 21
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.30339046
+PAL Profitability: 99.45519200%
+High Resolution Profitability: 66.66663589
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 34  Index DATE: 20180625  PL: 30.77000000%  PS: 69.23000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 0 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 7.21764053
+High Resolution Profit Factor: 2.96800562
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 63.15788952
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 85  Index DATE: 20180608  PL: 28.57000000%  PS: 71.43000000%  Trades: 21  CL: 1 }
+
+IF CLOSE OF 4 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 28
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.21304943
+High Resolution Profit Factor: 2.53602757
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 60.71431066
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 2  Index DATE: 20161216  PL: 30.77000000%  PS: 69.23000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 6
+Number of Losing Trades: 3
+Total Bars in Market: 32
+Percent Winners: 66.66666700%
+Percent Losers: 33.33333300%
+Profit Factor: 4.40733081
+High Resolution Profit Factor: 2.54252492
+PAL Profitability: 66.66666700%
+High Resolution Profitability: 59.37506993
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 20  Index DATE: 20180320  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 1 }
+
+IF CLOSE OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 7.66352502
+High Resolution Profit Factor: 3.32878506
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 73.91306605
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 56  Index DATE: 20180202  PL: 33.33000000%  PS: 66.67000000%  Trades: 21  CL: 2 }
+
+IF CLOSE OF 9 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 12
+Number of Losing Trades: 3
+Total Bars in Market: 34
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 6.64068659
+High Resolution Profit Factor: 4.69330364
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 67.64707364
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 5  Index DATE: 20180222  PL: 28.57000000%  PS: 71.43000000%  Trades: 21  CL: 1 }
+
+IF HIGH OF 9 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 32
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.63653267
+High Resolution Profit Factor: 2.40951973
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 71.87505181
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 77  Index DATE: 20170517  PL: 23.08000000%  PS: 76.92000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.03328923
+PAL Profitability: 99.47851100%
+High Resolution Profitability: 71.42855801
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 54  Index DATE: 20180717  PL: 25.00000000%  PS: 75.00000000%  Trades: 20  CL: 2 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 27
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 6.85561265
+High Resolution Profit Factor: 2.46307972
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 60.00004775
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 33  Index DATE: 20180606  PL: 29.41000000%  PS: 70.59000000%  Trades: 17  CL: 2 }
+
+IF CLOSE OF 9 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 28
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 4.63517221
+High Resolution Profit Factor: 2.47455015
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 59.25934395
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 126  Index DATE: 20180228  PL: 15.38000000%  PS: 84.62000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > HIGH OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 10.05941786
+High Resolution Profit Factor: 3.81694743
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 65.21732540
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 72  Index DATE: 20180802  PL: 33.33000000%  PS: 66.67000000%  Trades: 15  CL: 2 }
+
+IF LOW OF 4 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 18
+Number of Winning Trades: 13
+Number of Losing Trades: 5
+Total Bars in Market: 46
+Percent Winners: 72.22222200%
+Percent Losers: 27.77777800%
+Profit Factor: 2.58977122
+High Resolution Profit Factor: 1.98597808
+PAL Profitability: 72.22222200%
+High Resolution Profitability: 62.22215703
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 76  Index DATE: 20180606  PL: 33.33000000%  PS: 66.67000000%  Trades: 27  CL: 3 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 12
+Number of Losing Trades: 1
+Total Bars in Market: 38
+Percent Winners: 92.30769200%
+Percent Losers: 7.69230800%
+Profit Factor: 10.99359081
+High Resolution Profit Factor: 2.80110715
+PAL Profitability: 92.30769200%
+High Resolution Profitability: 62.16210165
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 43  Index DATE: 20180223  PL: 32.00000000%  PS: 68.00000000%  Trades: 25  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 29
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 10.20116994
+High Resolution Profit Factor: 3.69039950
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 71.42857005
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 64  Index DATE: 20180612  PL: 27.27000000%  PS: 72.73000000%  Trades: 11  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 21
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 8.27533479
+High Resolution Profit Factor: 4.03441979
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 76.19052992
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 11  Index DATE: 20171117  PL: 30.00000000%  PS: 70.00000000%  Trades: 10  CL: 2 }
+
+IF OPEN OF 10 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 13
+Number of Losing Trades: 2
+Total Bars in Market: 46
+Percent Winners: 86.66666700%
+Percent Losers: 13.33333300%
+Profit Factor: 8.59117913
+High Resolution Profit Factor: 4.07367631
+PAL Profitability: 86.66666700%
+High Resolution Profitability: 69.56520748
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 57  Index DATE: 20170509  PL: 20.00000000%  PS: 80.00000000%  Trades: 20  CL: 1 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 1 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 23
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 6.39360837
+High Resolution Profit Factor: 4.24445808
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 69.56517589
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 148  Index DATE: 20170306  PL: 20.00000000%  PS: 80.00000000%  Trades: 10  CL: 1 }
+
+IF LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 30
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 5.65282630
+High Resolution Profit Factor: 2.41928100
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 66.66669680
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 52  Index DATE: 20180423  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 1 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 5
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 7.29823398
+High Resolution Profit Factor: 2.49928573
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 64.99998798
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 90  Index DATE: 20180821  PL: 20.00000000%  PS: 80.00000000%  Trades: 20  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 32
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.96238680
+High Resolution Profit Factor: 2.66920410
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 58.06452316
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 128  Index DATE: 20170626  PL: 32.14000000%  PS: 67.86000000%  Trades: 28  CL: 2 }
+
+IF CLOSE OF 0 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 8
+Number of Losing Trades: 3
+Total Bars in Market: 39
+Percent Winners: 72.72727300%
+Percent Losers: 27.27272700%
+Profit Factor: 5.01290590
+High Resolution Profit Factor: 2.46359761
+PAL Profitability: 72.72727300%
+High Resolution Profitability: 65.78944658
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 58  Index DATE: 20170223  PL: 26.67000000%  PS: 73.33000000%  Trades: 15  CL: 2 }
+
+IF HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 4
+Number of Losing Trades: 2
+Total Bars in Market: 23
+Percent Winners: 66.66666700%
+Percent Losers: 33.33333300%
+Profit Factor: 5.16191192
+High Resolution Profit Factor: 3.14928187
+PAL Profitability: 66.66666700%
+High Resolution Profitability: 59.09093619
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 1  Index DATE: 20180802  PL: 33.33000000%  PS: 66.67000000%  Trades: 15  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 18
+Number of Winning Trades: 13
+Number of Losing Trades: 5
+Total Bars in Market: 46
+Percent Winners: 72.22222200%
+Percent Losers: 27.77777800%
+Profit Factor: 2.58977122
+High Resolution Profit Factor: 1.98597808
+PAL Profitability: 72.22222200%
+High Resolution Profitability: 62.22215703
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 86  Index DATE: 20171116  PL: 30.00000000%  PS: 70.00000000%  Trades: 30  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 6 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 28
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 5.91700184
+High Resolution Profit Factor: 3.49519692
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 64.28566719
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 76  Index DATE: 20180503  PL: 30.00000000%  PS: 70.00000000%  Trades: 10  CL: 2 }
+
+IF HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 31
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 7.01067634
+High Resolution Profit Factor: 3.34041522
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 67.74192703
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 54  Index DATE: 20180322  PL: 28.57000000%  PS: 71.43000000%  Trades: 21  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 28
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 8.16060447
+High Resolution Profit Factor: 6.54900005
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 74.99998640
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 35  Index DATE: 20180716  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 1 }
+
+IF CLOSE OF 3 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 7
+Number of Winning Trades: 6
+Number of Losing Trades: 1
+Total Bars in Market: 27
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 6.85561265
+High Resolution Profit Factor: 2.46307972
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 60.00004775
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 36  Index DATE: 20180228  PL: 27.27000000%  PS: 72.73000000%  Trades: 11  CL: 1 }
+
+IF CLOSE OF 12 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 6
+Number of Losing Trades: 2
+Total Bars in Market: 31
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 5.36845787
+High Resolution Profit Factor: 2.48561622
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 58.06453458
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 9  Index DATE: 20180828  PL: 33.33000000%  PS: 66.67000000%  Trades: 45  CL: 3 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 31
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 6.08382948
+High Resolution Profit Factor: 2.68203127
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 45.16131493
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 36  Index DATE: 20170526  PL: 16.67000000%  PS: 83.33000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 6 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 5
+Number of Losing Trades: 1
+Total Bars in Market: 24
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 18.90064982
+High Resolution Profit Factor: 8.60161626
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 62.50007014
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 89  Index DATE: 20180821  PL: 23.53000000%  PS: 76.47000000%  Trades: 17  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 11.25107917
+High Resolution Profit Factor: 5.35656269
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 75.00000648
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 67  Index DATE: 20170510  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 1 }
+
+IF CLOSE OF 8 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 8
+Number of Losing Trades: 3
+Total Bars in Market: 30
+Percent Winners: 72.72727300%
+Percent Losers: 27.27272700%
+Profit Factor: 3.76308212
+High Resolution Profit Factor: 2.70172573
+PAL Profitability: 72.72727300%
+High Resolution Profitability: 73.33327123
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 30  Index DATE: 20180724  PL: 31.82000000%  PS: 68.18000000%  Trades: 22  CL: 4 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 20
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.17873705
+High Resolution Profit Factor: 3.20931269
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 70.00004388
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 97  Index DATE: 20170202  PL: 23.08000000%  PS: 76.92000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 21
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 3.79042779
+High Resolution Profit Factor: 3.19420808
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 71.42860420
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 73  Index DATE: 20170203  PL: 23.08000000%  PS: 76.92000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 6 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 6
+Number of Losing Trades: 2
+Total Bars in Market: 20
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 3.96197388
+High Resolution Profit Factor: 2.71498123
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 59.99998418
+===================================
+
+
+
+Surviving Pattern:
+
+{File:LQD_IS.txt  Index: 67  Index DATE: 20180122  PL: 26.67000000%  PS: 73.33000000%  Trades: 15  CL: 4 }
+
+IF CLOSE OF 7 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 0.48140590 %
+AND STOP LOSS AT ENTRY PRICE + 0.45751210 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 9
+Number of Losing Trades: 3
+Total Bars in Market: 32
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 5.88904603
+High Resolution Profit Factor: 3.80521018
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 65.62500071
+===================================
+
+
+

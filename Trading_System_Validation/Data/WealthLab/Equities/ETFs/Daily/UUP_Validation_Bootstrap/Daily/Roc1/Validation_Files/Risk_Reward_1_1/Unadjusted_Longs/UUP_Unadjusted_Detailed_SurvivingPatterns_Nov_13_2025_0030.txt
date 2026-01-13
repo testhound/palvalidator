@@ -1,0 +1,227 @@
+=== VALIDATION SUMMARY ===
+Security Ticker: UUP
+Validation Method: Unadjusted
+Computation Policy: BootStrappedLogProfitFactorPolicy
+Out-of-Sample Range: 2018-Oct-30 15:00:00 to 2025-Sep-02 15:00:00
+Number of Permutations: 10000
+P-Value Threshold: 0.05000000
+Total Surviving Strategies (Performance Filtered): 7
+===========================
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 7  Index DATE: 20171003  PL: 71.43000000%  PS: 28.57000000%  Trades: 21  CL: 2 }
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > OPEN OF 8 BARS AGO
+AND OPEN OF 8 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 7.50502216
+PAL Profitability: 99.28889400%
+High Resolution Profitability: 70.00001912
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 76  Index DATE: 20161216  PL: 69.23000000%  PS: 30.77000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 34
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 6.13675571
+PAL Profitability: 99.31737000%
+High Resolution Profitability: 77.41930085
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 109  Index DATE: 20180430  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 12 BARS AGO
+AND HIGH OF 12 BARS AGO > HIGH OF 13 BARS AGO
+AND HIGH OF 13 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > LOW OF 13 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 11
+Number of Losing Trades: 0
+Total Bars in Market: 48
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.09223234
+PAL Profitability: 99.37296500%
+High Resolution Profitability: 80.85107523
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 74  Index DATE: 20180104  PL: 71.43000000%  PS: 28.57000000%  Trades: 28  CL: 2 }
+
+IF HIGH OF 12 BARS AGO > LOW OF 12 BARS AGO
+AND LOW OF 12 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 12
+Number of Losing Trades: 2
+Total Bars in Market: 64
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 13.64411128
+High Resolution Profit Factor: 2.61701232
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 63.79311926
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 26  Index DATE: 20180413  PL: 75.00000000%  PS: 25.00000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 7 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 29
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.83585353
+PAL Profitability: 99.34195000%
+High Resolution Profitability: 70.37034175
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 63  Index DATE: 20180822  PL: 73.33000000%  PS: 26.67000000%  Trades: 15  CL: 1 }
+
+IF CLOSE OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 28
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 7.46387627
+High Resolution Profit Factor: 3.76127562
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 74.07402983
+===================================
+
+
+
+Surviving Pattern:
+
+{File:UUP_IS.txt  Index: 85  Index DATE: 20181023  PL: 75.00000000%  PS: 25.00000000%  Trades: 32  CL: 2 }
+
+IF CLOSE OF 1 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 0.59856200 %
+AND STOP LOSS AT ENTRY PRICE - 0.66362500 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 48
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 10.76260920
+High Resolution Profit Factor: 2.89491173
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 68.18186840
+===================================
+
+
+

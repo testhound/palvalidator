@@ -1,0 +1,243 @@
+Strategy Median holding period = 2
+   [Bootstrap] n=25  skew=1.52699  exkurt=4.40334  heavy_tails=yes
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=20  L=3  effB(mn)=25000  LB(per)=0.00635913  LB(ann)=3.94030467
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=25  m_inner=23  L=3  effB=25000  LB=0.00264797
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=25 L=3  skew=1.527 exkurt=4.403  heavy_tails=yes  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     210.29296700%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=394.03046700% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=562.71700200%, rel=0.588); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 1781 baseline (L=3): per-period Geo LB=0.66869900%, annualized Geo LB=436.29397000%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=0.74470000%, ann=548.62906300%;  L=3 (base);   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.004  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=0.58163000%, ann=331.22575400%;
+   [ROBUST] L-sensitivity PASS (high variability relVar=0.396 but base LB comfortably above hurdle).
+   [ROBUST] Split-sample SKIP (n=25 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-1.46587800%, ES05=-2.14964300%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 2.19× your conservative per-period edge; average of bad days (ES05) ≈ 3.21×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=25 => L_cap=4
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=2
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=25000  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+        L=2 [SmallN: StationaryMaskValueResamplerAdapter(small L), m_sub=20, L_small=2] → Ann GM LB = 495.43786500%
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+        L=3 [SmallN: StationaryMaskValueResamplerAdapter(small L), m_sub=20, L_small=3] → Ann GM LB = 430.93477600%
+   [Bootstrap] m_sub=20  n=25  m/n=0.800  shrink=0.200
+   [Diag] m/n σ(per-period)≈ 0.007  var≈ 0.004  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.006  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+        L=4 [SmallN: StationaryMaskValueResamplerAdapter(small L), m_sub=20, L_small=3] → Ann GM LB = 430.93477600%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 495.43786500%  (PASS)
+        L=3: Ann GM LB = 430.93477600%  (PASS)
+        L=4: Ann GM LB = 430.93477600%  (PASS)
+        → pass fraction = 100.000%, min LB at L=3, min LB = 430.93477600%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=3, min LB=430.93477600% (hurdle=8.00000000%), relVar=0.005, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 687.12957700% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 1098.25916700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 2676.37257800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 962.50641300% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 730.24060800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 71467.64759800% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 319560.29988700% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 13205.29145000% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 72500.96012500% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 71467.64759800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 95450.64 bps | flips=0 | max |ΔLB| = 318462.04%
+   [ADVISORY/FragileEdge] action=Downweight (policy=Downweight), n=25, Q05=-1.46587800% , ES05_raw=-2.14964300% , ES05_smooth=-1.87613700% , λ=0.40, relVar=0.00, lbAnn=210.29296700% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Advisory downweight: severe tails (ES05/Q05); small sample
+✓ Strategy passed: PAL Long Strategy 1781 (Lower Bound = 210.29296700% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 210.29296700%, Mean = 956.74746900%
+
+Strategy Median holding period = 2
+   [Bootstrap] n=34  skew=0.10  exkurt=-0.39  heavy_tails=no
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.004  var≈ 0.002  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=28  L=3  effB(mn)=25000  LB(per)=0.01308899  LB(ann)=25.49684011
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=34  m_inner=32  L=3  effB=25000  LB=0.01414157
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=34 L=3  skew=0.104 exkurt=-0.393  heavy_tails=no  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     2920.18467300%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=2549.68401100% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=967.37379500%, rel=0.275); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.004  var≈ 0.002  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 2532 baseline (L=3): per-period Geo LB=1.32701600%, annualized Geo LB=2671.81224900%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=1.26770900%, ann=2291.59815300%;  L=3 (base);   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=1.28862900%, ann=2419.38519100%;
+   [ROBUST] L-sensitivity PASS (relVar=0.142)
+   [ROBUST] Split-sample SKIP (n=34 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-2.24519300%, ES05=-3.67762800%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 1.69× your conservative per-period edge; average of bad days (ES05) ≈ 2.77×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=34 => L_cap=4
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=2
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=2)
+        L=2 [SmallN: IIDResampler, m_sub=28, L_small=2] → Ann GM LB = 1569.06823600%
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=3 [SmallN: IIDResampler, m_sub=28, L_small=3] → Ann GM LB = 1659.88334800%
+   [Bootstrap] m_sub=28  n=34  m/n=0.824  shrink=0.176
+   [Diag] m/n σ(per-period)≈ 0.006  var≈ 0.004  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=4 [SmallN: IIDResampler, m_sub=28, L_small=3] → Ann GM LB = 1659.88334800%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 1569.06823600%  (PASS)
+        L=3: Ann GM LB = 1659.88334800%  (PASS)
+        L=4: Ann GM LB = 1659.88334800%  (PASS)
+        → pass fraction = 100.000%, min LB at L=2, min LB = 1569.06823600%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=2, min LB=1569.06823600% (hurdle=8.00000000%), relVar=0.001, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 3751.05162300% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 1828.68374600% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 7837.17733500% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 3540.05389400% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 3913.25648200% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 5811.11313100% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 3092.62198100% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 9268.76039800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 5033.84827400% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 5586.97081800% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 374305.16 bps | flips=0 | max |ΔLB| = 2060.06%
+   [ADVISORY/FragileEdge] action=Keep (policy=Keep), n=34, Q05=-2.24519300% , ES05_raw=-3.67762800% , ES05_smooth=-3.62033100% , λ=0.04, relVar=0.00, lbAnn=2920.18467300% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Robust enough to keep at full weight
+✓ Strategy passed: PAL Long Strategy 2532 (Lower Bound = 2920.18467300% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 2920.18467300%, Mean = 3517.05780600%
+
+Strategy Median holding period = 2
+   [Bootstrap] n=26  skew=0.21  exkurt=-0.44  heavy_tails=no
+   [Bootstrap] L=3
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.001  effB=25000  L=3
+   [Diag] BCa σ(per-period)≈ 0.003  var≈ 0.001  effB=25000  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [Bootstrap] m-out-of-n ∧ BCa (conservative small-N):  resampler=StationaryMaskValueResamplerAdapter(small L)  m_sub=21  L=3  effB(mn)=25000  LB(per)=0.01174259  LB(ann)=17.95169858
+   [Bootstrap] Percentile-t:  resampler=StationaryMaskValueResamplerAdapter(small L)  m_outer=26  m_inner=24  L=3  effB=25000  LB=0.01268401
+   [Bootstrap] Conservative LB construction policy = policy: smallN(min of m/n,BCa) ⊕ percentile-t (median of present)  | n=26 L=3  skew=0.214 exkurt=-0.438  heavy_tails=no  SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  L_small=3
+   [Bootstrap] Annualization factor = 252.000
+      [CostHurdle/Strategy]
+         OOS spreads: mean=0.04385200%, Qn=0.02451000%
+         Hurdles (%): Base=8.00000000%, +1·Qn=8.00000000%
+         LB (%):     2030.85519200%
+         Gate:       PASS (LB > Base and > +1·Qn)
+         Driver:     Risk-free (RF dominates)  [RF=8.00000000%]
+      → Gate: PASS vs cost-stressed hurdles.
+   [Pipeline] Bootstrap gate (annualized, near-hurdle aware): GeoLB=2295.72004300% vs Hurdle=8.00000000% → PASS
+   [FLAG] Large AM vs GM divergence (abs=220.90663300%, rel=0.088); running robustness checks (also triggered by small-sample)...
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.002  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.003  var≈ 0.001  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+   [ROBUST] PAL Long Strategy 2390 baseline (L=3): per-period Geo LB=1.18329400%, annualized Geo LB=1838.30021300%  [SmallN]
+   [ROBUST] L-sensitivity:   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.002  effB=1200  L=2
+   [Diag] BCa σ(per-period)≈ 0.004  var≈ 0.001  effB=1200  L=2
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=2)
+  L=2 → per=1.09705300%, ann=1463.51118500%;  L=3 (base);   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.004  var≈ 0.001  effB=1200  L=3
+   [Diag] BCa σ(per-period)≈ 0.003  var≈ 0.001  effB=1200  L=3
+   [Bootstrap] SmallNResampler=StationaryMaskValueResamplerAdapter(small L)  (L_small=3)
+  L=4 → per=1.18690700%, ann=1855.81998100%;
+   [ROBUST] L-sensitivity PASS (relVar=0.211)
+   [ROBUST] Split-sample SKIP (n=26 < 40)
+   [ROBUST] Tail risk (alpha=0.050): q05=-1.75764400%, ES05=-2.23772300%, severe=no, borderline=no
+      • Tail-risk context: a 5% bad day (q05) is about 1.49× your conservative per-period edge; average of bad days (ES05) ≈ 1.89×.
+        (Heuristic: flag 'severe' when q05 exceeds 3.00× the per-period GM lower bound.)
+   [ROBUST] All checks PASS → ThumbsUp.
+   [FLAG] Robustness checks PASSED.
+      [L-cap] medHold=2, base=2, buf=1, n=26 => L_cap=4
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=2
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=2)
+        L=2 [SmallN: IIDResampler, m_sub=21, L_small=2] → Ann GM LB = 832.59509000%
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=3 [SmallN: IIDResampler, m_sub=21, L_small=3] → Ann GM LB = 817.90352400%
+   [Bootstrap] m_sub=21  n=26  m/n=0.808  shrink=0.192
+   [Diag] m/n σ(per-period)≈ 0.005  var≈ 0.003  effB=25000  L=1
+   [Diag] BCa σ(per-period)≈ 0.005  var≈ 0.002  effB=25000  L=3
+   [Bootstrap] SmallNResampler=IIDResampler  (L_small=3)
+        L=4 [SmallN: IIDResampler, m_sub=21, L_small=3] → Ann GM LB = 817.90352400%
+      [L-grid] Tested L = 2, 3, 4
+        L=2: Ann GM LB = 832.59509000%  (PASS)
+        L=3: Ann GM LB = 817.90352400%  (PASS)
+        L=4: Ann GM LB = 817.90352400%  (PASS)
+        → pass fraction = 100.000%, min LB at L=3, min LB = 817.90352400%
+      [L-grid] tested=3, passed=3 (100.000%; threshold=80.000%), min LB at L=3, min LB=817.90352400% (hurdle=8.00000000%), relVar=0.000, L_cap=4 → decision: PASS
+   [RegimeMix] LongRun weights (shrunk 25%, floored 1%): (0.33, 0.33, 0.34)
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 219.85663500% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 383.21306200% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 706.75600800% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 162.32090500% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 268.37681500% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Equal(0.33,0.33,0.33) → Ann GM LB = 3245.72802600% (PASS)
+      [RegimeMix] MidVolFav(0.25,0.50,0.25) → Ann GM LB = 3436.32100100% (PASS)
+      [RegimeMix] LowVolFav(0.50,0.35,0.15) → Ann GM LB = 3255.76208200% (PASS)
+      [RegimeMix] EvenMinusHV(0.35,0.35,0.30) → Ann GM LB = 3273.73129100% (PASS)
+      [RegimeMix] LongRun(0.33,0.33,0.34) → Ann GM LB = 3178.76519200% (PASS)
+        → regime-mix pass fraction = 100.00%, decision: PASS
+      [RegimeMix] Gate=AND (+forgiveness 50.00bps): stationary=PASS fixed-L=PASS | stationary median over hurdle = 26037.68 bps | flips=0 | max |ΔLB| = 3111.41%
+   [ADVISORY/FragileEdge] action=Downweight (policy=Downweight), n=26, Q05=-1.75764400% , ES05_raw=-2.23772300% , ES05_smooth=-2.06489500% , λ=0.36, relVar=0.00, lbAnn=2030.85519200% , hurdle=8.00000000% , nearHurdle=false, highRelVar=false → Advisory downweight: small sample
+✓ Strategy passed: PAL Long Strategy 2390 (Lower Bound = 2030.85519200% > Required Return = 8.00000000%)  [Block L=3]
+   ↳ Lower bounds (annualized): GeoMean = 2030.85519200%, Mean = 2516.62667600%
+

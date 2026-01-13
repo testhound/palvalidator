@@ -1,0 +1,1391 @@
+using WealthLab.Backtest;
+using System;
+using WealthLab.Core;
+using WealthLab.Data;
+using WealthLab.Indicators;
+using System.Collections.Generic;
+namespace WealthScript1
+{
+    public class Diversity_TQQQ_2025 : UserStrategyBase
+    {
+        // Max Risk % stop configuration (percent units)
+        private double mLongStopPercent = 4.30502300;
+        private double mShortStopPercent = 3.65887660;
+        //constructor
+        public Diversity_TQQQ_2025()
+        {
+            paramEnablePyramiding = AddParameter("Enable Pyramiding", ParameterType.Int32, 0, 0, 1, 1);
+            paramMaxPyramids     = AddParameter("Max Pyramids (adds)", ParameterType.Int32, 3, 0, 10, 1);
+            paramMaxHold        = AddParameter("Max Hold Period", ParameterType.Int32, 8, 5, 50, 5);
+            paramSkipIfBothSides = AddParameter("Skip if Long & Short fire (flat)", ParameterType.Int32, 1, 0, 1, 1);
+        }
+        //create indicators and other objects here, this is executed prior to the main trading loop
+        public override void Initialize(BarHistory bars)
+        {
+            // Start as early as possible; per-pattern guards will ensure safe access.
+            StartIndex = 0;
+        }
+        //execute the strategy rules here, this is executed once for each bar in the backtest history
+        public override void Execute(BarHistory bars, int idx)
+        {
+            //determine if we should check to go long or short
+            bool allowPyramid = (paramEnablePyramiding.AsInt == 0) ? false : true;
+            int maxAdds = paramMaxPyramids.AsInt;
+            int allowedTotal = 1 + maxAdds; // initial + additional pyramids
+            int openLong = 0, openShort = 0;
+            foreach (Position p in OpenPositions)
+            {
+                if (!ReferenceEquals(p.Bars, bars)) continue; // per-symbol count only
+                if (p.PositionType == PositionType.Long) openLong++;
+                else if (p.PositionType == PositionType.Short) openShort++;
+            }
+            bool hasAny = (openLong + openShort) > 0;
+            bool goLong = false, goShort = false;
+            if (!allowPyramid)
+            {
+                goLong = !hasAny;
+                goShort = !hasAny;
+            }
+            else
+            {
+                if (openLong > 0 && openShort == 0)
+                {
+                    goLong = openLong < allowedTotal;
+                    goShort = false;
+                }
+                else if (openShort > 0 && openLong == 0)
+                {
+                    goShort = openShort < allowedTotal;
+                    goLong = false;
+                }
+                else if (!hasAny)
+                {
+                    goLong = true;
+                    goShort = true;
+                }
+                else
+                {
+                    goLong = false;
+                    goShort = false;
+                }
+            }
+            if (!hasAny && goLong && goShort && paramSkipIfBothSides.AsInt != 0)
+            {
+                bool longSignal = EnterLong(bars, idx);
+                bool shortSignal = EnterShort(bars, idx);
+                if (longSignal && shortSignal)
+                    return; // stand aside this bar
+                goLong = longSignal;
+                goShort = shortSignal;
+            }
+            if (goLong)
+            {
+                if (EnterLong(bars, idx))
+                {
+                    Transaction t = PlaceTrade(bars, TransactionType.Buy, OrderType.Market, 0, patternNumber.ToString());
+                    PosInfo pi = new PosInfo();
+                    pi.StopLoss = stop;
+                    pi.ProfitTarget = profit;
+                    t.Tag = pi;
+                    goShort = false; // enforce one-side-per-bar explicitly
+                }
+            }
+            if (goShort)
+            {
+                if (EnterShort(bars, idx))
+                {
+                    Transaction t = PlaceTrade(bars, TransactionType.Short, OrderType.Market, 0, patternNumber.ToString());
+                    PosInfo pi = new PosInfo();
+                    pi.StopLoss = stop;
+                    pi.ProfitTarget = profit;
+                    t.Tag = pi;
+                    goLong = false; // enforce one-side-per-bar explicitly
+                }
+            }
+            //issue exits for existing positions
+            foreach (Position position in OpenPositions)
+            {
+                if (idx - position.EntryBar >= paramMaxHold.AsInt)
+                    ClosePosition(position, OrderType.Market, 0, "Max Hold");
+                else
+                {
+                    PosInfo pi = (PosInfo)position.Tag;
+                    ClosePosition(position, OrderType.Stop, position.EntryPrice * pi.StopLoss, "Stop");
+                    ClosePosition(position, OrderType.Limit, position.EntryPrice * pi.ProfitTarget, "Profit");
+                }
+            }
+        }
+        // LONG patterns evaluated inline (no interpreter)
+        public bool EnterLong(BarHistory bars, int idx)
+        {
+            // shorthand accessors scoped to this method
+            double O(int n) => bars.Open[idx - n];
+            double H(int n) => bars.High[idx - n];
+            double L(int n) => bars.Low[idx - n];
+            double C(int n) => bars.Close[idx - n];
+            double V(int n) => bars.Volume[idx - n];
+            // pattern 4 (requires 5 bars back)
+            if (
+                idx > 5 &&
+                (
+                (H(5) > H(0)) &&
+                (H(0) > H(4)) &&
+                (H(4) > L(5)) &&
+                (L(5) > L(0)) &&
+                (L(0) > L(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 4;
+                return true;
+            }
+            // pattern 77 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (H(4) > H(5)) &&
+                (H(5) > L(4)) &&
+                (L(4) > H(1)) &&
+                (H(1) > L(5)) &&
+                (L(5) > L(1)) &&
+                (L(1) > H(9)) &&
+                (H(9) > L(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 77;
+                return true;
+            }
+            // pattern 73 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (C(4) > O(4)) &&
+                (O(4) > C(6)) &&
+                (C(6) > O(6)) &&
+                (O(6) > C(9)) &&
+                (C(9) > O(9)) &&
+                (O(9) > O(12)) &&
+                (O(12) > C(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 73;
+                return true;
+            }
+            // pattern 29 (requires 3 bars back)
+            if (
+                idx > 3 &&
+                (
+                (H(0) > H(1)) &&
+                (H(1) > H(3)) &&
+                (H(3) > L(0)) &&
+                (L(0) > H(2)) &&
+                (H(2) > L(1)) &&
+                (L(1) > L(3)) &&
+                (L(3) > L(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 29;
+                return true;
+            }
+            // pattern 10 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(4) > O(4)) &&
+                (O(4) > O(7)) &&
+                (O(7) > C(7)) &&
+                (C(7) > O(9)) &&
+                (O(9) > C(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 10;
+                return true;
+            }
+            // pattern 107 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (C(2) > H(8)) &&
+                (H(8) > H(7)) &&
+                (H(7) > H(6)) &&
+                (H(6) > L(7)) &&
+                (L(7) > L(8)) &&
+                (L(8) > L(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 107;
+                return true;
+            }
+            // pattern 7 (requires 13 bars back)
+            if (
+                idx > 13 &&
+                (
+                (C(5) > O(5)) &&
+                (O(5) > C(13)) &&
+                (C(13) > O(13)) &&
+                (O(13) > O(12)) &&
+                (O(12) > C(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 7;
+                return true;
+            }
+            // pattern 15 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (O(8) > C(8)) &&
+                (C(8) > C(3)) &&
+                (C(3) > O(3)) &&
+                (O(3) > O(5)) &&
+                (O(5) > C(5))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 15;
+                return true;
+            }
+            // pattern 3 (requires 7 bars back)
+            if (
+                idx > 7 &&
+                (
+                (C(5) > C(4)) &&
+                (C(4) > C(6)) &&
+                (C(6) > C(3)) &&
+                (C(3) > C(7))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 3;
+                return true;
+            }
+            // pattern 38 (requires 7 bars back)
+            if (
+                idx > 7 &&
+                (
+                (C(6) > C(7)) &&
+                (C(7) > C(3)) &&
+                (C(3) > C(1)) &&
+                (C(1) > C(2)) &&
+                (C(2) > C(0))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 38;
+                return true;
+            }
+            // pattern 45 (requires 11 bars back)
+            if (
+                idx > 11 &&
+                (
+                (H(6) > H(4)) &&
+                (H(4) > L(6)) &&
+                (L(6) > H(10)) &&
+                (H(10) > L(4)) &&
+                (L(4) > H(11)) &&
+                (H(11) > L(10)) &&
+                (L(10) > L(11))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 45;
+                return true;
+            }
+            // pattern 22 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (O(8) > C(8)) &&
+                (C(8) > C(4)) &&
+                (C(4) > O(4)) &&
+                (O(4) > O(0)) &&
+                (O(0) > C(0))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 22;
+                return true;
+            }
+            // pattern 17 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (C(5) > O(5)) &&
+                (O(5) > O(12)) &&
+                (O(12) > C(12)) &&
+                (C(12) > C(9)) &&
+                (C(9) > O(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 17;
+                return true;
+            }
+            // pattern 12 (requires 11 bars back)
+            if (
+                idx > 11 &&
+                (
+                (O(4) > C(4)) &&
+                (C(4) > C(11)) &&
+                (C(11) > O(11)) &&
+                (O(11) > O(9)) &&
+                (O(9) > C(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 12;
+                return true;
+            }
+            // pattern 24 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (C(5) > O(5)) &&
+                (O(5) > C(3)) &&
+                (C(3) > O(3)) &&
+                (O(3) > O(10)) &&
+                (O(10) > C(10))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 24;
+                return true;
+            }
+            // pattern 49 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(5) > L(6)) &&
+                (L(6) > H(1)) &&
+                (H(1) > H(3)) &&
+                (H(3) > L(2)) &&
+                (L(2) > L(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 49;
+                return true;
+            }
+            // pattern 58 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (C(0) > O(0)) &&
+                (O(0) > O(4)) &&
+                (O(4) > C(4)) &&
+                (C(4) > C(6)) &&
+                (C(6) > O(6)) &&
+                (O(6) > C(8)) &&
+                (C(8) > O(8))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 58;
+                return true;
+            }
+            // pattern 54 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(1) > C(5)) &&
+                (C(5) > C(7)) &&
+                (C(7) > C(8)) &&
+                (C(8) > C(6)) &&
+                (C(6) > C(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 54;
+                return true;
+            }
+            // pattern 50 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (H(8) > H(6)) &&
+                (H(6) > L(5)) &&
+                (L(5) > L(7)) &&
+                (L(7) > H(10)) &&
+                (H(10) > L(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 50;
+                return true;
+            }
+            // pattern 80 (requires 4 bars back)
+            if (
+                idx > 4 &&
+                (
+                (O(4) > C(4)) &&
+                (C(4) > O(2)) &&
+                (O(2) > O(3)) &&
+                (O(3) > C(3))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 80;
+                return true;
+            }
+            // pattern 132 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (C(4) > H(9)) &&
+                (H(9) > H(8)) &&
+                (H(8) > H(10)) &&
+                (H(10) > H(11)) &&
+                (H(11) > H(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 132;
+                return true;
+            }
+            // pattern 23 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (C(2) > O(3)) &&
+                (O(3) > C(3)) &&
+                (C(3) > O(2)) &&
+                (O(2) > C(8)) &&
+                (C(8) > O(8))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 23;
+                return true;
+            }
+            // pattern 19 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (C(5) > C(6)) &&
+                (C(6) > O(5)) &&
+                (O(5) > O(6)) &&
+                (O(6) > O(10)) &&
+                (O(10) > C(10))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 19;
+                return true;
+            }
+            // pattern 1 (requires 2 bars back)
+            if (
+                idx > 2 &&
+                (
+                (H(0) > H(1)) &&
+                (H(1) > L(0)) &&
+                (L(0) > H(2)) &&
+                (H(2) > L(2)) &&
+                (L(2) > L(1))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 1;
+                return true;
+            }
+            // pattern 87 (requires 2 bars back)
+            if (
+                idx > 2 &&
+                (
+                (C(0) > H(1)) &&
+                (H(1) > L(0)) &&
+                (L(0) > H(2)) &&
+                (H(2) > L(2)) &&
+                (L(2) > L(1))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 87;
+                return true;
+            }
+            // pattern 3 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (C(2) > O(2)) &&
+                (O(2) > C(6)) &&
+                (C(6) > C(5)) &&
+                (C(5) > O(5)) &&
+                (O(5) > O(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 3;
+                return true;
+            }
+            // pattern 6 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(4) > H(5)) &&
+                (H(5) > H(3)) &&
+                (H(3) > H(6)) &&
+                (H(6) > H(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 6;
+                return true;
+            }
+            // pattern 17 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (H(9) > H(5)) &&
+                (H(5) > H(12)) &&
+                (H(12) > L(9)) &&
+                (L(9) > L(12)) &&
+                (L(12) > L(5))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 17;
+                return true;
+            }
+            // pattern 143 (requires 5 bars back)
+            if (
+                idx > 5 &&
+                (
+                (L(3) > L(4)) &&
+                (L(4) > L(2)) &&
+                (L(2) > C(1)) &&
+                (C(1) > L(5))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 143;
+                return true;
+            }
+            // pattern 26 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(6) > C(3)) &&
+                (C(3) > C(5)) &&
+                (C(5) > L(6)) &&
+                (L(6) > C(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 26;
+                return true;
+            }
+            // pattern 16 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (O(3) > C(3)) &&
+                (C(3) > O(0)) &&
+                (O(0) > C(0)) &&
+                (C(0) > C(6)) &&
+                (C(6) > O(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 16;
+                return true;
+            }
+            // pattern 27 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(5) > C(4)) &&
+                (C(4) > C(6)) &&
+                (C(6) > C(3)) &&
+                (C(3) > C(8)) &&
+                (C(8) > C(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 27;
+                return true;
+            }
+            // pattern 10 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (C(6) > O(6)) &&
+                (O(6) > C(8)) &&
+                (C(8) > O(8)) &&
+                (O(8) > C(3)) &&
+                (C(3) > O(3))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 10;
+                return true;
+            }
+            // pattern 126 (requires 7 bars back)
+            if (
+                idx > 7 &&
+                (
+                (H(7) > H(4)) &&
+                (H(4) > H(5)) &&
+                (H(5) > H(6)) &&
+                (H(6) > C(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 126;
+                return true;
+            }
+            // pattern 11 (requires 11 bars back)
+            if (
+                idx > 11 &&
+                (
+                (H(5) > L(5)) &&
+                (L(5) > H(11)) &&
+                (H(11) > L(11)) &&
+                (L(11) > H(9)) &&
+                (H(9) > L(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 11;
+                return true;
+            }
+            // pattern 81 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (H(5) > H(6)) &&
+                (H(6) > H(7)) &&
+                (H(7) > L(5)) &&
+                (L(5) > L(7)) &&
+                (L(7) > L(6)) &&
+                (L(6) > H(12)) &&
+                (H(12) > L(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 81;
+                return true;
+            }
+            // pattern 37 (requires 4 bars back)
+            if (
+                idx > 4 &&
+                (
+                (H(0) > L(0)) &&
+                (L(0) > H(1)) &&
+                (H(1) > H(2)) &&
+                (H(2) > L(1)) &&
+                (L(1) > L(2)) &&
+                (L(2) > C(3)) &&
+                (C(3) > C(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 37;
+                return true;
+            }
+            // pattern 76 (requires 11 bars back)
+            if (
+                idx > 11 &&
+                (
+                (H(6) > H(7)) &&
+                (H(7) > H(4)) &&
+                (H(4) > L(6)) &&
+                (L(6) > L(7)) &&
+                (L(7) > L(4)) &&
+                (L(4) > H(11)) &&
+                (H(11) > L(11))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 76;
+                return true;
+            }
+            // pattern 75 (requires 11 bars back)
+            if (
+                idx > 11 &&
+                (
+                (H(5) > H(6)) &&
+                (H(6) > H(7)) &&
+                (H(7) > L(5)) &&
+                (L(5) > L(7)) &&
+                (L(7) > L(6)) &&
+                (L(6) > H(11)) &&
+                (H(11) > L(11))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 75;
+                return true;
+            }
+            // pattern 80 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(1) > C(2)) &&
+                (C(2) > O(1)) &&
+                (O(1) > O(2)) &&
+                (O(2) > C(5)) &&
+                (C(5) > O(5)) &&
+                (O(5) > C(9)) &&
+                (C(9) > O(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 80;
+                return true;
+            }
+            // pattern 69 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(0) > H(1)) &&
+                (H(1) > H(3)) &&
+                (H(3) > L(0)) &&
+                (L(0) > L(1)) &&
+                (L(1) > H(6)) &&
+                (H(6) > L(3)) &&
+                (L(3) > L(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 69;
+                return true;
+            }
+            // pattern 87 (requires 2 bars back)
+            if (
+                idx > 2 &&
+                (
+                (H(1) > C(0)) &&
+                (C(0) > H(2)) &&
+                (H(2) > L(0)) &&
+                (L(0) > L(2)) &&
+                (L(2) > L(1))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 87;
+                return true;
+            }
+            // pattern 106 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(4) > H(5)) &&
+                (H(5) > L(4)) &&
+                (L(4) > C(1)) &&
+                (C(1) > L(5)) &&
+                (L(5) > H(6)) &&
+                (H(6) > L(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 106;
+                return true;
+            }
+            // pattern 5 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (C(4) > C(5)) &&
+                (C(5) > C(6)) &&
+                (C(6) > C(7)) &&
+                (C(7) > C(9)) &&
+                (C(9) > C(10)) &&
+                (C(10) > C(8))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 5;
+                return true;
+            }
+            // pattern 66 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(5) > C(6)) &&
+                (C(6) > L(6)) &&
+                (L(6) > C(5)) &&
+                (C(5) > L(5)) &&
+                (L(5) > H(4)) &&
+                (H(4) > C(4)) &&
+                (C(4) > L(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 66;
+                return true;
+            }
+            // pattern 131 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (C(5) > H(9)) &&
+                (H(9) > H(8)) &&
+                (H(8) > H(10)) &&
+                (H(10) > H(11)) &&
+                (H(11) > H(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 131;
+                return true;
+            }
+            // pattern 57 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (C(5) > O(5)) &&
+                (O(5) > C(8)) &&
+                (C(8) > O(8)) &&
+                (O(8) > C(10)) &&
+                (C(10) > O(10)) &&
+                (O(10) > O(12)) &&
+                (O(12) > C(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 57;
+                return true;
+            }
+            // pattern 38 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(9) > C(8)) &&
+                (C(8) > C(4)) &&
+                (C(4) > C(5)) &&
+                (C(5) > C(3)) &&
+                (C(3) > C(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 38;
+                return true;
+            }
+            // pattern 99 (requires 4 bars back)
+            if (
+                idx > 4 &&
+                (
+                (H(2) > C(2)) &&
+                (C(2) > H(3)) &&
+                (H(3) > H(4)) &&
+                (H(4) > C(4)) &&
+                (C(4) > O(2)) &&
+                (O(2) > L(2)) &&
+                (L(2) > L(3)) &&
+                (L(3) > L(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 99;
+                return true;
+            }
+            // pattern 14 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(5) > O(5)) &&
+                (O(5) > O(6)) &&
+                (O(6) > C(6)) &&
+                (C(6) > O(9)) &&
+                (O(9) > C(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 14;
+                return true;
+            }
+            // pattern 89 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (H(4) > C(4)) &&
+                (C(4) > H(6)) &&
+                (H(6) > L(5)) &&
+                (L(5) > L(6)) &&
+                (L(6) > L(4))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 89;
+                return true;
+            }
+            // pattern 32 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (C(9) > C(8)) &&
+                (C(8) > H(7)) &&
+                (H(7) > C(5)) &&
+                (C(5) > C(6)) &&
+                (C(6) > L(7))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 32;
+                return true;
+            }
+            // pattern 21 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (C(3) > O(3)) &&
+                (O(3) > C(10)) &&
+                (C(10) > O(10)) &&
+                (O(10) > C(6)) &&
+                (C(6) > O(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 21;
+                return true;
+            }
+            // pattern 25 (requires 5 bars back)
+            if (
+                idx > 5 &&
+                (
+                (H(4) > H(5)) &&
+                (H(5) > L(4)) &&
+                (L(4) > L(5)) &&
+                (L(5) > C(3)) &&
+                (C(3) > C(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 25;
+                return true;
+            }
+            // pattern 45 (requires 13 bars back)
+            if (
+                idx > 13 &&
+                (
+                (C(5) > C(6)) &&
+                (C(6) > C(7)) &&
+                (C(7) > C(8)) &&
+                (C(8) > C(9)) &&
+                (C(9) > C(13)) &&
+                (C(13) > C(11)) &&
+                (C(11) > C(12))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 45;
+                return true;
+            }
+            // pattern 48 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (H(2) > L(2)) &&
+                (L(2) > H(4)) &&
+                (H(4) > L(4)) &&
+                (L(4) > H(9)) &&
+                (H(9) > L(9)) &&
+                (L(9) > H(10)) &&
+                (H(10) > L(10))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 48;
+                return true;
+            }
+            // pattern 84 (requires 5 bars back)
+            if (
+                idx > 5 &&
+                (
+                (O(4) > O(3)) &&
+                (O(3) > C(4)) &&
+                (C(4) > O(5)) &&
+                (O(5) > C(3))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 84;
+                return true;
+            }
+            // pattern 24 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (O(12) > C(12)) &&
+                (C(12) > O(7)) &&
+                (O(7) > C(7)) &&
+                (C(7) > C(5)) &&
+                (C(5) > O(5))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 24;
+                return true;
+            }
+            // pattern 68 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (O(1) > C(1)) &&
+                (C(1) > C(5)) &&
+                (C(5) > O(5)) &&
+                (O(5) > C(6)) &&
+                (C(6) > O(6)) &&
+                (O(6) > O(9)) &&
+                (O(9) > C(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 68;
+                return true;
+            }
+            // pattern 14 (requires 5 bars back)
+            if (
+                idx > 5 &&
+                (
+                (C(5) > O(5)) &&
+                (O(5) > C(1)) &&
+                (C(1) > O(1)) &&
+                (O(1) > C(2)) &&
+                (C(2) > O(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 14;
+                return true;
+            }
+            // pattern 71 (requires 9 bars back)
+            if (
+                idx > 9 &&
+                (
+                (H(1) > L(1)) &&
+                (L(1) > H(6)) &&
+                (H(6) > H(4)) &&
+                (H(4) > L(6)) &&
+                (L(6) > L(4)) &&
+                (L(4) > H(9)) &&
+                (H(9) > L(9))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 71;
+                return true;
+            }
+            // pattern 69 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (H(4) > H(5)) &&
+                (H(5) > L(4)) &&
+                (L(4) > L(5)) &&
+                (L(5) > H(7)) &&
+                (H(7) > H(10)) &&
+                (H(10) > L(10)) &&
+                (L(10) > L(7))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 69;
+                return true;
+            }
+            // pattern 40 (requires 7 bars back)
+            if (
+                idx > 7 &&
+                (
+                (H(7) > H(6)) &&
+                (H(6) > L(7)) &&
+                (L(7) > H(3)) &&
+                (H(3) > L(6)) &&
+                (L(6) > H(2)) &&
+                (H(2) > L(3)) &&
+                (L(3) > L(2))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 40;
+                return true;
+            }
+            // pattern 25 (requires 8 bars back)
+            if (
+                idx > 8 &&
+                (
+                (H(8) > L(8)) &&
+                (L(8) > H(7)) &&
+                (H(7) > C(5)) &&
+                (C(5) > C(6)) &&
+                (C(6) > L(7))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 25;
+                return true;
+            }
+            // pattern 14 (requires 6 bars back)
+            if (
+                idx > 6 &&
+                (
+                (C(3) > O(2)) &&
+                (O(2) > C(2)) &&
+                (C(2) > O(3)) &&
+                (O(3) > C(6)) &&
+                (C(6) > O(6))
+                )
+            )
+            {
+                stop = 1.0 - (4.30502300 / 100.0);
+                profit = 1.0 + (3.14184650 / 100.0);
+                patternNumber = 14;
+                return true;
+            }
+            return false;
+        }
+        // SHORT patterns evaluated inline (no interpreter)
+        public bool EnterShort(BarHistory bars, int idx)
+        {
+            // shorthand accessors scoped to this method
+            double O(int n) => bars.Open[idx - n];
+            double H(int n) => bars.High[idx - n];
+            double L(int n) => bars.Low[idx - n];
+            double C(int n) => bars.Close[idx - n];
+            double V(int n) => bars.Volume[idx - n];
+            // pattern 39 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (H(4) > L(4)) &&
+                (L(4) > H(9)) &&
+                (H(9) > H(12)) &&
+                (H(12) > H(11)) &&
+                (H(11) > L(9)) &&
+                (L(9) > L(11)) &&
+                (L(11) > L(12))
+                )
+            )
+            {
+                stop = 1.0 + (3.65887660 / 100.0);
+                profit = 1.0 - (3.54539940 / 100.0);
+                patternNumber = 39;
+                return true;
+            }
+            // pattern 80 (requires 7 bars back)
+            if (
+                idx > 7 &&
+                (
+                (C(7) > O(7)) &&
+                (O(7) > O(6)) &&
+                (O(6) > C(6)) &&
+                (C(6) > O(5))
+                )
+            )
+            {
+                stop = 1.0 + (3.65887660 / 100.0);
+                profit = 1.0 - (3.54539940 / 100.0);
+                patternNumber = 80;
+                return true;
+            }
+            // pattern 85 (requires 4 bars back)
+            if (
+                idx > 4 &&
+                (
+                (O(3) > C(3)) &&
+                (C(3) > C(4)) &&
+                (C(4) > C(2)) &&
+                (C(2) > O(2))
+                )
+            )
+            {
+                stop = 1.0 + (3.65887660 / 100.0);
+                profit = 1.0 - (3.54539940 / 100.0);
+                patternNumber = 85;
+                return true;
+            }
+            // pattern 25 (requires 12 bars back)
+            if (
+                idx > 12 &&
+                (
+                (O(12) > C(12)) &&
+                (C(12) > C(7)) &&
+                (C(7) > O(7)) &&
+                (O(7) > C(4)) &&
+                (C(4) > O(4))
+                )
+            )
+            {
+                stop = 1.0 + (3.65887660 / 100.0);
+                profit = 1.0 - (3.54539940 / 100.0);
+                patternNumber = 25;
+                return true;
+            }
+            // pattern 57 (requires 10 bars back)
+            if (
+                idx > 10 &&
+                (
+                (H(6) > H(3)) &&
+                (H(3) > L(6)) &&
+                (L(6) > H(8)) &&
+                (H(8) > L(3)) &&
+                (L(3) > L(8)) &&
+                (L(8) > H(10)) &&
+                (H(10) > L(10))
+                )
+            )
+            {
+                stop = 1.0 + (3.65887660 / 100.0);
+                profit = 1.0 - (3.54539940 / 100.0);
+                patternNumber = 57;
+                return true;
+            }
+            return false;
+        }
+        public override double GetMaxRiskStopLevel(BarHistory bars, PositionType pt, int idx)
+        {
+            double referencePrice = bars.Close[idx];
+            double referenceStopPercent = (pt == PositionType.Long) ? mLongStopPercent : mShortStopPercent;
+            double frac = referenceStopPercent / 100.0;
+            double offset = referencePrice * frac;
+            double stop = (pt == PositionType.Long) ? (referencePrice - offset) : (referencePrice + offset);
+            return stop;
+        }
+        private Parameter paramEnablePyramiding;
+        private Parameter paramMaxPyramids;
+        private Parameter paramMaxHold;
+        private Parameter paramSkipIfBothSides;
+        private double stop;
+        private double profit;
+        private int patternNumber;
+    }
+    public class PosInfo
+    {
+        public double ProfitTarget { get; set; }
+        public double StopLoss { get; set; }
+    }
+}

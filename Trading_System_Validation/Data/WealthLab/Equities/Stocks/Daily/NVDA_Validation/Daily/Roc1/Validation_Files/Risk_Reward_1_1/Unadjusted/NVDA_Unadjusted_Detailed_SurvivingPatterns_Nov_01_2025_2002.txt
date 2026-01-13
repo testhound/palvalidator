@@ -1,0 +1,1431 @@
+=== VALIDATION SUMMARY ===
+Security Ticker: NVDA
+Validation Method: Unadjusted
+Computation Policy: GatedPerformanceScaledPalPolicy
+Out-of-Sample Range: 2018-Sep-28 15:00:00 to 2025-Jun-24 15:00:00
+Number of Permutations: 10000
+P-Value Threshold: 0.05000000
+Total Surviving Strategies (Performance Filtered): 47
+===========================
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 28  Index DATE: 20180711  PL: 75.00000000%  PS: 25.00000000%  Trades: 20  CL: 1 }
+
+IF CLOSE OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > OPEN OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 12
+Number of Losing Trades: 1
+Total Bars in Market: 36
+Percent Winners: 92.30769200%
+Percent Losers: 7.69230800%
+Profit Factor: 16.26727352
+High Resolution Profit Factor: 5.84035593
+PAL Profitability: 92.30769200%
+High Resolution Profitability: 77.77778019
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 16  Index DATE: 20180416  PL: 73.33000000%  PS: 26.67000000%  Trades: 15  CL: 2 }
+
+IF OPEN OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 20
+Number of Winning Trades: 15
+Number of Losing Trades: 5
+Total Bars in Market: 58
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.93324546
+High Resolution Profit Factor: 1.89556430
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 60.34483758
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 125  Index DATE: 20180821  PL: 85.71000000%  PS: 14.29000000%  Trades: 21  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 25
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 5.99029186
+High Resolution Profit Factor: 4.22736758
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 71.99999499
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 38  Index DATE: 20171102  PL: 84.62000000%  PS: 15.38000000%  Trades: 13  CL: 1 }
+
+IF CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 21
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.30421820
+PAL Profitability: 97.26787700%
+High Resolution Profitability: 80.00000820
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 54  Index DATE: 20180410  PL: 75.00000000%  PS: 25.00000000%  Trades: 20  CL: 1 }
+
+IF HIGH OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 13
+Number of Losing Trades: 3
+Total Bars in Market: 41
+Percent Winners: 81.25000000%
+Percent Losers: 18.75000000%
+Profit Factor: 5.09834535
+High Resolution Profit Factor: 3.48593631
+PAL Profitability: 81.25000000%
+High Resolution Profitability: 70.73170508
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 4  Index DATE: 20171031  PL: 78.26000000%  PS: 21.74000000%  Trades: 23  CL: 1 }
+
+IF CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 24
+Number of Winning Trades: 19
+Number of Losing Trades: 5
+Total Bars in Market: 64
+Percent Winners: 79.16666700%
+Percent Losers: 20.83333300%
+Profit Factor: 4.23060281
+High Resolution Profit Factor: 2.61739808
+PAL Profitability: 79.16666700%
+High Resolution Profitability: 60.93749662
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 45  Index DATE: 20180208  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 11
+Number of Losing Trades: 4
+Total Bars in Market: 35
+Percent Winners: 73.33333300%
+Percent Losers: 26.66666700%
+Profit Factor: 4.15521272
+High Resolution Profit Factor: 2.80053378
+PAL Profitability: 73.33333300%
+High Resolution Profitability: 59.99999126
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 67  Index DATE: 20180511  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 15
+Number of Losing Trades: 0
+Total Bars in Market: 41
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 5.96889310
+PAL Profitability: 96.20518300%
+High Resolution Profitability: 77.49999415
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 61  Index DATE: 20180815  PL: 100.00000000%  PS: 0.00000000%  Trades: 10  CL: 0 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 10 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 25
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 11.17287421
+High Resolution Profit Factor: 5.17281578
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 79.16666473
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 74  Index DATE: 20180808  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 1 }
+
+IF HIGH OF 2 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 38
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 4.21724000
+High Resolution Profit Factor: 2.56665272
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 59.45945410
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 84  Index DATE: 20180406  PL: 71.43000000%  PS: 28.57000000%  Trades: 14  CL: 2 }
+
+IF HIGH OF 8 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 0 BARS AGO
+AND HIGH OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 9
+Number of Losing Trades: 4
+Total Bars in Market: 28
+Percent Winners: 69.23076900%
+Percent Losers: 30.76923100%
+Profit Factor: 3.56150020
+High Resolution Profit Factor: 2.32730853
+PAL Profitability: 69.23076900%
+High Resolution Profitability: 74.99999927
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 23  Index DATE: 20170929  PL: 72.73000000%  PS: 27.27000000%  Trades: 11  CL: 2 }
+
+IF HIGH OF 11 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 11 BARS AGO
+AND LOW OF 11 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 7
+Number of Losing Trades: 2
+Total Bars in Market: 35
+Percent Winners: 77.77777800%
+Percent Losers: 22.22222200%
+Profit Factor: 4.93829687
+High Resolution Profit Factor: 2.57396539
+PAL Profitability: 77.77777800%
+High Resolution Profitability: 59.99999814
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 15  Index DATE: 20180823  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 12
+Number of Losing Trades: 2
+Total Bars in Market: 36
+Percent Winners: 85.71428600%
+Percent Losers: 14.28571400%
+Profit Factor: 6.80567569
+High Resolution Profit Factor: 3.82599678
+PAL Profitability: 85.71428600%
+High Resolution Profitability: 77.77777789
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 27  Index DATE: 20180905  PL: 76.19000000%  PS: 23.81000000%  Trades: 21  CL: 2 }
+
+IF OPEN OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > OPEN OF 8 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 39
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 7.19464798
+High Resolution Profit Factor: 2.67879425
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 60.52632739
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 77  Index DATE: 20180503  PL: 75.00000000%  PS: 25.00000000%  Trades: 24  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 30
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 4.38894239
+High Resolution Profit Factor: 3.35805546
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 63.33334398
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 19  Index DATE: 20180926  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 2 }
+
+IF CLOSE OF 8 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 16
+Number of Winning Trades: 12
+Number of Losing Trades: 4
+Total Bars in Market: 39
+Percent Winners: 75.00000000%
+Percent Losers: 25.00000000%
+Profit Factor: 2.98766242
+High Resolution Profit Factor: 2.28605284
+PAL Profitability: 75.00000000%
+High Resolution Profitability: 66.66666453
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 9  Index DATE: 20180514  PL: 70.00000000%  PS: 30.00000000%  Trades: 10  CL: 1 }
+
+IF CLOSE OF 3 BARS AGO > OPEN OF 3 BARS AGO
+AND OPEN OF 3 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 11
+Number of Losing Trades: 2
+Total Bars in Market: 32
+Percent Winners: 84.61538500%
+Percent Losers: 15.38461500%
+Profit Factor: 4.46234412
+High Resolution Profit Factor: 2.67654108
+PAL Profitability: 84.61538500%
+High Resolution Profitability: 71.87499888
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 9  Index DATE: 20180104  PL: 70.37000000%  PS: 29.63000000%  Trades: 27  CL: 2 }
+
+IF HIGH OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 12
+Number of Losing Trades: 3
+Total Bars in Market: 38
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 5.80033704
+High Resolution Profit Factor: 3.77573237
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 63.15789895
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 24  Index DATE: 20180123  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 3 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 18
+Number of Winning Trades: 15
+Number of Losing Trades: 3
+Total Bars in Market: 51
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 6.59525013
+High Resolution Profit Factor: 3.37294014
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 64.70588857
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 74  Index DATE: 20180629  PL: 72.00000000%  PS: 28.00000000%  Trades: 25  CL: 3 }
+
+IF HIGH OF 13 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > LOW OF 13 BARS AGO
+AND LOW OF 13 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 9
+Number of Losing Trades: 4
+Total Bars in Market: 32
+Percent Winners: 69.23076900%
+Percent Losers: 30.76923100%
+Profit Factor: 3.61309532
+High Resolution Profit Factor: 2.55846157
+PAL Profitability: 69.23076900%
+High Resolution Profitability: 71.87500517
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 27  Index DATE: 20180514  PL: 83.33000000%  PS: 16.67000000%  Trades: 12  CL: 1 }
+
+IF CLOSE OF 7 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 6 BARS AGO
+AND CLOSE OF 6 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 11 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 9
+Number of Losing Trades: 1
+Total Bars in Market: 25
+Percent Winners: 90.00000000%
+Percent Losers: 10.00000000%
+Profit Factor: 8.48417285
+High Resolution Profit Factor: 4.28654177
+PAL Profitability: 90.00000000%
+High Resolution Profitability: 64.00000101
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 12  Index DATE: 20180530  PL: 73.91000000%  PS: 26.09000000%  Trades: 23  CL: 2 }
+
+IF CLOSE OF 0 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 32
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 10.63030183
+High Resolution Profit Factor: 4.06681654
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 68.75001316
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 51  Index DATE: 20180410  PL: 75.00000000%  PS: 25.00000000%  Trades: 20  CL: 1 }
+
+IF HIGH OF 0 BARS AGO > OPEN OF 0 BARS AGO
+AND OPEN OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > LOW OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 12
+Number of Losing Trades: 3
+Total Bars in Market: 39
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 4.73953118
+High Resolution Profit Factor: 3.32558064
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 71.79487441
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 144  Index DATE: 20180727  PL: 77.78000000%  PS: 22.22000000%  Trades: 18  CL: 1 }
+
+IF CLOSE OF 2 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 12
+Number of Losing Trades: 1
+Total Bars in Market: 37
+Percent Winners: 92.30769200%
+Percent Losers: 7.69230800%
+Profit Factor: 19.09170396
+High Resolution Profit Factor: 4.26055279
+PAL Profitability: 92.30769200%
+High Resolution Profitability: 72.97297478
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 32  Index DATE: 20170703  PL: 70.00000000%  PS: 30.00000000%  Trades: 10  CL: 3 }
+
+IF CLOSE OF 3 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > CLOSE OF 0 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 11
+Number of Losing Trades: 1
+Total Bars in Market: 27
+Percent Winners: 91.66666700%
+Percent Losers: 8.33333300%
+Profit Factor: 13.65970618
+High Resolution Profit Factor: 4.41441218
+PAL Profitability: 91.66666700%
+High Resolution Profitability: 77.77777467
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 43  Index DATE: 20161214  PL: 81.82000000%  PS: 18.18000000%  Trades: 11  CL: 1 }
+
+IF HIGH OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 3 BARS AGO
+AND LOW OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 13
+Number of Losing Trades: 0
+Total Bars in Market: 34
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 6.73750728
+PAL Profitability: 97.07775400%
+High Resolution Profitability: 70.58823677
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 126  Index DATE: 20180430  PL: 73.33000000%  PS: 26.67000000%  Trades: 15  CL: 2 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > HIGH OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 9
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.35793212
+PAL Profitability: 97.34946900%
+High Resolution Profitability: 72.72726636
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 141  Index DATE: 20180523  PL: 73.91000000%  PS: 26.09000000%  Trades: 23  CL: 2 }
+
+IF LOW OF 10 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > LOW OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 19
+Number of Winning Trades: 16
+Number of Losing Trades: 3
+Total Bars in Market: 42
+Percent Winners: 84.21052600%
+Percent Losers: 15.78947400%
+Profit Factor: 6.50937250
+High Resolution Profit Factor: 4.83557564
+PAL Profitability: 84.21052600%
+High Resolution Profitability: 71.42856854
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 37  Index DATE: 20180607  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > LOW OF 7 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 4.49032402
+High Resolution Profit Factor: 3.01647950
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 78.26087205
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 20  Index DATE: 20180924  PL: 73.68000000%  PS: 26.32000000%  Trades: 19  CL: 3 }
+
+IF CLOSE OF 11 BARS AGO > OPEN OF 11 BARS AGO
+AND OPEN OF 11 BARS AGO > OPEN OF 7 BARS AGO
+AND OPEN OF 7 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > OPEN OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 14
+Number of Winning Trades: 10
+Number of Losing Trades: 4
+Total Bars in Market: 31
+Percent Winners: 71.42857100%
+Percent Losers: 28.57142900%
+Profit Factor: 3.05162963
+High Resolution Profit Factor: 2.59323013
+PAL Profitability: 71.42857100%
+High Resolution Profitability: 58.06452402
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 127  Index DATE: 20180914  PL: 72.22000000%  PS: 27.78000000%  Trades: 18  CL: 4 }
+
+IF HIGH OF 11 BARS AGO > HIGH OF 10 BARS AGO
+AND HIGH OF 10 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > HIGH OF 9 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 12
+Number of Losing Trades: 3
+Total Bars in Market: 35
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 4.54692069
+High Resolution Profit Factor: 2.67997999
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 79.99999588
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 52  Index DATE: 20180409  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 2 }
+
+IF HIGH OF 4 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 6
+Number of Winning Trades: 6
+Number of Losing Trades: 0
+Total Bars in Market: 22
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 4.30016430
+PAL Profitability: 96.62981100%
+High Resolution Profitability: 59.09088857
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 106  Index DATE: 20170417  PL: 84.62000000%  PS: 15.38000000%  Trades: 13  CL: 1 }
+
+IF HIGH OF 8 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 8 BARS AGO
+AND LOW OF 8 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 9.35123294
+High Resolution Profit Factor: 6.63492588
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 74.99999474
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 63  Index DATE: 20180410  PL: 80.00000000%  PS: 20.00000000%  Trades: 10  CL: 1 }
+
+IF HIGH OF 0 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > LOW OF 0 BARS AGO
+AND LOW OF 0 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > LOW OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 24
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 7.18605864
+High Resolution Profit Factor: 2.87453759
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 62.49999761
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 16  Index DATE: 20180925  PL: 80.00000000%  PS: 20.00000000%  Trades: 15  CL: 1 }
+
+IF CLOSE OF 8 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 9
+Number of Winning Trades: 8
+Number of Losing Trades: 1
+Total Bars in Market: 23
+Percent Winners: 88.88888900%
+Percent Losers: 11.11111100%
+Profit Factor: 6.06572517
+High Resolution Profit Factor: 3.23737377
+PAL Profitability: 88.88888900%
+High Resolution Profitability: 73.91304579
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 25  Index DATE: 20180803  PL: 93.33000000%  PS: 6.67000000%  Trades: 15  CL: 1 }
+
+IF HIGH OF 10 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 2 BARS AGO
+AND LOW OF 2 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 9
+Number of Losing Trades: 2
+Total Bars in Market: 34
+Percent Winners: 81.81818200%
+Percent Losers: 18.18181800%
+Profit Factor: 4.99809593
+High Resolution Profit Factor: 2.37017821
+PAL Profitability: 81.81818200%
+High Resolution Profitability: 64.70587896
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 145  Index DATE: 20170711  PL: 76.47000000%  PS: 23.53000000%  Trades: 17  CL: 1 }
+
+IF CLOSE OF 1 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > LOW OF 5 BARS AGO
+AND LOW OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 6 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 11
+Number of Winning Trades: 10
+Number of Losing Trades: 1
+Total Bars in Market: 33
+Percent Winners: 90.90909100%
+Percent Losers: 9.09090900%
+Profit Factor: 15.43040255
+High Resolution Profit Factor: 3.61198867
+PAL Profitability: 90.90909100%
+High Resolution Profitability: 69.69697261
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 130  Index DATE: 20180305  PL: 76.92000000%  PS: 23.08000000%  Trades: 13  CL: 2 }
+
+IF HIGH OF 5 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > HIGH OF 3 BARS AGO
+AND HIGH OF 3 BARS AGO > CLOSE OF 1 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 15
+Number of Winning Trades: 14
+Number of Losing Trades: 1
+Total Bars in Market: 32
+Percent Winners: 93.33333300%
+Percent Losers: 6.66666700%
+Profit Factor: 8.57636137
+High Resolution Profit Factor: 3.23140765
+PAL Profitability: 93.33333300%
+High Resolution Profitability: 75.00000267
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 54  Index DATE: 20180426  PL: 75.00000000%  PS: 25.00000000%  Trades: 20  CL: 2 }
+
+IF CLOSE OF 12 BARS AGO > CLOSE OF 11 BARS AGO
+AND CLOSE OF 11 BARS AGO > CLOSE OF 13 BARS AGO
+AND CLOSE OF 13 BARS AGO > CLOSE OF 10 BARS AGO
+AND CLOSE OF 10 BARS AGO > CLOSE OF 9 BARS AGO
+AND CLOSE OF 9 BARS AGO > CLOSE OF 5 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 8
+Number of Losing Trades: 2
+Total Bars in Market: 25
+Percent Winners: 80.00000000%
+Percent Losers: 20.00000000%
+Profit Factor: 4.67047234
+High Resolution Profit Factor: 2.67899063
+PAL Profitability: 80.00000000%
+High Resolution Profitability: 72.00000231
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 84  Index DATE: 20180626  PL: 72.41000000%  PS: 27.59000000%  Trades: 29  CL: 1 }
+
+IF OPEN OF 3 BARS AGO > OPEN OF 2 BARS AGO
+AND OPEN OF 2 BARS AGO > OPEN OF 1 BARS AGO
+AND OPEN OF 1 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 2 BARS AGO
+THEN BUY NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE + 2.57284600 %
+AND STOP LOSS AT ENTRY PRICE - 2.98193700 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 17
+Number of Winning Trades: 14
+Number of Losing Trades: 3
+Total Bars in Market: 48
+Percent Winners: 82.35294100%
+Percent Losers: 17.64705900%
+Profit Factor: 4.68492708
+High Resolution Profit Factor: 2.70717960
+PAL Profitability: 82.35294100%
+High Resolution Profitability: 66.66667323
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 64  Index DATE: 20171208  PL: 25.00000000%  PS: 75.00000000%  Trades: 12  CL: 1 }
+
+IF HIGH OF 9 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > HIGH OF 7 BARS AGO
+AND HIGH OF 7 BARS AGO > LOW OF 7 BARS AGO
+AND LOW OF 7 BARS AGO > HIGH OF 1 BARS AGO
+AND HIGH OF 1 BARS AGO > HIGH OF 2 BARS AGO
+AND HIGH OF 2 BARS AGO > LOW OF 1 BARS AGO
+AND LOW OF 1 BARS AGO > LOW OF 2 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 12
+Number of Winning Trades: 10
+Number of Losing Trades: 2
+Total Bars in Market: 28
+Percent Winners: 83.33333300%
+Percent Losers: 16.66666700%
+Profit Factor: 4.66523566
+High Resolution Profit Factor: 2.98737880
+PAL Profitability: 83.33333300%
+High Resolution Profitability: 64.28571372
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 3  Index DATE: 20180926  PL: 27.78000000%  PS: 72.22000000%  Trades: 18  CL: 2 }
+
+IF CLOSE OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+AND CLOSE OF 1 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 4 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 17
+Number of Winning Trades: 13
+Number of Losing Trades: 4
+Total Bars in Market: 35
+Percent Winners: 76.47058800%
+Percent Losers: 23.52941200%
+Profit Factor: 3.41548847
+High Resolution Profit Factor: 2.63237563
+PAL Profitability: 76.47058800%
+High Resolution Profitability: 74.28570902
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 106  Index DATE: 20180927  PL: 16.67000000%  PS: 83.33000000%  Trades: 12  CL: 2 }
+
+IF HIGH OF 10 BARS AGO > HIGH OF 9 BARS AGO
+AND HIGH OF 9 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > HIGH OF 8 BARS AGO
+AND HIGH OF 8 BARS AGO > LOW OF 10 BARS AGO
+AND LOW OF 10 BARS AGO > LOW OF 9 BARS AGO
+AND LOW OF 9 BARS AGO > LOW OF 8 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 7
+Number of Losing Trades: 1
+Total Bars in Market: 20
+Percent Winners: 87.50000000%
+Percent Losers: 12.50000000%
+Profit Factor: 6.39622347
+High Resolution Profit Factor: 3.76678899
+PAL Profitability: 87.50000000%
+High Resolution Profitability: 70.00001091
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 23  Index DATE: 20180531  PL: 27.27000000%  PS: 72.73000000%  Trades: 11  CL: 2 }
+
+IF CLOSE OF 5 BARS AGO > CLOSE OF 4 BARS AGO
+AND CLOSE OF 4 BARS AGO > OPEN OF 4 BARS AGO
+AND OPEN OF 4 BARS AGO > OPEN OF 5 BARS AGO
+AND OPEN OF 5 BARS AGO > OPEN OF 10 BARS AGO
+AND OPEN OF 10 BARS AGO > CLOSE OF 10 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 8
+Number of Winning Trades: 8
+Number of Losing Trades: 0
+Total Bars in Market: 24
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 6.57745876
+PAL Profitability: 96.12979900%
+High Resolution Profitability: 78.26087290
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 161  Index DATE: 20170208  PL: 18.18000000%  PS: 81.82000000%  Trades: 11  CL: 1 }
+
+IF CLOSE OF 1 BARS AGO > CLOSE OF 0 BARS AGO
+AND CLOSE OF 0 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > HIGH OF 4 BARS AGO
+AND HIGH OF 4 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > HIGH OF 5 BARS AGO
+AND HIGH OF 5 BARS AGO > LOW OF 4 BARS AGO
+AND LOW OF 4 BARS AGO > LOW OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 10
+Number of Winning Trades: 10
+Number of Losing Trades: 0
+Total Bars in Market: 25
+Percent Winners: 100.00000000%
+Percent Losers: 0.00000000%
+Profit Factor: 100.00000000
+High Resolution Profit Factor: 3.72561057
+PAL Profitability: 97.31173300%
+High Resolution Profitability: 68.00000315
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 28  Index DATE: 20171213  PL: 27.59000000%  PS: 72.41000000%  Trades: 29  CL: 2 }
+
+IF CLOSE OF 7 BARS AGO > HIGH OF 6 BARS AGO
+AND HIGH OF 6 BARS AGO > CLOSE OF 8 BARS AGO
+AND CLOSE OF 8 BARS AGO > LOW OF 6 BARS AGO
+AND LOW OF 6 BARS AGO > CLOSE OF 5 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 17
+Number of Winning Trades: 13
+Number of Losing Trades: 4
+Total Bars in Market: 39
+Percent Winners: 76.47058800%
+Percent Losers: 23.52941200%
+Profit Factor: 4.36410836
+High Resolution Profit Factor: 3.54853363
+PAL Profitability: 76.47058800%
+High Resolution Profitability: 64.10256796
+===================================
+
+
+
+Surviving Pattern:
+
+{File:NVDA_IS.txt  Index: 67  Index DATE: 20170413  PL: 28.57000000%  PS: 71.43000000%  Trades: 14  CL: 2 }
+
+IF CLOSE OF 9 BARS AGO > CLOSE OF 5 BARS AGO
+AND CLOSE OF 5 BARS AGO > CLOSE OF 7 BARS AGO
+AND CLOSE OF 7 BARS AGO > CLOSE OF 3 BARS AGO
+AND CLOSE OF 3 BARS AGO > CLOSE OF 2 BARS AGO
+AND CLOSE OF 2 BARS AGO > CLOSE OF 1 BARS AGO
+THEN SELL NEXT BAR ON THE OPEN WITH
+PROFIT TARGET AT ENTRY PRICE - 2.50244200 %
+AND STOP LOSS AT ENTRY PRICE + 3.04379000 %
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+=== Backtest Performance Report ===
+Total Closed Positions: 13
+Number of Winning Trades: 10
+Number of Losing Trades: 3
+Total Bars in Market: 27
+Percent Winners: 76.92307700%
+Percent Losers: 23.07692300%
+Profit Factor: 3.91719407
+High Resolution Profit Factor: 3.40263218
+PAL Profitability: 76.92307700%
+High Resolution Profitability: 70.37036926
+===================================
+
+
+

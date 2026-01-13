@@ -1,0 +1,57 @@
+In-sample% = 70%
+Out-of-sample% = 30%
+Reserved% = 0%
+
+=== Date Ranges ===
+In-sample: 20010508 to 20180710
+Out-of-sample: 20180711 to 20251118
+Reserved: 20251119 to 20251119
+
+=== Long Position Statistics ===
+Long Profitability = 72.81933702%
+Long Profit Target = 1.42101740
+Long Stop = 1.90351400
+Long Pos Median = 0.71599000
+Long Pos Qn = 0.63461869
+Long Pos Skew = 0.31842229
+Long Neg Median = -0.70670300
+Long Neg Skew = -0.37715893
+Long Pos Count = 2183
+Long Neg Count = 2060
+
+=== Short Position Statistics ===
+Short Profitability = 69.05152830%
+Short Profit Target = 1.53417300
+Short Stop = 1.71150600
+Short Neg Median = -0.70670300
+Short Neg Qn = 0.64910166
+Short Neg Skew = -0.37715893
+Short Pos Median = 0.71599000
+Short Pos Skew = 0.31842229
+Short Neg Count = 2060
+Short Pos Count = 2183
+
+=== Clean Start Information ===
+CleanStartIndex = 20
+InferredTick   = 0.0001
+RelTick        = 4.61925e-06
+ZeroFrac       = 0.0119522
+TickSource     = SecurityAttributes_or_CLI
+
+=== Bid/Ask Spread Analysis (Out-of-Sample) ===
+Out-of-sample entries: 1851
+
+Corwin-Schultz Spread Estimator:
+  Calculated 1850 spread measurements
+  Mean: 0.03293000%
+  Median: 0.02948100%
+  Robust Qn: 0.00778100%
+
+Edge (30-day window) Spread Estimator:
+  Calculated 1850 spread measurements
+  Mean: 0.32292700%
+  Median: 0.25079900%
+  Robust Qn: 0.20250100%
+
+(Note: Current slippage estimate assumption: 0.10%)
+=== End Bid/Ask Spread Analysis ===
