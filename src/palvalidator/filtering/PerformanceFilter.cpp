@@ -18,6 +18,7 @@
 #include "TradingBootstrapFactory.h"
 #include "ConfigSeeds.h"
 #include <limits>
+#include "version.h"
 
 namespace palvalidator
 {
@@ -78,6 +79,9 @@ namespace palvalidator
       // Reset summary for new filtering run
       mFilteringSummary = FilteringSummary();
 
+      // Display version information first
+      outputStream << "PalValidator version " << palvalidator::Version::getVersion() << "\n";
+      
       outputStream << "\nFiltering " << survivingStrategies.size() << " surviving strategies by BCa performance...\n";
       outputStream << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
       outputStream << "Filter 2 (Economic Significance): Annualized Lower Bound > Trading Spread Costs\n";

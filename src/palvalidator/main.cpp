@@ -35,6 +35,7 @@
 #include "StatUtils.h"
 #include "TimeSeriesIndicators.h"
 #include <cstdlib>
+#include "version.h"
 
 // New policy architecture includes
 #include "PolicyRegistry.h"
@@ -644,17 +645,26 @@ void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> con
 
 void usage()
 {
-    printf("Usage: PalValidator [--bcastats] <config file>\n");
-    printf("  --bcastats : Enable writing BCa bootstrap statistics to CSV (default: disabled)\n");
+    printf("Usage: PalValidator [OPTIONS] <config file>\n");
+    printf("Options:\n");
+    printf("  --version   : Display version information and exit\n");
+    printf("  --bcastats  : Enable writing BCa bootstrap statistics to CSV (default: disabled)\n");
     printf("  All other parameters will be requested via interactive prompts.\n");
 }
 
 int main(int argc, char **argv)
 {
-    // Flexible argument parsing: accept optional --bcastats flag and a config file path
+    // Display version information at startup
+    std::cout << "PalValidator version " << palvalidator::Version::getVersion() << std::endl;
+    
+    // Flexible argument parsing: accept optional flags and a config file path
     std::string configurationFileName;
     for (int i = 1; i < argc; ++i) {
         std::string a(argv[i]);
+        if (a == "--version") {
+            std::cout << palvalidator::Version::getAboutString() << std::endl;
+            return 0;
+        }
         if (a == "--bcastats") {
             g_enableBcaStats = true;
             continue;
@@ -667,6 +677,9 @@ int main(int argc, char **argv)
         usage();
         return 1;
     }
+    
+    // Display startup banner with version
+    std::cout << palvalidator::Version::getStartupString() << std::endl;
     
     // Initialize the policy registry with all available policies
     std::cout << "Initializing policy registry..." << std::endl;

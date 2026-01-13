@@ -13,6 +13,7 @@
 #include "PalCodeGenVisitor.h"
 #include "WealthLab8CodeGenerator.h"
 #include "number.h"
+#include "version.h"
 
 using namespace std;
 using namespace mkc_palast;
@@ -307,8 +308,8 @@ void processWealthLab(const std::shared_ptr<PriceActionLabSystem>& system,
  */
 void displayHeader()
 {
-    cout << "PAL Code Generator" << endl;
-    cout << "==================" << endl;
+    cout << "PAL Code Generator - " << palvalidator::Version::getVersionFull() << endl;
+    cout << "=========================================" << endl;
     cout << endl;
 }
 
@@ -324,6 +325,7 @@ void displayUsage(const string& programName)
     cout << "  TICKER_SYMBOL  The ticker symbol for naming conventions" << endl;
     cout << endl;
     cout << "Options:" << endl;
+    cout << "  --version                Show version information and exit" << endl;
     cout << "  -p, --platform PLATFORM  Trading platform: TradeStation, WealthLab8, WL8 (default: WealthLab8)" << endl;
     cout << "  -h, --help               Show this help message" << endl;
     cout << endl;
@@ -349,7 +351,12 @@ int main(int argc, char* argv[])
     {
         string arg = argv[i];
 
-        if (arg == "-h" || arg == "--help")
+        if (arg == "--version")
+        {
+            cout << palvalidator::Version::getAboutString() << endl;
+            return SUCCESS;
+        }
+        else if (arg == "-h" || arg == "--help")
         {
             showHelp = true;
             break;

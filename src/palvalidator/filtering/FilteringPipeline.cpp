@@ -134,7 +134,7 @@ namespace palvalidator::filtering
 	return backtestDecision;
       }
 
-    if (true)
+    if (false)
     // [TEMPORARY] Dump highResReturns for integration testing
     {
       const std::string ticker = ctx.baseSecurity ? ctx.baseSecurity->getSymbol() : "UNKNOWN";
