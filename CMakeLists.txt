@@ -1,6 +1,43 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(PalValidator VERSION 1.0.0 LANGUAGES CXX)
+project(PalValidator VERSION 1.1.0 LANGUAGES CXX)
+
+# Extract Git information for version header
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} describe --tags --dirty --always
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_DESCRIBE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_BRANCH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+else()
+    set(GIT_COMMIT_HASH "unknown")
+    set(GIT_DESCRIBE "unknown")
+    set(GIT_BRANCH "unknown")
+endif()
+
+# Generate version header from template
+configure_file(
+    ${CMAKE_SOURCE_DIR}/include/version.h.in
+    ${CMAKE_BINARY_DIR}/include/version.h
+    @ONLY
+)
 
 find_package(Doxygen REQUIRED)
 
@@ -64,6 +101,7 @@ if(NOT RAPIDJSON_INCLUDE_DIR)
 endif()
 
 include_directories(${CMAKE_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/include
   ${Boost_INCLUDE_DIR}
   ${BLOOMBERG_DECIMAL_INCLUDES}
   ${RAPIDJSON_INCLUDE_DIR}
