@@ -678,9 +678,6 @@ int main(int argc, char **argv)
         return 1;
     }
     
-    // Display startup banner with version
-    std::cout << palvalidator::Version::getStartupString() << std::endl;
-    
     // Initialize the policy registry with all available policies
     std::cout << "Initializing policy registry..." << std::endl;
     statistics::initializePolicyRegistry();
