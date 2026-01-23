@@ -10,6 +10,7 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <numeric>
 #include "number.h"
 #include "StatUtils.h"
 #include "NormalQuantile.h"
@@ -29,7 +30,308 @@ namespace palvalidator
     using palvalidator::diagnostics::CandidateReject;
     using palvalidator::diagnostics::hasRejection;
     using palvalidator::diagnostics::rejectionMaskToString;
+    
+    // Forward declare AutoBootstrapSelector for use in CandidateGateKeeper
+    template <class Decimal>
+    class AutoBootstrapSelector;
 
+    namespace detail
+    {
+      // ===========================================================================
+      // HELPER CLASSES FOR REFACTORED SELECT METHOD
+      // ===========================================================================
+
+      /**
+       * @brief Encapsulates normalized scoring components
+       */
+      struct NormalizedScores
+      {
+        double ordering_norm;
+        double length_norm;
+        double stability_norm;
+        double center_sq_norm;
+        double skew_sq_norm;
+        
+        double ordering_contrib;
+        double length_contrib;
+        double stability_contrib;
+        double center_sq_contrib;
+        double skew_sq_contrib;
+        
+        NormalizedScores()
+          : ordering_norm(0.0), length_norm(0.0), stability_norm(0.0),
+            center_sq_norm(0.0), skew_sq_norm(0.0),
+            ordering_contrib(0.0), length_contrib(0.0), stability_contrib(0.0),
+            center_sq_contrib(0.0), skew_sq_contrib(0.0)
+        {}
+      };
+
+      /**
+       * @brief Encapsulates BCa rejection analysis results
+       */
+      struct BcaRejectionAnalysis
+      {
+        bool has_bca_candidate;
+        bool bca_chosen;
+        bool rejected_for_instability;
+        bool rejected_for_length;
+        bool rejected_for_domain;
+        bool rejected_for_non_finite;
+        
+        BcaRejectionAnalysis()
+          : has_bca_candidate(false),
+            bca_chosen(false),
+            rejected_for_instability(false),
+            rejected_for_length(false),
+            rejected_for_domain(false),
+            rejected_for_non_finite(false)
+        {}
+      };
+
+      /**
+       * @brief Handles score normalization and computation
+       */
+      template <class Decimal, class ScoringWeights, class RawComponents>
+      class ScoreNormalizer
+      {
+      public:
+        using MethodId = typename AutoCIResult<Decimal>::MethodId;
+        
+        explicit ScoreNormalizer(const ScoringWeights& weights)
+          : m_weights(weights)
+        {}
+        
+        /**
+         * @brief Normalize raw penalty components
+         */
+        NormalizedScores normalize(const RawComponents& raw) const
+        {
+          NormalizedScores scores;
+          
+          scores.ordering_norm = enforceNonNegative(
+            raw.getOrderingPenalty() / kRefOrderingErrorSq);
+          scores.length_norm = enforceNonNegative(
+            raw.getLengthPenalty() / kRefLengthErrorSq);
+          scores.stability_norm = enforceNonNegative(
+            raw.getStabilityPenalty() / kRefStability);
+          scores.center_sq_norm = enforceNonNegative(
+            raw.getCenterShiftSq() / kRefCenterShiftSq);
+          scores.skew_sq_norm = enforceNonNegative(
+            raw.getSkewSq() / kRefSkewSq);
+          
+          const double w_order = 1.0;
+          const double w_center = m_weights.getCenterShiftWeight();
+          const double w_skew = m_weights.getSkewWeight();
+          const double w_length = m_weights.getLengthWeight();
+          const double w_stab = m_weights.getStabilityWeight();
+          
+          scores.ordering_contrib = w_order * scores.ordering_norm;
+          scores.length_contrib = w_length * scores.length_norm;
+          scores.stability_contrib = w_stab * scores.stability_norm;
+          scores.center_sq_contrib = w_center * scores.center_sq_norm;
+          scores.skew_sq_contrib = w_skew * scores.skew_sq_norm;
+          
+          return scores;
+        }
+        
+        /**
+         * @brief Compute total score including BCa-specific overflow penalty
+         */
+        double computeTotalScore(const NormalizedScores& norm,
+                                 const RawComponents& raw,
+                                 MethodId method,
+                                 double length_penalty) const
+        {
+          double total = norm.ordering_contrib +
+                        norm.length_contrib +
+                        norm.stability_contrib +
+                        norm.center_sq_contrib +
+                        norm.skew_sq_contrib +
+                        raw.getDomainPenalty();
+          
+          // BCa-specific length overflow penalty
+          if (method == MethodId::BCa)
+          {
+            total += computeBcaLengthOverflow(length_penalty);
+          }
+          
+          return total;
+        }
+        
+      private:
+        static double enforceNonNegative(double x)
+        {
+          return (x < 0.0) ? 0.0 : x;
+        }
+        
+        static double computeBcaLengthOverflow(double length_penalty)
+        {
+          const double threshold = AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
+          
+          if (std::isfinite(length_penalty) && length_penalty > threshold)
+          {
+            const double overflow = length_penalty - threshold;
+            return AutoBootstrapConfiguration::kBcaLengthOverflowScale *
+                   (overflow * overflow);
+          }
+          
+          return 0.0;
+        }
+        
+        ScoringWeights m_weights;
+        
+        // Normalization reference values
+        static constexpr double kRefOrderingErrorSq = 0.10 * 0.10;
+        static constexpr double kRefLengthErrorSq = 1.0 * 1.0;
+        static constexpr double kRefStability = 0.25;
+        static constexpr double kRefCenterShiftSq = 2.0 * 2.0;
+        static constexpr double kRefSkewSq = 2.0 * 2.0;
+      };
+
+      /**
+       * @brief Validates candidates against gating criteria
+       */
+      template <class Decimal, class RawComponents>
+      class CandidateGateKeeper
+      {
+      public:
+        using Candidate = typename AutoCIResult<Decimal>::Candidate;
+        
+        /**
+         * @brief Check if candidate passes common gates (non-BCa methods)
+         */
+        bool isCommonCandidateValid(const Candidate& candidate,
+                                   const RawComponents& raw) const
+        {
+          if (!std::isfinite(candidate.getScore()))
+            return false;
+          
+          if (raw.getDomainPenalty() > 0.0)
+            return false;
+
+	  if (!AutoBootstrapSelector<Decimal>::passesEffectiveBGate(candidate))
+            return false;
+          
+          return true;
+        }
+        
+        /**
+         * @brief Check if BCa candidate passes additional BCa-specific gates
+         */
+        bool isBcaCandidateValid(const Candidate& candidate,
+                                const RawComponents& raw) const
+        {
+          if (!isCommonCandidateValid(candidate, raw))
+            return false;
+          
+          if (!std::isfinite(candidate.getZ0()) ||
+              !std::isfinite(candidate.getAccel()))
+            return false;
+          
+          if (std::fabs(candidate.getZ0()) >
+              AutoBootstrapConfiguration::kBcaZ0HardLimit)
+            return false;
+          
+          if (std::fabs(candidate.getAccel()) >
+              AutoBootstrapConfiguration::kBcaAHardLimit)
+            return false;
+          
+          return true;
+        }
+      };
+
+      /**
+       * @brief Improved tournament selector that properly handles ties
+       */
+      template <class Decimal>
+      class ImprovedTournamentSelector
+      {
+      public:
+        using Candidate = typename AutoCIResult<Decimal>::Candidate;
+        using MethodId = typename AutoCIResult<Decimal>::MethodId;
+        
+        ImprovedTournamentSelector(const std::vector<Candidate>& candidates)
+          : m_candidates(candidates),
+            m_found_any(false),
+            m_best_score(std::numeric_limits<double>::infinity()),
+            m_tie_epsilon_used(0.0)
+        {}
+        
+        void consider(std::size_t index)
+        {
+          const Candidate& candidate = m_candidates[index];
+          const double score = candidate.getScore();
+          
+          if (!m_found_any)
+          {
+            m_found_any = true;
+            m_best_score = score;
+            m_winner_idx = index;
+            m_tie_epsilon_used = relativeEpsilon(score, score);
+            return;
+          }
+          
+          const double eps = relativeEpsilon(score, m_best_score);
+          m_tie_epsilon_used = eps;
+          
+          if (score < m_best_score - eps)
+          {
+            m_best_score = score;
+            m_winner_idx = index;
+          }
+          else if (std::fabs(score - m_best_score) <= eps)
+          {
+            // Tie: use method preference
+            const Candidate& current_winner = m_candidates[m_winner_idx.value()];
+            const int pBest = methodPreference(current_winner.getMethod());
+            const int pCur = methodPreference(candidate.getMethod());
+            
+            if (pCur < pBest)
+            {
+              m_best_score = score;
+              m_winner_idx = index;
+            }
+          }
+        }
+        
+        bool hasWinner() const { return m_found_any; }
+        std::size_t getWinnerIndex() const
+        {
+          if (!m_found_any)
+            throw std::logic_error("TournamentSelector: no winner selected");
+          return m_winner_idx.value();
+        }
+        double getTieEpsilon() const { return m_tie_epsilon_used; }
+        
+      private:
+        static int methodPreference(MethodId m)
+        {
+          switch (m)
+          {
+            case MethodId::BCa: return 1;
+            case MethodId::PercentileT: return 2;
+            case MethodId::MOutOfN: return 3;
+            case MethodId::Percentile: return 4;
+            case MethodId::Basic: return 5;
+            case MethodId::Normal: return 6;
+          }
+          return 100;
+        }
+        
+        static double relativeEpsilon(double a, double b)
+        {
+          const double scale = 1.0 + std::max(std::fabs(a), std::fabs(b));
+          return AutoBootstrapConfiguration::kRelativeTieEpsilonScale * scale;
+        }
+        
+        const std::vector<Candidate>& m_candidates;
+        bool m_found_any;
+        double m_best_score;
+        std::optional<std::size_t> m_winner_idx;
+        double m_tie_epsilon_used;
+      };
+
+    } // namespace detail
     
     /**
      * @file AutoBootstrapSelector.h
@@ -641,10 +943,10 @@ namespace palvalidator
       }
       
       bool checkSupportViolation(const Candidate& candidate,
-     const StatisticSupport& support)
+				 const StatisticSupport& support)
       {
- double lower = candidate.getLower();
- return support.violatesLowerBound(lower);
+	double lower = candidate.getLower();
+	return support.violatesLowerBound(lower);
       }
       
       /**
@@ -662,7 +964,8 @@ namespace palvalidator
         const std::size_t requested = candidate.getBOuter();
         const std::size_t effective = candidate.getEffectiveB();
         
-        if (requested < 2) return false;
+        if (requested < 2)
+	  return false;
         
         constexpr std::size_t kMinEffectiveAbsolute = 200;
         
@@ -672,9 +975,11 @@ namespace palvalidator
         case MethodId::PercentileT:
           min_frac = AutoBootstrapConfiguration::kPercentileTMinEffectiveFraction;
           break;
+
         case MethodId::BCa:
           min_frac = 0.90;
           break;
+
         default:
           min_frac = 0.90;
           break;
@@ -969,7 +1274,7 @@ namespace palvalidator
 	// Normal's theoretical ideal: θ̂ ± z_{α/2} * SE
 	// Width = 2 * z_{α/2} * SE
 	const double alpha = 1.0 - confidence_level;
-	const double z_alpha_2 = detail::compute_normal_quantile(1.0 - 0.5 * alpha);;
+	const double z_alpha_2 = palvalidator::analysis::detail::compute_normal_quantile(1.0 - 0.5 * alpha);
 	const double ideal_len = 2.0 * z_alpha_2 * se_boot;
     
 	if (ideal_len <= 0.0)
@@ -1138,14 +1443,12 @@ namespace palvalidator
 	double ordering_penalty = 0.0;
 
 	if ((method != MethodId::Basic) && (method != MethodId::MOutOfN))
-	  {
-	    using palvalidator::analysis::detail::compute_empirical_cdf;
+	{
+	  const double coverage_target = res.cl;
 
-	    const double coverage_target = res.cl;
-
-	    // Empirical CDF values at the interval endpoints (still used for center_pen)
-	    const double F_lo = compute_empirical_cdf(stats, lo);
-	    const double F_hi = compute_empirical_cdf(stats, hi);
+	  // Empirical CDF values at the interval endpoints (still used for center_pen)
+	  const double F_lo = palvalidator::analysis::detail::compute_empirical_cdf(stats, lo);
+	  const double F_hi = palvalidator::analysis::detail::compute_empirical_cdf(stats, hi);
 
 	    // Inclusive mass inside [lo, hi] (tie-safe), plus effective sample size
 	    const EmpiricalMassResult mass_result = compute_empirical_mass_inclusive(stats, lo, hi);
@@ -1168,7 +1471,7 @@ namespace palvalidator
 		  AutoBootstrapConfiguration::kUnderCoverageMultiplier * under_coverage * under_coverage +
 		  AutoBootstrapConfiguration::kOverCoverageMultiplier  * over_coverage  * over_coverage;
 
-		const double F_mu       = compute_empirical_cdf(stats, mu);
+		const double F_mu       = palvalidator::analysis::detail::compute_empirical_cdf(stats, mu);
 		const double center_cdf = 0.5 * (F_lo + F_hi);
 		const double center_pen = (center_cdf - F_mu) * (center_cdf - F_mu);
 
@@ -1773,505 +2076,526 @@ namespace palvalidator
           }
         return 100; // should not happen
              }
-       
-             /**
-       * @brief Executes the selection tournament to find the best bootstrap method.
-       *
-       * This is the core logic that:
-       * 1. Normalizes raw penalties for all candidates.
-       * 2. Computes the weighted total score for each candidate.
-       * 3. Applies hard rejection gates (e.g., BCa |z0| > 0.6).
-       * 4. Selects the winner with the lowest score.
-       * 5. Resolves ties using `methodPreference`.
-       *
-       * @param candidates A list of Candidate objects generated by the summarize methods.
-       * @param weights Configuration for scoring weights.
-       * @return An AutoCIResult containing the winner and full diagnostics.
-       * @throws std::runtime_error If no valid candidates remain after hard gating.
+
+      // ===========================================================================
+      // HELPER CLASSES FOR REFACTORED SELECT METHOD
+      // ===========================================================================
+      
+      class RawComponents
+      {
+      public:
+        RawComponents(double orderingPenalty,
+                      double lengthPenalty,
+                      double stabilityPenalty,
+                      double centerShiftSq,
+                      double skewSq,
+                      double domainPenalty)
+          : m_ordering_penalty(orderingPenalty),
+            m_length_penalty(lengthPenalty),
+            m_stability_penalty(stabilityPenalty),
+            m_center_shift_sq(centerShiftSq),
+            m_skew_sq(skewSq),
+            m_domain_penalty(domainPenalty)
+        {}
+
+        double getOrderingPenalty() const { return m_ordering_penalty; }
+        double getLengthPenalty() const { return m_length_penalty; }
+        double getStabilityPenalty() const { return m_stability_penalty; }
+        double getCenterShiftSq() const { return m_center_shift_sq; }
+        double getSkewSq() const { return m_skew_sq; }
+        double getDomainPenalty() const { return m_domain_penalty; }
+
+      private:
+        double m_ordering_penalty;
+        double m_length_penalty;
+        double m_stability_penalty;
+        double m_center_shift_sq;
+        double m_skew_sq;
+        double m_domain_penalty;
+      };
+
+      // ===========================================================================
+      // PHASE 1: Compute raw penalty components
+      // ===========================================================================
+      
+      /**
+       * @brief Compute skew penalty from bootstrap skewness
        */
+      static double computeSkewPenalty(double skew)
+      {
+        const double skew_abs = std::fabs(skew);
+        constexpr double kSkewThreshold = 1.0;
+        const double skew_excess = std::max(0.0, skew_abs - kSkewThreshold);
+        return skew_excess * skew_excess;
+      }
+      
+      /**
+       * @brief Compute domain penalty based on support violation
+       */
+      static double computeDomainPenalty(const Candidate& c,
+                                        const StatisticSupport& support)
+      {
+        const double lower = num::to_double(c.getLower());
+        if (support.violatesLowerBound(lower))
+        {
+          return AutoBootstrapConfiguration::kDomainViolationPenalty;
+        }
+        return 0.0;
+      }
+      
+      /**
+       * @brief Compute raw penalty components for a single candidate
+       */
+      static RawComponents computeRawComponentsForCandidate(
+        const Candidate& c,
+        const StatisticSupport& support)
+      {
+        // Robustify cosmetic metrics
+        double center_shift = c.getCenterShiftInSe();
+        if (!std::isfinite(center_shift))
+          center_shift = 0.0;
+        const double center_shift_sq = center_shift * center_shift;
+        
+        const double skew = std::isfinite(c.getSkewBoot()) ? c.getSkewBoot() : 0.0;
+        const double skew_sq = computeSkewPenalty(skew);
+        
+        const double domain_penalty = computeDomainPenalty(c, support);
+        
+        return RawComponents(
+          c.getOrderingPenalty(),
+          c.getLengthPenalty(),
+          c.getStabilityPenalty(),
+          center_shift_sq,
+          skew_sq,
+          domain_penalty);
+      }
+      
+      /**
+       * @brief Compute raw penalties for all candidates
+       */
+      static std::vector<RawComponents> computeRawPenalties(
+        const std::vector<Candidate>& candidates,
+        const StatisticSupport& support)
+      {
+        std::vector<RawComponents> raw;
+        raw.reserve(candidates.size());
+        
+        for (const auto& c : candidates)
+        {
+          raw.push_back(computeRawComponentsForCandidate(c, support));
+        }
+        
+        return raw;
+      }
+      
+      /**
+       * @brief Check if any candidate is BCa
+       */
+      static bool containsBcaCandidate(const std::vector<Candidate>& candidates)
+      {
+        for (const auto& c : candidates)
+        {
+          if (c.getMethod() == MethodId::BCa)
+            return true;
+        }
+        return false;
+      }
+      
+      // ===========================================================================
+      // PHASE 2: Normalize and score candidates
+      // ===========================================================================
+      
+      /**
+       * @brief Normalize penalties and compute scores for all candidates
+       *
+       * @return Pair of (enriched candidates, score breakdowns)
+       */
+      static std::pair<std::vector<Candidate>,
+                      std::vector<typename SelectionDiagnostics::ScoreBreakdown>>
+      normalizeAndScoreCandidates(
+        const std::vector<Candidate>& candidates,
+        const std::vector<RawComponents>& raw,
+        const ScoringWeights& weights,
+        const StatisticSupport& support,
+        const std::pair<double, double>& support_bounds,
+        uint64_t& candidate_id_counter)
+      {
+        detail::ScoreNormalizer<Decimal, ScoringWeights, RawComponents> normalizer(weights);
+        
+        std::vector<Candidate> enriched;
+        enriched.reserve(candidates.size());
+        
+        std::vector<typename SelectionDiagnostics::ScoreBreakdown> breakdowns;
+        breakdowns.reserve(candidates.size());
+        
+        for (std::size_t i = 0; i < candidates.size(); ++i)
+        {
+          const Candidate& c = candidates[i];
+          const RawComponents& r = raw[i];
+          
+          // Normalize scores
+          auto norm = normalizer.normalize(r);
+          
+          // Compute total score
+          double total_score = normalizer.computeTotalScore(
+            norm, r, c.getMethod(), c.getLengthPenalty());
+          
+          // Compute rejection info
+          bool passes_eff_b = passesEffectiveBGate(c);
+          auto rejection_mask = computeRejectionMask(
+            c, total_score, r.getDomainPenalty(), passes_eff_b);
+          std::string rejection_text = rejectionMaskToString(rejection_mask);
+          bool violates_support = (r.getDomainPenalty() > 0.0);
+          
+          // Create score breakdown
+          breakdowns.emplace_back(
+            c.getMethod(),
+            /* raw */ r.getOrderingPenalty(), r.getLengthPenalty(),
+                     r.getStabilityPenalty(), r.getCenterShiftSq(),
+                     r.getSkewSq(), r.getDomainPenalty(),
+            /* norm */ norm.ordering_norm, norm.length_norm,
+                      norm.stability_norm, norm.center_sq_norm,
+                      norm.skew_sq_norm,
+            /* contrib */ norm.ordering_contrib, norm.length_contrib,
+                         norm.stability_contrib, norm.center_sq_contrib,
+                         norm.skew_sq_contrib, r.getDomainPenalty(),
+            /* total */ total_score,
+            /* v2 */ rejection_mask, rejection_text, false,
+                    violates_support, support_bounds.first,
+                    support_bounds.second);
+          
+          // Create enriched candidate
+          enriched.push_back(
+            c.withScore(total_score).withMetadata(candidate_id_counter++, 0, false));
+        }
+        
+        return {enriched, breakdowns};
+      }
+      
+      // ===========================================================================
+      // PHASE 3: Tournament selection
+      // ===========================================================================
+      
+      /**
+       * @brief Select the winner from valid candidates
+       *
+       * @return Winner index
+       */
+      static std::size_t selectWinnerIndex(
+        const std::vector<Candidate>& enriched,
+        const std::vector<RawComponents>& raw,
+        double& tie_epsilon_used)
+      {
+        detail::CandidateGateKeeper<Decimal, RawComponents> gatekeeper;
+        detail::ImprovedTournamentSelector<Decimal> selector(enriched);
+        
+        for (std::size_t i = 0; i < enriched.size(); ++i)
+        {
+          const MethodId method = enriched[i].getMethod();
+          const bool is_bca = (method == MethodId::BCa);
+          
+          const bool is_valid = is_bca
+            ? gatekeeper.isBcaCandidateValid(enriched[i], raw[i])
+            : gatekeeper.isCommonCandidateValid(enriched[i], raw[i]);
+          
+          if (is_valid)
+          {
+            selector.consider(i);
+          }
+        }
+        
+        if (!selector.hasWinner())
+        {
+          throw std::runtime_error(
+            "AutoBootstrapSelector::select: no valid candidate "
+            "(all scores non-finite or domain-violating).");
+        }
+        
+        tie_epsilon_used = selector.getTieEpsilon();
+        return selector.getWinnerIndex();
+      }
+      
+      // ===========================================================================
+      // PHASE 4: Assign ranks
+      // ===========================================================================
+      
+      /**
+       * @brief Assign ranks to eligible candidates and mark winner
+       */
+      static void assignRanks(
+        std::vector<Candidate>& enriched,
+        const std::vector<RawComponents>& raw,
+        std::size_t winner_idx)
+      {
+        detail::CandidateGateKeeper<Decimal, RawComponents> gatekeeper;
+        
+        // Sort indices by score
+        std::vector<std::size_t> idx(enriched.size());
+        std::iota(idx.begin(), idx.end(), 0);
+        
+        std::sort(idx.begin(), idx.end(), [&](std::size_t a, std::size_t b) {
+          return enriched[a].getScore() < enriched[b].getScore();
+        });
+        
+        // Get winner ID before we modify anything
+        const uint64_t winner_id = enriched[winner_idx].getCandidateId();
+        
+        // Assign ranks to eligible candidates
+        std::size_t rank = 1;
+        for (std::size_t k = 0; k < idx.size(); ++k)
+        {
+          const std::size_t i = idx[k];
+          const MethodId m = enriched[i].getMethod();
+          const bool is_bca = (m == MethodId::BCa);
+          
+          const bool is_valid = is_bca
+            ? gatekeeper.isBcaCandidateValid(enriched[i], raw[i])
+            : gatekeeper.isCommonCandidateValid(enriched[i], raw[i]);
+          
+          if (is_valid)
+          {
+            enriched[i] = enriched[i].withMetadata(
+              enriched[i].getCandidateId(), rank, false);
+            ++rank;
+          }
+          else
+          {
+            enriched[i] = enriched[i].withMetadata(
+              enriched[i].getCandidateId(), 0, false);
+          }
+        }
+        
+        // Mark winner
+        for (std::size_t i = 0; i < enriched.size(); ++i)
+        {
+          if (enriched[i].getCandidateId() == winner_id)
+          {
+            enriched[i] = enriched[i].markAsChosen();
+            break;
+          }
+        }
+      }
+      
+      // ===========================================================================
+      // PHASE 5: Analyze BCa rejection
+      // ===========================================================================
+      
+      /**
+       * @brief Analyze why BCa was rejected (if applicable)
+       */
+      static detail::BcaRejectionAnalysis analyzeBcaRejection(
+        const std::vector<Candidate>& enriched,
+        const std::vector<RawComponents>& raw,
+        std::size_t winner_idx,
+        bool has_bca_candidate)
+      {
+        detail::BcaRejectionAnalysis analysis;
+        analysis.has_bca_candidate = has_bca_candidate;
+        
+        if (!has_bca_candidate)
+          return analysis;
+        
+        const Candidate& winner = enriched[winner_idx];
+        analysis.bca_chosen = (winner.getMethod() == MethodId::BCa);
+        
+        // Only analyze rejection if BCa was not chosen
+        if (analysis.bca_chosen)
+          return analysis;
+        
+        // Find the BCa candidate and determine why it was rejected
+        for (std::size_t i = 0; i < enriched.size(); ++i)
+        {
+          if (enriched[i].getMethod() != MethodId::BCa)
+            continue;
+          
+          const Candidate& bca = enriched[i];
+          
+          if (!std::isfinite(bca.getScore()))
+            analysis.rejected_for_non_finite = true;
+          
+          if (raw[i].getDomainPenalty() > 0.0)
+            analysis.rejected_for_domain = true;
+          
+          if (!std::isfinite(bca.getZ0()) || !std::isfinite(bca.getAccel()) ||
+              std::fabs(bca.getZ0()) > AutoBootstrapConfiguration::kBcaZ0HardLimit ||
+              std::fabs(bca.getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
+          {
+            analysis.rejected_for_instability = true;
+          }
+          
+          if (bca.getLengthPenalty() >
+              AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold)
+          {
+            analysis.rejected_for_length = true;
+          }
+          
+          break; // Only one BCa candidate
+        }
+        
+        return analysis;
+      }
+      
+      // ===========================================================================
+      // HELPER UTILITIES
+      // ===========================================================================
+      
+      static StatisticSupport computeEffectiveSupport(const StatisticSupport& support,
+						      const ScoringWeights& weights)
+      {
+        StatisticSupport effective_support = support;
+        
+        if (!effective_support.hasLowerBound() && weights.enforcePositive())
+        {
+          effective_support = StatisticSupport::strictLowerBound(
+            0.0, AutoBootstrapConfiguration::kPositiveLowerEpsilon);
+        }
+        
+        return effective_support;
+      }
+      
+      static void validateInputs(const std::vector<Candidate>& candidates)
+      {
+        if (candidates.empty())
+        {
+          throw std::invalid_argument(
+            "AutoBootstrapSelector::select: no candidates provided.");
+        }
+      }
+
+      /**
+        * @brief Executes the selection tournament to find the best bootstrap method.
+        *
+        * REFACTORED VERSION: This method now orchestrates the selection process
+        * through clearly defined phases, each handled by a dedicated helper method.
+        *
+        * @param candidates A list of Candidate objects generated by the summarize methods.
+        * @param weights Configuration for scoring weights.
+        * @param support Statistic support constraints (e.g., positive-only).
+        * @return An AutoCIResult containing the winner and full diagnostics.
+        * @throws std::runtime_error If no valid candidates remain after gating.
+        */
       static Result select(const std::vector<Candidate>& candidates,
 			   const ScoringWeights& weights = ScoringWeights(),
 			   const StatisticSupport& support = StatisticSupport::unbounded())
       {
-	if (candidates.empty())
-	  {
-	    throw std::invalid_argument("AutoBootstrapSelector::select: no candidates provided.");
-	  }
-
-	const auto relativeEpsilon = [](double a, double b) -> double
-	{
-	  const double scale = 1.0 + std::max(std::fabs(a), std::fabs(b));
-	  return AutoBootstrapConfiguration::kRelativeTieEpsilonScale * scale;
-	};
-
-	const auto enforceNonNegative = [](double x) -> double
-	{
-	  return (x < 0.0) ? 0.0 : x;
-	};
-
-	class RawComponents
-	{
-	public:
-	  RawComponents(double orderingPenalty,
-			double lengthPenalty,
-			double stabilityPenalty,
-			double centerShiftSq,
-			double skewSq,
-			double domainPenalty)
-	    : m_ordering_penalty(orderingPenalty),
-	      m_length_penalty(lengthPenalty),
-	      m_stability_penalty(stabilityPenalty),
-	      m_center_shift_sq(centerShiftSq),
-	      m_skew_sq(skewSq),
-	      m_domain_penalty(domainPenalty)
-	  {}
-
-	  double getOrderingPenalty() const { return m_ordering_penalty; }
-	  double getLengthPenalty() const { return m_length_penalty; }
-	  double getStabilityPenalty() const { return m_stability_penalty; }
-	  double getCenterShiftSq() const { return m_center_shift_sq; }
-	  double getSkewSq() const { return m_skew_sq; }
-	  double getDomainPenalty() const { return m_domain_penalty; }
-
-	private:
-	  double m_ordering_penalty;
-	  double m_length_penalty;
-	  double m_stability_penalty;
-	  double m_center_shift_sq;
-	  double m_skew_sq;
-	  double m_domain_penalty;
-	};
-
-	// =========================================================================
-	// V2: Extract support bounds once for diagnostic tracking
-	// =========================================================================
-	// ---------------------------------------------------------------------
-        // Domain support:
-        // - If caller provides explicit StatisticSupport, use it.
-        // - If unbounded and weights.enforcePositive()==true, apply a strict > 0 gate
-        //   (backwards compatibility for legacy enforcePositive behavior).
-        // ---------------------------------------------------------------------
-        StatisticSupport effectiveSupport = support;
-        if (!effectiveSupport.hasLowerBound() && weights.enforcePositive())
-          {
-            effectiveSupport =
-              StatisticSupport::strictLowerBound(0.0, AutoBootstrapConfiguration::kPositiveLowerEpsilon);
-          }
-	auto [support_lower_bound, support_upper_bound] = getSupportBounds(support);
-
-	// =========================================================================
-	// V2: Initialize candidate ID counter
-	// =========================================================================
-	uint64_t candidate_id = 0;
-
-	std::vector<RawComponents> raw;
-	raw.reserve(candidates.size());
-
-	bool hasBCaCandidate = false;
-
-	bool bcaRejectedForInstability = false;
-	bool bcaRejectedForLength      = false;
-	bool bcaRejectedForDomain      = false;
-	bool bcaRejectedForNonFinite   = false;
-
-	// =========================================================================
-	// PHASE 1: Compute raw penalty components (UNCHANGED)
-	// =========================================================================
-	for (const auto& c : candidates)
-	  {
-	    // Robustify cosmetic metrics
-	    double centerShift = c.getCenterShiftInSe();
-	    if (!std::isfinite(centerShift))
-	      centerShift = 0.0;
-	    double centerShiftSq = centerShift * centerShift;
-
-	    const double skew = std::isfinite(c.getSkewBoot()) ? c.getSkewBoot() : 0.0;
-	    const double skewAbs = std::fabs(skew);
-	    constexpr double kSkewThreshold = 1.0;
-	    const double skewExcess = std::max(0.0, skewAbs - kSkewThreshold);
-	    const double skewSq = skewExcess * skewExcess;
-
-	    const double baseOrdering = c.getOrderingPenalty();
-	    const double baseLength   = c.getLengthPenalty();
-	    const double stabPenalty  = c.getStabilityPenalty();
-
-	    // Domain penalty driven by StatisticSupport
-	    double domainPenalty = 0.0;
-	    {
-	      const double lower = num::to_double(c.getLower());
-	      if (support.violatesLowerBound(lower))
-		{
-		  domainPenalty = AutoBootstrapConfiguration::kDomainViolationPenalty;
-		}
-	    }
-
-	    raw.emplace_back(baseOrdering,
-			     baseLength,
-			     stabPenalty,
-			     centerShiftSq,
-			     skewSq,
-			     domainPenalty);
-
-	    if (c.getMethod() == MethodId::BCa)
-	      {
-		hasBCaCandidate = true;
-	      }
-	  }
-
-	// Normalization reference values
-	const double kRefOrderingErrorSq = 0.10 * 0.10;
-	const double kRefLengthErrorSq   = 1.0 * 1.0;
-	const double kRefStability       = 0.25;
-	const double kRefCenterShiftSq   = 2.0 * 2.0;
-	const double kRefSkewSq          = 2.0 * 2.0;
-
-	// Weights
-	const double w_order  = 1.0;
-	const double w_center = weights.getCenterShiftWeight();
-	const double w_skew   = weights.getSkewWeight();
-	const double w_length = weights.getLengthWeight();
-	const double w_stab   = weights.getStabilityWeight();
-
-	std::vector<Candidate> enriched;
-	enriched.reserve(candidates.size());
-
-	std::vector<typename SelectionDiagnostics::ScoreBreakdown> breakdowns;
-	breakdowns.reserve(candidates.size());
-
-	// =========================================================================
-	// PHASE 2: Normalize, compute scores, and create enriched candidates
-	// =========================================================================
-	for (std::size_t i = 0; i < candidates.size(); ++i)
-	  {
-	    const Candidate& c = candidates[i];
-	    const RawComponents& r = raw[i];
-
-	    const double orderingNorm  = enforceNonNegative(r.getOrderingPenalty()  / kRefOrderingErrorSq);
-	    const double lengthNorm    = enforceNonNegative(r.getLengthPenalty()    / kRefLengthErrorSq);
-	    const double stabilityNorm = enforceNonNegative(r.getStabilityPenalty() / kRefStability);
-	    const double centerSqNorm  = enforceNonNegative(r.getCenterShiftSq()    / kRefCenterShiftSq);
-	    const double skewSqNorm    = enforceNonNegative(r.getSkewSq()           / kRefSkewSq);
-
-	    const double orderingContrib  = w_order  * orderingNorm;
-	    const double lengthContrib    = w_length * lengthNorm;
-	    const double stabilityContrib = w_stab   * stabilityNorm;
-	    const double centerSqContrib  = w_center * centerSqNorm;
-	    const double skewSqContrib    = w_skew   * skewSqNorm;
-	    const double domainContrib    = r.getDomainPenalty();
-
-	    double bcaLengthOverflowPenalty = 0.0;
-
-	    if (c.getMethod() == MethodId::BCa)
-	      {
-		const double threshold = AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
-		const double lengthPenalty = c.getLengthPenalty();
-            
-		if (std::isfinite(lengthPenalty) && lengthPenalty > threshold)
-		  {
-		    const double overflow = lengthPenalty - threshold;
-		    bcaLengthOverflowPenalty = AutoBootstrapConfiguration::kBcaLengthOverflowScale * 
-		      (overflow * overflow);
-		  }
-	      }
+        // =====================================================================
+        // VALIDATION
+        // =====================================================================
+        validateInputs(candidates);
         
-	    const double totalScore =
-	      orderingContrib +
-	      lengthContrib +
-	      stabilityContrib +
-	      centerSqContrib +
-	      skewSqContrib +
-	      domainContrib +
-	      bcaLengthOverflowPenalty;
-
-	    // =====================================================================
-	    // V2: Compute rejection mask and gating status for this candidate
-	    // =====================================================================
-
-	    bool passes_eff_b = passesEffectiveBGate(c);
-	    CandidateReject rejection_mask = computeRejectionMask(c,
-								  totalScore,
-								  r.getDomainPenalty(),
-								  passes_eff_b);
+        // =====================================================================
+        // SETUP
+        // =====================================================================
+        StatisticSupport effective_support =
+          computeEffectiveSupport(support, weights);
+        auto support_bounds = getSupportBounds(effective_support);
+        uint64_t candidate_id = 0;
         
-	    std::string rejection_text = rejectionMaskToString(rejection_mask);
-	    //bool passed_gates = (rejection_mask == CandidateReject::None);
-	    bool violates_support = (r.getDomainPenalty() > 0.0);
-
-	    // =====================================================================
-	    // V2: Create ScoreBreakdown with rejection info
-	    // =====================================================================
-	    breakdowns.emplace_back(
-				    c.getMethod(),
-				    /* raw */     r.getOrderingPenalty(), r.getLengthPenalty(), r.getStabilityPenalty(),
-				    r.getCenterShiftSq(), r.getSkewSq(), r.getDomainPenalty(),
-				    /* norm */    orderingNorm, lengthNorm, stabilityNorm, centerSqNorm, skewSqNorm,
-				    /* contrib */ orderingContrib, lengthContrib, stabilityContrib,
-				    centerSqContrib, skewSqContrib, domainContrib,
-				    /* total */   totalScore,
-				    // V2 params
-				    rejection_mask,
-				    rejection_text,
-				    false,
-				    violates_support,
-				    support_lower_bound,
-				    support_upper_bound
-				    );
-
-	    // =====================================================================
-	    // V2: Add candidate with score and metadata (ID assigned, rank=0 initially)
-	    // =====================================================================
-	    enriched.push_back(
-			       c.withScore(totalScore).withMetadata(candidate_id++, 0, false)
-			       );
-	  }
-
-	// =========================================================================
-	// PHASE 3: Gating functions (UNCHANGED from original)
-	// =========================================================================
-	const auto commonCandidateOk = [&](std::size_t i) -> bool
-	{
-	  if (!std::isfinite(enriched[i].getScore()))
-	           return false;
-
-	  if (raw[i].getDomainPenalty() > 0.0)
-	           return false;
-
-	  if (!passesEffectiveBGate(enriched[i]))
-	           return false;
-
-	  return true;
-	};
-
-	const auto bcaCandidateOk = [&](std::size_t i) -> bool
-	{
-	  if (!commonCandidateOk(i)) return false;
-
-	  const Candidate& c = enriched[i];
-
-	  if (!std::isfinite(c.getZ0()) || !std::isfinite(c.getAccel()))
-            return false;
-
-	  if (std::fabs(c.getZ0()) > AutoBootstrapConfiguration::kBcaZ0HardLimit)
-            return false;
-
-	  if (std::fabs(c.getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
-            return false;
-
-	  return true;
-	};
-
-	// Back-fill breakdown.passed_gates now that gating logic is available.
-        for (std::size_t i = 0; i < enriched.size(); ++i)
-          {
-            const MethodId m = enriched[i].getMethod();
-            const bool ok = (m == MethodId::BCa) ? bcaCandidateOk(i) : commonCandidateOk(i);
-
-            // Rebuild the ScoreBreakdown entry with passed_gates updated.
-            breakdowns[i] = typename SelectionDiagnostics::ScoreBreakdown(
-              breakdowns[i].getMethod(),
-              breakdowns[i].getOrderingRaw(),
-              breakdowns[i].getLengthRaw(),
-              breakdowns[i].getStabilityRaw(),
-              breakdowns[i].getCenterSqRaw(),
-              breakdowns[i].getSkewSqRaw(),
-              breakdowns[i].getDomainRaw(),
-              breakdowns[i].getOrderingNorm(),
-              breakdowns[i].getLengthNorm(),
-              breakdowns[i].getStabilityNorm(),
-              breakdowns[i].getCenterSqNorm(),
-              breakdowns[i].getSkewSqNorm(),
-              breakdowns[i].getOrderingContribution(),
-              breakdowns[i].getLengthContribution(),
-              breakdowns[i].getStabilityContribution(),
-              breakdowns[i].getCenterSqContribution(),
-              breakdowns[i].getSkewSqContribution(),
-              breakdowns[i].getDomainContribution(),
-              breakdowns[i].getTotalScore(),
-              breakdowns[i].getRejectionMask(),
-              breakdowns[i].getRejectionText(),
-              ok,
-              breakdowns[i].violatesSupport(),
-              breakdowns[i].getSupportLowerBound(),
-              breakdowns[i].getSupportUpperBound());
-          }
-
-	// =========================================================================
-	// PHASE 4: Tournament selection (UNCHANGED from original)
-	// =========================================================================
-	std::optional<std::size_t> chosenIdxOpt;
-
-	bool foundAny = false;
-	double bestScore = std::numeric_limits<double>::infinity();
-	double tie_epsilon_used = 0.0;  // V2: Track epsilon used for winner
-
-	for (std::size_t i = 0; i < enriched.size(); ++i)
-	  {
-	    const MethodId m = enriched[i].getMethod();
-	    const bool isOk = (m == MethodId::BCa) ? bcaCandidateOk(i) : commonCandidateOk(i);
-	    if (!isOk)
-	      continue;
-
-	    const double s = enriched[i].getScore();
-
-	    if (!foundAny)
-	      {
-		foundAny = true;
-		bestScore = s;
-		chosenIdxOpt = i;
-		tie_epsilon_used = relativeEpsilon(s, s);
-		continue;
-	      }
-
-	    const double eps = relativeEpsilon(s, bestScore);
-	    tie_epsilon_used = eps;
-
-	    if (s < bestScore - eps)
-	      {
-		bestScore = s;
-		chosenIdxOpt = i;
-	      }
-	    else if (std::fabs(s - bestScore) <= eps)
-	      {
-		// Tie: use method preference
-		const int pBest = methodPreference(enriched[*chosenIdxOpt].getMethod());
-		const int pCur  = methodPreference(enriched[i].getMethod());
-		if (pCur < pBest)
-		  {
-		    bestScore = s;
-		    chosenIdxOpt = i;
-		  }
-	      }
-	  }
-
-	// =========================================================================
-	// BCa rejection diagnostics (UNCHANGED from original)
-	// =========================================================================
-	if (hasBCaCandidate && chosenIdxOpt)
-	  {
-	    const Candidate& winner = enriched[*chosenIdxOpt];
-
-	    if (winner.getMethod() != MethodId::BCa)
-	      {
-		for (std::size_t i = 0; i < enriched.size(); ++i)
-		  {
-		    if (enriched[i].getMethod() != MethodId::BCa)
-		      continue;
-
-		    if (!std::isfinite(enriched[i].getScore()))
-		      bcaRejectedForNonFinite = true;
-
-		    if (raw[i].getDomainPenalty() > 0.0)
-		      bcaRejectedForDomain  = true;
-
-		    if (!std::isfinite(enriched[i].getZ0()) || !std::isfinite(enriched[i].getAccel()) ||
-                        std::fabs(enriched[i].getZ0()) > AutoBootstrapConfiguration::kBcaZ0HardLimit ||
-                        std::fabs(enriched[i].getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
-                      {
-                        bcaRejectedForInstability = true;
-                      }
-		    
-		    if (enriched[i].getLengthPenalty() > AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold)
-			bcaRejectedForLength = true;
-
-		    break;
-		  }
-	      }
-	  }
-
-	if (!chosenIdxOpt)
-	  {
-	    throw std::runtime_error(
-				     "AutoBootstrapSelector::select: no valid candidate (all scores non-finite or domain-violating).");
-	  }
-
-	// =========================================================================
-	// V2: Sort candidates by score and assign ranks
-	// =========================================================================
-    
-	const std::size_t chosenIdx = *chosenIdxOpt;
-const std::uint64_t winnerId = enriched[chosenIdx].getCandidateId();
-
-        // ---------------------------------------------------------------------
-        // Assign ranks among ELIGIBLE candidates only (rejected candidates keep rank=0),
-        // then mark the winner as chosen.
-        // ---------------------------------------------------------------------
-        std::vector<std::size_t> idx(enriched.size());
-        std::iota(idx.begin(), idx.end(), 0);
-
-        std::sort(idx.begin(), idx.end(), [&](std::size_t a, std::size_t b) {
-          return enriched[a].getScore() < enriched[b].getScore();
-        });
-
-        std::size_t rank = 1;
-        for (std::size_t k = 0; k < idx.size(); ++k)
-          {
-            const std::size_t i = idx[k];
-            const MethodId m = enriched[i].getMethod();
-            const bool ok = (m == MethodId::BCa) ? bcaCandidateOk(i) : commonCandidateOk(i);
-
-            if (ok)
-              {
-                enriched[i] = enriched[i].withMetadata(enriched[i].getCandidateId(), rank, false);
-                ++rank;
-              }
-            else
-              {
-                enriched[i] = enriched[i].withMetadata(enriched[i].getCandidateId(), 0, false);
-              }
-          }
-
-        // Mark winner
-        std::size_t winnerIdx = chosenIdx;
-        for (std::size_t i = 0; i < enriched.size(); ++i)
-          {
-            if (enriched[i].getCandidateId() == winnerId)
-              {
-                winnerIdx = i;
-                enriched[i] = enriched[i].markAsChosen();
-                break;
-              }
-          }
-	
-	const Candidate& chosen = enriched[winnerIdx];
-
-	const bool bcaChosen = (chosen.getMethod() == MethodId::BCa);
-
-	bool bcaRejectedForInstabilityPublic = false;
-	bool bcaRejectedForLengthPublic      = false;
-	bool bcaRejectedForDomainPublic      = false;
-	bool bcaRejectedForNonFinitePublic   = false;
-
-	if (hasBCaCandidate && !bcaChosen)
-	  {
-	    bcaRejectedForInstabilityPublic = bcaRejectedForInstability;
-	    bcaRejectedForLengthPublic      = bcaRejectedForLength;
-	    bcaRejectedForDomainPublic      = bcaRejectedForDomain;
-	    bcaRejectedForNonFinitePublic   = bcaRejectedForNonFinite;
-	  }
-
-	// =========================================================================
-	// V2: Create SelectionDiagnostics with tie_epsilon
-	// =========================================================================
-	SelectionDiagnostics diagnostics(
-					 chosen.getMethod(),
-					 Result::methodIdToString(chosen.getMethod()),
-					 chosen.getScore(),
-					 chosen.getStabilityPenalty(),
-					 chosen.getLengthPenalty(),
-					 hasBCaCandidate,
-					 bcaChosen,
-					 bcaRejectedForInstabilityPublic,
-					 bcaRejectedForLengthPublic,
-					 bcaRejectedForDomainPublic,
-					 bcaRejectedForNonFinitePublic,
-					 enriched.size(),
-					 std::move(breakdowns),
-					 tie_epsilon_used  // V2: Pass tie epsilon
-					 );
-
-	return Result(chosen.getMethod(), chosen, enriched, diagnostics);
+        // =====================================================================
+        // PHASE 1: Compute raw penalties
+        // =====================================================================
+        auto raw = computeRawPenalties(candidates, effective_support);
+        bool has_bca = containsBcaCandidate(candidates);
+        
+        // =====================================================================
+        // PHASE 2: Normalize and score
+        // =====================================================================
+        auto [enriched, breakdowns] = normalizeAndScoreCandidates(
+          candidates, raw, weights, effective_support,
+          support_bounds, candidate_id);
+        
+        // Update breakdowns with passed_gates status
+        updateBreakdownsWithGateStatus(enriched, raw, breakdowns);
+        
+        // =====================================================================
+        // PHASE 3: Tournament selection
+        // =====================================================================
+        double tie_epsilon_used = 0.0;
+        std::size_t winner_idx = selectWinnerIndex(enriched, raw, tie_epsilon_used);
+        
+        // =====================================================================
+        // PHASE 4: Assign ranks
+        // =====================================================================
+        assignRanks(enriched, raw, winner_idx);
+        
+        // =====================================================================
+        // PHASE 5: BCa diagnostics
+        // =====================================================================
+        auto bca_analysis = analyzeBcaRejection(enriched, raw, winner_idx, has_bca);
+        
+        // =====================================================================
+        // BUILD RESULT
+        // =====================================================================
+        const Candidate& winner = enriched[winner_idx];
+        
+        SelectionDiagnostics diagnostics(
+          winner.getMethod(),
+          Result::methodIdToString(winner.getMethod()),
+          winner.getScore(),
+          winner.getStabilityPenalty(),
+          winner.getLengthPenalty(),
+          bca_analysis.has_bca_candidate,
+          bca_analysis.bca_chosen,
+          bca_analysis.rejected_for_instability,
+          bca_analysis.rejected_for_length,
+          bca_analysis.rejected_for_domain,
+          bca_analysis.rejected_for_non_finite,
+          enriched.size(),
+          std::move(breakdowns),
+          tie_epsilon_used);
+        
+        return Result(winner.getMethod(), winner, enriched, diagnostics);
       }
+      
     private:
+      /**
+       * @brief Update score breakdowns with passed_gates status
+       */
+      static void updateBreakdownsWithGateStatus(
+        const std::vector<Candidate>& enriched,
+        const std::vector<RawComponents>& raw,
+        std::vector<typename SelectionDiagnostics::ScoreBreakdown>& breakdowns)
+      {
+        detail::CandidateGateKeeper<Decimal, RawComponents> gatekeeper;
+        
+        for (std::size_t i = 0; i < enriched.size(); ++i)
+        {
+          const MethodId m = enriched[i].getMethod();
+          const bool is_bca = (m == MethodId::BCa);
+          
+          const bool ok = is_bca
+            ? gatekeeper.isBcaCandidateValid(enriched[i], raw[i])
+            : gatekeeper.isCommonCandidateValid(enriched[i], raw[i]);
+          
+          // Rebuild the ScoreBreakdown with passed_gates updated
+          breakdowns[i] = typename SelectionDiagnostics::ScoreBreakdown(
+            breakdowns[i].getMethod(),
+            breakdowns[i].getOrderingRaw(),
+            breakdowns[i].getLengthRaw(),
+            breakdowns[i].getStabilityRaw(),
+            breakdowns[i].getCenterSqRaw(),
+            breakdowns[i].getSkewSqRaw(),
+            breakdowns[i].getDomainRaw(),
+            breakdowns[i].getOrderingNorm(),
+            breakdowns[i].getLengthNorm(),
+            breakdowns[i].getStabilityNorm(),
+            breakdowns[i].getCenterSqNorm(),
+            breakdowns[i].getSkewSqNorm(),
+            breakdowns[i].getOrderingContribution(),
+            breakdowns[i].getLengthContribution(),
+            breakdowns[i].getStabilityContribution(),
+            breakdowns[i].getCenterSqContribution(),
+            breakdowns[i].getSkewSqContribution(),
+            breakdowns[i].getDomainContribution(),
+            breakdowns[i].getTotalScore(),
+            breakdowns[i].getRejectionMask(),
+            breakdowns[i].getRejectionText(),
+            ok,  // passed_gates
+            breakdowns[i].violatesSupport(),
+            breakdowns[i].getSupportLowerBound(),
+            breakdowns[i].getSupportUpperBound());
+        }
+      }
     };
 
   } // namespace analysis
